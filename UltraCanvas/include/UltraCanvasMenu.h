@@ -1,0 +1,1180 @@
+// UltraCanvasMenu.h
+// Interactive menu component with styling options and submenu support
+// Version: 1.2.4
+// Last Modified: 2025-01-07
+// Author: UltraCanvas Framework
+#pragma once
+
+#include "UltraCanvasUIElement.h"
+#include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasEvent.h"
+#include "UltraCanvasKeyboardManager.h"
+#include <vector>
+#include <string>
+#include <functional>
+#include <memory>
+#include <chrono>
+#include <algorithm>
+
+namespace UltraCanvas {
+
+// ===== MENU TYPES AND ENUMS =====
+    enum class MenuType {
+        MainMenu,
+        DropdownMenu,
+        ContextMenu,
+        PopupMenu,
+        SubmenuMenu
+    };
+
+    enum class MenuOrientation {
+        Vertical,
+        Horizontal
+    };
+
+    enum class MenuState {
+        Hidden,
+        Opening,
+        Visible,
+        Closing
+    };
+
+    enum class MenuItemType {
+        Action,
+        Separator,
+        Checkbox,
+        Radio,
+        Submenu,
+        Input,
+        Custom
+    };
+
+// ===== MENU ITEM DATA =====
+    struct MenuItemData {
+        MenuItemType type = MenuItemType::Action;
+        std::string label;
+        std::string shortcut;
+        std::string iconPath;
+        bool enabled = true;
+        bool visible = true;
+        bool checked = false;
+        int radioGroup = 0;
+
+        // Callbacks
+        std::function<void()> onClick;
+        std::function<void(bool)> onToggle;
+        std::function<void(const std::string&)> onTextInput;
+
+        // Submenu items
+        std::vector<MenuItemData> subItems;
+
+        // Custom data
+        void* userData = nullptr;
+
+        // Constructors
+        MenuItemData() = default;
+        MenuItemData(const std::string& itemLabel) : label(itemLabel) {}
+        MenuItemData(const std::string& itemLabel, std::function<void()> callback)
+                : label(itemLabel), onClick(callback) {}
+
+        // Factory methods
+        static MenuItemData Action(const std::string& label, std::function<void()> callback);
+        static MenuItemData Separator();
+        static MenuItemData Checkbox(const std::string& label, bool checked, std::function<void(bool)> callback);
+        static MenuItemData Radio(const std::string& label, int group, std::function<void()> callback);
+        static MenuItemData Submenu(const std::string& label, const std::vector<MenuItemData>& items);
+        static MenuItemData Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback);
+    };
+
+// ===== MENU STYLING =====
+    struct MenuStyle {
+        // Colors
+        Color backgroundColor = Color(248, 248, 248);
+        Color borderColor = Color(200, 200, 200);
+        Color hoverColor = Color(230, 240, 255);
+        Color pressedColor = Color(210, 230, 255);
+        Color selectedColor = Color(25, 118, 210, 50);
+        Color separatorColor = Color(220, 220, 220);
+        Color textColor = Colors::Black;
+        Color disabledTextColor = Color(150, 150, 150);
+        Color shortcutTextColor = Color(100, 100, 100);
+
+        // Typography
+        std::string fontFamily = "Arial";
+        float fontSize = 13.0f;
+        FontWeight fontWeight = FontWeight::Normal;
+
+        // Dimensions
+        float itemHeight = 28.0f;
+        float iconSize = 16.0f;
+        float paddingLeft = 8.0f;
+        float paddingRight = 8.0f;
+        float iconSpacing = 6.0f;
+        float shortcutSpacing = 20.0f;
+        float separatorHeight = 8.0f;
+        float borderWidth = 1.0f;
+        float borderRadius = 4.0f;
+
+        // Submenu
+        float submenuDelay = 300.0f;  // milliseconds
+        float submenuOffset = 2.0f;
+
+        // Animation
+        bool enableAnimations = true;
+        float animationDuration = 0.15f;
+
+        // Shadow
+        bool showShadow = true;
+        Color shadowColor = Color(0, 0, 0, 100);
+        Point2D shadowOffset = Point2D(2, 2);
+        float shadowBlur = 4.0f;
+
+        static MenuStyle Default();
+        static MenuStyle Dark();
+        static MenuStyle Flat();
+    };
+
+// ===== MAIN MENU CLASS =====
+    class UltraCanvasMenu : public UltraCanvasElement, public std::enable_shared_from_this<UltraCanvasMenu> {
+    private:
+        // Menu properties
+        MenuType menuType = MenuType::ContextMenu;
+        MenuOrientation orientation = MenuOrientation::Vertical;
+        MenuState currentState = MenuState::Hidden;
+        MenuStyle style;
+
+        // Menu items
+        std::vector<MenuItemData> items;
+
+        // Navigation state
+        int hoveredIndex = -1;
+        int selectedIndex = -1;
+        int keyboardIndex = -1;
+        bool keyboardNavigation = false;
+
+        // Submenu management
+        std::shared_ptr<UltraCanvasMenu> activeSubmenu;
+        std::weak_ptr<UltraCanvasMenu> parentMenu;
+        std::vector<std::shared_ptr<UltraCanvasMenu>> childMenus;
+
+        // Animation
+        std::chrono::steady_clock::time_point animationStartTime;
+        float animationProgress = 0.0f;
+
+        // Events
+        std::function<void()> onMenuOpened;
+        std::function<void()> onMenuClosed;
+        std::function<void(int)> onItemSelected;
+        std::function<void(int)> onItemHovered;
+
+    public:
+        // ===== CONSTRUCTORS =====
+        UltraCanvasMenu(const std::string& identifier, long id, long x, long y, long w, long h)
+                : UltraCanvasElement(identifier, id, x, y, w, h) {
+            style = MenuStyle::Default();
+            CalculateSize();
+        }
+
+        virtual ~UltraCanvasMenu() {
+            CloseAllSubmenus();
+        }
+
+        // ===== CORE RENDERING =====
+        void Render() override {
+            if (!IsVisible() || currentState == MenuState::Hidden) return;
+
+            // Apply animation if active
+            if (style.enableAnimations && (currentState == MenuState::Opening || currentState == MenuState::Closing)) {
+                UpdateAnimation();
+            }
+
+            // Render shadow first
+            if (style.showShadow) {
+                RenderShadow();
+            }
+
+            // Render background
+            DrawFilledRect(GetBounds(), style.backgroundColor, style.borderColor, style.borderWidth, style.borderRadius);
+
+            // Render items
+            for (int i = 0; i < static_cast<int>(items.size()); ++i) {
+                if (items[i].visible) {
+                    RenderItem(i, items[i]);
+                }
+            }
+
+            // Render keyboard navigation highlight
+            if (keyboardNavigation && keyboardIndex >= 0 && keyboardIndex < static_cast<int>(items.size())) {
+                RenderKeyboardHighlight(GetItemBounds(keyboardIndex));
+            }
+        }
+
+        // ===== EVENT HANDLING =====
+        bool HandleEvent(const UCEvent& event) {
+            if (!IsVisible() || currentState != MenuState::Visible) return false;
+
+            switch (event.type) {
+                case UCEventType::MouseMove:
+                    HandleMouseMove(event);
+                    return true;
+
+                case UCEventType::MouseDown:
+                    HandleMouseDown(event);
+                    return true;
+
+                case UCEventType::MouseUp:
+                    HandleMouseUp(event);
+                    return true;
+
+                case UCEventType::KeyDown:
+                    return HandleKeyDown(event);
+
+                case UCEventType::MouseLeave:
+                    hoveredIndex = -1;
+                    return true;
+
+                default:
+                    break;
+            }
+
+            return false;
+        }
+
+        // ===== MENU TYPE AND CONFIGURATION =====
+        void SetMenuType(MenuType type) {
+            menuType = type;
+
+            // Adjust default properties based on type
+            switch (type) {
+                case MenuType::MainMenu:
+                    orientation = MenuOrientation::Horizontal;
+                    style.itemHeight = 32.0f;
+                    break;
+                case MenuType::ContextMenu:
+                case MenuType::PopupMenu:
+                    orientation = MenuOrientation::Vertical;
+                    style.showShadow = true;
+                    break;
+                case MenuType::DropdownMenu:
+                case MenuType::SubmenuMenu:
+                    orientation = MenuOrientation::Vertical;
+                    break;
+            }
+        }
+
+        MenuType GetMenuType() const { return menuType; }
+
+        void SetOrientation(MenuOrientation orient) {
+            orientation = orient;
+            CalculateSize();
+        }
+
+        MenuOrientation GetOrientation() const { return orientation; }
+
+        void SetStyle(const MenuStyle& menuStyle) {
+            style = menuStyle;
+            CalculateSize();
+        }
+
+        const MenuStyle& GetStyle() const { return style; }
+
+        // ===== ITEM MANAGEMENT =====
+        void AddItem(const MenuItemData& item) {
+            items.push_back(item);
+            CalculateSize();
+        }
+
+        void InsertItem(int index, const MenuItemData& item) {
+            if (index >= 0 && index <= static_cast<int>(items.size())) {
+                items.insert(items.begin() + index, item);
+                CalculateSize();
+            }
+        }
+
+        void RemoveItem(int index) {
+            if (index >= 0 && index < static_cast<int>(items.size())) {
+                items.erase(items.begin() + index);
+                CalculateSize();
+            }
+        }
+
+        void UpdateItem(int index, const MenuItemData& item) {
+            if (index >= 0 && index < static_cast<int>(items.size())) {
+                items[index] = item;
+                CalculateSize();
+            }
+        }
+
+        void Clear() {
+            items.clear();
+            CloseAllSubmenus();
+            CalculateSize();
+        }
+
+        const std::vector<MenuItemData>& GetItems() const { return items; }
+
+        MenuItemData* GetItem(int index) {
+            if (index >= 0 && index < static_cast<int>(items.size())) {
+                return &items[index];
+            }
+            return nullptr;
+        }
+
+        // ===== MENU DISPLAY =====
+        void Show() {
+            if (currentState == MenuState::Hidden) {
+                currentState = style.enableAnimations ? MenuState::Opening : MenuState::Visible;
+                SetVisible(true);
+
+                if (style.enableAnimations) {
+                    StartAnimation();
+                }
+
+                // Reset navigation state
+                hoveredIndex = -1;
+                keyboardIndex = -1;
+                keyboardNavigation = false;
+
+                if (onMenuOpened) onMenuOpened();
+            }
+        }
+
+        void Hide() {
+            if (currentState == MenuState::Visible || currentState == MenuState::Opening) {
+                currentState = style.enableAnimations ? MenuState::Closing : MenuState::Hidden;
+
+                // Close all submenus
+                CloseAllSubmenus();
+
+                if (style.enableAnimations) {
+                    StartAnimation();
+                } else {
+                    SetVisible(false);
+                }
+
+                if (onMenuClosed) onMenuClosed();
+            }
+        }
+
+        void Toggle() {
+            if (IsMenuVisible()) {
+                Hide();
+            } else {
+                Show();
+            }
+        }
+
+        bool IsMenuVisible() const {
+            return currentState == MenuState::Visible || currentState == MenuState::Opening;
+        }
+
+        MenuState GetMenuState() const { return currentState; }
+
+        // ===== CONTEXT MENU HELPERS =====
+        void ShowAt(const Point2D& position) {
+            SetPosition(static_cast<long>(position.x), static_cast<long>(position.y));
+            Show();
+        }
+
+        void ShowAt(int x, int y) {
+            ShowAt(Point2D(static_cast<float>(x), static_cast<float>(y)));
+        }
+
+        // ===== SUBMENU MANAGEMENT =====
+        void OpenSubmenu(int itemIndex) {
+            if (itemIndex < 0 || itemIndex >= static_cast<int>(items.size())) return;
+
+            const MenuItemData& item = items[itemIndex];
+            if (item.subItems.empty()) return;
+
+            // Close existing submenu
+            CloseActiveSubmenu();
+
+            // Create and show new submenu
+            activeSubmenu = std::make_shared<UltraCanvasMenu>(
+                    GetIdentifier() + "_submenu_" + std::to_string(itemIndex),
+                    GetIdentifierID() + 1000 + itemIndex,
+                    0, 0, 150, 100
+            );
+
+            activeSubmenu->SetMenuType(MenuType::SubmenuMenu);
+            activeSubmenu->SetStyle(style);
+            activeSubmenu->parentMenu = std::static_pointer_cast<UltraCanvasMenu>(shared_from_this());
+
+            // Add items to submenu
+            for (const auto& subItem : item.subItems) {
+                activeSubmenu->AddItem(subItem);
+            }
+
+            // Position submenu
+            PositionSubmenu(activeSubmenu, itemIndex);
+
+            // Show submenu
+            activeSubmenu->Show();
+            childMenus.push_back(activeSubmenu);
+        }
+
+        void CloseActiveSubmenu() {
+            if (activeSubmenu) {
+                activeSubmenu->Hide();
+                activeSubmenu->CloseAllSubmenus();
+
+                // Remove from child menus
+                auto it = std::find(childMenus.begin(), childMenus.end(), activeSubmenu);
+                if (it != childMenus.end()) {
+                    childMenus.erase(it);
+                }
+
+                activeSubmenu.reset();
+            }
+        }
+
+        void CloseAllSubmenus() {
+            for (auto& child : childMenus) {
+                if (child) {
+                    child->Hide();
+                    child->CloseAllSubmenus();
+                }
+            }
+            childMenus.clear();
+            activeSubmenu.reset();
+        }
+
+        // ===== EVENT CALLBACKS =====
+        void SetOnMenuOpened(std::function<void()> callback) { onMenuOpened = callback; }
+        void SetOnMenuClosed(std::function<void()> callback) { onMenuClosed = callback; }
+        void SetOnItemSelected(std::function<void(int)> callback) { onItemSelected = callback; }
+        void SetOnItemHovered(std::function<void(int)> callback) { onItemHovered = callback; }
+
+    private:
+        // ===== CALCULATION METHODS =====
+        void CalculateSize() {
+            if (items.empty()) {
+                SetWidth(150);
+                SetHeight(30);
+                return;
+            }
+
+            float maxWidth = 100.0f;
+            float totalHeight = style.paddingLeft + style.paddingRight;
+
+            for (const auto& item : items) {
+                if (!item.visible) continue;
+
+                if (item.type == MenuItemType::Separator) {
+                    totalHeight += style.separatorHeight;
+                } else {
+                    totalHeight += style.itemHeight;
+                    float itemWidth = CalculateItemWidth(item);
+                    maxWidth = std::max(maxWidth, itemWidth);
+                }
+            }
+
+            if (orientation == MenuOrientation::Horizontal) {
+                // For horizontal menus, width is sum of item widths
+                SetWidth(static_cast<long>(totalHeight));  // Swap for horizontal
+                SetHeight(static_cast<long>(style.itemHeight + style.paddingLeft * 2));
+            } else {
+                SetWidth(static_cast<long>(maxWidth + style.paddingLeft + style.paddingRight));
+                SetHeight(static_cast<long>(totalHeight));
+            }
+        }
+
+        float CalculateItemWidth(const MenuItemData& item) const {
+            float width = 0.0f;
+
+            // Icon space
+            if (!item.iconPath.empty()) {
+                width += style.iconSize + style.iconSpacing;
+            }
+
+            // Text width - FIX: Convert std::string to const char*
+            if (!item.label.empty()) {
+                width += GetTextWidth(item.label.c_str());
+            }
+
+            // Shortcut width - FIX: Convert std::string to const char*
+            if (!item.shortcut.empty()) {
+                width += style.shortcutSpacing + GetTextWidth(item.shortcut.c_str());
+            }
+
+            // Submenu arrow
+            if (!item.subItems.empty()) {
+                width += 20.0f;  // Arrow space
+            }
+
+            // Checkbox/radio space
+            if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
+                width += style.iconSize + style.iconSpacing;
+            }
+
+            return width;
+        }
+
+        // ===== POSITIONING =====
+        void PositionSubmenu(std::shared_ptr<UltraCanvasMenu> submenu, int itemIndex) {
+            if (!submenu) return;
+
+            float itemY = GetItemY(itemIndex);
+            float submenuX, submenuY;
+
+            if (orientation == MenuOrientation::Vertical) {
+                // Position to the right of the item
+                submenuX = GetX() + GetWidth() + style.submenuOffset;
+                submenuY = GetY() + itemY;
+            } else {
+                // Position below the item
+                submenuX = GetX() + GetItemX(itemIndex);
+                submenuY = GetY() + GetHeight() + style.submenuOffset;
+            }
+
+            // Adjust for screen boundaries (simplified)
+            // In a complete implementation, you'd check screen bounds
+
+            submenu->SetPosition(static_cast<long>(submenuX), static_cast<long>(submenuY));
+        }
+
+        float GetItemY(int index) const {
+            float y = style.paddingLeft;
+
+            for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
+                if (!items[i].visible) continue;
+
+                if (items[i].type == MenuItemType::Separator) {
+                    y += style.separatorHeight;
+                } else {
+                    y += style.itemHeight;
+                }
+            }
+
+            return y;
+        }
+
+        float GetItemX(int index) const {
+            if (orientation == MenuOrientation::Vertical) {
+                return 0.0f;
+            }
+
+            float x = style.paddingLeft;
+
+            for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
+                if (!items[i].visible) continue;
+                x += CalculateItemWidth(items[i]) + style.iconSpacing;
+            }
+
+            return x;
+        }
+
+        // ===== RENDERING HELPERS =====
+        void RenderItem(int index, const MenuItemData& item) {
+            Rect2D itemBounds = GetItemBounds(index);
+
+            // Render background
+            Color bgColor = GetItemBackgroundColor(index, item);
+            if (bgColor.a > 0) {
+                SetFillColor(bgColor);
+                DrawRect(itemBounds);
+            }
+
+            if (item.type == MenuItemType::Separator) {
+                RenderSeparator(itemBounds);
+                return;
+            }
+
+            float currentX = itemBounds.x + style.paddingLeft;
+
+            // Render checkbox/radio
+            if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
+                RenderCheckbox(item, Point2D(currentX, itemBounds.y + (itemBounds.height - style.iconSize) / 2));
+                currentX += style.iconSize + style.iconSpacing;
+            }
+
+            // Render icon
+            if (!item.iconPath.empty()) {
+                RenderIcon(item.iconPath, Point2D(currentX, itemBounds.y + (itemBounds.height - style.iconSize) / 2));
+                currentX += style.iconSize + style.iconSpacing;
+            }
+
+            // Render text
+            if (!item.label.empty()) {
+                Color textColor = item.enabled ? style.textColor : style.disabledTextColor;
+                SetTextColor(textColor);
+                SetFont(style.fontFamily, style.fontSize);
+
+                float textY = itemBounds.y + (itemBounds.height + style.fontSize) / 2 - 2;
+                DrawText(item.label, Point2D(currentX, textY));
+            }
+
+            // Render shortcut
+            if (!item.shortcut.empty()) {
+                SetTextColor(style.shortcutTextColor);
+                SetFont(style.fontFamily, style.fontSize);
+
+                // FIX: Convert std::string to const char* for GetTextWidth
+                float shortcutX = itemBounds.x + itemBounds.width - style.paddingRight - GetTextWidth(item.shortcut.c_str());
+                float textY = itemBounds.y + (itemBounds.height + style.fontSize) / 2 - 2;
+                DrawText(item.shortcut, Point2D(shortcutX, textY));
+            }
+
+            // Render submenu arrow
+            if (!item.subItems.empty()) {
+                RenderSubmenuArrow(Point2D(
+                        itemBounds.x + itemBounds.width - style.paddingRight - 10,
+                        itemBounds.y + itemBounds.height / 2
+                ));
+            }
+        }
+
+        void RenderSeparator(const Rect2D& bounds) {
+            float centerY = bounds.y + bounds.height / 2;
+            float startX = bounds.x + style.paddingLeft;
+            float endX = bounds.x + bounds.width - style.paddingRight;
+
+            SetStrokeColor(style.separatorColor);
+            SetStrokeWidth(1.0f);
+            DrawLine(Point2D(startX, centerY), Point2D(endX, centerY));
+        }
+
+        void RenderCheckbox(const MenuItemData& item, const Point2D& position) {
+            Rect2D checkRect(position.x, position.y, style.iconSize, style.iconSize);
+
+            SetStrokeColor(style.borderColor);
+            SetStrokeWidth(1.0f);
+            DrawRect(checkRect);
+
+            if (item.checked) {
+                SetStrokeColor(style.textColor);
+                SetStrokeWidth(2.0f);
+
+                if (item.type == MenuItemType::Checkbox) {
+                    // Draw checkmark
+                    Point2D p1(position.x + 3, position.y + style.iconSize / 2);
+                    Point2D p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
+                    Point2D p3(position.x + style.iconSize - 3, position.y + 3);
+                    DrawLine(p1, p2);
+                    DrawLine(p2, p3);
+                } else {
+                    // Draw radio dot
+                    float centerX = position.x + style.iconSize / 2;
+                    float centerY = position.y + style.iconSize / 2;
+                    DrawCircle(Point2D(centerX, centerY), style.iconSize / 4);
+                }
+            }
+        }
+
+        void RenderSubmenuArrow(const Point2D& position) {
+            SetStrokeColor(style.textColor);
+            SetStrokeWidth(1.5f);
+
+            if (orientation == MenuOrientation::Vertical) {
+                // Right arrow
+                Point2D p1(position.x - 3, position.y - 4);
+                Point2D p2(position.x + 3, position.y);
+                Point2D p3(position.x - 3, position.y + 4);
+                DrawLine(p1, p2);
+                DrawLine(p2, p3);
+            } else {
+                // Down arrow
+                Point2D p1(position.x - 4, position.y - 3);
+                Point2D p2(position.x, position.y + 3);
+                Point2D p3(position.x + 4, position.y - 3);
+                DrawLine(p1, p2);
+                DrawLine(p2, p3);
+            }
+        }
+
+        void RenderIcon(const std::string& iconPath, const Point2D& position) {
+            // Would implement icon rendering based on file type
+            DrawImage(iconPath, Rect2D(position.x, position.y, style.iconSize, style.iconSize));
+        }
+
+        void RenderKeyboardHighlight(const Rect2D& bounds) {
+            SetStrokeColor(style.selectedColor);
+            SetStrokeWidth(2.0f);
+            DrawRect(bounds);
+        }
+
+        void RenderShadow() {
+            Rect2D bounds = GetBounds();
+            Rect2D shadowBounds(
+                    bounds.x + style.shadowOffset.x,
+                    bounds.y + style.shadowOffset.y,
+                    bounds.width,
+                    bounds.height
+            );
+
+            SetFillColor(style.shadowColor);
+            DrawRect(shadowBounds);
+        }
+
+        // ===== UTILITY METHODS =====
+        Rect2D GetItemBounds(int index) const {
+            if (index < 0 || index >= static_cast<int>(items.size())) {
+                return Rect2D(0, 0, 0, 0);
+            }
+
+            float itemY = GetItemY(index);
+            float itemHeight = (items[index].type == MenuItemType::Separator) ?
+                               style.separatorHeight : style.itemHeight;
+
+            return Rect2D(
+                    static_cast<float>(GetX()),
+                    static_cast<float>(GetY()) + itemY,
+                    static_cast<float>(GetWidth()),
+                    itemHeight
+            );
+        }
+
+        Color GetItemBackgroundColor(int index, const MenuItemData& item) const {
+            if (!item.enabled) return Colors::Transparent;
+
+            if (index == hoveredIndex || index == keyboardIndex) {
+                return style.hoverColor;
+            }
+
+            if (index == selectedIndex) {
+                return style.pressedColor;
+            }
+
+            return Colors::Transparent;
+        }
+
+        int GetItemAtPosition(const Point2D& position) const {
+            if (!Contains(position)) return -1;
+
+            Point2D localPos(position.x - GetX(), position.y - GetY());
+
+            for (int i = 0; i < static_cast<int>(items.size()); ++i) {
+                if (!items[i].visible) continue;
+
+                Rect2D itemBounds = GetItemBounds(i);
+                itemBounds.x = 0;  // Make local
+                itemBounds.y -= GetY();
+
+                if (itemBounds.Contains(localPos)) {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        // ===== EVENT HANDLERS =====
+        void HandleMouseMove(const UCEvent& event) {
+            Point2D mousePos(static_cast<float>(event.x), static_cast<float>(event.y));
+            int newHoveredIndex = GetItemAtPosition(mousePos);
+
+            if (newHoveredIndex != hoveredIndex) {
+                hoveredIndex = newHoveredIndex;
+                keyboardNavigation = false;
+
+                if (onItemHovered && hoveredIndex >= 0) {
+                    onItemHovered(hoveredIndex);
+                }
+
+                // Auto-open submenu on hover (with delay)
+                if (hoveredIndex >= 0 && hoveredIndex < static_cast<int>(items.size())) {
+                    const MenuItemData& item = items[hoveredIndex];
+                    if (!item.subItems.empty()) {
+                        // In a complete implementation, you'd add a timer for submenu delay
+                        OpenSubmenu(hoveredIndex);
+                    }
+                } else {
+                    CloseActiveSubmenu();
+                }
+            }
+        }
+
+        void HandleMouseDown(const UCEvent& event) {
+            if (!Contains(event.x, event.y)) {
+                // Click outside menu - close if context menu
+                if (menuType == MenuType::ContextMenu || menuType == MenuType::PopupMenu) {
+                    Hide();
+                }
+                return;
+            }
+
+            Point2D mousePos(static_cast<float>(event.x), static_cast<float>(event.y));
+            int clickedIndex = GetItemAtPosition(mousePos);
+
+            if (clickedIndex >= 0 && clickedIndex < static_cast<int>(items.size())) {
+                selectedIndex = clickedIndex;
+            }
+        }
+
+        void HandleMouseUp(const UCEvent& event) {
+            if (!Contains(event.x, event.y)) return;
+
+            Point2D mousePos(static_cast<float>(event.x), static_cast<float>(event.y));
+            int clickedIndex = GetItemAtPosition(mousePos);
+
+            if (clickedIndex >= 0 && clickedIndex < static_cast<int>(items.size()) && clickedIndex == selectedIndex) {
+                ExecuteItem(clickedIndex);
+            }
+
+            selectedIndex = -1;
+        }
+
+        bool HandleKeyDown(const UCEvent& event) {
+            keyboardNavigation = true;
+
+            switch (event.virtualKey) {
+                case UCKeys::Up:
+                    NavigateUp();
+                    return true;
+
+                case UCKeys::Down:
+                    NavigateDown();
+                    return true;
+
+                case UCKeys::Left:
+                    if (orientation == MenuOrientation::Horizontal) {
+                        NavigateLeft();
+                    } else {
+                        CloseSubmenu();
+                    }
+                    return true;
+
+                case UCKeys::Right:
+                    if (orientation == MenuOrientation::Horizontal) {
+                        NavigateRight();
+                    } else {
+                        OpenSubmenuFromKeyboard();
+                    }
+                    return true;
+
+                case UCKeys::Return:
+                case UCKeys::Space:
+                    if (keyboardIndex >= 0) {
+                        ExecuteItem(keyboardIndex);
+                    }
+                    return true;
+
+                case UCKeys::Escape:
+                    Hide();
+                    return true;
+
+                default:
+                    break;
+            }
+
+            return false;
+        }
+
+        // ===== KEYBOARD NAVIGATION =====
+        void NavigateUp() {
+            if (items.empty()) return;
+
+            do {
+                keyboardIndex = (keyboardIndex <= 0) ? static_cast<int>(items.size()) - 1 : keyboardIndex - 1;
+            } while (keyboardIndex >= 0 &&
+                     (!items[keyboardIndex].visible ||
+                      items[keyboardIndex].type == MenuItemType::Separator ||
+                      !items[keyboardIndex].enabled));
+        }
+
+        void NavigateDown() {
+            if (items.empty()) return;
+
+            do {
+                keyboardIndex = (keyboardIndex >= static_cast<int>(items.size()) - 1) ? 0 : keyboardIndex + 1;
+            } while (keyboardIndex < static_cast<int>(items.size()) &&
+                     (!items[keyboardIndex].visible ||
+                      items[keyboardIndex].type == MenuItemType::Separator ||
+                      !items[keyboardIndex].enabled));
+        }
+
+        void NavigateLeft() {
+            // For horizontal menus
+            NavigateUp();
+        }
+
+        void NavigateRight() {
+            // For horizontal menus
+            NavigateDown();
+        }
+
+        void OpenSubmenuFromKeyboard() {
+            if (keyboardIndex >= 0 && keyboardIndex < static_cast<int>(items.size())) {
+                const MenuItemData& item = items[keyboardIndex];
+                if (!item.subItems.empty()) {
+                    OpenSubmenu(keyboardIndex);
+                    if (activeSubmenu) {
+                        activeSubmenu->keyboardNavigation = true;
+                        activeSubmenu->keyboardIndex = 0;
+                    }
+                }
+            }
+        }
+
+        void CloseSubmenu() {
+            CloseActiveSubmenu();
+            if (auto parent = parentMenu.lock()) {
+                parent->keyboardNavigation = true;
+            }
+        }
+
+        // ===== ITEM EXECUTION =====
+        void ExecuteItem(int index) {
+            if (index < 0 || index >= static_cast<int>(items.size())) return;
+
+            MenuItemData& item = items[index];
+            if (!item.enabled) return;
+
+            // Handle different item types
+            switch (item.type) {
+                case MenuItemType::Action:
+                    if (item.onClick) {
+                        item.onClick();
+                    }
+                    if (menuType == MenuType::ContextMenu || menuType == MenuType::PopupMenu) {
+                        Hide();
+                    }
+                    break;
+
+                case MenuItemType::Checkbox:
+                    item.checked = !item.checked;
+                    if (item.onToggle) {
+                        item.onToggle(item.checked);
+                    }
+                    break;
+
+                case MenuItemType::Radio:
+                    // Uncheck other radio items in the same group
+                    for (auto& otherItem : items) {
+                        if (otherItem.type == MenuItemType::Radio &&
+                            otherItem.radioGroup == item.radioGroup) {
+                            otherItem.checked = false;
+                        }
+                    }
+                    item.checked = true;
+                    if (item.onClick) {
+                        item.onClick();
+                    }
+                    break;
+
+                case MenuItemType::Submenu:
+                    OpenSubmenu(index);
+                    break;
+
+                default:
+                    break;
+            }
+
+            if (onItemSelected) {
+                onItemSelected(index);
+            }
+        }
+
+        // ===== ANIMATION =====
+        void StartAnimation() {
+            animationStartTime = std::chrono::steady_clock::now();
+            animationProgress = 0.0f;
+        }
+
+        void UpdateAnimation() {
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - animationStartTime);
+            float elapsedSeconds = elapsed.count() / 1000.0f;
+
+            animationProgress = std::min(1.0f, elapsedSeconds / style.animationDuration);
+
+            if (animationProgress >= 1.0f) {
+                // Animation complete
+                if (currentState == MenuState::Opening) {
+                    currentState = MenuState::Visible;
+                } else if (currentState == MenuState::Closing) {
+                    currentState = MenuState::Hidden;
+                    SetVisible(false);
+                }
+            }
+
+            // Apply animation effects (scale, fade, etc.)
+            // This would modify the rendering parameters based on animationProgress
+        }
+    };
+
+// ===== FACTORY FUNCTIONS =====
+    inline std::shared_ptr<UltraCanvasMenu> CreateMenu(
+            const std::string& identifier, long id, long x, long y, long w, long h) {
+        return UltraCanvasElementFactory::CreateWithID<UltraCanvasMenu>(
+                id, identifier, id, x, y, w, h);
+    }
+
+    inline std::shared_ptr<UltraCanvasMenu> CreateContextMenu(
+            const std::string& identifier, long id, long x, long y) {
+        auto menu = CreateMenu(identifier, id, x, y, 150, 100);
+        menu->SetMenuType(MenuType::ContextMenu);
+        return menu;
+    }
+
+    inline std::shared_ptr<UltraCanvasMenu> CreateMainMenu(
+            const std::string& identifier, long id, long x, long y, long w) {
+        auto menu = CreateMenu(identifier, id, x, y, w, 32);
+        menu->SetMenuType(MenuType::MainMenu);
+        return menu;
+    }
+
+// ===== BUILDER PATTERN =====
+    class MenuBuilder {
+    private:
+        std::shared_ptr<UltraCanvasMenu> menu;
+
+    public:
+        MenuBuilder(const std::string& identifier, long id, long x, long y, long w = 150, long h = 100) {
+            menu = CreateMenu(identifier, id, x, y, w, h);
+        }
+
+        MenuBuilder& SetType(MenuType type) {
+            menu->SetMenuType(type);
+            return *this;
+        }
+
+        MenuBuilder& SetStyle(const MenuStyle& style) {
+            menu->SetStyle(style);
+            return *this;
+        }
+
+        MenuBuilder& AddItem(const MenuItemData& item) {
+            menu->AddItem(item);
+            return *this;
+        }
+
+        MenuBuilder& AddAction(const std::string& label, std::function<void()> callback) {
+            menu->AddItem(MenuItemData::Action(label, callback));
+            return *this;
+        }
+
+        MenuBuilder& AddAction(const std::string& label, const std::string& shortcut, std::function<void()> callback) {
+            auto item = MenuItemData::Action(label, callback);
+            item.shortcut = shortcut;
+            menu->AddItem(item);
+            return *this;
+        }
+
+        MenuBuilder& AddSeparator() {
+            menu->AddItem(MenuItemData::Separator());
+            return *this;
+        }
+
+        MenuBuilder& AddCheckbox(const std::string& label, bool checked, std::function<void(bool)> callback) {
+            menu->AddItem(MenuItemData::Checkbox(label, checked, callback));
+            return *this;
+        }
+
+        MenuBuilder& AddSubmenu(const std::string& label, const std::vector<MenuItemData>& items) {
+            menu->AddItem(MenuItemData::Submenu(label, items));
+            return *this;
+        }
+
+        std::shared_ptr<UltraCanvasMenu> Build() {
+            return menu;
+        }
+    };
+
+// ===== STYLE FACTORY IMPLEMENTATIONS =====
+    inline MenuStyle MenuStyle::Default() {
+        MenuStyle style;
+        style.backgroundColor = Color(248, 248, 248);
+        style.textColor = Colors::Black;
+        style.hoverColor = Color(230, 240, 255);
+        return style;
+    }
+
+    inline MenuStyle MenuStyle::Dark() {
+        MenuStyle style;
+        style.backgroundColor = Color(45, 45, 45);
+        style.textColor = Colors::White;
+        style.hoverColor = Color(65, 65, 65);
+        return style;
+    }
+
+    inline MenuStyle MenuStyle::Flat() {
+        MenuStyle style;
+        style.backgroundColor = Colors::White;
+        style.borderWidth = 0.0f;
+        style.borderRadius = 0.0f;
+        style.showShadow = false;
+        style.textColor = Colors::Black;
+        style.hoverColor = Color(240, 240, 240);
+        return style;
+    }
+
+// ===== MENU ITEM FACTORY IMPLEMENTATIONS =====
+    inline MenuItemData MenuItemData::Action(const std::string& label, std::function<void()> callback) {
+        MenuItemData item;
+        item.type = MenuItemType::Action;
+        item.label = label;
+        item.onClick = callback;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Separator() {
+        MenuItemData item;
+        item.type = MenuItemType::Separator;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Checkbox(const std::string& label, bool checked, std::function<void(bool)> callback) {
+        MenuItemData item;
+        item.type = MenuItemType::Checkbox;
+        item.label = label;
+        item.checked = checked;
+        item.onToggle = callback;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Radio(const std::string& label, int group, std::function<void()> callback) {
+        MenuItemData item;
+        item.type = MenuItemType::Radio;
+        item.label = label;
+        item.radioGroup = group;
+        item.onClick = callback;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, const std::vector<MenuItemData>& items) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.subItems = items;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback) {
+        MenuItemData item;
+        item.type = MenuItemType::Input;
+        item.label = label;
+        item.onTextInput = callback;
+        return item;
+    }
+
+// ===== CONVENIENCE FUNCTIONS =====
+    inline std::shared_ptr<UltraCanvasMenu> CreateFileMenu() {
+        return MenuBuilder("file_menu", 2001, 0, 0)
+                .SetType(MenuType::DropdownMenu)
+                .AddAction("New", "Ctrl+N", []() { /* New file */ })
+                .AddAction("Open", "Ctrl+O", []() { /* Open file */ })
+                .AddSeparator()
+                .AddAction("Save", "Ctrl+S", []() { /* Save file */ })
+                .AddAction("Save As", "Ctrl+Shift+S", []() { /* Save as */ })
+                .AddSeparator()
+                .AddAction("Exit", "Alt+F4", []() { /* Exit application */ })
+                .Build();
+    }
+
+    inline std::shared_ptr<UltraCanvasMenu> CreateEditMenu() {
+        return MenuBuilder("edit_menu", 2002, 0, 0)
+                .SetType(MenuType::DropdownMenu)
+                .AddAction("Undo", "Ctrl+Z", []() { /* Undo */ })
+                .AddAction("Redo", "Ctrl+Y", []() { /* Redo */ })
+                .AddSeparator()
+                .AddAction("Cut", "Ctrl+X", []() { /* Cut */ })
+                .AddAction("Copy", "Ctrl+C", []() { /* Copy */ })
+                .AddAction("Paste", "Ctrl+V", []() { /* Paste */ })
+                .AddSeparator()
+                .AddAction("Select All", "Ctrl+A", []() { /* Select all */ })
+                .Build();
+    }
+
+} // namespace UltraCanvas
