@@ -105,11 +105,8 @@ set(ULTRACANVAS_SOURCES
 
 # ✅ FIXED: Corrected source file extension and added missing files
 set(APP_SOURCES
-    #Apps/m.cpp
-    #Apps/ImageRenderingExample.cpp
-    #Apps/UltraCanvasToolbarExample.cpp
-    Apps/ClipboardApp.cpp
-   # Add your source files here
+        Apps/ImageRenderingExample.cpp
+        # Add your source files here
 )
 
 # ✅ ADDED: Check that source files exist
@@ -143,7 +140,7 @@ if(UNIX AND NOT APPLE)
         ${JPEG_LIBRARIES}
         pthread
     )
-    
+
     # ✅ FIXED: Improved compile flags handling
     target_compile_options(${PROJECT_NAME} PRIVATE
         ${X11_CFLAGS_OTHER}

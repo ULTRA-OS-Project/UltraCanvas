@@ -474,10 +474,10 @@ namespace UltraCanvas {
 
         // Set up rendering context
         ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
-        int width, height;
-        GetSize(width, height);
-        SetFillColor(Color(245, 248, 255, 255)); // Light blue background
-        FillRectangle(Rect2D(0, 0, width, height));
+//        int width, height;
+//        GetSize(width, height);
+//        SetFillColor(Color(245, 248, 255, 255)); // Light blue background
+//        FillRectangle(Rect2D(0, 0, width, height));
 
         // Call base class render
         UltraCanvasBaseWindow::Render();
