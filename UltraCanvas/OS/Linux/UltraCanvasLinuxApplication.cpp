@@ -276,26 +276,36 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxApplication::SetFocusedWindow(UltraCanvasLinuxWindow* window) {
         if (focusedWindow != window) {
+            UltraCanvasLinuxWindow* previousFocusedWindow = focusedWindow;
+
+            // Update focused window first
+            focusedWindow = window;
+
             // Notify old window it lost focus
-            if (focusedWindow) {
+            if (previousFocusedWindow) {
                 UCEvent blurEvent;
                 blurEvent.type = UCEventType::WindowBlur;
                 blurEvent.timestamp = std::chrono::steady_clock::now();
-                focusedWindow->OnEvent(blurEvent);
-            }
+                blurEvent.targetWindow = static_cast<void*>(previousFocusedWindow);
+                blurEvent.nativeWindowHandle = previousFocusedWindow->GetXWindow();
+                previousFocusedWindow->OnEvent(blurEvent);
 
-            focusedWindow = window;
+                std::cout << "UltraCanvas: Window " << previousFocusedWindow << " lost focus" << std::endl;
+            }
 
             // Notify new window it gained focus
             if (focusedWindow) {
                 UCEvent focusEvent;
                 focusEvent.type = UCEventType::WindowFocus;
                 focusEvent.timestamp = std::chrono::steady_clock::now();
+                focusEvent.targetWindow = static_cast<void*>(focusedWindow);
+                focusEvent.nativeWindowHandle = focusedWindow->GetXWindow();
                 focusedWindow->OnEvent(focusEvent);
+
+                std::cout << "UltraCanvas: Window " << focusedWindow << " gained focus" << std::endl;
             }
         }
     }
-
 // ===== EVENT PROCESSING =====
     void UltraCanvasLinuxApplication::ProcessEvents() {
         UCEvent event;
@@ -331,23 +341,75 @@ namespace UltraCanvas {
         // Call global event handler if set
         if (globalEventHandler) {
             if (globalEventHandler(event)) {
-                return; // Event consumed
+                return; // Event consumed by global handler
             }
         }
 
-        // Find target window
+        // ===== NEW: IMPROVED TARGET WINDOW DETECTION =====
         UltraCanvasLinuxWindow* targetWindow = nullptr;
 
-        if (event.type >= UCEventType::WindowResize && event.type <= UCEventType::WindowBlur) {
-            targetWindow = focusedWindow;
-        } else {
-            targetWindow = focusedWindow;
+        // First priority: Use the window information stored in the event
+        if (event.targetWindow != nullptr) {
+            targetWindow = static_cast<UltraCanvasLinuxWindow*>(event.targetWindow);
+        }
+        // Fallback: Try to find window by native handle
+        else if (event.nativeWindowHandle != 0) {
+            targetWindow = FindWindow(static_cast<Window>(event.nativeWindowHandle));
+        }
+            // Last resort: Use focused window for certain event types
+        else {
+            // Only use focused window for keyboard events when no target is found
+            if (event.type == UCEventType::KeyDown ||
+                event.type == UCEventType::KeyUp ||
+                event.type == UCEventType::KeyChar ||
+                event.type == UCEventType::Shortcut) {
+                targetWindow = focusedWindow;
+            }
         }
 
-        // Dispatch to window
+        // ===== SPECIAL HANDLING FOR FOCUS EVENTS =====
+        if (event.type == UCEventType::WindowFocus) {
+            if (targetWindow) {
+                SetFocusedWindow(targetWindow);
+            }
+        } else if (event.type == UCEventType::WindowBlur) {
+            if (targetWindow && focusedWindow == targetWindow) {
+                // Don't set focused window to null immediately
+                // Let the new focus event handle the focus change
+            }
+        }
+
+        // ===== DISPATCH TO APPROPRIATE WINDOW =====
         if (targetWindow) {
             targetWindow->OnEvent(event);
+
+            // Debug logging
+            std::cout << "UltraCanvas: Event type " << static_cast<int>(event.type)
+                      << " dispatched to window " << targetWindow
+                      << " (X11 Window: " << std::hex << event.nativeWindowHandle << std::dec << ")"
+                      << " focused=" << (targetWindow == focusedWindow ? "yes" : "no") << std::endl;
+        } else {
+            // No target window found - this might be normal for some system events
+            std::cout << "UltraCanvas: Warning - Event type " << static_cast<int>(event.type)
+                      << " has no target window (X11 Window: " << std::hex << event.nativeWindowHandle << std::dec << ")" << std::endl;
         }
+    }
+
+    UltraCanvasLinuxWindow* UltraCanvasLinuxApplication::GetWindowForEvent(const UCEvent& event) {
+        if (event.targetWindow != nullptr) {
+            return static_cast<UltraCanvasLinuxWindow*>(event.targetWindow);
+        }
+        if (event.nativeWindowHandle != 0) {
+            return FindWindow(static_cast<Window>(event.nativeWindowHandle));
+        }
+        return nullptr;
+    }
+
+    bool UltraCanvasLinuxApplication::IsEventForWindow(const UCEvent& event, UltraCanvasLinuxWindow* window) {
+        if (!window) return false;
+
+        UltraCanvasLinuxWindow* eventWindow = GetWindowForEvent(event);
+        return eventWindow == window;
     }
 
     UCEvent UltraCanvasLinuxApplication::ConvertXEventToUCEvent(const XEvent& xEvent) {
@@ -355,10 +417,19 @@ namespace UltraCanvas {
         event.timestamp = std::chrono::steady_clock::now();
         event.nativeEvent = reinterpret_cast<unsigned long>(&xEvent);
 
+        // ===== NEW: SET TARGET WINDOW INFORMATION =====
+        // Store the X11 window handle that generated this event
+        event.nativeWindowHandle = xEvent.xany.window;
+
+        // Find and store the corresponding UltraCanvas window
+        UltraCanvasLinuxWindow* targetWindow = FindWindow(xEvent.xany.window);
+        event.targetWindow = static_cast<void*>(targetWindow);
+
         switch (xEvent.type) {
             case KeyPress:
             case KeyRelease: {
-                event.type = (xEvent.type == KeyPress) ? UCEventType::KeyDown : UCEventType::KeyUp;
+                event.type = (xEvent.type == KeyPress) ?
+                             UCEventType::KeyDown : UCEventType::KeyUp;
                 event.keyCode = xEvent.xkey.keycode;
                 event.virtualKey = ConvertXKeyToUCKey(XLookupKeysym(const_cast<XKeyEvent*>(&xEvent.xkey), 0));
 
@@ -380,14 +451,63 @@ namespace UltraCanvas {
 
             case ButtonPress:
             case ButtonRelease: {
-                event.type = (xEvent.type == ButtonPress) ? UCEventType::MouseDown : UCEventType::MouseUp;
-                event.x = xEvent.xbutton.x;
-                event.y = xEvent.xbutton.y;
-                event.button = ConvertXButtonToUCButton(xEvent.xbutton.button);
-                event.shift = (xEvent.xbutton.state & ShiftMask) != 0;
-                event.ctrl = (xEvent.xbutton.state & ControlMask) != 0;
-                event.alt = (xEvent.xbutton.state & Mod1Mask) != 0;
-                event.meta = (xEvent.xbutton.state & Mod4Mask) != 0;
+                // ===== FIXED X11 WHEEL EVENTS MAPPING =====
+                unsigned int xButton = xEvent.xbutton.button;
+
+                // Handle wheel events (Button4 = WheelUp, Button5 = WheelDown)
+                if (xButton == Button4 || xButton == Button5) {
+                    if (xEvent.type == ButtonPress) {
+                        event.type = UCEventType::MouseWheel;
+                        event.x = xEvent.xbutton.x;
+                        event.y = xEvent.xbutton.y;
+                        event.globalX = xEvent.xbutton.x_root;
+                        event.globalY = xEvent.xbutton.y_root;
+                        event.wheelDelta = (xButton == Button4) ? 120 : -120;
+                        event.button = ConvertXButtonToUCButton(xButton);
+
+                        // Set modifier keys
+                        event.shift = (xEvent.xbutton.state & ShiftMask) != 0;
+                        event.ctrl = (xEvent.xbutton.state & ControlMask) != 0;
+                        event.alt = (xEvent.xbutton.state & Mod1Mask) != 0;
+                        event.meta = (xEvent.xbutton.state & Mod4Mask) != 0;
+                    } else {
+                        event.type = UCEventType::Unknown;
+                    }
+                }
+                    // Handle horizontal wheel events
+                else if (xButton == 6 || xButton == 7) {
+                    if (xEvent.type == ButtonPress) {
+                        event.type = UCEventType::MouseWheelHorizontal;
+                        event.x = xEvent.xbutton.x;
+                        event.y = xEvent.xbutton.y;
+                        event.globalX = xEvent.xbutton.x_root;
+                        event.globalY = xEvent.xbutton.y_root;
+                        event.wheelDelta = (xButton == 7) ? 120 : -120;
+                        event.button = ConvertXButtonToUCButton(xButton);
+
+                        event.shift = (xEvent.xbutton.state & ShiftMask) != 0;
+                        event.ctrl = (xEvent.xbutton.state & ControlMask) != 0;
+                        event.alt = (xEvent.xbutton.state & Mod1Mask) != 0;
+                        event.meta = (xEvent.xbutton.state & Mod4Mask) != 0;
+                    } else {
+                        event.type = UCEventType::Unknown;
+                    }
+                }
+                    // Handle regular mouse button events
+                else {
+                    event.type = (xEvent.type == ButtonPress) ?
+                                 UCEventType::MouseDown : UCEventType::MouseUp;
+                    event.x = xEvent.xbutton.x;
+                    event.y = xEvent.xbutton.y;
+                    event.globalX = xEvent.xbutton.x_root;
+                    event.globalY = xEvent.xbutton.y_root;
+                    event.button = ConvertXButtonToUCButton(xButton);
+
+                    event.shift = (xEvent.xbutton.state & ShiftMask) != 0;
+                    event.ctrl = (xEvent.xbutton.state & ControlMask) != 0;
+                    event.alt = (xEvent.xbutton.state & Mod1Mask) != 0;
+                    event.meta = (xEvent.xbutton.state & Mod4Mask) != 0;
+                }
                 break;
             }
 
@@ -395,6 +515,8 @@ namespace UltraCanvas {
                 event.type = UCEventType::MouseMove;
                 event.x = xEvent.xmotion.x;
                 event.y = xEvent.xmotion.y;
+                event.globalX = xEvent.xmotion.x_root;
+                event.globalY = xEvent.xmotion.y_root;
                 event.shift = (xEvent.xmotion.state & ShiftMask) != 0;
                 event.ctrl = (xEvent.xmotion.state & ControlMask) != 0;
                 event.alt = (xEvent.xmotion.state & Mod1Mask) != 0;
@@ -452,6 +574,8 @@ namespace UltraCanvas {
                 event.type = UCEventType::MouseEnter;
                 event.x = xEvent.xcrossing.x;
                 event.y = xEvent.xcrossing.y;
+                event.globalX = xEvent.xcrossing.x_root;
+                event.globalY = xEvent.xcrossing.y_root;
                 break;
             }
 
@@ -459,6 +583,8 @@ namespace UltraCanvas {
                 event.type = UCEventType::MouseLeave;
                 event.x = xEvent.xcrossing.x;
                 event.y = xEvent.xcrossing.y;
+                event.globalX = xEvent.xcrossing.x_root;
+                event.globalY = xEvent.xcrossing.y_root;
                 break;
             }
 

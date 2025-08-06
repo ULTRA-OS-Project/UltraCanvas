@@ -157,6 +157,9 @@ namespace UltraCanvas {
         void StartEventThread();
         void StopEventThread();
 
+        UltraCanvasLinuxWindow* GetWindowForEvent(const UCEvent& event);
+        bool IsEventForWindow(const UCEvent& event, UltraCanvasLinuxWindow* window);
+
         // ===== KEYBOARD AND MOUSE CONVERSION =====
         UCMouseButton ConvertXButtonToUCButton(unsigned int button);
         UCKeys ConvertXKeyToUCKey(KeySym keysym);

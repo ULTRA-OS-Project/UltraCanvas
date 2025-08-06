@@ -23,6 +23,7 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseWindow::AddElement(std::shared_ptr<UltraCanvasElement> element) {
         if (element) {
+            element->SetWindow(this);
             elements.push_back(element.get());
             sharedElements.push_back(element); // Keep shared_ptr alive
             needsRedraw_ = true;
@@ -32,6 +33,7 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseWindow::AddElement(UltraCanvasElement* element) {
         if (element) {
+            element->SetWindow(this);
             elements.push_back(element);
             needsRedraw_ = true;
             if (onElementAdded) onElementAdded(element);
@@ -40,6 +42,7 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseWindow::RemoveElement(std::shared_ptr<UltraCanvasElement> element) {
         if (element) {
+            element->SetWindow(nullptr);
             RemoveElement(element.get());
             // Remove from shared_ptr list
             sharedElements.erase(
@@ -51,6 +54,7 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseWindow::RemoveElement(UltraCanvasElement* element) {
         if (element) {
+            element->SetWindow(nullptr);
             auto it = std::find(elements.begin(), elements.end(), element);
             if (it != elements.end()) {
                 elements.erase(it);
@@ -310,6 +314,8 @@ namespace UltraCanvas {
 
                 if (event.type == UCEventType::MouseDown ||
                     event.type == UCEventType::MouseUp ||
+                    event.type == UCEventType::MouseWheel ||
+                    event.type == UCEventType::MouseWheelHorizontal ||
                     event.type == UCEventType::MouseMove) {
 
                     // For mouse events, check if the element contains the point

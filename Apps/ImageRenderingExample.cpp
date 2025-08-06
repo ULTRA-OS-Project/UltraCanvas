@@ -32,6 +32,9 @@ public:
                 "./assets/sample2.jpg",
                 "./assets/sample.png",
                 "./assets/sample1.png",
+                "./assets/sample.png",
+                "./assets/sample1.png",
+                "./assets/sample2.jpg",
         };
     }
 
@@ -53,6 +56,10 @@ public:
                 .AddItem("Sample three", "2")
                 .AddItem("Sample 4", "3")
                 .AddItem("Sample 5", "4")
+                .AddItem("Sample 6", "5")
+                .AddItem("Sample 7", "6")
+                .AddItem("Sample 8", "7")
+                .AddItem("Sample 9", "8")
                 .SetStyle(DropdownStyles::Modern())
                 .SetSelectedIndex(0)  // Set default selection
                 .OnSelectionChanged([this](int index, const DropdownItem& item) {

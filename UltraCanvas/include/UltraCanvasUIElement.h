@@ -19,6 +19,7 @@ namespace UltraCanvas {
 
 // Forward declarations
     class UltraCanvasElement;
+    class UltraCanvasBaseWindow;
     class IRenderContext;
 
 // ===== MODERN PROPERTIES SYSTEM =====
@@ -159,15 +160,6 @@ namespace UltraCanvas {
 // ===== CLEAN BASE UI ELEMENT CLASS =====
     class UltraCanvasElement {
     private:
-        // Core properties - NO LEGACY PROPERTIES
-        StandardProperties properties;
-
-        // Hierarchy management
-        UltraCanvasElement* parent = nullptr;
-        std::vector<UltraCanvasElement*> children;
-
-        // State management
-        ElementStateFlags stateFlags;
 
         // Timing and animation
         std::chrono::steady_clock::time_point lastUpdateTime;
@@ -175,6 +167,16 @@ namespace UltraCanvas {
 
         // Event handling
         std::function<void(const UCEvent&)> eventCallback;
+
+    protected:
+        UltraCanvasBaseWindow* window = nullptr;
+        StandardProperties properties;
+        // State management
+        ElementStateFlags stateFlags;
+
+        // Hierarchy management
+        UltraCanvasElement* parent = nullptr;
+        std::vector<UltraCanvasElement*> children;
 
     public:
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
@@ -200,43 +202,11 @@ namespace UltraCanvas {
         ULTRACANVAS_STANDARD_PROPERTIES_ACCESSORS()
 
         // ===== HIERARCHY MANAGEMENT =====
-        void AddChild(UltraCanvasElement* child) {
-            if (!child || child == this) return;
+        void AddChild(UltraCanvasElement* child);
 
-            // Remove from previous parent
-            if (child->parent) {
-                child->parent->RemoveChild(child);
-            }
+        void RemoveChild(UltraCanvasElement* child);
 
-            // Add to this element
-            children.push_back(child);
-            child->parent = this;
-            child->properties.ParentObject = this->properties.IdentifierID;
-
-            // Notify derived classes
-            OnChildAdded(child);
-        }
-
-        void RemoveChild(UltraCanvasElement* child) {
-            auto it = std::find(children.begin(), children.end(), child);
-            if (it != children.end()) {
-                (*it)->parent = nullptr;
-                (*it)->properties.ParentObject = 0;
-                children.erase(it);
-
-                // Notify derived classes
-                OnChildRemoved(child);
-            }
-        }
-
-        UltraCanvasElement* FindChildById(const std::string& id) {
-            for (auto* child : children) {
-                if (child->GetIdentifier() == id) {
-                    return child;
-                }
-            }
-            return nullptr;
-        }
+        UltraCanvasElement* FindChildById(const std::string& id);
 
         const std::vector<UltraCanvasElement*>& GetChildren() const {
             return children;
@@ -244,6 +214,16 @@ namespace UltraCanvas {
 
         UltraCanvasElement* GetParent() const {
             return parent;
+        }
+
+        UltraCanvasBaseWindow* GetWindow() const {
+            return window;
+        }
+
+        void SetNeedsRedraw();
+
+        void SetWindow(UltraCanvasBaseWindow* win) {
+            window = win;
         }
 
         // ===== CORE VIRTUAL METHODS =====
@@ -323,16 +303,7 @@ namespace UltraCanvas {
             return root;
         }
 
-        bool IsAncestorOf(const UltraCanvasElement* element) const {
-            if (!element) return false;
-
-            const UltraCanvasElement* current = element->parent;
-            while (current) {
-                if (current == this) return true;
-                current = current->parent;
-            }
-            return false;
-        }
+        bool IsAncestorOf(const UltraCanvasElement* element) const;
 
         bool IsDescendantOf(const UltraCanvasElement* element) const {
             if (!element) return false;

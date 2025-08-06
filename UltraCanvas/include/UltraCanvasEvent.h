@@ -24,6 +24,7 @@ enum class UCEventType {
     MouseEnter,
     MouseLeave,
     MouseWheel,
+    MouseWheelHorizontal,
     MouseDoubleClick,
 
     // Keyboard Events
@@ -177,6 +178,9 @@ struct UCEvent {
 
     // Window specific
     int width = 0, height = 0;           // For resize events
+
+    void* targetWindow = nullptr;        // Pointer to the target UltraCanvasWindow
+    unsigned long nativeWindowHandle = 0; // Platform-specific window handle (X11 Window, HWND, etc.)
 
     // Generic data
     void* userData = nullptr;            // Custom user data

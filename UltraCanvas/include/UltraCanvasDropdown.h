@@ -150,6 +150,11 @@ namespace UltraCanvas {
             if (index >= -1 && index < (int)items.size()) {
                 if (selectedIndex != index) {
                     selectedIndex = index;
+
+                    if (index >= 0) {
+                        EnsureItemVisible(index);
+                    }
+
                     if (onSelectionChanged && index >= 0) {
                         onSelectionChanged(index, items[index]);
                     }
@@ -167,7 +172,6 @@ namespace UltraCanvas {
             }
             return nullptr;
         }
-
         bool Contains(float px, float py) const override {
             // Always check button area first
             Rect2D buttonRect = GetBounds();
@@ -499,18 +503,25 @@ namespace UltraCanvas {
             return "";
         }
 
+        // FIXED: Complete EnsureItemVisible implementation
         void EnsureItemVisible(int index) {
             if (index < 0 || index >= (int)items.size()) return;
 
             int visibleItems = style.maxVisibleItems;
 
+            // If item is above visible area, scroll up to show it
             if (index < scrollOffset) {
                 scrollOffset = index;
-            } else if (index >= scrollOffset + visibleItems) {
+            }
+                // If item is below visible area, scroll down to show it
+            else if (index >= scrollOffset + visibleItems) {
                 scrollOffset = index - visibleItems + 1;
             }
 
-            scrollOffset = std::max(0, std::min(scrollOffset, (int)items.size() - visibleItems));
+            // Clamp scroll offset to valid range
+            int maxScroll = std::max(0, (int)items.size() - visibleItems);
+            scrollOffset = std::max(0, std::min(scrollOffset, maxScroll));
+            SetNeedsRedraw();
         }
 
         int GetItemAtPosition(int x, int y) const {
@@ -652,12 +663,16 @@ namespace UltraCanvas {
         }
 
         void HandleMouseWheel(const UCEvent& event) {
-            if (dropdownOpen) {
+            if (dropdownOpen && needsScrollbar) {
+                // Determine scroll direction (negative wheelDelta = scroll down)
                 int scrollDirection = (event.wheelDelta > 0) ? -1 : 1;
-                int newScrollOffset = scrollOffset + scrollDirection;
+                int scrollAmount = 3; // Scroll 3 items per wheel notch
 
+                int newScrollOffset = scrollOffset + (scrollDirection * scrollAmount);
                 int maxScroll = std::max(0, (int)items.size() - style.maxVisibleItems);
+
                 scrollOffset = std::max(0, std::min(newScrollOffset, maxScroll));
+                SetNeedsRedraw();
             }
         }
 
