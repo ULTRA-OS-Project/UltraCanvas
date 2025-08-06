@@ -276,11 +276,11 @@ namespace UltraCanvas {
         void SetSelected(bool selected) { stateFlags.isSelected = selected; }
 
         // ===== SPATIAL QUERIES =====
-        bool Contains(const Point2D& point) const {
+        virtual bool Contains(const Point2D& point) const {
             return properties.Contains(point);
         }
 
-        bool Contains(float px, float py) const {
+        virtual bool Contains(float px, float py) const {
             return properties.Contains(px, py);
         }
 

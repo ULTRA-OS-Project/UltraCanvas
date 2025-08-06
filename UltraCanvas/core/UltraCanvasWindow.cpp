@@ -295,12 +295,52 @@ namespace UltraCanvas {
 //    }
 
     // Fixed OnEvent method with proper event dispatching
-    void UltraCanvasBaseWindow::OnEvent(const UCEvent& event) {
-        // Use the UltraCanvasEventDispatcher to handle events properly
-        bool handled = UltraCanvasEventDispatcher::DispatchEvent(event, elements);
+    void UltraCanvasBaseWindow::OnEvent(const UCEvent &event) {
+        std::cout << "UltraCanvasBaseWindow::OnEvent - type: " << (int) event.type
+                  << " elements: " << elements.size() << std::endl;
 
-        // Handle window-specific events if not handled by elements
+        // Use the event dispatcher to handle events properly
+        bool handled = false;
+
+        // Try to dispatch to UI elements first
+        for (auto *element: elements) {
+            if (element && element->IsVisible() && element->IsActive()) {
+                // Check if element contains the point (for mouse events)
+                bool elementShouldReceive = false;
+
+                if (event.type == UCEventType::MouseDown ||
+                    event.type == UCEventType::MouseUp ||
+                    event.type == UCEventType::MouseMove) {
+
+                    // For mouse events, check if the element contains the point
+                    elementShouldReceive = element->Contains(event.x, event.y);
+                    std::cout << "  Element '" << element->GetIdentifier()
+                              << "' contains point (" << event.x << "," << event.y << "): "
+                              << elementShouldReceive << std::endl;
+                } else if (event.type == UCEventType::KeyDown || event.type == UCEventType::KeyUp) {
+// For keyboard events, send to focused element
+                    elementShouldReceive = element->IsFocused();
+                    std::cout << "  Element '" << element->GetIdentifier()
+                              << "' is focused: " << elementShouldReceive << std::endl;
+                }
+
+                if (elementShouldReceive) {
+                    std::cout << "  → Forwarding event to element '"
+                              << element->GetIdentifier() << "'" << std::endl;
+                    element->OnEvent(event);
+                    handled = true;
+
+// For mouse down events, we might want to stop after first hit
+                    if (event.type == UCEventType::MouseDown) {
+                        break;
+                    }
+                }
+            }
+        }
+
+// Handle window-specific events if not handled by elements
         if (!handled) {
+            std::cout << "Event not handled by any element, processing as window event" << std::endl;
             switch (event.type) {
                 case UCEventType::WindowClose:
                     if (onWindowClosing) {
@@ -315,30 +355,11 @@ namespace UltraCanvas {
                     SetNeedsRedraw(true);
                     break;
 
-                case UCEventType::WindowRepaint:
-                    SetNeedsRedraw(true);
-                    break;
-
-                case UCEventType::WindowFocus:
-                    if (onWindowFocused) {
-                        onWindowFocused();
-                    }
-                    break;
-
-                case UCEventType::WindowBlur:
-                    if (onWindowBlurred) {
-                        onWindowBlurred();
-                    }
+                default:
                     break;
             }
         }
-
-        // Trigger redraw if needed
-        if (needsRedraw_) {
-            Render();
-        }
     }
-
 
     // UltraCanvasWindow
 

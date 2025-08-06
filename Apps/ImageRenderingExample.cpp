@@ -30,6 +30,8 @@ public:
                 "./assets/sample.png",
                 "./assets/sample1.png",
                 "./assets/sample2.jpg",
+                "./assets/sample.png",
+                "./assets/sample1.png",
         };
     }
 
@@ -49,6 +51,8 @@ public:
                 .AddItem("Sample one", "0")
                 .AddItem("Sample two", "1")
                 .AddItem("Sample three", "2")
+                .AddItem("Sample 4", "3")
+                .AddItem("Sample 5", "4")
                 .SetStyle(DropdownStyles::Modern())
                 .SetSelectedIndex(0)  // Set default selection
                 .OnSelectionChanged([this](int index, const DropdownItem& item) {
@@ -174,35 +178,46 @@ private:
 public:
     // Override event handling to ensure proper dropdown interaction
     void OnEvent(const UCEvent& event) override {
-        if (event.type != UCEventType::MouseMove) {
-            std::cout << "*** ImageDemoWindow::OnEvent() called, type: " << (int)event.type << " ***" << std::endl;
-        }
+        // Log ALL events to see what we're getting
+        std::cout << "*** ImageDemoWindow::OnEvent() called, type: " << (int)event.type
+                  << " pos: (" << event.x << "," << event.y << ") ***" << std::endl;
 
-        // Handle keyboard shortcuts
+        // Handle keyboard shortcuts FIRST (before passing to UI elements)
+        bool keyboardHandled = false;
         if (event.type == UCEventType::KeyDown) {
             switch (event.character) {
                 case ' ':  // Space - cycle images
                     CycleImage();
+                    keyboardHandled = true;
                     break;
                 case 'i':
                 case 'I':  // Toggle image info
                     showImageInfo = !showImageInfo;
                     SetNeedsRedraw(true);
+                    keyboardHandled = true;
                     break;
                 case 'c':
                 case 'C':  // Clear cache
                     ClearImageCache();
+                    keyboardHandled = true;
                     break;
                 case 'q':
                 case 'Q':  // Quit
                 case 27:   // Escape
                     Close();
+                    keyboardHandled = true;
                     break;
             }
         }
 
-        // Pass event to base class for UI element handling
-        UltraCanvasWindow::OnEvent(event);
+        // CRITICAL: Always pass events to base class for UI element handling
+        // This is where the dropdown gets its events
+        if (!keyboardHandled) {
+            std::cout << "*** Forwarding event to base class for UI handling ***" << std::endl;
+            UltraCanvasWindow::OnEvent(event);
+        } else {
+            std::cout << "*** Event handled by keyboard shortcut ***" << std::endl;
+        }
     }
 
 private:

@@ -168,6 +168,42 @@ namespace UltraCanvas {
             return nullptr;
         }
 
+        bool Contains(float px, float py) const override {
+            // Always check button area first
+            Rect2D buttonRect = GetBounds();
+            bool buttonHit = buttonRect.Contains(px, py);
+
+            std::cout << "UCDropdown::Contains(" << px << "," << py << ") dropdownOpen=" << dropdownOpen << std::endl;
+            std::cout << "  Button bounds: (" << buttonRect.x << "," << buttonRect.y
+                      << "," << buttonRect.width << "," << buttonRect.height << ") hit=" << buttonHit << std::endl;
+
+            if (buttonHit) {
+                return true;
+            }
+
+            // CRITICAL: If dropdown is open, also check dropdown list area
+            if (dropdownOpen) {
+                Rect2D listRect(buttonRect.x, buttonRect.y + buttonRect.height,
+                                buttonRect.width, dropdownHeight);
+                bool listHit = listRect.Contains(px, py);
+
+                std::cout << "  List bounds: (" << listRect.x << "," << listRect.y
+                          << "," << listRect.width << "," << listRect.height << ") hit=" << listHit << std::endl;
+
+                if (listHit) {
+                    return true;
+                }
+            }
+
+            std::cout << "  No hit detected" << std::endl;
+            return false;
+        }
+
+// Also override the Point2D version for consistency
+        bool Contains(const Point2D& point) const override {
+            return Contains(point.x, point.y);
+        }
+
         // ===== DROPDOWN STATE =====
         void OpenDropdown() {
             if (!dropdownOpen && !items.empty()) {
@@ -243,6 +279,9 @@ namespace UltraCanvas {
         // ===== EVENT HANDLING =====
         void OnEvent(const UCEvent& event) override {
             if (!IsActive() || !IsVisible()) return;
+            if (event.type != UCEventType::MouseMove) {
+                std::cout << "*** UltraCanvasDropdown::OnEvent() called, type: " << (int)event.type << " ***" << std::endl;
+            }
 
             switch (event.type) {
                 case UCEventType::MouseDown:
