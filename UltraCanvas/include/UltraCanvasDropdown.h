@@ -314,7 +314,7 @@ namespace UltraCanvas {
                 SetFont(style.fontFamily, style.fontSize);
 
                 float textX = buttonRect.x + style.paddingLeft;
-                float textY = buttonRect.y + (buttonRect.height + style.fontSize) / 2 - 2;
+                float textY = buttonRect.y - 2 + (buttonRect.height - style.fontSize) / 2;
 
                 DrawText(displayText, Point2D(textX, textY));
             }
@@ -418,7 +418,7 @@ namespace UltraCanvas {
                 SetTextColor(textColor);
                 SetFont("Arial", 12);
 
-                float textY = itemRect.y + (style.itemHeight + 12) / 2 - 2;
+                float textY = itemRect.y + (style.itemHeight - 12) / 2 - 2;
                 DrawText(item.text, Point2D(itemRect.x + 8, textY));
 
                 std::cout << "RenderDropdownItem: drew text '" << item.text << "' at "
