@@ -8,6 +8,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasRenderInterface.h"
 #include <vector>
 #include <string>
 #include <functional>
@@ -304,7 +305,7 @@ namespace UltraCanvas {
             }
 
             // Draw ONLY the button background (not full screen)
-            DrawFilledRect(buttonRect, bgColor, borderColor, style.borderWidth);
+            UltraCanvas::DrawFilledRect(buttonRect, bgColor, borderColor, style.borderWidth);
 
             // Draw text
             std::string displayText = GetDisplayText();
@@ -325,7 +326,7 @@ namespace UltraCanvas {
             if (IsFocused() && !dropdownOpen) {
                 Rect2D focusRect(buttonRect.x + 1, buttonRect.y + 1,
                                  buttonRect.width - 2, buttonRect.height - 2);
-                DrawFilledRect(focusRect, Colors::Transparent, style.focusBorderColor, 1.0f);
+                UltraCanvas::DrawFilledRect(focusRect, Colors::Transparent, style.focusBorderColor, 1.0f);
             }
         }
 
@@ -362,7 +363,8 @@ namespace UltraCanvas {
             }
 
             // Draw list background
-            DrawFilledRect(listRect, style.listBackgroundColor, style.listBorderColor, 1.0f);
+            std::cout << "RenderDropdownList UltraCanvas::DrawFilledRect" << std::endl;
+            UltraCanvas::DrawFilledRect(listRect, style.listBackgroundColor, style.listBorderColor, 1.0f);
 
             // Render visible items
             int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
@@ -377,6 +379,8 @@ namespace UltraCanvas {
             if (needsScrollbar) {
                 RenderScrollbar(listRect);
             }
+
+            ClearClipRect();
         }
 
         void RenderDropdownItem(int itemIndex, const Rect2D& listRect, int visualIndex) {
@@ -407,7 +411,7 @@ namespace UltraCanvas {
             }
 
             // Draw item background
-            DrawFilledRect(itemRect, bgColor);
+            UltraCanvas::DrawFilledRect(itemRect, bgColor);
 
             // Draw text
             if (!item.text.empty()) {
@@ -430,7 +434,7 @@ namespace UltraCanvas {
                                  listRect.y + 1, scrollbarWidth, listRect.height - 2);
 
             // Scrollbar background
-            DrawFilledRect(scrollbarRect, Color(240, 240, 240, 255));
+            UltraCanvas::DrawFilledRect(scrollbarRect, Color(240, 240, 240, 255));
 
             // Calculate thumb size and position
             int totalItems = (int)items.size();
@@ -445,7 +449,7 @@ namespace UltraCanvas {
                                (scrollbarRect.height - thumbHeight);
 
                 Rect2D thumbRect(scrollbarRect.x + 2, thumbY, scrollbarWidth - 4, thumbHeight);
-                DrawFilledRect(thumbRect, Color(160, 160, 160, 255));
+                UltraCanvas::DrawFilledRect(thumbRect, Color(160, 160, 160, 255));
             }
         }
 

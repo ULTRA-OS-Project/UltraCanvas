@@ -521,13 +521,13 @@ public:
         if (!Visible) return;
         
         // Draw background
-        DrawFilledRect(Rect2D(x_pos, y_pos, width_size, height_size), backgroundColor);
+        UltraCanvas::DrawFilledRect(Rect2D(x_pos, y_pos, width_size, height_size), backgroundColor);
         
         // Draw border
-        DrawFilledRect(Rect2D(x_pos, y_pos, width_size, 1), Colors::Gray);
-        DrawFilledRect(Rect2D(x_pos, y_pos + height_size - 1, width_size, 1), Colors::Gray);
-        DrawFilledRect(Rect2D(x_pos, y_pos, 1, height_size), Colors::Gray);
-        DrawFilledRect(Rect2D(x_pos + width_size - 1, y_pos, 1, height_size), Colors::Gray);
+        UltraCanvas::DrawFilledRect(Rect2D(x_pos, y_pos, width_size, 1), Colors::Gray);
+        UltraCanvas::DrawFilledRect(Rect2D(x_pos, y_pos + height_size - 1, width_size, 1), Colors::Gray);
+        UltraCanvas::DrawFilledRect(Rect2D(x_pos, y_pos, 1, height_size), Colors::Gray);
+        UltraCanvas::DrawFilledRect(Rect2D(x_pos + width_size - 1, y_pos, 1, height_size), Colors::Gray);
         
         if (rootNode) {
             int currentY = y_pos - scrollOffsetY;
@@ -653,7 +653,7 @@ private:
         }
         
         if (bgColor != backgroundColor) {
-            DrawFilledRect(Rect2D(x_pos + 1, nodeY, width_size - 2, rowHeight), bgColor);
+            UltraCanvas::DrawFilledRect(Rect2D(x_pos + 1, nodeY, width_size - 2, rowHeight), bgColor);
         }
         
         // Draw connecting lines
@@ -668,16 +668,16 @@ private:
             int buttonY = nodeY + (rowHeight - 12) / 2;
             
             // Draw button background
-            DrawFilledRect(Rect2D(buttonX, buttonY, 12, 12), Colors::LightGray);
-            DrawFilledRect(Rect2D(buttonX, buttonY, 12, 1), Colors::Gray);
-            DrawFilledRect(Rect2D(buttonX, buttonY + 11, 12, 1), Colors::Gray);
-            DrawFilledRect(Rect2D(buttonX, buttonY, 1, 12), Colors::Gray);
-            DrawFilledRect(Rect2D(buttonX + 11, buttonY, 1, 12), Colors::Gray);
+            UltraCanvas::DrawFilledRect(Rect2D(buttonX, buttonY, 12, 12), Colors::LightGray);
+            UltraCanvas::DrawFilledRect(Rect2D(buttonX, buttonY, 12, 1), Colors::Gray);
+            UltraCanvas::DrawFilledRect(Rect2D(buttonX, buttonY + 11, 12, 1), Colors::Gray);
+            UltraCanvas::DrawFilledRect(Rect2D(buttonX, buttonY, 1, 12), Colors::Gray);
+            UltraCanvas::DrawFilledRect(Rect2D(buttonX + 11, buttonY, 1, 12), Colors::Gray);
             
             // Draw +/- symbol
-            DrawFilledRect(Rect2D(buttonX + 3, buttonY + 5, 6, 2), Colors::Black);
+            UltraCanvas::DrawFilledRect(Rect2D(buttonX + 3, buttonY + 5, 6, 2), Colors::Black);
             if (!node->IsExpanded()) {
-                DrawFilledRect(Rect2D(buttonX + 5, buttonY + 3, 2, 6), Colors::Black);
+                UltraCanvas::DrawFilledRect(Rect2D(buttonX + 5, buttonY + 3, 2, 6), Colors::Black);
             }
         }
         
@@ -722,14 +722,14 @@ private:
         int scrollbarX = x_pos + width_size - scrollbarWidth;
         
         // Scrollbar background
-        DrawFilledRect(Rect2D(scrollbarX, y_pos, scrollbarWidth, height_size), Colors::LightGray);
+        UltraCanvas::DrawFilledRect(Rect2D(scrollbarX, y_pos, scrollbarWidth, height_size), Colors::LightGray);
         
         // Scrollbar thumb
         if (maxScrollY > 0) {
             int thumbHeight = std::max((long int)20, (height_size * height_size) / (height_size + maxScrollY));
             int thumbY = y_pos + (scrollOffsetY * (height_size - thumbHeight)) / maxScrollY;
             
-            DrawFilledRect(Rect2D(scrollbarX + 2, thumbY, scrollbarWidth - 4, thumbHeight), Colors::LightGray);
+            UltraCanvas::DrawFilledRect(Rect2D(scrollbarX + 2, thumbY, scrollbarWidth - 4, thumbHeight), Colors::LightGray);
         }
     }
     

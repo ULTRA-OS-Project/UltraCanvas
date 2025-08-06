@@ -477,7 +477,7 @@ private:
     
     void DrawImagePlaceholder(const Rect2D& rect, const std::string& text, const Color& bgColor = Color(240, 240, 240)) {
         // Draw background
-        DrawFilledRect(rect, bgColor, Colors::Gray, 1.0f);
+        UltraCanvas::DrawFilledRect(rect, bgColor, Colors::Gray, 1.0f);
         
         // Draw text
         SetTextColor(Colors::Gray);

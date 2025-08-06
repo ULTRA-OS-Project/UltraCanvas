@@ -51,6 +51,8 @@ namespace UltraCanvas {
         // Internal helper methods
         void ApplyDrawingStyle(const DrawingStyle& style);
         void ApplyTextStyle(const TextStyle& style);
+        void ApplyFillStyle(const DrawingStyle& style);
+        void ApplyStrokeStyle(const DrawingStyle& style);
         PangoFontDescription* CreatePangoFont(const TextStyle& style);
 
         // Add a flag to track if we're being destroyed
@@ -145,33 +147,6 @@ namespace UltraCanvas {
         void SetCairoColor(const Color& color);
         cairo_t* GetCairo() const { return cairo; }
         PangoContext* GetPangoContext() const { return pangoContext; }
-
-        // ===== OVERRIDE THE VIRTUAL CONVENIENCE METHODS =====
-        void SetFont(const std::string& fontFamily, float fontSize) override {
-            std::cout << "LinuxRenderContext::SetFont called with: " << fontFamily << ", " << fontSize << std::endl;
-            TextStyle style = GetTextStyle();
-            style.fontFamily = fontFamily;
-            style.fontSize = fontSize;
-            SetTextStyle(style);
-            std::cout << "LinuxRenderContext::SetFont completed. New fontSize: " << GetTextStyle().fontSize << std::endl;
-        }
-
-        void SetTextColor(const Color& color) override {
-            std::cout << "LinuxRenderContext::SetTextColor called with: R=" << (int)color.r
-                      << " G=" << (int)color.g << " B=" << (int)color.b << " A=" << (int)color.a << std::endl;
-            TextStyle style = GetTextStyle();
-            style.textColor = color;
-            SetTextStyle(style);
-            std::cout << "LinuxRenderContext::SetTextColor completed. New color: R=" << (int)GetTextStyle().textColor.r << std::endl;
-        }
-
-        void SetTextAlign(TextAlign align) override {
-            std::cout << "LinuxRenderContext::SetTextAlign called with: " << (int)align << std::endl;
-            TextStyle style = GetTextStyle();
-            style.alignment = align;
-            SetTextStyle(style);
-            std::cout << "LinuxRenderContext::SetTextAlign completed." << std::endl;
-        }
     };
 
     // ===== CAIRO FILTER CONSTANTS =====

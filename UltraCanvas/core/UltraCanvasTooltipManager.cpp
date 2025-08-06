@@ -322,7 +322,7 @@ namespace UltraCanvas {
             GetRenderContext()->SetDrawingStyle(shadowStyle);
             GetRenderContext()->DrawRoundedRectangle(shadowRect, style.cornerRadius);
         } else {
-            DrawFilledRect(shadowRect, style.shadowColor);
+            UltraCanvas::DrawFilledRect(shadowRect, style.shadowColor);
         }
     }
 
@@ -338,7 +338,7 @@ namespace UltraCanvas {
             GetRenderContext()->SetDrawingStyle(bgStyle);
             GetRenderContext()->DrawRoundedRectangle(bgRect, style.cornerRadius);
         } else {
-            DrawFilledRect(bgRect, style.backgroundColor);
+            UltraCanvas::DrawFilledRect(bgRect, style.backgroundColor);
         }
     }
 
@@ -356,7 +356,7 @@ namespace UltraCanvas {
             GetRenderContext()->SetDrawingStyle(borderStyle);
             GetRenderContext()->DrawRoundedRectangle(borderRect, style.cornerRadius);
         } else {
-            DrawFilledRect(borderRect, Colors::Transparent, style.borderColor, style.borderWidth);
+            UltraCanvas::DrawFilledRect(borderRect, Colors::Transparent, style.borderColor, style.borderWidth);
         }
     }
 

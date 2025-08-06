@@ -438,7 +438,7 @@ public:
         ULTRACANVAS_RENDER_SCOPE();
         
         // Draw background
-        DrawFilledRect(GetBounds(), style.backgroundColor, style.borderColor, style.borderWidth);
+        UltraCanvas::DrawFilledRect(GetBounds(), style.backgroundColor, style.borderColor, style.borderWidth);
         
         // Set clipping for content area
         Rect2D contentRect = GetContentRect();
@@ -559,7 +559,7 @@ private:
             
             // Render paragraph background
             if (paragraphs[i].backgroundColor.a > 0) {
-                DrawFilledRect(Rect2D(contentRect.x, yOffset, contentRect.width, lineHeight), 
+                UltraCanvas::DrawFilledRect(Rect2D(contentRect.x, yOffset, contentRect.width, lineHeight),
                               paragraphs[i].backgroundColor);
             }
             
@@ -586,7 +586,7 @@ private:
             // Draw background if needed
             if (run.backgroundColor.a > 0) {
                 Point2D textSize = GetRenderContext()->MeasureText(run.text);
-                DrawFilledRect(Rect2D(currentX, y, textSize.x, GetLineHeight()), run.backgroundColor);
+                UltraCanvas::DrawFilledRect(Rect2D(currentX, y, textSize.x, GetLineHeight()), run.backgroundColor);
             }
             
             // Draw text
@@ -623,7 +623,7 @@ private:
             int lineHeight = GetLineHeight();
             
             if (yOffset >= contentRect.y && yOffset <= contentRect.y + contentRect.height) {
-                DrawFilledRect(Rect2D(contentRect.x, yOffset, contentRect.width, lineHeight), style.selectionColor);
+                UltraCanvas::DrawFilledRect(Rect2D(contentRect.x, yOffset, contentRect.width, lineHeight), style.selectionColor);
             }
             
             yOffset += lineHeight + style.paragraphSpacing;
@@ -654,14 +654,14 @@ private:
         int scrollbarHeight = GetHeight();
         
         // Background
-        DrawFilledRect(Rect2D(scrollbarX, scrollbarY, style.scrollbarWidth, scrollbarHeight), 
+        UltraCanvas::DrawFilledRect(Rect2D(scrollbarX, scrollbarY, style.scrollbarWidth, scrollbarHeight),
                       style.scrollbarBackgroundColor);
         
         // Thumb
         int thumbHeight = std::max(20, scrollbarHeight * scrollbarHeight / (scrollbarHeight + maxScrollY));
         int thumbY = scrollbarY + (scrollOffsetY * (scrollbarHeight - thumbHeight)) / maxScrollY;
         
-        DrawFilledRect(Rect2D(scrollbarX + 2, thumbY, style.scrollbarWidth - 4, thumbHeight),
+        UltraCanvas::DrawFilledRect(Rect2D(scrollbarX + 2, thumbY, style.scrollbarWidth - 4, thumbHeight),
                       style.scrollbarThumbColor);
     }
     

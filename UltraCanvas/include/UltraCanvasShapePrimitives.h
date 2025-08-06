@@ -367,7 +367,7 @@ namespace UltraCanvas {
 
             // Set fill style
             if (style.fillMode != FillMode::NoneFill) {
-                DrawFilledRect(bounds, style.fillColor, Colors::Transparent);
+                UltraCanvas::DrawFilledRect(bounds, style.fillColor, Colors::Transparent);
             }
 
             // Set stroke style

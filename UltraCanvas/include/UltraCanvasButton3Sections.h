@@ -384,7 +384,7 @@ private:
         if (appearance.cornerRadius > 0.0f) {
             DrawRoundedRect(bounds, appearance.cornerRadius, bgColor, appearance.borderColor, appearance.borderWidth);
         } else {
-            DrawFilledRect(bounds, bgColor, appearance.borderColor, appearance.borderWidth);
+            UltraCanvas::DrawFilledRect(bounds, bgColor, appearance.borderColor, appearance.borderWidth);
         }
     }
     

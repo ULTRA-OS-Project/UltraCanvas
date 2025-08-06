@@ -140,6 +140,10 @@ namespace UltraCanvas {
                 callback(std::forward<Args>(args)...);
             }
         }
+
+        std::string GetElementTypeName(UltraCanvasElement* element);
+        void DebugPrintElements();
+        void RenderMinimalDebug();  // Alternative render with less debug output
     };
 
 } // namespace UltraCanvas

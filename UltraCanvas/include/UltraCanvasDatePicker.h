@@ -168,7 +168,7 @@ public:
         ULTRACANVAS_RENDER_SCOPE();
         
         // Draw background and border
-        DrawFilledRect(GetBounds(), backgroundColor, Colors::Gray, 1.0f);
+        UltraCanvas::DrawFilledRect(GetBounds(), backgroundColor, Colors::Gray, 1.0f);
         
         // Draw header
         DrawHeader();
@@ -198,7 +198,7 @@ public:
 private:
     void DrawHeader() {
         Rect2D headerRect(GetX() + 1, GetY() + 1, GetWidth() - 2, headerHeight);
-        DrawFilledRect(headerRect, headerColor);
+        UltraCanvas::DrawFilledRect(headerRect, headerColor);
         
         // Month/Year text
         std::string monthYear = GetMonthName(displayMonth.month) + " " + std::to_string(displayMonth.year);
@@ -296,7 +296,7 @@ private:
                 
                 // Draw cell background
                 if (cellColor != backgroundColor) {
-                    DrawFilledRect(cellRect, cellColor);
+                    UltraCanvas::DrawFilledRect(cellRect, cellColor);
                 }
                 
                 // Draw day number
@@ -617,7 +617,7 @@ public:
         
         // Draw background and border
         Color currentBorderColor = IsFocused() ? focusColor : borderColor;
-        DrawFilledRect(GetBounds(), backgroundColor, currentBorderColor, 1.0f);
+        UltraCanvas::DrawFilledRect(GetBounds(), backgroundColor, currentBorderColor, 1.0f);
         
         // Draw date text
         DrawDateText();
@@ -690,7 +690,7 @@ private:
         Rect2D buttonRect(buttonX, GetY() + 1, buttonWidth - 1, GetHeight() - 2);
         
         Color currentButtonColor = IsHovered() ? Color(230, 230, 230) : buttonColor;
-        DrawFilledRect(buttonRect, currentButtonColor, borderColor, 1.0f);
+        UltraCanvas::DrawFilledRect(buttonRect, currentButtonColor, borderColor, 1.0f);
         
         // Draw dropdown arrow
         SetStrokeColor(Colors::Black);

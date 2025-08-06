@@ -703,7 +703,7 @@ private:
     
     void DrawBackground() {
         SetFillColor(GetBackgroundColor());
-        DrawFilledRect(GetBounds(), GetBackgroundColor(), GetBorderColor(), GetBorderWidth());
+        UltraCanvas::DrawFilledRect(GetBounds(), GetBackgroundColor(), GetBorderColor(), GetBorderWidth());
     }
     
     void DrawGridLines() {

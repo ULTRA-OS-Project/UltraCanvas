@@ -167,9 +167,9 @@ namespace UltraCanvas {
 
             // Draw background
             if (style.cornerRadius > 0) {
-                DrawFilledRect(bounds, bgColor, Colors::Transparent, 0, style.cornerRadius);
+                UltraCanvas::DrawFilledRect(bounds, bgColor, Colors::Transparent, 0, style.cornerRadius);
             } else {
-                DrawFilledRect(bounds, bgColor);
+                UltraCanvas::DrawFilledRect(bounds, bgColor);
             }
 
             // Draw border

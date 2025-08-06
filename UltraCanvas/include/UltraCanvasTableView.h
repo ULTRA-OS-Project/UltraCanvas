@@ -557,7 +557,7 @@ public:
         }
         
         // Draw background
-        DrawFilledRect(GetBounds(), Colors::White, gridLineColor, 1.0f);
+        UltraCanvas::DrawFilledRect(GetBounds(), Colors::White, gridLineColor, 1.0f);
         
         // Set clipping to table bounds
         SetClipRect(GetBounds());
@@ -702,7 +702,7 @@ private:
         if (!showHeader) return;
         
         Rect2D headerRect(GetX(), GetY(), GetWidth(), headerHeight);
-        DrawFilledRect(headerRect, headerBackgroundColor, gridLineColor, 1.0f);
+        UltraCanvas::DrawFilledRect(headerRect, headerBackgroundColor, gridLineColor, 1.0f);
         
         SetTextColor(headerTextColor);
         SetFont("Arial", 11.0f);
@@ -721,7 +721,7 @@ private:
                 sortedColor.r = std::max(0, static_cast<int>(sortedColor.r) - 20);
                 sortedColor.g = std::max(0, static_cast<int>(sortedColor.g) - 20);
                 sortedColor.b = std::max(0, static_cast<int>(sortedColor.b) - 20);
-                DrawFilledRect(colRect, sortedColor);
+                UltraCanvas::DrawFilledRect(colRect, sortedColor);
             }
             
             // Draw column text
@@ -767,7 +767,7 @@ private:
             }
             
             Rect2D rowRect(GetX(), y, GetWidth(), rowHeight);
-            DrawFilledRect(rowRect, rowColor);
+            UltraCanvas::DrawFilledRect(rowRect, rowColor);
             
             // Draw cells
             DrawRowCells(actualRow, y);
@@ -792,7 +792,7 @@ private:
             // Draw cell background
             if (cell.backgroundColor.a > 0) {
                 Rect2D cellRect(x, y, colWidth, rowHeight);
-                DrawFilledRect(cellRect, cell.backgroundColor);
+                UltraCanvas::DrawFilledRect(cellRect, cell.backgroundColor);
             }
             
             // Draw cell text
@@ -847,7 +847,7 @@ private:
                 if (cellRect.x + cellRect.width > GetX() && cellRect.x < GetX() + GetWidth() &&
                     cellRect.y + cellRect.height > startY && cellRect.y < GetY() + GetHeight()) {
                     
-                    DrawFilledRect(cellRect, selectedCellColor, focusColor, 2.0f);
+                    UltraCanvas::DrawFilledRect(cellRect, selectedCellColor, focusColor, 2.0f);
                 }
             }
         }

@@ -249,7 +249,7 @@ public:
         ULTRACANVAS_RENDER_SCOPE();
         
         // Draw background
-        DrawFilledRect(GetBounds(), viewParams.backgroundColor);
+        UltraCanvas::DrawFilledRect(GetBounds(), viewParams.backgroundColor);
         
         if (HasError()) {
             DrawErrorDisplay();
@@ -263,7 +263,7 @@ public:
         
         // Draw border if focused
         if (IsFocused()) {
-            DrawFilledRect(GetBounds(), Colors::Transparent, Colors::Selection, 2.0f);
+            UltraCanvas::DrawFilledRect(GetBounds(), Colors::Transparent, Colors::Selection, 2.0f);
         }
     }
     
@@ -541,7 +541,7 @@ private:
         
         float size = 50;
         Rect2D cubeRect(center.x - size/2, center.y - size/2, size, size);
-        DrawFilledRect(cubeRect, Colors::Transparent, Colors::Gray, 2.0f);
+        UltraCanvas::DrawFilledRect(cubeRect, Colors::Transparent, Colors::Gray, 2.0f);
         
         SetTextColor(Colors::Gray);
         SetFont("Arial", 12.0f);

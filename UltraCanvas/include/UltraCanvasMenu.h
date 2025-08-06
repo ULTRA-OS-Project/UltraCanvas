@@ -194,7 +194,7 @@ namespace UltraCanvas {
             }
 
             // Render background
-            DrawFilledRect(GetBounds(), style.backgroundColor, style.borderColor, style.borderWidth, style.borderRadius);
+            UltraCanvas::DrawFilledRect(GetBounds(), style.backgroundColor, style.borderColor, style.borderWidth, style.borderRadius);
 
             // Render items
             for (int i = 0; i < static_cast<int>(items.size()); ++i) {

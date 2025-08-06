@@ -701,7 +701,7 @@ public:
 
         if (backgroundColor.a > 0) {
             Point2D textSize = GetRenderContext()->MeasureText(text);
-            DrawFilledRect(Rect2D(position.x, position.y, textSize.x, textSize.y), backgroundColor);
+            UltraCanvas::DrawFilledRect(Rect2D(position.x, position.y, textSize.x, textSize.y), backgroundColor);
         }
 
         SetTextColor(textColor);

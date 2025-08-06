@@ -477,7 +477,7 @@ public:
         if (style.borderRadius > 0) {
             DrawRoundedRect(bounds, style.borderRadius, bgColor, borderColor, style.borderWidth);
         } else {
-            DrawFilledRect(bounds, bgColor, borderColor, style.borderWidth);
+            UltraCanvas::DrawFilledRect(bounds, bgColor, borderColor, style.borderWidth);
         }
         
         // Draw leading icon

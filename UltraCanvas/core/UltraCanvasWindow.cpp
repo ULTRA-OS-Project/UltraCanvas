@@ -81,8 +81,169 @@ namespace UltraCanvas {
 
     // Fixed Render method with proper context management
     void UltraCanvasBaseWindow::Render() {
-//        if (!IsVisible()) return;
+        std::cout << "=== UltraCanvasBaseWindow::Render() START ===" << std::endl;
 
+        // Set up the render context for this window
+        ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
+
+        // Clear the background
+        int width, height;
+        GetSize(width, height);
+        std::cout << "Window size: " << width << "x" << height << std::endl;
+
+        // Draw window background
+        if (config_.backgroundColor != Colors::Transparent) {
+            SetFillColor(config_.backgroundColor);
+            FillRect(Rect2D(0, 0, width, height));
+            std::cout << "Background cleared with color: R=" << (int)config_.backgroundColor.r
+                      << " G=" << (int)config_.backgroundColor.g
+                      << " B=" << (int)config_.backgroundColor.b << std::endl;
+        }
+
+        // Render all elements with detailed debug output
+        std::cout << "Rendering " << elements.size() << " UI elements:" << std::endl;
+
+        int elementIndex = 0;
+        for (auto* element : elements) {
+            if (element) {
+                // Get element information
+                std::string elementId = element->GetIdentifier();
+                long elementIdNum = element->GetIdentifierID();
+                Rect2D bounds = element->GetBounds();
+                bool isVisible = element->IsVisible();
+                bool isEnabled = element->IsEnabled();
+
+                // Get the actual class name using typeid
+                std::string className = typeid(*element).name();
+
+                // Clean up the mangled class name (basic demangling for common cases)
+                if (className.find("UltraCanvas") != std::string::npos) {
+                    size_t pos = className.find("UltraCanvas");
+                    if (pos != std::string::npos) {
+                        className = className.substr(pos);
+                    }
+                }
+
+                std::cout << "  [" << elementIndex << "] Class: " << className
+                          << ", ID: '" << elementId << "' (" << elementIdNum << ")"
+                          << ", Position: (" << bounds.x << "," << bounds.y << ")"
+                          << ", Size: " << bounds.width << "x" << bounds.height
+                          << ", Visible: " << (isVisible ? "true" : "false")
+                          << ", Enabled: " << (isEnabled ? "true" : "false") << std::endl;
+
+                if (isVisible) {
+                    std::cout << "    → Calling Render() on " << className << std::endl;
+
+                    // Track render time for performance debugging
+                    auto startTime = std::chrono::high_resolution_clock::now();
+
+                    element->Render();
+
+                    auto endTime = std::chrono::high_resolution_clock::now();
+                    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+
+                    std::cout << "    ✓ Rendered " << className << " in " << duration.count() << "μs" << std::endl;
+                } else {
+                    std::cout << "    ⊗ Skipped (not visible): " << className << std::endl;
+                }
+            } else {
+                std::cout << "  [" << elementIndex << "] ⚠ NULL ELEMENT POINTER!" << std::endl;
+            }
+            elementIndex++;
+        }
+
+        std::cout << "Total elements processed: " << elementIndex << std::endl;
+
+        needsRedraw_ = false;
+        std::cout << "=== UltraCanvasBaseWindow::Render() COMPLETE ===" << std::endl;
+    }
+
+// Additional helper method for runtime type inspection (add to UltraCanvasBaseWindow class)
+    std::string UltraCanvasBaseWindow::GetElementTypeName(UltraCanvasElement* element) {
+        if (!element) return "NULL";
+
+        std::string typeName = typeid(*element).name();
+
+        // Basic demangling for common UltraCanvas types
+        if (typeName.find("UltraCanvasDropdown") != std::string::npos) {
+            return "UltraCanvasDropdown";
+        }
+        else if (typeName.find("UltraCanvasButton") != std::string::npos) {
+            return "UltraCanvasButton";
+        }
+        else if (typeName.find("UltraCanvasTextInput") != std::string::npos) {
+            return "UltraCanvasTextInput";
+        }
+        else if (typeName.find("UltraCanvasTreeView") != std::string::npos) {
+            return "UltraCanvasTreeView";
+        }
+        else if (typeName.find("UltraCanvasContainer") != std::string::npos) {
+            return "UltraCanvasContainer";
+        }
+        else if (typeName.find("UltraCanvasElement") != std::string::npos) {
+            return "UltraCanvasElement";
+        }
+
+        // For unknown types, try to extract class name from mangled name
+        size_t pos = typeName.find_last_of(":");
+        if (pos != std::string::npos && pos + 1 < typeName.length()) {
+            return typeName.substr(pos + 1);
+        }
+
+        return typeName; // Return mangled name if can't demangle
+    }
+
+// Enhanced element debugging method (add to UltraCanvasBaseWindow class)
+    void UltraCanvasBaseWindow::DebugPrintElements() {
+        std::cout << "\n=== WINDOW DEBUG: Element Hierarchy ===" << std::endl;
+        std::cout << "Window: '" << GetTitle() << "'" << std::endl;
+        int width, height;
+        GetSize(width, height);
+        std::cout << "Window Size: " << width << "x" << height << std::endl;
+        std::cout << "Total Elements: " << elements.size() << std::endl;
+
+        for (size_t i = 0; i < elements.size(); i++) {
+            auto* element = elements[i];
+            if (element) {
+                Rect2D bounds = element->GetBounds();
+                std::cout << "  Element[" << i << "]: " << GetElementTypeName(element)
+                          << " '" << element->GetIdentifier() << "'"
+                          << " at (" << bounds.x << "," << bounds.y << ")"
+                          << " size " << bounds.width << "x" << bounds.height;
+
+                if (!element->IsVisible()) std::cout << " [HIDDEN]";
+                if (!element->IsEnabled()) std::cout << " [DISABLED]";
+
+                std::cout << std::endl;
+
+                // Print children if any
+                const auto& children = element->GetChildren();
+                if (!children.empty()) {
+                    for (size_t j = 0; j < children.size(); j++) {
+                        auto* child = children[j];
+                        if (child) {
+                            Rect2D childBounds = child->GetBounds();
+                            std::cout << "    Child[" << j << "]: " << GetElementTypeName(child)
+                                      << " '" << child->GetIdentifier() << "'"
+                                      << " at (" << childBounds.x << "," << childBounds.y << ")"
+                                      << " size " << childBounds.width << "x" << childBounds.height;
+
+                            if (!child->IsVisible()) std::cout << " [HIDDEN]";
+                            if (!child->IsEnabled()) std::cout << " [DISABLED]";
+
+                            std::cout << std::endl;
+                        }
+                    }
+                }
+            } else {
+                std::cout << "  Element[" << i << "]: NULL POINTER!" << std::endl;
+            }
+        }
+        std::cout << "=== END Element Hierarchy ===" << std::endl;
+    }
+
+// Minimal debug version (if you want less verbose output)
+    void UltraCanvasBaseWindow::RenderMinimalDebug() {
         // Set up the render context for this window
         ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
 
@@ -94,15 +255,44 @@ namespace UltraCanvas {
         SetFillColor(config_.backgroundColor);
         FillRect(Rect2D(0, 0, width, height));
 
-        // Render all elements
-        for (auto* element : elements) {
+        // Render all elements with minimal debug
+        std::cout << "Rendering " << elements.size() << " elements: ";
+
+        for (size_t i = 0; i < elements.size(); i++) {
+            auto* element = elements[i];
             if (element && element->IsVisible()) {
+                std::cout << GetElementTypeName(element) << "(" << element->GetIdentifier() << ") ";
                 element->Render();
             }
         }
+        std::cout << std::endl;
 
         needsRedraw_ = false;
     }
+
+//    void UltraCanvasBaseWindow::Render() {
+////        if (!IsVisible()) return;
+//
+//        // Set up the render context for this window
+//        ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
+//
+//        // Clear the background
+//        int width, height;
+//        GetSize(width, height);
+//
+//        // Draw window background
+//        SetFillColor(config_.backgroundColor);
+//        FillRect(Rect2D(0, 0, width, height));
+//
+//        // Render all elements
+//        for (auto* element : elements) {
+//            if (element && element->IsVisible()) {
+//                element->Render();
+//            }
+//        }
+//
+//        needsRedraw_ = false;
+//    }
 
     // Fixed OnEvent method with proper event dispatching
     void UltraCanvasBaseWindow::OnEvent(const UCEvent& event) {

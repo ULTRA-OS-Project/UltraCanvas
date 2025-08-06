@@ -348,14 +348,14 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::RenderOverlay() {
         // Semi-transparent overlay
         Color overlayColor(0, 0, 0, 128);
-        DrawFilledRect(overlayRect, overlayColor);
+        UltraCanvas::DrawFilledRect(overlayRect, overlayColor);
     }
 
     void UltraCanvasModalDialog::RenderDialog() {
         auto bounds = GetBounds();
 
         // Dialog background
-        DrawFilledRect(bounds, config.backgroundColor, Color(128, 128, 128, 255), 1);
+        UltraCanvas::DrawFilledRect(bounds, config.backgroundColor, Color(128, 128, 128, 255), 1);
 
         // Render components
         RenderTitleBar();
@@ -369,7 +369,7 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::RenderTitleBar() {
         // Title bar background
         Color titleBg(240, 240, 240, 255);
-        DrawFilledRect(titleBarRect, titleBg, Color(200, 200, 200, 255), 1);
+        UltraCanvas::DrawFilledRect(titleBarRect, titleBg, Color(200, 200, 200, 255), 1);
 
         // Title text
         SetTextColor(Colors::Black);
@@ -379,7 +379,7 @@ namespace UltraCanvas {
 
         // Close button (X)
         Rect2D closeButtonRect(titleBarRect.x + titleBarRect.width - 25, titleBarRect.y + 5, 20, 20);
-        DrawFilledRect(closeButtonRect, Color(220, 220, 220, 255));
+        UltraCanvas::DrawFilledRect(closeButtonRect, Color(220, 220, 220, 255));
         SetTextColor(Colors::Black);
         SetFont("Arial", 10.0f);
         DrawText("×", Point2D(closeButtonRect.x + 6, closeButtonRect.y + 14));
@@ -390,7 +390,7 @@ namespace UltraCanvas {
 
         // Draw icon background
         Color iconColor = GetTypeColor();
-        DrawFilledRect(iconRect, iconColor);
+        UltraCanvas::DrawFilledRect(iconRect, iconColor);
 
         // Draw icon symbol
         SetTextColor(Colors::White);

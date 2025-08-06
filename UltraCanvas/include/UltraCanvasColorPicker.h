@@ -488,7 +488,7 @@ private:
     void RenderCompactMode() {
         // Draw color swatch
         SetFillColor(currentColor);
-        DrawFilledRect(previewRect, currentColor, style.borderColor, 1.0f);
+        UltraCanvas::DrawFilledRect(previewRect, currentColor, style.borderColor, 1.0f);
         
         // Draw popup if open
         if (isPopupOpen) {
@@ -499,7 +499,7 @@ private:
     void RenderInlineMode() {
         // Draw background
         SetFillColor(style.backgroundColor);
-        DrawFilledRect(GetBounds(), style.backgroundColor, style.borderColor, 1.0f);
+        UltraCanvas::DrawFilledRect(GetBounds(), style.backgroundColor, style.borderColor, 1.0f);
         
         // Draw color wheel/square
         RenderColorWheel();
@@ -524,7 +524,7 @@ private:
     void RenderPopupMode() {
         // Draw button
         Color buttonColor = IsHovered() ? style.sliderHandleColor : currentColor;
-        DrawFilledRect(previewRect, buttonColor, style.borderColor, 1.0f);
+        UltraCanvas::DrawFilledRect(previewRect, buttonColor, style.borderColor, 1.0f);
         
         // Draw popup if open
         if (isPopupOpen) {
@@ -717,7 +717,7 @@ private:
         
         // Draw current color
         SetFillColor(currentColor);
-        DrawFilledRect(previewRect, currentColor, style.borderColor, 1.0f);
+        UltraCanvas::DrawFilledRect(previewRect, currentColor, style.borderColor, 1.0f);
         
         // Draw label
         SetTextColor(style.textColor);
@@ -740,7 +740,7 @@ private:
             
             // Draw color swatch
             SetFillColor(color);
-            DrawFilledRect(swatch, color, style.borderColor, 1.0f);
+            UltraCanvas::DrawFilledRect(swatch, color, style.borderColor, 1.0f);
             
             // Highlight if this is the current color
             if (color == currentColor) {

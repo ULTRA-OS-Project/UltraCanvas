@@ -102,7 +102,7 @@ void UltraCanvasClipboardItem::Render() {
     Color bgColor = isSelected ? selectedColor : (IsHovered() ? hoverColor : normalColor);
     
     // Draw background and border
-    DrawFilledRect(bounds, bgColor, borderColor, 1.0f);
+    UltraCanvas::DrawFilledRect(bounds, bgColor, borderColor, 1.0f);
     
     // Draw type icon for non-text content
     if (entry.type != ClipboardEntryType::Text && entry.type != ClipboardEntryType::RichText) {
@@ -158,56 +158,56 @@ void UltraCanvasClipboardItem::DrawTypeIcon() {
     switch (entry.type) {
         case ClipboardEntryType::Text:
         case ClipboardEntryType::RichText:
-            DrawFilledRect(iconRect, Color(100, 150, 200, 255));
+            UltraCanvas::DrawFilledRect(iconRect, Color(100, 150, 200, 255));
             SetTextColor(Colors::White);
             SetFont("Arial", 12.0f);
             DrawText("T", Point2D(iconRect.x + 6, iconRect.y + 15));
             break;
             
         case ClipboardEntryType::FilePath:
-            DrawFilledRect(iconRect, Color(200, 150, 100, 255));
+            UltraCanvas::DrawFilledRect(iconRect, Color(200, 150, 100, 255));
             SetTextColor(Colors::White);
             SetFont("Arial", 12.0f);
             DrawText("F", Point2D(iconRect.x + 6, iconRect.y + 15));
             break;
             
         case ClipboardEntryType::Vector:
-            DrawFilledRect(iconRect, Color(150, 200, 100, 255));
+            UltraCanvas::DrawFilledRect(iconRect, Color(150, 200, 100, 255));
             SetTextColor(Colors::White);
             SetFont("Arial", 12.0f);
             DrawText("V", Point2D(iconRect.x + 6, iconRect.y + 15));
             break;
             
         case ClipboardEntryType::Animation:
-            DrawFilledRect(iconRect, Color(200, 100, 150, 255));
+            UltraCanvas::DrawFilledRect(iconRect, Color(200, 100, 150, 255));
             SetTextColor(Colors::White);
             SetFont("Arial", 12.0f);
             DrawText("A", Point2D(iconRect.x + 6, iconRect.y + 15));
             break;
             
         case ClipboardEntryType::Video:
-            DrawFilledRect(iconRect, Color(150, 100, 200, 255));
+            UltraCanvas::DrawFilledRect(iconRect, Color(150, 100, 200, 255));
             SetTextColor(Colors::White);
             SetFont("Arial", 11.0f);
             DrawText("▶", Point2D(iconRect.x + 6, iconRect.y + 15));
             break;
             
         case ClipboardEntryType::ThreeD:
-            DrawFilledRect(iconRect, Color(100, 200, 200, 255));
+            UltraCanvas::DrawFilledRect(iconRect, Color(100, 200, 200, 255));
             SetTextColor(Colors::White);
             SetFont("Arial", 11.0f);
             DrawText("3D", Point2D(iconRect.x + 3, iconRect.y + 15));
             break;
             
         case ClipboardEntryType::Document:
-            DrawFilledRect(iconRect, Color(200, 200, 100, 255));
+            UltraCanvas::DrawFilledRect(iconRect, Color(200, 200, 100, 255));
             SetTextColor(Colors::White);
             SetFont("Arial", 12.0f);
             DrawText("D", Point2D(iconRect.x + 6, iconRect.y + 15));
             break;
             
         default:
-            DrawFilledRect(iconRect, Colors::LightGray);
+            UltraCanvas::DrawFilledRect(iconRect, Colors::LightGray);
             break;
     }
 }
@@ -217,21 +217,21 @@ void UltraCanvasClipboardItem::RenderActionButtons() {
     
     // Copy button
     Color copyColor = copyButtonRect.Contains(lastMousePos) ? Color(100, 200, 100, 255) : Color(150, 150, 150, 255);
-    DrawFilledRect(copyButtonRect, copyColor);
+    UltraCanvas::DrawFilledRect(copyButtonRect, copyColor);
     SetTextColor(Colors::White);
     SetFont("Arial", 10.0f);
     DrawText("C", Point2D(copyButtonRect.x + 6, copyButtonRect.y + 14));
     
     // Save button
     Color saveColor = saveButtonRect.Contains(lastMousePos) ? Color(100, 150, 200, 255) : Color(150, 150, 150, 255);
-    DrawFilledRect(saveButtonRect, saveColor);
+    UltraCanvas::DrawFilledRect(saveButtonRect, saveColor);
     SetTextColor(Colors::White);
     SetFont("Arial", 10.0f);
     DrawText("S", Point2D(saveButtonRect.x + 6, saveButtonRect.y + 14));
     
     // Delete button  
     Color deleteColor = deleteButtonRect.Contains(lastMousePos) ? Color(200, 100, 100, 255) : Color(150, 150, 150, 255);
-    DrawFilledRect(deleteButtonRect, deleteColor);
+    UltraCanvas::DrawFilledRect(deleteButtonRect, deleteColor);
     SetTextColor(Colors::White);
     SetFont("Arial", 10.0f);
     DrawText("X", Point2D(deleteButtonRect.x + 6, deleteButtonRect.y + 14));

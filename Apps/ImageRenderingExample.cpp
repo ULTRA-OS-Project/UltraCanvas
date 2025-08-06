@@ -78,7 +78,8 @@ public:
     void Render() override {
         std::cout << "*** ImageDemoWindow::Render() called ***" << std::endl;
 
-        // Set up render context - DON'T call base class to avoid clearing
+        UltraCanvasWindow::Render();
+
         ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
 
         // Draw demo title
@@ -98,19 +99,19 @@ public:
             RenderImageInfo();
         }
 
-        // Render elements manually (especially the dropdown) AFTER our content
-        std::cout << "Rendering UI elements..." << std::endl;
-        const auto& elements = GetElements();
-        std::cout << "Found " << elements.size() << " elements to render" << std::endl;
-        for (auto* element : elements) {
-            if (element && element->IsVisible()) {
-                std::cout << "Rendering element: " << element->GetIdentifier() << std::endl;
-                element->Render();
-            }
-        }
-
-        // Mark as not needing redraw
-        SetNeedsRedraw(false);
+//        // Render elements manually (especially the dropdown) AFTER our content
+//        std::cout << "Rendering UI elements..." << std::endl;
+//        const auto& elements = GetElements();
+//        std::cout << "Found " << elements.size() << " elements to render" << std::endl;
+//        for (auto* element : elements) {
+//            if (element && element->IsVisible()) {
+//                std::cout << "Rendering element: " << element->GetIdentifier() << std::endl;
+//                element->Render();
+//            }
+//        }
+//
+//        // Mark as not needing redraw
+//        SetNeedsRedraw(false);
         std::cout << "*** ImageDemoWindow::Render() complete ***" << std::endl;
     }
 
