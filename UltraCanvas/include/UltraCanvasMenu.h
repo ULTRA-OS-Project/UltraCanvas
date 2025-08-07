@@ -336,6 +336,7 @@ namespace UltraCanvas {
                 keyboardNavigation = false;
 
                 if (onMenuOpened) onMenuOpened();
+                RequestRedraw();
             }
         }
 
@@ -353,6 +354,7 @@ namespace UltraCanvas {
                 }
 
                 if (onMenuClosed) onMenuClosed();
+                RequestRedraw();
             }
         }
 
