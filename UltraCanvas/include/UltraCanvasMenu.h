@@ -92,12 +92,13 @@ namespace UltraCanvas {
         Color backgroundColor = Color(248, 248, 248);
         Color borderColor = Color(200, 200, 200);
         Color hoverColor = Color(230, 240, 255);
+        Color hoverTextColor = Color(0, 0, 0, 255);
         Color pressedColor = Color(210, 230, 255);
         Color selectedColor = Color(25, 118, 210, 50);
         Color separatorColor = Color(220, 220, 220);
         Color textColor = Colors::Black;
+        Color shortcutColor = Color(100, 100, 100, 255);
         Color disabledTextColor = Color(150, 150, 150);
-        Color shortcutTextColor = Color(100, 100, 100);
 
         // Typography
         std::string fontFamily = "Arial";
@@ -109,6 +110,8 @@ namespace UltraCanvas {
         float iconSize = 16.0f;
         float paddingLeft = 8.0f;
         float paddingRight = 8.0f;
+        float paddingTop = 4.0f;
+        float paddingBottom = 4.0f;
         float iconSpacing = 6.0f;
         float shortcutSpacing = 20.0f;
         float separatorHeight = 8.0f;
@@ -206,6 +209,51 @@ namespace UltraCanvas {
             // Render keyboard navigation highlight
             if (keyboardNavigation && keyboardIndex >= 0 && keyboardIndex < static_cast<int>(items.size())) {
                 RenderKeyboardHighlight(GetItemBounds(keyboardIndex));
+            }
+        }
+
+        void OnEvent(const UCEvent& event) override {
+            // Debug output
+            if (event.type == UCEventType::MouseDown || event.type == UCEventType::MouseUp) {
+                std::cout << "Menu '" << GetIdentifier() << "' received event type: " << (int)event.type
+                          << " at (" << event.x << "," << event.y << ")"
+                          << " Menu bounds: (" << GetX() << "," << GetY()
+                          << "," << GetWidth() << "," << GetHeight() << ")"
+                          << " Visible: " << IsVisible()
+                          << " MenuType: " << (int)menuType << std::endl;
+            }
+
+            // Check if point is within menu bounds
+            bool containsPoint = Contains(event.x, event.y);
+
+            if (event.type == UCEventType::MouseDown && containsPoint) {
+                std::cout << "  -> Menu contains click point!" << std::endl;
+
+                // For main menu, find which item was clicked
+                if (menuType == MenuType::MainMenu) {
+                    Point2D mousePos(static_cast<float>(event.x), static_cast<float>(event.y));
+                    int clickedIndex = GetItemAtPosition(mousePos);
+                    std::cout << "  -> Clicked item index: " << clickedIndex << std::endl;
+
+                    if (clickedIndex >= 0 && clickedIndex < items.size()) {
+                        std::cout << "  -> Item label: " << items[clickedIndex].label << std::endl;
+                        std::cout << "  -> Has onClick: " << (items[clickedIndex].onClick ? "YES" : "NO") << std::endl;
+
+                        // Execute the item's action
+                        if (items[clickedIndex].onClick) {
+                            std::cout << "  -> Executing onClick callback..." << std::endl;
+                            items[clickedIndex].onClick();
+                        }
+                    }
+                }
+            }
+
+            // Handle the event
+            bool handled = HandleEvent(event);
+
+            // If not handled, pass to base class
+            if (!handled) {
+                UltraCanvasElement::OnEvent(event);
             }
         }
 
@@ -442,6 +490,63 @@ namespace UltraCanvas {
             activeSubmenu.reset();
         }
 
+        // UPDATE: Fix for GetItemX method to properly calculate horizontal positions
+        float GetItemX(int index) const {
+            if (orientation == MenuOrientation::Vertical) {
+                return 0.0f;
+            }
+
+            // FIXED: Calculate proper X position for horizontal items
+            float x = style.paddingLeft;
+
+            for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
+                if (!items[i].visible) continue;
+                x += CalculateItemWidth(items[i]) + style.paddingLeft + style.paddingRight;
+                if (items[i].type != MenuItemType::Separator) {
+                    x += style.iconSpacing; // Add spacing between items
+                }
+            }
+
+            return x;
+        }
+
+        float GetItemY(int index) const {
+            float y = style.paddingLeft;
+
+            for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
+                if (!items[i].visible) continue;
+
+                if (items[i].type == MenuItemType::Separator) {
+                    y += style.separatorHeight;
+                } else {
+                    y += style.itemHeight;
+                }
+            }
+
+            return y;
+        }
+
+        bool Contains(float x, float y) const override {
+            // For main menu, always check bounds
+            if (menuType == MenuType::MainMenu) {
+                return x >= GetX() && x < GetX() + GetWidth() &&
+                       y >= GetY() && y < GetY() + GetHeight();
+            }
+
+            // For dropdown menus, only if visible
+            if (!IsVisible() || currentState == MenuState::Hidden) {
+                return false;
+            }
+
+            return x >= GetX() && x < GetX() + GetWidth() &&
+                   y >= GetY() && y < GetY() + GetHeight();
+        }
+
+        bool Contains(const Point2D& point) const override {
+            return Contains(point.x, point.y);
+        }
+
+
         // ===== EVENT CALLBACKS =====
         void SetOnMenuOpened(std::function<void()> callback) { onMenuOpened = callback; }
         void SetOnMenuClosed(std::function<void()> callback) { onMenuClosed = callback; }
@@ -450,37 +555,163 @@ namespace UltraCanvas {
 
     private:
         // ===== CALCULATION METHODS =====
-        void CalculateSize() {
-            if (items.empty()) {
-                SetWidth(150);
-                SetHeight(30);
-                return;
-            }
-
-            float maxWidth = 100.0f;
-            float totalHeight = style.paddingLeft + style.paddingRight;
-
-            for (const auto& item : items) {
-                if (!item.visible) continue;
-
-                if (item.type == MenuItemType::Separator) {
-                    totalHeight += style.separatorHeight;
-                } else {
-                    totalHeight += style.itemHeight;
-                    float itemWidth = CalculateItemWidth(item);
-                    maxWidth = std::max(maxWidth, itemWidth);
-                }
+        Rect2D GetItemBounds(int index) const {
+            if (index < 0 || index >= static_cast<int>(items.size())) {
+                return Rect2D();
             }
 
             if (orientation == MenuOrientation::Horizontal) {
-                // For horizontal menus, width is sum of item widths
-                SetWidth(static_cast<long>(totalHeight));  // Swap for horizontal
-                SetHeight(static_cast<long>(style.itemHeight + style.paddingLeft * 2));
+                // FIXED: Horizontal layout - items are side by side
+                float itemX = GetItemX(index);
+                float itemWidth = CalculateItemWidth(items[index]) + style.paddingLeft + style.paddingRight;
+
+                return Rect2D(
+                        static_cast<float>(GetX()) + itemX,
+                        static_cast<float>(GetY()),
+                        itemWidth,
+                        static_cast<float>(GetHeight())
+                );
             } else {
+                // Vertical layout - items are stacked
+                float itemY = GetItemY(index);
+                float itemHeight = items[index].type == MenuItemType::Separator ?
+                                   style.separatorHeight : style.itemHeight;
+
+                return Rect2D(
+                        static_cast<float>(GetX()),
+                        static_cast<float>(GetY()) + itemY,
+                        static_cast<float>(GetWidth()),
+                        itemHeight
+                );
+            }
+        }
+
+// UPDATE: Fix for CalculateSize method to properly handle horizontal menus
+        void CalculateSize() {
+            if (items.empty()) {
+                SetWidth(100);
+                SetHeight(static_cast<long>(style.itemHeight));
+                return;
+            }
+
+            if (orientation == MenuOrientation::Horizontal) {
+                // FIXED: Horizontal layout calculation
+                float totalWidth = style.paddingLeft + style.paddingRight;
+                float maxHeight = style.itemHeight;
+
+                for (const auto& item : items) {
+                    if (!item.visible) continue;
+                    totalWidth += CalculateItemWidth(item) + style.paddingLeft + style.paddingRight;
+                    if (item.type != MenuItemType::Separator) {
+                        totalWidth += style.iconSpacing; // Add spacing between items
+                    }
+                }
+
+                // Set dimensions for horizontal menu
+                SetWidth(static_cast<long>(totalWidth));
+                SetHeight(static_cast<long>(maxHeight + style.paddingTop + style.paddingBottom));
+
+            } else {
+                // Vertical layout calculation
+                float maxWidth = 0.0f;
+                float totalHeight = style.paddingTop + style.paddingBottom;
+
+                for (const auto& item : items) {
+                    if (!item.visible) continue;
+
+                    float itemWidth = CalculateItemWidth(item);
+                    maxWidth = std::max(maxWidth, itemWidth);
+
+                    if (item.type == MenuItemType::Separator) {
+                        totalHeight += style.separatorHeight;
+                    } else {
+                        totalHeight += style.itemHeight;
+                    }
+                }
+
                 SetWidth(static_cast<long>(maxWidth + style.paddingLeft + style.paddingRight));
                 SetHeight(static_cast<long>(totalHeight));
             }
         }
+
+// UPDATE: Fix for RenderItem to ensure background is always rendered
+        void RenderItem(int index, const MenuItemData& item) {
+            Rect2D itemBounds = GetItemBounds(index);
+
+            // FIXED: Always render background for horizontal menus
+            Color bgColor = GetItemBackgroundColor(index, item);
+
+            // For horizontal main menus, ensure a background is always present
+            if (menuType == MenuType::MainMenu && orientation == MenuOrientation::Horizontal) {
+                if (bgColor.a == 0) {
+                    // Use default menu background if no special state
+                    bgColor = style.backgroundColor;
+                }
+            }
+
+            if (bgColor.a > 0) {
+                auto context = GetRenderContext();
+                if (context) {
+                    // Apply fill style
+                    context->SetFillColor(bgColor);
+                    context->FillRectangle(itemBounds);
+                }
+            }
+
+            if (item.type == MenuItemType::Separator) {
+                RenderSeparator(itemBounds);
+                return;
+            }
+
+            float currentX = itemBounds.x + style.paddingLeft;
+            float textY = itemBounds.y + (itemBounds.height - style.fontSize) / 2;
+
+            // Render checkbox/radio
+            if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
+                RenderCheckbox(item, Point2D(currentX, itemBounds.y + (itemBounds.height - style.iconSize) / 2));
+                currentX += style.iconSize + style.iconSpacing;
+            }
+
+            // Render icon
+            if (!item.iconPath.empty()) {
+                auto context = GetRenderContext();
+                if (context) {
+                    float iconY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
+                    context->DrawImage(item.iconPath, Rect2D(currentX, iconY, style.iconSize, style.iconSize));
+                }
+                currentX += style.iconSize + style.iconSpacing;
+            }
+
+            // Render text
+            if (!item.label.empty()) {
+                auto context = GetRenderContext();
+                if (context) {
+                    Color textColor = item.enabled ?
+                                      (index == hoveredIndex ? style.hoverTextColor : style.textColor) :
+                                      style.disabledTextColor;
+
+                    context->SetTextColor(textColor);
+                    context->DrawText(item.label, Point2D(currentX, textY));
+                }
+            }
+
+            // Render shortcut (for vertical menus)
+            if (!item.shortcut.empty() && orientation == MenuOrientation::Vertical) {
+                auto context = GetRenderContext();
+                if (context) {
+                    float shortcutX = itemBounds.x + itemBounds.width - style.paddingRight -
+                                      context->GetTextWidth(item.shortcut.c_str());
+                    context->SetTextColor(style.shortcutColor);
+                    context->DrawText(item.shortcut, Point2D(shortcutX, textY));
+                }
+            }
+
+            // Render submenu arrow (for vertical menus)
+            if (!item.subItems.empty() && orientation == MenuOrientation::Vertical) {
+                RenderSubmenuArrow(Point2D(itemBounds.x, itemBounds.y));
+            }
+        }
+
 
         float CalculateItemWidth(const MenuItemData& item) const {
             float width = 0.0f;
@@ -536,97 +767,7 @@ namespace UltraCanvas {
             submenu->SetPosition(static_cast<long>(submenuX), static_cast<long>(submenuY));
         }
 
-        float GetItemY(int index) const {
-            float y = style.paddingLeft;
-
-            for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
-                if (!items[i].visible) continue;
-
-                if (items[i].type == MenuItemType::Separator) {
-                    y += style.separatorHeight;
-                } else {
-                    y += style.itemHeight;
-                }
-            }
-
-            return y;
-        }
-
-        float GetItemX(int index) const {
-            if (orientation == MenuOrientation::Vertical) {
-                return 0.0f;
-            }
-
-            float x = style.paddingLeft;
-
-            for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
-                if (!items[i].visible) continue;
-                x += CalculateItemWidth(items[i]) + style.iconSpacing;
-            }
-
-            return x;
-        }
-
         // ===== RENDERING HELPERS =====
-        void RenderItem(int index, const MenuItemData& item) {
-            Rect2D itemBounds = GetItemBounds(index);
-
-            // Render background
-            Color bgColor = GetItemBackgroundColor(index, item);
-            if (bgColor.a > 0) {
-                SetFillColor(bgColor);
-                DrawRect(itemBounds);
-            }
-
-            if (item.type == MenuItemType::Separator) {
-                RenderSeparator(itemBounds);
-                return;
-            }
-
-            float currentX = itemBounds.x + style.paddingLeft;
-
-            // Render checkbox/radio
-            if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
-                RenderCheckbox(item, Point2D(currentX, itemBounds.y + (itemBounds.height - style.iconSize) / 2));
-                currentX += style.iconSize + style.iconSpacing;
-            }
-
-            // Render icon
-            if (!item.iconPath.empty()) {
-                RenderIcon(item.iconPath, Point2D(currentX, itemBounds.y + (itemBounds.height - style.iconSize) / 2));
-                currentX += style.iconSize + style.iconSpacing;
-            }
-
-            // Render text
-            if (!item.label.empty()) {
-                Color textColor = item.enabled ? style.textColor : style.disabledTextColor;
-                SetTextColor(textColor);
-                SetFont(style.fontFamily, style.fontSize);
-
-                float textY = itemBounds.y + (itemBounds.height + style.fontSize) / 2 - 2;
-                DrawText(item.label, Point2D(currentX, textY));
-            }
-
-            // Render shortcut
-            if (!item.shortcut.empty()) {
-                SetTextColor(style.shortcutTextColor);
-                SetFont(style.fontFamily, style.fontSize);
-
-                // FIX: Convert std::string to const char* for GetTextWidth
-                float shortcutX = itemBounds.x + itemBounds.width - style.paddingRight - GetTextWidth(item.shortcut.c_str());
-                float textY = itemBounds.y + (itemBounds.height + style.fontSize) / 2 - 2;
-                DrawText(item.shortcut, Point2D(shortcutX, textY));
-            }
-
-            // Render submenu arrow
-            if (!item.subItems.empty()) {
-                RenderSubmenuArrow(Point2D(
-                        itemBounds.x + itemBounds.width - style.paddingRight - 10,
-                        itemBounds.y + itemBounds.height / 2
-                ));
-            }
-        }
-
         void RenderSeparator(const Rect2D& bounds) {
             float centerY = bounds.y + bounds.height / 2;
             float startX = bounds.x + style.paddingLeft;
@@ -710,23 +851,6 @@ namespace UltraCanvas {
         }
 
         // ===== UTILITY METHODS =====
-        Rect2D GetItemBounds(int index) const {
-            if (index < 0 || index >= static_cast<int>(items.size())) {
-                return Rect2D(0, 0, 0, 0);
-            }
-
-            float itemY = GetItemY(index);
-            float itemHeight = (items[index].type == MenuItemType::Separator) ?
-                               style.separatorHeight : style.itemHeight;
-
-            return Rect2D(
-                    static_cast<float>(GetX()),
-                    static_cast<float>(GetY()) + itemY,
-                    static_cast<float>(GetWidth()),
-                    itemHeight
-            );
-        }
-
         Color GetItemBackgroundColor(int index, const MenuItemData& item) const {
             if (!item.enabled) return Colors::Transparent;
 
@@ -742,19 +866,45 @@ namespace UltraCanvas {
         }
 
         int GetItemAtPosition(const Point2D& position) const {
-            if (!Contains(position)) return -1;
+            // Check if position is within menu bounds
+            if (position.x < GetX() || position.x > GetX() + GetWidth() ||
+                position.y < GetY() || position.y > GetY() + GetHeight()) {
+                return -1;
+            }
 
-            Point2D localPos(position.x - GetX(), position.y - GetY());
+            // For horizontal menus, iterate through items by X position
+            if (orientation == MenuOrientation::Horizontal) {
+                float currentX = GetX() + style.paddingLeft;
 
-            for (int i = 0; i < static_cast<int>(items.size()); ++i) {
-                if (!items[i].visible) continue;
+                for (int i = 0; i < static_cast<int>(items.size()); ++i) {
+                    if (!items[i].visible) continue;
 
-                Rect2D itemBounds = GetItemBounds(i);
-                itemBounds.x = 0;  // Make local
-                itemBounds.y -= GetY();
+                    float itemWidth = CalculateItemWidth(items[i]) + style.paddingLeft + style.paddingRight;
+                    if (items[i].type != MenuItemType::Separator) {
+                        itemWidth += style.iconSpacing;
+                    }
 
-                if (itemBounds.Contains(localPos)) {
-                    return i;
+                    if (position.x >= currentX && position.x < currentX + itemWidth) {
+                        return i;
+                    }
+
+                    currentX += itemWidth;
+                }
+            } else {
+                // For vertical menus, iterate through items by Y position
+                float currentY = GetY() + style.paddingTop;
+
+                for (int i = 0; i < static_cast<int>(items.size()); ++i) {
+                    if (!items[i].visible) continue;
+
+                    float itemHeight = items[i].type == MenuItemType::Separator ?
+                                       style.separatorHeight : style.itemHeight;
+
+                    if (position.y >= currentY && position.y < currentY + itemHeight) {
+                        return i;
+                    }
+
+                    currentY += itemHeight;
                 }
             }
 
@@ -801,6 +951,7 @@ namespace UltraCanvas {
 
             if (clickedIndex >= 0 && clickedIndex < static_cast<int>(items.size())) {
                 selectedIndex = clickedIndex;
+                RequestRedraw();
             }
         }
 
@@ -815,6 +966,7 @@ namespace UltraCanvas {
             }
 
             selectedIndex = -1;
+            RequestRedraw();
         }
 
         bool HandleKeyDown(const UCEvent& event) {
@@ -1077,9 +1229,36 @@ namespace UltraCanvas {
 // ===== STYLE FACTORY IMPLEMENTATIONS =====
     inline MenuStyle MenuStyle::Default() {
         MenuStyle style;
-        style.backgroundColor = Color(248, 248, 248);
-        style.textColor = Colors::Black;
-        style.hoverColor = Color(230, 240, 255);
+        style.backgroundColor = Color(248, 248, 248, 255);
+        style.borderColor = Color(200, 200, 200, 255);
+        style.textColor = Color(0, 0, 0, 255);
+        style.hoverColor = Color(225, 240, 255, 255);
+        style.hoverTextColor = Color(0, 0, 0, 255);
+        style.pressedColor = Color(200, 220, 240, 255);
+        style.disabledTextColor = Color(150, 150, 150, 255);
+        style.shortcutColor = Color(100, 100, 100, 255);
+        style.separatorColor = Color(220, 220, 220, 255);
+
+        // FIXED: Proper default height for menu items
+        style.itemHeight = 24.0f;  // Reduced from whatever was causing 44px
+        style.paddingTop = 4.0f;
+        style.paddingBottom = 4.0f;
+        style.paddingLeft = 8.0f;
+        style.paddingRight = 8.0f;
+
+        style.iconSize = 16.0f;
+        style.iconSpacing = 8.0f;
+        style.shortcutSpacing = 20.0f;
+        style.submenuOffset = 2.0f;
+        style.separatorHeight = 1.0f;
+        style.borderWidth = 1.0f;
+        style.borderRadius = 0.0f;
+        style.fontSize = 14.0f;
+
+        style.showShadow = false;
+        style.enableAnimations = false;
+        style.animationDuration = 0.2f;
+
         return style;
     }
 

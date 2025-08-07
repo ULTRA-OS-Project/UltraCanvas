@@ -69,22 +69,6 @@ public:
         SetNeedsRedraw(true);
     }
 
-    void ToggleHelpMenu() {
-        std::cout << "Help menu clicked" << std::endl;
-        if (helpMenu->IsVisible()) {
-            helpMenu->Hide();
-        } else {
-            // Hide other menus first
-            fileMenu->Hide();
-            imagesMenu->Hide();
-
-            // Position help menu below the Help button
-            helpMenu->SetPosition(60, 32);
-            helpMenu->Show();
-        }
-        SetNeedsRedraw(true);
-    }
-
     void ToggleImagesSubmenu() {
         std::cout << "Images submenu requested" << std::endl;
         // Hide other menus
@@ -137,11 +121,21 @@ public:
     void CreateMenuSystem() {
         std::cout << "=== Creating Menu System ===" << std::endl;
 
-        // Create main menu bar (use fixed width for now, will adjust after window creation)
+        // FIXED: Create main menu bar with proper height (32px) and ensure horizontal orientation
         mainMenuBar = MenuBuilder("main_menu", 3000, 0, 0, 800, 32)
                 .SetType(MenuType::MainMenu)
-                .SetStyle(MenuStyle::Default())
                 .Build();
+
+        // FIXED: Ensure the main menu bar uses horizontal orientation
+        mainMenuBar->SetOrientation(MenuOrientation::Horizontal);
+
+        // FIXED: Apply proper style for main menu
+        MenuStyle mainMenuStyle = MenuStyle::Default();
+        mainMenuStyle.itemHeight = 24.0f;  // Standard menu bar height
+        mainMenuStyle.paddingTop = 4.0f;
+        mainMenuStyle.paddingBottom = 4.0f;
+        mainMenuStyle.backgroundColor = Color(248, 248, 248, 255);  // Light gray background
+        mainMenuBar->SetStyle(mainMenuStyle);
 
         // Create File menu items with proper icon setting
         std::vector<MenuItemData> fileMenuItems;
@@ -165,41 +159,18 @@ public:
             fileMenuItems.push_back(exitItem);
         }
 
-        // Create Images submenu items with proper icon setting
+        // Create Images submenu items
         std::vector<MenuItemData> imagesMenuItems;
-        {
-            MenuItemData example1 = MenuItemData::Action("Example 1", [this]() {
-                SelectImage(0);
-            });
-            example1.iconPath = "./assets/icons/image1.png";
-            imagesMenuItems.push_back(example1);
+        for (int i = 0; i < 4; ++i) {
+            MenuItemData item = MenuItemData::Action(
+                    "Example " + std::to_string(i + 1),
+                    [this, i]() { SelectImage(i); }
+            );
+            item.iconPath = "./assets/icons/image" + std::to_string(i + 1) + ".png";
+            imagesMenuItems.push_back(item);
         }
 
-        {
-            MenuItemData example2 = MenuItemData::Action("Example 2", [this]() {
-                SelectImage(1);
-            });
-            example2.iconPath = "./assets/icons/image2.png";
-            imagesMenuItems.push_back(example2);
-        }
-
-        {
-            MenuItemData example3 = MenuItemData::Action("Example 3", [this]() {
-                SelectImage(2);
-            });
-            example3.iconPath = "./assets/icons/image3.png";
-            imagesMenuItems.push_back(example3);
-        }
-
-        {
-            MenuItemData example4 = MenuItemData::Action("Example 4", [this]() {
-                SelectImage(3);
-            });
-            example4.iconPath = "./assets/icons/image4.png";
-            imagesMenuItems.push_back(example4);
-        }
-
-        // Create Help menu items with proper icon setting
+        // Create Help menu items
         std::vector<MenuItemData> helpMenuItems;
         {
             MenuItemData aboutItem = MenuItemData::Action("About", [this]() {
@@ -218,11 +189,16 @@ public:
             helpMenuItems.push_back(shortcutsItem);
         }
 
-        // Create dropdown menus
+        // Create dropdown menus with proper vertical orientation
         fileMenu = MenuBuilder("file_menu", 3001, 0, 32, 150, 100)
                 .SetType(MenuType::DropdownMenu)
-                .SetStyle(MenuStyle::Default())
                 .Build();
+
+        // FIXED: Ensure dropdown menus use vertical orientation
+        fileMenu->SetOrientation(MenuOrientation::Vertical);
+        MenuStyle dropdownStyle = MenuStyle::Default();
+        dropdownStyle.showShadow = true;
+        fileMenu->SetStyle(dropdownStyle);
 
         // Add items to file menu
         for (const auto& item : fileMenuItems) {
@@ -232,25 +208,30 @@ public:
         // Create images submenu
         imagesMenu = MenuBuilder("images_menu", 3002, 0, 0, 150, 120)
                 .SetType(MenuType::SubmenuMenu)
-                .SetStyle(MenuStyle::Default())
                 .Build();
+
+        imagesMenu->SetOrientation(MenuOrientation::Vertical);
+        imagesMenu->SetStyle(dropdownStyle);
 
         // Add items to images menu
         for (const auto& item : imagesMenuItems) {
             imagesMenu->AddItem(item);
         }
 
+        // Create help menu
         helpMenu = MenuBuilder("help_menu", 3003, 0, 32, 150, 80)
                 .SetType(MenuType::DropdownMenu)
-                .SetStyle(MenuStyle::Default())
                 .Build();
+
+        helpMenu->SetOrientation(MenuOrientation::Vertical);
+        helpMenu->SetStyle(dropdownStyle);
 
         // Add items to help menu
         for (const auto& item : helpMenuItems) {
             helpMenu->AddItem(item);
         }
 
-        // Add File and Help to main menu bar
+        // FIXED: Add File and Help to main menu bar with proper configuration
         {
             MenuItemData fileMenuItem = MenuItemData::Action("File", [this]() {
                 ToggleFileMenu();
@@ -289,6 +270,27 @@ public:
         imagesMenu->Hide();
 
         std::cout << "Menu system created successfully!" << std::endl;
+    }
+
+// FIXED: Update ToggleHelpMenu to position menu correctly for horizontal layout
+    void ToggleHelpMenu() {
+        std::cout << "Help menu clicked" << std::endl;
+        if (helpMenu->IsVisible()) {
+            helpMenu->Hide();
+        } else {
+            // Hide other menus first
+            fileMenu->Hide();
+            imagesMenu->Hide();
+
+            // FIXED: Calculate proper position for Help menu
+            // Get the position of the Help menu item in the horizontal menu bar
+            float helpItemX = mainMenuBar->GetItemX(1);  // Help is the second item (index 1)
+
+            // Position help menu below the Help button at the correct X position
+            helpMenu->SetPosition(static_cast<long>(helpItemX), 32);
+            helpMenu->Show();
+        }
+        SetNeedsRedraw(true);
     }
 
     void CreateUserInterface() {

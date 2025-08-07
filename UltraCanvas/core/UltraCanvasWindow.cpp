@@ -300,8 +300,10 @@ namespace UltraCanvas {
 
     // Fixed OnEvent method with proper event dispatching
     void UltraCanvasBaseWindow::OnEvent(const UCEvent &event) {
-        std::cout << "UltraCanvasBaseWindow::OnEvent - type: " << (int) event.type
-                  << " elements: " << elements.size() << std::endl;
+        if (event.type != UCEventType::MouseMove) {
+            std::cout << "UltraCanvasBaseWindow::OnEvent - type: " << (int) event.type
+                      << " elements: " << elements.size() << std::endl;
+        }
 
         // Use the event dispatcher to handle events properly
         bool handled = false;
@@ -320,19 +322,25 @@ namespace UltraCanvas {
 
                     // For mouse events, check if the element contains the point
                     elementShouldReceive = element->Contains(event.x, event.y);
-                    std::cout << "  Element '" << element->GetIdentifier()
-                              << "' contains point (" << event.x << "," << event.y << "): "
-                              << elementShouldReceive << std::endl;
+                    if (event.type != UCEventType::MouseMove) {
+                        std::cout << "  Element '" << element->GetIdentifier()
+                                  << "' contains point (" << event.x << "," << event.y << "): "
+                                  << elementShouldReceive << std::endl;
+                    }
                 } else if (event.type == UCEventType::KeyDown || event.type == UCEventType::KeyUp) {
 // For keyboard events, send to focused element
                     elementShouldReceive = element->IsFocused();
-                    std::cout << "  Element '" << element->GetIdentifier()
-                              << "' is focused: " << elementShouldReceive << std::endl;
+                    if (event.type != UCEventType::MouseMove) {
+                        std::cout << "  Element '" << element->GetIdentifier()
+                                  << "' is focused: " << elementShouldReceive << std::endl;
+                    }
                 }
 
                 if (elementShouldReceive) {
-                    std::cout << "  → Forwarding event to element '"
-                              << element->GetIdentifier() << "'" << std::endl;
+                    if (event.type != UCEventType::MouseMove) {
+                        std::cout << "  → Forwarding event to element '"
+                                  << element->GetIdentifier() << "'" << std::endl;
+                    }
                     element->OnEvent(event);
                     handled = true;
 
