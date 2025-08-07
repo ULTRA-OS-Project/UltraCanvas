@@ -44,7 +44,7 @@ namespace UltraCanvas {
         return nullptr;
     }
 
-    void UltraCanvasElement::SetNeedsRedraw() {
+    void UltraCanvasElement::RequestRedraw() {
         if (window) {
             window->SetNeedsRedraw(true);
         }

@@ -220,7 +220,7 @@ namespace UltraCanvas {
             return window;
         }
 
-        void SetNeedsRedraw();
+        void RequestRedraw();
 
         void SetWindow(UltraCanvasBaseWindow* win) {
             window = win;

@@ -521,7 +521,7 @@ namespace UltraCanvas {
             // Clamp scroll offset to valid range
             int maxScroll = std::max(0, (int)items.size() - visibleItems);
             scrollOffset = std::max(0, std::min(scrollOffset, maxScroll));
-            SetNeedsRedraw();
+            RequestRedraw();
         }
 
         int GetItemAtPosition(int x, int y) const {
@@ -672,7 +672,7 @@ namespace UltraCanvas {
                 int maxScroll = std::max(0, (int)items.size() - style.maxVisibleItems);
 
                 scrollOffset = std::max(0, std::min(newScrollOffset, maxScroll));
-                SetNeedsRedraw();
+                RequestRedraw();
             }
         }
 

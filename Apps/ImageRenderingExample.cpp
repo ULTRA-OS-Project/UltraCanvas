@@ -122,7 +122,7 @@ public:
 //        }
 //
 //        // Mark as not needing redraw
-//        SetNeedsRedraw(false);
+//        RequestRedraw(false);
         std::cout << "*** ImageDemoWindow::Render() complete ***" << std::endl;
     }
 
