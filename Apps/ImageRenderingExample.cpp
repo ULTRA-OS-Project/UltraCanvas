@@ -1,7 +1,7 @@
 // ImageRenderingExample.cpp
 // Example demonstrating UltraCanvas Linux image rendering capabilities with menu system
-// Version: 2.1.0
-// Last Modified: 2025-08-07
+// Version: 2.1.1
+// Last Modified: 2025-01-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasUI.h"
@@ -55,9 +55,15 @@ public:
     // Menu action handlers (declared before CreateMenuSystem)
     void ToggleFileMenu() {
         std::cout << "File menu clicked" << std::endl;
-        if (fileMenu->IsVisible()) {
+        std::cout << "  fileMenu->IsMenuVisible() = " << fileMenu->IsMenuVisible() << std::endl;
+        std::cout << "  fileMenu->GetMenuState() = " << (int)fileMenu->GetMenuState() << std::endl;
+
+        // FIX: Use IsMenuVisible() instead of IsVisible()
+        if (fileMenu->IsMenuVisible()) {
+            std::cout << "  -> Hiding file menu" << std::endl;
             fileMenu->Hide();
         } else {
+            std::cout << "  -> Showing file menu" << std::endl;
             // Hide other menus first
             helpMenu->Hide();
             imagesMenu->Hide();
@@ -65,6 +71,10 @@ public:
             // Position file menu below the File button
             fileMenu->SetPosition(10, 32);
             fileMenu->Show();
+
+            // Debug: Check state after Show()
+            std::cout << "  After Show(): IsMenuVisible() = " << fileMenu->IsMenuVisible()
+                      << ", State = " << (int)fileMenu->GetMenuState() << std::endl;
         }
         SetNeedsRedraw(true);
     }
@@ -118,18 +128,41 @@ public:
         SetNeedsRedraw(true);
     }
 
+    // FIX: Update ToggleHelpMenu to use IsMenuVisible()
+    void ToggleHelpMenu() {
+        std::cout << "Help menu clicked" << std::endl;
+
+        // FIX: Use IsMenuVisible() instead of IsVisible()
+        if (helpMenu->IsMenuVisible()) {
+            helpMenu->Hide();
+        } else {
+            // Hide other menus first
+            fileMenu->Hide();
+            imagesMenu->Hide();
+
+            // Calculate proper position for Help menu
+            // Get the position of the Help menu item in the horizontal menu bar
+            float helpItemX = mainMenuBar->GetItemX(1);  // Help is the second item (index 1)
+
+            // Position help menu below the Help button at the correct X position
+            helpMenu->SetPosition(static_cast<long>(helpItemX), 32);
+            helpMenu->Show();
+        }
+        SetNeedsRedraw(true);
+    }
+
     void CreateMenuSystem() {
         std::cout << "=== Creating Menu System ===" << std::endl;
 
-        // FIXED: Create main menu bar with proper height (32px) and ensure horizontal orientation
+        // Create main menu bar with proper height (32px) and ensure horizontal orientation
         mainMenuBar = MenuBuilder("main_menu", 3000, 0, 0, 800, 32)
                 .SetType(MenuType::MainMenu)
                 .Build();
 
-        // FIXED: Ensure the main menu bar uses horizontal orientation
+        // Ensure the main menu bar uses horizontal orientation
         mainMenuBar->SetOrientation(MenuOrientation::Horizontal);
 
-        // FIXED: Apply proper style for main menu
+        // Apply proper style for main menu
         MenuStyle mainMenuStyle = MenuStyle::Default();
         mainMenuStyle.itemHeight = 24.0f;  // Standard menu bar height
         mainMenuStyle.paddingTop = 4.0f;
@@ -194,10 +227,13 @@ public:
                 .SetType(MenuType::DropdownMenu)
                 .Build();
 
-        // FIXED: Ensure dropdown menus use vertical orientation
+        // Ensure dropdown menus use vertical orientation
         fileMenu->SetOrientation(MenuOrientation::Vertical);
         MenuStyle dropdownStyle = MenuStyle::Default();
         dropdownStyle.showShadow = true;
+
+        // FIX: Ensure animations are disabled for immediate display
+        dropdownStyle.enableAnimations = false;
         fileMenu->SetStyle(dropdownStyle);
 
         // Add items to file menu
@@ -231,7 +267,7 @@ public:
             helpMenu->AddItem(item);
         }
 
-        // FIXED: Add File and Help to main menu bar with proper configuration
+        // Add File and Help to main menu bar with proper configuration
         {
             MenuItemData fileMenuItem = MenuItemData::Action("File", [this]() {
                 ToggleFileMenu();
@@ -264,40 +300,24 @@ public:
         AddElement(helpMenu);
         AddElement(imagesMenu);
 
-        // Initially hide dropdown menus
+        // Initially hide dropdown menus - they should start hidden
+        // FIX: Ensure menus are properly hidden initially
         fileMenu->Hide();
         helpMenu->Hide();
         imagesMenu->Hide();
 
+        // Debug: Check initial states
+        std::cout << "Initial fileMenu state: IsMenuVisible() = " << fileMenu->IsMenuVisible()
+                  << ", State = " << (int)fileMenu->GetMenuState() << std::endl;
+
         std::cout << "Menu system created successfully!" << std::endl;
-    }
-
-// FIXED: Update ToggleHelpMenu to position menu correctly for horizontal layout
-    void ToggleHelpMenu() {
-        std::cout << "Help menu clicked" << std::endl;
-        if (helpMenu->IsVisible()) {
-            helpMenu->Hide();
-        } else {
-            // Hide other menus first
-            fileMenu->Hide();
-            imagesMenu->Hide();
-
-            // FIXED: Calculate proper position for Help menu
-            // Get the position of the Help menu item in the horizontal menu bar
-            float helpItemX = mainMenuBar->GetItemX(1);  // Help is the second item (index 1)
-
-            // Position help menu below the Help button at the correct X position
-            helpMenu->SetPosition(static_cast<long>(helpItemX), 32);
-            helpMenu->Show();
-        }
-        SetNeedsRedraw(true);
     }
 
     void CreateUserInterface() {
         std::cout << "=== Creating Cross-Platform UI Elements ===" << std::endl;
 
         // Create dropdown with proper styling and event handling (positioned below menu bar)
-        imageDropdown = DropdownBuilder("images_dropdown", 300, 480, 180, 30) // Moved down to avoid menu
+        imageDropdown = DropdownBuilder("images_dropdown", 300, 480, 180, 30)
                 .AddItem("Sample one", "0")
                 .AddItem("Sample two", "1")
                 .AddItem("Sample three", "2")
@@ -330,174 +350,145 @@ public:
         std::cout << "UI elements created and added to window successfully!" << std::endl;
     }
 
-    void Render() override {
+    virtual void Render() override {
         std::cout << "*** ImageDemoWindow::Render() called ***" << std::endl;
 
+        // Call base class render first (this handles UI elements)
         UltraCanvasWindow::Render();
 
-        ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
+        // Now add custom rendering on top
+        auto context = GetRenderContext();
+        if (!context) return;
 
-        // Draw demo title (positioned below menu bar)
+        // Draw demo title
         std::cout << "Drawing demo title..." << std::endl;
-        SetTextColor(Colors::White);
-        SetFont("Arial", 16);
-        DrawText("UltraCanvas Image Rendering Demo", Point2D(20, 60)); // Moved down
-        DrawText("Press SPACE to cycle images, I for info, C to clear cache", Point2D(20, 80));
+        context->SetTextColor(Colors::White);
+        context->SetFont("Arial", 24.0f);
+        context->DrawText("UltraCanvas Linux Image Rendering Demo", Point2D(20, 60));
 
-        // Render the images in different modes
+        context->SetFont("Arial", 14.0f);
+        context->DrawText("Use dropdown or menu to select images", Point2D(20, 90));
+
+        // Render current image with different modes
         std::cout << "Rendering image modes..." << std::endl;
-        RenderImageModes();
+        if (currentImageIndex >= 0 && currentImageIndex < (int)imagePaths.size()) {
+            const std::string& imagePath = imagePaths[currentImageIndex];
 
-        // Show current image info
+            // Normal rendering
+            context->DrawImage(imagePath, Rect2D(50, 150, 200, 200));
+
+            // Scaled rendering
+            context->DrawImage(imagePath, Rect2D(300, 150, 100, 100));
+
+            // Stretched rendering
+            context->DrawImage(imagePath, Rect2D(450, 150, 250, 150));
+
+            // Tiled rendering (simulated with multiple draws)
+            for (int y = 0; y < 2; ++y) {
+                for (int x = 0; x < 3; ++x) {
+                    context->DrawImage(imagePath,
+                                       Rect2D(750 + x * 50, 150 + y * 50, 50, 50));
+                }
+            }
+        }
+
+        // Show image info if enabled
         if (showImageInfo) {
             std::cout << "Rendering image info..." << std::endl;
-            RenderImageInfo();
+            context->SetStrokeColor(Color(200, 200, 200, 255));
+            context->SetStrokeWidth(1.0f);
+            context->DrawRectangle(Rect2D(50, 380, 900, 100));
+
+            context->SetTextColor(Colors::White);
+            context->SetFont("Arial", 12.0f);
+            context->DrawText("Image Information:", Point2D(60, 400));
+
+            if (currentImageIndex >= 0 && currentImageIndex < (int)imagePaths.size()) {
+                std::string info = "Current: " + imagePaths[currentImageIndex];
+                context->DrawText(info, Point2D(60, 420));
+                context->DrawText("Index: " + std::to_string(currentImageIndex + 1) +
+                                  " of " + std::to_string(imagePaths.size()), Point2D(60, 440));
+                context->DrawText("Press SPACE to cycle, I to toggle info", Point2D(60, 460));
+            }
         }
 
         std::cout << "*** ImageDemoWindow::Render() complete ***" << std::endl;
     }
 
-    // Override event handling to ensure proper menu and dropdown interaction
-    void OnEvent(const UCEvent& event) override {
+    virtual void OnEvent(const UCEvent& event) override {
         std::cout << "*** ImageDemoWindow::OnEvent() called, type: " << (int)event.type
                   << " pos: (" << event.x << "," << event.y << ") ***" << std::endl;
 
-        // Handle keyboard shortcuts FIRST (before passing to UI elements)
-        bool keyboardHandled = false;
+        // Forward event to base class for UI element handling
+        std::cout << "*** Forwarding event to base class for UI handling ***" << std::endl;
+        UltraCanvasWindow::OnEvent(event);
+
+        // Handle keyboard shortcuts
         if (event.type == UCEventType::KeyDown) {
-            switch (event.character) {
-                case ' ':  // Space - cycle images
-                    CycleImage();
-                    keyboardHandled = true;
-                    break;
-                case 'i':
-                case 'I':  // Toggle image info
-                    showImageInfo = !showImageInfo;
+            std::cout << "KeyDown event: virtualKey=" << (int)event.virtualKey << std::endl;
+
+            switch (event.virtualKey) {
+                case UCKeys::Space:
+                    // Cycle through images
+                    currentImageIndex = (currentImageIndex + 1) % imagePaths.size();
+                    if (imageDropdown) {
+                        imageDropdown->SetSelectedIndex(currentImageIndex);
+                    }
                     SetNeedsRedraw(true);
-                    keyboardHandled = true;
                     break;
-                case 'c':
-                case 'C':  // Clear cache
-                    ClearImageCache();
-                    keyboardHandled = true;
-                    break;
-                case 'q':
-                case 'Q':  // Quit
-                case 27:   // Escape
+
+                case UCKeys::Escape:
+                    // Quit application
                     Close();
-                    keyboardHandled = true;
                     break;
-                    // Menu shortcuts
-                case 112:  // F1 - Help shortcuts
+
+                case UCKeys::F1:
+                    // Show keyboard shortcuts
                     ShowShortcutsDialog();
-                    keyboardHandled = true;
+                    break;
+
+                default:
                     break;
             }
 
-            // Handle Alt+F4 for exit (check modifier keys properly)
-            if (event.alt && event.character == 115) { // F4 key
+            // Check for Alt+F4
+            if (event.alt && event.virtualKey == UCKeys::F4) {
                 Close();
-                keyboardHandled = true;
             }
-        }
-
-        // Always pass events to base class for UI element handling (menus, dropdown, etc.)
-        if (!keyboardHandled) {
-            std::cout << "*** Forwarding event to base class for UI handling ***" << std::endl;
-            UltraCanvasWindow::OnEvent(event);
         }
 
         std::cout << "*** Event handling complete ***" << std::endl;
     }
-
-private:
-    void RenderImageModes() {
-        if (currentImageIndex >= 0 && currentImageIndex < (int)imagePaths.size()) {
-            std::string currentPath = imagePaths[currentImageIndex];
-
-            // Original size image (positioned below menu bar)
-            DrawImage(currentPath, Point2D(20, 120)); // Moved down
-
-            // Scaled image
-            DrawImage(currentPath, Rect2D(250, 120, 150, 100)); // Moved down
-
-            // Rotated image (using proper render state management)
-            PushRenderState();
-            Translate(450, 170); // Moved down
-            Rotate(15.0f);
-            DrawImage(currentPath, Rect2D(-50, -33, 100, 66));
-            PopRenderState();
-
-            // Tinted image - simple version without SetImageTint
-            // Just draw normally since SetImageTint may not be available
-            DrawImage(currentPath, Rect2D(550, 120, 120, 80)); // Moved down
-        }
-    }
-
-    void RenderImageInfo() {
-        if (currentImageIndex >= 0 && currentImageIndex < (int)imagePaths.size()) {
-            std::string currentPath = imagePaths[currentImageIndex];
-
-            // Info background (positioned below menu bar)
-            SetFillColor(Color(0, 0, 0, 128));
-            DrawRect(Rect2D(15, 300, 250, 150)); // Moved down
-
-            // Info text
-            int infoY = 315; // Moved down
-            SetTextColor(Colors::White);
-            SetFont("Arial", 12);
-            DrawText("Image Information:", Point2D(20, infoY));
-            DrawText("File: " + currentPath, Point2D(20, infoY + 20));
-            DrawText("Index: " + std::to_string(currentImageIndex + 1) + " of " + std::to_string(imagePaths.size()), Point2D(20, infoY + 40));
-            DrawText("Format: Auto-detected", Point2D(20, infoY + 60));
-            DrawText("Status: Loaded", Point2D(20, infoY + 80));
-            DrawText("Memory Usage: 263 KB", Point2D(20, infoY + 100));
-            DrawText("Caching: Enabled", Point2D(20, infoY + 120));
-        }
-    }
-
-    void CycleImage() {
-        currentImageIndex = (currentImageIndex + 1) % imagePaths.size();
-        std::cout << "Cycled to image " << (currentImageIndex + 1) << ": " << imagePaths[currentImageIndex] << std::endl;
-
-        // Update dropdown to match
-        if (imageDropdown) {
-            imageDropdown->SetSelectedIndex(currentImageIndex);
-        }
-
-        SetNeedsRedraw(true);
-    }
-
-    void ClearImageCache() {
-        std::cout << "Image cache cleared!" << std::endl;
-        SetNeedsRedraw(true);
-    }
 };
 
-// ===== MAIN APPLICATION ENTRY POINT =====
-int main() {
+// Main application entry point
+int main(int argc, char* argv[]) {
     std::cout << "=== UltraCanvas Linux Image Rendering Demo with Menu System ===" << std::endl;
 
     try {
-        // Initialize UltraCanvas application
+        // Create application instance
         auto app = UltraCanvasApplication::GetInstance();
-        if (!app->Initialize()) {
-            std::cerr << "Failed to initialize UltraCanvas application!" << std::endl;
+        if (!app) {
+            std::cerr << "Failed to create application instance!" << std::endl;
             return -1;
         }
 
-        // Create and configure the main window
+        // Initialize the application
+        if (!app->Initialize()) {
+            std::cerr << "Failed to initialize application!" << std::endl;
+            return -1;
+        }
+
+        // Create the demo window
         std::cout << "Creating main demo window..." << std::endl;
         auto demoWindow = std::make_shared<ImageDemoWindow>();
 
         WindowConfig config;
-        config.title = "UltraCanvas Image Rendering Demo";
+        config.title = "UltraCanvas Linux Image Rendering Demo";
         config.width = 1024;
         config.height = 700;
-        config.x = -1;  // Center
-        config.y = -1;  // Center
+        config.backgroundColor = Color(80, 80, 80, 255);  // Dark gray background
         config.resizable = true;
-        config.backgroundColor = Color(80, 80, 80, 255);  // Set dark gray background
 
         if (!demoWindow->Create(config)) {
             std::cerr << "Failed to create demo window!" << std::endl;
@@ -508,7 +499,7 @@ int main() {
         demoWindow->Show();
         std::cout << "Demo window created and shown. Starting main loop..." << std::endl;
 
-        // Run the application main loop (void return type)
+        // Run the application main loop
         app->Run();
 
         std::cout << "Application finished successfully." << std::endl;
@@ -522,41 +513,3 @@ int main() {
         return -1;
     }
 }
-
-/*
-=== COMPILATION FIXES APPLIED ===
-
-✅ **Duplicate Method Definitions**:
-   - Removed all duplicate method definitions that were causing redefinition errors
-   - Proper organization with method declarations before CreateMenuSystem()
-
-✅ **UCEvent API Issues**:
-   - Removed non-existent `event.modifiers` and `UCEventModifier::Alt`
-   - Used correct `event.alt` field for modifier checking
-   - Fixed keyboard shortcut detection to use available event fields
-
-✅ **WindowConfig Issues**:
-   - Removed non-existent `centerOnScreen` field
-   - Using only valid WindowConfig fields that exist in the framework
-
-✅ **Transform and Image APIs**:
-   - Changed `SaveTransform()/RestoreTransform()` to `PushRenderState()/PopRenderState()`
-   - Removed non-existent `SetImageTint()` and `ClearImageTint()` calls
-   - Using proper render state management with Push/Pop pattern
-
-✅ **Application Run Method**:
-   - Fixed `app->Run()` return type - it's void, not int
-   - Removed attempt to capture return value from void function
-
-✅ **Menu Icon Setting**:
-   - Using correct `iconPath` field instead of non-existent `SetIcon()` method
-   - Using `shortcut` field instead of non-existent `SetShortcut()` method
-
-✅ **Proper Method Organization**:
-   - All helper methods declared before they're used in lambdas
-   - No duplicate definitions anywhere in the code
-   - Clean separation of concerns between menu creation and UI creation
-
-The code now compiles successfully and maintains all requested menu functionality
-while using only APIs that actually exist in the UltraCanvas framework.
-*/
