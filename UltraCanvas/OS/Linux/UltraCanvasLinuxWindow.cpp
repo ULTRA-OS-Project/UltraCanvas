@@ -473,7 +473,6 @@ namespace UltraCanvas {
 //        }
 
         // Set up rendering context
-        ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
 //        int width, height;
 //        GetSize(width, height);
 //        SetFillColor(Color(245, 248, 255, 255)); // Light blue background
@@ -542,6 +541,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::OnEvent(const UCEvent& event) {
+        ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
+
         // Handle window-level events first
         switch (event.type) {
             case UCEventType::WindowClose:

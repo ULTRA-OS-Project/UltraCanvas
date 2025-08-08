@@ -346,7 +346,18 @@ public:
         auto it = windowContextMap.find(window);
         return (it != windowContextMap.end()) ? it->second : nullptr;
     }
-    
+
+    static IRenderContext* GetFirstWindowContext() {
+        std::lock_guard<std::mutex> lock(windowContextMutex);
+        if (!windowContextMap.empty()) {
+            auto it = windowContextMap.begin();
+            if (it->second) {
+                return it->second;
+            }
+        }
+        return nullptr;
+    }
+
     // ===== WINDOW-AWARE RENDERING =====
     static void SetCurrentWindow(UltraCanvasBaseWindow* window) {
         currentWindow = window;
@@ -432,6 +443,13 @@ inline IRenderContext* GetRenderContext() {
                 RenderContextManager::SetCurrent(ctx);
             }
         }
+
+        ctx = RenderContextManager::GetFirstWindowContext();
+        if (ctx) {
+            std::cout << "GetRenderContext: Retrieved default context" << std::endl;
+            return ctx;
+        }
+
     }
     return ctx;
 }
