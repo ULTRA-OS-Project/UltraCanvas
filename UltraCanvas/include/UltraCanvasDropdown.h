@@ -260,6 +260,8 @@ namespace UltraCanvas {
             return nullptr;
         }
 
+        virtual bool IsHandleOutsideClicks() override { return true; }
+
         // ===== RENDERING =====
         void Render() override {
             if (!IsVisible()) return;
@@ -282,7 +284,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override {
-            if (!IsActive() || !IsVisible()) return false;;
+            if (!IsActive() || !IsVisible()) return false;
             if (event.type != UCEventType::MouseMove) {
                 std::cout << "*** UltraCanvasDropdown::OnEvent() called, type: " << (int)event.type << " ***" << std::endl;
             }

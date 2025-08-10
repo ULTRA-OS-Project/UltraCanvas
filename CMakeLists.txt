@@ -96,6 +96,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasEventDispatcher.cpp
         UltraCanvas/core/UltraCanvasTooltipManager.cpp
         UltraCanvas/core/UltraCanvasWindow.cpp
+        UltraCanvas/core/UltraCanvasMenu.cpp
         UltraCanvas/core/UltraCanvasUIElement.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp

@@ -169,7 +169,7 @@ namespace UltraCanvas {
         std::function<bool(const UCEvent&)> eventCallback;
 
     protected:
-        UltraCanvasBaseWindow* window = nullptr;
+        UltraCanvasBaseWindow* window = nullptr; // parent window
         StandardProperties properties;
         // State management
         ElementStateFlags stateFlags;
@@ -236,6 +236,8 @@ namespace UltraCanvas {
         }
         virtual void OnChildAdded(UltraCanvasElement* child) {}
         virtual void OnChildRemoved(UltraCanvasElement* child) {}
+
+        virtual bool IsHandleOutsideClicks() { return false; }
 
         // ===== STATE MANAGEMENT =====
         ElementState GetState() const { return stateFlags.GetPrimaryState(); }

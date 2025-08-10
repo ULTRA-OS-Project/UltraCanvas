@@ -24,9 +24,6 @@ private:
     bool showImageInfo;
     std::shared_ptr<UltraCanvasDropdown> imageDropdown;
     std::shared_ptr<UltraCanvasMenu> mainMenuBar;
-    std::shared_ptr<UltraCanvasMenu> fileMenu;
-    std::shared_ptr<UltraCanvasMenu> helpMenu;
-    std::shared_ptr<UltraCanvasMenu> imagesMenu;
 
 public:
     ImageDemoWindow() : UltraCanvasWindow(), currentImageIndex(0), showImageInfo(true) {
@@ -52,44 +49,6 @@ public:
         return false;
     }
 
-    // Menu action handlers (declared before CreateMenuSystem)
-    void ToggleFileMenu() {
-        std::cout << "File menu clicked" << std::endl;
-        std::cout << "  fileMenu->IsMenuVisible() = " << fileMenu->IsMenuVisible() << std::endl;
-        std::cout << "  fileMenu->GetMenuState() = " << (int)fileMenu->GetMenuState() << std::endl;
-
-        // FIX: Use IsMenuVisible() instead of IsVisible()
-        if (fileMenu->IsMenuVisible()) {
-            std::cout << "  -> Hiding file menu" << std::endl;
-            fileMenu->Hide();
-        } else {
-            std::cout << "  -> Showing file menu" << std::endl;
-            // Hide other menus first
-            helpMenu->Hide();
-            imagesMenu->Hide();
-
-            // Position file menu below the File button
-            fileMenu->SetPosition(10, 26);
-            fileMenu->Show();
-
-            // Debug: Check state after Show()
-            std::cout << "  After Show(): IsMenuVisible() = " << fileMenu->IsMenuVisible()
-                      << ", State = " << (int)fileMenu->GetMenuState() << std::endl;
-        }
-        SetNeedsRedraw(true);
-    }
-
-    void ToggleImagesSubmenu() {
-        std::cout << "Images submenu requested" << std::endl;
-        // Hide other menus
-        helpMenu->Hide();
-
-        // Position images menu to the right of file menu
-        imagesMenu->SetPosition(fileMenu->GetX() + fileMenu->GetWidth(), fileMenu->GetY() + 30);
-        imagesMenu->Show();
-        SetNeedsRedraw(true);
-    }
-
     void SelectImage(int index) {
         std::cout << "Selected image " << (index + 1) << " from menu" << std::endl;
         if (index >= 0 && index < (int)imagePaths.size()) {
@@ -100,9 +59,6 @@ public:
                 imageDropdown->SetSelectedIndex(index);
             }
 
-            // Hide menus
-            fileMenu->Hide();
-            imagesMenu->Hide();
             SetNeedsRedraw(true);
         }
     }
@@ -112,7 +68,6 @@ public:
         std::cout << "Version: 2.1.0" << std::endl;
         std::cout << "A demonstration of cross-platform image rendering" << std::endl;
         std::cout << "with menu system and UI controls." << std::endl;
-        helpMenu->Hide();
         SetNeedsRedraw(true);
     }
 
@@ -124,35 +79,11 @@ public:
         std::cout << "Q/ESC       - Quit application" << std::endl;
         std::cout << "F1          - Show keyboard shortcuts" << std::endl;
         std::cout << "Alt+F4      - Exit application" << std::endl;
-        helpMenu->Hide();
-        SetNeedsRedraw(true);
-    }
-
-    // FIX: Update ToggleHelpMenu to use IsMenuVisible()
-    void ToggleHelpMenu() {
-        std::cout << "Help menu clicked" << std::endl;
-
-        // FIX: Use IsMenuVisible() instead of IsVisible()
-        if (helpMenu->IsMenuVisible()) {
-            helpMenu->Hide();
-        } else {
-            // Hide other menus first
-            fileMenu->Hide();
-            imagesMenu->Hide();
-
-            // Calculate proper position for Help menu
-            // Get the position of the Help menu item in the horizontal menu bar
-            float helpItemX = mainMenuBar->GetItemX(1);  // Help is the second item (index 1)
-
-            // Position help menu below the Help button at the correct X position
-            helpMenu->SetPosition(static_cast<long>(helpItemX), 32);
-            helpMenu->Show();
-        }
         SetNeedsRedraw(true);
     }
 
     void CreateMenuSystem() {
-        std::cout << "=== Creating Menu System ===" << std::endl;
+        std::cout << "=== Creating Unified Menu System ===" << std::endl;
 
         // Create main menu bar with proper height (32px) and ensure horizontal orientation
         mainMenuBar = MenuBuilder("main_menu", 3000, 0, 0, 800, 32)
@@ -170,28 +101,6 @@ public:
         mainMenuStyle.backgroundColor = Color(248, 248, 248, 255);  // Light gray background
         mainMenuBar->SetStyle(mainMenuStyle);
 
-        // Create File menu items with proper icon setting
-        std::vector<MenuItemData> fileMenuItems;
-        {
-            MenuItemData imagesItem = MenuItemData::Action("Images", [this]() {
-                ToggleImagesSubmenu();
-            });
-            imagesItem.iconPath = "./assets/icons/images.png";
-            fileMenuItems.push_back(imagesItem);
-        }
-
-        fileMenuItems.push_back(MenuItemData::Separator());
-
-        {
-            MenuItemData exitItem = MenuItemData::Action("Exit", [this]() {
-                std::cout << "Exit selected from menu" << std::endl;
-                this->Close();
-            });
-            exitItem.iconPath = "./assets/icons/exit.png";
-            exitItem.shortcut = "Alt+F4";
-            fileMenuItems.push_back(exitItem);
-        }
-
         // Create Images submenu items
         std::vector<MenuItemData> imagesMenuItems;
         for (int i = 0; i < 4; ++i) {
@@ -203,7 +112,7 @@ public:
             imagesMenuItems.push_back(item);
         }
 
-        // Create Help menu items
+        // Create Help submenu items
         std::vector<MenuItemData> helpMenuItems;
         {
             MenuItemData aboutItem = MenuItemData::Action("About", [this]() {
@@ -222,95 +131,31 @@ public:
             helpMenuItems.push_back(shortcutsItem);
         }
 
-        // Create dropdown menus with proper vertical orientation
-        fileMenu = MenuBuilder("file_menu", 3001, 0, 32, 150, 100)
-                .SetType(MenuType::DropdownMenu)
+        // Build the unified main menu using MenuBuilder::AddSubmenu
+        mainMenuBar = MenuBuilder("main_menu", 3000, 0, 0, 800, 32)
+                .SetType(MenuType::MainMenu)
+
+                        // Add File submenu with Images submenu and Exit
+                .AddSubmenu("File", {
+                        MenuItemData::Submenu("Images", imagesMenuItems),
+                        MenuItemData::Separator(),
+                        MenuItemData::Action("Exit", [this]() { Close(); })
+                })
+
+                        // Add Help submenu
+                .AddSubmenu("Help", helpMenuItems)
+
                 .Build();
 
-        // Ensure dropdown menus use vertical orientation
-        fileMenu->SetOrientation(MenuOrientation::Vertical);
-        MenuStyle dropdownStyle = MenuStyle::Default();
-        dropdownStyle.showShadow = true;
+        // Apply style and orientation
+        mainMenuBar->SetOrientation(MenuOrientation::Horizontal);
+        mainMenuBar->SetStyle(mainMenuStyle);
 
-        // FIX: Ensure animations are disabled for immediate display
-        dropdownStyle.enableAnimations = false;
-        fileMenu->SetStyle(dropdownStyle);
-
-        // Add items to file menu
-        for (const auto& item : fileMenuItems) {
-            fileMenu->AddItem(item);
-        }
-
-        // Create images submenu
-        imagesMenu = MenuBuilder("images_menu", 3002, 0, 0, 150, 120)
-                .SetType(MenuType::SubmenuMenu)
-                .Build();
-
-        imagesMenu->SetOrientation(MenuOrientation::Vertical);
-        imagesMenu->SetStyle(dropdownStyle);
-
-        // Add items to images menu
-        for (const auto& item : imagesMenuItems) {
-            imagesMenu->AddItem(item);
-        }
-
-        // Create help menu
-        helpMenu = MenuBuilder("help_menu", 3003, 0, 32, 150, 80)
-                .SetType(MenuType::DropdownMenu)
-                .Build();
-
-        helpMenu->SetOrientation(MenuOrientation::Vertical);
-        helpMenu->SetStyle(dropdownStyle);
-
-        // Add items to help menu
-        for (const auto& item : helpMenuItems) {
-            helpMenu->AddItem(item);
-        }
-
-        // Add File and Help to main menu bar with proper configuration
-        {
-            MenuItemData fileMenuItem = MenuItemData::Action("File", [this]() {
-                ToggleFileMenu();
-            });
-            //fileMenuItem.iconPath = "./assets/icons/file.png";
-            mainMenuBar->AddItem(fileMenuItem);
-        }
-
-        {
-            MenuItemData helpMenuItem = MenuItemData::Action("Help", [this]() {
-                ToggleHelpMenu();
-            });
-            //helpMenuItem.iconPath = "./assets/icons/help.png";
-            mainMenuBar->AddItem(helpMenuItem);
-        }
-
-        // Set up menu event handlers
-        fileMenu->SetOnMenuClosed([this]() {
-            std::cout << "File menu closed" << std::endl;
-        });
-
-        helpMenu->SetOnMenuClosed([this]() {
-            std::cout << "Help menu closed" << std::endl;
-        });
-
-        // Add menus to window
+        // Add menu to window
         mainMenuBar->Show();
         AddElement(mainMenuBar);
-        AddElement(fileMenu);
-        AddElement(helpMenu);
-        AddElement(imagesMenu);
 
-        // Initially hide dropdown menus - they should start hidden
-        // FIX: Ensure menus are properly hidden initially
-        fileMenu->Hide();
-        helpMenu->Hide();
-        imagesMenu->Hide();
-
-        // Debug: Check initial states
-        std::cout << "Initial fileMenu state: IsMenuVisible() = " << fileMenu->IsMenuVisible()
-                  << ", State = " << (int)fileMenu->GetMenuState() << std::endl;
-
-        std::cout << "Menu system created successfully!" << std::endl;
+        std::cout << "Unified menu system created successfully!" << std::endl;
     }
 
     void CreateUserInterface() {

@@ -9,6 +9,7 @@
 #include "../include/UltraCanvasRenderInterface.h"
 #include "../include/UltraCanvasApplication.h"
 #include "../include/UltraCanvasZOrderManager.h"
+#include "../include/UltraCanvasMenu.h"
 
 #include <iostream>
 #include <algorithm>
@@ -317,6 +318,7 @@ namespace UltraCanvas {
     // Fixed OnEvent method with proper event dispatching
     bool UltraCanvasBaseWindow::OnEvent(const UCEvent &event) {
         bool eventHandled = false;
+
         if (event.type != UCEventType::MouseMove) {
             std::cout << "Window event: " << static_cast<int>(event.type)
                       << " at (" << event.x << "," << event.y << ")" << std::endl;
@@ -329,30 +331,16 @@ namespace UltraCanvas {
 
             Point2D mousePos(event.x, event.y);
 
-            // Get elements at mouse position, sorted by z-order (highest first)
-            auto hitElements = UltraCanvasZOrderManager::GetElementsAtPoint(elements, mousePos);
-
-            if (event.type != UCEventType::MouseMove && !hitElements.empty()) {
-                std::cout << "Hit " << hitElements.size() << " elements at ("
-                          << mousePos.x << "," << mousePos.y << "):" << std::endl;
-                for (size_t i = 0; i < hitElements.size(); i++) {
-                    auto* element = hitElements[i];
-                    std::cout << "  [" << i << "] Z=" << element->GetZIndex()
-                              << " " << typeid(*element).name()
-                              << " '" << element->GetIdentifier() << "'" << std::endl;
-                }
-            }
-
             // Send event to elements in z-order (topmost first)
-            for (auto* element : hitElements) {
+            for (auto* element : elements) {
                 if (element && element->IsVisible() && element->IsEnabled()) {
-                    eventHandled = element->OnEvent(event);
-                    if (eventHandled) {
+                    if ((element->IsHandleOutsideClicks() && (event.type == UCEventType::MouseDown || event.type == UCEventType::MouseUp))
+                    || element->Contains(mousePos)) {
+                        element->OnEvent(event);
                         if (event.type != UCEventType::MouseMove) {
                             std::cout << "Event handled by: " << typeid(*element).name()
                                       << " Z=" << element->GetZIndex() << std::endl;
                         }
-                        break; // Event consumed by topmost element
                     }
                 }
             }
