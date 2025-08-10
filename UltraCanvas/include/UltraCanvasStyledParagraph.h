@@ -393,8 +393,8 @@ public:
     }
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
-    void OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible()) return;
+    bool OnEvent(const UCEvent& event) override {
+        if (!IsActive() || !IsVisible()) return false;;
         
         UltraCanvasElement::OnEvent(event);
         
@@ -411,6 +411,7 @@ public:
                 HandleMouseUp(event);
                 break;
         }
+        return false;
     }
     
 private:

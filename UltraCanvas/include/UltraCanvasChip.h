@@ -509,8 +509,8 @@ public:
     }
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
-    void OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible() || !chipData.enabled) return;
+    bool OnEvent(const UCEvent& event) override {
+        if (!IsActive() || !IsVisible() || !chipData.enabled) return false;
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -536,6 +536,7 @@ public:
                 HandleKeyDown(event);
                 break;
         }
+        return false;
     }
     
     // ===== EVENT CALLBACKS =====
@@ -933,7 +934,7 @@ public:
         // Chips render themselves
     }
     
-    void OnEvent(const UCEvent& event) override {
+    bool OnEvent(const UCEvent& event) override {
         // Events handled by individual chips
     }
     

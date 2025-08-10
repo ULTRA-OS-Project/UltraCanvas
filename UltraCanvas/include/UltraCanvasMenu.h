@@ -9,6 +9,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasKeyboardManager.h"
+#include "UltraCanvasZOrderManager.h"
 #include <vector>
 #include <string>
 #include <functional>
@@ -238,7 +239,7 @@ namespace UltraCanvas {
             }
         }
 
-        void OnEvent(const UCEvent& event) override {
+        bool OnEvent(const UCEvent& event) override {
             // Debug output for dropdown menus
             if ((menuType == MenuType::DropdownMenu || menuType == MenuType::SubmenuMenu) &&
                 (event.type == UCEventType::MouseDown || event.type == UCEventType::MouseUp)) {
@@ -377,11 +378,12 @@ namespace UltraCanvas {
             return nullptr;
         }
 
-        // ===== MENU DISPLAY =====
         void Show() {
-            // FIX: Simplified state management for dropdown menus
+            // Ensure menu is always on top when shown
+            SetZIndex(UltraCanvas::ZLayers::Menus + 100);
+
+            // Existing Show() implementation continues...
             if (currentState != MenuState::Visible && currentState != MenuState::Opening) {
-                // Always set to visible immediately for dropdown menus without animation
                 if (menuType == MenuType::DropdownMenu || menuType == MenuType::SubmenuMenu) {
                     currentState = MenuState::Visible;
                     SetVisible(true);
@@ -393,7 +395,6 @@ namespace UltraCanvas {
                     }
                 }
 
-                // Reset navigation state
                 hoveredIndex = -1;
                 keyboardIndex = -1;
                 keyboardNavigation = false;
@@ -401,12 +402,11 @@ namespace UltraCanvas {
 
                 if (onMenuOpened) onMenuOpened();
 
-                // FIX: Force immediate redraw
+                // Force immediate redraw with z-order update
                 RequestRedraw();
 
-                std::cout << "Menu '" << GetIdentifier() << "' shown. State: " << (int)currentState
-                          << " Visible: " << IsVisible()
-                          << " Type: " << (int)menuType << std::endl;
+                std::cout << "Menu '" << GetIdentifier()
+                          << "' shown with Z=" << GetZIndex() << std::endl;
             }
         }
 

@@ -410,7 +410,7 @@ public:
     }
     
     // ===== EVENT HANDLING OVERRIDE =====
-    void OnEvent(const UCEvent& event) override {
+    bool OnEvent(const UCEvent& event) override {
         UltraCanvasContainer::OnEvent(event);
         
         // Add grid-specific event handling
@@ -422,6 +422,7 @@ public:
                 }
             }
         }
+        return false;
     }
     
     // ===== EVENT CALLBACKS =====

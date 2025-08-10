@@ -190,8 +190,8 @@ namespace UltraCanvas {
         return true; // Modal dialogs consume all events
     }
 
-    void UltraCanvasModalDialog::OnEvent(const UCEvent& event) {
-        if (!isVisible) return;
+    bool UltraCanvasModalDialog::OnEvent(const UCEvent& event) {
+        if (!isVisible) return false;
 
         Point2D eventPos(event.x, event.y);
 
@@ -259,6 +259,7 @@ namespace UltraCanvas {
                 element->OnEvent(event);
             }
         }
+        return false;
     }
 
     void UltraCanvasModalDialog::Render() {

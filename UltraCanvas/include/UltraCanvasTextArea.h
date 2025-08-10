@@ -289,7 +289,7 @@ namespace UltraCanvas {
         }
 
         // ===== EVENT HANDLING =====
-        void OnEvent(const UCEvent& event) override {
+        bool OnEvent(const UCEvent& event) override {
             switch (event.type) {
                 case UCEventType::KeyDown:
                     HandleKeyDown(event);
@@ -313,6 +313,7 @@ namespace UltraCanvas {
                     HandleMouseWheel(event);
                     break;
             }
+            return false;
         }
 
     private:

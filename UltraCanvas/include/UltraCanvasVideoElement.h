@@ -553,7 +553,7 @@ public:
     }
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
-    void OnEvent(const UCEvent& event) override {
+    bool OnEvent(const UCEvent& event) override {
         if (!IsActive() || !IsVisible()) return;
         
         // Track user interaction for auto-hide controls

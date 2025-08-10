@@ -296,8 +296,8 @@ public:
     }
     
     // ===== EVENT HANDLING =====
-    void OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible()) return;
+    bool OnEvent(const UCEvent& event) override {
+        if (!IsActive() || !IsVisible()) return false;
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -312,6 +312,7 @@ public:
                 HandleMouseUp(event);
                 break;
         }
+        return false;
     }
     
 private:

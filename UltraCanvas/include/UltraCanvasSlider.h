@@ -171,8 +171,8 @@ public:
     }
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
-    void OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible()) return;
+    bool OnEvent(const UCEvent& event) override {
+        if (!IsActive() || !IsVisible()) return false;;
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -201,6 +201,7 @@ public:
                 HandleKeyDown(event);
                 break;
         }
+        return false;
     }
     
     // ===== EVENT CALLBACKS =====
@@ -841,8 +842,8 @@ public:
     }
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
-    void OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible()) return;
+    bool OnEvent(const UCEvent& event) override {
+        if (!IsActive() || !IsVisible()) return false;;
         
         // Handle tab area events
         if (IsInTabArea(Point2D(event.x, event.y))) {
@@ -868,6 +869,7 @@ public:
             // Forward to children
             UltraCanvasElement::OnEvent(event);
         }
+        return false;
     }
     
     // ===== EVENT CALLBACKS =====

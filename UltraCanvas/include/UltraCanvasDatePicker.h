@@ -177,8 +177,8 @@ public:
         DrawCalendarGrid();
     }
     
-    void OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible()) return;
+    bool OnEvent(const UCEvent& event) override {
+        if (!IsActive() || !IsVisible()) return false;
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -193,6 +193,7 @@ public:
                 HandleKeyDown(event);
                 break;
         }
+        return false;
     }
     
 private:
@@ -632,8 +633,8 @@ public:
     }
     
     // ===== EVENT HANDLING =====
-    void OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible()) return;
+    bool OnEvent(const UCEvent& event) override {
+        if (!IsActive() || !IsVisible()) return false;
         
         // Forward events to calendar if visible
         if (calendarVisible && calendar) {
@@ -658,6 +659,7 @@ public:
                 HideCalendar();
                 break;
         }
+        return false;
     }
     
 private:

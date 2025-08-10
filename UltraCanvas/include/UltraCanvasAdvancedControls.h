@@ -511,8 +511,8 @@ public:
         }
     }
     
-    void OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible() || !IsEnabled()) return;
+    bool OnEvent(const UCEvent& event) override {
+        if (!IsActive() || !IsVisible() || !IsEnabled()) return false;
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -534,6 +534,7 @@ public:
                 }
                 break;
         }
+        return false;
     }
     
     // ===== EVENT CALLBACKS =====
@@ -827,8 +828,8 @@ public:
         }
     }
     
-    void OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible() || !IsEnabled()) return;
+    bool OnEvent(const UCEvent& event) override {
+        if (!IsActive() || !IsVisible() || !IsEnabled()) return false;
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -844,6 +845,7 @@ public:
                 }
                 break;
         }
+        return false;
     }
     
     // ===== EVENT CALLBACKS =====
@@ -1158,8 +1160,9 @@ public:
         // Children (radio buttons) render themselves
     }
     
-    void OnEvent(const UCEvent& event) override {
+    bool OnEvent(const UCEvent& event) override {
         // Events handled by individual radio buttons
+        return false;
     }
     
     std::function<void(int)> onSelectionChanged;

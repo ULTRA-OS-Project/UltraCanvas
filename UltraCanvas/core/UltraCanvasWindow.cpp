@@ -8,6 +8,7 @@
 #include "../include/UltraCanvasEventDispatcher.h"
 #include "../include/UltraCanvasRenderInterface.h"
 #include "../include/UltraCanvasApplication.h"
+#include "../include/UltraCanvasZOrderManager.h"
 
 #include <iostream>
 #include <algorithm>
@@ -21,28 +22,47 @@ namespace UltraCanvas {
         application = application_;
     }
 
-    void UltraCanvasBaseWindow::AddElement(std::shared_ptr<UltraCanvasElement> element) {
-        if (element) {
-            element->SetWindow(this);
-            elements.push_back(element.get());
-            sharedElements.push_back(element); // Keep shared_ptr alive
-            needsRedraw_ = true;
-            if (onElementAdded) onElementAdded(element.get());
+    void UltraCanvasBaseWindow::AddElement(UltraCanvasElement* element) {
+        if (!element) return;
+
+        // Set default z-index if not already set
+        if (element->GetZIndex() == 0) {
+            // Auto-assign appropriate z-index based on element type
+            std::string typeName = typeid(*element).name();
+
+            if (typeName.find("Menu") != std::string::npos) {
+                element->SetZIndex(UltraCanvas::ZLayers::Menus);
+            }
+            else if (typeName.find("Dropdown") != std::string::npos) {
+                element->SetZIndex(UltraCanvas::ZLayers::Dropdowns);
+            }
+            else if (typeName.find("Tooltip") != std::string::npos) {
+                element->SetZIndex(UltraCanvas::ZLayers::Tooltips);
+            }
+            else {
+                element->SetZIndex(UltraCanvas::ZLayers::Controls);
+            }
         }
+
+        elements.push_back(element);
+        element->SetWindow(this);
+
+        std::cout << "Added element: " << typeid(*element).name()
+                  << " '" << element->GetIdentifier()
+                  << "' with Z=" << element->GetZIndex() << std::endl;
+        if (onElementAdded) onElementAdded(element);
+        needsRedraw_ = true;
     }
 
-    void UltraCanvasBaseWindow::AddElement(UltraCanvasElement* element) {
+    void UltraCanvasBaseWindow::AddElement(std::shared_ptr<UltraCanvasElement> element) {
         if (element) {
-            element->SetWindow(this);
-            elements.push_back(element);
-            needsRedraw_ = true;
-            if (onElementAdded) onElementAdded(element);
+            AddElement(element.get());
+            sharedElements.push_back(element); // Keep shared_ptr alive
         }
     }
 
     void UltraCanvasBaseWindow::RemoveElement(std::shared_ptr<UltraCanvasElement> element) {
         if (element) {
-            element->SetWindow(nullptr);
             RemoveElement(element.get());
             // Remove from shared_ptr list
             sharedElements.erase(
@@ -83,84 +103,129 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+    void UltraCanvasBaseWindow::BringElementToFront(UltraCanvasElement* element) {
+        if (!element) return;
+
+        long maxZ = UltraCanvasZOrderManager::GetMaxZIndex(elements);
+        element->SetZIndex(maxZ + 1);
+
+        std::cout << "Brought to front: " << element->GetIdentifier()
+                  << " new Z=" << element->GetZIndex() << std::endl;
+    }
+
+    void UltraCanvasBaseWindow::SendElementToBack(UltraCanvasElement* element) {
+        if (!element) return;
+
+        long minZ = UltraCanvasZOrderManager::GetMinZIndex(elements);
+        element->SetZIndex(minZ - 1);
+
+        std::cout << "Sent to back: " << element->GetIdentifier()
+                  << " new Z=" << element->GetZIndex() << std::endl;
+    }
+
     // Fixed Render method with proper context management
     void UltraCanvasBaseWindow::Render() {
-        std::cout << "=== UltraCanvasBaseWindow::Render() START ===" << std::endl;
-
         // Set up the render context for this window
         ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
 
         // Clear the background
         int width, height;
         GetSize(width, height);
-        std::cout << "Window size: " << width << "x" << height << std::endl;
 
         // Draw window background
-        if (config_.backgroundColor != Colors::Transparent) {
-            SetFillColor(config_.backgroundColor);
-            FillRect(Rect2D(0, 0, width, height));
-            std::cout << "Background cleared with color: R=" << (int)config_.backgroundColor.r
-                      << " G=" << (int)config_.backgroundColor.g
-                      << " B=" << (int)config_.backgroundColor.b << std::endl;
-        }
+        SetFillColor(config_.backgroundColor);
+        FillRect(Rect2D(0, 0, width, height));
 
-        // Render all elements with detailed debug output
-        std::cout << "Rendering " << elements.size() << " UI elements:" << std::endl;
+        // CRITICAL FIX: Auto-assign proper z-indexes for menu controls
+        UltraCanvasZOrderManager::AutoAssignZIndexes(elements);
 
-        int elementIndex = 0;
-        for (auto* element : elements) {
-            if (element) {
-                // Get element information
-                std::string elementId = element->GetIdentifier();
-                long elementIdNum = element->GetIdentifierID();
-                Rect2D bounds = element->GetBounds();
-                bool isVisible = element->IsVisible();
-                bool isEnabled = element->IsEnabled();
+        // CRITICAL FIX: Sort elements by z-order before rendering
+        auto sortedElements = UltraCanvasZOrderManager::GetElementsSortedByZOrder(elements);
 
-                // Get the actual class name using typeid
-                std::string className = typeid(*element).name();
-
-                // Clean up the mangled class name (basic demangling for common cases)
-                if (className.find("UltraCanvas") != std::string::npos) {
-                    size_t pos = className.find("UltraCanvas");
-                    if (pos != std::string::npos) {
-                        className = className.substr(pos);
-                    }
-                }
-
-                std::cout << "  [" << elementIndex << "] Class: " << className
-                          << ", ID: '" << elementId << "' (" << elementIdNum << ")"
-                          << ", Position: (" << bounds.x << "," << bounds.y << ")"
-                          << ", Size: " << bounds.width << "x" << bounds.height
-                          << ", Visible: " << (isVisible ? "true" : "false")
-                          << ", Enabled: " << (isEnabled ? "true" : "false") << std::endl;
-
-                if (isVisible) {
-                    std::cout << "    → Calling Render() on " << className << std::endl;
-
-                    // Track render time for performance debugging
-                    auto startTime = std::chrono::high_resolution_clock::now();
-
-                    element->Render();
-
-                    auto endTime = std::chrono::high_resolution_clock::now();
-                    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-
-                    std::cout << "    ✓ Rendered " << className << " in " << duration.count() << "μs" << std::endl;
-                } else {
-                    std::cout << "    ⊗ Skipped (not visible): " << className << std::endl;
-                }
-            } else {
-                std::cout << "  [" << elementIndex << "] ⚠ NULL ELEMENT POINTER!" << std::endl;
+        // Render all elements in correct depth order (back to front)
+        for (auto* element : sortedElements) {
+            if (element && element->IsVisible()) {
+                element->Render();
             }
-            elementIndex++;
         }
-
-        std::cout << "Total elements processed: " << elementIndex << std::endl;
 
         needsRedraw_ = false;
-        std::cout << "=== UltraCanvasBaseWindow::Render() COMPLETE ===" << std::endl;
     }
+
+//    void UltraCanvasBaseWindow::RenderDebug() {
+//        // Set up the render context for this window
+//        ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
+//
+//        // Clear the background
+//        int width, height;
+//        GetSize(width, height);
+//
+//        if (width <= 0 || height <= 0) {
+//            std::cout << "⚠ Invalid window size: " << width << "x" << height << std::endl;
+//            return;
+//        }
+//
+//        // Draw window background
+//        SetFillColor(config_.backgroundColor);
+//        FillRect(Rect2D(0, 0, width, height));
+//
+//        std::cout << "=== Z-ORDER RENDERING DEBUG ===" << std::endl;
+//        std::cout << "Window: " << width << "x" << height
+//                  << " Background: RGB(" << (int)config_.backgroundColor.r
+//                  << "," << (int)config_.backgroundColor.g
+//                  << "," << (int)config_.backgroundColor.b << ")" << std::endl;
+//
+//        // Auto-assign z-indexes first
+//        UltraCanvasZOrderManager::AutoAssignZIndexes(elements);
+//
+//        // Sort elements by z-order
+//        auto sortedElements = UltraCanvasZOrderManager::GetElementsSortedByZOrder(elements);
+//
+//        std::cout << "Total elements: " << elements.size()
+//                  << " → Sorted for rendering: " << sortedElements.size() << std::endl;
+//
+//        // Display z-order information
+//        for (size_t i = 0; i < sortedElements.size(); i++) {
+//            auto* element = sortedElements[i];
+//            if (element) {
+//                std::string className = typeid(*element).name();
+//
+//                // Clean up mangled class name
+//                if (className.find("UltraCanvas") != std::string::npos) {
+//                    size_t pos = className.find("UltraCanvas");
+//                    className = className.substr(pos);
+//                }
+//
+//                Rect2D bounds = element->GetBounds();
+//
+//                std::cout << "  [" << i << "] Z=" << element->GetZIndex()
+//                          << " Type: " << className
+//                          << " ID: '" << element->GetIdentifier() << "'"
+//                          << " Bounds: (" << bounds.x << "," << bounds.y
+//                          << " " << bounds.width << "x" << bounds.height << ")"
+//                          << " Visible: " << (element->IsVisible() ? "YES" : "NO")
+//                          << " Enabled: " << (element->IsEnabled() ? "YES" : "NO") << std::endl;
+//
+//                if (element->IsVisible()) {
+//                    auto startTime = std::chrono::high_resolution_clock::now();
+//
+//                    element->Render();
+//
+//                    auto endTime = std::chrono::high_resolution_clock::now();
+//                    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+//
+//                    std::cout << "    ✓ Rendered in " << duration.count() << "μs" << std::endl;
+//                } else {
+//                    std::cout << "    ⊗ Skipped (not visible)" << std::endl;
+//                }
+//            } else {
+//                std::cout << "  [" << i << "] ⚠ NULL ELEMENT POINTER!" << std::endl;
+//            }
+//        }
+//
+//        std::cout << "=== END Z-ORDER RENDERING ===" << std::endl;
+//        needsRedraw_ = false;
+//    }
 
 // Additional helper method for runtime type inspection (add to UltraCanvasBaseWindow class)
     std::string UltraCanvasBaseWindow::GetElementTypeName(UltraCanvasElement* element) {
@@ -246,133 +311,77 @@ namespace UltraCanvas {
         std::cout << "=== END Element Hierarchy ===" << std::endl;
     }
 
-// Minimal debug version (if you want less verbose output)
-    void UltraCanvasBaseWindow::RenderMinimalDebug() {
-        // Set up the render context for this window
-        ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
-
-        // Clear the background
-        int width, height;
-        GetSize(width, height);
-
-        // Draw window background
-        SetFillColor(config_.backgroundColor);
-        FillRect(Rect2D(0, 0, width, height));
-
-        // Render all elements with minimal debug
-        std::cout << "Rendering " << elements.size() << " elements: ";
-
-        for (size_t i = 0; i < elements.size(); i++) {
-            auto* element = elements[i];
-            if (element && element->IsVisible()) {
-                std::cout << GetElementTypeName(element) << "(" << element->GetIdentifier() << ") ";
-                element->Render();
-            }
-        }
-        std::cout << std::endl;
-
-        needsRedraw_ = false;
-    }
-
-//    void UltraCanvasBaseWindow::Render() {
-////        if (!IsVisible()) return;
-//
-//        // Set up the render context for this window
-//        ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
-//
-//        // Clear the background
-//        int width, height;
-//        GetSize(width, height);
-//
-//        // Draw window background
-//        SetFillColor(config_.backgroundColor);
-//        FillRect(Rect2D(0, 0, width, height));
-//
-//        // Render all elements
-//        for (auto* element : elements) {
-//            if (element && element->IsVisible()) {
-//                element->Render();
-//            }
-//        }
-//
-//        needsRedraw_ = false;
-//    }
 
     // Fixed OnEvent method with proper event dispatching
-    void UltraCanvasBaseWindow::OnEvent(const UCEvent &event) {
+    bool UltraCanvasBaseWindow::OnEvent(const UCEvent &event) {
+        bool eventHandled = false;
         if (event.type != UCEventType::MouseMove) {
-            std::cout << "UltraCanvasBaseWindow::OnEvent - type: " << (int) event.type
-                      << " elements: " << elements.size() << std::endl;
+            std::cout << "Window event: " << static_cast<int>(event.type)
+                      << " at (" << event.x << "," << event.y << ")" << std::endl;
         }
 
-        // Use the event dispatcher to handle events properly
-        bool handled = false;
+        // Handle mouse events with proper z-order hit testing
+        if (event.type == UCEventType::MouseMove ||
+            event.type == UCEventType::MouseDown ||
+            event.type == UCEventType::MouseUp) {
 
-        // Try to dispatch to UI elements first
-        for (auto *element: elements) {
-            if (element && element->IsVisible() && element->IsActive()) {
-                // Check if element contains the point (for mouse events)
-                bool elementShouldReceive = false;
+            Point2D mousePos(event.x, event.y);
 
-                if (event.type == UCEventType::MouseDown ||
-                    event.type == UCEventType::MouseUp ||
-                    event.type == UCEventType::MouseWheel ||
-                    event.type == UCEventType::MouseWheelHorizontal ||
-                    event.type == UCEventType::MouseMove) {
+            // Get elements at mouse position, sorted by z-order (highest first)
+            auto hitElements = UltraCanvasZOrderManager::GetElementsAtPoint(elements, mousePos);
 
-                    // For mouse events, check if the element contains the point
-                    elementShouldReceive = element->Contains(event.x, event.y);
-                    if (event.type != UCEventType::MouseMove) {
-                        std::cout << "  Element '" << element->GetIdentifier()
-                                  << "' contains point (" << event.x << "," << event.y << "): "
-                                  << elementShouldReceive << std::endl;
-                    }
-                } else if (event.type == UCEventType::KeyDown || event.type == UCEventType::KeyUp) {
-// For keyboard events, send to focused element
-                    elementShouldReceive = element->IsFocused();
-                    if (event.type != UCEventType::MouseMove) {
-                        std::cout << "  Element '" << element->GetIdentifier()
-                                  << "' is focused: " << elementShouldReceive << std::endl;
-                    }
+            if (event.type != UCEventType::MouseMove && !hitElements.empty()) {
+                std::cout << "Hit " << hitElements.size() << " elements at ("
+                          << mousePos.x << "," << mousePos.y << "):" << std::endl;
+                for (size_t i = 0; i < hitElements.size(); i++) {
+                    auto* element = hitElements[i];
+                    std::cout << "  [" << i << "] Z=" << element->GetZIndex()
+                              << " " << typeid(*element).name()
+                              << " '" << element->GetIdentifier() << "'" << std::endl;
                 }
+            }
 
-                if (elementShouldReceive) {
-                    if (event.type != UCEventType::MouseMove) {
-                        std::cout << "  → Forwarding event to element '"
-                                  << element->GetIdentifier() << "'" << std::endl;
-                    }
-                    element->OnEvent(event);
-                    handled = true;
-
-// For mouse down events, we might want to stop after first hit
-                    if (event.type == UCEventType::MouseDown) {
-                        break;
+            // Send event to elements in z-order (topmost first)
+            for (auto* element : hitElements) {
+                if (element && element->IsVisible() && element->IsEnabled()) {
+                    eventHandled = element->OnEvent(event);
+                    if (eventHandled) {
+                        if (event.type != UCEventType::MouseMove) {
+                            std::cout << "Event handled by: " << typeid(*element).name()
+                                      << " Z=" << element->GetZIndex() << std::endl;
+                        }
+                        break; // Event consumed by topmost element
                     }
                 }
             }
-        }
 
-// Handle window-specific events if not handled by elements
-        if (!handled) {
-            std::cout << "Event not handled by any element, processing as window event" << std::endl;
-            switch (event.type) {
-                case UCEventType::WindowClose:
-                    if (onWindowClosing) {
-                        onWindowClosing();
-                    }
-                    break;
+            // If no element handled the event, it goes to the window
+//            if (!eventHandled) {
+//                onEvent(event);
+//            }
 
-                case UCEventType::WindowResize:
-                    if (onWindowResized) {
-                        onWindowResized(event.width, event.height);
-                    }
-                    SetNeedsRedraw(true);
-                    break;
-
-                default:
-                    break;
+        } else {
+            // For non-mouse events, send to all visible/enabled elements
+            for (auto* element : elements) {
+                if (element && element->IsVisible() && element->IsEnabled()) {
+                    eventHandled = element->OnEvent(event);
+                    if (eventHandled) break;
+                }
             }
+
+            // Also send to window event handler
+//            if (onEvent) {
+//                onEvent(event);
+//            }
         }
+
+        // Force redraw if this was an interactive event
+        if (event.type == UCEventType::MouseDown ||
+            event.type == UCEventType::MouseUp ||
+            event.type == UCEventType::KeyDown) {
+            SetNeedsRedraw(true);
+        }
+        return eventHandled;
     }
 
     // UltraCanvasWindow

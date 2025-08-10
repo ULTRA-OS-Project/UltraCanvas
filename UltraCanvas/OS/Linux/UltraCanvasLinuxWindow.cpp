@@ -540,14 +540,14 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLinuxWindow::OnEvent(const UCEvent& event) {
+    bool UltraCanvasLinuxWindow::OnEvent(const UCEvent& event) {
         ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
 
         // Handle window-level events first
         switch (event.type) {
             case UCEventType::WindowClose:
                 Close();
-                return;
+                return true;
 
             case UCEventType::WindowResize:
                 // Resize is handled in HandleXEvent
@@ -569,9 +569,10 @@ namespace UltraCanvas {
 
             default:
                 // Pass other events to base class
-                UltraCanvasBaseWindow::OnEvent(event);
+                return UltraCanvasBaseWindow::OnEvent(event);
                 break;
         }
+        return false;
     }
 
 // ===== INTERNAL EVENT HANDLERS =====

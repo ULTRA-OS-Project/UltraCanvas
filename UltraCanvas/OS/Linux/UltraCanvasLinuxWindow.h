@@ -71,7 +71,7 @@ namespace UltraCanvas {
         virtual void SwapBuffers() override;
         virtual void* GetNativeHandle() const override;
 //        virtual void ProcessEvents() override;
-        virtual void OnEvent(const UCEvent&) override;
+        virtual bool OnEvent(const UCEvent&) override;
 
 
         // ===== LINUX-SPECIFIC METHODS =====

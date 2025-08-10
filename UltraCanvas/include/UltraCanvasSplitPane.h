@@ -263,12 +263,12 @@ public:
     }
     
     // ===== EVENT HANDLING =====
-    void OnEvent(const UCEvent& event) override {
+    bool OnEvent(const UCEvent& event) override {
         UltraCanvasElement::OnEvent(event);
         
         if (!resizable) {
             ForwardEventToPanes(event);
-            return;
+            return false;;
         }
         
         switch (event.type) {
@@ -301,6 +301,7 @@ public:
         if (!isDragging && !GetSplitterBounds().Contains(event.x, event.y)) {
             ForwardEventToPanes(event);
         }
+        return false;
     }
     
     // ===== UTILITY =====

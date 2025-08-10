@@ -217,18 +217,18 @@ namespace UltraCanvas {
         }
 
         // ===== EVENT HANDLING =====
-        void OnEvent(const UCEvent& event) override {
-            if (!IsActive() || !IsVisible()) return;
+        bool OnEvent(const UCEvent& event) override {
+            if (!IsActive() || !IsVisible()) return false;
 
             // Handle scrollbar interactions first
             if (HandleScrollbarEvents(event)) {
-                return;
+                return true;
             }
 
             // Handle scroll wheel events
             if (event.type == UCEventType::MouseWheel) {
                 if (HandleScrollWheel(event)) {
-                    return;
+                    return true;
                 }
             }
 
@@ -237,7 +237,7 @@ namespace UltraCanvas {
                 event.type == UCEventType::MouseUp ||
                 event.type == UCEventType::MouseMove) {
                 if (HandleMouseClick(event)) {
-                    return;
+                    return true;
                 }
             }
 
@@ -245,6 +245,7 @@ namespace UltraCanvas {
             if (IsPointInContentArea(Point2D(event.x, event.y))) {
                 ForwardEventToChildren(event);
             }
+            return false;
         }
 
         // ===== EVENT CALLBACKS =====

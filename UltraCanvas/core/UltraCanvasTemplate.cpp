@@ -329,8 +329,8 @@ void UltraCanvasTemplate::Render() {
 }
 
 // ===== EVENT HANDLING =====
-void UltraCanvasTemplate::OnEvent(const UCEvent& event) {
-    if (!IsActive() || !IsVisible()) return;
+bool UltraCanvasTemplate::OnEvent(const UCEvent& event) {
+    if (!IsActive() || !IsVisible()) return false;
     
     // Handle drag functionality first
     if (dragHandle.enabled) {
@@ -363,6 +363,7 @@ void UltraCanvasTemplate::OnEvent(const UCEvent& event) {
             default:
                 break;
         }
+        return false;
     }
     
     // Pass event to container for child handling

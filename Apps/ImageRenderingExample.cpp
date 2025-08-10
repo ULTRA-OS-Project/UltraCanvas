@@ -415,13 +415,9 @@ public:
         std::cout << "*** ImageDemoWindow::Render() complete ***" << std::endl;
     }
 
-    virtual void OnEvent(const UCEvent& event) override {
+    virtual bool OnEvent(const UCEvent& event) override {
         std::cout << "*** ImageDemoWindow::OnEvent() called, type: " << (int)event.type
                   << " pos: (" << event.x << "," << event.y << ") ***" << std::endl;
-
-        // Forward event to base class for UI element handling
-        std::cout << "*** Forwarding event to base class for UI handling ***" << std::endl;
-        UltraCanvasWindow::OnEvent(event);
 
         // Handle keyboard shortcuts
         if (event.type == UCEventType::KeyDown) {
@@ -435,17 +431,17 @@ public:
                         imageDropdown->SetSelectedIndex(currentImageIndex);
                     }
                     SetNeedsRedraw(true);
-                    break;
+                    return true;
 
                 case UCKeys::Escape:
                     // Quit application
                     Close();
-                    break;
+                    return true;
 
                 case UCKeys::F1:
                     // Show keyboard shortcuts
                     ShowShortcutsDialog();
-                    break;
+                    return true;
 
                 default:
                     break;
@@ -454,9 +450,14 @@ public:
             // Check for Alt+F4
             if (event.alt && event.virtualKey == UCKeys::F4) {
                 Close();
+                return true;
             }
+            return false;
         }
 
+        // Forward event to base class for UI element handling
+        std::cout << "*** Forwarding event to base class for UI handling ***" << std::endl;
+        return UltraCanvasWindow::OnEvent(event);
         std::cout << "*** Event handling complete ***" << std::endl;
     }
 };

@@ -193,7 +193,7 @@ public:
     }
     
     // ===== EVENT HANDLING =====
-    void OnEvent(const UCEvent& event) override {
+    bool OnEvent(const UCEvent& event) override {
         UltraCanvasElement::OnEvent(event);
         
         switch (event.type) {
@@ -217,6 +217,7 @@ public:
                 HandleMouseWheel(event);
                 break;
         }
+        return false;
     }
     
 private:

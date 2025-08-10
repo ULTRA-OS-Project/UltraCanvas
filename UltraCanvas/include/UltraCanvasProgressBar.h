@@ -297,7 +297,7 @@ public:
     }
     
     // ===== EVENT HANDLING =====
-    void OnEvent(const UCEvent& event) override {
+    bool OnEvent(const UCEvent& event) override {
         UltraCanvasElement::OnEvent(event);
         
         switch (event.type) {
@@ -309,6 +309,7 @@ public:
                 HandleKeyDown(event);
                 break;
         }
+        return false;
     }
     
     // ===== UTILITY =====

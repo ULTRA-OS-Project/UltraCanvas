@@ -369,7 +369,7 @@ public:
     void Render() override;
     
     // ===== EVENT HANDLING =====
-    void OnEvent(const UCEvent& event) override;
+    bool OnEvent(const UCEvent& event) override;
     
     // ===== DRAG FUNCTIONALITY =====
     bool IsDraggable() const { return dragHandle.enabled; }

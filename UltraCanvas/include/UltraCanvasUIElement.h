@@ -166,7 +166,7 @@ namespace UltraCanvas {
         std::chrono::steady_clock::time_point creationTime;
 
         // Event handling
-        std::function<void(const UCEvent&)> eventCallback;
+        std::function<bool(const UCEvent&)> eventCallback;
 
     protected:
         UltraCanvasBaseWindow* window = nullptr;
@@ -228,10 +228,11 @@ namespace UltraCanvas {
 
         // ===== CORE VIRTUAL METHODS =====
         virtual void Render() {}
-        virtual void OnEvent(const UCEvent& event) {
+        virtual bool OnEvent(const UCEvent& event) {
             if (eventCallback) {
-                eventCallback(event);
+                return eventCallback(event);
             }
+            return false;
         }
         virtual void OnChildAdded(UltraCanvasElement* child) {}
         virtual void OnChildRemoved(UltraCanvasElement* child) {}
@@ -290,7 +291,7 @@ namespace UltraCanvas {
         }
 
         // ===== EVENT HANDLING =====
-        void SetEventCallback(std::function<void(const UCEvent&)> callback) {
+        void SetEventCallback(std::function<bool(const UCEvent&)> callback) {
             eventCallback = callback;
         }
 

@@ -72,8 +72,7 @@ namespace UltraCanvas {
             default:
                 // Dispatch other events to focused element
                 if (focusedElement) {
-                    focusedElement->OnEvent(event);
-                    handled = true;
+                    handled = focusedElement->OnEvent(event);
                 }
                 break;
         }

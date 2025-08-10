@@ -91,8 +91,11 @@ namespace UltraCanvas {
         virtual void SetFullscreen(bool fullscreen) = 0;
         virtual void SetResizable(bool resizable) = 0;
 
+        void BringElementToFront(UltraCanvasElement* element);
+        void SendElementToBack(UltraCanvasElement* element);
+
         // Rendering and events
-        virtual void OnEvent(const UCEvent& event);
+        virtual bool OnEvent(const UCEvent& event);
         virtual void* GetNativeHandle() const = 0;
         virtual void SwapBuffers() = 0;
         virtual void Render();

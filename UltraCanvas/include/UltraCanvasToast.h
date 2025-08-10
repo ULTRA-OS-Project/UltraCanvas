@@ -142,7 +142,7 @@ namespace UltraCanvas {
 
         // ===== OVERRIDES =====
         void Render() override;
-        void OnEvent(const UCEvent& event) override;
+        bool OnEvent(const UCEvent& event) override;
         void Update(float deltaTime);
 
         // ===== PROPERTIES =====

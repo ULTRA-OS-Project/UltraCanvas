@@ -516,7 +516,7 @@ private:
     Point2D dragStartPos;
     
 public:
-    void OnEvent(const UCEvent& event) override {
+    bool OnEvent(const UCEvent& event) override {
         switch (event.type) {
             case UCEventType::MouseDown:
                 if (Contains(event.x, event.y)) {
@@ -547,7 +547,7 @@ public:
 // For drop targets:
 class DropZone : public UltraCanvasElement {
 public:
-    void OnEvent(const UCEvent& event) override {
+    bool OnEvent(const UCEvent& event) override {
         switch (event.type) {
             case UCEventType::DragOver:
                 // Visual feedback for drag over

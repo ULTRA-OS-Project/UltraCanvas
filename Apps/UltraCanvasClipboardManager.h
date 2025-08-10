@@ -93,7 +93,7 @@ public:
     void RenderContent();
     void DrawTypeIcon();
     void RenderActionButtons();
-    void OnEvent(const UCEvent& event) override;
+    bool OnEvent(const UCEvent& event) override;
     
     void SetSelected(bool selected) { isSelected = selected; }
     bool IsSelected() const { return isSelected; }
