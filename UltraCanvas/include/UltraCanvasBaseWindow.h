@@ -99,6 +99,7 @@ namespace UltraCanvas {
         virtual void* GetNativeHandle() const = 0;
         virtual void SwapBuffers() = 0;
         virtual void Render();
+        virtual void RenderCustomContent()  {};
 
         bool NeedsRedraw() const { return needsRedraw_; }
         void SetNeedsRedraw(bool val) { needsRedraw_ = val;}

@@ -69,7 +69,7 @@ public:
             imagesMenu->Hide();
 
             // Position file menu below the File button
-            fileMenu->SetPosition(10, 32);
+            fileMenu->SetPosition(10, 26);
             fileMenu->Show();
 
             // Debug: Check state after Show()
@@ -272,7 +272,7 @@ public:
             MenuItemData fileMenuItem = MenuItemData::Action("File", [this]() {
                 ToggleFileMenu();
             });
-            fileMenuItem.iconPath = "./assets/icons/file.png";
+            //fileMenuItem.iconPath = "./assets/icons/file.png";
             mainMenuBar->AddItem(fileMenuItem);
         }
 
@@ -280,7 +280,7 @@ public:
             MenuItemData helpMenuItem = MenuItemData::Action("Help", [this]() {
                 ToggleHelpMenu();
             });
-            helpMenuItem.iconPath = "./assets/icons/help.png";
+            //helpMenuItem.iconPath = "./assets/icons/help.png";
             mainMenuBar->AddItem(helpMenuItem);
         }
 
@@ -350,13 +350,7 @@ public:
         std::cout << "UI elements created and added to window successfully!" << std::endl;
     }
 
-    virtual void Render() override {
-        std::cout << "*** ImageDemoWindow::Render() called ***" << std::endl;
-
-        // Call base class render first (this handles UI elements)
-        UltraCanvasWindow::Render();
-
-        // Now add custom rendering on top
+    virtual void RenderCustomContent() override {
         auto context = GetRenderContext();
         if (!context) return;
 
@@ -411,8 +405,6 @@ public:
                 context->DrawText("Press SPACE to cycle, I to toggle info", Point2D(60, 460));
             }
         }
-
-        std::cout << "*** ImageDemoWindow::Render() complete ***" << std::endl;
     }
 
     virtual bool OnEvent(const UCEvent& event) override {

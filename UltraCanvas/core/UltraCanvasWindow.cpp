@@ -136,6 +136,8 @@ namespace UltraCanvas {
         SetFillColor(config_.backgroundColor);
         FillRect(Rect2D(0, 0, width, height));
 
+        RenderCustomContent();
+
         // CRITICAL FIX: Auto-assign proper z-indexes for menu controls
         UltraCanvasZOrderManager::AutoAssignZIndexes(elements);
 
