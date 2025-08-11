@@ -137,9 +137,9 @@ public:
 
                         // Add File submenu with Images submenu and Exit
                 .AddSubmenu("File", {
-                        MenuItemData::Submenu("Images", imagesMenuItems),
+                        MenuItemData::Submenu("Images", "./assets/icons/images.png", imagesMenuItems),
                         MenuItemData::Separator(),
-                        MenuItemData::Action("Exit", [this]() { Close(); })
+                        MenuItemData::Action("Exit", "./assets/icons/exit.png",  [this]() { Close(); })
                 })
 
                         // Add Help submenu
@@ -162,7 +162,7 @@ public:
         std::cout << "=== Creating Cross-Platform UI Elements ===" << std::endl;
 
         // Create dropdown with proper styling and event handling (positioned below menu bar)
-        imageDropdown = DropdownBuilder("images_dropdown", 300, 480, 180, 30)
+        imageDropdown = DropdownBuilder("images_dropdown", 700, 70, 180, 30)
                 .AddItem("Sample one", "0")
                 .AddItem("Sample two", "1")
                 .AddItem("Sample three", "2")

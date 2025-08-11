@@ -359,8 +359,10 @@ namespace UltraCanvas {
                 SetTextColor(textColor);
                 SetFont(style.fontFamily, style.fontSize);
 
+                Point2D textSize = GetRenderContext()->MeasureText(displayText);
+                float fontHeight = textSize.y;
                 float textX = buttonRect.x + style.paddingLeft;
-                float textY = buttonRect.y - 2 + (buttonRect.height - style.fontSize) / 2;
+                float textY = buttonRect.y + (buttonRect.height - fontHeight) / 2;
 
                 DrawText(displayText, Point2D(textX, textY));
             }
@@ -379,8 +381,8 @@ namespace UltraCanvas {
         void RenderDropdownArrow(const Rect2D& buttonRect, const Color& color) {
             SetFillColor(color);
 
-            float arrowX = buttonRect.x + buttonRect.width - style.paddingRight + 4;
-            float arrowY = buttonRect.y + (buttonRect.height - style.arrowSize) / 2;
+            float arrowX = buttonRect.x + buttonRect.width - (style.arrowSize + style.arrowSize);
+            float arrowY = buttonRect.y + (buttonRect.height - style.arrowSize) / 2 + 2;
 
             // Draw triangle pointing down using lines (simpler than polygon)
             float arrowCenterX = arrowX + style.arrowSize / 2;
@@ -464,7 +466,10 @@ namespace UltraCanvas {
                 SetTextColor(textColor);
                 SetFont("Arial", 12);
 
-                float textY = itemRect.y + (style.itemHeight - 12) / 2 - 2;
+                Point2D textSize = GetRenderContext()->MeasureText(item.text);
+                float fontHeight = textSize.y;
+
+                float textY = itemRect.y + (style.itemHeight - fontHeight) / 2;
                 DrawText(item.text, Point2D(itemRect.x + 8, textY));
 
                 std::cout << "RenderDropdownItem: drew text '" << item.text << "' at "

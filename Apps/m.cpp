@@ -108,7 +108,7 @@ public:
     }
 
     // Handle framework events using ONLY cross-platform event types
-    void OnEvent(const UCEvent& event) override {
+    bool OnEvent(const UCEvent& event) override {
         // Only log important events to reduce noise
         if (event.type == UCEventType::MouseDown || event.type == UCEventType::KeyDown) {
             std::cout << "CROSS-PLATFORM EVENT: type=" << static_cast<int>(event.type)

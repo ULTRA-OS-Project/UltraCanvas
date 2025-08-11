@@ -81,10 +81,12 @@ namespace UltraCanvas {
 
         // Factory methods
         static MenuItemData Action(const std::string& label, std::function<void()> callback);
+        static MenuItemData Action(const std::string& label, const std::string& iconPath, std::function<void()> callback);
         static MenuItemData Separator();
         static MenuItemData Checkbox(const std::string& label, bool checked, std::function<void(bool)> callback);
         static MenuItemData Radio(const std::string& label, int group, std::function<void()> callback);
         static MenuItemData Submenu(const std::string& label, const std::vector<MenuItemData>& items);
+        static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const std::vector<MenuItemData>& items);
         static MenuItemData Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback);
     };
 
@@ -110,7 +112,7 @@ namespace UltraCanvas {
         // Dimensions
         float itemHeight = 28.0f;
         float iconSize = 16.0f;
-        float paddingLeft = 8.0f;
+        float paddingLeft = 4.0f;
         float paddingRight = 8.0f;
         float paddingTop = 4.0f;
         float paddingBottom = 4.0f;
@@ -510,7 +512,7 @@ namespace UltraCanvas {
         style.paddingRight = 8.0f;
 
         style.iconSize = 16.0f;
-        style.iconSpacing = 8.0f;
+        style.iconSpacing = 6.0f;
         style.shortcutSpacing = 20.0f;
         style.submenuOffset = 2.0f;
         style.separatorHeight = 1.0f;
@@ -553,6 +555,15 @@ namespace UltraCanvas {
         return item;
     }
 
+    inline MenuItemData MenuItemData::Action(const std::string& label_, const std::string& iconPath_, std::function<void()> callback_) {
+        MenuItemData item;
+        item.type = MenuItemType::Action;
+        item.label = label_;
+        item.iconPath = iconPath_;
+        item.onClick = callback_;
+        return item;
+    }
+
     inline MenuItemData MenuItemData::Separator() {
         MenuItemData item;
         item.type = MenuItemType::Separator;
@@ -581,6 +592,15 @@ namespace UltraCanvas {
         MenuItemData item;
         item.type = MenuItemType::Submenu;
         item.label = label;
+        item.subItems = items;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, const std::string& iconPath, const std::vector<MenuItemData>& items) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.iconPath = iconPath;
         item.subItems = items;
         return item;
     }
