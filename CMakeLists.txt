@@ -107,7 +107,9 @@ set(ULTRACANVAS_SOURCES
 
 # ✅ FIXED: Corrected source file extension and added missing files
 set(APP_SOURCES
-        Apps/ImageRenderingExample.cpp
+        Apps/main.cpp
+        Apps/UltraCanvasClipboardManager.cpp
+        #Apps/ImageRenderingExample.cpp
         # Add your source files here
 )
 

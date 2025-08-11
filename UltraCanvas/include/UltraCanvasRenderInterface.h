@@ -596,6 +596,11 @@ inline void SetTextAlign(TextAlign align) {
     if (ctx) ctx->SetTextAlign(align);
 }
 
+inline void SetTextStyle(const TextStyle& style) {
+    IRenderContext* ctx = GetRenderContext();
+    if (ctx) ctx->SetTextStyle(style);
+}
+
 // State management convenience functions
 inline void PushRenderState() {
     IRenderContext* ctx = GetRenderContext();

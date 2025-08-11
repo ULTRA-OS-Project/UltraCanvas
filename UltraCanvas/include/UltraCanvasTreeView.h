@@ -981,10 +981,10 @@ private:
 };
 
 // ===== FACTORY FUNCTIONS =====
-std::shared_ptr<UltraCanvasTreeView> CreateTreeView(
-    const std::string& identifier, long id, long x, long y, long w, long h) {
-    return std::make_shared<UltraCanvasTreeView>(identifier, id, x, y, w, h);
-}
+//std::shared_ptr<UltraCanvasTreeView> CreateTreeView(
+//    const std::string& identifier, long id, long x, long y, long w, long h) {
+//    return std::make_shared<UltraCanvasTreeView>(identifier, id, x, y, w, h);
+//}
 
 // ===== CONVENIENCE BUILDER CLASS =====
 class TreeViewBuilder {
@@ -993,7 +993,8 @@ private:
     
 public:
     TreeViewBuilder(const std::string& identifier, long id, long x, long y, long w, long h) {
-        treeView = CreateTreeView(identifier, id, x, y, w, h);
+        treeView = std::make_shared<UltraCanvasTreeView>(identifier, id, x, y, w, h);
+        //treeView = CreateTreeView(identifier, id, x, y, w, h);
     }
     
     TreeViewBuilder& SetRowHeight(int height) {
