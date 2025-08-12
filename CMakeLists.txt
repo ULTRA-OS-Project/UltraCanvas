@@ -98,6 +98,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasWindow.cpp
         UltraCanvas/core/UltraCanvasMenu.cpp
         UltraCanvas/core/UltraCanvasUIElement.cpp
+        UltraCanvas/core/UltraCanvasTextInput.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxApplication.cpp

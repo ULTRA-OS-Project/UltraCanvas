@@ -335,6 +335,7 @@ namespace UltraCanvas {
         if (ucEvent.type != UCEventType::Unknown) {
             PushEvent(ucEvent);
         }
+
     }
 
     void UltraCanvasLinuxApplication::DispatchEvent(const UCEvent& event) {
@@ -434,11 +435,12 @@ namespace UltraCanvas {
                 event.virtualKey = ConvertXKeyToUCKey(XLookupKeysym(const_cast<XKeyEvent*>(&xEvent.xkey), 0));
 
                 // Get character representation
-                char buffer[8];
+                char buffer[32];
                 KeySym keysym;
                 int len = XLookupString(const_cast<XKeyEvent*>(&xEvent.xkey), buffer, sizeof(buffer), &keysym, nullptr);
                 if (len > 0) {
                     event.character = buffer[0];
+                    event.text = std::string(buffer, len);
                 }
 
                 // Modifier keys
