@@ -59,7 +59,9 @@ namespace UltraCanvas {
         explicit UltraCanvasWindow(const WindowConfig &config) :
             UltraCanvasNativeWindow()
         {
-            Create(config);
+            if (!Create(config)) {
+                throw std::runtime_error("UltraCanvasWindow Create failed");
+            }
         }
 
         virtual bool Create(const WindowConfig& config) override;
