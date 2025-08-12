@@ -185,13 +185,25 @@ namespace UltraCanvas {
                          Point2D(bounds.x, bounds.y), style.borderColor);
             }
 
-            // Draw text
+            // Draw text (FIXED CENTERING)
             if (!text.empty()) {
-                Point2D textPos(
-                        bounds.x + bounds.width / 2,
-                        bounds.y + bounds.height / 2
-                );
-                DrawTextWithBackground(text, textPos, textColor);
+                Point2D textPos = CalculateCenteredTextPosition(text, bounds);
+
+                // Alternative: Use TextBaseline::Middle for true vertical centering
+                // Set text style with middle baseline
+                TextStyle centeredTextStyle;
+                centeredTextStyle.fontFamily = "Arial";
+                centeredTextStyle.fontSize = style.fontSize;
+                centeredTextStyle.textColor = textColor;
+                centeredTextStyle.alignment = TextAlign::Center;
+                centeredTextStyle.baseline = TextBaseline::Middle;  // This ensures vertical centering
+
+                // Method 1: Manual positioning (recommended)
+                DrawText(text, textPos);
+
+                // Method 2: Using TextStyle with baseline (alternative)
+                // SetTextStyle(centeredTextStyle);
+                // DrawText(text, Point2D(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
             }
 
             // Draw focus indicator

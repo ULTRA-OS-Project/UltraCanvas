@@ -15,6 +15,7 @@
 #include <regex>
 #include <memory>
 #include <chrono>
+#include <unordered_map>
 
 namespace UltraCanvas {
 
@@ -338,7 +339,11 @@ private:
     bool showValidationState;
     bool validateOnChange;
     bool validateOnBlur;
-    
+
+    mutable std::unordered_map<std::string, float> textWidthCache;
+    mutable std::string lastMeasuredFont;
+    mutable float lastMeasuredSize;
+
     // ===== FORMATTING =====
     TextFormatter formatter;
     std::string displayText;  // Formatted version of text
@@ -486,12 +491,22 @@ private:
     void SaveState();
     
     void UpdateScrollOffset();
-    
-    float GetCaretXPosition() {
-        // Simplified - would need proper text measurement
-        return style.paddingLeft + caretPosition * 8.0f; // Assume 8px per character
-    }
-    
+
+    int GetCaretLineNumber() const;
+
+    /**
+     * Get the Y position for a specific line number
+     */
+    float GetLineYPosition(int lineNumber) const;
+
+    /**
+     * Get caret X position within current line
+     */
+    float GetCaretXInLine() const;
+
+    float GetCaretXPosition();
+    float GetCaretYPosition();
+
     Rect2D GetTextArea() const;
     
     Color GetBackgroundColor() const {

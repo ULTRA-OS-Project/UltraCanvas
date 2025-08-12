@@ -657,6 +657,29 @@ inline float GetTextHeight(const std::string& text) {
     return ctx ? ctx->GetTextHeight(text) : 0.0f;
 }
 
+inline Point2D CalculateCenteredTextPosition(const std::string& text, const Rect2D& bounds) {
+    IRenderContext* ctx = GetRenderContext();
+    if (ctx) {
+        Point2D p = ctx->MeasureText(text);
+        float textWidth = p.x;
+        float textHeight = p.y;
+
+        return Point2D(
+                bounds.x + (bounds.width - textWidth) / 2,     // Center horizontally
+                bounds.y + (bounds.height - textHeight) / 2   // Center vertically (baseline adjusted)
+        );
+    } else {
+        return Point2D(0,0);
+    }
+}
+
+// ===== ALTERNATIVE: USE DRAWTEXT WITH RECTANGLE =====
+inline void DrawCenteredText(const std::string& text, const Rect2D& bounds) {
+    // Set text style for centering
+    // Draw text in the center of the rectangle
+    Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    DrawText(text, center);
+}
 
 // ===== ENHANCED RENDER STATE SCOPED GUARD =====
 class RenderStateGuard {

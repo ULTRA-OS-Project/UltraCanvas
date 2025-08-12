@@ -37,10 +37,13 @@ namespace UltraCanvas {
             , caretBlinkTimer(0.0f)
             , scrollOffset(0.0f)
             , maxScrollOffset(0.0f)
+            , lastMeasuredSize(0.0f)
             , maxUndoStates(50)
             , isDragging(false)
             , autoCompleteMode(AutoComplete::Off)
             , showAutoComplete(false) {
+        textWidthCache.clear();
+        lastMeasuredFont.clear();
     }
 
     void UltraCanvasTextInput::SetText(const std::string &newText) {
@@ -241,27 +244,17 @@ namespace UltraCanvas {
 
         // Draw background
         SetFillColor(backgroundColor);
-        if (style.borderRadius > 0) {
-            // Would need rounded rectangle implementation
-            DrawRect(bounds);
-        } else {
-            DrawRect(bounds);
-        }
+        DrawRect(bounds);
 
         // Draw border
         SetStrokeColor(borderColor);
         SetStrokeWidth(style.borderWidth);
         DrawRect(bounds);
 
-        // Draw shadow if enabled
-        if (style.showShadow) {
-            DrawShadow(bounds);
-        }
-
         // Get text area (excluding padding)
         Rect2D textArea = GetTextArea();
 
-        // Set clipping for text area
+        // Set clipping for text area ONLY
         SetClipRect(textArea);
 
         // Draw text content
@@ -276,13 +269,13 @@ namespace UltraCanvas {
             RenderSelection(textArea);
         }
 
-        // Draw caret
+        // CRITICAL: Clear clipping BEFORE drawing caret
+        ClearClipRect();
+
+        // Draw caret WITHOUT clipping so it's always visible
         if (IsFocused() && isCaretVisible && !HasSelection()) {
             RenderCaret(textArea);
         }
-
-        // Clear clipping
-        ClearClipRect();
 
         // Draw validation feedback
         if (showValidationState && lastValidationResult.state != ValidationState::NoValidation) {
@@ -334,20 +327,62 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::UpdateScrollOffset() {
-        // Simple horizontal scrolling for single-line inputs
-        if (inputType == TextInputType::Multiline) return;
-
         Rect2D textArea = GetTextArea();
         float caretX = GetCaretXPosition();
 
-        // Scroll if caret is outside visible area
-        if (caretX < textArea.x + scrollOffset) {
-            scrollOffset = caretX - textArea.x;
-        } else if (caretX > textArea.x + textArea.width + scrollOffset) {
-            scrollOffset = caretX - textArea.x - textArea.width;
+        // Add some padding around caret for better UX
+        float caretPadding = 10.0f;
+
+        // Horizontal scrolling for both single-line and multiline
+        if (caretX < scrollOffset + caretPadding) {
+            scrollOffset = std::max(0.0f, caretX - caretPadding);
+        } else if (caretX > scrollOffset + textArea.width - caretPadding) {
+            scrollOffset = caretX - textArea.width + caretPadding;
         }
 
+        // Ensure we don't scroll past the beginning
         scrollOffset = std::max(0.0f, scrollOffset);
+
+        // For multiline, check current line width
+        if (inputType == TextInputType::Multiline) {
+            std::string displayText = GetDisplayText();
+            size_t lineStart = caretPosition;
+            while (lineStart > 0 && displayText[lineStart - 1] != '\n') {
+                lineStart--;
+            }
+
+            size_t lineEnd = displayText.find('\n', lineStart);
+            if (lineEnd == std::string::npos) {
+                lineEnd = displayText.length();
+            }
+
+            std::string currentLine = displayText.substr(lineStart, lineEnd - lineStart);
+
+            // Set text style for measurement
+            TextStyle textStyle;
+            textStyle.fontFamily = style.fontFamily;
+            textStyle.fontSize = style.fontSize;
+            textStyle.fontWeight = style.fontWeight;
+            SetTextStyle(textStyle);
+
+            float lineWidth = GetTextWidth(currentLine);
+            float maxScroll = std::max(0.0f, lineWidth - textArea.width + style.paddingRight);
+            scrollOffset = std::min(scrollOffset, maxScroll);
+        } else {
+            // Single line: check against total text width
+            std::string displayText = GetDisplayText();
+
+            // Set text style for measurement
+            TextStyle textStyle;
+            textStyle.fontFamily = style.fontFamily;
+            textStyle.fontSize = style.fontSize;
+            textStyle.fontWeight = style.fontWeight;
+            SetTextStyle(textStyle);
+
+            float totalTextWidth = GetTextWidth(displayText);
+            float maxScroll = std::max(0.0f, totalTextWidth - textArea.width + style.paddingRight);
+            scrollOffset = std::min(scrollOffset, maxScroll);
+        }
     }
 
     Rect2D UltraCanvasTextInput::GetTextArea() const {
@@ -361,7 +396,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::RenderText(const Rect2D &area, const Color &color) {
-        std::string renderText = passwordMode ? std::string(text.length(), '*') : displayText;
+        std::string renderText = passwordMode ?
+                                 std::string(text.length(), '*') : GetDisplayText();
+
+        if (renderText.empty()) return;
 
         // Set text style
         TextStyle textStyle;
@@ -372,11 +410,17 @@ namespace UltraCanvas {
         textStyle.alignment = style.textAlignment;
         SetTextStyle(textStyle);
 
-        Point2D textPos(area.x - scrollOffset, area.y);
-
         if (inputType == TextInputType::Multiline) {
+            // Start at baseline position
+            Point2D textPos(area.x - scrollOffset, area.y + (style.fontSize * 0.8f));
             RenderMultilineText(area, renderText, textPos);
         } else {
+            // Match the baseline calculation used in GetCaretYPosition
+            float lineHeight = style.fontSize * 1.2f;
+            float centeredY = area.y + (area.height - lineHeight) / 2.0f;
+            float baselineY = centeredY + (style.fontSize * 0.8f);
+
+            Point2D textPos(area.x - scrollOffset, baselineY);
             DrawText(renderText, textPos);
         }
     }
@@ -394,41 +438,95 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::RenderSelection(const Rect2D &area) {
+        if (!HasSelection()) return;
+
         std::string displayText = GetDisplayText();
-        float charWidth = GetAverageCharacterWidth();
 
-        float selStartX = area.x + selectionStart * charWidth;
-        float selEndX = area.x + selectionEnd * charWidth;
+        // Set proper text style for measurement
+        TextStyle textStyle;
+        textStyle.fontFamily = style.fontFamily;
+        textStyle.fontSize = style.fontSize;
+        textStyle.fontWeight = style.fontWeight;
+        SetTextStyle(textStyle);
 
-        Rect2D selectionRect(selStartX, area.y, selEndX - selStartX, area.height);
-        SetFillColor(style.selectionColor);
-        DrawRect(selectionRect);
+        // Get text segments for accurate measurement
+        std::string textBeforeSelection = displayText.substr(0, selectionStart);
+        std::string selectedText = displayText.substr(selectionStart, selectionEnd - selectionStart);
+
+        float selStartX = area.x + GetTextWidth(textBeforeSelection);
+        float selWidth = GetTextWidth(selectedText);
+
+        // Calculate proper selection height based on font metrics
+        float ascender = style.fontSize * 0.8f;
+        float descender = style.fontSize * 0.2f;
+        float selectionHeight = ascender + descender;
+        float selectionY = area.y + (area.height - selectionHeight) / 2.0f;
+
+        // Ensure selection is within visible area
+        float visibleStartX = std::max(selStartX, area.x);
+        float visibleEndX = std::min(selStartX + selWidth, area.x + area.width);
+
+        if (visibleEndX > visibleStartX) {
+            Rect2D selectionRect(visibleStartX, selectionY, visibleEndX - visibleStartX, selectionHeight);
+            SetFillColor(style.selectionColor);
+            DrawRect(selectionRect);
+        }
     }
 
     void UltraCanvasTextInput::RenderCaret(const Rect2D &area) {
-        std::string displayText = GetDisplayText();
-        float charWidth = GetAverageCharacterWidth();
+        if (!IsFocused() || !isCaretVisible) return;
 
-        float caretX = area.x + caretPosition * charWidth;
+        // Get accurate caret position
+        float caretX = GetCaretXPosition();
+        float caretLineTopY = GetCaretYPosition(); // This is top of line
+
+        // Apply scroll offset
+        caretX -= scrollOffset;
+
+        // Use UltraCanvas pattern: start at line top + fontSize, then extend down
+        float caretStartY = caretLineTopY + style.fontSize; // Match text baseline
+        float caretEndY = caretStartY + (style.fontSize * 0.3f); // Small extension below
+
+        // Only hide if completely outside control bounds
+        Rect2D controlBounds = GetBounds();
+        if (caretX < controlBounds.x - 10 || caretX > controlBounds.x + controlBounds.width + 10) {
+            return;
+        }
 
         SetStrokeColor(style.caretColor);
         SetStrokeWidth(style.caretWidth);
-        DrawLine(Point2D(caretX, area.y + 2), Point2D(caretX, area.y + area.height - 2));
+
+        // Draw caret from baseline position
+        DrawLine(
+                Point2D(caretX, caretStartY),
+                Point2D(caretX, caretEndY)
+        );
     }
 
-    void UltraCanvasTextInput::RenderMultilineText(const Rect2D &area, const std::string &displayText,
-                                                   const Point2D &startPos) {
-        // Split text into lines and render each line
-        std::vector<std::string> lines = SplitTextIntoLines(displayText, area.width);
+    void UltraCanvasTextInput::RenderMultilineText(const Rect2D &area, const std::string &displayText, const Point2D &startPos) {
+        // Split text into lines
+        std::vector<std::string> lines;
+        std::string currentLine;
+
+        for (char c : displayText) {
+            if (c == '\n') {
+                lines.push_back(currentLine);
+                currentLine.clear();
+            } else {
+                currentLine += c;
+            }
+        }
+        lines.push_back(currentLine);
 
         float lineHeight = style.fontSize * 1.2f;
-        float currentY = startPos.y;
+        float currentBaselineY = startPos.y; // startPos.y is baseline
 
         for (const auto& line : lines) {
-            if (currentY > area.y + area.height) break;  // Stop if we're outside the area
-
-            DrawText(line, Point2D(startPos.x, currentY));
-            currentY += lineHeight;
+            if (currentBaselineY > area.y + area.height + lineHeight) break;
+            if (currentBaselineY >= area.y - lineHeight) {
+                DrawText(line, Point2D(startPos.x, currentBaselineY));
+            }
+            currentBaselineY += lineHeight;
         }
     }
 
@@ -533,18 +631,101 @@ namespace UltraCanvas {
         return wrappedLines;
     }
 
-    size_t UltraCanvasTextInput::GetTextPositionFromPoint(const Point2D &point) {
+    size_t UltraCanvasTextInput::GetTextPositionFromPoint(const Point2D& point) {
         Rect2D textArea = GetTextArea();
 
-        if (!textArea.Contains(point)) {
-            return point.x < textArea.x ? 0 : text.length();
+        if (inputType == TextInputType::Multiline) {
+            // Calculate which line was clicked
+            float lineHeight = style.fontSize * 1.2f;
+            int clickedLine = static_cast<int>((point.y - textArea.y) / lineHeight);
+            clickedLine = std::max(0, clickedLine);
+
+            // Find the start position of the clicked line
+            std::string displayText = GetDisplayText();
+            size_t lineStartPos = 0;
+            int currentLine = 0;
+
+            for (size_t i = 0; i < displayText.length() && currentLine < clickedLine; i++) {
+                if (displayText[i] == '\n') {
+                    currentLine++;
+                    lineStartPos = i + 1;
+                }
+            }
+
+            // Find the end of the clicked line
+            size_t lineEndPos = displayText.find('\n', lineStartPos);
+            if (lineEndPos == std::string::npos) {
+                lineEndPos = displayText.length();
+            }
+
+            // Get the text of the clicked line
+            std::string lineText = displayText.substr(lineStartPos, lineEndPos - lineStartPos);
+
+            // CRITICAL: account for scroll offset
+            float relativeX = point.x - textArea.x + scrollOffset;
+
+            if (relativeX <= 0) return lineStartPos;
+
+            // Set text style for measurement
+            TextStyle textStyle;
+            textStyle.fontFamily = style.fontFamily;
+            textStyle.fontSize = style.fontSize;
+            textStyle.fontWeight = style.fontWeight;
+            SetTextStyle(textStyle);
+
+            // Binary search within the line
+            size_t left = 0, right = lineText.length();
+
+            while (left < right) {
+                size_t mid = (left + right) / 2;
+                std::string textToMid = lineText.substr(0, mid);
+                float widthToMid = GetTextWidth(textToMid);
+
+                if (widthToMid < relativeX) {
+                    left = mid + 1;
+                } else {
+                    right = mid;
+                }
+            }
+
+            return lineStartPos + std::min(left, lineText.length());
+        } else {
+            // Single line logic
+            if (point.y < textArea.y || point.y > textArea.y + textArea.height) {
+                return text.empty() ? 0 : text.length();
+            }
+
+            // CRITICAL: account for scroll offset
+            float relativeX = point.x - textArea.x + scrollOffset;
+
+            if (relativeX <= 0) return 0;
+
+            std::string displayText = GetDisplayText();
+
+            // Set text style for measurement
+            TextStyle textStyle;
+            textStyle.fontFamily = style.fontFamily;
+            textStyle.fontSize = style.fontSize;
+            textStyle.fontWeight = style.fontWeight;
+            SetTextStyle(textStyle);
+
+            // Binary search for position
+            size_t left = 0, right = displayText.length();
+
+            while (left < right) {
+                size_t mid = (left + right) / 2;
+                std::string textToMid = displayText.substr(0, mid);
+                float widthToMid = GetTextWidth(textToMid);
+
+                if (widthToMid < relativeX) {
+                    left = mid + 1;
+                } else {
+                    right = mid;
+                }
+            }
+
+            return std::min(left, displayText.length());
         }
-
-        float relativeX = point.x - textArea.x + scrollOffset;
-        float charWidth = GetAverageCharacterWidth();
-
-        size_t position = static_cast<size_t>(relativeX / charWidth);
-        return std::min(position, text.length());
     }
 
     void UltraCanvasTextInput::HandleMouseDown(const UCEvent &event) {
@@ -899,4 +1080,118 @@ namespace UltraCanvas {
         // Platform-specific clipboard implementation needed
         return "";
     }
-}
+
+    int UltraCanvasTextInput::GetCaretLineNumber() const {
+        if (inputType != TextInputType::Multiline) return 0;
+
+        std::string displayText = GetDisplayText();
+        int lineNumber = 0;
+
+        for (size_t i = 0; i < caretPosition && i < displayText.length(); i++) {
+            if (displayText[i] == '\n') {
+                lineNumber++;
+            }
+        }
+
+        return lineNumber;
+    }
+
+    float UltraCanvasTextInput::GetLineYPosition(int lineNumber) const {
+        Rect2D textArea = GetTextArea();
+        float lineHeight = style.fontSize * 1.2f;
+        return textArea.y + (lineNumber * lineHeight);
+    }
+
+    float UltraCanvasTextInput::GetCaretXInLine() const {
+        if (text.empty() || caretPosition == 0) {
+            return style.paddingLeft;
+        }
+
+        std::string displayText = GetDisplayText();
+
+        // Find start of current line
+        size_t lineStart = caretPosition;
+        while (lineStart > 0 && displayText[lineStart - 1] != '\n') {
+            lineStart--;
+        }
+
+        // Get text from line start to caret
+        std::string textInLine = displayText.substr(lineStart, caretPosition - lineStart);
+
+        // Set text style for measurement
+        TextStyle textStyle;
+        textStyle.fontFamily = style.fontFamily;
+        textStyle.fontSize = style.fontSize;
+        textStyle.fontWeight = style.fontWeight;
+        SetTextStyle(textStyle);
+
+        float textWidth = GetTextWidth(textInLine);
+        return style.paddingLeft + textWidth;
+    }
+
+    float UltraCanvasTextInput::GetCaretXPosition() {
+        if (text.empty() || caretPosition == 0) {
+            return style.paddingLeft;
+        }
+
+        std::string displayText = GetDisplayText();
+
+        if (inputType == TextInputType::Multiline) {
+            // For multiline: find start of current line
+            size_t lineStart = caretPosition;
+            while (lineStart > 0 && displayText[lineStart - 1] != '\n') {
+                lineStart--;
+            }
+
+            // Get text from line start to caret
+            std::string textInLine = displayText.substr(lineStart, caretPosition - lineStart);
+
+            // Set text style for measurement
+            TextStyle textStyle;
+            textStyle.fontFamily = style.fontFamily;
+            textStyle.fontSize = style.fontSize;
+            textStyle.fontWeight = style.fontWeight;
+            SetTextStyle(textStyle);
+
+            float textWidth = GetTextWidth(textInLine);
+            return style.paddingLeft + textWidth;
+        } else {
+            // For single line: measure text up to caret
+            std::string textUpToCaret = displayText.substr(0, std::min(caretPosition, displayText.length()));
+
+            // Set text style for measurement
+            TextStyle textStyle;
+            textStyle.fontFamily = style.fontFamily;
+            textStyle.fontSize = style.fontSize;
+            textStyle.fontWeight = style.fontWeight;
+            SetTextStyle(textStyle);
+
+            float textWidth = GetTextWidth(textUpToCaret);
+            return style.paddingLeft + textWidth;
+        }
+    }
+
+    float UltraCanvasTextInput::GetCaretYPosition() {
+        Rect2D textArea = GetTextArea();
+
+        if (inputType == TextInputType::Multiline) {
+            // Count line number where caret is
+            std::string displayText = GetDisplayText();
+            int lineNumber = 0;
+
+            for (size_t i = 0; i < caretPosition && i < displayText.length(); i++) {
+                if (displayText[i] == '\n') {
+                    lineNumber++;
+                }
+            }
+
+            float lineHeight = style.fontSize * 1.2f;
+            // CRITICAL: Return baseline position, not top of line
+            return textArea.y + (lineNumber * lineHeight) + (style.fontSize * 0.8f);
+        } else {
+            // Single line: match baseline positioning
+            float lineHeight = style.fontSize * 1.2f;
+            float centeredY = textArea.y + (textArea.height - lineHeight) / 2.0f;
+            return centeredY + (style.fontSize * 0.8f);
+        }
+    }}
