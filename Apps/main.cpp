@@ -329,6 +329,10 @@ int main() {
     std::cout << "=== UltraCanvas Clipboard Manager Demo ===" << std::endl;
 
     try {
+
+        std::cout << "Creating demo application..." << std::endl;
+        ClipboardDemoApp app;
+
         // STEP 1: Initialize keyboard manager FIRST
         std::cout << "Initializing keyboard manager..." << std::endl;
         if (!UltraCanvasKeyboardManager::Initialize()) {
@@ -342,17 +346,10 @@ int main() {
         InitializeClipboardManager();
         std::cout << "Clipboard manager initialized successfully" << std::endl;
 
-        // STEP 3: Create and run the demo application
-        // This will handle application initialization internally
-        {
-            std::cout << "Creating demo application..." << std::endl;
-            ClipboardDemoApp app;
+        std::cout << "Running demo application..." << std::endl;
+        app.Run();
 
-            std::cout << "Running demo application..." << std::endl;
-            app.Run();
-
-            std::cout << "Demo application completed" << std::endl;
-        }
+        std::cout << "Demo application completed" << std::endl;
 
         // STEP 4: Cleanup in reverse order
         std::cout << "Shutting down clipboard manager..." << std::endl;

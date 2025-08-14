@@ -99,17 +99,19 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasMenu.cpp
         UltraCanvas/core/UltraCanvasUIElement.cpp
         UltraCanvas/core/UltraCanvasTextInput.cpp
+        UltraCanvas/core/UltraCanvasClipboard.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxApplication.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxWindow.cpp
+        UltraCanvas/OS/Linux/UltraCanvasLinuxClipboard.cpp
     # Add Windows/Mac sources as needed
 )
 
 # ✅ FIXED: Corrected source file extension and added missing files
 set(APP_SOURCES
-        Apps/main.cpp
-        Apps/UltraCanvasClipboardManager.cpp
+        Apps/ExampleClipboardApp.cpp
+        Apps/UltraCanvasClipboardUI.cpp
         #Apps/ImageRenderingExample.cpp
         # Add your source files here
 )

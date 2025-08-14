@@ -476,16 +476,46 @@ namespace UltraCanvas {
     void UltraCanvasTextInput::RenderCaret(const Rect2D &area) {
         if (!IsFocused() || !isCaretVisible) return;
 
-        // Get accurate caret position
-        float caretX = GetCaretXPosition();
-        float caretLineTopY = GetCaretYPosition(); // This is top of line
+        // FIXED: Calculate X position to match text rendering exactly
+        Rect2D textArea = GetTextArea();
+        float caretX;
 
-        // Apply scroll offset
-        caretX -= scrollOffset;
+        if (text.empty() || caretPosition == 0) {
+            // When no text, caret should be at text start position
+            caretX = textArea.x - scrollOffset;
+        } else {
+            // Calculate width of text up to caret position
+            std::string displayText = GetDisplayText();
+            std::string textUpToCaret;
 
-        // Use UltraCanvas pattern: start at line top + fontSize, then extend down
-        float caretStartY = caretLineTopY + style.fontSize; // Match text baseline
-        float caretEndY = caretStartY + (style.fontSize * 0.3f); // Small extension below
+            if (inputType == TextInputType::Multiline) {
+                // For multiline: find start of current line
+                size_t lineStart = caretPosition;
+                while (lineStart > 0 && displayText[lineStart - 1] != '\n') {
+                    lineStart--;
+                }
+                textUpToCaret = displayText.substr(lineStart, caretPosition - lineStart);
+            } else {
+                // For single line: text up to caret
+                textUpToCaret = displayText.substr(0, std::min(caretPosition, displayText.length()));
+            }
+
+            // Set text style for accurate measurement
+            TextStyle textStyle;
+            textStyle.fontFamily = style.fontFamily;
+            textStyle.fontSize = style.fontSize;
+            textStyle.fontWeight = style.fontWeight;
+            SetTextStyle(textStyle);
+
+            float textWidth = GetTextWidth(textUpToCaret);
+            // FIXED: Match text rendering position exactly
+            caretX = textArea.x + textWidth - scrollOffset;
+        }
+
+        float lineHeight = style.fontSize * 1.4f;
+        // Total height should be about lineHeight for visibility
+        float caretStartY = GetCaretYPosition();
+        float caretEndY = caretStartY + lineHeight;
 
         // Only hide if completely outside control bounds
         Rect2D controlBounds = GetBounds();
@@ -496,7 +526,7 @@ namespace UltraCanvas {
         SetStrokeColor(style.caretColor);
         SetStrokeWidth(style.caretWidth);
 
-        // Draw caret from baseline position
+        // Draw caret line with proper height and position
         DrawLine(
                 Point2D(caretX, caretStartY),
                 Point2D(caretX, caretEndY)
