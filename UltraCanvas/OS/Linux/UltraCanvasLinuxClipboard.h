@@ -57,10 +57,13 @@ namespace UltraCanvas {
         // ===== CONSTANTS =====
         static constexpr int SELECTION_TIMEOUT_MS = 1000;
         static constexpr size_t MAX_CLIPBOARD_SIZE = 10 * 1024 * 1024; // 10MB
+        static UltraCanvasLinuxClipboard* instance;
 
     public:
         UltraCanvasLinuxClipboard();
         ~UltraCanvasLinuxClipboard() override;
+
+        static UltraCanvasLinuxClipboard* GetInstance() { return instance; }
 
         // ===== INITIALIZATION =====
         bool Initialize() override;
@@ -83,8 +86,7 @@ namespace UltraCanvas {
         bool IsFormatAvailable(const std::string& format) override;
 
         // ===== EVENT PROCESSING =====
-        void ProcessEvents(); // Call this from main event loop
-
+        static void ProcessClipboardEvent(const XEvent& event);
     private:
         // ===== INITIALIZATION HELPERS =====
         void InitializeAtoms();
@@ -92,18 +94,14 @@ namespace UltraCanvas {
         bool GetDisplayFromApplication();
 
         // ===== CORE SELECTION OPERATIONS =====
-        bool TakeSelectionOwnership(Atom selection);
-        bool ReadTextFromSelection(Atom selection, std::string& text);
-        void ProcessSelectionEvents();
+//        bool TakeSelectionOwnership(Atom selection);
+//        bool ReadTextFromSelection(Atom selection, std::string& text);
+//        void ProcessSelectionEvents();
 
         // ===== EVENT HANDLING =====
-        void HandleSelectionEvent(const XEvent& event);
-        void HandleSelectionRequest(const XSelectionRequestEvent& request);
+        bool HandleSelectionEvent(const XSelectionRequestEvent& request);
         void HandleSelectionClear(const XSelectionClearEvent& clear);
-        void HandleSelectionNotify(const XSelectionEvent& notify);
-
-        // ===== UNIFIED EVENT PROCESSING =====
-        bool ProcessSelectionEventsWithTimeout(int timeoutMs, bool waitForSelectionReady);
+        bool HandleSelectionNotify(const XSelectionEvent & event);
 
         // ===== LOW-LEVEL SELECTION HANDLING =====
         bool ReadClipboardData(Atom selection, Atom target, std::vector<uint8_t>& data, std::string& format);
@@ -128,7 +126,7 @@ namespace UltraCanvas {
         std::string FormatToMimeType(const std::string& format);
         std::string MimeTypeToFormat(const std::string& mimeType);
         void LogError(const std::string& function, const std::string& message);
-        void LogInfo(const std::string& function, const std::string& message);
+//        void LogInfo(const std::string& function, const std::string& message);
         bool CheckXError();
 
         // ===== FORMAT VALIDATION =====
@@ -140,19 +138,5 @@ namespace UltraCanvas {
         std::vector<uint8_t> StringToBytes(const std::string& str);
         std::string BytesToString(const std::vector<uint8_t>& bytes);
     };
-
-// ===== GLOBAL CLIPBOARD FUNCTIONS =====
-
-// Initialize the Linux clipboard system
-    bool InitializeLinuxClipboard();
-
-// Cleanup the Linux clipboard system
-    void CleanupLinuxClipboard();
-
-// Get the global clipboard instance
-    UltraCanvasLinuxClipboard* GetLinuxClipboard();
-
-// Process clipboard events (call from main event loop)
-    void ProcessClipboardEvents();
 
 } // namespace UltraCanvas

@@ -31,6 +31,7 @@ namespace UltraCanvas {
     public:
         UltraCanvasApplication() : UltraCanvasNativeApplication() {
         }
+
         static UltraCanvasApplication* GetInstance() {
             if (!instance) {
                 instance = std::make_unique<UltraCanvasApplication>();

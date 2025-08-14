@@ -102,7 +102,8 @@ public:
     // ===== INITIALIZATION =====
     bool Initialize();
     void Shutdown();
-    
+    UltraCanvasClipboardBackend* GetBackend() { return backend.get(); }
+
     // ===== CLIPBOARD OPERATIONS =====
     bool GetText(std::string& text);
     bool SetText(const std::string& text);

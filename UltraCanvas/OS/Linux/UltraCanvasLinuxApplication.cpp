@@ -64,8 +64,6 @@ namespace UltraCanvas {
             // STEP 3: Initialize window manager atoms
             InitializeAtoms();
 
-            InitializeLinuxClipboard();
-
             // STEP 4: Set up timing
             lastFrameTime = std::chrono::steady_clock::now();
 
@@ -161,10 +159,10 @@ namespace UltraCanvas {
             while (running && !windows.empty()) {
                 // Update timing
                 UpdateDeltaTime();
-                ProcessClipboardEvents();
                 while (XPending(display) > 0) {
                     XEvent xEvent;
                     XNextEvent(display, &xEvent);
+
                     ProcessXEvent(xEvent);
                 }
 
@@ -220,8 +218,6 @@ namespace UltraCanvas {
         }
 
         // Cleanup X11 resources
-        CleanupLinuxClipboard();
-
         CleanupX11();
         initialized = false;
 
@@ -326,21 +322,23 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxApplication::ProcessXEvent(XEvent& xEvent) {
         // Find the window that owns this event
+        if (xEvent.type == SelectionRequest || xEvent.type == SelectionNotify || xEvent.type == SelectionClear) {
+            UltraCanvasLinuxClipboard::ProcessClipboardEvent(xEvent);
+        } else {
+            UltraCanvasLinuxWindow* window = FindWindow(xEvent.xany.window);
 
-        UltraCanvasLinuxWindow* window = FindWindow(xEvent.xany.window);
+            if (window) {
+                // Let the window handle the X11 event first
+                window->HandleXEvent(xEvent);
+            }
 
-        if (window) {
-            // Let the window handle the X11 event first
-            window->HandleXEvent(xEvent);
+            // Convert to UCEvent and queue it
+            UCEvent ucEvent = ConvertXEventToUCEvent(xEvent);
+
+            if (ucEvent.type != UCEventType::Unknown) {
+                PushEvent(ucEvent);
+            }
         }
-
-        // Convert to UCEvent and queue it
-        UCEvent ucEvent = ConvertXEventToUCEvent(xEvent);
-
-        if (ucEvent.type != UCEventType::Unknown) {
-            PushEvent(ucEvent);
-        }
-
     }
 
     void UltraCanvasLinuxApplication::DispatchEvent(const UCEvent& event) {
@@ -390,10 +388,12 @@ namespace UltraCanvas {
             targetWindow->OnEvent(event);
 
             // Debug logging
-            std::cout << "UltraCanvas: Event type " << static_cast<int>(event.type)
-                      << " dispatched to window " << targetWindow
-                      << " (X11 Window: " << std::hex << event.nativeWindowHandle << std::dec << ")"
-                      << " focused=" << (targetWindow == focusedWindow ? "yes" : "no") << std::endl;
+            if (event.type != UCEventType::MouseMove) {
+                std::cout << "UltraCanvas: Event type " << static_cast<int>(event.type)
+                          << " dispatched to window " << targetWindow
+                          << " (X11 Window: " << std::hex << event.nativeWindowHandle << std::dec << ")"
+                          << " focused=" << (targetWindow == focusedWindow ? "yes" : "no") << std::endl;
+            }
         } else {
             // No target window found - this might be normal for some system events
             std::cout << "UltraCanvas: Warning - Event type " << static_cast<int>(event.type)
@@ -759,7 +759,6 @@ namespace UltraCanvas {
 
         while (eventThreadRunning && initialized && display) {
             try {
-                ProcessClipboardEvents();
                 if (XPending(display) > 0) {
                     XEvent xEvent;
                     XNextEvent(display, &xEvent);

@@ -1,6 +1,6 @@
 // UltraCanvasLinuxClipboard.cpp
-// Complete X11-specific clipboard implementation for Linux
-// Version: 1.1.0
+// X11-specific clipboard implementation for Linux
+// Version: 1.0.1
 // Last Modified: 2025-08-14
 // Author: UltraCanvas Framework
 
@@ -12,24 +12,25 @@
 #include <sstream>
 #include <unistd.h>
 #include <sys/select.h>
-#include <chrono>
 
 namespace UltraCanvas {
 
 // ===== CONSTRUCTOR & DESTRUCTOR =====
+    UltraCanvasLinuxClipboard* UltraCanvasLinuxClipboard::instance = nullptr;
+
     UltraCanvasLinuxClipboard::UltraCanvasLinuxClipboard()
             : display(nullptr)
             , window(0)
             , clipboardChanged(false)
-            , selectionReady(false)
-            , ownsClipboard(false)
-            , ownsPrimary(false) {
+            , selectionReady(false) {
 
         lastChangeCheck = std::chrono::steady_clock::now();
+        instance = this;
     }
 
     UltraCanvasLinuxClipboard::~UltraCanvasLinuxClipboard() {
         Shutdown();
+        instance = nullptr;
     }
 
 // ===== INITIALIZATION =====
@@ -69,14 +70,12 @@ namespace UltraCanvas {
         }
 
         display = nullptr;
-        ownsClipboard = false;
-        ownsPrimary = false;
-        clipboardTextData.clear();
         std::cout << "UltraCanvas: Linux clipboard shut down" << std::endl;
     }
 
     bool UltraCanvasLinuxClipboard::GetDisplayFromApplication() {
         // Get the display from UltraCanvasLinuxApplication
+        // This assumes the application is already initialized
         UltraCanvasApplication* app = UltraCanvasApplication::GetInstance();
         if (!app) {
             std::cerr << "UltraCanvas: No Linux application instance found" << std::endl;
@@ -115,7 +114,7 @@ namespace UltraCanvas {
         XStoreName(display, helperWindow, "UltraCanvas Clipboard Helper");
 
         // Select events we need for clipboard handling
-        XSelectInput(display, helperWindow, PropertyChangeMask | SelectionNotify | SelectionRequest | SelectionClear);
+        XSelectInput(display, helperWindow, PropertyChangeMask | SelectionNotify | SelectionRequest);
 
         return helperWindow;
     }
@@ -142,7 +141,16 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasLinuxClipboard::SetClipboardText(const std::string& text) {
-        return WriteTextToClipboard(atomClipboard, text);
+        std::cout << "UltraCanvas: Setting clipboard text: \"" << text.substr(0, 50) << "...\"" << std::endl;
+
+        bool success = WriteTextToClipboard(atomClipboard, text);
+        if (success) {
+            std::cout << "UltraCanvas: Successfully acquired ownership of CLIPBOARD" << std::endl;
+        } else {
+            std::cout << "UltraCanvas: Failed to set clipboard text" << std::endl;
+        }
+
+        return success;
     }
 
     bool UltraCanvasLinuxClipboard::GetClipboardImage(std::vector<uint8_t>& imageData, std::string& format) {
@@ -163,18 +171,25 @@ namespace UltraCanvas {
 
 // ===== MONITORING =====
     bool UltraCanvasLinuxClipboard::HasClipboardChanged() {
+        // Check if enough time has passed since last check
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastChangeCheck);
 
-        if (elapsed.count() > 100) { // Check every 100ms
-            std::string currentText;
-            if (GetClipboardText(currentText)) {
-                if (currentText != lastClipboardText) {
-                    clipboardChanged = true;
-                    lastClipboardText = currentText;
-                }
+        if (elapsed.count() < 100) { // Check at most every 100ms
+            return clipboardChanged;
+        }
+
+        lastChangeCheck = now;
+
+        // Get current clipboard text
+        std::string currentText;
+        if (GetClipboardText(currentText)) {
+            if (currentText != lastClipboardText) {
+                lastClipboardText = currentText;
+                clipboardChanged = true;
+                std::cout << "UltraCanvas: Received selection data (" << currentText.length()
+                          << " bytes, format: UTF8_STRING)" << std::endl;
             }
-            lastChangeCheck = now;
         }
 
         return clipboardChanged;
@@ -188,20 +203,19 @@ namespace UltraCanvas {
     std::vector<std::string> UltraCanvasLinuxClipboard::GetAvailableFormats() {
         std::vector<std::string> formats;
 
-        std::vector<uint8_t> targetsData;
-        std::string targetsFormat;
+        // Try to get the TARGETS atom to see what formats are available
+        std::vector<uint8_t> data;
+        std::string format;
 
-        if (ReadClipboardData(atomClipboard, atomTargets, targetsData, targetsFormat)) {
-            // Parse the TARGETS list
-            if (targetsData.size() % sizeof(Atom) == 0) {
-                size_t numAtoms = targetsData.size() / sizeof(Atom);
-                Atom* atoms = reinterpret_cast<Atom*>(targetsData.data());
+        if (ReadClipboardData(atomClipboard, atomTargets, data, format)) {
+            // Parse the targets list
+            size_t atomCount = data.size() / sizeof(Atom);
+            Atom* atoms = reinterpret_cast<Atom*>(data.data());
 
-                for (size_t i = 0; i < numAtoms; ++i) {
-                    std::string formatName = AtomToString(atoms[i]);
-                    if (!formatName.empty()) {
-                        formats.push_back(formatName);
-                    }
+            for (size_t i = 0; i < atomCount; ++i) {
+                std::string atomName = AtomToString(atoms[i]);
+                if (!atomName.empty()) {
+                    formats.push_back(atomName);
                 }
             }
         }
@@ -214,58 +228,16 @@ namespace UltraCanvas {
         return std::find(formats.begin(), formats.end(), format) != formats.end();
     }
 
-// ===== EVENT PROCESSING =====
-    void UltraCanvasLinuxClipboard::ProcessEvents() {
-        if (!display || !window) return;
-
-        // Process any pending X11 events related to our clipboard window
-        XEvent event;
-        while (XCheckWindowEvent(display, window,
-                                 SelectionRequest | SelectionClear | SelectionNotify | PropertyChangeMask,
-                                 &event)) {
-            HandleSelectionEvent(event);
-        }
-    }
-
 // ===== TEXT OPERATIONS =====
     bool UltraCanvasLinuxClipboard::ReadTextFromClipboard(Atom selection, std::string& text) {
-        // If we own the selection, return our data directly
-        if ((selection == atomClipboard && ownsClipboard) ||
-            (selection == atomPrimary && ownsPrimary)) {
-            text = clipboardTextData;
-            return !text.empty();
-        }
-
-        // Try different text formats in order of preference
+        // Try UTF8_STRING first, then STRING as fallback
         std::vector<uint8_t> data;
         std::string format;
 
-        // Try UTF8_STRING first (preferred)
-        if (ReadClipboardData(selection, atomUtf8String, data, format)) {
-            text = std::string(reinterpret_cast<const char*>(data.data()), data.size());
-            return true;
-        }
+        if (ReadClipboardData(selection, atomUtf8String, data, format) ||
+            ReadClipboardData(selection, atomString, data, format) ||
+            ReadClipboardData(selection, atomTextPlain, data, format)) {
 
-        // Try text/plain;charset=utf-8
-        if (ReadClipboardData(selection, atomTextPlainUtf8, data, format)) {
-            text = std::string(reinterpret_cast<const char*>(data.data()), data.size());
-            return true;
-        }
-
-        // Try text/plain
-        if (ReadClipboardData(selection, atomTextPlain, data, format)) {
-            text = std::string(reinterpret_cast<const char*>(data.data()), data.size());
-            return true;
-        }
-
-        // Try STRING as fallback
-        if (ReadClipboardData(selection, atomString, data, format)) {
-            text = std::string(reinterpret_cast<const char*>(data.data()), data.size());
-            return true;
-        }
-
-        // Try TEXT as last resort
-        if (ReadClipboardData(selection, atomText, data, format)) {
             text = std::string(reinterpret_cast<const char*>(data.data()), data.size());
             return true;
         }
@@ -274,58 +246,17 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasLinuxClipboard::WriteTextToClipboard(Atom selection, const std::string& text) {
-        if (!display || !window) {
-            LogError("WriteTextToClipboard", "No display or window available");
-            return false;
-        }
-
-        if (text.empty()) {
-            LogError("WriteTextToClipboard", "Empty text provided");
-            return false;
-        }
-
-        std::cout << "UltraCanvas: Setting clipboard text: \"" << text.substr(0, 50)
-                  << (text.length() > 50 ? "..." : "") << "\"" << std::endl;
-
-        // Store the text data for selection requests
-        clipboardTextData = text;
-
-        // Take ownership of the selection
-        XSetSelectionOwner(display, selection, window, CurrentTime);
-        XFlush(display);
-
-        // Verify we own the selection
-        Window owner = XGetSelectionOwner(display, selection);
-        bool success = (owner == window);
-
-        if (success) {
-            if (selection == atomClipboard) {
-                ownsClipboard = true;
-            } else if (selection == atomPrimary) {
-                ownsPrimary = true;
-            }
-
-            std::cout << "UltraCanvas: Successfully acquired ownership of "
-                      << AtomToString(selection) << std::endl;
-
-            // Process any immediate selection requests
-            ProcessSelectionEvents();
-        } else {
-            std::cerr << "UltraCanvas: Failed to acquire ownership of "
-                      << AtomToString(selection) << " (current owner: " << owner << ")" << std::endl;
-        }
-
-        return success;
+        std::vector<uint8_t> data(text.begin(), text.end());
+        return WriteClipboardData(selection, atomUtf8String, data);
     }
 
 // ===== IMAGE OPERATIONS =====
     bool UltraCanvasLinuxClipboard::ReadImageFromClipboard(Atom selection, std::vector<uint8_t>& imageData, std::string& format) {
-        // Try different image formats in order of preference
+        // Try different image formats
         std::vector<Atom> imageFormats = {atomImagePng, atomImageJpeg, atomImageBmp};
 
-        std::string atomFormat;
         for (Atom imageFormat : imageFormats) {
-            if (ReadClipboardData(selection, imageFormat, imageData, atomFormat)) {
+            if (ReadClipboardData(selection, imageFormat, imageData, format)) {
                 format = AtomToString(imageFormat);
                 return true;
             }
@@ -335,11 +266,6 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasLinuxClipboard::WriteImageToClipboard(Atom selection, const std::vector<uint8_t>& imageData, const std::string& format) {
-        if (imageData.empty()) {
-            LogError("WriteImageToClipboard", "Empty image data provided");
-            return false;
-        }
-
         Atom targetAtom = StringToAtom(format, true);
         if (targetAtom == None) {
             LogError("WriteImageToClipboard", "Invalid format: " + format);
@@ -364,20 +290,10 @@ namespace UltraCanvas {
             while (std::getline(stream, line)) {
                 if (line.empty() || line[0] == '#') continue; // Skip empty lines and comments
 
-                // Remove trailing whitespace
-                while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
-                    line.pop_back();
-                }
-
                 // Convert file:// URI to path
                 if (line.substr(0, 7) == "file://") {
                     std::string path = line.substr(7);
-                    // Simple URL decode (replace %20 with space, etc.)
-                    size_t pos = 0;
-                    while ((pos = path.find("%20", pos)) != std::string::npos) {
-                        path.replace(pos, 3, " ");
-                        pos += 1;
-                    }
+                    // URL decode if needed
                     filePaths.push_back(path);
                 }
             }
@@ -389,10 +305,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasLinuxClipboard::WriteFilesToClipboard(Atom selection, const std::vector<std::string>& filePaths) {
-        if (filePaths.empty()) {
-            LogError("WriteFilesToClipboard", "Empty file list provided");
-            return false;
-        }
+        if (filePaths.empty()) return false;
 
         // Create URI list
         std::string uriList;
@@ -408,41 +321,19 @@ namespace UltraCanvas {
     bool UltraCanvasLinuxClipboard::ReadClipboardData(Atom selection, Atom target, std::vector<uint8_t>& data, std::string& format) {
         if (!display || !window) return false;
 
-        // Clear previous results
-        selectionData.clear();
-        selectionFormat.clear();
-        selectionReady = false;
-
-        // Create a unique property name for this request
-        Atom property = XInternAtom(display, "ULTRACANVAS_SELECTION_DATA", False);
-
         // Request the selection
-        XConvertSelection(display, selection, target, property, window, CurrentTime);
+        XConvertSelection(display, selection, target, target, window, CurrentTime);
         XFlush(display);
 
-        // Wait for the response
-        if (WaitForSelectionNotify(data, format)) {
-            return !data.empty();
-        }
-
-        return false;
+        // Wait for SelectionNotify event
+        return WaitForSelectionNotify(data, format);
     }
 
     bool UltraCanvasLinuxClipboard::WriteClipboardData(Atom selection, Atom target, const std::vector<uint8_t>& data) {
         if (!display || !window) return false;
 
-        if (data.size() > MAX_CLIPBOARD_SIZE) {
-            LogError("WriteClipboardData", "Data too large: " + std::to_string(data.size()) + " bytes");
-            return false;
-        }
-
-        // Store the data for later retrieval
-        selectionData = data;
-        selectionFormat = AtomToString(target);
-
         // Set ourselves as the selection owner
         XSetSelectionOwner(display, selection, window, CurrentTime);
-        XFlush(display);
 
         // Verify we own the selection
         Window owner = XGetSelectionOwner(display, selection);
@@ -451,170 +342,158 @@ namespace UltraCanvas {
             return false;
         }
 
+        // Store the data for later retrieval
+        selectionData = data;
+        selectionFormat = AtomToString(target);
+
         return true;
     }
 
     bool UltraCanvasLinuxClipboard::WaitForSelectionNotify(std::vector<uint8_t>& data, std::string& format) {
-        // Use the unified event processing function with timeout for selection notify
-        if (ProcessSelectionEventsWithTimeout(SELECTION_TIMEOUT_MS, true)) {
-            data = selectionData;
-            format = selectionFormat;
-            return !data.empty();
-        }
-
-        LogError("WaitForSelectionNotify", "Timeout waiting for selection");
-        return false;
-    }
-
-    void UltraCanvasLinuxClipboard::ProcessSelectionEvents() {
-        // Use the unified event processing function for immediate processing
-        ProcessSelectionEventsWithTimeout(100, false); // 100ms for immediate requests
-    }
-
-    bool UltraCanvasLinuxClipboard::ProcessSelectionEventsWithTimeout(int timeoutMs, bool waitForSelectionReady) {
-        XFlush(display);
+        selectionReady = false;
 
         auto startTime = std::chrono::steady_clock::now();
 
-        while (true) {
+        while (!selectionReady) {
             // Check for timeout
             auto now = std::chrono::steady_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime);
-            if (elapsed.count() > timeoutMs) {
-                return false; // Timeout reached
+            if (elapsed.count() > SELECTION_TIMEOUT_MS) {
+                LogError("WaitForSelectionNotify", "Timeout waiting for selection");
+                return false;
             }
 
-            // If waiting for selection ready and it's ready, exit successfully
-            if (waitForSelectionReady && selectionReady) {
-                return true;
-            }
-
-            // Process pending events
+            // Process X events
             if (XPending(display) > 0) {
                 XEvent event;
                 XNextEvent(display, &event);
-                if (event.xany.window == window) {
-                    HandleSelectionEvent(event);
 
-                    // If we were waiting for selection ready and now it's ready, exit
-                    if (waitForSelectionReady && selectionReady) {
-                        return true;
+                if (event.type == SelectionNotify && event.xselection.requestor == window) {
+                    if (HandleSelectionNotify(event.xselection)) {
+                        break;
                     }
+                } else if (event.type == SelectionRequest) {
+                    // Handle selection requests from other applications
+                    HandleSelectionEvent(event.xselectionrequest);
                 }
-            } else {
-                // No events pending
-                if (!waitForSelectionReady) {
-                    // For immediate processing, exit when no more events
-                    return true;
-                }
-
-                // Brief sleep to avoid busy waiting
-                usleep(1000); // 1ms
             }
+
+            // Small delay to avoid busy waiting
+            usleep(1000); // 1ms
         }
+
+        data = selectionData;
+        format = selectionFormat;
+        return true;
     }
 
-// ===== EVENT HANDLING =====
-    void UltraCanvasLinuxClipboard::HandleSelectionEvent(const XEvent& event) {
-        switch (event.type) {
-            case SelectionRequest:
-                HandleSelectionRequest(event.xselectionrequest);
-                break;
-
-            case SelectionClear:
-                HandleSelectionClear(event.xselectionclear);
-                break;
-
-            case SelectionNotify:
-                HandleSelectionNotify(event.xselection);
-                break;
-
-            default:
-                // Not a selection event, ignore
-                break;
+    bool UltraCanvasLinuxClipboard::HandleSelectionNotify(const XSelectionEvent& selEvent) {
+        if (selEvent.property == None) {
+            LogError("HandleSelectionNotify", "Selection conversion failed");
+            selectionReady = true;
+            return false;
         }
+
+        // Get the property data
+        Atom actualType;
+        int actualFormat;
+        unsigned long numItems;
+        unsigned long bytesAfter;
+        unsigned char* prop = nullptr;
+
+        int result = XGetWindowProperty(
+                display, window, selEvent.property,
+                0, MAX_CLIPBOARD_SIZE / 4, False, AnyPropertyType,
+                &actualType, &actualFormat, &numItems, &bytesAfter, &prop
+        );
+
+        if (result != Success || !prop) {
+            LogError("HandleSelectionNotify", "Failed to get window property");
+            selectionReady = true;
+            return false;
+        }
+
+        // Calculate data size
+        size_t dataSize = numItems * (actualFormat / 8);
+
+        // Copy the data
+        selectionData.clear();
+        selectionData.resize(dataSize);
+        std::memcpy(selectionData.data(), prop, dataSize);
+
+        selectionFormat = AtomToString(actualType);
+
+        // Clean up
+        XFree(prop);
+        XDeleteProperty(display, window, selEvent.property);
+
+        selectionReady = true;
+        return true;
     }
 
-    void UltraCanvasLinuxClipboard::HandleSelectionRequest(const XSelectionRequestEvent& request) {
-        std::cout << "UltraCanvas: Received SelectionRequest for "
-                  << AtomToString(request.target) << " on "
-                  << AtomToString(request.selection) << std::endl;
-
+// ===== CRITICAL FIX: HandleSelectionEvent Implementation =====
+    bool UltraCanvasLinuxClipboard::HandleSelectionEvent(const XSelectionRequestEvent& request) {
         XSelectionEvent response;
+
+        // Initialize response
         response.type = SelectionNotify;
         response.display = request.display;
         response.requestor = request.requestor;
         response.selection = request.selection;
         response.target = request.target;
-        response.property = None; // Will be set if successful
+        response.property = request.property;
         response.time = request.time;
 
-        // Check if we own this selection
-        bool weOwnIt = ((request.selection == atomClipboard && ownsClipboard) ||
-                        (request.selection == atomPrimary && ownsPrimary));
+        std::cout << "UltraCanvas: Received SelectionRequest from window " << request.requestor
+                  << " for target " << AtomToString(request.target) << std::endl;
 
-        if (!weOwnIt) {
-            std::cout << "UltraCanvas: We don't own the requested selection, ignoring" << std::endl;
-            XSendEvent(request.display, request.requestor, False, 0, (XEvent*)&response);
-            XFlush(request.display);
-            return;
-        }
+        bool success = false;
 
-        // Handle different target types
         if (request.target == atomTargets) {
-            // Client is asking what formats we support
-            Atom targets[] = {
+            // Client wants to know what targets we support
+            Atom supportedTargets[] = {
                     atomTargets,
                     atomUtf8String,
                     atomString,
-                    atomText,
                     atomTextPlain,
-                    atomTextPlainUtf8
+                    atomText
             };
 
-            XChangeProperty(request.display, request.requestor, request.property,
-                            XA_ATOM, 32, PropModeReplace,
-                            (unsigned char*)targets, sizeof(targets) / sizeof(Atom));
+            XChangeProperty(
+                    display, request.requestor, request.property,
+                    XA_ATOM, 32, PropModeReplace,
+                    reinterpret_cast<unsigned char*>(supportedTargets),
+                    sizeof(supportedTargets) / sizeof(Atom)
+            );
 
-            response.property = request.property;
-            std::cout << "UltraCanvas: Responded with supported targets" << std::endl;
-        }
-        else if (IsTextFormat(request.target)) {
+            success = true;
+            std::cout << "UltraCanvas: Provided TARGETS list" << std::endl;
+
+        } else if (IsTextFormat(request.target) && !selectionData.empty()) {
             // Client wants text data
-            const char* data = clipboardTextData.c_str();
-            int dataLen = clipboardTextData.length();
+            XChangeProperty(
+                    display, request.requestor, request.property,
+                    request.target, 8, PropModeReplace,
+                    selectionData.data(), selectionData.size()
+            );
 
-            XChangeProperty(request.display, request.requestor, request.property,
-                            request.target, 8, PropModeReplace,
-                            (unsigned char*)data, dataLen);
+            success = true;
+            std::cout << "UltraCanvas: Provided text data (" << selectionData.size() << " bytes)" << std::endl;
 
-            response.property = request.property;
-            std::cout << "UltraCanvas: Provided text data (" << dataLen << " bytes)" << std::endl;
-        }
-        else if (IsImageFormat(request.target) || IsFileFormat(request.target)) {
-            // Handle image or file data if we have it stored
-            if (!selectionData.empty()) {
-                XChangeProperty(request.display, request.requestor, request.property,
-                                request.target, 8, PropModeReplace,
-                                selectionData.data(), selectionData.size());
-
-                response.property = request.property;
-                std::cout << "UltraCanvas: Provided binary data (" << selectionData.size() << " bytes)" << std::endl;
-            } else {
-                std::cout << "UltraCanvas: No binary data available for request" << std::endl;
-            }
-        }
-        else {
-            std::cout << "UltraCanvas: Unsupported target format: "
-                      << AtomToString(request.target) << std::endl;
+        } else {
+            // Unsupported target or no data
+            response.property = None;
+            std::cout << "UltraCanvas: Unsupported target or no data available" << std::endl;
         }
 
-        // Send the response
-        XSendEvent(request.display, request.requestor, False, 0, (XEvent*)&response);
-        XFlush(request.display);
+        // Send response
+        XSendEvent(display, request.requestor, False, NoEventMask, (XEvent*)&response);
+        XFlush(display);
+
+        return success;
     }
 
-    void UltraCanvasLinuxClipboard::HandleSelectionClear(const XSelectionClearEvent& clear) {
+    void UltraCanvasLinuxClipboard::HandleSelectionClear(const XSelectionClearEvent & clear) {
         std::cout << "UltraCanvas: Lost ownership of "
                   << AtomToString(clear.selection) << std::endl;
 
@@ -632,139 +511,77 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLinuxClipboard::HandleSelectionNotify(const XSelectionEvent& notify) {
-        // This handles responses to our selection requests (when reading)
-        if (notify.property != None) {
-            // Read the property data
-            Atom actualType;
-            int actualFormat;
-            unsigned long itemCount, bytesAfter;
-            unsigned char* data = nullptr;
-
-            int result = XGetWindowProperty(display, window, notify.property,
-                                            0, 0x1fffffff, True, AnyPropertyType,
-                                            &actualType, &actualFormat,
-                                            &itemCount, &bytesAfter, &data);
-
-            if (result == Success && data) {
-                selectionData.assign(data, data + itemCount);
-                selectionFormat = AtomToString(actualType);
-                selectionReady = true;
-
-                XFree(data);
-                std::cout << "UltraCanvas: Received selection data ("
-                          << itemCount << " bytes, format: " << selectionFormat << ")" << std::endl;
-            } else {
-                std::cerr << "UltraCanvas: Failed to read selection property" << std::endl;
-                selectionReady = true; // Mark as ready even if failed
-            }
-        } else {
-            std::cout << "UltraCanvas: Selection request was denied" << std::endl;
-            selectionReady = true;
-        }
-    }
-
-// ===== UTILITY FUNCTIONS =====
+// ===== UTILITY METHODS =====
     std::string UltraCanvasLinuxClipboard::AtomToString(Atom atom) {
-        if (atom == None) return "None";
+        if (atom == None) return "";
 
-        char* name = XGetAtomName(display, atom);
-        if (name) {
-            std::string result(name);
-            XFree(name);
-            return result;
-        }
+        char* atomName = XGetAtomName(display, atom);
+        if (!atomName) return "";
 
-        return "Unknown";
+        std::string result(atomName);
+        XFree(atomName);
+        return result;
     }
 
     Atom UltraCanvasLinuxClipboard::StringToAtom(const std::string& str, bool createIfMissing) {
-        if (str.empty() || !display) return None;
-
-        // XInternAtom: only_if_exists = True means don't create, False means create if missing
-        // So we need to invert the createIfMissing logic
+        if (str.empty()) return None;
         return XInternAtom(display, str.c_str(), createIfMissing ? False : True);
     }
 
     std::string UltraCanvasLinuxClipboard::FormatToMimeType(const std::string& format) {
-        if (format == "UTF8_STRING") return "text/plain;charset=utf-8";
-        if (format == "STRING") return "text/plain";
-        if (format == "TEXT") return "text/plain";
+        // Convert internal format names to MIME types
+        if (format == "UTF8_STRING" || format == "STRING") return "text/plain";
         if (format == "image/png") return "image/png";
         if (format == "image/jpeg") return "image/jpeg";
-        if (format == "image/bmp") return "image/bmp";
         if (format == "text/uri-list") return "text/uri-list";
-        return format;
+
+        return format; // Return as-is if no conversion needed
     }
 
     std::string UltraCanvasLinuxClipboard::MimeTypeToFormat(const std::string& mimeType) {
-        if (mimeType == "text/plain;charset=utf-8") return "UTF8_STRING";
-        if (mimeType == "text/plain") return "STRING";
-        return mimeType;
+        // Convert MIME types to internal format names
+        if (mimeType == "text/plain") return "UTF8_STRING";
+
+        return mimeType; // Return as-is if no conversion needed
     }
 
     bool UltraCanvasLinuxClipboard::IsTextFormat(Atom target) {
-        return target == atomText || target == atomUtf8String ||
-               target == atomString || target == atomTextPlain ||
-               target == atomTextPlainUtf8;
+        return (target == atomUtf8String ||
+                target == atomString ||
+                target == atomTextPlain ||
+                target == atomTextPlainUtf8 ||
+                target == atomText);
     }
 
     bool UltraCanvasLinuxClipboard::IsImageFormat(Atom target) {
-        return target == atomImagePng || target == atomImageJpeg || target == atomImageBmp;
+        return (target == atomImagePng ||
+                target == atomImageJpeg ||
+                target == atomImageBmp);
     }
 
     bool UltraCanvasLinuxClipboard::IsFileFormat(Atom target) {
-        return target == atomTextUriList;
+        return (target == atomTextUriList);
     }
 
     void UltraCanvasLinuxClipboard::LogError(const std::string& operation, const std::string& details) {
-        std::cerr << "UltraCanvas Clipboard Error in " << operation;
-        if (!details.empty()) {
-            std::cerr << ": " << details;
-        }
-        std::cerr << std::endl;
-    }
-
-    void UltraCanvasLinuxClipboard::LogInfo(const std::string& operation, const std::string& details) {
-        std::cout << "UltraCanvas Clipboard Info in " << operation;
-        if (!details.empty()) {
-            std::cout << ": " << details;
-        }
-        std::cout << std::endl;
+        std::cerr << "UltraCanvas Clipboard Error [" << operation << "]: " << details << std::endl;
     }
 
     bool UltraCanvasLinuxClipboard::CheckXError() {
         // Simple X error checking - could be enhanced
         XSync(display, False);
-        return true; // Assume no errors for now
+        return true; // For now, assume success
     }
 
-// ===== GLOBAL CLIPBOARD FUNCTIONS =====
-    static std::unique_ptr<UltraCanvasLinuxClipboard> g_clipboardInstance;
+    void UltraCanvasLinuxClipboard::ProcessClipboardEvent(const XEvent& event) {
+        if (!instance || !instance->display) return;
 
-    bool InitializeLinuxClipboard() {
-        if (!g_clipboardInstance) {
-            g_clipboardInstance = std::make_unique<UltraCanvasLinuxClipboard>();
-            return g_clipboardInstance->Initialize();
-        }
-        return true;
-    }
-
-    void CleanupLinuxClipboard() {
-        if (g_clipboardInstance) {
-            g_clipboardInstance->Shutdown();
-            g_clipboardInstance.reset();
+        if (event.type == SelectionRequest && event.xselectionrequest.owner == instance->window) {
+            instance->HandleSelectionEvent(event.xselectionrequest);
+        } else if (event.type == SelectionNotify && event.xselection.requestor == instance->window) {
+            instance->HandleSelectionNotify(event.xselection);
+        } else if (event.type == SelectionClear) {
+            instance->HandleSelectionClear(event.xselectionclear);
         }
     }
-
-    UltraCanvasLinuxClipboard* GetLinuxClipboard() {
-        return g_clipboardInstance.get();
-    }
-
-    void ProcessClipboardEvents() {
-        if (g_clipboardInstance) {
-            g_clipboardInstance->ProcessEvents();
-        }
-    }
-
 } // namespace UltraCanvas
