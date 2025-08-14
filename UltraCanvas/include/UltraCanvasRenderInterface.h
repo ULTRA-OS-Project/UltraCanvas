@@ -674,11 +674,18 @@ inline Point2D CalculateCenteredTextPosition(const std::string& text, const Rect
 }
 
 // ===== ALTERNATIVE: USE DRAWTEXT WITH RECTANGLE =====
-inline void DrawCenteredText(const std::string& text, const Rect2D& bounds) {
-    // Set text style for centering
-    // Draw text in the center of the rectangle
-    Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-    DrawText(text, center);
+//inline void DrawCenteredText(const std::string& text, const Rect2D& bounds) {
+//    // Set text style for centering
+//    // Draw text in the center of the rectangle
+//    Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+//    DrawText(text, center);
+//}
+
+inline void DrawTextInRect(const std::string& text, const Rect2D& bounds) {
+    IRenderContext* ctx = GetRenderContext();
+    if (ctx) {
+        ctx->DrawTextInRect(text, bounds);
+    }
 }
 
 // ===== ENHANCED RENDER STATE SCOPED GUARD =====

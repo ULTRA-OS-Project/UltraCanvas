@@ -453,8 +453,13 @@ namespace UltraCanvas {
                 default: alignment = PANGO_ALIGN_LEFT; break;
             }
             pango_layout_set_alignment(layout, alignment);
-
-            cairo_move_to(cairo, rect.x, rect.y);
+            if (currentState.textStyle.baseline == TextBaseline::Middle) {
+                int w, h;
+                pango_layout_get_pixel_size(layout, &w, &h);
+                cairo_move_to(cairo, rect.x, rect.y + ((rect.height - h)/2));
+            } else {
+                cairo_move_to(cairo, rect.x, rect.y);
+            }
             pango_cairo_show_layout(cairo, layout);
 
             pango_font_description_free(desc);
