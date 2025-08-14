@@ -6,6 +6,7 @@
 
 #include "UltraCanvasLinuxApplication.h"
 #include "UltraCanvasLinuxWindow.h"
+#include "UltraCanvasLinuxClipboard.h"
 #include <iostream>
 #include <algorithm>
 #include <sys/select.h>
@@ -62,6 +63,8 @@ namespace UltraCanvas {
 
             // STEP 3: Initialize window manager atoms
             InitializeAtoms();
+
+            InitializeLinuxClipboard();
 
             // STEP 4: Set up timing
             lastFrameTime = std::chrono::steady_clock::now();
@@ -158,7 +161,7 @@ namespace UltraCanvas {
             while (running && !windows.empty()) {
                 // Update timing
                 UpdateDeltaTime();
-
+                ProcessClipboardEvents();
                 while (XPending(display) > 0) {
                     XEvent xEvent;
                     XNextEvent(display, &xEvent);
@@ -217,8 +220,9 @@ namespace UltraCanvas {
         }
 
         // Cleanup X11 resources
-        CleanupX11();
+        CleanupLinuxClipboard();
 
+        CleanupX11();
         initialized = false;
 
         std::cout << "UltraCanvas: Linux main loop completed" << std::endl;
@@ -322,6 +326,7 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxApplication::ProcessXEvent(XEvent& xEvent) {
         // Find the window that owns this event
+
         UltraCanvasLinuxWindow* window = FindWindow(xEvent.xany.window);
 
         if (window) {
@@ -754,6 +759,7 @@ namespace UltraCanvas {
 
         while (eventThreadRunning && initialized && display) {
             try {
+                ProcessClipboardEvents();
                 if (XPending(display) > 0) {
                     XEvent xEvent;
                     XNextEvent(display, &xEvent);
