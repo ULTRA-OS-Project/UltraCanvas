@@ -28,6 +28,7 @@ namespace UltraCanvas {
 
         virtual bool Initialize() = 0;
         virtual void Run() = 0;
+        virtual void RunInEventLoop() {};
         virtual void Exit() = 0;
 
         bool IsInitialized() const { return initialized; }

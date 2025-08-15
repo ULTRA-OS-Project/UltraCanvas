@@ -172,25 +172,25 @@ namespace UltraCanvas {
         ULTRACANVAS_RENDER_SCOPE();
 
         // Copy button
-        Color copyColor = copyButtonRect.Contains(lastMousePos) ? Color(100, 200, 100, 255) : Color(150, 150, 150, 255);
+        Color copyColor = copyButtonRect.Contains(lastMousePos) ? Color(100, 250, 100, 255) : Color(50, 200, 50, 255);
         UltraCanvas::DrawFilledRect(copyButtonRect, copyColor);
         SetTextColor(Colors::White);
         SetFont("Arial", 10.0f);
-        DrawText("C", Point2D(copyButtonRect.x + 6, copyButtonRect.y + 14));
+        DrawText("C", Point2D(copyButtonRect.x + 6, copyButtonRect.y + 2));
 
         // Save button
-        Color saveColor = saveButtonRect.Contains(lastMousePos) ? Color(100, 150, 200, 255) : Color(150, 150, 150, 255);
+        Color saveColor = saveButtonRect.Contains(lastMousePos) ? Color(100, 150, 250, 255) : Color(150, 150, 250, 255);
         UltraCanvas::DrawFilledRect(saveButtonRect, saveColor);
         SetTextColor(Colors::White);
         SetFont("Arial", 10.0f);
-        DrawText("S", Point2D(saveButtonRect.x + 6, saveButtonRect.y + 14));
+        DrawText("S", Point2D(saveButtonRect.x + 6, saveButtonRect.y + 2));
 
         // Delete button
-        Color deleteColor = deleteButtonRect.Contains(lastMousePos) ? Color(200, 100, 100, 255) : Color(150, 150, 150, 255);
+        Color deleteColor = deleteButtonRect.Contains(lastMousePos) ? Color(255, 10, 10, 255) : Color(250, 100, 100, 255);
         UltraCanvas::DrawFilledRect(deleteButtonRect, deleteColor);
         SetTextColor(Colors::White);
         SetFont("Arial", 10.0f);
-        DrawText("X", Point2D(deleteButtonRect.x + 6, deleteButtonRect.y + 14));
+        DrawText("X", Point2D(deleteButtonRect.x + 6, deleteButtonRect.y + 2));
     }
 
     bool UltraCanvasClipboardItem::OnEvent(const UCEvent& event) {
@@ -263,28 +263,13 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasClipboardUI::CreateClipboardWindow() {
-        // Create window configuration
-        WindowConfig config;
-        config.title = "Multi-Entry Clipboard";
-        config.width = WINDOW_WIDTH;
-        config.height = WINDOW_HEIGHT;
-        config.resizable = true;
-        config.alwaysOnTop = true;
-        config.type = WindowType::Tool;
-
         // Create window using proper API
         clipboardWindow = std::make_shared<UltraCanvasWindow>();
-        if (!clipboardWindow->Create(config)) {
-            std::cerr << "Failed to create clipboard window" << std::endl;
-            return;
-        }
-
-        clipboardWindow->Hide(); // Start hidden
 
         // Set up window event handlers
-        clipboardWindow->onWindowBlurred = [this]() {
-            HideClipboardWindow();
-        };
+//        clipboardWindow->onWindowBlurred = [this]() {
+//            HideClipboardWindow();
+//        };
     }
 
     void UltraCanvasClipboardUI::RegisterGlobalHotkey() {
@@ -313,6 +298,17 @@ namespace UltraCanvas {
     void UltraCanvasClipboardUI::ShowClipboardWindow() {
         if (!clipboardWindow) return;
 
+        if (!clipboardWindow->IsCreated()) {
+            WindowConfig config;
+            config.title = "Multi-Entry Clipboard";
+            config.width = WINDOW_WIDTH;
+            config.height = WINDOW_HEIGHT;
+            config.resizable = true;
+            config.alwaysOnTop = true;
+            config.type = WindowType::Tool;
+
+            clipboardWindow->Create(config);
+        }
         RefreshUI();
         clipboardWindow->Show();
         isWindowVisible = true;
@@ -383,7 +379,7 @@ namespace UltraCanvas {
         // Find the entry index and copy it back to clipboard
         const auto& entries = clipboard->GetEntries();
         for (size_t i = 0; i < entries.size(); ++i) {
-            if (&entries[i] == &entry) {
+            if (entries[i] == entry) {
                 clipboard->CopyEntryToClipboard(i);
                 HideClipboardWindow();
                 break;
@@ -413,7 +409,7 @@ namespace UltraCanvas {
         // Find the entry index and remove it
         const auto& entries = clipboard->GetEntries();
         for (size_t i = 0; i < entries.size(); ++i) {
-            if (&entries[i] == &entry) {
+            if (entries[i] == entry) {
                 clipboard->RemoveEntry(i);
                 RefreshUI();
                 break;

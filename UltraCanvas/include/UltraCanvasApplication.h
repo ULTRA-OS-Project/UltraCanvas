@@ -39,6 +39,8 @@ namespace UltraCanvas {
             return instance.get();
         };
         virtual void SetGlobalEventHandler(std::function<bool(const UCEvent&)> handler);
+
+        virtual void RunInEventLoop() override;
     };
 
 } // namespace UltraCanvas

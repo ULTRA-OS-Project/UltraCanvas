@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "../include/UltraCanvasApplication.h"
+#include "../include/UltraCanvasClipboard.h"
 
 namespace UltraCanvas {
     std::unique_ptr<UltraCanvasApplication> UltraCanvasApplication::instance;
@@ -16,4 +17,12 @@ namespace UltraCanvas {
         // This works the same way regardless of platform
         auto* nativeApp = static_cast<UltraCanvasNativeApplication*>(this);
         nativeApp->SetGlobalEventHandler(handler);
-    }}
+    }
+
+    void UltraCanvasApplication::RunInEventLoop() {
+        auto clipbrd = GetClipboard();
+        if (clipbrd) {
+            clipbrd->Update();
+        }
+    }
+}

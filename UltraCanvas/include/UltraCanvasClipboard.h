@@ -51,6 +51,38 @@ struct ClipboardData {
     void GeneratePreview();
     std::string GetTypeString() const;
     std::string GetFormattedTime() const;
+
+    bool operator==(const ClipboardData& other) const {
+        // Compare type first (most likely to differ)
+        if (type != other.type) {
+            return false;
+        }
+
+        // Compare data size (quick check before content comparison)
+        if (dataSize != other.dataSize) {
+            return false;
+        }
+
+        // Compare MIME type
+        if (mimeType != other.mimeType) {
+            return false;
+        }
+
+        // Compare content (text content or file path)
+        if (content != other.content) {
+            return false;
+        }
+
+        // Compare raw binary data (for images/files)
+        if (rawData != other.rawData) {
+            return false;
+        }
+
+        // Note: timestamp, thumbnail, and preview are not compared
+        // as they are derived/metadata that shouldn't affect equality
+
+        return true;
+    }
 };
 
 // ===== PLATFORM-INDEPENDENT CLIPBOARD INTERFACE =====

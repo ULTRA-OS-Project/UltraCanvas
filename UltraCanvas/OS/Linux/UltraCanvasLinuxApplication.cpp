@@ -159,11 +159,29 @@ namespace UltraCanvas {
             while (running && !windows.empty()) {
                 // Update timing
                 UpdateDeltaTime();
-                while (XPending(display) > 0) {
-                    XEvent xEvent;
-                    XNextEvent(display, &xEvent);
+                if (XPending(display) > 0) {
+                    while (XPending(display) > 0) {
+                        XEvent xEvent;
+                        XNextEvent(display, &xEvent);
 
-                    ProcessXEvent(xEvent);
+                        ProcessXEvent(xEvent);
+                    }
+                } else {
+                    // Wait for events with timeout
+                    struct timeval timeout;
+                    timeout.tv_sec = 0;
+                    timeout.tv_usec = 16666; // ~60 FPS
+
+                    fd_set readfds;
+                    FD_ZERO(&readfds);
+                    FD_SET(ConnectionNumber(display), &readfds);
+
+                    int result = select(ConnectionNumber(display) + 1, &readfds, nullptr, nullptr, &timeout);
+
+                    if (result < 0 && errno != EINTR) {
+                        std::cerr << "UltraCanvas: select() error in event thread" << std::endl;
+                        break;
+                    }
                 }
 
                 // Process all pending events
@@ -196,6 +214,7 @@ namespace UltraCanvas {
                 }
                 // Frame rate control
                 //LimitFrameRate();
+                RunInEventLoop();
             }
 
         } catch (const std::exception& e) {

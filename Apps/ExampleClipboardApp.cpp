@@ -47,7 +47,7 @@ public:
         // Step 4: Create main demo window
         CreateMainWindow();
         CreateUI();
-        AddSampleData();
+        //AddSampleData();
         
         std::cout << "✅ Modular clipboard system initialized successfully!" << std::endl;
         std::cout << "📋 Features available:" << std::endl;
@@ -177,7 +177,7 @@ public:
             "Email: user@example.com\nPhone: +1-555-0123\nAddress: 123 Main St, City, State 12345",
             "JSON Example: {\"name\": \"UltraCanvas\", \"version\": \"2.1.2\", \"modular\": true}",
         };
-        
+
         for (const std::string& text : sampleTexts) {
             ClipboardData entry(ClipboardDataType::Text, text);
             clipboard->AddEntry(entry);
@@ -206,7 +206,7 @@ public:
         
         std::cout << "👋 Application shutting down..." << std::endl;
     }
-    
+
     void Shutdown() {
         std::cout << "🔄 Shutting down modular clipboard system..." << std::endl;
         

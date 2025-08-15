@@ -105,6 +105,8 @@ bool UltraCanvasClipboard::Initialize() {
     std::string initialText;
     if (GetText(initialText)) {
         lastClipboardContent = initialText;
+        auto entry = CreateEntryFromCurrentClipboard();
+        AddEntry(entry);
     }
 
     std::cout << "UltraCanvas: Clipboard initialized successfully" << std::endl;

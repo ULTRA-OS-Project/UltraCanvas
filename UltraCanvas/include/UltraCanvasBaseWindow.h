@@ -112,6 +112,7 @@ namespace UltraCanvas {
         bool IsMinimized() { return state_ == WindowState::Minimized; }
         bool IsMaximized() { return state_ == WindowState::Maximized; }
         bool IsFullscreen() { return state_ == WindowState::Fullscreen; }
+        bool IsCreated()  { return created_; }
         WindowState GetState() { return state_; }
         void SetApplication(UltraCanvasApplication* application);
 

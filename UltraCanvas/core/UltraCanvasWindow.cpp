@@ -378,6 +378,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasWindow::Create(const WindowConfig& config) {
         config_ = config;
+        state_ = WindowState::Normal;
         SetApplication(UltraCanvasApplication::GetInstance());
 
         if (UltraCanvasNativeWindow::CreateNative(config)) {
