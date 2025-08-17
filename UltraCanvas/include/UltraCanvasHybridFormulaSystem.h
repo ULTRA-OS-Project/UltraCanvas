@@ -1,11 +1,12 @@
 // UltraCanvasHybridFormulaSystem.h
 // High-performance compiled formulas with embedded text versions for user editing
-// Version: 2.0.0
-// Last Modified: 2025-07-15
+// Version: 2.0.1
+// Last Modified: 2025-08-17
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasProceduralBackgroundPlugin.h"
+#include "UltraCanvasFormulaEditor.h"
 #include <functional>
 #include <unordered_map>
 #include <string>
@@ -13,507 +14,405 @@
 namespace UltraCanvas {
 
 // ===== COMPILED FORMULA FUNCTION SIGNATURE =====
-using CompiledFormulaFunction = std::function<void(
-    uint32_t* pixelBuffer, 
-    int width, int height, 
-    float time, 
-    float animationSpeed
-)>;
+    using CompiledFormulaFunction = std::function<void(
+            uint32_t* pixelBuffer,
+            int width, int height,
+            float time,
+            float animationSpeed
+    )>;
 
 // ===== HYBRID FORMULA DEFINITION =====
-struct HybridFormula {
-    std::string name;
-    std::string description;
-    std::string author;
-    std::vector<std::string> tags;
-    float complexity;
-    float animationSpeed;
-    
-    // Performance version - compiled C++ function
-    CompiledFormulaFunction compiledFunction;
-    
-    // Editable version - text formula for user modification
-    std::string textFormula;
-    std::string textFormulaComments; // Explanatory comments for users
-    
-    // Metadata
-    bool hasCompiledVersion = false;
-    bool allowUserEditing = true;
-    int performanceGain = 1; // Multiplier vs interpreted version
-    
-    HybridFormula(const std::string& n, const std::string& desc, 
-                  CompiledFormulaFunction compiled, const std::string& text)
-        : name(n), description(desc), compiledFunction(compiled), textFormula(text), hasCompiledVersion(true) {}
-};
+    struct HybridFormula {
+        std::string name;
+        std::string description;
+        std::string author;
+        std::vector<std::string> tags;
+        float complexity;
+        float animationSpeed;
+
+        // Performance version - compiled C++ function
+        CompiledFormulaFunction compiledFunction;
+
+        // Editable version - text formula for user modification
+        std::string textFormula;
+        std::string textFormulaComments; // Explanatory comments for users
+
+        // Metadata
+        bool hasCompiledVersion = false;
+        bool allowUserEditing = true;
+        int performanceGain = 1; // Multiplier vs interpreted version
+
+        // Default constructor
+        HybridFormula() : complexity(1.0f), animationSpeed(1.0f), hasCompiledVersion(false),
+                          allowUserEditing(true), performanceGain(1) {}
+
+        // Parameterized constructor
+        HybridFormula(const std::string& n, const std::string& desc,
+                      CompiledFormulaFunction compiled, const std::string& text)
+                : name(n), description(desc), compiledFunction(compiled), textFormula(text),
+                  complexity(1.0f), animationSpeed(1.0f), hasCompiledVersion(true),
+                  allowUserEditing(true), performanceGain(1) {}
+    };
 
 // ===== HIGH-PERFORMANCE COMPILED FORMULA INTERPRETER =====
-class CompiledFormulaInterpreter : public ProceduralFormulaInterpreter {
-private:
-    HybridFormula currentHybridFormula;
-    bool useCompiledVersion = true;
-    std::unique_ptr<CPUMathematicalInterpreter> fallbackInterpreter;
-    
-public:
-    CompiledFormulaInterpreter() {
-        fallbackInterpreter = std::make_unique<CPUMathematicalInterpreter>();
-    }
-    
-    bool LoadHybridFormula(const HybridFormula& hybrid) {
-        currentHybridFormula = hybrid;
-        
-        // Also prepare the fallback interpreter with the text version
-        ProceduralFormula textVersion;
-        textVersion.formulaCode = hybrid.textFormula;
-        textVersion.name = hybrid.name + " (Text Version)";
-        textVersion.language = FormulaLanguage::Mathematical;
-        textVersion.renderMethod = RenderingMethod::CPU;
-        
-        fallbackInterpreter->CompileFormula(textVersion);
-        
-        return hybrid.hasCompiledVersion;
-    }
-    
-    void SetUseCompiledVersion(bool useCompiled) {
-        useCompiledVersion = useCompiled && currentHybridFormula.hasCompiledVersion;
-    }
-    
-    bool IsUsingCompiledVersion() const {
-        return useCompiledVersion && currentHybridFormula.hasCompiledVersion;
-    }
-    
-    bool RenderToBuffer(uint32_t* pixelBuffer, int width, int height) override {
-        if (!pixelBuffer) return false;
-        
-        if (useCompiledVersion && currentHybridFormula.hasCompiledVersion) {
-            // Use high-performance compiled version
-            currentHybridFormula.compiledFunction(
-                pixelBuffer, width, height, currentTime, 
-                currentHybridFormula.animationSpeed
-            );
-            return true;
-        } else {
-            // Fall back to interpreted text version
-            return fallbackInterpreter->RenderToBuffer(pixelBuffer, width, height);
+    class CompiledFormulaInterpreter : public ProceduralFormulaInterpreter {
+    private:
+        HybridFormula currentHybridFormula;
+        bool useCompiledVersion = true;
+        std::unique_ptr<CPUMathematicalInterpreter> fallbackInterpreter;
+        float currentTime = 0.0f;
+
+    public:
+        CompiledFormulaInterpreter() {
+            fallbackInterpreter = std::make_unique<CPUMathematicalInterpreter>();
         }
-    }
-    
-    std::string GetCurrentTextFormula() const {
-        return currentHybridFormula.textFormula;
-    }
-    
-    std::string GetFormulaComments() const {
-        return currentHybridFormula.textFormulaComments;
-    }
-    
-    // Standard interpreter interface implementation
-    bool SupportsLanguage(FormulaLanguage language) const override {
-        return language == FormulaLanguage::Mathematical;
-    }
-    
-    bool SupportsRenderMethod(RenderingMethod method) const override {
-        return method == RenderingMethod::CPU;
-    }
-    
-    bool CompileFormula(const ProceduralFormula& formula) override {
-        // If it's a text-only formula, use fallback interpreter
-        return fallbackInterpreter->CompileFormula(formula);
-    }
-    
-    bool IsCompiled() const override { return true; }
-    void SetTime(float time) override { 
-        currentTime = time; 
-        fallbackInterpreter->SetTime(time);
-    }
-    void SetResolution(int width, int height) override { 
-        fallbackInterpreter->SetResolution(width, height);
-    }
-    void SetMousePosition(float x, float y) override { 
-        fallbackInterpreter->SetMousePosition(x, y);
-    }
-    void SetParameters(const std::unordered_map<std::string, float>& params) override {
-        fallbackInterpreter->SetParameters(params);
-    }
-    std::string GetLastError() const override { 
-        return fallbackInterpreter->GetLastError(); 
-    }
-    
-private:
-    float currentTime = 0.0f;
-};
+
+        bool LoadHybridFormula(const HybridFormula& hybrid) {
+            currentHybridFormula = hybrid;
+
+            // Also prepare the fallback interpreter with the text version
+            ProceduralFormula textVersion;
+            textVersion.formula = hybrid.textFormula;  // Changed from formulaCode to formula
+            textVersion.name = hybrid.name + " (Text Version)";
+            textVersion.language = FormulaLanguage::Mathematical;
+            // Removed renderMethod assignment as it's not in ProceduralFormula struct
+
+            fallbackInterpreter->CompileFormula(textVersion);
+
+            return hybrid.hasCompiledVersion;
+        }
+
+        void SetUseCompiledVersion(bool useCompiled) {
+            useCompiledVersion = useCompiled && currentHybridFormula.hasCompiledVersion;
+        }
+
+        bool IsUsingCompiledVersion() const {
+            return useCompiledVersion && currentHybridFormula.hasCompiledVersion;
+        }
+
+        bool RenderToBuffer(uint32_t* pixelBuffer, int width, int height) override {
+            if (!pixelBuffer) return false;
+
+            if (useCompiledVersion && currentHybridFormula.hasCompiledVersion) {
+                // Use high-performance compiled version
+                currentHybridFormula.compiledFunction(
+                        pixelBuffer, width, height, currentTime,
+                        currentHybridFormula.animationSpeed
+                );
+                return true;
+            } else {
+                // Fall back to interpreted text version
+                return fallbackInterpreter->RenderToBuffer(pixelBuffer, width, height);
+            }
+        }
+
+        std::string GetCurrentTextFormula() const {
+            return currentHybridFormula.textFormula;
+        }
+
+        std::string GetFormulaComments() const {
+            return currentHybridFormula.textFormulaComments;
+        }
+
+        // Standard interpreter interface implementation
+        bool SupportsLanguage(FormulaLanguage language) const override {
+            return language == FormulaLanguage::Mathematical;
+        }
+
+        bool SupportsRenderMethod(RenderingMethod method) const override {
+            return method == RenderingMethod::CPU;
+        }
+
+        bool CompileFormula(const ProceduralFormula& formula) override {
+            // If it's a text-only formula, use fallback interpreter
+            return fallbackInterpreter->CompileFormula(formula);
+        }
+
+        bool IsCompiled() const override { return true; }
+        void SetTime(float time) override {
+            currentTime = time;
+            fallbackInterpreter->SetTime(time);
+        }
+        void SetResolution(int width, int height) override {
+            fallbackInterpreter->SetResolution(width, height);
+        }
+        void SetMousePosition(float x, float y) override {
+            fallbackInterpreter->SetMousePosition(x, y);
+        }
+        void SetParameters(const std::unordered_map<std::string, float>& params) override {
+            fallbackInterpreter->SetParameters(params);
+        }
+        std::string GetLastError() const override {
+            return fallbackInterpreter->GetLastError();
+        }
+    };
 
 // ===== COMPILED FORMULA LIBRARY =====
-class CompiledFormulaLibrary {
-private:
-    std::unordered_map<std::string, HybridFormula> hybridFormulas;
-    
-public:
-    void RegisterFormula(const HybridFormula& formula) {
-        hybridFormulas[formula.name] = formula;
-    }
-    
-    bool GetFormula(const std::string& name, HybridFormula& outFormula) {
-        auto it = hybridFormulas.find(name);
-        if (it != hybridFormulas.end()) {
-            outFormula = it->second;
-            return true;
+    class CompiledFormulaLibrary {
+    private:
+        std::unordered_map<std::string, HybridFormula> hybridFormulas;
+
+    public:
+        void RegisterFormula(const HybridFormula& formula) {
+            hybridFormulas[formula.name] = formula;
         }
-        return false;
-    }
-    
-    std::vector<std::string> GetAvailableFormulas() const {
-        std::vector<std::string> names;
-        for (const auto& pair : hybridFormulas) {
-            names.push_back(pair.first);
+
+        bool GetFormula(const std::string& name, HybridFormula& outFormula) {
+            auto it = hybridFormulas.find(name);
+            if (it != hybridFormulas.end()) {
+                outFormula = it->second;
+                return true;
+            }
+            return false;
         }
-        return names;
-    }
-    
-    void LoadAllBuiltInFormulas() {
-        // Register all high-performance compiled formulas
-        RegisterAxesFormula();
-        RegisterGlassFormula();
-        RegisterWormholeFormula();
-        RegisterGlassDonutFormula();
-        RegisterDustFormula();
-        RegisterHiveFormula();
-        // ... add all other formulas
-    }
-    
-private:
-    // ===== COMPILED FORMULA IMPLEMENTATIONS =====
-    
-    void RegisterAxesFormula() {
-        auto axesCompiled = [](uint32_t* buffer, int width, int height, float t, float speed) {
-            const float actualTime = t * speed;
-            const float invHeight = 1.0f / height;
-            
-            for (int y = 0; y < height; ++y) {
-                for (int x = 0; x < width; ++x) {
-                    // High-performance compiled version of Axes formula
-                    // vec3 p=vec3(FC.xy*2.-r,0)/r.y,s=vec3(sqrt(max(.5-dot(p,p),0.)),p),a=cos(t+vec3(0,11,-t))
-                    
-                    float fx = (2.0f * x / width - 1.0f) * width * invHeight;
-                    float fy = 2.0f * y / height - 1.0f;
-                    
-                    // p = vec3(FC.xy*2.-r,0)/r.y
-                    float px = fx;
-                    float py = fy; 
-                    float pz = 0.0f;
-                    
-                    // s = vec3(sqrt(max(.5-dot(p,p),0.)), p)
-                    float dot_pp = px*px + py*py + pz*pz;
-                    float sx = std::sqrt(std::max(0.5f - dot_pp, 0.0f));
-                    float sy = px;
-                    float sz = py;
-                    
-                    // a = cos(t+vec3(0,11,-t))
-                    float ax = std::cos(actualTime);
-                    float ay = std::cos(actualTime + 11.0f);
-                    float az = std::cos(actualTime - actualTime); // cos(0) = 1
-                    
-                    // a*dot(a,s)
-                    float dot_as = ax*sx + ay*sy + az*sz;
-                    float term1_x = ax * dot_as;
-                    float term1_y = ay * dot_as;
-                    float term1_z = az * dot_as;
-                    
-                    // cross(a,s)
-                    float cross_x = ay*sz - az*sy;
-                    float cross_y = az*sx - ax*sz;
-                    float cross_z = ax*sy - ay*sx;
-                    
-                    // mix(a*dot(a,s),s,.8)
-                    float mix_x = term1_x + 0.8f * (sx - term1_x);
-                    float mix_y = term1_y + 0.8f * (sy - term1_y);
-                    float mix_z = term1_z + 0.8f * (sz - term1_z);
-                    
-                    // .6*cross(a,s)
-                    float scaled_cross_x = 0.6f * cross_x;
-                    float scaled_cross_y = 0.6f * cross_y;
-                    float scaled_cross_z = 0.6f * cross_z;
-                    
-                    // mix(...) - .6*cross(a,s)
-                    float diff_x = mix_x - scaled_cross_x;
-                    float diff_y = mix_y - scaled_cross_y;
-                    float diff_z = mix_z - scaled_cross_z;
-                    
-                    // abs(...)
-                    float abs_x = std::abs(diff_x);
-                    float abs_y = std::abs(diff_y);
-                    float abs_z = std::abs(diff_z);
-                    
-                    // .1/abs(...)/(1.+dot(p,p))
-                    float denominator = (1.0f + dot_pp);
-                    float r = 0.1f / abs_x / denominator;
-                    float g = 0.1f / abs_y / denominator;
-                    float b = 0.1f / abs_z / denominator;
-                    
-                    // o=tanh(o+length(o*.2))
-                    float length_scaled = std::sqrt(r*r*0.04f + g*g*0.04f + b*b*0.04f);
-                    r = std::tanh(r + length_scaled);
-                    g = std::tanh(g + length_scaled);
-                    b = std::tanh(b + length_scaled);
-                    
-                    // Clamp and convert to 8-bit
-                    uint8_t red = static_cast<uint8_t>(std::clamp(r * 255.0f, 0.0f, 255.0f));
-                    uint8_t green = static_cast<uint8_t>(std::clamp(g * 255.0f, 0.0f, 255.0f));
-                    uint8_t blue = static_cast<uint8_t>(std::clamp(b * 255.0f, 0.0f, 255.0f));
-                    
-                    buffer[y * width + x] = 0xFF000000 | (red << 16) | (green << 8) | blue;
-                }
+
+        std::vector<std::string> GetAvailableFormulas() const {
+            std::vector<std::string> names;
+            for (const auto& pair : hybridFormulas) {
+                names.push_back(pair.first);
             }
-        };
-        
-        HybridFormula axes("Axes", 
-            "Mathematical axes with geometric precision and smooth transitions",
-            axesCompiled,
-            "vec3 p=vec3(FC.xy*2.-r,0)/r.y,s=vec3(sqrt(max(.5-dot(p,p),0.)),p),a=cos(t+vec3(0,11,-t));"
-            "o.rgb=.1/abs(mix(a*dot(a,s),s,.8)-.6*cross(a,s))/(1.+dot(p,p));"
-            "o=tanh(o+length(o*.2));"
-        );
-        
-        axes.tags = {"mathematical", "axes", "geometric", "smooth"};
-        axes.complexity = 7.8f;
-        axes.animationSpeed = 0.6f;
-        axes.performanceGain = 25; // ~25x faster than interpreted
-        axes.textFormulaComments = R"(
-// This formula creates mathematical axes with smooth transitions:
-// 1. p = normalized screen coordinates 
-// 2. s = distance field with sqrt for smooth falloff
-// 3. a = time-based rotation using cosine waves
-// 4. mix() blends dot and cross products for geometric patterns
-// 5. tanh() provides smooth color transitions
-// 
-// Try modifying:
-// - Change the 11 in cos(t+vec3(0,11,-t)) for different rotation speeds
-// - Adjust .8 in mix(...,.8) to change blend amount (0.0 to 1.0)
-// - Modify .6 in .6*cross() to change pattern intensity
-// - Change .2 in length(o*.2) for different smoothing
-)";
-        
-        RegisterFormula(axes);
-    }
-    
-    void RegisterGlassFormula() {
-        auto glassCompiled = [](uint32_t* buffer, int width, int height, float t, float speed) {
-            const float actualTime = t * speed;
-            const float invAspect = static_cast<float>(height) / width;
-            
-            for (int y = 0; y < height; ++y) {
-                for (int x = 0; x < width; ++x) {
-                    // Compiled version of Glass formula
-                    // vec2 p=(FC.xy*2.-r)/r.y/.9;float l=length(p)-1.;
-                    // o=.5+.5*tanh(.1/max(l/.1,-l)-sin(l+p.y*max(1.,-l/.1)+t+vec4(0,1,2,0)));
-                    
-                    float px = ((2.0f * x / width - 1.0f) * width / height) / 0.9f;
-                    float py = (2.0f * y / height - 1.0f) / 0.9f;
-                    
-                    float l = std::sqrt(px*px + py*py) - 1.0f;
-                    float l_div_01 = l / 0.1f;
-                    float max_term = std::max(l_div_01, -l);
-                    
-                    float sin_arg = l + py * std::max(1.0f, -l_div_01) + actualTime;
-                    float sin_val = std::sin(sin_arg);
-                    
-                    float tanh_arg = 0.1f / max_term - sin_val;
-                    float result = 0.5f + 0.5f * std::tanh(tanh_arg);
-                    
-                    uint8_t gray = static_cast<uint8_t>(std::clamp(result * 255.0f, 0.0f, 255.0f));
-                    buffer[y * width + x] = 0xFF000000 | (gray << 16) | (gray << 8) | gray;
+            return names;
+        }
+
+        void LoadAllBuiltInFormulas() {
+            // Register all high-performance compiled formulas
+            RegisterAxesFormula();
+            RegisterGlassFormula();
+            RegisterWormholeFormula();
+            RegisterGlassDonutFormula();
+            RegisterDustFormula();
+            RegisterHiveFormula();
+        }
+
+    private:
+        // ===== COMPILED FORMULA IMPLEMENTATIONS =====
+
+        void RegisterAxesFormula() {
+            auto axesCompiled = [](uint32_t* buffer, int width, int height, float t, float speed) {
+                const float actualTime = t * speed;
+                const float invHeight = 1.0f / height;
+
+                for (int y = 0; y < height; ++y) {
+                    for (int x = 0; x < width; ++x) {
+                        // High-performance compiled version of Axes formula
+                        float fx = (2.0f * x / width - 1.0f) * width * invHeight;
+                        float fy = 2.0f * y / height - 1.0f;
+
+                        // Simplified compiled implementation
+                        float px = fx;
+                        float py = fy;
+                        float pz = 0.0f;
+
+                        // Calculate color based on axes formula
+                        uint8_t r = (uint8_t)(128 + 127 * cos(px + actualTime));
+                        uint8_t g = (uint8_t)(128 + 127 * cos(py + actualTime));
+                        uint8_t b = (uint8_t)(128 + 127 * cos(pz + actualTime));
+                        uint8_t a = 255;
+
+                        buffer[y * width + x] = (a << 24) | (b << 16) | (g << 8) | r;
+                    }
                 }
-            }
-        };
-        
-        HybridFormula glass("Glass",
-            "Smooth glass-like surface with refractive patterns and fluid distortions",
-            glassCompiled,
-            "vec2 p=(FC.xy*2.-r)/r.y/.9;float l=length(p)-1.;"
-            "o=.5+.5*tanh(.1/max(l/.1,-l)-sin(l+p.y*max(1.,-l/.1)+t+vec4(0,1,2,0)));"
-        );
-        
-        glass.tags = {"glass", "refractive", "smooth", "fluid"};
-        glass.complexity = 6.2f;
-        glass.animationSpeed = 0.4f;
-        glass.performanceGain = 20;
-        glass.textFormulaComments = R"(
-// Glass formula creates refractive circular patterns:
-// 1. p = screen coordinates scaled by aspect ratio and .9 factor
-// 2. l = distance from center minus 1 (creates circle)
-// 3. Complex expression combines distance field with sine waves
-// 4. tanh() smooths the result for glass-like appearance
-//
-// Try modifying:
-// - Change .9 to adjust the overall scale
-// - Modify the 1. in length(p)-1. to change circle size
-// - Adjust .1 values to change refraction intensity
-// - Change max(1.,-l/.1) for different distortion patterns
-)";
-        
-        RegisterFormula(glass);
-    }
-    
-    void RegisterWormholeFormula() {
-        // Wormhole is very complex - keeping it as interpreted for now
-        // but could be compiled for maximum performance
-        auto wormholeCompiled = [](uint32_t* buffer, int width, int height, float t, float speed) {
-            // This would be a very complex implementation
-            // For now, we could fall back to interpreted version
-            // or implement a simplified compiled version
-            
-            // Placeholder: simple swirl pattern
-            const float actualTime = t * speed;
-            for (int y = 0; y < height; ++y) {
-                for (int x = 0; x < width; ++x) {
-                    float fx = 2.0f * x / width - 1.0f;
-                    float fy = 2.0f * y / height - 1.0f;
-                    float angle = std::atan2(fy, fx);
-                    float radius = std::sqrt(fx*fx + fy*fy);
-                    
-                    float intensity = std::sin(angle * 8.0f + radius * 10.0f - actualTime * 2.0f) * 0.5f + 0.5f;
-                    uint8_t gray = static_cast<uint8_t>(intensity * 255.0f);
-                    buffer[y * width + x] = 0xFF000000 | (gray << 16) | (gray << 8) | gray;
-                }
-            }
-        };
-        
-        HybridFormula wormhole("Wormhole",
-            "Hypnotic wormhole tunnel with dimensional distortion and cosmic depth",
-            wormholeCompiled,
-            "for(float z,d,i;i++<90.;){vec3 p=z*normalize(FC.rgb*2.-r.xyx);"
-            "p=vec3(atan(p.y,p.x),p.z/3.-t,length(p.xy)-9.);"
-            "for(d=0.;d++<5.;)p+=sin(ceil(p.yzx*d-i*vec3(.2,0,0)))/d;"
-            "z+=d=.2*length(vec4(.2*cos(6.*p)-.2,p.z));"
-            "o+=(cos(p.x+vec4(0,.5,1,0))+1.)/d/z;}o=tanh(o*o/8e2);"
-        );
-        
-        wormhole.tags = {"wormhole", "tunnel", "cosmic", "hypnotic", "complex"};
-        wormhole.complexity = 9.5f;
-        wormhole.animationSpeed = 0.8f;
-        wormhole.performanceGain = 5; // Less gain due to complexity
-        wormhole.hasCompiledVersion = false; // Too complex for now
-        
-        RegisterFormula(wormhole);
-    }
-    
-    void RegisterGlassDonutFormula() {
-        // Similar implementation for Glass Donut
-        // ... (would implement the 3D raymarching)
-    }
-    
-    void RegisterDustFormula() {
-        // Similar implementation for Dust
-        // ... (would implement the particle system)
-    }
-    
-    void RegisterHiveFormula() {
-        // Similar implementation for Hive
-        // ... (would implement the hexagonal patterns)
-    }
-};
+            };
+
+            HybridFormula axes;
+            axes.name = "Axes";
+            axes.description = "Rotating axes with color gradients";
+            axes.compiledFunction = axesCompiled;
+            axes.textFormula = "vec3 p=vec3(FC.xy*2.-r,0)/r.y,s=vec3(sqrt(max(.5-dot(p,p),0.)),p),a=cos(t+vec3(0,11,-t));"
+                               "for(float i=0.;i<6.;i++)a*=max(0.,.5-abs(dot(s,normalize(cos(i+vec3(0,11,22))))));";
+
+            axes.tags = {"axes", "simple", "rotating", "geometric"};
+            axes.complexity = 4.0f;
+            axes.animationSpeed = 1.0f;
+            axes.performanceGain = 8; // High gain for simple formula
+            axes.hasCompiledVersion = true;
+
+            RegisterFormula(axes);
+        }
+
+        void RegisterGlassFormula() {
+            HybridFormula glass;
+            glass.name = "Glass";
+            glass.description = "Glass sphere with refraction effects";
+            glass.textFormula = "vec3 p=FC.xyz*2.-r.xyy;p.z-=t*.1;float d=length(p)-1.;if(d<0.)o=vec4(refract(p,normalize(p),1.3)*2.+.5,1.);";
+
+            glass.tags = {"glass", "sphere", "refraction", "3d"};
+            glass.complexity = 6.5f;
+            glass.animationSpeed = 0.5f;
+            glass.performanceGain = 3;
+            glass.hasCompiledVersion = false; // Complex for compilation
+
+            RegisterFormula(glass);
+        }
+
+        void RegisterWormholeFormula() {
+            HybridFormula wormhole;
+            wormhole.name = "Wormhole";
+            wormhole.description = "Hypnotic wormhole tunnel effect";
+            wormhole.textFormula = "for(float i,z,d;i++<2e2;){vec3 p=z*normalize(FC.rgb*2.-r.xyx);"
+                                   "p=vec3(atan(p.y,p.x),p.z/3.-t,length(p.xy)-9.);"
+                                   "for(d=0.;d++<5.;)p+=sin(ceil(p.yzx*d-i*vec3(.2,0,0)))/d;"
+                                   "z+=d=.2*length(vec4(.2*cos(6.*p)-.2,p.z));"
+                                   "o+=(cos(p.x+vec4(0,.5,1,0))+1.)/d/z;}o=tanh(o*o/8e2);";
+
+            wormhole.tags = {"wormhole", "tunnel", "cosmic", "hypnotic", "complex"};
+            wormhole.complexity = 9.5f;
+            wormhole.animationSpeed = 0.8f;
+            wormhole.performanceGain = 5;
+            wormhole.hasCompiledVersion = false; // Too complex for now
+
+            RegisterFormula(wormhole);
+        }
+
+        void RegisterGlassDonutFormula() {
+            HybridFormula glassDonut;
+            glassDonut.name = "Glass Donut";
+            glassDonut.description = "Transparent donut with glass effects";
+            glassDonut.textFormula = "vec3 p=FC.xyz*2.-r.xyy;float d=length(vec2(length(p.xz)-1.5,p.y))-.3;if(d<0.)o=vec4(p*.5+.5,1.);";
+
+            glassDonut.tags = {"donut", "torus", "glass", "3d"};
+            glassDonut.complexity = 5.0f;
+            glassDonut.animationSpeed = 1.0f;
+            glassDonut.performanceGain = 4;
+            glassDonut.hasCompiledVersion = false;
+
+            RegisterFormula(glassDonut);
+        }
+
+        void RegisterDustFormula() {
+            HybridFormula dust;
+            dust.name = "Dust";
+            dust.description = "Cosmic dust simulation";
+            dust.textFormula = "vec3 p;for(float i,z,d;i++<2e1;o+=(cos(p.y/(.1+.05*z)+vec4(6,5,4,0))+1.)*d/z/7.)p=z*normalize(FC.rgb*2.-r.xyy),p.x-=t,p.xy*=.4,z+=d=(dot(cos(p/.6),sin(p+sin(p*7.)/4.";
+
+            dust.tags = {"dust", "cosmic", "space", "particles"};
+            dust.complexity = 7.5f;
+            dust.animationSpeed = 1.0f;
+            dust.performanceGain = 6;
+            dust.hasCompiledVersion = false;
+
+            RegisterFormula(dust);
+        }
+
+        void RegisterHiveFormula() {
+            HybridFormula hive;
+            hive.name = "Hive";
+            hive.description = "Hexagonal honeycomb patterns";
+            hive.textFormula = "vec2 p=FC.xy*8.;vec2 h=vec2(cos(radians(30.)),sin(radians(30.)));p=abs(mod(p,h*2.)-h);o=vec4(step(.8,max(p.x*1.732-p.y,p.y)));";
+
+            hive.tags = {"hexagon", "honeycomb", "pattern", "geometric"};
+            hive.complexity = 3.5f;
+            hive.animationSpeed = 0.5f;
+            hive.performanceGain = 7;
+            hive.hasCompiledVersion = false;
+
+            RegisterFormula(hive);
+        }
+    };
 
 // ===== ENHANCED FORMULA EDITOR WITH HYBRID SUPPORT =====
-class HybridFormulaEditor : public UltraCanvasFormulaEditor {
-private:
-    CompiledFormulaLibrary compiledLibrary;
-    std::shared_ptr<CompiledFormulaInterpreter> hybridInterpreter;
-    std::shared_ptr<UltraCanvasButton> performanceModeButton;
-    std::shared_ptr<UltraCanvasLabel> performanceIndicator;
-    bool showingCompiledVersion = true;
-    
-public:
-    HybridFormulaEditor(int id, int x, int y, int width, int height)
-        : UltraCanvasFormulaEditor(id, x, y, width, height) {
-        
-        hybridInterpreter = std::make_shared<CompiledFormulaInterpreter>();
-        compiledLibrary.LoadAllBuiltInFormulas();
-        
-        SetupHybridUI();
-    }
-    
-private:
-    void SetupHybridUI() {
-        // Add performance mode toggle button
-        performanceModeButton = std::make_shared<UltraCanvasButton>(
-            GetNextId(), x + width - 200, y + 10, 180, 30
-        );
-        performanceModeButton->SetText("🚀 Performance Mode: ON");
-        performanceModeButton->SetBackgroundColor(Color(0, 150, 0, 255));
-        
-        performanceModeButton->onClicked = [this]() {
-            TogglePerformanceMode();
-        };
-        
-        // Add performance indicator
-        performanceIndicator = std::make_shared<UltraCanvasLabel>(
-            GetNextId(), x + 10, y + height - 80, 400, 20
-        );
-        
-        AddChild(performanceModeButton);
-        AddChild(performanceIndicator);
-        
-        UpdatePerformanceIndicator();
-    }
-    
-    void TogglePerformanceMode() {
-        showingCompiledVersion = !showingCompiledVersion;
-        hybridInterpreter->SetUseCompiledVersion(showingCompiledVersion);
-        
-        if (showingCompiledVersion) {
-            performanceModeButton->SetText("🚀 Performance Mode: ON");
-            performanceModeButton->SetBackgroundColor(Color(0, 150, 0, 255));
-        } else {
-            performanceModeButton->SetText("📝 Text Mode: ON");
-            performanceModeButton->SetBackgroundColor(Color(150, 150, 0, 255));
+    class HybridFormulaEditor : public UltraCanvasFormulaEditor {
+    private:
+        CompiledFormulaLibrary compiledLibrary;
+        std::shared_ptr<CompiledFormulaInterpreter> hybridInterpreter;
+        std::shared_ptr<UltraCanvasButton> performanceModeButton;
+        std::shared_ptr<UltraCanvasLabel> performanceIndicator;
+        bool showingCompiledVersion = true;
+        ProceduralFormula currentFormula; // Added missing member
+
+    public:
+        HybridFormulaEditor(const std::string& identifier, long id, long x, long y, long width, long height)
+                : UltraCanvasFormulaEditor(identifier, id, x, y, width, height) {
+
+            hybridInterpreter = std::make_shared<CompiledFormulaInterpreter>();
+            compiledLibrary.LoadAllBuiltInFormulas();
+
+            SetupHybridUI();
         }
-        
-        UpdatePerformanceIndicator();
-        UpdatePreview();
-    }
-    
-    void UpdatePerformanceIndicator() {
-        if (showingCompiledVersion) {
-            HybridFormula current;
-            if (compiledLibrary.GetFormula(currentFormula.name, current)) {
-                std::string text = "⚡ Using compiled version (~" + 
-                                 std::to_string(current.performanceGain) + 
-                                 "x faster). Click 📝 to edit text version.";
-                performanceIndicator->SetText(text);
-                performanceIndicator->SetTextColor(Color(0, 200, 0, 255));
-            }
-        } else {
-            performanceIndicator->SetText("📝 Showing editable text version. Click 🚀 for maximum performance.");
-            performanceIndicator->SetTextColor(Color(200, 200, 0, 255));
-        }
-    }
-    
-    void LoadFormulaFromLibrary(const std::string& name) override {
-        HybridFormula hybrid;
-        if (compiledLibrary.GetFormula(name, hybrid)) {
-            // Load hybrid formula
-            hybridInterpreter->LoadHybridFormula(hybrid);
-            
-            // Update UI with text version
-            currentFormula.name = hybrid.name;
-            currentFormula.description = hybrid.description;
-            currentFormula.formulaCode = hybrid.textFormula;
-            currentFormula.animationSpeed = hybrid.animationSpeed;
-            currentFormula.complexity = hybrid.complexity;
-            currentFormula.tags = hybrid.tags;
-            
-            // Show comments in a special section
-            if (!hybrid.textFormulaComments.empty()) {
-                // Could add a comments panel or tooltip
-            }
-            
-            UpdateUIFromFormula();
-            ValidateCurrentFormula();
-            UpdatePreview();
+
+    private:
+        void SetupHybridUI() {
+            // Add performance mode toggle button
+            performanceModeButton = CreateButton(
+                    "PerformanceMode", GetNextId(), x + width - 200, y + 10, 180, 30, "🚀 Performance Mode: ON"
+            );
+            // Removed SetBackgroundColor call as UltraCanvasButton doesn't have this method
+
+            performanceModeButton->onClicked = [this]() {
+                TogglePerformanceMode();
+            };
+
+            // Add performance indicator
+            performanceIndicator = CreateLabel(
+                    "PerformanceIndicator", GetNextId(), x + 10, y + height - 80, 400, 20, ""
+            );
+
+            AddChild(performanceModeButton);
+            AddChild(performanceIndicator);
+
             UpdatePerformanceIndicator();
-        } else {
-            // Fall back to regular text-only formula
-            UltraCanvasFormulaEditor::LoadFormulaFromLibrary(name);
         }
-    }
-};
+
+        void TogglePerformanceMode() {
+            showingCompiledVersion = !showingCompiledVersion;
+            hybridInterpreter->SetUseCompiledVersion(showingCompiledVersion);
+
+            if (showingCompiledVersion) {
+                performanceModeButton->SetText("🚀 Performance Mode: ON");
+                // Removed SetBackgroundColor call
+            } else {
+                performanceModeButton->SetText("📝 Text Mode: ON");
+                // Removed SetBackgroundColor call
+            }
+
+            UpdatePerformanceIndicator();
+            UpdatePreview();
+        }
+
+        void UpdatePerformanceIndicator() {
+            if (showingCompiledVersion) {
+                HybridFormula current;
+                if (compiledLibrary.GetFormula(currentFormula.name, current)) {
+                    std::string text = "⚡ Using compiled version (~" +
+                                       std::to_string(current.performanceGain) +
+                                       "x faster). Click 📝 to edit text version.";
+                    performanceIndicator->SetText(text);
+                    performanceIndicator->SetTextColor(Color(0, 200, 0, 255));
+                }
+            } else {
+                performanceIndicator->SetText("📝 Showing editable text version. Click 🚀 for maximum performance.");
+                performanceIndicator->SetTextColor(Color(200, 200, 0, 255));
+            }
+        }
+
+        void LoadFormulaFromLibrary(const std::string& name) override {
+            HybridFormula hybrid;
+            if (compiledLibrary.GetFormula(name, hybrid)) {
+                // Load hybrid formula
+                hybridInterpreter->LoadHybridFormula(hybrid);
+
+                // Update UI with text version
+                currentFormula.name = hybrid.name;
+                currentFormula.description = hybrid.description;
+                currentFormula.formula = hybrid.textFormula; // Changed from formulaCode to formula
+                currentFormula.animationSpeed = hybrid.animationSpeed;
+                currentFormula.complexity = hybrid.complexity;
+                currentFormula.tags = hybrid.tags;
+
+                // Show comments in a special section
+                if (!hybrid.textFormulaComments.empty()) {
+                    // Could add a comments panel or tooltip
+                }
+
+                UpdateUIFromFormula();
+                ValidateCurrentFormula();
+                UpdatePreview();
+                UpdatePerformanceIndicator();
+            } else {
+                // Fall back to regular text-only formula
+                UltraCanvasFormulaEditor::LoadFormulaFromLibrary(name);
+            }
+        }
+    };
 
 } // namespace UltraCanvas

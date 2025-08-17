@@ -668,12 +668,12 @@ inline std::shared_ptr<UltraCanvasTextInput> CreateNumberInput(
     return input;
 }
 
-inline std::shared_ptr<UltraCanvasTextInput> CreateTextArea(
-    const std::string& identifier, long id, long x, long y, long w, long h) {
-    auto input = CreateTextInput(identifier, id, x, y, w, h);
-    input->SetInputType(TextInputType::Multiline);
-    return input;
-}
+//inline std::shared_ptr<UltraCanvasTextInput> CreateTextInput(
+//    const std::string& identifier, long id, long x, long y, long w, long h) {
+//    auto input = CreateTextInput(identifier, id, x, y, w, h);
+//    input->SetInputType(TextInputType::Multiline);
+//    return input;
+//}
 
 // ===== BUILDER PATTERN =====
 class TextInputBuilder {
