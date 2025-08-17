@@ -100,6 +100,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasUIElement.cpp
         UltraCanvas/core/UltraCanvasTextInput.cpp
         UltraCanvas/core/UltraCanvasClipboard.cpp
+        #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxApplication.cpp
@@ -112,6 +113,7 @@ set(ULTRACANVAS_SOURCES
 set(APP_SOURCES
         Apps/ExampleClipboardApp.cpp
         Apps/UltraCanvasClipboardUI.cpp
+        UltraCanvas/include/UltraCanvasScrollableWindow.h
         #Apps/ImageRenderingExample.cpp
         # Add your source files here
 )
