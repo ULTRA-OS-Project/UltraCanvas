@@ -30,11 +30,12 @@ namespace UltraCanvas {
         static std::unique_ptr<UltraCanvasApplication> instance;
     public:
         UltraCanvasApplication() : UltraCanvasNativeApplication() {
+            instance = std::unique_ptr<UltraCanvasApplication>(this);
         }
 
         static UltraCanvasApplication* GetInstance() {
             if (!instance) {
-                instance = std::make_unique<UltraCanvasApplication>();
+                new UltraCanvasApplication();
             }
             return instance.get();
         };

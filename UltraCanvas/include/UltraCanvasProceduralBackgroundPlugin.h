@@ -672,6 +672,51 @@ namespace UltraCanvas {
             return std::find(extensions.begin(), extensions.end(), ext) != extensions.end();
         }
 
+        bool CanHandle(const GraphicsFileInfo& fileInfo) const override {
+            return fileInfo.formatType == GraphicsFormatType::Procedural ||
+                   CanHandle(fileInfo.filename);
+        }
+
+        std::shared_ptr<UltraCanvasElement> LoadGraphics(const std::string& filePath) override {
+            auto background = std::make_shared<UltraCanvasProceduralBackground>(
+                    "procedural_" + std::to_string(rand()),
+                    rand(), 0, 0, 400, 300);
+            return background;
+        }
+
+        std::shared_ptr<UltraCanvasElement> LoadGraphics(const GraphicsFileInfo& fileInfo) override {
+            return LoadGraphics(fileInfo.filename);
+        }
+
+        std::shared_ptr<UltraCanvasElement> CreateGraphics(int width, int height, GraphicsFormatType type) override {
+            if (type == GraphicsFormatType::Procedural) {
+                return std::make_shared<UltraCanvasProceduralBackground>(
+                        "new_procedural_" + std::to_string(rand()),
+                        rand(), 0, 0, width, height);
+            }
+            return nullptr;
+        }
+
+        GraphicsManipulation GetSupportedManipulations() const override {
+            return GraphicsManipulation::Move |
+                   GraphicsManipulation::Scale |
+                   GraphicsManipulation::Resize |
+                   GraphicsManipulation::ColorAdjust |
+                   GraphicsManipulation::Filter;
+        }
+
+        GraphicsFileInfo GetFileInfo(const std::string& filePath) override {
+            GraphicsFileInfo info(filePath);
+            info.formatType = GraphicsFormatType::Procedural;
+            info.supportedManipulations = GetSupportedManipulations();
+            return info;
+        }
+
+        bool ValidateFile(const std::string& filePath) override {
+            if (!CanHandle(filePath)) return false;
+            std::ifstream file(filePath);
+            return file.is_open();
+        }
     private:
         std::string GetFileExtension(const std::string& filePath) const {
             size_t dotPos = filePath.find_last_of('.');
