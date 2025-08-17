@@ -111,9 +111,15 @@ set(ULTRACANVAS_SOURCES
 
 # ✅ FIXED: Corrected source file extension and added missing files
 set(APP_SOURCES
-        Apps/ExampleClipboardApp.cpp
-        Apps/UltraCanvasClipboardUI.cpp
-        UltraCanvas/include/UltraCanvasScrollableWindow.h
+# clipboard app
+#        Apps/ExampleClipboardApp.cpp
+#        Apps/UltraCanvasClipboardUI.cpp
+#        UltraCanvas/include/UltraCanvasScrollableWindow.h
+
+# formula app
+        Apps/GraphicFormulaApp.cpp
+
+#image rendeing
         #Apps/ImageRenderingExample.cpp
         # Add your source files here
 )

@@ -84,7 +84,7 @@ public:
         
         // Set default filters
         filters = {
-            FileFilter("All Files", {"*"}),
+            FileFilter("All Files", "*"),
             FileFilter("Text Files", {"txt", "log", "md"}),
             FileFilter("Image Files", {"png", "jpg", "jpeg", "gif", "bmp"}),
             FileFilter("Document Files", {"pdf", "doc", "docx", "rtf"})
@@ -182,7 +182,7 @@ public:
         // Draw border
         SetStrokeColor(borderColor);
         SetStrokeWidth(1);
-        DrawRectOutline(bounds);
+        DrawRect(bounds);
         
         // Draw components
         DrawPathBar();
@@ -336,11 +336,11 @@ private:
         SetFillColor(Colors::White);
         DrawRect(pathBounds);
         SetStrokeColor(borderColor);
-        DrawRectOutline(pathBounds);
+        DrawRect(pathBounds);
         
         // Draw path text
         SetTextColor(Colors::Black);
-        SetTextFont("Arial", 12);
+        SetFont("Arial", 12);
         DrawText(currentPath, Point2D(pathBounds.x + 5, pathBounds.y + 18));
     }
     
@@ -351,12 +351,12 @@ private:
         SetFillColor(Colors::White);
         DrawRect(listBounds);
         SetStrokeColor(borderColor);
-        DrawRectOutline(listBounds);
+        DrawRect(listBounds);
         
         // Set clipping for list content
         SetClipRect(listBounds);
         
-        SetTextFont("Arial", 12);
+        SetFont("Arial", 12);
         int currentY = (int)listBounds.y + 2;
         int itemIndex = 0;
         
@@ -387,8 +387,8 @@ private:
             currentY += itemHeight;
             itemIndex++;
         }
-        
-        ResetClip();
+
+        ClearClipRect();
         
         // Draw scrollbar if needed
         DrawScrollbar();
@@ -444,14 +444,14 @@ private:
         
         // Draw label
         SetTextColor(Colors::Black);
-        SetTextFont("Arial", 12);
+        SetFont("Arial", 12);
         DrawText("File name:", Point2D(inputBounds.x - 75, inputBounds.y + 14));
         
         // Draw input background
         SetFillColor(Colors::White);
         DrawRect(inputBounds);
         SetStrokeColor(borderColor);
-        DrawRectOutline(inputBounds);
+        DrawRect(inputBounds);
         
         // Draw input text
         DrawText(fileNameText, Point2D(inputBounds.x + 5, inputBounds.y + 14));
@@ -472,14 +472,14 @@ private:
         
         // Draw label
         SetTextColor(Colors::Black);
-        SetTextFont("Arial", 12);
+        SetFont("Arial", 12);
         DrawText("Files of type:", Point2D(filterBounds.x - 75, filterBounds.y + 16));
         
         // Draw filter dropdown background
         SetFillColor(buttonColor);
         DrawRect(filterBounds);
         SetStrokeColor(borderColor);
-        DrawRectOutline(filterBounds);
+        DrawRect(filterBounds);
         
         // Draw current filter text
         if (selectedFilterIndex >= 0 && selectedFilterIndex < (int)filters.size()) {
@@ -504,10 +504,10 @@ private:
         SetFillColor(buttonColor);
         DrawRect(okBounds);
         SetStrokeColor(borderColor);
-        DrawRectOutline(okBounds);
+        DrawRect(okBounds);
         
         SetTextColor(Colors::Black);
-        SetTextFont("Arial", 12);
+        SetFont("Arial", 12);
         std::string okText = (dialogType == FileDialogType::Save) ? "Save" : "Open";
         Point2D okTextSize = MeasureText(okText);
         DrawText(okText, Point2D(
@@ -520,7 +520,7 @@ private:
         SetFillColor(buttonColor);
         DrawRect(cancelBounds);
         SetStrokeColor(borderColor);
-        DrawRectOutline(cancelBounds);
+        DrawRect(cancelBounds);
         
         Point2D cancelTextSize = MeasureText("Cancel");
         DrawText("Cancel", Point2D(
@@ -607,7 +607,7 @@ private:
     void HandleKeyDown(const UCEvent& event) {
         switch (event.virtualKey) {
             case UCKeys::Return:
-            case UCKeys::KP_Enter:
+//            case UCKeys::KP_Enter:
                 HandleOkButton();
                 break;
                 

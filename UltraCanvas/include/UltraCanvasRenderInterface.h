@@ -657,6 +657,11 @@ inline float GetTextHeight(const std::string& text) {
     return ctx ? ctx->GetTextHeight(text) : 0.0f;
 }
 
+inline Point2D MeasureText(const std::string& text) {
+    IRenderContext* ctx = GetRenderContext();
+    return ctx ? ctx->MeasureText(text) : Point2D(0.0f, 0.0f);
+}
+
 inline Point2D CalculateCenteredTextPosition(const std::string& text, const Rect2D& bounds) {
     IRenderContext* ctx = GetRenderContext();
     if (ctx) {

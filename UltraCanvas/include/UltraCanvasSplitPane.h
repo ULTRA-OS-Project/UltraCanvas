@@ -550,7 +550,7 @@ private:
         // Draw subtle border
         SetStrokeColor(splitterLineColor);
         SetStrokeWidth(1);
-        DrawRectOutline(bounds);
+        DrawRect(bounds);
     }
     
     virtual void DrawCustomSplitter(const Rect2D& bounds, const Color& color) {

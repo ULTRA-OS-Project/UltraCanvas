@@ -216,6 +216,10 @@ namespace UltraCanvas {
             return parent;
         }
 
+        void SetParent(UltraCanvasElement* p) {
+            parent = p;
+        }
+
         UltraCanvasBaseWindow* GetWindow() const {
             return window;
         }

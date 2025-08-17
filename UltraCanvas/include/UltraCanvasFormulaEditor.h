@@ -12,7 +12,6 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLayoutEngine.h"
-#include "UltraCanvasSplitter.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasLabel.h"
@@ -23,7 +22,7 @@
 #include <memory>
 #include <regex>
 #include <fstream>
-#include <json/json.h>
+#include <jsoncpp/json/json.h>
 
 namespace UltraCanvas {
 
