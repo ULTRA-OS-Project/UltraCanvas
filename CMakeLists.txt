@@ -100,6 +100,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasUIElement.cpp
         UltraCanvas/core/UltraCanvasTextInput.cpp
         UltraCanvas/core/UltraCanvasClipboard.cpp
+        UltraCanvas/core/UltraCanvasElementDebug.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
@@ -119,8 +120,8 @@ set(APP_SOURCES
 # formula app
         Apps/GraphicFormulaApp.cpp
 
-#image rendeing
-        #Apps/ImageRenderingExample.cpp
+        #image rendeing
+#        Apps/ImageRenderingExample.cpp
         # Add your source files here
 )
 

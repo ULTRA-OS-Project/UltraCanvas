@@ -36,8 +36,8 @@ namespace UltraCanvas {
         Color textColor = Colors::Black;
 
         // Background and border
-        Color backgroundColor = Colors::Transparent;
-        Color borderColor = Colors::Transparent;
+        Color backgroundColor = Colors::Blue;
+        Color borderColor = Colors::Magenta;
         float borderWidth = 0.0f;
         float borderRadius = 0.0f;
 
@@ -304,7 +304,7 @@ namespace UltraCanvas {
                         textY = textArea.y + style.fontSize * 0.8f; // Baseline offset
                         break;
                     case LabelVerticalAlignment::Middle:
-                        textY = textArea.y + (textArea.height + textSize.y) / 2;
+                        textY = textArea.y + (textArea.height / 2) - style.fontSize * 0.8;
                         break;
                     case LabelVerticalAlignment::Bottom:
                         textY = textArea.y + textArea.height;
@@ -335,6 +335,7 @@ namespace UltraCanvas {
                 } else {
                     DrawRect(bounds);
                 }
+
             }
 
             // Draw border

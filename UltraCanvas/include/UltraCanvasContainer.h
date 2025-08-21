@@ -1,7 +1,7 @@
 // UltraCanvasContainer.h
 // Container component with scrollbars and child element management
-// Version: 1.2.6
-// Last Modified: 2025-01-06
+// Version: 1.2.7
+// Last Modified: 2025-01-17
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -10,6 +10,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasCairoDebugExtension.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -27,8 +28,8 @@ namespace UltraCanvas {
 
         // Border and background
         Color borderColor = Color(200, 200, 200, 255);
-        Color backgroundColor = Color(255, 255, 255, 255);
-        float borderWidth = 1.0f;
+        Color backgroundColor = Colors::White;
+        float borderWidth = 3.0f;
 
         // Padding for content area
         float paddingLeft = 5.0f;
@@ -81,6 +82,7 @@ namespace UltraCanvas {
         void AddChild(std::shared_ptr<UltraCanvasElement> child) {
             if (child) {
                 children.push_back(child);
+                child->SetParent(this);
                 UpdateScrollability();
             }
         }
@@ -88,12 +90,18 @@ namespace UltraCanvas {
         void RemoveChild(std::shared_ptr<UltraCanvasElement> child) {
             auto it = std::find(children.begin(), children.end(), child);
             if (it != children.end()) {
+                (*it)->SetParent(nullptr);
                 children.erase(it);
                 UpdateScrollability();
             }
         }
 
         void ClearChildren() {
+            for (auto& child : children) {
+                if (child) {
+                    child->SetParent(nullptr);
+                }
+            }
             children.clear();
             scrollState.verticalPosition = 0.0f;
             scrollState.horizontalPosition = 0.0f;
@@ -102,6 +110,59 @@ namespace UltraCanvas {
 
         const std::vector<std::shared_ptr<UltraCanvasElement>>& GetChildren() const {
             return children;
+        }
+
+        // ===== NEW: RELATIVE COORDINATE CHILD MANAGEMENT =====
+//        void AddChildAtRelativePosition(std::shared_ptr<UltraCanvasElement> child) {
+//            if (child) {
+//                child->SetRelativePosition(child->GetRelativeX(), child->GetRelativeY());
+//                AddChild(child);
+//            }
+//        }
+
+        void AddChildAtRelativePosition(std::shared_ptr<UltraCanvasElement> child, long relativeX, long relativeY) {
+            if (child) {
+                child->SetPosition(relativeX, relativeY);
+                AddChild(child);
+            }
+        }
+
+        void AddChildAtRelativePosition(std::shared_ptr<UltraCanvasElement> child, const Point2D& relativePos) {
+            AddChildAtRelativePosition(child, static_cast<long>(relativePos.x), static_cast<long>(relativePos.y));
+        }
+
+        std::shared_ptr<UltraCanvasElement> GetChildAtRelativePosition(const Point2D& containerRelativePoint) const {
+            for (auto it = children.rbegin(); it != children.rend(); ++it) {
+                if ((*it) && (*it)->IsVisible() && (*it)->Contains(containerRelativePoint)) {
+                    return *it;
+                }
+            }
+            return nullptr;
+        }
+
+        // ===== NEW: COORDINATE TRANSFORMATION METHODS =====
+        Point2D ChildToContainer(const Point2D& childPoint) const {
+            return Point2D(childPoint.x, childPoint.y);
+        }
+
+        Point2D ContainerToChild(const Point2D& containerPoint) const {
+            return Point2D(containerPoint.x, containerPoint.y);
+        }
+
+        Point2D ChildToWindow(const Point2D& childPoint) const {
+            Rect2D contentArea = GetContentArea();
+            return Point2D(
+                    contentArea.x + childPoint.x - scrollState.horizontalPosition,
+                    contentArea.y + childPoint.y - scrollState.verticalPosition
+            );
+        }
+
+        Point2D WindowToChild(const Point2D& windowPoint) const {
+            Rect2D contentArea = GetContentArea();
+            return Point2D(
+                    windowPoint.x - contentArea.x + scrollState.horizontalPosition,
+                    windowPoint.y - contentArea.y + scrollState.verticalPosition
+            );
         }
 
         // ===== SCROLLING FUNCTIONS =====
@@ -127,6 +188,57 @@ namespace UltraCanvas {
 
         float GetVerticalScrollPosition() const { return scrollState.verticalPosition; }
         float GetHorizontalScrollPosition() const { return scrollState.horizontalPosition; }
+
+        // ===== NEW: SCROLL TO CHILD SUPPORT =====
+        void ScrollToChild(std::shared_ptr<UltraCanvasElement> child) {
+            if (!child) return;
+
+            Rect2D childBounds = child->GetBounds();
+            Rect2D visibleArea = GetVisibleContentArea();
+
+            float newHorizontalScroll = scrollState.horizontalPosition;
+            float newVerticalScroll = scrollState.verticalPosition;
+
+            if (childBounds.x < visibleArea.x) {
+                newHorizontalScroll = childBounds.x;
+            } else if (childBounds.x + childBounds.width > visibleArea.x + visibleArea.width) {
+                newHorizontalScroll = childBounds.x + childBounds.width - visibleArea.width;
+            }
+
+            if (childBounds.y < visibleArea.y) {
+                newVerticalScroll = childBounds.y;
+            } else if (childBounds.y + childBounds.height > visibleArea.y + visibleArea.height) {
+                newVerticalScroll = childBounds.y + childBounds.height - visibleArea.height;
+            }
+
+            SetHorizontalScrollPosition(newHorizontalScroll);
+            SetVerticalScrollPosition(newVerticalScroll);
+        }
+
+        void EnsureChildVisible(std::shared_ptr<UltraCanvasElement> child) {
+            if (!IsChildVisible(child)) {
+                ScrollToChild(child);
+            }
+        }
+
+        bool IsChildVisible(std::shared_ptr<UltraCanvasElement> child) const {
+            if (!child || !child->IsVisible()) return false;
+
+            Rect2D childBounds = child->GetBounds();
+            Rect2D visibleArea = GetVisibleContentArea();
+
+            return childBounds.Intersects(visibleArea);
+        }
+
+        Rect2D GetVisibleContentArea() const {
+            Rect2D contentArea = GetContentArea();
+            return Rect2D(
+                    scrollState.horizontalPosition,
+                    scrollState.verticalPosition,
+                    contentArea.width,
+                    contentArea.height
+            );
+        }
 
         // ===== SCROLLBAR VISIBILITY =====
         void SetShowVerticalScrollbar(bool show) {
@@ -185,6 +297,7 @@ namespace UltraCanvas {
 
             for (const auto& child : children) {
                 if (child) {
+                    // Use child's relative coordinates for content size calculation
                     float childRight = child->GetX() + child->GetWidth();
                     float childBottom = child->GetY() + child->GetHeight();
                     maxX = std::max(maxX, childRight);
@@ -193,6 +306,23 @@ namespace UltraCanvas {
             }
 
             return Point2D(maxX, maxY);
+        }
+
+        // ===== NEW: OPTIMIZED RENDERING WITH RELATIVE COORDINATES =====
+        std::vector<std::shared_ptr<UltraCanvasElement>> GetVisibleChildren() const {
+            std::vector<std::shared_ptr<UltraCanvasElement>> visibleChildren;
+            Rect2D visibleArea = GetVisibleContentArea();
+
+            for (const auto& child : children) {
+                if (child && child->IsVisible()) {
+                    Rect2D childBounds = child->GetBounds();
+                    if (childBounds.Intersects(visibleArea)) {
+                        visibleChildren.push_back(child);
+                    }
+                }
+            }
+
+            return visibleChildren;
         }
 
         // ===== RENDERING =====
@@ -206,7 +336,7 @@ namespace UltraCanvas {
             Rect2D contentArea = GetContentArea();
             SetClipRect(contentArea);
 
-            // Render children with scroll offset
+            // Render children with coordinate transformation
             RenderChildren();
 
             // Restore clipping
@@ -241,7 +371,7 @@ namespace UltraCanvas {
                 }
             }
 
-            // Forward events to children within content area
+            // Forward events to children within content area with coordinate transformation
             if (IsPointInContentArea(Point2D(event.x, event.y))) {
                 ForwardEventToChildren(event);
             }
@@ -279,187 +409,7 @@ namespace UltraCanvas {
             scrollState.horizontalPosition = std::min(scrollState.horizontalPosition, scrollState.maxHorizontalScroll);
         }
 
-        void DrawContainerBackground() {
-            // Draw background
-            Rect2D bounds = GetBounds();
-            DrawRect(bounds);
-            SetFillColor(style.backgroundColor);
-
-            // Draw border if specified
-            if (style.borderWidth > 0) {
-                SetStrokeColor(style.borderColor);
-                SetStrokeWidth(style.borderWidth);
-                DrawRect(bounds);
-            }
-        }
-
-        void RenderChildren() {
-            Rect2D contentArea = GetContentArea();
-
-            // Apply scroll offset
-            float scrollX = -scrollState.horizontalPosition;
-            float scrollY = -scrollState.verticalPosition;
-
-            PushRenderState();
-            Translate(scrollX, scrollY);
-
-            // Render each child
-            for (auto& child : children) {
-                if (child && child->IsVisible()) {
-                    // Check if child is within visible area (culling optimization)
-                    Rect2D childBounds = child->GetBounds();
-                    if (childBounds.Intersects(contentArea)) {
-                        child->Render();
-                    }
-                }
-            }
-
-            PopRenderState();
-        }
-
-        void DrawScrollbars() {
-            // Draw vertical scrollbar
-            if (scrollState.showVerticalScrollbar) {
-                DrawVerticalScrollbar();
-            }
-
-            // Draw horizontal scrollbar
-            if (scrollState.showHorizontalScrollbar) {
-                DrawHorizontalScrollbar();
-            }
-        }
-
-        void DrawVerticalScrollbar() {
-            // *** FIXED: Use getter methods instead of raw variables ***
-            float containerX = static_cast<float>(GetX());
-            float containerY = static_cast<float>(GetY());
-            float containerWidth = static_cast<float>(GetWidth());
-            float containerHeight = static_cast<float>(GetHeight());
-
-            Rect2D trackRect(
-                    containerX + containerWidth - style.scrollbarWidth,
-                    containerY,
-                    style.scrollbarWidth,
-                    containerHeight
-            );
-
-            // Draw track
-            SetFillColor(style.scrollbarTrackColor);
-            DrawRect(trackRect);
-
-            // Calculate thumb position and size
-            if (scrollState.maxVerticalScroll > 0) {
-                float thumbHeight = std::max(20.0f, (containerHeight / (containerHeight + scrollState.maxVerticalScroll)) * containerHeight);
-                float thumbY = containerY + (scrollState.verticalPosition / scrollState.maxVerticalScroll) * (containerHeight - thumbHeight);
-
-                Rect2D thumbRect(trackRect.x, thumbY, style.scrollbarWidth, thumbHeight);
-
-                // Choose thumb color based on state
-                Color thumbColor = style.scrollbarThumbColor;
-                if (scrollState.draggingVertical) {
-                    thumbColor = style.scrollbarThumbPressedColor;
-                } else if (scrollState.hoveringVerticalThumb) {
-                    thumbColor = style.scrollbarThumbHoverColor;
-                }
-
-                SetFillColor(thumbColor);
-                DrawRect(thumbRect);
-            }
-        }
-
-        void DrawHorizontalScrollbar() {
-            // *** FIXED: Use getter methods instead of raw variables ***
-            float containerX = static_cast<float>(GetX());
-            float containerY = static_cast<float>(GetY());
-            float containerWidth = static_cast<float>(GetWidth());
-            float containerHeight = static_cast<float>(GetHeight());
-
-            Rect2D trackRect(
-                    containerX,
-                    containerY + containerHeight - style.scrollbarWidth,
-                    containerWidth,
-                    style.scrollbarWidth
-            );
-
-            // Draw track
-            SetFillColor(style.scrollbarTrackColor);
-            DrawRect(trackRect);
-
-            // Calculate thumb position and size
-            if (scrollState.maxHorizontalScroll > 0) {
-                float thumbWidth = std::max(20.0f, (containerWidth / (containerWidth + scrollState.maxHorizontalScroll)) * containerWidth);
-                float thumbX = containerX + (scrollState.horizontalPosition / scrollState.maxHorizontalScroll) * (containerWidth - thumbWidth);
-
-                Rect2D thumbRect(thumbX, trackRect.y, thumbWidth, style.scrollbarWidth);
-
-                // Choose thumb color based on state
-                Color thumbColor = style.scrollbarThumbColor;
-                if (scrollState.draggingHorizontal) {
-                    thumbColor = style.scrollbarThumbPressedColor;
-                } else if (scrollState.hoveringHorizontalThumb) {
-                    thumbColor = style.scrollbarThumbHoverColor;
-                }
-
-                SetFillColor(thumbColor);
-                DrawRect(thumbRect);
-            }
-        }
-
         bool HandleMouseClick(const UCEvent& event) {
-            if (event.type == UCEventType::MouseDown) {
-                // *** FIXED: Use getter methods instead of raw variables ***
-                float containerX = static_cast<float>(GetX());
-                float containerY = static_cast<float>(GetY());
-                float containerWidth = static_cast<float>(GetWidth());
-                float containerHeight = static_cast<float>(GetHeight());
-
-                // Check for vertical scrollbar interaction
-                if (scrollState.showVerticalScrollbar) {
-                    Rect2D vScrollArea(
-                            containerX + containerWidth - style.scrollbarWidth,
-                            containerY,
-                            style.scrollbarWidth,
-                            containerHeight
-                    );
-
-                    if (vScrollArea.Contains(Point2D(event.x, event.y))) {
-                        HandleVerticalScrollbarClick(event);
-                        return true;
-                    }
-                }
-
-                // Check for horizontal scrollbar interaction
-                if (scrollState.showHorizontalScrollbar) {
-                    Rect2D hScrollArea(
-                            containerX,
-                            containerY + containerHeight - style.scrollbarWidth,
-                            containerWidth,
-                            style.scrollbarWidth
-                    );
-
-                    if (hScrollArea.Contains(Point2D(event.x, event.y))) {
-                        HandleHorizontalScrollbarClick(event);
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        bool HandleVerticalScrollbarClick(const UCEvent& event) {
-            // Implementation for vertical scrollbar click handling
-            scrollState.draggingVertical = true;
-            scrollState.dragStartPosition = event.y;
-            scrollState.dragStartScroll = scrollState.verticalPosition;
-            return true;
-        }
-
-        bool HandleHorizontalScrollbarClick(const UCEvent& event) {
-            // Implementation for horizontal scrollbar click handling
-            scrollState.draggingHorizontal = true;
-            scrollState.dragStartPosition = event.x;
-            scrollState.dragStartScroll = scrollState.horizontalPosition;
             return true;
         }
 
@@ -491,16 +441,179 @@ namespace UltraCanvas {
         }
 
         void ForwardEventToChildren(const UCEvent& event) {
-            // Create modified event with scroll offset
+            // Transform window coordinates to child (container-relative) coordinates
+            Point2D childCoordinates = WindowToChild(Point2D(event.x, event.y));
+
+            // Create modified event with container-relative coordinates
             UCEvent childEvent = event;
-            childEvent.x += static_cast<int>(scrollState.horizontalPosition);
-            childEvent.y += static_cast<int>(scrollState.verticalPosition);
+            childEvent.x = static_cast<int>(childCoordinates.x);
+            childEvent.y = static_cast<int>(childCoordinates.y);
 
             // Forward to children in reverse order (top-most first)
             for (auto it = children.rbegin(); it != children.rend(); ++it) {
                 if ((*it) && (*it)->IsVisible()) {
-                    (*it)->OnEvent(childEvent);
+                    // Check if the event is within this child's bounds (using relative coordinates)
+                    if ((*it)->Contains(childEvent.x, childEvent.y)) {
+                        if ((*it)->OnEvent(childEvent)) {
+                            break; // Event was handled, stop propagation
+                        }
+                    }
                 }
+            }
+        }
+
+        void DrawContainerBackground() {
+            // Draw background
+            Rect2D bounds = GetBounds();
+            SetFillColor(style.backgroundColor);
+            FillRect(bounds);
+
+            // Draw border if specified
+            if (style.borderWidth > 0) {
+                SetStrokeColor(style.borderColor);
+                SetStrokeWidth(style.borderWidth);
+                DrawRect(bounds);
+            }
+        }
+
+        void RenderChildren() {
+            Rect2D contentArea = GetContentArea();
+
+            // Save current render state
+            PushRenderState();
+
+            // Translate to content area and apply scroll offset
+            Translate(contentArea.x - scrollState.horizontalPosition,
+                      contentArea.y - scrollState.verticalPosition);
+
+            // Render each child using their relative coordinates
+            for (auto& child : children) {
+                if (child && child->IsVisible()) {
+                    // Check if child is within visible area (culling optimization)
+                    Rect2D childBounds = child->GetBounds();
+                    Rect2D visibleArea(scrollState.horizontalPosition, scrollState.verticalPosition,
+                                       contentArea.width, contentArea.height);
+
+                    if (childBounds.Intersects(visibleArea)) {
+                        // Save child's current transform
+                        PushRenderState();
+
+                        // Translate to child's relative position
+                        Translate(child->GetX(), child->GetY());
+
+                        // Render child
+                        child->Render();
+                        //UltraCanvas::RenderElementDebugWithCairo(child.get());
+
+                        // Restore child's transform
+                        PopRenderState();
+                    }
+                }
+            }
+
+            // Restore render state
+            PopRenderState();
+        }
+
+        void DrawScrollbars() {
+            // Draw vertical scrollbar
+            if (scrollState.showVerticalScrollbar) {
+                DrawVerticalScrollbar();
+            }
+
+            // Draw horizontal scrollbar
+            if (scrollState.showHorizontalScrollbar) {
+                DrawHorizontalScrollbar();
+            }
+        }
+
+        void DrawVerticalScrollbar() {
+            float containerX = static_cast<float>(GetX());
+            float containerY = static_cast<float>(GetY());
+            float containerWidth = static_cast<float>(GetWidth());
+            float containerHeight = static_cast<float>(GetHeight());
+
+            Rect2D trackRect(
+                    containerX + containerWidth - style.scrollbarWidth,
+                    containerY,
+                    style.scrollbarWidth,
+                    containerHeight
+            );
+
+            // Draw track
+            SetFillColor(style.scrollbarTrackColor);
+            DrawRect(trackRect);
+
+            // Calculate thumb position and size
+            if (scrollState.maxVerticalScroll > 0) {
+                float thumbHeight = std::max(20.0f,
+                                             (containerHeight * containerHeight) / (containerHeight + scrollState.maxVerticalScroll));
+                float thumbPosition = (scrollState.verticalPosition / scrollState.maxVerticalScroll) *
+                                      (containerHeight - thumbHeight);
+
+                Rect2D thumbRect(
+                        trackRect.x + 2.0f,
+                        containerY + thumbPosition,
+                        style.scrollbarWidth - 4.0f,
+                        thumbHeight
+                );
+
+                // Choose thumb color based on state
+                Color thumbColor = style.scrollbarThumbColor;
+                if (scrollState.draggingVertical) {
+                    thumbColor = style.scrollbarThumbPressedColor;
+                } else if (scrollState.hoveringVerticalThumb) {
+                    thumbColor = style.scrollbarThumbHoverColor;
+                }
+
+                // Draw thumb
+                SetFillColor(thumbColor);
+                DrawRect(thumbRect);
+            }
+        }
+
+        void DrawHorizontalScrollbar() {
+            float containerX = static_cast<float>(GetX());
+            float containerY = static_cast<float>(GetY());
+            float containerWidth = static_cast<float>(GetWidth());
+            float containerHeight = static_cast<float>(GetHeight());
+
+            Rect2D trackRect(
+                    containerX,
+                    containerY + containerHeight - style.scrollbarWidth,
+                    containerWidth,
+                    style.scrollbarWidth
+            );
+
+            // Draw track
+            SetFillColor(style.scrollbarTrackColor);
+            DrawRect(trackRect);
+
+            // Calculate thumb position and size
+            if (scrollState.maxHorizontalScroll > 0) {
+                float thumbWidth = std::max(20.0f,
+                                            (containerWidth * containerWidth) / (containerWidth + scrollState.maxHorizontalScroll));
+                float thumbPosition = (scrollState.horizontalPosition / scrollState.maxHorizontalScroll) *
+                                      (containerWidth - thumbWidth);
+
+                Rect2D thumbRect(
+                        containerX + thumbPosition,
+                        trackRect.y + 2.0f,
+                        thumbWidth,
+                        style.scrollbarWidth - 4.0f
+                );
+
+                // Choose thumb color based on state
+                Color thumbColor = style.scrollbarThumbColor;
+                if (scrollState.draggingHorizontal) {
+                    thumbColor = style.scrollbarThumbPressedColor;
+                } else if (scrollState.hoveringHorizontalThumb) {
+                    thumbColor = style.scrollbarThumbHoverColor;
+                }
+
+                // Draw thumb
+                SetFillColor(thumbColor);
+                DrawRect(thumbRect);
             }
         }
 

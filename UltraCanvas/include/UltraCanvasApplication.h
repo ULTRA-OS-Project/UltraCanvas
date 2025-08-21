@@ -27,17 +27,14 @@ namespace UltraCanvas {
 // ===== FRAMEWORK INITIALIZATION =====
     class UltraCanvasApplication : public UltraCanvasNativeApplication {
     private:
-        static std::unique_ptr<UltraCanvasApplication> instance;
+        static UltraCanvasApplication* instance;
     public:
         UltraCanvasApplication() : UltraCanvasNativeApplication() {
-            instance = std::unique_ptr<UltraCanvasApplication>(this);
+            UltraCanvasApplication::instance = this;
         }
 
         static UltraCanvasApplication* GetInstance() {
-            if (!instance) {
-                new UltraCanvasApplication();
-            }
-            return instance.get();
+            return UltraCanvasApplication::instance;
         };
         virtual void SetGlobalEventHandler(std::function<bool(const UCEvent&)> handler);
 

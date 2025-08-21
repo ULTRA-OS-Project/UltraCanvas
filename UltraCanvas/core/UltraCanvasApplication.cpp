@@ -8,7 +8,7 @@
 #include "../include/UltraCanvasClipboard.h"
 
 namespace UltraCanvas {
-    std::unique_ptr<UltraCanvasApplication> UltraCanvasApplication::instance;
+    UltraCanvasApplication* UltraCanvasApplication::instance = nullptr;
 
     void UltraCanvasApplication::SetGlobalEventHandler(std::function<bool(const UCEvent&)> handler) {
         std::cout << "UltraCanvas: Setting cross-platform global event handler" << std::endl;

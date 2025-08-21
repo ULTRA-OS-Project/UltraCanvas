@@ -364,7 +364,7 @@ public:
         if (window) {
             // Automatically set the context for this window
             IRenderContext* context = GetWindowContext(window);
-            std::cout << "SetCurrentWindow context=" << context << std::endl;
+            //std::cout << "SetCurrentWindow context=" << context << std::endl;
             if (context) {
                 SetCurrent(context);
             }

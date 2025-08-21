@@ -14,6 +14,8 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLayoutEngine.h"           // For grid layout functionality
 #include "UltraCanvasFormulaEditor.h"
+#include "UltraCanvasElementDebug.h"
+#include "UltraCanvasCairoDebugExtension.h"
 // NOTE: Temporarily removed this include to avoid abstract class compilation issues
 // The header contains a make_shared call for an abstract class ProceduralBackgroundPlugin
 // #include "UltraCanvasProceduralBackgroundPlugin.h"
@@ -144,61 +146,62 @@ private:
 
         // Left panel for controls (30% of width)
         int leftWidth = windowWidth * 0.3;
+        leftWidth = 350;
         leftPanel = std::make_shared<UltraCanvasContainer>("LeftPanel", 2,
-                                                           0, 0, leftWidth, windowHeight);
+                                                           0, 0, leftWidth, windowHeight - 20);
 
         // Right panel for graphics output (70% of width)
-        int rightWidth = windowWidth - leftWidth;
+        int rightWidth = windowWidth - leftWidth + 10;
         rightPanel = std::make_shared<UltraCanvasContainer>("RightPanel", 3,
                                                             leftWidth, 0, rightWidth, windowHeight);
 
-        // Formula editor in left panel
-        formulaEditor = std::make_shared<UltraCanvasFormulaEditor>("FormulaEditor", 10,
-                                                                   10, 10, leftWidth - 20, 300);
-
         // Formula dropdown
+        int y = 10;
         formulaDropdown = std::make_shared<UltraCanvasDropdown>("FormulaDropdown", 11,
-                                                                10, 320, leftWidth - 20, 30);
+                                                                10, y, leftWidth - 20, 30);
 
         // Control buttons
         int buttonWidth = (leftWidth - 50) / 3;
         newButton = std::make_shared<UltraCanvasButton>("NewButton", 12,
-                                                        10, 360, buttonWidth, 30, "New");
+                                                        10, y + 40, buttonWidth, 30, "New");
         openButton = std::make_shared<UltraCanvasButton>("OpenButton", 13,
-                                                         20 + buttonWidth, 360, buttonWidth, 30, "Open");
+                                                         20 + buttonWidth, y + 40, buttonWidth, 30, "Open");
         saveButton = std::make_shared<UltraCanvasButton>("SaveButton", 14,
-                                                         30 + 2 * buttonWidth, 360, buttonWidth, 30, "Save");
-
+                                                         30 + 2 * buttonWidth, y + 40, buttonWidth, 30, "Save");
         // Animation controls
         startButton = std::make_shared<UltraCanvasButton>("StartButton", 15,
-                                                          10, 400, (leftWidth - 30) / 2, 30, "Start Animation");
+                                                          10, y + 80, (leftWidth - 30) / 2, 30, "Start Animation");
         stopButton = std::make_shared<UltraCanvasButton>("StopButton", 16,
-                                                         20 + (leftWidth - 30) / 2, 400, (leftWidth - 30) / 2, 30, "Stop");
+                                                         20 + (leftWidth - 30) / 2, y + 80, (leftWidth - 30) / 2, 30, "Stop");
 
         // Frame rate control
         frameRateLabel = std::make_shared<UltraCanvasLabel>("FrameRateLabel", 17,
-                                                            10, 440, leftWidth - 20, 20, "Speed: 1.0x");
+                                                            10, y + 120, leftWidth - 20, 20, "Speed: 1.0x");
         // Fixed: Use correct UltraCanvasSlider constructor (6 parameters only)
         frameRateSlider = std::make_shared<UltraCanvasSlider>("FrameRateSlider", 18,
-                                                              10, 460, leftWidth - 20, 30);
+                                                              10, y + 140, leftWidth - 20, 30);
         frameRateSlider->SetRange(0.1f, 3.0f);
         frameRateSlider->SetValue(1.0f);
 
         // Status label
         statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 19,
                                                          10, windowHeight - 40, leftWidth - 20, 30, "Ready");
+        // Formula editor in left panel
+        formulaEditor = std::make_shared<UltraCanvasFormulaEditor>("FormulaEditor", 10,
+                                                                   2, 100, leftWidth - 14, 300);
 
         // Add controls to left panel
         leftPanel->AddChild(formulaEditor);
+//        leftPanel->AddChildAtRelativePosition(formulaDropdown, 10, 10);
         leftPanel->AddChild(formulaDropdown);
-        leftPanel->AddChild(newButton);
-        leftPanel->AddChild(openButton);
-        leftPanel->AddChild(saveButton);
-        leftPanel->AddChild(startButton);
-        leftPanel->AddChild(stopButton);
-        leftPanel->AddChild(frameRateLabel);
-        leftPanel->AddChild(frameRateSlider);
-        leftPanel->AddChild(statusLabel);
+//        leftPanel->AddChild(newButton);
+//        leftPanel->AddChild(openButton);
+//        leftPanel->AddChild(saveButton);
+//        leftPanel->AddChild(startButton);
+//        leftPanel->AddChild(stopButton);
+//        leftPanel->AddChild(frameRateLabel);
+//        leftPanel->AddChild(frameRateSlider);
+//        leftPanel->AddChild(statusLabel);
 
         // Create control panel in right side
         controlPanel = std::make_shared<UltraCanvasContainer>("ControlPanel", 70,
@@ -251,7 +254,7 @@ private:
 
         // Add panels to main container and add to window
         mainContainer->AddChild(leftPanel);
-        mainContainer->AddChild(rightPanel);
+//        mainContainer->AddChild(rightPanel);
         AddElement(mainContainer);
     }
 
@@ -495,9 +498,11 @@ public:
 
 // Main function
 int main() {
-    GraphicFormulaApp app;
+    UltraCanvasDebugRenderer::SetDebugEnabled(true);
 
-    if (!app.Initialize()) {
+    auto app = new GraphicFormulaApp();
+
+    if (!app->Initialize()) {
         std::cerr << "Failed to initialize GraphicFormulaApp" << std::endl;
         return -1;
     }
@@ -506,9 +511,10 @@ int main() {
     std::cout << "Running application..." << std::endl;
 
     // Run the application
-    app.Run();
+    app->Run();
 
     std::cout << "Application finished" << std::endl;
 
+    delete app;
     return 0;
 }
