@@ -7,6 +7,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasBaseWindow.h"
 #include "UltraCanvasRenderInterface.h"
+//#include "UltraCanvasZOrderManager.h"
 #include <algorithm>
 #include <cmath>
 
@@ -29,6 +30,7 @@ namespace UltraCanvas {
 
         // Update layout if needed
         if (layoutDirty) {
+//            UpdateChildZOrder();
             UpdateLayout();
         }
 
@@ -453,10 +455,20 @@ namespace UltraCanvas {
             }
         }
 
-        // Add to this container
-        children.push_back(child);
+        // Check if child implements popup interface
+//        if (auto* popup = dynamic_cast<IPopupElement*>(child.get())) {
+//            UltraCanvasPopupRegistry::RegisterPopupElement(child.get());
+//        }
+
+        // Auto-assign z-index if needed
+//        if (child && child->GetZIndex() == 0) {
+//            AutoAssignZIndex(child.get());
+//        }
         child->SetParentContainer(this);
         child->SetWindow(GetWindow());
+
+        // Add to this container
+        children.push_back(child);
 
         // Update layout and scrolling
         UpdateContentSize();
@@ -472,6 +484,9 @@ namespace UltraCanvas {
     void UltraCanvasContainer::RemoveChild(std::shared_ptr<UltraCanvasElement> child) {
         auto it = std::find(children.begin(), children.end(), child);
         if (it != children.end()) {
+            // Unregister from popup system
+//            UltraCanvasPopupRegistry::UnregisterPopupElement(child.get());
+
             (*it)->SetParentContainer(nullptr);
             (*it)->SetWindow(nullptr);
             children.erase(it);
@@ -491,6 +506,7 @@ namespace UltraCanvas {
         for (auto& child : children) {
             child->SetParentContainer(nullptr);
             child->SetWindow(nullptr);
+//            UltraCanvasPopupRegistry::UnregisterPopupElement(child.get());
         }
         children.clear();
 

@@ -272,8 +272,12 @@ namespace UltraCanvas {
             window = win;
         }
 
-        void SetThisAsActivePopupElement();
-        void ClearThisAsActivePopupElement();
+        //virtual bool IsInPopupState() { return false; }
+        virtual void RenderPopupContent() {};
+
+        void AddThisPopupElementToWindow();
+        void RemoveThisPopupElementFromWindow();
+
         void RequestRedraw();
 
         // ===== CORE VIRTUAL METHODS =====

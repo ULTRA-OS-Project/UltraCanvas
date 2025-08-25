@@ -8,7 +8,7 @@
 #include "../include/UltraCanvasEventDispatcher.h"
 #include "../include/UltraCanvasRenderInterface.h"
 #include "../include/UltraCanvasApplication.h"
-#include "../include/UltraCanvasZOrderManager.h"
+//#include "../include/UltraCanvasZOrderManager.h"
 #include "../include/UltraCanvasMenu.h"
 
 #include <iostream>
@@ -33,10 +33,17 @@ namespace UltraCanvas {
             return true;
         }
 
-        if (event.IsMouseClickEvent() && activePopupElement) {
-            auto localCoords = activePopupElement->ConvertWindowToLocalCoordinates(Point2D(event.x, event.y));
-            if (!activePopupElement->Contains(localCoords)) {
-                activePopupElement->OnEvent(event);
+        if (event.IsMouseClickEvent() && !activePopups.empty()) {
+            std::unordered_set<UltraCanvasElement*> activePopupsCopy = activePopups;
+            for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
+                UltraCanvasElement* activePopupElement = *it;
+                auto localCoords = activePopupElement->ConvertWindowToLocalCoordinates(Point2D(event.x, event.y));
+                UCEvent localEvent = event;
+                localEvent.x = localCoords.x;
+                localEvent.y = localCoords.y;
+                if (activePopupElement->OnEvent(localEvent)) {
+                    return true;
+                }
             }
         }
         // Forward to container for child handling
@@ -70,7 +77,7 @@ namespace UltraCanvas {
         }
     }
     void UltraCanvasBaseWindow::HandleCloseEvent() {
-        state_ = WindowState::Closing;
+        _state = WindowState::Closing;
         if (onWindowClose) onWindowClose();
     }
 
@@ -99,7 +106,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasBaseWindow::Render() {
-        if (!visible_ || !created_) return;
+        if (!_visible || !_created) return;
 
         // Clear the window background
         RenderWindowBackground();
@@ -107,75 +114,26 @@ namespace UltraCanvas {
         // Render container content (children with scrolling)
         UltraCanvasContainer::Render();
 
+        RenderActivePopups();
+
         // Render window-specific overlays
         RenderWindowChrome();
     }
 
-    // Fixed OnEvent method with proper event dispatching
-//    bool UltraCanvasBaseWindow::OnEvent(const UCEvent &event) {
-//        bool eventHandled = false;
-//
-//        if (event.type != UCEventType::MouseMove) {
-//            std::cout << "Window event: " << static_cast<int>(event.type)
-//                      << " at (" << event.x << "," << event.y << ")" << std::endl;
-//        }
-//
-//        // Use the enhanced element event forwarding system
-//        eventHandled = DispatchEventToElements(event);
-//
-//        return eventHandled;
-//    }
-
-//    bool UltraCanvasBaseWindow::DispatchEventToElements(const UCEvent& event) {
-//        Point2D mousePos(event.x, event.y);
-//        bool handled = false;
-//
-//        // For mouse events, use z-order hit testing
-//        if (event.IsMouseEvent()) {
-//            // Check elements in reverse order (topmost first)
-//            for (auto it = elements.rbegin(); it != elements.rend(); ++it) {
-//                UltraCanvasElement* element = *it;
-//
-//                if (!element || !element->IsVisible() || !element->IsEnabled()) {
-//                    continue;
-//                }
-//
-//                // Check various conditions for event handling
-//                if (element->Contains(mousePos)) {
-//                    // Let the enhanced element handle the event and forward to children
-//                    if (element->OnEvent(event)) {
-//                        handled = true;
-//                        break; // Event consumed
-//                    }
-//                }
-//            }
-//            if (event.IsMouseClickEvent()) {
-//                for (auto it = outsideClickHandlers.rbegin(); it != outsideClickHandlers.rend(); ++it) {
-//                    UltraCanvasElement* element = *it;
-//                    element->OnEvent(event);
-//                }
-//            }
-//        } else {
-//            // For non-mouse events, forward to all elements
-//            // The enhanced OnEvent will handle child forwarding appropriately
-//            for (auto* element : elements) {
-//                if (element && element->IsVisible() && element->IsEnabled()) {
-//                    if (element->OnEvent(event)) {
-//                        handled = true;
-//                        // Continue - some events may need to reach multiple elements
-//                    }
-//                }
-//            }
-//        }
-//
-//        return handled;
-//    }
-//
-    // UltraCanvasWindow
+    void UltraCanvasBaseWindow::RenderActivePopups() {
+        // Render popups in z-order
+        for (UltraCanvasElement* popup : activePopups) {
+            if (popup) {
+                PushRenderState();
+                popup->RenderPopupContent();
+                PopRenderState();
+            }
+        }
+    }
 
     bool UltraCanvasWindow::Create(const WindowConfig& config) {
         config_ = config;
-        state_ = WindowState::Normal;
+        _state = WindowState::Normal;
         auto application = UltraCanvasApplication::GetInstance();
         SetBounds(0, 0, config_.width, config_.height);
         if (UltraCanvasNativeWindow::CreateNative(config)) {
@@ -186,7 +144,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWindow::Destroy() {
-        if (!created_) {
+        if (!_created) {
             return;
         }
         auto application = UltraCanvasApplication::GetInstance();
@@ -194,8 +152,21 @@ namespace UltraCanvas {
             application->UnregisterWindow(this);
         }
         UltraCanvasNativeWindow::Destroy();
-        created_ = false;
+        _created = false;
     }
 
-
+//    void UpdateZOrderSort() {
+//        sortedElements = elements;
+//        UltraCanvasZOrderManager::SortElementsByZOrder(sortedElements);
+//        zOrderDirty = false;
+//
+//        std::cout << "Window z-order updated with " << sortedElements.size() << " elements:" << std::endl;
+//        for (size_t i = 0; i < sortedElements.size(); i++) {
+//            auto* element = sortedElements[i];
+//            if (element) {
+//                std::cout << "  [" << i << "] Z=" << element->GetZIndex()
+//                          << " " << element->GetIdentifier() << std::endl;
+//            }
+//        }
+//    }
 } // namespace UltraCanvas

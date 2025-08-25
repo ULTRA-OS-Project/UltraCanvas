@@ -224,6 +224,7 @@ namespace UltraCanvas {
                         pressed = true;
                         SetFocus(true);
                         if (onPressed) onPressed();
+                        RequestRedraw();
                     }
                     break;
 
@@ -237,12 +238,14 @@ namespace UltraCanvas {
                         if (wasPressed && Contains(event.x, event.y)) {
                             Click();
                         }
+                        RequestRedraw();
                     }
                     break;
 
                 case UCEventType::MouseEnter:
                     SetHovered(true);
                     if (onHoverEnter) onHoverEnter();
+                    RequestRedraw();
                     break;
 
                 case UCEventType::MouseLeave:
@@ -252,6 +255,7 @@ namespace UltraCanvas {
                         if (onReleased) onReleased();
                     }
                     if (onHoverLeave) onHoverLeave();
+                    RequestRedraw();
                     break;
 
                 case UCEventType::KeyDown:

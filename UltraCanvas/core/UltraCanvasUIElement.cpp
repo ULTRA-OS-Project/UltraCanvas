@@ -252,15 +252,15 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasElement::SetThisAsActivePopupElement() {
+    void UltraCanvasElement::AddThisPopupElementToWindow() {
         if (window) {
-            window->SetActivePopupElement(this);
+            window->AddPopupElement(this);
         }
     }
 
-    void UltraCanvasElement::ClearThisAsActivePopupElement() {
+    void UltraCanvasElement::RemoveThisPopupElementFromWindow() {
         if (window) {
-            window->ClearActivePopupElement(this);
+            window->RemovePopupElement(this);
         }
     }
 

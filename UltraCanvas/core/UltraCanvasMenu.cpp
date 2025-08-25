@@ -7,14 +7,14 @@
 #include <vector>
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasUIElement.h"
-#include "UltraCanvasZOrderManager.h"
+//#include "UltraCanvasZOrderManager.h"
 #include "UltraCanvasWindow.h"
 
 namespace UltraCanvas {
 
     void UltraCanvasMenu::Show() {
         // Ensure menu is always on top when shown
-        SetZIndex(UltraCanvas::ZLayers::Menus + 100);
+//        SetZIndex(UltraCanvas::ZLayers::Menus + 100);
 
         // Existing Show() implementation continues...
         if (currentState != MenuState::Visible && currentState != MenuState::Opening) {

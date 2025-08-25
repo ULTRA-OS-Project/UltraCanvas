@@ -120,6 +120,7 @@ set(APP_SOURCES
 
 # formula app
         Apps/GraphicFormulaApp.cpp
+        UltraCanvas/include/1.h
 
         #image rendeing
 #        Apps/ImageRenderingExample.cpp

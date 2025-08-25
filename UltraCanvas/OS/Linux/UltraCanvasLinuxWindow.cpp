@@ -23,7 +23,7 @@ namespace UltraCanvas {
 
 // ===== WINDOW CREATION =====
     bool UltraCanvasLinuxWindow::CreateNative(const WindowConfig& config) {
-        if (created_) {
+        if (_created) {
             std::cout << "UltraCanvas Linux: Window already created" << std::endl;
             return true;
         }
@@ -60,7 +60,7 @@ namespace UltraCanvas {
 
         RenderContextManager::RegisterWindowContext(this, renderContext.get());
 
-        created_ = true;
+        _created = true;
 
         std::cout << "UltraCanvas Linux: Window created successfully!" << std::endl;
         return true;
@@ -233,7 +233,7 @@ namespace UltraCanvas {
         config_.title = title;
 
         auto application = UltraCanvasApplication::GetInstance();
-        if (created_) {
+        if (_created) {
             XStoreName(application->GetDisplay(), xWindow, title.c_str());
 
             Atom netWmName = XInternAtom(application->GetDisplay(), "_NET_WM_NAME", False);
@@ -247,7 +247,7 @@ namespace UltraCanvas {
         config_.width = width;
         config_.height = height;
 
-        if (created_) {
+        if (_created) {
             auto application = UltraCanvasApplication::GetInstance();
             XResizeWindow(application->GetDisplay(), xWindow, width, height);
             UpdateCairoSurface();
@@ -259,7 +259,7 @@ namespace UltraCanvas {
         config_.x = x;
         config_.y = y;
 
-        if (created_) {
+        if (_created) {
             auto application = UltraCanvasApplication::GetInstance();
             XMoveWindow(application->GetDisplay(), xWindow, x, y);
         }
@@ -269,14 +269,14 @@ namespace UltraCanvas {
     void UltraCanvasLinuxWindow::SetResizable(bool resizable) {
         config_.resizable = resizable;
 
-        if (created_) {
+        if (_created) {
             SetWindowHints();
         }
     }
 
     // ===== WINDOW STATE MANAGEMENT =====
     void UltraCanvasLinuxWindow::Show() {
-        if (!created_ || visible_) {
+        if (!_created || _visible) {
             return;
         }
 
@@ -286,7 +286,7 @@ namespace UltraCanvas {
         XMapWindow(application->GetDisplay(), xWindow);
         XFlush(application->GetDisplay());
 
-        visible_ = true;
+        _visible = true;
 
         if (onWindowShow) {
             onWindowShow();
@@ -294,7 +294,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::Hide() {
-        if (!created_ || !visible_) {
+        if (!_created || !_visible) {
             return;
         }
 
@@ -303,7 +303,7 @@ namespace UltraCanvas {
         XUnmapWindow(application->GetDisplay(), xWindow);
         XFlush(application->GetDisplay());
 
-        visible_ = false;
+        _visible = false;
 
         if (onWindowHide) {
             onWindowHide();
@@ -311,11 +311,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::Close() {
-        if (!created_ || state_ == WindowState::Closing) {
+        if (!_created || _state == WindowState::Closing) {
             return;
         }
 
-        state_ = WindowState::Closing;
+        _state = WindowState::Closing;
 
         if (onWindowClose) {
             onWindowClose();
@@ -328,18 +328,18 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::Minimize() {
-        if (!created_) {
+        if (!_created) {
             return;
         }
         auto application = UltraCanvasApplication::GetInstance();
 
         Display* display = application->GetDisplay();
         XIconifyWindow(display, xWindow, application->GetScreen());
-        state_ = WindowState::Minimized;
+        _state = WindowState::Minimized;
     }
 
     void UltraCanvasLinuxWindow::Maximize() {
-        if (!created_) {
+        if (!_created) {
             return;
         }
         auto application = UltraCanvasApplication::GetInstance();
@@ -362,18 +362,18 @@ namespace UltraCanvas {
         XSendEvent(display, application->GetRootWindow(), False,
                    SubstructureNotifyMask | SubstructureRedirectMask, &event);
 
-        state_ = WindowState::Maximized;
+        _state = WindowState::Maximized;
     }
 
     void UltraCanvasLinuxWindow::Restore() {
-        if (!created_) {
+        if (!_created) {
             return;
         }
         auto application = UltraCanvasApplication::GetInstance();
 
         Display* display = application->GetDisplay();
 
-        if (state_ == WindowState::Maximized) {
+        if (_state == WindowState::Maximized) {
             Atom wmState = XInternAtom(display, "_NET_WM_STATE", False);
             Atom wmStateMaxHorz = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
             Atom wmStateMaxVert = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
@@ -390,15 +390,15 @@ namespace UltraCanvas {
 
             XSendEvent(display, application->GetRootWindow(), False,
                        SubstructureNotifyMask | SubstructureRedirectMask, &event);
-        } else if (state_ == WindowState::Minimized) {
+        } else if (_state == WindowState::Minimized) {
             XMapWindow(display, xWindow);
         }
 
-        state_ = WindowState::Normal;
+        _state = WindowState::Normal;
     }
 
     void UltraCanvasLinuxWindow::SetFullscreen(bool fullscreen) {
-        if (!created_) {
+        if (!_created) {
             return;
         }
         auto application = UltraCanvasApplication::GetInstance();
@@ -419,12 +419,12 @@ namespace UltraCanvas {
         XSendEvent(display, application->GetRootWindow(), False,
                    SubstructureNotifyMask | SubstructureRedirectMask, &event);
 
-        state_ = fullscreen ? WindowState::Fullscreen : WindowState::Normal;
+        _state = fullscreen ? WindowState::Fullscreen : WindowState::Normal;
     }
 
     void UltraCanvasLinuxWindow::SetWindowHints() {
         auto application = UltraCanvasApplication::GetInstance();
-        if (!created_ || !application) {
+        if (!_created || !application) {
             return;
         }
         Display* display = application->GetDisplay();
@@ -463,7 +463,7 @@ namespace UltraCanvas {
 
 // ===== RENDERING =====
     void UltraCanvasLinuxWindow::Render() {
-        if (!created_ || !visible_ || !cairoContext) {
+        if (!_created || !_visible || !cairoContext) {
             return;
         }
 
@@ -601,7 +601,7 @@ namespace UltraCanvas {
             onWindowResize(width, height);
         }
 
-        needsRedraw_ = true;
+        _needsRedraw = true;
 
         std::cout << "UltraCanvas Linux: Window resized to " << width << "x" << height << std::endl;
     }
@@ -635,7 +635,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::OnMapStateChanged(bool mapped) {
-        visible_ = mapped;
+        _visible = mapped;
 
         if (mapped) {
             if (onWindowShow) {

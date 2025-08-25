@@ -84,7 +84,6 @@ namespace UltraCanvas {
     class UltraCanvasContainer : public UltraCanvasElement {
     private:
         std::vector<std::shared_ptr<UltraCanvasElement>> children;
-        UltraCanvasContainer* parentContainer = nullptr;
         ContainerStyle style;
         ScrollState scrollState;
 
@@ -112,15 +111,6 @@ namespace UltraCanvas {
         }
 
         virtual ~UltraCanvasContainer() = default;
-
-        // ===== PARENT CONTAINER MANAGEMENT =====
-        UltraCanvasContainer* GetParentContainer() const {
-            return parentContainer;
-        }
-
-        void SetParentContainer(UltraCanvasContainer* container) {
-            parentContainer = container;
-        }
 
         // ===== ENHANCED CHILD MANAGEMENT =====
         void AddChild(std::shared_ptr<UltraCanvasElement> child);

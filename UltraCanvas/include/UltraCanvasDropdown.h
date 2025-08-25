@@ -216,8 +216,7 @@ namespace UltraCanvas {
                 if (onDropdownOpened) {
                     onDropdownOpened();
                 }
-                SetThisAsActivePopupElement();
-                RequestRedraw();
+                AddThisPopupElementToWindow();
             }
         }
 
@@ -229,8 +228,7 @@ namespace UltraCanvas {
                 if (onDropdownClosed) {
                     onDropdownClosed();
                 }
-                ClearThisAsActivePopupElement();
-                RequestRedraw();
+                RemoveThisPopupElementFromWindow();
             }
         }
 
@@ -275,12 +273,49 @@ namespace UltraCanvas {
             // Render main button
             RenderButton();
 
-            // Render dropdown list if open
-            if (dropdownOpen) {
-                std::cout << "UCDropdown::Render - calling RenderDropdownList()" << std::endl;
-                RenderDropdownList();
-            } else {
-                std::cout << "UCDropdown::Render - dropdown is closed, not rendering list" << std::endl;
+//            // Render dropdown list if open
+//            if (dropdownOpen) {
+//                std::cout << "UCDropdown::Render - calling RenderDropdownList()" << std::endl;
+//                RenderDropdownList();
+//            } else {
+//                std::cout << "UCDropdown::Render - dropdown is closed, not rendering list" << std::endl;
+//            }
+        }
+
+        void RenderPopupContent() override {
+            if (dropdownOpen && !items.empty()) {
+                Point2D globalPos = parentContainer->GetPositionInWindow();
+
+                // Translate to dropdown position
+                //ResetTransform();
+                Translate(globalPos.x, globalPos.y);
+
+                Rect2D buttonRect = GetBounds();
+                Rect2D listRect(buttonRect.x, buttonRect.y + buttonRect.height,
+                                buttonRect.width, dropdownHeight);
+
+                // Draw shadow
+                if (style.hasShadow) {
+                    DrawShadow(listRect, style.shadowColor, style.shadowOffset);
+                }
+
+                // Draw list background
+                std::cout << "RenderDropdownList UltraCanvas::DrawFilledRect" << std::endl;
+                UltraCanvas::DrawFilledRect(listRect, style.listBackgroundColor, style.listBorderColor, 1.0f);
+
+                // Render visible items
+                int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
+                int startIndex = scrollOffset;
+                int endIndex = std::min(startIndex + visibleItems, (int)items.size());
+
+                for (int i = startIndex; i < endIndex; i++) {
+                    RenderDropdownItem(i, listRect, i - startIndex);
+                }
+
+                // Draw scrollbar if needed
+                if (needsScrollbar) {
+                    RenderScrollbar(listRect);
+                }
             }
         }
 
@@ -293,7 +328,7 @@ namespace UltraCanvas {
 
             switch (event.type) {
                 case UCEventType::MouseDown:
-                    HandleMouseDown(event);
+                    return HandleMouseDown(event);
                     break;
                 case UCEventType::MouseUp:
                     HandleMouseUp(event);
@@ -560,7 +595,7 @@ namespace UltraCanvas {
         }
 
         // ===== EVENT HANDLERS =====
-        void HandleMouseDown(const UCEvent& event) {
+        bool HandleMouseDown(const UCEvent& event) {
             Rect2D buttonRect = GetBounds();
 
             std::cout << "UCDropdown::HandleMouseDown x=" << event.x << " y=" << event.y
@@ -579,6 +614,7 @@ namespace UltraCanvas {
                     std::cout << "UCDropdown::HandleMouseDown - dropdown was closed, opening" << std::endl;
                     OpenDropdown();
                 }
+                return true;
             } else if (dropdownOpen) {
                 // Clicked somewhere else while dropdown is open
                 std::cout << "UCDropdown::HandleMouseDown - clicked outside while open" << std::endl;
@@ -588,9 +624,12 @@ namespace UltraCanvas {
                 if (itemIndex >= 0 && items[itemIndex].enabled && !items[itemIndex].separator) {
                     std::cout << "UCDropdown::HandleMouseDown - selecting item " << itemIndex << std::endl;
                     SetSelectedIndex(itemIndex);
+                    CloseDropdown();
+                    return true;
                 }
                 CloseDropdown();
             }
+            return false;
         }
 
         void HandleMouseUp(const UCEvent& event) {

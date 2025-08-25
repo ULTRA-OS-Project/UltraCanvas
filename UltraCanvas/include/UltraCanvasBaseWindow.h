@@ -13,6 +13,7 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#include <unordered_set>
 
 namespace UltraCanvas {
 
@@ -59,11 +60,13 @@ namespace UltraCanvas {
     class UltraCanvasBaseWindow : public UltraCanvasContainer {
     protected:
         WindowConfig config_;
-        WindowState state_ = WindowState::Normal;
-        bool created_ = false;
-        bool visible_ = false;
-        bool needsRedraw_ = true;
-        UltraCanvasElement *activePopupElement = nullptr;
+        WindowState _state = WindowState::Normal;
+        bool _created = false;
+        bool _visible = false;
+        bool _needsRedraw = true;
+        bool _zOrderDirty = true;
+
+        std::unordered_set<UltraCanvasElement *> activePopups;
 
         // Window-specific callbacks
         std::function<void()> onWindowClose;
@@ -107,54 +110,34 @@ namespace UltraCanvas {
         virtual void* GetNativeHandle() const = 0;
         virtual void SwapBuffers() = 0;
 
-        void SetActivePopupElement(UltraCanvasElement* element) {
-            if (!element) return;
-            activePopupElement = element;
-        }
-
-        void ClearActivePopupElement(UltraCanvasElement* element) {
-            if (!element) return;
-            if (activePopupElement == element) {
-                activePopupElement = nullptr;
+        void AddPopupElement(UltraCanvasElement* element) {
+            if (element) {
+                activePopups.insert(element);
+                _needsRedraw = true;
             }
         }
 
-        // ===== Z-ORDER MANAGEMENT =====
-//        void BringElementToFront(UltraCanvasElement* element) {
+        // Unregister popup element
+        void RemovePopupElement(UltraCanvasElement* element) {
+            activePopups.erase(element);
+            _needsRedraw = true;
+        }
+//        void SetActivePopupElement(UltraCanvasElement* element) {
 //            if (!element) return;
-//
-//            // Find the element and move it to the end of children vector (top z-order)
-//            auto& children = const_cast<std::vector<std::shared_ptr<UltraCanvasElement>>&>(GetChildren());
-//            auto it = std::find_if(children.begin(), children.end(),
-//                                   [element](const std::shared_ptr<UltraCanvasElement>& child) {
-//                                       return child.get() == element;
-//                                   });
-//
-//            if (it != children.end()) {
-//                auto elementPtr = *it;
-//                children.erase(it);
-//                children.push_back(elementPtr);
-//                needsRedraw_ = true;
-//            }
+//            activePopupElement = element;
 //        }
 //
-//        void SendElementToBack(UltraCanvasElement* element) {
+//        void ClearActivePopupElement(UltraCanvasElement* element) {
 //            if (!element) return;
-//
-//            // Find the element and move it to the beginning of children vector (bottom z-order)
-//            auto& children = const_cast<std::vector<std::shared_ptr<UltraCanvasElement>>&>(GetChildren());
-//            auto it = std::find_if(children.begin(), children.end(),
-//                                   [element](const std::shared_ptr<UltraCanvasElement>& child) {
-//                                       return child.get() == element;
-//                                   });
-//
-//            if (it != children.end()) {
-//                auto elementPtr = *it;
-//                children.erase(it);
-//                children.insert(children.begin(), elementPtr);
-//                needsRedraw_ = true;
+//            if (activePopupElement == element) {
+//                activePopupElement = nullptr;
 //            }
 //        }
+
+        void RequestZOrderUpdate() {
+            _zOrderDirty = true;
+            _needsRedraw = true;
+        }
 
         // ===== ENHANCED WINDOW PROPERTIES =====
         std::string GetWindowTitle() const { return config_.title; }
@@ -169,11 +152,11 @@ namespace UltraCanvas {
             h = config_.height;
         }
 
-        bool IsVisible() const { return visible_; }
-        bool IsMinimized() const { return state_ == WindowState::Minimized; }
-        bool IsMaximized() const { return state_ == WindowState::Maximized; }
-        bool IsFullscreen() const { return state_ == WindowState::Fullscreen; }
-        WindowState GetState() const { return state_; }
+        bool IsVisible() const { return _visible; }
+        bool IsMinimized() const { return _state == WindowState::Minimized; }
+        bool IsMaximized() const { return _state == WindowState::Maximized; }
+        bool IsFullscreen() const { return _state == WindowState::Fullscreen; }
+        WindowState GetState() const { return _state; }
 
         const WindowConfig& GetConfig() const { return config_; }
 
@@ -182,8 +165,8 @@ namespace UltraCanvas {
         virtual bool OnEvent(const UCEvent& event) override;
         virtual void RenderCustomContent() {}
 
-        bool NeedsRedraw() const { return needsRedraw_; }
-        void SetNeedsRedraw(bool val) { needsRedraw_ = val; }
+        bool NeedsRedraw() const { return _needsRedraw; }
+        void SetNeedsRedraw(bool val) { _needsRedraw = val; }
 
         // ===== ENHANCED WINDOW CALLBACKS =====
         void SetWindowCloseCallback(std::function<void()> callback) { onWindowClose = callback; }
@@ -234,7 +217,7 @@ namespace UltraCanvas {
                 onWindowResize(width, height);
             }
 
-            needsRedraw_ = true;
+            _needsRedraw = true;
         }
 
         void UpdateWindowPosition(int x, int y) {
@@ -248,9 +231,9 @@ namespace UltraCanvas {
         }
 
         void SetWindowState(WindowState newState) {
-            if (state_ != newState) {
-                WindowState oldState = state_;
-                state_ = newState;
+            if (_state != newState) {
+                WindowState oldState = _state;
+                _state = newState;
 
                 // Trigger appropriate callbacks
                 switch (newState) {
@@ -271,16 +254,16 @@ namespace UltraCanvas {
             }
         }
 
-        void RenderWindowBackground() {
+        virtual void RenderWindowBackground() {
             // Default implementation - clear to background color
             // OS-specific implementations can override
         }
 
-        void RenderWindowChrome() {
+        virtual void RenderWindowChrome() {
             // Default implementation - no chrome
             // OS-specific implementations can add title bars, etc.
         }
-
+        void RenderActivePopups();
     };
 
 } // namespace UltraCanvas

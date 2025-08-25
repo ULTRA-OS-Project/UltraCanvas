@@ -627,6 +627,11 @@ inline void SetClipRect(float x, float y, float w, float h) {
     if (ctx) ctx->SetClipRect(Rect2D(x, y, w, h));
 }
 
+inline void ResetTransform() {
+    IRenderContext* ctx = GetRenderContext();
+    if (ctx) ctx->ResetTransform();
+}
+
 inline void Translate(float x, float y) {
     IRenderContext* ctx = GetRenderContext();
     if (ctx) ctx->Translate(x, y);
