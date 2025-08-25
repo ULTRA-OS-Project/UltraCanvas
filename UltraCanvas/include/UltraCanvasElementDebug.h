@@ -8,6 +8,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderInterface.h"
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasContainer.h"
 #include <string>
 #include <sstream>
 #include <iomanip>
@@ -105,7 +106,7 @@ namespace UltraCanvas {
             ULTRACANVAS_RENDER_SCOPE();
 
             Rect2D bounds = element->GetBounds();
-            Point2D absolutePos = element->GetAbsolutePosition();
+            Point2D absolutePos = element->GetPositionInWindow();
 
             // Draw debug border
             if (settings.showBorders) {
@@ -123,18 +124,18 @@ namespace UltraCanvas {
         }
 
         // Render debug info for element hierarchy
-        static void RenderDebugHierarchy(UltraCanvasElement* rootElement,
-                                         const DebugRenderSettings& settings = UltraCanvasDebugRenderer::GetGlobalSettings()) {
-            if (!rootElement || !UltraCanvasDebugRenderer::IsDebugEnabled()) return;
-
-            // Render this element
-            RenderDebugInfo(rootElement, settings);
-
-            // Render all children recursively
-            for (auto* child : rootElement->GetChildren()) {
-                RenderDebugHierarchy(child, settings);
-            }
-        }
+//        static void RenderDebugHierarchy(UltraCanvasElement* rootElement,
+//                                         const DebugRenderSettings& settings = UltraCanvasDebugRenderer::GetGlobalSettings()) {
+//            if (!rootElement || !UltraCanvasDebugRenderer::IsDebugEnabled()) return;
+//
+//            // Render this element
+//            RenderDebugInfo(rootElement, settings);
+//
+//            // Render all children recursively
+//            for (auto* child : rootElement->GetChildren()) {
+//                RenderDebugHierarchy(child, settings);
+//            }
+//        }
 
         // Quick debug render with default settings
         static void QuickDebug(UltraCanvasElement* element) {
@@ -207,7 +208,7 @@ namespace UltraCanvas {
                 }
 
                 if (settings.showAbsolutePosition) {
-                    Point2D absPos = element->GetAbsolutePosition();
+                    Point2D absPos = element->GetPositionInWindow();
                     debugText << "Abs: (" << std::fixed << std::setprecision(1)
                               << absPos.x << ", " << absPos.y << ")";
                     if (settings.multilineText) debugText << "\n";
@@ -236,17 +237,17 @@ namespace UltraCanvas {
                 else debugText << " | ";
             }
 
-            if (settings.showParentInfo && element->GetParent()) {
-                debugText << "Parent: '" << element->GetParent()->GetIdentifier() << "'";
+            if (settings.showParentInfo && element->GetParentContainer()) {
+                debugText << "Parent: '" << element->GetParentContainer()->GetIdentifier() << "'";
                 if (settings.multilineText) debugText << "\n";
                 else debugText << " | ";
             }
 
-            if (settings.showChildCount) {
-                debugText << "Children: " << element->GetChildren().size();
-                if (settings.multilineText) debugText << "\n";
-                else debugText << " | ";
-            }
+//            if (settings.showChildCount) {
+//                debugText << "Children: " << element->GetChildren().size();
+//                if (settings.multilineText) debugText << "\n";
+//                else debugText << " | ";
+//            }
 
             // Clean up trailing separators
             std::string result = debugText.str();

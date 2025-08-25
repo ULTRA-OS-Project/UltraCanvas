@@ -29,8 +29,8 @@ public:
         std::cout << "=== UltraCanvas Modular Clipboard Demo ===" << std::endl;
         
         // Step 1: Initialize the application
-        application = UltraCanvasApplication::GetInstance();
-        if (!application || !application->Initialize()) {
+        application = new UltraCanvasApplication();
+        if (!application->Initialize()) {
             std::cerr << "Failed to initialize UltraCanvas application" << std::endl;
             return false;
         }

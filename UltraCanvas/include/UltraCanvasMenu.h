@@ -302,8 +302,6 @@ namespace UltraCanvas {
             return Contains(point.x, point.y);
         }
 
-        virtual bool IsHandleOutsideClicks() override { return true; }
-
         // ===== EVENT CALLBACKS =====
         void SetOnMenuOpened(std::function<void()> callback) { onMenuOpened = callback; }
         void SetOnMenuClosed(std::function<void()> callback) { onMenuClosed = callback; }

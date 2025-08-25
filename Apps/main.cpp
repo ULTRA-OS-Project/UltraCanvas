@@ -12,7 +12,7 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
-
+None
 using namespace UltraCanvas;
 
 class ClipboardDemoApp {
@@ -46,11 +46,7 @@ public:
         std::cout << "Creating UltraCanvas application..." << std::endl;
 
         try {
-            application = UltraCanvasApplication::GetInstance();
-            if (!application) {
-                std::cerr << "Failed to create application instance" << std::endl;
-                return false;
-            }
+            application = new UltraCanvasApplication();
 
             std::cout << "Initializing UltraCanvas application..." << std::endl;
             if (!application->Initialize()) {

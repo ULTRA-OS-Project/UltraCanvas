@@ -36,8 +36,8 @@ namespace UltraCanvas {
         Color textColor = Colors::Black;
 
         // Background and border
-        Color backgroundColor = Colors::Blue;
-        Color borderColor = Colors::Magenta;
+        Color backgroundColor = Colors::Transparent;
+        Color borderColor = Colors::Transparent;
         float borderWidth = 0.0f;
         float borderRadius = 0.0f;
 

@@ -52,16 +52,16 @@ namespace UltraCanvas {
         std::mutex cairoMutex;  // Add this
 
     public:
-        UltraCanvasLinuxWindow();
+        UltraCanvasLinuxWindow(const WindowConfig& config = WindowConfig());
 
         // ===== INHERITED FROM BASE WINDOW =====
         virtual void Destroy() override;
         virtual void Show() override;
         virtual void Hide() override;
         virtual void Close() override;
-        virtual void SetTitle(const std::string& title) override;
-        virtual void SetSize(int width, int height) override;
-        virtual void SetPosition(int x, int y) override;
+        virtual void SetWindowTitle(const std::string& title) override;
+        virtual void SetWindowSize(int width, int height) override;
+        virtual void SetWindowPosition(int x, int y) override;
         virtual void SetResizable(bool resizable) override;
         virtual void Minimize() override;
         virtual void Maximize() override;

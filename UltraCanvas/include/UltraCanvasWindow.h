@@ -49,19 +49,20 @@ namespace UltraCanvas {
     class UltraCanvasWindow : public UltraCanvasNativeWindow {
     public:
         // Constructors
-        UltraCanvasWindow() : UltraCanvasNativeWindow() {};
+        UltraCanvasWindow() : UltraCanvasNativeWindow() { SetWindow(this); };
+
+        explicit UltraCanvasWindow(const WindowConfig &config) :
+                UltraCanvasNativeWindow(config)
+        {
+            SetWindow(this);
+            if (!Create(config)) {
+                throw std::runtime_error("UltraCanvasWindow Create failed");
+            }
+        }
 
         virtual ~UltraCanvasWindow() {
             std::cout << "~UltraCanvasWindow(): Destroying window..." << std::endl;
             Destroy();
-        }
-
-        explicit UltraCanvasWindow(const WindowConfig &config) :
-            UltraCanvasNativeWindow()
-        {
-            if (!Create(config)) {
-                throw std::runtime_error("UltraCanvasWindow Create failed");
-            }
         }
 
         virtual bool Create(const WindowConfig& config) override;
@@ -123,39 +124,37 @@ namespace UltraCanvas {
         void CenterOnParent(UltraCanvasWindow *parent) {
             if (!parent) return;
 
-            int parentX, parentY, parentW, parentH;
-            parent->GetPosition(parentX, parentY);
-            parent->GetSize(parentW, parentH);
-
-            int myW, myH;
-            GetSize(myW, myH);
+            int myw, myh, parent_w, parent_h, parent_x, parent_y;
+            parent->GetWindowPosition(parent_x, parent_y);
+            parent->GetWindowSize(parent_w, parent_h);
+            GetWindowSize(myh, myw);
 
             SetPosition(
-                    parentX + (parentW - myW) / 2,
-                    parentY + (parentH - myH) / 2
+                    parent_x + (parent_w - myw) / 2,
+                    parent_y + (parent_h - myh) / 2
             );
         }
 
-        // Chaining methods for fluent interface
-        UltraCanvasWindow &Title(const std::string &title) {
-            SetTitle(title);
-            return *this;
-        }
-
-        UltraCanvasWindow &Size(int width, int height) {
-            SetSize(width, height);
-            return *this;
-        }
-
-        UltraCanvasWindow &Position(int x, int y) {
-            SetPosition(x, y);
-            return *this;
-        }
-
-        UltraCanvasWindow &Resizable(bool resizable = true) {
-            SetResizable(resizable);
-            return *this;
-        }
+//        // Chaining methods for fluent interface
+//        UltraCanvasWindow &Title(const std::string &title) {
+//            SetWindowTitle(title);
+//            return *this;
+//        }
+//
+//        UltraCanvasWindow &Size(int width, int height) {
+//            SetSize(width, height);
+//            return *this;
+//        }
+//
+//        UltraCanvasWindow &Position(int x, int y) {
+//            SetPosition(x, y);
+//            return *this;
+//        }
+//
+//        UltraCanvasWindow &Resizable(bool resizable = true) {
+//            SetResizable(resizable);
+//            return *this;
+//        }
 
 //        UltraCanvasWindow &AlwaysOnTop(bool onTop = true) {
 //            SetAlwaysOnTop(onTop);

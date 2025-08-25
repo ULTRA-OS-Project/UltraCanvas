@@ -145,10 +145,9 @@ private:
                                                                0, 0, windowWidth, windowHeight);
 
         // Left panel for controls (30% of width)
-        int leftWidth = windowWidth * 0.3;
-        leftWidth = 350;
+        int leftWidth = windowWidth * 0.4;
         leftPanel = std::make_shared<UltraCanvasContainer>("LeftPanel", 2,
-                                                           0, 0, leftWidth, windowHeight - 20);
+                                                           0, 0, leftWidth, windowHeight - 10);
 
         // Right panel for graphics output (70% of width)
         int rightWidth = windowWidth - leftWidth + 10;
@@ -188,20 +187,19 @@ private:
                                                          10, windowHeight - 40, leftWidth - 20, 30, "Ready");
         // Formula editor in left panel
         formulaEditor = std::make_shared<UltraCanvasFormulaEditor>("FormulaEditor", 10,
-                                                                   2, 100, leftWidth - 14, 300);
+                                                                   2, 350, leftWidth - 14, 400);
 
         // Add controls to left panel
         leftPanel->AddChild(formulaEditor);
-//        leftPanel->AddChildAtRelativePosition(formulaDropdown, 10, 10);
         leftPanel->AddChild(formulaDropdown);
-//        leftPanel->AddChild(newButton);
-//        leftPanel->AddChild(openButton);
-//        leftPanel->AddChild(saveButton);
-//        leftPanel->AddChild(startButton);
-//        leftPanel->AddChild(stopButton);
-//        leftPanel->AddChild(frameRateLabel);
-//        leftPanel->AddChild(frameRateSlider);
-//        leftPanel->AddChild(statusLabel);
+        leftPanel->AddChild(newButton);
+        leftPanel->AddChild(openButton);
+        leftPanel->AddChild(saveButton);
+        leftPanel->AddChild(startButton);
+        leftPanel->AddChild(stopButton);
+        leftPanel->AddChild(frameRateLabel);
+        leftPanel->AddChild(frameRateSlider);
+        leftPanel->AddChild(statusLabel);
 
         // Create control panel in right side
         controlPanel = std::make_shared<UltraCanvasContainer>("ControlPanel", 70,
@@ -254,8 +252,8 @@ private:
 
         // Add panels to main container and add to window
         mainContainer->AddChild(leftPanel);
-//        mainContainer->AddChild(rightPanel);
-        AddElement(mainContainer);
+        //mainContainer->AddChild(rightPanel);
+        AddChild(mainContainer);
     }
 
     void PopulateFormulaDropdown() {

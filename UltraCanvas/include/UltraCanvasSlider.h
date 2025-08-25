@@ -143,12 +143,12 @@ namespace UltraCanvas {
                 currentValue = newValue;
 
                 // Trigger callbacks
-                if (onValueChanged) {
-                    onValueChanged(currentValue);
-                }
                 if (onValueChanging && isDragging) {
                     onValueChanging(currentValue);
+                } else if (onValueChanged) {
+                    onValueChanged(currentValue);
                 }
+                RequestRedraw();
             }
         }
 

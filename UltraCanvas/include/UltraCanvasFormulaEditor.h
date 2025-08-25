@@ -476,42 +476,38 @@ namespace UltraCanvas {
             int previewWidth = static_cast<int>(bounds.width * 0.4f);
 
             // FIXED: Use proper CreateLabel and CreateTextInput signatures with identifiers
-            nameLabel = CreateLabel("nameLabel", 1001, 0, 0, 80, 30, "Name:");
-            nameInput = CreateTextInput("nameInput", 1002, 50, 00, 200, 30);
+            nameLabel = CreateLabel("nameLabel", 1001, 0, 0, 120, 25, "Name:");
+            nameInput = CreateTextInput("nameInput", 1002, 120, 00, 200, 25);
 
-            descriptionLabel = CreateLabel("descLabel", 1003, 00, 15, 80, 30, "Description:");
-            descriptionInput = CreateTextInput("descInput", 1004, 50, 15, 200, 30);
+            descriptionLabel = CreateLabel("descLabel", 1003, 00, 30, 120, 25, "Description:");
+            descriptionInput = CreateTextInput("descInput", 1004, 120, 30, 200, 25);
 
             // Code editor (main editing area)
-            codeEditor = std::make_shared<UltraCanvasSyntaxTextEditor>("codeEditor", 1005, 0, 60, editorWidth - 20, 100);
+            codeEditor = std::make_shared<UltraCanvasSyntaxTextEditor>("codeEditor", 1005, 0, 60, editorWidth - 10, 100);
 
             // Control buttons
-            validateButton = CreateButton("validateBtn", 1006, 10, 330, 80, 30, "Validate");
-            previewButton = CreateButton("previewBtn", 1007, 100, 390, 80, 30, "Preview");
-            saveButton = CreateButton("saveBtn", 1008, 190, 490, 80, 30, "Save");
-            loadButton = CreateButton("loadBtn", 1009, 280, 490, 80, 30, "Load");
+            validateButton = CreateButton("validateBtn", 1006, 10, 190, 80, 30, "Validate");
+            previewButton = CreateButton("previewBtn", 1007, 100, 190, 80, 30, "Preview");
+            saveButton = CreateButton("saveBtn", 1008, 190, 190, 80, 30, "Save");
+            loadButton = CreateButton("loadBtn", 1009, 280, 190, 80, 30, "Load");
 
             // Status display
-            statusLabel = CreateLabel("statusLabel", 1010, 10, 530, editorWidth - 20, 25, "Ready");
-            complexityLabel = CreateLabel("complexityLabel", 1011, 10, 560, editorWidth - 20, 25, "Complexity: 0.0");
+            statusLabel = CreateLabel("statusLabel", 1010, 10, 230, editorWidth - 20, 25, "Ready");
+            complexityLabel = CreateLabel("complexityLabel", 1011, 10, 260, editorWidth - 20, 25, "Complexity: 0.0");
 
             // Animation controls
-            animationSpeedSlider = CreateSlider("animSlider", 1012, 10, 590, 200, 25);
-            animationSpeedSlider->SetVisible(false);
+            animationSpeedSlider = CreateSlider("animSlider", 1012, 10, 290, 200, 25);
 
             // Formula library dropdown
-            formulaLibrary = CreateDropdown("formulaLib", 1013, 220, 590, 150, 25);
-            formulaLibrary->SetVisible(false);
+            formulaLibrary = CreateDropdown("formulaLib", 1013, 220, 290, 150, 25);
 
             // FIXED: Live preview area - use direct constructor with correct signature
             livePreview = std::make_shared<UltraCanvasProceduralBackground>(
                     "livePreview", 1014, editorWidth + 10, 10, previewWidth - 20, 400
             );
-            livePreview->SetVisible(false);
 
             // Add all components to container
             AddChild(nameLabel);
-            //nameLabel->SetRelativePosition(10,10);
             AddChild(nameInput);
             AddChild(descriptionLabel);
             AddChild(descriptionInput);

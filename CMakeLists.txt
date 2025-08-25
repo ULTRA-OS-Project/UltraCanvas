@@ -101,6 +101,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasTextInput.cpp
         UltraCanvas/core/UltraCanvasClipboard.cpp
         UltraCanvas/core/UltraCanvasElementDebug.cpp
+        UltraCanvas/core/UltraCanvasContainer.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp

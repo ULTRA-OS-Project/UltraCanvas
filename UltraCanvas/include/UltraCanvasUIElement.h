@@ -18,8 +18,9 @@
 namespace UltraCanvas {
 
 // Forward declarations
+    class UltraCanvasContainer;
     class UltraCanvasElement;
-    class UltraCanvasBaseWindow;
+    class UltraCanvasWindow;
     class IRenderContext;
 
 // ===== MODERN PROPERTIES SYSTEM =====
@@ -80,88 +81,8 @@ namespace UltraCanvas {
         }
     };
 
-// ===== CLEAN PROPERTY ACCESSORS MACRO =====
-#define ULTRACANVAS_STANDARD_PROPERTIES_ACCESSORS() \
-    const std::string& GetIdentifier() const { return properties.Identifier; } \
-    void SetIdentifier(const std::string& id) { properties.Identifier = id; } \
-    long GetIdentifierID() const { return properties.IdentifierID; } \
-    void SetIdentifierID(long id) { properties.IdentifierID = id; } \
-    \
-    long GetAbsoluteX() const { \
-        if (parent) { \
-            return parent->GetAbsoluteX() + properties.x_pos; \
-        } \
-        return properties.x_pos; \
-    } \
-    void SetAbsoluteX(long x) { \
-        if (parent) { \
-            properties.x_pos = x - parent->GetAbsoluteX(); \
-        } else { \
-            properties.x_pos = x; \
-        } \
-    } \
-    long GetAbsoluteY() const { \
-        if (parent) { \
-            return parent->GetAbsoluteY() + properties.y_pos; \
-        } \
-        return properties.y_pos; \
-    } \
-    void SetAbsoluteY(long y) { \
-        if (parent) { \
-            properties.y_pos = y - parent->GetAbsoluteY(); \
-        } else { \
-            properties.y_pos = y; \
-        } \
-    } \
-    long GetWidth() const { return properties.width_size; } \
-    void SetWidth(long w) { properties.width_size = w; } \
-    long GetHeight() const { return properties.height_size; } \
-    void SetHeight(long h) { properties.height_size = h; } \
-    \
-    long GetX() const { return properties.x_pos; } \
-    void SetX(long x) { properties.x_pos = x; } \
-    long GetY() const { return properties.y_pos; } \
-    void SetY(long y) { properties.y_pos = y; } \
-    \
-    void SetAbsolutePosition(long x, long y) { SetAbsoluteX(x); SetAbsoluteY(y); } \
-    void SetPosition(long x, long y) { properties.x_pos = x; properties.y_pos = y; } \
-    void SetSize(long w, long h) { properties.width_size = w; properties.height_size = h; } \
-    void SetBounds(long x, long y, long w, long h) { \
-        SetPosition(x, y); \
-        SetSize(w, h); \
-    } \
-    \
-    Rect2D GetAbsoluteBounds() const { \
-        return Rect2D(static_cast<float>(GetAbsoluteX()), static_cast<float>(GetAbsoluteY()), \
-                     static_cast<float>(properties.width_size), static_cast<float>(properties.height_size)); \
-    } \
-    Rect2D GetBounds() const { \
-        return Rect2D(static_cast<float>(properties.x_pos), static_cast<float>(properties.y_pos), \
-                     static_cast<float>(properties.width_size), static_cast<float>(properties.height_size)); \
-    } \
-    Point2D GetAbsolutePosition() const { \
-        return Point2D(static_cast<float>(GetAbsoluteX()), static_cast<float>(GetAbsoluteY())); \
-    } \
-    Point2D GetPosition() const { \
-        return Point2D(static_cast<float>(properties.x_pos), static_cast<float>(properties.y_pos)); \
-    } \
-    Point2D GetElementSize() const { return properties.GetSize(); } \
-    \
-    bool IsActive() const { return properties.Active; } \
-    void SetActive(bool active) { properties.Active = active; } \
-    bool IsVisible() const { return properties.Visible; } \
-    void SetVisible(bool visible) { properties.Visible = visible; } \
-    \
-    MousePointer GetMousePointer() const { return properties.MousePtr; } \
-    void SetMousePointer(MousePointer pointer) { properties.MousePtr = pointer; } \
-    MouseControls GetMouseControls() const { return properties.MouseCtrl; } \
-    void SetMouseControls(MouseControls controls) { properties.MouseCtrl = controls; } \
-    \
-    long GetZIndex() const { return properties.z_index; } \
-    void SetZIndex(long index) { properties.z_index = index; } \
-    \
-    const std::string& GetScript() const { return properties.Script; } \
-    void SetScript(const std::string& script) { properties.Script = script; }
+// ===== ELEMENT STATE MANAGEMENT =====
+// Forward declarations
 
 // ===== ELEMENT STATE MANAGEMENT =====
     enum class ElementState {
@@ -197,10 +118,9 @@ namespace UltraCanvas {
         }
     };
 
-// ===== CLEAN BASE UI ELEMENT CLASS =====
+// ===== LEAF UI ELEMENT CLASS (NO CHILDREN) =====
     class UltraCanvasElement {
     private:
-
         // Timing and animation
         std::chrono::steady_clock::time_point lastUpdateTime;
         std::chrono::steady_clock::time_point creationTime;
@@ -209,14 +129,10 @@ namespace UltraCanvas {
         std::function<bool(const UCEvent&)> eventCallback;
 
     protected:
-        UltraCanvasBaseWindow* window = nullptr; // parent window
+        UltraCanvasWindow* window = nullptr;
+        UltraCanvasContainer* parentContainer = nullptr; // Parent container (not element)
         StandardProperties properties;
-        // State management
         ElementStateFlags stateFlags;
-
-        // Hierarchy management
-        UltraCanvasElement* parent = nullptr;
-        std::vector<UltraCanvasElement*> children;
 
     public:
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
@@ -228,20 +144,91 @@ namespace UltraCanvas {
             stateFlags.Reset();
         }
 
-        virtual ~UltraCanvasElement() = default;
+        virtual ~UltraCanvasElement() {
+            // Remove from parent container if attached
+            if (parentContainer) {
+                // Container will handle removal
+            }
+        }
 
-        // ===== STANDARD PROPERTY ACCESSORS (including relative coordinate support) =====
-        ULTRACANVAS_STANDARD_PROPERTIES_ACCESSORS()
+        // ===== INCLUDE PROPERTY ACCESSORS =====
+// ===== STANDARD PROPERTY ACCESSORS (including relative coordinate support) =====
+        const std::string& GetIdentifier() const { return properties.Identifier; }
+        void SetIdentifier(const std::string& id) { properties.Identifier = id; }
+        long GetIdentifierID() const { return properties.IdentifierID; }
+        void SetIdentifierID(long id) { properties.IdentifierID = id; }
+
+        virtual long GetXInWindow();
+//        void SetAbsoluteX(long x) {
+//            if (parent) {
+//                properties.x_pos = x - parent->GetAbsoluteX();
+//            } else {
+//                properties.x_pos = x;
+//            }
+//        }
+        virtual long GetYInWindow();
+//        void SetAbsoluteY(long y) {
+//            if (parent) {
+//                properties.y_pos = y - parent->GetAbsoluteY();
+//            } else {
+//                properties.y_pos = y;
+//            }
+//        }
+
+        long GetWidth() const { return properties.width_size; }
+        void SetWidth(long w) { properties.width_size = w; }
+        long GetHeight() const { return properties.height_size; }
+        void SetHeight(long h) { properties.height_size = h; }
+
+        long GetX() const { return properties.x_pos; }
+        void SetX(long x) { properties.x_pos = x; }
+        long GetY() const { return properties.y_pos; }
+        void SetY(long y) { properties.y_pos = y; }
+
+//        void SetAbsolutePosition(long x, long y) { SetAbsoluteX(x); SetAbsoluteY(y); }
+        virtual void SetPosition(long x, long y) { properties.x_pos = x; properties.y_pos = y; }
+        virtual void SetSize(long w, long h) { properties.width_size = w; properties.height_size = h; }
+        void SetBounds(long x, long y, long w, long h) {
+            SetPosition(x, y);
+            SetSize(w, h);
+        }
+
+//        Rect2D GetAbsoluteBounds() const {
+//            return Rect2D(static_cast<float>(GetAbsoluteX()), static_cast<float>(GetAbsoluteY()),
+//                          static_cast<float>(properties.width_size), static_cast<float>(properties.height_size));
+//        }
+        Rect2D GetBounds() const {
+            return Rect2D(static_cast<float>(properties.x_pos), static_cast<float>(properties.y_pos),
+                          static_cast<float>(properties.width_size), static_cast<float>(properties.height_size));
+        }
+        Point2D GetPositionInWindow() {
+            return Point2D(static_cast<float>(GetXInWindow()), static_cast<float>(GetYInWindow()));
+        }
+        Point2D GetPosition() const {
+            return Point2D(static_cast<float>(properties.x_pos), static_cast<float>(properties.y_pos));
+        }
+        Point2D GetElementSize() const { return properties.GetSize(); }
+
+        bool IsActive() const { return properties.Active; }
+        void SetActive(bool active) { properties.Active = active; }
+        bool IsVisible() const { return properties.Visible; }
+        void SetVisible(bool visible) { properties.Visible = visible; }
+
+        Point2D ConvertWindowToLocalCoordinates(const Point2D &globalPos);
+        MousePointer GetMousePointer() const { return properties.MousePtr; }
+        void SetMousePointer(MousePointer pointer) { properties.MousePtr = pointer; }
+        MouseControls GetMouseControls() const { return properties.MouseCtrl; }
+        void SetMouseControls(MouseControls controls) { properties.MouseCtrl = controls; }
+
+        long GetZIndex() const { return properties.z_index; }
+        void SetZIndex(long index) { properties.z_index = index; }
+
+        const std::string& GetScript() const { return properties.Script; }
+        void SetScript(const std::string& script) { properties.Script = script; }
 
         // ===== HIERARCHY MANAGEMENT =====
-        UltraCanvasElement* GetParent() const { return parent; }
-        void SetParent(UltraCanvasElement* newParent) { parent = newParent; }
-
-        const std::vector<UltraCanvasElement*>& GetChildren() const { return children; }
-
-        void AddChild(UltraCanvasElement* child);
-        void RemoveChild(UltraCanvasElement* child);
-        UltraCanvasElement* FindChildById(const std::string& id);
+//        UltraCanvasContainer* GetParent() const { return parent; }
+//        void SetParent(UltraCanvasContainer* newParent) { parent = newParent; }
 
         // ===== STATE MANAGEMENT =====
         bool IsHovered() const { return stateFlags.isHovered; }
@@ -265,37 +252,47 @@ namespace UltraCanvas {
         bool IsResizing() const { return stateFlags.isResizing; }
         void SetResizing(bool resizing) { stateFlags.isResizing = resizing; }
 
-        ElementState GetElementState() const { return stateFlags.GetPrimaryState(); }
+        ElementState GetState() const { return stateFlags.GetPrimaryState(); }
+        const ElementStateFlags& GetStateFlags() const { return stateFlags; }
 
-        bool IsHandleOutsideClicks() const { return false; } // Default implementation
+        // ===== PARENT CONTAINER MANAGEMENT =====
+        UltraCanvasContainer* GetParentContainer() const {
+            return parentContainer;
+        }
 
-        // ===== WINDOW MANAGEMENT =====
-        UltraCanvasBaseWindow* GetWindow() const { return window; }
-        void SetWindow(UltraCanvasBaseWindow* w) { window = w; }
+        void SetParentContainer(UltraCanvasContainer* container) {
+            parentContainer = container;
+        }
+
+        UltraCanvasWindow* GetWindow() const {
+            return window;
+        }
+
+        virtual void SetWindow(UltraCanvasWindow* win) {
+            window = win;
+        }
+
+        void SetThisAsActivePopupElement();
+        void ClearThisAsActivePopupElement();
+        void RequestRedraw();
+
+        // ===== CORE VIRTUAL METHODS =====
+        virtual void Render() {}
+
+        virtual bool OnEvent(const UCEvent& event) {
+            if (eventCallback) {
+                return eventCallback(event);
+            }
+            return false;
+        }
 
         // ===== SPATIAL QUERIES =====
         virtual bool Contains(const Point2D& point) const {
-            return GetBounds().Contains(point);
-        }
-
-        virtual bool ContainsAbsolute(const Point2D& point) const {
-            return GetAbsoluteBounds().Contains(point);
+            return properties.Contains(point);
         }
 
         virtual bool Contains(float px, float py) const {
-            return Contains(Point2D(px, py));
-        }
-
-        virtual bool ContainsAbsolute(float px, float py) const {
-            return ContainsAbsolute(Point2D(px, py));
-        }
-
-        virtual bool Contains(int px, int py) const {
-            return Contains(static_cast<float>(px), static_cast<float>(py));
-        }
-
-        virtual bool ContainsAbsolute(int px, int py) const {
-            return ContainsAbsolute(static_cast<float>(px), static_cast<float>(py));
+            return properties.Contains(px, py);
         }
 
         // ===== TIMING AND ANIMATION =====
@@ -319,136 +316,39 @@ namespace UltraCanvas {
         }
 
         // ===== UTILITY METHODS =====
-        UltraCanvasElement* GetRoot() {
-            UltraCanvasElement* root = this;
-            while (root->parent) {
-                root = root->parent;
-            }
-            return root;
-        }
+        UltraCanvasContainer* GetRootContainer();
 
-        virtual bool IsHandleOutsideClicks() { return false; }
-
-        bool IsAncestorOf(const UltraCanvasElement* element) const;
-
-        bool IsDescendantOf(const UltraCanvasElement* element) const {
-            if (!element) return false;
-            return element->IsAncestorOf(this);
-        }
+        bool IsDescendantOf(const UltraCanvasContainer* container) const;
 
         std::string GetDebugInfo() const {
             return "Element{id='" + GetIdentifier() +
                    "', bounds=(" + std::to_string(GetX()) + "," + std::to_string(GetY()) +
                    "," + std::to_string(GetWidth()) + "," + std::to_string(GetHeight()) +
-                   "), relative=(" + std::to_string(properties.x_pos) + "," + std::to_string(properties.y_pos) +
-                   "), visible=" + (IsVisible() ? "true" : "false") +
-                   ", enabled=" + (IsEnabled() ? "true" : "false") + "}";
+                   "), visible=" + (IsVisible() ? "true" : "false") + "}";
         }
-
-        void RequestRedraw();
-
-        // ===== VIRTUAL INTERFACE =====
-        virtual void Render() = 0;
-        virtual bool OnEvent(const UCEvent& event) { return false; }
-        virtual void PerformLayout() {}
-
-        // ===== CHILD MANAGEMENT CALLBACKS =====
-        virtual void OnChildAdded(UltraCanvasElement* child) {}
-        virtual void OnChildRemoved(UltraCanvasElement* child) {}
     };
 
-// ===== ELEMENT FACTORY SYSTEM =====
+// ===== FACTORY SYSTEM =====
     class UltraCanvasElementFactory {
     public:
-        template<typename T, typename... Args>
-        static std::shared_ptr<T> Create(Args&&... args) {
-            return std::make_shared<T>(std::forward<Args>(args)...);
+        template<typename ElementType, typename... Args>
+        static std::shared_ptr<ElementType> Create(Args&&... args) {
+            return std::make_shared<ElementType>(std::forward<Args>(args)...);
         }
 
-        template<typename T, typename... Args>
-        static std::shared_ptr<T> CreateWithID(long id, Args&&... args) {
-            auto element = std::make_shared<T>(std::forward<Args>(args)...);
+        template<typename ElementType, typename... Args>
+        static std::shared_ptr<ElementType> CreateWithID(long id, Args&&... args) {
+            auto element = std::make_shared<ElementType>(std::forward<Args>(args)...);
             element->SetIdentifierID(id);
             return element;
         }
 
-        template<typename T>
-        static std::shared_ptr<T> CreateAt(const std::string& identifier, long x, long y, long w, long h) {
-            return std::make_shared<T>(identifier, 0, x, y, w, h);
+        template<typename ElementType, typename... Args>
+        static std::shared_ptr<ElementType> CreateWithIdentifier(const std::string& identifier, Args&&... args) {
+            auto element = std::make_shared<ElementType>(std::forward<Args>(args)...);
+            element->SetIdentifier(identifier);
+            return element;
         }
     };
-
-// ===== UTILITY FUNCTIONS =====
-
-// Calculate total bounds of all elements
-    inline Rect2D CalculateTotalBounds(const std::vector<UltraCanvasElement*>& elements) {
-        if (elements.empty()) {
-            return Rect2D(0, 0, 0, 0);
-        }
-
-        Rect2D bounds = elements[0]->GetBounds();
-
-        for (size_t i = 1; i < elements.size(); ++i) {
-            if (elements[i]) {
-                Rect2D childBounds = elements[i]->GetBounds();
-                bounds = bounds.Union(childBounds);
-            }
-        }
-
-        return bounds;
-    }
-
-// Find elements of specific type
-    template<typename T>
-    inline std::vector<T*> FindElementsOfType(UltraCanvasElement* root) {
-        std::vector<T*> result;
-        if (!root) return result;
-
-        if (auto* typed = dynamic_cast<T*>(root)) {
-            result.push_back(typed);
-        }
-
-        for (auto* child : root->GetChildren()) {
-            auto childResults = FindElementsOfType<T>(child);
-            result.insert(result.end(), childResults.begin(), childResults.end());
-        }
-
-        return result;
-    }
-
-// Visit all elements with a function
-    template<typename Func>
-    inline void VisitElements(UltraCanvasElement* root, Func visitor) {
-        if (!root) return;
-
-        visitor(root);
-
-        for (auto* child : root->GetChildren()) {
-            VisitElements(child, visitor);
-        }
-    }
-
-// Count total elements in hierarchy
-    inline size_t CountElements(UltraCanvasElement* root) {
-        if (!root) return 0;
-
-        size_t count = 1;
-        for (auto* child : root->GetChildren()) {
-            count += CountElements(child);
-        }
-        return count;
-    }
-
-// Print element hierarchy for debugging
-    inline void PrintElementHierarchy(UltraCanvasElement* root, int depth = 0) {
-        if (!root) return;
-
-        std::string indent(depth * 2, ' ');
-        std::cout << indent << root->GetDebugInfo() << std::endl;
-
-        for (auto* child : root->GetChildren()) {
-            PrintElementHierarchy(child, depth + 1);
-        }
-    }
 
 } // namespace UltraCanvas

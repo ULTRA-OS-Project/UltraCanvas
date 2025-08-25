@@ -216,6 +216,8 @@ namespace UltraCanvas {
                 if (onDropdownOpened) {
                     onDropdownOpened();
                 }
+                SetThisAsActivePopupElement();
+                RequestRedraw();
             }
         }
 
@@ -227,6 +229,8 @@ namespace UltraCanvas {
                 if (onDropdownClosed) {
                     onDropdownClosed();
                 }
+                ClearThisAsActivePopupElement();
+                RequestRedraw();
             }
         }
 
@@ -259,8 +263,6 @@ namespace UltraCanvas {
             }
             return nullptr;
         }
-
-        virtual bool IsHandleOutsideClicks() override { return true; }
 
         // ===== RENDERING =====
         void Render() override {

@@ -12,8 +12,8 @@
 namespace UltraCanvas {
 
 // ===== CONSTRUCTOR & DESTRUCTOR =====
-    UltraCanvasLinuxWindow::UltraCanvasLinuxWindow()
-            : UltraCanvasBaseWindow()
+    UltraCanvasLinuxWindow::UltraCanvasLinuxWindow(const WindowConfig& config)
+            : UltraCanvasBaseWindow(config)
             , xWindow(0)
             , cairoSurface(nullptr)
             , cairoContext(nullptr) {
@@ -27,7 +27,7 @@ namespace UltraCanvas {
             std::cout << "UltraCanvas Linux: Window already created" << std::endl;
             return true;
         }
-
+        auto application = UltraCanvasApplication::GetInstance();
         if (!application || !application->IsInitialized()) {
             std::cerr << "UltraCanvas Linux: Cannot create window - application not ready" << std::endl;
             return false;
@@ -53,7 +53,7 @@ namespace UltraCanvas {
         } catch (const std::exception& e) {
             std::cerr << "UltraCanvas Linux: Failed to create render context: " << e.what() << std::endl;
             DestroyCairoSurface();
-            XDestroyWindow(application->GetDisplay(), xWindow);
+            XDestroyWindow(UltraCanvasApplication::GetInstance()->GetDisplay(), xWindow);
             xWindow = 0;
             return false;
         }
@@ -67,6 +67,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasLinuxWindow::CreateXWindow() {
+        auto application = UltraCanvasApplication::GetInstance();
         if (!application || !application->GetDisplay()) {
             std::cerr << "UltraCanvas Linux: Invalid application or display" << std::endl;
             return false;
@@ -130,7 +131,7 @@ namespace UltraCanvas {
 
         std::cout << "UltraCanvas Linux: X11 window created with ID: " << xWindow << std::endl;
 
-        SetTitle(config_.title);
+        SetWindowTitle(config_.title);
         SetWindowHints();
 
         // Set WM protocols
@@ -144,6 +145,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasLinuxWindow::CreateCairoSurface() {
+        auto application = UltraCanvasApplication::GetInstance();
         if (!application || !application->GetDisplay() || xWindow == 0) {
             std::cerr << "UltraCanvas Linux: Cannot create Cairo surface - invalid state" << std::endl;
             return false;
@@ -215,7 +217,7 @@ namespace UltraCanvas {
 
         renderContext.reset();
         DestroyCairoSurface();
-
+        auto application = UltraCanvasApplication::GetInstance();
         if (xWindow && application && application->GetDisplay()) {
             std::cout << "UltraCanvas Linux: Destroying X11 window..." << std::endl;
             XDestroyWindow(application->GetDisplay(), xWindow);
@@ -226,61 +228,11 @@ namespace UltraCanvas {
         std::cout << "UltraCanvas Linux: Window destroyed successfully" << std::endl;
     }
 
-// ===== WINDOW STATE MANAGEMENT =====
-    void UltraCanvasLinuxWindow::Show() {
-        if (!created_ || visible_) {
-            return;
-        }
 
-        std::cout << "UltraCanvas Linux: Showing window..." << std::endl;
-
-        XMapWindow(application->GetDisplay(), xWindow);
-        XFlush(application->GetDisplay());
-
-        visible_ = true;
-
-        if (onWindowShown) {
-            onWindowShown();
-        }
-    }
-
-    void UltraCanvasLinuxWindow::Hide() {
-        if (!created_ || !visible_) {
-            return;
-        }
-
-        std::cout << "UltraCanvas Linux: Hiding window..." << std::endl;
-
-        XUnmapWindow(application->GetDisplay(), xWindow);
-        XFlush(application->GetDisplay());
-
-        visible_ = false;
-
-        if (onWindowHidden) {
-            onWindowHidden();
-        }
-    }
-
-    void UltraCanvasLinuxWindow::Close() {
-        if (!created_ || state_ == WindowState::Closing) {
-            return;
-        }
-
-        state_ = WindowState::Closing;
-
-        if (onWindowClosing) {
-            onWindowClosing();
-        }
-
-        Hide();
-        Destroy();
-
-        std::cout << "UltraCanvas: Window close completed" << std::endl;
-    }
-
-    void UltraCanvasLinuxWindow::SetTitle(const std::string& title) {
+    void UltraCanvasLinuxWindow::SetWindowTitle(const std::string& title) {
         config_.title = title;
 
+        auto application = UltraCanvasApplication::GetInstance();
         if (created_) {
             XStoreName(application->GetDisplay(), xWindow, title.c_str());
 
@@ -291,23 +243,27 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLinuxWindow::SetSize(int width, int height) {
+    void UltraCanvasLinuxWindow::SetWindowSize(int width, int height) {
         config_.width = width;
         config_.height = height;
 
         if (created_) {
+            auto application = UltraCanvasApplication::GetInstance();
             XResizeWindow(application->GetDisplay(), xWindow, width, height);
             UpdateCairoSurface();
         }
+        UltraCanvasBaseWindow::SetSize(width, height);
     }
 
-    void UltraCanvasLinuxWindow::SetPosition(int x, int y) {
+    void UltraCanvasLinuxWindow::SetWindowPosition(int x, int y) {
         config_.x = x;
         config_.y = y;
 
         if (created_) {
+            auto application = UltraCanvasApplication::GetInstance();
             XMoveWindow(application->GetDisplay(), xWindow, x, y);
         }
+        //UltraCanvasBaseWindow::SetPosition(x, y);
     }
 
     void UltraCanvasLinuxWindow::SetResizable(bool resizable) {
@@ -318,10 +274,64 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== WINDOW STATE MANAGEMENT =====
+    void UltraCanvasLinuxWindow::Show() {
+        if (!created_ || visible_) {
+            return;
+        }
+
+        std::cout << "UltraCanvas Linux: Showing window..." << std::endl;
+        auto application = UltraCanvasApplication::GetInstance();
+
+        XMapWindow(application->GetDisplay(), xWindow);
+        XFlush(application->GetDisplay());
+
+        visible_ = true;
+
+        if (onWindowShow) {
+            onWindowShow();
+        }
+    }
+
+    void UltraCanvasLinuxWindow::Hide() {
+        if (!created_ || !visible_) {
+            return;
+        }
+
+        std::cout << "UltraCanvas Linux: Hiding window..." << std::endl;
+        auto application = UltraCanvasApplication::GetInstance();
+        XUnmapWindow(application->GetDisplay(), xWindow);
+        XFlush(application->GetDisplay());
+
+        visible_ = false;
+
+        if (onWindowHide) {
+            onWindowHide();
+        }
+    }
+
+    void UltraCanvasLinuxWindow::Close() {
+        if (!created_ || state_ == WindowState::Closing) {
+            return;
+        }
+
+        state_ = WindowState::Closing;
+
+        if (onWindowClose) {
+            onWindowClose();
+        }
+
+        Hide();
+        Destroy();
+
+        std::cout << "UltraCanvas: Window close completed" << std::endl;
+    }
+
     void UltraCanvasLinuxWindow::Minimize() {
         if (!created_) {
             return;
         }
+        auto application = UltraCanvasApplication::GetInstance();
 
         Display* display = application->GetDisplay();
         XIconifyWindow(display, xWindow, application->GetScreen());
@@ -332,6 +342,7 @@ namespace UltraCanvas {
         if (!created_) {
             return;
         }
+        auto application = UltraCanvasApplication::GetInstance();
 
         Display* display = application->GetDisplay();
         Atom wmState = XInternAtom(display, "_NET_WM_STATE", False);
@@ -358,6 +369,7 @@ namespace UltraCanvas {
         if (!created_) {
             return;
         }
+        auto application = UltraCanvasApplication::GetInstance();
 
         Display* display = application->GetDisplay();
 
@@ -389,6 +401,7 @@ namespace UltraCanvas {
         if (!created_) {
             return;
         }
+        auto application = UltraCanvasApplication::GetInstance();
 
         Display* display = application->GetDisplay();
         Atom wmState = XInternAtom(display, "_NET_WM_STATE", False);
@@ -410,10 +423,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::SetWindowHints() {
+        auto application = UltraCanvasApplication::GetInstance();
         if (!created_ || !application) {
             return;
         }
-
         Display* display = application->GetDisplay();
 
         XSizeHints hints;
@@ -485,6 +498,7 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxWindow::SwapBuffers() {
         if (cairoSurface) {
+            auto application = UltraCanvasApplication::GetInstance();
             // Validate surface before flushing
 //            cairo_status_t status = cairo_surface_status(cairoSurface);
 //            if (status == CAIRO_STATUS_SUCCESS) {
@@ -583,8 +597,8 @@ namespace UltraCanvas {
 
         UpdateCairoSurface();
 
-        if (onWindowResized) {
-            onWindowResized(width, height);
+        if (onWindowResize) {
+            onWindowResize(width, height);
         }
 
         needsRedraw_ = true;
@@ -596,25 +610,26 @@ namespace UltraCanvas {
         config_.x = x;
         config_.y = y;
 
-        if (onWindowMoved) {
-            onWindowMoved(x, y);
+        if (onWindowMove) {
+            onWindowMove(x, y);
         }
 
         std::cout << "UltraCanvas Linux: Window moved to " << x << "," << y << std::endl;
     }
 
     void UltraCanvasLinuxWindow::OnFocusChanged(bool focused) {
+        auto application = UltraCanvasApplication::GetInstance();
         if (focused) {
             application->SetFocusedWindow(this);
-            if (onWindowFocused) {
-                onWindowFocused();
+            if (onWindowFocus) {
+                onWindowFocus();
             }
         } else {
             if (application->GetFocusedWindow() == this) {
                 application->SetFocusedWindow(nullptr);
             }
-            if (onWindowBlurred) {
-                onWindowBlurred();
+            if (onWindowBlur) {
+                onWindowBlur();
             }
         }
     }
@@ -623,12 +638,12 @@ namespace UltraCanvas {
         visible_ = mapped;
 
         if (mapped) {
-            if (onWindowShown) {
-                onWindowShown();
+            if (onWindowShow) {
+                onWindowShow();
             }
         } else {
-            if (onWindowHidden) {
-                onWindowHidden();
+            if (onWindowHide) {
+                onWindowHide();
             }
         }
     }

@@ -350,7 +350,7 @@ namespace UltraCanvas {
     void LinuxRenderContext::DrawLine(const Point2D& start, const Point2D& end) {
         if (!cairo) return;
 
-        std::cout << "LinuxRenderContext::DrawLine" << std::endl;
+//        std::cout << "LinuxRenderContext::DrawLine" << std::endl;
 
         // *** Apply stroke style ***
         ApplyStrokeStyle(currentState.style);
@@ -525,14 +525,14 @@ namespace UltraCanvas {
     void LinuxRenderContext::ApplyDrawingStyle(const DrawingStyle& style) {
         if (!cairo) return;
 
-        std::cout << "LinuxRenderContext::ApplyDrawingStyle - hasStroke=" << (style.hasStroke ? "true" : "false")
-                  << " fillMode=" << (int)style.fillMode << std::endl;
+//        std::cout << "LinuxRenderContext::ApplyDrawingStyle - hasStroke=" << (style.hasStroke ? "true" : "false")
+//                  << " fillMode=" << (int)style.fillMode << std::endl;
 
         // *** NEW APPROACH: Only set stroke properties, don't set colors ***
         // Colors will be set explicitly by ApplyFillStyle() and ApplyStrokeStyle()
 
         if (style.hasStroke) {
-            std::cout << "ApplyDrawingStyle: Setting stroke properties" << std::endl;
+//            std::cout << "ApplyDrawingStyle: Setting stroke properties" << std::endl;
 
             cairo_set_line_width(cairo, style.strokeWidth);
 
@@ -554,13 +554,13 @@ namespace UltraCanvas {
             }
             cairo_set_line_join(cairo, join);
 
-            std::cout << "ApplyDrawingStyle: Stroke properties set - width=" << style.strokeWidth << std::endl;
+//            std::cout << "ApplyDrawingStyle: Stroke properties set - width=" << style.strokeWidth << std::endl;
         }
 
         // *** CRITICAL CHANGE: Don't set any colors here ***
         // Let the specific operations (fill/stroke) set their own colors
 
-        std::cout << "ApplyDrawingStyle: Complete (no color override)" << std::endl;
+//        std::cout << "ApplyDrawingStyle: Complete (no color override)" << std::endl;
     }
 
     void LinuxRenderContext::ApplyTextStyle(const TextStyle& style) {
@@ -571,9 +571,9 @@ namespace UltraCanvas {
     void LinuxRenderContext::ApplyFillStyle(const DrawingStyle& style) {
         if (!cairo) return;
 
-        std::cout << "ApplyFillStyle: Setting fill color=(" << (int)style.fillColor.r
-                  << "," << (int)style.fillColor.g << "," << (int)style.fillColor.b
-                  << "," << (int)style.fillColor.a << ")" << std::endl;
+//        std::cout << "ApplyFillStyle: Setting fill color=(" << (int)style.fillColor.r
+//                  << "," << (int)style.fillColor.g << "," << (int)style.fillColor.b
+//                  << "," << (int)style.fillColor.a << ")" << std::endl;
 
         // Handle different fill modes
         switch (style.fillMode) {
@@ -599,7 +599,7 @@ namespace UltraCanvas {
                 break;
         }
 
-        std::cout << "ApplyFillStyle: Complete" << std::endl;
+//        std::cout << "ApplyFillStyle: Complete" << std::endl;
     }
 
     void LinuxRenderContext::ApplyStrokeStyle(const DrawingStyle& style) {

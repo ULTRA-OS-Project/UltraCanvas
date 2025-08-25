@@ -100,7 +100,7 @@ public:
     
     // Window properties
     bool IsVisible() const { return shown; }
-    const std::string& GetTitle() const { return title; }
+    const std::string& GetWindowTitle() const { return title; }
     
     // Rendering
     void Render(CanvasContext* ctx) override;

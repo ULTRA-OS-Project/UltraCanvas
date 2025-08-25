@@ -36,6 +36,7 @@ enum class UCEventType {
 
     // Window Events
     WindowResize,
+    WindowMove,
     WindowClose,
     WindowMinimize,
     WindowFocus,
@@ -312,7 +313,17 @@ struct UCEvent {
 
     // Utility methods
     bool IsMouseEvent() const {
-        return type >= UCEventType::MouseDown && type <= UCEventType::MouseDoubleClick;
+        return type == UCEventType::MouseDown ||
+               type == UCEventType::MouseUp ||
+               type == UCEventType::MouseMove ||
+               type == UCEventType::MouseDoubleClick ||
+               type == UCEventType::MouseWheel;
+    }
+
+    bool IsMouseClickEvent() const {
+        return type == UCEventType::MouseDown ||
+               type == UCEventType::MouseUp ||
+               type == UCEventType::MouseDoubleClick;
     }
 
     bool IsKeyboardEvent() const {

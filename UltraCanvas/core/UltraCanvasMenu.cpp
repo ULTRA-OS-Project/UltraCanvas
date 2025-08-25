@@ -8,7 +8,7 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasZOrderManager.h"
-#include "UltraCanvasBaseWindow.h"
+#include "UltraCanvasWindow.h"
 
 namespace UltraCanvas {
 
@@ -245,7 +245,7 @@ namespace UltraCanvas {
 
         if (parentWindow) {
             // Add the submenu to the window's element collection so it gets rendered
-            parentWindow->AddElement(activeSubmenu);
+            parentWindow->AddChild(activeSubmenu);
             std::cout << "Added submenu '" << activeSubmenu->GetIdentifier()
                       << "' to window for rendering" << std::endl;
         }
@@ -262,7 +262,7 @@ namespace UltraCanvas {
 
             auto parentWindow = GetWindow();
             if (parentWindow) {
-                parentWindow->RemoveElement(activeSubmenu);
+                parentWindow->RemoveChild(activeSubmenu);
                 std::cout << "Removed submenu '" << activeSubmenu->GetIdentifier()
                           << "' from window" << std::endl;
             }
@@ -285,7 +285,7 @@ namespace UltraCanvas {
 
                 auto parentWindow = GetWindow();
                 if (parentWindow) {
-                    parentWindow->RemoveElement(child);
+                    parentWindow->RemoveChild(child);
                 }
             }
         }
