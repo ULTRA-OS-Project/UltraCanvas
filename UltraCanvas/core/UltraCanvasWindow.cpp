@@ -26,6 +26,150 @@ namespace UltraCanvas {
         containerStyle.borderWidth = 0.0f; // Windows don't need container borders
         SetContainerStyle(containerStyle);
     }
+// ===== FOCUS MANAGEMENT IMPLEMENTATION =====
+
+    void UltraCanvasBaseWindow::SetFocusedElement(UltraCanvasElement* element) {
+        // Don't do anything if already focused
+        if (_focusedElement == element) {
+            return;
+        }
+
+        // Validate element belongs to this window
+        if (element && element->GetWindow() != this) {
+            std::cerr << "Warning: Trying to focus element from different window" << std::endl;
+            return;
+        }
+
+        // Remove focus from current element
+        if (_focusedElement) {
+            SendFocusLostEvent(_focusedElement);
+        }
+
+        // Set new focused element
+        _focusedElement = element;
+
+        // Set focus on new element
+        if (_focusedElement) {
+            SendFocusGainedEvent(_focusedElement);
+        }
+
+        // Request window redraw to update focus indicators
+        _needsRedraw = true;
+
+        std::cout << "Focus changed to: " << (element ? element->GetIdentifier() : "none") << std::endl;
+    }
+
+    void UltraCanvasBaseWindow::ClearFocus() {
+        SetFocusedElement(nullptr);
+    }
+
+    bool UltraCanvasBaseWindow::RequestElementFocus(UltraCanvasElement* element) {
+        // Validate element can receive focus
+        if (!element || !element->CanReceiveFocus()) {
+            return false;
+        }
+
+        // Set focus through window's focus management
+        SetFocusedElement(element);
+        return true;
+    }
+
+    void UltraCanvasBaseWindow::FocusNextElement() {
+        std::vector<UltraCanvasElement*> focusableElements = GetFocusableElements();
+
+        if (focusableElements.empty()) {
+            return;
+        }
+
+        // Find current focus index
+        int currentIndex = -1;
+        for (size_t i = 0; i < focusableElements.size(); ++i) {
+            if (focusableElements[i] == _focusedElement) {
+                currentIndex = static_cast<int>(i);
+                break;
+            }
+        }
+
+        // Calculate next index
+        int nextIndex = (currentIndex + 1) % static_cast<int>(focusableElements.size());
+
+        // Set focus to next element
+        SetFocusedElement(focusableElements[nextIndex]);
+    }
+
+    void UltraCanvasBaseWindow::FocusPreviousElement() {
+        std::vector<UltraCanvasElement*> focusableElements = GetFocusableElements();
+
+        if (focusableElements.empty()) {
+            return;
+        }
+
+        // Find current focus index
+        int currentIndex = -1;
+        for (size_t i = 0; i < focusableElements.size(); ++i) {
+            if (focusableElements[i] == _focusedElement) {
+                currentIndex = static_cast<int>(i);
+                break;
+            }
+        }
+
+        // Calculate previous index
+        int prevIndex = (currentIndex <= 0) ?
+                        static_cast<int>(focusableElements.size()) - 1 :
+                        currentIndex - 1;
+
+        // Set focus to previous element
+        SetFocusedElement(focusableElements[prevIndex]);
+    }
+
+    std::vector<UltraCanvasElement*> UltraCanvasBaseWindow::GetFocusableElements() {
+        std::vector<UltraCanvasElement*> focusableElements;
+
+        // Start collecting from the window container itself
+        CollectFocusableElements(this, focusableElements);
+
+        return focusableElements;
+    }
+
+    void UltraCanvasBaseWindow::CollectFocusableElements(UltraCanvasContainer* container,
+                                                         std::vector<UltraCanvasElement*>& elements) {
+        if (!container) return;
+
+        // Get all child elements from the container
+        const auto& children = container->GetChildren();
+
+        for (const auto& child : children) {
+            UltraCanvasElement* element = child.get();
+
+            // Check if element can be focused
+            if (element && element->CanReceiveFocus()) {
+                elements.push_back(element);
+            }
+
+            // If the element is also a container, recursively collect from it
+            if (auto childContainer = dynamic_cast<UltraCanvasContainer*>(element)) {
+                CollectFocusableElements(childContainer, elements);
+            }
+        }
+    }
+
+    void UltraCanvasBaseWindow::SendFocusGainedEvent(UltraCanvasElement* element) {
+        if (!element) return;
+
+        UCEvent focusEvent;
+        focusEvent.type = UCEventType::FocusGained;
+        focusEvent.nativeWindowHandle = GetNativeHandle();
+        element->OnEvent(focusEvent);
+    }
+
+    void UltraCanvasBaseWindow::SendFocusLostEvent(UltraCanvasElement* element) {
+        if (!element) return;
+
+        UCEvent focusEvent;
+        focusEvent.type = UCEventType::FocusLost;
+        focusEvent.nativeWindowHandle = GetNativeHandle();
+        element->OnEvent(focusEvent);
+    }
 
     bool UltraCanvasBaseWindow::OnEvent(const UCEvent &event) {
         // Handle window-specific events first
@@ -33,7 +177,20 @@ namespace UltraCanvas {
             return true;
         }
 
-        if (event.IsMouseClickEvent() && !activePopups.empty()) {
+        // Handle focus-related keyboard events
+        if (event.type == UCEventType::KeyDown) {
+            // Tab navigation
+            if (event.virtualKey == UCKeys::Tab && !event.ctrl && !event.alt && !event.meta) {
+                if (event.shift) {
+                    FocusPreviousElement();
+                } else {
+                    FocusNextElement();
+                }
+                return true;
+            }
+        }
+
+        if (event.IsMouseEvent() && !activePopups.empty()) {
             std::unordered_set<UltraCanvasElement*> activePopupsCopy = activePopups;
             for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
                 UltraCanvasElement* activePopupElement = *it;
@@ -99,10 +256,17 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseWindow::HandleFocusEvent(bool focused) {
         if (focused) {
-            if (onWindowFocus) onWindowFocus();
+            if (!_focused) {
+                _focused = true;
+                if (onWindowFocus) onWindowFocus();
+            }
         } else {
-            if (onWindowBlur) onWindowBlur();
+            if (_focused) {
+                _focused = false;
+                if (onWindowBlur) onWindowBlur();
+            }
         }
+        _needsRedraw = true;
     }
 
     void UltraCanvasBaseWindow::Render() {

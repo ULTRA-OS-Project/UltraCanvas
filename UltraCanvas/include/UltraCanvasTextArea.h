@@ -262,6 +262,8 @@ namespace UltraCanvas {
             return readOnly;
         }
 
+        bool AcceptsFocus() const override { return true; }
+
         // ===== RENDERING =====
         void Render() override {
             UltraCanvas::RenderStateGuard _renderGuard;
@@ -275,7 +277,10 @@ namespace UltraCanvas {
 
             DrawTextContent();
             DrawSelection();
-            DrawCursor();
+
+            if (IsFocused() && cursorVisible) {
+                DrawCursor();
+            }
 
             if (hasVerticalScrollbar) {
                 DrawVerticalScrollbar();
@@ -485,8 +490,6 @@ namespace UltraCanvas {
         }
 
         void DrawCursor() {
-            if (!IsFocused() || !cursorVisible) return;
-
             UltraCanvas::Point2D cursorPos = GetCursorScreenPosition();
             UltraCanvas::SetStrokeColor(style.textColor);
             UltraCanvas::SetStrokeWidth(1.0f);
@@ -545,8 +548,8 @@ namespace UltraCanvas {
                     std::string visibleText = line.substr(startCol, endCol - startCol);
 
                     UltraCanvas::Point2D pos(
-                            textArea.x,
-                            textArea.y + i * style.lineHeight + style.fontSize
+                            textArea.x + 5,
+                            textArea.y + i * style.lineHeight
                     );
 
                     UltraCanvas::DrawText(visibleText, pos);

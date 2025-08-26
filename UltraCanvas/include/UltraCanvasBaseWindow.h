@@ -16,7 +16,7 @@
 #include <unordered_set>
 
 namespace UltraCanvas {
-
+    class UltraCanvasWindow;
 // ===== WINDOW CONFIGURATION =====
     enum class WindowType {
         Standard, Dialog, Popup, Tool, Splash,
@@ -48,7 +48,7 @@ namespace UltraCanvas {
         int maxHeight = -1;
         float opacity = 1.0f;
 
-        void* parentWindow = nullptr;
+        UltraCanvasWindow* parentWindow = nullptr;
         bool modal = false;
 
         // Container-specific window settings
@@ -63,10 +63,11 @@ namespace UltraCanvas {
         WindowState _state = WindowState::Normal;
         bool _created = false;
         bool _visible = false;
+        bool _focused = false;
         bool _needsRedraw = true;
-        bool _zOrderDirty = true;
 
         std::unordered_set<UltraCanvasElement *> activePopups;
+        UltraCanvasElement* _focusedElement = nullptr;  // Current focused element in this window
 
         // Window-specific callbacks
         std::function<void()> onWindowClose;
@@ -105,9 +106,28 @@ namespace UltraCanvas {
         virtual void Restore() = 0;
         virtual void SetFullscreen(bool fullscreen) = 0;
         virtual void SetResizable(bool resizable) = 0;
+// ===== FOCUS MANAGEMENT PUBLIC INTERFACE =====
+        bool IsWindowFocused() const { return _focused; }
+        // Set focus to a specific element in this window
+        virtual void SetFocusedElement(UltraCanvasElement* element);
+        // Get the currently focused element in this window
+        UltraCanvasElement* GetFocusedElement() const { return _focusedElement; }
+
+        // Clear focus from current element
+        virtual void ClearFocus();
+
+        // Focus navigation within window
+        virtual void FocusNextElement();
+        virtual void FocusPreviousElement();
+
+        // Check if this window has focus (any element focused)
+        bool HasFocus() const { return _focusedElement != nullptr; }
+        // Internal method for elements to request focus (called by element's SetFocus)
+        virtual bool RequestElementFocus(UltraCanvasElement* element);
+
 
         // Platform-specific
-        virtual void* GetNativeHandle() const = 0;
+        virtual unsigned long GetNativeHandle() const = 0;
         virtual void SwapBuffers() = 0;
 
         void AddPopupElement(UltraCanvasElement* element) {
@@ -133,11 +153,6 @@ namespace UltraCanvas {
 //                activePopupElement = nullptr;
 //            }
 //        }
-
-        void RequestZOrderUpdate() {
-            _zOrderDirty = true;
-            _needsRedraw = true;
-        }
 
         // ===== ENHANCED WINDOW PROPERTIES =====
         std::string GetWindowTitle() const { return config_.title; }
@@ -264,6 +279,23 @@ namespace UltraCanvas {
             // OS-specific implementations can add title bars, etc.
         }
         void RenderActivePopups();
+
+        // ===== FOCUS UTILITY METHODS =====
+
+        // Get all focusable elements in this window (recursive search)
+        std::vector<UltraCanvasElement*> GetFocusableElements();
+
+        // Collect focusable elements from a container recursively
+        void CollectFocusableElements(UltraCanvasContainer* container,
+                                      std::vector<UltraCanvasElement*>& elements);
+
+        // Find next/previous focusable element in tab order
+        UltraCanvasElement* FindNextFocusableElement(UltraCanvasElement* current);
+        UltraCanvasElement* FindPreviousFocusableElement(UltraCanvasElement* current);
+
+        // Send focus events to elements
+        void SendFocusGainedEvent(UltraCanvasElement* element);
+        void SendFocusLostEvent(UltraCanvasElement* element);
     };
 
 } // namespace UltraCanvas

@@ -157,10 +157,10 @@ private:
         // Formula dropdown
         int y = 10;
         formulaDropdown = std::make_shared<UltraCanvasDropdown>("FormulaDropdown", 11,
-                                                                10, y, leftWidth - 20, 30);
+                                                                10, y, leftWidth - 40, 30);
 
         // Control buttons
-        int buttonWidth = (leftWidth - 50) / 3;
+        int buttonWidth = (leftWidth - 60) / 3;
         newButton = std::make_shared<UltraCanvasButton>("NewButton", 12,
                                                         10, y + 40, buttonWidth, 30, "New");
         openButton = std::make_shared<UltraCanvasButton>("OpenButton", 13,
@@ -169,9 +169,9 @@ private:
                                                          30 + 2 * buttonWidth, y + 40, buttonWidth, 30, "Save");
         // Animation controls
         startButton = std::make_shared<UltraCanvasButton>("StartButton", 15,
-                                                          10, y + 80, (leftWidth - 30) / 2, 30, "Start Animation");
+                                                          10, y + 80, (leftWidth - 40) / 2, 30, "Start Animation");
         stopButton = std::make_shared<UltraCanvasButton>("StopButton", 16,
-                                                         20 + (leftWidth - 30) / 2, y + 80, (leftWidth - 30) / 2, 30, "Stop");
+                                                         20 + (leftWidth - 40) / 2, y + 80, (leftWidth - 40) / 2 - 10, 30, "Stop");
 
         // Frame rate control
         frameRateLabel = std::make_shared<UltraCanvasLabel>("FrameRateLabel", 17,

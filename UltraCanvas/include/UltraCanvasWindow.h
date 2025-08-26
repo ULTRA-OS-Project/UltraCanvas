@@ -79,7 +79,7 @@ namespace UltraCanvas {
             config.height = height;
             config.type = WindowType::Dialog;
             config.resizable = false;
-            config.parentWindow = parent ? parent->GetNativeHandle() : nullptr;
+            config.parentWindow = parent;
             config.modal = true;
 
             auto window = std::make_unique<UltraCanvasWindow>(config);

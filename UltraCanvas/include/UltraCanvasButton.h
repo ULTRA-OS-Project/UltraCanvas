@@ -92,6 +92,8 @@ namespace UltraCanvas {
         ButtonState GetButtonState() const { return currentState; }
         bool IsPressed() const { return pressed; }
 
+        bool AcceptsFocus() const override { return true; }
+
         // ===== STYLE CONVENIENCE METHODS (THESE NEED TO BE DEFINED FIRST) =====
         void SetColors(const Color& normal, const Color& hover, const Color& pressed, const Color& disabled) {
             style.normalColor = normal;
@@ -224,7 +226,6 @@ namespace UltraCanvas {
                         pressed = true;
                         SetFocus(true);
                         if (onPressed) onPressed();
-                        RequestRedraw();
                     }
                     break;
 

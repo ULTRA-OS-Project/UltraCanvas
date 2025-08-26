@@ -556,7 +556,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasLinuxWindow::OnEvent(const UCEvent& event) {
         ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
-
+        auto app = UltraCanvasApplication::GetInstance();
         // Handle window-level events first
         switch (event.type) {
             case UCEventType::WindowClose:
@@ -572,13 +572,15 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::WindowFocus:
-//                application->SetFocusedWindow(this);
+                app->SetFocusedWindow(this);
+                _focused = true;
                 break;
 
             case UCEventType::WindowBlur:
-//                if (application->GetFocusedWindow() == this) {
-//                    application->SetFocusedWindow(nullptr);
-//                }
+                if (app->GetFocusedWindow() == this) {
+                    app->SetFocusedWindow(nullptr);
+                }
+                _focused = false;
                 break;
 
             default:
@@ -649,8 +651,8 @@ namespace UltraCanvas {
     }
 
 // ===== ACCESSORS =====
-    void* UltraCanvasLinuxWindow::GetNativeHandle() const {
-        return reinterpret_cast<void*>(xWindow);
+    unsigned long UltraCanvasLinuxWindow::GetNativeHandle() const {
+        return xWindow;
     }
 
 } // namespace UltraCanvas

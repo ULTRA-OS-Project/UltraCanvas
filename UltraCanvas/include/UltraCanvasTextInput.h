@@ -394,7 +394,9 @@ public:
     }
     
     const std::string& GetPlaceholder() const { return placeholderText; }
-    
+
+    bool AcceptsFocus() const override { return true; }
+
     // ===== INPUT TYPE AND BEHAVIOR =====
     void SetInputType(TextInputType type);
     

@@ -297,4 +297,33 @@ namespace UltraCanvas {
         return properties.y_pos;
     }
 
+    bool UltraCanvasElement::SetFocus(bool focus) {
+        // If trying to set focus, delegate to window's focus management
+        if (focus) {
+            if (!window) {
+                std::cerr << "Warning: Element " << GetIdentifier() << " has no window assigned" << std::endl;
+                return false;
+            }
+
+            // Request focus through the window's focus management system
+            return window->RequestElementFocus(this);
+        } else {
+            // If trying to remove focus, clear focus at window level
+            if (window && window->GetFocusedElement() == this) {
+                window->ClearFocus();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool UltraCanvasElement::IsFocused() const {
+        if (window && window->IsWindowFocused() && window->GetFocusedElement() == this) {
+            return true;
+        }
+
+        return false;
+    }
+
 }

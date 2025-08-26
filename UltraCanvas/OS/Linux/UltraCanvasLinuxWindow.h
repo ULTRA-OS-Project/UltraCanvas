@@ -69,7 +69,7 @@ namespace UltraCanvas {
         virtual void SetFullscreen(bool fullscreen) override;
         virtual void Render() override;
         virtual void SwapBuffers() override;
-        virtual void* GetNativeHandle() const override;
+        virtual unsigned long GetNativeHandle() const override;
 //        virtual void ProcessEvents() override;
         virtual bool OnEvent(const UCEvent&) override;
 

@@ -25,7 +25,7 @@ public:
     }
 
     virtual void Destroy() override {
-        if (!created_) {
+        if (!_created) {
             std::cout << "=== CrossPlatformFrameworkWindow already destroyed ===" << std::endl;
             return;
         }

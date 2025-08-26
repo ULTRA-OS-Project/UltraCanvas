@@ -418,7 +418,8 @@ namespace UltraCanvas {
             // Match the baseline calculation used in GetCaretYPosition
             float lineHeight = style.fontSize * 1.2f;
             float centeredY = area.y + (area.height - lineHeight) / 2.0f;
-            float baselineY = centeredY + (style.fontSize * 0.8f);
+            //float baselineY = centeredY + (style.fontSize * 0.8f);
+            float baselineY = centeredY;
 
             Point2D textPos(area.x - scrollOffset, baselineY);
             DrawText(renderText, textPos);
@@ -585,7 +586,7 @@ namespace UltraCanvas {
         // Draw validation icon (simplified)
         if (lastValidationResult.state == ValidationState::Valid) {
             // Draw checkmark
-            Point2D iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2 - 6);
+            Point2D iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2);
             SetStrokeColor(style.validBorderColor);
             SetStrokeWidth(2.0f);
             DrawLine(iconPos, Point2D(iconPos.x + 4, iconPos.y + 4));
@@ -1040,7 +1041,6 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::HandleFocusLost(const UCEvent &event) {
-        SetFocus(false);
         isCaretVisible = false;
         isDragging = false;
 //        InvalidateLayout();
@@ -1222,6 +1222,6 @@ namespace UltraCanvas {
             // Single line: match baseline positioning
             float lineHeight = style.fontSize * 1.2f;
             float centeredY = textArea.y + (textArea.height - lineHeight) / 2.0f;
-            return centeredY + (style.fontSize * 0.8f);
+            return centeredY;
         }
     }}

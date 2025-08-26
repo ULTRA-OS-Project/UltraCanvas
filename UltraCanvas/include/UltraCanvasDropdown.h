@@ -343,7 +343,7 @@ namespace UltraCanvas {
                     HandleKeyDown(event);
                     break;
                 case UCEventType::MouseWheel:
-                    HandleMouseWheel(event);
+                    return HandleMouseWheel(event);
                     break;
                 case UCEventType::FocusLost:
                     if (dropdownOpen) {
@@ -711,7 +711,7 @@ namespace UltraCanvas {
             }
         }
 
-        void HandleMouseWheel(const UCEvent& event) {
+        bool HandleMouseWheel(const UCEvent& event) {
             if (dropdownOpen && needsScrollbar) {
                 // Determine scroll direction (negative wheelDelta = scroll down)
                 int scrollDirection = (event.wheelDelta > 0) ? -1 : 1;
@@ -722,7 +722,9 @@ namespace UltraCanvas {
 
                 scrollOffset = std::max(0, std::min(newScrollOffset, maxScroll));
                 RequestRedraw();
+                return true;
             }
+            return false;
         }
 
         void NavigateItem(int direction) {

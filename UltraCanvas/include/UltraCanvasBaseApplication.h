@@ -21,10 +21,14 @@ namespace UltraCanvas {
         bool volatile initialized = false;
 
         std::vector<UltraCanvasWindow*> windows;
+        UltraCanvasWindow* focusedWindow = nullptr;
     public:
         virtual ~UltraCanvasBaseApplication() = default;
         virtual void RegisterWindow(UltraCanvasWindow* window) = 0;
         virtual void UnregisterWindow(UltraCanvasWindow* window) = 0;
+
+        void SetFocusedWindow(UltraCanvasWindow* window) { focusedWindow = window; };
+        UltraCanvasWindow* GetFocusedWindow() { return focusedWindow; }
 
         virtual bool Initialize() = 0;
         virtual void Run() = 0;

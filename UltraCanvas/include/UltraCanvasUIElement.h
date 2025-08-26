@@ -97,7 +97,6 @@ namespace UltraCanvas {
     struct ElementStateFlags {
         bool isHovered = false;
         bool isPressed = false;
-        bool isFocused = false;
         bool isEnabled = true;
         bool isSelected = false;
         bool isDragging = false;
@@ -106,14 +105,13 @@ namespace UltraCanvas {
         ElementState GetPrimaryState() const {
             if (!isEnabled) return ElementState::Disabled;
             if (isPressed) return ElementState::Pressed;
-            if (isFocused) return ElementState::Focused;
             if (isSelected) return ElementState::Selected;
             if (isHovered) return ElementState::Hovered;
             return ElementState::Normal;
         }
 
         void Reset() {
-            isHovered = isPressed = isFocused = isSelected = isDragging = isResizing = false;
+            isHovered = isPressed = isSelected = isDragging = isResizing = false;
             isEnabled = true;
         }
     };
@@ -237,8 +235,10 @@ namespace UltraCanvas {
         bool IsPressed() const { return stateFlags.isPressed; }
         void SetPressed(bool pressed) { stateFlags.isPressed = pressed; }
 
-        bool IsFocused() const { return stateFlags.isFocused; }
-        void SetFocus(bool focused) { stateFlags.isFocused = focused; }
+        bool IsFocused() const;
+        virtual bool SetFocus(bool focus = true);
+        virtual bool AcceptsFocus() const { return false; }
+        bool CanReceiveFocus() const { return IsVisible() && IsEnabled() && AcceptsFocus(); }
 
         bool IsEnabled() const { return stateFlags.isEnabled && properties.Active; }
         void SetEnabled(bool enabled) { stateFlags.isEnabled = enabled; }

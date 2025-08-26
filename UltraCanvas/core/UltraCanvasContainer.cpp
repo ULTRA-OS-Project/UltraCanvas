@@ -33,7 +33,7 @@ namespace UltraCanvas {
 //            UpdateChildZOrder();
             UpdateLayout();
         }
-
+        auto bounds = GetBounds();
         // Update scroll animation if active
         if (scrollState.animatingScroll && style.smoothScrolling) {
             UpdateScrollAnimation();
@@ -42,36 +42,33 @@ namespace UltraCanvas {
         // Render container background
         if (style.backgroundColor.a > 0) {
             SetFillColor(style.backgroundColor);
-            FillRect(GetBounds());
+            FillRect(bounds);
         }
 
         // Render border
         if (style.borderWidth > 0) {
             SetStrokeColor(style.borderColor);
             SetStrokeWidth(style.borderWidth);
-            DrawRect(GetBounds());
+            DrawRect(bounds);
         }
 
-        // Set up clipping for content area
-        Rect2D clipRect = contentArea;
-        SetClipRect(clipRect);
-
+        PushRenderState();
         Translate(contentArea.x - scrollState.horizontalPosition,
                   contentArea.y - scrollState.verticalPosition);
+        // Set up clipping for content area
+//        Rect2D clipRect = contentArea;
+        SetClipRect(Rect2D(0,0,contentArea.width, contentArea.height));
 
         // Render children with scroll offset
         for (const auto& child : children) {
             if (!child || !child->IsVisible()) continue;
 
             // Apply scroll offset to child rendering
-            PushRenderState();
             child->Render();
-
-            PopRenderState();
         }
 
         // Remove content clipping
-        ClearClipRect();
+        PopRenderState();
 
         // Render scrollbars
         if (scrollState.showVerticalScrollbar) {
