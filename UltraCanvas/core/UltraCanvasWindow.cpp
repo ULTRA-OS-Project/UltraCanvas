@@ -178,14 +178,16 @@ namespace UltraCanvas {
         }
 
         // Handle focus-related keyboard events
-        if (event.type == UCEventType::KeyDown) {
-            // Tab navigation
-            if (event.virtualKey == UCKeys::Tab && !event.ctrl && !event.alt && !event.meta) {
+        if (event.IsKeyboardEvent()) {
+            if (event.type == UCEventType::KeyDown && event.virtualKey == UCKeys::Tab && !event.ctrl && !event.alt && !event.meta) {
                 if (event.shift) {
                     FocusPreviousElement();
                 } else {
                     FocusNextElement();
                 }
+                return true;
+            }
+            if (_focusedElement->OnEvent(event)) {
                 return true;
             }
         }
@@ -233,9 +235,11 @@ namespace UltraCanvas {
                 return false;
         }
     }
+
     void UltraCanvasBaseWindow::HandleCloseEvent() {
-        _state = WindowState::Closing;
-        if (onWindowClose) onWindowClose();
+        Close();
+//        _state = WindowState::Closing;
+//        if (onWindowClose) onWindowClose();
     }
 
     void UltraCanvasBaseWindow::HandleResizeEvent(int width, int height) {

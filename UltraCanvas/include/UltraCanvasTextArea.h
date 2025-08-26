@@ -297,13 +297,9 @@ namespace UltraCanvas {
         bool OnEvent(const UCEvent& event) override {
             switch (event.type) {
                 case UCEventType::KeyDown:
-                    HandleKeyDown(event);
-                    break;
+                    return HandleKeyDown(event);
                 case UCEventType::KeyUp:
-                    HandleKeyUp(event);
-                    break;
-                case UCEventType::KeyChar:
-                    HandleTextInput(event);
+                    return HandleKeyUp(event);
                     break;
                 case UCEventType::MouseDown:
                     HandleMouseDown(event);
@@ -650,10 +646,10 @@ namespace UltraCanvas {
         }
 
         // ===== EVENT HANDLERS =====
-        void HandleKeyDown(const UCEvent& event) {
+        bool HandleKeyDown(const UCEvent& event) {
             if (readOnly && event.virtualKey != UCKeys::Left && event.virtualKey != UCKeys::Right &&
                     event.virtualKey != UCKeys::Up && event.virtualKey != UCKeys::Down) {
-                return;
+                return false;
             }
 
             switch (event.virtualKey) {
@@ -721,13 +717,19 @@ namespace UltraCanvas {
                         }
                     }
                     break;
+                default:
+                    HandleTextInput(event);
+                    break;
             }
 
             EnsureCursorVisible();
+            RequestRedraw();
+            return true;
         }
 
-        void HandleKeyUp(const UCEvent& /* event */) {
+        bool HandleKeyUp(const UCEvent& /* event */) {
             // Handle key up events if needed (parameter marked as unused)
+            return false;
         }
 
         void HandleMouseDown(const UCEvent& event) {

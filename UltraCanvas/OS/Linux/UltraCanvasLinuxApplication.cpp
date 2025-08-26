@@ -348,7 +348,9 @@ namespace UltraCanvas {
 
             if (window) {
                 // Let the window handle the X11 event first
-                window->HandleXEvent(xEvent);
+                if (window->HandleXEvent(xEvent)) {
+                    return;
+                }
             }
 
             // Convert to UCEvent and queue it

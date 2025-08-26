@@ -383,6 +383,7 @@ namespace UltraCanvas {
             float maxScroll = std::max(0.0f, totalTextWidth - textArea.width + style.paddingRight);
             scrollOffset = std::min(scrollOffset, maxScroll);
         }
+        RequestRedraw();
     }
 
     Rect2D UltraCanvasTextInput::GetTextArea() const {
@@ -1100,6 +1101,7 @@ namespace UltraCanvas {
 
     void UltraCanvasTextInput::UpdateDisplayText() {
         displayText = formatter.formatFunction ? formatter.formatFunction(text) : text;
+        RequestRedraw();
     }
 
     void UltraCanvasTextInput::CopyToClipboard(const std::string &text) {

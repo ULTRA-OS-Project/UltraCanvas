@@ -71,22 +71,22 @@ namespace UltraCanvas {
         virtual void SwapBuffers() override;
         virtual unsigned long GetNativeHandle() const override;
 //        virtual void ProcessEvents() override;
-        virtual bool OnEvent(const UCEvent&) override;
+//        virtual bool OnEvent(const UCEvent&) override;
 
 
         // ===== LINUX-SPECIFIC METHODS =====
         Window GetXWindow() const { return xWindow; }
         cairo_t* GetCairoContext() const { return cairoContext; }
         LinuxRenderContext* GetRenderContext() const { return renderContext.get(); }
-        void HandleXEvent(const XEvent& event);
+        bool HandleXEvent(const XEvent& event);
 
     private:
 
         // Event handling
-        void OnResize(int width, int height);
-        void OnMove(int x, int y);
-        void OnFocusChanged(bool focused);
-        void OnMapStateChanged(bool mapped);
+//        void OnResize(int width, int height);
+//        void OnMove(int x, int y);
+//        void OnFocusChanged(bool focused);
+//        void OnMapStateChanged(bool mapped);
 
         // ===== INTERNAL SETUP =====
         bool CreateXWindow();

@@ -512,143 +512,144 @@ namespace UltraCanvas {
     }
 
 // ===== EVENT HANDLING =====
-    void UltraCanvasLinuxWindow::HandleXEvent(const XEvent& event) {
-        switch (event.type) {
-            case ConfigureNotify:
-                if (event.xconfigure.width != config_.width ||
-                    event.xconfigure.height != config_.height) {
-                    OnResize(event.xconfigure.width, event.xconfigure.height);
-                }
-                if (event.xconfigure.x != config_.x ||
-                    event.xconfigure.y != config_.y) {
-                    OnMove(event.xconfigure.x, event.xconfigure.y);
-                }
-                break;
-
-            case FocusIn:
-                OnFocusChanged(true);
-                break;
-
-            case FocusOut:
-                OnFocusChanged(false);
-                break;
-
-            case MapNotify:
-                OnMapStateChanged(true);
-                break;
-
-            case UnmapNotify:
-                OnMapStateChanged(false);
-                break;
-
-            case Expose:
-                if (event.xexpose.count == 0) {
-                    // Only render on the last expose event
-                    Render();
-                }
-                break;
-
-            default:
-                // Other events are handled by the application
-                break;
-        }
-    }
-
-    bool UltraCanvasLinuxWindow::OnEvent(const UCEvent& event) {
-        ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
-        auto app = UltraCanvasApplication::GetInstance();
-        // Handle window-level events first
-        switch (event.type) {
-            case UCEventType::WindowClose:
-                Close();
-                return true;
-
-            case UCEventType::WindowResize:
-                // Resize is handled in HandleXEvent
-                break;
-
-            case UCEventType::WindowRepaint:
-                Render();
-                break;
-
-            case UCEventType::WindowFocus:
-                app->SetFocusedWindow(this);
-                _focused = true;
-                break;
-
-            case UCEventType::WindowBlur:
-                if (app->GetFocusedWindow() == this) {
-                    app->SetFocusedWindow(nullptr);
-                }
-                _focused = false;
-                break;
-
-            default:
-                // Pass other events to base class
-                return UltraCanvasBaseWindow::OnEvent(event);
-                break;
-        }
+    bool UltraCanvasLinuxWindow::HandleXEvent(const XEvent& event) {
+//        switch (event.type) {
+//            case ConfigureNotify:
+//                if (event.xconfigure.width != config_.width ||
+//                    event.xconfigure.height != config_.height) {
+//                    OnResize(event.xconfigure.width, event.xconfigure.height);
+//                }
+//                if (event.xconfigure.x != config_.x ||
+//                    event.xconfigure.y != config_.y) {
+//                    OnMove(event.xconfigure.x, event.xconfigure.y);
+//                }
+//                break;
+//
+//            case FocusIn:
+//                OnFocusChanged(true);
+//                break;
+//
+//            case FocusOut:
+//                OnFocusChanged(false);
+//                break;
+//
+//            case MapNotify:
+//                OnMapStateChanged(true);
+//                break;
+//
+//            case UnmapNotify:
+//                OnMapStateChanged(false);
+//                break;
+//
+//            case Expose:
+//                if (event.xexpose.count == 0) {
+//                    // Only render on the last expose event
+//                    Render();
+//                }
+//                break;
+//
+//            default:
+//                // Other events are handled by the application
+//                break;
+//        }
         return false;
     }
 
+//    bool UltraCanvasLinuxWindow::OnEvent(const UCEvent& event) {
+//        ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
+//        auto app = UltraCanvasApplication::GetInstance();
+//        // Handle window-level events first
+//        switch (event.type) {
+//            case UCEventType::WindowClose:
+//                Close();
+//                return true;
+//
+//            case UCEventType::WindowResize:
+//                // Resize is handled in HandleXEvent
+//                break;
+//
+//            case UCEventType::WindowRepaint:
+//                Render();
+//                break;
+//
+//            case UCEventType::WindowFocus:
+//                app->SetFocusedWindow(this);
+//                _focused = true;
+//                break;
+//
+//            case UCEventType::WindowBlur:
+//                if (app->GetFocusedWindow() == this) {
+//                    app->SetFocusedWindow(nullptr);
+//                }
+//                _focused = false;
+//                break;
+//
+//            default:
+//                // Pass other events to base class
+//                return UltraCanvasBaseWindow::OnEvent(event);
+//                break;
+//        }
+//        return false;
+//    }
+
 // ===== INTERNAL EVENT HANDLERS =====
-    void UltraCanvasLinuxWindow::OnResize(int width, int height) {
-        std::cout << "UltraCanvas Linux: Window resize event to " << width << "x" << height << std::endl;
-        config_.width = width;
-        config_.height = height;
-
-        UpdateCairoSurface();
-
-        if (onWindowResize) {
-            onWindowResize(width, height);
-        }
-
-        _needsRedraw = true;
-
-        std::cout << "UltraCanvas Linux: Window resized to " << width << "x" << height << std::endl;
-    }
-
-    void UltraCanvasLinuxWindow::OnMove(int x, int y) {
-        config_.x = x;
-        config_.y = y;
-
-        if (onWindowMove) {
-            onWindowMove(x, y);
-        }
-
-        std::cout << "UltraCanvas Linux: Window moved to " << x << "," << y << std::endl;
-    }
-
-    void UltraCanvasLinuxWindow::OnFocusChanged(bool focused) {
-        auto application = UltraCanvasApplication::GetInstance();
-        if (focused) {
-            application->SetFocusedWindow(this);
-            if (onWindowFocus) {
-                onWindowFocus();
-            }
-        } else {
-            if (application->GetFocusedWindow() == this) {
-                application->SetFocusedWindow(nullptr);
-            }
-            if (onWindowBlur) {
-                onWindowBlur();
-            }
-        }
-    }
-
-    void UltraCanvasLinuxWindow::OnMapStateChanged(bool mapped) {
-        _visible = mapped;
-
-        if (mapped) {
-            if (onWindowShow) {
-                onWindowShow();
-            }
-        } else {
-            if (onWindowHide) {
-                onWindowHide();
-            }
-        }
-    }
+//    void UltraCanvasLinuxWindow::OnResize(int width, int height) {
+//        std::cout << "UltraCanvas Linux: Window resize event to " << width << "x" << height << std::endl;
+//        config_.width = width;
+//        config_.height = height;
+//
+//        UpdateCairoSurface();
+//
+//        if (onWindowResize) {
+//            onWindowResize(width, height);
+//        }
+//
+//        _needsRedraw = true;
+//
+//        std::cout << "UltraCanvas Linux: Window resized to " << width << "x" << height << std::endl;
+//    }
+//
+//    void UltraCanvasLinuxWindow::OnMove(int x, int y) {
+//        config_.x = x;
+//        config_.y = y;
+//
+//        if (onWindowMove) {
+//            onWindowMove(x, y);
+//        }
+//
+//        std::cout << "UltraCanvas Linux: Window moved to " << x << "," << y << std::endl;
+//    }
+//
+//    void UltraCanvasLinuxWindow::OnFocusChanged(bool focused) {
+//        auto application = UltraCanvasApplication::GetInstance();
+//        if (focused) {
+//            application->SetFocusedWindow(this);
+//            if (onWindowFocus) {
+//                onWindowFocus();
+//            }
+//        } else {
+//            if (application->GetFocusedWindow() == this) {
+//                application->SetFocusedWindow(nullptr);
+//            }
+//            if (onWindowBlur) {
+//                onWindowBlur();
+//            }
+//        }
+//    }
+//
+//    void UltraCanvasLinuxWindow::OnMapStateChanged(bool mapped) {
+//        _visible = mapped;
+//
+//        if (mapped) {
+//            if (onWindowShow) {
+//                onWindowShow();
+//            }
+//        } else {
+//            if (onWindowHide) {
+//                onWindowHide();
+//            }
+//        }
+//    }
 
 // ===== ACCESSORS =====
     unsigned long UltraCanvasLinuxWindow::GetNativeHandle() const {
