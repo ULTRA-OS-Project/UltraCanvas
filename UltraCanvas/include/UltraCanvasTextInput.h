@@ -570,18 +570,12 @@ private:
     
     size_t GetTextPositionFromPoint(const Point2D& point);
     
-    void HandleMouseDown(const UCEvent& event);
-    
-    void HandleMouseMove(const UCEvent& event);
-    
+    bool HandleMouseDown(const UCEvent& event);
+    bool HandleMouseMove(const UCEvent& event);
     void HandleMouseUp(const UCEvent& event);
-
     void HandleKeyDown(const UCEvent& event);
-
     void HandleKeyUp(const UCEvent& event);
-
     void HandleFocusGained(const UCEvent& event);
-
     void HandleFocusLost(const UCEvent& event);
 
     void InsertText(const std::string& insertText);

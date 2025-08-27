@@ -187,7 +187,7 @@ namespace UltraCanvas {
                 }
                 return true;
             }
-            if (_focusedElement->OnEvent(event)) {
+            if (_focusedElement && _focusedElement->OnEvent(event)) {
                 return true;
             }
         }

@@ -290,7 +290,7 @@ namespace UltraCanvas {
         void UpdateSyntaxHighlighting() {
             if (!syntaxHighlightingEnabled) return;
 
-            std::string text = GetContent();
+            std::string text = GetText();
             tokens = highlighter.HighlightSyntax(text);
         }
 
@@ -401,7 +401,7 @@ namespace UltraCanvas {
         void UpdateUIFromFormula() {
             nameInput->SetText(currentFormula.name);
             descriptionInput->SetText(currentFormula.description);
-            codeEditor->SetContent(currentFormula.formula);
+            codeEditor->SetText(currentFormula.formula);
             animationSpeedSlider->SetValue(currentFormula.animationSpeed);
         }
 
@@ -593,7 +593,7 @@ namespace UltraCanvas {
             // Update formula from UI
             currentFormula.name = nameInput->GetText();
             currentFormula.description = descriptionInput->GetText();
-            currentFormula.formula = codeEditor->GetContent();
+            currentFormula.formula = codeEditor->GetText();
             currentFormula.animationSpeed = animationSpeedSlider->GetValue();
 
             // Save to library

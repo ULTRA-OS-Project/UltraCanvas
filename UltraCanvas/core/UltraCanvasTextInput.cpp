@@ -288,7 +288,7 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::MouseDown:
-                HandleMouseDown(event);
+                return HandleMouseDown(event);
                 break;
 
             case UCEventType::MouseMove:
@@ -760,8 +760,8 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTextInput::HandleMouseDown(const UCEvent &event) {
-        if (!Contains(event.x, event.y)) return;
+    bool UltraCanvasTextInput::HandleMouseDown(const UCEvent &event) {
+        if (!Contains(event.x, event.y)) return false;
 
         SetFocus(true);
 
@@ -777,20 +777,24 @@ namespace UltraCanvas {
             isDragging = true;
             dragStartPosition = clickPoint;
         }
+        return true;
     }
 
-    void UltraCanvasTextInput::HandleMouseMove(const UCEvent &event) {
-        if (!isDragging) return;
+    bool UltraCanvasTextInput::HandleMouseMove(const UCEvent &event) {
+        if (!isDragging) return false;
 
         Point2D currentPoint(event.x, event.y);
         size_t currentPosition = GetTextPositionFromPoint(currentPoint);
         size_t startPosition = GetTextPositionFromPoint(dragStartPosition);
 
         SetSelection(startPosition, currentPosition);
+        return true;
     }
 
     void UltraCanvasTextInput::HandleMouseUp(const UCEvent &event) {
-        isDragging = false;
+        if (isDragging) {
+            isDragging = false;
+        }
     }
 
     void UltraCanvasTextInput::HandleKeyDown(const UCEvent &event) {
