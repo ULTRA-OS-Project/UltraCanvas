@@ -177,8 +177,10 @@ namespace UltraCanvas {
 
         // Vertical scrolling
         int visibleLines = static_cast<int>(contentHeight / style.lineHeight);
+        if (hasHorizontalScrollbar) {
+            visibleLines--;
+        }
         maxVisibleLines = visibleLines;
-
         if (cursorLine < scrollOffsetY) {
             scrollOffsetY = cursorLine;
         } else if (cursorLine >= scrollOffsetY + visibleLines) {
@@ -205,6 +207,8 @@ namespace UltraCanvas {
 
     void UltraCanvasTextArea::UpdateScrollBars() {
         UltraCanvas::Rect2D bounds = GetBounds();
+
+        int scrollbarThickness = 10;
         float lineNumberWidth = style.showLineNumbers ? GetLineNumberWidth() : 0.0f;
 
         // Calculate content dimensions
@@ -219,35 +223,29 @@ namespace UltraCanvas {
             float lineWidth = GetTextWidth(line);
             maxLineWidth = std::max(maxLineWidth, lineWidth);
         }
-
         float visibleWidth = bounds.width - lineNumberWidth;
 
-        // Update vertical scrollbar
         hasVerticalScrollbar = (style.verticalScrollMode == ScrollBarMode::AlwaysShow) ||
                                (style.verticalScrollMode == ScrollBarMode::Auto && totalLines > visibleLines);
 
         if (hasVerticalScrollbar) {
-            visibleWidth -= 20.0f; // Account for scrollbar width
-
-            float thumbHeight = std::max(20.0f, (contentHeight * visibleLines) / totalLines);
-            float scrollRange = contentHeight - thumbHeight;
-            float thumbY = bounds.y + (scrollOffsetY * scrollRange) / std::max(1, totalLines - visibleLines);
-
-            verticalScrollThumb = UltraCanvas::Rect2D(bounds.x + bounds.width - 20, thumbY, 20, thumbHeight);
+            visibleWidth -= 10.0f;
         }
-
-        // Update horizontal scrollbar
         hasHorizontalScrollbar = (style.horizontalScrollMode == ScrollBarMode::AlwaysShow) ||
                                  (style.horizontalScrollMode == ScrollBarMode::Auto && maxLineWidth > visibleWidth);
 
         if (hasHorizontalScrollbar) {
-            float thumbWidth = std::max(20.0f, (visibleWidth * visibleWidth) / std::max(1.0f, maxLineWidth));
-            float scrollRange = visibleWidth - thumbWidth;
-            float thumbX = bounds.x + lineNumberWidth + (scrollOffsetX * scrollRange) / std::max(1.0f, maxLineWidth - visibleWidth);
-
-            float scrollbarY = hasVerticalScrollbar ? bounds.y + bounds.height - 40 : bounds.y + bounds.height - 20;
-            horizontalScrollThumb = UltraCanvas::Rect2D(thumbX, scrollbarY, thumbWidth, 20);
+            visibleLines = std::max(1, visibleLines - 1);
+            maxVisibleLines = visibleLines;
+            if (!hasVerticalScrollbar) {
+                hasVerticalScrollbar = (style.verticalScrollMode == ScrollBarMode::AlwaysShow) ||
+                                       (style.verticalScrollMode == ScrollBarMode::Auto && totalLines > visibleLines);
+                if (hasVerticalScrollbar) {
+                    visibleWidth -= 10.0f;
+                }
+            }
         }
+
 
         // Clamp scroll offsets using accurate measurements
         scrollOffsetY = std::max(0, std::min(scrollOffsetY, std::max(0, totalLines - visibleLines)));
@@ -256,6 +254,25 @@ namespace UltraCanvas {
             scrollOffsetX = std::max(0.0f, std::min(static_cast<float>(scrollOffsetX), maxLineWidth - visibleWidth));
         } else {
             scrollOffsetX = 0;
+        }
+
+        // Update vertical scrollbar
+        if (hasVerticalScrollbar) {
+            float thumbHeight = std::max(20.0f, (contentHeight * visibleLines) / totalLines);
+            float scrollRange = contentHeight - thumbHeight - (hasHorizontalScrollbar ? 10 : 0);
+            float thumbY = bounds.y + (scrollOffsetY * scrollRange) / std::max(1, totalLines - visibleLines);
+
+            verticalScrollThumb = UltraCanvas::Rect2D(bounds.x + bounds.width - 10, thumbY, 10, thumbHeight);
+        }
+
+        // Update horizontal scrollbar
+        if (hasHorizontalScrollbar) {
+            float thumbWidth = std::max(20.0f, (visibleWidth * visibleWidth) / std::max(1.0f, maxLineWidth));
+            float scrollRange = visibleWidth - thumbWidth;
+            float thumbX = bounds.x + lineNumberWidth + (scrollOffsetX * scrollRange) / std::max(1.0f, maxLineWidth - visibleWidth);
+
+            float scrollbarY = bounds.y + bounds.height - 10;
+            horizontalScrollThumb = UltraCanvas::Rect2D(thumbX, scrollbarY, thumbWidth, 10);
         }
     }
 
@@ -336,7 +353,7 @@ namespace UltraCanvas {
         // Make sure cursor is within visible bounds
         float lineNumberWidth = style.showLineNumbers ? GetLineNumberWidth() : 0.0f;
         float visibleLeft = bounds.x + lineNumberWidth;
-        float visibleRight = bounds.x + bounds.width - (hasVerticalScrollbar ? 20.0f : 0.0f);
+        float visibleRight = bounds.x + bounds.width - (hasVerticalScrollbar ? 10.0f : 0.0f);
 
         if (cursorPos.x >= visibleLeft && cursorPos.x <= visibleRight) {
             UltraCanvas::SetStrokeColor(style.textColor);
@@ -395,7 +412,7 @@ namespace UltraCanvas {
         // Draw vertical scrollbar
         if (hasVerticalScrollbar) {
             // Draw scrollbar track
-            UltraCanvas::Rect2D track(bounds.x + bounds.width - 20, bounds.y, 20, bounds.height);
+            UltraCanvas::Rect2D track(bounds.x + bounds.width - 10, bounds.y, 10, bounds.height - 10);
             UltraCanvas::SetFillColor(style.scrollbarColor);
             UltraCanvas::FillRect(track);
 
@@ -412,9 +429,9 @@ namespace UltraCanvas {
         // Draw horizontal scrollbar
         if (hasHorizontalScrollbar) {
             // Draw scrollbar track
-            float scrollbarY = hasVerticalScrollbar ? bounds.y + bounds.height - 40 : bounds.y + bounds.height - 20;
-            float scrollbarWidth = bounds.width - (hasVerticalScrollbar ? 20 : 0);
-            UltraCanvas::Rect2D track(bounds.x, scrollbarY, scrollbarWidth, 20);
+            float scrollbarY = bounds.y + bounds.height - 10.0;
+            float scrollbarWidth = bounds.width - (hasVerticalScrollbar ? 10.0 : 0);
+            UltraCanvas::Rect2D track(bounds.x, scrollbarY, scrollbarWidth, 10);
             UltraCanvas::SetFillColor(style.scrollbarColor);
             UltraCanvas::FillRect(track);
 
