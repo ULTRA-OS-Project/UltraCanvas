@@ -143,6 +143,7 @@ namespace UltraCanvas {
 
             CalculateVisibleArea();
             UpdateScrollbarThumbs();
+            RequestRedraw();
         }
 
         std::string GetContent() const {
@@ -168,6 +169,7 @@ namespace UltraCanvas {
 
             CalculateVisibleArea();
             EnsureCursorVisible();
+            RequestRedraw();
         }
 
         void InsertText(const std::string& text) {
@@ -628,7 +630,7 @@ namespace UltraCanvas {
 
             // Draw scrollbar background
             UltraCanvas::SetFillColor(style.scrollbarColor);
-            UltraCanvas::DrawRect(scrollbarArea);
+            UltraCanvas::FillRect(scrollbarArea);
             UltraCanvas::SetStrokeColor(style.borderColor);
             // Draw scrollbar border using lines
             UltraCanvas::DrawLine(UltraCanvas::Point2D(scrollbarArea.x, scrollbarArea.y),
@@ -642,7 +644,7 @@ namespace UltraCanvas {
 
             // Draw thumb
             UltraCanvas::SetFillColor(style.scrollbarThumbColor);
-            UltraCanvas::DrawRect(horizontalScrollThumb);
+            UltraCanvas::FillRect(horizontalScrollThumb);
         }
 
         // ===== EVENT HANDLERS =====
