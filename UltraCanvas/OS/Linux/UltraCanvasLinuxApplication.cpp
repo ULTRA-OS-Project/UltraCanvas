@@ -7,6 +7,7 @@
 #include "UltraCanvasLinuxApplication.h"
 #include "UltraCanvasLinuxWindow.h"
 #include "UltraCanvasLinuxClipboard.h"
+#include "UltraCanvasApplication.h"
 #include <iostream>
 #include <algorithm>
 #include <sys/select.h>
@@ -248,96 +249,7 @@ namespace UltraCanvas {
         running = false;
     }
 
-// ===== WINDOW MANAGEMENT =====
-    void UltraCanvasLinuxApplication::RegisterWindow(UltraCanvasWindow* window) {
-        if (!initialized) {
-            std::cerr << "UltraCanvas: Cannot register window - application not initialized" << std::endl;
-        }
-        if (window) {
-            windows.push_back(window);
-
-            std::cout << "UltraCanvas: Linux window created successfully" << std::endl;
-
-            if (window && window->GetXWindow() != 0) {
-                windowMap[window->GetXWindow()] = window;
-                std::cout << "UltraCanvas: Window registered with X11 ID: " << window->GetXWindow() << std::endl;
-            }
-        }
-    }
-
-    void UltraCanvasLinuxApplication::UnregisterWindow(UltraCanvasWindow* window) {
-        if (window && window->GetXWindow() != 0) {
-            windowMap.erase(window->GetXWindow());
-
-            if (focusedWindow == window) {
-                focusedWindow = nullptr;
-            }
-
-            std::cout << "UltraCanvas: Window unregistered" << std::endl;
-
-        }
-
-        auto it = std::find_if(windows.begin(), windows.end(),
-                               [window](const UltraCanvasWindow* ptr) {
-                                   return ptr == window;
-                               });
-
-        if (it != windows.end()) {
-            windows.erase(it);
-            std::cout << "UltraCanvas: Linux window destroyed successfully" << std::endl;
-        }
-    }
-
-    UltraCanvasLinuxWindow* UltraCanvasLinuxApplication::FindWindow(Window xWindow) {
-        auto it = windowMap.find(xWindow);
-        return (it != windowMap.end()) ? it->second : nullptr;
-    }
-
-    void UltraCanvasLinuxApplication::SetFocusedWindow(UltraCanvasLinuxWindow* window) {
-        if (focusedWindow != window) {
-            UltraCanvasLinuxWindow* previousFocusedWindow = focusedWindow;
-
-            // Update focused window first
-            focusedWindow = window;
-
-            // Notify old window it lost focus
-            if (previousFocusedWindow) {
-                UCEvent blurEvent;
-                blurEvent.type = UCEventType::WindowBlur;
-                blurEvent.timestamp = std::chrono::steady_clock::now();
-                blurEvent.targetWindow = static_cast<void*>(previousFocusedWindow);
-                blurEvent.nativeWindowHandle = previousFocusedWindow->GetXWindow();
-                previousFocusedWindow->OnEvent(blurEvent);
-
-                std::cout << "UltraCanvas: Window " << previousFocusedWindow << " lost focus" << std::endl;
-            }
-
-            // Notify new window it gained focus
-            if (focusedWindow) {
-                UCEvent focusEvent;
-                focusEvent.type = UCEventType::WindowFocus;
-                focusEvent.timestamp = std::chrono::steady_clock::now();
-                focusEvent.targetWindow = static_cast<void*>(focusedWindow);
-                focusEvent.nativeWindowHandle = focusedWindow->GetXWindow();
-                focusedWindow->OnEvent(focusEvent);
-
-                std::cout << "UltraCanvas: Window " << focusedWindow << " gained focus" << std::endl;
-            }
-        }
-    }
 // ===== EVENT PROCESSING =====
-    void UltraCanvasLinuxApplication::ProcessEvents() {
-        UCEvent event;
-        int processedEvents = 0;
-
-        while (PopEvent(event) && processedEvents < 100) {
-            processedEvents++;
-            if (!running) {
-                break;
-            }
-            DispatchEvent(event);
-        }
-    }
 
     void UltraCanvasLinuxApplication::ProcessXEvent(XEvent& xEvent) {
         // Find the window that owns this event
@@ -362,82 +274,12 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLinuxApplication::DispatchEvent(const UCEvent& event) {
-        // Call global event handler if set
-        if (globalEventHandler) {
-            if (globalEventHandler(event)) {
-                return; // Event consumed by global handler
-            }
-        }
-
-        // ===== NEW: IMPROVED TARGET WINDOW DETECTION =====
-        UltraCanvasLinuxWindow* targetWindow = nullptr;
-
-        // First priority: Use the window information stored in the event
-        if (event.targetWindow != nullptr) {
-            targetWindow = static_cast<UltraCanvasLinuxWindow*>(event.targetWindow);
-        }
-        // Fallback: Try to find window by native handle
-        else if (event.nativeWindowHandle != 0) {
-            targetWindow = FindWindow(static_cast<Window>(event.nativeWindowHandle));
-        }
-            // Last resort: Use focused window for certain event types
-        else {
-            // Only use focused window for keyboard events when no target is found
-            if (event.type == UCEventType::KeyDown ||
-                event.type == UCEventType::KeyUp ||
-                event.type == UCEventType::KeyChar ||
-                event.type == UCEventType::Shortcut) {
-                targetWindow = focusedWindow;
-            }
-        }
-
-        // ===== SPECIAL HANDLING FOR FOCUS EVENTS =====
-        if (event.type == UCEventType::WindowFocus) {
-            if (targetWindow) {
-                SetFocusedWindow(targetWindow);
-            }
-        } else if (event.type == UCEventType::WindowBlur) {
-            if (targetWindow && focusedWindow == targetWindow) {
-                // Don't set focused window to null immediately
-                // Let the new focus event handle the focus change
-            }
-        }
-
-        // ===== DISPATCH TO APPROPRIATE WINDOW =====
-        if (targetWindow) {
-            targetWindow->OnEvent(event);
-
-            // Debug logging
-            if (event.type != UCEventType::MouseMove) {
-                std::cout << "UltraCanvas: Event type " << static_cast<int>(event.type)
-                          << " dispatched to window " << targetWindow
-                          << " (X11 Window: " << std::hex << event.nativeWindowHandle << std::dec << ")"
-                          << " focused=" << (targetWindow == focusedWindow ? "yes" : "no") << std::endl;
-            }
-        } else {
-            // No target window found - this might be normal for some system events
-            std::cout << "UltraCanvas: Warning - Event type " << static_cast<int>(event.type)
-                      << " has no target window (X11 Window: " << std::hex << event.nativeWindowHandle << std::dec << ")" << std::endl;
-        }
-    }
-
-    UltraCanvasLinuxWindow* UltraCanvasLinuxApplication::GetWindowForEvent(const UCEvent& event) {
-        if (event.targetWindow != nullptr) {
-            return static_cast<UltraCanvasLinuxWindow*>(event.targetWindow);
-        }
-        if (event.nativeWindowHandle != 0) {
-            return FindWindow(static_cast<Window>(event.nativeWindowHandle));
-        }
-        return nullptr;
-    }
-
-    bool UltraCanvasLinuxApplication::IsEventForWindow(const UCEvent& event, UltraCanvasLinuxWindow* window) {
-        if (!window) return false;
-
-        UltraCanvasLinuxWindow* eventWindow = GetWindowForEvent(event);
-        return eventWindow == window;
-    }
+//    bool UltraCanvasLinuxApplication::IsEventForWindow(const UCEvent& event, UltraCanvasLinuxWindow* window) {
+//        if (!window) return false;
+//
+//        UltraCanvasLinuxWindow* eventWindow = GetWindowForEvent(event);
+//        return eventWindow == window;
+//    }
 
     UCEvent UltraCanvasLinuxApplication::ConvertXEventToUCEvent(const XEvent& xEvent) {
         UCEvent event;
@@ -457,7 +299,7 @@ namespace UltraCanvas {
             case KeyRelease: {
                 event.type = (xEvent.type == KeyPress) ?
                              UCEventType::KeyDown : UCEventType::KeyUp;
-                event.keyCode = xEvent.xkey.keycode;
+                event.nativeKeyCode = xEvent.xkey.keycode;
                 event.virtualKey = ConvertXKeyToUCKey(XLookupKeysym(const_cast<XKeyEvent*>(&xEvent.xkey), 0));
 
                 // Get character representation
@@ -735,8 +577,17 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLinuxApplication::SetGlobalEventHandler(std::function<bool(const UCEvent&)> handler) {
-        globalEventHandler = handler;
+    void UltraCanvasLinuxApplication::ProcessEvents() {
+        UCEvent event;
+        int processedEvents = 0;
+
+        while (PopEvent(event) && processedEvents < 100) {
+            processedEvents++;
+            if (!running) {
+                break;
+            }
+            DispatchEvent(event);
+        }
     }
 
 // ===== EVENT THREAD MANAGEMENT =====

@@ -375,7 +375,7 @@ namespace UltraCanvas {
             if (style.hasStroke && style.strokeWidth > 0) {
                 SetStrokeColor(style.strokeColor);
                 SetStrokeWidth(style.strokeWidth);
-                DrawRect(bounds);
+                DrawRectangle(bounds);
             }
         }
     };

@@ -93,8 +93,6 @@ namespace UltraCanvas {
         virtual bool Initialize() override;
         virtual void Run() override;
         virtual void Exit() override;
-        virtual void RegisterWindow(UltraCanvasWindow*) override;
-        virtual void UnregisterWindow(UltraCanvasWindow* window) override;
 
         // ===== LINUX-SPECIFIC METHODS =====
 
@@ -116,12 +114,8 @@ namespace UltraCanvas {
         void WaitForEvents(int timeoutMs = -1);
         void PushEvent(const UCEvent& event);
         bool PopEvent(UCEvent& event);
-        void SetGlobalEventHandler(std::function<bool(const UCEvent&)> handler);
 
         // Window management
-        UltraCanvasLinuxWindow* FindWindow(Window xWindow);
-        void SetFocusedWindow(UltraCanvasLinuxWindow* window);
-        UltraCanvasLinuxWindow* GetFocusedWindow() const { return focusedWindow; }
 
         // Frame rate and timing
         void SetTargetFPS(int fps) { targetFPS = fps; }
@@ -153,12 +147,11 @@ namespace UltraCanvas {
         // ===== EVENT PROCESSING INTERNALS =====
         void EventThreadFunction();
         UCEvent ConvertXEventToUCEvent(const XEvent& xEvent);
-        void DispatchEvent(const UCEvent& event);
         void StartEventThread();
         void StopEventThread();
 
-        UltraCanvasLinuxWindow* GetWindowForEvent(const UCEvent& event);
-        bool IsEventForWindow(const UCEvent& event, UltraCanvasLinuxWindow* window);
+//        UltraCanvasLinuxWindow* GetWindowForEvent(const UCEvent& event);
+//        bool IsEventForWindow(const UCEvent& event, UltraCanvasLinuxWindow* window);
 
         // ===== KEYBOARD AND MOUSE CONVERSION =====
         UCMouseButton ConvertXButtonToUCButton(unsigned int button);

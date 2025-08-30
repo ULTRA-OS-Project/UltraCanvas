@@ -383,7 +383,7 @@ private:
         
         // Draw background
         if (appearance.cornerRadius > 0.0f) {
-            DrawRoundedRect(bounds, appearance.cornerRadius, bgColor, appearance.borderColor, appearance.borderWidth);
+            DrawRoundedRectangle(bounds, appearance.cornerRadius, bgColor, appearance.borderColor, appearance.borderWidth);
         } else {
             UltraCanvas::DrawFilledRect(bounds, bgColor, appearance.borderColor, appearance.borderWidth);
         }
@@ -395,7 +395,7 @@ private:
         // Draw section background if specified
         if (section.backgroundColor.a > 0) {
             SetFillColor(section.backgroundColor);
-            DrawRect(rect);
+            DrawRectangle(rect);
         }
         
         // Draw section content
@@ -420,7 +420,7 @@ private:
         if (section.borderColor.a > 0) {
             SetStrokeColor(section.borderColor);
             SetStrokeWidth(1.0f);
-            DrawRect(rect);
+            DrawRectangle(rect);
         }
     }
     
@@ -508,9 +508,9 @@ private:
         
         SetFillColor(appearance.shadowColor);
         if (appearance.cornerRadius > 0.0f) {
-            DrawRoundedRect(shadowRect, appearance.cornerRadius);
+            DrawRoundedRectangle(shadowRect, appearance.cornerRadius);
         } else {
-            DrawRect(shadowRect);
+            DrawRectangle(shadowRect);
         }
     }
     

@@ -475,7 +475,7 @@ public:
         
         // Draw background
         if (style.borderRadius > 0) {
-            DrawRoundedRect(bounds, style.borderRadius, bgColor, borderColor, style.borderWidth);
+            DrawRoundedRectangle(bounds, style.borderRadius, bgColor, borderColor, style.borderWidth);
         } else {
             UltraCanvas::DrawFilledRect(bounds, bgColor, borderColor, style.borderWidth);
         }
@@ -711,9 +711,9 @@ private:
         // Simplified shadow - would need proper shadow rendering
         SetFillColor(style.shadowColor);
         if (style.borderRadius > 0) {
-            DrawRoundedRect(shadowRect, style.borderRadius, style.shadowColor, Colors::Transparent, 0);
+            DrawRoundedRectangle(shadowRect, style.borderRadius, style.shadowColor, Colors::Transparent, 0);
         } else {
-            DrawRect(shadowRect);
+            DrawRectangle(shadowRect);
         }
     }
     
@@ -734,14 +734,14 @@ private:
         }
     }
     
-    void DrawRoundedRect(const Rect2D& rect, float radius, const Color& fillColor, const Color& borderColor, float borderWidth) {
+    void DrawRoundedRectangle(const Rect2D& rect, float radius, const Color& fillColor, const Color& borderColor, float borderWidth) {
         SetFillColor(fillColor);
-        DrawRect(rect); // Simplified - would need proper rounded rectangle
+        DrawRectangle(rect); // Simplified - would need proper rounded rectangle
         
         if (borderWidth > 0.0f) {
             SetStrokeColor(borderColor);
             SetStrokeWidth(borderWidth);
-            DrawRect(rect);
+            DrawRectangle(rect);
         }
     }
     

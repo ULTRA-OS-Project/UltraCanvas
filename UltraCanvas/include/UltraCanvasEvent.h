@@ -275,8 +275,8 @@ struct UCEvent {
     UCEventType type = UCEventType::NoneEvent;
 
     // Spatial coordinates
-    int x = 0, y = 0;                    // Mouse or touch coordinates
-    int globalX = 0, globalY = 0;        // Global screen coordinates
+    int x, y;                        // Mouse or touch coordinates
+    int globalX, globalY;        // Global screen coordinates
 
     // Mouse/Touch specific
     UCMouseButton button = UCMouseButton::NoneButton;
@@ -284,7 +284,7 @@ struct UCEvent {
     float pressure = 1.0f;               // Touch pressure (0.0-1.0)
 
     // Keyboard specific
-    int keyCode = 0;                     // Platform-specific key code
+    int nativeKeyCode = 0;                     // Platform-specific key code
     UCKeys virtualKey = UCKeys::Unknown;                  // Virtual key code (cross-platform)
     char character = 0;                  // Character representation
     std::string text;                    // For multi-character input (IME, etc.)
@@ -360,7 +360,7 @@ struct UCEvent {
             result += ",btn=" + std::to_string(static_cast<int>(button));
         }
         if (IsKeyboardEvent()) {
-            result += ",key=" + std::to_string(keyCode);
+            result += ",nativeKey=" + std::to_string(nativeKeyCode);
             if (character > 0) {
                 result += ",char='" + std::string(1, character) + "'";
             }

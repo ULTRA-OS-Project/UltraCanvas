@@ -89,13 +89,13 @@ private:
     
     // Transform properties
     float rotation = 0.0f;
-    Point2D scale = Point2D(1.0f, 1.0f);
-    Point2D offset = Point2D(0.0f, 0.0f);
+    Point2Di scale = Point2Di(1.0f, 1.0f);
+    Point2Di offset = Point2Di(0.0f, 0.0f);
     
     // Interaction
     bool clickable = false;
     bool draggable = false;
-    Point2D dragStartPos;
+    Point2Di dragStartPos;
     bool isDragging = false;
     
     // Error handling
@@ -112,7 +112,7 @@ public:
     std::function<void()> onImageLoaded;
     std::function<void(const std::string&)> onImageLoadFailed;
     std::function<void()> onImageClicked;
-    std::function<void(const Point2D&)> onImageDragged;
+    std::function<void(const Point2Di&)> onImageDragged;
     
     // ===== CONSTRUCTOR =====
     UltraCanvasImageElement(const std::string& identifier = "ImageElement", long id = 0,
@@ -255,11 +255,11 @@ public:
         return errorMessage;
     }
     
-    Point2D GetImageSize() const {
+    Point2Di GetImageSize() const {
         if (IsLoaded()) {
-            return Point2D(static_cast<float>(loadedImage.width), static_cast<float>(loadedImage.height));
+            return Point2Di(static_cast<float>(loadedImage.width), static_cast<float>(loadedImage.height));
         }
-        return Point2D(0, 0);
+        return Point2Di(0, 0);
     }
     
     ImageFormat GetImageFormat() const {
@@ -425,7 +425,7 @@ private:
             PushRenderState();
             
             // Translate to center for rotation
-            Point2D center = Point2D(GetX() + GetWidth() / 2.0f, GetY() + GetHeight() / 2.0f);
+            Point2Di center = Point2Di(GetX() + GetWidth() / 2.0f, GetY() + GetHeight() / 2.0f);
             Translate(center.x, center.y);
             
             // Apply transformations
@@ -438,12 +438,12 @@ private:
         }
         
         // Calculate display rectangle based on scale mode
-        Rect2D displayRect = CalculateDisplayRect();
+        Rect2Di displayRect = CalculateDisplayRect();
         
         // Draw the image using unified rendering
         if (!imagePath.empty()) {
             // Load from file path
-            GetRenderContext()->DrawImage(imagePath, displayRect);
+            DrawImage(imagePath, displayRect);
         } else {
             // For memory-loaded images, we'd need to save to a temporary file
             // or extend the rendering interface to support raw data
@@ -464,11 +464,11 @@ private:
             SetTextColor(Colors::Red);
             SetFont("Arial", 10.0f);
             
-            Rect2D textRect = GetBounds();
+            Rect2Di textRect = GetBounds();
             textRect.y += GetHeight() / 2 + 10;
             textRect.height = 20;
             
-            GetRenderContext()->DrawTextInRect(errorMessage, textRect);
+            DrawTextInRect(errorMessage, textRect);
         }
     }
     
@@ -476,23 +476,23 @@ private:
         DrawImagePlaceholder(GetBounds(), "...", Color(220, 220, 220));
     }
     
-    void DrawImagePlaceholder(const Rect2D& rect, const std::string& text, const Color& bgColor = Color(240, 240, 240)) {
+    void DrawImagePlaceholder(const Rect2Di& rect, const std::string& text, const Color& bgColor = Color(240, 240, 240)) {
         // Draw background
-        UltraCanvas::DrawFilledRect(rect, bgColor, Colors::Gray, 1.0f);
+        DrawFilledRectangle(rect, bgColor, Colors::Gray, 1.0f);
         
         // Draw text
         SetTextColor(Colors::Gray);
         SetFont("Arial", 14.0f);
-        Point2D textSize = GetRenderContext()->MeasureText(text);
-        Point2D textPos(
+        Point2Di textSize = MeasureText(text);
+        Point2Di textPos(
             rect.x + (rect.width - textSize.x) / 2,
             rect.y + (rect.height + textSize.y) / 2
         );
         DrawText(text, textPos);
     }
     
-    Rect2D CalculateDisplayRect() {
-        Rect2D bounds = GetBounds();
+    Rect2Di CalculateDisplayRect() {
+        Rect2Di bounds = GetBounds();
         
         if (!IsLoaded()) {
             return bounds;
@@ -503,7 +503,7 @@ private:
         
         switch (scaleMode) {
             case ImageScaleMode::NoScale:
-                return Rect2D(bounds.x, bounds.y, imageWidth, imageHeight);
+                return Rect2Di(bounds.x, bounds.y, imageWidth, imageHeight);
                 
             case ImageScaleMode::Stretch:
                 return bounds;
@@ -516,7 +516,7 @@ private:
                 float scaledWidth = imageWidth * uniformScale;
                 float scaledHeight = imageHeight * uniformScale;
                 
-                return Rect2D(
+                return Rect2Di(
                     bounds.x + (bounds.width - scaledWidth) / 2,
                     bounds.y + (bounds.height - scaledHeight) / 2,
                     scaledWidth,
@@ -532,7 +532,7 @@ private:
                 float scaledWidth = imageWidth * uniformScale;
                 float scaledHeight = imageHeight * uniformScale;
                 
-                return Rect2D(
+                return Rect2Di(
                     bounds.x + (bounds.width - scaledWidth) / 2,
                     bounds.y + (bounds.height - scaledHeight) / 2,
                     scaledWidth,
@@ -541,7 +541,7 @@ private:
             }
             
             case ImageScaleMode::Center:
-                return Rect2D(
+                return Rect2Di(
                     bounds.x + (bounds.width - imageWidth) / 2,
                     bounds.y + (bounds.height - imageHeight) / 2,
                     imageWidth,
@@ -567,14 +567,14 @@ private:
         
         if (draggable) {
             isDragging = true;
-            dragStartPos = Point2D(event.x, event.y);
+            dragStartPos = Point2Di(event.x, event.y);
         }
     }
     
     void HandleMouseMove(const UCEvent& event) {
         if (isDragging && draggable) {
-            Point2D currentPos(event.x, event.y);
-            Point2D delta = currentPos - dragStartPos;
+            Point2Di currentPos(event.x, event.y);
+            Point2Di delta = currentPos - dragStartPos;
             
             // Update position
             SetX(GetX() + static_cast<long>(delta.x));

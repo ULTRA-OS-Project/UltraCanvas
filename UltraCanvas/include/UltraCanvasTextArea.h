@@ -90,8 +90,8 @@ namespace UltraCanvas {
         // Scrollbars
         bool hasVerticalScrollbar = false;
         bool hasHorizontalScrollbar = false;
-        UltraCanvas::Rect2D verticalScrollThumb;
-        UltraCanvas::Rect2D horizontalScrollThumb;
+        UltraCanvas::Rect2Di verticalScrollThumb;
+        UltraCanvas::Rect2Di horizontalScrollThumb;
         bool isDraggingVerticalThumb = false;
         bool isDraggingHorizontalThumb = false;
 
@@ -130,7 +130,7 @@ namespace UltraCanvas {
 
         // ===== CURSOR POSITIONING FUNCTIONS =====
 
-        UltraCanvas::Point2D GetCursorScreenPosition() const;
+        UltraCanvas::Point2Di GetCursorScreenPosition() const;
         float GetLineNumberWidth() const;
 
         // ===== TEXT CONTENT MANAGEMENT =====
@@ -179,7 +179,7 @@ namespace UltraCanvas {
         void MoveCursorToLineStart(bool extendSelection);
         void MoveCursorToLineEnd(bool extendSelection);
         void MoveCursorByWord(int direction, bool extendSelection);
-        void SetCursorFromPoint(const UltraCanvas::Point2D& point);
+        void SetCursorFromPoint(const UltraCanvas::Point2Di& point);
         // ===== TEXT EDITING OPERATIONS =====
 
         void InsertNewLine();
@@ -230,7 +230,7 @@ namespace UltraCanvas {
         return std::make_shared<UltraCanvasTextArea>(id, uid, x, y, width, height);
     }
 
-    inline std::shared_ptr<UltraCanvasTextArea> CreateTextArea(const std::string& id, long uid, const Rect2D& bounds) {
+    inline std::shared_ptr<UltraCanvasTextArea> CreateTextArea(const std::string& id, long uid, const Rect2Di& bounds) {
         return std::make_shared<UltraCanvasTextArea>(id, uid, bounds.x, bounds.y, bounds.width, bounds.height);
     }
 

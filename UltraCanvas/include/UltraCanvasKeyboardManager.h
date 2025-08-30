@@ -152,9 +152,9 @@ namespace UltraCanvas {
             UpdateModifierFlags(event);
 
             if (event.type == UCEventType::KeyDown) {
-                HandleKeyPress(event.keyCode, event.character, event.text, now);
+                HandleKeyPress(event.nativeKeyCode, event.character, event.text, now);
             } else if (event.type == UCEventType::KeyUp) {
-                HandleKeyRelease(event.keyCode, now);
+                HandleKeyRelease(event.nativeKeyCode, now);
             }
 
             // Check shortcuts
@@ -162,7 +162,7 @@ namespace UltraCanvas {
 
             // Create keyboard event for handlers
             KeyboardEvent kbEvent;
-            kbEvent.keyCode = event.keyCode;
+            kbEvent.keyCode = event.nativeKeyCode;
             kbEvent.virtualKey = event.virtualKey;
             kbEvent.character = event.character;
             kbEvent.text = event.text;
@@ -170,17 +170,17 @@ namespace UltraCanvas {
             kbEvent.timestamp = now;
 
             if (event.type == UCEventType::KeyDown) {
-                if (IsKeyPressed(event.keyCode) && !WasKeyPressed(event.keyCode)) {
+                if (IsKeyPressed(event.nativeKeyCode) && !WasKeyPressed(event.nativeKeyCode)) {
                     kbEvent.state = KeyState::JustPressed;
-                    currentState.justPressedKeys.insert(event.keyCode);
-                } else if (IsKeyPressed(event.keyCode)) {
+                    currentState.justPressedKeys.insert(event.nativeKeyCode);
+                } else if (IsKeyPressed(event.nativeKeyCode)) {
                     kbEvent.state = KeyState::Repeat;
                     kbEvent.isRepeat = true;
-                    kbEvent.repeatCount = ++currentState.keyRepeatCounts[event.keyCode];
+                    kbEvent.repeatCount = ++currentState.keyRepeatCounts[event.nativeKeyCode];
                 }
             } else if (event.type == UCEventType::KeyUp) {
                 kbEvent.state = KeyState::JustReleased;
-                currentState.justReleasedKeys.insert(event.keyCode);
+                currentState.justReleasedKeys.insert(event.nativeKeyCode);
             }
 
             // Dispatch to global handlers

@@ -198,7 +198,7 @@ public:
         
         // Draw background
         SetFillColor(IsEnabled() ? backgroundColor : disabledColor);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         // Draw border
         SetStrokeColor(borderColor);
@@ -425,7 +425,7 @@ private:
         
         // Draw button background
         SetFillColor(bgColor);
-        DrawRect(buttonBounds);
+        DrawRectangle(buttonBounds);
         
         // Draw button border
         SetStrokeColor(borderColor);
@@ -451,7 +451,7 @@ private:
         
         // Draw button background
         SetFillColor(bgColor);
-        DrawRect(buttonBounds);
+        DrawRectangle(buttonBounds);
         
         // Draw button border
         SetStrokeColor(borderColor);

@@ -39,7 +39,7 @@ namespace UltraCanvas {
 
         // Shadow
         bool hasShadow = true;
-        Point2D shadowOffset = Point2D(2, 2);
+        Point2Di shadowOffset = Point2Di(2, 2);
         float shadowBlur = 3.0f;
 
         // Behavior
@@ -59,8 +59,8 @@ namespace UltraCanvas {
         static UltraCanvasElement* hoveredElement;
         static UltraCanvasElement* tooltipSource;
         static std::string currentText;
-        static Point2D tooltipPosition;
-        static Point2D cursorPosition;
+        static Point2Di tooltipPosition;
+        static Point2Di cursorPosition;
         static bool visible;
         static bool pendingShow;
 
@@ -72,7 +72,7 @@ namespace UltraCanvas {
 
         // Style and layout
         static TooltipStyle style;
-        static Point2D tooltipSize;
+        static Point2Di tooltipSize;
         static std::vector<std::string> wrappedLines;
 
         // Global state
@@ -87,14 +87,14 @@ namespace UltraCanvas {
 
         // Show tooltip for an element
         static void ShowTooltip(UltraCanvasElement* element, const std::string& text,
-                                const Point2D& position = Point2D(-1, -1));
+                                const Point2Di& position = Point2Di(-1, -1));
 
         // Hide current tooltip
         static void HideTooltip();
 
         // Force immediate show/hide
         static void ShowImmediately(UltraCanvasElement* element, const std::string& text,
-                                    const Point2D& position = Point2D(-1, -1));
+                                    const Point2Di& position = Point2Di(-1, -1));
 
         static void HideImmediately();
 
@@ -144,38 +144,38 @@ namespace UltraCanvas {
             return currentText;
         }
 
-        static Point2D GetTooltipPosition() {
+        static Point2Di GetTooltipPosition() {
             return tooltipPosition;
         }
 
-        static Point2D GetTooltipSize() {
+        static Point2Di GetTooltipSize() {
             return tooltipSize;
         }
 
         // ===== MOUSE TRACKING =====
 
         // Call this from mouse move events to update cursor position
-        static void UpdateCursorPosition(const Point2D& position);
+        static void UpdateCursorPosition(const Point2Di& position);
 
         // Handle element hover events
         static void OnElementHover(UltraCanvasElement* element, const std::string& tooltipText,
-                                   const Point2D& mousePosition);
+                                   const Point2Di& mousePosition);
 
         static void OnElementLeave(UltraCanvasElement* element);
 
         // ===== UTILITY FUNCTIONS =====
 
         // Get screen bounds for tooltip positioning
-        static void SetScreenBounds(const Rect2D& bounds) {
+        static void SetScreenBounds(const Rect2Di& bounds) {
             screenBounds = bounds;
         }
 
-        static Rect2D GetScreenBounds() {
+        static Rect2Di GetScreenBounds() {
             return screenBounds;
         }
 
     private:
-        static Rect2D screenBounds;
+        static Rect2Di screenBounds;
 
         // ===== INTERNAL HELPER METHODS =====
 

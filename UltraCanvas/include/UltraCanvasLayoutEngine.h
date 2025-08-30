@@ -223,12 +223,12 @@ struct LayoutItem {
         }
     }
     
-    Rect2D GetBounds() const {
-        return Rect2D(x_pos, y_pos, width_size, height_size);
+    Rect2Di GetBounds() const {
+        return Rect2Di(x_pos, y_pos, width_size, height_size);
     }
     
-    Rect2D GetBoundsWithMargin() const {
-        return Rect2D(
+    Rect2Di GetBoundsWithMargin() const {
+        return Rect2Di(
             x_pos - marginLeft,
             y_pos - marginTop,
             width_size + marginLeft + marginRight,
@@ -345,14 +345,14 @@ public:
     }
     
     // ===== SIZE CALCULATION =====
-    static Point2D CalculateRequiredSize(const LayoutParams& params, 
-                                        const std::vector<LayoutItem*>& items) {
+    static Point2Di CalculateRequiredSize(const LayoutParams& params,
+                                          const std::vector<LayoutItem*>& items) {
         if (items.empty()) {
-            return Point2D(params.paddingLeft + params.paddingRight, 
+            return Point2Di(params.paddingLeft + params.paddingRight,
                           params.paddingTop + params.paddingBottom);
         }
         
-        Point2D size;
+        Point2Di size;
         
         switch (params.direction) {
             case LayoutDirection::Horizontal:
@@ -696,8 +696,8 @@ private:
         }
     }
     
-    static Point2D CalculateHorizontalSize(const LayoutParams& params, 
-                                          const std::vector<LayoutItem*>& items) {
+    static Point2Di CalculateHorizontalSize(const LayoutParams& params,
+                                            const std::vector<LayoutItem*>& items) {
         float totalWidth = 0;
         float maxHeight = 0;
         
@@ -707,11 +707,11 @@ private:
             maxHeight = std::max(maxHeight, items[i]->height_size);
         }
         
-        return Point2D(totalWidth, maxHeight);
+        return Point2Di(totalWidth, maxHeight);
     }
     
-    static Point2D CalculateVerticalSize(const LayoutParams& params, 
-                                        const std::vector<LayoutItem*>& items) {
+    static Point2Di CalculateVerticalSize(const LayoutParams& params,
+                                          const std::vector<LayoutItem*>& items) {
         float maxWidth = 0;
         float totalHeight = 0;
         
@@ -721,12 +721,12 @@ private:
             if (i > 0) totalHeight += params.spacing;
         }
         
-        return Point2D(maxWidth, totalHeight);
+        return Point2Di(maxWidth, totalHeight);
     }
     
-    static Point2D CalculateGridSize(const LayoutParams& params, 
-                                    const std::vector<LayoutItem*>& items) {
-        if (items.empty() || params.gridColumns <= 0) return Point2D(0, 0);
+    static Point2Di CalculateGridSize(const LayoutParams& params,
+                                      const std::vector<LayoutItem*>& items) {
+        if (items.empty() || params.gridColumns <= 0) return Point2Di(0, 0);
         
         int columns = params.gridColumns;
         int rows = (static_cast<int>(items.size()) + columns - 1) / columns;
@@ -751,11 +751,11 @@ private:
         for (float height : rowHeights) totalHeight += height;
         totalHeight += (rows - 1) * params.lineSpacing;
         
-        return Point2D(totalWidth, totalHeight);
+        return Point2Di(totalWidth, totalHeight);
     }
     
-    static Point2D CalculateStackSize(const LayoutParams& params, 
-                                     const std::vector<LayoutItem*>& items) {
+    static Point2Di CalculateStackSize(const LayoutParams& params,
+                                       const std::vector<LayoutItem*>& items) {
         float maxWidth = 0;
         float maxHeight = 0;
         
@@ -764,7 +764,7 @@ private:
             maxHeight = std::max(maxHeight, item->height_size);
         }
         
-        return Point2D(maxWidth, maxHeight);
+        return Point2Di(maxWidth, maxHeight);
     }
 };
 
@@ -780,18 +780,18 @@ inline void PerformLayout(int containerWidth, int containerHeight,
 }
 
 // Modern functions
-inline void PerformLayout(const Rect2D& container, const LayoutParams& params, 
-                         std::vector<UltraCanvasElement*>& elements) {
+inline void PerformLayout(const Rect2Di& container, const LayoutParams& params,
+                          std::vector<UltraCanvasElement*>& elements) {
     UltraCanvasLayoutEngine::PerformLayout(container.width, container.height, params, elements);
 }
 
-inline void PerformLayout(const Rect2D& container, const LayoutParams& params, 
-                         std::vector<std::shared_ptr<UltraCanvasElement>>& elements) {
+inline void PerformLayout(const Rect2Di& container, const LayoutParams& params,
+                          std::vector<std::shared_ptr<UltraCanvasElement>>& elements) {
     UltraCanvasLayoutEngine::PerformLayout(container.width, container.height, params, elements);
 }
 
-inline Point2D CalculateRequiredSize(const LayoutParams& params, 
-                                    const std::vector<LayoutItem*>& items) {
+inline Point2Di CalculateRequiredSize(const LayoutParams& params,
+                                      const std::vector<LayoutItem*>& items) {
     return UltraCanvasLayoutEngine::CalculateRequiredSize(params, items);
 }
 
@@ -850,11 +850,11 @@ public:
     }
     
     // Apply layout immediately
-    void Apply(const Rect2D& container, std::vector<UltraCanvasElement*>& elements) {
+    void Apply(const Rect2Di& container, std::vector<UltraCanvasElement*>& elements) {
         UltraCanvasLayoutEngine::PerformLayout(container.width, container.height, params, elements);
     }
     
-    void Apply(const Rect2D& container, std::vector<std::shared_ptr<UltraCanvasElement>>& elements) {
+    void Apply(const Rect2Di& container, std::vector<std::shared_ptr<UltraCanvasElement>>& elements) {
         UltraCanvasLayoutEngine::PerformLayout(container.width, container.height, params, elements);
     }
 };
@@ -911,7 +911,7 @@ auto layout = LayoutBuilder(LayoutDirection::Grid)
 UltraCanvasLayoutEngine::PerformLayout(400, 300, layout, elements);
 
 // Calculate required size
-Point2D requiredSize = CalculateRequiredSize(layout, layoutItems);
+Point2Di requiredSize = CalculateRequiredSize(layout, layoutItems);
 ```
 
 ✅ **Migration from Old Code:**

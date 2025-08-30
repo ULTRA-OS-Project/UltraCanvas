@@ -252,7 +252,7 @@ private:
             
             Rect2D segment(startX, trackY, endX - startX, trackHeight);
             SetFillColor(colorSegments[i].second);
-            DrawRect(segment);
+            DrawRectangle(segment);
         }
     }
     
@@ -264,14 +264,14 @@ private:
         SetFillColor(controlStyle.backgroundColor);
         if (controlStyle.borderRadius > 0) {
             // Would need rounded rectangle function
-            DrawRect(track);
+            DrawRectangle(track);
         } else {
-            DrawRect(track);
+            DrawRectangle(track);
         }
         
         SetStrokeColor(controlStyle.borderColor);
         SetStrokeWidth(controlStyle.borderWidth);
-        DrawRect(track);
+        DrawRectangle(track);
     }
     
     void RenderTrail(const Rect2D& area) {
@@ -281,7 +281,7 @@ private:
         
         Rect2D trail(area.x, trackY, area.width * progress, trackHeight);
         SetFillColor(trailColor);
-        DrawRect(trail);
+        DrawRectangle(trail);
     }
     
     void RenderTickMarks(const Rect2D& area) {
@@ -334,7 +334,7 @@ private:
                 break;
             case HandleShape::Square: {
                 Rect2D handleRect(handleX - handleSize/2, handleY - handleSize/2, handleSize, handleSize);
-                DrawRect(handleRect);
+                DrawRectangle(handleRect);
                 break;
             }
             case HandleShape::Diamond: {
@@ -344,7 +344,7 @@ private:
             }
             case HandleShape::Rectangle: {
                 Rect2D handleRect(handleX - handleSize/3, handleY - handleSize/2, handleSize*2/3, handleSize);
-                DrawRect(handleRect);
+                DrawRectangle(handleRect);
                 break;
             }
             default:
@@ -626,16 +626,16 @@ private:
     
     void RenderSquareRadio(const Rect2D& area, const Color& bgColor, const Color& borderColor) {
         SetFillColor(bgColor);
-        DrawRect(area);
+        DrawRectangle(area);
         
         SetStrokeColor(borderColor);
         SetStrokeWidth(controlStyle.borderWidth);
-        DrawRect(area);
+        DrawRectangle(area);
         
         if (selected) {
             Rect2D innerRect(area.x + 3, area.y + 3, area.width - 6, area.height - 6);
             SetFillColor(controlStyle.selectedColor);
-            DrawRect(innerRect);
+            DrawRectangle(innerRect);
         }
     }
     
@@ -647,7 +647,7 @@ private:
         
         Color toggleBg = selected ? controlStyle.selectedColor : bgColor;
         SetFillColor(toggleBg);
-        DrawRect(toggleArea);  // Would be rounded in full implementation
+        DrawRectangle(toggleArea);  // Would be rounded in full implementation
         
         // Handle
         float handleSize = toggleHeight * 0.8f;
@@ -666,11 +666,11 @@ private:
         Color cardBorder = selected ? controlStyle.selectedColor : borderColor;
         
         SetFillColor(cardBg);
-        DrawRect(cardArea);
+        DrawRectangle(cardArea);
         
         SetStrokeColor(cardBorder);
         SetStrokeWidth(selected ? 2.0f : controlStyle.borderWidth);
-        DrawRect(cardArea);
+        DrawRectangle(cardArea);
     }
     
     void RenderButtonRadio(const Rect2D& area, const Color& bgColor, const Color& borderColor) {
@@ -681,11 +681,11 @@ private:
         Color textColor = selected ? Colors::White : controlStyle.textColor;
         
         SetFillColor(buttonBg);
-        DrawRect(buttonArea);
+        DrawRectangle(buttonArea);
         
         SetStrokeColor(borderColor);
         SetStrokeWidth(controlStyle.borderWidth);
-        DrawRect(buttonArea);
+        DrawRectangle(buttonArea);
     }
     
     void RenderFocusIndicator(const Rect2D& area) {
@@ -693,7 +693,7 @@ private:
         SetStrokeWidth(2.0f);
         
         Rect2D focusRect(area.x - 2, area.y - 2, area.width + 4, area.height + 4);
-        DrawRect(focusRect);
+        DrawRectangle(focusRect);
     }
     
     Color GetBackgroundColor() const {
@@ -915,11 +915,11 @@ private:
         // Background track
         Color trackColor = switchState ? controlStyle.selectedColor : controlStyle.backgroundColor;
         SetFillColor(trackColor);
-        DrawRect(area);  // Would be rounded in full implementation
+        DrawRectangle(area);  // Would be rounded in full implementation
         
         SetStrokeColor(controlStyle.borderColor);
         SetStrokeWidth(controlStyle.borderWidth);
-        DrawRect(area);
+        DrawRectangle(area);
         
         // Thumb/handle
         float thumbSize = area.height * 0.8f;
@@ -941,7 +941,7 @@ private:
         // iOS-style switch with more rounded appearance
         Color trackColor = switchState ? Color(52, 199, 89) : Color(229, 229, 234);
         SetFillColor(trackColor);
-        DrawRect(area);  // Would be fully rounded in complete implementation
+        DrawRectangle(area);  // Would be fully rounded in complete implementation
         
         // Thumb
         float thumbSize = area.height - 4;
@@ -964,7 +964,7 @@ private:
         // Material Design switch
         Color trackColor = switchState ? controlStyle.selectedColor.WithAlpha(128) : Color(0, 0, 0, 38);
         SetFillColor(trackColor);
-        DrawRect(area);
+        DrawRectangle(area);
         
         // Thumb
         float thumbSize = switchState ? area.height : area.height * 0.7f;
@@ -989,11 +989,11 @@ private:
         // Checkbox-style toggle
         Color bgColor = switchState ? controlStyle.selectedColor : controlStyle.backgroundColor;
         SetFillColor(bgColor);
-        DrawRect(area);
+        DrawRectangle(area);
         
         SetStrokeColor(controlStyle.borderColor);
         SetStrokeWidth(controlStyle.borderWidth);
-        DrawRect(area);
+        DrawRectangle(area);
         
         if (switchState) {
             // Draw checkmark
@@ -1017,11 +1017,11 @@ private:
         Color textColor = switchState ? Colors::White : controlStyle.textColor;
         
         SetFillColor(buttonBg);
-        DrawRect(buttonArea);
+        DrawRectangle(buttonArea);
         
         SetStrokeColor(controlStyle.borderColor);
         SetStrokeWidth(controlStyle.borderWidth);
-        DrawRect(buttonArea);
+        DrawRectangle(buttonArea);
         
         // Show ON/OFF text
         std::string stateText = switchState ? "ON" : "OFF";
@@ -1038,7 +1038,7 @@ private:
         SetStrokeWidth(2.0f);
         
         Rect2D focusRect(area.x - 2, area.y - 2, area.width + 4, area.height + 4);
-        DrawRect(focusRect);
+        DrawRectangle(focusRect);
     }
     
     void StartAnimation() {

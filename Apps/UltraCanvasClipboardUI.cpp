@@ -56,12 +56,12 @@ namespace UltraCanvas {
         Color bgColor = isSelected ? selectedColor : (IsHovered() ?
                                                       hoverColor : normalColor);
         SetFillColor(bgColor);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
 
         // Border
         SetStrokeColor(borderColor);
         SetStrokeWidth(1.0f);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
 
         // Render content
         RenderContent();
@@ -148,7 +148,7 @@ namespace UltraCanvas {
     void UltraCanvasClipboardItem::DrawTypeIcon() {
         // Simple type indicators in thumbnail area
         SetFillColor(Color(220, 220, 220, 255));
-        DrawRect(thumbnailRect);
+        DrawRectangle(thumbnailRect);
 
         SetTextColor(Colors::Black);
         SetFont("Arial", 10.0f);
@@ -174,7 +174,7 @@ namespace UltraCanvas {
         // Copy button
         Color copyColor = copyButtonRect.Contains(lastMousePos) ? Color(100, 200, 100, 255) : Color(150, 150, 150, 255);
         SetFillColor(copyColor);
-        DrawRect(copyButtonRect);
+        DrawRectangle(copyButtonRect);
         SetTextColor(Colors::White);
         SetFont("Arial", 10.0f);
         DrawText("C", Point2D(copyButtonRect.x + 6, copyButtonRect.y + 14));
@@ -182,7 +182,7 @@ namespace UltraCanvas {
         // Save button
         Color saveColor = saveButtonRect.Contains(lastMousePos) ? Color(100, 150, 200, 255) : Color(150, 150, 150, 255);
         SetFillColor(saveColor);
-        DrawRect(saveButtonRect);
+        DrawRectangle(saveButtonRect);
         SetTextColor(Colors::White);
         SetFont("Arial", 10.0f);
         DrawText("S", Point2D(saveButtonRect.x + 6, saveButtonRect.y + 14));
@@ -190,7 +190,7 @@ namespace UltraCanvas {
         // Delete button
         Color deleteColor = deleteButtonRect.Contains(lastMousePos) ? Color(200, 100, 100, 255) : Color(150, 150, 150, 255);
         SetFillColor(deleteColor);
-        DrawRect(deleteButtonRect);
+        DrawRectangle(deleteButtonRect);
         SetTextColor(Colors::White);
         SetFont("Arial", 10.0f);
         DrawText("X", Point2D(deleteButtonRect.x + 6, deleteButtonRect.y + 14));

@@ -170,10 +170,10 @@ namespace UltraCanvas {
 //    }
 //
 //    bool UltraCanvasElement::ForwardMouseEventToChildren(const UCEvent &event) {
-//        Point2D mousePos(event.x, event.y);
+//        Point2Di mousePos(event.x, event.y);
 //
 //        // Convert to local coordinates
-//        Point2D localMousePos = ConvertToLocalCoordinates(mousePos);
+//        Point2Di localMousePos = ConvertToLocalCoordinates(mousePos);
 //
 //        // Check children in reverse order (topmost first for z-order)
 //        for (auto it = children.rbegin(); it != children.rend(); ++it) {
@@ -229,10 +229,10 @@ namespace UltraCanvas {
 //
 //
 //    UCEvent UltraCanvasElement::CreateChildEvent(UltraCanvasElement *child, const UCEvent &originalEvent,
-//                                                 const Point2D &parentLocalPos) const {
+//                                                 const Point2Di &parentLocalPos) const {
 //        UCEvent childEvent = originalEvent;
 //        if (originalEvent.IsMouseEvent()) {
-//            Point2D childPos = child->GetPosition();
+//            Point2Di childPos = child->GetPosition();
 //            childEvent.x = parentLocalPos.x - childPos.x;
 //            childEvent.y = parentLocalPos.y - childPos.y;
 //        }
@@ -241,9 +241,15 @@ namespace UltraCanvas {
 //    }
 
     // new here
-    Point2D UltraCanvasElement::ConvertWindowToLocalCoordinates(const Point2D &globalPos) {
-        Point2D elementPos = GetPositionInWindow();
-        return Point2D(globalPos.x - elementPos.x, globalPos.y - elementPos.y);
+    Point2Di UltraCanvasElement::ConvertWindowToLocalCoordinates(const Point2Di &globalPos) {
+        Point2Di elementPos = GetPositionInWindow();
+        return Point2Di(globalPos.x - elementPos.x, globalPos.y - elementPos.y);
+    }
+
+    void UltraCanvasElement::ConvertWindowToLocalCoordinates(int &x, int &y) {
+        Point2Di elementPos = GetPositionInWindow();
+        x -= elementPos.x;
+        y -= elementPos.y;
     }
 
     void UltraCanvasElement::RequestRedraw() {
@@ -283,16 +289,16 @@ namespace UltraCanvas {
         return false;
     }
 
-    long UltraCanvasElement::GetXInWindow() {
+    int UltraCanvasElement::GetXInWindow() {
         if (parentContainer) {
-            return parentContainer->GetXInWindow() + properties.x_pos;
+            return parentContainer->GetXInWindow() + parentContainer->GetContentArea().x + properties.x_pos;
         }
         return properties.x_pos;
     }
 
-    long UltraCanvasElement::GetYInWindow() {
+    int UltraCanvasElement::GetYInWindow() {
         if (parentContainer) {
-            return parentContainer->GetYInWindow() + properties.y_pos;
+            return parentContainer->GetYInWindow() + parentContainer->GetContentArea().y + properties.y_pos;
         }
         return properties.y_pos;
     }

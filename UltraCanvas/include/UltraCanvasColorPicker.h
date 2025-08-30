@@ -586,7 +586,7 @@ private:
         // Draw black overlay for value
         Color blackOverlay(0, 0, 0, static_cast<uint8_t>((1.0f - currentHSV.v) * 255));
         SetFillColor(blackOverlay);
-        DrawRect(svSquare);
+        DrawRectangle(svSquare);
     }
     
     void RenderSquareSVPicker() {
@@ -747,7 +747,7 @@ private:
             if (color == currentColor) {
                 SetStrokeColor(Colors::Black);
                 SetStrokeWidth(2.0f);
-                DrawRect(swatch);
+                DrawRectangle(swatch);
             }
         }
     }
@@ -775,7 +775,7 @@ private:
                 SetFillColor(isLight ? light : dark);
                 
                 Rect2D checkRect(rect.x + x, rect.y + y, checkSize, checkSize);
-                DrawRect(checkRect);
+                DrawRectangle(checkRect);
             }
         }
     }

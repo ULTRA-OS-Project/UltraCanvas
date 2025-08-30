@@ -491,7 +491,7 @@ public:
         
         // Draw background
         SetFillColor(Colors::White);
-        DrawRect(GetBounds());
+        DrawRectangle(GetBounds());
         
         // Render state-specific content
         switch (currentState) {
@@ -650,7 +650,7 @@ private:
         SetFillColor(Colors::Blue);
         float progress = (elapsed.count() % 10) / 10.0f;
         Rect2D progressBar(GetX() + 20, center.y + 20, (GetWidth() - 40) * progress, 4);
-        DrawRect(progressBar);
+        DrawRectangle(progressBar);
     }
     
     void RenderDiagramContent() {
@@ -660,7 +660,7 @@ private:
     
     void RenderErrorState() {
         SetFillColor(Color(255, 240, 240));
-        DrawRect(GetBounds());
+        DrawRectangle(GetBounds());
         
         SetTextColor(Colors::Red);
         SetFont("Arial", 12.0f);
@@ -680,7 +680,7 @@ private:
         // Semi-transparent overlay with source text
         SetFillColor(Color(0, 0, 0, 180));
         Rect2D overlay(GetX(), GetY(), GetWidth(), GetHeight());
-        DrawRect(overlay);
+        DrawRectangle(overlay);
         
         SetTextColor(Colors::White);
         SetFont("Courier New", 10.0f);

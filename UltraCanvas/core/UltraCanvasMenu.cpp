@@ -106,15 +106,15 @@ namespace UltraCanvas {
         }
 
         // Render background
-        Rect2D bounds = GetBounds();
-        context->SetFillColor(style.backgroundColor);
-        context->FillRectangle(bounds);
+        Rect2Di bounds = GetBounds();
+        SetFillColor(style.backgroundColor);
+        FillRectangle(bounds);
 
         // Draw border
         if (style.borderWidth > 0) {
-            context->SetStrokeColor(style.borderColor);
-            context->SetStrokeWidth(style.borderWidth);
-            context->DrawRectangle(bounds);
+            SetStrokeColor(style.borderColor);
+            SetStrokeWidth(style.borderWidth);
+            DrawRectangle(bounds);
         }
 
         // Render items
@@ -398,15 +398,15 @@ namespace UltraCanvas {
     void UltraCanvasMenu::RenderItem(int index, const MenuItemData &item) {
         if (!item.visible) return;
 
-        Rect2D itemBounds = GetItemBounds(index);
+        Rect2Di itemBounds = GetItemBounds(index);
         auto context = GetRenderContext();
         if (!context) return;
 
         // Draw item background
         Color bgColor = GetItemBackgroundColor(index, item);
         if (bgColor.a > 0) {
-            context->SetFillColor(bgColor);
-            context->FillRectangle(itemBounds);
+            SetFillColor(bgColor);
+            FillRectangle(itemBounds);
         }
 
         // Handle separator
@@ -415,21 +415,21 @@ namespace UltraCanvas {
             return;
         }
 
-        Point2D textSize = GetRenderContext()->MeasureText(item.label);
+        Point2Di textSize = MeasureText(item.label);
         float fontHeight = textSize.y;
         float currentX = itemBounds.x + style.paddingLeft;
         float textY = itemBounds.y + (itemBounds.height - fontHeight) / 2;
 
         // Render checkbox/radio
         if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
-            RenderCheckbox(item, Point2D(currentX, textY));
+            RenderCheckbox(item, Point2Di(currentX, textY));
             currentX += style.iconSize + style.iconSpacing;
         }
 
         // Render icon
         if (!item.iconPath.empty()) {
             float iconY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
-            RenderIcon(item.iconPath, Point2D(currentX, iconY));
+            RenderIcon(item.iconPath, Point2Di(currentX, iconY));
             currentX += style.iconSize + style.iconSpacing;
         }
 
@@ -439,27 +439,27 @@ namespace UltraCanvas {
                               (index == hoveredIndex ? style.hoverTextColor : style.textColor) :
                               style.disabledTextColor;
 
-            context->SetTextColor(textColor);
-            context->DrawText(item.label, Point2D(currentX, textY));
+            SetTextColor(textColor);
+            DrawText(item.label, Point2Di(currentX, textY));
         }
 
         // Render shortcut (for vertical menus)
         if (!item.shortcut.empty() && orientation == MenuOrientation::Vertical) {
             float shortcutX = itemBounds.x + itemBounds.width - style.paddingRight -
                               context->GetTextWidth(item.shortcut.c_str());
-            context->SetTextColor(style.shortcutColor);
-            context->DrawText(item.shortcut, Point2D(shortcutX, textY));
+            SetTextColor(style.shortcutColor);
+            DrawText(item.shortcut, Point2Di(shortcutX, textY));
         }
 
         // Render submenu arrow (for vertical menus)
         if (!item.subItems.empty() && orientation == MenuOrientation::Vertical) {
-            RenderSubmenuArrow(Point2D(itemBounds.x + itemBounds.width - style.paddingRight - 2,
+            RenderSubmenuArrow(Point2Di(itemBounds.x + itemBounds.width - style.paddingRight - 2,
                                        itemBounds.y + itemBounds.height / 2));
         }
     }
 
-    Rect2D UltraCanvasMenu::GetItemBounds(int index) const {
-        Rect2D bounds;
+    Rect2Di UltraCanvasMenu::GetItemBounds(int index) const {
+        Rect2Di bounds;
 
         if (orientation == MenuOrientation::Horizontal) {
             float currentX = GetX();
@@ -547,22 +547,22 @@ namespace UltraCanvas {
         submenu->SetPosition(static_cast<long>(submenuX), static_cast<long>(submenuY));
     }
 
-    void UltraCanvasMenu::RenderSeparator(const Rect2D &bounds) {
+    void UltraCanvasMenu::RenderSeparator(const Rect2Di &bounds) {
         float centerY = bounds.y + bounds.height / 2;
         float startX = bounds.x + style.paddingLeft;
         float endX = bounds.x + bounds.width - style.paddingRight;
 
         SetStrokeColor(style.separatorColor);
         SetStrokeWidth(1.0f);
-        DrawLine(Point2D(startX, centerY), Point2D(endX, centerY));
+        DrawLine(Point2Di(startX, centerY), Point2Di(endX, centerY));
     }
 
-    void UltraCanvasMenu::RenderCheckbox(const MenuItemData &item, const Point2D &position) {
-        Rect2D checkRect(position.x, position.y, style.iconSize, style.iconSize);
+    void UltraCanvasMenu::RenderCheckbox(const MenuItemData &item, const Point2Di &position) {
+        Rect2Di checkRect(position.x, position.y, style.iconSize, style.iconSize);
 
         SetStrokeColor(style.borderColor);
         SetStrokeWidth(1.0f);
-        DrawRect(checkRect);
+        DrawRectangle(checkRect);
 
         if (item.checked) {
             SetStrokeColor(style.textColor);
@@ -570,55 +570,55 @@ namespace UltraCanvas {
 
             if (item.type == MenuItemType::Checkbox) {
                 // Draw checkmark
-                Point2D p1(position.x + 3, position.y + style.iconSize / 2);
-                Point2D p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
-                Point2D p3(position.x + style.iconSize - 3, position.y + 3);
+                Point2Di p1(position.x + 3, position.y + style.iconSize / 2);
+                Point2Di p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
+                Point2Di p3(position.x + style.iconSize - 3, position.y + 3);
                 DrawLine(p1, p2);
                 DrawLine(p2, p3);
             } else {
                 // Draw radio dot
                 float centerX = position.x + style.iconSize / 2;
                 float centerY = position.y + style.iconSize / 2;
-                DrawCircle(Point2D(centerX, centerY), style.iconSize / 4);
+                DrawCircle(Point2Di(centerX, centerY), style.iconSize / 4);
             }
         }
     }
 
-    void UltraCanvasMenu::RenderSubmenuArrow(const Point2D &position) {
+    void UltraCanvasMenu::RenderSubmenuArrow(const Point2Di &position) {
         SetStrokeColor(style.textColor);
         SetStrokeWidth(1.5f);
 
         if (orientation == MenuOrientation::Vertical) {
             // Right arrow
-            Point2D p1(position.x - 3, position.y - 4);
-            Point2D p2(position.x + 3, position.y);
-            Point2D p3(position.x - 3, position.y + 4);
+            Point2Di p1(position.x - 3, position.y - 4);
+            Point2Di p2(position.x + 3, position.y);
+            Point2Di p3(position.x - 3, position.y + 4);
             DrawLine(p1, p2);
             DrawLine(p2, p3);
         } else {
             // Down arrow
-            Point2D p1(position.x - 4, position.y - 3);
-            Point2D p2(position.x, position.y + 3);
-            Point2D p3(position.x + 4, position.y - 3);
+            Point2Di p1(position.x - 4, position.y - 3);
+            Point2Di p2(position.x, position.y + 3);
+            Point2Di p3(position.x + 4, position.y - 3);
             DrawLine(p1, p2);
             DrawLine(p2, p3);
         }
     }
 
-    void UltraCanvasMenu::RenderIcon(const std::string &iconPath, const Point2D &position) {
+    void UltraCanvasMenu::RenderIcon(const std::string &iconPath, const Point2Di &position) {
         // Would implement icon rendering based on file type
-        DrawImage(iconPath, Rect2D(position.x, position.y, style.iconSize, style.iconSize));
+        DrawImage(iconPath, Rect2Di(position.x, position.y, style.iconSize, style.iconSize));
     }
 
-    void UltraCanvasMenu::RenderKeyboardHighlight(const Rect2D &bounds) {
+    void UltraCanvasMenu::RenderKeyboardHighlight(const Rect2Di &bounds) {
         SetStrokeColor(style.selectedColor);
         SetStrokeWidth(2.0f);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
     }
 
     void UltraCanvasMenu::RenderShadow() {
-        Rect2D bounds = GetBounds();
-        Rect2D shadowBounds(
+        Rect2Di bounds = GetBounds();
+        Rect2Di shadowBounds(
                 bounds.x + style.shadowOffset.x,
                 bounds.y + style.shadowOffset.y,
                 bounds.width,
@@ -626,10 +626,10 @@ namespace UltraCanvas {
         );
 
         SetFillColor(style.shadowColor);
-        DrawRect(shadowBounds);
+        DrawRectangle(shadowBounds);
     }
 
-    int UltraCanvasMenu::GetItemAtPosition(const Point2D &position) const {
+    int UltraCanvasMenu::GetItemAtPosition(const Point2Di &position) const {
         // Check if position is within menu bounds
         if (position.x < GetX() || position.x > GetX() + GetWidth() ||
             position.y < GetY() || position.y > GetY() + GetHeight()) {
@@ -676,7 +676,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::HandleMouseMove(const UCEvent &event) {
-        Point2D mousePos(static_cast<float>(event.x), static_cast<float>(event.y));
+        Point2Di mousePos(static_cast<float>(event.x), static_cast<float>(event.y));
         int newHoveredIndex = GetItemAtPosition(mousePos);
 
         if (newHoveredIndex != hoveredIndex) {
@@ -720,7 +720,7 @@ namespace UltraCanvas {
             return;
         }
 
-        Point2D mousePos(static_cast<float>(event.x), static_cast<float>(event.y));
+        Point2Di mousePos(static_cast<float>(event.x), static_cast<float>(event.y));
         int clickedIndex = GetItemAtPosition(mousePos);
 
         if (clickedIndex >= 0 && clickedIndex < static_cast<int>(items.size())) {
@@ -732,7 +732,7 @@ namespace UltraCanvas {
     void UltraCanvasMenu::HandleMouseUp(const UCEvent &event) {
         if (!Contains(event.x, event.y)) return;
 
-        Point2D mousePos(static_cast<float>(event.x), static_cast<float>(event.y));
+        Point2Di mousePos(static_cast<float>(event.x), static_cast<float>(event.y));
         int clickedIndex = GetItemAtPosition(mousePos);
 
         if (clickedIndex >= 0 && clickedIndex < static_cast<int>(items.size()) && clickedIndex == selectedIndex) {

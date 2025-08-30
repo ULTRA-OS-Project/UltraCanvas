@@ -325,11 +325,11 @@ namespace UltraCanvas {
 
             ULTRACANVAS_RENDER_SCOPE();
 
-            Rect2D bounds = GetBounds();
+            Rect2Di bounds = GetBounds();
 
             // Draw a small indicator that syntax highlighting is enabled
             SetFillColor(Color(0, 255, 0, 100));
-            DrawRect(Rect2D(bounds.x + bounds.width - 20, bounds.y + 5, 15, 10));
+            DrawRectangle(Rect2Di(bounds.x + bounds.width - 20, bounds.y + 5, 15, 10));
         }
     };
 
@@ -471,8 +471,8 @@ namespace UltraCanvas {
     private:
         void CreateUI() {
             // Main layout: left side editor, right side preview
-            Rect2D bounds = GetBounds();
-            int editorWidth = 320;
+            Rect2Di bounds = GetContentArea();
+            int editorWidth = bounds.width * 0.5;
             int previewWidth = static_cast<int>(bounds.width * 0.4f);
 
             // FIXED: Use proper CreateLabel and CreateTextInput signatures with identifiers

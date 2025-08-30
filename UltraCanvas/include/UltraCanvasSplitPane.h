@@ -490,13 +490,13 @@ private:
     
     void DrawSimpleSplitter(const Rect2D& bounds, const Color& color) {
         SetFillColor(color);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
     }
     
     void DrawRaisedSplitter(const Rect2D& bounds) {
         // Draw 3D raised effect
         SetFillColor(splitterColor);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         // Highlight on top/left
         SetStrokeColor(Color(255, 255, 255));
@@ -521,7 +521,7 @@ private:
     void DrawSunkenSplitter(const Rect2D& bounds) {
         // Draw 3D sunken effect
         SetFillColor(splitterColor);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         // Shadow on top/left
         SetStrokeColor(Color(128, 128, 128));
@@ -545,12 +545,12 @@ private:
     
     void DrawFlatSplitter(const Rect2D& bounds, const Color& color) {
         SetFillColor(color);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         // Draw subtle border
         SetStrokeColor(splitterLineColor);
         SetStrokeWidth(1);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
     }
     
     virtual void DrawCustomSplitter(const Rect2D& bounds, const Color& color) {

@@ -470,7 +470,7 @@ public:
         int width, height; \
         GetSize(width, height); \
         SetFillColor(config_.backgroundColor); \
-        FillRect(Rect2D(0, 0, width, height)); \
+        FillRectangle(Rect2D(0, 0, width, height)); \
         auto sortedElements = UltraCanvasZOrderManager::GetElementsSortedByZOrder(elements); \
         for (auto* element : sortedElements) { \
             if (element && element->IsVisible()) { \

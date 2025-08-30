@@ -5,11 +5,11 @@
 // Author: UltraCanvas Framework
 
 #include "../include/UltraCanvasWindow.h"
-#include "../include/UltraCanvasEventDispatcher.h"
 #include "../include/UltraCanvasRenderInterface.h"
 #include "../include/UltraCanvasApplication.h"
 //#include "../include/UltraCanvasZOrderManager.h"
 #include "../include/UltraCanvasMenu.h"
+#include "UltraCanvasApplication.h"
 
 #include <iostream>
 #include <algorithm>
@@ -26,6 +26,7 @@ namespace UltraCanvas {
         containerStyle.borderWidth = 0.0f; // Windows don't need container borders
         SetContainerStyle(containerStyle);
     }
+
 // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
 
     void UltraCanvasBaseWindow::SetFocusedElement(UltraCanvasElement* element) {
@@ -196,7 +197,7 @@ namespace UltraCanvas {
             std::unordered_set<UltraCanvasElement*> activePopupsCopy = activePopups;
             for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
                 UltraCanvasElement* activePopupElement = *it;
-                auto localCoords = activePopupElement->ConvertWindowToLocalCoordinates(Point2D(event.x, event.y));
+                auto localCoords = activePopupElement->ConvertWindowToLocalCoordinates(Point2Di(event.x, event.y));
                 UCEvent localEvent = event;
                 localEvent.x = localCoords.x;
                 localEvent.y = localCoords.y;

@@ -58,9 +58,9 @@ void RenderMultipleWindows() {
     
     // When app->Run() is called:
     // 1. window1->Render() sets currentContext to window1's LinuxRenderContext
-    // 2. button1->Render() calls DrawRect(), which automatically uses window1's context
+    // 2. button1->Render() calls DrawRectangle(), which automatically uses window1's context
     // 3. window2->Render() sets currentContext to window2's LinuxRenderContext  
-    // 4. button2->Render() calls DrawRect(), which automatically uses window2's context
+    // 4. button2->Render() calls DrawRectangle(), which automatically uses window2's context
     // Each window gets its own correct context automatically!
     
     app->Run();
@@ -75,11 +75,11 @@ public:
         // These calls automatically use the correct context for whichever window
         // is currently being rendered - no need to worry about which window!
         SetFillColor(Colors::Blue);
-        FillRect(x, y, width, height);
+        FillRectangle(x, y, width, height);
         
         SetStrokeColor(Colors::White);
         SetStrokeWidth(2.0f);
-        DrawRect(x, y, width, height);
+        DrawRectangle(x, y, width, height);
         
         SetTextColor(Colors::White);
         SetFont("Arial", 12.0f);
@@ -98,14 +98,14 @@ void ManualContextExample() {
     {
         ULTRACANVAS_WINDOW_RENDER_SCOPE(window1);
         SetFillColor(Colors::Red);
-        FillRect(0, 0, 100, 100);
+        FillRectangle(0, 0, 100, 100);
     } // Automatically restores previous context
     
     // Render something specifically to window2
     {
         ULTRACANVAS_WINDOW_RENDER_SCOPE(window2);
         SetFillColor(Colors::Green);
-        FillRect(0, 0, 100, 100);
+        FillRectangle(0, 0, 100, 100);
     } // Automatically restores previous context
     
     // Or use context directly
@@ -136,16 +136,16 @@ public:
         // - Web (would use WebRenderContext with Canvas API)
         
         SetFillColor(pressed ? Colors::DarkGray : Colors::LightGray);
-        FillRoundedRect(Rect2D(x, y, width, height), 5.0f);
+        FillRoundedRectangle(Rect2Di(x, y, width, height), 5.0f);
         
         SetStrokeColor(focused ? Colors::Blue : Colors::Gray);
         SetStrokeWidth(focused ? 2.0f : 1.0f);
-        DrawRoundedRect(Rect2D(x, y, width, height), 5.0f);
+        DrawRoundedRectangle(Rect2Di(x, y, width, height), 5.0f);
         
         SetTextColor(Colors::Black);
         SetFont("system", 12.0f);
         SetTextAlign(TextAlign::Center);
-        DrawText(buttonText, Point2D(x + width/2, y + height/2));
+        DrawText(buttonText, Point2Di(x + width/2, y + height/2));
     }
     
 private:
@@ -159,7 +159,7 @@ private:
 1. **Thread-Local Contexts**: Each thread has its own current context, supporting
    multi-threaded rendering if needed.
 
-2. **Automatic Context Resolution**: UI elements just call DrawRect() and it 
+2. **Automatic Context Resolution**: UI elements just call DrawRectangle() and it
    automatically uses the correct context for the current window.
 
 3. **Multiple Window Support**: Each window can have its own render context,
@@ -182,7 +182,7 @@ private:
 OLD CODE:
 ```cpp
 void MyElement::Render() {
-    RenderContextManager::GetCurrent()->DrawRect(...);  // Might be null!
+    RenderContextManager::GetCurrent()->DrawRectangle(...);  // Might be null!
 }
 ```
 
@@ -190,7 +190,7 @@ NEW CODE (same functionality, but more robust):
 ```cpp
 void MyElement::Render() {
     ULTRACANVAS_RENDER_SCOPE();
-    DrawRect(...);  // Automatically finds correct context
+    DrawRectangle(...);  // Automatically finds correct context
 }
 ```
 

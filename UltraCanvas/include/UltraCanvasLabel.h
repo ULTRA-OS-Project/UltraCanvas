@@ -54,7 +54,7 @@ namespace UltraCanvas {
         // Text effects
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 128);
-        Point2D shadowOffset = Point2D(1, 1);
+        Point2Di shadowOffset = Point2Di(1, 1);
 
         // Word wrapping
         bool wordWrap = false;
@@ -105,12 +105,12 @@ namespace UltraCanvas {
         LabelStyle style;
 
         // ===== COMPUTED LAYOUT =====
-        Rect2D textArea;
-        Point2D textPosition;
+        Rect2Di textArea;
+        Point2Di textPosition;
         bool needsLayout = true;
 
         // ===== AUTO-SIZING =====
-        Point2D preferredSize;
+        Point2Di preferredSize;
         bool autoSized = false;
 
     public:
@@ -236,15 +236,15 @@ namespace UltraCanvas {
         // ===== SIZING =====
         void AutoResize() {
             if (text.empty()) {
-                preferredSize = Point2D(style.paddingLeft + style.paddingRight + 20,
+                preferredSize = Point2Di(style.paddingLeft + style.paddingRight + 20,
                                         style.paddingTop + style.paddingBottom + style.fontSize + 4);
             } else {
                 // Set text style for measurement
                 ULTRACANVAS_RENDER_SCOPE();
                 SetFont(style.fontFamily, style.fontSize);
 
-                Point2D textSize = MeasureText(text);
-                preferredSize = Point2D(
+                Point2Di textSize = MeasureText(text);
+                preferredSize = Point2Di(
                         textSize.x + style.paddingLeft + style.paddingRight + style.borderWidth * 2,
                         textSize.y + style.paddingTop + style.paddingBottom + style.borderWidth * 2
                 );
@@ -255,7 +255,7 @@ namespace UltraCanvas {
             needsLayout = true;
         }
 
-        Point2D GetPreferredSize() const {
+        Point2Di GetPreferredSize() const {
             return preferredSize;
         }
 
@@ -263,10 +263,10 @@ namespace UltraCanvas {
         void CalculateLayout() {
             if (!needsLayout) return;
 
-            Rect2D bounds = GetBounds();
+            Rect2Di bounds = GetBounds();
 
             // Calculate text area (inside padding and borders)
-            textArea = Rect2D(
+            textArea = Rect2Di(
                     bounds.x + style.paddingLeft + style.borderWidth,
                     bounds.y + style.paddingTop + style.borderWidth,
                     bounds.width - style.paddingLeft - style.paddingRight - style.borderWidth * 2,
@@ -278,7 +278,7 @@ namespace UltraCanvas {
                 ULTRACANVAS_RENDER_SCOPE();
                 SetFont(style.fontFamily, style.fontSize);
 
-                Point2D textSize = MeasureText(text);
+                Point2Di textSize = MeasureText(text);
 
                 // Calculate horizontal position
                 float textX = textArea.x;
@@ -311,7 +311,7 @@ namespace UltraCanvas {
                         break;
                 }
 
-                textPosition = Point2D(textX, textY);
+                textPosition = Point2Di(textX, textY);
             }
 
             needsLayout = false;
@@ -325,15 +325,15 @@ namespace UltraCanvas {
 
             CalculateLayout();
 
-            Rect2D bounds = GetBounds();
+            Rect2Di bounds = GetBounds();
 
             // Draw background
             if (style.backgroundColor.a > 0) {
                 SetFillColor(style.backgroundColor);
                 if (style.borderRadius > 0) {
-                    DrawRoundedRect(bounds, style.borderRadius);
+                    DrawRoundedRectangle(bounds, style.borderRadius);
                 } else {
-                    DrawRect(bounds);
+                    DrawRectangle(bounds);
                 }
 
             }
@@ -343,9 +343,9 @@ namespace UltraCanvas {
                 SetStrokeColor(style.borderColor);
                 SetStrokeWidth(style.borderWidth);
                 if (style.borderRadius > 0) {
-                    DrawRoundedRect(bounds, style.borderRadius);
+                    DrawRoundedRectangle(bounds, style.borderRadius);
                 } else {
-                    DrawRect(bounds);
+                    DrawRectangle(bounds);
                 }
             }
 
@@ -355,7 +355,7 @@ namespace UltraCanvas {
                 if (style.hasShadow) {
                     SetTextColor(style.shadowColor);
                     SetFont(style.fontFamily, style.fontSize);
-                    Point2D shadowPos = Point2D(
+                    Point2Di shadowPos = Point2Di(
                             textPosition.x + style.shadowOffset.x,
                             textPosition.y + style.shadowOffset.y
                     );
@@ -377,7 +377,7 @@ namespace UltraCanvas {
             if (IsFocused()) {
                 SetStrokeColor(Color(0, 120, 215, 200));
                 SetStrokeWidth(2.0f);
-                DrawRect(bounds);
+                DrawRectangle(bounds);
             }
         }
 

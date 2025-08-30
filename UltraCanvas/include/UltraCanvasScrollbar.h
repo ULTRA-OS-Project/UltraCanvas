@@ -290,7 +290,7 @@ namespace UltraCanvas {
             DrawFilledRect(trackRect);
 
             SetStrokeColor(appearance.borderColor);
-            DrawRect(trackRect);
+            DrawRectangle(trackRect);
         }
 
         void DrawThumb() {
@@ -307,7 +307,7 @@ namespace UltraCanvas {
             DrawFilledRect(thumbRect);
 
             SetStrokeColor(appearance.borderColor);
-            DrawRect(thumbRect);
+            DrawRectangle(thumbRect);
         }
 
         void DrawArrowButtons() {
@@ -323,7 +323,7 @@ namespace UltraCanvas {
                 SetFillColor(appearance.trackColor);
                 DrawFilledRect(upArrowRect);
                 SetStrokeColor(appearance.borderColor);
-                DrawRect(upArrowRect);
+                DrawRectangle(upArrowRect);
 
                 DrawArrowSymbol(upArrowRect, orientation == ScrollbarOrientation::Vertical ? 0 : 3, arrowColor);
             }
@@ -340,7 +340,7 @@ namespace UltraCanvas {
                 SetFillColor(appearance.trackColor);
                 DrawFilledRect(downArrowRect);
                 SetStrokeColor(appearance.borderColor);
-                DrawRect(downArrowRect);
+                DrawRectangle(downArrowRect);
 
                 DrawArrowSymbol(downArrowRect, orientation == ScrollbarOrientation::Vertical ? 2 : 1, arrowColor);
             }

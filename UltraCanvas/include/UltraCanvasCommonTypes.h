@@ -13,12 +13,12 @@
 namespace UltraCanvas {
 
 // ===== COMMON GEOMETRIC TYPES =====
-
+template <typename T>
 struct Point2D {
-    float x, y;
-    
-    Point2D(float px = 0.0f, float py = 0.0f) : x(px), y(py) {}
-    
+    T x, y;
+
+    Point2D(T px = 0, T py = 0) : x(px), y(py) {}
+
     // Operators
     Point2D operator+(const Point2D& other) const { return Point2D(x + other.x, y + other.y); }
     Point2D operator-(const Point2D& other) const { return Point2D(x - other.x, y - other.y); }
@@ -26,65 +26,70 @@ struct Point2D {
     Point2D& operator+=(const Point2D& other) { x += other.x; y += other.y; return *this; }
     Point2D& operator-=(const Point2D& other) { x -= other.x; y -= other.y; return *this; }
     Point2D& operator*=(float scalar) { x *= scalar; y *= scalar; return *this; }
-    
+
     // Utility methods
-    float Distance(const Point2D& other) const {
-        float dx = x - other.x, dy = y - other.y;
+    T Distance(const Point2D& other) const {
+        T dx = x - other.x, dy = y - other.y;
         return std::sqrt(dx * dx + dy * dy);
     }
-    
-    float DistanceSquared(const Point2D& other) const {
+
+    T DistanceSquared(const Point2D& other) const {
         float dx = x - other.x, dy = y - other.y;
         return dx * dx + dy * dy;
     }
-    
-    float Length() const {
+
+    T Length() const {
         return std::sqrt(x * x + y * y);
     }
-    
+
     Point2D Normalized() const {
-        float len = Length();
+        T len = Length();
         return len > 0 ? Point2D(x / len, y / len) : Point2D(0, 0);
     }
 };
 
+typedef struct Point2D<float> Point2Df;
+typedef struct Point2D<int> Point2Di;
+typedef struct Point2D<long> Point2Dl;
+
+template <typename T>
 struct Rect2D {
-    float x, y, width, height;
-    
-    Rect2D(float px = 0.0f, float py = 0.0f, float w = 0.0f, float h = 0.0f) 
+    T x, y, width, height;
+
+    Rect2D(T px = 0, T py = 0, T w = 0, T h = 0)
         : x(px), y(py), width(w), height(h) {}
-    
+
     // Convenience methods
-    float Left() const { return x; }
-    float Right() const { return x + width; }
-    float Top() const { return y; }
-    float Bottom() const { return y + height; }
-    Point2D TopLeft() const { return Point2D(x, y); }
-    Point2D TopRight() const { return Point2D(x + width, y); }
-    Point2D BottomLeft() const { return Point2D(x, y + height); }
-    Point2D BottomRight() const { return Point2D(x + width, y + height); }
-    Point2D Center() const { return Point2D(x + width/2, y + height/2); }
-    
-    bool Contains(const Point2D& point) const {
-        return point.x >= x && point.x <= x + width && 
+    T Left() const { return x; }
+    T Right() const { return x + width; }
+    T Top() const { return y; }
+    T Bottom() const { return y + height; }
+    Point2D<T> TopLeft() const { return Point2D<T>(x, y); }
+    Point2D<T> TopRight() const { return Point2D<T>(x + width, y); }
+    Point2D<T> BottomLeft() const { return Point2D<T>(x, y + height); }
+    Point2D<T> BottomRight() const { return Point2D<T>(x + width, y + height); }
+    Point2D<T> Center() const { return Point2D<T>(x + width / 2, y + height / 2); }
+
+    bool Contains(const Point2D<T>& point) const {
+        return point.x >= x && point.x <= x + width &&
                point.y >= y && point.y <= y + height;
     }
-    
-    bool Contains(float px, float py) const {
+
+    bool Contains(T px, T py) const {
         return px >= x && px <= x + width && py >= y && py <= y + height;
     }
-    
+
     bool Intersects(const Rect2D& other) const {
         return !(other.x > x + width || other.x + other.width < x ||
                  other.y > y + height || other.y + other.height < y);
     }
-    
+
     Rect2D Intersection(const Rect2D& other) const {
-        float left = std::max(x, other.x);
-        float top = std::max(y, other.y);
-        float right = std::min(x + width, other.x + other.width);
-        float bottom = std::min(y + height, other.y + other.height);
-        
+        T left = std::max(x, other.x);
+        T top = std::max(y, other.y);
+        T right = std::min(x + width, other.x + other.width);
+        T bottom = std::min(y + height, other.y + other.height);
+
         if (left < right && top < bottom) {
             return Rect2D(left, top, right - left, bottom - top);
         }
@@ -95,14 +100,18 @@ struct Rect2D {
         if (width == 0 && height == 0) return other;
         if (other.width == 0 && other.height == 0) return *this;
 
-        float left = std::min(x, other.x);
-        float top = std::min(y, other.y);
-        float right = std::max(x + width, other.x + other.width);
-        float bottom = std::max(y + height, other.y + other.height);
+        T left = std::min(x, other.x);
+        T top = std::min(y, other.y);
+        T right = std::max(x + width, other.x + other.width);
+        T bottom = std::max(y + height, other.y + other.height);
 
         return Rect2D(left, top, right - left, bottom - top);
     }
 };
+
+typedef struct Rect2D<float> Rect2Df;
+typedef struct Rect2D<int> Rect2Di;
+typedef struct Rect2D<long> Rect2Dl;
 
 // ===== UNIFIED COLOR SYSTEM =====
 
@@ -303,22 +312,12 @@ T Lerp(T a, T b, float t) {
 }
 
 // Distance between two points
-inline float Distance(const Point2D& a, const Point2D& b) {
+inline float Distance(const Point2Df& a, const Point2Df& b) {
     return a.Distance(b);
 }
 
-// Check if point is inside rectangle
-inline bool PointInRect(const Point2D& point, const Rect2D& rect) {
-    return rect.Contains(point);
-}
-
-// Create rectangle from two points
-inline Rect2D RectFromPoints(const Point2D& p1, const Point2D& p2) {
-    float left = std::min(p1.x, p2.x);
-    float top = std::min(p1.y, p2.y);
-    float right = std::max(p1.x, p2.x);
-    float bottom = std::max(p1.y, p2.y);
-    return Rect2D(left, top, right - left, bottom - top);
+inline int Distance(const Point2Di& a, const Point2Di& b) {
+    return a.Distance(b);
 }
 
 } // namespace UltraCanvas

@@ -36,7 +36,6 @@ namespace UltraCanvas {
         static UltraCanvasApplication* GetInstance() {
             return UltraCanvasApplication::instance;
         };
-        virtual void SetGlobalEventHandler(std::function<bool(const UCEvent&)> handler);
 
         virtual void RunInEventLoop() override;
     };

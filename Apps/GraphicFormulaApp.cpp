@@ -114,7 +114,7 @@ public:
         } else if (event.type == UCEventType::KeyDown) {
             // Handle keyboard shortcuts
             if (event.ctrl) {
-                switch (event.keyCode) {
+                switch (event.nativeKeyCode) {
                     case 'N': // Ctrl+N - New
                         CreateNewFormula();
                         handled = true;
@@ -187,7 +187,7 @@ private:
                                                          10, windowHeight - 40, leftWidth - 20, 30, "Ready");
         // Formula editor in left panel
         formulaEditor = std::make_shared<UltraCanvasFormulaEditor>("FormulaEditor", 10,
-                                                                   2, 350, leftWidth - 14, 400);
+                                                                   0, 350, leftWidth - 30, 400);
 
         // Add controls to left panel
         leftPanel->AddChild(formulaEditor);

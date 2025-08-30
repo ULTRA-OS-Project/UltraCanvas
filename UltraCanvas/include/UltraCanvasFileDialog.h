@@ -177,12 +177,12 @@ public:
         
         // Draw background
         SetFillColor(backgroundColor);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         // Draw border
         SetStrokeColor(borderColor);
         SetStrokeWidth(1);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         // Draw components
         DrawPathBar();
@@ -334,9 +334,9 @@ private:
         
         // Draw path background
         SetFillColor(Colors::White);
-        DrawRect(pathBounds);
+        DrawRectangle(pathBounds);
         SetStrokeColor(borderColor);
-        DrawRect(pathBounds);
+        DrawRectangle(pathBounds);
         
         // Draw path text
         SetTextColor(Colors::Black);
@@ -349,9 +349,9 @@ private:
         
         // Draw list background
         SetFillColor(Colors::White);
-        DrawRect(listBounds);
+        DrawRectangle(listBounds);
         SetStrokeColor(borderColor);
-        DrawRect(listBounds);
+        DrawRectangle(listBounds);
         
         // Set clipping for list content
         SetClipRect(listBounds);
@@ -403,7 +403,7 @@ private:
         // Draw selection background
         if (isSelected) {
             SetFillColor(selectedItemColor);
-            DrawRect(Rect2D(listBounds.x + 1, y, listBounds.width - 2, itemHeight));
+            DrawRectangle(Rect2D(listBounds.x + 1, y, listBounds.width - 2, itemHeight));
         }
         
         // Draw icon (simple text indicator)
@@ -426,7 +426,7 @@ private:
         
         // Draw scrollbar background
         SetFillColor(Color(240, 240, 240));
-        DrawRect(scrollBounds);
+        DrawRectangle(scrollBounds);
         
         // Draw scrollbar thumb
         float thumbHeight = (maxVisibleItems * scrollBounds.height) / totalItems;
@@ -434,7 +434,7 @@ private:
                       (totalItems - maxVisibleItems);
         
         SetFillColor(Color(160, 160, 160));
-        DrawRect(Rect2D(scrollBounds.x + 2, thumbY, 11, thumbHeight));
+        DrawRectangle(Rect2D(scrollBounds.x + 2, thumbY, 11, thumbHeight));
     }
     
     void DrawFileNameInput() {
@@ -449,9 +449,9 @@ private:
         
         // Draw input background
         SetFillColor(Colors::White);
-        DrawRect(inputBounds);
+        DrawRectangle(inputBounds);
         SetStrokeColor(borderColor);
-        DrawRect(inputBounds);
+        DrawRectangle(inputBounds);
         
         // Draw input text
         DrawText(fileNameText, Point2D(inputBounds.x + 5, inputBounds.y + 14));
@@ -477,9 +477,9 @@ private:
         
         // Draw filter dropdown background
         SetFillColor(buttonColor);
-        DrawRect(filterBounds);
+        DrawRectangle(filterBounds);
         SetStrokeColor(borderColor);
-        DrawRect(filterBounds);
+        DrawRectangle(filterBounds);
         
         // Draw current filter text
         if (selectedFilterIndex >= 0 && selectedFilterIndex < (int)filters.size()) {
@@ -502,9 +502,9 @@ private:
         // OK Button
         Rect2D okBounds = GetOkButtonBounds();
         SetFillColor(buttonColor);
-        DrawRect(okBounds);
+        DrawRectangle(okBounds);
         SetStrokeColor(borderColor);
-        DrawRect(okBounds);
+        DrawRectangle(okBounds);
         
         SetTextColor(Colors::Black);
         SetFont("Arial", 12);
@@ -518,9 +518,9 @@ private:
         // Cancel Button
         Rect2D cancelBounds = GetCancelButtonBounds();
         SetFillColor(buttonColor);
-        DrawRect(cancelBounds);
+        DrawRectangle(cancelBounds);
         SetStrokeColor(borderColor);
-        DrawRect(cancelBounds);
+        DrawRectangle(cancelBounds);
         
         Point2D cancelTextSize = MeasureText("Cancel");
         DrawText("Cancel", Point2D(

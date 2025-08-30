@@ -133,7 +133,7 @@ namespace UltraCanvas {
         // Shadow
         bool showShadow = true;
         Color shadowColor = Color(0, 0, 0, 100);
-        Point2D shadowOffset = Point2D(2, 2);
+        Point2Di shadowOffset = Point2Di(2, 2);
         float shadowBlur = 4.0f;
 
         static MenuStyle Default();
@@ -275,13 +275,13 @@ namespace UltraCanvas {
         MenuState GetMenuState() const { return currentState; }
 
         // ===== CONTEXT MENU HELPERS =====
-        void ShowAt(const Point2D& position) {
+        void ShowAt(const Point2Di& position) {
             SetPosition(static_cast<long>(position.x), static_cast<long>(position.y));
             Show();
         }
 
         void ShowAt(int x, int y) {
-            ShowAt(Point2D(static_cast<float>(x), static_cast<float>(y)));
+            ShowAt(Point2Di(static_cast<float>(x), static_cast<float>(y)));
         }
 
         // ===== SUBMENU MANAGEMENT =====
@@ -298,7 +298,7 @@ namespace UltraCanvas {
 
         bool Contains(float x, float y) const override;
 
-        bool Contains(const Point2D& point) const override {
+        bool Contains(const Point2Di& point) const override {
             return Contains(point.x, point.y);
         }
 
@@ -314,7 +314,7 @@ namespace UltraCanvas {
 
         void RenderItem(int index, const MenuItemData& item);
 
-        Rect2D GetItemBounds(int index) const;
+        Rect2Di GetItemBounds(int index) const;
 
         float CalculateItemWidth(const MenuItemData& item) const;
 
@@ -322,15 +322,15 @@ namespace UltraCanvas {
         void PositionSubmenu(std::shared_ptr<UltraCanvasMenu> submenu, int itemIndex);
 
         // ===== RENDERING HELPERS =====
-        void RenderSeparator(const Rect2D& bounds);
+        void RenderSeparator(const Rect2Di& bounds);
 
-        void RenderCheckbox(const MenuItemData& item, const Point2D& position);
+        void RenderCheckbox(const MenuItemData& item, const Point2Di& position);
 
-        void RenderSubmenuArrow(const Point2D& position);
+        void RenderSubmenuArrow(const Point2Di& position);
 
-        void RenderIcon(const std::string& iconPath, const Point2D& position);
+        void RenderIcon(const std::string& iconPath, const Point2Di& position);
 
-        void RenderKeyboardHighlight(const Rect2D& bounds);
+        void RenderKeyboardHighlight(const Rect2Di& bounds);
 
         void RenderShadow();
 
@@ -349,7 +349,7 @@ namespace UltraCanvas {
             return Colors::Transparent;
         }
 
-        int GetItemAtPosition(const Point2D& position) const;
+        int GetItemAtPosition(const Point2Di& position) const;
 
         // ===== EVENT HANDLERS =====
         void HandleMouseMove(const UCEvent& event);

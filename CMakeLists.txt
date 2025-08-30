@@ -93,7 +93,6 @@ set(ULTRACANVAS_SOURCES
     # Platform-specific sources
         UltraCanvas/core/UltraCanvasApplication.cpp
         UltraCanvas/core/UltraCanvasRenderInterface.cpp
-        UltraCanvas/core/UltraCanvasEventDispatcher.cpp
         UltraCanvas/core/UltraCanvasTooltipManager.cpp
         UltraCanvas/core/UltraCanvasWindow.cpp
         UltraCanvas/core/UltraCanvasMenu.cpp

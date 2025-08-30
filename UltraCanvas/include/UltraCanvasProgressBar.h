@@ -367,7 +367,7 @@ private:
         
         // Draw background
         SetFillColor(backgroundColor);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         // Draw border
         if (showBorder) {
@@ -389,7 +389,7 @@ private:
         
         // Draw background
         SetFillColor(backgroundColor);
-        DrawRoundedRect(bounds, cornerRadius);
+        DrawRoundedRectangle(bounds, cornerRadius);
         
         // Draw border
         if (showBorder) {
@@ -470,7 +470,7 @@ private:
         
         // Draw background
         SetFillColor(backgroundColor);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         // Draw border
         if (showBorder) {
@@ -492,7 +492,7 @@ private:
                 );
                 
                 SetFillColor(lightColor);
-                DrawRect(progressBounds);
+                DrawRectangle(progressBounds);
             }
         }
     }
@@ -502,7 +502,7 @@ private:
         
         // Draw background
         SetFillColor(backgroundColor);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         // Draw border
         if (showBorder) {
@@ -516,7 +516,7 @@ private:
             Rect2D progressBounds = GetProgressBounds(bounds);
             if (progressBounds.width > 0 && progressBounds.height > 0) {
                 SetFillColor(GetCurrentProgressColor());
-                DrawRect(progressBounds);
+                DrawRectangle(progressBounds);
                 
                 // Draw animated stripes
                 DrawStripes(progressBounds);
@@ -529,7 +529,7 @@ private:
         
         // Draw background
         SetFillColor(backgroundColor);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         // Draw border
         if (showBorder) {
@@ -548,7 +548,7 @@ private:
                 pulseColor.a = static_cast<uint8_t>(pulseColor.a * alpha);
                 
                 SetFillColor(pulseColor);
-                DrawRect(progressBounds);
+                DrawRectangle(progressBounds);
             }
         }
     }
@@ -562,7 +562,7 @@ private:
         Rect2D progressBounds = GetProgressBounds(bounds);
         if (progressBounds.width > 0 && progressBounds.height > 0) {
             SetFillColor(GetCurrentProgressColor());
-            DrawRect(progressBounds);
+            DrawRectangle(progressBounds);
         }
     }
     
@@ -570,7 +570,7 @@ private:
         Rect2D progressBounds = GetProgressBounds(bounds);
         if (progressBounds.width > 0 && progressBounds.height > 0) {
             SetFillColor(GetCurrentProgressColor());
-            DrawRoundedRect(progressBounds, cornerRadius);
+            DrawRoundedRectangle(progressBounds, cornerRadius);
         }
     }
     
@@ -591,9 +591,9 @@ private:
         
         SetFillColor(GetCurrentProgressColor());
         if (style == ProgressBarStyle::Rounded) {
-            DrawRoundedRect(indeterminateBounds, cornerRadius);
+            DrawRoundedRectangle(indeterminateBounds, cornerRadius);
         } else {
-            DrawRect(indeterminateBounds);
+            DrawRectangle(indeterminateBounds);
         }
     }
     

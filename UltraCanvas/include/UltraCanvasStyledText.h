@@ -510,7 +510,7 @@ namespace UltraCanvas {
 
             // Draw background
             SetFillColor(Colors::White);
-            DrawRect(bounds);
+            DrawRectangle(bounds);
 
             // Set clipping to content area
             PushRenderState();
@@ -691,7 +691,7 @@ namespace UltraCanvas {
             // Draw background if specified
             if (block.style.backgroundColor.a > 0) {
                 SetFillColor(block.style.backgroundColor);
-                DrawRect(block.bounds);
+                DrawRectangle(block.bounds);
             }
 
             // Draw text for each line
@@ -731,7 +731,7 @@ namespace UltraCanvas {
             size_t end = selection.GetEnd();
 
             for (size_t i = start; i < end && i < lineRects.size(); ++i) {
-                DrawRect(lineRects[i]);
+                DrawRectangle(lineRects[i]);
             }
         }
 
@@ -741,7 +741,7 @@ namespace UltraCanvas {
             for (const auto& result : searchResults) {
                 // Simple highlighting - would need proper text position calculations
                 if (result.position < lineRects.size()) {
-                    DrawRect(lineRects[result.position]);
+                    DrawRectangle(lineRects[result.position]);
                 }
             }
         }

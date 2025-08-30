@@ -515,7 +515,7 @@ void UltraCanvasTemplate::DrawDragHandle() {
     // TODO: Add hover detection for hover color
     
     // Draw handle background
-    FillRect(handleRect, handleColor);
+    FillRectangle(handleRect, handleColor);
     
     // Draw grip pattern
     if (dragHandle.gripPattern == "dots") {
@@ -590,7 +590,7 @@ void UltraCanvasTemplate::DrawBarGrip(const Rect2D& rect) {
                 barWidth,
                 barHeight
             );
-            FillRect(barRect, barColor);
+            FillRectangle(barRect, barColor);
         }
     } else {
         // Vertical bars for horizontal handles
@@ -607,7 +607,7 @@ void UltraCanvasTemplate::DrawBarGrip(const Rect2D& rect) {
                 barWidth,
                 barHeight
             );
-            FillRect(barRect, barColor);
+            FillRectangle(barRect, barColor);
         }
     }
 }
@@ -617,12 +617,12 @@ void UltraCanvasTemplate::DrawTemplateBackground() {
     
     // Draw background
     if (appearance.backgroundColor.a > 0) {
-        FillRect(bounds, appearance.backgroundColor);
+        FillRectangle(bounds, appearance.backgroundColor);
     }
     
     // Draw border
     if (appearance.borderWidth > 0 && appearance.borderColor.a > 0) {
-        DrawRect(bounds, appearance.borderColor, appearance.borderWidth);
+        DrawRectangle(bounds, appearance.borderColor, appearance.borderWidth);
     }
     
     // Draw shadow
@@ -633,7 +633,7 @@ void UltraCanvasTemplate::DrawTemplateBackground() {
             bounds.width,
             bounds.height
         );
-        FillRect(shadowRect, appearance.shadowColor);
+        FillRectangle(shadowRect, appearance.shadowColor);
     }
 }
 

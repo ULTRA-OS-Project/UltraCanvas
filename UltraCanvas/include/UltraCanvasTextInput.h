@@ -270,17 +270,18 @@ struct TextInputStyle {
     Color caretColor = Colors::Black;
     
     // Validation colors
-    Color validBorderColor = Color(76, 175, 80, 255);
+    //Color validBorderColor = Color(76, 175, 80, 255);
+    Color validBorderColor = Color(200, 200, 200, 255);
     Color invalidBorderColor = Color(244, 67, 54, 255);
     Color warningBorderColor = Color(255, 152, 0, 255);
     
     // Dimensions
-    float borderWidth = 1.0f;
-    float borderRadius = 4.0f;
-    float paddingLeft = 8.0f;
-    float paddingRight = 8.0f;
-    float paddingTop = 6.0f;
-    float paddingBottom = 6.0f;
+    int borderWidth = 1;
+    int borderRadius = 4;
+    int paddingLeft = 8;
+    int paddingRight = 8;
+    int paddingTop = 6;
+    int paddingBottom = 6;
     
     // Typography (inherits from TextStyle in RenderInterface)
     std::string fontFamily = "Arial";
@@ -289,14 +290,14 @@ struct TextInputStyle {
     TextAlign textAlignment = TextAlign::Left;
     
     // Caret
-    float caretWidth = 1.0f;
-    float caretBlinkRate = 1.0f;  // Blinks per second
+    int caretWidth = 1.0f;
+    int caretBlinkRate = 1.0f;  // Blinks per second
     
     // Effects
     bool showShadow = false;
     Color shadowColor = Color(0, 0, 0, 50);
-    Point2D shadowOffset = Point2D(1, 1);
-    float shadowBlur = 2.0f;
+    Point2Di shadowOffset = Point2Di(1, 1);
+    int shadowBlur = 2.0f;
     
     // Animations
     bool enableFocusAnimation = false;
@@ -370,7 +371,7 @@ private:
     
     // ===== INTERACTION STATE =====
     bool isDragging;
-    Point2D dragStartPosition;
+    Point2Di dragStartPosition;
     
     // ===== AUTO-COMPLETE =====
     AutoComplete autoCompleteMode;
@@ -509,7 +510,7 @@ private:
     float GetCaretXPosition();
     float GetCaretYPosition();
 
-    Rect2D GetTextArea() const;
+    Rect2Df GetTextArea() const;
     
     Color GetBackgroundColor() const {
         return style.backgroundColor;
@@ -545,19 +546,19 @@ private:
         }
     }
     
-    void RenderText(const Rect2D& area, const Color& color);
+    void RenderText(const Rect2Df& area, const Color& color);
     
-    void RenderPlaceholder(const Rect2D& area);
+    void RenderPlaceholder(const Rect2Df& area);
     
-    void RenderSelection(const Rect2D& area);
+    void RenderSelection(const Rect2Df& area);
     
-    void RenderCaret(const Rect2D& area);
+    void RenderCaret(const Rect2Df& area);
     
-    void RenderMultilineText(const Rect2D& area, const std::string& displayText, const Point2D& startPos);
+    void RenderMultilineText(const Rect2Df& area, const std::string& displayText, const Point2Di& startPos);
     
-    void RenderValidationFeedback(const Rect2D& bounds) const;
+    void RenderValidationFeedback(const Rect2Di& bounds) const;
     
-    void DrawShadow(const Rect2D& bounds);
+    void DrawShadow(const Rect2Di& bounds);
     
     float GetAverageCharacterWidth() {
         // Simplified character width calculation
@@ -568,7 +569,7 @@ private:
     
     std::vector<std::string> WrapLine(const std::string& line, float maxWidth);
     
-    size_t GetTextPositionFromPoint(const Point2D& point);
+    size_t GetTextPositionFromPoint(const Point2Di& point);
     
     bool HandleMouseDown(const UCEvent& event);
     bool HandleMouseMove(const UCEvent& event);
@@ -598,46 +599,46 @@ inline TextInputStyle TextInputStyle::Default() {
 inline TextInputStyle TextInputStyle::Material() {
     TextInputStyle style;
     style.focusBorderColor = Color(25, 118, 210);
-    style.borderRadius = 4.0f;
-    style.paddingLeft = 12.0f;
-    style.paddingRight = 12.0f;
+    style.borderRadius = 4;
+    style.paddingLeft = 12;
+    style.paddingRight = 12;
     style.enableFocusAnimation = true;
     return style;
 }
 
 inline TextInputStyle TextInputStyle::Flat() {
     TextInputStyle style;
-    style.borderWidth = 0.0f;
+    style.borderWidth = 0;
     style.backgroundColor = Color(248, 248, 248);
-    style.borderRadius = 8.0f;
+    style.borderRadius = 8;
     return style;
 }
 
 inline TextInputStyle TextInputStyle::Outlined() {
     TextInputStyle style;
     style.backgroundColor = Colors::Transparent;
-    style.borderWidth = 2.0f;
-    style.borderRadius = 4.0f;
+    style.borderWidth = 2;
+    style.borderRadius = 4;
     return style;
 }
 
 inline TextInputStyle TextInputStyle::Underlined() {
     TextInputStyle style;
     style.backgroundColor = Colors::Transparent;
-    style.borderWidth = 0.0f;
-    style.borderRadius = 0.0f;
+    style.borderWidth = 0;
+    style.borderRadius = 0;
     // Would need special underline rendering
     return style;
 }
 
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasTextInput> CreateTextInput(
-    const std::string& identifier, long id, long x, long y, long w, long h) {
+    const std::string& identifier, long id, int x, int y, int w, int h) {
     return std::make_shared<UltraCanvasTextInput>(identifier, id, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasTextInput> CreatePasswordInput(
-    const std::string& identifier, long id, long x, long y, long w, long h) {
+    const std::string& identifier, long id, int x, int y, int w, int h) {
     auto input = CreateTextInput(identifier, id, x, y, w, h);
     input->SetInputType(TextInputType::Password);
     return input;

@@ -57,7 +57,7 @@ namespace UltraCanvas {
         // Effects
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
-        Point2D shadowOffset = Point2D(1, 1);
+        Point2Di shadowOffset = Point2Di(1, 1);
     };
 
 // ===== MAIN BUTTON CLASS (DEFINE FIRST) =====
@@ -129,7 +129,7 @@ namespace UltraCanvas {
         }
 
         void SetShadow(bool enabled, const Color& color = Color(0, 0, 0, 64),
-                       const Point2D& offset = Point2D(1, 1)) {
+                       const Point2Di& offset = Point2Di(1, 1)) {
             style.hasShadow = enabled;
             style.shadowColor = color;
             style.shadowOffset = offset;
@@ -165,26 +165,26 @@ namespace UltraCanvas {
             Color bgColor, textColor;
             GetCurrentColors(bgColor, textColor);
 
-            Rect2D bounds = GetBounds();
+            Rect2Di bounds = GetBounds();
 
             // Draw background
             if (style.cornerRadius > 0) {
-                UltraCanvas::DrawFilledRect(bounds, bgColor, Colors::Transparent, 0, style.cornerRadius);
+                DrawFilledRectangle(bounds, bgColor, Colors::Transparent, 0, style.cornerRadius);
             } else {
-                UltraCanvas::DrawFilledRect(bounds, bgColor);
+                DrawFilledRectangle(bounds, bgColor);
             }
 
             // Draw border
             if (style.borderWidth > 0) {
                 // Simple border using lines
-                DrawLine(Point2D(bounds.x, bounds.y),
-                         Point2D(bounds.x + bounds.width, bounds.y), style.borderColor);
-                DrawLine(Point2D(bounds.x + bounds.width, bounds.y),
-                         Point2D(bounds.x + bounds.width, bounds.y + bounds.height), style.borderColor);
-                DrawLine(Point2D(bounds.x + bounds.width, bounds.y + bounds.height),
-                         Point2D(bounds.x, bounds.y + bounds.height), style.borderColor);
-                DrawLine(Point2D(bounds.x, bounds.y + bounds.height),
-                         Point2D(bounds.x, bounds.y), style.borderColor);
+                DrawLine(bounds.x, bounds.y,
+                         bounds.x + bounds.width, bounds.y, style.borderColor);
+                DrawLine(bounds.x + bounds.width, bounds.y,
+                         bounds.x + bounds.width, bounds.y + bounds.height, style.borderColor);
+                DrawLine(bounds.x + bounds.width, bounds.y + bounds.height,
+                         bounds.x, bounds.y + bounds.height, style.borderColor);
+                DrawLine(bounds.x, bounds.y + bounds.height,
+                         bounds.x, bounds.y, style.borderColor);
             }
 
             // Draw text (FIXED CENTERING)
@@ -204,15 +204,15 @@ namespace UltraCanvas {
             // Draw focus indicator
             if (IsFocused()) {
                 // Simple focus rectangle
-                Rect2D focusRect(bounds.x + 2, bounds.y + 2, bounds.width - 4, bounds.height - 4);
-                DrawLine(Point2D(focusRect.x, focusRect.y),
-                         Point2D(focusRect.x + focusRect.width, focusRect.y), Colors::Blue);
-                DrawLine(Point2D(focusRect.x + focusRect.width, focusRect.y),
-                         Point2D(focusRect.x + focusRect.width, focusRect.y + focusRect.height), Colors::Blue);
-                DrawLine(Point2D(focusRect.x + focusRect.width, focusRect.y + focusRect.height),
-                         Point2D(focusRect.x, focusRect.y + focusRect.height), Colors::Blue);
-                DrawLine(Point2D(focusRect.x, focusRect.y + focusRect.height),
-                         Point2D(focusRect.x, focusRect.y), Colors::Blue);
+                Rect2Di focusRect(bounds.x + 2, bounds.y + 2, bounds.width - 4, bounds.height - 4);
+                DrawLine(focusRect.x, focusRect.y,
+                         focusRect.x + focusRect.width, focusRect.y, Colors::Blue);
+                DrawLine(focusRect.x + focusRect.width, focusRect.y,
+                         focusRect.x + focusRect.width, focusRect.y + focusRect.height, Colors::Blue);
+                DrawLine(focusRect.x + focusRect.width, focusRect.y + focusRect.height,
+                         focusRect.x, focusRect.y + focusRect.height, Colors::Blue);
+                DrawLine(focusRect.x, focusRect.y + focusRect.height,
+                         focusRect.x, focusRect.y, Colors::Blue);
             }
         }
 

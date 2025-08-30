@@ -98,7 +98,7 @@ namespace UltraCanvas {
         SliderState currentState = SliderState::Normal;
         bool isDragging = false;
         bool showTooltip = false;
-        Point2D dragStartPos;
+        Point2Di dragStartPos;
         float dragStartValue = 0.0f;
 
         // ===== TEXT FORMATTING =====
@@ -225,7 +225,7 @@ namespace UltraCanvas {
             ULTRACANVAS_RENDER_SCOPE();
 
             UpdateSliderState();
-            Rect2D bounds = GetBounds();
+            Rect2Di bounds = GetBounds();
 
             // ===== RENDER BASED ON STYLE =====
             switch (sliderStyle) {
@@ -306,11 +306,11 @@ namespace UltraCanvas {
         }
 
         // ===== RENDERING METHODS =====
-        void RenderLinearSlider(const Rect2D& bounds) {
+        void RenderLinearSlider(const Rect2Di& bounds) {
             bool isVertical = (orientation == SliderOrientation::Vertical);
 
             // Calculate track rectangle
-            Rect2D trackRect = GetTrackRect(bounds, isVertical);
+            Rect2Di trackRect = GetTrackRect(bounds, isVertical);
 
             // Draw track background
             SetFillColor(GetCurrentTrackColor());
@@ -322,46 +322,46 @@ namespace UltraCanvas {
             DrawRectangle(trackRect);
 
             // Calculate and draw active track
-            Rect2D activeRect = GetActiveTrackRect(trackRect, isVertical);
+            Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
             if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
                 SetFillColor(style.activeTrackColor);
                 FillRectangle(activeRect);
             }
 
             // Draw handle
-            Point2D handlePos = GetHandlePosition(bounds, isVertical);
+            Point2Di handlePos = GetHandlePosition(bounds, isVertical);
             RenderHandle(handlePos);
         }
 
-        void RenderRoundedSlider(const Rect2D& bounds) {
+        void RenderRoundedSlider(const Rect2Di& bounds) {
             bool isVertical = (orientation == SliderOrientation::Vertical);
 
             // Calculate track rectangle
-            Rect2D trackRect = GetTrackRect(bounds, isVertical);
+            Rect2Di trackRect = GetTrackRect(bounds, isVertical);
 
             // Draw track background
             SetFillColor(GetCurrentTrackColor());
-            FillRoundedRect(trackRect, style.cornerRadius);
+            FillRoundedRectangle(trackRect, style.cornerRadius);
 
             // Draw track border
             SetStrokeColor(style.handleBorderColor);
             SetStrokeWidth(1.0f);
-            DrawRoundedRect(trackRect, style.cornerRadius);
+            DrawRoundedRectangle(trackRect, style.cornerRadius);
 
             // Calculate and draw active track
-            Rect2D activeRect = GetActiveTrackRect(trackRect, isVertical);
+            Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
             if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
                 SetFillColor(style.activeTrackColor);
-                FillRoundedRect(activeRect, style.cornerRadius);
+                FillRoundedRectangle(activeRect, style.cornerRadius);
             }
 
             // Draw handle
-            Point2D handlePos = GetHandlePosition(bounds, isVertical);
+            Point2Di handlePos = GetHandlePosition(bounds, isVertical);
             RenderRoundedHandle(handlePos);
         }
 
-        void RenderCircularSlider(const Rect2D& bounds) {
-            Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+        void RenderCircularSlider(const Rect2Di& bounds) {
+            Point2Di center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
             float radius = std::min(bounds.width, bounds.height) / 2 - style.handleSize / 2 - 2;
 
             // Draw track circle
@@ -378,19 +378,19 @@ namespace UltraCanvas {
                 SetStrokeColor(style.activeTrackColor);
                 SetStrokeWidth(style.trackHeight);
                 IRenderContext* ctx = GetRenderContext();
-                if (ctx) ctx->DrawArc(center, radius, startAngle, endAngle);
+                if (ctx) ctx->DrawArc(center.x, center.y, radius, startAngle, endAngle);
             }
 
             // Draw handle
             float handleAngle = startAngle + percentage * 2 * M_PI;
-            Point2D handlePos(
+            Point2Di handlePos(
                     center.x + std::cos(handleAngle) * radius,
                     center.y + std::sin(handleAngle) * radius
             );
             RenderHandle(handlePos);
         }
 
-        void RenderProgressSlider(const Rect2D& bounds) {
+        void RenderProgressSlider(const Rect2Di& bounds) {
             // Similar to linear but without handle
             bool isVertical = (orientation == SliderOrientation::Vertical);
 
@@ -399,7 +399,7 @@ namespace UltraCanvas {
             FillRectangle(bounds);
 
             // Draw progress
-            Rect2D progressRect = GetActiveTrackRect(bounds, isVertical);
+            Rect2Di progressRect = GetActiveTrackRect(bounds, isVertical);
             if ((isVertical && progressRect.height > 0) || (!isVertical && progressRect.width > 0)) {
                 SetFillColor(style.activeTrackColor);
                 FillRectangle(progressRect);
@@ -411,15 +411,15 @@ namespace UltraCanvas {
             DrawRectangle(bounds);
         }
 
-        void RenderRangeSlider(const Rect2D& bounds) {
+        void RenderRangeSlider(const Rect2Di& bounds) {
             // For now, render as normal slider
             // TODO: Implement proper dual-handle range slider
             RenderLinearSlider(bounds);
         }
 
-        void RenderHandle(const Point2D& position) {
+        void RenderHandle(const Point2Di& position) {
             float handleRadius = style.handleSize / 2;
-            Rect2D handleRect(
+            Rect2Di handleRect(
                     position.x - handleRadius,
                     position.y - handleRadius,
                     style.handleSize,
@@ -429,17 +429,17 @@ namespace UltraCanvas {
             // Fill handle
             SetFillColor(GetCurrentHandleColor());
             IRenderContext* ctx = GetRenderContext();
-            if (ctx) ctx->FillEllipse(handleRect);
+            if (ctx) ctx->FillEllipse(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
 
             // Draw handle border
             SetStrokeColor(style.handleBorderColor);
             SetStrokeWidth(style.borderWidth);
-            if (ctx) ctx->DrawEllipse(handleRect);
+            if (ctx) ctx->DrawEllipse(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
         }
 
-        void RenderRoundedHandle(const Point2D& position) {
+        void RenderRoundedHandle(const Point2Di& position) {
             float handleRadius = style.handleSize / 2;
-            Rect2D handleRect(
+            Rect2Di handleRect(
                     position.x - handleRadius,
                     position.y - handleRadius,
                     style.handleSize,
@@ -448,76 +448,75 @@ namespace UltraCanvas {
 
             // Fill handle
             SetFillColor(GetCurrentHandleColor());
-            FillRoundedRect(handleRect, handleRadius);
+            FillRoundedRectangle(handleRect, handleRadius);
 
             // Draw handle border
             SetStrokeColor(style.handleBorderColor);
             SetStrokeWidth(style.borderWidth);
-            DrawRoundedRect(handleRect, handleRadius);
+            DrawRoundedRectangle(handleRect, handleRadius);
         }
 
-        void RenderValueDisplay(const Rect2D& bounds) {
+        void RenderValueDisplay(const Rect2Di& bounds) {
             std::string text = GetDisplayText();
             if (text.empty()) return;
 
             SetTextColor(IsEnabled() ? style.textColor : style.disabledTextColor);
             SetFont(style.fontFamily, style.fontSize);
 
-            IRenderContext* ctx = GetRenderContext();
-            Point2D textSize = ctx ? ctx->MeasureText(text) : Point2D(0, 0);
-            Point2D textPos = CalculateTextPosition(bounds, textSize);
+            Point2Di textSize = MeasureText(text);
+            Point2Di textPos = CalculateTextPosition(bounds, textSize);
 
             // Draw background for tooltip
             if (valueDisplay == SliderValueDisplay::Tooltip && showTooltip) {
-                Rect2D tooltipBg(textPos.x - 4, textPos.y - textSize.y - 2,
+                Rect2Di tooltipBg(textPos.x - 4, textPos.y - textSize.y - 2,
                                  textSize.x + 8, textSize.y + 4);
                 SetFillColor(Color(255, 255, 200, 240));
-                FillRoundedRect(tooltipBg, 3.0f);
+                FillRoundedRectangle(tooltipBg, 3.0f);
                 SetStrokeColor(Color(180, 180, 180));
                 SetStrokeWidth(1.0f);
-                DrawRoundedRect(tooltipBg, 3.0f);
+                DrawRoundedRectangle(tooltipBg, 3.0f);
             }
 
             DrawText(text, textPos);
         }
 
         // ===== HELPER METHODS =====
-        Rect2D GetTrackRect(const Rect2D& bounds, bool isVertical) const {
+        Rect2Di GetTrackRect(const Rect2Di& bounds, bool isVertical) const {
             if (isVertical) {
                 float trackX = bounds.x + (bounds.width - style.trackHeight) / 2;
-                return Rect2D(trackX, bounds.y + style.handleSize / 2,
-                              style.trackHeight, bounds.height - style.handleSize);
+                return Rect2Di(trackX, bounds.y + style.handleSize / 2,
+                               style.trackHeight, bounds.height - style.handleSize);
             } else {
                 float trackY = bounds.y + (bounds.height - style.trackHeight) / 2;
-                return Rect2D(bounds.x + style.handleSize / 2, trackY,
+                return Rect2Di(bounds.x + style.handleSize / 2, trackY,
                               bounds.width - style.handleSize, style.trackHeight);
             }
         }
 
-        Rect2D GetActiveTrackRect(const Rect2D& trackRect, bool isVertical) const {
+        Rect2Di GetActiveTrackRect(const Rect2Di& trackRect, bool isVertical) const {
             float percentage = GetPercentage();
 
             if (isVertical) {
                 float activeHeight = trackRect.height * percentage;
-                return Rect2D(trackRect.x, trackRect.y + trackRect.height - activeHeight,
-                              trackRect.width, activeHeight);
+                return Rect2Di(trackRect.x, trackRect.y + trackRect.height - activeHeight,
+                               trackRect.width, activeHeight);
             } else {
                 float activeWidth = trackRect.width * percentage;
-                return Rect2D(trackRect.x, trackRect.y, activeWidth, trackRect.height);
+                return Rect2Di(trackRect.x, trackRect.y, activeWidth, trackRect.height);
             }
         }
 
-        Point2D GetHandlePosition(const Rect2D& bounds, bool isVertical) const {
+        Point2Di GetHandlePosition(const Rect2Di& bounds, bool isVertical) const {
             float percentage = GetPercentage();
 
             if (isVertical) {
                 float handleY = bounds.y + bounds.height - style.handleSize / 2 -
                                 percentage * (bounds.height - style.handleSize);
-                return Point2D(bounds.x + bounds.width / 2, handleY);
+                return Point2Di(bounds.x + bounds.width / 2, handleY);
             } else {
                 float handleX = bounds.x + style.handleSize / 2 +
                                 percentage * (bounds.width - style.handleSize);
-                return Point2D(handleX, bounds.y + bounds.height / 2);
+                return Point2Di(handleX, bounds.y + bounds.height / 2);
             }
         }
 
@@ -566,22 +565,22 @@ namespace UltraCanvas {
             }
         }
 
-        Point2D CalculateTextPosition(const Rect2D& bounds, const Point2D& textSize) const {
+        Point2Di CalculateTextPosition(const Rect2Di& bounds, const Point2Di& textSize) const {
             if (valueDisplay == SliderValueDisplay::Tooltip) {
-                Point2D handlePos = GetHandlePosition(bounds, orientation == SliderOrientation::Vertical);
-                return Point2D(handlePos.x - textSize.x / 2, handlePos.y - style.handleSize / 2 - 8);
+                Point2Di handlePos = GetHandlePosition(bounds, orientation == SliderOrientation::Vertical);
+                return Point2Di(handlePos.x - textSize.x / 2, handlePos.y - style.handleSize / 2 - 8);
             }
 
             if (orientation == SliderOrientation::Vertical) {
-                return Point2D(bounds.x + bounds.width + 8, bounds.y + bounds.height / 2 + textSize.y / 2);
+                return Point2Di(bounds.x + bounds.width + 8, bounds.y + bounds.height / 2 + textSize.y / 2);
             } else {
-                return Point2D(bounds.x + bounds.width / 2 - textSize.x / 2, bounds.y - 8);
+                return Point2Di(bounds.x + bounds.width / 2 - textSize.x / 2, bounds.y - 8);
             }
         }
 
         // ===== EVENT HANDLERS =====
         bool HandleMouseDown(const UCEvent& event) {
-            Point2D mousePos(event.x, event.y);
+            Point2Di mousePos(event.x, event.y);
 
             if (!Contains(mousePos)) return false;
             if (!IsEnabled()) return false;
@@ -599,7 +598,7 @@ namespace UltraCanvas {
         }
 
         bool HandleMouseMove(const UCEvent& event) {
-            Point2D mousePos(event.x, event.y);
+            Point2Di mousePos(event.x, event.y);
 
             if (isDragging) {
                 UpdateValueFromPosition(mousePos);
@@ -665,8 +664,8 @@ namespace UltraCanvas {
             return false;
         }
 
-        void UpdateValueFromPosition(const Point2D& pos) {
-            Rect2D bounds = GetBounds();
+        void UpdateValueFromPosition(const Point2Di& pos) {
+            Rect2Di bounds = GetBounds();
             float newValue;
 
             if (orientation == SliderOrientation::Vertical) {

@@ -510,8 +510,8 @@ namespace UltraCanvas {
                 pixelBuffer = cachedFrames[frameIndex];
 
                 // Draw a simple rectangle representing the background
-                UltraCanvas::SetFillColor(Colors::Black);
-                UltraCanvas::FillRect(Rect2D(GetX(), GetY(), GetWidth(), GetHeight()));
+                SetFillColor(Colors::Black);
+                FillRectangle(Rect2Di(GetX(), GetY(), GetWidth(), GetHeight()));
             }
         }
 
@@ -519,7 +519,7 @@ namespace UltraCanvas {
             if (!overlayGraphic.enabled || overlayGraphic.imagePath.empty()) return;
 
             // Calculate position and size
-            Point2D position = CalculateOverlayPosition();
+            Point2Di position = CalculateOverlayPosition();
             float animatedOpacity = overlayGraphic.opacity;
             float animatedScale = overlayGraphic.scale;
 
@@ -530,14 +530,14 @@ namespace UltraCanvas {
 
             // TODO: Load and draw the actual image
             // For now, draw a placeholder rectangle
-            UltraCanvas::SetFillColor(Color(255, 255, 255, (uint8_t)(animatedOpacity * 255)));
+            SetFillColor(Color(255, 255, 255, (uint8_t)(animatedOpacity * 255)));
             int scaledWidth = (int)(100 * animatedScale); // Placeholder size
             int scaledHeight = (int)(50 * animatedScale);
-            UltraCanvas::FillRect(Rect2D(position.x, position.y, scaledWidth, scaledHeight));
+            FillRectangle(Rect2Di(position.x, position.y, scaledWidth, scaledHeight));
         }
 
-        Point2D CalculateOverlayPosition() {
-            Point2D position;
+        Point2Di CalculateOverlayPosition() {
+            Point2Di position;
             int scaledWidth = 100;  // Placeholder - would be actual image width * scale
             int scaledHeight = 50;  // Placeholder - would be actual image height * scale
 
@@ -592,7 +592,7 @@ namespace UltraCanvas {
             return position;
         }
 
-        void ApplyOverlayAnimation(Point2D& position, float& opacity, float& scale) {
+        void ApplyOverlayAnimation(Point2Di& position, float& opacity, float& scale) {
             auto elapsed = std::chrono::duration<float>(
                     std::chrono::steady_clock::now() - startTime).count();
             float phase = elapsed * overlayGraphic.animationSpeed;
@@ -642,8 +642,8 @@ namespace UltraCanvas {
                             (pixel >> 24) & 0xFF  // A
                     );
 
-                    UltraCanvas::SetFillColor(color);
-                    UltraCanvas::FillRect(Rect2D(GetX() + x, GetY() + y, 1, 1));
+                    SetFillColor(color);
+                    FillRectangle(Rect2Di(GetX() + x, GetY() + y, 1, 1));
                 }
             }
         }

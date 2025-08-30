@@ -846,7 +846,7 @@ private:
     void HandleKeyDown(const UCEvent& event) {
         if (!focusedNode) return;
         
-        switch (event.keyCode) {
+        switch (event.nativeKeyCode) {
             case 38: // Up arrow
                 NavigateUp();
                 break;

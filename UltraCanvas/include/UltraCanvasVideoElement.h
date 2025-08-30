@@ -796,7 +796,7 @@ private:
         if (currentFrame.data.empty() || currentFrame.width <= 0 || currentFrame.height <= 0) {
             // Draw placeholder or black background
             SetFillColor(Colors::Black);
-            DrawRect(videoRect);
+            DrawRectangle(videoRect);
             return;
         }
         
@@ -869,7 +869,7 @@ private:
         // This would need platform-specific implementation to render video frame data
         // For now, just draw a placeholder
         SetFillColor(Color(64, 64, 64));
-        DrawRect(destRect);
+        DrawRectangle(destRect);
         
         // Draw frame info text (for debugging)
         SetTextColor(Colors::White);
@@ -884,9 +884,9 @@ private:
         // Draw controls background
         SetFillColor(controlsStyle.backgroundColor);
         if (controlsStyle.cornerRadius > 0) {
-            DrawRoundedRect(controlsRect, controlsStyle.cornerRadius);
+            DrawRoundedRectangle(controlsRect, controlsStyle.cornerRadius);
         } else {
-            DrawRect(controlsRect);
+            DrawRectangle(controlsRect);
         }
         
         // Render control elements

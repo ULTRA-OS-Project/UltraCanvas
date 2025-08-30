@@ -438,7 +438,7 @@ public:
         
         // Draw background
         SetFillColor(controlsStyle.backgroundColor);
-        DrawRect(GetBounds());
+        DrawRectangle(GetBounds());
         
         if (!showControls) return;
         
@@ -588,14 +588,14 @@ private:
         
         // Background
         SetFillColor(controlsStyle.progressBackgroundColor);
-        DrawRect(progressBg);
+        DrawRectangle(progressBg);
         
         // Progress
         if (duration > 0.0f) {
             float progressWidth = (position / duration) * area.width;
             Rect2D progressBar(area.x, barY, progressWidth, controlsStyle.progressHeight);
             SetFillColor(controlsStyle.progressBarColor);
-            DrawRect(progressBar);
+            DrawRectangle(progressBar);
         }
         
         // Time labels
@@ -620,7 +620,7 @@ private:
         // Play/Pause button
         Rect2D playButton(currentX, buttonY, controlsStyle.buttonSize, controlsStyle.buttonSize);
         SetFillColor(controlsStyle.controlColor);
-        DrawRect(playButton);
+        DrawRectangle(playButton);
         
         // Draw play/pause icon (simplified)
         SetTextColor(controlsStyle.backgroundColor);
@@ -634,7 +634,7 @@ private:
         // Stop button
         Rect2D stopButton(currentX, buttonY, controlsStyle.buttonSize, controlsStyle.buttonSize);
         SetFillColor(controlsStyle.controlColor);
-        DrawRect(stopButton);
+        DrawRectangle(stopButton);
         
         DrawText("■", Point2D(currentX + 6, buttonY + 4));
         currentX += controlsStyle.buttonSize + 16;
@@ -649,12 +649,12 @@ private:
             // Volume slider
             Rect2D volumeBg(currentX, buttonY + 8, controlsStyle.volumeSliderWidth, 8);
             SetFillColor(controlsStyle.progressBackgroundColor);
-            DrawRect(volumeBg);
+            DrawRectangle(volumeBg);
             
             float volumeWidth = volume * controlsStyle.volumeSliderWidth;
             Rect2D volumeBar(currentX, buttonY + 8, volumeWidth, 8);
             SetFillColor(controlsStyle.progressBarColor);
-            DrawRect(volumeBar);
+            DrawRectangle(volumeBar);
         }
         
         return controlsStyle.buttonSize + 8;
@@ -674,7 +674,7 @@ private:
             float barY = y + vizHeight - barHeight;
             
             Rect2D bar(barX, barY, barWidth - 1, barHeight);
-            DrawRect(bar);
+            DrawRectangle(bar);
         }
     }
     

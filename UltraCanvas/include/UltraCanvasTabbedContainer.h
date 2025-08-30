@@ -339,7 +339,7 @@ public:
         
         // Draw container background
         SetFillColor(contentAreaColor);
-        DrawRect(GetBounds());
+        DrawRectangle(GetBounds());
         
         // Draw tab bar
         DrawTabBar();
@@ -615,7 +615,7 @@ private:
         
         // Draw tab bar background
         SetFillColor(tabBarColor);
-        DrawRect(tabBarBounds);
+        DrawRectangle(tabBarBounds);
         
         // Draw tab bar border
         SetStrokeColor(tabBorderColor);
@@ -708,7 +708,7 @@ private:
     
     void DrawClassicTab(const Rect2D& bounds, const Color& color, bool active) {
         SetFillColor(color);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         SetStrokeColor(tabBorderColor);
         SetStrokeWidth(1);
@@ -725,7 +725,7 @@ private:
     
     void DrawModernTab(const Rect2D& bounds, const Color& color, bool active) {
         SetFillColor(color);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         if (active) {
             // Draw accent line at bottom
@@ -740,14 +740,14 @@ private:
     
     void DrawFlatTab(const Rect2D& bounds, const Color& color, bool active) {
         SetFillColor(color);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
         
         // No borders for flat style
     }
     
     void DrawRoundedTab(const Rect2D& bounds, const Color& color, bool active) {
         SetFillColor(color);
-        DrawRoundedRect(bounds, 8);
+        DrawRoundedRectangle(bounds, 8);
         
         if (active) {
             SetStrokeColor(tabBorderColor);
@@ -791,7 +791,7 @@ private:
         
         // Draw content area background
         SetFillColor(contentAreaColor);
-        DrawRect(contentBounds);
+        DrawRectangle(contentBounds);
         
         // Draw content area border
         SetStrokeColor(tabBorderColor);
@@ -805,14 +805,14 @@ private:
         // Left/Up scroll button
         Rect2D leftButton(tabBarBounds.x + tabBarBounds.width - 40, tabBarBounds.y, 20, tabBarBounds.height);
         SetFillColor(buttonColor);
-        DrawRect(leftButton);
+        DrawRectangle(leftButton);
         SetStrokeColor(tabBorderColor);
         DrawRectOutline(leftButton);
         
         // Right/Down scroll button  
         Rect2D rightButton(tabBarBounds.x + tabBarBounds.width - 20, tabBarBounds.y, 20, tabBarBounds.height);
         SetFillColor(buttonColor);
-        DrawRect(rightButton);
+        DrawRectangle(rightButton);
         SetStrokeColor(tabBorderColor);
         DrawRectOutline(rightButton);
         

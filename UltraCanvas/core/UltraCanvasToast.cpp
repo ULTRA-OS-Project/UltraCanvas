@@ -538,7 +538,7 @@ namespace UltraCanvas {
         if (config.borderWidth > 0) {
             UltraCanvasRenderInterface::SetStrokeColor(config.borderColor);
             UltraCanvasRenderInterface::SetStrokeWidth(config.borderWidth);
-            UltraCanvasRenderInterface::DrawRect(GetBounds());
+            UltraCanvasRenderInterface::DrawRectangle(GetBounds());
         }
     }
 

@@ -349,7 +349,7 @@ namespace UltraCanvas {
             if (config.borderWidth > 0) {
                 SetStrokeColor(config.borderColor);
                 SetStrokeWidth(config.borderWidth);
-                DrawRect(bounds);
+                DrawRectangle(bounds);
             }
         }
 

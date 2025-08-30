@@ -8,7 +8,6 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderInterface.h"
 #include "UltraCanvasEvent.h"
-#include "UltraCanvasEventDispatcher.h"
 #include "UltraCanvasBaseWindow.h"
 #include <string>
 #include <vector>

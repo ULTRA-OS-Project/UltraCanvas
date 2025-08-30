@@ -973,7 +973,7 @@ inline std::shared_ptr<UltraCanvasParagraphContainer> CreateRichTextViewer(
 5. **Consistent naming** - follows UltraCanvas conventions
 
 ✅ **Linux Integration:**
-- Uses DrawRect(), DrawText(), SetFillColor() etc.
+- Uses DrawRectangle(), DrawText(), SetFillColor() etc.
 - All calls go through LinuxRenderContext automatically
 - No platform-specific code needed
 - Works with X11 event conversion

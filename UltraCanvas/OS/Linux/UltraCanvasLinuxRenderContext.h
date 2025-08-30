@@ -78,9 +78,9 @@ namespace UltraCanvas {
         virtual void ResetTransform() override;
 
         // Clipping
-        virtual void SetClipRect(const Rect2D& rect) override;
+        virtual void SetClipRect(float x, float y, float w, float h) override;
         virtual void ClearClipRect() override;
-        virtual void IntersectClipRect(const Rect2D& rect) override;
+        virtual void IntersectClipRect(float x, float y, float w, float h) override;
 
         // Style management
         virtual void SetDrawingStyle(const DrawingStyle& style) override;
@@ -91,38 +91,38 @@ namespace UltraCanvas {
         virtual float GetGlobalAlpha() const override;
 
         // Basic drawing
-        virtual void DrawLine(const Point2D& start, const Point2D& end) override;
-        virtual void DrawRectangle(const Rect2D& rect) override;
-        virtual void FillRectangle(const Rect2D& rect) override;
-        virtual void DrawRoundedRectangle(const Rect2D& rect, float radius) override;
-        virtual void FillRoundedRectangle(const Rect2D& rect, float radius) override;
-        virtual void DrawCircle(const Point2D& center, float radius) override;
-        virtual void FillCircle(const Point2D& center, float radius) override;
-        virtual void DrawEllipse(const Rect2D& rect) override;
-        virtual void FillEllipse(const Rect2D& rect) override;
-        virtual void DrawArc(const Point2D& center, float radius, float startAngle, float endAngle) override;
-        virtual void FillArc(const Point2D& center, float radius, float startAngle, float endAngle) override;
-        virtual void DrawBezier(const Point2D& start, const Point2D& cp1, const Point2D& cp2, const Point2D& end) override;
-        virtual void DrawPath(const std::vector<Point2D>& points, bool closePath = false) override;
-        virtual void FillPath(const std::vector<Point2D>& points) override;
+        virtual void DrawLine(float x, float y, float x1, float y1) override;
+        virtual void DrawRectangle(float x, float y, float w, float h) override;
+        virtual void FillRectangle(float x, float y, float w, float h) override;
+        virtual void DrawRoundedRectangle(float x, float y, float w, float h, float radius) override;
+        virtual void FillRoundedRectangle(float x, float y, float w, float h, float radius) override;
+        virtual void DrawCircle(float x, float y, float radius) override;
+        virtual void FillCircle(float x, float y, float radius) override;
+        virtual void DrawEllipse(float x, float y, float w, float h) override;
+        virtual void FillEllipse(float x, float y, float w, float h) override;
+        virtual void DrawArc(float x, float y, float radius, float startAngle, float endAngle) override;
+        virtual void FillArc(float x, float y, float radius, float startAngle, float endAngle) override;
+        virtual void DrawBezier(const Point2Df& start, const Point2Df& cp1, const Point2Df& cp2, const Point2Df& end) override;
+        virtual void DrawPath(const std::vector<Point2Df>& points, bool closePath = false) override;
+        virtual void FillPath(const std::vector<Point2Df>& points) override;
 
         // Text rendering
-        virtual void DrawText(const std::string& text, const Point2D& position) override;
-        virtual void DrawTextInRect(const std::string& text, const Rect2D& rect) override;
-        virtual Point2D MeasureText(const std::string& text) override;
+        virtual void DrawText(const std::string& text, float x, float y) override;
+        virtual void DrawTextInRect(const std::string& text, float x, float y, float w, float h) override;
+        virtual bool MeasureText(const std::string& text, int& w, int& h) override;
 
         // Image rendering
-        virtual void DrawImage(const std::string& imagePath, const Point2D& position) override;
-        virtual void DrawImage(const std::string& imagePath, const Rect2D& destRect) override;
-        virtual void DrawImage(const std::string& imagePath, const Rect2D& srcRect, const Rect2D& destRect) override;
+        virtual void DrawImage(const std::string& imagePath, float x, float y) override;
+        virtual void DrawImage(const std::string& imagePath, float x, float y, float w, float h) override;
+        virtual void DrawImage(const std::string& imagePath, const Rect2Df& srcRect, const Rect2Df& destRect) override;
 
         // ===== ENHANCED IMAGE RENDERING METHODS =====
         virtual bool IsImageFormatSupported(const std::string& filePath);
-        virtual Point2D GetImageDimensions(const std::string& imagePath);
+        virtual bool GetImageDimensions(const std::string& imagePath, int& w, int& h);
 
-        void DrawImageWithFilter(const std::string& imagePath, const Rect2D& destRect,
+        void DrawImageWithFilter(const std::string& imagePath, float x, float y, float w, float h,
                                  cairo_filter_t filter = CAIRO_FILTER_BILINEAR);
-        void DrawImageTiled(const std::string& imagePath, const Rect2D& fillRect);
+        void DrawImageTiled(const std::string& imagePath, float x, float y, float w, float h);
 
         // ===== IMAGE CACHE MANAGEMENT =====
         void ClearImageCache();
@@ -135,8 +135,8 @@ namespace UltraCanvas {
         bool ValidateContext() const;
 
         // Pixel operations
-        virtual void SetPixel(const Point2D& point, const Color& color) override;
-        virtual Color GetPixel(const Point2D& point) override;
+        virtual void SetPixel(const Point2Df& point, const Color& color) override;
+        virtual Color GetPixel(const Point2Df& point) override;
         virtual void Clear(const Color& color) override;
 
         // Utility functions
@@ -163,13 +163,16 @@ namespace UltraCanvas {
     // ===== CONVENIENCE FUNCTIONS FOR IMAGE RENDERING =====
 
     // Load image and get dimensions without rendering
-    inline Point2D GetImageDimensions(const std::string& imagePath) {
+    inline Point2Df GetImageDimensions(const std::string& imagePath) {
         // This would typically use the current render context
         IRenderContext* ctx = GetRenderContext();
         if (auto linuxCtx = dynamic_cast<LinuxRenderContext*>(ctx)) {
-            return linuxCtx->GetImageDimensions(imagePath);
+            int w, h;
+            if (linuxCtx->GetImageDimensions(imagePath, w, h)) {
+                return Point2Df(w, h);
+            }
         }
-        return Point2D(0, 0);
+        return Point2Df(0, 0);
     }
 
     // Check if image format is supported
@@ -182,26 +185,26 @@ namespace UltraCanvas {
     }
 
     // Draw image with high-quality filtering
-    inline void DrawImageHighQuality(const std::string& imagePath, const Rect2D& destRect) {
+    inline void DrawImageHighQuality(const std::string& imagePath, const Rect2Df& destRect) {
         IRenderContext* ctx = GetRenderContext();
         if (auto linuxCtx = dynamic_cast<LinuxRenderContext*>(ctx)) {
-            linuxCtx->DrawImageWithFilter(imagePath, destRect, CAIRO_FILTER_BEST);
+            linuxCtx->DrawImageWithFilter(imagePath, destRect.x, destRect.y, destRect.width, destRect.height, CAIRO_FILTER_BEST);
         }
     }
 
     // Draw image with pixelated (nearest neighbor) filtering
-    inline void DrawImagePixelated(const std::string& imagePath, const Rect2D& destRect) {
+    inline void DrawImagePixelated(const std::string& imagePath, const Rect2Df& destRect) {
         IRenderContext* ctx = GetRenderContext();
         if (auto linuxCtx = dynamic_cast<LinuxRenderContext*>(ctx)) {
-            linuxCtx->DrawImageWithFilter(imagePath, destRect, CAIRO_FILTER_NEAREST);
+            linuxCtx->DrawImageWithFilter(imagePath, destRect.x, destRect.y, destRect.width, destRect.height, CAIRO_FILTER_NEAREST);
         }
     }
 
     // Draw repeating background image
-    inline void DrawImageBackground(const std::string& imagePath, const Rect2D& area) {
+    inline void DrawImageBackground(const std::string& imagePath, const Rect2Df& area) {
         IRenderContext* ctx = GetRenderContext();
         if (auto linuxCtx = dynamic_cast<LinuxRenderContext*>(ctx)) {
-            linuxCtx->DrawImageTiled(imagePath, area);
+            linuxCtx->DrawImageTiled(imagePath, area.x, area.y, area.width, area.height);
         }
     }
 } // namespace UltraCanvas

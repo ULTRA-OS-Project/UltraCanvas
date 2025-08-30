@@ -240,19 +240,19 @@ namespace UltraCanvas {
         Color borderColor = GetBorderColor();
         Color textColor = GetTextColor();
 
-        Rect2D bounds = GetBounds();
+        Rect2Di bounds = GetBounds();
 
         // Draw background
         SetFillColor(backgroundColor);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
 
         // Draw border
         SetStrokeColor(borderColor);
         SetStrokeWidth(style.borderWidth);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
 
         // Get text area (excluding padding)
-        Rect2D textArea = GetTextArea();
+        Rect2Df textArea = GetTextArea();
 
         // Set clipping for text area ONLY
         SetClipRect(textArea);
@@ -327,7 +327,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::UpdateScrollOffset() {
-        Rect2D textArea = GetTextArea();
+        Rect2Df textArea = GetTextArea();
         float caretX = GetCaretXPosition();
 
         // Add some padding around caret for better UX
@@ -386,17 +386,26 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    Rect2D UltraCanvasTextInput::GetTextArea() const {
-        Rect2D bounds = GetBounds();
-        return Rect2D(
-                bounds.x + style.paddingLeft,
-                bounds.y + style.paddingTop,
-                bounds.width - style.paddingLeft - style.paddingRight,
-                bounds.height - style.paddingTop - style.paddingBottom
-        );
+    Rect2Df UltraCanvasTextInput::GetTextArea() const {
+        Rect2Di bounds = GetBounds();
+        if (showValidationState && (lastValidationResult.state == ValidationState::Valid || lastValidationResult.state != ValidationState::Invalid)) {
+            return Rect2Df(
+                    bounds.x + style.paddingLeft,
+                    bounds.y + style.paddingTop,
+                    bounds.width - style.paddingLeft - style.paddingRight - 20,
+                    bounds.height - style.paddingTop - style.paddingBottom
+            );
+        } else {
+            return Rect2Df(
+                    bounds.x + style.paddingLeft,
+                    bounds.y + style.paddingTop,
+                    bounds.width - style.paddingLeft - style.paddingRight,
+                    bounds.height - style.paddingTop - style.paddingBottom
+            );
+        }
     }
 
-    void UltraCanvasTextInput::RenderText(const Rect2D &area, const Color &color) {
+    void UltraCanvasTextInput::RenderText(const Rect2Df &area, const Color &color) {
         std::string renderText = passwordMode ?
                                  std::string(text.length(), '*') : GetDisplayText();
 
@@ -413,7 +422,7 @@ namespace UltraCanvas {
 
         if (inputType == TextInputType::Multiline) {
             // Start at baseline position
-            Point2D textPos(area.x - scrollOffset, area.y + (style.fontSize * 0.8f));
+            Point2Di textPos(area.x - scrollOffset, area.y + (style.fontSize * 0.8f));
             RenderMultilineText(area, renderText, textPos);
         } else {
             // Match the baseline calculation used in GetCaretYPosition
@@ -422,12 +431,12 @@ namespace UltraCanvas {
             //float baselineY = centeredY + (style.fontSize * 0.8f);
             float baselineY = centeredY;
 
-            Point2D textPos(area.x - scrollOffset, baselineY);
+            Point2Di textPos(area.x - scrollOffset, baselineY);
             DrawText(renderText, textPos);
         }
     }
 
-    void UltraCanvasTextInput::RenderPlaceholder(const Rect2D &area) {
+    void UltraCanvasTextInput::RenderPlaceholder(const Rect2Df &area) {
         TextStyle placeholderStyle;
         placeholderStyle.fontFamily = style.fontFamily;
         placeholderStyle.fontSize = style.fontSize;
@@ -436,10 +445,10 @@ namespace UltraCanvas {
         placeholderStyle.alignment = style.textAlignment;
         SetTextStyle(placeholderStyle);
 
-        DrawText(placeholderText, Point2D(area.x, area.y));
+        DrawText(placeholderText, Point2Di(area.x, area.y));
     }
 
-    void UltraCanvasTextInput::RenderSelection(const Rect2D &area) {
+    void UltraCanvasTextInput::RenderSelection(const Rect2Df &area) {
         if (!HasSelection()) return;
 
         std::string displayText = GetDisplayText();
@@ -469,17 +478,17 @@ namespace UltraCanvas {
         float visibleEndX = std::min(selStartX + selWidth, area.x + area.width);
 
         if (visibleEndX > visibleStartX) {
-            Rect2D selectionRect(visibleStartX, selectionY, visibleEndX - visibleStartX, selectionHeight);
+            Rect2Df selectionRect(visibleStartX, selectionY, visibleEndX - visibleStartX, selectionHeight);
             SetFillColor(style.selectionColor);
-            DrawRect(selectionRect);
+            DrawRectangle(selectionRect);
         }
     }
 
-    void UltraCanvasTextInput::RenderCaret(const Rect2D &area) {
+    void UltraCanvasTextInput::RenderCaret(const Rect2Df &area) {
         if (!IsFocused() || !isCaretVisible) return;
 
         // FIXED: Calculate X position to match text rendering exactly
-        Rect2D textArea = GetTextArea();
+        Rect2Df textArea = GetTextArea();
         float caretX;
 
         if (text.empty() || caretPosition == 0) {
@@ -520,7 +529,7 @@ namespace UltraCanvas {
         float caretEndY = caretStartY + lineHeight;
 
         // Only hide if completely outside control bounds
-        Rect2D controlBounds = GetBounds();
+        Rect2Di controlBounds = GetBounds();
         if (caretX < controlBounds.x - 10 || caretX > controlBounds.x + controlBounds.width + 10) {
             return;
         }
@@ -530,12 +539,12 @@ namespace UltraCanvas {
 
         // Draw caret line with proper height and position
         DrawLine(
-                Point2D(caretX, caretStartY),
-                Point2D(caretX, caretEndY)
+                Point2Di(caretX, caretStartY),
+                Point2Di(caretX, caretEndY)
         );
     }
 
-    void UltraCanvasTextInput::RenderMultilineText(const Rect2D &area, const std::string &displayText, const Point2D &startPos) {
+    void UltraCanvasTextInput::RenderMultilineText(const Rect2Df &area, const std::string &displayText, const Point2Di &startPos) {
         // Split text into lines
         std::vector<std::string> lines;
         std::string currentLine;
@@ -556,13 +565,13 @@ namespace UltraCanvas {
         for (const auto& line : lines) {
             if (currentBaselineY > area.y + area.height + lineHeight) break;
             if (currentBaselineY >= area.y - lineHeight) {
-                DrawText(line, Point2D(startPos.x, currentBaselineY));
+                DrawText(line, Point2Di(startPos.x, currentBaselineY));
             }
             currentBaselineY += lineHeight;
         }
     }
 
-    void UltraCanvasTextInput::RenderValidationFeedback(const Rect2D &bounds) const {
+    void UltraCanvasTextInput::RenderValidationFeedback(const Rect2Di &bounds) const {
         Color feedbackColor;
 
         switch (lastValidationResult.state) {
@@ -582,30 +591,30 @@ namespace UltraCanvas {
         // Draw validation border
         SetStrokeColor(feedbackColor);
         SetStrokeWidth(2.0f);
-        DrawRect(bounds);
+        DrawRectangle(bounds);
 
         // Draw validation icon (simplified)
         if (lastValidationResult.state == ValidationState::Valid) {
             // Draw checkmark
-            Point2D iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2);
+            Point2Di iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2);
             SetStrokeColor(style.validBorderColor);
             SetStrokeWidth(2.0f);
-            DrawLine(iconPos, Point2D(iconPos.x + 4, iconPos.y + 4));
-            DrawLine(Point2D(iconPos.x + 4, iconPos.y + 4), Point2D(iconPos.x + 12, iconPos.y - 4));
+            DrawLine(iconPos, Point2Di(iconPos.x + 4, iconPos.y + 4));
+            DrawLine(Point2Di(iconPos.x + 4, iconPos.y + 4), Point2Di(iconPos.x + 12, iconPos.y - 4));
         } else if (lastValidationResult.state == ValidationState::Invalid) {
             // Draw X
-            Point2D iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2 - 6);
+            Point2Di iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2 - 6);
             SetStrokeColor(style.invalidBorderColor);
             SetStrokeWidth(2.0f);
-            DrawLine(iconPos, Point2D(iconPos.x + 12, iconPos.y + 12));
-            DrawLine(Point2D(iconPos.x, iconPos.y + 12), Point2D(iconPos.x + 12, iconPos.y));
+            DrawLine(iconPos, Point2Di(iconPos.x + 12, iconPos.y + 12));
+            DrawLine(Point2Di(iconPos.x, iconPos.y + 12), Point2Di(iconPos.x + 12, iconPos.y));
         }
     }
 
-    void UltraCanvasTextInput::DrawShadow(const Rect2D &bounds) {
+    void UltraCanvasTextInput::DrawShadow(const Rect2Di &bounds) {
         if (!style.showShadow) return;
 
-        Rect2D shadowRect(
+        Rect2Di shadowRect(
                 bounds.x + style.shadowOffset.x,
                 bounds.y + style.shadowOffset.y,
                 bounds.width,
@@ -613,7 +622,7 @@ namespace UltraCanvas {
         );
 
         SetFillColor(style.shadowColor);
-        DrawRect(shadowRect);
+        DrawRectangle(shadowRect);
     }
 
     std::vector<std::string> UltraCanvasTextInput::SplitTextIntoLines(const std::string &text, float maxWidth) {
@@ -663,8 +672,8 @@ namespace UltraCanvas {
         return wrappedLines;
     }
 
-    size_t UltraCanvasTextInput::GetTextPositionFromPoint(const Point2D& point) {
-        Rect2D textArea = GetTextArea();
+    size_t UltraCanvasTextInput::GetTextPositionFromPoint(const Point2Di& point) {
+        Rect2Df textArea = GetTextArea();
 
         if (inputType == TextInputType::Multiline) {
             // Calculate which line was clicked
@@ -765,7 +774,7 @@ namespace UltraCanvas {
 
         SetFocus(true);
 
-        Point2D clickPoint(event.x, event.y);
+        Point2Di clickPoint(event.x, event.y);
         size_t clickPosition = GetTextPositionFromPoint(clickPoint);
 
         if (event.shift && hasSelection) {
@@ -783,7 +792,7 @@ namespace UltraCanvas {
     bool UltraCanvasTextInput::HandleMouseMove(const UCEvent &event) {
         if (!isDragging) return false;
 
-        Point2D currentPoint(event.x, event.y);
+        Point2Di currentPoint(event.x, event.y);
         size_t currentPosition = GetTextPositionFromPoint(currentPoint);
         size_t startPosition = GetTextPositionFromPoint(dragStartPosition);
 
@@ -1133,7 +1142,7 @@ namespace UltraCanvas {
     }
 
     float UltraCanvasTextInput::GetLineYPosition(int lineNumber) const {
-        Rect2D textArea = GetTextArea();
+        Rect2Df textArea = GetTextArea();
         float lineHeight = style.fontSize * 1.2f;
         return textArea.y + (lineNumber * lineHeight);
     }
@@ -1208,7 +1217,7 @@ namespace UltraCanvas {
     }
 
     float UltraCanvasTextInput::GetCaretYPosition() {
-        Rect2D textArea = GetTextArea();
+        Rect2Df textArea = GetTextArea();
 
         if (inputType == TextInputType::Multiline) {
             // Count line number where caret is

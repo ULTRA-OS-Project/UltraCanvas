@@ -14,8 +14,8 @@ namespace UltraCanvas {
     UltraCanvasElement* UltraCanvasTooltipManager::hoveredElement = nullptr;
     UltraCanvasElement* UltraCanvasTooltipManager::tooltipSource = nullptr;
     std::string UltraCanvasTooltipManager::currentText;
-    Point2D UltraCanvasTooltipManager::tooltipPosition;
-    Point2D UltraCanvasTooltipManager::cursorPosition;
+    Point2Di UltraCanvasTooltipManager::tooltipPosition;
+    Point2Di UltraCanvasTooltipManager::cursorPosition;
     bool UltraCanvasTooltipManager::visible = false;
     bool UltraCanvasTooltipManager::pendingShow = false;
 
@@ -25,15 +25,15 @@ namespace UltraCanvas {
     float UltraCanvasTooltipManager::hideDelay = 0.1f;
 
     TooltipStyle UltraCanvasTooltipManager::style;
-    Point2D UltraCanvasTooltipManager::tooltipSize;
+    Point2Di UltraCanvasTooltipManager::tooltipSize;
     std::vector<std::string> UltraCanvasTooltipManager::wrappedLines;
 
     bool UltraCanvasTooltipManager::enabled = true;
     bool UltraCanvasTooltipManager::debugMode = false;
-    Rect2D UltraCanvasTooltipManager::screenBounds = Rect2D(0, 0, 1920, 1080);
+    Rect2Di UltraCanvasTooltipManager::screenBounds = Rect2Di(0, 0, 1920, 1080);
 
     void UltraCanvasTooltipManager::ShowTooltip(UltraCanvasElement *element, const std::string &text,
-                                                const Point2D &position) {
+                                                const Point2Di &position) {
         if (!enabled || !element || text.empty()) return;
 
         // If already showing for this element, just update text
@@ -128,7 +128,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTooltipManager::ShowImmediately(UltraCanvasElement *element, const std::string &text,
-                                                    const Point2D &position) {
+                                                    const Point2Di &position) {
         ShowTooltip(element, text, position);
         visible = true;
         pendingShow = false;
@@ -169,7 +169,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTooltipManager::UpdateCursorPosition(const Point2D &position) {
+    void UltraCanvasTooltipManager::UpdateCursorPosition(const Point2Di &position) {
         cursorPosition = position;
 
         if (visible && style.followCursor) {
@@ -178,7 +178,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTooltipManager::OnElementHover(UltraCanvasElement *element, const std::string &tooltipText,
-                                                   const Point2D &mousePosition) {
+                                                   const Point2Di &mousePosition) {
         UpdateCursorPosition(mousePosition);
 
         if (hoveredElement != element) {
@@ -223,8 +223,8 @@ namespace UltraCanvas {
         tooltipSize.y = totalHeight + style.paddingTop + style.paddingBottom;
 
         // Ensure minimum size
-        tooltipSize.x = std::max(tooltipSize.x, 20.0f);
-        tooltipSize.y = std::max(tooltipSize.y, 15.0f);
+        tooltipSize.x = std::max(tooltipSize.x, 20);
+        tooltipSize.y = std::max(tooltipSize.y, 15);
     }
 
     void UltraCanvasTooltipManager::UpdateTooltipPosition() {
@@ -306,7 +306,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTooltipManager::DrawShadow() {
-        Rect2D shadowRect(
+        Rect2Di shadowRect(
                 tooltipPosition.x + style.shadowOffset.x,
                 tooltipPosition.y + style.shadowOffset.y,
                 tooltipSize.x,
@@ -319,15 +319,15 @@ namespace UltraCanvas {
             shadowStyle.fillMode = FillMode::Solid;
             shadowStyle.fillColor = style.shadowColor;
             shadowStyle.hasStroke = false;
-            GetRenderContext()->SetDrawingStyle(shadowStyle);
-            GetRenderContext()->DrawRoundedRectangle(shadowRect, style.cornerRadius);
+            SetDrawingStyle(shadowStyle);
+            DrawRoundedRectangle(shadowRect, style.cornerRadius);
         } else {
-            UltraCanvas::DrawFilledRect(shadowRect, style.shadowColor);
+            DrawFilledRectangle(shadowRect, style.shadowColor);
         }
     }
 
     void UltraCanvasTooltipManager::DrawBackground() {
-        Rect2D bgRect(tooltipPosition.x, tooltipPosition.y, tooltipSize.x, tooltipSize.y);
+        Rect2Di bgRect(tooltipPosition.x, tooltipPosition.y, tooltipSize.x, tooltipSize.y);
 
         if (style.cornerRadius > 0) {
             SetFillColor(style.backgroundColor);
@@ -335,15 +335,15 @@ namespace UltraCanvas {
             bgStyle.fillMode = FillMode::Solid;
             bgStyle.fillColor = style.backgroundColor;
             bgStyle.hasStroke = false;
-            GetRenderContext()->SetDrawingStyle(bgStyle);
-            GetRenderContext()->DrawRoundedRectangle(bgRect, style.cornerRadius);
+            SetDrawingStyle(bgStyle);
+            DrawRoundedRectangle(bgRect, style.cornerRadius);
         } else {
-            UltraCanvas::DrawFilledRect(bgRect, style.backgroundColor);
+            DrawFilledRectangle(bgRect, style.backgroundColor);
         }
     }
 
     void UltraCanvasTooltipManager::DrawBorder() {
-        Rect2D borderRect(tooltipPosition.x, tooltipPosition.y, tooltipSize.x, tooltipSize.y);
+        Rect2Di borderRect(tooltipPosition.x, tooltipPosition.y, tooltipSize.x, tooltipSize.y);
 
         if (style.cornerRadius > 0) {
             SetStrokeColor(style.borderColor);
@@ -353,10 +353,10 @@ namespace UltraCanvas {
             borderStyle.hasStroke = true;
             borderStyle.strokeColor = style.borderColor;
             borderStyle.strokeWidth = style.borderWidth;
-            GetRenderContext()->SetDrawingStyle(borderStyle);
-            GetRenderContext()->DrawRoundedRectangle(borderRect, style.cornerRadius);
+            SetDrawingStyle(borderStyle);
+            DrawRoundedRectangle(borderRect, style.cornerRadius);
         } else {
-            UltraCanvas::DrawFilledRect(borderRect, Colors::Transparent, style.borderColor, style.borderWidth);
+            DrawFilledRectangle(borderRect, Colors::Transparent, style.borderColor, style.borderWidth);
         }
     }
 
@@ -373,7 +373,7 @@ namespace UltraCanvas {
                 continue;
             }
 
-            UltraCanvas::DrawText(line, Point2D(textX, textY));
+            UltraCanvas::DrawText(line, Point2Di(textX, textY));
             textY += style.fontSize * 1.2f;
         }
     }

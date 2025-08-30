@@ -366,14 +366,14 @@ public:
         // Draw background
         if (backgroundColor != Colors::Transparent) {
             SetFillColor(backgroundColor);
-            DrawRect(bounds);
+            DrawRectangle(bounds);
         }
         
         // Draw border
         if (showBorder) {
             SetStrokeColor(borderColor);
             SetStrokeWidth(static_cast<float>(borderWidth));
-            DrawRect(bounds);  // Draw border as stroked rectangle
+            DrawRectangle(bounds);  // Draw border as stroked rectangle
         }
         
         // Calculate content area
@@ -580,7 +580,7 @@ private:
         if (run.backgroundColor != Colors::Transparent) {
             Point2D textSize = run.Measure();
             SetFillColor(run.backgroundColor);
-            DrawRect(Rect2D(x, y - run.fontSize, textSize.x, textSize.y));
+            DrawRectangle(Rect2D(x, y - run.fontSize, textSize.x, textSize.y));
         }
         
         // Draw shadow if enabled
@@ -754,7 +754,7 @@ inline void RenderStyledParagraph(const StyledParagraph& para, int x, int y) {
 
 ✅ **Fixed Function Dependencies**:
 - MeasureTextWidth() → GetTextExtents()
-- DrawRectOutline() → SetStrokeColor() + DrawRect()
+- DrawRectOutline() → SetStrokeColor() + DrawRectangle()
 - ResetClip() → ClearClipRect()
 - MeasureText() → GetTextExtents()
 

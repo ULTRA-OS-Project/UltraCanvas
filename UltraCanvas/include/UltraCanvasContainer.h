@@ -20,7 +20,7 @@ namespace UltraCanvas {
 // ===== CONTAINER STYLES =====
     struct ContainerStyle {
         // Scrollbar settings
-        float scrollbarWidth = 16.0f;
+        int scrollbarWidth = 16;
         Color scrollbarTrackColor = Color(240, 240, 240, 255);
         Color scrollbarThumbColor = Color(192, 192, 192, 255);
         Color scrollbarThumbHoverColor = Color(160, 160, 160, 255);
@@ -29,29 +29,29 @@ namespace UltraCanvas {
         // Border and background
         Color borderColor = Color(200, 200, 200, 255);
         Color backgroundColor = Color(255, 255, 255, 255);
-        float borderWidth = 1.0f;
+        int borderWidth = 1;
 
         // Padding for content area
-        float paddingLeft = 5.0f;
-        float paddingTop = 5.0f;
-        float paddingRight = 5.0f;
-        float paddingBottom = 5.0f;
+        int paddingLeft = 5;
+        int paddingTop = 5;
+        int paddingRight = 5;
+        int paddingBottom = 5;
 
         // Scrolling behavior
         bool autoHideScrollbars = true;
         bool smoothScrolling = true;
-        float scrollSpeed = 20.0f;
+        int scrollSpeed = 20;
         bool enableVerticalScrolling = true;
         bool enableHorizontalScrolling = true;
     };
 
 // ===== ENHANCED SCROLL STATE =====
     struct ScrollState {
-        float verticalPosition = 0.0f;      // Current vertical scroll position
-        float horizontalPosition = 0.0f;    // Current horizontal scroll position
+        int verticalPosition = 0;      // Current vertical scroll position
+        int horizontalPosition = 0;    // Current horizontal scroll position
 
-        float maxVerticalScroll = 0.0f;     // Maximum vertical scroll
-        float maxHorizontalScroll = 0.0f;   // Maximum horizontal scroll
+        int maxVerticalScroll = 0;     // Maximum vertical scroll
+        int maxHorizontalScroll = 0;   // Maximum horizontal scroll
 
         bool showVerticalScrollbar = false;
         bool showHorizontalScrollbar = false;
@@ -59,9 +59,9 @@ namespace UltraCanvas {
         // Enhanced drag state for scrollbar interaction
         bool draggingVertical = false;
         bool draggingHorizontal = false;
-        float dragStartPosition = 0.0f;
-        float dragStartScroll = 0.0f;
-        Point2D dragStartMouse = Point2D(0, 0);
+        int dragStartPosition = 0;
+        int dragStartScroll = 0;
+        Point2Di dragStartMouse = Point2Di(0, 0);
 
         // Enhanced hover state for visual feedback
         bool hoveringVerticalScrollbar = false;
@@ -70,14 +70,14 @@ namespace UltraCanvas {
         bool hoveringHorizontalThumb = false;
 
         // Smooth scrolling animation
-        float targetVerticalPosition = 0.0f;
-        float targetHorizontalPosition = 0.0f;
+        int targetVerticalPosition = 0;
+        int targetHorizontalPosition = 0;
         bool animatingScroll = false;
-        float scrollAnimationSpeed = 8.0f;
+        int scrollAnimationSpeed = 8;
 
         // Content size tracking
-        float contentWidth = 0.0f;
-        float contentHeight = 0.0f;
+        int contentWidth = 0;
+        int contentHeight = 0;
     };
 
 // ===== ENHANCED CONTAINER CLASS =====
@@ -88,17 +88,17 @@ namespace UltraCanvas {
         ScrollState scrollState;
 
         // Enhanced scrollbar rectangles
-        Rect2D verticalScrollbarRect;
-        Rect2D horizontalScrollbarRect;
-        Rect2D verticalThumbRect;
-        Rect2D horizontalThumbRect;
+        Rect2Di verticalScrollbarRect;
+        Rect2Di horizontalScrollbarRect;
+        Rect2Di verticalThumbRect;
+        Rect2Di horizontalThumbRect;
 
         // Content area management
-        Rect2D contentArea;
+        Rect2Di contentArea;
         bool layoutDirty = true;
 
         // Callbacks
-        std::function<void(float, float)> onScrollChanged;
+        std::function<void(int, int)> onScrollChanged;
         std::function<void(UltraCanvasElement*)> onChildAdded;
         std::function<void(UltraCanvasElement*)> onChildRemoved;
 
@@ -119,48 +119,50 @@ namespace UltraCanvas {
         const std::vector<std::shared_ptr<UltraCanvasElement>>& GetChildren() const { return children; }
         size_t GetChildCount() const { return children.size(); }
         UltraCanvasElement* FindChildById(const std::string& id);
+        UltraCanvasElement* FindElementAtPoint(int x, int y);
+        UltraCanvasElement* FindElementAtPoint(const Point2Di& pos) { return FindElementAtPoint(pos.x, pos.y); }
 
-        virtual long GetXInWindow() override;
-        virtual long GetYInWindow() override;
+        virtual int GetXInWindow() override;
+        virtual int GetYInWindow() override;
 
         // ===== ENHANCED SCROLLING FUNCTIONS =====
-        void ScrollVertical(float delta) {
+        void ScrollVertical(int delta) {
             if (!style.enableVerticalScrolling) return;
 
             if (style.smoothScrolling) {
                 scrollState.targetVerticalPosition += delta;
                 scrollState.targetVerticalPosition = std::clamp(
                         scrollState.targetVerticalPosition,
-                        0.0f,
+                        0,
                         scrollState.maxVerticalScroll
                 );
                 scrollState.animatingScroll = true;
             } else {
-                float newPosition = scrollState.verticalPosition + delta;
+                int newPosition = scrollState.verticalPosition + delta;
                 SetVerticalScrollPosition(newPosition);
             }
         }
 
-        void ScrollHorizontal(float delta) {
+        void ScrollHorizontal(int delta) {
             if (!style.enableHorizontalScrolling) return;
 
             if (style.smoothScrolling) {
                 scrollState.targetHorizontalPosition += delta;
                 scrollState.targetHorizontalPosition = std::clamp(
                         scrollState.targetHorizontalPosition,
-                        0.0f,
+                        0,
                         scrollState.maxHorizontalScroll
                 );
                 scrollState.animatingScroll = true;
             } else {
-                float newPosition = scrollState.horizontalPosition + delta;
+                int newPosition = scrollState.horizontalPosition + delta;
                 SetHorizontalScrollPosition(newPosition);
             }
         }
 
-        void SetVerticalScrollPosition(float position) {
-            float oldPosition = scrollState.verticalPosition;
-            scrollState.verticalPosition = std::clamp(position, 0.0f, scrollState.maxVerticalScroll);
+        void SetVerticalScrollPosition(int position) {
+            int oldPosition = scrollState.verticalPosition;
+            scrollState.verticalPosition = std::clamp(position, 0, scrollState.maxVerticalScroll);
             scrollState.targetVerticalPosition = scrollState.verticalPosition;
 
             if (oldPosition != scrollState.verticalPosition) {
@@ -168,9 +170,9 @@ namespace UltraCanvas {
             }
         }
 
-        void SetHorizontalScrollPosition(float position) {
-            float oldPosition = scrollState.horizontalPosition;
-            scrollState.horizontalPosition = std::clamp(position, 0.0f, scrollState.maxHorizontalScroll);
+        void SetHorizontalScrollPosition(int position) {
+            int oldPosition = scrollState.horizontalPosition;
+            scrollState.horizontalPosition = std::clamp(position, 0, scrollState.maxHorizontalScroll);
             scrollState.targetHorizontalPosition = scrollState.horizontalPosition;
 
             if (oldPosition != scrollState.horizontalPosition) {
@@ -179,20 +181,20 @@ namespace UltraCanvas {
         }
 
         // Enhanced scroll position queries
-        float GetVerticalScrollPosition() const { return scrollState.verticalPosition; }
-        float GetHorizontalScrollPosition() const { return scrollState.horizontalPosition; }
-        float GetMaxVerticalScroll() const { return scrollState.maxVerticalScroll; }
-        float GetMaxHorizontalScroll() const { return scrollState.maxHorizontalScroll; }
+        int GetVerticalScrollPosition() const { return scrollState.verticalPosition; }
+        int GetHorizontalScrollPosition() const { return scrollState.horizontalPosition; }
+        int GetMaxVerticalScroll() const { return scrollState.maxVerticalScroll; }
+        int GetMaxHorizontalScroll() const { return scrollState.maxHorizontalScroll; }
 
         // Scroll percentage (0.0 to 1.0)
-        float GetVerticalScrollPercent() const {
+        int GetVerticalScrollPercent() const {
             return scrollState.maxVerticalScroll > 0 ?
-                   scrollState.verticalPosition / scrollState.maxVerticalScroll : 0.0f;
+                   scrollState.verticalPosition / scrollState.maxVerticalScroll : 0;
         }
 
-        float GetHorizontalScrollPercent() const {
+        int GetHorizontalScrollPercent() const {
             return scrollState.maxHorizontalScroll > 0 ?
-                   scrollState.horizontalPosition / scrollState.maxHorizontalScroll : 0.0f;
+                   scrollState.horizontalPosition / scrollState.maxHorizontalScroll : 0;
         }
 
         // ===== ENHANCED SCROLLBAR VISIBILITY =====
@@ -221,7 +223,7 @@ namespace UltraCanvas {
         const ContainerStyle& GetContainerStyle() const { return style; }
 
         // ===== ENHANCED EVENT CALLBACKS =====
-        void SetScrollChangedCallback(std::function<void(float, float)> callback) {
+        void SetScrollChangedCallback(std::function<void(int, int)> callback) {
             onScrollChanged = callback;
         }
 
@@ -248,7 +250,7 @@ namespace UltraCanvas {
             return layoutDirty;
         }
 
-        Rect2D GetContentArea() const {
+        Rect2Di GetContentArea() const {
             return contentArea;
         }
 
@@ -270,16 +272,16 @@ namespace UltraCanvas {
         // Event handling helpers
         bool HandleScrollbarEvents(const UCEvent& event);
         bool HandleScrollWheel(const UCEvent& event);
-        bool IsPointInScrollbar(const Point2D& point, bool& isVertical, bool& isThumb) const;
+        bool IsPointInScrollbar(const Point2Di& point, bool& isVertical, bool& isThumb) const;
         void ForwardEventToChildren(const UCEvent& event);
 
         // Scrolling helpers
         void OnScrollChanged();
-        float CalculateScrollbarThumbSize(bool vertical) const;
-        float CalculateScrollbarThumbPosition(bool vertical) const;
+        int CalculateScrollbarThumbSize(bool vertical) const;
+        int CalculateScrollbarThumbPosition(bool vertical) const;
         void RenderVerticalScrollbar();
         void RenderHorizontalScrollbar();
-        void UpdateScrollbarHoverStates(const Point2D& mousePos);
+        void UpdateScrollbarHoverStates(const Point2Di& mousePos);
     };
 
 // ===== ENHANCED FACTORY FUNCTIONS =====

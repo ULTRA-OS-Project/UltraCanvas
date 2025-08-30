@@ -105,8 +105,8 @@ namespace UltraCanvas {
 
             ULTRACANVAS_RENDER_SCOPE();
 
-            Rect2D bounds = element->GetBounds();
-            Point2D absolutePos = element->GetPositionInWindow();
+            Rect2Di bounds = element->GetBounds();
+            Point2Di absolutePos = element->GetPositionInWindow();
 
             // Draw debug border
             if (settings.showBorders) {
@@ -147,7 +147,7 @@ namespace UltraCanvas {
             RenderDebugInfo(element, quickSettings);
         }
 
-        static void DrawDebugBorder(const Rect2D& bounds, const DebugRenderSettings& settings) {
+        static void DrawDebugBorder(const Rect2Di& bounds, const DebugRenderSettings& settings) {
             ULTRACANVAS_RENDER_SCOPE();
 
             SetStrokeColor(settings.borderColor);
@@ -164,28 +164,28 @@ namespace UltraCanvas {
             SetStrokeWidth(1.0f);
 
             // Top-left corner
-            DrawLine(Point2D(bounds.x, bounds.y),
-                     Point2D(bounds.x + markerSize, bounds.y));
-            DrawLine(Point2D(bounds.x, bounds.y),
-                     Point2D(bounds.x, bounds.y + markerSize));
+            DrawLine(Point2Di(bounds.x, bounds.y),
+                     Point2Di(bounds.x + markerSize, bounds.y));
+            DrawLine(Point2Di(bounds.x, bounds.y),
+                     Point2Di(bounds.x, bounds.y + markerSize));
 
             // Top-right corner
-            DrawLine(Point2D(bounds.x + bounds.width, bounds.y),
-                     Point2D(bounds.x + bounds.width - markerSize, bounds.y));
-            DrawLine(Point2D(bounds.x + bounds.width, bounds.y),
-                     Point2D(bounds.x + bounds.width, bounds.y + markerSize));
+            DrawLine(Point2Di(bounds.x + bounds.width, bounds.y),
+                     Point2Di(bounds.x + bounds.width - markerSize, bounds.y));
+            DrawLine(Point2Di(bounds.x + bounds.width, bounds.y),
+                     Point2Di(bounds.x + bounds.width, bounds.y + markerSize));
 
             // Bottom-left corner
-            DrawLine(Point2D(bounds.x, bounds.y + bounds.height),
-                     Point2D(bounds.x + markerSize, bounds.y + bounds.height));
-            DrawLine(Point2D(bounds.x, bounds.y + bounds.height),
-                     Point2D(bounds.x, bounds.y + bounds.height - markerSize));
+            DrawLine(Point2Di(bounds.x, bounds.y + bounds.height),
+                     Point2Di(bounds.x + markerSize, bounds.y + bounds.height));
+            DrawLine(Point2Di(bounds.x, bounds.y + bounds.height),
+                     Point2Di(bounds.x, bounds.y + bounds.height - markerSize));
 
             // Bottom-right corner
-            DrawLine(Point2D(bounds.x + bounds.width, bounds.y + bounds.height),
-                     Point2D(bounds.x + bounds.width - markerSize, bounds.y + bounds.height));
-            DrawLine(Point2D(bounds.x + bounds.width, bounds.y + bounds.height),
-                     Point2D(bounds.x + bounds.width, bounds.y + bounds.height - markerSize));
+            DrawLine(Point2Di(bounds.x + bounds.width, bounds.y + bounds.height),
+                     Point2Di(bounds.x + bounds.width - markerSize, bounds.y + bounds.height));
+            DrawLine(Point2Di(bounds.x + bounds.width, bounds.y + bounds.height),
+                     Point2Di(bounds.x + bounds.width, bounds.y + bounds.height - markerSize));
         }
 
         static std::string GenerateDebugText(UltraCanvasElement* element, const DebugRenderSettings& settings) {
@@ -208,7 +208,7 @@ namespace UltraCanvas {
                 }
 
                 if (settings.showAbsolutePosition) {
-                    Point2D absPos = element->GetPositionInWindow();
+                    Point2Di absPos = element->GetPositionInWindow();
                     debugText << "Abs: (" << std::fixed << std::setprecision(1)
                               << absPos.x << ", " << absPos.y << ")";
                     if (settings.multilineText) debugText << "\n";
@@ -262,8 +262,8 @@ namespace UltraCanvas {
             return result;
         }
 
-        static void DrawDebugText(const std::string& text, const Rect2D& bounds,
-                                  const Point2D& absolutePos, const DebugRenderSettings& settings) {
+        static void DrawDebugText(const std::string& text, const Rect2Di& bounds,
+                                  const Point2Di& absolutePos, const DebugRenderSettings& settings) {
             if (text.empty()) return;
 
             ULTRACANVAS_RENDER_SCOPE();
@@ -272,10 +272,10 @@ namespace UltraCanvas {
             SetFont(settings.fontFamily, settings.textSize);
 
             // Measure text to calculate background size
-            Point2D textSize = GetRenderContext()->MeasureText(text);
+            Point2Di textSize = MeasureText(text);
 
             // Calculate text position (top-left corner of element, with padding)
-            Point2D textPos = Point2D(bounds.x + settings.textPadding,
+            Point2Di textPos = Point2Di(bounds.x + settings.textPadding,
                                       bounds.y - textSize.y - settings.textPadding);
 
             // Ensure text stays within screen bounds
@@ -285,14 +285,14 @@ namespace UltraCanvas {
 
             // Draw text background
             if (settings.textBackgroundColor.a > 0) {
-                Rect2D backgroundRect(
+                Rect2Di backgroundRect(
                         textPos.x - settings.textPadding,
                         textPos.y - settings.textPadding,
                         textSize.x + (settings.textPadding * 2),
                         textSize.y + (settings.textPadding * 2)
                 );
 
-                DrawFilledRect(backgroundRect, settings.textBackgroundColor,
+                DrawFilledRectangle(backgroundRect, settings.textBackgroundColor,
                                Colors::Transparent, 0, settings.cornerRadius);
             }
 

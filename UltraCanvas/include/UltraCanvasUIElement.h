@@ -30,10 +30,10 @@ namespace UltraCanvas {
         long IdentifierID = 0;
 
         // Position and size
-        long x_pos = 0;
-        long y_pos = 0;
-        long width_size = 100;
-        long height_size = 30;
+        int x_pos = 0;
+        int y_pos = 0;
+        int width_size = 100;
+        int height_size = 30;
 
         // State properties
         bool Active = true;
@@ -44,8 +44,8 @@ namespace UltraCanvas {
         MouseControls MouseCtrl = MouseControls::NoMouse;
 
         // Hierarchy
-        long ParentObject = 0;
-        long z_index = 0;
+//        long ParentObject = 0;
+        int z_index = 0;
 
         // Extended properties
         std::string Script = "";
@@ -54,30 +54,29 @@ namespace UltraCanvas {
         // Constructors
         StandardProperties() = default;
 
-        StandardProperties(const std::string& identifier, long id, long x, long y, long w, long h)
+        StandardProperties(const std::string& identifier, long id, int x, int y, int w, int h)
                 : Identifier(identifier), IdentifierID(id), x_pos(x), y_pos(y),
                   width_size(w), height_size(h) {}
 
         // Utility methods
-        Rect2D GetBounds() const {
-            return Rect2D(static_cast<float>(x_pos), static_cast<float>(y_pos),
-                          static_cast<float>(width_size), static_cast<float>(height_size));
+        Rect2Di GetBounds() const {
+            return Rect2Di(x_pos, y_pos, width_size, height_size);
         }
 
-        Point2D GetPosition() const {
-            return Point2D(static_cast<float>(x_pos), static_cast<float>(y_pos));
+        Point2Di GetPosition() const {
+            return Point2Di(x_pos, y_pos);
         }
 
-        Point2D GetSize() const {
-            return Point2D(static_cast<float>(width_size), static_cast<float>(height_size));
+        Point2Di GetSize() const {
+            return Point2Di(width_size, height_size);
         }
 
-        bool Contains(const Point2D& point) const {
+        bool Contains(const Point2Di& point) const {
             return GetBounds().Contains(point);
         }
 
-        bool Contains(float px, float py) const {
-            return Contains(Point2D(px, py));
+        bool Contains(int px, int py) const {
+            return Contains(Point2Di(px, py));
         }
     };
 
@@ -135,7 +134,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
         UltraCanvasElement(const std::string& identifier = "", long id = 0,
-                           long x = 0, long y = 0, long w = 100, long h = 30)
+                           int x = 0, int y = 0, int w = 100, int h = 30)
                 : properties(identifier, id, x, y, w, h),
                   creationTime(std::chrono::steady_clock::now()),
                   lastUpdateTime(creationTime) {
@@ -156,16 +155,16 @@ namespace UltraCanvas {
         long GetIdentifierID() const { return properties.IdentifierID; }
         void SetIdentifierID(long id) { properties.IdentifierID = id; }
 
-        virtual long GetXInWindow();
-//        void SetAbsoluteX(long x) {
+        virtual int GetXInWindow();
+//        void SetAbsoluteX(int x) {
 //            if (parent) {
 //                properties.x_pos = x - parent->GetAbsoluteX();
 //            } else {
 //                properties.x_pos = x;
 //            }
 //        }
-        virtual long GetYInWindow();
-//        void SetAbsoluteY(long y) {
+        virtual int GetYInWindow();
+//        void SetAbsoluteY(int y) {
 //            if (parent) {
 //                properties.y_pos = y - parent->GetAbsoluteY();
 //            } else {
@@ -173,53 +172,54 @@ namespace UltraCanvas {
 //            }
 //        }
 
-        long GetWidth() const { return properties.width_size; }
-        void SetWidth(long w) { properties.width_size = w; }
-        long GetHeight() const { return properties.height_size; }
-        void SetHeight(long h) { properties.height_size = h; }
+        int GetWidth() const { return properties.width_size; }
+        void SetWidth(int w) { properties.width_size = w; }
+        int GetHeight() const { return properties.height_size; }
+        void SetHeight(int h) { properties.height_size = h; }
 
-        long GetX() const { return properties.x_pos; }
-        void SetX(long x) { properties.x_pos = x; }
-        long GetY() const { return properties.y_pos; }
-        void SetY(long y) { properties.y_pos = y; }
+        int GetX() const { return properties.x_pos; }
+        void SetX(int x) { properties.x_pos = x; }
+        int GetY() const { return properties.y_pos; }
+        void SetY(int y) { properties.y_pos = y; }
 
-//        void SetAbsolutePosition(long x, long y) { SetAbsoluteX(x); SetAbsoluteY(y); }
-        virtual void SetPosition(long x, long y) { properties.x_pos = x; properties.y_pos = y; }
-        virtual void SetSize(long w, long h) { properties.width_size = w; properties.height_size = h; }
-        void SetBounds(long x, long y, long w, long h) {
+//        void SetAbsolutePosition(int x, int y) { SetAbsoluteX(x); SetAbsoluteY(y); }
+        virtual void SetPosition(int x, int y) { properties.x_pos = x; properties.y_pos = y; }
+        virtual void SetSize(int w, int h) { properties.width_size = w; properties.height_size = h; }
+        void SetBounds(int x, int y, int w, int h) {
             SetPosition(x, y);
             SetSize(w, h);
         }
 
-//        Rect2D GetAbsoluteBounds() const {
-//            return Rect2D(static_cast<float>(GetAbsoluteX()), static_cast<float>(GetAbsoluteY()),
+//        Rect2Di GetAbsoluteBounds() const {
+//            return Rect2Di(static_cast<float>(GetAbsoluteX()), static_cast<float>(GetAbsoluteY()),
 //                          static_cast<float>(properties.width_size), static_cast<float>(properties.height_size));
 //        }
-        Rect2D GetBounds() const {
-            return Rect2D(static_cast<float>(properties.x_pos), static_cast<float>(properties.y_pos),
-                          static_cast<float>(properties.width_size), static_cast<float>(properties.height_size));
+        Rect2Di GetBounds() const {
+            return Rect2Di(properties.x_pos, properties.y_pos,
+                           properties.width_size, properties.height_size);
         }
-        Point2D GetPositionInWindow() {
-            return Point2D(static_cast<float>(GetXInWindow()), static_cast<float>(GetYInWindow()));
+        Point2Di GetPositionInWindow() {
+            return Point2Di(static_cast<float>(GetXInWindow()), static_cast<float>(GetYInWindow()));
         }
-        Point2D GetPosition() const {
-            return Point2D(static_cast<float>(properties.x_pos), static_cast<float>(properties.y_pos));
+        Point2Di GetPosition() const {
+            return Point2Di(static_cast<float>(properties.x_pos), static_cast<float>(properties.y_pos));
         }
-        Point2D GetElementSize() const { return properties.GetSize(); }
+        Point2Di GetElementSize() const { return properties.GetSize(); }
 
         bool IsActive() const { return properties.Active; }
         void SetActive(bool active) { properties.Active = active; }
         bool IsVisible() const { return properties.Visible; }
         void SetVisible(bool visible) { properties.Visible = visible; }
 
-        Point2D ConvertWindowToLocalCoordinates(const Point2D &globalPos);
+        Point2Di ConvertWindowToLocalCoordinates(const Point2Di &globalPos);
+        void ConvertWindowToLocalCoordinates(int &x, int &y);
         MousePointer GetMousePointer() const { return properties.MousePtr; }
         void SetMousePointer(MousePointer pointer) { properties.MousePtr = pointer; }
         MouseControls GetMouseControls() const { return properties.MouseCtrl; }
         void SetMouseControls(MouseControls controls) { properties.MouseCtrl = controls; }
 
-        long GetZIndex() const { return properties.z_index; }
-        void SetZIndex(long index) { properties.z_index = index; }
+        int GetZIndex() const { return properties.z_index; }
+        void SetZIndex(int index) { properties.z_index = index; }
 
         const std::string& GetScript() const { return properties.Script; }
         void SetScript(const std::string& script) { properties.Script = script; }
@@ -291,7 +291,7 @@ namespace UltraCanvas {
         }
 
         // ===== SPATIAL QUERIES =====
-        virtual bool Contains(const Point2D& point) const {
+        virtual bool Contains(const Point2Di& point) const {
             return properties.Contains(point);
         }
 

@@ -34,8 +34,8 @@ class UltraCanvasBaseWindow;
 
     struct Gradient {
         GradientType type;
-        Point2D startPoint;
-        Point2D endPoint;
+        Point2Df startPoint;
+        Point2Df endPoint;
         float radius1, radius2;  // For radial gradients
         std::vector<GradientStop> stops;
 
@@ -92,7 +92,7 @@ class UltraCanvasBaseWindow;
         // Shadow properties
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 128);
-        Point2D shadowOffset = Point2D(2, 2);
+        Point2Df shadowOffset = Point2Df(2, 2);
         float shadowBlur = 2.0f;
 
         // Alpha blending
@@ -151,14 +151,14 @@ class UltraCanvasBaseWindow;
     struct RenderState {
         DrawingStyle style;
         TextStyle textStyle;
-        Rect2D clipRect;
-        Point2D translation;
+        Rect2Df clipRect;
+        Point2Df translation;
         float rotation = 0.0f;
-        Point2D scale = Point2D(1.0f, 1.0f);
+        Point2Df scale = Point2Df(1.0f, 1.0f);
         float globalAlpha = 1.0f;
 
         RenderState() {
-            clipRect = Rect2D(0, 0, 10000, 10000); // Large default clip
+            clipRect = Rect2Df(0, 0, 10000, 10000); // Large default clip
         }
     };
 
@@ -180,10 +180,10 @@ class UltraCanvasBaseWindow;
         virtual void ResetTransform() = 0;
 
         // ===== CLIPPING =====
-        virtual void SetClipRect(const Rect2D& rect) = 0;
+        virtual void SetClipRect(float x, float y, float w, float h) = 0;
         virtual void ClearClipRect() = 0;
-        virtual void IntersectClipRect(const Rect2D& rect) = 0;
-//        virtual Rect2D GetClipRect() const = 0;
+        virtual void IntersectClipRect(float x, float y, float w, float h) = 0;
+//        virtual Rect2Df GetClipRect() const = 0;
 
         // ===== STYLE MANAGEMENT =====
         virtual void SetDrawingStyle(const DrawingStyle& style) = 0;
@@ -194,57 +194,50 @@ class UltraCanvasBaseWindow;
         virtual const TextStyle& GetTextStyle() const = 0;
 
         // ===== BASIC SHAPES =====
-        virtual void DrawLine(const Point2D& start, const Point2D& end) = 0;
-        virtual void DrawRectangle(const Rect2D& rect) = 0;
-        virtual void DrawRoundedRectangle(const Rect2D& rect, float radius) = 0;
-        virtual void DrawCircle(const Point2D& center, float radius) = 0;
-        virtual void DrawEllipse(const Rect2D& rect) = 0;
-        virtual void DrawArc(const Point2D& center, float radius, float startAngle, float endAngle) = 0;
+        virtual void DrawLine(float x, float y, float x1, float y1) = 0;
+        virtual void DrawRectangle(float x, float y, float w, float h) = 0;
+        virtual void FillRectangle(float x, float y, float w, float h) = 0;
+        virtual void DrawRoundedRectangle(float x, float y, float w, float h, float radius) = 0;
+        virtual void FillRoundedRectangle(float x, float y, float w, float h, float radius) = 0;
+        virtual void DrawCircle(float x, float y, float radius) = 0;
+        virtual void FillCircle(float x, float y, float radius) = 0;
+        virtual void DrawEllipse(float x, float y, float w, float h) = 0;
+        virtual void FillEllipse(float x, float y, float w, float h) = 0;
+        virtual void DrawArc(float x, float y, float radius, float startAngle, float endAngle) = 0;
+        virtual void FillArc(float x, float y, float radius, float startAngle, float endAngle) = 0;
+        virtual void DrawBezier(const Point2Df& start, const Point2Df& cp1, const Point2Df& cp2, const Point2Df& end) = 0;
+        virtual void DrawPath(const std::vector<Point2Df>& points, bool closePath = false) = 0;
+        virtual void FillPath(const std::vector<Point2Df>& points) = 0;
 
-        virtual void FillRectangle(const Rect2D& rect)  = 0;
-        virtual void FillRectangle(float x, float y, float w, float h) { FillRectangle(Rect2D(x,y,w,h)); };
-        virtual void FillRoundedRectangle(const Rect2D& rect, float radius) = 0;
-        virtual void FillCircle(const Point2D& center, float radius) = 0;
-        virtual void FillCircle(float x, float y, float radius) { FillCircle(Point2D(x,y), radius); };
-        virtual void FillEllipse(const Rect2D& rect) = 0;
-        virtual void FillArc(const Point2D& center, float radius, float startAngle, float endAngle) = 0;
-
-        // ===== COMPLEX SHAPES =====
-//        virtual void DrawPolygon(const std::vector<Point2D>& points) = 0;
-//        virtual void DrawBezierCurve(const Point2D& start, const Point2D& cp1, const Point2D& cp2, const Point2D& end) = 0;
-//        virtual void DrawQuadraticCurve(const Point2D& start, const Point2D& control, const Point2D& end) = 0;
-        virtual void DrawBezier(const Point2D& start, const Point2D& cp1, const Point2D& cp2, const Point2D& end) = 0;
-
-        // ===== PATH DRAWING =====
-//        virtual void BeginPath() = 0;
-//        virtual void MoveTo(const Point2D& point) = 0;
-//        virtual void LineTo(const Point2D& point) = 0;
-//        virtual void ArcTo(const Point2D& point1, const Point2D& point2, float radius) = 0;
-//        virtual void BezierCurveTo(const Point2D& cp1, const Point2D& cp2, const Point2D& end) = 0;
-//        virtual void QuadraticCurveTo(const Point2D& control, const Point2D& end) = 0;
-        virtual void DrawPath(const std::vector<Point2D>& points, bool closePath = false) = 0;
-        virtual void FillPath(const std::vector<Point2D>& points) = 0;
 //        virtual void ClosePath() = 0;
 //        virtual void FillPath() = 0;
 //        virtual void StrokePath() = 0;
 
         // ===== TEXT RENDERING =====
-        virtual void DrawText(const std::string& text, const Point2D& position) = 0;
-        virtual void DrawTextInRect(const std::string& text, const Rect2D& rect) = 0;
-        virtual Point2D MeasureText(const std::string& text) = 0;
-        float GetTextWidth(const std::string& text) { return MeasureText(text).x; };
-        float GetTextHeight(const std::string& text) { return MeasureText(text).y; };
+        virtual void DrawText(const std::string& text, float x, float y) = 0;
+        virtual void DrawTextInRect(const std::string& text, float x, float y, float w, float h) = 0;
+        virtual bool MeasureText(const std::string& text, int& w, int& h) = 0;
+        int GetTextWidth(const std::string& text) {
+            int w, h;
+            MeasureText(text, w, h);
+            return w;
+        };
+        int GetTextHeight(const std::string& text) {
+            int w, h;
+            MeasureText(text, w, h);
+            return h;
+        };
 
         // ===== IMAGE RENDERING =====
-        virtual void DrawImage(const std::string& imagePath, const Point2D& position) = 0;
-        virtual void DrawImage(const std::string& imagePath, const Rect2D& destRect) = 0;
-        virtual void DrawImage(const std::string& imagePath, const Rect2D& srcRect, const Rect2D& destRect) = 0;
+        virtual void DrawImage(const std::string& imagePath, float x, float y) = 0;
+        virtual void DrawImage(const std::string& imagePath, float x, float y, float w, float h) = 0;
+        virtual void DrawImage(const std::string& imagePath, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
         virtual bool IsImageFormatSupported(const std::string& filePath) = 0;
-        virtual Point2D GetImageDimensions(const std::string& imagePath) = 0;
+        virtual bool GetImageDimensions(const std::string& imagePath, int& w, int& h) = 0;
 
         // ===== PIXEL OPERATIONS =====
-        virtual void SetPixel(const Point2D& point, const Color& color) = 0;
-        virtual Color GetPixel(const Point2D& point) = 0;
+        virtual void SetPixel(const Point2Df& point, const Color& color) = 0;
+        virtual Color GetPixel(const Point2Df& point) = 0;
         virtual void Clear(const Color& color) = 0;
 
         // ===== UTILITY FUNCTIONS =====
@@ -454,115 +447,155 @@ inline IRenderContext* GetRenderContext() {
     return ctx;
 }
 
-// Enhanced drawing functions with automatic context resolution
-inline void DrawLine(const Point2D& start, const Point2D& end) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawLine(start, end);
-}
-
 inline void DrawLine(float x1, float y1, float x2, float y2) {
     IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawLine(Point2D(x1, y1), Point2D(x2, y2));
+    if (ctx) ctx->DrawLine(x1, y1, x2, y2);
 }
 
-inline void DrawRect(const Rect2D& rect) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawRectangle(rect);
+inline void DrawLine(int x1, int y1, int x2, int y2) {
+    DrawLine(static_cast<float>(x1), static_cast<float>(y1), static_cast<float>(x2), static_cast<float>(y2));
 }
 
-inline void DrawRectangle(const Rect2D& rect) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawRectangle(rect);
+inline void DrawLine(const Point2Df& start, const Point2Df& end) {
+    DrawLine(start.x, start.y, end.x, end.y);
 }
 
-inline void DrawRect(float x, float y, float w, float h) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawRectangle(Rect2D(x, y, w, h));
+inline void DrawLine(const Point2Di& start, const Point2Di& end) {
+    DrawLine(start.x, start.y, end.x, end.y);
 }
 
 inline void DrawRectangle(float x, float y, float w, float h) {
     IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawRectangle(Rect2D(x, y, w, h));
+    if (ctx) ctx->DrawRectangle(x, y, w, h);
+}
+inline void DrawRectangle(int x, int y, int w, int h) {
+    DrawRectangle(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
+}
+inline void DrawRectangle(const Rect2Df& rect) {
+    DrawRectangle(rect.x, rect.y, rect.width, rect.height);
 }
 
-inline void FillRect(const Rect2D& rect) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->FillRectangle(rect);
-}
-
-inline void FillRectangle(const Rect2D& rect) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->FillRectangle(rect);
-}
-
-inline void FillRect(float x, float y, float w, float h) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->FillRectangle(Rect2D(x, y, w, h));
+inline void DrawRectangle(const Rect2Di& rect) {
+    DrawRectangle(rect.x, rect.y, rect.width, rect.height);
 }
 
 inline void FillRectangle(float x, float y, float w, float h) {
     IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->FillRectangle(Rect2D(x, y, w, h));
+    if (ctx) ctx->FillRectangle(x, y, w, h);
+}
+inline void FillRectangle(int x, int y, int w, int h) {
+    FillRectangle(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
 }
 
-inline void DrawRoundedRect(const Rect2D& rect, float radius) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawRoundedRectangle(rect, radius);
+inline void FillRectangle(const Rect2Df& rect) {
+    FillRectangle(rect.x, rect.y, rect.width, rect.height);
 }
 
-inline void FillRoundedRect(const Rect2D& rect, float radius) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->FillRoundedRectangle(rect, radius);
+inline void FillRectangle(const Rect2Di& rect) {
+    FillRectangle(rect.x, rect.y, rect.width, rect.height);
 }
 
-inline void DrawCircle(const Point2D& center, float radius) {
+
+inline void DrawRoundedRectangle(float x, float y, float w, float h, float radius) {
     IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawCircle(center, radius);
+    if (ctx) ctx->DrawRoundedRectangle(x, y, w, h, radius);
+}
+inline void DrawRoundedRectangle(int x, int y, int w, int h, float radius) {
+    DrawRoundedRectangle(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h), radius);
+}
+
+inline void DrawRoundedRectangle(const Rect2Df& rect, float radius) {
+    DrawRoundedRectangle(rect.x, rect.y, rect.width, rect.height, radius);
+}
+
+inline void DrawRoundedRectangle(const Rect2Di& rect, float radius) {
+    DrawRoundedRectangle(rect.x, rect.y, rect.width, rect.height, radius);
+}
+
+inline void FillRoundedRectangle(float x, float y, float w, float h, float radius) {
+    IRenderContext* ctx = GetRenderContext();
+    if (ctx) ctx->FillRoundedRectangle(x, y, w, h, radius);
+}
+inline void FillRoundedRectangle(int x, int y, int w, int h, float radius) {
+    FillRoundedRectangle(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h), radius);
+}
+
+inline void FillRoundedRectangle(const Rect2Df& rect, float radius) {
+    FillRoundedRectangle(rect.x, rect.y, rect.width, rect.height, radius);
+}
+
+inline void FillRoundedRectangle(const Rect2Di& rect, float radius) {
+    FillRoundedRectangle(rect.x, rect.y, rect.width, rect.height, radius);
 }
 
 inline void DrawCircle(float x, float y, float radius) {
     IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawCircle(Point2D(x, y), radius);
+    if (ctx) ctx->DrawCircle(x, y, radius);
 }
-
-inline void FillCircle(const Point2D& center, float radius) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->FillCircle(center, radius);
+inline void DrawCircle(int x, int y, float radius) {
+    DrawCircle(static_cast<float>(x), static_cast<float>(y), radius);
+}
+inline void DrawCircle(const Point2Df& center, float radius) {
+    DrawCircle(center.x, center.y, radius);
+}
+inline void DrawCircle(const Point2Di& center, float radius) {
+    DrawCircle(center.x, center.y, radius);
 }
 
 inline void FillCircle(float x, float y, float radius) {
     IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->FillCircle(Point2D(x, y), radius);
+    if (ctx) ctx->FillCircle(x, y, radius);
 }
-
-inline void DrawText(const std::string& text, const Point2D& position) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawText(text, position);
+inline void FillCircle(int x, int y, float radius) {
+    FillCircle(static_cast<float>(x), static_cast<float>(y), radius);
+}
+inline void FillCircle(const Point2Df& center, float radius) {
+    FillCircle(center.x, center.y, radius);
+}
+inline void FillCircle(const Point2Di& center, float radius) {
+    FillCircle(center.x, center.y, radius);
 }
 
 inline void DrawText(const std::string& text, float x, float y) {
     IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawText(text, Point2D(x, y));
+    if (ctx) ctx->DrawText(text, x, y);
 }
-
-inline void DrawImage(const std::string& imagePath, const Point2D& position) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawImage(imagePath, position);
+inline void DrawText(const std::string& text, int x, int y) {
+    DrawText(text, static_cast<float>(x), static_cast<float>(y));
+}
+inline void DrawText(const std::string& text, const Point2Df& position) {
+    DrawText(text, position.x, position.y);
+}
+inline void DrawText(const std::string& text, const Point2Di& position) {
+    DrawText(text, position.x, position.y);
 }
 
 inline void DrawImage(const std::string& imagePath, float x, float y) {
     IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawImage(imagePath, Point2D(x, y));
+    if (ctx) ctx->DrawImage(imagePath, x, y);
 }
-
-inline void DrawImage(const std::string& imagePath, const Rect2D& rect) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawImage(imagePath, rect);
+inline void DrawImage(const std::string& imagePath, int x, int y) {
+    DrawImage(imagePath, static_cast<float>(x), static_cast<float>(y));
+}
+inline void DrawImage(const std::string& imagePath, const Point2Df& position) {
+    DrawImage(imagePath, position.x, position.y);
+}
+inline void DrawImage(const std::string& imagePath, const Point2Di& position) {
+    DrawImage(imagePath, position.x, position.y);
 }
 
 inline void DrawImage(const std::string& imagePath, float x, float y, float w, float h) {
     IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->DrawImage(imagePath, Rect2D(x, y, w, h));
+    if (ctx) ctx->DrawImage(imagePath, x, y, w, h);
+}
+inline void DrawImage(const std::string& imagePath, int x, int y, int w, int h) {
+    DrawImage(imagePath, static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
+}
+inline void DrawImage(const std::string& imagePath, const Rect2Df& position) {
+    DrawImage(imagePath, position.x, position.y, position.width, position.height);
+}
+inline void DrawImage(const std::string& imagePath, const Rect2Di& position) {
+    DrawImage(imagePath, position.x, position.y, position.width, position.height);;
 }
 
 // Style convenience functions with automatic context resolution
@@ -596,6 +629,11 @@ inline void SetTextAlign(TextAlign align) {
     if (ctx) ctx->SetTextAlign(align);
 }
 
+inline void SetDrawingStyle(const DrawingStyle& style) {
+    IRenderContext* ctx = GetRenderContext();
+    if (ctx) ctx->SetDrawingStyle(style);
+}
+
 inline void SetTextStyle(const TextStyle& style) {
     IRenderContext* ctx = GetRenderContext();
     if (ctx) ctx->SetTextStyle(style);
@@ -612,11 +650,6 @@ inline void PopRenderState() {
     if (ctx) ctx->PopState();
 }
 
-inline void SetClipRect(const Rect2D& rect) {
-    IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->SetClipRect(rect);
-}
-
 inline void ClearClipRect() {
     IRenderContext* ctx = GetRenderContext();
     if (ctx) ctx->ClearClipRect();
@@ -624,7 +657,16 @@ inline void ClearClipRect() {
 
 inline void SetClipRect(float x, float y, float w, float h) {
     IRenderContext* ctx = GetRenderContext();
-    if (ctx) ctx->SetClipRect(Rect2D(x, y, w, h));
+    if (ctx) ctx->SetClipRect(x, y, w, h);
+}
+inline void SetClipRect(int x, int y, int w, int h) {
+    SetClipRect(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
+}
+inline void SetClipRect(const Rect2Df& rect) {
+    SetClipRect(rect.x, rect.y, rect.width, rect.height);
+}
+inline void SetClipRect(const Rect2Di& rect) {
+    SetClipRect(rect.x, rect.y, rect.width, rect.height);
 }
 
 inline void ResetTransform() {
@@ -652,50 +694,65 @@ inline void SetGlobalAlpha(float alpha) {
     if (ctx) ctx->SetGlobalAlpha(alpha);
 }
 
-inline float GetTextWidth(const std::string& text) {
+inline int GetTextWidth(const std::string& text) {
     IRenderContext* ctx = GetRenderContext();
-    return ctx ? ctx->GetTextWidth(text) : 0.0f;
+    return ctx ? ctx->GetTextWidth(text) : 0;
 }
 
-inline float GetTextHeight(const std::string& text) {
+inline int GetTextHeight(const std::string& text) {
     IRenderContext* ctx = GetRenderContext();
-    return ctx ? ctx->GetTextHeight(text) : 0.0f;
+    return ctx ? ctx->GetTextHeight(text) : 0;
 }
 
-inline Point2D MeasureText(const std::string& text) {
-    IRenderContext* ctx = GetRenderContext();
-    return ctx ? ctx->MeasureText(text) : Point2D(0.0f, 0.0f);
-}
-
-inline Point2D CalculateCenteredTextPosition(const std::string& text, const Rect2D& bounds) {
+inline bool MeasureText(const std::string& text, int& w, int& h) {
+    w = 0;
+    h = 0;
     IRenderContext* ctx = GetRenderContext();
     if (ctx) {
-        Point2D p = ctx->MeasureText(text);
-        float textWidth = p.x;
-        float textHeight = p.y;
+        return ctx->MeasureText(text, w, h);
+    }
+    return false;
+}
+inline Point2Di MeasureText(const std::string& text) {
+    Point2Di p = {0, 0};
+    MeasureText(text, p.x, p.y);
+    return p;
+}
 
-        return Point2D(
-                bounds.x + (bounds.width - textWidth) / 2,     // Center horizontally
-                bounds.y + (bounds.height - textHeight) / 2   // Center vertically (baseline adjusted)
+inline Point2Df CalculateCenteredTextPosition(const std::string& text, const Rect2Df& bounds) {
+    IRenderContext* ctx = GetRenderContext();
+    if (ctx) {
+        int txt_w, txt_h;
+        ctx->MeasureText(text, txt_w, txt_h);
+        return Point2Df(
+                bounds.x + (bounds.width - static_cast<float>(txt_w)) / 2,     // Center horizontally
+                bounds.y + (bounds.height - static_cast<float>(txt_h)) / 2   // Center vertically (baseline adjusted)
         );
     } else {
-        return Point2D(0,0);
+        return Point2Df(0, 0);
     }
 }
 
 // ===== ALTERNATIVE: USE DRAWTEXT WITH RECTANGLE =====
-//inline void DrawCenteredText(const std::string& text, const Rect2D& bounds) {
+//inline void DrawCenteredText(const std::string& text, const Rect2Df& bounds) {
 //    // Set text style for centering
 //    // Draw text in the center of the rectangle
-//    Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+//    Point2Df center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
 //    DrawText(text, center);
 //}
-
-inline void DrawTextInRect(const std::string& text, const Rect2D& bounds) {
+inline void DrawTextInRect(const std::string& text, float x, float y, float w, float h) {
     IRenderContext* ctx = GetRenderContext();
     if (ctx) {
-        ctx->DrawTextInRect(text, bounds);
+        ctx->DrawTextInRect(text, x, y, w, h);
     }
+}
+
+inline void DrawTextInRect(const std::string& text, const Rect2Di& bounds) {
+    DrawTextInRect(text, static_cast<float>(bounds.x), static_cast<float>(bounds.y), static_cast<float>(bounds.width), static_cast<float>(bounds.height));
+}
+
+inline void DrawTextInRect(const std::string& text, const Rect2Df& bounds) {
+    DrawTextInRect(text, bounds.x, bounds.y, bounds.width, bounds.height);
 }
 
 // ===== ENHANCED RENDER STATE SCOPED GUARD =====
@@ -720,14 +777,26 @@ public:
 #undef ULTRACANVAS_RENDER_SCOPE
 #define ULTRACANVAS_RENDER_SCOPE() RenderStateGuard _renderGuard
 
-    inline void DrawLine(const Point2D& start, const Point2D& end, const Color &col) {
+    inline void DrawLine(const Point2Df& start, const Point2Df& end, const Color &col) {
         ULTRACANVAS_RENDER_SCOPE();
         SetStrokeColor(col);
         DrawLine(start, end);
     }
 
+    inline void DrawLine(float start_x, float start_y, float end_x, float end_y, const Color &col) {
+        ULTRACANVAS_RENDER_SCOPE();
+        SetStrokeColor(col);
+        DrawLine(start_x, start_y, end_x, end_y);
+    }
+
+    inline void DrawLine(int start_x, int start_y, int end_x, int end_y, const Color &col) {
+        ULTRACANVAS_RENDER_SCOPE();
+        SetStrokeColor(col);
+        DrawLine(start_x, start_y, end_x, end_y);
+    }
+
 // Draw filled rectangle with border
-    inline void DrawFilledRect(const Rect2D& rect, const Color& fillColor,
+    inline void DrawFilledRectangle(const Rect2Df& rect, const Color& fillColor,
                                const Color& borderColor = Colors::Transparent, float borderWidth = 1.0f, float borderRadius = 0.0f) {
         ULTRACANVAS_RENDER_SCOPE();
 
@@ -745,26 +814,32 @@ public:
         }
     }
 
-    inline void DrawFilledCircle(const Point2D& center, float radius, const Color& fillColor) {
+    inline void DrawFilledRectangle(const Rect2Di& rect, const Color& fillColor,
+        const Color& borderColor = Colors::Transparent, float borderWidth = 1.0f, float borderRadius = 0.0f) {
+        DrawFilledRectangle(Rect2Df(rect.x, rect.y, rect.width, rect.height), fillColor, borderColor, borderWidth, borderRadius);
+    }
+
+    inline void DrawFilledCircle(const Point2Df& center, float radius, const Color& fillColor) {
         ULTRACANVAS_RENDER_SCOPE();
 
         if (fillColor.a > 0) {
             SetFillColor(fillColor);
             DrawingStyle style = GetRenderContext()->GetDrawingStyle();
             style.hasStroke = false;
-            GetRenderContext()->SetDrawingStyle(style);
+            SetDrawingStyle(style);
             DrawCircle(center, radius);
         }
     }
 
 // Draw text with background
-    inline void DrawTextWithBackground(const std::string& text, const Point2D& position,
+    inline void DrawTextWithBackground(const std::string& text, const Point2Df& position,
                                        const Color& textColor, const Color& backgroundColor = Colors::Transparent) {
         ULTRACANVAS_RENDER_SCOPE();
 
         if (backgroundColor.a > 0) {
-            Point2D textSize = GetRenderContext()->MeasureText(text);
-            UltraCanvas::DrawFilledRect(Rect2D(position.x, position.y, textSize.x, textSize.y), backgroundColor);
+            int txt_w, txt_h;
+            GetRenderContext()->MeasureText(text, txt_w, txt_h);
+            DrawFilledRectangle(Rect2Df(position.x, position.y, txt_w, txt_h), backgroundColor);
         }
 
         SetTextColor(textColor);
@@ -772,37 +847,42 @@ public:
     }
 
 // Draw gradient rectangle
-    inline void DrawGradientRect(const Rect2D& rect, const Color& startColor, const Color& endColor,
+    inline void DrawGradientRect(const Rect2Df& rect, const Color& startColor, const Color& endColor,
                                  bool horizontal = true) {
         ULTRACANVAS_RENDER_SCOPE();
 
         DrawingStyle style = GetRenderContext()->GetDrawingStyle();
         style.fillMode = FillMode::Gradient;
         style.fillGradient.type = GradientType::Linear;
-        style.fillGradient.startPoint = Point2D(rect.x, rect.y);
+        style.fillGradient.startPoint = Point2Df(rect.x, rect.y);
         style.fillGradient.endPoint = horizontal ?
-                                      Point2D(rect.x + rect.width, rect.y) :
-                                      Point2D(rect.x, rect.y + rect.height);
+                                      Point2Df(rect.x + rect.width, rect.y) :
+                                      Point2Df(rect.x, rect.y + rect.height);
         style.fillGradient.stops.clear();
         style.fillGradient.stops.emplace_back(0.0f, startColor);
         style.fillGradient.stops.emplace_back(1.0f, endColor);
         style.hasStroke = false;
 
-        GetRenderContext()->SetDrawingStyle(style);
-        DrawRect(rect);
+        SetDrawingStyle(style);
+        DrawRectangle(rect);
     }
 
 // Draw shadow
-    inline void DrawShadow(const Rect2D& rect, const Color& shadowColor = Color(0, 0, 0, 64),
-                           const Point2D& offset = Point2D(2, 2)) {
+    inline void DrawShadow(const Rect2Df& rect, const Color& shadowColor = Color(0, 0, 0, 64),
+                           const Point2Df& offset = Point2Df(2, 2)) {
         ULTRACANVAS_RENDER_SCOPE();
 
-        Rect2D shadowRect(rect.x + offset.x, rect.y + offset.y, rect.width, rect.height);
+        Rect2Df shadowRect(rect.x + offset.x, rect.y + offset.y, rect.width, rect.height);
         SetFillColor(shadowColor);
         DrawingStyle style = GetRenderContext()->GetDrawingStyle();
         style.hasStroke = false;
-        GetRenderContext()->SetDrawingStyle(style);
-        DrawRect(shadowRect);
+        SetDrawingStyle(style);
+        DrawRectangle(shadowRect);
+    }
+    inline void DrawShadow(const Rect2Di& rect, const Color& shadowColor = Color(0, 0, 0, 64),
+                           const Point2Di& offset = Point2Di(2, 2)) {
+        DrawShadow(Rect2Df(rect.x, rect.y, rect.width, rect.height),
+                   shadowColor, Point2Df (offset.x, offset.y));
     }
 
 } // namespace UltraCanvas

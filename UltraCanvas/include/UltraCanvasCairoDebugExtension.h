@@ -52,7 +52,7 @@ namespace UltraCanvas {
         static std::string DrawCairoTransformDebug(UltraCanvasElement* element, const DebugRenderSettings& settings);
 
         // Draw Cairo matrix visualization
-        static void DrawMatrixVisualization(const CairoMatrixInfo& matrix, const Point2D& position,
+        static void DrawMatrixVisualization(const CairoMatrixInfo& matrix, const Point2Di& position,
                                             const DebugRenderSettings& settings);
 
         // Validate current Cairo transformation
@@ -202,10 +202,10 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         std::string matrixText = FormatCairoMatrix(matrix, false);
 
         ULTRACANVAS_RENDER_SCOPE();
-        Rect2D bounds = element->GetBounds();
+        Rect2Di bounds = element->GetBounds();
 
         // Position for Cairo debug info (bottom-left of element)
-        Point2D debugPos = Point2D(bounds.x, bounds.y + bounds.height + 10);
+        Point2Di debugPos = Point2Di(bounds.x, bounds.y + bounds.height + 10);
 
         // Format the matrix information
 
@@ -220,17 +220,17 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         return matrixText;
         // Draw matrix visualization if not identity
 //        if (matrix.isValid && !matrix.isIdentity) {
-//            DrawMatrixVisualization(matrix, Point2D(bounds.x + bounds.width + 20, bounds.y), settings);
+//            DrawMatrixVisualization(matrix, Point2Di(bounds.x + bounds.width + 20, bounds.y), settings);
 //        }
     }
 
     void UltraCanvasCairoDebugExtension::DrawMatrixVisualization(const CairoMatrixInfo& matrix,
-                                                                 const Point2D& position,
+                                                                 const Point2Di& position,
                                                                  const DebugRenderSettings& settings) {
         ULTRACANVAS_RENDER_SCOPE();
 
         float gridSize = 50.0f;
-        Point2D center = Point2D(position.x + gridSize, position.y + gridSize);
+        Point2Df center = Point2Df(position.x + gridSize, position.y + gridSize);
 
         // Draw coordinate system grid
         SetStrokeColor(Color(128, 128, 128, 150));
@@ -242,9 +242,9 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
             float y = center.y + i * gridSize / 2;
 
             // Vertical lines
-            DrawLine(Point2D(x, center.y - gridSize), Point2D(x, center.y + gridSize));
+            DrawLine(x, center.y - gridSize, x, center.y + gridSize);
             // Horizontal lines
-            DrawLine(Point2D(center.x - gridSize, y), Point2D(center.x + gridSize, y));
+            DrawLine(center.x - gridSize, y, center.x + gridSize, y);
         }
 
         // Draw original coordinate system (red)
@@ -252,9 +252,9 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         SetStrokeWidth(2.0f);
 
         // Original X axis
-        DrawLine(Point2D(center.x - gridSize/2, center.y), Point2D(center.x + gridSize/2, center.y));
+        DrawLine(center.x - gridSize / 2, center.y, center.x + gridSize / 2, center.y);
         // Original Y axis
-        DrawLine(Point2D(center.x, center.y - gridSize/2), Point2D(center.x, center.y + gridSize/2));
+        DrawLine(center.x, center.y - gridSize / 2, center.x, center.y + gridSize / 2);
 
         // Draw transformed coordinate system (green)
         SetStrokeColor(Color(100, 255, 100, 200));
@@ -264,11 +264,11 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         float unitScale = gridSize / 4; // Scale down for visualization
 
         // Transformed X axis (1,0) -> (xx, yx)
-        Point2D transformedX = Point2D(center.x + matrix.xx * unitScale, center.y + matrix.yx * unitScale);
+        Point2Df transformedX = Point2Df(center.x + matrix.xx * unitScale, center.y + matrix.yx * unitScale);
         DrawLine(center, transformedX);
 
         // Transformed Y axis (0,1) -> (xy, yy)
-        Point2D transformedY = Point2D(center.x + matrix.xy * unitScale, center.y + matrix.yy * unitScale);
+        Point2Df transformedY = Point2Df(center.x + matrix.xy * unitScale, center.y + matrix.yy * unitScale);
         DrawLine(center, transformedY);
 
         // Draw arrow heads
@@ -280,7 +280,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
             SetStrokeColor(Color(255, 255, 100, 200)); // Yellow for translation
             SetStrokeWidth(1.0f);
 
-            Point2D translatedOrigin = Point2D(center.x + matrix.x0 / 10, center.y + matrix.y0 / 10);
+            Point2Df translatedOrigin = Point2Df(center.x + matrix.x0 / 10, center.y + matrix.y0 / 10);
             DrawLine(center, translatedOrigin);
 
             // Draw small circle at translated origin
@@ -291,7 +291,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         // Label the visualization
         SetTextColor(Color(200, 200, 200, 255));
         SetFont(settings.fontFamily, settings.textSize - 2);
-        DrawText("Matrix Viz", Point2D(position.x, position.y - 5));
+        DrawText("Matrix Viz", Point2Di(position.x, position.y - 5));
     }
 
     bool UltraCanvasCairoDebugExtension::ValidateCairoTransformation(std::string& errorMessage) {

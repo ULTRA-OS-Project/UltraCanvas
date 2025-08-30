@@ -11,7 +11,6 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderInterface.h"
 #include "UltraCanvasEvent.h"
-#include "UltraCanvasEventDispatcher.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 
