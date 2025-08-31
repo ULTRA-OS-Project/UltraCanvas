@@ -99,26 +99,13 @@ namespace UltraCanvas {
         if (event.type == UCEventType::MouseMove || event.type == UCEventType::MouseEnter || event.type == UCEventType::MouseLeave) {
             return true;
         }
-        // Forward events to children (in reverse order for proper hit testing)
-        // Check if event is in content area
-//        if (contentArea.Contains(event.x, event.y)) {
-//            // Adjust event coordinates for scroll offset
-//            UCEvent childEvent = event;
-//            childEvent.x = event.x - contentArea.x + scrollState.horizontalPosition;
-//            childEvent.y = event.y - contentArea.y + scrollState.verticalPosition;
-//
-//            // Forward to children in reverse order (topmost first)
-//            for (auto it = children.rbegin(); it != children.rend(); ++it) {
-//                if ((*it) && (*it)->IsVisible() && (*it)->OnEvent(childEvent)) {
-//                    return true;
-//                }
-//            }
-//        }
 
         // Handle container-specific events first
         if (HandleScrollWheel(event)) {
             return true;
         }
+        // Don't forward events to childs as event is forwared by UltraCanvasBaseApplication::DispatchEvent
+        // to element under cursor or to focused element
 
         // Handle base element events
         return UltraCanvasElement::OnEvent(event);
@@ -290,12 +277,11 @@ namespace UltraCanvas {
 
         // Scroll vertically by default, horizontally with Shift
         if (event.shift && style.enableHorizontalScrolling) {
-            ScrollHorizontal(scrollAmount);
+            return ScrollHorizontal(scrollAmount);
         } else if (style.enableVerticalScrolling) {
-            ScrollVertical(-scrollAmount); // Invert for natural scrolling
+            return ScrollVertical(-scrollAmount); // Invert for natural scrolling
         }
-
-        return true;
+        return false;
     }
 
     bool UltraCanvasContainer::HandleScrollbarEvents(const UCEvent& event) {
@@ -549,28 +535,92 @@ namespace UltraCanvas {
     }
 
     UltraCanvasElement* UltraCanvasContainer::FindElementAtPoint(int x, int y) {
-        // Search in reverse order to get topmost element first (higher z-index)
-        int localX = x - contentArea.x, localY = y - contentArea.y;
-        auto childs = GetChildren();
-        for (auto it = childs.rbegin(); it != childs.rend(); ++it) {
-            auto element = *it;
-            if (element && element->IsVisible() && element->IsEnabled() && element->Contains(localX, localY)) {
-                auto elementAsChildContainer = dynamic_cast<UltraCanvasContainer*>(element.get());
-                // Check children first (recursive hit testing)
-                if (elementAsChildContainer) {
-                    auto elem = elementAsChildContainer->FindElementAtPoint(localX,
-                                                                            localY);
-                    if (elem) {
-                        return elem;
-                    } else if (parentContainer != nullptr) {
-                        return element.get();
+        // First check if point is within our bounds
+        if (!Contains(x, y)) {
+            return nullptr;
+        }
+
+        // Check scrollbar areas first - these have priority over content
+        if (scrollState.showVerticalScrollbar &&
+            verticalScrollbarRect.Contains(x, y)) {
+            return this; // Container handles scrollbar interactions
+        }
+
+        if (scrollState.showHorizontalScrollbar &&
+            horizontalScrollbarRect.Contains(x, y)) {
+            return this; // Container handles scrollbar interactions
+        }
+
+        // Check if point is within content area (not scrollbar area)
+        if (!contentArea.Contains(x, y)) {
+            return this; // Hit container but outside content area
+        }
+
+        // Calculate content-relative coordinates accounting for scroll offset
+        Point2Di mousePos(x, y);
+        int contentX = x - contentArea.x + scrollState.horizontalPosition;
+        int contentY = y - contentArea.y + scrollState.verticalPosition;
+
+        // Check children in reverse order (topmost first) with clipping awareness
+        for (auto it = children.rbegin(); it != children.rend(); ++it) {
+            if (!(*it) || !(*it)->IsVisible()) {
+                continue;
+            }
+
+            UltraCanvasElement* child = it->get();
+
+            // CRITICAL: Check if the child element intersects with visible content area
+            Rect2Di childBounds = child->GetBounds();
+            Rect2Di visibleChildBounds = GetVisibleChildBounds(childBounds);
+
+            // Skip child if it's completely clipped (not visible)
+            if (visibleChildBounds.width <= 0 || visibleChildBounds.height <= 0) {
+                continue;
+            }
+
+            // Check if mouse is within the visible portion of the child
+            if (visibleChildBounds.Contains(mousePos)) {
+                // Recursively check child elements
+                auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
+                if (childContainer) {
+                    UltraCanvasElement* hitElement = childContainer->FindElementAtPoint(contentX, contentY);
+                    if (hitElement) {
+                        return hitElement;
                     }
-                } else {
-                    return element.get();
                 }
+                return child;
             }
         }
-        return nullptr;
+
+        return this; // Hit container but no children
+    }
+
+    Rect2Di UltraCanvasContainer::GetVisibleChildBounds(const Rect2Di& childBounds) const {
+        // Calculate child bounds in container coordinates (accounting for scroll)
+        Rect2Di adjustedChildBounds(
+                childBounds.x - scrollState.horizontalPosition + contentArea.x,
+                childBounds.y - scrollState.verticalPosition + contentArea.y,
+                childBounds.width,
+                childBounds.height
+        );
+
+        // Clip to content area
+        Rect2Di intersection = adjustedChildBounds.Intersection(contentArea);
+        return intersection;
+    }
+
+    /**
+    * Check if a child element is visible (not completely clipped)
+    */
+    bool UltraCanvasContainer::IsChildVisible(UltraCanvasElement* child) const {
+        if (!child || !child->IsVisible()) {
+            return false;
+        }
+
+        Rect2Di childBounds = child->GetBounds();
+        Rect2Di visibleBounds = GetVisibleChildBounds(childBounds);
+
+        return (visibleBounds.width > 0 && visibleBounds.height > 0);
     }
 
     int UltraCanvasContainer::GetXInWindow()  {
@@ -617,28 +667,32 @@ namespace UltraCanvas {
         UpdateLayout();
     }
 
-    void UltraCanvasContainer::SetHorizontalScrollPosition(int position) {
+    bool UltraCanvasContainer::SetHorizontalScrollPosition(int position) {
         int oldPosition = scrollState.horizontalPosition;
         scrollState.horizontalPosition = std::clamp(position, 0, scrollState.maxHorizontalScroll);
         scrollState.targetHorizontalPosition = scrollState.horizontalPosition;
 
         if (oldPosition != scrollState.horizontalPosition) {
             OnScrollChanged();
+            return true;
         }
+        return false;
     }
 
-    void UltraCanvasContainer::SetVerticalScrollPosition(int position) {
+    bool UltraCanvasContainer::SetVerticalScrollPosition(int position) {
         int oldPosition = scrollState.verticalPosition;
         scrollState.verticalPosition = std::clamp(position, 0, scrollState.maxVerticalScroll);
         scrollState.targetVerticalPosition = scrollState.verticalPosition;
 
         if (oldPosition != scrollState.verticalPosition) {
             OnScrollChanged();
+            return true;
         }
+        return false;
     }
 
-    void UltraCanvasContainer::ScrollHorizontal(int delta) {
-        if (!style.enableHorizontalScrolling) return;
+    bool UltraCanvasContainer::ScrollHorizontal(int delta) {
+        if (!style.enableHorizontalScrolling) return false;
 
         if (style.smoothScrolling) {
             scrollState.targetHorizontalPosition += delta;
@@ -648,14 +702,15 @@ namespace UltraCanvas {
                     scrollState.maxHorizontalScroll
             );
             scrollState.animatingScroll = true;
+            return true; // fix me! need to check is it will really scroll
         } else {
             int newPosition = scrollState.horizontalPosition + delta;
-            SetHorizontalScrollPosition(newPosition);
+            return SetHorizontalScrollPosition(newPosition);
         }
     }
 
-    void UltraCanvasContainer::ScrollVertical(int delta) {
-        if (!style.enableVerticalScrolling) return;
+    bool UltraCanvasContainer::ScrollVertical(int delta) {
+        if (!style.enableVerticalScrolling) return false;
 
         if (style.smoothScrolling) {
             scrollState.targetVerticalPosition += delta;
@@ -665,10 +720,12 @@ namespace UltraCanvas {
                     scrollState.maxVerticalScroll
             );
             scrollState.animatingScroll = true;
+            return true; // fix me! need to check is it will really scroll
         } else {
             int newPosition = scrollState.verticalPosition + delta;
-            SetVerticalScrollPosition(newPosition);
+            return SetVerticalScrollPosition(newPosition);
         }
+        return false;
     }
 
 } // namespace UltraCanvas

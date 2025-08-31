@@ -71,8 +71,7 @@ struct Rect2D {
     Point2D<T> Center() const { return Point2D<T>(x + width / 2, y + height / 2); }
 
     bool Contains(const Point2D<T>& point) const {
-        return point.x >= x && point.x <= x + width &&
-               point.y >= y && point.y <= y + height;
+        return point.x >= x && point.x <= x + width && point.y >= y && point.y <= y + height;
     }
 
     bool Contains(T px, T py) const {

@@ -169,18 +169,25 @@ namespace UltraCanvas {
                     return HandleEventWithBubbling(event, focused);
                 }
             }
-            if (event.IsMouseClickEvent()) {
+            if (event.type == UCEventType::MouseWheel) {
                 auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
                 if (elem) {
-                    auto newEvent = event;
-                    std::cout << "Ev x=" << event.x << " y=" << event.y;
-                    elem->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
-                    std::cout << " Evloc x=" << newEvent.x << " y=" << newEvent.y << std::endl;
-                    if (elem->OnEvent(newEvent)) {
-                        return true;
-                    }
+                    return HandleEventWithBubbling(event, elem);
                 }
+
             }
+//            if (event.IsMouseClickEvent()) {
+//                auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
+//                if (elem) {
+//                    auto newEvent = event;
+//                    std::cout << "Ev x=" << event.x << " y=" << event.y;
+//                    elem->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
+//                    std::cout << " Evloc x=" << newEvent.x << " y=" << newEvent.y << std::endl;
+//                    if (elem->OnEvent(newEvent)) {
+//                        return true;
+//                    }
+//                }
+//            }
             if (event.IsMouseEvent()) {
                 auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
                 if (elem) {

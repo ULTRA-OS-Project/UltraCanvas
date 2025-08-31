@@ -332,7 +332,7 @@ namespace UltraCanvas {
                         event.y = xEvent.xbutton.y;
                         event.globalX = xEvent.xbutton.x_root;
                         event.globalY = xEvent.xbutton.y_root;
-                        event.wheelDelta = (xButton == Button4) ? 120 : -120;
+                        event.wheelDelta = (xButton == Button4) ? 5 : -5;
                         event.button = ConvertXButtonToUCButton(xButton);
 
                         // Set modifier keys
@@ -352,7 +352,7 @@ namespace UltraCanvas {
                         event.y = xEvent.xbutton.y;
                         event.globalX = xEvent.xbutton.x_root;
                         event.globalY = xEvent.xbutton.y_root;
-                        event.wheelDelta = (xButton == 7) ? 120 : -120;
+                        event.wheelDelta = (xButton == 7) ? 5 : -5;
                         event.button = ConvertXButtonToUCButton(xButton);
 
                         event.shift = (xEvent.xbutton.state & ShiftMask) != 0;

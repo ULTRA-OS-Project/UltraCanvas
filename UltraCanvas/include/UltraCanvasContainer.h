@@ -39,8 +39,8 @@ namespace UltraCanvas {
 
         // Scrolling behavior
         bool autoHideScrollbars = true;
-        bool smoothScrolling = true;
-        int scrollSpeed = 20;
+        bool smoothScrolling = false;
+        int scrollSpeed = 1;
         bool enableVerticalScrolling = true;
         bool enableHorizontalScrolling = true;
     };
@@ -126,10 +126,10 @@ namespace UltraCanvas {
         virtual int GetYInWindow() override;
 
         // ===== ENHANCED SCROLLING FUNCTIONS =====
-        void ScrollVertical(int delta);
-        void ScrollHorizontal(int delta);
-        void SetVerticalScrollPosition(int position);
-        void SetHorizontalScrollPosition(int position);
+        bool ScrollVertical(int delta);
+        bool ScrollHorizontal(int delta);
+        bool SetVerticalScrollPosition(int position);
+        bool SetHorizontalScrollPosition(int position);
 
         // Enhanced scroll position queries
         int GetVerticalScrollPosition() const { return scrollState.verticalPosition; }
@@ -154,6 +154,9 @@ namespace UltraCanvas {
 
         bool HasVerticalScrollbar() const { return scrollState.showVerticalScrollbar; }
         bool HasHorizontalScrollbar() const { return scrollState.showHorizontalScrollbar; }
+
+        Rect2Di GetVisibleChildBounds(const Rect2Di& childBounds) const;
+        bool IsChildVisible(UltraCanvasElement* child) const;
 
         // ===== ENHANCED STYLE MANAGEMENT =====
         void SetContainerStyle(const ContainerStyle& newStyle);
