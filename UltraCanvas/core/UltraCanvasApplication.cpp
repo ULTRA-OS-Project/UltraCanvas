@@ -175,8 +175,10 @@ namespace UltraCanvas {
                 auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
                 if (elem) {
                     auto newEvent = event;
+                    std::cout << "Ev x=" << event.x << " y=" << event.y;
                     elem->ConvertWindowToLocalCoordinates(newEvent.x, newEvent.y);
-                    if (elem->OnEvent(event)) {
+                    std::cout << " Evloc x=" << newEvent.x << " y=" << newEvent.y << std::endl;
+                    if (elem->OnEvent(newEvent)) {
                         return true;
                     }
                 }

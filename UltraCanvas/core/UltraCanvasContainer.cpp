@@ -294,6 +294,9 @@ namespace UltraCanvas {
         // Handle mouse events on scrollbars
         if (event.type == UCEventType::MouseDown) {
             // Check vertical scrollbar
+            std::cout << " Vsb contains=" << verticalScrollbarRect.Contains(mousePos)
+                << "rect (" << verticalScrollbarRect.x << ", " << verticalScrollbarRect.y << " " << verticalScrollbarRect.width << "x" << verticalScrollbarRect.height << ")"
+                << " ev x=" << event.x << " y=" << event.y << std::endl;
             if (scrollState.showVerticalScrollbar && verticalScrollbarRect.Contains(mousePos)) {
                 if (verticalThumbRect.Contains(mousePos)) {
                     UltraCanvasApplication::GetInstance()->CaptureMouse(this);

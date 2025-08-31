@@ -177,9 +177,9 @@ namespace UltraCanvas {
             Rect2Di buttonRect = GetBounds();
             bool buttonHit = buttonRect.Contains(px, py);
 
-            std::cout << "UCDropdown::Contains(" << px << "," << py << ") dropdownOpen=" << dropdownOpen << std::endl;
-            std::cout << "  Button bounds: (" << buttonRect.x << "," << buttonRect.y
-                      << "," << buttonRect.width << "," << buttonRect.height << ") hit=" << buttonHit << std::endl;
+//            std::cout << "UCDropdown::Contains(" << px << "," << py << ") dropdownOpen=" << dropdownOpen << std::endl;
+//            std::cout << "  Button bounds: (" << buttonRect.x << "," << buttonRect.y
+//                      << "," << buttonRect.width << "," << buttonRect.height << ") hit=" << buttonHit << std::endl;
 
             if (buttonHit) {
                 return true;
@@ -199,7 +199,7 @@ namespace UltraCanvas {
                 }
             }
 
-            std::cout << "  No hit detected" << std::endl;
+//            std::cout << "  No hit detected" << std::endl;
             return false;
         }
 
