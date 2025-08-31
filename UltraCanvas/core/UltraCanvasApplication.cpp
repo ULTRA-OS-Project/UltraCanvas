@@ -166,9 +166,7 @@ namespace UltraCanvas {
             if (event.IsKeyboardEvent()) {
                 auto focused =  targetWindow->GetFocusedElement();
                 if (focused) {
-                    if (HandleEventWithBubbling(event, focused)) {
-                        return true;
-                    }
+                    return HandleEventWithBubbling(event, focused);
                 }
             }
             if (event.IsMouseClickEvent()) {
@@ -176,7 +174,7 @@ namespace UltraCanvas {
                 if (elem) {
                     auto newEvent = event;
                     std::cout << "Ev x=" << event.x << " y=" << event.y;
-                    elem->ConvertWindowToLocalCoordinates(newEvent.x, newEvent.y);
+                    elem->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
                     std::cout << " Evloc x=" << newEvent.x << " y=" << newEvent.y << std::endl;
                     if (elem->OnEvent(newEvent)) {
                         return true;
@@ -187,8 +185,8 @@ namespace UltraCanvas {
                 auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
                 if (elem) {
                     auto newEvent = event;
-                    elem->ConvertWindowToLocalCoordinates(newEvent.x, newEvent.y);
-                    if (elem->OnEvent(event)) {
+                    elem->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
+                    if (elem->OnEvent(newEvent)) {
                         return true;
                     }
                 }
@@ -212,15 +210,18 @@ namespace UltraCanvas {
 
     bool UltraCanvasBaseApplication::HandleEventWithBubbling(const UCEvent &event, UltraCanvasElement* elem) {
         auto newEvent = event;
-        elem->ConvertWindowToLocalCoordinates(newEvent.x, newEvent.y);
+        elem->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
         if (elem->OnEvent(newEvent)) {
             return true;
         }
         auto parent = elem->GetParentContainer();
-        if (parent) {
-            newEvent.x += parent->GetX();
-            newEvent.y += parent->GetY();
-            return HandleEventWithBubbling(newEvent, parent);
+        while(parent) {
+            auto newParentEvent = event;
+            parent->ConvertWindowToContainerCoordinates(newParentEvent.x, newParentEvent.y);
+            if (parent->OnEvent(newParentEvent)) {
+                return true;
+            }
+            parent = parent->GetParentContainer();
         }
         return false;
     }

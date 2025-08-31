@@ -668,6 +668,19 @@ inline void SetClipRect(const Rect2Df& rect) {
 inline void SetClipRect(const Rect2Di& rect) {
     SetClipRect(rect.x, rect.y, rect.width, rect.height);
 }
+inline void IntersectClipRect(float x, float y, float w, float h) {
+    IRenderContext* ctx = GetRenderContext();
+    if (ctx) ctx->IntersectClipRect(x, y, w, h);
+}
+inline void IntersectClipRect(int x, int y, int w, int h) {
+    IntersectClipRect(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
+}
+inline void IntersectClipRect(const Rect2Df& rect) {
+    IntersectClipRect(rect.x, rect.y, rect.width, rect.height);
+}
+inline void IntersectClipRect(const Rect2Di& rect) {
+    IntersectClipRect(rect.x, rect.y, rect.width, rect.height);
+}
 
 inline void ResetTransform() {
     IRenderContext* ctx = GetRenderContext();

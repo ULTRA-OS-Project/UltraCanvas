@@ -241,15 +241,18 @@ namespace UltraCanvas {
 //    }
 
     // new here
-    Point2Di UltraCanvasElement::ConvertWindowToLocalCoordinates(const Point2Di &globalPos) {
-        Point2Di elementPos = GetPositionInWindow();
-        return Point2Di(globalPos.x - elementPos.x, globalPos.y - elementPos.y);
+    void UltraCanvasElement::ConvertWindowToContainerCoordinates(int &x, int &y) {
+        if (parentContainer) {
+            Point2Di elementPos = parentContainer->GetPositionInWindow();
+            x -= elementPos.x;
+            y -= elementPos.y;
+        }
     }
 
-    void UltraCanvasElement::ConvertWindowToLocalCoordinates(int &x, int &y) {
-        Point2Di elementPos = GetPositionInWindow();
-        x -= elementPos.x;
-        y -= elementPos.y;
+    Point2Di UltraCanvasElement::ConvertWindowToContainerCoordinates(const Point2Di &globalPos) {
+        Point2Di pos = globalPos;
+        ConvertWindowToContainerCoordinates(pos.x, pos.y);
+        return pos;
     }
 
     void UltraCanvasElement::RequestRedraw() {
@@ -290,17 +293,27 @@ namespace UltraCanvas {
     }
 
     int UltraCanvasElement::GetXInWindow() {
+        int pos = 0;
         if (parentContainer) {
-            return parentContainer->GetXInWindow() + parentContainer->GetContentArea().x + properties.x_pos;
+            auto pc = parentContainer;
+            while(pc) {
+                pos += pc->GetContentArea().x;
+                pc = pc->parentContainer;
+            }
         }
-        return properties.x_pos;
+        return pos + properties.x_pos;
     }
 
     int UltraCanvasElement::GetYInWindow() {
+        int pos = 0;
         if (parentContainer) {
-            return parentContainer->GetYInWindow() + parentContainer->GetContentArea().y + properties.y_pos;
+            auto pc = parentContainer;
+            while(pc) {
+                pos += pc->GetContentArea().y;
+                pc = pc->parentContainer;
+            }
         }
-        return properties.y_pos;
+        return pos + properties.y_pos;
     }
 
     bool UltraCanvasElement::SetFocus(bool focus) {

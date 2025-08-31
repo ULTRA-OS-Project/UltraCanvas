@@ -188,16 +188,13 @@ namespace UltraCanvas {
                 }
                 return true;
             }
-            if (_focusedElement && _focusedElement->OnEvent(event)) {
-                return true;
-            }
         }
 
         if (event.IsMouseEvent() && !activePopups.empty()) {
             std::unordered_set<UltraCanvasElement*> activePopupsCopy = activePopups;
             for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
                 UltraCanvasElement* activePopupElement = *it;
-                auto localCoords = activePopupElement->ConvertWindowToLocalCoordinates(Point2Di(event.x, event.y));
+                auto localCoords = activePopupElement->ConvertWindowToContainerCoordinates(Point2Di(event.x, event.y));
                 UCEvent localEvent = event;
                 localEvent.x = localCoords.x;
                 localEvent.y = localCoords.y;

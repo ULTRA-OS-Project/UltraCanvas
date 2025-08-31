@@ -126,59 +126,10 @@ namespace UltraCanvas {
         virtual int GetYInWindow() override;
 
         // ===== ENHANCED SCROLLING FUNCTIONS =====
-        void ScrollVertical(int delta) {
-            if (!style.enableVerticalScrolling) return;
-
-            if (style.smoothScrolling) {
-                scrollState.targetVerticalPosition += delta;
-                scrollState.targetVerticalPosition = std::clamp(
-                        scrollState.targetVerticalPosition,
-                        0,
-                        scrollState.maxVerticalScroll
-                );
-                scrollState.animatingScroll = true;
-            } else {
-                int newPosition = scrollState.verticalPosition + delta;
-                SetVerticalScrollPosition(newPosition);
-            }
-        }
-
-        void ScrollHorizontal(int delta) {
-            if (!style.enableHorizontalScrolling) return;
-
-            if (style.smoothScrolling) {
-                scrollState.targetHorizontalPosition += delta;
-                scrollState.targetHorizontalPosition = std::clamp(
-                        scrollState.targetHorizontalPosition,
-                        0,
-                        scrollState.maxHorizontalScroll
-                );
-                scrollState.animatingScroll = true;
-            } else {
-                int newPosition = scrollState.horizontalPosition + delta;
-                SetHorizontalScrollPosition(newPosition);
-            }
-        }
-
-        void SetVerticalScrollPosition(int position) {
-            int oldPosition = scrollState.verticalPosition;
-            scrollState.verticalPosition = std::clamp(position, 0, scrollState.maxVerticalScroll);
-            scrollState.targetVerticalPosition = scrollState.verticalPosition;
-
-            if (oldPosition != scrollState.verticalPosition) {
-                OnScrollChanged();
-            }
-        }
-
-        void SetHorizontalScrollPosition(int position) {
-            int oldPosition = scrollState.horizontalPosition;
-            scrollState.horizontalPosition = std::clamp(position, 0, scrollState.maxHorizontalScroll);
-            scrollState.targetHorizontalPosition = scrollState.horizontalPosition;
-
-            if (oldPosition != scrollState.horizontalPosition) {
-                OnScrollChanged();
-            }
-        }
+        void ScrollVertical(int delta);
+        void ScrollHorizontal(int delta);
+        void SetVerticalScrollPosition(int position);
+        void SetHorizontalScrollPosition(int position);
 
         // Enhanced scroll position queries
         int GetVerticalScrollPosition() const { return scrollState.verticalPosition; }
@@ -187,38 +138,25 @@ namespace UltraCanvas {
         int GetMaxHorizontalScroll() const { return scrollState.maxHorizontalScroll; }
 
         // Scroll percentage (0.0 to 1.0)
-        int GetVerticalScrollPercent() const {
+        float GetVerticalScrollPercent() const {
             return scrollState.maxVerticalScroll > 0 ?
-                   scrollState.verticalPosition / scrollState.maxVerticalScroll : 0;
+                   (float)scrollState.verticalPosition / (float)scrollState.maxVerticalScroll : 0;
         }
 
-        int GetHorizontalScrollPercent() const {
+        float GetHorizontalScrollPercent() const {
             return scrollState.maxHorizontalScroll > 0 ?
-                   scrollState.horizontalPosition / scrollState.maxHorizontalScroll : 0;
+                   (float)scrollState.horizontalPosition / (float)scrollState.maxHorizontalScroll : 0;
         }
 
         // ===== ENHANCED SCROLLBAR VISIBILITY =====
-        void SetShowVerticalScrollbar(bool show) {
-            style.autoHideScrollbars = false;
-            scrollState.showVerticalScrollbar = show;
-            UpdateLayout();
-        }
-
-        void SetShowHorizontalScrollbar(bool show) {
-            style.autoHideScrollbars = false;
-            scrollState.showHorizontalScrollbar = show;
-            UpdateLayout();
-        }
+        void SetShowVerticalScrollbar(bool show);
+        void SetShowHorizontalScrollbar(bool show);
 
         bool HasVerticalScrollbar() const { return scrollState.showVerticalScrollbar; }
         bool HasHorizontalScrollbar() const { return scrollState.showHorizontalScrollbar; }
 
         // ===== ENHANCED STYLE MANAGEMENT =====
-        void SetContainerStyle(const ContainerStyle& newStyle) {
-            style = newStyle;
-            UpdateScrollbarAppearance();
-            UpdateLayout();
-        }
+        void SetContainerStyle(const ContainerStyle& newStyle);
 
         const ContainerStyle& GetContainerStyle() const { return style; }
 
@@ -236,11 +174,7 @@ namespace UltraCanvas {
         }
 
         // ===== LAYOUT MANAGEMENT =====
-        void UpdateLayout() {
-            CalculateContentArea();
-            UpdateScrollbarPositions();
-            layoutDirty = false;
-        }
+        void UpdateLayout();
 
         void MarkLayoutDirty() {
             layoutDirty = true;

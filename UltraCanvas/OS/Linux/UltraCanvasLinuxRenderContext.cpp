@@ -200,20 +200,6 @@ namespace UltraCanvas {
         std::cout << "LinuxRenderContext::ClearClipRect - clip region cleared successfully" << std::endl;
     }
 
-//    void LinuxRenderContext::SetClipRect(const Rect2Df& rect) {
-//        if (!cairo) return;
-//        cairo_reset_clip(cairo);
-//        cairo_rectangle(cairo, x, y, width, height);
-//        cairo_clip(cairo);
-//        currentState.clipRect = rect;
-//    }
-//
-//    void LinuxRenderContext::ClearClipRect() {
-//        if (!cairo) return;
-//        cairo_reset_clip(cairo);
-//        currentState.clipRect = Rect2Df(0, 0, 10000, 10000);
-//    }
-
     void LinuxRenderContext::IntersectClipRect(float x, float y, float w, float h) {
         if (!cairo) return;
         cairo_rectangle(cairo, x, y, w, h);

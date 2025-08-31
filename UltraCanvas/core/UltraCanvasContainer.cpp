@@ -54,11 +54,15 @@ namespace UltraCanvas {
         }
 
         PushRenderState();
+        IntersectClipRect(contentArea);
+
         Translate(contentArea.x - scrollState.horizontalPosition,
                   contentArea.y - scrollState.verticalPosition);
         // Set up clipping for content area
 //        Rect2Di clipRect = contentArea;
-        SetClipRect(Rect2Di(0, 0, contentArea.width, contentArea.height));
+//        SetClipRect(scrollState.horizontalPosition, scrollState.verticalPosition,
+//                            contentArea.width,
+//                            contentArea.height);
 
         // Render children with scroll offset
         for (const auto& child : children) {
@@ -71,13 +75,19 @@ namespace UltraCanvas {
         // Remove content clipping
         PopRenderState();
 
-        // Render scrollbars
-        if (scrollState.showVerticalScrollbar) {
-            RenderVerticalScrollbar();
-        }
+        if (scrollState.showVerticalScrollbar || scrollState.showHorizontalScrollbar) {
+            PushRenderState();
+            ClearClipRect();
 
-        if (scrollState.showHorizontalScrollbar) {
-            RenderHorizontalScrollbar();
+            // Render scrollbars
+            if (scrollState.showVerticalScrollbar) {
+                RenderVerticalScrollbar();
+            }
+
+            if (scrollState.showHorizontalScrollbar) {
+                RenderHorizontalScrollbar();
+            }
+            PopRenderState();
         }
     }
 
@@ -366,6 +376,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::OnScrollChanged() {
+        UpdateScrollbarPositions();
         RequestRedraw();
 
         if (onScrollChanged) {
@@ -475,7 +486,6 @@ namespace UltraCanvas {
         children.push_back(child);
 
         // Update layout and scrolling
-        UpdateContentSize();
         UpdateScrollability();
         layoutDirty = true;
 
@@ -495,7 +505,6 @@ namespace UltraCanvas {
             (*it)->SetWindow(nullptr);
             children.erase(it);
 
-            UpdateContentSize();
             UpdateScrollability();
             layoutDirty = true;
 
@@ -549,8 +558,8 @@ namespace UltraCanvas {
                 auto elementAsChildContainer = dynamic_cast<UltraCanvasContainer*>(element.get());
                 // Check children first (recursive hit testing)
                 if (elementAsChildContainer) {
-                    auto elem = elementAsChildContainer->FindElementAtPoint(localX - elementAsChildContainer->GetX(),
-                                                                            localY + elementAsChildContainer->GetY());
+                    auto elem = elementAsChildContainer->FindElementAtPoint(localX,
+                                                                            localY);
                     if (elem) {
                         return elem;
                     } else if (parentContainer != nullptr) {
@@ -582,6 +591,84 @@ namespace UltraCanvas {
             return parentContainer->GetYInWindow() + parentContainer->GetContentArea().y + properties.y_pos;
         }
         return properties.x_pos;
+    }
+
+    void UltraCanvasContainer::UpdateLayout() {
+        CalculateContentArea();
+        UpdateScrollbarPositions();
+        layoutDirty = false;
+    }
+
+    void UltraCanvasContainer::SetContainerStyle(const ContainerStyle &newStyle) {
+        style = newStyle;
+        UpdateScrollbarAppearance();
+        UpdateLayout();
+    }
+
+    void UltraCanvasContainer::SetShowHorizontalScrollbar(bool show) {
+        style.autoHideScrollbars = false;
+        scrollState.showHorizontalScrollbar = show;
+        UpdateLayout();
+    }
+
+    void UltraCanvasContainer::SetShowVerticalScrollbar(bool show) {
+        style.autoHideScrollbars = false;
+        scrollState.showVerticalScrollbar = show;
+        UpdateLayout();
+    }
+
+    void UltraCanvasContainer::SetHorizontalScrollPosition(int position) {
+        int oldPosition = scrollState.horizontalPosition;
+        scrollState.horizontalPosition = std::clamp(position, 0, scrollState.maxHorizontalScroll);
+        scrollState.targetHorizontalPosition = scrollState.horizontalPosition;
+
+        if (oldPosition != scrollState.horizontalPosition) {
+            OnScrollChanged();
+        }
+    }
+
+    void UltraCanvasContainer::SetVerticalScrollPosition(int position) {
+        int oldPosition = scrollState.verticalPosition;
+        scrollState.verticalPosition = std::clamp(position, 0, scrollState.maxVerticalScroll);
+        scrollState.targetVerticalPosition = scrollState.verticalPosition;
+
+        if (oldPosition != scrollState.verticalPosition) {
+            OnScrollChanged();
+        }
+    }
+
+    void UltraCanvasContainer::ScrollHorizontal(int delta) {
+        if (!style.enableHorizontalScrolling) return;
+
+        if (style.smoothScrolling) {
+            scrollState.targetHorizontalPosition += delta;
+            scrollState.targetHorizontalPosition = std::clamp(
+                    scrollState.targetHorizontalPosition,
+                    0,
+                    scrollState.maxHorizontalScroll
+            );
+            scrollState.animatingScroll = true;
+        } else {
+            int newPosition = scrollState.horizontalPosition + delta;
+            SetHorizontalScrollPosition(newPosition);
+        }
+    }
+
+    void UltraCanvasContainer::ScrollVertical(int delta) {
+        if (!style.enableVerticalScrolling) return;
+
+        if (style.smoothScrolling) {
+            scrollState.targetVerticalPosition += delta;
+            scrollState.targetVerticalPosition = std::clamp(
+                    scrollState.targetVerticalPosition,
+                    0,
+                    scrollState.maxVerticalScroll
+            );
+            scrollState.animatingScroll = true;
+        } else {
+            int newPosition = scrollState.verticalPosition + delta;
+            SetVerticalScrollPosition(newPosition);
+        }
     }
 
 } // namespace UltraCanvas

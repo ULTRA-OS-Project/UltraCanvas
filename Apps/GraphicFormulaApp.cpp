@@ -145,7 +145,7 @@ private:
                                                                0, 0, windowWidth, windowHeight);
 
         // Left panel for controls (30% of width)
-        int leftWidth = windowWidth * 0.4;
+        int leftWidth = windowWidth * 0.3;
         leftPanel = std::make_shared<UltraCanvasContainer>("LeftPanel", 2,
                                                            0, 0, leftWidth, windowHeight - 10);
 
@@ -184,10 +184,10 @@ private:
 
         // Status label
         statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 19,
-                                                         10, windowHeight - 40, leftWidth - 20, 30, "Ready");
+                                                         10, windowHeight - 20, leftWidth - 20, 30, "Ready");
         // Formula editor in left panel
         formulaEditor = std::make_shared<UltraCanvasFormulaEditor>("FormulaEditor", 10,
-                                                                   0, 350, leftWidth - 30, 400);
+                                                                   0, 350, 500 - 30, 400);
 
         // Add controls to left panel
         leftPanel->AddChild(formulaEditor);
