@@ -163,12 +163,25 @@ namespace UltraCanvas {
         }
         // Dispatch other events to focused element
         if (targetWindow) {
+            if ((event.IsMouseEvent() || event.IsKeyboardEvent()) && !targetWindow->GetActivePopups().empty()) {
+                std::unordered_set<UltraCanvasElement*> activePopupsCopy = targetWindow->GetActivePopups();
+                for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
+                    UltraCanvasElement* activePopupElement = *it;
+                    UCEvent localEvent = event;
+                    activePopupElement->ConvertWindowToContainerCoordinates(localEvent.x, localEvent.y);
+                    if (activePopupElement->OnEvent(localEvent)) {
+                        return true;
+                    }
+                }
+            }
+
             if (event.IsKeyboardEvent()) {
                 auto focused =  targetWindow->GetFocusedElement();
                 if (focused) {
                     return HandleEventWithBubbling(event, focused);
                 }
             }
+
             if (event.type == UCEventType::MouseWheel) {
                 auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
                 if (elem) {

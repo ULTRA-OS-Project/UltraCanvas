@@ -167,10 +167,10 @@ namespace UltraCanvas {
         void InvalidateTextMeasurementCache() { lastMeasurement.valid = false; }
 
         bool HandleMouseDown(const UCEvent& event);
-        void HandleMouseMove(const UCEvent& event);
-        void HandleMouseUp(const UCEvent& event);
+        bool HandleMouseMove(const UCEvent& event);
+        bool HandleMouseUp(const UCEvent& event);
         bool HandleKeyDown(const UCEvent& event);
-        void HandlMouseWheel(const UCEvent& event);
+        bool HandleMouseWheel(const UCEvent& event);
         bool HandleTextInput(const std::string& text);
 
         // ===== CURSOR MOVEMENT HELPERS =====

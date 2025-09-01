@@ -142,6 +142,9 @@ namespace UltraCanvas {
             activePopups.erase(element);
             _needsRedraw = true;
         }
+
+        std::unordered_set<UltraCanvasElement *>& GetActivePopups() { return activePopups; }
+
 //        void SetActivePopupElement(UltraCanvasElement* element) {
 //            if (!element) return;
 //            activePopupElement = element;

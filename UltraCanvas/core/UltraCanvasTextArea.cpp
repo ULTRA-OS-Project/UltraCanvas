@@ -868,12 +868,12 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasTextArea::HandlMouseWheel(const UCEvent& event) {
+    bool UltraCanvasTextArea::HandleMouseWheel(const UCEvent& event) {
         bool updated = false;
 
         // Handle vertical scrolling
         if (event.type == UCEventType::MouseWheel && event.wheelDelta != 0) {
-            int linesPerScroll = 3; // Scroll 3 lines at a time
+            int linesPerScroll = 1; // Scroll 3 lines at a time
             scrollOffsetY -= static_cast<int>(event.wheelDelta) * linesPerScroll;
 
             int maxScroll = std::max(0, static_cast<int>(lines.size()) - maxVisibleLines);
@@ -905,7 +905,9 @@ namespace UltraCanvas {
         if (updated) {
             UpdateScrollBars();
             RequestRedraw();
+            return true;
         }
+        return false;
     }
 
 // ===== WORD-BASED CURSOR MOVEMENT =====
@@ -977,23 +979,23 @@ namespace UltraCanvas {
     bool UltraCanvasTextArea::OnEvent(const UCEvent &event) {
         switch (event.type) {
             case UCEventType::MouseDown:
-                HandleMouseDown(event);
+                return HandleMouseDown(event);
                 break;
             case UCEventType::MouseMove:
-                HandleMouseMove(event);
+                return HandleMouseMove(event);
                 break;
             case UCEventType::MouseUp:
-                HandleMouseUp(event);
+                return HandleMouseUp(event);
                 break;
             case UCEventType::MouseWheel:
             case UCEventType::MouseWheelHorizontal:
-                HandlMouseWheel(event);
+                return HandleMouseWheel(event);
                 break;
             case UCEventType::KeyDown:
                 return HandleKeyDown(event);
                 break;
             default:
-                UltraCanvasElement::OnEvent(event);
+                return UltraCanvasElement::OnEvent(event);
                 break;
         }
     }
@@ -1092,15 +1094,17 @@ namespace UltraCanvas {
         return result;
     }
 
-    void UltraCanvasTextArea::HandleMouseMove(const UCEvent &event) {
-        if (!IsFocused()) return;
+    bool UltraCanvasTextArea::HandleMouseMove(const UCEvent &event) {
+        if (!IsFocused()) return false;
 
         // Handle text selection by dragging
         // Implementation would track drag state and update selection
+        return false;
     }
 
-    void UltraCanvasTextArea::HandleMouseUp(const UCEvent &event) {
+    bool UltraCanvasTextArea::HandleMouseUp(const UCEvent &event) {
         // Stop any drag operations
+        return false;
     }
 
     void UltraCanvasTextArea::SetStyle(const TextAreaStyle &newStyle) {
