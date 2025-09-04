@@ -42,6 +42,11 @@ namespace UltraCanvas {
         std::string fontFamily = "Arial";
         float fontSize = 12.0f;
         int lineHeight = 16;
+        int scrollbarThickness = 10;
+        float paddingLeft = 5.0f;     // Left padding inside content area
+        float paddingTop = 2.0f;      // Top padding inside content area
+        float paddingRight = 5.0f;    // Right padding inside content area
+        float paddingBottom = 2.0f;   // Bottom padding inside content area
 
         bool showLineNumbers = false;
         bool showScrollbars = true;
@@ -94,6 +99,7 @@ namespace UltraCanvas {
         UltraCanvas::Rect2Di horizontalScrollThumb;
         bool isDraggingVerticalThumb = false;
         bool isDraggingHorizontalThumb = false;
+        UltraCanvas::Point2Di dragStartOffset;  // Offset from thumb start when dragging begins
 
         // Style and configuration
         TextAreaStyle style;
@@ -130,8 +136,15 @@ namespace UltraCanvas {
 
         // ===== CURSOR POSITIONING FUNCTIONS =====
 
-        UltraCanvas::Point2Di GetCursorScreenPosition() const;
+        Point2Di GetCursorScreenPosition() const;
         float GetLineNumberWidth() const;
+        void SetCursorPosition(int line, int column);
+
+        // **Content area calculation methods with padding**
+        Rect2Df GetContentArea() const;
+        Rect2Df GetTextRenderArea() const;
+        float GetEffectiveContentWidth() const;
+        float GetEffectiveContentHeight() const;
 
         // ===== TEXT CONTENT MANAGEMENT =====
 
@@ -139,9 +152,6 @@ namespace UltraCanvas {
         std::string GetText() const;
         void InsertText(const std::string& text);
 
-        // ===== CURSOR AND SELECTION MANAGEMENT =====
-
-        void SetCursorPosition(int line, int column);
 
         void SetSelection(int startLine, int startColumn, int endLine, int endColumn);
         void ClearSelection();
@@ -158,7 +168,7 @@ namespace UltraCanvas {
         bool OnEvent(const UCEvent& event) override;
 
     private:
-        void DrawText();
+        void DrawTextContent();
         void DrawSelection();
         void DrawCursor();
         void DrawLineNumbers();

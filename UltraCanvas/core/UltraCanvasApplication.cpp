@@ -131,16 +131,14 @@ namespace UltraCanvas {
         // Handle different event types
         bool handled = false;
         switch (event.type) {
-            case UCEventType::MouseUp:
-                if (capturedElement && capturedElement->OnEvent(event)) {
-                    return true;
-                }
-                break;
-
             case UCEventType::MouseMove:
-                // Send move event to captured element or hovered element
-                if (capturedElement && capturedElement->OnEvent(event)) {
-                    return true;
+            case UCEventType::MouseUp:
+                if (capturedElement) {
+                    auto newEvent = event;
+                    capturedElement->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
+                    if (capturedElement->OnEvent(newEvent)) {
+                        return true;
+                    }
                 }
                 break;
 

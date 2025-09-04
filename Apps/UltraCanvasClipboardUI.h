@@ -44,8 +44,6 @@ namespace UltraCanvas {
             CalculateLayout();
         }
 
-        ULTRACANVAS_STANDARD_PROPERTIES_ACCESSORS()
-
         void CalculateLayout();
         void Render() override;
         void RenderContent();

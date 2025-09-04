@@ -40,7 +40,7 @@ namespace UltraCanvas {
         // Scrolling behavior
         bool autoHideScrollbars = true;
         bool smoothScrolling = false;
-        int scrollSpeed = 1;
+        int scrollSpeed = 2;
         bool enableVerticalScrolling = true;
         bool enableHorizontalScrolling = true;
     };

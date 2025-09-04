@@ -277,7 +277,7 @@ namespace UltraCanvas {
 
         // Scroll vertically by default, horizontally with Shift
         if (event.shift && style.enableHorizontalScrolling) {
-            return ScrollHorizontal(scrollAmount);
+            return ScrollHorizontal(-scrollAmount);
         } else if (style.enableVerticalScrolling) {
             return ScrollVertical(-scrollAmount); // Invert for natural scrolling
         }
