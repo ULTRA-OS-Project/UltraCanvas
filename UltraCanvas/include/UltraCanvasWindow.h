@@ -1,7 +1,7 @@
-// UltraCanvasWindow.h
+// include/UltraCanvasWindow.h
 // Cross-platform window management system with comprehensive features
-// Version: 1.1.1
-// Last Modified: 2025-07-09
+// Version: 1.1.3
+// Last Modified: 2025-09-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -19,27 +19,51 @@
 
 // Include platform-specific headers based on build configuration
 #ifdef __linux__
-    #include "../OS/Linux/UltraCanvasLinuxWindow.h"
+#include "../OS/Linux/UltraCanvasLinuxWindow.h"
+namespace UltraCanvas {
+    using UltraCanvasNativeWindow = UltraCanvasLinuxWindow;
+}
+#elif defined(_WIN32) || defined(_WIN64)
+#include "../OS/MSWindows/UltraCanvasWindowsWindow.h"
     namespace UltraCanvas {
-        using UltraCanvasNativeWindow = UltraCanvasLinuxWindow;
+        using UltraCanvasNativeWindow = UltraCanvasWindowsWindow;
     }
-//#elif defined(ULTRACANVAS_PLATFORM_WAYLAND)
-//    #include "OS/Linux/UltraCanvasNativeWaylandWindow.h"
-//    namespace UltraCanvas {
-//        using UltraCanvasNativeWindow = UltraCanvasNativeWaylandWindow;
-//    }
-//#elif defined(ULTRACANVAS_PLATFORM_WIN32)
-//    #include "OS/MSWindows/UltraCanvasNativeWin32Window.h"
-//    namespace UltraCanvas {
-//        using UltraCanvasNativeWindow = UltraCanvasNativeWin32Window;
-//    }
-//#elif defined(ULTRACANVAS_PLATFORM_COCOA)
-//    #include "OS/MacOS/UltraCanvasNativeCocoaWindow.h"
-//    namespace UltraCanvas {
-//        using UltraCanvasNativeWindow = UltraCanvasNativeCocoaWindow;
-//    }
+#elif defined(__APPLE__)
+    #include <TargetConditionals.h>
+    #if TARGET_OS_MAC && !TARGET_OS_IPHONE
+        // macOS
+        #include "../OS/MacOS/UltraCanvasMacOSWindow.h"
+        namespace UltraCanvas {
+            using UltraCanvasNativeWindow = UltraCanvasMacOSWindow;
+        }
+    #elif TARGET_OS_IPHONE
+        // iOS
+        #include "../OS/iOS/UltraCanvasiOSWindow.h"
+        namespace UltraCanvas {
+            using UltraCanvasNativeWindow = UltraCanvasiOSWindow;
+        }
+    #else
+        #error "Unsupported Apple platform"
+    #endif
+#elif defined(__ANDROID__)
+    #include "../OS/Android/UltraCanvasAndroidWindow.h"
+    namespace UltraCanvas {
+        using UltraCanvasNativeWindow = UltraCanvasAndroidWindow;
+    }
+#elif defined(__EMSCRIPTEN__)
+    // Web/WASM
+    #include "../OS/Web/UltraCanvasWebWindow.h"
+    namespace UltraCanvas {
+        using UltraCanvasNativeWindow = UltraCanvasWebWindow;
+    }
+#elif defined(__unix__) || defined(__unix)
+    // Generic Unix (FreeBSD, OpenBSD, etc.)
+    #include "../OS/Unix/UltraCanvasUnixWindow.h"
+    namespace UltraCanvas {
+        using UltraCanvasNativeWindow = UltraCanvasUnixWindow;
+    }
 #else
-#error "No supported platform defined"
+#error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"
 #endif
 
 // ===== PUBLIC CROSS-PLATFORM WINDOW CLASS =====
@@ -47,7 +71,6 @@ namespace UltraCanvas {
 
     class UltraCanvasWindow : public UltraCanvasNativeWindow {
     public:
-        // Constructors
         UltraCanvasWindow() : UltraCanvasNativeWindow() { SetWindow(this); };
 
         explicit UltraCanvasWindow(const WindowConfig &config) :
@@ -66,112 +89,5 @@ namespace UltraCanvas {
 
         virtual bool Create(const WindowConfig& config) override;
         virtual void Destroy() override;
-
-        // Factory methods for common window types
-        static std::unique_ptr <UltraCanvasWindow> CreateDialog(
-                const std::string &title, int width = 400, int height = 300,
-                UltraCanvasWindow *parent = nullptr) {
-
-            WindowConfig config;
-            config.title = title;
-            config.width = width;
-            config.height = height;
-            config.type = WindowType::Dialog;
-            config.resizable = false;
-            config.parentWindow = parent;
-            config.modal = true;
-
-            auto window = std::make_unique<UltraCanvasWindow>(config);
-            return window;
-        }
-
-        static std::unique_ptr <UltraCanvasWindow> CreateTool(
-                const std::string &title, int width = 300, int height = 400) {
-
-            WindowConfig config;
-            config.title = title;
-            config.width = width;
-            config.height = height;
-            config.type = WindowType::Tool;
-            config.alwaysOnTop = true;
-
-            auto window = std::make_unique<UltraCanvasWindow>(config);
-            return window;
-        }
-
-        static std::unique_ptr <UltraCanvasWindow> CreateFullscreen(
-                const std::string &title) {
-
-            WindowConfig config;
-            config.title = title;
-            config.type = WindowType::Fullscreen;
-            config.resizable = false;
-            config.minimizable = false;
-            config.maximizable = false;
-
-            auto window = std::make_unique<UltraCanvasWindow>(config);
-            return window;
-        }
-
-        // Enhanced convenience methods
-        void CenterOnScreen() {
-            // Implementation would use platform-specific screen size queries
-            // This demonstrates how the public API can provide enhanced functionality
-            // while delegating to the native implementation
-        }
-
-        void CenterOnParent(UltraCanvasWindow *parent) {
-            if (!parent) return;
-
-            int myw, myh, parent_w, parent_h, parent_x, parent_y;
-            parent->GetWindowPosition(parent_x, parent_y);
-            parent->GetWindowSize(parent_w, parent_h);
-            GetWindowSize(myh, myw);
-
-            SetPosition(
-                    parent_x + (parent_w - myw) / 2,
-                    parent_y + (parent_h - myh) / 2
-            );
-        }
-
-//        // Chaining methods for fluent interface
-//        UltraCanvasWindow &Title(const std::string &title) {
-//            SetWindowTitle(title);
-//            return *this;
-//        }
-//
-//        UltraCanvasWindow &Size(int width, int height) {
-//            SetSize(width, height);
-//            return *this;
-//        }
-//
-//        UltraCanvasWindow &Position(int x, int y) {
-//            SetPosition(x, y);
-//            return *this;
-//        }
-//
-//        UltraCanvasWindow &Resizable(bool resizable = true) {
-//            SetResizable(resizable);
-//            return *this;
-//        }
-
-//        UltraCanvasWindow &AlwaysOnTop(bool onTop = true) {
-//            SetAlwaysOnTop(onTop);
-//            return *this;
-//        }
-
-//        // Advanced event handling
-//        void SetEventHandler(std::function<bool(const UCEvent &)> handler) {
-//            OnEvent = [handler](const UCEvent &event) {
-//                handler(event);
-//            };
-//        }
-//
-//        template<typename T>
-//        void SetEventHandler(T *instance, bool (T::*method)(const UCEvent &)) {
-//            OnEvent = [instance, method](const UCEvent &event) {
-//                (instance->*method)(event);
-//            };
-//        }
     };
-}
+} // namespace UltraCanvas
