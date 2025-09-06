@@ -110,64 +110,6 @@ namespace UltraCanvas {
 #endif
         }
 
-        static bool HasNativeWindowDecorations() {
-#if defined(__linux__) || defined(_WIN32) || defined(_WIN64) || (defined(__APPLE__) && TARGET_OS_MAC && !TARGET_OS_IPHONE)
-            return true;
-#else
-            return false; // Mobile and web platforms typically don't have traditional window decorations
-#endif
-        }
-
-        static bool SupportsMultipleWindows() {
-#if defined(__linux__) || defined(_WIN32) || defined(_WIN64) || (defined(__APPLE__) && TARGET_OS_MAC && !TARGET_OS_IPHONE)
-            return true;
-#elif defined(__EMSCRIPTEN__)
-            return false; // Web typically single window
-#else
-            return false; // Mobile platforms typically single window
-#endif
-        }
-        // Platform-specific feature detection
-        static bool SupportsOpenGL() {
-#if defined(__linux__) || defined(_WIN32) || defined(_WIN64) || defined(__APPLE__) || defined(__ANDROID__)
-            return true;
-#else
-            return false;
-#endif
-        }
-
-        static bool SupportsVulkan() {
-#if defined(__linux__) || defined(_WIN32) || defined(_WIN64) || defined(__ANDROID__)
-            return true; // macOS would need MoltenVK
-#else
-            return false;
-#endif
-        }
-
-        static bool SupportsMetal() {
-#if defined(__APPLE__)
-            return true;
-#else
-            return false;
-#endif
-        }
-
-        static bool SupportsDirectX() {
-#if defined(_WIN32) || defined(_WIN64)
-            return true;
-#else
-            return false;
-#endif
-        }
-
-        static bool SupportsWebGL() {
-#ifdef __EMSCRIPTEN__
-            return true;
-#else
-            return false;
-#endif
-        }
-
         virtual void RunInEventLoop() override;
     };
 
