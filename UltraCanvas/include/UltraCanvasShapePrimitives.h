@@ -148,7 +148,7 @@ namespace UltraCanvas {
             MarkDirty();
         }
 
-        void SetStrokeWidth(float width) {
+        void ctx->SetStrokeWidth(float width) {
             style.strokeWidth = std::max(0.0f, width);
             MarkDirty();
         }
@@ -257,7 +257,7 @@ namespace UltraCanvas {
         virtual void Render() override {
             if (!IsVisible()) return;
 
-            ULTRACANVAS_RENDER_SCOPE();
+            ctx->PushState();
 
             // Apply transformation if needed
             if (rotationAngle != 0.0f) {
@@ -373,9 +373,9 @@ namespace UltraCanvas {
 
             // Set stroke style
             if (style.hasStroke && style.strokeWidth > 0) {
-                SetStrokeColor(style.strokeColor);
-                SetStrokeWidth(style.strokeWidth);
-                DrawRectangle(bounds);
+                ctx->SetStrokeColor(style.strokeColor);
+                ctx->SetStrokeWidth(style.strokeWidth);
+                ctx->DrawRectangle(bounds);
             }
         }
     };
@@ -401,15 +401,15 @@ namespace UltraCanvas {
 
             // Set fill style
             if (style.fillMode != FillMode::NoneFill) {
-                SetFillColor(style.fillColor);
-                DrawCircle(center, radius);
+                ctx->SetFillColor(style.fillColor);
+                ctx->DrawCircle(center, radius);
             }
 
             // Set stroke style
             if (style.hasStroke && style.strokeWidth > 0) {
-                SetStrokeColor(style.strokeColor);
-                SetStrokeWidth(style.strokeWidth);
-                DrawCircle(center, radius);
+                ctx->SetStrokeColor(style.strokeColor);
+                ctx->SetStrokeWidth(style.strokeWidth);
+                ctx->DrawCircle(center, radius);
             }
         }
     };
@@ -435,14 +435,14 @@ namespace UltraCanvas {
             // Set fill style
             if (style.fillMode != FillMode::NoneFill) {
                 SetFillColor(style.fillColor);
-                DrawCircle(center, avgRadius);
+                ctx->DrawCircle(center, avgRadius);
             }
 
             // Set stroke style
             if (style.hasStroke && style.strokeWidth > 0) {
                 SetStrokeColor(style.strokeColor);
-                SetStrokeWidth(style.strokeWidth);
-                DrawCircle(center, avgRadius);
+                ctx->SetStrokeWidth(style.strokeWidth);
+                ctx->DrawCircle(center, avgRadius);
             }
         }
     };
@@ -485,8 +485,8 @@ namespace UltraCanvas {
             // Set stroke style
             if (style.hasStroke && style.strokeWidth > 0) {
                 SetStrokeColor(style.strokeColor);
-                SetStrokeWidth(style.strokeWidth);
-                DrawLine(startPoint, endPoint);
+                ctx->SetStrokeWidth(style.strokeWidth);
+                ctx->DrawLine(startPoint, endPoint);
             }
         }
 
@@ -548,20 +548,20 @@ namespace UltraCanvas {
 
                 for (size_t i = 0; i < points.size(); ++i) {
                     size_t next = (i + 1) % points.size();
-                    DrawLine(center, points[i]);
-                    DrawLine(points[i], points[next]);
+                    ctx->DrawLine(center, points[i]);
+                    ctx->DrawLine(points[i], points[next]);
                 }
             }
 
             // Set stroke style - draw polygon outline
             if (style.hasStroke && style.strokeWidth > 0) {
                 SetStrokeColor(style.strokeColor);
-                SetStrokeWidth(style.strokeWidth);
+                ctx->SetStrokeWidth(style.strokeWidth);
 
                 // Draw polygon outline
                 for (size_t i = 0; i < points.size(); ++i) {
                     size_t next = (i + 1) % points.size();
-                    DrawLine(points[i], points[next]);
+                    ctx->DrawLine(points[i], points[next]);
                 }
             }
         }

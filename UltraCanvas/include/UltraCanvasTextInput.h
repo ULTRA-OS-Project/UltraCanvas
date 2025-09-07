@@ -546,19 +546,19 @@ private:
         }
     }
     
-    void RenderText(const Rect2Df& area, const Color& color);
+    void RenderText(const Rect2Df& area, const Color& color, IRenderContext* ctx);
     
-    void RenderPlaceholder(const Rect2Df& area);
+    void RenderPlaceholder(const Rect2Df& area, IRenderContext* ctx);
     
-    void RenderSelection(const Rect2Df& area);
+    void RenderSelection(const Rect2Df& area, IRenderContext* ctx);
     
-    void RenderCaret(const Rect2Df& area);
+    void RenderCaret(const Rect2Df& area, IRenderContext* ctx);
     
-    void RenderMultilineText(const Rect2Df& area, const std::string& displayText, const Point2Di& startPos);
+    void RenderMultilineText(const Rect2Df& area, const std::string& displayText, const Point2Di& startPos, IRenderContext* ctx);
     
-    void RenderValidationFeedback(const Rect2Di& bounds) const;
+    void RenderValidationFeedback(const Rect2Di& bounds, IRenderContext* ctx) const;
     
-    void DrawShadow(const Rect2Di& bounds);
+    void DrawShadow(const Rect2Di& bounds, IRenderContext* ctx);
     
     float GetAverageCharacterWidth() {
         // Simplified character width calculation

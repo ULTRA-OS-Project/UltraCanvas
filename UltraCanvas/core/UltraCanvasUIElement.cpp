@@ -261,6 +261,13 @@ namespace UltraCanvas {
         }
     }
 
+    IRenderContext* UltraCanvasElement::GetRenderContext() const {
+        if (window) {
+            return window->GetRenderContext();
+        }
+        return nullptr;
+    }
+
     void UltraCanvasElement::AddThisPopupElementToWindow() {
         if (window) {
             window->AddPopupElement(this);

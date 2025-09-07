@@ -307,9 +307,10 @@ void UltraCanvasTemplate::ApplyToContainer(const Rect2D& containerRect) {
 
 // ===== RENDERING =====
 void UltraCanvasTemplate::Render() {
+        IRenderContext *ctx = GetRenderContext();
     if (!IsVisible()) return;
     
-    ULTRACANVAS_RENDER_SCOPE();
+    ctx->PushState();
     
     // Rebuild template if dirty
     if (isDirty) {
@@ -515,7 +516,7 @@ void UltraCanvasTemplate::DrawDragHandle() {
     // TODO: Add hover detection for hover color
     
     // Draw handle background
-    FillRectangle(handleRect, handleColor);
+    ctx->FillRectangle(handleRect, handleColor);
     
     // Draw grip pattern
     if (dragHandle.gripPattern == "dots") {
@@ -558,7 +559,7 @@ void UltraCanvasTemplate::DrawLineGrip(const Rect2D& rect) {
         float x = rect.x + rect.width / 2;
         
         for (float y = startY; y <= endY; y += spacing) {
-            DrawLine(Point2D(rect.x + 2, y), Point2D(rect.x + rect.width - 2, y), lineColor, lineWidth);
+             ctx->DrawLine(Point2D(rect.x + 2, y), Point2D(rect.x + rect.width - 2, y), lineColor, lineWidth);
         }
     } else {
         // Vertical lines for horizontal handles
@@ -567,7 +568,7 @@ void UltraCanvasTemplate::DrawLineGrip(const Rect2D& rect) {
         float y = rect.y + rect.height / 2;
         
         for (float x = startX; x <= endX; x += spacing) {
-            DrawLine(Point2D(x, rect.y + 2), Point2D(x, rect.y + rect.height - 2), lineColor, lineWidth);
+             ctx->DrawLine(Point2D(x, rect.y + 2), Point2D(x, rect.y + rect.height - 2), lineColor, lineWidth);
         }
     }
 }
@@ -590,7 +591,7 @@ void UltraCanvasTemplate::DrawBarGrip(const Rect2D& rect) {
                 barWidth,
                 barHeight
             );
-            FillRectangle(barRect, barColor);
+            ctx->FillRectangle(barRect, barColor);
         }
     } else {
         // Vertical bars for horizontal handles
@@ -607,7 +608,7 @@ void UltraCanvasTemplate::DrawBarGrip(const Rect2D& rect) {
                 barWidth,
                 barHeight
             );
-            FillRectangle(barRect, barColor);
+            ctx->FillRectangle(barRect, barColor);
         }
     }
 }
@@ -617,12 +618,12 @@ void UltraCanvasTemplate::DrawTemplateBackground() {
     
     // Draw background
     if (appearance.backgroundColor.a > 0) {
-        FillRectangle(bounds, appearance.backgroundColor);
+        ctx->FillRectangle(bounds, appearance.backgroundColor);
     }
     
     // Draw border
     if (appearance.borderWidth > 0 && appearance.borderColor.a > 0) {
-        DrawRectangle(bounds, appearance.borderColor, appearance.borderWidth);
+        ctx->DrawRectangle(bounds, appearance.borderColor, appearance.borderWidth);
     }
     
     // Draw shadow
@@ -633,7 +634,7 @@ void UltraCanvasTemplate::DrawTemplateBackground() {
             bounds.width,
             bounds.height
         );
-        FillRectangle(shadowRect, appearance.shadowColor);
+        ctx->FillRectangle(shadowRect, appearance.shadowColor);
     }
 }
 

@@ -263,9 +263,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasModalDialog::Render() {
+        IRenderContext *ctx = GetRenderContext();
         if (!isVisible) return;
 
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
 
         // Render overlay
         if (config.modal) {
@@ -373,17 +374,17 @@ namespace UltraCanvas {
         UltraCanvas::DrawFilledRect(titleBarRect, titleBg, Color(200, 200, 200, 255), 1);
 
         // Title text
-        SetTextColor(Colors::Black);
-        SetFont("Arial", 12.0f, FontWeight::Bold);
+        ctx->SetTextColor(Colors::Black);
+        ctx->SetFont("Arial", 12.0f, FontWeight::Bold);
         Point2D titlePos(titleBarRect.x + 10, titleBarRect.y + 20);
-        DrawText(config.title, titlePos);
+        ctx->DrawText(config.title, titlePos);
 
         // Close button (X)
         Rect2D closeButtonRect(titleBarRect.x + titleBarRect.width - 25, titleBarRect.y + 5, 20, 20);
         UltraCanvas::DrawFilledRect(closeButtonRect, Color(220, 220, 220, 255));
-        SetTextColor(Colors::Black);
-        SetFont("Arial", 10.0f);
-        DrawText("×", Point2D(closeButtonRect.x + 6, closeButtonRect.y + 14));
+        ctx->SetTextColor(Colors::Black);
+        ctx->SetFont("Arial", 10.0f);
+        ctx->DrawText("×", Point2D(closeButtonRect.x + 6, closeButtonRect.y + 14));
     }
 
     void UltraCanvasModalDialog::RenderIcon() {
@@ -394,18 +395,18 @@ namespace UltraCanvas {
         UltraCanvas::DrawFilledRect(iconRect, iconColor);
 
         // Draw icon symbol
-        SetTextColor(Colors::White);
-        SetFont("Arial", 20.0f, FontWeight::Bold);
+        ctx->SetTextColor(Colors::White);
+        ctx->SetFont("Arial", 20.0f, FontWeight::Bold);
         std::string iconText = GetTypeIcon();
         Point2D iconTextPos(iconRect.x + 10, iconRect.y + 22);
-        DrawText(iconText, iconTextPos);
+        ctx->DrawText(iconText, iconTextPos);
     }
 
     void UltraCanvasModalDialog::RenderMessage() {
         if (config.message.empty()) return;
 
-        SetTextColor(Colors::Black);
-        SetFont("Arial", 11.0f);
+        ctx->SetTextColor(Colors::Black);
+        ctx->SetFont("Arial", 11.0f);
 
         // Word wrap message if too long
         std::vector<std::string> lines;
@@ -435,15 +436,15 @@ namespace UltraCanvas {
         float lineHeight = 16.0f;
         for (size_t i = 0; i < lines.size() && i < 3; ++i) {
             Point2D linePos(messageRect.x, messageRect.y + (i + 1) * lineHeight);
-            DrawText(lines[i], linePos);
+            ctx->DrawText(lines[i], linePos);
         }
     }
 
     void UltraCanvasModalDialog::RenderDetails() {
         if (config.details.empty()) return;
 
-        SetTextColor(Color(100, 100, 100, 255));
-        SetFont("Arial", 9.0f);
+        ctx->SetTextColor(Color(100, 100, 100, 255));
+        ctx->SetFont("Arial", 9.0f);
         Point2D detailsPos(detailsRect.x, detailsRect.y + 12);
         DrawText(config.details, detailsPos);
     }
@@ -1072,6 +1073,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDialogManager::Render() {
+        IRenderContext *ctx = GetRenderContext();
         if (!enabled) return;
 
         // Render all active dialogs

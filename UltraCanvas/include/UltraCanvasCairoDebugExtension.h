@@ -201,7 +201,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         CairoMatrixInfo matrix = GetCurrentCairoMatrix();
         std::string matrixText = FormatCairoMatrix(matrix, false);
 
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         Rect2Di bounds = element->GetBounds();
 
         // Position for Cairo debug info (bottom-left of element)
@@ -227,14 +227,14 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
     void UltraCanvasCairoDebugExtension::DrawMatrixVisualization(const CairoMatrixInfo& matrix,
                                                                  const Point2Di& position,
                                                                  const DebugRenderSettings& settings) {
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
 
         float gridSize = 50.0f;
         Point2Df center = Point2Df(position.x + gridSize, position.y + gridSize);
 
         // Draw coordinate system grid
-        SetStrokeColor(Color(128, 128, 128, 150));
-        SetStrokeWidth(1.0f);
+        ctx->SetStrokeColor(Color(128, 128, 128, 150));
+        ctx->SetStrokeWidth(1.0f);
 
         // Grid lines
         for (int i = -1; i <= 2; i++) {
@@ -242,22 +242,22 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
             float y = center.y + i * gridSize / 2;
 
             // Vertical lines
-            DrawLine(x, center.y - gridSize, x, center.y + gridSize);
+            ctx->DrawLine(x, center.y - gridSize, x, center.y + gridSize);
             // Horizontal lines
-            DrawLine(center.x - gridSize, y, center.x + gridSize, y);
+            ctx->DrawLine(center.x - gridSize, y, center.x + gridSize, y);
         }
 
         // Draw original coordinate system (red)
-        SetStrokeColor(Color(255, 100, 100, 200));
-        SetStrokeWidth(2.0f);
+        ctx->SetStrokeColor(Color(255, 100, 100, 200));
+        ctx->SetStrokeWidth(2.0f);
 
         // Original X axis
-        DrawLine(center.x - gridSize / 2, center.y, center.x + gridSize / 2, center.y);
+        ctx->DrawLine(center.x - gridSize / 2, center.y, center.x + gridSize / 2, center.y);
         // Original Y axis
-        DrawLine(center.x, center.y - gridSize / 2, center.x, center.y + gridSize / 2);
+        ctx->DrawLine(center.x, center.y - gridSize / 2, center.x, center.y + gridSize / 2);
 
         // Draw transformed coordinate system (green)
-        SetStrokeColor(Color(100, 255, 100, 200));
+        ctx->SetStrokeColor(Color(100, 255, 100, 200));
         SetStrokeWidth(2.0f);
 
         // Apply transformation to unit vectors
@@ -265,11 +265,11 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
 
         // Transformed X axis (1,0) -> (xx, yx)
         Point2Df transformedX = Point2Df(center.x + matrix.xx * unitScale, center.y + matrix.yx * unitScale);
-        DrawLine(center, transformedX);
+        ctx->DrawLine(center, transformedX);
 
         // Transformed Y axis (0,1) -> (xy, yy)
         Point2Df transformedY = Point2Df(center.x + matrix.xy * unitScale, center.y + matrix.yy * unitScale);
-        DrawLine(center, transformedY);
+        ctx->DrawLine(center, transformedY);
 
         // Draw arrow heads
 //        UltraCanvasElementDebugExtension::DrawArrow(center, transformedX, 6.0f);
@@ -277,20 +277,20 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
 
         // Draw origin translation
         if (std::abs(matrix.x0) > 0.1 || std::abs(matrix.y0) > 0.1) {
-            SetStrokeColor(Color(255, 255, 100, 200)); // Yellow for translation
+            ctx->SetStrokeColor(Color(255, 255, 100, 200)); // Yellow for translation
             SetStrokeWidth(1.0f);
 
             Point2Df translatedOrigin = Point2Df(center.x + matrix.x0 / 10, center.y + matrix.y0 / 10);
-            DrawLine(center, translatedOrigin);
+            ctx->DrawLine(center, translatedOrigin);
 
             // Draw small circle at translated origin
-            SetFillColor(Color(255, 255, 100, 200));
+           ctx->SetFillColor(Color(255, 255, 100, 200));
             DrawFilledCircle(translatedOrigin, 3.0f, Color(255, 255, 100, 200));
         }
 
         // Label the visualization
-        SetTextColor(Color(200, 200, 200, 255));
-        SetFont(settings.fontFamily, settings.textSize - 2);
+        ctx->SetTextColor(Color(200, 200, 200, 255));
+        ctx->SetFont(settings.fontFamily, settings.textSize - 2);
         DrawText("Matrix Viz", Point2Di(position.x, position.y - 5));
     }
 

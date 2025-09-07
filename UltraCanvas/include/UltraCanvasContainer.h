@@ -216,8 +216,8 @@ namespace UltraCanvas {
         void OnScrollChanged();
         int CalculateScrollbarThumbSize(bool vertical) const;
         int CalculateScrollbarThumbPosition(bool vertical) const;
-        void RenderVerticalScrollbar();
-        void RenderHorizontalScrollbar();
+        void RenderVerticalScrollbar(IRenderContext *ctx);
+        void RenderHorizontalScrollbar(IRenderContext *ctx);
         void UpdateScrollbarHoverStates(const Point2Di& mousePos);
     };
 

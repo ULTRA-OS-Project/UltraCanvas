@@ -394,10 +394,11 @@ namespace UltraCanvas {
 
         // ===== RENDERING =====
         void Render() override {
-            if (!interpreter || !interpreter->IsCompiled()) return;
+            auto ctx = GetRenderContext();
+            if (!interpreter || !interpreter->IsCompiled() || !ctx) return;
 
             auto currentTime = std::chrono::steady_clock::now();
-
+            ctx->PushState();
             if (isAnimating || needsRegeneration) {
                 auto elapsed = std::chrono::duration<float>(currentTime - startTime).count();
                 interpreter->SetTime(elapsed * currentFormula.animationSpeed);
@@ -412,15 +413,15 @@ namespace UltraCanvas {
             }
 
             if (isRecordingVideo && !cachedFrames.empty()) {
-                DrawCachedVideo();
+                DrawCachedVideo(ctx);
             } else {
-                DrawGeneratedBackground();
+                DrawGeneratedBackground(ctx);
             }
 
             if (overlayGraphic.enabled) {
-                DrawOverlay();
+                DrawOverlay(ctx);
             }
-
+            ctx->PopState();
             frameCount++;
             lastFrameTime = currentTime;
         }
@@ -497,7 +498,7 @@ namespace UltraCanvas {
             }
         }
 
-        void DrawCachedVideo() {
+        void DrawCachedVideo(IRenderContext* ctx) {
             if (cachedFrames.empty()) return;
 
             // Cycle through cached frames
@@ -510,12 +511,12 @@ namespace UltraCanvas {
                 pixelBuffer = cachedFrames[frameIndex];
 
                 // Draw a simple rectangle representing the background
-                SetFillColor(Colors::Black);
-                FillRectangle(Rect2Di(GetX(), GetY(), GetWidth(), GetHeight()));
+               ctx->SetFillColor(Colors::Black);
+               ctx->FillRectangle(Rect2Di(GetX(), GetY(), GetWidth(), GetHeight()));
             }
         }
 
-        void DrawOverlay() {
+        void DrawOverlay(IRenderContext* ctx) {
             if (!overlayGraphic.enabled || overlayGraphic.imagePath.empty()) return;
 
             // Calculate position and size
@@ -530,10 +531,10 @@ namespace UltraCanvas {
 
             // TODO: Load and draw the actual image
             // For now, draw a placeholder rectangle
-            SetFillColor(Color(255, 255, 255, (uint8_t)(animatedOpacity * 255)));
+           ctx->SetFillColor(Color(255, 255, 255, (uint8_t)(animatedOpacity * 255)));
             int scaledWidth = (int)(100 * animatedScale); // Placeholder size
             int scaledHeight = (int)(50 * animatedScale);
-            FillRectangle(Rect2Di(position.x, position.y, scaledWidth, scaledHeight));
+            ctx->FillRectangle(Rect2Di(position.x, position.y, scaledWidth, scaledHeight));
         }
 
         Point2Di CalculateOverlayPosition() {
@@ -626,7 +627,7 @@ namespace UltraCanvas {
             }
         }
 
-        void DrawGeneratedBackground() {
+        void DrawGeneratedBackground(IRenderContext* ctx) {
             // For now, implement a simple pixel-by-pixel drawing
             // In a real implementation, this would be optimized
             // to upload to a texture and draw as a quad
@@ -642,8 +643,8 @@ namespace UltraCanvas {
                             (pixel >> 24) & 0xFF  // A
                     );
 
-                    SetFillColor(color);
-                    FillRectangle(Rect2Di(GetX() + x, GetY() + y, 1, 1));
+                   ctx->SetFillColor(color);
+                    ctx->FillRectangle(Rect2Di(GetX() + x, GetY() + y, 1, 1));
                 }
             }
         }

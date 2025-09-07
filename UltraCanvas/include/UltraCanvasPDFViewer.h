@@ -106,31 +106,31 @@ public:
     }
     
     void HandleRender() override {
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Draw background
-        SetFillColor(isSelected ? selectedColor : normalColor);
-        DrawRectangle(GetX(), GetY(), GetWidth(), GetHeight());
+       ctx->SetFillColor(isSelected ? selectedColor : normalColor);
+        ctx->DrawRectangle(GetX(), GetY(), GetWidth(), GetHeight());
         
         // Draw border
-        SetStrokeColor(borderColor);
+        ctx->SetStrokeColor(borderColor);
         SetStrokeWidth(isSelected ? 3.0f : 1.0f);
         DrawRectangleBorder(GetX(), GetY(), GetWidth(), GetHeight());
         
         // Draw page number at bottom
         SetTextColor(Colors::Black);
-        SetFont("Arial", 10.0f);
+        ctx->SetFont("Arial", 10.0f);
         std::string pageText = std::to_string(pageNumber);
         Point2D textPos(GetX() + GetWidth()/2 - 10, GetY() + GetHeight() - 10);
         DrawText(pageText, textPos);
         
         // Draw loading indicator if needed
         if (isLoading) {
-            SetFillColor(Color(255, 255, 255, 128));
-            DrawRectangle(GetX() + 5, GetY() + 20, GetWidth() - 10, GetHeight() - 40);
+           ctx->SetFillColor(Color(255, 255, 255, 128));
+            ctx->DrawRectangle(GetX() + 5, GetY() + 20, GetWidth() - 10, GetHeight() - 40);
             
             SetTextColor(Colors::Gray);
-            SetFont("Arial", 8.0f);
+            ctx->SetFont("Arial", 8.0f);
             Point2D loadingPos(GetX() + GetWidth()/2 - 20, GetY() + GetHeight()/2);
             DrawText("Loading...", loadingPos);
         }
@@ -409,35 +409,35 @@ public:
     
     // ===== UI EVENT HANDLING =====
     void HandleRender() override {
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Draw background
-        SetFillColor(Color(240, 240, 240, 255));
-        DrawRectangle(GetX(), GetY(), GetWidth(), GetHeight());
+       ctx->SetFillColor(Color(240, 240, 240, 255));
+        ctx->DrawRectangle(GetX(), GetY(), GetWidth(), GetHeight());
         
         // Draw toolbar background
-        SetFillColor(Color(250, 250, 250, 255));
-        DrawRectangle(toolbarArea.x, toolbarArea.y, toolbarArea.width, toolbarArea.height);
+       ctx->SetFillColor(Color(250, 250, 250, 255));
+        ctx->DrawRectangle(toolbarArea.x, toolbarArea.y, toolbarArea.width, toolbarArea.height);
         
         // Draw thumbnail panel background if visible
         if (isThumbnailPanelVisible) {
-            SetFillColor(Color(245, 245, 245, 255));
-            DrawRectangle(thumbnailArea.x, thumbnailArea.y, thumbnailArea.width, thumbnailArea.height);
+           ctx->SetFillColor(Color(245, 245, 245, 255));
+            ctx->DrawRectangle(thumbnailArea.x, thumbnailArea.y, thumbnailArea.width, thumbnailArea.height);
             
             // Draw separator line
-            SetStrokeColor(Color(200, 200, 200, 255));
+            ctx->SetStrokeColor(Color(200, 200, 200, 255));
             SetStrokeWidth(1.0f);
-            DrawLine(Point2D(thumbnailArea.x + thumbnailArea.width, thumbnailArea.y),
+            ctx->DrawLine(Point2D(thumbnailArea.x + thumbnailArea.width, thumbnailArea.y),
                     Point2D(thumbnailArea.x + thumbnailArea.width, thumbnailArea.y + thumbnailArea.height));
         }
         
         // Draw page area background
-        SetFillColor(Color(255, 255, 255, 255));
-        DrawRectangle(pageArea.x, pageArea.y, pageArea.width, pageArea.height);
+       ctx->SetFillColor(Color(255, 255, 255, 255));
+        ctx->DrawRectangle(pageArea.x, pageArea.y, pageArea.width, pageArea.height);
         
         // Draw status bar
-        SetFillColor(Color(230, 230, 230, 255));
-        DrawRectangle(statusArea.x, statusArea.y, statusArea.width, statusArea.height);
+       ctx->SetFillColor(Color(230, 230, 230, 255));
+        ctx->DrawRectangle(statusArea.x, statusArea.y, statusArea.width, statusArea.height);
         
         // Draw status text
         if (isDocumentLoaded) {

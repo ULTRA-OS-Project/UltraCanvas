@@ -191,18 +191,18 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         Rect2D bounds = GetBounds();
         Rect2D textArea = GetTextAreaBounds();
         
         // Draw background
-        SetFillColor(IsEnabled() ? backgroundColor : disabledColor);
-        DrawRectangle(bounds);
+        ctx->SetFillColor(IsEnabled() ? backgroundColor : disabledColor);
+        ctx->DrawRectangle(bounds);
         
         // Draw border
-        SetStrokeColor(borderColor);
-        SetStrokeWidth(1);
+        ctx->SetStrokeColor(borderColor);
+        ctx->SetStrokeWidth(1);
         DrawRectOutline(bounds);
         
         // Draw text area
@@ -373,15 +373,15 @@ private:
         Rect2D textArea = GetTextAreaBounds();
         
         // Set clipping for text
-        SetClipRect(textArea);
+        ctx->SetClipRect(textArea);
         
         // Draw text
-        SetTextColor(IsEnabled() ? textColor : disabledTextColor);
+        ctx->SetTextColor(IsEnabled() ? textColor : disabledTextColor);
         SetTextFont(fontFamily, fontSize);
         
         std::string displayText = isEditing ? editText : prefix + std::to_string(value) + suffix;
         Point2D textPos(textArea.x, textArea.y + textArea.height / 2 + fontSize / 2);
-        DrawText(displayText, textPos);
+        ctx->DrawText(displayText, textPos);
         
         // Draw cursor if editing
         if (isEditing && IsFocused() && showCursor) {
@@ -396,15 +396,15 @@ private:
         
         // Calculate cursor position
         std::string beforeCursor = editText.substr(0, cursorPosition);
-        Point2D textSize = MeasureText(beforeCursor);
+        Point2D textSize = ctx->MeasureText(beforeCursor);
         
         int cursorX = textArea.x + (int)textSize.x;
         int cursorY = textArea.y + 2;
         int cursorHeight = textArea.height - 4;
         
-        SetStrokeColor(textColor);
-        SetStrokeWidth(1);
-        DrawLine(
+        ctx->SetStrokeColor(textColor);
+        ctx->SetStrokeWidth(1);
+        ctx->DrawLine(
             Point2D(cursorX, cursorY),
             Point2D(cursorX, cursorY + cursorHeight)
         );
@@ -424,12 +424,12 @@ private:
         }
         
         // Draw button background
-        SetFillColor(bgColor);
-        DrawRectangle(buttonBounds);
+        ctx->SetFillColor(bgColor);
+        ctx->DrawRectangle(buttonBounds);
         
         // Draw button border
-        SetStrokeColor(borderColor);
-        SetStrokeWidth(1);
+        ctx->SetStrokeColor(borderColor);
+        ctx->SetStrokeWidth(1);
         DrawRectOutline(buttonBounds);
         
         // Draw up arrow
@@ -450,12 +450,12 @@ private:
         }
         
         // Draw button background
-        SetFillColor(bgColor);
-        DrawRectangle(buttonBounds);
+        ctx->SetFillColor(bgColor);
+        ctx->DrawRectangle(buttonBounds);
         
         // Draw button border
-        SetStrokeColor(borderColor);
-        SetStrokeWidth(1);
+        ctx->SetStrokeColor(borderColor);
+        ctx->SetStrokeWidth(1);
         DrawRectOutline(buttonBounds);
         
         // Draw down arrow
@@ -466,8 +466,8 @@ private:
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         int arrowSize = 4;
         
-        SetStrokeColor(IsEnabled() ? Colors::Black : disabledTextColor);
-        SetStrokeWidth(1);
+        ctx->SetStrokeColor(IsEnabled() ? Colors::Black : disabledTextColor);
+        ctx->SetStrokeWidth(1);
         
         // Draw triangle pointing up
         std::vector<Point2D> points = {
@@ -482,8 +482,8 @@ private:
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         int arrowSize = 4;
         
-        SetStrokeColor(IsEnabled() ? Colors::Black : disabledTextColor);
-        SetStrokeWidth(1);
+        ctx->SetStrokeColor(IsEnabled() ? Colors::Black : disabledTextColor);
+        ctx->SetStrokeWidth(1);
         
         // Draw triangle pointing down
         std::vector<Point2D> points = {
@@ -566,7 +566,7 @@ private:
             
             for (size_t i = 0; i <= editText.length(); i++) {
                 testText = editText.substr(0, i);
-                Point2D textSize = MeasureText(testText);
+                Point2D textSize = ctx->MeasureText(testText);
                 
                 if (textSize.x >= clickX) {
                     cursorPosition = (int)i;

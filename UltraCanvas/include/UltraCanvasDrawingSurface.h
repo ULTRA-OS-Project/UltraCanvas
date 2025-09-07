@@ -213,7 +213,7 @@ public:
     
     // Line drawing
     void DrawLine(const Point2D& start, const Point2D& end) {
-        DrawLine(start.x, start.y, end.x, end.y, currentState.foregroundColor);
+        ctx->DrawLine(start.x, start.y, end.x, end.y, currentState.foregroundColor);
     }
     
     void DrawLine(float x1, float y1, float x2, float y2, const Color& color) {
@@ -245,7 +245,7 @@ public:
     }
     
     // Shape drawing
-    void DrawRectangle(int x, int y, int w, int h, bool filled = false) {
+    void ctx->DrawRectangle(int x, int y, int w, int h, bool filled = false) {
         if (filled) {
             for (int py = y; py < y + h; py++) {
                 for (int px = x; px < x + w; px++) {
@@ -254,10 +254,10 @@ public:
             }
         } else {
             // Draw outline
-            DrawLine(x, y, x + w - 1, y, currentState.foregroundColor);         // Top
-            DrawLine(x + w - 1, y, x + w - 1, y + h - 1, currentState.foregroundColor); // Right
-            DrawLine(x + w - 1, y + h - 1, x, y + h - 1, currentState.foregroundColor); // Bottom
-            DrawLine(x, y + h - 1, x, y, currentState.foregroundColor);         // Left
+            ctx->DrawLine(x, y, x + w - 1, y, currentState.foregroundColor);         // Top
+            ctx->DrawLine(x + w - 1, y, x + w - 1, y + h - 1, currentState.foregroundColor); // Right
+            ctx->DrawLine(x + w - 1, y + h - 1, x, y + h - 1, currentState.foregroundColor); // Bottom
+            ctx->DrawLine(x, y + h - 1, x, y, currentState.foregroundColor);         // Left
         }
     }
     
@@ -269,8 +269,8 @@ public:
         
         auto plotCirclePoints = [&](int px, int py) {
             if (filled) {
-                DrawLine(cx - px, cy + py, cx + px, cy + py, currentState.foregroundColor);
-                DrawLine(cx - px, cy - py, cx + px, cy - py, currentState.foregroundColor);
+                ctx->DrawLine(cx - px, cy + py, cx + px, cy + py, currentState.foregroundColor);
+                ctx->DrawLine(cx - px, cy - py, cx + px, cy - py, currentState.foregroundColor);
             } else {
                 SetPixel(cx + px, cy + py, currentState.foregroundColor);
                 SetPixel(cx - px, cy + py, currentState.foregroundColor);
@@ -325,7 +325,7 @@ public:
                 
                 for (size_t i = 0; i < intersections.size(); i += 2) {
                     if (i + 1 < intersections.size()) {
-                        DrawLine(intersections[i], y, intersections[i + 1], y, currentState.foregroundColor);
+                        ctx->DrawLine(intersections[i], y, intersections[i + 1], y, currentState.foregroundColor);
                     }
                 }
             }
@@ -333,7 +333,7 @@ public:
             // Draw outline
             for (size_t i = 0; i < points.size(); i++) {
                 size_t j = (i + 1) % points.size();
-                DrawLine(points[i], points[j]);
+                ctx->DrawLine(points[i], points[j]);
             }
         }
     }
@@ -573,7 +573,7 @@ private:
         
         switch (currentState.currentTool) {
             case DrawingTool::Pen:
-                DrawLine(lastDrawPoint, currentPoint);
+                ctx->DrawLine(lastDrawPoint, currentPoint);
                 break;
             case DrawingTool::Brush:
                 DrawBrush(localX, localY);

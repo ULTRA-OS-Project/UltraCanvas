@@ -58,8 +58,6 @@ namespace UltraCanvas {
             return false;
         }
 
-        RenderContextManager::RegisterWindowContext(this, renderContext.get());
-
         _created = true;
 
         std::cout << "UltraCanvas Linux: Window created successfully!" << std::endl;
@@ -212,8 +210,6 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxWindow::Destroy() {
         std::cout << "UltraCanvas Linux: Destroying window..." << std::endl;
-
-        RenderContextManager::UnregisterWindowContext(this);
 
         renderContext.reset();
         DestroyCairoSurface();
@@ -488,8 +484,8 @@ namespace UltraCanvas {
         // Set up rendering context
 //        int width, height;
 //        GetSize(width, height);
-//        SetFillColor(Color(245, 248, 255, 255)); // Light blue background
-//        FillRectangle(Rect2Di(0, 0, width, height));
+//        ctx->SetFillColor(Color(245, 248, 255, 255)); // Light blue background
+//        ctx->FillRectangle(Rect2Di(0, 0, width, height));
 
         // Call base class render
         UltraCanvasBaseWindow::Render();

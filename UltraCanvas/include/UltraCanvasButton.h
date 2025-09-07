@@ -156,9 +156,10 @@ namespace UltraCanvas {
 
         // ===== RENDERING =====
         void Render() override {
-            if (!IsVisible()) return;
+            IRenderContext *ctx = GetRenderContext();
+            if (!IsVisible() || !ctx) return;
 
-            ULTRACANVAS_RENDER_SCOPE();
+            ctx->PushState();
 
             UpdateButtonState();
 
@@ -169,21 +170,21 @@ namespace UltraCanvas {
 
             // Draw background
             if (style.cornerRadius > 0) {
-                DrawFilledRectangle(bounds, bgColor, Colors::Transparent, 0, style.cornerRadius);
+                ctx->DrawFilledRectangle(bounds, bgColor, Colors::Transparent, 0, style.cornerRadius);
             } else {
-                DrawFilledRectangle(bounds, bgColor);
+                ctx->DrawFilledRectangle(bounds, bgColor);
             }
 
             // Draw border
             if (style.borderWidth > 0) {
                 // Simple border using lines
-                DrawLine(bounds.x, bounds.y,
+                ctx->DrawLine(bounds.x, bounds.y,
                          bounds.x + bounds.width, bounds.y, style.borderColor);
-                DrawLine(bounds.x + bounds.width, bounds.y,
+                ctx->DrawLine(bounds.x + bounds.width, bounds.y,
                          bounds.x + bounds.width, bounds.y + bounds.height, style.borderColor);
-                DrawLine(bounds.x + bounds.width, bounds.y + bounds.height,
+                ctx->DrawLine(bounds.x + bounds.width, bounds.y + bounds.height,
                          bounds.x, bounds.y + bounds.height, style.borderColor);
-                DrawLine(bounds.x, bounds.y + bounds.height,
+                ctx->DrawLine(bounds.x, bounds.y + bounds.height,
                          bounds.x, bounds.y, style.borderColor);
             }
 
@@ -196,24 +197,26 @@ namespace UltraCanvas {
                 centeredTextStyle.textColor = textColor;
                 centeredTextStyle.alignment = TextAlign::Center;
                 centeredTextStyle.baseline = TextBaseline::Middle;  // This ensures vertical centering
-                SetTextStyle(centeredTextStyle);
+                ctx->SetTextStyle(centeredTextStyle);
 
-                DrawTextInRect(text, bounds);
+                ctx->DrawTextInRect(text, bounds);
             }
 
             // Draw focus indicator
             if (IsFocused()) {
                 // Simple focus rectangle
                 Rect2Di focusRect(bounds.x + 2, bounds.y + 2, bounds.width - 4, bounds.height - 4);
-                DrawLine(focusRect.x, focusRect.y,
+                ctx->DrawLine(focusRect.x, focusRect.y,
                          focusRect.x + focusRect.width, focusRect.y, Colors::Blue);
-                DrawLine(focusRect.x + focusRect.width, focusRect.y,
+                ctx->DrawLine(focusRect.x + focusRect.width, focusRect.y,
                          focusRect.x + focusRect.width, focusRect.y + focusRect.height, Colors::Blue);
-                DrawLine(focusRect.x + focusRect.width, focusRect.y + focusRect.height,
+                ctx->DrawLine(focusRect.x + focusRect.width, focusRect.y + focusRect.height,
                          focusRect.x, focusRect.y + focusRect.height, Colors::Blue);
-                DrawLine(focusRect.x, focusRect.y + focusRect.height,
+                ctx->DrawLine(focusRect.x, focusRect.y + focusRect.height,
                          focusRect.x, focusRect.y, Colors::Blue);
             }
+
+            ctx->PopState();
         }
 
         // ===== EVENT HANDLING =====

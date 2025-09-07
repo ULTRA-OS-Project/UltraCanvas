@@ -344,13 +344,13 @@ std::shared_ptr<SVGDocument> SimpleSVGParser::Parse(const std::string& svgConten
 
 // ===== SVG ELEMENT RENDERER IMPLEMENTATION =====
 void SVGElementRenderer::ApplyStyles(const SVGElement& element) {
-    ULTRACANVAS_RENDER_SCOPE();
+    ctx->PushState();
     
     // Parse and apply fill
     std::string fill = element.attributes.Get("fill", "black");
     if (fill != "none") {
         Color fillColor = SimpleSVGParser::ParseColor(fill);
-        SetFillColor(fillColor);
+       ctx->SetFillColor(fillColor);
     }
     
     // Parse and apply stroke
@@ -359,8 +359,8 @@ void SVGElementRenderer::ApplyStyles(const SVGElement& element) {
         Color strokeColor = SimpleSVGParser::ParseColor(stroke);
         float strokeWidth = element.attributes.GetFloat("stroke-width", 1.0f);
         
-        SetStrokeColor(strokeColor);
-        SetStrokeWidth(strokeWidth);
+        ctx->SetStrokeColor(strokeColor);
+        ctx->SetStrokeWidth(strokeWidth);
     }
     
     // Apply opacity
@@ -387,17 +387,17 @@ void SVGElementRenderer::RenderRect(const SVGElement& element) {
     // Use existing UltraCanvas functions
     if (element.attributes.Get("fill", "black") != "none") {
         if (rx > 0 || ry > 0) {
-            FillRoundedRectangle(rect, std::max(rx, ry));
+            ctx->FillRoundedRectangle(rect, std::max(rx, ry));
         } else {
-            FillRectangle(rect);
+            ctx->FillRectangle(rect);
         }
     }
     
     if (element.attributes.Get("stroke", "none") != "none") {
         if (rx > 0 || ry > 0) {
-            DrawRoundedRectangle(rect, std::max(rx, ry));
+            ctx->DrawRoundedRectangle(rect, std::max(rx, ry));
         } else {
-            DrawRectangle(rect);
+            ctx->DrawRectangle(rect);
         }
     }
 }
@@ -419,7 +419,7 @@ void SVGElementRenderer::RenderCircle(const SVGElement& element) {
     }
     
     if (element.attributes.Get("stroke", "none") != "none") {
-        DrawCircle(center, r);
+        ctx->DrawCircle(center, r);
     }
 }
 
@@ -457,7 +457,7 @@ void SVGElementRenderer::RenderLine(const SVGElement& element) {
     ApplyStyles(element);
     
     // Use existing UltraCanvas function
-    DrawLine(start, end);
+    ctx->DrawLine(start, end);
 }
 
 void SVGElementRenderer::RenderPolyline(const SVGElement& element) {
@@ -471,7 +471,7 @@ void SVGElementRenderer::RenderPolyline(const SVGElement& element) {
     
     // Use existing UltraCanvas drawing - draw as connected lines
     for (size_t i = 0; i < points.size() - 1; ++i) {
-        DrawLine(points[i], points[i + 1]);
+        ctx->DrawLine(points[i], points[i + 1]);
     }
 }
 
@@ -506,7 +506,7 @@ void SVGElementRenderer::RenderPolygon(const SVGElement& element) {
         // Draw outline
         for (size_t i = 0; i < points.size(); ++i) {
             size_t next = (i + 1) % points.size();
-            DrawLine(points[i], points[next]);
+            ctx->DrawLine(points[i], points[next]);
         }
     }
 }
@@ -522,7 +522,7 @@ void SVGElementRenderer::RenderPath(const SVGElement& element) {
     
     // Render as connected lines (simplified path rendering)
     for (size_t i = 0; i < points.size() - 1; ++i) {
-        DrawLine(points[i], points[i + 1]);
+        ctx->DrawLine(points[i], points[i + 1]);
     }
 }
 
@@ -540,7 +540,7 @@ void SVGElementRenderer::RenderText(const SVGElement& element) {
 }
 
 void SVGElementRenderer::RenderGroup(const SVGElement& element) {
-    ULTRACANVAS_RENDER_SCOPE();
+    ctx->PushState();
     
     ApplyStyles(element);
     
@@ -576,7 +576,7 @@ void SVGElementRenderer::RenderElement(const SVGElement& element) {
 }
 
 void SVGElementRenderer::RenderDocument(const Rect2D& viewport) {
-    ULTRACANVAS_RENDER_SCOPE();
+    ctx->PushState();
     
     if (!document.root) return;
     
@@ -652,7 +652,8 @@ bool UltraCanvasSVGElement::LoadFromFile(const std::string& filePath) {
 }
 
 void UltraCanvasSVGElement::Render() {
-    ULTRACANVAS_RENDER_SCOPE();
+        IRenderContext *ctx = GetRenderContext();
+    ctx->PushState();
     
     if (!renderer || !document) return;
     

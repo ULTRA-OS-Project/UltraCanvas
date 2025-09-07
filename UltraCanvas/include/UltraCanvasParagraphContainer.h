@@ -435,14 +435,14 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Draw background
         UltraCanvas::DrawFilledRect(GetBounds(), style.backgroundColor, style.borderColor, style.borderWidth);
         
         // Set clipping for content area
         Rect2D contentRect = GetContentRect();
-        SetClipRect(contentRect);
+        ctx->SetClipRect(contentRect);
         
         // Render paragraphs
         RenderParagraphs();
@@ -458,7 +458,7 @@ public:
         }
         
         // Reset clipping
-        SetClipRect(GetBounds());
+        ctx->SetClipRect(GetBounds());
         
         // Render scrollbar
         if (style.showScrollbars && maxScrollY > 0) {
@@ -581,8 +581,8 @@ private:
             if (run.text.empty()) continue;
             
             // Set font and color
-            SetFont(run.fontFamily, run.fontSize);
-            SetTextColor(run.textColor);
+            ctx->SetFont(run.fontFamily, run.fontSize);
+            ctx->SetTextColor(run.textColor);
             
             // Draw background if needed
             if (run.backgroundColor.a > 0) {
@@ -591,20 +591,20 @@ private:
             }
             
             // Draw text
-            DrawText(run.text, Point2D(currentX, currentY));
+            ctx->DrawText(run.text, Point2D(currentX, currentY));
             
             // Draw underline/strikethrough
             if (run.hasUnderline || run.hasStrikethrough) {
                 Point2D textSize = GetRenderContext()->MeasureText(run.text);
                 
                 if (run.hasUnderline) {
-                    SetStrokeColor(run.textColor);
-                    DrawLine(Point2D(currentX, currentY + 2), Point2D(currentX + textSize.x, currentY + 2));
+                    ctx->SetStrokeColor(run.textColor);
+                    ctx->DrawLine(Point2D(currentX, currentY + 2), Point2D(currentX + textSize.x, currentY + 2));
                 }
                 
                 if (run.hasStrikethrough) {
-                    SetStrokeColor(run.textColor);
-                    DrawLine(Point2D(currentX, currentY - run.fontSize/3), Point2D(currentX + textSize.x, currentY - run.fontSize/3));
+                    ctx->SetStrokeColor(run.textColor);
+                    ctx->DrawLine(Point2D(currentX, currentY - run.fontSize/3), Point2D(currentX + textSize.x, currentY - run.fontSize/3));
                 }
             }
             
@@ -641,9 +641,9 @@ private:
             int cursorY = yOffset;
             int cursorHeight = GetLineHeight();
             
-            SetStrokeColor(style.cursorColor);
-            SetStrokeWidth(style.cursorWidth);
-            DrawLine(Point2D(cursorX, cursorY), Point2D(cursorX, cursorY + cursorHeight));
+            ctx->SetStrokeColor(style.cursorColor);
+            ctx->SetStrokeWidth(style.cursorWidth);
+            ctx->DrawLine(Point2D(cursorX, cursorY), Point2D(cursorX, cursorY + cursorHeight));
         }
     }
     
@@ -973,7 +973,7 @@ inline std::shared_ptr<UltraCanvasParagraphContainer> CreateRichTextViewer(
 5. **Consistent naming** - follows UltraCanvas conventions
 
 ✅ **Linux Integration:**
-- Uses DrawRectangle(), DrawText(), SetFillColor() etc.
+- Uses ctx->DrawRectangle(), DrawText(), ctx->SetFillColor() etc.
 - All calls go through LinuxRenderContext automatically
 - No platform-specific code needed
 - Works with X11 event conversion

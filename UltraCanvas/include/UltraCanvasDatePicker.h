@@ -165,7 +165,7 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Draw background and border
         UltraCanvas::DrawFilledRect(GetBounds(), backgroundColor, Colors::Gray, 1.0f);
@@ -203,15 +203,15 @@ private:
         
         // Month/Year text
         std::string monthYear = GetMonthName(displayMonth.month) + " " + std::to_string(displayMonth.year);
-        SetTextColor(headerTextColor);
-        SetFont("Arial", 12.0f);
+        ctx->SetTextColor(headerTextColor);
+        ctx->SetFont("Arial", 12.0f);
         
-        Point2D textSize = GetRenderContext()->MeasureText(monthYear);
+        Point2D textSize = GetRenderContext()->ctx->MeasureText(monthYear);
         Point2D textPos(
             headerRect.x + (headerRect.width - textSize.x) / 2,
             headerRect.y + (headerRect.height + textSize.y) / 2
         );
-        DrawText(monthYear, textPos);
+        ctx->DrawText(monthYear, textPos);
         
         // Navigation arrows
         DrawNavigationArrows(headerRect);
@@ -234,30 +234,30 @@ private:
     }
     
     void DrawArrow(const Point2D& center, int size, bool pointingLeft) {
-        SetStrokeColor(headerTextColor);
-        SetStrokeWidth(2.0f);
+        ctx->SetStrokeColor(headerTextColor);
+        ctx->SetStrokeWidth(2.0f);
         
         int offset = size / 4;
         if (pointingLeft) {
-            DrawLine(Point2D(center.x + offset, center.y - offset), Point2D(center.x - offset, center.y));
-            DrawLine(Point2D(center.x - offset, center.y), Point2D(center.x + offset, center.y + offset));
+            ctx->DrawLine(Point2D(center.x + offset, center.y - offset), Point2D(center.x - offset, center.y));
+            ctx->DrawLine(Point2D(center.x - offset, center.y), Point2D(center.x + offset, center.y + offset));
         } else {
-            DrawLine(Point2D(center.x - offset, center.y - offset), Point2D(center.x + offset, center.y));
-            DrawLine(Point2D(center.x + offset, center.y), Point2D(center.x - offset, center.y + offset));
+            ctx->DrawLine(Point2D(center.x - offset, center.y - offset), Point2D(center.x + offset, center.y));
+            ctx->DrawLine(Point2D(center.x + offset, center.y), Point2D(center.x - offset, center.y + offset));
         }
     }
     
     void DrawDayHeaders() {
         const char* dayNames[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
         
-        SetTextColor(Colors::Gray);
-        SetFont("Arial", 10.0f);
+        ctx->SetTextColor(Colors::Gray);
+        ctx->SetFont("Arial", 10.0f);
         
         for (int i = 0; i < 7; i++) {
             int x = GetX() + 10 + i * cellWidth;
             int y = GetY() + headerHeight + 5;
             
-            DrawText(dayNames[i], Point2D(x, y + 12));
+            ctx->DrawText(dayNames[i], Point2D(x, y + 12));
         }
     }
     
@@ -269,7 +269,7 @@ private:
         int firstDayOfWeek = GetDayOfWeek(firstOfMonth);
         int daysInMonth = Date::GetDaysInMonth(displayMonth.year, displayMonth.month);
         
-        SetFont("Arial", 11.0f);
+        ctx->SetFont("Arial", 11.0f);
         
         // Draw calendar days
         int dayNumber = 1;
@@ -301,14 +301,14 @@ private:
                 }
                 
                 // Draw day number
-                SetTextColor(cellDate == selectedDate ? Colors::White : textColor);
+                ctx->SetTextColor(cellDate == selectedDate ? Colors::White : textColor);
                 std::string dayStr = std::to_string(dayNumber);
-                Point2D textSize = GetRenderContext()->MeasureText(dayStr);
+                Point2D textSize = GetRenderContext()->ctx->MeasureText(dayStr);
                 Point2D textPos(
                     x + (cellWidth - textSize.x) / 2,
                     y + (cellHeight + textSize.y) / 2
                 );
-                DrawText(dayStr, textPos);
+                ctx->DrawText(dayStr, textPos);
                 
                 dayNumber++;
             }
@@ -614,7 +614,7 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Draw background and border
         Color currentBorderColor = IsFocused() ? focusColor : borderColor;
@@ -666,11 +666,11 @@ private:
     void DrawDateText() {
         std::string dateText = GetDateString();
         
-        SetTextColor(textColor);
-        SetFont("Arial", 11.0f);
+        ctx->SetTextColor(textColor);
+        ctx->SetFont("Arial", 11.0f);
         
         // Calculate text position
-        Point2D textSize = GetRenderContext()->MeasureText(dateText);
+        Point2D textSize = GetRenderContext()->ctx->MeasureText(dateText);
         Point2D textPos(
             GetX() + padding,
             GetY() + (GetHeight() + textSize.y) / 2
@@ -679,12 +679,12 @@ private:
         // Clip text to available space
         int availableWidth = GetWidth() - padding * 2 - buttonWidth;
         Rect2D textRect(GetX() + padding, GetY(), availableWidth, GetHeight());
-        SetClipRect(textRect);
+        ctx->SetClipRect(textRect);
         
-        DrawText(dateText, textPos);
+        ctx->DrawText(dateText, textPos);
         
         // Reset clipping
-        SetClipRect(GetBounds());
+        ctx->SetClipRect(GetBounds());
     }
     
     void DrawDropdownButton() {
@@ -695,14 +695,14 @@ private:
         UltraCanvas::DrawFilledRect(buttonRect, currentButtonColor, borderColor, 1.0f);
         
         // Draw dropdown arrow
-        SetStrokeColor(Colors::Black);
-        SetStrokeWidth(1.0f);
+        ctx->SetStrokeColor(Colors::Black);
+        ctx->SetStrokeWidth(1.0f);
         
         Point2D center(buttonX + buttonWidth / 2, GetY() + GetHeight() / 2);
         int arrowSize = 4;
         
-        DrawLine(Point2D(center.x - arrowSize, center.y - 2), Point2D(center.x, center.y + 2));
-        DrawLine(Point2D(center.x, center.y + 2), Point2D(center.x + arrowSize, center.y - 2));
+        ctx->DrawLine(Point2D(center.x - arrowSize, center.y - 2), Point2D(center.x, center.y + 2));
+        ctx->DrawLine(Point2D(center.x, center.y + 2), Point2D(center.x + arrowSize, center.y - 2));
     }
     
     void HandleMouseDown(const UCEvent& event) {

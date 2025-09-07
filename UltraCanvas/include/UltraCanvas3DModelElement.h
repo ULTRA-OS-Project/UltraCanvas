@@ -246,7 +246,7 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Draw background
         UltraCanvas::DrawFilledRect(GetBounds(), viewParams.backgroundColor);
@@ -460,8 +460,8 @@ private:
     }
     
     void DrawWireframe(const std::vector<Point2D>& vertices) {
-        SetStrokeColor(Colors::White);
-        SetStrokeWidth(1.0f);
+        ctx->SetStrokeColor(Colors::White);
+        ctx->SetStrokeWidth(1.0f);
         
         // Draw edges based on indices
         for (size_t i = 0; i < modelData.indices.size(); i += 3) {
@@ -471,9 +471,9 @@ private:
                 int v3 = modelData.indices[i + 2];
                 
                 if (v1 < vertices.size() && v2 < vertices.size() && v3 < vertices.size()) {
-                    DrawLine(vertices[v1], vertices[v2]);
-                    DrawLine(vertices[v2], vertices[v3]);
-                    DrawLine(vertices[v3], vertices[v1]);
+                    ctx->DrawLine(vertices[v1], vertices[v2]);
+                    ctx->DrawLine(vertices[v2], vertices[v3]);
+                    ctx->DrawLine(vertices[v3], vertices[v1]);
                 }
             }
         }
@@ -481,7 +481,7 @@ private:
     
     void DrawSolidFaces(const std::vector<Point2D>& vertices) {
         // Simple filled triangles
-        SetFillColor(Color(180, 180, 180, 255));
+        ctx->SetFillColor(Color(180, 180, 180, 255));
         
         for (size_t i = 0; i < modelData.indices.size(); i += 3) {
             if (i + 2 < modelData.indices.size()) {
@@ -500,35 +500,35 @@ private:
     void DrawInfoOverlay() {
         if (!modelData.IsValid()) return;
         
-        SetTextColor(Colors::White);
-        SetFont("Arial", 10.0f);
+        ctx->SetTextColor(Colors::White);
+        ctx->SetFont("Arial", 10.0f);
         
         std::string info = "Vertices: " + std::to_string(modelData.vertexCount) + 
                           " | Faces: " + std::to_string(modelData.faceCount);
         
-        DrawText(info, Point2D(GetX() + 5, GetY() + GetHeight() - 15));
+        ctx->DrawText(info, Point2D(GetX() + 5, GetY() + GetHeight() - 15));
     }
     
     void DrawLoadingDisplay() {
         Rect2D bounds = GetBounds();
         Point2D center = bounds.Center();
         
-        SetTextColor(Colors::White);
-        SetFont("Arial", 14.0f);
-        DrawText("Loading 3D Model...", Point2D(center.x - 50, center.y));
+        ctx->SetTextColor(Colors::White);
+        ctx->SetFont("Arial", 14.0f);
+        ctx->DrawText("Loading 3D Model...", Point2D(center.x - 50, center.y));
     }
     
     void DrawErrorDisplay() {
         Rect2D bounds = GetBounds();
         Point2D center = bounds.Center();
         
-        SetTextColor(Colors::Red);
-        SetFont("Arial", 12.0f);
-        DrawText("Error loading model", Point2D(center.x - 60, center.y - 10));
+        ctx->SetTextColor(Colors::Red);
+        ctx->SetFont("Arial", 12.0f);
+        ctx->DrawText("Error loading model", Point2D(center.x - 60, center.y - 10));
         
         if (!errorMessage.empty()) {
-            SetFont("Arial", 10.0f);
-            DrawText(errorMessage, Point2D(center.x - 80, center.y + 10));
+            ctx->SetFont("Arial", 10.0f);
+            ctx->DrawText(errorMessage, Point2D(center.x - 80, center.y + 10));
         }
     }
     
@@ -537,15 +537,15 @@ private:
         Point2D center = bounds.Center();
         
         // Draw placeholder cube outline
-        SetStrokeColor(Colors::Gray);
-        SetStrokeWidth(2.0f);
+        ctx->SetStrokeColor(Colors::Gray);
+        ctx->SetStrokeWidth(2.0f);
         
         float size = 50;
         Rect2D cubeRect(center.x - size/2, center.y - size/2, size, size);
         UltraCanvas::DrawFilledRect(cubeRect, Colors::Transparent, Colors::Gray, 2.0f);
         
-        SetTextColor(Colors::Gray);
-        SetFont("Arial", 12.0f);
+        ctx->SetTextColor(Colors::Gray);
+        ctx->SetFont("Arial", 12.0f);
         DrawText("3D Model", Point2D(center.x - 30, center.y + size/2 + 20));
     }
     

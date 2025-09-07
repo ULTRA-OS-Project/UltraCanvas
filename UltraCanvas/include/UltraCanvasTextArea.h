@@ -123,7 +123,7 @@ namespace UltraCanvas {
         // ===== CORE TEXT MEASUREMENT FUNCTIONS =====
 
         // Get accurate text width using the rendering system
-        float GetTextWidth(const std::string& text) const;
+        int GetTextWidth(const std::string& text) const;
 
         // Get character width at specific position (for proportional fonts)
         float GetCharacterWidth(const std::string& text, size_t position) const;
@@ -168,11 +168,11 @@ namespace UltraCanvas {
         bool OnEvent(const UCEvent& event) override;
 
     private:
-        void DrawTextContent();
-        void DrawSelection();
-        void DrawCursor();
-        void DrawLineNumbers();
-        void DrawScrollBars();
+        void DrawTextContent(IRenderContext *ctx);
+        void DrawSelection(IRenderContext *ctx);
+        void DrawCursor(IRenderContext *ctx);
+        void DrawLineNumbers(IRenderContext *ctx);
+        void DrawScrollBars(IRenderContext *ctx);
 
         void InvalidateTextMeasurementCache() { lastMeasurement.valid = false; }
 

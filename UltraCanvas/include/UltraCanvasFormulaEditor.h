@@ -296,11 +296,14 @@ namespace UltraCanvas {
 
         void Render() override {
             // Call base render first
+            auto ctx = GetRenderContext();
             UltraCanvasTextArea::Render();
 
             // Apply syntax highlighting
             if (syntaxHighlightingEnabled && !tokens.empty()) {
-                RenderSyntaxHighlighting();
+                ctx->PushState();
+                RenderSyntaxHighlighting(ctx);
+                ctx->PopState();
             }
         }
 
@@ -318,18 +321,16 @@ namespace UltraCanvas {
         }
 
     private:
-        void RenderSyntaxHighlighting() {
+        void RenderSyntaxHighlighting(IRenderContext* ctx) {
             // This would be a complex implementation that overlays
             // colored text on top of the base text area
             // For now, indicate that syntax highlighting is active
 
-            ULTRACANVAS_RENDER_SCOPE();
-
             Rect2Di bounds = GetBounds();
 
             // Draw a small indicator that syntax highlighting is enabled
-            SetFillColor(Color(0, 255, 0, 100));
-            DrawRectangle(Rect2Di(bounds.x + bounds.width - 20, bounds.y + 5, 15, 10));
+            ctx->SetFillColor(Color(0, 255, 0, 100));
+            ctx->DrawRectangle(Rect2Di(bounds.x + bounds.width - 20, bounds.y + 5, 15, 10));
         }
     };
 

@@ -275,7 +275,7 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseWindow::Render() {
         if (!_visible || !_created) return;
-        if (useSelectiveRendering && selectiveRenderer) {
+        if (0 || useSelectiveRendering && selectiveRenderer) {
             // Use simple selective rendering
             selectiveRenderer->RenderFrame();
             // Only clear needs redraw if no dirty regions remain
@@ -294,7 +294,7 @@ namespace UltraCanvas {
             // Render window-specific overlays
             RenderWindowChrome();
 
-            useSelectiveRendering = true;
+            useSelectiveRendering = false;
         }
     }
 
@@ -302,9 +302,10 @@ namespace UltraCanvas {
         // Render popups in z-order
         for (UltraCanvasElement* popup : activePopups) {
             if (popup) {
-                PushRenderState();
+                auto ctx = GetRenderContext();
+                ctx->PushState();
                 popup->RenderPopupContent();
-                PopRenderState();
+                ctx->PopState();
             }
         }
     }

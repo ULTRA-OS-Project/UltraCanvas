@@ -192,7 +192,7 @@ namespace UltraCanvas {
 
         // ===== RENDERING =====
         void Render() override {
-            ULTRACANVAS_RENDER_SCOPE();
+            ctx->PushState();
 
             if (!ShouldBeVisible()) return;
 
@@ -286,11 +286,11 @@ namespace UltraCanvas {
 
         // ===== RENDERING HELPERS =====
         void DrawTrack() {
-            SetFillColor(appearance.trackColor);
+           ctx->SetFillColor(appearance.trackColor);
             DrawFilledRect(trackRect);
 
-            SetStrokeColor(appearance.borderColor);
-            DrawRectangle(trackRect);
+            ctx->SetStrokeColor(appearance.borderColor);
+            ctx->DrawRectangle(trackRect);
         }
 
         void DrawThumb() {
@@ -303,11 +303,11 @@ namespace UltraCanvas {
                 thumbColor = appearance.thumbHoverColor;
             }
 
-            SetFillColor(thumbColor);
+           ctx->SetFillColor(thumbColor);
             DrawFilledRect(thumbRect);
 
-            SetStrokeColor(appearance.borderColor);
-            DrawRectangle(thumbRect);
+            ctx->SetStrokeColor(appearance.borderColor);
+            ctx->DrawRectangle(thumbRect);
         }
 
         void DrawArrowButtons() {
@@ -320,10 +320,10 @@ namespace UltraCanvas {
                     arrowColor = appearance.arrowHoverColor;
                 }
 
-                SetFillColor(appearance.trackColor);
+               ctx->SetFillColor(appearance.trackColor);
                 DrawFilledRect(upArrowRect);
-                SetStrokeColor(appearance.borderColor);
-                DrawRectangle(upArrowRect);
+                ctx->SetStrokeColor(appearance.borderColor);
+                ctx->DrawRectangle(upArrowRect);
 
                 DrawArrowSymbol(upArrowRect, orientation == ScrollbarOrientation::Vertical ? 0 : 3, arrowColor);
             }
@@ -337,10 +337,10 @@ namespace UltraCanvas {
                     arrowColor = appearance.arrowHoverColor;
                 }
 
-                SetFillColor(appearance.trackColor);
+               ctx->SetFillColor(appearance.trackColor);
                 DrawFilledRect(downArrowRect);
-                SetStrokeColor(appearance.borderColor);
-                DrawRectangle(downArrowRect);
+                ctx->SetStrokeColor(appearance.borderColor);
+                ctx->DrawRectangle(downArrowRect);
 
                 DrawArrowSymbol(downArrowRect, orientation == ScrollbarOrientation::Vertical ? 2 : 1, arrowColor);
             }
@@ -348,7 +348,7 @@ namespace UltraCanvas {
 
         void DrawArrowSymbol(const Rect2D& rect, int direction, const Color& color) {
             // direction: 0=up, 1=right, 2=down, 3=left
-            SetStrokeColor(color);
+            ctx->SetStrokeColor(color);
 
             float centerX = rect.x + rect.width / 2.0f;
             float centerY = rect.y + rect.height / 2.0f;
@@ -379,9 +379,9 @@ namespace UltraCanvas {
                     break;
             }
 
-            DrawLine(p1, p2);
-            DrawLine(p2, p3);
-            DrawLine(p3, p1);
+            ctx->DrawLine(p1, p2);
+            ctx->DrawLine(p2, p3);
+            ctx->DrawLine(p3, p1);
         }
 
         // ===== EVENT HANDLERS =====

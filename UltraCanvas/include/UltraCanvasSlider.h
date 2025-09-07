@@ -1,4 +1,5 @@
 // UltraCanvasSlider.h
+// UltraCanvasSlider.h
 // Interactive slider control with multiple styles and value display options
 // Version: 2.0.0
 // Last Modified: 2025-08-17
@@ -220,9 +221,9 @@ namespace UltraCanvas {
 
         // ===== RENDERING (REQUIRED OVERRIDE) =====
         void Render() override {
-            if (!IsVisible()) return;
-
-            ULTRACANVAS_RENDER_SCOPE();
+            IRenderContext* ctx = GetRenderContext();
+            if (!IsVisible() || !ctx) return;
+            ctx->PushState();
 
             UpdateSliderState();
             Rect2Di bounds = GetBounds();
@@ -231,30 +232,31 @@ namespace UltraCanvas {
             switch (sliderStyle) {
                 case SliderStyle::Horizontal:
                 case SliderStyle::Vertical:
-                    RenderLinearSlider(bounds);
+                    RenderLinearSlider(bounds, ctx);
                     break;
 
                 case SliderStyle::Circular:
-                    RenderCircularSlider(bounds);
+                    RenderCircularSlider(bounds, ctx);
                     break;
 
                 case SliderStyle::Progress:
-                    RenderProgressSlider(bounds);
+                    RenderProgressSlider(bounds, ctx);
                     break;
 
                 case SliderStyle::Range:
-                    RenderRangeSlider(bounds);
+                    RenderRangeSlider(bounds, ctx);
                     break;
 
                 case SliderStyle::Rounded:
-                    RenderRoundedSlider(bounds);
+                    RenderRoundedSlider(bounds, ctx);
                     break;
             }
 
             // ===== RENDER VALUE DISPLAY =====
             if (ShouldShowValueText()) {
-                RenderValueDisplay(bounds);
+                RenderValueDisplay(bounds, ctx);
             }
+            ctx->PopState();
         }
 
         // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
@@ -306,68 +308,68 @@ namespace UltraCanvas {
         }
 
         // ===== RENDERING METHODS =====
-        void RenderLinearSlider(const Rect2Di& bounds) {
+        void RenderLinearSlider(const Rect2Di& bounds, IRenderContext* ctx) {
             bool isVertical = (orientation == SliderOrientation::Vertical);
 
             // Calculate track rectangle
             Rect2Di trackRect = GetTrackRect(bounds, isVertical);
 
             // Draw track background
-            SetFillColor(GetCurrentTrackColor());
-            FillRectangle(trackRect);
+            ctx->SetFillColor(GetCurrentTrackColor());
+            ctx->FillRectangle(trackRect);
 
             // Draw track border
-            SetStrokeColor(style.handleBorderColor);
-            SetStrokeWidth(1.0f);
-            DrawRectangle(trackRect);
+            ctx->SetStrokeColor(style.handleBorderColor);
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawRectangle(trackRect);
 
             // Calculate and draw active track
             Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
             if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
-                SetFillColor(style.activeTrackColor);
-                FillRectangle(activeRect);
+                ctx->SetFillColor(style.activeTrackColor);
+                ctx->FillRectangle(activeRect);
             }
 
             // Draw handle
             Point2Di handlePos = GetHandlePosition(bounds, isVertical);
-            RenderHandle(handlePos);
+            RenderHandle(handlePos, ctx);
         }
 
-        void RenderRoundedSlider(const Rect2Di& bounds) {
+        void RenderRoundedSlider(const Rect2Di& bounds, IRenderContext* ctx) {
             bool isVertical = (orientation == SliderOrientation::Vertical);
 
             // Calculate track rectangle
             Rect2Di trackRect = GetTrackRect(bounds, isVertical);
 
             // Draw track background
-            SetFillColor(GetCurrentTrackColor());
-            FillRoundedRectangle(trackRect, style.cornerRadius);
+            ctx->SetFillColor(GetCurrentTrackColor());
+            ctx->FillRoundedRectangle(trackRect, style.cornerRadius);
 
             // Draw track border
-            SetStrokeColor(style.handleBorderColor);
-            SetStrokeWidth(1.0f);
-            DrawRoundedRectangle(trackRect, style.cornerRadius);
+            ctx->SetStrokeColor(style.handleBorderColor);
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawRoundedRectangle(trackRect, style.cornerRadius);
 
             // Calculate and draw active track
             Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
             if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
-                SetFillColor(style.activeTrackColor);
-                FillRoundedRectangle(activeRect, style.cornerRadius);
+                ctx->SetFillColor(style.activeTrackColor);
+                ctx->FillRoundedRectangle(activeRect, style.cornerRadius);
             }
 
             // Draw handle
             Point2Di handlePos = GetHandlePosition(bounds, isVertical);
-            RenderRoundedHandle(handlePos);
+            RenderRoundedHandle(handlePos, ctx);
         }
 
-        void RenderCircularSlider(const Rect2Di& bounds) {
+        void RenderCircularSlider(const Rect2Di& bounds, IRenderContext* ctx) {
             Point2Di center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
             float radius = std::min(bounds.width, bounds.height) / 2 - style.handleSize / 2 - 2;
 
             // Draw track circle
-            SetStrokeColor(GetCurrentTrackColor());
-            SetStrokeWidth(style.trackHeight);
-            DrawCircle(center, radius);
+            ctx->SetStrokeColor(GetCurrentTrackColor());
+            ctx->SetStrokeWidth(style.trackHeight);
+            ctx->DrawCircle(center, radius);
 
             // Draw active arc
             float percentage = GetPercentage();
@@ -375,10 +377,9 @@ namespace UltraCanvas {
             float endAngle = startAngle + percentage * 2 * M_PI;
 
             if (percentage > 0) {
-                SetStrokeColor(style.activeTrackColor);
-                SetStrokeWidth(style.trackHeight);
-                IRenderContext* ctx = GetRenderContext();
-                if (ctx) ctx->DrawArc(center.x, center.y, radius, startAngle, endAngle);
+                ctx->SetStrokeColor(style.activeTrackColor);
+                ctx->SetStrokeWidth(style.trackHeight);
+                ctx->DrawArc(center.x, center.y, radius, startAngle, endAngle);
             }
 
             // Draw handle
@@ -387,37 +388,37 @@ namespace UltraCanvas {
                     center.x + std::cos(handleAngle) * radius,
                     center.y + std::sin(handleAngle) * radius
             );
-            RenderHandle(handlePos);
+            RenderHandle(handlePos, ctx);
         }
 
-        void RenderProgressSlider(const Rect2Di& bounds) {
+        void RenderProgressSlider(const Rect2Di& bounds, IRenderContext* ctx) {
             // Similar to linear but without handle
             bool isVertical = (orientation == SliderOrientation::Vertical);
 
             // Draw background
-            SetFillColor(GetCurrentTrackColor());
-            FillRectangle(bounds);
+            ctx->SetFillColor(GetCurrentTrackColor());
+            ctx->FillRectangle(bounds);
 
             // Draw progress
             Rect2Di progressRect = GetActiveTrackRect(bounds, isVertical);
             if ((isVertical && progressRect.height > 0) || (!isVertical && progressRect.width > 0)) {
-                SetFillColor(style.activeTrackColor);
-                FillRectangle(progressRect);
+                ctx->SetFillColor(style.activeTrackColor);
+                ctx->FillRectangle(progressRect);
             }
 
             // Draw border
-            SetStrokeColor(style.handleBorderColor);
-            SetStrokeWidth(style.borderWidth);
-            DrawRectangle(bounds);
+            ctx->SetStrokeColor(style.handleBorderColor);
+            ctx->SetStrokeWidth(style.borderWidth);
+            ctx->DrawRectangle(bounds);
         }
 
-        void RenderRangeSlider(const Rect2Di& bounds) {
+        void RenderRangeSlider(const Rect2Di& bounds, IRenderContext* ctx) {
             // For now, render as normal slider
             // TODO: Implement proper dual-handle range slider
-            RenderLinearSlider(bounds);
+            RenderLinearSlider(bounds, ctx);
         }
 
-        void RenderHandle(const Point2Di& position) {
+        void RenderHandle(const Point2Di& position, IRenderContext* ctx) {
             float handleRadius = style.handleSize / 2;
             Rect2Di handleRect(
                     position.x - handleRadius,
@@ -427,17 +428,16 @@ namespace UltraCanvas {
             );
 
             // Fill handle
-            SetFillColor(GetCurrentHandleColor());
-            IRenderContext* ctx = GetRenderContext();
-            if (ctx) ctx->FillEllipse(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
+            ctx->SetFillColor(GetCurrentHandleColor());
+            ctx->FillEllipse(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
 
             // Draw handle border
-            SetStrokeColor(style.handleBorderColor);
-            SetStrokeWidth(style.borderWidth);
-            if (ctx) ctx->DrawEllipse(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
+            ctx->SetStrokeColor(style.handleBorderColor);
+            ctx->SetStrokeWidth(style.borderWidth);
+            ctx->DrawEllipse(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
         }
 
-        void RenderRoundedHandle(const Point2Di& position) {
+        void RenderRoundedHandle(const Point2Di& position, IRenderContext* ctx) {
             float handleRadius = style.handleSize / 2;
             Rect2Di handleRect(
                     position.x - handleRadius,
@@ -447,37 +447,37 @@ namespace UltraCanvas {
             );
 
             // Fill handle
-            SetFillColor(GetCurrentHandleColor());
-            FillRoundedRectangle(handleRect, handleRadius);
+            ctx->SetFillColor(GetCurrentHandleColor());
+            ctx->FillRoundedRectangle(handleRect, handleRadius);
 
             // Draw handle border
-            SetStrokeColor(style.handleBorderColor);
-            SetStrokeWidth(style.borderWidth);
-            DrawRoundedRectangle(handleRect, handleRadius);
+            ctx->SetStrokeColor(style.handleBorderColor);
+            ctx->SetStrokeWidth(style.borderWidth);
+            ctx->DrawRoundedRectangle(handleRect, handleRadius);
         }
 
-        void RenderValueDisplay(const Rect2Di& bounds) {
+        void RenderValueDisplay(const Rect2Di& bounds, IRenderContext* ctx) {
             std::string text = GetDisplayText();
             if (text.empty()) return;
 
-            SetTextColor(IsEnabled() ? style.textColor : style.disabledTextColor);
-            SetFont(style.fontFamily, style.fontSize);
+            ctx->SetTextColor(IsEnabled() ? style.textColor : style.disabledTextColor);
+            ctx->SetFont(style.fontFamily, style.fontSize);
 
-            Point2Di textSize = MeasureText(text);
+            Point2Di textSize = ctx->MeasureText(text);
             Point2Di textPos = CalculateTextPosition(bounds, textSize);
 
             // Draw background for tooltip
             if (valueDisplay == SliderValueDisplay::Tooltip && showTooltip) {
                 Rect2Di tooltipBg(textPos.x - 4, textPos.y - textSize.y - 2,
                                  textSize.x + 8, textSize.y + 4);
-                SetFillColor(Color(255, 255, 200, 240));
-                FillRoundedRectangle(tooltipBg, 3.0f);
-                SetStrokeColor(Color(180, 180, 180));
-                SetStrokeWidth(1.0f);
-                DrawRoundedRectangle(tooltipBg, 3.0f);
+                ctx->SetFillColor(Color(255, 255, 200, 240));
+                ctx->FillRoundedRectangle(tooltipBg, 3.0f);
+                ctx->SetStrokeColor(Color(180, 180, 180));
+                ctx->SetStrokeWidth(1.0f);
+                ctx->DrawRoundedRectangle(tooltipBg, 3.0f);
             }
 
-            DrawText(text, textPos);
+            ctx->DrawText(text, textPos);
         }
 
         // ===== HELPER METHODS =====

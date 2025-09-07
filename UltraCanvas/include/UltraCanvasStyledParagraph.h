@@ -359,28 +359,28 @@ public:
     void Render() override {
         if (!IsVisible() || runs.empty()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         Rect2D bounds = GetBounds();
         
         // Draw background
         if (backgroundColor != Colors::Transparent) {
-            SetFillColor(backgroundColor);
-            DrawRectangle(bounds);
+            ctx->SetFillColor(backgroundColor);
+            ctx->DrawRectangle(bounds);
         }
         
         // Draw border
         if (showBorder) {
-            SetStrokeColor(borderColor);
-            SetStrokeWidth(static_cast<float>(borderWidth));
-            DrawRectangle(bounds);  // Draw border as stroked rectangle
+            ctx->SetStrokeColor(borderColor);
+            ctx->SetStrokeWidth(static_cast<float>(borderWidth));
+            ctx->DrawRectangle(bounds);  // Draw border as stroked rectangle
         }
         
         // Calculate content area
         Rect2D contentArea = GetContentArea();
         
         // Set clipping
-        SetClipRect(contentArea);
+        ctx->SetClipRect(contentArea);
         
         // Render based on column count
         if (columnCount == 1) {
@@ -389,7 +389,7 @@ public:
             RenderMultipleColumns(contentArea);
         }
         
-        ClearClipRect();  // Standard UltraCanvas function
+        ctx->ClearClipRect();  // Standard UltraCanvas function
     }
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
@@ -532,7 +532,7 @@ private:
                 contentArea.height
             );
             
-            SetClipRect(columnArea);
+            ctx->SetClipRect(columnArea);
             RenderSingleColumn(columnArea);
         }
     }
@@ -549,9 +549,9 @@ private:
         
         // Render list prefix
         if (!listPrefix.empty()) {
-            SetTextColor(Colors::Black);
+            ctx->SetTextColor(Colors::Black);
             SetTextFont("Arial", 12);
-            DrawText(listPrefix, Point2D(currentX, currentY + 12));
+            ctx->DrawText(listPrefix, Point2D(currentX, currentY + 12));
             
             // Measure prefix width using UltraCanvas functions
             Point2D prefixSize = GetTextExtents(listPrefix.c_str(), "Arial", 12);
@@ -579,46 +579,46 @@ private:
         // Draw background if specified
         if (run.backgroundColor != Colors::Transparent) {
             Point2D textSize = run.Measure();
-            SetFillColor(run.backgroundColor);
-            DrawRectangle(Rect2D(x, y - run.fontSize, textSize.x, textSize.y));
+            ctx->SetFillColor(run.backgroundColor);
+            ctx->DrawRectangle(Rect2D(x, y - run.fontSize, textSize.x, textSize.y));
         }
         
         // Draw shadow if enabled
         if (run.HasShadow()) {
-            SetTextColor(run.shadowColor);
-            DrawText(displayText, Point2D(x + run.shadowOffsetX, y + run.shadowOffsetY));
+            ctx->SetTextColor(run.shadowColor);
+            ctx->DrawText(displayText, Point2D(x + run.shadowOffsetX, y + run.shadowOffsetY));
         }
         
         // Draw outline if enabled
         if (run.HasOutline()) {
             // Simplified outline by drawing text multiple times
-            SetTextColor(run.outlineColor);
+            ctx->SetTextColor(run.outlineColor);
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
                     if (dx != 0 || dy != 0) {
-                        DrawText(displayText, Point2D(x + dx, y + dy));
+                        ctx->DrawText(displayText, Point2D(x + dx, y + dy));
                     }
                 }
             }
         }
         
         // Draw main text
-        SetTextColor(run.textColor);
-        DrawText(displayText, Point2D(x, y));
+        ctx->SetTextColor(run.textColor);
+        ctx->DrawText(displayText, Point2D(x, y));
         
         // Draw text decorations
         if (run.IsUnderline()) {
             Point2D textSize = run.Measure();
-            SetStrokeColor(run.textColor);
-            SetStrokeWidth(1);
-            DrawLine(Point2D(x, y + 2), Point2D(x + textSize.x, y + 2));
+            ctx->SetStrokeColor(run.textColor);
+            ctx->SetStrokeWidth(1);
+            ctx->DrawLine(Point2D(x, y + 2), Point2D(x + textSize.x, y + 2));
         }
         
         if (run.IsStrikethrough()) {
             Point2D textSize = run.Measure();
-            SetStrokeColor(run.textColor);
-            SetStrokeWidth(1);
-            DrawLine(Point2D(x, y - run.fontSize / 2), Point2D(x + textSize.x, y - run.fontSize / 2));
+            ctx->SetStrokeColor(run.textColor);
+            ctx->SetStrokeWidth(1);
+            ctx->DrawLine(Point2D(x, y - run.fontSize / 2), Point2D(x + textSize.x, y - run.fontSize / 2));
         }
         
         // Return advance width
@@ -637,8 +637,8 @@ private:
         
         // Draw drop cap
         SetTextFont(dropCapFont, dropCapSize);
-        SetTextColor(runs[0]->textColor);
-        DrawText(firstChar, Point2D(area.x, currentY + dropCapSize));
+        ctx->SetTextColor(runs[0]->textColor);
+        ctx->DrawText(firstChar, Point2D(area.x, currentY + dropCapSize));
         
         // Modify first run to remove first character
         if (runs[0]->text.length() > 1) {
@@ -754,7 +754,7 @@ inline void RenderStyledParagraph(const StyledParagraph& para, int x, int y) {
 
 ✅ **Fixed Function Dependencies**:
 - MeasureTextWidth() → GetTextExtents()
-- DrawRectOutline() → SetStrokeColor() + DrawRectangle()
+- DrawRectOutline() → ctx->SetStrokeColor() + ctx->DrawRectangle()
 - ResetClip() → ClearClipRect()
 - MeasureText() → GetTextExtents()
 

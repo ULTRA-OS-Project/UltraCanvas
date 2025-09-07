@@ -94,7 +94,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasClipboardItem::Render() {
-        ULTRACANVAS_RENDER_SCOPE();
+        IRenderContext *ctx = GetRenderContext();
+        ctx->PushState();
 
         Rect2D bounds = GetBounds();
 
@@ -116,13 +117,14 @@ namespace UltraCanvas {
         if (IsHovered() || isSelected) {
             RenderActionButtons();
         }
+        ctx->PushState();
     }
 
     void UltraCanvasClipboardItem::RenderContent() {
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
 
-        SetTextColor(Colors::Black);
-        SetFont("Arial", 11.0f);
+        ctx->SetTextColor(Colors::Black);
+        ctx->SetFont("Arial", 11.0f);
 
         // Main content
         float yPos = contentRect.y + 5;
@@ -132,25 +134,25 @@ namespace UltraCanvas {
         if (entry.dataSize > 0) {
             typeInfo += " (" + FormatBytes(entry.dataSize) + ")";
         }
-        SetTextColor(Colors::Gray);
-        SetFont("Arial", 9.0f);
-        DrawText(typeInfo, Point2D(contentRect.x, yPos));
+        ctx->SetTextColor(Colors::Gray);
+        ctx->SetFont("Arial", 9.0f);
+        ctx->DrawText(typeInfo, Point2D(contentRect.x, yPos));
 
         // Preview content
         yPos += 15;
-        SetTextColor(Colors::Black);
-        SetFont("Arial", 11.0f);
-        DrawText(entry.preview, Point2D(contentRect.x, yPos));
+        ctx->SetTextColor(Colors::Black);
+        ctx->SetFont("Arial", 11.0f);
+        ctx->DrawText(entry.preview, Point2D(contentRect.x, yPos));
 
         // Timestamp
         yPos += 15;
-        SetTextColor(Colors::Gray);
-        SetFont("Arial", 8.0f);
-        DrawText(entry.GetFormattedTime(), Point2D(contentRect.x, yPos));
+        ctx->SetTextColor(Colors::Gray);
+        ctx->SetFont("Arial", 8.0f);
+        ctx->DrawText(entry.GetFormattedTime(), Point2D(contentRect.x, yPos));
     }
 
     void UltraCanvasClipboardItem::DrawTypeIcon() {
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
 
         // Draw simple type icon based on entry type
         Rect2D iconRect(thumbnailRect.x + 15, thumbnailRect.y + 15, 20, 20);
@@ -158,83 +160,83 @@ namespace UltraCanvas {
         switch (entry.type) {
             case ClipboardEntryType::Text:
             case ClipboardEntryType::RichText:
-                UltraCanvas::DrawFilledRect(iconRect, Color(100, 150, 200, 255));
-                SetTextColor(Colors::White);
-                SetFont("Arial", 12.0f);
-                DrawText("T", Point2D(iconRect.x + 6, iconRect.y + 15));
+                ctx->DrawFilledRect(iconRect, Color(100, 150, 200, 255));
+                ctx->SetTextColor(Colors::White);
+                ctx->SetFont("Arial", 12.0f);
+                ctx->DrawText("T", Point2D(iconRect.x + 6, iconRect.y + 15));
                 break;
 
             case ClipboardEntryType::FilePath:
-                UltraCanvas::DrawFilledRect(iconRect, Color(200, 150, 100, 255));
-                SetTextColor(Colors::White);
-                SetFont("Arial", 12.0f);
-                DrawText("F", Point2D(iconRect.x + 6, iconRect.y + 15));
+                ctx->DrawFilledRect(iconRect, Color(200, 150, 100, 255));
+                ctx->SetTextColor(Colors::White);
+                ctx->SetFont("Arial", 12.0f);
+                ctx->DrawText("F", Point2D(iconRect.x + 6, iconRect.y + 15));
                 break;
 
             case ClipboardEntryType::Vector:
-                UltraCanvas::DrawFilledRect(iconRect, Color(150, 200, 100, 255));
-                SetTextColor(Colors::White);
-                SetFont("Arial", 12.0f);
-                DrawText("V", Point2D(iconRect.x + 6, iconRect.y + 15));
+                ctx->DrawFilledRect(iconRect, Color(150, 200, 100, 255));
+                ctx->SetTextColor(Colors::White);
+                ctx->SetFont("Arial", 12.0f);
+                ctx->DrawText("V", Point2D(iconRect.x + 6, iconRect.y + 15));
                 break;
 
             case ClipboardEntryType::Animation:
-                UltraCanvas::DrawFilledRect(iconRect, Color(200, 100, 150, 255));
-                SetTextColor(Colors::White);
-                SetFont("Arial", 12.0f);
-                DrawText("A", Point2D(iconRect.x + 6, iconRect.y + 15));
+                ctx->DrawFilledRect(iconRect, Color(200, 100, 150, 255));
+                ctx->SetTextColor(Colors::White);
+                ctx->SetFont("Arial", 12.0f);
+                ctx->DrawText("A", Point2D(iconRect.x + 6, iconRect.y + 15));
                 break;
 
             case ClipboardEntryType::Video:
-                UltraCanvas::DrawFilledRect(iconRect, Color(150, 100, 200, 255));
-                SetTextColor(Colors::White);
-                SetFont("Arial", 11.0f);
-                DrawText("▶", Point2D(iconRect.x + 6, iconRect.y + 15));
+                ctx->DrawFilledRect(iconRect, Color(150, 100, 200, 255));
+                ctx->SetTextColor(Colors::White);
+                ctx->SetFont("Arial", 11.0f);
+                ctx->DrawText("▶", Point2D(iconRect.x + 6, iconRect.y + 15));
                 break;
 
             case ClipboardEntryType::ThreeD:
-                UltraCanvas::DrawFilledRect(iconRect, Color(100, 200, 200, 255));
-                SetTextColor(Colors::White);
-                SetFont("Arial", 11.0f);
-                DrawText("3D", Point2D(iconRect.x + 3, iconRect.y + 15));
+                ctx->DrawFilledRect(iconRect, Color(100, 200, 200, 255));
+                ctx->SetTextColor(Colors::White);
+                ctx->SetFont("Arial", 11.0f);
+                ctx->DrawText("3D", Point2D(iconRect.x + 3, iconRect.y + 15));
                 break;
 
             case ClipboardEntryType::Document:
-                UltraCanvas::DrawFilledRect(iconRect, Color(200, 200, 100, 255));
-                SetTextColor(Colors::White);
-                SetFont("Arial", 12.0f);
-                DrawText("D", Point2D(iconRect.x + 6, iconRect.y + 15));
+                ctx->DrawFilledRect(iconRect, Color(200, 200, 100, 255));
+                ctx->SetTextColor(Colors::White);
+                ctx->SetFont("Arial", 12.0f);
+                ctx->DrawText("D", Point2D(iconRect.x + 6, iconRect.y + 15));
                 break;
 
             default:
-                UltraCanvas::DrawFilledRect(iconRect, Colors::LightGray);
+                ctx->DrawFilledRect(iconRect, Colors::LightGray);
                 break;
         }
     }
 
     void UltraCanvasClipboardItem::RenderActionButtons() {
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
 
         // Copy button
         Color copyColor = copyButtonRect.Contains(lastMousePos) ? Color(100, 200, 100, 255) : Color(150, 150, 150, 255);
-        UltraCanvas::DrawFilledRect(copyButtonRect, copyColor);
-        SetTextColor(Colors::White);
-        SetFont("Arial", 10.0f);
-        DrawText("C", Point2D(copyButtonRect.x + 6, copyButtonRect.y + 14));
+        ctx->DrawFilledRect(copyButtonRect, copyColor);
+        ctx->SetTextColor(Colors::White);
+        ctx->SetFont("Arial", 10.0f);
+        ctx->DrawText("C", Point2D(copyButtonRect.x + 6, copyButtonRect.y + 14));
 
         // Save button
         Color saveColor = saveButtonRect.Contains(lastMousePos) ? Color(100, 150, 200, 255) : Color(150, 150, 150, 255);
-        UltraCanvas::DrawFilledRect(saveButtonRect, saveColor);
-        SetTextColor(Colors::White);
-        SetFont("Arial", 10.0f);
-        DrawText("S", Point2D(saveButtonRect.x + 6, saveButtonRect.y + 14));
+        ctx->DrawFilledRect(saveButtonRect, saveColor);
+        ctx->SetTextColor(Colors::White);
+        ctx->SetFont("Arial", 10.0f);
+        ctx->DrawText("S", Point2D(saveButtonRect.x + 6, saveButtonRect.y + 14));
 
         // Delete button
         Color deleteColor = deleteButtonRect.Contains(lastMousePos) ? Color(200, 100, 100, 255) : Color(150, 150, 150, 255);
-        UltraCanvas::DrawFilledRect(deleteButtonRect, deleteColor);
-        SetTextColor(Colors::White);
-        SetFont("Arial", 10.0f);
-        DrawText("X", Point2D(deleteButtonRect.x + 6, deleteButtonRect.y + 14));
+        ctx->DrawFilledRect(deleteButtonRect, deleteColor);
+        ctx->SetTextColor(Colors::White);
+        ctx->SetFont("Arial", 10.0f);
+        ctx->DrawText("X", Point2D(deleteButtonRect.x + 6, deleteButtonRect.y + 14));
     }
 
     bool UltraCanvasClipboardItem::OnEvent(const UCEvent& event) {

@@ -236,7 +236,7 @@ public:
             std::cout << "Rendering image info..." << std::endl;
             context->SetStrokeColor(Color(200, 200, 200, 255));
             context->SetStrokeWidth(1.0f);
-            context->DrawRectangle(Rect2D(50, 380, 900, 100));
+            context->ctx->DrawRectangle(Rect2D(50, 380, 900, 100));
 
             context->SetTextColor(Colors::White);
             context->SetFont("Arial", 12.0f);

@@ -62,7 +62,7 @@ namespace UltraCanvas {
     class UltraCanvasBaseWindow : public UltraCanvasContainer {
     protected:
         std::unique_ptr<UltraCanvasSelectiveRenderer> selectiveRenderer = nullptr;
-        bool useSelectiveRendering = true;
+        bool useSelectiveRendering = false;
 
         WindowConfig config_;
         WindowState _state = WindowState::Normal;
@@ -185,6 +185,7 @@ namespace UltraCanvas {
         void RequestFullRedraw() { useSelectiveRendering = false; _needsRedraw = true; }
         void MarkElementDirty(UltraCanvasElement* element, bool isOverlay = false);
         bool IsSelectiveRenderingActive();
+        virtual IRenderContext* GetRenderContext() const = 0;
 
         // ===== ENHANCED WINDOW CALLBACKS =====
         void SetWindowCloseCallback(std::function<void()> callback) { onWindowClose = callback; }

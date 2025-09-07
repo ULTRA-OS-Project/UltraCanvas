@@ -38,7 +38,6 @@
 namespace UltraCanvas {
 
 // Forward declarations
-    class LinuxRenderContext;
     class UltraCanvasLinuxApplication;
 // ===== LINUX WINDOW CLASS =====
     class UltraCanvasLinuxWindow : public UltraCanvasBaseWindow {
@@ -70,6 +69,7 @@ namespace UltraCanvas {
         virtual void Render() override;
         virtual void SwapBuffers() override;
         virtual unsigned long GetNativeHandle() const override;
+        IRenderContext* GetRenderContext() const override { return renderContext.get(); }
 //        virtual void ProcessEvents() override;
 //        virtual bool OnEvent(const UCEvent&) override;
 
@@ -77,7 +77,6 @@ namespace UltraCanvas {
         // ===== LINUX-SPECIFIC METHODS =====
         Window GetXWindow() const { return xWindow; }
         cairo_t* GetCairoContext() const { return cairoContext; }
-        LinuxRenderContext* GetRenderContext() const { return renderContext.get(); }
         bool HandleXEvent(const XEvent& event);
 
     private:

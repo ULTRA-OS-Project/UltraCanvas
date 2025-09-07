@@ -346,9 +346,10 @@ namespace UltraCanvas {
 // ===== RENDERING IMPLEMENTATION =====
 
     void UltraCanvasToast::Render() {
+        IRenderContext *ctx = GetRenderContext();
         if (!isVisible) return;
 
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
 
         // Apply animation effects
         float alpha = CalculateAnimationAlpha();
@@ -536,15 +537,15 @@ namespace UltraCanvas {
 
     void UltraCanvasToast::RenderBorder() {
         if (config.borderWidth > 0) {
-            UltraCanvasRenderInterface::SetStrokeColor(config.borderColor);
-            UltraCanvasRenderInterface::SetStrokeWidth(config.borderWidth);
-            UltraCanvasRenderInterface::DrawRectangle(GetBounds());
+            UltraCanvasRenderInterface::ctx->SetStrokeColor(config.borderColor);
+            UltraCanvasRenderInterface::ctx->SetStrokeWidth(config.borderWidth);
+            UltraCanvasRenderInterface::ctx->DrawRectangle(GetBounds());
         }
     }
 
     void UltraCanvasToast::RenderIcon() {
         // Simple geometric icon based on type
-        UltraCanvasRenderInterface::SetFillColor(config.iconColor);
+        UltraCanvasRenderInterface::ctx->SetFillColor(config.iconColor);
 
         Point2D center(iconRect.x + iconRect.width / 2, iconRect.y + iconRect.height / 2);
 

@@ -335,11 +335,11 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Draw container background
-        SetFillColor(contentAreaColor);
-        DrawRectangle(GetBounds());
+        ctx->SetFillColor(contentAreaColor);
+        ctx->DrawRectangle(GetBounds());
         
         // Draw tab bar
         DrawTabBar();
@@ -426,7 +426,7 @@ private:
         for (auto& tab : tabs) {
             if (!tab->visible) continue;
             
-            int textWidth = (int)MeasureText(tab->title).x;
+            int textWidth = (int)ctx->MeasureText(tab->title).x;
             int requiredWidth = textWidth + tabPadding * 2;
             
             // Add space for close button if needed
@@ -614,12 +614,12 @@ private:
         Rect2D tabBarBounds = GetTabBarBounds();
         
         // Draw tab bar background
-        SetFillColor(tabBarColor);
-        DrawRectangle(tabBarBounds);
+        ctx->SetFillColor(tabBarColor);
+        ctx->DrawRectangle(tabBarBounds);
         
         // Draw tab bar border
-        SetStrokeColor(tabBorderColor);
-        SetStrokeWidth(1);
+        ctx->SetStrokeColor(tabBorderColor);
+        ctx->SetStrokeWidth(1);
         DrawRectOutline(tabBarBounds);
         
         // Draw visible tabs
@@ -675,10 +675,10 @@ private:
         }
         
         // Draw tab text
-        SetTextColor(textColor);
+        ctx->SetTextColor(textColor);
         SetTextFont(fontFamily, fontSize);
         
-        Point2D textSize = MeasureText(tab->title);
+        Point2D textSize = ctx->MeasureText(tab->title);
         int textX = tabBounds.x + tabPadding;
         int textY = tabBounds.y + (tabBounds.height + fontSize) / 2;
         
@@ -692,13 +692,13 @@ private:
         std::string displayText = tab->title;
         if (textSize.x > availableTextWidth) {
             // Simple truncation - could be improved with ellipsis
-            while (MeasureText(displayText).x > availableTextWidth && !displayText.empty()) {
+            while (ctx->MeasureText(displayText).x > availableTextWidth && !displayText.empty()) {
                 displayText.pop_back();
             }
             if (!displayText.empty()) displayText += "...";
         }
         
-        DrawText(displayText, Point2D(textX, textY));
+        ctx->DrawText(displayText, Point2D(textX, textY));
         
         // Draw close button
         if (ShouldShowCloseButton(tab)) {
@@ -707,31 +707,31 @@ private:
     }
     
     void DrawClassicTab(const Rect2D& bounds, const Color& color, bool active) {
-        SetFillColor(color);
-        DrawRectangle(bounds);
+        ctx->SetFillColor(color);
+        ctx->DrawRectangle(bounds);
         
-        SetStrokeColor(tabBorderColor);
-        SetStrokeWidth(1);
+        ctx->SetStrokeColor(tabBorderColor);
+        ctx->SetStrokeWidth(1);
         
         if (active) {
             // Draw raised border effect
-            DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x + bounds.width, bounds.y));
-            DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x, bounds.y + bounds.height));
-            DrawLine(Point2D(bounds.x + bounds.width, bounds.y), Point2D(bounds.x + bounds.width, bounds.y + bounds.height));
+            ctx->DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x + bounds.width, bounds.y));
+            ctx->DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x, bounds.y + bounds.height));
+            ctx->DrawLine(Point2D(bounds.x + bounds.width, bounds.y), Point2D(bounds.x + bounds.width, bounds.y + bounds.height));
         } else {
             DrawRectOutline(bounds);
         }
     }
     
     void DrawModernTab(const Rect2D& bounds, const Color& color, bool active) {
-        SetFillColor(color);
-        DrawRectangle(bounds);
+        ctx->SetFillColor(color);
+        ctx->DrawRectangle(bounds);
         
         if (active) {
             // Draw accent line at bottom
-            SetStrokeColor(Color(0, 120, 215));
-            SetStrokeWidth(3);
-            DrawLine(
+            ctx->SetStrokeColor(Color(0, 120, 215));
+            ctx->SetStrokeWidth(3);
+            ctx->DrawLine(
                 Point2D(bounds.x, bounds.y + bounds.height - 1),
                 Point2D(bounds.x + bounds.width, bounds.y + bounds.height - 1)
             );
@@ -739,19 +739,19 @@ private:
     }
     
     void DrawFlatTab(const Rect2D& bounds, const Color& color, bool active) {
-        SetFillColor(color);
-        DrawRectangle(bounds);
+        ctx->SetFillColor(color);
+        ctx->DrawRectangle(bounds);
         
         // No borders for flat style
     }
     
     void DrawRoundedTab(const Rect2D& bounds, const Color& color, bool active) {
-        SetFillColor(color);
-        DrawRoundedRectangle(bounds, 8);
+        ctx->SetFillColor(color);
+        ctx->DrawRoundedRectangle(bounds, 8);
         
         if (active) {
-            SetStrokeColor(tabBorderColor);
-            SetStrokeWidth(1);
+            ctx->SetStrokeColor(tabBorderColor);
+            ctx->SetStrokeWidth(1);
             DrawRoundedRectOutline(bounds, 8);
         }
     }
@@ -768,19 +768,19 @@ private:
         Color buttonColor = (index == hoveredCloseButtonIndex) ? closeButtonHoverColor : closeButtonColor;
         
         // Draw close button background (circle)
-        SetFillColor(buttonColor);
-        DrawCircle(Point2D(closeBounds.x + closeBounds.width / 2, closeBounds.y + closeBounds.height / 2), 
+        ctx->SetFillColor(buttonColor);
+        ctx->DrawCircle(Point2D(closeBounds.x + closeBounds.width / 2, closeBounds.y + closeBounds.height / 2),
                   closeBounds.width / 2);
         
         // Draw X
-        SetStrokeColor(Colors::White);
-        SetStrokeWidth(2);
+        ctx->SetStrokeColor(Colors::White);
+        ctx->SetStrokeWidth(2);
         int margin = 4;
-        DrawLine(
+        ctx->DrawLine(
             Point2D(closeBounds.x + margin, closeBounds.y + margin),
             Point2D(closeBounds.x + closeBounds.width - margin, closeBounds.y + closeBounds.height - margin)
         );
-        DrawLine(
+        ctx->DrawLine(
             Point2D(closeBounds.x + closeBounds.width - margin, closeBounds.y + margin),
             Point2D(closeBounds.x + margin, closeBounds.y + closeBounds.height - margin)
         );
@@ -790,12 +790,12 @@ private:
         Rect2D contentBounds = GetContentAreaBounds();
         
         // Draw content area background
-        SetFillColor(contentAreaColor);
-        DrawRectangle(contentBounds);
+        ctx->SetFillColor(contentAreaColor);
+        ctx->DrawRectangle(contentBounds);
         
         // Draw content area border
-        SetStrokeColor(tabBorderColor);
-        SetStrokeWidth(1);
+        ctx->SetStrokeColor(tabBorderColor);
+        ctx->SetStrokeWidth(1);
         DrawRectOutline(contentBounds);
     }
     
@@ -804,31 +804,31 @@ private:
         
         // Left/Up scroll button
         Rect2D leftButton(tabBarBounds.x + tabBarBounds.width - 40, tabBarBounds.y, 20, tabBarBounds.height);
-        SetFillColor(buttonColor);
-        DrawRectangle(leftButton);
-        SetStrokeColor(tabBorderColor);
+        ctx->SetFillColor(buttonColor);
+        ctx->DrawRectangle(leftButton);
+        ctx->SetStrokeColor(tabBorderColor);
         DrawRectOutline(leftButton);
         
         // Right/Down scroll button  
         Rect2D rightButton(tabBarBounds.x + tabBarBounds.width - 20, tabBarBounds.y, 20, tabBarBounds.height);
-        SetFillColor(buttonColor);
-        DrawRectangle(rightButton);
-        SetStrokeColor(tabBorderColor);
+        ctx->SetFillColor(buttonColor);
+        ctx->DrawRectangle(rightButton);
+        ctx->SetStrokeColor(tabBorderColor);
         DrawRectOutline(rightButton);
         
         // Draw arrow symbols
-        SetStrokeColor(Colors::Black);
-        SetStrokeWidth(2);
+        ctx->SetStrokeColor(Colors::Black);
+        ctx->SetStrokeWidth(2);
         
         // Left arrow
         Point2D leftCenter(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
-        DrawLine(Point2D(leftCenter.x - 3, leftCenter.y), Point2D(leftCenter.x + 3, leftCenter.y - 3));
-        DrawLine(Point2D(leftCenter.x - 3, leftCenter.y), Point2D(leftCenter.x + 3, leftCenter.y + 3));
+        ctx->DrawLine(Point2D(leftCenter.x - 3, leftCenter.y), Point2D(leftCenter.x + 3, leftCenter.y - 3));
+        ctx->DrawLine(Point2D(leftCenter.x - 3, leftCenter.y), Point2D(leftCenter.x + 3, leftCenter.y + 3));
         
         // Right arrow
         Point2D rightCenter(rightButton.x + rightButton.width / 2, rightButton.y + rightButton.height / 2);
-        DrawLine(Point2D(rightCenter.x - 3, rightCenter.y - 3), Point2D(rightCenter.x + 3, rightCenter.y));
-        DrawLine(Point2D(rightCenter.x - 3, rightCenter.y + 3), Point2D(rightCenter.x + 3, rightCenter.y));
+        ctx->DrawLine(Point2D(rightCenter.x - 3, rightCenter.y - 3), Point2D(rightCenter.x + 3, rightCenter.y));
+        ctx->DrawLine(Point2D(rightCenter.x - 3, rightCenter.y + 3), Point2D(rightCenter.x + 3, rightCenter.y));
     }
     
     // ===== EVENT HANDLERS =====

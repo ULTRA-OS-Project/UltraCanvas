@@ -165,7 +165,7 @@ namespace UltraCanvas {
 
         // ===== RENDERING =====
         void Render() override {
-            ULTRACANVAS_RENDER_SCOPE();
+            ctx->PushState();
 
             UpdateLayout();
 
@@ -173,13 +173,13 @@ namespace UltraCanvas {
             DrawBackground();
 
             // Set clipping to content area
-            SetClipRect(contentArea);
+            ctx->SetClipRect(contentArea);
 
             // Render children with scroll offset
             RenderChildren();
 
             // Clear clipping
-            ClearClipRect();
+            ctx->ClearClipRect();
 
             // Render scrollbars
             RenderScrollbars();
@@ -342,14 +342,14 @@ namespace UltraCanvas {
             Rect2D bounds = GetBounds();
 
             // Draw background
-            SetFillColor(config.backgroundColor);
+           ctx->SetFillColor(config.backgroundColor);
             DrawFilledRect(bounds);
 
             // Draw border
             if (config.borderWidth > 0) {
-                SetStrokeColor(config.borderColor);
-                SetStrokeWidth(config.borderWidth);
-                DrawRectangle(bounds);
+                ctx->SetStrokeColor(config.borderColor);
+                ctx->SetStrokeWidth(config.borderWidth);
+                ctx->DrawRectangle(bounds);
             }
         }
 

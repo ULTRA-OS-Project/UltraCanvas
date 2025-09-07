@@ -240,7 +240,7 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Update animation
         if (isAnimating) {
@@ -489,68 +489,68 @@ private:
     }
     
     void DrawSimpleSplitter(const Rect2D& bounds, const Color& color) {
-        SetFillColor(color);
-        DrawRectangle(bounds);
+        ctx->SetFillColor(color);
+        ctx->DrawRectangle(bounds);
     }
     
     void DrawRaisedSplitter(const Rect2D& bounds) {
         // Draw 3D raised effect
-        SetFillColor(splitterColor);
-        DrawRectangle(bounds);
+        ctx->SetFillColor(splitterColor);
+        ctx->DrawRectangle(bounds);
         
         // Highlight on top/left
-        SetStrokeColor(Color(255, 255, 255));
-        SetStrokeWidth(1);
+        ctx->SetStrokeColor(Color(255, 255, 255));
+        ctx->SetStrokeWidth(1);
         if (orientation == SplitOrientation::Horizontal) {
-            DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x, bounds.y + bounds.height));
+            ctx->DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x, bounds.y + bounds.height));
         } else {
-            DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x + bounds.width, bounds.y));
+            ctx->DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x + bounds.width, bounds.y));
         }
         
         // Shadow on bottom/right
-        SetStrokeColor(Color(128, 128, 128));
+        ctx->SetStrokeColor(Color(128, 128, 128));
         if (orientation == SplitOrientation::Horizontal) {
-            DrawLine(Point2D(bounds.x + bounds.width - 1, bounds.y), 
+            ctx->DrawLine(Point2D(bounds.x + bounds.width - 1, bounds.y),
                     Point2D(bounds.x + bounds.width - 1, bounds.y + bounds.height));
         } else {
-            DrawLine(Point2D(bounds.x, bounds.y + bounds.height - 1), 
+            ctx->DrawLine(Point2D(bounds.x, bounds.y + bounds.height - 1),
                     Point2D(bounds.x + bounds.width, bounds.y + bounds.height - 1));
         }
     }
     
     void DrawSunkenSplitter(const Rect2D& bounds) {
         // Draw 3D sunken effect
-        SetFillColor(splitterColor);
-        DrawRectangle(bounds);
+        ctx->SetFillColor(splitterColor);
+        ctx->DrawRectangle(bounds);
         
         // Shadow on top/left
-        SetStrokeColor(Color(128, 128, 128));
-        SetStrokeWidth(1);
+        ctx->SetStrokeColor(Color(128, 128, 128));
+        ctx->SetStrokeWidth(1);
         if (orientation == SplitOrientation::Horizontal) {
-            DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x, bounds.y + bounds.height));
+            ctx->DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x, bounds.y + bounds.height));
         } else {
-            DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x + bounds.width, bounds.y));
+            ctx->DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x + bounds.width, bounds.y));
         }
         
         // Highlight on bottom/right
-        SetStrokeColor(Color(255, 255, 255));
+        ctx->SetStrokeColor(Color(255, 255, 255));
         if (orientation == SplitOrientation::Horizontal) {
-            DrawLine(Point2D(bounds.x + bounds.width - 1, bounds.y), 
+            ctx->DrawLine(Point2D(bounds.x + bounds.width - 1, bounds.y),
                     Point2D(bounds.x + bounds.width - 1, bounds.y + bounds.height));
         } else {
-            DrawLine(Point2D(bounds.x, bounds.y + bounds.height - 1), 
+            ctx->DrawLine(Point2D(bounds.x, bounds.y + bounds.height - 1),
                     Point2D(bounds.x + bounds.width, bounds.y + bounds.height - 1));
         }
     }
     
     void DrawFlatSplitter(const Rect2D& bounds, const Color& color) {
-        SetFillColor(color);
-        DrawRectangle(bounds);
+        ctx->SetFillColor(color);
+        ctx->DrawRectangle(bounds);
         
         // Draw subtle border
-        SetStrokeColor(splitterLineColor);
-        SetStrokeWidth(1);
-        DrawRectangle(bounds);
+        ctx->SetStrokeColor(splitterLineColor);
+        ctx->SetStrokeWidth(1);
+        ctx->DrawRectangle(bounds);
     }
     
     virtual void DrawCustomSplitter(const Rect2D& bounds, const Color& color) {
@@ -560,19 +560,19 @@ private:
     
     void DrawResizeHandle(const Rect2D& bounds) {
         // Draw dots or lines to indicate resize capability
-        SetFillColor(splitterLineColor);
+        ctx->SetFillColor(splitterLineColor);
         
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         
         if (orientation == SplitOrientation::Horizontal) {
             // Draw vertical dots
             for (int i = -1; i <= 1; i++) {
-                DrawCircle(Point2D(center.x, center.y + i * 4), 1);
+                ctx->DrawCircle(Point2D(center.x, center.y + i * 4), 1);
             }
         } else {
             // Draw horizontal dots
             for (int i = -1; i <= 1; i++) {
-                DrawCircle(Point2D(center.x + i * 4, center.y), 1);
+                ctx->DrawCircle(Point2D(center.x + i * 4, center.y), 1);
             }
         }
     }

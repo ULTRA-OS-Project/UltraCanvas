@@ -392,7 +392,7 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Perform layout if needed
         PerformLayout();
@@ -703,20 +703,20 @@ private:
     }
     
     void DrawBackground() {
-        SetFillColor(GetBackgroundColor());
+        ctx->SetFillColor(GetBackgroundColor());
         UltraCanvas::DrawFilledRect(GetBounds(), GetBackgroundColor(), GetBorderColor(), GetBorderWidth());
     }
     
     void DrawGridLines() {
-        SetStrokeColor(gridLineColor);
-        SetStrokeWidth(gridLineWidth);
+        ctx->SetStrokeColor(gridLineColor);
+        ctx->SetStrokeWidth(gridLineWidth);
         
         Rect2D contentArea = GetContentArea();
         
         // Draw vertical lines
         float currentX = contentArea.x;
         for (size_t i = 0; i <= calculatedColumnWidths.size(); i++) {
-            DrawLine(Point2D(currentX, contentArea.y), 
+            ctx->DrawLine(Point2D(currentX, contentArea.y),
                     Point2D(currentX, contentArea.y + contentArea.height));
             
             if (i < calculatedColumnWidths.size()) {
@@ -727,7 +727,7 @@ private:
         // Draw horizontal lines
         float currentY = contentArea.y;
         for (size_t i = 0; i <= calculatedRowHeights.size(); i++) {
-            DrawLine(Point2D(contentArea.x, currentY), 
+            ctx->DrawLine(Point2D(contentArea.x, currentY),
                     Point2D(contentArea.x + contentArea.width, currentY));
             
             if (i < calculatedRowHeights.size()) {

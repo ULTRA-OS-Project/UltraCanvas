@@ -122,8 +122,6 @@ namespace UltraCanvas {
 
             // Initialize style
             style = LabelStyle::DefaultStyle();
-
-            CalculateLayout();
         }
 
         virtual ~UltraCanvasLabel() = default;
@@ -235,15 +233,16 @@ namespace UltraCanvas {
 
         // ===== SIZING =====
         void AutoResize() {
+            auto ctx = GetRenderContext();
             if (text.empty()) {
                 preferredSize = Point2Di(style.paddingLeft + style.paddingRight + 20,
                                         style.paddingTop + style.paddingBottom + style.fontSize + 4);
             } else {
                 // Set text style for measurement
-                ULTRACANVAS_RENDER_SCOPE();
-                SetFont(style.fontFamily, style.fontSize);
+                ctx->PushState();
+                ctx->SetFont(style.fontFamily, style.fontSize);
 
-                Point2Di textSize = MeasureText(text);
+                Point2Di textSize = ctx->MeasureText(text);
                 preferredSize = Point2Di(
                         textSize.x + style.paddingLeft + style.paddingRight + style.borderWidth * 2,
                         textSize.y + style.paddingTop + style.paddingBottom + style.borderWidth * 2
@@ -261,7 +260,8 @@ namespace UltraCanvas {
 
         // ===== LAYOUT CALCULATION =====
         void CalculateLayout() {
-            if (!needsLayout) return;
+            auto ctx = GetRenderContext();
+            if (!needsLayout || !ctx) return;
 
             Rect2Di bounds = GetBounds();
 
@@ -275,10 +275,10 @@ namespace UltraCanvas {
 
             if (!text.empty()) {
                 // Set text style for measurement
-                ULTRACANVAS_RENDER_SCOPE();
-                SetFont(style.fontFamily, style.fontSize);
+                ctx->PushState();
+                ctx->SetFont(style.fontFamily, style.fontSize);
 
-                Point2Di textSize = MeasureText(text);
+                Point2Di textSize = ctx->MeasureText(text);
 
                 // Calculate horizontal position
                 float textX = textArea.x;
@@ -312,6 +312,7 @@ namespace UltraCanvas {
                 }
 
                 textPosition = Point2Di(textX, textY);
+                ctx->PopState();
             }
 
             needsLayout = false;
@@ -319,9 +320,10 @@ namespace UltraCanvas {
 
         // ===== RENDERING =====
         void Render() override {
-            if (!IsVisible()) return;
+            auto ctx = GetRenderContext();
+            if (!IsVisible() || !ctx) return;
 
-            ULTRACANVAS_RENDER_SCOPE();
+            ctx->PushState();
 
             CalculateLayout();
 
@@ -329,23 +331,23 @@ namespace UltraCanvas {
 
             // Draw background
             if (style.backgroundColor.a > 0) {
-                SetFillColor(style.backgroundColor);
+               ctx->SetFillColor(style.backgroundColor);
                 if (style.borderRadius > 0) {
-                    DrawRoundedRectangle(bounds, style.borderRadius);
+                    ctx->DrawRoundedRectangle(bounds, style.borderRadius);
                 } else {
-                    DrawRectangle(bounds);
+                    ctx->DrawRectangle(bounds);
                 }
 
             }
 
             // Draw border
             if (style.borderWidth > 0 && style.borderColor.a > 0) {
-                SetStrokeColor(style.borderColor);
-                SetStrokeWidth(style.borderWidth);
+                ctx->SetStrokeColor(style.borderColor);
+                ctx->SetStrokeWidth(style.borderWidth);
                 if (style.borderRadius > 0) {
-                    DrawRoundedRectangle(bounds, style.borderRadius);
+                    ctx->DrawRoundedRectangle(bounds, style.borderRadius);
                 } else {
-                    DrawRectangle(bounds);
+                    ctx->DrawRectangle(bounds);
                 }
             }
 
@@ -353,13 +355,13 @@ namespace UltraCanvas {
             if (!text.empty()) {
                 // Draw shadow if enabled
                 if (style.hasShadow) {
-                    SetTextColor(style.shadowColor);
-                    SetFont(style.fontFamily, style.fontSize);
+                    ctx->SetTextColor(style.shadowColor);
+                    ctx->SetFont(style.fontFamily, style.fontSize);
                     Point2Di shadowPos = Point2Di(
                             textPosition.x + style.shadowOffset.x,
                             textPosition.y + style.shadowOffset.y
                     );
-                    DrawText(text, shadowPos);
+                    ctx->DrawText(text, shadowPos);
                 }
 
                 // Draw main text
@@ -367,18 +369,20 @@ namespace UltraCanvas {
                 SetFont(style.fontFamily, style.fontSize);
 
                 if (style.wordWrap && textArea.width > 0) {
-                    DrawTextInRect(text, textArea);
+                    ctx->DrawTextInRect(text, textArea);
                 } else {
-                    DrawText(text, textPosition);
+                    ctx->DrawText(text, textPosition);
                 }
             }
 
             // Draw selection/focus indicator if needed
             if (IsFocused()) {
-                SetStrokeColor(Color(0, 120, 215, 200));
-                SetStrokeWidth(2.0f);
-                DrawRectangle(bounds);
+                ctx->SetStrokeColor(Color(0, 120, 215, 200));
+                ctx->SetStrokeWidth(2.0f);
+                ctx->DrawRectangle(bounds);
             }
+
+            ctx->PopState();
         }
 
         // ===== EVENT HANDLING =====

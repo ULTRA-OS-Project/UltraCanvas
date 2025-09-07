@@ -434,11 +434,11 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Draw background
-        SetFillColor(controlsStyle.backgroundColor);
-        DrawRectangle(GetBounds());
+        ctx->SetFillColor(controlsStyle.backgroundColor);
+        ctx->DrawRectangle(GetBounds());
         
         if (!showControls) return;
         
@@ -560,23 +560,23 @@ private:
     
     // ===== RENDERING HELPERS =====
     float RenderMetadata(const Rect2D& area, float y) {
-        SetTextColor(controlsStyle.titleColor);
-        SetFont(controlsStyle.fontFamily, controlsStyle.titleFontSize);
+        ctx->SetTextColor(controlsStyle.titleColor);
+        ctx->SetFont(controlsStyle.fontFamily, controlsStyle.titleFontSize);
         
         std::string title = metadata.GetDisplayTitle();
-        DrawText(title, Point2D(area.x, y));
+        ctx->DrawText(title, Point2D(area.x, y));
         
-        SetTextColor(controlsStyle.textColor);
-        SetFont(controlsStyle.fontFamily, controlsStyle.fontSize);
+        ctx->SetTextColor(controlsStyle.textColor);
+        ctx->SetFont(controlsStyle.fontFamily, controlsStyle.fontSize);
         
         std::string artist = metadata.GetDisplayArtist();
         if (!artist.empty()) {
-            DrawText(artist, Point2D(area.x, y + controlsStyle.titleFontSize + 2));
+            ctx->DrawText(artist, Point2D(area.x, y + controlsStyle.titleFontSize + 2));
         }
         
         std::string format = metadata.GetFormatString();
         if (!format.empty()) {
-            DrawText(format, Point2D(area.x, y + controlsStyle.titleFontSize + controlsStyle.fontSize + 4));
+            ctx->DrawText(format, Point2D(area.x, y + controlsStyle.titleFontSize + controlsStyle.fontSize + 4));
         }
         
         return controlsStyle.titleFontSize + controlsStyle.fontSize + 8;
@@ -587,28 +587,28 @@ private:
         Rect2D progressBg(area.x, barY, area.width, controlsStyle.progressHeight);
         
         // Background
-        SetFillColor(controlsStyle.progressBackgroundColor);
-        DrawRectangle(progressBg);
+        ctx->SetFillColor(controlsStyle.progressBackgroundColor);
+        ctx->DrawRectangle(progressBg);
         
         // Progress
         if (duration > 0.0f) {
             float progressWidth = (position / duration) * area.width;
             Rect2D progressBar(area.x, barY, progressWidth, controlsStyle.progressHeight);
-            SetFillColor(controlsStyle.progressBarColor);
-            DrawRectangle(progressBar);
+            ctx->SetFillColor(controlsStyle.progressBarColor);
+            ctx->DrawRectangle(progressBar);
         }
         
         // Time labels
-        SetTextColor(controlsStyle.textColor);
-        SetFont(controlsStyle.fontFamily, controlsStyle.fontSize);
+        ctx->SetTextColor(controlsStyle.textColor);
+        ctx->SetFont(controlsStyle.fontFamily, controlsStyle.fontSize);
         
         std::string positionText = FormatTime(position);
         std::string durationText = FormatTime(duration);
         
-        DrawText(positionText, Point2D(area.x, barY + controlsStyle.progressHeight + 4));
+        ctx->DrawText(positionText, Point2D(area.x, barY + controlsStyle.progressHeight + 4));
         
         float durationWidth = GetTextWidth(durationText);
-        DrawText(durationText, Point2D(area.x + area.width - durationWidth, barY + controlsStyle.progressHeight + 4));
+        ctx->DrawText(durationText, Point2D(area.x + area.width - durationWidth, barY + controlsStyle.progressHeight + 4));
         
         return controlsStyle.progressHeight + controlsStyle.fontSize + 8;
     }
@@ -619,42 +619,42 @@ private:
         
         // Play/Pause button
         Rect2D playButton(currentX, buttonY, controlsStyle.buttonSize, controlsStyle.buttonSize);
-        SetFillColor(controlsStyle.controlColor);
-        DrawRectangle(playButton);
+        ctx->SetFillColor(controlsStyle.controlColor);
+        ctx->DrawRectangle(playButton);
         
         // Draw play/pause icon (simplified)
-        SetTextColor(controlsStyle.backgroundColor);
-        SetFont(controlsStyle.fontFamily, controlsStyle.buttonSize * 0.6f);
+        ctx->SetTextColor(controlsStyle.backgroundColor);
+        ctx->SetFont(controlsStyle.fontFamily, controlsStyle.buttonSize * 0.6f);
         
         std::string icon = (currentState == AudioState::Playing) ? "||" : "▶";
-        DrawText(icon, Point2D(currentX + 6, buttonY + 4));
+        ctx->DrawText(icon, Point2D(currentX + 6, buttonY + 4));
         
         currentX += controlsStyle.buttonSize + 8;
         
         // Stop button
         Rect2D stopButton(currentX, buttonY, controlsStyle.buttonSize, controlsStyle.buttonSize);
-        SetFillColor(controlsStyle.controlColor);
-        DrawRectangle(stopButton);
+       ctx->SetFillColor(controlsStyle.controlColor);
+        ctx->DrawRectangle(stopButton);
         
         DrawText("■", Point2D(currentX + 6, buttonY + 4));
         currentX += controlsStyle.buttonSize + 16;
         
         // Volume control
         if (controlsStyle.showVolume) {
-            SetTextColor(controlsStyle.textColor);
-            SetFont(controlsStyle.fontFamily, controlsStyle.fontSize);
+            ctx->SetTextColor(controlsStyle.textColor);
+            ctx->SetFont(controlsStyle.fontFamily, controlsStyle.fontSize);
             DrawText("Vol:", Point2D(currentX, buttonY + 6));
             currentX += 30;
             
             // Volume slider
             Rect2D volumeBg(currentX, buttonY + 8, controlsStyle.volumeSliderWidth, 8);
-            SetFillColor(controlsStyle.progressBackgroundColor);
-            DrawRectangle(volumeBg);
+           ctx->SetFillColor(controlsStyle.progressBackgroundColor);
+            ctx->DrawRectangle(volumeBg);
             
             float volumeWidth = volume * controlsStyle.volumeSliderWidth;
             Rect2D volumeBar(currentX, buttonY + 8, volumeWidth, 8);
-            SetFillColor(controlsStyle.progressBarColor);
-            DrawRectangle(volumeBar);
+           ctx->SetFillColor(controlsStyle.progressBarColor);
+            ctx->DrawRectangle(volumeBar);
         }
         
         return controlsStyle.buttonSize + 8;
@@ -666,7 +666,7 @@ private:
         float vizHeight = 40.0f;
         float barWidth = area.width / spectrumData.size();
         
-        SetFillColor(controlsStyle.progressBarColor);
+       ctx->SetFillColor(controlsStyle.progressBarColor);
         
         for (size_t i = 0; i < spectrumData.size(); ++i) {
             float barHeight = spectrumData[i] * vizHeight;
@@ -674,7 +674,7 @@ private:
             float barY = y + vizHeight - barHeight;
             
             Rect2D bar(barX, barY, barWidth - 1, barHeight);
-            DrawRectangle(bar);
+            ctx->DrawRectangle(bar);
         }
     }
     

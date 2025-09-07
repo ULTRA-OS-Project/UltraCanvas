@@ -626,6 +626,7 @@ namespace UltraCanvas {
 
     // Rendering
     void UltraCanvasTimeline::Render() {
+        IRenderContext *ctx = GetRenderContext();
         if (!DrawingSurface) {
             return;
         }

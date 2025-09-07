@@ -468,7 +468,7 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Check async rendering status
         if (isRenderingAsync && renderFuture.valid()) {
@@ -490,8 +490,8 @@ public:
         }
         
         // Draw background
-        SetFillColor(Colors::White);
-        DrawRectangle(GetBounds());
+        ctx->SetFillColor(Colors::White);
+        ctx->DrawRectangle(GetBounds());
         
         // Render state-specific content
         switch (currentState) {
@@ -627,30 +627,30 @@ private:
     }
     
     void RenderEmptyState() {
-        SetTextColor(Colors::Gray);
-        SetFont("Arial", 14.0f);
+        ctx->SetTextColor(Colors::Gray);
+        ctx->SetFont("Arial", 14.0f);
         
         std::string message = "No diagram loaded";
         Point2D center(GetX() + GetWidth() / 2.0f, GetY() + GetHeight() / 2.0f);
-        DrawText(message, Point2D(center.x - 60, center.y));
+        ctx->DrawText(message, Point2D(center.x - 60, center.y));
     }
     
     void RenderLoadingState() {
-        SetTextColor(Colors::Blue);
-        SetFont("Arial", 14.0f);
+        ctx->SetTextColor(Colors::Blue);
+        ctx->SetFont("Arial", 14.0f);
         
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - renderStartTime);
         
         std::string message = "Rendering... (" + std::to_string(elapsed.count()) + "s)";
         Point2D center(GetX() + GetWidth() / 2.0f, GetY() + GetHeight() / 2.0f);
-        DrawText(message, Point2D(center.x - 60, center.y));
+        ctx->DrawText(message, Point2D(center.x - 60, center.y));
         
         // Simple progress indicator
-        SetFillColor(Colors::Blue);
+        ctx->SetFillColor(Colors::Blue);
         float progress = (elapsed.count() % 10) / 10.0f;
         Rect2D progressBar(GetX() + 20, center.y + 20, (GetWidth() - 40) * progress, 4);
-        DrawRectangle(progressBar);
+        ctx->DrawRectangle(progressBar);
     }
     
     void RenderDiagramContent() {
@@ -659,18 +659,18 @@ private:
     }
     
     void RenderErrorState() {
-        SetFillColor(Color(255, 240, 240));
-        DrawRectangle(GetBounds());
+        ctx->SetFillColor(Color(255, 240, 240));
+        ctx->DrawRectangle(GetBounds());
         
-        SetTextColor(Colors::Red);
-        SetFont("Arial", 12.0f);
+        ctx->SetTextColor(Colors::Red);
+        ctx->SetFont("Arial", 12.0f);
         
-        DrawText("Error: " + lastError, Point2D(GetX() + 10, GetY() + 20));
+        ctx->DrawText("Error: " + lastError, Point2D(GetX() + 10, GetY() + 20));
         
         if (!validationErrors.empty()) {
             float currentY = GetY() + 40;
             for (const auto& error : validationErrors) {
-                DrawText("• " + error, Point2D(GetX() + 15, currentY));
+                ctx->DrawText("• " + error, Point2D(GetX() + 15, currentY));
                 currentY += 16;
             }
         }
@@ -678,12 +678,12 @@ private:
     
     void RenderSourceOverlay() {
         // Semi-transparent overlay with source text
-        SetFillColor(Color(0, 0, 0, 180));
+        ctx->SetFillColor(Color(0, 0, 0, 180));
         Rect2D overlay(GetX(), GetY(), GetWidth(), GetHeight());
-        DrawRectangle(overlay);
+        ctx->DrawRectangle(overlay);
         
-        SetTextColor(Colors::White);
-        SetFont("Courier New", 10.0f);
+        ctx->SetTextColor(Colors::White);
+        ctx->SetFont("Courier New", 10.0f);
         
         // Show first few lines of source
         std::istringstream stream(sourceContent);
@@ -692,7 +692,7 @@ private:
         int lineCount = 0;
         
         while (std::getline(stream, line) && lineCount < 20) {
-            DrawText(line, Point2D(GetX() + 10, currentY));
+            ctx->DrawText(line, Point2D(GetX() + 10, currentY));
             currentY += 12;
             lineCount++;
         }

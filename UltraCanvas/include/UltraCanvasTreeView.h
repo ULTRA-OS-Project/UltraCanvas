@@ -467,7 +467,7 @@ public:
     void SetSelectionColor(const Color &color) { selectionColor = color; }
     void SetHoverColor(const Color &color) { hoverColor = color; }
     void SetLineColor(const Color &color) { lineColor = color; }
-    void SetTextColor(const Color &color) { textColor = color; }
+    void ctx->SetTextColor(const Color &color) { textColor = color; }
     
     // ===== SCROLLING =====
     void ScrollTo(TreeNode* node) {
@@ -687,7 +687,7 @@ private:
         
         // Draw left icon
         if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty()) {
-            DrawImage(node->data.leftIcon.iconPath.c_str(),
+            ctx->DrawImage(node->data.leftIcon.iconPath.c_str(),
                 textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
                 node->data.leftIcon.width, node->data.leftIcon.height);
             textX += node->data.leftIcon.width + iconSpacing;
@@ -704,7 +704,7 @@ private:
                 rightIconX -= scrollbarWidth;
             }
             
-            DrawImage(node->data.rightIcon.iconPath.c_str(),
+            ctx->DrawImage(node->data.rightIcon.iconPath.c_str(),
                 rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
                 node->data.rightIcon.width, node->data.rightIcon.height);
         }
@@ -1021,7 +1021,7 @@ public:
         treeView->SetBackgroundColor(bg);
         treeView->SetSelectionColor(selection);
         treeView->SetHoverColor(hover);
-        treeView->SetTextColor(text);
+        treeView->ctx->SetTextColor(text);
         return *this;
     }
     

@@ -141,9 +141,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTooltipManager::Render() {
+        IRenderContext *ctx = GetRenderContext();
         if (!visible || currentText.empty()) return;
 
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
 
         // Draw shadow first
         if (style.hasShadow) {
@@ -159,7 +160,7 @@ namespace UltraCanvas {
         }
 
         // Draw text
-        DrawText();
+        ctx->DrawText();
     }
 
     void UltraCanvasTooltipManager::SetStyle(const TooltipStyle &newStyle) {
@@ -203,8 +204,8 @@ namespace UltraCanvas {
         if (currentText.empty()) return;
 
         // Set up text style for measurement
-        ULTRACANVAS_RENDER_SCOPE();
-        SetFont(style.fontFamily, style.fontSize);
+        ctx->PushState();
+        ctx->SetFont(style.fontFamily, style.fontSize);
 
         // Word wrap the text
         wrappedLines = WrapText(currentText, style.maxWidth - style.paddingLeft - style.paddingRight);
@@ -314,15 +315,15 @@ namespace UltraCanvas {
         );
 
         if (style.cornerRadius > 0) {
-            SetFillColor(style.shadowColor);
+            ctx->SetFillColor(style.shadowColor);
             DrawingStyle shadowStyle = GetRenderContext()->GetDrawingStyle();
             shadowStyle.fillMode = FillMode::Solid;
             shadowStyle.fillColor = style.shadowColor;
             shadowStyle.hasStroke = false;
             SetDrawingStyle(shadowStyle);
-            DrawRoundedRectangle(shadowRect, style.cornerRadius);
+            ctx->DrawRoundedRectangle(shadowRect, style.cornerRadius);
         } else {
-            DrawFilledRectangle(shadowRect, style.shadowColor);
+            ctx->DrawFilledRectangle(shadowRect, style.shadowColor);
         }
     }
 
@@ -330,15 +331,15 @@ namespace UltraCanvas {
         Rect2Di bgRect(tooltipPosition.x, tooltipPosition.y, tooltipSize.x, tooltipSize.y);
 
         if (style.cornerRadius > 0) {
-            SetFillColor(style.backgroundColor);
+           ctx->SetFillColor(style.backgroundColor);
             DrawingStyle bgStyle = GetRenderContext()->GetDrawingStyle();
             bgStyle.fillMode = FillMode::Solid;
             bgStyle.fillColor = style.backgroundColor;
             bgStyle.hasStroke = false;
             SetDrawingStyle(bgStyle);
-            DrawRoundedRectangle(bgRect, style.cornerRadius);
+            ctx->DrawRoundedRectangle(bgRect, style.cornerRadius);
         } else {
-            DrawFilledRectangle(bgRect, style.backgroundColor);
+            ctx->DrawFilledRectangle(bgRect, style.backgroundColor);
         }
     }
 
@@ -346,23 +347,23 @@ namespace UltraCanvas {
         Rect2Di borderRect(tooltipPosition.x, tooltipPosition.y, tooltipSize.x, tooltipSize.y);
 
         if (style.cornerRadius > 0) {
-            SetStrokeColor(style.borderColor);
-            SetStrokeWidth(style.borderWidth);
+            ctx->SetStrokeColor(style.borderColor);
+            ctx->SetStrokeWidth(style.borderWidth);
             DrawingStyle borderStyle = GetRenderContext()->GetDrawingStyle();
             borderStyle.fillMode = FillMode::NoneFill;
             borderStyle.hasStroke = true;
             borderStyle.strokeColor = style.borderColor;
             borderStyle.strokeWidth = style.borderWidth;
             SetDrawingStyle(borderStyle);
-            DrawRoundedRectangle(borderRect, style.cornerRadius);
+            ctx->DrawRoundedRectangle(borderRect, style.cornerRadius);
         } else {
-            DrawFilledRectangle(borderRect, Colors::Transparent, style.borderColor, style.borderWidth);
+            ctx->DrawFilledRectangle(borderRect, Colors::Transparent, style.borderColor, style.borderWidth);
         }
     }
 
     void UltraCanvasTooltipManager::DrawText() {
-        SetTextColor(style.textColor);
-        SetFont(style.fontFamily, style.fontSize);
+        ctx->SetTextColor(style.textColor);
+        ctx->SetFont(style.fontFamily, style.fontSize);
 
         float textX = tooltipPosition.x + style.paddingLeft;
         float textY = tooltipPosition.y + style.paddingTop + style.fontSize;

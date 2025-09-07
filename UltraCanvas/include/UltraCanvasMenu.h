@@ -312,8 +312,6 @@ namespace UltraCanvas {
         // ===== CALCULATION METHODS =====
         void CalculateSize();
 
-        void RenderItem(int index, const MenuItemData& item);
-
         Rect2Di GetItemBounds(int index) const;
 
         float CalculateItemWidth(const MenuItemData& item) const;
@@ -322,17 +320,13 @@ namespace UltraCanvas {
         void PositionSubmenu(std::shared_ptr<UltraCanvasMenu> submenu, int itemIndex);
 
         // ===== RENDERING HELPERS =====
-        void RenderSeparator(const Rect2Di& bounds);
-
-        void RenderCheckbox(const MenuItemData& item, const Point2Di& position);
-
-        void RenderSubmenuArrow(const Point2Di& position);
-
-        void RenderIcon(const std::string& iconPath, const Point2Di& position);
-
-        void RenderKeyboardHighlight(const Rect2Di& bounds);
-
-        void RenderShadow();
+        void RenderItem(int index, const MenuItemData& item, IRenderContext* ctx);
+        void RenderSeparator(const Rect2Di& bounds, IRenderContext* ctx);
+        void RenderCheckbox(const MenuItemData& item, const Point2Di& position, IRenderContext* ctx);
+        void RenderSubmenuArrow(const Point2Di& position, IRenderContext* ctx);
+        void RenderIcon(const std::string& iconPath, const Point2Di& position, IRenderContext* ctx);
+        void RenderKeyboardHighlight(const Rect2Di& bounds, IRenderContext* ctx);
+        void RenderShadow(IRenderContext* ctx);
 
         // ===== UTILITY METHODS =====
         Color GetItemBackgroundColor(int index, const MenuItemData& item) const {

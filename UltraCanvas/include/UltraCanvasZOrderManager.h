@@ -469,8 +469,8 @@ public:
         ULTRACANVAS_WINDOW_RENDER_SCOPE(this); \
         int width, height; \
         GetSize(width, height); \
-        SetFillColor(config_.backgroundColor); \
-        FillRectangle(Rect2D(0, 0, width, height)); \
+        ctx->SetFillColor(config_.backgroundColor); \
+        ctx->FillRectangle(Rect2D(0, 0, width, height)); \
         auto sortedElements = UltraCanvasZOrderManager::GetElementsSortedByZOrder(elements); \
         for (auto* element : sortedElements) { \
             if (element && element->IsVisible()) { \

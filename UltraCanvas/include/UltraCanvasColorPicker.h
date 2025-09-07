@@ -330,7 +330,7 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Update layout if needed
         if (layoutDirty) {
@@ -488,7 +488,7 @@ private:
     // ===== RENDERING METHODS =====
     void RenderCompactMode() {
         // Draw color swatch
-        SetFillColor(currentColor);
+        ctx->SetFillColor(currentColor);
         UltraCanvas::DrawFilledRect(previewRect, currentColor, style.borderColor, 1.0f);
         
         // Draw popup if open
@@ -499,7 +499,7 @@ private:
     
     void RenderInlineMode() {
         // Draw background
-        SetFillColor(style.backgroundColor);
+        ctx->SetFillColor(style.backgroundColor);
         UltraCanvas::DrawFilledRect(GetBounds(), style.backgroundColor, style.borderColor, 1.0f);
         
         // Draw color wheel/square
@@ -563,15 +563,15 @@ private:
             float angle = i * M_PI / 180.0f;
             HSVColor hueColor(i, 1.0f, 1.0f, 1.0f);
             
-            SetStrokeColor(hueColor.ToRGB());
-            SetStrokeWidth(2.0f);
+            ctx->SetStrokeColor(hueColor.ToRGB());
+            ctx->SetStrokeWidth(2.0f);
             
             float x1 = wheelCenter.x + (wheelRadius - 10) * cos(angle);
             float y1 = wheelCenter.y + (wheelRadius - 10) * sin(angle);
             float x2 = wheelCenter.x + wheelRadius * cos(angle);
             float y2 = wheelCenter.y + wheelRadius * sin(angle);
             
-            DrawLine(Point2D(x1, y1), Point2D(x2, y2));
+            ctx->DrawLine(Point2D(x1, y1), Point2D(x2, y2));
         }
         
         // Draw saturation/value square in center (simplified)
@@ -585,8 +585,8 @@ private:
         
         // Draw black overlay for value
         Color blackOverlay(0, 0, 0, static_cast<uint8_t>((1.0f - currentHSV.v) * 255));
-        SetFillColor(blackOverlay);
-        DrawRectangle(svSquare);
+        ctx->SetFillColor(blackOverlay);
+        ctx->DrawRectangle(svSquare);
     }
     
     void RenderSquareSVPicker() {
@@ -599,17 +599,17 @@ private:
         // Draw selection crosshair
         Point2D selectionPos = CalculateSelectionPosition();
         
-        SetStrokeColor(Colors::White);
-        SetStrokeWidth(2.0f);
+        ctx->SetStrokeColor(Colors::White);
+        ctx->SetStrokeWidth(2.0f);
         
         // Draw crosshair
-        DrawLine(Point2D(selectionPos.x - 5, selectionPos.y), 
+        ctx->DrawLine(Point2D(selectionPos.x - 5, selectionPos.y),
                 Point2D(selectionPos.x + 5, selectionPos.y));
-        DrawLine(Point2D(selectionPos.x, selectionPos.y - 5), 
+        ctx->DrawLine(Point2D(selectionPos.x, selectionPos.y - 5),
                 Point2D(selectionPos.x, selectionPos.y + 5));
         
         // Draw circle
-        DrawCircle(selectionPos, 3.0f);
+        ctx->DrawCircle(selectionPos, 3.0f);
     }
     
     Point2D CalculateSelectionPosition() {
@@ -658,9 +658,9 @@ private:
             float hue = (i / rect.width) * 360.0f;
             HSVColor hueColor(hue, 1.0f, 1.0f);
             
-            SetStrokeColor(hueColor.ToRGB());
-            SetStrokeWidth(1.0f);
-            DrawLine(Point2D(rect.x + i, rect.y), 
+            ctx->SetStrokeColor(hueColor.ToRGB());
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawLine(Point2D(rect.x + i, rect.y),
                     Point2D(rect.x + i, rect.y + rect.height));
         }
         
@@ -703,11 +703,11 @@ private:
     }
     
     void RenderSliderHandle(const Point2D& position) {
-        SetFillColor(style.sliderHandleColor);
-        SetStrokeColor(Colors::Gray);
-        SetStrokeWidth(1.0f);
+        ctx->SetFillColor(style.sliderHandleColor);
+        ctx->SetStrokeColor(Colors::Gray);
+        ctx->SetStrokeWidth(1.0f);
         
-        DrawCircle(position, 6.0f);
+        ctx->DrawCircle(position, 6.0f);
     }
     
     void RenderColorPreview() {
@@ -717,12 +717,12 @@ private:
         RenderTransparencyBackground(previewRect);
         
         // Draw current color
-        SetFillColor(currentColor);
+        ctx->SetFillColor(currentColor);
         UltraCanvas::DrawFilledRect(previewRect, currentColor, style.borderColor, 1.0f);
         
         // Draw label
-        SetTextColor(style.textColor);
-        DrawText("Preview", Point2D(previewRect.x, previewRect.y + previewRect.height + 5));
+        ctx->SetTextColor(style.textColor);
+        ctx->DrawText("Preview", Point2D(previewRect.x, previewRect.y + previewRect.height + 5));
     }
     
     void RenderColorPalette() {
@@ -740,14 +740,14 @@ private:
             }
             
             // Draw color swatch
-            SetFillColor(color);
+            ctx->SetFillColor(color);
             UltraCanvas::DrawFilledRect(swatch, color, style.borderColor, 1.0f);
             
             // Highlight if this is the current color
             if (color == currentColor) {
-                SetStrokeColor(Colors::Black);
-                SetStrokeWidth(2.0f);
-                DrawRectangle(swatch);
+                ctx->SetStrokeColor(Colors::Black);
+                ctx->SetStrokeWidth(2.0f);
+                ctx->DrawRectangle(swatch);
             }
         }
     }
@@ -772,10 +772,10 @@ private:
         for (int y = 0; y < static_cast<int>(rect.height); y += checkSize) {
             for (int x = 0; x < static_cast<int>(rect.width); x += checkSize) {
                 bool isLight = ((x / checkSize) + (y / checkSize)) % 2 == 0;
-                SetFillColor(isLight ? light : dark);
+               ctx->SetFillColor(isLight ? light : dark);
                 
                 Rect2D checkRect(rect.x + x, rect.y + y, checkSize, checkSize);
-                DrawRectangle(checkRect);
+                ctx->DrawRectangle(checkRect);
             }
         }
     }

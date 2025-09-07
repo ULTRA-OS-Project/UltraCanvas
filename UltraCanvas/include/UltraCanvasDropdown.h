@@ -250,14 +250,16 @@ namespace UltraCanvas {
 
         // ===== RENDERING =====
         void Render() override {
-            if (!IsVisible()) return;
-
+            auto ctx = GetRenderContext();
+            if (!IsVisible() || !ctx) return;
             std::cout << "UCDropdown::Render - dropdownOpen=" << dropdownOpen << " items=" << items.size() << std::endl;
 
-            ULTRACANVAS_RENDER_SCOPE();
+            ctx->PushState();
 
             // Render main button
-            RenderButton();
+            RenderButton(ctx);
+
+            ctx->PopState();
 
 //            // Render dropdown list if open
 //            if (dropdownOpen) {
@@ -269,12 +271,14 @@ namespace UltraCanvas {
         }
 
         void RenderPopupContent() override {
-            if (dropdownOpen && !items.empty()) {
+            auto ctx = GetRenderContext();
+            if (ctx && dropdownOpen && !items.empty()) {
                 Point2Di globalPos = parentContainer->GetPositionInWindow();
 
                 // Translate to dropdown position
                 //ResetTransform();
-                Translate(globalPos.x, globalPos.y);
+                ctx->PushState();
+                ctx->Translate(globalPos.x, globalPos.y);
 
                 Rect2Di buttonRect = GetBounds();
                 Rect2Di listRect(buttonRect.x, buttonRect.y + buttonRect.height,
@@ -282,12 +286,12 @@ namespace UltraCanvas {
 
                 // Draw shadow
                 if (style.hasShadow) {
-                    DrawShadow(listRect, style.shadowColor, style.shadowOffset);
+                    ctx->DrawShadow(listRect, style.shadowColor, style.shadowOffset);
                 }
 
                 // Draw list background
                 std::cout << "RenderDropdownList UltraCanvas::DrawFilledRect" << std::endl;
-                DrawFilledRectangle(listRect, style.listBackgroundColor, style.listBorderColor, 1.0f);
+                ctx->DrawFilledRectangle(listRect, style.listBackgroundColor, style.listBorderColor, 1.0f);
 
                 // Render visible items
                 int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
@@ -295,13 +299,14 @@ namespace UltraCanvas {
                 int endIndex = std::min(startIndex + visibleItems, (int)items.size());
 
                 for (int i = startIndex; i < endIndex; i++) {
-                    RenderDropdownItem(i, listRect, i - startIndex);
+                    RenderDropdownItem(i, listRect, i - startIndex, ctx);
                 }
 
                 // Draw scrollbar if needed
                 if (needsScrollbar) {
-                    RenderScrollbar(listRect);
+                    RenderScrollbar(listRect, ctx);
                 }
+                ctx->PopState();
             }
         }
 
@@ -348,7 +353,7 @@ namespace UltraCanvas {
             needsScrollbar = (int)items.size() > style.maxVisibleItems;
         }
 
-        void RenderButton() {
+        void RenderButton(IRenderContext* ctx) {
             Rect2Di buttonRect = GetBounds();
 
             // Determine button state and colors
@@ -370,39 +375,39 @@ namespace UltraCanvas {
 
             // Draw shadow
             if (style.hasShadow && !dropdownOpen) {
-                DrawShadow(buttonRect, style.shadowColor, style.shadowOffset);
+                ctx->DrawShadow(buttonRect, style.shadowColor, style.shadowOffset);
             }
 
             // Draw ONLY the button background (not full screen)
-            DrawFilledRectangle(buttonRect, bgColor, borderColor, style.borderWidth);
+            ctx->DrawFilledRectangle(buttonRect, bgColor, borderColor, style.borderWidth);
 
             // Draw text
             std::string displayText = GetDisplayText();
             if (!displayText.empty()) {
-                SetTextColor(textColor);
-                SetFont(style.fontFamily, style.fontSize);
+                ctx->SetTextColor(textColor);
+                ctx->SetFont(style.fontFamily, style.fontSize);
 
-                Point2Di textSize = MeasureText(displayText);
+                Point2Di textSize = ctx->MeasureText(displayText);
                 float fontHeight = textSize.y;
                 float textX = buttonRect.x + style.paddingLeft;
                 float textY = buttonRect.y + (buttonRect.height - fontHeight) / 2;
 
-                DrawText(displayText, Point2Di(textX, textY));
+                ctx->DrawText(displayText, Point2Di(textX, textY));
             }
 
             // Draw dropdown arrow
-            RenderDropdownArrow(buttonRect, textColor);
+            RenderDropdownArrow(buttonRect, textColor, ctx);
 
             // Draw focus indicator
             if (IsFocused() && !dropdownOpen) {
                 Rect2Di focusRect(buttonRect.x + 1, buttonRect.y + 1,
                                  buttonRect.width - 2, buttonRect.height - 2);
-                DrawFilledRectangle(focusRect, Colors::Transparent, style.focusBorderColor, 1.0f);
+                ctx->DrawFilledRectangle(focusRect, Colors::Transparent, style.focusBorderColor, 1.0f);
             }
         }
 
-        void RenderDropdownArrow(const Rect2Di& buttonRect, const Color& color) {
-            SetFillColor(color);
+        void RenderDropdownArrow(const Rect2Di& buttonRect, const Color& color, IRenderContext* ctx) {
+            ctx->SetFillColor(color);
 
             float arrowX = buttonRect.x + buttonRect.width - (style.arrowSize + style.arrowSize);
             float arrowY = buttonRect.y + (buttonRect.height - style.arrowSize) / 2 + 2;
@@ -411,18 +416,18 @@ namespace UltraCanvas {
             float arrowCenterX = arrowX + style.arrowSize / 2;
             float arrowBottom = arrowY + style.arrowSize / 2;
 
-            SetStrokeColor(color);
-            SetStrokeWidth(1.0f);
+            ctx->SetStrokeColor(color);
+            ctx->SetStrokeWidth(1.0f);
 
             // Draw down arrow using lines
-            DrawLine(arrowX, arrowY, arrowCenterX, arrowBottom);
-            DrawLine(arrowCenterX, arrowBottom, arrowX + style.arrowSize, arrowY);
+            ctx->DrawLine(arrowX, arrowY, arrowCenterX, arrowBottom);
+            ctx->DrawLine(arrowCenterX, arrowBottom, arrowX + style.arrowSize, arrowY);
         }
 
-        void RenderDropdownList() {
+        void RenderDropdownList(IRenderContext* ctx) {
             if (items.empty()) return;
 
-            ULTRACANVAS_RENDER_SCOPE();
+            ctx->PushState();
 
             Rect2Di buttonRect = GetBounds();
             Rect2Di listRect(buttonRect.x, buttonRect.y + buttonRect.height,
@@ -430,12 +435,12 @@ namespace UltraCanvas {
 
             // Draw shadow
             if (style.hasShadow) {
-                DrawShadow(listRect, style.shadowColor, style.shadowOffset);
+                ctx->DrawShadow(listRect, style.shadowColor, style.shadowOffset);
             }
 
             // Draw list background
             std::cout << "RenderDropdownList UltraCanvas::DrawFilledRect" << std::endl;
-            DrawFilledRectangle(listRect, style.listBackgroundColor, style.listBorderColor, 1.0f);
+            ctx->DrawFilledRectangle(listRect, style.listBackgroundColor, style.listBorderColor, 1.0f);
 
             // Render visible items
             int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
@@ -443,18 +448,18 @@ namespace UltraCanvas {
             int endIndex = std::min(startIndex + visibleItems, (int)items.size());
 
             for (int i = startIndex; i < endIndex; i++) {
-                RenderDropdownItem(i, listRect, i - startIndex);
+                RenderDropdownItem(i, listRect, i - startIndex, ctx);
             }
 
             // Draw scrollbar if needed
             if (needsScrollbar) {
-                RenderScrollbar(listRect);
+                RenderScrollbar(listRect, ctx);
             }
 
-            ClearClipRect();
+            ctx->PopState();
         }
 
-        void RenderDropdownItem(int itemIndex, const Rect2Di& listRect, int visualIndex) {
+        void RenderDropdownItem(int itemIndex, const Rect2Di& listRect, int visualIndex, IRenderContext* ctx) {
             const DropdownItem& item = items[itemIndex];
 
             float itemY = listRect.y + 1 + visualIndex * style.itemHeight;
@@ -466,8 +471,8 @@ namespace UltraCanvas {
             if (item.separator) {
                 // Draw separator line
                 float sepY = itemY + style.itemHeight / 2;
-                SetStrokeColor(style.listBorderColor);
-                DrawLine(Point2Di(itemRect.x + 4, sepY), Point2Di(itemRect.x + itemRect.width - 4, sepY));
+                ctx->SetStrokeColor(style.listBorderColor);
+                ctx->DrawLine(Point2Di(itemRect.x + 4, sepY), Point2Di(itemRect.x + itemRect.width - 4, sepY));
                 return;
             }
 
@@ -482,25 +487,25 @@ namespace UltraCanvas {
             }
 
             // Draw item background
-            DrawFilledRectangle(itemRect, bgColor);
+            ctx->DrawFilledRectangle(itemRect, bgColor);
 
             // Draw text
             if (!item.text.empty()) {
-                SetTextColor(textColor);
-                SetFont("Arial", 12);
+                ctx->SetTextColor(textColor);
+                ctx->SetFont("Arial", 12);
 
-                Point2Di textSize = MeasureText(item.text);
+                Point2Di textSize = ctx->MeasureText(item.text);
                 float fontHeight = textSize.y;
 
                 float textY = itemRect.y + (style.itemHeight - fontHeight) / 2;
-                DrawText(item.text, Point2Di(itemRect.x + 8, textY));
+                ctx->DrawText(item.text, Point2Di(itemRect.x + 8, textY));
 
                 std::cout << "RenderDropdownItem: drew text '" << item.text << "' at "
                           << (itemRect.x + 8) << "," << textY << std::endl;
             }
         }
 
-        void RenderScrollbar(const Rect2Di& listRect) {
+        void RenderScrollbar(const Rect2Di& listRect, IRenderContext* ctx) {
             if (!needsScrollbar) return;
 
             int scrollbarWidth = 12;
@@ -508,7 +513,7 @@ namespace UltraCanvas {
                                  listRect.y + 1, scrollbarWidth, listRect.height - 2);
 
             // Scrollbar background
-            DrawFilledRectangle(scrollbarRect, Color(240, 240, 240, 255));
+            ctx->DrawFilledRectangle(scrollbarRect, Color(240, 240, 240, 255));
 
             // Calculate thumb size and position
             int totalItems = (int)items.size();
@@ -523,7 +528,7 @@ namespace UltraCanvas {
                                (scrollbarRect.height - thumbHeight);
 
                 Rect2Di thumbRect(scrollbarRect.x + 2, thumbY, scrollbarWidth - 4, thumbHeight);
-                DrawFilledRectangle(thumbRect, Color(160, 160, 160, 255));
+                ctx->DrawFilledRectangle(thumbRect, Color(160, 160, 160, 255));
             }
         }
 

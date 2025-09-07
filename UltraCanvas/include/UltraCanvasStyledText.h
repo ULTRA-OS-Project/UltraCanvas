@@ -495,7 +495,7 @@ namespace UltraCanvas {
         void Render() override {
             if (!IsVisible()) return;
 
-            ULTRACANVAS_RENDER_SCOPE();
+            ctx->PushState();
 
             // Reflow text if needed
             if (needsReflow) {
@@ -509,12 +509,12 @@ namespace UltraCanvas {
             Rect2D bounds = GetBounds();
 
             // Draw background
-            SetFillColor(Colors::White);
-            DrawRectangle(bounds);
+            ctx->SetFillColor(Colors::White);
+            ctx->DrawRectangle(bounds);
 
             // Set clipping to content area
             PushRenderState();
-            SetClipRect(bounds);
+            ctx->SetClipRect(bounds);
 
             // Apply scroll offset
             Translate(-scrollOffset.x, -scrollOffset.y);
@@ -685,13 +685,13 @@ namespace UltraCanvas {
 
         void RenderTextBlock(const TextBlock& block) {
             // Set font and color using framework functions
-            SetFont(block.style.fontFamily, block.style.fontSize);
-            SetTextColor(block.style.textColor);
+            ctx->SetFont(block.style.fontFamily, block.style.fontSize);
+            ctx->SetTextColor(block.style.textColor);
 
             // Draw background if specified
             if (block.style.backgroundColor.a > 0) {
-                SetFillColor(block.style.backgroundColor);
-                DrawRectangle(block.bounds);
+                ctx->SetFillColor(block.style.backgroundColor);
+                ctx->DrawRectangle(block.bounds);
             }
 
             // Draw text for each line
@@ -709,14 +709,14 @@ namespace UltraCanvas {
                     textX = lineRect.x + lineRect.width - GetTextWidth(lines[i].c_str());
                 }
 
-                DrawText(lines[i], Point2D(textX, textY));
+                ctx->DrawText(lines[i], Point2D(textX, textY));
 
                 // Draw decorations
                 if (block.style.textDecoration & static_cast<int>(TextDecoration::Underline)) {
                     float underlineY = textY + 2;
-                    SetStrokeColor(block.style.textColor);
-                    SetStrokeWidth(1.0f);
-                    DrawLine(Point2D(textX, underlineY), Point2D(textX + GetTextWidth(lines[i].c_str()), underlineY));
+                    ctx->SetStrokeColor(block.style.textColor);
+                    ctx->SetStrokeWidth(1.0f);
+                    ctx->DrawLine(Point2D(textX, underlineY), Point2D(textX + GetTextWidth(lines[i].c_str()), underlineY));
                 }
             }
         }
@@ -724,24 +724,24 @@ namespace UltraCanvas {
         void RenderSelection() {
             if (!HasSelection()) return;
 
-            SetFillColor(selection.selectionColor);
+            ctx->SetFillColor(selection.selectionColor);
 
             // Simple selection rendering - would need proper text position calculations
             size_t start = selection.GetStart();
             size_t end = selection.GetEnd();
 
             for (size_t i = start; i < end && i < lineRects.size(); ++i) {
-                DrawRectangle(lineRects[i]);
+                ctx->DrawRectangle(lineRects[i]);
             }
         }
 
         void RenderSearchHighlights() {
-            SetFillColor(Color(255, 255, 0, 100)); // Yellow highlight
+            ctx->SetFillColor(Color(255, 255, 0, 100)); // Yellow highlight
 
             for (const auto& result : searchResults) {
                 // Simple highlighting - would need proper text position calculations
                 if (result.position < lineRects.size()) {
-                    DrawRectangle(lineRects[result.position]);
+                    ctx->DrawRectangle(lineRects[result.position]);
                 }
             }
         }
@@ -754,9 +754,9 @@ namespace UltraCanvas {
             float caretY = lineRect.y;
             float caretHeight = lineRect.height;
 
-            SetStrokeColor(Colors::Black);
-            SetStrokeWidth(1.0f);
-            DrawLine(Point2D(caretX, caretY), Point2D(caretX, caretY + caretHeight));
+            ctx->SetStrokeColor(Colors::Black);
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawLine(Point2D(caretX, caretY), Point2D(caretX, caretY + caretHeight));
         }
 
         // ===== EVENT HANDLERS =====

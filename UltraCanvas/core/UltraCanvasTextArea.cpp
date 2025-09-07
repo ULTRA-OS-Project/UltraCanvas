@@ -22,7 +22,7 @@ namespace UltraCanvas {
 // ===== ADVANCED TEXT MEASUREMENT FUNCTIONS =====
 // ===== ADVANCED TEXT MEASUREMENT FUNCTIONS =====
 
-    float UltraCanvasTextArea::GetTextWidth(const std::string& text) const {
+    int UltraCanvasTextArea::GetTextWidth(const std::string& text) const {
         if (text.empty()) return 0.0f;
 
         // Check cache first for performance
@@ -38,14 +38,14 @@ namespace UltraCanvas {
         textStyle.fontFamily = style.fontFamily;
         textStyle.fontSize = style.fontSize;
 
-        auto* ctx = UltraCanvas::GetRenderContext();
+        auto* ctx = GetRenderContext();
         if (!ctx) {
             // Fallback: estimate using average character width
             return text.length() * style.fontSize * 0.6f;
         }
 
         ctx->SetTextStyle(textStyle);
-        float width = ctx->GetTextWidth(text);
+        int width = ctx->GetTextWidth(text);
 
         // Cache the result
         lastMeasurement.text = text;
@@ -150,7 +150,7 @@ namespace UltraCanvas {
 
 // ===== CURSOR POSITIONING FUNCTIONS =====
 
-    UltraCanvas::Point2Di UltraCanvasTextArea::GetCursorScreenPosition() const {
+    Point2Di UltraCanvasTextArea::GetCursorScreenPosition() const {
         Rect2Df textArea = GetTextRenderArea();
 
         // Calculate Y position with padding
@@ -163,7 +163,7 @@ namespace UltraCanvas {
             x += GetPixelXFromColumn(currentLine, cursorColumn) - scrollOffsetX;
         }
 
-        return UltraCanvas::Point2Di(static_cast<int>(x), static_cast<int>(y));
+        return Point2Di(static_cast<int>(x), static_cast<int>(y));
     }
 
     float UltraCanvasTextArea::GetLineNumberWidth() const {
@@ -279,45 +279,50 @@ namespace UltraCanvas {
 // ===== RENDERING FUNCTIONS =====
 
     void UltraCanvasTextArea::Render() {
-        ULTRACANVAS_RENDER_SCOPE();
+        IRenderContext *ctx = GetRenderContext();
+        if (!IsVisible() || !ctx) return;
+
+        ctx->PushState();
 
         Rect2Di bounds = GetBounds();
 
         // Draw background
-        SetFillColor(style.backgroundColor);
-        FillRectangle(bounds);
+        ctx->SetFillColor(style.backgroundColor);
+        ctx->FillRectangle(bounds);
 
         // Draw border
-        SetStrokeColor(style.borderColor);
-        SetStrokeWidth(1.0f);
-        DrawRectangle(bounds);
+        ctx->SetStrokeColor(style.borderColor);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRectangle(bounds);
 
         // Get areas for rendering
         Rect2Df contentArea = GetContentArea();
         Rect2Df textArea = GetTextRenderArea();
 
         // Set clipping for content area (without padding)
-        SetClipRect(contentArea);
+        ctx->SetClipRect(contentArea);
 
         // Draw line numbers (within content area, before text area)
-        DrawLineNumbers();
+        DrawLineNumbers(ctx);
 
         // Set clipping for text area (with padding)
-        SetClipRect(textArea);
+        ctx->SetClipRect(textArea);
 
         // Draw text content with proper padding
-        DrawSelection();
-        DrawTextContent();
-        DrawCursor();
+        DrawSelection(ctx);
+        DrawTextContent(ctx);
+        DrawCursor(ctx);
 
         // Reset clipping for scrollbars
-        ClearClipRect();
+        ctx->ClearClipRect();
 
         // Draw scrollbars
-        DrawScrollBars();
+        DrawScrollBars(ctx);
+
+        ctx->PopState();
     }
 
-    void UltraCanvasTextArea::DrawTextContent() {
+    void UltraCanvasTextArea::DrawTextContent(IRenderContext *ctx) {
         Rect2Df textArea = GetTextRenderArea();
 
         // Set text style
@@ -325,7 +330,7 @@ namespace UltraCanvas {
         textStyle.fontFamily = style.fontFamily;
         textStyle.fontSize = style.fontSize;
         textStyle.textColor = style.textColor;
-        SetTextStyle(textStyle);
+        ctx->SetTextStyle(textStyle);
 
         // Render visible lines with padding
         int startLine = scrollOffsetY;
@@ -336,15 +341,15 @@ namespace UltraCanvas {
             float y = textArea.y + (line - scrollOffsetY) * style.lineHeight;
             float x = textArea.x - scrollOffsetX;
 
-            DrawText(lines[line], x, y);
+            ctx->DrawText(lines[line], x, y);
         }
     }
 
-    void UltraCanvasTextArea::DrawSelection() {
+    void UltraCanvasTextArea::DrawSelection(IRenderContext *ctx) {
         if (!hasSelection) return;
 
         Rect2Df textArea = GetTextRenderArea();
-        UltraCanvas::SetFillColor(style.selectionColor);
+        ctx->SetFillColor(style.selectionColor);
 
         // Draw selection rectangles for each selected line
         for (int line = selectionStartLine; line <= selectionEndLine; line++) {
@@ -368,12 +373,12 @@ namespace UltraCanvas {
             if (endX > startX) {
                 Rect2Di selectionRect(static_cast<int>(startX), static_cast<int>(y),
                                       static_cast<int>(endX - startX), style.lineHeight);
-                FillRectangle(selectionRect);
+                ctx->FillRectangle(selectionRect);
             }
         }
     }
 
-    void UltraCanvasTextArea::DrawCursor() {
+    void UltraCanvasTextArea::DrawCursor(IRenderContext *ctx) {
         if (readOnly || !isCaretVisible || !IsFocused()) return;
 
         // Only draw cursor if it's in visible area
@@ -386,30 +391,30 @@ namespace UltraCanvas {
         if (cursorPos.x >= textArea.x && cursorPos.x <= textArea.x + textArea.width &&
             cursorPos.y >= textArea.y && cursorPos.y <= textArea.y + textArea.height) {
 
-            SetStrokeColor(style.textColor);
-            SetStrokeWidth(1.0f);
-            DrawLine(Point2Di(cursorPos.x, cursorPos.y),
+            ctx->SetStrokeColor(style.textColor);
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawLine(Point2Di(cursorPos.x, cursorPos.y),
                      Point2Di(cursorPos.x, cursorPos.y + style.lineHeight));
         }
     }
 
-    void UltraCanvasTextArea::DrawLineNumbers() {
+    void UltraCanvasTextArea::DrawLineNumbers(IRenderContext *ctx) {
         if (!style.showLineNumbers) return;
 
         Rect2Di bounds = GetBounds();
         float lineNumberWidth = GetLineNumberWidth();
 
         // Draw line number background
-        SetFillColor(style.lineNumberBackgroundColor);
+        ctx->SetFillColor(style.lineNumberBackgroundColor);
         Rect2Di lineNumberArea(bounds.x, bounds.y, static_cast<int>(lineNumberWidth), bounds.height);
-        FillRectangle(lineNumberArea);
+        ctx->FillRectangle(lineNumberArea);
 
         // Draw line numbers
         TextStyle numberStyle;
         numberStyle.fontFamily = style.fontFamily;
         numberStyle.fontSize = style.fontSize * 0.9f; // Slightly smaller
         numberStyle.textColor = style.lineNumberColor;
-        SetTextStyle(numberStyle);
+        ctx->SetTextStyle(numberStyle);
 
         int startLine = scrollOffsetY;
         int endLine = std::min(static_cast<int>(lines.size()), startLine + maxVisibleLines + 1);
@@ -420,23 +425,23 @@ namespace UltraCanvas {
             float x = bounds.x + lineNumberWidth - GetTextWidth(lineNumber) - 5.0f; // Right-aligned
 
             Point2Di numberPos(static_cast<int>(x), static_cast<int>(y));
-            DrawText(lineNumber, numberPos);
+            ctx->DrawText(lineNumber, numberPos);
         }
     }
 
-    void UltraCanvasTextArea::DrawScrollBars() {
+    void UltraCanvasTextArea::DrawScrollBars(IRenderContext *ctx) {
         Rect2Di bounds = GetBounds();
 
         // Draw vertical scrollbar
         if (hasVerticalScrollbar) {
             // Track
-            SetFillColor(style.scrollbarColor);
+            ctx->SetFillColor(style.scrollbarColor);
             Rect2Di vTrack(bounds.x + bounds.width - style.scrollbarThickness, bounds.y, style.scrollbarThickness, bounds.height);
-            FillRectangle(vTrack);
+            ctx->FillRectangle(vTrack);
 
             // Thumb
-            SetFillColor(style.scrollbarThumbColor);
-            FillRectangle(verticalScrollThumb);
+            ctx->SetFillColor(style.scrollbarThumbColor);
+            ctx->FillRectangle(verticalScrollThumb);
         }
 
         // Draw horizontal scrollbar
@@ -444,14 +449,14 @@ namespace UltraCanvas {
             float lineNumberWidth = style.showLineNumbers ? GetLineNumberWidth() : 0.0f;
 
             // Track
-            SetFillColor(style.scrollbarColor);
+            ctx->SetFillColor(style.scrollbarColor);
             Rect2Di hTrack(bounds.x + static_cast<int>(lineNumberWidth), bounds.y + bounds.height - style.scrollbarThickness,
                            bounds.width - static_cast<int>(lineNumberWidth) - (hasVerticalScrollbar ? style.scrollbarThickness : 0), style.scrollbarThickness);
-            FillRectangle(hTrack);
+            ctx->FillRectangle(hTrack);
 
             // Thumb
-            SetFillColor(style.scrollbarThumbColor);
-            FillRectangle(horizontalScrollThumb);
+            ctx->SetFillColor(style.scrollbarThumbColor);
+            ctx->FillRectangle(horizontalScrollThumb);
         }
     }
 
@@ -931,7 +936,7 @@ namespace UltraCanvas {
             scrollOffsetX -= static_cast<int>(event.wheelDelta * pixelsPerScroll);
 
             // Calculate max horizontal scroll using accurate text measurement
-            float maxLineWidth = 0.0f;
+            int maxLineWidth = 0;
             for (const std::string& line : lines) {
                 maxLineWidth = std::max(maxLineWidth, GetTextWidth(line));
             }
@@ -1142,7 +1147,7 @@ namespace UltraCanvas {
             newThumbX = std::max(0, std::min(newThumbX, maxThumbX));
             
             // Convert thumb position to scroll offset
-            float maxLineWidth = 0.0f;
+            int maxLineWidth = 0;
             for (const auto& line : lines) {
                 maxLineWidth = std::max(maxLineWidth, GetTextWidth(line));
             }

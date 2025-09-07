@@ -282,17 +282,19 @@ public:
     
     // ===== RENDERING =====
     void Render() override {
-        if (!IsVisible()) return;
+        auto ctx = GetRenderContext();
+        if (!IsVisible() || !ctx) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         if (IsLoaded()) {
-            DrawLoadedImage();
+            DrawLoadedImage(ctx);
         } else if (HasError() && showErrorPlaceholder) {
-            DrawErrorPlaceholder();
+            DrawErrorPlaceholder(ctx);
         } else if (IsLoading()) {
-            DrawLoadingPlaceholder();
+            DrawLoadingPlaceholder(ctx);
         }
+        ctx->PopState();
     }
     
     // ===== EVENT HANDLING =====
@@ -416,25 +418,26 @@ private:
         }
     }
     
-    void DrawLoadedImage() {
+    void DrawLoadedImage(IRenderContext* ctx) {
+
         // Apply global alpha
-        SetGlobalAlpha(opacity);
+        ctx->SetGlobalAlpha(opacity);
         
         // Apply transformations
         if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
-            PushRenderState();
+            ctx->PushState();
             
             // Translate to center for rotation
             Point2Di center = Point2Di(GetX() + GetWidth() / 2.0f, GetY() + GetHeight() / 2.0f);
-            Translate(center.x, center.y);
+            ctx->Translate(center.x, center.y);
             
             // Apply transformations
-            if (rotation != 0.0f) Rotate(rotation);
-            if (scale.x != 1.0f || scale.y != 1.0f) Scale(scale.x, scale.y);
-            if (offset.x != 0.0f || offset.y != 0.0f) Translate(offset.x, offset.y);
+            if (rotation != 0.0f) ctx->Rotate(rotation);
+            if (scale.x != 1.0f || scale.y != 1.0f) ctx->Scale(scale.x, scale.y);
+            if (offset.x != 0.0f || offset.y != 0.0f) ctx->Translate(offset.x, offset.y);
             
             // Translate back
-            Translate(-center.x, -center.y);
+            ctx->Translate(-center.x, -center.y);
         }
         
         // Calculate display rectangle based on scale mode
@@ -443,7 +446,7 @@ private:
         // Draw the image using unified rendering
         if (!imagePath.empty()) {
             // Load from file path
-            DrawImage(imagePath, displayRect);
+            ctx->DrawImage(imagePath, displayRect);
         } else {
             // For memory-loaded images, we'd need to save to a temporary file
             // or extend the rendering interface to support raw data
@@ -452,43 +455,44 @@ private:
         }
         
         if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
-            PopRenderState();
+            ctx->PopState();
         }
     }
     
-    void DrawErrorPlaceholder() {
+    void DrawErrorPlaceholder(IRenderContext* ctx) {
         DrawImagePlaceholder(GetBounds(), "ERR", errorColor);
         
         // Draw error message
         if (!errorMessage.empty()) {
-            SetTextColor(Colors::Red);
-            SetFont("Arial", 10.0f);
+            ctx->SetTextColor(Colors::Red);
+            ctx->SetFont("Arial", 10.0f);
             
             Rect2Di textRect = GetBounds();
             textRect.y += GetHeight() / 2 + 10;
             textRect.height = 20;
             
-            DrawTextInRect(errorMessage, textRect);
+            ctx->DrawTextInRect(errorMessage, textRect);
         }
     }
     
-    void DrawLoadingPlaceholder() {
+    void DrawLoadingPlaceholder(IRenderContext* ctx) {
         DrawImagePlaceholder(GetBounds(), "...", Color(220, 220, 220));
     }
     
     void DrawImagePlaceholder(const Rect2Di& rect, const std::string& text, const Color& bgColor = Color(240, 240, 240)) {
         // Draw background
-        DrawFilledRectangle(rect, bgColor, Colors::Gray, 1.0f);
+        auto ctx = GetRenderContext();
+        ctx->DrawFilledRectangle(rect, bgColor, Colors::Gray, 1.0f);
         
         // Draw text
-        SetTextColor(Colors::Gray);
-        SetFont("Arial", 14.0f);
-        Point2Di textSize = MeasureText(text);
+        ctx->SetTextColor(Colors::Gray);
+        ctx->SetFont("Arial", 14.0f);
+        Point2Di textSize = ctx->MeasureText(text);
         Point2Di textPos(
             rect.x + (rect.width - textSize.x) / 2,
             rect.y + (rect.height + textSize.y) / 2
         );
-        DrawText(text, textPos);
+        ctx->DrawText(text, textPos);
     }
     
     Rect2Di CalculateDisplayRect() {

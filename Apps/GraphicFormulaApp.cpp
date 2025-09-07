@@ -15,7 +15,7 @@
 #include "UltraCanvasLayoutEngine.h"           // For grid layout functionality
 #include "UltraCanvasFormulaEditor.h"
 #include "UltraCanvasElementDebug.h"
-#include "UltraCanvasCairoDebugExtension.h"
+//#include "UltraCanvasCairoDebugExtension.h"
 // NOTE: Temporarily removed this include to avoid abstract class compilation issues
 // The header contains a make_shared call for an abstract class ProceduralBackgroundPlugin
 // #include "UltraCanvasProceduralBackgroundPlugin.h"

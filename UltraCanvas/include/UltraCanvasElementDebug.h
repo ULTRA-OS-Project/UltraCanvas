@@ -102,24 +102,25 @@ namespace UltraCanvas {
         static std::string RenderDebugInfo(UltraCanvasElement* element,
                                     const DebugRenderSettings& settings = UltraCanvasDebugRenderer::GetGlobalSettings()) {
             if (!element || !UltraCanvasDebugRenderer::IsDebugEnabled()) return "";
-
-            ULTRACANVAS_RENDER_SCOPE();
+            auto ctx = element->GetRenderContext();
+            ctx->PushState();
 
             Rect2Di bounds = element->GetBounds();
             Point2Di absolutePos = element->GetPositionInWindow();
 
             // Draw debug border
             if (settings.showBorders) {
-                DrawDebugBorder(bounds, settings);
+                DrawDebugBorder(bounds, settings, ctx);
             }
 
             // Prepare debug text
-            std::string debugText = GenerateDebugText(element, settings);
+            std::string debugText = GenerateDebugText(element, settings, ctx);
 
             if (!debugText.empty()) {
                 std::cout << debugText << std::endl;
-                DrawDebugText(debugText, bounds, absolutePos, settings);
+                DrawDebugText(debugText, bounds, absolutePos, settings,ctx);
             }
+            ctx->PopState();
             return debugText;
         }
 
@@ -138,57 +139,59 @@ namespace UltraCanvas {
 //        }
 
         // Quick debug render with default settings
-        static void QuickDebug(UltraCanvasElement* element) {
-            DebugRenderSettings quickSettings;
-            quickSettings.showBorders = true;
-            quickSettings.showElementID = true;
-            quickSettings.showCoordinates = true;
-            quickSettings.borderColor = Color(0, 255, 0, 200); // Green border
-            RenderDebugInfo(element, quickSettings);
-        }
+//        static void QuickDebug(UltraCanvasElement* element) {
+//            DebugRenderSettings quickSettings;
+//            quickSettings.showBorders = true;
+//            quickSettings.showElementID = true;
+//            quickSettings.showCoordinates = true;
+//            quickSettings.borderColor = Color(0, 255, 0, 200); // Green border
+//            RenderDebugInfo(element, quickSettings);
+//        }
 
-        static void DrawDebugBorder(const Rect2Di& bounds, const DebugRenderSettings& settings) {
-            ULTRACANVAS_RENDER_SCOPE();
+        static void DrawDebugBorder(const Rect2Di& bounds, const DebugRenderSettings& settings, IRenderContext* ctx) {
+            ctx->PushState();
 
-            SetStrokeColor(settings.borderColor);
-            SetStrokeWidth(settings.borderWidth);
+            ctx->SetStrokeColor(settings.borderColor);
+            ctx->SetStrokeWidth(settings.borderWidth);
 
             // Draw main border rectangle
-            DrawRectangle(bounds);
+            ctx->DrawRectangle(bounds);
 
             // Draw corner markers for better visibility
             float markerSize = 8.0f;
             Color markerColor = Color(settings.borderColor.r, settings.borderColor.g,
                                       settings.borderColor.b, settings.borderColor.a + 75);
-            SetStrokeColor(markerColor);
-            SetStrokeWidth(1.0f);
+            ctx->SetStrokeColor(markerColor);
+            ctx->SetStrokeWidth(1.0f);
 
             // Top-left corner
-            DrawLine(Point2Di(bounds.x, bounds.y),
+            ctx->DrawLine(Point2Di(bounds.x, bounds.y),
                      Point2Di(bounds.x + markerSize, bounds.y));
-            DrawLine(Point2Di(bounds.x, bounds.y),
+            ctx->DrawLine(Point2Di(bounds.x, bounds.y),
                      Point2Di(bounds.x, bounds.y + markerSize));
 
             // Top-right corner
-            DrawLine(Point2Di(bounds.x + bounds.width, bounds.y),
+            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y),
                      Point2Di(bounds.x + bounds.width - markerSize, bounds.y));
-            DrawLine(Point2Di(bounds.x + bounds.width, bounds.y),
+            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y),
                      Point2Di(bounds.x + bounds.width, bounds.y + markerSize));
 
             // Bottom-left corner
-            DrawLine(Point2Di(bounds.x, bounds.y + bounds.height),
+            ctx->DrawLine(Point2Di(bounds.x, bounds.y + bounds.height),
                      Point2Di(bounds.x + markerSize, bounds.y + bounds.height));
-            DrawLine(Point2Di(bounds.x, bounds.y + bounds.height),
+            ctx->DrawLine(Point2Di(bounds.x, bounds.y + bounds.height),
                      Point2Di(bounds.x, bounds.y + bounds.height - markerSize));
 
             // Bottom-right corner
-            DrawLine(Point2Di(bounds.x + bounds.width, bounds.y + bounds.height),
+            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y + bounds.height),
                      Point2Di(bounds.x + bounds.width - markerSize, bounds.y + bounds.height));
-            DrawLine(Point2Di(bounds.x + bounds.width, bounds.y + bounds.height),
+            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y + bounds.height),
                      Point2Di(bounds.x + bounds.width, bounds.y + bounds.height - markerSize));
+
+            ctx->PopState();
         }
 
-        static std::string GenerateDebugText(UltraCanvasElement* element, const DebugRenderSettings& settings) {
+        static std::string GenerateDebugText(UltraCanvasElement* element, const DebugRenderSettings& settings, IRenderContext* ctx) {
             std::ostringstream debugText;
 
             if (settings.showElementID) {
@@ -263,16 +266,16 @@ namespace UltraCanvas {
         }
 
         static void DrawDebugText(const std::string& text, const Rect2Di& bounds,
-                                  const Point2Di& absolutePos, const DebugRenderSettings& settings) {
+                                  const Point2Di& absolutePos, const DebugRenderSettings& settings, IRenderContext* ctx) {
             if (text.empty()) return;
 
-            ULTRACANVAS_RENDER_SCOPE();
+            ctx->PushState();
 
             // Set up text rendering
-            SetFont(settings.fontFamily, settings.textSize);
+            ctx->SetFont(settings.fontFamily, settings.textSize);
 
             // Measure text to calculate background size
-            Point2Di textSize = MeasureText(text);
+            Point2Di textSize = ctx->MeasureText(text);
 
             // Calculate text position (top-left corner of element, with padding)
             Point2Di textPos = Point2Di(bounds.x + settings.textPadding,
@@ -292,13 +295,14 @@ namespace UltraCanvas {
                         textSize.y + (settings.textPadding * 2)
                 );
 
-                DrawFilledRectangle(backgroundRect, settings.textBackgroundColor,
+                ctx->DrawFilledRectangle(backgroundRect, settings.textBackgroundColor,
                                Colors::Transparent, 0, settings.cornerRadius);
             }
 
             // Draw the text
-            SetTextColor(settings.textColor);
-            DrawText(text, textPos);
+            ctx->SetTextColor(settings.textColor);
+            ctx->DrawText(text, textPos);
+            ctx->PopState();
         }
     };
 
@@ -337,23 +341,3 @@ namespace UltraCanvas {
     }
 
 } // namespace UltraCanvas
-
-// ===== INTEGRATION MACROS =====
-
-// Macro for easy debug rendering in element Render() methods
-#define ULTRACANVAS_DEBUG_ELEMENT() \
-    if (UltraCanvas::UltraCanvasDebugRenderer::IsDebugEnabled()) { \
-        UltraCanvas::UltraCanvasElementDebugExtension::RenderDebugInfo(this); \
-    }
-
-// Macro for custom debug settings
-#define ULTRACANVAS_DEBUG_ELEMENT_CUSTOM(settings) \
-    if (UltraCanvas::UltraCanvasDebugRenderer::IsDebugEnabled()) { \
-        UltraCanvas::UltraCanvasElementDebugExtension::RenderDebugInfo(this, settings); \
-    }
-
-// Macro for minimal debug (just borders and ID)
-#define ULTRACANVAS_DEBUG_ELEMENT_MINIMAL() \
-    if (UltraCanvas::UltraCanvasDebugRenderer::IsDebugEnabled()) { \
-        UltraCanvas::UltraCanvasElementDebugExtension::QuickDebug(this); \
-    }

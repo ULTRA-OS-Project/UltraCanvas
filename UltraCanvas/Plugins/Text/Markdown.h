@@ -547,7 +547,7 @@ public:
     void Render() override {
         if (!IsVisible()) return;
         
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
         
         // Parse markdown if needed
         if (needsReparse) {
@@ -564,11 +564,11 @@ public:
         
         // Set up clipping
         Rect2D bounds = GetBounds();
-        SetClipRect(bounds);
+        ctx->SetClipRect(bounds);
         
         // Draw background
         if (style.backgroundColor.a > 0) {
-            SetFillColor(style.backgroundColor);
+           ctx->SetFillColor(style.backgroundColor);
             FillRect(bounds);
         }
         
@@ -580,7 +580,7 @@ public:
             DrawScrollbar(bounds);
         }
         
-        ClearClipRect();
+        ctx->ClearClipRect();
     }
     
     // ===== EVENT HANDLING =====
@@ -832,11 +832,11 @@ private:
         Rect2D adjustedBounds = GetAdjustedBounds(element->bounds);
         
         // Draw background
-        SetFillColor(style.codeBlockBackgroundColor);
+       ctx->SetFillColor(style.codeBlockBackgroundColor);
         FillRect(adjustedBounds);
         
         // Draw border
-        SetStrokeColor(style.codeBlockBorderColor);
+        ctx->SetStrokeColor(style.codeBlockBorderColor);
         SetStrokeWidth(style.codeBlockBorderWidth);
         DrawRect(adjustedBounds);
         
@@ -858,9 +858,9 @@ private:
         Rect2D adjustedBounds = GetAdjustedBounds(element->bounds);
         
         // Draw left border
-        SetStrokeColor(style.quoteBorderColor);
+        ctx->SetStrokeColor(style.quoteBorderColor);
         SetStrokeWidth(style.quoteBorderWidth);
-        DrawLine(
+        ctx->DrawLine(
             Point2D(adjustedBounds.x, adjustedBounds.y),
             Point2D(adjustedBounds.x, adjustedBounds.y + adjustedBounds.height)
         );
@@ -902,9 +902,9 @@ private:
     void RenderHorizontalRule(std::shared_ptr<MarkdownElement> element) {
         Rect2D adjustedBounds = GetAdjustedBounds(element->bounds);
         
-        SetStrokeColor(style.horizontalRuleColor);
+        ctx->SetStrokeColor(style.horizontalRuleColor);
         SetStrokeWidth(style.horizontalRuleWidth);
-        DrawLine(
+        ctx->DrawLine(
             Point2D(adjustedBounds.x, adjustedBounds.y + adjustedBounds.height / 2),
             Point2D(adjustedBounds.x + adjustedBounds.width, adjustedBounds.y + adjustedBounds.height / 2)
         );
@@ -930,9 +930,9 @@ private:
         // Draw underline if enabled
         if (style.linkUnderline) {
             float textWidth = GetTextWidth(element->text);
-            SetStrokeColor(linkColor);
+            ctx->SetStrokeColor(linkColor);
             SetStrokeWidth(1.0f);
-            DrawLine(
+            ctx->DrawLine(
                 Point2D(position.x, position.y + 2),
                 Point2D(position.x + textWidth, position.y + 2)
             );
@@ -955,7 +955,7 @@ private:
         
         // Draw scrollbar track
         Rect2D trackRect(scrollbarX, bounds.y, scrollbarWidth, bounds.height);
-        SetFillColor(Color(240, 240, 240));
+       ctx->SetFillColor(Color(240, 240, 240));
         FillRect(trackRect);
         
         // Draw scrollbar thumb
@@ -963,7 +963,7 @@ private:
         float thumbY = bounds.y + (scrollOffset / contentHeight) * bounds.height;
         
         Rect2D thumbRect(scrollbarX + 2, thumbY, scrollbarWidth - 4, thumbHeight);
-        SetFillColor(Color(180, 180, 180));
+       ctx->SetFillColor(Color(180, 180, 180));
         FillRect(thumbRect);
     }
     
@@ -996,13 +996,13 @@ private:
     void SetFontWeight(FontWeight weight) {
         TextStyle textStyle = GetTextStyle();
         textStyle.fontWeight = weight;
-        SetTextStyle(textStyle);
+        ctx->SetTextStyle(textStyle);
     }
     
     void SetFontStyle(FontStyle fontStyle) {
         TextStyle textStyle = GetTextStyle();
         textStyle.fontStyle = fontStyle;
-        SetTextStyle(textStyle);
+        ctx->SetTextStyle(textStyle);
     }
     
     void HandleMouseDown(const Point2D& position, UCMouseButton button) {

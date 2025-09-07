@@ -97,13 +97,7 @@ namespace UltraCanvas {
 
     void UltraCanvasSelectiveRenderer::RenderElementWithContainerTransform(UltraCanvasElement* element) {
         if (!element) return;
-
-        auto renderContext = RenderContextManager::GetCurrent();
-        if (!renderContext) {
-            // Fallback: render without transformation
-            element->Render();
-            return;
-        }
+        auto renderContext = window->GetRenderContext();
 
         // Apply container hierarchy transformations
         renderContext->PushState();
@@ -120,8 +114,7 @@ namespace UltraCanvas {
     void UltraCanvasSelectiveRenderer::ApplyContainerTransformations(UltraCanvasElement* element) {
         if (!element) return;
 
-        auto renderContext = RenderContextManager::GetCurrent();
-        if (!renderContext) return;
+        auto renderContext = window->GetRenderContext();
 
         // Build a list of container hierarchy from root to immediate parent
         std::vector<UltraCanvasContainer*> containerHierarchy;
@@ -250,17 +243,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSelectiveRenderer::SetClippingRegion(const Rect2Di& clipRect) {
-        auto renderContext = RenderContextManager::GetCurrent();
-        if (renderContext) {
-            renderContext->SetClipRect(clipRect.x, clipRect.y, clipRect.width, clipRect.height);
-        }
+        window->GetRenderContext()->SetClipRect(clipRect.x, clipRect.y, clipRect.width, clipRect.height);
     }
 
     void UltraCanvasSelectiveRenderer::ClearClippingRegion() {
-        auto renderContext = RenderContextManager::GetCurrent();
-        if (renderContext) {
-            renderContext->ClearClipRect();
-        }
+        window->GetRenderContext()->ClearClipRect();
     }
 
 } // namespace UltraCanvas

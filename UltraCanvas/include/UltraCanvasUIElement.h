@@ -306,6 +306,7 @@ namespace UltraCanvas {
         void RequestRedraw();
 
         // ===== CORE VIRTUAL METHODS =====
+        IRenderContext* GetRenderContext() const;
         virtual void Render() {}
 
         virtual bool OnEvent(const UCEvent& event) {

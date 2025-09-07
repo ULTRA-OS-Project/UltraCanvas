@@ -24,10 +24,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::Render() {
-        if (!IsVisible()) return;
+        IRenderContext *ctx = GetRenderContext();
+        if (!IsVisible() || !ctx) return;
 
         // Set up rendering scope for this container
-        ULTRACANVAS_RENDER_SCOPE();
+        ctx->PushState();
 
         // Update layout if needed
         if (layoutDirty) {
@@ -40,28 +41,27 @@ namespace UltraCanvas {
             UpdateScrollAnimation();
         }
 
-        // Render container background
-        if (style.backgroundColor.a > 0) {
-            SetFillColor(style.backgroundColor);
-            FillRectangle(bounds);
-        }
-
-        // Render border
-        if (style.borderWidth > 0) {
-            SetStrokeColor(style.borderColor);
-            SetStrokeWidth(style.borderWidth);
-            DrawRectangle(bounds);
-        }
-
         if (!window->IsSelectiveRenderingActive()) {
-            PushRenderState();
-            IntersectClipRect(contentArea);
+            // Render container background
+            if (style.backgroundColor.a > 0) {
+                ctx->SetFillColor(style.backgroundColor);
+                ctx->FillRectangle(bounds);
+            }
 
-            Translate(contentArea.x - scrollState.horizontalPosition,
+            // Render border
+            if (style.borderWidth > 0) {
+                ctx->SetStrokeColor(style.borderColor);
+                ctx->SetStrokeWidth(style.borderWidth);
+                ctx->DrawRectangle(bounds);
+            }
+            ctx->PushState();
+            ctx->IntersectClipRect(contentArea);
+
+            ctx->Translate(contentArea.x - scrollState.horizontalPosition,
                       contentArea.y - scrollState.verticalPosition);
             // Set up clipping for content area
             //        Rect2Di clipRect = contentArea;
-            //        SetClipRect(scrollState.horizontalPosition, scrollState.verticalPosition,
+            //        ctx->SetClipRect(scrollState.horizontalPosition, scrollState.verticalPosition,
             //                            contentArea.width,
             //                            contentArea.height);
 
@@ -72,25 +72,25 @@ namespace UltraCanvas {
                 // Apply scroll offset to child rendering
                 child->Render();
             }
-
             // Remove content clipping
-            PopRenderState();
+            ctx->PopState();
         }
 
         if (scrollState.showVerticalScrollbar || scrollState.showHorizontalScrollbar) {
-            PushRenderState();
-            ClearClipRect();
+            ctx->PushState();
+            ctx->ClearClipRect();
 
             // Render scrollbars
             if (scrollState.showVerticalScrollbar) {
-                RenderVerticalScrollbar();
+                RenderVerticalScrollbar(ctx);
             }
 
             if (scrollState.showHorizontalScrollbar) {
-                RenderHorizontalScrollbar();
+                RenderHorizontalScrollbar(ctx);
             }
-            PopRenderState();
+            ctx->PopState();
         }
+        ctx->PopState();
     }
 
 // ===== EVENT HANDLING IMPLEMENTATION =====
@@ -398,10 +398,10 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasContainer::RenderVerticalScrollbar() {
+    void UltraCanvasContainer::RenderVerticalScrollbar(IRenderContext *ctx) {
         // Render scrollbar track
-        SetFillColor(style.scrollbarTrackColor);
-        FillRectangle(verticalScrollbarRect);
+        ctx->SetFillColor(style.scrollbarTrackColor);
+        ctx->FillRectangle(verticalScrollbarRect);
 
         // Render scrollbar thumb
         Color thumbColor = style.scrollbarThumbColor;
@@ -412,14 +412,14 @@ namespace UltraCanvas {
             thumbColor = style.scrollbarThumbPressedColor;
         }
 
-        SetFillColor(thumbColor);
-        FillRectangle(verticalThumbRect);
+        ctx->SetFillColor(thumbColor);
+        ctx->FillRectangle(verticalThumbRect);
     }
 
-    void UltraCanvasContainer::RenderHorizontalScrollbar() {
+    void UltraCanvasContainer::RenderHorizontalScrollbar(IRenderContext *ctx) {
         // Render scrollbar track
-        SetFillColor(style.scrollbarTrackColor);
-        FillRectangle(horizontalScrollbarRect);
+        ctx->SetFillColor(style.scrollbarTrackColor);
+        ctx->FillRectangle(horizontalScrollbarRect);
 
         // Render scrollbar thumb
         Color thumbColor = style.scrollbarThumbColor;
@@ -430,8 +430,8 @@ namespace UltraCanvas {
             thumbColor = style.scrollbarThumbPressedColor;
         }
 
-        SetFillColor(thumbColor);
-        FillRectangle(horizontalThumbRect);
+        ctx->SetFillColor(thumbColor);
+        ctx->FillRectangle(horizontalThumbRect);
     }
 
     void UltraCanvasContainer::UpdateScrollbarHoverStates(const Point2Di& mousePos) {

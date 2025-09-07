@@ -115,6 +115,8 @@ namespace UltraCanvas {
         if (!stateStack.empty()) {
             currentState = stateStack.back();
             stateStack.pop_back();
+        } else {
+            std::cout << "LinuxRenderContext::PopState() stateStack empty!" << std::endl;
         }
         cairo_restore(cairo);
     }
