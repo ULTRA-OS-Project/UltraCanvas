@@ -184,6 +184,7 @@ namespace UltraCanvas {
         void RequestRedraw(bool val) { _needsRedraw = val; }
         void RequestFullRedraw() { useSelectiveRendering = false; _needsRedraw = true; }
         void MarkElementDirty(UltraCanvasElement* element, bool isOverlay = false);
+        bool IsSelectiveRenderingActive();
 
         // ===== ENHANCED WINDOW CALLBACKS =====
         void SetWindowCloseCallback(std::function<void()> callback) { onWindowClose = callback; }

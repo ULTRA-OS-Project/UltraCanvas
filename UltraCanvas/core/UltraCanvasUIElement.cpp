@@ -291,30 +291,64 @@ namespace UltraCanvas {
         }
         return false;
     }
-
     int UltraCanvasElement::GetXInWindow() {
-        int pos = 0;
+        int totalX = properties.x_pos;
+
         if (parentContainer) {
-            auto pc = parentContainer;
-            while(pc) {
-                pos += pc->GetContentArea().x;
-                pc = pc->parentContainer;
-            }
+            // Get parent's position in window coordinates
+            int parentWindowX = parentContainer->GetXInWindow();
+
+            // Add parent's content area offset
+            Rect2Di parentContentArea = parentContainer->GetContentArea();
+
+            // Calculate final position: parent window position + content area offset + our relative position
+            totalX = parentWindowX + parentContentArea.x + properties.x_pos;
         }
-        return pos + properties.x_pos;
+
+        return totalX;
     }
 
+// Fixed version of GetYInWindow() in UltraCanvasUIElement.cpp
     int UltraCanvasElement::GetYInWindow() {
-        int pos = 0;
+        int totalY = properties.y_pos;
+
         if (parentContainer) {
-            auto pc = parentContainer;
-            while(pc) {
-                pos += pc->GetContentArea().y;
-                pc = pc->parentContainer;
-            }
+            // Get parent's position in window coordinates
+            int parentWindowY = parentContainer->GetYInWindow();
+
+            // Add parent's content area offset
+            Rect2Di parentContentArea = parentContainer->GetContentArea();
+
+            // Calculate final position: parent window position + content area offset + our relative position
+            totalY = parentWindowY + parentContentArea.y + properties.y_pos;
         }
-        return pos + properties.y_pos;
+
+        return totalY;
     }
+
+//    int UltraCanvasElement::GetXInWindow() {
+//        int pos = 0;
+//        if (parentContainer) {
+//            auto pc = parentContainer;
+//            while(pc) {
+//                pos += pc->GetContentArea().x;
+//                pc = pc->parentContainer;
+//            }
+//        }
+//        return pos + properties.x_pos;
+//    }
+//
+//    int UltraCanvasElement::GetYInWindow() {
+//        int pos = 0;
+//        if (parentContainer) {
+//            auto pc = parentContainer;
+//            while(pc) {
+//                pos += pc->GetContentArea().y;
+//                pc = pc->parentContainer;
+//            }
+//        }
+//        return pos + properties.y_pos;
+//    }
 
     bool UltraCanvasElement::SetFocus(bool focus) {
         // If trying to set focus, delegate to window's focus management

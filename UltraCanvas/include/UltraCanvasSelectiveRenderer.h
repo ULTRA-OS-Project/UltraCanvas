@@ -1,6 +1,6 @@
 // UltraCanvasSelectiveRenderer.h
-// Simple selective rendering system using only isDirty flags
-// Version: 1.0.0
+// Simple selective rendering system using only isDirty flags - COORDINATE SYSTEM FIXED
+// Version: 1.2.0
 // Last Modified: 2025-09-07
 // Author: UltraCanvas Framework
 
@@ -41,13 +41,12 @@ namespace UltraCanvas {
 
         // Simple dirty tracking
         std::vector<DirtyRegion> dirtyRegions;
-//        std::unordered_set<UltraCanvasElement*> dirtyElements;
 
         // Overlay background storage for menus/dropdowns
         std::vector<uint32_t> savedBackground;
         Rect2Di savedBackgroundRegion;
         bool hasOverlayBackground = false;
-
+        bool renderingActive = false;
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasSelectiveRenderer(UltraCanvasBaseWindow* win);
@@ -59,6 +58,7 @@ namespace UltraCanvas {
         void ClearDirtyRegions();
 
         bool HasDirtyRegions() const { return !dirtyRegions.empty(); }
+        bool IsRenderingActive() { return renderingActive; }
 
         // ===== SIMPLE RENDERING =====
         void RenderFrame();
@@ -69,6 +69,10 @@ namespace UltraCanvas {
         void RestoreBackgroundFromOverlay();
 
     private:
+        // ===== COORDINATE TRANSFORMATION FIX =====
+        void RenderElementWithContainerTransform(UltraCanvasElement* element);
+        void ApplyContainerTransformations(UltraCanvasElement* element);
+
         // ===== INTERNAL HELPERS =====
         void OptimizeDirtyRegions();
         void MergeOverlappingRegions();

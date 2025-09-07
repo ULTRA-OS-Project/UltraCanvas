@@ -1,6 +1,6 @@
 // UltraCanvasSelectiveRenderer.cpp
-// Simple implementation using only isDirty flags
-// Version: 1.0.0
+// Simple implementation using only isDirty flags - COORDINATE SYSTEM FIXED
+// Version: 1.2.0
 // Last Modified: 2025-09-07
 // Author: UltraCanvas Framework
 
@@ -18,24 +18,6 @@ namespace UltraCanvas {
 
 // ===== DIRTY TRACKING =====
 
-//    void UltraCanvasSelectiveRenderer::MarkElementDirty(UltraCanvasElement* element) {
-//        if (!element) return;
-//
-//        // Add element to dirty set
-//        dirtyElements.insert(element);
-//
-//        // Calculate element bounds and add to dirty regions
-//        Rect2Di bounds = element->GetBoundsInWindow();
-//
-//        // Check if this is an overlay element (menu, dropdown, tooltip)
-//        std::string typeName = typeid(*element).name();
-//        bool isOverlay = (typeName.find("Menu") != std::string::npos) ||
-//                         (typeName.find("Dropdown") != std::string::npos) ||
-//                         (typeName.find("Tooltip") != std::string::npos);
-//
-//        MarkRegionDirty(bounds, isOverlay);
-//    }
-
     void UltraCanvasSelectiveRenderer::MarkRegionDirty(const Rect2Di& region, bool isOverlay) {
         dirtyRegions.emplace_back(region, isOverlay);
     }
@@ -45,13 +27,11 @@ namespace UltraCanvas {
 
         Rect2D windowRect(0, 0, window->GetWidth(), window->GetHeight());
         dirtyRegions.clear();
-        //dirtyElements.clear();
         MarkRegionDirty(windowRect, false);
     }
 
     void UltraCanvasSelectiveRenderer::ClearDirtyRegions() {
         dirtyRegions.clear();
-        //dirtyElements.clear();
     }
 
 // ===== SIMPLE RENDERING =====
@@ -61,7 +41,9 @@ namespace UltraCanvas {
 
         // Only render if there are dirty regions
         if (HasDirtyRegions()) {
+            renderingActive = true;
             RenderDirtyRegions();
+            renderingActive = false;
         }
     }
 
@@ -80,19 +62,12 @@ namespace UltraCanvas {
                 for (auto* element : overlayElements) {
                     if (element && element->IsVisible() &&
                         element->GetActualBoundsInWindow().Intersects(region.bounds)) {
-                        element->Render();
+
+                        // COORDINATE FIX: Apply proper container hierarchy transformation
+                        RenderElementWithContainerTransform(element);
                     }
                 }
             } else {
-                // Clear the dirty region first (paint background)
-//                auto renderContext = RenderContextManager::GetCurrent();
-//                if (renderContext) {
-//                    // Fill with window background color
-//                    renderContext->SetFillColor(window->GetBackgroundColor());
-//                    renderContext->FillRectangle(region.bounds.x, region.bounds.y,
-//                                                 region.bounds.width, region.bounds.height);
-//                }
-
                 // Get all elements that intersect with this dirty region
                 auto elementsInRegion = GetElementsInRegion(region.bounds);
 
@@ -105,12 +80,8 @@ namespace UltraCanvas {
                 // Render each element in the region
                 for (auto* element : elementsInRegion) {
                     if (element && element->IsVisible()) {
-                        element->Render();
-
-                        // Mark element as clean if it was dirty
-//                        if (element->IsDirty()) {
-//                            element->MarkClean();
-//                        }
+                        // COORDINATE FIX: Apply proper container hierarchy transformation
+                        RenderElementWithContainerTransform(element);
                     }
                 }
             }
@@ -120,6 +91,60 @@ namespace UltraCanvas {
 
         // Clear dirty regions after rendering
         ClearDirtyRegions();
+    }
+
+// ===== COORDINATE TRANSFORMATION FIX =====
+
+    void UltraCanvasSelectiveRenderer::RenderElementWithContainerTransform(UltraCanvasElement* element) {
+        if (!element) return;
+
+        auto renderContext = RenderContextManager::GetCurrent();
+        if (!renderContext) {
+            // Fallback: render without transformation
+            element->Render();
+            return;
+        }
+
+        // Apply container hierarchy transformations
+        renderContext->PushState();
+
+        // Apply all parent container transformations
+        ApplyContainerTransformations(element);
+
+        // Now render the element at its local coordinates
+        element->Render();
+
+        renderContext->PopState();
+    }
+
+    void UltraCanvasSelectiveRenderer::ApplyContainerTransformations(UltraCanvasElement* element) {
+        if (!element) return;
+
+        auto renderContext = RenderContextManager::GetCurrent();
+        if (!renderContext) return;
+
+        // Build a list of container hierarchy from root to immediate parent
+        std::vector<UltraCanvasContainer*> containerHierarchy;
+        UltraCanvasContainer* currentContainer = element->GetParentContainer();
+
+        while (currentContainer) {
+            containerHierarchy.push_back(currentContainer);
+            currentContainer = currentContainer->GetParentContainer();
+        }
+
+        // Apply transformations from root to immediate parent (reverse order)
+        for (auto it = containerHierarchy.rbegin(); it != containerHierarchy.rend(); ++it) {
+            UltraCanvasContainer* container = *it;
+
+            // Apply container's content area transformation
+            Rect2Di contentArea = container->GetContentArea();
+
+            // Apply translation for container position and content area
+            renderContext->Translate(
+                    container->GetX() + contentArea.x - container->GetHorizontalScrollPosition(),
+                    container->GetY() + contentArea.y - container->GetVerticalScrollPosition()
+            );
+        }
     }
 
 // ===== OVERLAY SUPPORT =====
@@ -201,14 +226,15 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSelectiveRenderer::CollectElementsFromContainer(UltraCanvasContainer* container,
-                                                                 const Rect2Di& region,
-                                                                 std::vector<UltraCanvasElement*>& elements) {
+                                                                    const Rect2Di& region,
+                                                                    std::vector<UltraCanvasElement*>& elements) {
         if (!container) return;
 
         // Get all elements from container that intersect with region
         auto containerElements = container->GetChildren();
         for (auto element : containerElements) {
             if (element && element->IsVisible()) {
+                // Use correct bounds calculation for intersection test
                 Rect2D elementBounds = element->GetActualBoundsInWindow();
                 if (elementBounds.Intersects(region)) {
                     elements.push_back(element.get());

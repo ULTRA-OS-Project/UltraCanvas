@@ -201,10 +201,20 @@ namespace UltraCanvas {
         // actual bounds is for variable-sized elements like dropdowns, menus, popups
         virtual Rect2Di GetActualBounds() { return GetBounds(); }
 
+//        Rect2Di GetActualBoundsInWindow() {
+//            Rect2Di bounds = GetActualBounds();
+//            bounds.x += (GetXInWindow() - properties.x_pos);
+//            bounds.y += (GetYInWindow() - properties.y_pos);
+//            return bounds;
+//        }
         Rect2Di GetActualBoundsInWindow() {
             Rect2Di bounds = GetActualBounds();
-            bounds.x += (GetXInWindow() - properties.x_pos);
-            bounds.y += (GetYInWindow() - properties.y_pos);
+
+            // Transform bounds to window coordinates
+            Point2Di windowPos = GetPositionInWindow();
+            bounds.x = windowPos.x;
+            bounds.y = windowPos.y;
+
             return bounds;
         }
 

@@ -53,27 +53,29 @@ namespace UltraCanvas {
             DrawRectangle(bounds);
         }
 
-        PushRenderState();
-        IntersectClipRect(contentArea);
+        if (!window->IsSelectiveRenderingActive()) {
+            PushRenderState();
+            IntersectClipRect(contentArea);
 
-        Translate(contentArea.x - scrollState.horizontalPosition,
-                  contentArea.y - scrollState.verticalPosition);
-        // Set up clipping for content area
-//        Rect2Di clipRect = contentArea;
-//        SetClipRect(scrollState.horizontalPosition, scrollState.verticalPosition,
-//                            contentArea.width,
-//                            contentArea.height);
+            Translate(contentArea.x - scrollState.horizontalPosition,
+                      contentArea.y - scrollState.verticalPosition);
+            // Set up clipping for content area
+            //        Rect2Di clipRect = contentArea;
+            //        SetClipRect(scrollState.horizontalPosition, scrollState.verticalPosition,
+            //                            contentArea.width,
+            //                            contentArea.height);
 
-        // Render children with scroll offset
-        for (const auto& child : children) {
-            if (!child || !child->IsVisible()) continue;
+            // Render children with scroll offset
+            for (const auto &child: children) {
+                if (!child || !child->IsVisible()) continue;
 
-            // Apply scroll offset to child rendering
-            child->Render();
+                // Apply scroll offset to child rendering
+                child->Render();
+            }
+
+            // Remove content clipping
+            PopRenderState();
         }
-
-        // Remove content clipping
-        PopRenderState();
 
         if (scrollState.showVerticalScrollbar || scrollState.showHorizontalScrollbar) {
             PushRenderState();
@@ -627,9 +629,17 @@ namespace UltraCanvas {
         if (layoutDirty) {
             CalculateContentArea();
         }
+
         if (parentContainer) {
-            return parentContainer->GetXInWindow() + parentContainer->GetContentArea().x + properties.x_pos;
+            // Get parent's window position
+            int parentWindowX = parentContainer->GetXInWindow();
+
+            // Add parent's content area offset and our position
+            Rect2Di parentContentArea = parentContainer->GetContentArea();
+            return parentWindowX + parentContentArea.x + properties.x_pos;
         }
+
+        // If this is the root container (window), return our position
         return properties.x_pos;
     }
 
@@ -637,11 +647,38 @@ namespace UltraCanvas {
         if (layoutDirty) {
             CalculateContentArea();
         }
+
         if (parentContainer) {
-            return parentContainer->GetYInWindow() + parentContainer->GetContentArea().y + properties.y_pos;
+            // Get parent's window position
+            int parentWindowY = parentContainer->GetYInWindow();
+
+            // Add parent's content area offset and our position
+            Rect2Di parentContentArea = parentContainer->GetContentArea();
+            return parentWindowY + parentContentArea.y + properties.y_pos;
         }
-        return properties.x_pos;
+
+        return properties.y_pos;
     }
+
+//    int UltraCanvasContainer::GetXInWindow() {
+//        if (layoutDirty) {
+//            CalculateContentArea();
+//        }
+//        if (parentContainer) {
+//            return parentContainer->GetXInWindow() + parentContainer->GetContentArea().x + properties.x_pos;
+//        }
+//        return properties.x_pos;
+//    }
+//
+//    int UltraCanvasContainer::GetYInWindow() {
+//        if (layoutDirty) {
+//            CalculateContentArea();
+//        }
+//        if (parentContainer) {
+//            return parentContainer->GetYInWindow() + parentContainer->GetContentArea().y + properties.y_pos;
+//        }
+//        return properties.y_pos;
+//    }
 
     void UltraCanvasContainer::UpdateLayout() {
         CalculateContentArea();

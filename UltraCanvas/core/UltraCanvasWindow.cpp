@@ -278,7 +278,6 @@ namespace UltraCanvas {
         if (useSelectiveRendering && selectiveRenderer) {
             // Use simple selective rendering
             selectiveRenderer->RenderFrame();
-
             // Only clear needs redraw if no dirty regions remain
             if (!selectiveRenderer->HasDirtyRegions()) {
                 _needsRedraw = false;
@@ -336,6 +335,10 @@ namespace UltraCanvas {
             selectiveRenderer->MarkRegionDirty(element->GetActualBoundsInWindow(), isOverlay);
         }
         _needsRedraw = true;
+    }
+
+    bool UltraCanvasBaseWindow::IsSelectiveRenderingActive() {
+        return selectiveRenderer && selectiveRenderer->IsRenderingActive();
     }
 
     bool UltraCanvasWindow::Create(const WindowConfig& config) {
