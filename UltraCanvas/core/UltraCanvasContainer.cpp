@@ -623,7 +623,7 @@ namespace UltraCanvas {
         return (visibleBounds.width > 0 && visibleBounds.height > 0);
     }
 
-    int UltraCanvasContainer::GetXInWindow()  {
+    int UltraCanvasContainer::GetXInWindow() {
         if (layoutDirty) {
             CalculateContentArea();
         }

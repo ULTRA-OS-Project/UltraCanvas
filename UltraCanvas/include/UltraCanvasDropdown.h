@@ -172,39 +172,25 @@ namespace UltraCanvas {
             }
             return nullptr;
         }
-        bool Contains(float px, float py) const override {
-            // Always check button area first
+
+        Rect2Di GetActualBounds() override {
             Rect2Di buttonRect = GetBounds();
-            bool buttonHit = buttonRect.Contains(px, py);
-
-//            std::cout << "UCDropdown::Contains(" << px << "," << py << ") dropdownOpen=" << dropdownOpen << std::endl;
-//            std::cout << "  Button bounds: (" << buttonRect.x << "," << buttonRect.y
-//                      << "," << buttonRect.width << "," << buttonRect.height << ") hit=" << buttonHit << std::endl;
-
-            if (buttonHit) {
-                return true;
-            }
 
             // CRITICAL: If dropdown is open, also check dropdown list area
             if (dropdownOpen) {
-                Rect2Di listRect(buttonRect.x, buttonRect.y + buttonRect.height,
-                                 buttonRect.width, dropdownHeight);
-                bool listHit = listRect.Contains(px, py);
-
-                std::cout << "  List bounds: (" << listRect.x << "," << listRect.y
-                          << "," << listRect.width << "," << listRect.height << ") hit=" << listHit << std::endl;
-
-                if (listHit) {
-                    return true;
-                }
+                return Rect2Di(buttonRect.x, buttonRect.y + buttonRect.height,
+                               buttonRect.width, dropdownHeight);
+            } else {
+                return buttonRect;
             }
+        }
 
-//            std::cout << "  No hit detected" << std::endl;
-            return false;
+        bool Contains(float px, float py) override {
+            return GetActualBounds().Contains(px, py);
         }
 
 // Also override the Point2Di version for consistency
-        bool Contains(const Point2Di& point) const override {
+        bool Contains(const Point2Di& point) override {
             return Contains(point.x, point.y);
         }
 

@@ -296,9 +296,9 @@ namespace UltraCanvas {
 
         float GetItemY(int index) const;
 
-        bool Contains(float x, float y) const override;
+        bool Contains(float x, float y) override;
 
-        bool Contains(const Point2Di& point) const override {
+        bool Contains(const Point2Di& point)  override {
             return Contains(point.x, point.y);
         }
 

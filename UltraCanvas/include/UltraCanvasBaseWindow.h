@@ -9,6 +9,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasSelectiveRenderer.h"
 #include <string>
 #include <functional>
 #include <memory>
@@ -17,6 +18,7 @@
 
 namespace UltraCanvas {
     class UltraCanvasWindow;
+
 // ===== WINDOW CONFIGURATION =====
     enum class WindowType {
         Standard, Dialog, Popup, Tool, Splash,
@@ -59,6 +61,9 @@ namespace UltraCanvas {
 // ===== ENHANCED BASE WINDOW (INHERITS FROM CONTAINER) =====
     class UltraCanvasBaseWindow : public UltraCanvasContainer {
     protected:
+        std::unique_ptr<UltraCanvasSelectiveRenderer> selectiveRenderer = nullptr;
+        bool useSelectiveRendering = true;
+
         WindowConfig config_;
         WindowState _state = WindowState::Normal;
         bool _created = false;
@@ -130,18 +135,10 @@ namespace UltraCanvas {
         virtual unsigned long GetNativeHandle() const = 0;
         virtual void SwapBuffers() = 0;
 
-        void AddPopupElement(UltraCanvasElement* element) {
-            if (element) {
-                activePopups.insert(element);
-                _needsRedraw = true;
-            }
-        }
+        void AddPopupElement(UltraCanvasElement* element);
 
         // Unregister popup element
-        void RemovePopupElement(UltraCanvasElement* element) {
-            activePopups.erase(element);
-            _needsRedraw = true;
-        }
+        void RemovePopupElement(UltraCanvasElement* element);
 
         std::unordered_set<UltraCanvasElement *>& GetActivePopups() { return activePopups; }
 
@@ -184,7 +181,9 @@ namespace UltraCanvas {
         virtual void RenderCustomContent() {}
 
         bool NeedsRedraw() const { return _needsRedraw; }
-        void SetNeedsRedraw(bool val) { _needsRedraw = val; }
+        void RequestRedraw(bool val) { _needsRedraw = val; }
+        void RequestFullRedraw() { useSelectiveRendering = false; _needsRedraw = true; }
+        void MarkElementDirty(UltraCanvasElement* element, bool isOverlay = false);
 
         // ===== ENHANCED WINDOW CALLBACKS =====
         void SetWindowCloseCallback(std::function<void()> callback) { onWindowClose = callback; }

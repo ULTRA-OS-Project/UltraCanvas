@@ -162,6 +162,15 @@ class UltraCanvasBaseWindow;
         }
     };
 
+    class IPixelBuffer {
+    public:
+        virtual ~IPixelBuffer() = default;
+        virtual bool IsValid() const  = 0;
+        virtual size_t GetSizeInBytes() const  = 0;
+        virtual uint32_t* GetPixelData() = 0;
+        virtual std::vector<uint32_t> ToTraditionalBuffer() = 0;
+    };
+
 // ===== UNIFIED RENDERING INTERFACE =====
     class IRenderContext {
     public:
@@ -236,9 +245,14 @@ class UltraCanvasBaseWindow;
         virtual bool GetImageDimensions(const std::string& imagePath, int& w, int& h) = 0;
 
         // ===== PIXEL OPERATIONS =====
-        virtual void SetPixel(const Point2Df& point, const Color& color) = 0;
-        virtual Color GetPixel(const Point2Df& point) = 0;
+//        virtual void SetPixel(const Point2Df& point, const Color& color) = 0;
+//        virtual Color GetPixel(const Point2Df& point) = 0;
         virtual void Clear(const Color& color) = 0;
+
+        virtual IPixelBuffer* SavePixelRegion(const Rect2Di& region) = 0;
+        virtual bool RestorePixelRegion(const Rect2Di& region, IPixelBuffer* buf) = 0;
+//        virtual bool SaveRegionAsImage(const Rect2Di& region, const std::string& filename) = 0;
+
 
         // ===== UTILITY FUNCTIONS =====
         virtual void Flush() = 0;
@@ -597,6 +611,19 @@ inline void DrawImage(const std::string& imagePath, const Rect2Df& position) {
 inline void DrawImage(const std::string& imagePath, const Rect2Di& position) {
     DrawImage(imagePath, position.x, position.y, position.width, position.height);;
 }
+
+inline IPixelBuffer* SavePixelRegion(const Rect2Di& region) {
+    IRenderContext* ctx = GetRenderContext();
+    return ctx->SavePixelRegion(region);
+}
+inline bool RestorePixelRegion(const Rect2Di& region, IPixelBuffer* buffer) {
+    IRenderContext* ctx = GetRenderContext();
+    return ctx->RestorePixelRegion(region, buffer);
+}
+//inline void SaveRegionAsImage(const Rect2Di& region, IPixelBuffer& buffer) {
+//    IRenderContext* ctx = GetRenderContext();
+//    ctx->SaveRegionAsImage(region, buffer);
+//}
 
 // Style convenience functions with automatic context resolution
 inline void SetFillColor(const Color& color) {

@@ -103,7 +103,7 @@ namespace UltraCanvas {
 
 //    void UltraCanvasElement::RequestRedraw() {
 //        if (window) {
-//            window->SetNeedsRedraw(true);
+//            window->RequestRedraw(true);
 //        }
 //    }
 //
@@ -257,7 +257,7 @@ namespace UltraCanvas {
 
     void UltraCanvasElement::RequestRedraw() {
         if (window) {
-            window->SetNeedsRedraw(true);
+            window->MarkElementDirty(this);
         }
     }
 

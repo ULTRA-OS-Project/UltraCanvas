@@ -198,13 +198,27 @@ namespace UltraCanvas {
             return Rect2Di(properties.x_pos, properties.y_pos,
                            properties.width_size, properties.height_size);
         }
+        // actual bounds is for variable-sized elements like dropdowns, menus, popups
+        virtual Rect2Di GetActualBounds() { return GetBounds(); }
+
+        Rect2Di GetActualBoundsInWindow() {
+            Rect2Di bounds = GetActualBounds();
+            bounds.x += (GetXInWindow() - properties.x_pos);
+            bounds.y += (GetYInWindow() - properties.y_pos);
+            return bounds;
+        }
+
         Point2Di GetPositionInWindow() {
-            return Point2Di(static_cast<float>(GetXInWindow()), static_cast<float>(GetYInWindow()));
+            return Point2Di(GetXInWindow(), GetYInWindow());
+        }
+        Rect2Di GetBoundsInWindow() {
+            return Rect2Di (GetXInWindow(), GetYInWindow(), properties.width_size, properties.height_size);
         }
         Point2Di GetPosition() const {
             return Point2Di(static_cast<float>(properties.x_pos), static_cast<float>(properties.y_pos));
         }
         Point2Di GetElementSize() const { return properties.GetSize(); }
+
 
         bool IsActive() const { return properties.Active; }
         void SetActive(bool active) { properties.Active = active; }
@@ -213,6 +227,7 @@ namespace UltraCanvas {
 
         Point2Di ConvertWindowToContainerCoordinates(const Point2Di &globalPos);
         void ConvertWindowToContainerCoordinates(int &x, int &y);
+
         MousePointer GetMousePointer() const { return properties.MousePtr; }
         void SetMousePointer(MousePointer pointer) { properties.MousePtr = pointer; }
         MouseControls GetMouseControls() const { return properties.MouseCtrl; }
@@ -291,11 +306,11 @@ namespace UltraCanvas {
         }
 
         // ===== SPATIAL QUERIES =====
-        virtual bool Contains(const Point2Di& point) const {
+        virtual bool Contains(const Point2Di& point) {
             return properties.Contains(point);
         }
 
-        virtual bool Contains(float px, float py) const {
+        virtual bool Contains(float px, float py) {
             return properties.Contains(px, py);
         }
 

@@ -9,6 +9,7 @@
 #include "../include/UltraCanvasApplication.h"
 //#include "../include/UltraCanvasZOrderManager.h"
 #include "../include/UltraCanvasMenu.h"
+#include "../include/UltraCanvasSelectiveRenderer.h"
 #include "UltraCanvasApplication.h"
 
 #include <iostream>
@@ -24,6 +25,7 @@ namespace UltraCanvas {
         containerStyle.enableHorizontalScrolling = config.enableWindowScrolling;
         containerStyle.backgroundColor = config.backgroundColor;
         containerStyle.borderWidth = 0.0f; // Windows don't need container borders
+        selectiveRenderer = std::make_unique<UltraCanvasSelectiveRenderer>(this);
         SetContainerStyle(containerStyle);
     }
 
@@ -273,17 +275,28 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseWindow::Render() {
         if (!_visible || !_created) return;
+        if (useSelectiveRendering && selectiveRenderer) {
+            // Use simple selective rendering
+            selectiveRenderer->RenderFrame();
 
-        // Clear the window background
-        RenderWindowBackground();
+            // Only clear needs redraw if no dirty regions remain
+            if (!selectiveRenderer->HasDirtyRegions()) {
+                _needsRedraw = false;
+            }
+        } else {
+            // Clear the window background
+            RenderWindowBackground();
 
-        // Render container content (children with scrolling)
-        UltraCanvasContainer::Render();
+            // Render container content (children with scrolling)
+            UltraCanvasContainer::Render();
 
-        RenderActivePopups();
+            RenderActivePopups();
 
-        // Render window-specific overlays
-        RenderWindowChrome();
+            // Render window-specific overlays
+            RenderWindowChrome();
+
+            useSelectiveRendering = true;
+        }
     }
 
     void UltraCanvasBaseWindow::RenderActivePopups() {
@@ -295,6 +308,34 @@ namespace UltraCanvas {
                 PopRenderState();
             }
         }
+    }
+
+
+
+    void UltraCanvasBaseWindow::AddPopupElement(UltraCanvasElement *element) {
+        if (element) {
+            MarkElementDirty(element);
+            activePopups.insert(element);
+        }
+    }
+
+    void UltraCanvasBaseWindow::RemovePopupElement(UltraCanvasElement *element) {
+        activePopups.erase(element);
+        if (selectiveRenderer) {
+            selectiveRenderer->RestoreBackgroundFromOverlay();
+        } else {
+            _needsRedraw = true;
+        }
+    }
+
+    void UltraCanvasBaseWindow::MarkElementDirty(UltraCanvasElement* element, bool isOverlay) {
+        if (selectiveRenderer) {
+//            if (isOverlay) {
+//                selectiveRenderer->SaveBackgroundForOverlay(element);
+//            }
+            selectiveRenderer->MarkRegionDirty(element->GetActualBoundsInWindow(), isOverlay);
+        }
+        _needsRedraw = true;
     }
 
     bool UltraCanvasWindow::Create(const WindowConfig& config) {

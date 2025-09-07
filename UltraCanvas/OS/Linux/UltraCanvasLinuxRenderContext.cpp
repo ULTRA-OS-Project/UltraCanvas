@@ -14,12 +14,8 @@
 
 namespace UltraCanvas {
 
-    LinuxRenderContext::LinuxRenderContext(cairo_t* cairoContext)
-            : cairo(cairoContext)
-            , pangoContext(nullptr)
-            , fontMap(nullptr)
-            , destroying(false)
-            , contextValid(false){
+    LinuxRenderContext::LinuxRenderContext(cairo_t *cairoContext)
+            : cairo(cairoContext), pangoContext(nullptr), fontMap(nullptr), destroying(false), contextValid(false) {
 
         std::cout << "LinuxRenderContext: Initializing with cairo context: " << cairoContext << std::endl;
 
@@ -32,7 +28,8 @@ namespace UltraCanvas {
         // Check Cairo context status
         cairo_status_t status = cairo_status(cairo);
         if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "ERROR: LinuxRenderContext: Cairo context is invalid: " << cairo_status_to_string(status) << std::endl;
+            std::cerr << "ERROR: LinuxRenderContext: Cairo context is invalid: " << cairo_status_to_string(status)
+                      << std::endl;
             throw std::runtime_error("LinuxRenderContext: Invalid Cairo context");
         }
 
@@ -58,14 +55,14 @@ namespace UltraCanvas {
             pango_cairo_context_set_resolution(pangoContext, 96.0);  // Standard DPI
 
             // Get and set font options from Cairo
-            cairo_font_options_t* fontOptions = cairo_font_options_create();
+            cairo_font_options_t *fontOptions = cairo_font_options_create();
             cairo_get_font_options(cairo, fontOptions);
             pango_cairo_context_set_font_options(pangoContext, fontOptions);
             cairo_font_options_destroy(fontOptions);
 
             std::cout << "LinuxRenderContext: Pango initialization complete" << std::endl;
 
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::cerr << "ERROR: Exception during Pango initialization: " << e.what() << std::endl;
 
             // Cleanup on failure
@@ -107,6 +104,7 @@ namespace UltraCanvas {
 
         std::cout << "LinuxRenderContext: Destruction complete" << std::endl;
     }
+
 // ===== STATE MANAGEMENT =====
     void LinuxRenderContext::PushState() {
         stateStack.push_back(currentState);
@@ -204,25 +202,25 @@ namespace UltraCanvas {
         if (!cairo) return;
         cairo_rectangle(cairo, x, y, w, h);
         cairo_clip(cairo);
-        currentState.clipRect = Rect2Df (x,y,w,h);
+        currentState.clipRect = Rect2Df(x, y, w, h);
     }
 
 // ===== STYLE MANAGEMENT =====
-    void LinuxRenderContext::SetDrawingStyle(const DrawingStyle& style) {
+    void LinuxRenderContext::SetDrawingStyle(const DrawingStyle &style) {
         currentState.style = style;
         ApplyDrawingStyle(style);
     }
 
-    const DrawingStyle& LinuxRenderContext::GetDrawingStyle() const {
+    const DrawingStyle &LinuxRenderContext::GetDrawingStyle() const {
         return currentState.style;
     }
 
-    void LinuxRenderContext::SetTextStyle(const TextStyle& style) {
+    void LinuxRenderContext::SetTextStyle(const TextStyle &style) {
         currentState.textStyle = style;
         ApplyTextStyle(style);
     }
 
-    const TextStyle& LinuxRenderContext::GetTextStyle() const {
+    const TextStyle &LinuxRenderContext::GetTextStyle() const {
         return currentState.textStyle;
     }
 
@@ -347,7 +345,7 @@ namespace UltraCanvas {
     }
 
 // ===== TEXT RENDERING (FIXED) =====
-    void LinuxRenderContext::DrawText(const std::string& text, float x, float y) {
+    void LinuxRenderContext::DrawText(const std::string &text, float x, float y) {
         // Comprehensive null checks
         if (!cairo) {
             std::cerr << "ERROR: DrawText called with null Cairo context" << std::endl;
@@ -373,13 +371,13 @@ namespace UltraCanvas {
 
             ApplyTextStyle(currentState.textStyle);
 
-            PangoLayout* layout = pango_layout_new(pangoContext);
+            PangoLayout *layout = pango_layout_new(pangoContext);
             if (!layout) {
                 std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
                 return;
             }
 
-            PangoFontDescription* desc = CreatePangoFont(currentState.textStyle);
+            PangoFontDescription *desc = CreatePangoFont(currentState.textStyle);
             if (!desc) {
                 std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
                 g_object_unref(layout);
@@ -398,14 +396,14 @@ namespace UltraCanvas {
 
             std::cout << "DrawText: Completed successfully" << std::endl;
 
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::cerr << "ERROR: Exception in DrawText: " << e.what() << std::endl;
         } catch (...) {
             std::cerr << "ERROR: Unknown exception in DrawText" << std::endl;
         }
     }
 
-    void LinuxRenderContext::DrawTextInRect(const std::string& text, float x, float y, float w, float h) {
+    void LinuxRenderContext::DrawTextInRect(const std::string &text, float x, float y, float w, float h) {
         if (!cairo || !pangoContext || text.empty()) return;
 
         if (!ValidateContext()) {
@@ -416,10 +414,10 @@ namespace UltraCanvas {
         try {
             ApplyTextStyle(currentState.textStyle);
 
-            PangoLayout* layout = pango_layout_new(pangoContext);
+            PangoLayout *layout = pango_layout_new(pangoContext);
             if (!layout) return;
 
-            PangoFontDescription* desc = CreatePangoFont(currentState.textStyle);
+            PangoFontDescription *desc = CreatePangoFont(currentState.textStyle);
             if (!desc) {
                 g_object_unref(layout);
                 return;
@@ -433,16 +431,24 @@ namespace UltraCanvas {
             // Set alignment
             PangoAlignment alignment = PANGO_ALIGN_LEFT;
             switch (currentState.textStyle.alignment) {
-                case TextAlign::Center: alignment = PANGO_ALIGN_CENTER; break;
-                case TextAlign::Right: alignment = PANGO_ALIGN_RIGHT; break;
-                case TextAlign::Justify: alignment = PANGO_ALIGN_LEFT; break;
-                default: alignment = PANGO_ALIGN_LEFT; break;
+                case TextAlign::Center:
+                    alignment = PANGO_ALIGN_CENTER;
+                    break;
+                case TextAlign::Right:
+                    alignment = PANGO_ALIGN_RIGHT;
+                    break;
+                case TextAlign::Justify:
+                    alignment = PANGO_ALIGN_LEFT;
+                    break;
+                default:
+                    alignment = PANGO_ALIGN_LEFT;
+                    break;
             }
             pango_layout_set_alignment(layout, alignment);
             if (currentState.textStyle.baseline == TextBaseline::Middle) {
                 int w1, h1;
                 pango_layout_get_pixel_size(layout, &w1, &h1);
-                cairo_move_to(cairo, x, y + ((h - h1)/2));
+                cairo_move_to(cairo, x, y + ((h - h1) / 2));
             } else {
                 cairo_move_to(cairo, x, y);
             }
@@ -456,7 +462,7 @@ namespace UltraCanvas {
         }
     }
 
-    bool LinuxRenderContext::MeasureText(const std::string& text, int& w, int& h) {
+    bool LinuxRenderContext::MeasureText(const std::string &text, int &w, int &h) {
         w = 0;
         h = 0;
         if (!pangoContext || text.empty()) {
@@ -464,10 +470,10 @@ namespace UltraCanvas {
         }
 
         try {
-            PangoLayout* layout = pango_layout_new(pangoContext);
+            PangoLayout *layout = pango_layout_new(pangoContext);
             if (!layout) return false;
 
-            PangoFontDescription* desc = CreatePangoFont(currentState.textStyle);
+            PangoFontDescription *desc = CreatePangoFont(currentState.textStyle);
             if (!desc) {
                 g_object_unref(layout);
                 return false;
@@ -492,7 +498,7 @@ namespace UltraCanvas {
     }
 
 // ===== UTILITY FUNCTIONS =====
-    void LinuxRenderContext::Clear(const Color& color) {
+    void LinuxRenderContext::Clear(const Color &color) {
         if (!cairo) return;
         cairo_save(cairo);
         cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
@@ -506,12 +512,12 @@ namespace UltraCanvas {
         cairo_surface_flush(cairo_get_target(cairo));
     }
 
-    void* LinuxRenderContext::GetNativeContext() {
+    void *LinuxRenderContext::GetNativeContext() {
         return cairo;
     }
 
 // ===== INTERNAL HELPER METHODS (FIXED) =====
-    void LinuxRenderContext::ApplyDrawingStyle(const DrawingStyle& style) {
+    void LinuxRenderContext::ApplyDrawingStyle(const DrawingStyle &style) {
         if (!cairo) return;
 
 //        std::cout << "LinuxRenderContext::ApplyDrawingStyle - hasStroke=" << (style.hasStroke ? "true" : "false")
@@ -528,18 +534,30 @@ namespace UltraCanvas {
             // Set line cap
             cairo_line_cap_t cap = CAIRO_LINE_CAP_BUTT;
             switch (style.lineCap) {
-                case LineCap::Round: cap = CAIRO_LINE_CAP_ROUND; break;
-                case LineCap::Square: cap = CAIRO_LINE_CAP_SQUARE; break;
-                default: cap = CAIRO_LINE_CAP_BUTT; break;
+                case LineCap::Round:
+                    cap = CAIRO_LINE_CAP_ROUND;
+                    break;
+                case LineCap::Square:
+                    cap = CAIRO_LINE_CAP_SQUARE;
+                    break;
+                default:
+                    cap = CAIRO_LINE_CAP_BUTT;
+                    break;
             }
             cairo_set_line_cap(cairo, cap);
 
             // Set line join
             cairo_line_join_t join = CAIRO_LINE_JOIN_MITER;
             switch (style.lineJoin) {
-                case LineJoin::Round: join = CAIRO_LINE_JOIN_ROUND; break;
-                case LineJoin::Bevel: join = CAIRO_LINE_JOIN_BEVEL; break;
-                default: join = CAIRO_LINE_JOIN_MITER; break;
+                case LineJoin::Round:
+                    join = CAIRO_LINE_JOIN_ROUND;
+                    break;
+                case LineJoin::Bevel:
+                    join = CAIRO_LINE_JOIN_BEVEL;
+                    break;
+                default:
+                    join = CAIRO_LINE_JOIN_MITER;
+                    break;
             }
             cairo_set_line_join(cairo, join);
 
@@ -552,12 +570,12 @@ namespace UltraCanvas {
 //        std::cout << "ApplyDrawingStyle: Complete (no color override)" << std::endl;
     }
 
-    void LinuxRenderContext::ApplyTextStyle(const TextStyle& style) {
+    void LinuxRenderContext::ApplyTextStyle(const TextStyle &style) {
         if (!cairo) return;
         SetCairoColor(style.textColor);
     }
 
-    void LinuxRenderContext::ApplyFillStyle(const DrawingStyle& style) {
+    void LinuxRenderContext::ApplyFillStyle(const DrawingStyle &style) {
         if (!cairo) return;
 
 //        std::cout << "ApplyFillStyle: Setting fill color=(" << (int)style.fillColor.r
@@ -591,12 +609,12 @@ namespace UltraCanvas {
 //        std::cout << "ApplyFillStyle: Complete" << std::endl;
     }
 
-    void LinuxRenderContext::ApplyStrokeStyle(const DrawingStyle& style) {
+    void LinuxRenderContext::ApplyStrokeStyle(const DrawingStyle &style) {
         if (!cairo) return;
 
-        std::cout << "ApplyStrokeStyle: Setting stroke color=(" << (int)style.strokeColor.r
-                  << "," << (int)style.strokeColor.g << "," << (int)style.strokeColor.b
-                  << "," << (int)style.strokeColor.a << ")" << std::endl;
+        std::cout << "ApplyStrokeStyle: Setting stroke color=(" << (int) style.strokeColor.r
+                  << "," << (int) style.strokeColor.g << "," << (int) style.strokeColor.b
+                  << "," << (int) style.strokeColor.a << ")" << std::endl;
 
         // Set stroke properties (in case they weren't set by ApplyDrawingStyle)
         cairo_set_line_width(cairo, style.strokeWidth);
@@ -607,16 +625,16 @@ namespace UltraCanvas {
         std::cout << "ApplyStrokeStyle: Complete" << std::endl;
     }
 
-    PangoFontDescription* LinuxRenderContext::CreatePangoFont(const TextStyle& style) {
+    PangoFontDescription *LinuxRenderContext::CreatePangoFont(const TextStyle &style) {
         try {
-            PangoFontDescription* desc = pango_font_description_new();
+            PangoFontDescription *desc = pango_font_description_new();
             if (!desc) {
                 std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
                 return nullptr;
             }
 
             // Use default font if family is empty
-            const char* fontFamily = style.fontFamily.empty() ? "Arial" : style.fontFamily.c_str();
+            const char *fontFamily = style.fontFamily.empty() ? "Arial" : style.fontFamily.c_str();
             pango_font_description_set_family(desc, fontFamily);
 
             // Ensure reasonable font size
@@ -626,19 +644,33 @@ namespace UltraCanvas {
             // Set weight
             PangoWeight weight = PANGO_WEIGHT_NORMAL;
             switch (style.fontWeight) {
-                case FontWeight::Light: weight = PANGO_WEIGHT_LIGHT; break;
-                case FontWeight::Bold: weight = PANGO_WEIGHT_BOLD; break;
-                case FontWeight::ExtraBold: weight = PANGO_WEIGHT_ULTRABOLD; break;
-                default: weight = PANGO_WEIGHT_NORMAL; break;
+                case FontWeight::Light:
+                    weight = PANGO_WEIGHT_LIGHT;
+                    break;
+                case FontWeight::Bold:
+                    weight = PANGO_WEIGHT_BOLD;
+                    break;
+                case FontWeight::ExtraBold:
+                    weight = PANGO_WEIGHT_ULTRABOLD;
+                    break;
+                default:
+                    weight = PANGO_WEIGHT_NORMAL;
+                    break;
             }
             pango_font_description_set_weight(desc, weight);
 
             // Set style
             PangoStyle pangoStyle = PANGO_STYLE_NORMAL;
             switch (style.fontStyle) {
-                case FontStyle::Italic: pangoStyle = PANGO_STYLE_ITALIC; break;
-                case FontStyle::Oblique: pangoStyle = PANGO_STYLE_OBLIQUE; break;
-                default: pangoStyle = PANGO_STYLE_NORMAL; break;
+                case FontStyle::Italic:
+                    pangoStyle = PANGO_STYLE_ITALIC;
+                    break;
+                case FontStyle::Oblique:
+                    pangoStyle = PANGO_STYLE_OBLIQUE;
+                    break;
+                default:
+                    pangoStyle = PANGO_STYLE_NORMAL;
+                    break;
             }
             pango_font_description_set_style(desc, pangoStyle);
 
@@ -650,7 +682,7 @@ namespace UltraCanvas {
         }
     }
 
-    void LinuxRenderContext::SetCairoColor(const Color& color) {
+    void LinuxRenderContext::SetCairoColor(const Color &color) {
         if (!cairo) return;
 
         try {
@@ -659,7 +691,8 @@ namespace UltraCanvas {
                                   color.g / 255.0f,
                                   color.b / 255.0f,
                                   color.a / 255.0f * currentState.globalAlpha);
-            std::cout << "LinuxRenderContext::SetCairoColor r=" << (int)color.r << " g=" << (int)color.g << " b=" << (int)color.b << std::endl;
+            std::cout << "LinuxRenderContext::SetCairoColor r=" << (int) color.r << " g=" << (int) color.g << " b="
+                      << (int) color.b << std::endl;
         } catch (...) {
             std::cerr << "ERROR: Exception in SetCairoColor" << std::endl;
         }
@@ -675,8 +708,8 @@ namespace UltraCanvas {
         ApplyFillStyle(currentState.style);
 
         cairo_save(cairo);
-        cairo_translate(cairo, x + w/2, y + h/2);
-        cairo_scale(cairo, w/2, h/2);
+        cairo_translate(cairo, x + w / 2, y + h / 2);
+        cairo_scale(cairo, w / 2, h / 2);
         cairo_arc(cairo, 0, 0, 1, 0, 2 * M_PI);
         cairo_restore(cairo);
         cairo_fill(cairo);
@@ -691,14 +724,14 @@ namespace UltraCanvas {
         ApplyStrokeStyle(currentState.style);
 
         cairo_save(cairo);
-        cairo_translate(cairo, x + w/2, y + h/2);
-        cairo_scale(cairo, w/2, h/2);
+        cairo_translate(cairo, x + w / 2, y + h / 2);
+        cairo_scale(cairo, w / 2, h / 2);
         cairo_arc(cairo, 0, 0, 1, 0, 2 * M_PI);
         cairo_restore(cairo);
         cairo_stroke(cairo);
     }
 
-    void LinuxRenderContext::FillPath(const std::vector<Point2Df>& points) {
+    void LinuxRenderContext::FillPath(const std::vector<Point2Df> &points) {
         if (!cairo || points.empty()) return;
 
         std::cout << "LinuxRenderContext::FillPath" << std::endl;
@@ -714,7 +747,7 @@ namespace UltraCanvas {
         cairo_fill(cairo);
     }
 
-    void LinuxRenderContext::DrawPath(const std::vector<Point2Df>& points, bool closePath) {
+    void LinuxRenderContext::DrawPath(const std::vector<Point2Df> &points, bool closePath) {
         if (!cairo || points.empty()) return;
 
         std::cout << "LinuxRenderContext::DrawPath" << std::endl;
@@ -751,7 +784,8 @@ namespace UltraCanvas {
         cairo_fill(cairo);
     }
 
-    void LinuxRenderContext::DrawBezier(const Point2Df& start, const Point2Df& cp1, const Point2Df& cp2, const Point2Df& end) {
+    void LinuxRenderContext::DrawBezier(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2,
+                                        const Point2Df &end) {
         if (!cairo) return;
         ApplyStrokeStyle(currentState.style);
         cairo_move_to(cairo, start.x, start.y);
@@ -762,7 +796,7 @@ namespace UltraCanvas {
     // Image rendering stubs
     // ===== IMAGE RENDERING IMPLEMENTATION =====
 
-    void LinuxRenderContext::DrawImage(const std::string& imagePath, float x, float y) {
+    void LinuxRenderContext::DrawImage(const std::string &imagePath, float x, float y) {
         if (!cairo || imagePath.empty()) {
             std::cerr << "LinuxRenderContext::DrawImage: Invalid parameters" << std::endl;
             return;
@@ -797,12 +831,12 @@ namespace UltraCanvas {
             // Release surface reference (if not cached, this will destroy it)
             cairo_surface_destroy(result.surface);
 
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
     }
 
-    void LinuxRenderContext::DrawImage(const std::string& imagePath, float x, float y, float w, float h) {
+    void LinuxRenderContext::DrawImage(const std::string &imagePath, float x, float y, float w, float h) {
         if (!cairo || imagePath.empty()) {
             std::cerr << "LinuxRenderContext::DrawImage: Invalid parameters" << std::endl;
             return;
@@ -848,12 +882,12 @@ namespace UltraCanvas {
             // Release surface reference
             cairo_surface_destroy(result.surface);
 
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
     }
 
-    void LinuxRenderContext::DrawImage(const std::string& imagePath, const Rect2Df& srcRect, const Rect2Df& destRect) {
+    void LinuxRenderContext::DrawImage(const std::string &imagePath, const Rect2Df &srcRect, const Rect2Df &destRect) {
         if (!cairo || imagePath.empty()) {
             std::cerr << "LinuxRenderContext::DrawImage: Invalid parameters" << std::endl;
             return;
@@ -913,19 +947,19 @@ namespace UltraCanvas {
             // Release surface reference
             cairo_surface_destroy(result.surface);
 
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
     }
 
     // ===== ADDITIONAL HELPER METHODS FOR IMAGE RENDERING =====
 
-    bool LinuxRenderContext::IsImageFormatSupported(const std::string& filePath) {
+    bool LinuxRenderContext::IsImageFormatSupported(const std::string &filePath) {
         std::string ext = GetFileExtension(filePath);
         return LinuxImageLoader::IsFormatSupported(ext);
     }
 
-    bool LinuxRenderContext::GetImageDimensions(const std::string& imagePath, int &w, int& h) {
+    bool LinuxRenderContext::GetImageDimensions(const std::string &imagePath, int &w, int &h) {
         w = 0;
         h = 0;
         if (imagePath.empty()) {
@@ -940,14 +974,14 @@ namespace UltraCanvas {
                 cairo_surface_destroy(result.surface);
                 return true;
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::GetImageDimensions: Exception: " << e.what() << std::endl;
         }
 
         return false;
     }
 
-    void LinuxRenderContext::DrawImageWithFilter(const std::string& imagePath, float x, float y, float w, float h,
+    void LinuxRenderContext::DrawImageWithFilter(const std::string &imagePath, float x, float y, float w, float h,
                                                  cairo_filter_t filter) {
         if (!cairo || imagePath.empty()) return;
 
@@ -958,7 +992,7 @@ namespace UltraCanvas {
             cairo_save(cairo);
 
             // Set up scaling pattern with specified filter
-            cairo_pattern_t* pattern = cairo_pattern_create_for_surface(result.surface);
+            cairo_pattern_t *pattern = cairo_pattern_create_for_surface(result.surface);
             cairo_pattern_set_filter(pattern, filter);
 
             // Calculate and apply transformation matrix
@@ -984,12 +1018,12 @@ namespace UltraCanvas {
             cairo_restore(cairo);
             cairo_surface_destroy(result.surface);
 
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImageWithFilter: Exception: " << e.what() << std::endl;
         }
     }
 
-    void LinuxRenderContext::DrawImageTiled(const std::string& imagePath, float x, float y, float w, float h) {
+    void LinuxRenderContext::DrawImageTiled(const std::string &imagePath, float x, float y, float w, float h) {
         if (!cairo || imagePath.empty()) return;
 
         try {
@@ -999,7 +1033,7 @@ namespace UltraCanvas {
             cairo_save(cairo);
 
             // Create repeating pattern
-            cairo_pattern_t* pattern = cairo_pattern_create_for_surface(result.surface);
+            cairo_pattern_t *pattern = cairo_pattern_create_for_surface(result.surface);
             cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
 
             // Set source and fill the rectangle
@@ -1017,7 +1051,7 @@ namespace UltraCanvas {
             cairo_restore(cairo);
             cairo_surface_destroy(result.surface);
 
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImageTiled: Exception: " << e.what() << std::endl;
         }
     }
@@ -1059,7 +1093,7 @@ namespace UltraCanvas {
         contextValid = false;
     }
 
-    void LinuxRenderContext::UpdateContext(cairo_t* newCairoContext) {
+    void LinuxRenderContext::UpdateContext(cairo_t *newCairoContext) {
         std::cout << "LinuxRenderContext: Updating Cairo context..." << std::endl;
 
         if (!newCairoContext) {
@@ -1083,7 +1117,7 @@ namespace UltraCanvas {
         if (pangoContext) {
             pango_cairo_context_set_resolution(pangoContext, 96.0);
 
-            cairo_font_options_t* fontOptions = cairo_font_options_create();
+            cairo_font_options_t *fontOptions = cairo_font_options_create();
             cairo_get_font_options(cairo, fontOptions);
             pango_cairo_context_set_font_options(pangoContext, fontOptions);
             cairo_font_options_destroy(fontOptions);
@@ -1120,25 +1154,415 @@ namespace UltraCanvas {
 //        // Placeholder - would need image loading library
 //    }
 
-    void LinuxRenderContext::SetPixel(const Point2Df& point, const Color& color) {
-        if (!cairo) return;
-        SetCairoColor(color);
-        cairo_rectangle(cairo, point.x, point.y, 1, 1);
-        cairo_fill(cairo);
-    }
-
-    Color LinuxRenderContext::GetPixel(const Point2Df& point) {
-        // Cairo doesn't provide direct pixel access
-        return Colors::Black;
-    }
-
-//    std::string GetFileExtension(const std::string& filePath) {
-//        size_t dotPos = filePath.find_last_of('.');
-//        if (dotPos == std::string::npos) return "";
+//    void LinuxRenderContext::SetPixel(const Point2Di& point, const Color& color) {
+//        if (!cairo) return;
+//        SetCairoColor(color);
+//        cairo_rectangle(cairo, point.x, point.y, 1, 1);
+//        cairo_fill(cairo);
+//    }
 //
-//        std::string ext = filePath.substr(dotPos + 1);
-//        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-//        return ext;
+//    Color LinuxRenderContext::GetPixel(const Point2Di& point) {
+//        // Cairo doesn't provide direct pixel access
+//        return Colors::Black;
 //    }
 
+    // Add to LinuxRenderContext class:
+    IPixelBuffer *LinuxRenderContext::SavePixelRegion(const Rect2Di &region) {
+        if (!cairo || region.width <= 0 || region.height <= 0) {
+            std::cerr << "SavePixelRegion: Invalid parameters" << std::endl;
+            return nullptr;
+        }
+        X11PixelBuffer *buf = nullptr;
+        bool success = false;
+        std::lock_guard<std::mutex> lock(cairoMutex);
+
+        try {
+            cairo_surface_t *surface = cairo_get_target(cairo);
+            if (!surface) {
+                std::cerr << "SavePixelRegion: No surface available" << std::endl;
+                return nullptr;
+            }
+
+            cairo_surface_flush(surface);
+            cairo_surface_type_t surfaceType = cairo_surface_get_type(surface);
+
+            if (surfaceType == CAIRO_SURFACE_TYPE_IMAGE) {
+                // For image surfaces, use traditional buffer (already fast)
+                buf = new X11PixelBuffer(region.width, region.height, false);
+                success = SaveImageSurface(surface, region, *buf);
+            } else if (surfaceType == CAIRO_SURFACE_TYPE_XLIB) {
+                buf = new X11PixelBuffer(region.width, region.height, true);
+                // For Xlib surfaces, use zero-copy XImage approach
+                success = SaveXlibSurface(surface, region, *buf);
+            } else {
+                std::cerr << "SavePixelRegion: Unsupported surface type" << std::endl;
+                return nullptr;
+            }
+
+        } catch (const std::exception &e) {
+            std::cerr << "SavePixelRegion: Exception: " << e.what() << std::endl;
+            delete buf;
+            return nullptr;
+        }
+        if (!success) {
+            std::cerr << "SavePixelRegion: Failed" << std::endl;
+            delete buf;
+            return nullptr;
+        }
+        return buf;
+    }
+
+    bool LinuxRenderContext::RestorePixelRegion(const Rect2Di &region, IPixelBuffer *buf) {
+        if (!cairo || region.width <= 0 || region.height <= 0 || !buf->IsValid()) {
+            std::cerr << "RestorePixelRegionZeroCopy: Invalid parameters" << std::endl;
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(cairoMutex);
+        X11PixelBuffer *buffer = reinterpret_cast<X11PixelBuffer *>(buf);
+        try {
+            cairo_surface_t *surface = cairo_get_target(cairo);
+            if (!surface) {
+                std::cerr << "RestorePixelRegionZeroCopy: No surface available" << std::endl;
+                return false;
+            }
+
+            cairo_surface_type_t surfaceType = cairo_surface_get_type(surface);
+
+            if (surfaceType == CAIRO_SURFACE_TYPE_IMAGE) {
+                return RestoreImageSurface(surface, region, *buffer);
+            } else if (surfaceType == CAIRO_SURFACE_TYPE_XLIB) {
+                return RestoreXlibSurface(surface, region, *buffer);
+            } else {
+                std::cerr << "RestorePixelRegionZeroCopy: Unsupported surface type" << std::endl;
+                return false;
+            }
+
+        } catch (const std::exception &e) {
+            std::cerr << "RestorePixelRegionZeroCopy: Exception: " << e.what() << std::endl;
+            return false;
+        }
+    }
+
+    // ===== ZERO-COPY XLIB IMPLEMENTATIONS =====
+
+    bool LinuxRenderContext::SaveXlibSurface(cairo_surface_t *surface, const Rect2Di &region,
+                                             X11PixelBuffer &buffer) {
+        Display *display = cairo_xlib_surface_get_display(surface);
+        Drawable drawable = cairo_xlib_surface_get_drawable(surface);
+
+        if (!display || !drawable) {
+            std::cerr << "SaveFromXlibSurfaceZeroCopy: Invalid X11 objects" << std::endl;
+            return false;
+        }
+
+        int x = std::max(0, static_cast<int>(region.x));
+        int y = std::max(0, static_cast<int>(region.y));
+        int width = static_cast<int>(region.width);
+        int height = static_cast<int>(region.height);
+
+        if (width <= 0 || height <= 0) {
+            std::cerr << "SaveFromXlibSurfaceZeroCopy: Invalid region dimensions" << std::endl;
+            return false;
+        }
+
+        // Get XImage directly from X server - ZERO COPY!
+        XImage *ximage = XGetImage(display, drawable, x, y, width, height, AllPlanes, ZPixmap);
+        if (!ximage) {
+            std::cerr << "SaveFromXlibSurfaceZeroCopy: XGetImage failed" << std::endl;
+            return false;
+        }
+
+        // Create XImageBuffer wrapper
+        auto ximg_buffer = std::make_unique<XImageBuffer>();
+        ximg_buffer->ximage = ximage;
+        ximg_buffer->display = display;
+        ximg_buffer->width = width;
+        ximg_buffer->height = height;
+        ximg_buffer->size_bytes = width * height * sizeof(uint32_t);
+
+        // Set up direct pixel pointer based on format
+        if (ximage->bits_per_pixel == 32 && ximage->byte_order == LSBFirst) {
+            // Direct access - no conversion needed!
+            ximg_buffer->pixels = reinterpret_cast<uint32_t *>(ximage->data);
+        } else {
+            // Need format conversion - fall back to traditional buffer
+            std::cerr << "SaveFromXlibSurfaceZeroCopy: Format conversion needed, falling back to copy" << std::endl;
+
+            std::vector<uint32_t> traditional_buf(width * height);
+
+            // Convert to standard format
+            if (ximage->bits_per_pixel == 32) {
+                // Handle big endian
+                for (int row = 0; row < height; ++row) {
+                    uint32_t *srcRow = reinterpret_cast<uint32_t *>(ximage->data + row * ximage->bytes_per_line);
+                    uint32_t *dstRow = traditional_buf.data() + row * width;
+                    for (int col = 0; col < width; ++col) {
+                        dstRow[col] = __builtin_bswap32(srcRow[col]);
+                    }
+                }
+            } else if (ximage->bits_per_pixel == 24) {
+                // Convert 24-bit to 32-bit
+                for (int row = 0; row < height; ++row) {
+                    unsigned char *srcRow = reinterpret_cast<unsigned char *>(ximage->data +
+                                                                              row * ximage->bytes_per_line);
+                    uint32_t *dstRow = traditional_buf.data() + row * width;
+
+                    for (int col = 0; col < width; ++col) {
+                        unsigned char *pixel = srcRow + col * 3;
+                        if (ximage->byte_order == LSBFirst) {
+                            dstRow[col] = 0xFF000000 | (pixel[2] << 16) | (pixel[1] << 8) | pixel[0];
+                        } else {
+                            dstRow[col] = 0xFF000000 | (pixel[0] << 16) | (pixel[1] << 8) | pixel[2];
+                        }
+                    }
+                }
+            }
+
+            XDestroyImage(ximage);
+            //buffer = X11PixelBuffer(width, height);
+            buffer.traditional_buffer = std::move(traditional_buf);
+            return true;
+        }
+
+        // Success - zero copy!
+        buffer.ximage_buffer = std::move(ximg_buffer);
+
+        std::cout << "SaveFromXlibSurfaceZeroCopy: ZERO-COPY save " << width << "x" << height
+                  << " region, " << buffer.GetSizeInBytes() << " bytes (direct XImage pointer)" << std::endl;
+        return true;
+    }
+
+    bool LinuxRenderContext::RestoreXlibSurface(cairo_surface_t *surface, const Rect2Di &region,
+                                                X11PixelBuffer &buffer) {
+        Display *display = cairo_xlib_surface_get_display(surface);
+        Drawable drawable = cairo_xlib_surface_get_drawable(surface);
+
+        if (!display || !drawable) {
+            std::cerr << "RestoreXlibSurface: Invalid X11 objects" << std::endl;
+            return false;
+        }
+
+        int x = static_cast<int>(region.x);
+        int y = static_cast<int>(region.y);
+        int width = static_cast<int>(region.width);
+        int height = static_cast<int>(region.height);
+
+        if (width != buffer.width || height != buffer.height) {
+            std::cerr << "RestoreXlibSurface: Size mismatch" << std::endl;
+            return false;
+        }
+
+        GC gc = XCreateGC(display, drawable, 0, nullptr);
+        if (!gc) {
+            std::cerr << "RestoreXlibSurface: XCreateGC failed" << std::endl;
+            return false;
+        }
+
+        bool success = false;
+
+        if (buffer.is_ximage_backed && buffer.ximage_buffer && buffer.ximage_buffer->IsValid()) {
+            // ZERO-COPY: Use XImage directly!
+            XImage *ximage = buffer.ximage_buffer->ximage;
+
+            std::cout << "RestoreXlibSurface: Using ZERO-COPY XImage restore" << std::endl;
+
+            int result = XPutImage(display, drawable, gc, ximage, 0, 0, x, y, width, height);
+            success = (result != BadMatch && result != BadDrawable && result != BadGC && result != BadValue);
+
+            if (!success) {
+                std::cerr << "RestoreXlibSurface: XPutImage failed with error " << result << std::endl;
+            }
+        } else {
+            // Traditional buffer - need to create temporary XImage
+            std::cout << "RestoreXlibSurface: Using traditional buffer restore" << std::endl;
+
+            Visual *visual = cairo_xlib_surface_get_visual(surface);
+            int depth = cairo_xlib_surface_get_depth(surface);
+
+            XImage *ximage = XCreateImage(display, visual, depth, ZPixmap, 0, nullptr,
+                                          width, height, 32, 0);
+            if (ximage) {
+                ximage->data = reinterpret_cast<char *>(const_cast<uint32_t *>(buffer.GetPixelData()));
+
+                int result = XPutImage(display, drawable, gc, ximage, 0, 0, x, y, width, height);
+                success = (result != BadMatch && result != BadDrawable && result != BadGC && result != BadValue);
+
+                // Don't let XDestroyImage free our data
+                ximage->data = nullptr;
+                XDestroyImage(ximage);
+            }
+        }
+
+        XFreeGC(display, gc);
+
+        if (success) {
+            XFlush(display);
+            cairo_surface_mark_dirty_rectangle(surface, x, y, width, height);
+
+            std::cout << "RestoreXlibSurface: Restored " << width << "x" << height
+                      << " region at (" << x << "," << y << ")" << std::endl;
+        }
+
+        return success;
+    }
+
+    // ===== COMPATIBILITY FUNCTIONS FOR IMAGE SURFACES =====
+
+    bool LinuxRenderContext::SaveImageSurface(cairo_surface_t *surface, const Rect2Di &region,
+                                              X11PixelBuffer &buffer) {
+
+        unsigned char *surfaceData = cairo_image_surface_get_data(surface);
+        if (!surfaceData) {
+            std::cerr << "SaveImageSurface: No surface data available" << std::endl;
+            return false;
+        }
+
+        int surfaceStride = cairo_image_surface_get_stride(surface);
+        int surfaceWidth = cairo_image_surface_get_width(surface);
+        int surfaceHeight = cairo_image_surface_get_height(surface);
+        int width = region.width;
+        int height = region.height;
+        int x = region.x;
+        int y = region.y;
+        buffer.traditional_buffer.clear();
+        buffer.traditional_buffer.reserve(width * height);
+        buffer.is_ximage_backed = false;
+
+        for (int row = 0; row < height; ++row) {
+            int srcY = y + row;
+            if (srcY >= 0 && srcY < surfaceHeight) {
+                unsigned char *rowData = surfaceData + (srcY * surfaceStride);
+                uint32_t *pixelData = reinterpret_cast<uint32_t *>(rowData);
+
+                for (int col = 0; col < width; ++col) {
+                    int srcX = x + col;
+                    if (srcX >= 0 && srcX < surfaceWidth) {
+                        buffer.traditional_buffer.push_back(pixelData[srcX]);
+                    } else {
+                        buffer.traditional_buffer.push_back(0); // Transparent pixel for out-of-bounds
+                    }
+                }
+            } else {
+                // Fill row with transparent pixels
+                for (int col = 0; col < width; ++col) {
+                    buffer.traditional_buffer.push_back(0);
+                }
+            }
+        }
+
+        return true;
+    }
+
+
+    bool LinuxRenderContext::RestoreImageSurface(cairo_surface_t *surface, const Rect2Di &region,
+                                                 X11PixelBuffer &buffer) {
+        if (!buffer.IsValid()) return false;
+
+        uint32_t *pixels = buffer.GetPixelData();
+        if (!pixels) return false;
+
+        // Use existing fast image surface restore
+        // Get surface data and properties
+        unsigned char *data = cairo_image_surface_get_data(surface);
+        if (!data) {
+            std::cerr << "RestoreToImageSurfaceFast: No surface data" << std::endl;
+            return false;
+        }
+
+        int surfaceWidth = cairo_image_surface_get_width(surface);
+        int surfaceHeight = cairo_image_surface_get_height(surface);
+        int stride = cairo_image_surface_get_stride(surface);
+
+        // Validate region and buffer
+        int x = region.x;
+        int y = region.y;
+        int width = region.width;
+        int height = region.height;
+
+        if (x < 0 || y < 0 || x + width > surfaceWidth || y + height > surfaceHeight) {
+            std::cerr << "RestoreToImageSurfaceFast: Region outside bounds" << std::endl;
+            return false;
+        }
+
+        if (buffer.traditional_buffer.size() != static_cast<size_t>(width * height)) {
+            std::cerr << "RestoreToImageSurfaceFast: Buffer size mismatch" << std::endl;
+            return false;
+        }
+
+        // Mark surface as dirty before modification
+        cairo_surface_mark_dirty_rectangle(surface, x, y, width, height);
+
+        // Fast row-by-row copy using memcpy
+        for (int row = 0; row < height; ++row) {
+            // Calculate source and destination pointers
+            const uint32_t *srcRow = pixels + row * width;
+            uint32_t *dstRow = reinterpret_cast<uint32_t *>(data + (y + row) * stride) + x;
+
+            // Fast bulk copy of entire row
+            std::memcpy(dstRow, srcRow, width * sizeof(uint32_t));
+        }
+
+        // Mark the modified region as dirty
+        cairo_surface_mark_dirty_rectangle(surface, x, y, width, height);
+
+        std::cout << "RestoreToImageSurfaceFast: Restored " << width << "x" << height
+                  << " region at (" << x << "," << y << ")" << std::endl;
+        return true;
+    }
+
+//    bool LinuxRenderContext::SaveRegionAsImage(const Rect2Di& region, const std::string& filename) {
+//        std::vector<uint32_t> buffer;
+//        if (!SavePixelRegion(region, buffer)) {
+//            return false;
+//        }
+//
+//        if (buffer.empty()) {
+//            std::cerr << "SaveRegionAsImage: No data to save" << std::endl;
+//            return false;
+//        }
+//
+//        std::lock_guard<std::mutex> lock(cairoMutex);
+//
+//        try {
+//            int width = static_cast<int>(region.width);
+//            int height = static_cast<int>(region.height);
+//            int stride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, width);
+//
+//            // Create surface directly from buffer data (avoiding copy)
+//            std::vector<unsigned char> imageData(stride * height);
+//
+//            // Fast conversion using memcpy for row data
+//            for (int y = 0; y < height; ++y) {
+//                const uint32_t* srcRow = buffer.data() + y * width;
+//                uint32_t* dstRow = reinterpret_cast<uint32_t*>(imageData.data() + y * stride);
+//                std::memcpy(dstRow, srcRow, width * sizeof(uint32_t));
+//            }
+//
+//            cairo_surface_t* pngSurface = cairo_image_surface_create_for_data(
+//                    imageData.data(), CAIRO_FORMAT_ARGB32, width, height, stride);
+//
+//            if (cairo_surface_status(pngSurface) == CAIRO_STATUS_SUCCESS) {
+//                cairo_status_t writeStatus = cairo_surface_write_to_png(pngSurface, filename.c_str());
+//                if (writeStatus == CAIRO_STATUS_SUCCESS) {
+//                    std::cout << "SaveRegionAsImage: Saved region as " << filename << std::endl;
+//                    cairo_surface_destroy(pngSurface);
+//                    return true;
+//                } else {
+//                    std::cerr << "SaveRegionAsImage: PNG write failed: "
+//                              << cairo_status_to_string(writeStatus) << std::endl;
+//                }
+//            } else {
+//                std::cerr << "SaveRegionAsImage: Surface creation failed: "
+//                          << cairo_status_to_string(cairo_surface_status(pngSurface)) << std::endl;
+//            }
+//
+//            cairo_surface_destroy(pngSurface);
+//            return false;
+//
+//        } catch (const std::exception& e) {
+//            std::cerr << "SaveRegionAsImage: Exception: " << e.what() << std::endl;
+//            return false;
+//        }
+//  }
 } // namespace UltraCanvas

@@ -210,7 +210,7 @@ namespace UltraCanvas {
                     if (window && window->IsVisible() && window->NeedsRedraw()) {
                         window->Render();
                         window->SwapBuffers();
-                        window->SetNeedsRedraw(false);  // ← Clear after rendering
+                        window->RequestRedraw(false);  // ← Clear after rendering
                     }
                 }
                 // Frame rate control

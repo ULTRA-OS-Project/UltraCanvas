@@ -328,7 +328,7 @@ namespace UltraCanvas {
         return y;
     }
 
-    bool UltraCanvasMenu::Contains(float x, float y) const {
+    bool UltraCanvasMenu::Contains(float x, float y) {
         // For main menu, always check bounds
         if (menuType == MenuType::MainMenu) {
             return x >= GetX() && x < GetX() + GetWidth() &&
