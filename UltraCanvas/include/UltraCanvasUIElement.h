@@ -304,6 +304,7 @@ namespace UltraCanvas {
         void RemoveThisPopupElementFromWindow();
 
         void RequestRedraw();
+        void RequestFullRedraw();
 
         // ===== CORE VIRTUAL METHODS =====
         IRenderContext* GetRenderContext() const;

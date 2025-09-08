@@ -41,19 +41,20 @@ namespace UltraCanvas {
             UpdateScrollAnimation();
         }
 
+        if (style.backgroundColor.a > 0) {
+            ctx->SetFillColor(style.backgroundColor);
+            ctx->FillRectangle(bounds);
+        }
+
+        // Render border
+        if (style.borderWidth > 0) {
+            ctx->SetStrokeColor(style.borderColor);
+            ctx->SetStrokeWidth(style.borderWidth);
+            ctx->DrawRectangle(bounds);
+        }
+
         if (!window->IsSelectiveRenderingActive()) {
             // Render container background
-            if (style.backgroundColor.a > 0) {
-                ctx->SetFillColor(style.backgroundColor);
-                ctx->FillRectangle(bounds);
-            }
-
-            // Render border
-            if (style.borderWidth > 0) {
-                ctx->SetStrokeColor(style.borderColor);
-                ctx->SetStrokeWidth(style.borderWidth);
-                ctx->DrawRectangle(bounds);
-            }
             ctx->PushState();
             ctx->IntersectClipRect(contentArea);
 
@@ -365,7 +366,7 @@ namespace UltraCanvas {
 
     void UltraCanvasContainer::OnScrollChanged() {
         UpdateScrollbarPositions();
-        RequestRedraw();
+        RequestFullRedraw();
 
         if (onScrollChanged) {
             onScrollChanged(scrollState.horizontalPosition, scrollState.verticalPosition);

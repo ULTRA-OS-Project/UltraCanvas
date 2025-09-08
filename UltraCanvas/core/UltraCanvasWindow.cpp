@@ -275,7 +275,7 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseWindow::Render() {
         if (!_visible || !_created) return;
-        if (0 || useSelectiveRendering && selectiveRenderer) {
+        if (useSelectiveRendering && selectiveRenderer) {
             // Use simple selective rendering
             selectiveRenderer->RenderFrame();
             // Only clear needs redraw if no dirty regions remain
@@ -294,7 +294,7 @@ namespace UltraCanvas {
             // Render window-specific overlays
             RenderWindowChrome();
 
-            useSelectiveRendering = false;
+            useSelectiveRendering = true;
         }
     }
 

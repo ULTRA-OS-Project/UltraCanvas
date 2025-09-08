@@ -101,9 +101,11 @@ namespace UltraCanvas {
 
         // Apply container hierarchy transformations
         renderContext->PushState();
-
+        int shiftX = element->GetXInWindow() - element->GetX();
+        int shiftY = element->GetYInWindow() - element->GetY();
+        renderContext->Translate(shiftX, shiftY);
         // Apply all parent container transformations
-        ApplyContainerTransformations(element);
+        //ApplyContainerTransformations(element);
 
         // Now render the element at its local coordinates
         element->Render();
