@@ -67,7 +67,7 @@ namespace UltraCanvas {
         virtual void Restore() override;
         virtual void SetFullscreen(bool fullscreen) override;
         virtual void Render() override;
-        virtual void SwapBuffers() override;
+        virtual void Flush() override;
         virtual unsigned long GetNativeHandle() const override;
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }
 //        virtual void ProcessEvents() override;
@@ -91,7 +91,7 @@ namespace UltraCanvas {
         bool CreateXWindow();
         bool CreateCairoSurface();
         void DestroyCairoSurface();
-        void UpdateCairoSurface();
+        void UpdateCairoSurface(int w, int h);
         void SetWindowHints();
 //        void SetWindowDecorations();
 
@@ -100,6 +100,8 @@ namespace UltraCanvas {
 //        void ApplyWindowState();
 //        void SaveWindowGeometry();
 //        void RestoreWindowGeometry();
+    protected:
+        void HandleResizeEvent(int w, int h) override;
     };
 
 } // namespace UltraCanvas

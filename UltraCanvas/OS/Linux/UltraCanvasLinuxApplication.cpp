@@ -209,7 +209,7 @@ namespace UltraCanvas {
                 for (auto& window : windows) {
                     if (window && window->IsVisible() && window->NeedsRedraw()) {
                         window->Render();
-                        window->SwapBuffers();
+                        window->Flush();
                         window->RequestRedraw(false);  // ← Clear after rendering
                     }
                 }

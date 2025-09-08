@@ -171,6 +171,34 @@ class UltraCanvasBaseWindow;
         virtual std::vector<uint32_t> ToTraditionalBuffer() = 0;
     };
 
+    // ===== DOUBLE BUFFER INTERFACE =====
+    class IDoubleBuffer {
+    public:
+        virtual ~IDoubleBuffer() = default;
+
+        // Initialize double buffer with window surface
+        virtual bool Initialize(int width, int height, void* windowSurface) = 0;
+
+        // Resize buffer when window resizes
+        virtual bool Resize(int newWidth, int newHeight) = 0;
+
+        // Get staging surface for rendering
+        virtual void* GetStagingSurface() = 0;
+
+        // Copy staging surface to window surface
+        virtual void SwapBuffers() = 0;
+
+        // Clean up resources
+        virtual void Cleanup() = 0;
+
+        // Get buffer dimensions
+        virtual int GetWidth() const = 0;
+        virtual int GetHeight() const = 0;
+
+        // Check if buffer is valid
+        virtual bool IsValid() const = 0;
+    };
+
 // ===== UNIFIED RENDERING INTERFACE =====
     class IRenderContext {
     public:

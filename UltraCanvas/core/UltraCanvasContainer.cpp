@@ -53,7 +53,7 @@ namespace UltraCanvas {
             ctx->DrawRectangle(bounds);
         }
 
-        if (!window->IsSelectiveRenderingActive()) {
+//        if (!window->IsSelectiveRenderingActive()) {
             // Render container background
             ctx->PushState();
             ctx->IntersectClipRect(contentArea);
@@ -75,7 +75,7 @@ namespace UltraCanvas {
             }
             // Remove content clipping
             ctx->PopState();
-        }
+//        }
 
         if (scrollState.showVerticalScrollbar || scrollState.showHorizontalScrollbar) {
             ctx->PushState();
@@ -366,7 +366,7 @@ namespace UltraCanvas {
 
     void UltraCanvasContainer::OnScrollChanged() {
         UpdateScrollbarPositions();
-        RequestFullRedraw();
+        RequestRedraw();
 
         if (onScrollChanged) {
             onScrollChanged(scrollState.horizontalPosition, scrollState.verticalPosition);

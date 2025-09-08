@@ -48,7 +48,7 @@ namespace UltraCanvas {
         }
 
         try {
-            renderContext = std::make_unique<LinuxRenderContext>(cairoContext);
+            renderContext = std::make_unique<LinuxRenderContext>(cairoContext, cairoSurface, config_.width, config_.height, true);
             std::cout << "UltraCanvas Linux: Render context created successfully" << std::endl;
         } catch (const std::exception& e) {
             std::cerr << "UltraCanvas Linux: Failed to create render context: " << e.what() << std::endl;
@@ -246,7 +246,7 @@ namespace UltraCanvas {
         if (_created) {
             auto application = UltraCanvasApplication::GetInstance();
             XResizeWindow(application->GetDisplay(), xWindow, width, height);
-            UpdateCairoSurface();
+            UpdateCairoSurface(width, height);
         }
         UltraCanvasBaseWindow::SetSize(width, height);
     }
@@ -443,18 +443,25 @@ namespace UltraCanvas {
         XSetWMNormalHints(display, xWindow, &hints);
     }
 
-    void UltraCanvasLinuxWindow::UpdateCairoSurface() {
+    void UltraCanvasLinuxWindow::UpdateCairoSurface(int w, int h) {
         std::lock_guard<std::mutex> lock(cairoMutex);  // Add this
         if (cairoSurface) {
-            cairo_xlib_surface_set_size(cairoSurface, config_.width, config_.height);
+            cairo_xlib_surface_set_size(cairoSurface, w, h);
         }
 
-        // Reset state without invalidating context
         if (renderContext) {
-            renderContext->ResetState();
+            renderContext->OnWindowResize(w, h);
         }
 
         std::cout << "UltraCanvas Linux: Cairo surface updated successfully" << std::endl;
+    }
+
+    void UltraCanvasLinuxWindow::HandleResizeEvent(int w, int h) {
+        if (config_.width != w || config_.height != h) {
+            UpdateCairoSurface(w, h);
+            UltraCanvasBaseWindow::HandleResizeEvent(w, h);
+            Flush();
+        }
     }
 
 // ===== RENDERING =====
@@ -492,19 +499,9 @@ namespace UltraCanvas {
 
     }
 
-    void UltraCanvasLinuxWindow::SwapBuffers() {
-        if (cairoSurface) {
-            auto application = UltraCanvasApplication::GetInstance();
-            // Validate surface before flushing
-//            cairo_status_t status = cairo_surface_status(cairoSurface);
-//            if (status == CAIRO_STATUS_SUCCESS) {
-            cairo_surface_flush(cairoSurface);
-            XFlush(application->GetDisplay());
-//            } else {
-//                std::cerr << "UltraCanvas Linux: Cannot flush invalid Cairo surface: "
-//                          << cairo_status_to_string(status) << std::endl;
-//            }
-        }
+    void UltraCanvasLinuxWindow::Flush() {
+        renderContext->Flush();
+//            XFlush(application->GetDisplay());
     }
 
 // ===== EVENT HANDLING =====

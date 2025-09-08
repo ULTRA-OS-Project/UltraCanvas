@@ -61,8 +61,8 @@ namespace UltraCanvas {
 // ===== ENHANCED BASE WINDOW (INHERITS FROM CONTAINER) =====
     class UltraCanvasBaseWindow : public UltraCanvasContainer {
     protected:
-        std::unique_ptr<UltraCanvasSelectiveRenderer> selectiveRenderer = nullptr;
-        bool useSelectiveRendering = false;
+//        std::unique_ptr<UltraCanvasSelectiveRenderer> selectiveRenderer = nullptr;
+//        bool useSelectiveRendering = false;
 
         WindowConfig config_;
         WindowState _state = WindowState::Normal;
@@ -133,7 +133,7 @@ namespace UltraCanvas {
 
         // Platform-specific
         virtual unsigned long GetNativeHandle() const = 0;
-        virtual void SwapBuffers() = 0;
+        virtual void Flush() = 0;
 
         void AddPopupElement(UltraCanvasElement* element);
 
@@ -182,9 +182,9 @@ namespace UltraCanvas {
 
         bool NeedsRedraw() const { return _needsRedraw; }
         void RequestRedraw(bool val) { _needsRedraw = val; }
-        void RequestFullRedraw() { useSelectiveRendering = false; _needsRedraw = true; }
+//        void RequestFullRedraw() { useSelectiveRendering = false; _needsRedraw = true; }
         void MarkElementDirty(UltraCanvasElement* element, bool isOverlay = false);
-        bool IsSelectiveRenderingActive();
+//        bool IsSelectiveRenderingActive();
         virtual IRenderContext* GetRenderContext() const = 0;
 
         // ===== ENHANCED WINDOW CALLBACKS =====
@@ -220,58 +220,58 @@ namespace UltraCanvas {
         std::string GetElementTypeName(UltraCanvasElement* element);
 
     protected:
-        bool HandleWindowEvent(const UCEvent &event);
-        void HandleCloseEvent();
-        void HandleResizeEvent(int width, int height);
-        void HandleMoveEvent(int x, int y);
-        void HandleFocusEvent(bool focused);
+        virtual bool HandleWindowEvent(const UCEvent &event);
+        virtual void HandleCloseEvent();
+        virtual void HandleResizeEvent(int width, int height);
+        virtual void HandleMoveEvent(int x, int y);
+        virtual void HandleFocusEvent(bool focused);
 
         // ===== PROTECTED HELPER METHODS =====
-        void UpdateWindowSize(int width, int height) {
-            config_.width = width;
-            config_.height = height;
-            SetSize(width, height); // Update container size
+//        void UpdateWindowSize(int width, int height) {
+//            config_.width = width;
+//            config_.height = height;
+//            SetSize(width, height); // Update container size
+//
+//            if (onWindowResize) {
+//                onWindowResize(width, height);
+//            }
+//
+//            _needsRedraw = true;
+//        }
+//
+//        void UpdateWindowPosition(int x, int y) {
+//            config_.x = x;
+//            config_.y = y;
+//            SetPosition(x, y);
+//
+//            if (onWindowMove) {
+//                onWindowMove(x, y);
+//            }
+//        }
 
-            if (onWindowResize) {
-                onWindowResize(width, height);
-            }
-
-            _needsRedraw = true;
-        }
-
-        void UpdateWindowPosition(int x, int y) {
-            config_.x = x;
-            config_.y = y;
-            SetPosition(x, y);
-
-            if (onWindowMove) {
-                onWindowMove(x, y);
-            }
-        }
-
-        void SetWindowState(WindowState newState) {
-            if (_state != newState) {
-                WindowState oldState = _state;
-                _state = newState;
-
-                // Trigger appropriate callbacks
-                switch (newState) {
-                    case WindowState::Minimized:
-                        if (onWindowMinimize) onWindowMinimize();
-                        break;
-                    case WindowState::Maximized:
-                        if (onWindowMaximize) onWindowMaximize();
-                        break;
-                    case WindowState::Normal:
-                        if (oldState == WindowState::Minimized || oldState == WindowState::Maximized) {
-                            if (onWindowRestore) onWindowRestore();
-                        }
-                        break;
-                    default:
-                        break;
-                }
-            }
-        }
+//        void SetWindowState(WindowState newState) {
+//            if (_state != newState) {
+//                WindowState oldState = _state;
+//                _state = newState;
+//
+//                // Trigger appropriate callbacks
+//                switch (newState) {
+//                    case WindowState::Minimized:
+//                        if (onWindowMinimize) onWindowMinimize();
+//                        break;
+//                    case WindowState::Maximized:
+//                        if (onWindowMaximize) onWindowMaximize();
+//                        break;
+//                    case WindowState::Normal:
+//                        if (oldState == WindowState::Minimized || oldState == WindowState::Maximized) {
+//                            if (onWindowRestore) onWindowRestore();
+//                        }
+//                        break;
+//                    default:
+//                        break;
+//                }
+//            }
+//        }
 
         virtual void RenderWindowBackground() {
             // Default implementation - clear to background color

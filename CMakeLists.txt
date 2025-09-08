@@ -102,14 +102,16 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasElementDebug.cpp
         UltraCanvas/core/UltraCanvasContainer.cpp
         UltraCanvas/core/UltraCanvasTextArea.cpp
-        UltraCanvas/core/UltraCanvasSelectiveRenderer.cpp
+#        UltraCanvas/core/UltraCanvasSelectiveRenderer.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxApplication.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxWindow.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxClipboard.cpp
+        UltraCanvas/OS/Linux/UltraCanvasLinuxDoubleBuffer.cpp
     # Add Windows/Mac sources as needed
+#        UltraCanvas/OS/MSWindows/UltraCanvasWindowsDoubleBuffer.cpp
 )
 
 # ✅ FIXED: Corrected source file extension and added missing files

@@ -37,6 +37,43 @@
 #include <condition_variable>
 
 namespace UltraCanvas {
+
+        class LinuxCairoDoubleBuffer : public IDoubleBuffer {
+        private:
+            mutable std::mutex bufferMutex;
+
+            // Window surface (target)
+            cairo_surface_t* windowSurface;
+            cairo_t* windowContext;
+
+            // Staging surface (back buffer)
+            cairo_surface_t* stagingSurface;
+            cairo_t* stagingContext;
+
+            int bufferWidth;
+            int bufferHeight;
+            bool isValid;
+
+        public:
+            LinuxCairoDoubleBuffer();
+            virtual ~LinuxCairoDoubleBuffer();
+
+            bool Initialize(int width, int height, void* windowSurface) override;
+            bool Resize(int newWidth, int newHeight) override;
+            void* GetStagingSurface() override { return stagingContext; }
+            void SwapBuffers() override;
+            void Cleanup() override;
+
+            int GetWidth() const override { return bufferWidth; }
+            int GetHeight() const override { return bufferHeight; }
+            bool IsValid() const override { return isValid; }
+
+        private:
+            bool CreateStagingSurface();
+            void DestroyStagingSurface();
+        };
+
+
 // ===== LINUX RENDER CONTEXT =====
     struct XImageBuffer {
         XImage* ximage;
@@ -205,6 +242,14 @@ namespace UltraCanvas {
         std::vector<RenderState> stateStack;
         RenderState currentState;
 
+        // double-buffer
+        LinuxCairoDoubleBuffer doubleBuffer;
+        // Original window surface references
+        cairo_surface_t* originalWindowSurface;
+        cairo_t* originalWindowContext;
+
+        bool doubleBufferingEnabled = false;
+
         // Internal helper methods
         void ApplyDrawingStyle(const DrawingStyle &style);
 
@@ -218,7 +263,7 @@ namespace UltraCanvas {
 
         // Add a flag to track if we're being destroyed
         bool destroying = false;
-        bool contextValid;
+        bool enableDoubleBuffering = false;
 
         bool SaveXlibSurface(cairo_surface_t *surface, const Rect2Di &region,
                              X11PixelBuffer &buffer);
@@ -233,7 +278,7 @@ namespace UltraCanvas {
                                  X11PixelBuffer &buffer);
 
     public:
-        LinuxRenderContext(cairo_t *cairoContext);
+        LinuxRenderContext(cairo_t *cairoContext, cairo_surface_t *cairo_surface, int width, int height, bool enableDoubleBuffering);
 
         virtual ~LinuxRenderContext();
 
@@ -308,11 +353,7 @@ namespace UltraCanvas {
         size_t GetImageCacheMemoryUsage();
 
         // ===== CONTEXT MANAGEMENT =====
-        void InvalidateContext();
-
         void UpdateContext(cairo_t *newCairoContext);
-
-        bool ValidateContext() const;
 
         // Pixel operations
 //        virtual void SetPixel(const Point2Di &point, const Color &color) override;
@@ -341,6 +382,20 @@ namespace UltraCanvas {
 
         bool RestorePixelRegion(const Rect2Di &region, IPixelBuffer *buf) override;
 //        bool SaveRegionAsImage(const Rect2Di& region, const std::string& filename) override;
+
+
+        // ===== DOUBLE BUFFERING CONTROL =====
+    public:
+        // Enable double buffering for this render context
+        bool EnableDoubleBuffering(int width, int height);
+        void DisableDoubleBuffering();
+        // Handle window resize - automatically resizes buffer if enabled
+        void OnWindowResize(int newWidth, int newHeight);
+
+    private:
+        // Internal helper methods
+        void SwitchToStagingSurface();
+        void SwitchToWindowSurface();
     };
 
     // ===== CAIRO FILTER CONSTANTS =====

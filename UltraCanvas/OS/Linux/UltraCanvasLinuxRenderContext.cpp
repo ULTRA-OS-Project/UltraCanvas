@@ -11,11 +11,14 @@
 #include <sstream>
 #include <algorithm>
 #include <iostream>
+#include <stdexcept>
 
 namespace UltraCanvas {
 
-    LinuxRenderContext::LinuxRenderContext(cairo_t *cairoContext)
-            : cairo(cairoContext), pangoContext(nullptr), fontMap(nullptr), destroying(false), contextValid(false) {
+
+    LinuxRenderContext::LinuxRenderContext(cairo_t *cairoContext, cairo_surface_t *cairo_surface, int width, int height, bool enableDoubleBuffering)
+        : originalWindowSurface(cairo_surface),
+        originalWindowContext(cairoContext), cairo(cairoContext), pangoContext(nullptr), fontMap(nullptr), destroying(false) {
 
         std::cout << "LinuxRenderContext: Initializing with cairo context: " << cairoContext << std::endl;
 
@@ -73,9 +76,11 @@ namespace UltraCanvas {
             throw;
         }
 
+        if (enableDoubleBuffering) {
+            EnableDoubleBuffering(width, height);
+        }
         // Initialize default state
         ResetState();
-        contextValid = true;
         std::cout << "LinuxRenderContext: Initialization complete" << std::endl;
     }
 
@@ -97,6 +102,8 @@ namespace UltraCanvas {
             g_object_unref(pangoContext);
             pangoContext = nullptr;
         }
+
+        doubleBuffer.Cleanup();
 
         // Null the cairo pointer to prevent any accidental access
         // Note: We don't own the cairo context, so don't destroy it
@@ -132,34 +139,29 @@ namespace UltraCanvas {
 
 // ===== TRANSFORMATION =====
     void LinuxRenderContext::Translate(float x, float y) {
-        if (!cairo) return;
         cairo_translate(cairo, x, y);
         currentState.translation.x += x;
         currentState.translation.y += y;
     }
 
     void LinuxRenderContext::Rotate(float angle) {
-        if (!cairo) return;
         cairo_rotate(cairo, angle);
         currentState.rotation += angle;
     }
 
     void LinuxRenderContext::Scale(float sx, float sy) {
-        if (!cairo) return;
         cairo_scale(cairo, sx, sy);
         currentState.scale.x *= sx;
         currentState.scale.y *= sy;
     }
 
     void LinuxRenderContext::SetTransform(float a, float b, float c, float d, float e, float f) {
-        if (!cairo) return;
         cairo_matrix_t matrix;
         cairo_matrix_init(&matrix, a, b, c, d, e, f);
         cairo_set_matrix(cairo, &matrix);
     }
 
     void LinuxRenderContext::ResetTransform() {
-        if (!cairo) return;
         cairo_identity_matrix(cairo);
         currentState.translation = Point2Df(0, 0);
         currentState.rotation = 0;
@@ -168,11 +170,6 @@ namespace UltraCanvas {
 
 // ===== CLIPPING =====
     void LinuxRenderContext::SetClipRect(float x, float y, float w, float h) {
-        if (!cairo) {
-            std::cout << "LinuxRenderContext::SetClipRect - no cairo context!" << std::endl;
-            return;
-        }
-
         std::cout << "LinuxRenderContext::SetClipRect - setting clip to "
                   << x << "," << y << " " << w << "x" << h << std::endl;
 
@@ -187,21 +184,15 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::ClearClipRect() {
-        if (!cairo) {
-            std::cout << "LinuxRenderContext::ClearClipRect - no cairo context!" << std::endl;
-            return;
-        }
-
-        std::cout << "LinuxRenderContext::ClearClipRect - clearing clip region" << std::endl;
+//        std::cout << "LinuxRenderContext::ClearClipRect - clearing clip region" << std::endl;
 
         // Reset the clip region to cover the entire surface
         cairo_reset_clip(cairo);
 
-        std::cout << "LinuxRenderContext::ClearClipRect - clip region cleared successfully" << std::endl;
+//        std::cout << "LinuxRenderContext::ClearClipRect - clip region cleared successfully" << std::endl;
     }
 
     void LinuxRenderContext::IntersectClipRect(float x, float y, float w, float h) {
-        if (!cairo) return;
         cairo_rectangle(cairo, x, y, w, h);
         cairo_clip(cairo);
         currentState.clipRect = Rect2Df(x, y, w, h);
@@ -236,13 +227,7 @@ namespace UltraCanvas {
 
 // ===== BASIC DRAWING =====
     void LinuxRenderContext::FillRectangle(float x, float y, float w, float h) {
-        if (!cairo) return;
-        if (!ValidateContext()) {
-            std::cerr << "LinuxRenderContext::FillRectangle: Invalid Cairo context" << std::endl;
-            return;
-        }
-
-        std::cout << "LinuxRenderContext::FillRectangle this=" << this << " cairo=" << cairo << std::endl;
+//        std::cout << "LinuxRenderContext::FillRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply fill style explicitly ***
         ApplyFillStyle(currentState.style);
@@ -250,17 +235,11 @@ namespace UltraCanvas {
         cairo_rectangle(cairo, x, y, w, h);
         cairo_fill(cairo);
 
-        std::cout << "LinuxRenderContext::FillRectangle: Complete" << std::endl;
+//        std::cout << "LinuxRenderContext::FillRectangle: Complete" << std::endl;
     }
 
     void LinuxRenderContext::DrawRectangle(float x, float y, float w, float h) {
-        if (!cairo) return;
-        if (!ValidateContext()) {
-            std::cerr << "LinuxRenderContext::DrawRectangle: Invalid Cairo context" << std::endl;
-            return;
-        }
-
-        std::cout << "LinuxRenderContext::DrawRectangle this=" << this << " cairo=" << cairo << std::endl;
+//        std::cout << "LinuxRenderContext::DrawRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply stroke style explicitly ***
         ApplyStrokeStyle(currentState.style);
@@ -268,13 +247,11 @@ namespace UltraCanvas {
         cairo_rectangle(cairo, x, y, w, h);
         cairo_stroke(cairo);
 
-        std::cout << "LinuxRenderContext::DrawRectangle: Complete" << std::endl;
+//        std::cout << "LinuxRenderContext::DrawRectangle: Complete" << std::endl;
     }
 
     void LinuxRenderContext::FillRoundedRectangle(float x, float y, float w, float h, float radius) {
-        if (!cairo) return;
-
-        std::cout << "LinuxRenderContext::FillRoundedRectangle" << std::endl;
+//        std::cout << "LinuxRenderContext::FillRoundedRectangle" << std::endl;
 
         // *** Apply fill style ***
         ApplyFillStyle(currentState.style);
@@ -291,9 +268,7 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::DrawRoundedRectangle(float x, float y, float w, float h, float radius) {
-        if (!cairo) return;
-
-        std::cout << "LinuxRenderContext::DrawRoundedRectangle" << std::endl;
+//        std::cout << "LinuxRenderContext::DrawRoundedRectangle" << std::endl;
 
         // *** Apply stroke style ***
         ApplyStrokeStyle(currentState.style);
@@ -310,9 +285,7 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::FillCircle(float x, float y, float radius) {
-        if (!cairo) return;
-
-        std::cout << "LinuxRenderContext::FillCircle" << std::endl;
+//        std::cout << "LinuxRenderContext::FillCircle" << std::endl;
 
         // *** Apply fill style ***
         ApplyFillStyle(currentState.style);
@@ -322,9 +295,7 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::DrawCircle(float x, float y, float radius) {
-        if (!cairo) return;
-
-        std::cout << "LinuxRenderContext::DrawCircle" << std::endl;
+//        std::cout << "LinuxRenderContext::DrawCircle" << std::endl;
 
         // *** Apply stroke style ***
         ApplyStrokeStyle(currentState.style);
@@ -334,8 +305,6 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::DrawLine(float start_x, float start_y, float end_x, float end_y) {
-        if (!cairo) return;
-
 //        std::cout << "LinuxRenderContext::DrawLine" << std::endl;
 
         // *** Apply stroke style ***
@@ -349,23 +318,8 @@ namespace UltraCanvas {
 // ===== TEXT RENDERING (FIXED) =====
     void LinuxRenderContext::DrawText(const std::string &text, float x, float y) {
         // Comprehensive null checks
-        if (!cairo) {
-            std::cerr << "ERROR: DrawText called with null Cairo context" << std::endl;
-            return;
-        }
-
-        if (!pangoContext) {
-            std::cerr << "ERROR: DrawText called with null Pango context" << std::endl;
-            return;
-        }
-
         if (text.empty()) {
             return; // Nothing to draw
-        }
-
-        if (!ValidateContext()) {
-            std::cerr << "LinuxRenderContext::FillRectangle: Invalid Cairo context" << std::endl;
-            return;
         }
 
         try {
@@ -396,7 +350,7 @@ namespace UltraCanvas {
             pango_font_description_free(desc);
             g_object_unref(layout);
 
-            std::cout << "DrawText: Completed successfully" << std::endl;
+//            std::cout << "DrawText: Completed successfully" << std::endl;
 
         } catch (const std::exception &e) {
             std::cerr << "ERROR: Exception in DrawText: " << e.what() << std::endl;
@@ -406,12 +360,7 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::DrawTextInRect(const std::string &text, float x, float y, float w, float h) {
-        if (!cairo || !pangoContext || text.empty()) return;
-
-        if (!ValidateContext()) {
-            std::cerr << "LinuxRenderContext::FillRectangle: Invalid Cairo context" << std::endl;
-            return;
-        }
+        if (text.empty()) return;
 
         try {
             ApplyTextStyle(currentState.textStyle);
@@ -501,7 +450,6 @@ namespace UltraCanvas {
 
 // ===== UTILITY FUNCTIONS =====
     void LinuxRenderContext::Clear(const Color &color) {
-        if (!cairo) return;
         cairo_save(cairo);
         cairo_set_operator(cairo, CAIRO_OPERATOR_SOURCE);
         SetCairoColor(color);
@@ -510,8 +458,11 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::Flush() {
-        if (!cairo) return;
         cairo_surface_flush(cairo_get_target(cairo));
+        if (doubleBufferingEnabled && doubleBuffer.IsValid()) {
+            std::cout << "Flush: Swapping double buffer" << std::endl;
+            doubleBuffer.SwapBuffers();
+        }
     }
 
     void *LinuxRenderContext::GetNativeContext() {
@@ -520,8 +471,6 @@ namespace UltraCanvas {
 
 // ===== INTERNAL HELPER METHODS (FIXED) =====
     void LinuxRenderContext::ApplyDrawingStyle(const DrawingStyle &style) {
-        if (!cairo) return;
-
 //        std::cout << "LinuxRenderContext::ApplyDrawingStyle - hasStroke=" << (style.hasStroke ? "true" : "false")
 //                  << " fillMode=" << (int)style.fillMode << std::endl;
 
@@ -573,13 +522,10 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::ApplyTextStyle(const TextStyle &style) {
-        if (!cairo) return;
         SetCairoColor(style.textColor);
     }
 
     void LinuxRenderContext::ApplyFillStyle(const DrawingStyle &style) {
-        if (!cairo) return;
-
 //        std::cout << "ApplyFillStyle: Setting fill color=(" << (int)style.fillColor.r
 //                  << "," << (int)style.fillColor.g << "," << (int)style.fillColor.b
 //                  << "," << (int)style.fillColor.a << ")" << std::endl;
@@ -612,11 +558,9 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::ApplyStrokeStyle(const DrawingStyle &style) {
-        if (!cairo) return;
-
-        std::cout << "ApplyStrokeStyle: Setting stroke color=(" << (int) style.strokeColor.r
-                  << "," << (int) style.strokeColor.g << "," << (int) style.strokeColor.b
-                  << "," << (int) style.strokeColor.a << ")" << std::endl;
+//        std::cout << "ApplyStrokeStyle: Setting stroke color=(" << (int) style.strokeColor.r
+//                  << "," << (int) style.strokeColor.g << "," << (int) style.strokeColor.b
+//                  << "," << (int) style.strokeColor.a << ")" << std::endl;
 
         // Set stroke properties (in case they weren't set by ApplyDrawingStyle)
         cairo_set_line_width(cairo, style.strokeWidth);
@@ -624,7 +568,7 @@ namespace UltraCanvas {
         // Set stroke color
         SetCairoColor(style.strokeColor);
 
-        std::cout << "ApplyStrokeStyle: Complete" << std::endl;
+//        std::cout << "ApplyStrokeStyle: Complete" << std::endl;
     }
 
     PangoFontDescription *LinuxRenderContext::CreatePangoFont(const TextStyle &style) {
@@ -685,16 +629,14 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::SetCairoColor(const Color &color) {
-        if (!cairo) return;
-
         try {
             cairo_set_source_rgba(cairo,
                                   color.r / 255.0f,
                                   color.g / 255.0f,
                                   color.b / 255.0f,
                                   color.a / 255.0f * currentState.globalAlpha);
-            std::cout << "LinuxRenderContext::SetCairoColor r=" << (int) color.r << " g=" << (int) color.g << " b="
-                      << (int) color.b << std::endl;
+//            std::cout << "LinuxRenderContext::SetCairoColor r=" << (int) color.r << " g=" << (int) color.g << " b="
+//                      << (int) color.b << std::endl;
         } catch (...) {
             std::cerr << "ERROR: Exception in SetCairoColor" << std::endl;
         }
@@ -702,9 +644,7 @@ namespace UltraCanvas {
 
 
     void LinuxRenderContext::FillEllipse(float x, float y, float w, float h) {
-        if (!cairo) return;
-
-        std::cout << "LinuxRenderContext::FillEllipse" << std::endl;
+//        std::cout << "LinuxRenderContext::FillEllipse" << std::endl;
 
         // *** Apply fill style ***
         ApplyFillStyle(currentState.style);
@@ -718,9 +658,7 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::DrawEllipse(float x, float y, float w, float h) {
-        if (!cairo) return;
-
-        std::cout << "LinuxRenderContext::DrawEllipse" << std::endl;
+//        std::cout << "LinuxRenderContext::DrawEllipse" << std::endl;
 
         // *** Apply stroke style ***
         ApplyStrokeStyle(currentState.style);
@@ -734,7 +672,7 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::FillPath(const std::vector<Point2Df> &points) {
-        if (!cairo || points.empty()) return;
+        if (points.empty()) return;
 
         std::cout << "LinuxRenderContext::FillPath" << std::endl;
 
@@ -750,7 +688,7 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::DrawPath(const std::vector<Point2Df> &points, bool closePath) {
-        if (!cairo || points.empty()) return;
+        if (points.empty()) return;
 
         std::cout << "LinuxRenderContext::DrawPath" << std::endl;
 
@@ -771,14 +709,12 @@ namespace UltraCanvas {
 
 
     void LinuxRenderContext::DrawArc(float x, float y, float radius, float startAngle, float endAngle) {
-        if (!cairo) return;
         ApplyStrokeStyle(currentState.style);
         cairo_arc(cairo, x, y, radius, startAngle, endAngle);
         cairo_stroke(cairo);
     }
 
     void LinuxRenderContext::FillArc(float x, float y, float radius, float startAngle, float endAngle) {
-        if (!cairo) return;
         ApplyFillStyle(currentState.style);
         cairo_move_to(cairo, x, y);
         cairo_arc(cairo, x, y, radius, startAngle, endAngle);
@@ -788,7 +724,6 @@ namespace UltraCanvas {
 
     void LinuxRenderContext::DrawBezier(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2,
                                         const Point2Df &end) {
-        if (!cairo) return;
         ApplyStrokeStyle(currentState.style);
         cairo_move_to(cairo, start.x, start.y);
         cairo_curve_to(cairo, cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y);
@@ -799,7 +734,7 @@ namespace UltraCanvas {
     // ===== IMAGE RENDERING IMPLEMENTATION =====
 
     void LinuxRenderContext::DrawImage(const std::string &imagePath, float x, float y) {
-        if (!cairo || imagePath.empty()) {
+        if (imagePath.empty()) {
             std::cerr << "LinuxRenderContext::DrawImage: Invalid parameters" << std::endl;
             return;
         }
@@ -839,7 +774,7 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::DrawImage(const std::string &imagePath, float x, float y, float w, float h) {
-        if (!cairo || imagePath.empty()) {
+        if (imagePath.empty()) {
             std::cerr << "LinuxRenderContext::DrawImage: Invalid parameters" << std::endl;
             return;
         }
@@ -890,7 +825,7 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::DrawImage(const std::string &imagePath, const Rect2Df &srcRect, const Rect2Df &destRect) {
-        if (!cairo || imagePath.empty()) {
+        if (imagePath.empty()) {
             std::cerr << "LinuxRenderContext::DrawImage: Invalid parameters" << std::endl;
             return;
         }
@@ -985,7 +920,7 @@ namespace UltraCanvas {
 
     void LinuxRenderContext::DrawImageWithFilter(const std::string &imagePath, float x, float y, float w, float h,
                                                  cairo_filter_t filter) {
-        if (!cairo || imagePath.empty()) return;
+        if (imagePath.empty()) return;
 
         try {
             ImageLoadResult result = LinuxImageLoader::LoadImage(imagePath);
@@ -1026,7 +961,7 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::DrawImageTiled(const std::string &imagePath, float x, float y, float w, float h) {
-        if (!cairo || imagePath.empty()) return;
+        if (imagePath.empty()) return;
 
         try {
             ImageLoadResult result = LinuxImageLoader::LoadImage(imagePath);
@@ -1070,31 +1005,6 @@ namespace UltraCanvas {
         return LinuxImageLoader::GetCacheMemoryUsage();
     }
 
-    void LinuxRenderContext::InvalidateContext() {
-        std::cout << "LinuxRenderContext: Invalidating Cairo context..." << std::endl;
-
-        // Clear any pending cairo operations ONLY if context is still valid
-        if (cairo) {
-            cairo_status_t status = cairo_status(cairo);
-            if (status == CAIRO_STATUS_SUCCESS) {
-                try {
-                    cairo_surface_flush(cairo_get_target(cairo));
-                } catch (...) {
-                    std::cout << "LinuxRenderContext: Exception during surface flush, ignoring..." << std::endl;
-                }
-            } else {
-                std::cout << "LinuxRenderContext: Cairo context already invalid ("
-                          << cairo_status_to_string(status) << "), skipping flush" << std::endl;
-            }
-        }
-
-        // Clear the state stack to prevent any pending cairo operations
-        stateStack.clear();
-
-        // Mark context as invalid but don't destroy it (window will handle that)
-        contextValid = false;
-    }
-
     void LinuxRenderContext::UpdateContext(cairo_t *newCairoContext) {
         std::cout << "LinuxRenderContext: Updating Cairo context..." << std::endl;
 
@@ -1102,18 +1012,16 @@ namespace UltraCanvas {
             std::cerr << "ERROR: LinuxRenderContext: New Cairo context is null!" << std::endl;
             return;
         }
-
-        // Update the cairo pointer
-        cairo = newCairoContext;
-
-        // Check new context status
-        cairo_status_t status = cairo_status(cairo);
+        cairo_status_t status = cairo_status(newCairoContext);
         if (status != CAIRO_STATUS_SUCCESS) {
             std::cerr << "ERROR: LinuxRenderContext: New Cairo context is invalid: "
                       << cairo_status_to_string(status) << std::endl;
-            contextValid = false;
+            throw std::runtime_error("LinuxRenderContext: New Cairo context is invalid");
             return;
         }
+
+        // Update the cairo pointer
+        cairo = newCairoContext;
 
         // Re-associate Pango context with new Cairo context
         if (pangoContext) {
@@ -1127,19 +1035,8 @@ namespace UltraCanvas {
 
         // Reset state
         ResetState();
-        contextValid = true;
 
         std::cout << "LinuxRenderContext: Cairo context updated successfully" << std::endl;
-    }
-
-// ===== VALIDATION CHECKS =====
-    bool LinuxRenderContext::ValidateContext() const {
-        if (!contextValid || !cairo) {
-            return false;
-        }
-
-        cairo_status_t status = cairo_status(cairo);
-        return status == CAIRO_STATUS_SUCCESS;
     }
 
     // ===== PRIVATE HELPER METHOD =====
@@ -1157,7 +1054,6 @@ namespace UltraCanvas {
 //    }
 
 //    void LinuxRenderContext::SetPixel(const Point2Di& point, const Color& color) {
-//        if (!cairo) return;
 //        SetCairoColor(color);
 //        cairo_rectangle(cairo, point.x, point.y, 1, 1);
 //        cairo_fill(cairo);
@@ -1170,7 +1066,7 @@ namespace UltraCanvas {
 
     // Add to LinuxRenderContext class:
     IPixelBuffer *LinuxRenderContext::SavePixelRegion(const Rect2Di &region) {
-        if (!cairo || region.width <= 0 || region.height <= 0) {
+        if (region.width <= 0 || region.height <= 0) {
             std::cerr << "SavePixelRegion: Invalid parameters" << std::endl;
             return nullptr;
         }
@@ -1215,7 +1111,7 @@ namespace UltraCanvas {
     }
 
     bool LinuxRenderContext::RestorePixelRegion(const Rect2Di &region, IPixelBuffer *buf) {
-        if (!cairo || region.width <= 0 || region.height <= 0 || !buf->IsValid()) {
+        if (region.width <= 0 || region.height <= 0 || !buf->IsValid()) {
             std::cerr << "RestorePixelRegionZeroCopy: Invalid parameters" << std::endl;
             return false;
         }
@@ -1567,4 +1463,92 @@ namespace UltraCanvas {
 //            return false;
 //        }
 //  }
+
+// ===== DOUBLE BUFFERING CONTROL =====
+
+    bool LinuxRenderContext::EnableDoubleBuffering(int width, int height) {
+        if (doubleBufferingEnabled) {
+            return true;
+        }
+        // Initialize double buffer
+        if (!doubleBuffer.Initialize(width, height, originalWindowSurface)) {
+            std::cerr << "EnableDoubleBuffering: Failed to initialize double buffer" << std::endl;
+            return false;
+        }
+
+        // Switch to staging surface for rendering
+        SwitchToStagingSurface();
+
+        doubleBufferingEnabled = true;
+        std::cout << "EnableDoubleBuffering: Double buffering enabled for " << width << "x" << height << std::endl;
+        return true;
+    }
+
+    void LinuxRenderContext::DisableDoubleBuffering() {
+        if (!doubleBufferingEnabled) {
+            return;
+        }
+
+        // Switch back to original window surface
+        SwitchToWindowSurface();
+
+        // Cleanup double buffer
+        doubleBuffer.Cleanup();
+
+        doubleBufferingEnabled = false;
+        std::cout << "DisableDoubleBuffering: Double buffering disabled" << std::endl;
+    }
+
+    void LinuxRenderContext::OnWindowResize(int newWidth, int newHeight) {
+        if (doubleBufferingEnabled) {
+            std::cout << "OnWindowResize: Resizing double buffer to " << newWidth << "x" << newHeight << std::endl;
+            // Resize the double buffer
+            if (doubleBuffer.Resize(newWidth, newHeight)) {
+                // Switch to new staging surface
+                SwitchToStagingSurface();
+                std::cout << "OnWindowResize: Double buffer resized successfully" << std::endl;
+            } else {
+                std::cerr << "OnWindowResize: Failed to resize double buffer" << std::endl;
+                throw std::runtime_error("OnWindowResize: Failed to resize double buffer");
+            }
+        }
+        ResetState();
+    }
+
+
+    // ===== PRIVATE HELPER METHODS =====
+    void LinuxRenderContext::SwitchToStagingSurface() {
+        if (!doubleBuffer.IsValid()) {
+            std::cerr << "SwitchToStagingSurface: Invalid double buffer" << std::endl;
+            return;
+        }
+
+        // Get staging surface from double buffer
+        cairo_t* stagingContext = static_cast<cairo_t*>(doubleBuffer.GetStagingSurface());
+
+        if (!stagingContext) {
+            std::cerr << "SwitchToStagingSurface: Failed to get staging context" << std::endl;
+            return;
+        }
+
+        // Update the base class to use staging surface
+        // Note: This assumes LinuxRenderContext has a method to update its Cairo context
+        // You may need to modify LinuxRenderContext to support this
+        UpdateContext(stagingContext);
+
+        std::cout << "SwitchToStagingSurface: Switched to staging surface for rendering" << std::endl;
+    }
+
+    void LinuxRenderContext::SwitchToWindowSurface() {
+        if (!originalWindowContext) {
+            std::cerr << "SwitchToWindowSurface: No original context available" << std::endl;
+            return;
+        }
+
+        // Switch back to original window surface
+        UpdateContext(originalWindowContext);
+
+        std::cout << "SwitchToWindowSurface: Switched back to window surface" << std::endl;
+    }
+
 } // namespace UltraCanvas

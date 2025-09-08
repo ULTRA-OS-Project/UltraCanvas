@@ -25,7 +25,7 @@ namespace UltraCanvas {
         containerStyle.enableHorizontalScrolling = config.enableWindowScrolling;
         containerStyle.backgroundColor = config.backgroundColor;
         containerStyle.borderWidth = 0.0f; // Windows don't need container borders
-        selectiveRenderer = std::make_unique<UltraCanvasSelectiveRenderer>(this);
+//        selectiveRenderer = std::make_unique<UltraCanvasSelectiveRenderer>(this);
         SetContainerStyle(containerStyle);
     }
 
@@ -275,14 +275,14 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseWindow::Render() {
         if (!_visible || !_created) return;
-        if (useSelectiveRendering && selectiveRenderer) {
-            // Use simple selective rendering
-            selectiveRenderer->RenderFrame();
-            // Only clear needs redraw if no dirty regions remain
-            if (!selectiveRenderer->HasDirtyRegions()) {
-                _needsRedraw = false;
-            }
-        } else {
+//        if (useSelectiveRendering && selectiveRenderer) {
+//            // Use simple selective rendering
+//            selectiveRenderer->RenderFrame();
+//            // Only clear needs redraw if no dirty regions remain
+//            if (!selectiveRenderer->HasDirtyRegions()) {
+//                _needsRedraw = false;
+//            }
+//        } else {
             // Clear the window background
             RenderWindowBackground();
 
@@ -294,8 +294,8 @@ namespace UltraCanvas {
             // Render window-specific overlays
             RenderWindowChrome();
 
-            useSelectiveRendering = true;
-        }
+//            useSelectiveRendering = true;
+//        }
     }
 
     void UltraCanvasBaseWindow::RenderActivePopups() {
@@ -321,26 +321,27 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseWindow::RemovePopupElement(UltraCanvasElement *element) {
         activePopups.erase(element);
-        if (selectiveRenderer) {
-            selectiveRenderer->RestoreBackgroundFromOverlay();
-        } else {
-            _needsRedraw = true;
-        }
-    }
-
-    void UltraCanvasBaseWindow::MarkElementDirty(UltraCanvasElement* element, bool isOverlay) {
-        if (selectiveRenderer) {
-//            if (isOverlay) {
-//                selectiveRenderer->SaveBackgroundForOverlay(element);
-//            }
-            selectiveRenderer->MarkRegionDirty(element->GetActualBoundsInWindow(), isOverlay);
-        }
+//        if (selectiveRenderer) {
+//            selectiveRenderer->RestoreBackgroundFromOverlay();
+//        } else {
+//            _needsRedraw = true;
+//        }
         _needsRedraw = true;
     }
 
-    bool UltraCanvasBaseWindow::IsSelectiveRenderingActive() {
-        return selectiveRenderer && selectiveRenderer->IsRenderingActive();
+    void UltraCanvasBaseWindow::MarkElementDirty(UltraCanvasElement* element, bool isOverlay) {
+//        if (selectiveRenderer) {
+////            if (isOverlay) {
+////                selectiveRenderer->SaveBackgroundForOverlay(element);
+////            }
+//            selectiveRenderer->MarkRegionDirty(element->GetActualBoundsInWindow(), isOverlay);
+//        }
+        _needsRedraw = true;
     }
+
+//    bool UltraCanvasBaseWindow::IsSelectiveRenderingActive() {
+//        return selectiveRenderer && selectiveRenderer->IsRenderingActive();
+//    }
 
     bool UltraCanvasWindow::Create(const WindowConfig& config) {
         config_ = config;

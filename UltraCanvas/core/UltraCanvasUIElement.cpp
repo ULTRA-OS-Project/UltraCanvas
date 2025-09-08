@@ -261,11 +261,11 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasElement::RequestFullRedraw() {
-        if (window) {
-            window->RequestFullRedraw();
-        }
-    }
+//    void UltraCanvasElement::RequestFullRedraw() {
+//        if (window) {
+//            window->RequestFullRedraw();
+//        }
+//    }
 
     IRenderContext* UltraCanvasElement::GetRenderContext() const {
         if (window) {
