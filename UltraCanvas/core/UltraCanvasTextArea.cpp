@@ -5,7 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasCommonTypes.h"
 #include <sstream>

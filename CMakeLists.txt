@@ -102,7 +102,6 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasElementDebug.cpp
         UltraCanvas/core/UltraCanvasContainer.cpp
         UltraCanvas/core/UltraCanvasTextArea.cpp
-#        UltraCanvas/core/UltraCanvasSelectiveRenderer.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
@@ -110,6 +109,10 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/OS/Linux/UltraCanvasLinuxWindow.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxClipboard.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxDoubleBuffer.cpp
+#        UltraCanvas/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
+#        UltraCanvas/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
+#        UltraCanvas/Plugins/Charts/UltraCanvasChartRenderer.cpp
+#        UltraCanvas/Plugins/Charts/UltraCanvasFinancialCharts.cpp
     # Add Windows/Mac sources as needed
 #        UltraCanvas/OS/MSWindows/UltraCanvasWindowsDoubleBuffer.cpp
 )
@@ -122,6 +125,8 @@ set(APP_SOURCES
 
 # formula app
         Apps/GraphicFormulaApp.cpp
+#        Apps/Complete_IBM_Financial_Chart_Example.cpp
+        #        Apps/IBM_StockChart_Example.cpp
 
         #image rendeing
 #        Apps/ImageRenderingExample.cpp

@@ -7,7 +7,7 @@
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasEvent.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include <string>
 #include <memory>
 #include <functional>

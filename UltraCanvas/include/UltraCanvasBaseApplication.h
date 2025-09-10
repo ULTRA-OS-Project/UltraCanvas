@@ -34,6 +34,7 @@ namespace UltraCanvas {
         UltraCanvasElement* draggedElement = nullptr;
 
         std::vector<std::function<bool(const UCEvent&)>> globalEventHandlers;
+        std::function<void()> eventLoopCallback;
 
         UCEvent lastMouseEvent;
         std::chrono::steady_clock::time_point lastClickTime;
@@ -56,6 +57,7 @@ namespace UltraCanvas {
         bool HandleEventWithBubbling(const UCEvent &event, UltraCanvasElement* elem);
         void RegisterGlobalEventHandler(std::function<bool(const UCEvent&)> handler);
         void ClearGlobalEventHandlers() { globalEventHandlers.clear(); }
+        void RegisterEventLoopRunCallback(std::function<void()> callback);
 
         bool IsKeyPressed(int keyCode);
 

@@ -6,7 +6,7 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasProceduralBackgroundPlugin.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasButton.h"

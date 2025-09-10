@@ -7,7 +7,7 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include <string>

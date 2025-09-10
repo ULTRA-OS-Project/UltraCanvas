@@ -5,11 +5,10 @@
 // Author: UltraCanvas Framework
 
 #include "../include/UltraCanvasWindow.h"
-#include "../include/UltraCanvasRenderInterface.h"
+#include "../include/UltraCanvasRenderContext.h"
 #include "../include/UltraCanvasApplication.h"
 //#include "../include/UltraCanvasZOrderManager.h"
 #include "../include/UltraCanvasMenu.h"
-#include "../include/UltraCanvasSelectiveRenderer.h"
 #include "UltraCanvasApplication.h"
 
 #include <iostream>

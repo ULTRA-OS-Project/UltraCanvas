@@ -7,7 +7,7 @@
 
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUIElement.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include <string>
 #include <chrono>
 #include <functional>

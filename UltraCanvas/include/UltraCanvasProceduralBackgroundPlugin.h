@@ -13,7 +13,7 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasGraphicsPluginSystem.h"
@@ -128,7 +128,7 @@ namespace UltraCanvas {
         virtual void SetResolution(int width, int height) = 0;
         virtual void SetMousePosition(float x, float y) = 0;
 
-        virtual bool RenderToBuffer(uint32_t* pixelBuffer, int width, int height) = 0;
+        virtual bool RenderToBuffer(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) = 0;
         virtual std::string GetLastError() const = 0;
     };
 
@@ -201,46 +201,175 @@ namespace UltraCanvas {
             mouseY = y;
         }
 
-        bool RenderToBuffer(uint32_t* pixelBuffer, int width, int height) override {
-            if (!compiled || !pixelBuffer) return false;
+        bool RenderToBuffer(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) override {
+            if (!compiled || !pixelBuffer.IsValid()) return false;
 
             // Execute the "Dust" formula as an example
-            return RenderDustFormula(pixelBuffer, width, height);
+            //return RenderWorkHoleFormula(pixelBuffer, width, height);
+            return RenderAxesFormula(pixelBuffer, width, height);
         }
 
         std::string GetLastError() const override { return lastError; }
 
     private:
-        bool RenderDustFormula(uint32_t* pixelBuffer, int width, int height) {
+
+
+        bool RenderWorkHoleFormula(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) {
+            const float actualTime = currentTime;
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    float fx = 2.0f * x / width - 1.0f;
+                    float fy = 2.0f * y / height - 1.0f;
+                    float angle = std::atan2(fy, fx);
+                    float radius = std::sqrt(fx*fx + fy*fy);
+
+                    float intensity = std::sin(angle * 8.0f + radius * 10.0f - actualTime * 2.0f) * 0.5f + 0.5f;
+                    uint8_t gray = static_cast<uint8_t>(intensity * 255.0f);
+                    pixelBuffer.SetPixel(x, y, (0xFF000000 | (gray << 16) | (gray << 8) | gray));
+                }
+            }
+        }
+
+        bool RenderGlassFormula(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) {
+            const float actualTime = currentTime;
+            const float invAspect = static_cast<float>(height) / width;
+
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    // Compiled version of Glass formula
+                    // vec2 p=(FC.xy*2.-r)/r.y/.9;float l=length(p)-1.;
+                    // o=.5+.5*tanh(.1/max(l/.1,-l)-sin(l+p.y*max(1.,-l/.1)+t+vec4(0,1,2,0)));
+
+                    float px = ((2.0f * x / width - 1.0f) * width / height) / 0.9f;
+                    float py = (2.0f * y / height - 1.0f) / 0.9f;
+
+                    float l = std::sqrt(px*px + py*py) - 1.0f;
+                    float l_div_01 = l / 0.1f;
+                    float max_term = std::max(l_div_01, -l);
+
+                    float sin_arg = l + py * std::max(1.0f, -l_div_01) + actualTime;
+                    float sin_val = std::sin(sin_arg);
+
+                    float tanh_arg = 0.1f / max_term - sin_val;
+                    float result = 0.5f + 0.5f * std::tanh(tanh_arg);
+
+                    uint8_t gray = static_cast<uint8_t>(std::clamp(result * 255.0f, 0.0f, 255.0f));
+                    pixelBuffer.SetPixel(x, y, (0xFF000000 | (gray << 16) | (gray << 8) | gray));
+                }
+            }
+        }
+
+        bool RenderAxesFormula(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) {
+            // axes
+//            const float actualTime = t * speed;
+            const float actualTime = currentTime;
+            const float invHeight = 1.0f / height;
+
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    // High-performance compiled version of Axes formula
+                    // vec3 p=vec3(FC.xy*2.-r,0)/r.y,s=vec3(sqrt(max(.5-dot(p,p),0.)),p),a=cos(t+vec3(0,11,-t))
+
+                    float fx = (2.0f * x / width - 1.0f) * width * invHeight;
+                    float fy = 2.0f * y / height - 1.0f;
+
+                    // p = vec3(FC.xy*2.-r,0)/r.y
+                    float px = fx;
+                    float py = fy;
+                    float pz = 0.0f;
+
+                    // s = vec3(sqrt(max(.5-dot(p,p),0.)), p)
+                    float dot_pp = px * px + py * py + pz * pz;
+                    float sx = std::sqrt(std::max(0.5f - dot_pp, 0.0f));
+                    float sy = px;
+                    float sz = py;
+
+                    // a = cos(t+vec3(0,11,-t))
+                    float ax = std::cos(actualTime);
+                    float ay = std::cos(actualTime + 11.0f);
+                    float az = std::cos(actualTime - actualTime); // cos(0) = 1
+
+                    // a*dot(a,s)
+                    float dot_as = ax * sx + ay * sy + az * sz;
+                    float term1_x = ax * dot_as;
+                    float term1_y = ay * dot_as;
+                    float term1_z = az * dot_as;
+
+                    // cross(a,s)
+                    float cross_x = ay * sz - az * sy;
+                    float cross_y = az * sx - ax * sz;
+                    float cross_z = ax * sy - ay * sx;
+
+                    // mix(a*dot(a,s),s,.8)
+                    float mix_x = term1_x + 0.8f * (sx - term1_x);
+                    float mix_y = term1_y + 0.8f * (sy - term1_y);
+                    float mix_z = term1_z + 0.8f * (sz - term1_z);
+
+                    // .6*cross(a,s)
+                    float scaled_cross_x = 0.6f * cross_x;
+                    float scaled_cross_y = 0.6f * cross_y;
+                    float scaled_cross_z = 0.6f * cross_z;
+
+                    // mix(...) - .6*cross(a,s)
+                    float diff_x = mix_x - scaled_cross_x;
+                    float diff_y = mix_y - scaled_cross_y;
+                    float diff_z = mix_z - scaled_cross_z;
+
+                    // abs(...)
+                    float abs_x = std::abs(diff_x);
+                    float abs_y = std::abs(diff_y);
+                    float abs_z = std::abs(diff_z);
+
+                    // .1/abs(...)/(1.+dot(p,p))
+                    float denominator = (1.0f + dot_pp);
+                    float r = 0.1f / abs_x / denominator;
+                    float g = 0.1f / abs_y / denominator;
+                    float b = 0.1f / abs_z / denominator;
+
+                    // o=tanh(o+length(o*.2))
+                    float length_scaled = std::sqrt(r * r * 0.04f + g * g * 0.04f + b * b * 0.04f);
+                    r = std::tanh(r + length_scaled);
+                    g = std::tanh(g + length_scaled);
+                    b = std::tanh(b + length_scaled);
+
+                    // Clamp and convert to 8-bit
+                    uint8_t red = static_cast<uint8_t>(std::clamp(r * 255.0f, 0.0f, 255.0f));
+                    uint8_t green = static_cast<uint8_t>(std::clamp(g * 255.0f, 0.0f, 255.0f));
+                    uint8_t blue = static_cast<uint8_t>(std::clamp(b * 255.0f, 0.0f, 255.0f));
+
+                    pixelBuffer.SetPixel(x, y, (0xFF000000 | (red << 16) | (green << 8) | blue));
+                }
+            }
+
+            return true;
+        }
+
+        bool RenderDustFormula(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) {
             // Implement the "Dust" formula:
             // vec3 p;for(float i,z,d;i++<2e1;o+=(cos(p.y/(.1+.05*z)+vec4(6,5,4,0))+1.)*d/z/7.)
             // p=z*normalize(FC.rgb*2.-r.xyy),p.x-=t,p.xy*=.4,z+=d=(dot(cos(p/.6),sin(p+sin(p*7.)/4.
 
+            // axes
+//            const float actualTime = t * speed;
+            float t = currentTime; // time variable
+
             for (int y = 0; y < height; ++y) {
                 for (int x = 0; x < width; ++x) {
-                    // Normalized coordinates [0,1]
-                    float u = (float)x / width;
-                    float v = (float)y / height;
+                    // Fragment coordinate (normalized to -1..1)
+                    Vec3 FC((float)x / width * 2.0f - 1.0f,
+                            (float)y / height * 2.0f - 1.0f, 0);
 
-                    // Convert to [-1,1] range
-                    float fx = u * 2.0f - 1.0f;
-                    float fy = v * 2.0f - 1.0f;
+                    Vec3 r(FC.x, FC.y, FC.y); // r.xyy equivalent
+                    Vec3 o(0, 0, 0); // output color
 
-                    Vec3 o(0, 0, 0); // Output color
-                    Vec3 FC(fx, fy, 0.5f); // Fragment coordinate
-                    Vec3 resolution(width, height, 1); // Resolution
-                    float t = currentTime; // Time
+                    Vec3 p;
+                    float i = 0, z = 0, d = 0;
 
-                    // Main loop: for(float i,z,d;i++<2e1; ...)
-                    for (float i = 0; i < 20; i += 1.0f) {
-                        float z = 0;
-                        float d = 0;
-
+                    // Main iteration loop (i++<2e1 means i < 20)
+                    for (i = 0; i < 20; ++i) {
                         // p=z*normalize(FC.rgb*2.-r.xyy)
-                        Vec3 FC_rgb = FC * 2.0f;
-                        Vec3 r_xyy(resolution.x, resolution.y, resolution.y);
-                        Vec3 normalized_vec = normalize(FC_rgb - r_xyy);
-                        Vec3 p = normalized_vec * z;
+                        Vec3 FC_rgb = Vec3(FC.x, FC.y, FC.z) * 2.0f - r;
+                        p = FC_rgb.normalize() * z;
 
                         // p.x-=t
                         p.x -= t;
@@ -249,17 +378,13 @@ namespace UltraCanvas {
                         p.x *= 0.4f;
                         p.y *= 0.4f;
 
-                        // z+=d=(dot(cos(p/.6),sin(p+sin(p*7.)/4.
-                        Vec3 p_div_06 = p * (1.0f / 0.6f);
-                        Vec3 cos_p(cos(p_div_06.x), cos(p_div_06.y), cos(p_div_06.z));
+                        // Complex calculation for d
+                        Vec3 cos_p(cos(p.x/0.6f), cos(p.y/0.6f), cos(p.z/0.6f));
+                        Vec3 sin_p_complex(sin(p.z + sin(p.z*7.0f)/4.0f),
+                                           sin(p.y + sin(p.y*7.0f)/4.0f),
+                                           sin(p.x + sin(p.x*7.0f)/4.0f));
 
-                        Vec3 p_times_7 = p * 7.0f;
-                        Vec3 sin_p7(sin(p_times_7.x), sin(p_times_7.y), sin(p_times_7.z));
-                        Vec3 sin_p7_div_4 = sin_p7 * 0.25f;
-                        Vec3 p_plus_sin = p + sin_p7_div_4;
-                        Vec3 sin_p_plus_sin(sin(p_plus_sin.x), sin(p_plus_sin.y), sin(p_plus_sin.z));
-
-                        d = dot(cos_p, sin_p_plus_sin);
+                        d = dot(cos_p, sin_p_complex) * 0.4f + p.y/0.7f + 0.7f;
                         z += d;
 
                         // o+=(cos(p.y/(.1+.05*z)+vec4(6,5,4,0))+1.)*d/z/7.
@@ -283,14 +408,13 @@ namespace UltraCanvas {
 
                     // Convert to pixel color (0-255 range)
                     uint8_t red = (uint8_t)(std::clamp(o.x, 0.0f, 1.0f) * 255);
-                    uint8_t green = (uint8_t)(std::clamp(o.y, 0.0f, 1.0f) * 255);
-                    uint8_t blue = (uint8_t)(std::clamp(o.z, 0.0f, 1.0f) * 255);
-                    uint8_t alpha = 255;
+                    uint8_t g = (uint8_t)(std::clamp(o.y, 0.0f, 1.0f) * 255);
+                    uint8_t b = (uint8_t)(std::clamp(o.z, 0.0f, 1.0f) * 255);
+                    uint8_t a = 255;
 
-                    pixelBuffer[y * width + x] = (alpha << 24) | (red << 16) | (green << 8) | blue;
+                    pixelBuffer.SetPixel(x,y, (a << 24) | (red << 16) | (g << 8) | b);
                 }
             }
-
             return true;
         }
     };
@@ -301,9 +425,9 @@ namespace UltraCanvas {
         ProceduralFormula currentFormula;
         std::unique_ptr<ProceduralFormulaInterpreter> interpreter;
 
-        std::vector<uint32_t> pixelBuffer;
+        UltraCanvasPixelBuffer pixelBuffer;
         bool needsRegeneration = true;
-        bool isAnimating = false;
+        bool isAnimating = true;
 
         std::chrono::steady_clock::time_point startTime;
         std::chrono::steady_clock::time_point lastFrameTime;
@@ -319,7 +443,7 @@ namespace UltraCanvas {
 
         // Video recording (for animated backgrounds)
         bool isRecordingVideo = false;
-        std::vector<std::vector<uint32_t>> cachedFrames;
+        std::vector<UltraCanvasPixelBuffer> cachedFrames;
         int currentFrame = 0;
         int maxCachedFrames = 300; // 10 seconds at 30fps
 
@@ -449,7 +573,7 @@ namespace UltraCanvas {
             if (renderWidth <= 0) renderWidth = 1;
             if (renderHeight <= 0) renderHeight = 1;
 
-            pixelBuffer.resize(renderWidth * renderHeight);
+            pixelBuffer.Init(renderWidth, renderHeight);
 
             if (interpreter) {
                 interpreter->SetResolution(renderWidth, renderHeight);
@@ -481,11 +605,11 @@ namespace UltraCanvas {
 
     private:
         void GenerateBackground() {
-            if (!interpreter || pixelBuffer.empty()) return;
+            if (!interpreter || !pixelBuffer.IsValid()) return;
 
             auto start = std::chrono::high_resolution_clock::now();
 
-            interpreter->RenderToBuffer(pixelBuffer.data(), renderWidth, renderHeight);
+            interpreter->RenderToBuffer(pixelBuffer, renderWidth, renderHeight);
 
             auto end = std::chrono::high_resolution_clock::now();
             frameTime = std::chrono::duration<float>(end - start).count();
@@ -493,7 +617,7 @@ namespace UltraCanvas {
 
         void GenerateAndCacheFrame() {
             GenerateBackground();
-            if (!pixelBuffer.empty()) {
+            if (pixelBuffer.IsValid()) {
                 cachedFrames.push_back(pixelBuffer);
             }
         }
@@ -510,9 +634,9 @@ namespace UltraCanvas {
             if (static_cast<size_t>(frameIndex) < cachedFrames.size()) {
                 pixelBuffer = cachedFrames[frameIndex];
 
-                // Draw a simple rectangle representing the background
-               ctx->SetFillColor(Colors::Black);
-               ctx->FillRectangle(Rect2Di(GetX(), GetY(), GetWidth(), GetHeight()));
+//                ctx->SetFillColor(Colors::Black);
+//                ctx->FillRectangle(Rect2Di(GetX(), GetY(), GetWidth(), GetHeight()));
+                ctx->PaintPixelBuffer(GetX(), GetY(), pixelBuffer);
             }
         }
 
@@ -531,7 +655,7 @@ namespace UltraCanvas {
 
             // TODO: Load and draw the actual image
             // For now, draw a placeholder rectangle
-           ctx->SetFillColor(Color(255, 255, 255, (uint8_t)(animatedOpacity * 255)));
+            ctx->SetFillColor(Color(255, 255, 255, (uint8_t)(animatedOpacity * 255)));
             int scaledWidth = (int)(100 * animatedScale); // Placeholder size
             int scaledHeight = (int)(50 * animatedScale);
             ctx->FillRectangle(Rect2Di(position.x, position.y, scaledWidth, scaledHeight));
@@ -628,25 +752,7 @@ namespace UltraCanvas {
         }
 
         void DrawGeneratedBackground(IRenderContext* ctx) {
-            // For now, implement a simple pixel-by-pixel drawing
-            // In a real implementation, this would be optimized
-            // to upload to a texture and draw as a quad
-
-            for (int y = 0; y < GetHeight() && y < renderHeight; ++y) {
-                for (int x = 0; x < GetWidth() && x < renderWidth; ++x) {
-                    uint32_t pixel = pixelBuffer[y * renderWidth + x];
-
-                    Color color(
-                            (pixel >> 16) & 0xFF, // R
-                            (pixel >> 8) & 0xFF,  // G
-                            pixel & 0xFF,         // B
-                            (pixel >> 24) & 0xFF  // A
-                    );
-
-                   ctx->SetFillColor(color);
-                    ctx->FillRectangle(Rect2Di(GetX() + x, GetY() + y, 1, 1));
-                }
-            }
+            ctx->PaintPixelBuffer(GetXInWindow(), GetYInWindow(), pixelBuffer);
         }
     };
 

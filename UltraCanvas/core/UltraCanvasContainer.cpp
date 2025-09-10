@@ -6,7 +6,7 @@
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasBaseWindow.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
 //#include "UltraCanvasZOrderManager.h"
 #include <algorithm>
@@ -537,6 +537,67 @@ namespace UltraCanvas {
         return nullptr;
     }
 
+//    UltraCanvasElement* UltraCanvasContainer::FindElementAtPoint(int x, int y) {
+//        // First check if point is within our bounds
+//        if (!Contains(x, y)) {
+//            return nullptr;
+//        }
+//
+//        // Check scrollbar areas first - these have priority over content
+//        if (scrollState.showVerticalScrollbar &&
+//            verticalScrollbarRect.Contains(x, y)) {
+//            return this; // Container handles scrollbar interactions
+//        }
+//
+//        if (scrollState.showHorizontalScrollbar &&
+//            horizontalScrollbarRect.Contains(x, y)) {
+//            return this; // Container handles scrollbar interactions
+//        }
+//
+//        // Check if point is within content area (not scrollbar area)
+//        if (!contentArea.Contains(x, y)) {
+//            return this; // Hit container but outside content area
+//        }
+//
+//        // Calculate content-relative coordinates accounting for scroll offset
+//        Point2Di mousePos(x, y);
+//        int contentX = x - contentArea.x + scrollState.horizontalPosition;
+//        int contentY = y - contentArea.y + scrollState.verticalPosition;
+//
+//        // Check children in reverse order (topmost first) with clipping awareness
+//        for (auto it = children.rbegin(); it != children.rend(); ++it) {
+//            if (!(*it) || !(*it)->IsVisible()) {
+//                continue;
+//            }
+//
+//            UltraCanvasElement* child = it->get();
+//
+//            // CRITICAL: Check if the child element intersects with visible content area
+//            Rect2Di childBounds = child->GetBounds();
+//            Rect2Di visibleChildBounds = GetVisibleChildBounds(childBounds);
+//
+//            // Skip child if it's completely clipped (not visible)
+//            if (visibleChildBounds.width <= 0 || visibleChildBounds.height <= 0) {
+//                continue;
+//            }
+//
+//            // Check if mouse is within the visible portion of the child
+//            if (visibleChildBounds.Contains(mousePos)) {
+//                // Recursively check child elements
+//                auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
+//                if (childContainer) {
+//                    UltraCanvasElement* hitElement = childContainer->FindElementAtPoint(contentX, contentY);
+//                    if (hitElement) {
+//                        return hitElement;
+//                    }
+//                }
+//                return child;
+//            }
+//        }
+//
+//        return this; // Hit container but no children
+//    }
+
     UltraCanvasElement* UltraCanvasContainer::FindElementAtPoint(int x, int y) {
         // First check if point is within our bounds
         if (!Contains(x, y)) {
@@ -559,43 +620,59 @@ namespace UltraCanvas {
             return this; // Hit container but outside content area
         }
 
-        // Calculate content-relative coordinates accounting for scroll offset
-        Point2Di mousePos(x, y);
-        int contentX = x - contentArea.x + scrollState.horizontalPosition;
-        int contentY = y - contentArea.y + scrollState.verticalPosition;
+        // CRITICAL FIX: Convert mouse coordinates to content coordinates
+        // accounting for scroll offset AND content area position
+        int contentX = (x - contentArea.x) + scrollState.horizontalPosition;
+        int contentY = (y - contentArea.y) + scrollState.verticalPosition;
 
-        // Check children in reverse order (topmost first) with clipping awareness
+        // Check children in reverse order (topmost first) with proper clipping
         for (auto it = children.rbegin(); it != children.rend(); ++it) {
-            if (!(*it) || !(*it)->IsVisible()) {
+            if (!(*it) || !(*it)->IsVisible() || !(*it)->IsEnabled()) {
                 continue;
             }
 
             UltraCanvasElement* child = it->get();
-
-            // CRITICAL: Check if the child element intersects with visible content area
             Rect2Di childBounds = child->GetBounds();
-            Rect2Di visibleChildBounds = GetVisibleChildBounds(childBounds);
 
-            // Skip child if it's completely clipped (not visible)
-            if (visibleChildBounds.width <= 0 || visibleChildBounds.height <= 0) {
-                continue;
-            }
+            // CRITICAL FIX: Check if content-relative coordinates are within child bounds
+            if (childBounds.Contains(contentX, contentY)) {
+                // Check if child intersects with visible content area for clipping
+                Rect2Di visibleChildBounds = GetVisibleChildBounds(childBounds);
 
-            // Check if mouse is within the visible portion of the child
-            if (visibleChildBounds.Contains(mousePos)) {
-                // Recursively check child elements
-                auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
-                if (childContainer) {
-                    UltraCanvasElement* hitElement = childContainer->FindElementAtPoint(contentX, contentY);
-                    if (hitElement) {
-                        return hitElement;
+                // Only return child if it's actually visible (not clipped)
+                if (visibleChildBounds.width > 0 && visibleChildBounds.height > 0) {
+                    // Recursively check child containers with corrected coordinates
+                    auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
+                    if (childContainer) {
+                        // Pass child-relative coordinates to child container
+                        UltraCanvasElement* hitElement = childContainer->FindElementAtPoint(contentX, contentY);
+                        if (hitElement) {
+                            return hitElement;
+                        }
                     }
+                    return child;
                 }
-                return child;
             }
         }
 
         return this; // Hit container but no children
+    }
+
+// ===== CRITICAL FIX: Enhanced coordinate conversion for scrollable containers =====
+    void UltraCanvasContainer::ConvertWindowToContainerCoordinates(int &x, int &y) {
+        // Get our position in window coordinates
+        Point2Di elementPos = GetPositionInWindow();
+
+        // Convert from window coordinates to container coordinates
+        x -= elementPos.x;
+        y -= elementPos.y;
+
+        // CRITICAL FIX: If coordinates are within content area, adjust for scrolling
+        if (contentArea.Contains(x, y)) {
+            // Convert to content-relative coordinates accounting for scroll
+            x = (x - contentArea.x) + scrollState.horizontalPosition;
+            y = (y - contentArea.y) + scrollState.verticalPosition;
+        }
     }
 
     Rect2Di UltraCanvasContainer::GetVisibleChildBounds(const Rect2Di& childBounds) const {
@@ -607,9 +684,14 @@ namespace UltraCanvas {
                 childBounds.height
         );
 
-        // Clip to content area
-        Rect2Di intersection = adjustedChildBounds.Intersection(contentArea);
-        return intersection;
+        // CRITICAL FIX: Intersect with content area to get visible portion
+        Rect2Di intersection;
+        if (adjustedChildBounds.Intersects(contentArea, intersection)) {
+            return intersection;
+        }
+
+        // Return empty rect if no intersection (completely clipped)
+        return Rect2Di(0, 0, 0, 0);
     }
 
     /**
@@ -626,40 +708,40 @@ namespace UltraCanvas {
         return (visibleBounds.width > 0 && visibleBounds.height > 0);
     }
 
-    int UltraCanvasContainer::GetXInWindow() {
-        if (layoutDirty) {
-            CalculateContentArea();
-        }
-
-        if (parentContainer) {
-            // Get parent's window position
-            int parentWindowX = parentContainer->GetXInWindow();
-
-            // Add parent's content area offset and our position
-            Rect2Di parentContentArea = parentContainer->GetContentArea();
-            return parentWindowX + parentContentArea.x + properties.x_pos;
-        }
-
-        // If this is the root container (window), return our position
-        return properties.x_pos;
-    }
-
-    int UltraCanvasContainer::GetYInWindow() {
-        if (layoutDirty) {
-            CalculateContentArea();
-        }
-
-        if (parentContainer) {
-            // Get parent's window position
-            int parentWindowY = parentContainer->GetYInWindow();
-
-            // Add parent's content area offset and our position
-            Rect2Di parentContentArea = parentContainer->GetContentArea();
-            return parentWindowY + parentContentArea.y + properties.y_pos;
-        }
-
-        return properties.y_pos;
-    }
+//    int UltraCanvasContainer::GetXInWindow() {
+//        if (layoutDirty) {
+//            CalculateContentArea();
+//        }
+//
+//        if (parentContainer) {
+//            // Get parent's window position
+//            int parentWindowX = parentContainer->GetXInWindow();
+//
+//            // Add parent's content area offset and our position
+//            Rect2Di parentContentArea = parentContainer->GetContentArea();
+//            return parentWindowX + parentContentArea.x + properties.x_pos;
+//        }
+//
+//        // If this is the root container (window), return our position
+//        return properties.x_pos;
+//    }
+//
+//    int UltraCanvasContainer::GetYInWindow() {
+//        if (layoutDirty) {
+//            CalculateContentArea();
+//        }
+//
+//        if (parentContainer) {
+//            // Get parent's window position
+//            int parentWindowY = parentContainer->GetYInWindow();
+//
+//            // Add parent's content area offset and our position
+//            Rect2Di parentContentArea = parentContainer->GetContentArea();
+//            return parentWindowY + parentContentArea.y + properties.y_pos;
+//        }
+//
+//        return properties.y_pos;
+//    }
 
 //    int UltraCanvasContainer::GetXInWindow() {
 //        if (layoutDirty) {
@@ -765,5 +847,31 @@ namespace UltraCanvas {
         }
         return false;
     }
+
+    Rect2Di UltraCanvasContainer::GetContentArea() {
+        if (layoutDirty) {
+            CalculateContentArea();
+        }
+        return contentArea;
+    }
+
+//    void UltraCanvasContainer::UpdateHoverStates(const UCEvent& event) {
+//        Point2Di mousePos(event.x, event.y);
+//
+//        // Update scrollbar hover states if scrollbars are visible
+//        if (scrollState.showVerticalScrollbar || scrollState.showHorizontalScrollbar) {
+//            UpdateScrollbarHoverStates(mousePos);
+//        }
+//
+//        // Update container hover state
+//        bool wasHovered = isHovered;
+//        isHovered = Contains(mousePos.x, mousePos.y);
+//
+//        if (isHovered != wasHovered) {
+//            if (onHoverStateChanged) {
+//                onHoverStateChanged(isHovered);
+//            }
+//        }
+//    }
 
 } // namespace UltraCanvas

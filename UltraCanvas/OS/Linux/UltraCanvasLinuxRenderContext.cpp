@@ -1409,6 +1409,47 @@ namespace UltraCanvas {
         return true;
     }
 
+    bool LinuxRenderContext::PaintPixelBuffer(int x, int y, int width, int height, uint32_t* pixels) {
+        if (!pixels) return false;
+        if (!doubleBufferingEnabled) {
+            std::cout << "PaintPixelBuffer: Double buffering disabled, no image surface" << std::endl;
+            return false;
+        }
+        // Use existing fast image surface restore
+        // Get surface data and properties
+        cairo_surface_t * surface = cairo_get_target(cairo);
+        unsigned char *data = cairo_image_surface_get_data(surface);
+        if (!data) {
+            std::cerr << "PaintPixelBuffer: No surface data" << std::endl;
+            return false;
+        }
+        int surfaceWidth = cairo_image_surface_get_width(surface);
+        int surfaceHeight = cairo_image_surface_get_height(surface);
+        int stride = cairo_image_surface_get_stride(surface);
+
+        if (x < 0 || y < 0 || x + width > surfaceWidth || y + height > surfaceHeight) {
+            std::cerr << "PaintPixelBuffer: Region outside bounds" << std::endl;
+            return false;
+        }
+
+        // Mark surface as dirty before modification
+        cairo_surface_mark_dirty_rectangle(surface, x, y, width, height);
+
+        // Fast row-by-row copy using memcpy
+        for (int row = 0; row < height; ++row) {
+            // Calculate source and destination pointers
+            const uint32_t *srcRow = pixels + row * width;
+            uint32_t *dstRow = reinterpret_cast<uint32_t *>(data + (y + row) * stride) + x;
+
+            // Fast bulk copy of entire row
+            std::memcpy(dstRow, srcRow, width * sizeof(uint32_t));
+        }
+
+        std::cout << "PaintPixelBuffer: Painted " << width << "x" << height
+                  << " region at (" << x << "," << y << ")" << std::endl;
+        return true;
+    }
+
 //    bool LinuxRenderContext::SaveRegionAsImage(const Rect2Di& region, const std::string& filename) {
 //        std::vector<uint32_t> buffer;
 //        if (!SavePixelRegion(region, buffer)) {
@@ -1524,7 +1565,7 @@ namespace UltraCanvas {
         }
 
         // Get staging surface from double buffer
-        cairo_t* stagingContext = static_cast<cairo_t*>(doubleBuffer.GetStagingSurface());
+        cairo_t* stagingContext = static_cast<cairo_t*>(doubleBuffer.GetStagingContext());
 
         if (!stagingContext) {
             std::cerr << "SwitchToStagingSurface: Failed to get staging context" << std::endl;
@@ -1551,4 +1592,85 @@ namespace UltraCanvas {
         std::cout << "SwitchToWindowSurface: Switched back to window surface" << std::endl;
     }
 
+    XImageBuffer::XImageBuffer(XImageBuffer &&other) noexcept {
+        ximage = other.ximage;
+        pixels = other.pixels;
+        width = other.width;
+        height = other.height;
+        size_bytes = other.size_bytes;
+        display = other.display;
+
+        other.ximage = nullptr;
+        other.pixels = nullptr;
+        other.width = other.height = 0;
+        other.size_bytes = 0;
+        other.display = nullptr;
+    }
+
+    XImageBuffer &XImageBuffer::operator=(XImageBuffer &&other) noexcept {
+        if (this != &other) {
+            // Clean up current
+            if (ximage) {
+                XDestroyImage(ximage);
+            }
+
+            // Take ownership
+            ximage = other.ximage;
+            pixels = other.pixels;
+            width = other.width;
+            height = other.height;
+            size_bytes = other.size_bytes;
+            display = other.display;
+
+            // Clear other
+            other.ximage = nullptr;
+            other.pixels = nullptr;
+            other.width = other.height = 0;
+            other.size_bytes = 0;
+            other.display = nullptr;
+        }
+        return *this;
+    }
+
+    bool X11PixelBuffer::IsValid() const {
+        if (is_ximage_backed) {
+            return ximage_buffer && ximage_buffer->IsValid();
+        } else {
+            return width > 0 && height > 0 && !traditional_buffer.empty();
+        }
+    }
+
+    size_t X11PixelBuffer::GetSizeInBytes() const {
+        if (is_ximage_backed && ximage_buffer) {
+            return ximage_buffer->size_bytes;
+        } else {
+            return traditional_buffer.size() * sizeof(uint32_t);
+        }
+    }
+
+    uint32_t *X11PixelBuffer::GetPixelData() {
+        if (is_ximage_backed && ximage_buffer) {
+            return ximage_buffer->pixels;
+        } else if (!traditional_buffer.empty()) {
+            return traditional_buffer.data();
+        }
+        return nullptr;
+    }
+
+    void X11PixelBuffer::Clear() {
+        traditional_buffer.clear();
+        ximage_buffer.reset();
+        width = height = 0;
+        is_ximage_backed = false;
+    }
+
+    std::vector<uint32_t> X11PixelBuffer::ToTraditionalBuffer() {
+        if (is_ximage_backed && ximage_buffer && ximage_buffer->IsValid()) {
+            std::vector<uint32_t> result(width * height);
+            std::memcpy(result.data(), ximage_buffer->pixels, width * height * sizeof(uint32_t));
+            return result;
+        } else {
+            return traditional_buffer;
+        }
+    }
 } // namespace UltraCanvas

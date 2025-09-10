@@ -29,6 +29,8 @@
 
 using namespace UltraCanvas;
 
+bool isAnimating = false;
+
 class GraphicFormulaWindow : public UltraCanvasWindow {
 private:
     // UI Components - declared only once
@@ -49,7 +51,6 @@ private:
     std::shared_ptr<UltraCanvasProceduralBackground> graphicsOutput;
 
     // Application state
-    bool isAnimating = false;
     float currentTime = 0.0f;
     float animationSpeed = 1.0f;
     std::string currentFilePath;
@@ -145,7 +146,7 @@ private:
                                                                0, 0, windowWidth, windowHeight);
 
         // Left panel for controls (30% of width)
-        int leftWidth = windowWidth * 0.3;
+        int leftWidth = windowWidth * 0.4;
         leftPanel = std::make_shared<UltraCanvasContainer>("LeftPanel", 2,
                                                            0, 0, leftWidth, windowHeight - 10);
 
@@ -252,7 +253,7 @@ private:
 
         // Add panels to main container and add to window
         mainContainer->AddChild(leftPanel);
-        //mainContainer->AddChild(rightPanel);
+        mainContainer->AddChild(rightPanel);
         AddChild(mainContainer);
     }
 
@@ -489,6 +490,13 @@ public:
         // This is framework-dependent
 
         return true;
+    }
+
+    void RunInEventLoop() override {
+        UltraCanvasApplication::RunInEventLoop();
+        if (isAnimating) {
+            mainWindow->RequestRedraw(true);
+        }
     }
 
     // Removed Update and Shutdown overrides since they don't exist in base class

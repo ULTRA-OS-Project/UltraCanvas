@@ -236,7 +236,7 @@ namespace UltraCanvas {
         void SetVisible(bool visible) { properties.Visible = visible; }
 
         Point2Di ConvertWindowToContainerCoordinates(const Point2Di &globalPos);
-        void ConvertWindowToContainerCoordinates(int &x, int &y);
+        virtual void ConvertWindowToContainerCoordinates(int &x, int &y);
 
         MousePointer GetMousePointer() const { return properties.MousePtr; }
         void SetMousePointer(MousePointer pointer) { properties.MousePtr = pointer; }

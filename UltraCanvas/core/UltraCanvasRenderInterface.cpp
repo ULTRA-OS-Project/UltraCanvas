@@ -4,7 +4,7 @@
 // Last Modified: 2025-07-11
 // Author: UltraCanvas Framework
 
-#include "../include/UltraCanvasRenderInterface.h"
+#include "../include/UltraCanvasRenderContext.h"
 #include <iostream>
 #include <cassert>
 #include <algorithm>

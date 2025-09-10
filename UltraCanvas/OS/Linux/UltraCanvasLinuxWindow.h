@@ -12,7 +12,7 @@
 #include "../../include/UltraCanvasBaseWindow.h"
 #include "../../include/UltraCanvasEvent.h"
 #include "../../include/UltraCanvasCommonTypes.h"
-#include "../../include/UltraCanvasRenderInterface.h"
+#include "../../include/UltraCanvasRenderContext.h"
 #include "UltraCanvasLinuxRenderContext.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
@@ -66,7 +66,6 @@ namespace UltraCanvas {
         virtual void Maximize() override;
         virtual void Restore() override;
         virtual void SetFullscreen(bool fullscreen) override;
-        virtual void Render() override;
         virtual void Flush() override;
         virtual unsigned long GetNativeHandle() const override;
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }

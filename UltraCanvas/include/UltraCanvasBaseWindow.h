@@ -9,7 +9,6 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasSelectiveRenderer.h"
 #include <string>
 #include <functional>
 #include <memory>
@@ -180,7 +179,7 @@ namespace UltraCanvas {
         virtual bool OnEvent(const UCEvent& event) override;
         virtual void RenderCustomContent() {}
 
-        bool NeedsRedraw() const { return _needsRedraw; }
+        bool IsNeedsRedraw() const { return _needsRedraw; }
         void RequestRedraw(bool val) { _needsRedraw = val; }
 //        void RequestFullRedraw() { useSelectiveRendering = false; _needsRedraw = true; }
         void MarkElementDirty(UltraCanvasElement* element, bool isOverlay = false);
@@ -194,6 +193,8 @@ namespace UltraCanvas {
         void SetWindowMinimizeCallback(std::function<void()> callback) { onWindowMinimize = callback; }
         void SetWindowMaximizeCallback(std::function<void()> callback) { onWindowMaximize = callback; }
         void SetWindowRestoreCallback(std::function<void()> callback) { onWindowRestore = callback; }
+        void SetWindowBlurCallback(std::function<void()> callback) { onWindowBlur = callback; }
+        void SetWindowFocusCallback(std::function<void()> callback) { onWindowFocus = callback; }
 
         // ===== UTILITY METHODS =====
         void CenterOnScreen();

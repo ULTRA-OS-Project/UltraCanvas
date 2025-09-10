@@ -9,7 +9,7 @@
 #define ULTRACANVAS_PARAGRAPH_CONTAINER_H
 
 #include "UltraCanvasUIElement.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasStyledText.h"
 #include <vector>

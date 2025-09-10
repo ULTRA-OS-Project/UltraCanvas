@@ -9,7 +9,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasEvent.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -121,9 +121,10 @@ namespace UltraCanvas {
         UltraCanvasElement* FindChildById(const std::string& id);
         UltraCanvasElement* FindElementAtPoint(int x, int y);
         UltraCanvasElement* FindElementAtPoint(const Point2Di& pos) { return FindElementAtPoint(pos.x, pos.y); }
+        void ConvertWindowToContainerCoordinates(int &x, int &y) override;
 
-        virtual int GetXInWindow() override;
-        virtual int GetYInWindow() override;
+//        virtual int GetXInWindow() override;
+//        virtual int GetYInWindow() override;
 
         // ===== ENHANCED SCROLLING FUNCTIONS =====
         bool ScrollVertical(int delta);
@@ -178,18 +179,9 @@ namespace UltraCanvas {
 
         // ===== LAYOUT MANAGEMENT =====
         void UpdateLayout();
-
-        void MarkLayoutDirty() {
-            layoutDirty = true;
-        }
-
-        bool IsLayoutDirty() const {
-            return layoutDirty;
-        }
-
-        Rect2Di GetContentArea() const {
-            return contentArea;
-        }
+        void MarkLayoutDirty() { layoutDirty = true; }
+        bool IsLayoutDirty() const { return layoutDirty; }
+        Rect2Di GetContentArea();
 
         // ===== OVERRIDDEN ELEMENT METHODS =====
         void Render() override;
@@ -205,6 +197,7 @@ namespace UltraCanvas {
         void UpdateScrollbarAppearance();
         void CalculateContentArea();
         void UpdateScrollAnimation();
+//        void UpdateHoverStates(const UCEvent& event);
 
         // Event handling helpers
         bool HandleScrollbarEvents(const UCEvent& event);

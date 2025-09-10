@@ -9,7 +9,7 @@
 // ===== CORE SYSTEM INCLUDES =====
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUIElement.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"

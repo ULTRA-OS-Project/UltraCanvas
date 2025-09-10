@@ -10,7 +10,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasKeyboardManager.h"
 //#include "UltraCanvasZOrderManager.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include <vector>
 #include <string>
 #include <functional>

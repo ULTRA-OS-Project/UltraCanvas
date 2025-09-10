@@ -8,7 +8,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 #include <vector>
 #include <string>
 #include <functional>
@@ -273,15 +273,12 @@ namespace UltraCanvas {
         void RenderPopupContent() override {
             auto ctx = GetRenderContext();
             if (ctx && dropdownOpen && !items.empty()) {
-                Point2Di globalPos = parentContainer->GetPositionInWindow();
+                Point2Di globalPos = GetPositionInWindow();
 
-                // Translate to dropdown position
-                //ResetTransform();
                 ctx->PushState();
-                ctx->Translate(globalPos.x, globalPos.y);
 
                 Rect2Di buttonRect = GetBounds();
-                Rect2Di listRect(buttonRect.x, buttonRect.y + buttonRect.height,
+                Rect2Di listRect(globalPos.x, globalPos.y + buttonRect.height,
                                  buttonRect.width, dropdownHeight);
 
                 // Draw shadow

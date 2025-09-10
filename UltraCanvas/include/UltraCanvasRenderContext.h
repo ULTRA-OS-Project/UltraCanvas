@@ -1,4 +1,4 @@
-// UltraCanvasRenderInterface.h - Enhanced Version
+// UltraCanvasRenderContext.h - Enhanced Version
 // Cross-platform rendering interface with improved context management
 // Version: 2.2.0
 // Last Modified: 2025-07-11
@@ -168,7 +168,51 @@ class UltraCanvasBaseWindow;
         virtual bool IsValid() const  = 0;
         virtual size_t GetSizeInBytes() const  = 0;
         virtual uint32_t* GetPixelData() = 0;
-        virtual std::vector<uint32_t> ToTraditionalBuffer() = 0;
+        virtual int GetWidth() const = 0;
+        virtual int GetHeight() const = 0;
+    };
+
+    class UltraCanvasPixelBuffer : public IPixelBuffer {
+    private:
+        std::vector<uint32_t> pixels;
+        int width = 0, height = 0;
+    public:
+        UltraCanvasPixelBuffer() = default;
+        UltraCanvasPixelBuffer(int w, int h) { Init(w, h); };
+
+        void Init(int w, int h, bool clear = 0) {
+            pixels.resize(w * h);
+            width = w;
+            height = h;
+            if (clear) {
+                pixels.clear();
+            }
+        };
+
+        void Clear() {
+            pixels.clear();
+        };
+
+        bool IsValid() const override { return !pixels.empty() && width > 0 && height > 0; }
+
+        size_t GetSizeInBytes() const override { return pixels.size() * 4; }
+
+        uint32_t GetPixel(int x, int y) const {
+            if (x >= 0 && x < width && y >= 0 && y < height) {
+                return pixels[y * width + x];
+            }
+            return 0;
+        }
+
+        void SetPixel(int x, int y, uint32_t pixel) {
+            if (x >= 0 && x < width && y >= 0 && y < height) {
+                pixels[y * width + x] = pixel;
+            }
+        }
+
+        uint32_t *GetPixelData() override  { return pixels.data(); }
+        int GetWidth() const  override { return width; }
+        int GetHeight() const override  { return height; }
     };
 
     // ===== DOUBLE BUFFER INTERFACE =====
@@ -183,6 +227,7 @@ class UltraCanvasBaseWindow;
         virtual bool Resize(int newWidth, int newHeight) = 0;
 
         // Get staging surface for rendering
+        virtual void* GetStagingContext() = 0;
         virtual void* GetStagingSurface() = 0;
 
         // Copy staging surface to window surface
@@ -276,7 +321,10 @@ class UltraCanvasBaseWindow;
 //        virtual void SetPixel(const Point2Df& point, const Color& color) = 0;
 //        virtual Color GetPixel(const Point2Df& point) = 0;
         virtual void Clear(const Color& color) = 0;
-
+        virtual bool PaintPixelBuffer(int x, int y, int width, int height, uint32_t* pixels) = 0;
+        bool PaintPixelBuffer(int x, int y, IPixelBuffer& pxBuf) {
+            return PaintPixelBuffer(x, y, pxBuf.GetWidth(), pxBuf.GetHeight(), pxBuf.GetPixelData());
+        };
         virtual IPixelBuffer* SavePixelRegion(const Rect2Di& region) = 0;
         virtual bool RestorePixelRegion(const Rect2Di& region, IPixelBuffer* buf) = 0;
 //        virtual bool SaveRegionAsImage(const Rect2Di& region, const std::string& filename) = 0;
@@ -531,6 +579,10 @@ class UltraCanvasBaseWindow;
                 DrawCircle(center, radius);
                 PopState();
             }
+        }
+
+        void DrawFilledCircle(const Point2Di& center, float radius, const Color& fillColor) {
+            DrawFilledCircle(Point2Df(center.x, center.y), radius, fillColor);
         }
 
 // Draw text with background

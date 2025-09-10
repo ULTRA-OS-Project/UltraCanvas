@@ -6,7 +6,7 @@
 #pragma once
 
 #include "UltraCanvasElementDebug.h"
-#include "UltraCanvasRenderInterface.h"
+#include "UltraCanvasRenderContext.h"
 
 // Platform-specific includes for Cairo
 #ifdef __linux__

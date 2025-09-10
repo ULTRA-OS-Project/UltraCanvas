@@ -199,11 +199,23 @@ namespace UltraCanvas {
 //                    }
 //                }
 //            }
-            if (event.IsMouseEvent()) {
+            if (event.IsMouseClickEvent()) {
                 auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
+                if (hoveredElement && hoveredElement != elem) {
+                    UCEvent leaveEvent = event;
+                    leaveEvent.type = UCEventType::MouseLeave;
+                    hoveredElement->OnEvent(leaveEvent);
+                    hoveredElement = nullptr;
+                }
                 if (elem) {
                     auto newEvent = event;
                     elem->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
+                    if (hoveredElement != elem) {
+                        UCEvent enterEvent = event;
+                        enterEvent.type = UCEventType::MouseEnter;
+                        elem->OnEvent(enterEvent);
+                        hoveredElement = elem;
+                    }
                     if (elem->OnEvent(newEvent)) {
                         return true;
                     }
@@ -296,10 +308,17 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasBaseApplication::RegisterEventLoopRunCallback(std::function<void()> callback) {
+        eventLoopCallback = callback;
+    }
+
     void UltraCanvasApplication::RunInEventLoop() {
         auto clipbrd = GetClipboard();
         if (clipbrd) {
             clipbrd->Update();
+        }
+        if (eventLoopCallback) {
+            eventLoopCallback();
         }
     }
 }

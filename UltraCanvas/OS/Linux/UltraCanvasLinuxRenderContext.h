@@ -10,10 +10,10 @@
 
 
 // ===== CORE INCLUDES =====
-#include "../../include/UltraCanvasRenderInterface.h"
+#include "../../include/UltraCanvasRenderContext.h"
 #include "../../include/UltraCanvasEvent.h"
 #include "../../include/UltraCanvasCommonTypes.h"
-#include "../../include/UltraCanvasRenderInterface.h"
+#include "../../include/UltraCanvasRenderContext.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
 #include <X11/Xlib.h>
@@ -60,7 +60,8 @@ namespace UltraCanvas {
 
             bool Initialize(int width, int height, void* windowSurface) override;
             bool Resize(int newWidth, int newHeight) override;
-            void* GetStagingSurface() override { return stagingContext; }
+            void* GetStagingContext() override { return stagingContext; }
+            void* GetStagingSurface() override { return stagingSurface; }
             void SwapBuffers() override;
             void Cleanup() override;
 
@@ -97,64 +98,10 @@ namespace UltraCanvas {
         XImageBuffer(const XImageBuffer&) = delete;
         XImageBuffer& operator=(const XImageBuffer&) = delete;
 
-        XImageBuffer(XImageBuffer&& other) noexcept {
-            ximage = other.ximage;
-            pixels = other.pixels;
-            width = other.width;
-            height = other.height;
-            size_bytes = other.size_bytes;
-            display = other.display;
+        XImageBuffer(XImageBuffer&& other) noexcept;
 
-            other.ximage = nullptr;
-            other.pixels = nullptr;
-            other.width = other.height = 0;
-            other.size_bytes = 0;
-            other.display = nullptr;
-        }
-
-        XImageBuffer& operator=(XImageBuffer&& other) noexcept {
-            if (this != &other) {
-                // Clean up current
-                if (ximage) {
-                    XDestroyImage(ximage);
-                }
-
-                // Take ownership
-                ximage = other.ximage;
-                pixels = other.pixels;
-                width = other.width;
-                height = other.height;
-                size_bytes = other.size_bytes;
-                display = other.display;
-
-                // Clear other
-                other.ximage = nullptr;
-                other.pixels = nullptr;
-                other.width = other.height = 0;
-                other.size_bytes = 0;
-                other.display = nullptr;
-            }
-            return *this;
-        }
-
-        bool IsValid() const {
-            return ximage != nullptr && pixels != nullptr && width > 0 && height > 0;
-        }
-
-        // Get pixel at coordinates (for debugging)
-        uint32_t GetPixel(int x, int y) const {
-            if (x >= 0 && x < width && y >= 0 && y < height) {
-                return pixels[y * width + x];
-            }
-            return 0;
-        }
-
-        // Set pixel at coordinates (for direct manipulation)
-        void SetPixel(int x, int y, uint32_t pixel) {
-            if (x >= 0 && x < width && y >= 0 && y < height) {
-                pixels[y * width + x] = pixel;
-            }
-        }
+        XImageBuffer& operator=(XImageBuffer&& other) noexcept;
+        bool IsValid() const { return ximage != nullptr && pixels != nullptr && width > 0 && height > 0; }
     };
 
     // ===== ENHANCED PIXEL BUFFER WITH XIMAGE SUPPORT =====
@@ -187,48 +134,15 @@ namespace UltraCanvas {
         }
         virtual ~X11PixelBuffer() { Clear(); }
 
-        bool IsValid() const  override {
-            if (is_ximage_backed) {
-                return ximage_buffer && ximage_buffer->IsValid();
-            } else {
-                return width > 0 && height > 0 && !traditional_buffer.empty();
-            }
-        }
-
-        size_t GetSizeInBytes() const override {
-            if (is_ximage_backed && ximage_buffer) {
-                return ximage_buffer->size_bytes;
-            } else {
-                return traditional_buffer.size() * sizeof(uint32_t);
-            }
-        }
-
-        uint32_t* GetPixelData() override {
-            if (is_ximage_backed && ximage_buffer) {
-                return ximage_buffer->pixels;
-            } else if (!traditional_buffer.empty()) {
-                return traditional_buffer.data();
-            }
-            return nullptr;
-        }
-
-        void Clear() {
-            traditional_buffer.clear();
-            ximage_buffer.reset();
-            width = height = 0;
-            is_ximage_backed = false;
-        }
+        bool IsValid() const  override;
+        size_t GetSizeInBytes() const override;
+        uint32_t* GetPixelData() override;
+        int GetWidth() const override { return width; }
+        int GetHeight() const override { return height; }
+        void Clear();
 
         // Convert to traditional buffer if needed (for cross-platform compatibility)
-        std::vector<uint32_t> ToTraditionalBuffer() override {
-            if (is_ximage_backed && ximage_buffer && ximage_buffer->IsValid()) {
-                std::vector<uint32_t> result(width * height);
-                std::memcpy(result.data(), ximage_buffer->pixels, width * height * sizeof(uint32_t));
-                return result;
-            } else {
-                return traditional_buffer;
-            }
-        }
+        std::vector<uint32_t> ToTraditionalBuffer();
     };
 
     class LinuxRenderContext : public IRenderContext {
@@ -252,11 +166,8 @@ namespace UltraCanvas {
 
         // Internal helper methods
         void ApplyDrawingStyle(const DrawingStyle &style);
-
         void ApplyTextStyle(const TextStyle &style);
-
         void ApplyFillStyle(const DrawingStyle &style);
-
         void ApplyStrokeStyle(const DrawingStyle &style);
 
         PangoFontDescription *CreatePangoFont(const TextStyle &style);
@@ -378,6 +289,8 @@ namespace UltraCanvas {
         }
 
         // ===== PIXEL OPERATIONS SUPPORT =====
+        bool PaintPixelBuffer(int x, int y, int width, int height, uint32_t* pixels) override;
+
         IPixelBuffer *SavePixelRegion(const Rect2Di &region) override;
 
         bool RestorePixelRegion(const Rect2Di &region, IPixelBuffer *buf) override;

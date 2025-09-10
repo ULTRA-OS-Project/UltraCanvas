@@ -207,7 +207,7 @@ namespace UltraCanvas {
 
                 // Update and render all windows
                 for (auto& window : windows) {
-                    if (window && window->IsVisible() && window->NeedsRedraw()) {
+                    if (window && window->IsVisible() && window->IsNeedsRedraw()) {
                         window->Render();
                         window->Flush();
                         window->RequestRedraw(false);  // ← Clear after rendering

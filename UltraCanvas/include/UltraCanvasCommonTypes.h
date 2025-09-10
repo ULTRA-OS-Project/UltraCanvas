@@ -83,6 +83,22 @@ struct Rect2D {
                  other.y > y + height || other.y + other.height < y);
     }
 
+    bool Intersects(const Rect2D& other, Rect2D& intersection) {
+        T left = std::max(x, other.x);
+        T top = std::max(y, other.y);
+        T right = std::min(x + width, other.x + other.width);
+        T bottom = std::min(y + height, other.y + other.height);
+
+        if (left < right && top < bottom) {
+            intersection.x = left;
+            intersection.y = top;
+            intersection.width = right - left;
+            intersection.height = bottom - top;
+            return true;
+        }
+        return false; // No intersection
+    }
+
     Rect2D Intersection(const Rect2D& other) const {
         T left = std::max(x, other.x);
         T top = std::max(y, other.y);
