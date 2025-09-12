@@ -530,19 +530,19 @@ namespace UltraCanvas {
 
         void SetupEventHandlers() {
             // Button event handlers
-            validateButton->onClicked = [this]() {
+            validateButton->onClick = [this](const UCEvent& ev) {
                 ValidateCurrentFormula();
             };
 
-            previewButton->onClicked = [this]() {
+            previewButton->onClick = [this](const UCEvent& ev) {
                 UpdatePreview();
             };
 
-            saveButton->onClicked = [this]() {
+            saveButton->onClick = [this](const UCEvent& ev) {
                 SaveCurrentFormula();
             };
 
-            loadButton->onClicked = [this]() {
+            loadButton->onClick = [this](const UCEvent& ev) {
                 ShowLoadDialog();
             };
 

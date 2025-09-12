@@ -210,7 +210,7 @@ namespace UltraCanvas {
                     if (window && window->IsVisible() && window->IsNeedsRedraw()) {
                         window->Render();
                         window->Flush();
-                        window->RequestRedraw(false);  // ← Clear after rendering
+                        window->ClearRequestRedraw();
                     }
                 }
                 // Frame rate control
@@ -328,8 +328,8 @@ namespace UltraCanvas {
                 if (xButton == Button4 || xButton == Button5) {
                     if (xEvent.type == ButtonPress) {
                         event.type = UCEventType::MouseWheel;
-                        event.x = xEvent.xbutton.x;
-                        event.y = xEvent.xbutton.y;
+                        event.x = event.windowX = xEvent.xbutton.x;
+                        event.y = event.windowY = xEvent.xbutton.y;
                         event.globalX = xEvent.xbutton.x_root;
                         event.globalY = xEvent.xbutton.y_root;
                         event.wheelDelta = (xButton == Button4) ? 5 : -5;
@@ -348,8 +348,8 @@ namespace UltraCanvas {
                 else if (xButton == 6 || xButton == 7) {
                     if (xEvent.type == ButtonPress) {
                         event.type = UCEventType::MouseWheelHorizontal;
-                        event.x = xEvent.xbutton.x;
-                        event.y = xEvent.xbutton.y;
+                        event.x = event.windowX = xEvent.xbutton.x;
+                        event.y = event.windowY = xEvent.xbutton.y;
                         event.globalX = xEvent.xbutton.x_root;
                         event.globalY = xEvent.xbutton.y_root;
                         event.wheelDelta = (xButton == 7) ? 5 : -5;
@@ -367,8 +367,8 @@ namespace UltraCanvas {
                 else {
                     event.type = (xEvent.type == ButtonPress) ?
                                  UCEventType::MouseDown : UCEventType::MouseUp;
-                    event.x = xEvent.xbutton.x;
-                    event.y = xEvent.xbutton.y;
+                    event.x = event.windowX = xEvent.xbutton.x;
+                    event.y = event.windowY = xEvent.xbutton.y;
                     event.globalX = xEvent.xbutton.x_root;
                     event.globalY = xEvent.xbutton.y_root;
                     event.button = ConvertXButtonToUCButton(xButton);
@@ -383,8 +383,8 @@ namespace UltraCanvas {
 
             case MotionNotify: {
                 event.type = UCEventType::MouseMove;
-                event.x = xEvent.xmotion.x;
-                event.y = xEvent.xmotion.y;
+                event.x = event.windowX = xEvent.xmotion.x;
+                event.y = event.windowY = xEvent.xmotion.y;
                 event.globalX = xEvent.xmotion.x_root;
                 event.globalY = xEvent.xmotion.y_root;
                 event.shift = (xEvent.xmotion.state & ShiftMask) != 0;
@@ -398,16 +398,16 @@ namespace UltraCanvas {
                 event.type = UCEventType::WindowResize;
                 event.width = xEvent.xconfigure.width;
                 event.height = xEvent.xconfigure.height;
-                event.x = xEvent.xconfigure.x;
-                event.y = xEvent.xconfigure.y;
+                event.x = event.windowX = xEvent.xconfigure.x;
+                event.y = event.windowY = xEvent.xconfigure.y;
                 break;
             }
 
             case Expose: {
                 event.type = UCEventType::WindowRepaint;
                 if (xEvent.xexpose.count == 0) {
-                    event.x = xEvent.xexpose.x;
-                    event.y = xEvent.xexpose.y;
+                    event.x = event.windowX = xEvent.xexpose.x;
+                    event.y = event.windowY = xEvent.xexpose.y;
                     event.width = xEvent.xexpose.width;
                     event.height = xEvent.xexpose.height;
                 } else {
@@ -442,8 +442,8 @@ namespace UltraCanvas {
 
             case EnterNotify: {
                 event.type = UCEventType::MouseEnter;
-                event.x = xEvent.xcrossing.x;
-                event.y = xEvent.xcrossing.y;
+                event.x = event.windowX = xEvent.xcrossing.x;
+                event.y = event.windowY = xEvent.xcrossing.y;
                 event.globalX = xEvent.xcrossing.x_root;
                 event.globalY = xEvent.xcrossing.y_root;
                 break;
@@ -451,8 +451,8 @@ namespace UltraCanvas {
 
             case LeaveNotify: {
                 event.type = UCEventType::MouseLeave;
-                event.x = xEvent.xcrossing.x;
-                event.y = xEvent.xcrossing.y;
+                event.x = event.windowX = xEvent.xcrossing.x;
+                event.y = event.windowY = xEvent.xcrossing.y;
                 event.globalX = xEvent.xcrossing.x_root;
                 event.globalY = xEvent.xcrossing.y_root;
                 break;

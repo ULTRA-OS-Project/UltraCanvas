@@ -292,7 +292,7 @@ public:
     
     // ===== CLICK HANDLING =====
     void TriggerClick() {
-        if (onClicked) onClicked();
+        if (onClick) onClick();
     }
     
     void TriggerSectionClick(int sectionIndex) {
@@ -308,12 +308,12 @@ public:
                 break;
         }
         
-        if (onSectionClicked) onSectionClicked(sectionIndex);
+        if (onSectionClick) onSectionClick(sectionIndex);
     }
     
     // ===== EVENT CALLBACKS =====
-    std::function<void()> onClicked;
-    std::function<void(int)> onSectionClicked;  // Section index: 0=left, 1=center, 2=right
+    std::function<void()> onClick;
+    std::function<void(int)> onSectionClick;  // Section index: 0=left, 1=center, 2=right
     std::function<void(int)> onSectionHovered;
     std::function<void()> onPressed;
     std::function<void()> onReleased;
@@ -742,8 +742,8 @@ public:
         button->SetSections(leftSection, centerSection, rightSection);
         button->SetAppearance(appearance);
         
-        if (clickHandler) button->onClicked = clickHandler;
-        if (sectionClickHandler) button->onSectionClicked = sectionClickHandler;
+        if (clickHandler) button->onClick = clickHandler;
+        if (sectionClickHandler) button->onSectionClick = sectionClickHandler;
         
         return button;
     }

@@ -592,7 +592,7 @@ namespace UltraCanvas {
             SetFocus(true);
             UpdateValueFromPosition(mousePos);
 
-            if (onPressed) onPressed();
+            if (onPress) onPress(event);
 
             return true;
         }
@@ -619,8 +619,8 @@ namespace UltraCanvas {
             if (isDragging) {
                 isDragging = false;
 
-                if (onReleased) onReleased();
-                if (onClicked) onClicked();
+                if (onRelease) onRelease(event);
+                if (onClick) onClick(event);
 
                 return true;
             }
@@ -685,9 +685,9 @@ namespace UltraCanvas {
         // ===== CALLBACK EVENTS =====
         std::function<void(float)> onValueChanged;
         std::function<void(float)> onValueChanging; // Called during drag
-        std::function<void()> onPressed;
-        std::function<void()> onReleased;
-        std::function<void()> onClicked;
+        std::function<void(const UCEvent&)> onPress;
+        std::function<void(const UCEvent&)> onRelease;
+        std::function<void(const UCEvent&)> onClick;
     };
 
 // ===== FACTORY FUNCTIONS =====

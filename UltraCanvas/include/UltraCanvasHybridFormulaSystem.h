@@ -237,7 +237,7 @@ namespace UltraCanvas {
                     "PerformanceMode", GetIdentifierID() + 1000, baseX + baseWidth - 200, baseY + 10, 180, 30, "🚀 Performance Mode: ON"
             );
 
-            performanceModeButton->onClicked = [this]() {
+            performanceModeButton->onClick = [this]() {
                 TogglePerformanceMode();
             };
 

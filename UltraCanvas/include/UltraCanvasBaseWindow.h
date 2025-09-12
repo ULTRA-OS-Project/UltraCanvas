@@ -180,7 +180,9 @@ namespace UltraCanvas {
         virtual void RenderCustomContent() {}
 
         bool IsNeedsRedraw() const { return _needsRedraw; }
-        void RequestRedraw(bool val) { _needsRedraw = val; }
+        void RequestRedraw() { _needsRedraw = true; }
+        void ClearRequestRedraw() { _needsRedraw = false; }
+
 //        void RequestFullRedraw() { useSelectiveRendering = false; _needsRedraw = true; }
         void MarkElementDirty(UltraCanvasElement* element, bool isOverlay = false);
 //        bool IsSelectiveRenderingActive();

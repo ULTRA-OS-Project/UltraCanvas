@@ -228,6 +228,7 @@ namespace UltraCanvas {
                     pixelBuffer.SetPixel(x, y, (0xFF000000 | (gray << 16) | (gray << 8) | gray));
                 }
             }
+            return true;
         }
 
         bool RenderGlassFormula(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) {
@@ -257,6 +258,7 @@ namespace UltraCanvas {
                     pixelBuffer.SetPixel(x, y, (0xFF000000 | (gray << 16) | (gray << 8) | gray));
                 }
             }
+            return true;
         }
 
         bool RenderAxesFormula(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) {

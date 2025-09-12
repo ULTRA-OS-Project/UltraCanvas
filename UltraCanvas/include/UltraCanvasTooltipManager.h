@@ -8,6 +8,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasBaseWindow.h"
 #include <string>
 #include <chrono>
 #include <functional>
@@ -44,7 +45,7 @@ namespace UltraCanvas {
 
         // Behavior
         float showDelay = 0.8f;        // Seconds to wait before showing
-        float hideDelay = 0.1f;        // Seconds to wait before hiding
+        float hideDelay = 0.5f;        // Seconds to wait before hiding
         int offsetX = 10;              // Offset from cursor
         int offsetY = 10;
         bool followCursor = false;     // Whether tooltip follows mouse movement
@@ -56,13 +57,13 @@ namespace UltraCanvas {
     class UltraCanvasTooltipManager {
     private:
         // State tracking
-        static UltraCanvasElement* hoveredElement;
-        static UltraCanvasElement* tooltipSource;
+        static UltraCanvasBaseWindow* targetWindow;
         static std::string currentText;
         static Point2Di tooltipPosition;
-        static Point2Di cursorPosition;
+//        static Point2Di cursorPosition;
         static bool visible;
         static bool pendingShow;
+        static bool pendingHide;
 
         // Timing
         static std::chrono::steady_clock::time_point hoverStartTime;
@@ -77,56 +78,50 @@ namespace UltraCanvas {
 
         // Global state
         static bool enabled;
-        static bool debugMode;
 
     public:
         // ===== CORE FUNCTIONALITY =====
 
         // Update tooltip state - call this every frame
-        static void Update(float deltaTime);
+        static void Update();
 
         // Show tooltip for an element
-        static void ShowTooltip(UltraCanvasElement* element, const std::string& text,
-                                const Point2Di& position = Point2Di(-1, -1));
+        static void UpdateAndShowTooltip(UltraCanvasWindow* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
+
+        static void UpdateAndShowTooltip(UltraCanvasWindow* win, const std::string& text, const Point2Di& position) {
+            TooltipStyle style;
+            UpdateAndShowTooltip(win, text, position, style);
+        }
 
         // Hide current tooltip
         static void HideTooltip();
+        static void HideTooltipImmediately();
 
         // Force immediate show/hide
-        static void ShowImmediately(UltraCanvasElement* element, const std::string& text,
-                                    const Point2Di& position = Point2Di(-1, -1));
+        static void UpdateAndShowTooltipImmediately(UltraCanvasWindow* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
+        static void UpdateAndShowTooltipImmediately(UltraCanvasWindow* win, const std::string &text, const Point2Di &position) {
+            TooltipStyle style;
+            UpdateAndShowTooltipImmediately(win, text, position, style);
+        }
 
-        static void HideImmediately();
 
         // ===== RENDERING =====
 
         // Render tooltip - call this during window rendering
-        static void Render();
+        static void Render(const UltraCanvasBaseWindow* win);
 
         // ===== CONFIGURATION =====
-
-        static void SetStyle(const TooltipStyle& newStyle);
-
-        static const TooltipStyle& GetStyle() {
-            return style;
-        }
 
         static void SetEnabled(bool enable) {
             enabled = enable;
             if (!enabled) {
-                HideImmediately();
+                HideTooltipImmediately();
             }
         }
 
         static bool IsEnabled() {
             return enabled;
         }
-
-        static void SetDebugMode(bool debug) {
-            debugMode = debug;
-        }
-
-        // ===== STATE QUERIES =====
 
         static bool IsVisible() {
             return visible;
@@ -136,9 +131,10 @@ namespace UltraCanvas {
             return pendingShow;
         }
 
-        static UltraCanvasElement* GetTooltipSource() {
-            return tooltipSource;
-        }
+//        static UltraCanvasElement* GetTooltipSource() {
+//            return tooltipSource;
+//        }
+        void SetStyle(const TooltipStyle &newStyle);
 
         static const std::string& GetCurrentText() {
             return currentText;
@@ -152,27 +148,7 @@ namespace UltraCanvas {
             return tooltipSize;
         }
 
-        // ===== MOUSE TRACKING =====
-
-        // Call this from mouse move events to update cursor position
-        static void UpdateCursorPosition(const Point2Di& position);
-
-        // Handle element hover events
-        static void OnElementHover(UltraCanvasElement* element, const std::string& tooltipText,
-                                   const Point2Di& mousePosition);
-
-        static void OnElementLeave(UltraCanvasElement* element);
-
-        // ===== UTILITY FUNCTIONS =====
-
-        // Get screen bounds for tooltip positioning
-        static void SetScreenBounds(const Rect2Di& bounds) {
-            screenBounds = bounds;
-        }
-
-        static Rect2Di GetScreenBounds() {
-            return screenBounds;
-        }
+        static void UpdateTooltipPosition(const Point2Di& position);
 
     private:
         static Rect2Di screenBounds;
@@ -181,18 +157,12 @@ namespace UltraCanvas {
 
         static void CalculateTooltipLayout();
 
-        static void UpdateTooltipPosition();
-
         static std::vector<std::string> WrapText(const std::string& text, float maxWidth);
-
         static std::vector<std::string> SplitWords(const std::string& text);
 
-        static void DrawShadow();
-
-        static void DrawBackground();
-
-        static void DrawBorder();
-
-        static void DrawText();
+        static void DrawShadow(IRenderContext* ctx);
+        static void DrawBackground(IRenderContext* ctx);
+        static void DrawBorder(IRenderContext* ctx);
+        static void DrawText(IRenderContext* ctx);
     };
 } // namespace UltraCanvas

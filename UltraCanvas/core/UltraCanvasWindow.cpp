@@ -7,6 +7,7 @@
 #include "../include/UltraCanvasWindow.h"
 #include "../include/UltraCanvasRenderContext.h"
 #include "../include/UltraCanvasApplication.h"
+#include "../include/UltraCanvasTooltipManager.h"
 //#include "../include/UltraCanvasZOrderManager.h"
 #include "../include/UltraCanvasMenu.h"
 #include "UltraCanvasApplication.h"
@@ -307,6 +308,8 @@ namespace UltraCanvas {
                 ctx->PopState();
             }
         }
+
+        UltraCanvasTooltipManager::Render(this);
     }
 
 

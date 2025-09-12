@@ -10,6 +10,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasBaseApplication.h"
+#include "UltraCanvasTooltipManager.h"
 
 
 namespace UltraCanvas {
@@ -135,6 +136,7 @@ namespace UltraCanvas {
             case UCEventType::MouseUp:
                 if (capturedElement) {
                     auto newEvent = event;
+                    newEvent.targetElement = capturedElement;
                     capturedElement->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
                     if (capturedElement->OnEvent(newEvent)) {
                         return true;
@@ -166,6 +168,7 @@ namespace UltraCanvas {
                 for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
                     UltraCanvasElement* activePopupElement = *it;
                     UCEvent localEvent = event;
+                    localEvent.targetElement = activePopupElement;
                     activePopupElement->ConvertWindowToContainerCoordinates(localEvent.x, localEvent.y);
                     if (activePopupElement->OnEvent(localEvent)) {
                         return true;
@@ -174,7 +177,7 @@ namespace UltraCanvas {
             }
 
             if (event.IsKeyboardEvent()) {
-                auto focused =  targetWindow->GetFocusedElement();
+                UltraCanvasElement* focused =  targetWindow->GetFocusedElement();
                 if (focused) {
                     return HandleEventWithBubbling(event, focused);
                 }
@@ -199,23 +202,34 @@ namespace UltraCanvas {
 //                    }
 //                }
 //            }
-            if (event.IsMouseClickEvent()) {
+            if (event.IsMouseEvent()) {
                 auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
                 if (hoveredElement && hoveredElement != elem) {
                     UCEvent leaveEvent = event;
                     leaveEvent.type = UCEventType::MouseLeave;
+                    leaveEvent.x = -1;
+                    leaveEvent.y = -1;
+                    leaveEvent.targetElement = hoveredElement;
                     hoveredElement->OnEvent(leaveEvent);
                     hoveredElement = nullptr;
                 }
                 if (elem) {
-                    auto newEvent = event;
-                    elem->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
+                    int localX = event.x;
+                    int localY = event.y;
+                    elem->ConvertWindowToContainerCoordinates(localX, localY);
                     if (hoveredElement != elem) {
                         UCEvent enterEvent = event;
+                        enterEvent.targetElement = elem;
                         enterEvent.type = UCEventType::MouseEnter;
+                        enterEvent.x = localX;
+                        enterEvent.y = localY;
                         elem->OnEvent(enterEvent);
                         hoveredElement = elem;
                     }
+                    auto newEvent = event;
+                    newEvent.targetElement = elem;
+                    newEvent.x = localX;
+                    newEvent.y = localY;
                     if (elem->OnEvent(newEvent)) {
                         return true;
                     }
@@ -240,6 +254,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasBaseApplication::HandleEventWithBubbling(const UCEvent &event, UltraCanvasElement* elem) {
         auto newEvent = event;
+        newEvent.targetElement = elem;
         elem->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
         if (elem->OnEvent(newEvent)) {
             return true;
@@ -247,6 +262,7 @@ namespace UltraCanvas {
         auto parent = elem->GetParentContainer();
         while(parent) {
             auto newParentEvent = event;
+            newParentEvent.targetElement = elem;
             parent->ConvertWindowToContainerCoordinates(newParentEvent.x, newParentEvent.y);
             if (parent->OnEvent(newParentEvent)) {
                 return true;
@@ -320,5 +336,6 @@ namespace UltraCanvas {
         if (eventLoopCallback) {
             eventLoopCallback();
         }
+        UltraCanvasTooltipManager::Update();
     }
 }

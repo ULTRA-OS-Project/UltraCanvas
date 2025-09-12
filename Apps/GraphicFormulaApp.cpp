@@ -15,6 +15,7 @@
 #include "UltraCanvasLayoutEngine.h"           // For grid layout functionality
 #include "UltraCanvasFormulaEditor.h"
 #include "UltraCanvasElementDebug.h"
+#include "UltraCanvasTooltipManager.h"
 //#include "UltraCanvasCairoDebugExtension.h"
 // NOTE: Temporarily removed this include to avoid abstract class compilation issues
 // The header contains a make_shared call for an abstract class ProceduralBackgroundPlugin
@@ -162,8 +163,17 @@ private:
 
         // Control buttons
         int buttonWidth = (leftWidth - 60) / 3;
-        newButton = std::make_shared<UltraCanvasButton>("NewButton", 12,
-                                                        10, y + 40, buttonWidth, 30, "New");
+        newButton = ButtonBuilder("NewButton", 12, 10, y + 40, buttonWidth, 30, "New")
+                .OnHover([](const UCEvent& ev) {
+                    if (ev.targetElement) {
+                        UltraCanvasTooltipManager::UpdateAndShowTooltip(ev.targetElement->GetWindow(),
+                                                                        "Test tooltip text",
+                                                                        Point2Di(ev.windowX, ev.windowY));
+                    }
+                },[](const UCEvent& ev) {
+                    UltraCanvasTooltipManager::HideTooltip();
+                })
+                .Build();
         openButton = std::make_shared<UltraCanvasButton>("OpenButton", 13,
                                                          20 + buttonWidth, y + 40, buttonWidth, 30, "Open");
         saveButton = std::make_shared<UltraCanvasButton>("SaveButton", 14,
@@ -224,17 +234,17 @@ private:
         rightPanel->AddChild(rightStatusPanel);
 
         // Setup event handlers
-        startButton->onClicked = [this]() { ToggleAnimation(); };
-        stopButton->onClicked = [this]() {
+        startButton->onClick = [this](const UCEvent& ev) { ToggleAnimation(); };
+        stopButton->onClick = [this](const UCEvent& ev) {
             isAnimating = false;
             startButton->SetText("Start Animation");
             statusLabel->SetText("Animation stopped");
         };
 
         // Setup other event handlers
-        newButton->onClicked = [this]() { CreateNewFormula(); };
-        openButton->onClicked = [this]() { OpenFormula(); };
-        saveButton->onClicked = [this]() { SaveFormula(); };
+        newButton->onClick = [this](const UCEvent& ev) { CreateNewFormula(); };
+        openButton->onClick = [this](const UCEvent& ev) { OpenFormula(); };
+        saveButton->onClick = [this](const UCEvent& ev) { SaveFormula(); };
 
         // Fixed: Use correct dropdown callback signature
         formulaDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
@@ -495,7 +505,7 @@ public:
     void RunInEventLoop() override {
         UltraCanvasApplication::RunInEventLoop();
         if (isAnimating) {
-            mainWindow->RequestRedraw(true);
+            mainWindow->RequestRedraw();
         }
     }
 

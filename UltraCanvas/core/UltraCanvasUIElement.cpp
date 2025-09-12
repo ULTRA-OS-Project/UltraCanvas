@@ -27,6 +27,17 @@ namespace UltraCanvas {
         return pos;
     }
 
+    void UltraCanvasElement::ConvertContainerToWindowCoordinates(int &x, int &y) {
+        x = GetXInWindow() + x;
+        y = GetYInWindow() + y;
+    }
+
+    Point2Di UltraCanvasElement::ConvertContainerToWindowCoordinates(const Point2Di &localPos) {
+        Point2Di pos = localPos;
+        ConvertContainerToWindowCoordinates(pos.x, pos.y);
+        return pos;
+    }
+
     void UltraCanvasElement::RequestRedraw() {
         if (window) {
             window->MarkElementDirty(this);
@@ -107,7 +118,7 @@ namespace UltraCanvas {
 //
 //            // Calculate final position: parent window position + content area offset + our relative position
 //            totalY = parentWindowY + parentContentArea.y + properties.y_pos;
-//        }
+//        }7
 //
 //        return totalY;
 //    }

@@ -238,6 +238,9 @@ namespace UltraCanvas {
         Point2Di ConvertWindowToContainerCoordinates(const Point2Di &globalPos);
         virtual void ConvertWindowToContainerCoordinates(int &x, int &y);
 
+        Point2Di ConvertContainerToWindowCoordinates(const Point2Di &globalPos);
+        virtual void ConvertContainerToWindowCoordinates(int &x, int &y);
+
         MousePointer GetMousePointer() const { return properties.MousePtr; }
         void SetMousePointer(MousePointer pointer) { properties.MousePtr = pointer; }
         MouseControls GetMouseControls() const { return properties.MouseCtrl; }

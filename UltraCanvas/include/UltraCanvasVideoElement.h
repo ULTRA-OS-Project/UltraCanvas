@@ -701,19 +701,19 @@ private:
     void CreateControls() {
         // Create play/pause button
         playPauseButton = CreateButton("playPause", 0, 0, 0, 40, 40, "⏵");
-        playPauseButton->onClicked = [this]() { TogglePlayPause(); };
+        playPauseButton->onClick = [this]() { TogglePlayPause(); };
         
         // Create stop button
         stopButton = CreateButton("stop", 0, 0, 0, 40, 40, "⏹");
-        stopButton->onClicked = [this]() { Stop(); };
+        stopButton->onClick = [this]() { Stop(); };
         
         // Create fullscreen button
         fullscreenButton = CreateButton("fullscreen", 0, 0, 0, 40, 40, "⛶");
-        fullscreenButton->onClicked = [this]() { ToggleFullscreen(); };
+        fullscreenButton->onClick = [this]() { ToggleFullscreen(); };
         
         // Create mute button
         muteButton = CreateButton("mute", 0, 0, 0, 40, 40, "🔊");
-        muteButton->onClicked = [this]() { ToggleMute(); };
+        muteButton->onClick = [this]() { ToggleMute(); };
         
         // Create progress slider
         progressSlider = CreateHorizontalSlider("progress", 0, 0, 0, 200, 40, 0.0f, 100.0f, 0.0f);

@@ -135,9 +135,9 @@ namespace UltraCanvas {
             style.shadowOffset = offset;
         }
 
-        void Click() {
-            if (IsEnabled() && onClicked) {
-                onClicked();
+        void Click(const UCEvent& ev) {
+            if (IsEnabled() && onClick) {
+                onClick(ev);
             }
         }
 
@@ -228,7 +228,7 @@ namespace UltraCanvas {
                     if (Contains(event.x, event.y) && IsEnabled()) {
                         pressed = true;
                         SetFocus(true);
-                        if (onPressed) onPressed();
+                        if (onPress) onPress(event);
                     }
                     break;
 
@@ -237,10 +237,10 @@ namespace UltraCanvas {
                         bool wasPressed = pressed;
                         pressed = false;
 
-                        if (onReleased) onReleased();
+                        if (onRelease) onRelease(event);
 
                         if (wasPressed && Contains(event.x, event.y)) {
-                            Click();
+                            Click(event);
                         }
                         RequestRedraw();
                     }
@@ -248,7 +248,7 @@ namespace UltraCanvas {
 
                 case UCEventType::MouseEnter:
                     SetHovered(true);
-                    if (onHoverEnter) onHoverEnter();
+                    if (onHoverEnter) onHoverEnter(event);
                     RequestRedraw();
                     break;
 
@@ -256,16 +256,16 @@ namespace UltraCanvas {
                     SetHovered(false);
                     if (pressed) {
                         pressed = false;
-                        if (onReleased) onReleased();
+                        if (onRelease) onRelease(event);
                     }
-                    if (onHoverLeave) onHoverLeave();
+                    if (onHoverLeave) onHoverLeave(event);
                     RequestRedraw();
                     break;
 
                 case UCEventType::KeyDown:
                     if (IsFocused() && IsEnabled()) {
                         if (event.virtualKey == UCKeys::Return || event.virtualKey == UCKeys::Space) {
-                            Click();
+                            Click(event);
                         }
                     }
                     break;
@@ -274,11 +274,11 @@ namespace UltraCanvas {
         }
 
         // ===== EVENT CALLBACKS =====
-        std::function<void()> onClicked;
-        std::function<void()> onPressed;
-        std::function<void()> onReleased;
-        std::function<void()> onHoverEnter;
-        std::function<void()> onHoverLeave;
+        std::function<void(const UCEvent&)> onClick;
+        std::function<void(const UCEvent&)> onPress;
+        std::function<void(const UCEvent&)> onRelease;
+        std::function<void(const UCEvent&)> onHoverEnter;
+        std::function<void(const UCEvent&)> onHoverLeave;
 
     private:
         // ===== HELPER METHODS =====
@@ -344,6 +344,10 @@ namespace UltraCanvas {
             button = CreateAutoButton(identifier, x, y, text);
         }
 
+        ButtonBuilder(const std::string& identifier, long id, int x, int y,  int w, int h, const std::string& text) {
+            button = CreateButton(identifier, id, x, y, w, h, text);
+        }
+
         // NOW these methods can call UltraCanvasButton methods because they're defined above
         ButtonBuilder& SetColors(const Color& normal, const Color& hover,
                                  const Color& pressed, const Color& disabled) {
@@ -371,12 +375,12 @@ namespace UltraCanvas {
             return *this;
         }
 
-        ButtonBuilder& OnClick(std::function<void()> callback) {
-            button->onClicked = callback;
+        ButtonBuilder& OnClick(std::function<void(const UCEvent&)> callback) {
+            button->onClick = callback;
             return *this;
         }
 
-        ButtonBuilder& OnHover(std::function<void()> enter, std::function<void()> leave = nullptr) {
+        ButtonBuilder& OnHover(std::function<void(const UCEvent&)> enter, std::function<void(const UCEvent&)> leave = nullptr) {
             button->onHoverEnter = enter;
             if (leave) button->onHoverLeave = leave;
             return *this;
