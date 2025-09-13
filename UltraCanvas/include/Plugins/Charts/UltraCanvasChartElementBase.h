@@ -146,12 +146,12 @@ public:
 
         std::shared_ptr<IChartDataSource> GetDataSource() const { return dataSource; }
 
-        void SetTitle(const std::string &title) {
+        void SetChartTitle(const std::string &title) {
             chartTitle = title;
             RequestRedraw();
         }
 
-        const std::string &GetTitle() const {
+        const std::string &GetChartTitle() const {
             return chartTitle;
         }
 
@@ -227,23 +227,23 @@ public:
         // INTERACTIVE FEATURES (COMMON)
         // =============================================================================
 
-        void EnableZoom(bool enable) {
+        void SetEnableZoom(bool enable) {
             enableZoom = enable;
         }
 
-        void EnablePan(bool enable) {
+        void SetEnablePan(bool enable) {
             enablePan = enable;
         }
 
-        void EnableTooltips(bool enable) {
+        void SetEnableTooltips(bool enable) {
             enableTooltips = enable;
         }
 
-        void EnableAnimations(bool enable) {
+        void SetEnableAnimations(bool enable) {
             animationEnabled = enable;
         }
 
-        void EnableSelection(bool enable) {
+        void SetEnableSelection(bool enable) {
             enableSelection = enable;
         }
 

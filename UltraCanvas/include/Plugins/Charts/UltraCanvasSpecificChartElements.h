@@ -126,9 +126,10 @@ private:
     // Scatter-specific properties
     Color pointColor = Color(0, 102, 204, 255);
     float pointSize = 6.0f;
-    enum class PointShape { Circle, Square, Triangle, Diamond } pointShape = PointShape::Circle;
 
 public:
+    enum class PointShape { Circle, Square, Triangle, Diamond } pointShape = PointShape::Circle;
+
     UltraCanvasScatterPlotElement(const std::string& id, long uid, int x, int y, int width, int height)
         : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
         enableZoom = true;

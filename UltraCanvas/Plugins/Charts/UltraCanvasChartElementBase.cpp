@@ -183,7 +183,7 @@ namespace UltraCanvas {
 
             // Calculate center position (simplified)
             int titleX = GetX() + GetWidth() / 2 - static_cast<int>(chartTitle.length()) * 5;
-            ctx->DrawText(chartTitle, titleX, GetY() + 20);
+            ctx->DrawText(chartTitle, titleX, GetY());
         }
     }
 
@@ -245,7 +245,7 @@ namespace UltraCanvas {
             // Draw label using existing DrawText
             double labelValue = cachedDataBounds.minX + (i * (cachedDataBounds.maxX - cachedDataBounds.minX) / numXTicks);
             std::string label = FormatAxisLabel(labelValue);
-            ctx->DrawText(label, x - 15, tickY + 15);
+            ctx->DrawText(label, x - 15, tickY);
         }
 
         // Y-axis labels
@@ -260,7 +260,7 @@ namespace UltraCanvas {
             // Draw label using existing DrawText
             double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
             std::string label = FormatAxisLabel(labelValue);
-            ctx->DrawText(label, tickX - 35, y + 3);
+            ctx->DrawText(label, tickX - 50, y - 8);
         }
     }
 
