@@ -1,12 +1,13 @@
-// UltraCanvasChartExample.cpp
+// Apps/UltraCanvasChartExample.cpp
 // Example demonstrating usage of UltraCanvasLineChartElement, UltraCanvasBarChartElement, and UltraCanvasScatterPlotElement
-// Version: 1.0.0
-// Last Modified: 2025-09-12
+// Version: 1.0.2
+// Last Modified: 2025-09-14
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include "Plugins/Charts/UltraCanvasChartDataStructures.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasLabel.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
 #include <memory>
@@ -22,12 +23,16 @@ private:
     std::shared_ptr<UltraCanvasLineChartElement> lineChart;
     std::shared_ptr<UltraCanvasBarChartElement> barChart;
     std::shared_ptr<UltraCanvasScatterPlotElement> scatterPlot;
-    
+    std::shared_ptr<UltraCanvasAreaChartElement> areaChart;
+
     // Sample data sources
     std::shared_ptr<ChartDataVector> salesData;
     std::shared_ptr<ChartDataVector> performanceData;
     std::shared_ptr<ChartDataVector> correlationData;
+    std::shared_ptr<ChartDataVector> revenueData;
 
+    // Instruction labels - replacing direct text drawing
+    std::shared_ptr<UltraCanvasLabel> instructionLabel;
 public:
     ChartExampleApplication() {
         ucApp = new UltraCanvasApplication();
@@ -36,6 +41,7 @@ public:
         CreateSampleData();
         CreateChartElements();
         ConfigureCharts();
+        CreateInstructionLabels();
         LayoutCharts();
     }
 
@@ -43,7 +49,7 @@ public:
         WindowConfig config;
         config.title = "UltraCanvas Charts Demo";
         config.width = 1200;
-        config.height = 800;
+        config.height = 900;
         config.resizable = true;
         config.type = WindowType::Standard;
         config.x = 100;  // Add explicit position
@@ -54,6 +60,20 @@ public:
     }
 
     void CreateSampleData() {
+        // CREATE REVENUE DATA FOR AREA CHART (ADD THIS NEW SECTION)
+        revenueData = std::make_shared<ChartDataVector>();
+        std::vector<ChartDataPoint> revenue = {
+                ChartDataPoint(1, 85000, 0, "Q1 2023", 85000),
+                ChartDataPoint(2, 92000, 0, "Q2 2023", 92000),
+                ChartDataPoint(3, 78000, 0, "Q3 2023", 78000),
+                ChartDataPoint(4, 105000, 0, "Q4 2023", 105000),
+                ChartDataPoint(5, 98000, 0, "Q1 2024", 98000),
+                ChartDataPoint(6, 112000, 0, "Q2 2024", 112000),
+                ChartDataPoint(7, 125000, 0, "Q3 2024", 125000),
+                ChartDataPoint(8, 138000, 0, "Q4 2024", 138000)
+        };
+        revenueData->LoadFromArray(revenue);
+
         // Create sales data for line chart (monthly sales over 12 months)
         salesData = std::make_shared<ChartDataVector>();
         std::vector<ChartDataPoint> sales = {
@@ -100,6 +120,27 @@ public:
         correlationData->LoadFromArray(correlation);
     }
 
+    void CreateInstructionLabels() {
+        std::string instructions =  "Chart Controls:\n"
+//                "R - Reset all chart views\n"
+                "S - Toggle line smoothing\n"
+                "P - Toggle data points\n"
+                "C - Cycle scatter plot shapes\n"
+                "G - Enable/disable gradient\n"
+                "Mouse: Drag to pan, wheel to zoom";
+
+        instructionLabel = CreateLabel(
+                "instruction_1",
+                2000, 50, 720, 400, 20 * 6, instructions
+        );
+        instructionLabel->SetFont("Arial", 13.0f, FontWeight::Normal);
+        instructionLabel->SetTextColor(Color(40, 40, 40, 255));
+
+        instructionLabel->SetAlignment(LabelAlignment::Left, LabelVerticalAlignment::Middle);
+        instructionLabel->SetBackgroundColor(Color(255, 255, 255, 200));
+        instructionLabel->SetPadding(4.0f, 4.0f, 2.0f, 2.0f);
+    }
+
     void CreateChartElements() {
         // Create line chart for sales trend
         lineChart = CreateLineChartElement("salesLineChart", 1001, 50, 50, 500, 300);
@@ -108,7 +149,9 @@ public:
         barChart = CreateBarChartElement("performanceBarChart", 1002, 600, 50, 500, 300);
         
         // Create scatter plot for correlation analysis
-        scatterPlot = CreateScatterPlotElement("correlationScatter", 1003, 325, 400, 500, 300);
+        scatterPlot = CreateScatterPlotElement("correlationScatter", 1003, 50, 400, 500, 300);
+
+        areaChart = CreateAreaChartElement("revenueAreaChart", 1004, 600, 400, 500, 300);
     }
 
     void ConfigureCharts() {
@@ -144,6 +187,25 @@ public:
         scatterPlot->SetEnableZoom(true);
         scatterPlot->SetEnablePan(true);
         scatterPlot->SetEnableSelection(true);
+
+        // Configure Area Chart
+        areaChart->SetDataSource(revenueData);
+        areaChart->SetChartTitle("Quarterly Revenue Growth");
+        areaChart->SetFillColor(Color(0, 150, 136, 120));        // Teal with transparency
+        areaChart->SetLineColor(Color(0, 150, 136, 255));        // Solid teal line
+        areaChart->SetLineWidth(3.0f);
+        areaChart->SetShowDataPoints(true);
+        areaChart->SetPointColor(Color(255, 87, 34, 255));       // Deep orange points
+        areaChart->SetPointRadius(4.0f);
+        areaChart->SetFillGradientEnabled(true);
+        areaChart->SetGradientColors(
+                Color(0, 150, 136, 180),    // Teal top
+                Color(0, 150, 136, 40)      // Faded teal bottom
+        );
+        areaChart->SetSmoothingEnabled(true);
+        areaChart->SetEnableTooltips(true);
+        areaChart->SetEnableZoom(true);
+        areaChart->SetEnablePan(true);
     }
 
     void LayoutCharts() {
@@ -151,6 +213,9 @@ public:
         mainWindow->AddChild(lineChart);
         mainWindow->AddChild(barChart);
         mainWindow->AddChild(scatterPlot);
+        mainWindow->AddChild(areaChart);
+
+        mainWindow->AddChild(instructionLabel);
     }
 
     void Run() {
@@ -180,13 +245,27 @@ private:
                 static bool smoothingEnabled = true;
                 smoothingEnabled = !smoothingEnabled;
                 lineChart->SetSmoothingEnabled(smoothingEnabled);
+                areaChart->SetSmoothingEnabled(smoothingEnabled);
                 break;
-                
+
+            case UCKeys::G: {
+                static bool gradientEnabled = true;
+                gradientEnabled = !gradientEnabled;
+                areaChart->SetFillGradientEnabled(gradientEnabled);
+                std::cout << "Area chart gradient " << (gradientEnabled ? "enabled" : "disabled") << std::endl;
+                break;
+            }
+            case UCKeys::U: {
+                UpdateRevenueData();
+                std::cout << "Revenue data updated with new values" << std::endl;
+                break;
+            }
             case UCKeys::P:
                 // Toggle data points on line chart
                 static bool pointsVisible = true;
                 pointsVisible = !pointsVisible;
                 lineChart->SetShowDataPoints(pointsVisible);
+                areaChart->SetShowDataPoints(pointsVisible);
                 break;
                 
             case UCKeys::C:
@@ -216,6 +295,32 @@ private:
 //            UpdateSalesDataWithRandomVariance();
 //        }
 //    }
+
+    void UpdateRevenueData() {
+        // Generate new revenue data with some variation
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<> variance(-10000, 15000);
+
+        std::vector<ChartDataPoint> newRevenue;
+        double baseValue = 85000;
+
+        for (int quarter = 1; quarter <= 8; ++quarter) {
+            baseValue += 5000 + variance(gen); // Growth trend with noise
+            baseValue = std::max(baseValue, 50000.0); // Don't go below 50k
+
+            std::string label = (quarter <= 4) ?
+                                ("Q" + std::to_string(quarter) + " 2023") :
+                                ("Q" + std::to_string(quarter - 4) + " 2024");
+
+            newRevenue.emplace_back(quarter, baseValue, 0, label, baseValue);
+        }
+
+        auto newRevenueData = std::make_shared<ChartDataVector>();
+        newRevenueData->LoadFromArray(newRevenue);
+        areaChart->SetDataSource(newRevenueData);
+        revenueData = newRevenueData;
+    }
 
     void UpdateSalesDataWithRandomVariance() {
         // Add small random variance to simulate real-time updates

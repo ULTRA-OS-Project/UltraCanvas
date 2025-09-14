@@ -347,6 +347,53 @@ class UltraCanvasBaseWindow;
             SetDrawingStyle(style);
         }
 
+        virtual void SetFillGradient(const Color& startColor, const Color& endColor,
+                             const Point2Df& startPoint, const Point2Df& endPoint)  = 0;
+
+        void SetFillGradient(const Color& startColor, const Color& endColor,
+                                     float start_x, float start_y, float end_x, float end_y)  {
+            SetFillGradient(startColor, endColor,
+                            Point2Df(start_x, start_y),
+                            Point2Df(end_x, end_y));
+        }
+
+        void SetFillGradient(const Color& startColor, const Color& endColor,
+                                     int start_x, int start_y, int end_x, int end_y) {
+            SetFillGradient(startColor, endColor,
+                            static_cast<float>(start_x), static_cast<float>(start_y),
+                            static_cast<float>(end_x), static_cast<float>(end_y));
+        }
+
+        /**
+        * Set gradient fill using integer coordinates
+        */
+        void SetFillGradient(const Color& startColor, const Color& endColor,
+                             const Point2Di& startPoint, const Point2Di& endPoint) {
+            SetFillGradient(startColor, endColor,
+                        Point2Df(static_cast<float>(startPoint.x), static_cast<float>(startPoint.y)),
+                        Point2Df(static_cast<float>(endPoint.x), static_cast<float>(endPoint.y)));
+        }
+
+/**
+ * Set horizontal gradient fill across a rectangle
+ */
+        void SetHorizontalGradientFill(const Color& leftColor, const Color& rightColor,
+                                       const Rect2Df& bounds) {
+            SetFillGradient(leftColor, rightColor,
+                            Point2Df(bounds.x, bounds.y + bounds.height / 2.0f),
+                            Point2Df(bounds.x + bounds.width, bounds.y + bounds.height / 2.0f));
+        }
+
+/**
+ * Set vertical gradient fill across a rectangle
+ */
+        void SetVerticalGradientFill(const Color& topColor, const Color& bottomColor,
+                                     const Rect2Df& bounds) {
+            SetFillGradient(topColor, bottomColor,
+                            Point2Df(bounds.x + bounds.width / 2.0f, bounds.y),
+                            Point2Df(bounds.x + bounds.width / 2.0f, bounds.y + bounds.height));
+        }
+
         virtual void SetStrokeWidth(float width) {
             DrawingStyle style = GetDrawingStyle();
             style.strokeWidth = width;

@@ -530,7 +530,7 @@ namespace UltraCanvas {
                 // ASCII characters
             default:
                 if (keysym >= 0x0020 && keysym <= 0x007E) {
-                    return static_cast<UCKeys>(keysym);
+                    return static_cast<UCKeys>(toupper((char)keysym));
                 }
                 return UCKeys::Unknown;
         }

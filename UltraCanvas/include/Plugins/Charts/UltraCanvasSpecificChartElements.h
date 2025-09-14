@@ -318,6 +318,13 @@ private:
     Color fillColor = Color(0, 102, 204, 128);  // Semi-transparent
     Color lineColor = Color(0, 102, 204, 255);
     float lineWidth = 2.0f;
+    bool showDataPoints = false;
+    Color pointColor = Color(0, 102, 204, 255);
+    float pointRadius = 3.0f;
+    bool enableSmoothing = false;
+    bool enableGradientFill = false;
+    Color gradientStartColor = Color(0, 102, 204, 200);
+    Color gradientEndColor = Color(0, 102, 204, 50);
 
 public:
     UltraCanvasAreaChartElement(const std::string& id, long uid, int x, int y, int width, int height)
@@ -346,9 +353,109 @@ public:
         RequestRedraw();
     }
 
+    void SetShowDataPoints(bool show) {
+        showDataPoints = show;
+        RequestRedraw();
+    }
+
+    void SetPointColor(const Color& color) {
+        pointColor = color;
+        RequestRedraw();
+    }
+
+    void SetPointRadius(float radius) {
+        pointRadius = std::max(0.0f, radius);
+        RequestRedraw();
+    }
+
+    void SetSmoothingEnabled(bool enabled) {
+        enableSmoothing = enabled;
+        RequestRedraw();
+    }
+
+    void SetFillGradientEnabled(bool enabled) {
+        enableGradientFill = enabled;
+        RequestRedraw();
+    }
+
+    void SetGradientColors(const Color& startColor, const Color& endColor) {
+        gradientStartColor = startColor;
+        gradientEndColor = endColor;
+        if (enableGradientFill) {
+            RequestRedraw();
+        }
+    }
+
     void RenderChart(IRenderContext* ctx) override;
 
     bool HandleChartMouseMove(const Point2Di& mousePos) override;
+
+private:
+    std::vector<Point2Df> SmoothAreaPoints(const std::vector<Point2Df>& points) const {
+        if (points.size() < 4 || !enableSmoothing) {
+            return points;
+        }
+
+        std::vector<Point2Df> smoothed;
+        smoothed.reserve(points.size() * 2);
+
+        // Keep baseline start point
+        smoothed.push_back(points[0]);
+
+        // Smooth the data points (skip baseline points)
+        for (size_t i = 1; i < points.size() - 1; ++i) {
+            smoothed.push_back(points[i]);
+
+            // Add interpolated point if not the last data point
+            if (i < points.size() - 2) {
+                Point2Df interpolated;
+                interpolated.x = (points[i].x + points[i + 1].x) * 0.5f;
+                interpolated.y = (points[i].y + points[i + 1].y) * 0.5f;
+                smoothed.push_back(interpolated);
+            }
+        }
+
+        // Keep baseline end point
+        smoothed.push_back(points.back());
+
+        return smoothed;
+    }
+
+    void RenderDataPoints(IRenderContext* ctx, const std::vector<Point2Df>& areaPoints) const {
+        if (!showDataPoints || pointRadius <= 0.0f || areaPoints.size() < 3) {
+            return;
+        }
+
+        ctx->SetFillColor(pointColor);
+        ctx->SetStrokeColor(Color(255, 255, 255, 255));
+        ctx->SetStrokeWidth(1.0f);
+
+        // Draw points only for data points (skip baseline start/end)
+        for (size_t i = 1; i < areaPoints.size() - 1; ++i) {
+            ctx->FillCircle(areaPoints[i].x, areaPoints[i].y, pointRadius);
+            ctx->DrawCircle(areaPoints[i].x, areaPoints[i].y, pointRadius);
+        }
+    }
+
+    void RenderGradientFill(IRenderContext* ctx, const std::vector<Point2Df>& areaPoints) const {
+        if (!enableGradientFill || areaPoints.size() < 3) {
+            return;
+        }
+
+        // Find top and bottom of area for gradient direction
+        float minY = areaPoints[0].y;
+        float maxY = areaPoints[0].y;
+
+        for (const auto& point : areaPoints) {
+            minY = std::min(minY, point.y);
+            maxY = std::max(maxY, point.y);
+        }
+
+        // Create vertical gradient from top to bottom
+        ctx->SetFillGradient(gradientStartColor, gradientEndColor,
+                             Point2Df(0, minY), Point2Df(0, maxY));
+        ctx->FillPath(areaPoints);
+    }
 };
 
 // =============================================================================

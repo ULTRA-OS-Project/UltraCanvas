@@ -255,76 +255,105 @@ namespace UltraCanvas {
 
 
     // UltraCanvasAreaChartElement
-    void UltraCanvasAreaChartElement::RenderChart(IRenderContext *ctx) {
-        if (!ctx || !dataSource || dataSource->GetPointCount() < 2) return;
+    void UltraCanvasAreaChartElement::RenderChart(IRenderContext* ctx) {
+        if (!ctx || !dataSource || dataSource->GetPointCount() < 2) {
+            return;
+        }
 
+        // Update cache if needed (using existing base class functionality)
+        UpdateRenderingCache();
+
+        // Use existing ChartCoordinateTransform from base class
         ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
 
-        // Create area path points
+        // Create area path points following existing pattern
         std::vector<Point2Df> areaPoints;
+        areaPoints.reserve(dataSource->GetPointCount() + 2); // +2 for baseline closure
 
-        // Add baseline start point
+        // Add baseline start point (bottom-left of area)
         auto firstPoint = dataSource->GetPoint(0);
         auto baselineStart = transform.DataToScreen(firstPoint.x, cachedDataBounds.minY);
         areaPoints.push_back(baselineStart);
 
-        // Add data points
-        std::vector<Point2Df> linePoints;
+        // Add all data points to create the top edge of the area
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
             auto screenPos = transform.DataToScreen(point.x, point.y);
             areaPoints.push_back(screenPos);
-            linePoints.push_back(screenPos);
         }
 
-        // Add baseline end point
+        // Add baseline end point (bottom-right of area) to close the shape
         auto lastPoint = dataSource->GetPoint(dataSource->GetPointCount() - 1);
         auto baselineEnd = transform.DataToScreen(lastPoint.x, cachedDataBounds.minY);
         areaPoints.push_back(baselineEnd);
 
-        // Fill area using existing FillPath
-        ctx->SetFillColor(fillColor);
-        ctx->FillPath(areaPoints);
+        // Apply smoothing if enabled
+        std::vector<Point2Df> renderPoints = enableSmoothing ?
+                                             SmoothAreaPoints(areaPoints) : areaPoints;
 
-        // Draw line on top using existing DrawPath
-        ctx->SetStrokeColor(lineColor);
-        ctx->SetStrokeWidth(lineWidth);
-        ctx->DrawPath(linePoints, false);
+        // Fill the area using gradient or solid fill
+        if (enableGradientFill) {
+            RenderGradientFill(ctx, renderPoints);
+        } else {
+            // Standard solid fill using existing IRenderContext methods
+            ctx->SetFillColor(fillColor);
+            ctx->FillPath(renderPoints);
+        }
+
+        // Draw the top edge line (data line) using existing methods
+        if (lineWidth > 0.0f) {
+            ctx->SetStrokeColor(lineColor);
+            ctx->SetStrokeWidth(lineWidth);
+
+            // Draw line connecting all data points (skip baseline points)
+            ctx->DrawPath(renderPoints);
+        }
+
+        // Render data points if enabled
+        if (showDataPoints) {
+            RenderDataPoints(ctx, renderPoints);
+        }
     }
 
-    bool UltraCanvasAreaChartElement::HandleChartMouseMove(const Point2Di &mousePos) {
-        if (!enableTooltips) {
+    bool UltraCanvasAreaChartElement::HandleChartMouseMove(const Point2Di& mousePos) {
+        if (!enableTooltips || !dataSource || dataSource->GetPointCount() == 0) {
+            return false;
+        }
+
+        // Check if mouse is within chart area using existing base functionality
+        if (mousePos.x < cachedPlotArea.x ||
+            mousePos.x > cachedPlotArea.x + cachedPlotArea.width ||
+            mousePos.y < cachedPlotArea.y ||
+            mousePos.y > cachedPlotArea.y + cachedPlotArea.height) {
             HideTooltip();
             return false;
         }
 
-        // Find nearest data point (similar to line chart)
+        // Use existing coordinate transformation
         ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-        double mouseDataX = transform.ScreenToDataX(mousePos.x - GetX());
-        double mouseDataY = transform.ScreenToDataY(mousePos.y - GetY());
+        auto dataPos = transform.ScreenToData(mousePos.x, mousePos.y);
 
-        size_t nearestIndex = SIZE_MAX;
-        double nearestDistance = std::numeric_limits<double>::max();
+        // Find closest data point on X-axis (following existing chart pattern)
+        size_t closestIndex = 0;
+        double minDistance = std::numeric_limits<double>::max();
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
-            double distance = std::sqrt((point.x - mouseDataX) * (point.x - mouseDataX) +
-                                        (point.y - mouseDataY) * (point.y - mouseDataY));
-
-            if (distance < nearestDistance) {
-                nearestDistance = distance;
-                nearestIndex = i;
+            double distance = std::abs(point.x - dataPos.x);
+            if (distance < minDistance) {
+                minDistance = distance;
+                closestIndex = i;
             }
         }
 
-        // Show tooltip if point is close enough
-        if (nearestIndex != SIZE_MAX && nearestDistance < cachedDataBounds.GetXRange() * 0.05) {
-            auto point = dataSource->GetPoint(nearestIndex);
-            ShowChartPointTooltip(mousePos, point, nearestIndex);
+        // Show tooltip for closest point using existing base class method
+        if (closestIndex < dataSource->GetPointCount()) {
+            auto point = dataSource->GetPoint(closestIndex);
+            ShowChartPointTooltip(mousePos, point, closestIndex);
             return true;
-        } else {
-            HideTooltip();
-            return false;
         }
+
+        HideTooltip();
+        return false;
     }
 }

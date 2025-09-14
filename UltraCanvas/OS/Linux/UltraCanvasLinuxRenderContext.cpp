@@ -1,4 +1,4 @@
-// UltraCanvasLinuxRenderContext.cpp - FIXED VERSION
+// UltraCanvasLinuxRenderContext.cpp
 // Linux platform implementation for UltraCanvas Framework using Cairo and X11
 // Version: 1.0.2 - Fixed null pointer crashes and Pango initialization
 // Last Modified: 2025-07-14
@@ -525,38 +525,6 @@ namespace UltraCanvas {
         SetCairoColor(style.textColor);
     }
 
-    void LinuxRenderContext::ApplyFillStyle(const DrawingStyle &style) {
-//        std::cout << "ApplyFillStyle: Setting fill color=(" << (int)style.fillColor.r
-//                  << "," << (int)style.fillColor.g << "," << (int)style.fillColor.b
-//                  << "," << (int)style.fillColor.a << ")" << std::endl;
-
-        // Handle different fill modes
-        switch (style.fillMode) {
-            case FillMode::Solid:
-                SetCairoColor(style.fillColor);
-                break;
-
-            case FillMode::Gradient:
-                // For now, use solid color - gradient implementation would go here
-                SetCairoColor(style.fillColor);
-                std::cout << "ApplyFillStyle: Gradient mode not fully implemented, using solid color" << std::endl;
-                break;
-
-            case FillMode::Pattern:
-                // For now, use solid color - pattern implementation would go here
-                SetCairoColor(style.fillColor);
-                std::cout << "ApplyFillStyle: Pattern mode not fully implemented, using solid color" << std::endl;
-                break;
-
-            case FillMode::NoneFill:
-            default:
-                std::cout << "ApplyFillStyle: No fill mode specified" << std::endl;
-                break;
-        }
-
-//        std::cout << "ApplyFillStyle: Complete" << std::endl;
-    }
-
     void LinuxRenderContext::ApplyStrokeStyle(const DrawingStyle &style) {
 //        std::cout << "ApplyStrokeStyle: Setting stroke color=(" << (int) style.strokeColor.r
 //                  << "," << (int) style.strokeColor.g << "," << (int) style.strokeColor.b
@@ -628,6 +596,123 @@ namespace UltraCanvas {
         }
     }
 
+    void LinuxRenderContext::SetFillGradient(const Color& startColor, const Color& endColor,
+                                             const Point2Df& startPoint, const Point2Df& endPoint) {
+        // Update the current drawing style to use gradient
+        DrawingStyle style = GetDrawingStyle();
+        style.fillMode = FillMode::Gradient;
+
+        // Configure the gradient
+        style.fillGradient.type = GradientType::Linear;
+        style.fillGradient.startPoint = startPoint;
+        style.fillGradient.endPoint = endPoint;
+
+        // Clear existing gradient stops and add new ones
+        style.fillGradient.stops.clear();
+        style.fillGradient.stops.push_back(GradientStop(0.0f, startColor));
+        style.fillGradient.stops.push_back(GradientStop(1.0f, endColor));
+
+        // Apply the updated style
+        SetDrawingStyle(style);
+
+        std::cout << "SetFillGradient: Configured linear gradient from ("
+                  << startPoint.x << "," << startPoint.y << ") to ("
+                  << endPoint.x << "," << endPoint.y << ")" << std::endl;
+    }
+
+    void LinuxRenderContext::ApplyFillStyle(const DrawingStyle &style) {
+        // Handle different fill modes
+        switch (style.fillMode) {
+            case FillMode::Solid:
+                SetCairoColor(style.fillColor);
+                break;
+
+            case FillMode::Gradient:
+                ApplyGradientFill(style.fillGradient);
+                break;
+
+            case FillMode::Pattern:
+                // For now, use solid color - pattern implementation would go here
+                SetCairoColor(style.fillColor);
+                std::cout << "ApplyFillStyle: Pattern mode not fully implemented, using solid color" << std::endl;
+                break;
+
+            case FillMode::Texture:
+                // For now, use solid color - texture implementation would go here
+                SetCairoColor(style.fillColor);
+                std::cout << "ApplyFillStyle: Texture mode not fully implemented, using solid color" << std::endl;
+                break;
+
+            case FillMode::NoneFill:
+            default:
+                // No fill - this should not set any source
+                break;
+        }
+    }
+
+    void LinuxRenderContext::ApplyGradientFill(const Gradient& gradient) {
+        cairo_pattern_t* pattern = nullptr;
+
+        switch (gradient.type) {
+            case GradientType::Linear:
+                pattern = cairo_pattern_create_linear(
+                        gradient.startPoint.x, gradient.startPoint.y,
+                        gradient.endPoint.x, gradient.endPoint.y
+                );
+                break;
+
+            case GradientType::Radial:
+                pattern = cairo_pattern_create_radial(
+                        gradient.startPoint.x, gradient.startPoint.y, gradient.radius1,
+                        gradient.endPoint.x, gradient.endPoint.y, gradient.radius2
+                );
+                break;
+
+            case GradientType::Conic:
+                // Cairo doesn't directly support conic gradients, fall back to linear
+                pattern = cairo_pattern_create_linear(
+                        gradient.startPoint.x, gradient.startPoint.y,
+                        gradient.endPoint.x, gradient.endPoint.y
+                );
+                std::cout << "ApplyGradientFill: Conic gradients not fully supported, using linear" << std::endl;
+                break;
+
+            default:
+                // Fallback to solid color
+                if (!gradient.stops.empty()) {
+                    SetCairoColor(gradient.stops[0].color);
+                }
+                return;
+        }
+
+        if (pattern == nullptr) {
+            std::cerr << "ApplyGradientFill: Failed to create Cairo gradient pattern" << std::endl;
+            // Fallback to solid color
+            if (!gradient.stops.empty()) {
+                SetCairoColor(gradient.stops[0].color);
+            }
+            return;
+        }
+
+        // Add color stops to the gradient
+        for (const auto& stop : gradient.stops) {
+            cairo_pattern_add_color_stop_rgba(pattern,
+                                              stop.position,
+                                              stop.color.r / 255.0,
+                                              stop.color.g / 255.0,
+                                              stop.color.b / 255.0,
+                                              stop.color.a / 255.0
+            );
+        }
+
+        // Set the gradient as the current source
+        cairo_set_source(cairo, pattern);
+
+        // Release the pattern reference (Cairo maintains its own reference)
+        cairo_pattern_destroy(pattern);
+
+        std::cout << "ApplyGradientFill: Applied gradient with " << gradient.stops.size() << " stops" << std::endl;
+    }
     void LinuxRenderContext::SetCairoColor(const Color &color) {
         try {
             cairo_set_source_rgba(cairo,

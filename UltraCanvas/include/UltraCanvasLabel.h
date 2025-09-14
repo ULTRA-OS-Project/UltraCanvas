@@ -301,10 +301,10 @@ namespace UltraCanvas {
                 float textY = textArea.y;
                 switch (style.verticalAlign) {
                     case LabelVerticalAlignment::Top:
-                        textY = textArea.y + style.fontSize * 0.8f; // Baseline offset
+                        textY = textArea.y; // Baseline offset
                         break;
                     case LabelVerticalAlignment::Middle:
-                        textY = textArea.y + (textArea.height / 2) - style.fontSize * 0.8;
+                        textY = textArea.y + (textArea.height / 2) - textSize.y / 2;
                         break;
                     case LabelVerticalAlignment::Bottom:
                         textY = textArea.y + textArea.height;

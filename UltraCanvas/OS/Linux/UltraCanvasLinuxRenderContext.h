@@ -169,6 +169,7 @@ namespace UltraCanvas {
         void ApplyTextStyle(const TextStyle &style);
         void ApplyFillStyle(const DrawingStyle &style);
         void ApplyStrokeStyle(const DrawingStyle &style);
+        void ApplyGradientFill(const Gradient& gradient);
 
         PangoFontDescription *CreatePangoFont(const TextStyle &style);
 
@@ -220,6 +221,9 @@ namespace UltraCanvas {
 
         void SetGlobalAlpha(float alpha) override;
         float GetGlobalAlpha() const override;
+
+        void SetFillGradient(const Color& startColor, const Color& endColor,
+                             const Point2Df& startPoint, const Point2Df& endPoint);
 
         // Basic drawing
         void DrawLine(float x, float y, float x1, float y1) override;
