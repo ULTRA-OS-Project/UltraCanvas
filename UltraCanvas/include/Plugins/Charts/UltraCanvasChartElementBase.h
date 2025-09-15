@@ -323,7 +323,7 @@ public:
 
         virtual ChartDataBounds CalculateDataBounds();
 
-        void DrawCommonBackground(IRenderContext *ctx);
+        virtual void DrawCommonBackground(IRenderContext *ctx);
 
         virtual void DrawGrid(IRenderContext *ctx);
 

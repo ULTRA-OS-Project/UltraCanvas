@@ -1,4 +1,4 @@
-// UltraCanvasFinancialChartExample.cpp
+// Apps/UltraCanvasFinancialChartExample.cpp
 // Example usage of UltraCanvasFinancialChart element
 // Version: 1.0.0
 // Last Modified: 2025-09-14
@@ -138,7 +138,8 @@ public:
                 "• Mouse over candles to see OHLC data and volume\n"
                 "• Drag to pan the chart view\n"
                 "• Mouse wheel to zoom in/out\n"
-                "• S - Switch between Candlestick/OHLC/Heikin-Ashi styles\n"
+                "• S - Switch between Candlestick/OHLC/Heikin-Ashi\n"
+                "        styles\n"
                 "• V - Toggle volume display\n"
                 "• M - Toggle moving average (20-day)\n"
                 "• R - Reset zoom and pan\n"
@@ -149,8 +150,9 @@ public:
                 "• Blue line: 20-day moving average\n"
                 "• Bottom panel: Volume bars";
 
+
         instructionLabel = CreateLabel(
-                "instructions", 2000, 1070, 50, 400, 300, instructions
+                "instructions", 2000, 1070, 50, 400, 330, instructions
         );
 
         instructionLabel->SetFont("Arial", 12.0f, FontWeight::Normal);
@@ -161,6 +163,7 @@ public:
     }
 
     void OnAppKeyPress(const UCEvent& event) {
+        if (event.type != UCEventType::KeyDown) return;
         switch (event.virtualKey) {
             case UCKeys::S: {
                 // Cycle through candle styles
@@ -205,6 +208,9 @@ public:
             case UCKeys::G: {
                 // Toggle grid (would access through base class method)
                 std::cout << "Grid display toggled" << std::endl;
+                static bool gridEnabled = true;
+                gridEnabled = !gridEnabled;
+                stockChart->SetGridEnabled(gridEnabled);
                 break;
             }
         }

@@ -1,7 +1,7 @@
 // include/Plugins/Charts/UltraCanvasFinancialChart.h
 // Financial chart element with OHLC candlestick and volume rendering
-// Version: 1.0.0
-// Last Modified: 2025-09-14
+// Version: 1.3.0
+// Last Modified: 2025-09-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -29,9 +29,9 @@ namespace UltraCanvas {
         std::string date;
 
         FinancialChartDataPoint(double time, double openPrice, double highPrice,
-                           double lowPrice, double closePrice, double vol = 0.0,
-                           const std::string& dateStr = "")
-                : ChartDataPoint(time, closePrice, vol, dateStr, closePrice),
+                                double lowPrice, double closePrice, double vol = 0.0,
+                                const std::string& dateStr = "")
+                : ChartDataPoint(time, closePrice, 0.0, dateStr, vol),
                   open(openPrice), high(highPrice), low(lowPrice),
                   close(closePrice), volume(vol), date(dateStr) {}
     };
@@ -82,6 +82,12 @@ namespace UltraCanvas {
         Color wickLineColor = Color(80, 80, 80, 255);        // Gray for wicks
         Color volumeBarColor = Color(100, 100, 100, 128);    // Semi-transparent volume
 
+        // Enhanced volume chart styling
+        Color volumeChartBackgroundColor = Color(245, 245, 245, 255);  // Light gray background
+        Color volumeChartBorderColor = Color(180, 180, 180, 255);      // Border for separation
+        Color volumeAxisLabelColor = Color(80, 80, 80, 255);           // Volume axis labels
+        Color volumeGridColor = Color(210, 210, 210, 255);             // Volume grid lines
+
         // Chart configuration
         CandleDisplayStyle candleStyle = CandleDisplayStyle::Candlestick;
         bool showVolumePanel = true;
@@ -89,13 +95,24 @@ namespace UltraCanvas {
         float candleWidthRatio = 0.8f;
         float volumePanelHeightRatio = 0.25f;
 
+        // Enhanced volume configuration
+        bool showVolumeAxisLabels = true;
+        bool showVolumeBorder = true;
+        int volumeSeparationHeight = 15;  // Gap between price and volume charts
+
+        // Volume display options
+        bool showVolumeMovingAverage = false;
+        int volumeMovingAveragePeriod = 20;
+        Color volumeMovingAverageColor = Color(80, 80, 200, 255);
+
         // Moving average settings
         int movingAveragePeriod = 20;
         Color movingAverageLineColor = Color(0, 0, 200, 255);
 
-        // Cached rendering areas
+        // Cached rendering areas - enhanced for separate charts
         ChartPlotArea priceRenderArea;
         ChartPlotArea volumeRenderArea;
+        ChartPlotArea volumeAxisArea;  // Separate area for volume Y-axis labels
 
     public:
         UltraCanvasFinancialChartElement(const std::string& id, long uid, int x, int y, int width, int height);
@@ -118,21 +135,73 @@ namespace UltraCanvas {
             bearishCandleColor = color;
             RequestRedraw();
         }
+
         void SetMovingAverageColor(const Color& color) {
             movingAverageLineColor = color;
             RequestRedraw();
         }
+
         void SetWickLineColor(const Color& color) {
             wickLineColor = color;
             RequestRedraw();
         }
+
         void SetVolumeBarColor(const Color& color) {
             volumeBarColor = color;
             RequestRedraw();
         }
+
+        // Enhanced volume chart styling methods
+        void SetVolumeChartBackgroundColor(const Color& color) {
+            volumeChartBackgroundColor = color;
+            RequestRedraw();
+        }
+
+        void SetVolumeChartBorderColor(const Color& color) {
+            volumeChartBorderColor = color;
+            RequestRedraw();
+        }
+
+        void SetVolumeAxisLabelColor(const Color& color) {
+            volumeAxisLabelColor = color;
+            RequestRedraw();
+        }
+
+        void SetVolumeGridColor(const Color& color) {
+            volumeGridColor = color;
+            RequestRedraw();
+        }
+
         void SetShowVolumePanel(bool show) {
             showVolumePanel = show;
             cacheValid = false;
+            RequestRedraw();
+        }
+
+        void SetShowVolumeAxisLabels(bool show) {
+            showVolumeAxisLabels = show;
+            RequestRedraw();
+        }
+
+        void SetShowVolumeBorder(bool show) {
+            showVolumeBorder = show;
+            RequestRedraw();
+        }
+
+        void SetVolumeSeparationHeight(int height) {
+            volumeSeparationHeight = std::max(5, std::min(30, height));
+            cacheValid = false;
+            RequestRedraw();
+        }
+
+        void SetShowVolumeMovingAverage(bool show, int period = 20) {
+            showVolumeMovingAverage = show;
+            volumeMovingAveragePeriod = period;
+            RequestRedraw();
+        }
+
+        void SetVolumeMovingAverageColor(const Color& color) {
+            volumeMovingAverageColor = color;
             RequestRedraw();
         }
 
@@ -156,10 +225,10 @@ namespace UltraCanvas {
         void SetFinancialDataSource(std::shared_ptr<FinancialChartDataVector> ds) {
             dataSource = ds;
         }
+
         std::shared_ptr<FinancialChartDataVector> GetFinancialDataSource() const {
             return std::dynamic_pointer_cast<FinancialChartDataVector>(dataSource);
         }
-
 
         // =============================================================================
         // CHART RENDERING IMPLEMENTATION
@@ -177,11 +246,24 @@ namespace UltraCanvas {
         void CalculateRenderingAreas();
 
         void DrawGrid(IRenderContext* ctx) override;
+        void DrawCommonBackground(IRenderContext* ctx) override;
+
+        // Enhanced separate chart rendering methods
+        void RenderPriceChart(IRenderContext* ctx);
+        void RenderVolumeChart(IRenderContext* ctx);
+        void DrawPriceChartBackground(IRenderContext* ctx);
+        void DrawPriceChartBorder(IRenderContext* ctx);
+        void DrawPriceChartGrid(IRenderContext* ctx);
+        void DrawPriceChartAxes(IRenderContext* ctx);
+        void DrawVolumeChartBackground(IRenderContext* ctx);
+        void DrawVolumeChartBorder(IRenderContext* ctx);
+        void DrawVolumeGrid(IRenderContext* ctx);
+        void DrawVolumeChartAxes(IRenderContext* ctx);
+        void DrawVolumeAxisLabels(IRenderContext* ctx);
+        void RenderVolumeMovingAverage(IRenderContext* ctx);
 
         void RenderFinancialData(IRenderContext* ctx);
-
         void RenderVolumeData(IRenderContext* ctx);
-
         void RenderMovingAverageData(IRenderContext* ctx);
 
         void DrawCandlestickCandle(IRenderContext* ctx, const FinancialChartDataPoint& point,
@@ -198,9 +280,10 @@ namespace UltraCanvas {
         }
 
         FinancialChartDataPoint GetFinancialPointAtPosition(const Point2Di& mousePos) const;
-
         std::string GenerateFinancialTooltip(const FinancialChartDataPoint& point);
+        std::string FormatVolumeValue(double volume);
     };
+
 // =============================================================================
 // FINANCIAL CHART FACTORY FUNCTION
 // =============================================================================
@@ -210,7 +293,7 @@ namespace UltraCanvas {
         return std::make_shared<UltraCanvasFinancialChartElement>(id, uid, x, y, width, height);
     }
 
-// Helper factory for financial chart with data
+    // Helper factory for financial chart with data
     inline std::shared_ptr<UltraCanvasFinancialChartElement> CreateFinancialChartWithData(
             const std::string& id, long uid, int x, int y, int width, int height,
             std::shared_ptr<FinancialChartDataVector> data, const std::string& title = "") {
