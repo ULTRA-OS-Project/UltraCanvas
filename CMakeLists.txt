@@ -112,6 +112,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/Plugins/Charts/UltraCanvasChartElementBase.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasChartDataStructures.cpp
+        UltraCanvas/Plugins/Charts/UltraCanvasFinancialChart.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartElement.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
@@ -129,7 +130,8 @@ set(APP_SOURCES
 
 # formula app
         #Apps/GraphicFormulaApp.cpp
-        Apps/UltraCanvasChartExample.cpp
+#        Apps/UltraCanvasChartExample.cpp
+        Apps/UltraCanvasFinancialChartExample.cpp
         #        Apps/Complete_IBM_Financial_Chart_Example.cpp
         #        Apps/IBM_StockChart_Example.cpp
 

@@ -306,7 +306,7 @@ public:
             animationStartTime = std::chrono::steady_clock::now();
         }
 
-        void UpdateRenderingCache();
+        virtual void UpdateRenderingCache();
 
         void UpdateAnimation();
 
@@ -325,11 +325,11 @@ public:
 
         void DrawCommonBackground(IRenderContext *ctx);
 
-        void DrawGrid(IRenderContext *ctx);
+        virtual void DrawGrid(IRenderContext *ctx);
 
-        void DrawAxes(IRenderContext *ctx);
+        virtual void DrawAxes(IRenderContext *ctx);
 
-        void DrawAxisLabels(IRenderContext *ctx);
+        virtual void DrawAxisLabels(IRenderContext *ctx);
 
         std::string FormatAxisLabel(double value);
 
