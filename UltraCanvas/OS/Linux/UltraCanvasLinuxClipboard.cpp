@@ -1,4 +1,4 @@
-// UltraCanvasLinuxClipboard.cpp
+// OS/Linux/UltraCanvasLinuxClipboard.cpp
 // X11-specific clipboard implementation for Linux
 // Version: 1.0.1
 // Last Modified: 2025-08-14

@@ -1,4 +1,4 @@
-// UltraCanvasProceduralBackgroundPlugin.h
+// include/UltraCanvasProceduralBackgroundPlugin.h
 // Procedural background generation with mathematical formulas
 // Version: 1.2.6
 // Last Modified: 2025-08-17

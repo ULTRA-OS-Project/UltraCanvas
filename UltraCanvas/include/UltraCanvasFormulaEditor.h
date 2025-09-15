@@ -1,4 +1,4 @@
-// UltraCanvasFormulaEditor.h
+// include/UltraCanvasFormulaEditor.h
 // Advanced procedural formula editor with syntax highlighting and live preview
 // Version: 1.0.2
 // Last Modified: 2025-08-17

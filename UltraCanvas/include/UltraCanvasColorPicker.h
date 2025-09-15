@@ -1,4 +1,4 @@
-// UltraCanvasColorPicker.h
+// include/UltraCanvasColorPicker.h
 // Interactive color picker component with multiple selection modes and formats
 // Version: 1.0.0
 // Last Modified: 2024-12-30

@@ -1,4 +1,4 @@
-// UltraCanvasLinuxWindow.cpp
+// OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
 // Version: 1.1.0 - Complete implementation
 // Last Modified: 2025-07-16

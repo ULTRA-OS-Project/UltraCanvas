@@ -1,4 +1,4 @@
-// UltraCanvasTemplate.h
+// include/UltraCanvasTemplate.h
 // Template system for creating reusable UI component layouts with placement rules
 // Version: 1.0.0
 // Last Modified: 2025-07-15

@@ -1,4 +1,4 @@
-// UltraCanvasCommonTypes.h
+// include/UltraCanvasCommonTypes.h
 // Unified common types and structures for UltraCanvas Framework
 // Version: 2.0.0
 // Last Modified: 2024-12-19

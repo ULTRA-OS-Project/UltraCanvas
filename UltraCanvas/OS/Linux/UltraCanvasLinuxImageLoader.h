@@ -1,4 +1,4 @@
-// UltraCanvasLinuxImageLoader.h
+// OS/Linux/UltraCanvasLinuxImageLoader.h
 // Linux image loading utilities for PNG and JPG support with caching
 // Version: 1.0.0
 // Last Modified: 2025-01-17

@@ -1,4 +1,4 @@
-// UltraCanvasGraphicsPluginSystem.h
+// include/UltraCanvasGraphicsPluginSystem.h
 // Complete graphics plugin system with all required components
 // Version: 1.2.4
 // Last Modified: 2025-08-17

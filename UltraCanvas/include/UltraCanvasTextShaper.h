@@ -1,4 +1,4 @@
-// UltraCanvasTextShaper.h
+// include/UltraCanvasTextShaper.h
 // Advanced text shaping and typography engine for complex scripts and high-quality text rendering
 // Version: 1.0.0
 // Last Modified: 2024-12-30

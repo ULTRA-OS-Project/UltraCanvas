@@ -1,4 +1,4 @@
-// UltraCanvasChip.h
+// include/UltraCanvasChip.h
 // Modern chip component for input, choice, filter, and action interactions
 // Version: 1.0.0
 // Last Modified: 2025-01-01

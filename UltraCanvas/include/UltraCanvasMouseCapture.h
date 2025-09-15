@@ -1,4 +1,4 @@
-// UltraCanvasMouseCapture.h
+// include/UltraCanvasMouseCapture.h
 // Mouse capture system for UltraCanvas elements with drag and drop support
 // Version: 1.0.0
 // Last Modified: 2024-12-30

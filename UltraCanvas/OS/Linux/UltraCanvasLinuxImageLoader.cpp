@@ -1,4 +1,4 @@
-// UltraCanvasLinuxImageLoader.cpp
+// OS/Linux/UltraCanvasLinuxImageLoader.cpp
 // Linux image loading implementation with PNG and JPG support
 // Version: 1.0.0
 // Last Modified: 2025-01-17

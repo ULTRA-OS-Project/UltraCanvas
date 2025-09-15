@@ -1,4 +1,4 @@
-// UltraCanvasRenderContext.h - Enhanced Version
+// include/UltraCanvasRenderContext.h - Enhanced Version
 // Cross-platform rendering interface with improved context management
 // Version: 2.2.0
 // Last Modified: 2025-07-11

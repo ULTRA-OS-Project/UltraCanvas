@@ -1,4 +1,4 @@
-// UltraCanvasDoubleBuffer.cpp
+// OS/MSWindows/UltraCanvasDoubleBuffer.cpp
 // Double buffer rendering implementation for cross-platform compatibility
 // Version: 1.0.0
 // Last Modified: 2025-09-08

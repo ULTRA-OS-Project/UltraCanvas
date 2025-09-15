@@ -1,4 +1,4 @@
-// UltraCanvasLinuxApplication.cpp
+// OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
 // Version: 1.3.0 - Complete implementation
 // Last Modified: 2025-07-16

@@ -1,4 +1,4 @@
-// UltraCanvasLabel.h
+// include/UltraCanvasLabel.h
 // Modern text display label control with styling and alignment options
 // Version: 1.0.0
 // Last Modified: 2025-08-17

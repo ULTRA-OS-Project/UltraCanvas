@@ -1,4 +1,4 @@
-// UltraCanvasStyledText.h
+// include/UltraCanvasStyledText.h
 // Rich text component with advanced formatting, editing, and styling capabilities
 // Version: 1.3.2
 // Last Modified: 2025-01-07

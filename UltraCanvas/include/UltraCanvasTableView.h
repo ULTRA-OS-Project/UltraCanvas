@@ -1,4 +1,4 @@
-// UltraCanvasTableView.h
+// include/UltraCanvasTableView.h
 // Interactive table view component with sorting, filtering, and selection capabilities
 // Version: 1.0.0
 // Last Modified: 2024-12-30

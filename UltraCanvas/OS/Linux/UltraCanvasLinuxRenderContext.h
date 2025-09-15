@@ -1,4 +1,4 @@
-// UltraCanvasX11RenderContext.h
+// OS/Linux/UltraCanvasX11RenderContext.h
 // Linux/X11 platform support implementation for UltraCanvas Framework
 // Version: 1.0.2
 // Last Modified: 2025-01-07

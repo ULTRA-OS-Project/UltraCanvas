@@ -1,4 +1,4 @@
-// UltraCanvasStyledParagraph.h
+// include/UltraCanvasStyledParagraph.h
 // Specialized paragraph component with advanced typography, flow layout, and text formatting
 // Version: 1.0.1
 // Last Modified: 2025-01-02

@@ -1,4 +1,4 @@
-// UltraCanvasChartElementBase.h
+// include/Plugins/Charts/UltraCanvasChartElementBase.h
 // Base class for all chart elements with common functionality
 // Version: 1.0.0
 // Last Modified: 2025-09-10

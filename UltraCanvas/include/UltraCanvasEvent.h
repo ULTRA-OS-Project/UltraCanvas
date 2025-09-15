@@ -1,4 +1,4 @@
-// UltraCanvasEvent.h - Enhanced Version
+// include/UltraCanvasEvent.h - Enhanced Version
 // Event system for UltraCanvas Framework with Linux optimizations
 // Version: 2.1.0
 // Last Modified: 2024-12-30

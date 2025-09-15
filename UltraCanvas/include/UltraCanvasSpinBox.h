@@ -1,4 +1,4 @@
-// UltraCanvasSpinBox.h
+// include/UltraCanvasSpinBox.h
 // Numeric input control with increment/decrement buttons and validation
 // Version: 1.0.0
 // Last Modified: 2024-12-30

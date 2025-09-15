@@ -1,4 +1,4 @@
-// UltraCanvasBaseWindow.h
+// include/UltraCanvasBaseWindow.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
 // Version: 2.0.0
 // Last Modified: 2025-08-24

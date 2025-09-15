@@ -1,4 +1,4 @@
-// UltraCanvas3DModelElement.h
+// include/UltraCanvas3DModelElement.h
 // 3D Model loading and display component - fully integrated with UltraCanvas
 // Version: 1.0.0
 // Last Modified: 2024-12-30

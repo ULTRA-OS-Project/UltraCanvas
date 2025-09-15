@@ -1,4 +1,4 @@
-// UltraCanvasTextArea.h
+// include/UltraCanvasTextArea.h
 // Multi-line text editor component with scrollbars, line numbers, and syntax highlighting
 // Version: 1.3.0
 // Last Modified: 2025-08-27

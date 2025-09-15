@@ -1,4 +1,4 @@
-// UltraCanvasAudioElement.h
+// include/UltraCanvasAudioElement.h
 // Advanced audio playback component with multimedia controls and plugin architecture
 // Version: 1.0.0
 // Last Modified: 2025-01-01

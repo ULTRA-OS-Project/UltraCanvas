@@ -1,4 +1,4 @@
-// UltraCanvasPDFViewer.h
+// include/UltraCanvasPDFViewer.h
 // Comprehensive PDF viewer component with zoom, navigation, and thumbnail features
 // Version: 1.0.0
 // Last Modified: 2025-09-03

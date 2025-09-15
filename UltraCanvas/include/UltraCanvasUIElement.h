@@ -1,4 +1,4 @@
-// UltraCanvasUIElement.h - CLEAN VERSION WITHOUT LEGACY CODE
+// include/UltraCanvasUIElement.h
 // Modern C++ base class system for all UI components
 // Version: 3.0.1
 // Last Modified: 2025-01-17

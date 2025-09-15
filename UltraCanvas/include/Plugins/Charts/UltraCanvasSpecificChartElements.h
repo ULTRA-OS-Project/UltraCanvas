@@ -1,4 +1,4 @@
-// UltraCanvasSpecificChartElements.h
+// include/Plugins/Charts/UltraCanvasSpecificChartElements.h
 // Specific chart element implementations inheriting from UltraCanvasChartElementBase
 // Version: 1.0.0
 // Last Modified: 2025-09-10

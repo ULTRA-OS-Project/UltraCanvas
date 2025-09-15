@@ -1,4 +1,4 @@
-// UltraCanvasLinuxRenderContext.cpp
+// OS/Linux/UltraCanvasLinuxRenderContext.cpp
 // Linux platform implementation for UltraCanvas Framework using Cairo and X11
 // Version: 1.0.2 - Fixed null pointer crashes and Pango initialization
 // Last Modified: 2025-07-14

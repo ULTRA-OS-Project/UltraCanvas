@@ -1,4 +1,4 @@
-// UltraCanvasChartDataStructures.h
+// include/Plugins/Charts/UltraCanvasChartDataStructures.h
 // Essential data structures for chart rendering
 // Version: 1.0.1
 // Last Modified: 2025-09-10

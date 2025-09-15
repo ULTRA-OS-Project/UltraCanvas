@@ -1,4 +1,4 @@
-// UltraCanvasX11Window.h
+// OS/Linux/UltraCanvasX11Window.h
 // Linux platform implementation for UltraCanvas Framework
 // Version: 1.0.0
 // Last Modified: 2025-07-11

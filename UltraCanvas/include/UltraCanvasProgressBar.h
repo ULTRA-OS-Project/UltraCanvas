@@ -1,4 +1,4 @@
-// UltraCanvasProgressBar.h
+// include/UltraCanvasProgressBar.h
 // Progress bar component with multiple styles, animations, and advanced progress indication
 // Version: 1.0.0
 // Last Modified: 2024-12-30

@@ -1,4 +1,4 @@
-// UltraCanvasButton3Sections.h
+// include/UltraCanvasButton3Sections.h
 // Multi-section button component with configurable left/center/right sections
 // Version: 1.0.0
 // Last Modified: 2024-12-30

@@ -1,4 +1,4 @@
-// UltraCanvasSplitPane.h
+// include/UltraCanvasSplitPane.h
 // Resizable split pane component for dividing space between two child elements
 // Version: 1.0.0
 // Last Modified: 2024-12-30

@@ -1,4 +1,4 @@
-// UltraCanvasImageElement.h
+// include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
 // Version: 1.0.0
 // Last Modified: 2024-12-30

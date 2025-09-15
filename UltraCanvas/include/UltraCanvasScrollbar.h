@@ -1,4 +1,4 @@
-// UltraCanvasScrollbar.h
+// include/UltraCanvasScrollbar.h
 // Platform-independent scrollbar component for UltraCanvas windows
 // Version: 1.0.0
 // Last Modified: 2025-08-15

@@ -1,4 +1,4 @@
-// UltraCanvasFinancialChart.cpp
+// Plugins/Charts/UltraCanvasFinancialChart.cpp
 // Financial chart element with OHLC candlestick and volume rendering
 // Version: 1.0.0
 // Last Modified: 2025-09-14

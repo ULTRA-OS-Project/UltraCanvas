@@ -1,5 +1,4 @@
-// UltraCanvasSlider.h
-// UltraCanvasSlider.h
+// include/UltraCanvasSlider.h
 // Interactive slider control with multiple styles and value display options
 // Version: 2.0.0
 // Last Modified: 2025-08-17

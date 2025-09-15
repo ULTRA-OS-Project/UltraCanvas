@@ -1,4 +1,4 @@
-// UltraCanvasChartElementBase.cpp
+// Plugins/Charts/UltraCanvasChartElementBase.cpp
 // Base class for all chart elements with common functionality
 // Version: 1.0.0
 // Last Modified: 2025-09-10

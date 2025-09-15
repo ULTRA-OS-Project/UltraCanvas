@@ -1,4 +1,4 @@
-// UltraCanvasLinuxApplication.h
+// OS/Linux/UltraCanvasLinuxApplication.h
 // Complete Linux platform implementation for UltraCanvas Framework
 // Version: 1.2.0
 // Last Modified: 2025-07-15

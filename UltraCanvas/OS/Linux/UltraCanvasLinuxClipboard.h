@@ -1,4 +1,4 @@
-// UltraCanvasLinuxClipboard.h - Fixed X11 Clipboard Implementation
+// OS/Linux/UltraCanvasLinuxClipboard.h - Fixed X11 Clipboard Implementation
 // X11-specific clipboard implementation with proper write support
 // Version: 1.1.0
 // Last Modified: 2025-08-14

@@ -1,4 +1,4 @@
-// UltraCanvasParagraphContainer.h
+// include/UltraCanvasParagraphContainer.h
 // Rich text paragraph container with unified UltraCanvas integration
 // Version: 2.0.0
 // Last Modified: 2024-12-30

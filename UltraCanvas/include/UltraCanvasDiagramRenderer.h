@@ -1,4 +1,4 @@
-// UltraCanvasDiagramRenderer.h
+// include/UltraCanvasDiagramRenderer.h
 // Advanced diagram rendering system with multi-format support and plugin architecture
 // Version: 1.0.0
 // Last Modified: 2025-01-01

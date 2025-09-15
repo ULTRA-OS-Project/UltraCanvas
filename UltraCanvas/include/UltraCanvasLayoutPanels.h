@@ -1,4 +1,4 @@
-// UltraCanvasLayoutPanels.h
+// include/UltraCanvasLayoutPanels.h
 // Enhanced layout panel components with advanced grid and container functionality
 // Version: 1.0.0
 // Last Modified: 2024-12-30

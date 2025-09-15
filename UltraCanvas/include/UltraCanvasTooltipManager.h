@@ -1,4 +1,4 @@
-// UltraCanvasTooltipManager.h
+// include/UltraCanvasTooltipManager.h
 // Updated tooltip system compatible with unified UltraCanvas architecture
 // Version: 2.0.0
 // Last Modified: 2024-12-19

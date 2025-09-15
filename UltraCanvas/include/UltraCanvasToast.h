@@ -1,4 +1,4 @@
-// UltraCanvasToast.h
+// include/UltraCanvasToast.h
 // Toast notification system for non-intrusive user messaging
 // Version: 1.2.1
 // Last Modified: 2025-01-08

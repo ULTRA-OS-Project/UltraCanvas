@@ -1,4 +1,4 @@
-// UltraCanvasSupport.cpp
+// OS/MSWindows/UltraCanvasSupport.cpp
 // Windows platform implementation - Win32/Direct2D rendering
 // Version: 1.0.0
 // Last Modified: 2025-07-01
