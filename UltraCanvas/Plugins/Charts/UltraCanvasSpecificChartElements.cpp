@@ -71,23 +71,25 @@ namespace UltraCanvas {
         ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
         double mouseDataX = transform.ScreenToDataX(mousePos.x - GetX());
         double mouseDataY = transform.ScreenToDataY(mousePos.y - GetY());
-
+        double pointSize = 5;
         size_t nearestIndex = SIZE_MAX;
         double nearestDistance = std::numeric_limits<double>::max();
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
-            double distance = std::sqrt((point.x - mouseDataX) * (point.x - mouseDataX) +
-                                        (point.y - mouseDataY) * (point.y - mouseDataY));
+            auto screenPos = transform.DataToScreen(point.x, point.y);
 
-            if (distance < nearestDistance) {
+            // Check if mouse is within point radius
+            double distance = std::sqrt((screenPos.x - mousePos.x) * (screenPos.x - mousePos.x) +
+                                        (screenPos.y - mousePos.y) * (screenPos.y - mousePos.y));
+
+            if (distance < pointSize * 2 && distance < nearestDistance) {
                 nearestDistance = distance;
                 nearestIndex = i;
             }
         }
 
-        // Show tooltip if point is close enough
-        if (nearestIndex != SIZE_MAX && nearestDistance < cachedDataBounds.GetXRange() * 0.05) {
+        if (nearestIndex != SIZE_MAX) {
             auto point = dataSource->GetPoint(nearestIndex);
             ShowChartPointTooltip(mousePos, point, nearestIndex);
             return true;
@@ -150,14 +152,14 @@ namespace UltraCanvas {
         float barWidth = cachedPlotArea.width / static_cast<float>(dataSource->GetPointCount());
         size_t barIndex = static_cast<size_t>((mousePos.x - cachedPlotArea.x) / barWidth);
 
-//        if (barIndex < dataSource->GetPointCount()) {
-//            auto point = dataSource->GetPoint(b              arIndex);
-//            ShowChartPointTooltip(mousePos, point, barIndex);
-//            return true;
-//        } else {
-//            HideTooltip();
-//            return false;
-//        }
+        if (barIndex < dataSource->GetPointCount()) {
+            auto point = dataSource->GetPoint(barIndex);
+            ShowChartPointTooltip(mousePos, point, barIndex);
+            return true;
+        } else {
+            HideTooltip();
+            return false;
+        }
         return false;
     }
 
@@ -243,14 +245,14 @@ namespace UltraCanvas {
             }
         }
 
-//        if (nearestIndex != SIZE_MAX) {
-//            auto point = dataSource->GetPoint(nearestIndex);
-//            ShowChartPointTooltip(mousePos, point, nearestIndex);
-//            return true;
-//        } else {
-//            HideTooltip();
-//            return false;
-//        }
+        if (nearestIndex != SIZE_MAX) {
+            auto point = dataSource->GetPoint(nearestIndex);
+            ShowChartPointTooltip(mousePos, point, nearestIndex);
+            return true;
+        } else {
+            HideTooltip();
+            return false;
+        }
     }
 
 

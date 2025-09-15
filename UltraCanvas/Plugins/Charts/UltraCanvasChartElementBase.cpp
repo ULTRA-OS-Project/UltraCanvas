@@ -370,7 +370,7 @@ namespace UltraCanvas {
 
     void UltraCanvasChartElementBase::HideTooltip() {
         if (isTooltipActive) {
-//            UltraCanvasTooltipManager::OnElementLeave(this);
+            UltraCanvasTooltipManager::HideTooltip();
             isTooltipActive = false;
             hoveredPointIndex = SIZE_MAX;
         }

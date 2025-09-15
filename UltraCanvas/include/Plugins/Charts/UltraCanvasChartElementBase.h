@@ -356,11 +356,8 @@ public:
         // =============================================================================
 
         void ShowChartPointTooltip(const Point2Di &mousePos, const ChartDataPoint &point, size_t index) {
-            // Generate tooltip content based on type
             std::string tooltipContent = GenerateTooltipContent(point, index);
-//
-//        // Use existing UltraCanvasTooltipManager to show tooltip
-//        UltraCanvasTooltipManager::OnElementHover(this, tooltipContent, mousePos);
+            UltraCanvasTooltipManager::UpdateAndShowTooltip(this->window, tooltipContent, mousePos);
             isTooltipActive = true;
             hoveredPointIndex = index;
         }
@@ -368,22 +365,12 @@ public:
 //
         void HideTooltip();
 
-        std::string GenerateTooltipContent(const ChartDataPoint &point, size_t index) {
-//        switch (tooltipContentType) {
-//            case TooltipContentType::Financial:
-//                return ChartTooltipContentGenerator::GenerateFinancialTooltip(point, financialSymbol);
-//            case TooltipContentType::Statistical:
-//                return ChartTooltipContentGenerator::GenerateStatisticalTooltip(point, statisticalMetric);
-//            case TooltipContentType::Custom:
-//                if (customTooltipGenerator) {
-//                    return customTooltipGenerator(point, index);
-//                }
-//                break;
-//            case TooltipContentType::Basic:
-//            default:
-//                return ChartTooltipContentGenerator::GenerateBasicTooltip(point, seriesName);
-//        }
-//        return ChartTooltipContentGenerator::GenerateBasicTooltip(point, seriesName);
+        virtual std::string GenerateTooltipContent(const ChartDataPoint &point, size_t index) {
+
+            if (customTooltipGenerator) {
+                return customTooltipGenerator(point, index);
+            }
+
             std::string content;
 
             if (!seriesName.empty()) {
