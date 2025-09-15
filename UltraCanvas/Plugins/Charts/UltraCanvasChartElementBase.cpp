@@ -245,11 +245,11 @@ namespace UltraCanvas {
             // Draw label using existing DrawText
             double labelValue = cachedDataBounds.minX + (i * (cachedDataBounds.maxX - cachedDataBounds.minX) / numXTicks);
             std::string label = FormatAxisLabel(labelValue);
-            ctx->DrawText(label, x - 15, tickY);
+            ctx->DrawText(label, x - 4, tickY + 3);
         }
 
         // Y-axis labels
-        int numYTicks = 6;
+        int numYTicks = 6, txtW, txtH;
         for (int i = 0; i <= numYTicks; ++i) {
             float y = cachedPlotArea.y + cachedPlotArea.height - (i * cachedPlotArea.height / numYTicks);
             float tickX = cachedPlotArea.x;
@@ -260,7 +260,8 @@ namespace UltraCanvas {
             // Draw label using existing DrawText
             double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
             std::string label = FormatAxisLabel(labelValue);
-            ctx->DrawText(label, tickX - 50, y - 8);
+            ctx->MeasureText(label, txtW, txtH);
+            ctx->DrawText(label, tickX - txtW - 8, y - (txtH / 2));
         }
     }
 
