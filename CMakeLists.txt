@@ -131,7 +131,8 @@ set(APP_SOURCES
 # formula app
         #Apps/GraphicFormulaApp.cpp
 #        Apps/UltraCanvasChartExample.cpp
-        Apps/UltraCanvasFinancialChartExample.cpp
+#        Apps/UltraCanvasFinancialChartExample.cpp
+        Apps/TabbedContainerDemo.cpp
         #        Apps/Complete_IBM_Financial_Chart_Example.cpp
         #        Apps/IBM_StockChart_Example.cpp
 

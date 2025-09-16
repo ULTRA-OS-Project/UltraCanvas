@@ -184,6 +184,13 @@ namespace UltraCanvas {
             }
         }
 
+        void SetFontSize(float fontSize) {
+            style.fontSize = fontSize;
+            if (style.autoResize) {
+                AutoResize();
+            }
+        }
+
         void SetTextColor(const Color& color) {
             style.textColor = color;
         }
