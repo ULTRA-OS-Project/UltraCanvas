@@ -238,7 +238,7 @@ private:
                 "Key features: automatic dropdown when tabs overflow, real-time search, tab reordering, "
                 "and configurable positioning."
         );
-        mainTabbedContainer->AddTab("🏠 Welcome", welcomePanel.get());
+        mainTabbedContainer->AddTab("🏠 Welcome", welcomePanel);
 
         // Tab 2: Feature Overview
         auto featuresInfo =
@@ -257,13 +257,13 @@ private:
         auto featuresPanel = std::make_shared<DemoInfoPanel>(
                 "Enhanced Features Overview", featuresInfo, Color(200, 100, 0)
         );
-        mainTabbedContainer->AddTab("⚡ Features", featuresPanel.get());
+        mainTabbedContainer->AddTab("⚡ Features", featuresPanel);
 
         // Tab 3: Nested Tabs Demo
         PopulateSubTabbedContainer();
         auto nestedContainer = std::make_shared<UltraCanvasContainer>("nested", 0, 0, 0, 400, 300);
         nestedContainer->AddChild(subTabbedContainer);
-        mainTabbedContainer->AddTab("📁 Nested Tabs", nestedContainer.get());
+        mainTabbedContainer->AddTab("📁 Nested Tabs", nestedContainer);
 
         // Tab 4-8: Interactive Demo Panels
         std::vector<std::string> demoTabNames = {
@@ -272,7 +272,7 @@ private:
 
         for (int i = 0; i < demoTabNames.size(); i++) {
             auto panel = std::make_shared<DemoButtonPanel>("Panel " + std::to_string(i + 1));
-            mainTabbedContainer->AddTab(demoTabNames[i], panel.get());
+            mainTabbedContainer->AddTab(demoTabNames[i], panel);
         }
 
         // Tab 9-15: Additional tabs to demonstrate search functionality
@@ -293,7 +293,7 @@ private:
             auto infoPanel = std::make_shared<DemoInfoPanel>(
                     "Document " + std::to_string(i), tabInfo.str(), Color(100, 0, 200)
             );
-            mainTabbedContainer->AddTab(tabName.str(), infoPanel.get());
+            mainTabbedContainer->AddTab(tabName.str(), infoPanel);
         }
 
         // Set initial active tab
@@ -317,7 +317,7 @@ private:
                     desc + "\n\nThis demonstrates nested tabbed containers with different positioning and search thresholds.",
                     Color(0, 150, 100)
             );
-            subTabbedContainer->AddTab(name, panel.get());
+            subTabbedContainer->AddTab(name, panel);
         }
 
         subTabbedContainer->SetActiveTab(0);
@@ -368,7 +368,7 @@ private:
                     Color(200, 0, 100)
             );
 
-            int newTabIndex = mainTabbedContainer->AddTab(tabName.str(), panel.get());
+            int newTabIndex = mainTabbedContainer->AddTab(tabName.str(), panel);
             mainTabbedContainer->SetActiveTab(newTabIndex);
 
             std::ostringstream status;

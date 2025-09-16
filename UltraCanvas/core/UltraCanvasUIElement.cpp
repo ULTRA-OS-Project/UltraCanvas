@@ -9,7 +9,7 @@
 
 namespace UltraCanvas {
     // new here
-    void UltraCanvasElement::ConvertWindowToContainerCoordinates(int &x, int &y) {
+    void UltraCanvasElement::ConvertWindowToParentContainerCoordinates(int &x, int &y) {
         if (parentContainer) {
             auto pc = parentContainer;
             while(pc) {
@@ -21,9 +21,9 @@ namespace UltraCanvas {
         }
     }
 
-    Point2Di UltraCanvasElement::ConvertWindowToContainerCoordinates(const Point2Di &globalPos) {
+    Point2Di UltraCanvasElement::ConvertWindowToParentContainerCoordinates(const Point2Di &globalPos) {
         Point2Di pos = globalPos;
-        ConvertWindowToContainerCoordinates(pos.x, pos.y);
+        ConvertWindowToParentContainerCoordinates(pos.x, pos.y);
         return pos;
     }
 
@@ -176,4 +176,10 @@ namespace UltraCanvas {
         return false;
     }
 
+    void UltraCanvasElement::SetVisible(bool visible) {
+        properties.Visible = visible;
+        if (window) {
+            window->RequestRedraw();
+        }
+    }
 }

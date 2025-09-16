@@ -25,6 +25,10 @@ namespace UltraCanvas {
         containerStyle.enableHorizontalScrolling = config.enableWindowScrolling;
         containerStyle.backgroundColor = config.backgroundColor;
         containerStyle.borderWidth = 0.0f; // Windows don't need container borders
+        containerStyle.paddingLeft = 0;
+        containerStyle.paddingRight = 0;
+        containerStyle.paddingTop = 0;
+        containerStyle.paddingBottom = 0;
 //        selectiveRenderer = std::make_unique<UltraCanvasSelectiveRenderer>(this);
         SetContainerStyle(containerStyle);
     }
@@ -196,7 +200,7 @@ namespace UltraCanvas {
 //            std::unordered_set<UltraCanvasElement*> activePopupsCopy = activePopups;
 //            for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
 //                UltraCanvasElement* activePopupElement = *it;
-//                auto localCoords = activePopupElement->ConvertWindowToContainerCoordinates(Point2Di(event.x, event.y));
+//                auto localCoords = activePopupElement->ConvertWindowToParentContainerCoordinates(Point2Di(event.x, event.y));
 //                UCEvent localEvent = event;
 //                localEvent.x = localCoords.x;
 //                localEvent.y = localCoords.y;

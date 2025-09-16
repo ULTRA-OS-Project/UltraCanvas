@@ -137,7 +137,7 @@ namespace UltraCanvas {
                 if (capturedElement) {
                     auto newEvent = event;
                     newEvent.targetElement = capturedElement;
-                    capturedElement->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
+                    capturedElement->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
                     if (capturedElement->OnEvent(newEvent)) {
                         return true;
                     }
@@ -169,7 +169,7 @@ namespace UltraCanvas {
                     UltraCanvasElement* activePopupElement = *it;
                     UCEvent localEvent = event;
                     localEvent.targetElement = activePopupElement;
-                    activePopupElement->ConvertWindowToContainerCoordinates(localEvent.x, localEvent.y);
+                    activePopupElement->ConvertWindowToParentContainerCoordinates(localEvent.x, localEvent.y);
                     if (activePopupElement->OnEvent(localEvent)) {
                         return true;
                     }
@@ -195,7 +195,7 @@ namespace UltraCanvas {
 //                if (elem) {
 //                    auto newEvent = event;
 //                    std::cout << "Ev x=" << event.x << " y=" << event.y;
-//                    elem->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
+//                    elem->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
 //                    std::cout << " Evloc x=" << newEvent.x << " y=" << newEvent.y << std::endl;
 //                    if (elem->OnEvent(newEvent)) {
 //                        return true;
@@ -216,7 +216,7 @@ namespace UltraCanvas {
                 if (elem) {
                     int localX = event.x;
                     int localY = event.y;
-                    elem->ConvertWindowToContainerCoordinates(localX, localY);
+                    elem->ConvertWindowToParentContainerCoordinates(localX, localY);
                     if (hoveredElement != elem) {
                         UCEvent enterEvent = event;
                         enterEvent.targetElement = elem;
@@ -255,7 +255,7 @@ namespace UltraCanvas {
     bool UltraCanvasBaseApplication::HandleEventWithBubbling(const UCEvent &event, UltraCanvasElement* elem) {
         auto newEvent = event;
         newEvent.targetElement = elem;
-        elem->ConvertWindowToContainerCoordinates(newEvent.x, newEvent.y);
+        elem->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
         if (elem->OnEvent(newEvent)) {
             return true;
         }
@@ -263,7 +263,7 @@ namespace UltraCanvas {
         while(parent) {
             auto newParentEvent = event;
             newParentEvent.targetElement = elem;
-            parent->ConvertWindowToContainerCoordinates(newParentEvent.x, newParentEvent.y);
+            parent->ConvertWindowToParentContainerCoordinates(newParentEvent.x, newParentEvent.y);
             if (parent->OnEvent(newParentEvent)) {
                 return true;
             }

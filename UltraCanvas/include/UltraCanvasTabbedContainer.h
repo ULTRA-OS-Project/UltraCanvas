@@ -59,7 +59,7 @@ namespace UltraCanvas {
         bool closable = true;
         Color textColor = Colors::Black;
         Color backgroundColor = Color(240, 240, 240);
-        std::shared_ptr<UltraCanvasElement> content;
+        std::shared_ptr<UltraCanvasElement> content = nullptr;
         void* userData = nullptr;
 
         TabData(const std::string& tabTitle) : title(tabTitle) {}
@@ -147,7 +147,13 @@ namespace UltraCanvas {
 
         UltraCanvasTabbedContainer(const std::string& elementId, long uniqueId, long posX, long posY, long w, long h)
                 : UltraCanvasContainer(elementId, uniqueId, posX, posY, w, h) {
-
+            ContainerStyle st = GetContainerStyle();
+            st.paddingLeft = 0;
+            st.paddingRight = 0;
+            st.paddingTop = 0;
+            st.paddingBottom = 0;
+            st.borderWidth = 0;
+            SetContainerStyle(st);
             InitializeOverflowDropdown();
             CalculateLayout();
         }
@@ -202,10 +208,10 @@ namespace UltraCanvas {
         }
 
         // ===== TAB MANAGEMENT =====
-        int AddTab(const std::string& title, UltraCanvasElement* content = nullptr) {
+        int AddTab(const std::string& title, std::shared_ptr<UltraCanvasElement> content = nullptr) {
             auto tabData = std::make_unique<TabData>(title);
             if (content) {
-                tabData->content.reset(content);
+                tabData->content = content;
                 // Add content as child to container
                 AddChild(tabData->content);
             }
@@ -589,8 +595,8 @@ namespace UltraCanvas {
             // Draw arrows
             ctx->SetStrokeColor(Colors::Black);
             Point2Di leftCenter(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
-            ctx->DrawLine(Point2Di(leftCenter.x + 3, leftCenter.y), Point2Di(leftCenter.x - 3, leftCenter.y - 3));
-            ctx->DrawLine(Point2Di(leftCenter.x + 3, leftCenter.y), Point2Di(leftCenter.x - 3, leftCenter.y + 3));
+            ctx->DrawLine(Point2Di(leftCenter.x - 3, leftCenter.y), Point2Di(leftCenter.x + 3, leftCenter.y - 3));
+            ctx->DrawLine(Point2Di(leftCenter.x - 3, leftCenter.y), Point2Di(leftCenter.x + 3, leftCenter.y + 3));
 
             Point2Di rightCenter(rightButton.x + rightButton.width / 2, rightButton.y + rightButton.height / 2);
             ctx->DrawLine(Point2Di(rightCenter.x - 3, rightCenter.y - 3), Point2Di(rightCenter.x + 3, rightCenter.y));
@@ -601,6 +607,11 @@ namespace UltraCanvas {
             Rect2Di contentBounds = GetContentAreaBounds();
             ctx->DrawFilledRectangle(contentBounds, contentAreaColor, tabBorderColor);
 
+            ctx->PushState();
+
+            Rect2Di bounds = GetBounds();
+            ctx->SetClipRect(contentBounds);
+            ctx->Translate(bounds.x - scrollState.horizontalPosition, bounds.y - scrollState.verticalPosition);
             // Render active tab content
             if (activeTabIndex >= 0 && activeTabIndex < (int)tabs.size()) {
                 auto content = tabs[activeTabIndex]->content.get();
@@ -608,6 +619,7 @@ namespace UltraCanvas {
                     content->Render();
                 }
             }
+            ctx->PopState();
         }
 
         // ===== EVENT HANDLING (CORRECTED TO RETURN BOOL) =====
@@ -1098,7 +1110,7 @@ namespace UltraCanvas {
             if (!content) return;
 
             Rect2Di contentBounds = GetContentAreaBounds();
-            content->SetBounds(contentBounds.x, contentBounds.y, contentBounds.width, contentBounds.height);
+            content->SetBounds(0, tabHeight, contentBounds.width, contentBounds.height);
         }
 
         void UpdateContentVisibility() {

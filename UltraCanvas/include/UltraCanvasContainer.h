@@ -29,13 +29,13 @@ namespace UltraCanvas {
         // Border and background
         Color borderColor = Color(200, 200, 200, 255);
         Color backgroundColor = Color(255, 255, 255, 255);
-        int borderWidth = 1;
+        int borderWidth = 0;
 
         // Padding for content area
-        int paddingLeft = 5;
-        int paddingTop = 5;
-        int paddingRight = 5;
-        int paddingBottom = 5;
+        int paddingLeft = 0;
+        int paddingTop = 0;
+        int paddingRight = 0;
+        int paddingBottom = 0;
 
         // Scrolling behavior
         bool autoHideScrollbars = true;
@@ -84,9 +84,6 @@ namespace UltraCanvas {
     class UltraCanvasContainer : public UltraCanvasElement {
     private:
         std::vector<std::shared_ptr<UltraCanvasElement>> children;
-        ContainerStyle style;
-        ScrollState scrollState;
-
         // Enhanced scrollbar rectangles
         Rect2Di verticalScrollbarRect;
         Rect2Di horizontalScrollbarRect;
@@ -101,6 +98,10 @@ namespace UltraCanvas {
         std::function<void(int, int)> onScrollChanged;
         std::function<void(UltraCanvasElement*)> onChildAdded;
         std::function<void(UltraCanvasElement*)> onChildRemoved;
+
+    protected:
+        ContainerStyle style;
+        ScrollState scrollState;
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
@@ -121,7 +122,7 @@ namespace UltraCanvas {
         UltraCanvasElement* FindChildById(const std::string& id);
         UltraCanvasElement* FindElementAtPoint(int x, int y);
         UltraCanvasElement* FindElementAtPoint(const Point2Di& pos) { return FindElementAtPoint(pos.x, pos.y); }
-        void ConvertWindowToContainerCoordinates(int &x, int &y) override;
+        void ConvertWindowToContainerCoordinates(int &x, int &y);
 
 //        virtual int GetXInWindow() override;
 //        virtual int GetYInWindow() override;

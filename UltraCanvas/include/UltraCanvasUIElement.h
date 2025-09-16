@@ -233,10 +233,10 @@ namespace UltraCanvas {
         bool IsActive() const { return properties.Active; }
         void SetActive(bool active) { properties.Active = active; }
         bool IsVisible() const { return properties.Visible; }
-        void SetVisible(bool visible) { properties.Visible = visible; }
+        void SetVisible(bool visible);
 
-        Point2Di ConvertWindowToContainerCoordinates(const Point2Di &globalPos);
-        virtual void ConvertWindowToContainerCoordinates(int &x, int &y);
+        Point2Di ConvertWindowToParentContainerCoordinates(const Point2Di &globalPos);
+        virtual void ConvertWindowToParentContainerCoordinates(int &x, int &y);
 
         Point2Di ConvertContainerToWindowCoordinates(const Point2Di &globalPos);
         virtual void ConvertContainerToWindowCoordinates(int &x, int &y);
