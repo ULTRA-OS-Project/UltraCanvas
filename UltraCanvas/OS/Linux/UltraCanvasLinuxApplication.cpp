@@ -284,7 +284,7 @@ namespace UltraCanvas {
     UCEvent UltraCanvasLinuxApplication::ConvertXEventToUCEvent(const XEvent& xEvent) {
         UCEvent event;
         event.timestamp = std::chrono::steady_clock::now();
-        event.nativeEvent = reinterpret_cast<unsigned long>(&xEvent);
+        //event.nativeEvent = reinterpret_cast<unsigned long>(&xEvent);
 
         // ===== NEW: SET TARGET WINDOW INFORMATION =====
         // Store the X11 window handle that generated this event

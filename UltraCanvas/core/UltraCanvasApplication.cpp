@@ -235,6 +235,10 @@ namespace UltraCanvas {
                     }
                 }
             }
+
+            if (event.isCommandEvent()) {
+                return HandleEventWithBubbling(event, event.targetElement);
+            }
             return targetWindow->OnEvent(event);
 
 //            // Debug logging
@@ -253,17 +257,23 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasBaseApplication::HandleEventWithBubbling(const UCEvent &event, UltraCanvasElement* elem) {
-        auto newEvent = event;
-        newEvent.targetElement = elem;
-        elem->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
-        if (elem->OnEvent(newEvent)) {
-            return true;
+        if (!event.isCommandEvent()) {
+            auto newEvent = event;
+            newEvent.targetElement = elem;
+            if (event.IsMouseEvent()) {
+                elem->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
+            }
+            if (elem->OnEvent(newEvent)) {
+                return true;
+            }
         }
         auto parent = elem->GetParentContainer();
         while(parent) {
             auto newParentEvent = event;
             newParentEvent.targetElement = elem;
-            parent->ConvertWindowToParentContainerCoordinates(newParentEvent.x, newParentEvent.y);
+            if (event.IsMouseEvent()) {
+                parent->ConvertWindowToParentContainerCoordinates(newParentEvent.x, newParentEvent.y);
+            }
             if (parent->OnEvent(newParentEvent)) {
                 return true;
             }

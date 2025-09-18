@@ -67,6 +67,13 @@ namespace UltraCanvas {
         Selection,         // X11 selection events
         Timer,            // Timer events
         Custom,            // Custom user-defined events
+
+        // command events
+        CommandEventsStart, // custom events just to mark the range
+        ButtonClick,
+        DropdownSelect,
+        CommandEventsEnd, // custom events just to mark the range
+
         Unknown
     };
 
@@ -310,10 +317,14 @@ namespace UltraCanvas {
         unsigned long nativeWindowHandle = 0; // Platform-specific window handle (X11 Window, HWND, etc.)
 
         // Generic data
-        void *userData = nullptr;            // Custom user data
-        int customData1 = 0, customData2 = 0; // Additional data fields
-        unsigned long nativeEvent = 0;      // Platform-specific event handle
-        int deviceId = 0;                    // Input device identifier
+        union {
+            void *userDataPtr = nullptr;            // Custom user data
+            int userDataInt;
+            float userDataFloat;
+            double userDataDouble;
+        };
+//        int customData1 = 0, customData2 = 0; // Additional data fields
+//        unsigned long nativeEvent = 0;      // Platform-specific event handle
 
         // Utility methods
         bool IsMouseEvent() const {
@@ -344,6 +355,10 @@ namespace UltraCanvas {
 
         bool IsDragEvent() const {
             return type >= UCEventType::DragStart && type <= UCEventType::Drop;
+        }
+
+        bool isCommandEvent() const {
+            return type > UCEventType::CommandEventsStart && type < UCEventType::CommandEventsEnd;
         }
 
         float GetAge() const {

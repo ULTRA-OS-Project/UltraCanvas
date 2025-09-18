@@ -162,7 +162,7 @@ private:
         mainTabbedContainer = CreateTabbedContainerWithDropdown(
                 "main_tabs", 1001, 10, 10, 980, 500,
                 OverflowDropdownPosition::Left,  // Dropdown on left
-                true,                            // Enable search
+                false,                            // Enable search
                 5                                // Show search when >5 tabs
         );
 
@@ -186,7 +186,7 @@ private:
         subTabbedContainer = CreateTabbedContainerWithDropdown(
                 "sub_tabs", 1002, 0, 0, 400, 300,
                 OverflowDropdownPosition::Right,  // Dropdown on right
-                true,                             // Enable search
+                false,                             // Enable search
                 8                                 // Show search when >8 tabs
         );
 

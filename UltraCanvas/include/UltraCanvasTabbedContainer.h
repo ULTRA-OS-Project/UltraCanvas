@@ -82,12 +82,12 @@ namespace UltraCanvas {
         // ===== OVERFLOW DROPDOWN SETTINGS =====
         OverflowDropdownPosition overflowDropdownPosition = OverflowDropdownPosition::Left;
         bool showOverflowDropdown = true;
-        int overflowDropdownWidth = 20;
+        int overflowDropdownWidth = 26;
         bool overflowDropdownVisible = false;
         std::shared_ptr<UltraCanvasDropdown> overflowDropdown;
 
         // ===== DROPDOWN SEARCH SETTINGS =====
-        bool enableDropdownSearch = true;
+        bool enableDropdownSearch = false;
         int dropdownSearchThreshold = 15;
         std::string dropdownSearchText = "";
         bool dropdownSearchActive = false;
@@ -290,7 +290,10 @@ namespace UltraCanvas {
             overflowDropdown = std::make_shared<UltraCanvasDropdown>(
                     GetIdentifier() + "_overflow", GetIdentifierID() + 1000, 0, 0, overflowDropdownWidth, tabHeight
             );
-
+            DropdownStyle st;
+            st.hasShadow = false;
+            st.borderWidth = 1;
+            overflowDropdown->SetStyle(st);
             // Add dropdown as child to container
             AddChild(overflowDropdown);
             overflowDropdown->SetVisible(false);
@@ -300,6 +303,7 @@ namespace UltraCanvas {
                 if (selectedIndex == -1) {
                     // Search field selected - activate search mode
                     dropdownSearchActive = true;
+                    RequestRedraw();
                     return; // Keep dropdown open for search input
                 }
 
@@ -307,7 +311,7 @@ namespace UltraCanvas {
                 int tabIndex = item.value.empty() ? selectedIndex : std::stoi(item.value);
                 if (tabIndex >= 0 && tabIndex < (int)tabs.size()) {
                     SetActiveTab(tabIndex);
-                    overflowDropdown->CloseDropdown();
+//                    overflowDropdown->CloseDropdown();
                     ClearDropdownSearch(); // Clear search when tab is selected
                 }
             };
@@ -440,15 +444,15 @@ namespace UltraCanvas {
             switch (overflowDropdownPosition) {
                 case OverflowDropdownPosition::Left:
                     overflowDropdown->SetPosition(
-                            tabBarBounds.x,
-                            tabBarBounds.y
+                            0,
+                            0
                     );
                     break;
 
                 case OverflowDropdownPosition::Right:
                     overflowDropdown->SetPosition(
-                            tabBarBounds.x + tabBarBounds.width - overflowDropdownWidth,
-                            tabBarBounds.y
+                            tabBarBounds.width - overflowDropdownWidth,
+                            0
                     );
                     break;
 
@@ -465,8 +469,13 @@ namespace UltraCanvas {
             if (!IsVisible() || !ctx) return;
 
             ctx->PushState();
-
             RenderTabBar(ctx);
+            if (showOverflowDropdown && overflowDropdown) {
+                ctx->PushState();
+                ctx->Translate(GetX(), GetY());
+                overflowDropdown->Render();
+                ctx->PopState();
+            }
             RenderContentArea(ctx);
 
             // Render overflow dropdown (handled automatically by base class)
