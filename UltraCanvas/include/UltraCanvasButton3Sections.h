@@ -45,14 +45,14 @@ struct ButtonSection {
     static ButtonSection Number(float value, const std::string& format = "%.0f", const Color& color = Colors::Black);
     static ButtonSection Icon(const std::string& iconPath, float size = 16.0f);
     static ButtonSection Empty(float width = 30.0f);
-    static ButtonSection Custom(std::function<void(const Rect2D&)> renderCallback);
+    static ButtonSection Custom(std::function<void(const Rect2Di&)> renderCallback);
     
 private:
-    std::function<void(const Rect2D&)> customRenderer;
+    std::function<void(const Rect2Di&)> customRenderer;
     
 public:
-    void SetCustomRenderer(std::function<void(const Rect2D&)> renderer) { customRenderer = renderer; }
-    const std::function<void(const Rect2D&)>& GetCustomRenderer() const { return customRenderer; }
+    void SetCustomRenderer(std::function<void(const Rect2Di&)> renderer) { customRenderer = renderer; }
+    const std::function<void(const Rect2Di&)>& GetCustomRenderer() const { return customRenderer; }
 };
 
 // ===== BUTTON STYLE DEFINITIONS =====
@@ -88,7 +88,7 @@ struct Button3SectionsAppearance {
     // Effects
     bool hasShadow = false;
     Color shadowColor = Color(0, 0, 0, 100);
-    Point2D shadowOffset = Point2D(2, 2);
+    Point2Df shadowOffset = Point2Df(2, 2);
     
     static Button3SectionsAppearance Default();
     static Button3SectionsAppearance Flat();
@@ -118,7 +118,7 @@ private:
     int pressedSection = -1;
     
     // ===== LAYOUT CACHE =====
-    Rect2D leftRect, centerRect, rightRect;
+    Rect2Di leftRect, centerRect, rightRect;
     bool layoutDirty = true;
     
 public:
@@ -231,8 +231,9 @@ public:
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
     void Render() override {
+
         if (!IsVisible()) return;
-        
+        auto ctx = GetRenderContext();
         ctx->PushState();
         
         // Update layout if needed
@@ -242,7 +243,7 @@ public:
         }
         
         // Draw button background and border
-        DrawButtonBackground();
+        DrawButtonBackground(ctx);
         
         // Draw sections
         DrawSection(leftSection, leftRect, 0);
@@ -321,7 +322,7 @@ public:
 private:
     // ===== LAYOUT CALCULATION =====
     void CalculateLayout() {
-        Rect2D bounds = GetBounds();
+        Rect2Di bounds = GetBounds();
         float totalWidth = bounds.width - appearance.borderWidth * 2;
         float sectionHeight = bounds.height - appearance.borderWidth * 2;
         
@@ -342,13 +343,13 @@ private:
         float currentX = bounds.x + appearance.borderWidth;
         float currentY = bounds.y + appearance.borderWidth;
         
-        leftRect = Rect2D(currentX, currentY, leftWidth, sectionHeight);
+        leftRect = Rect2Di(currentX, currentY, leftWidth, sectionHeight);
         currentX += leftWidth;
         
-        centerRect = Rect2D(currentX, currentY, centerWidth, sectionHeight);
+        centerRect = Rect2Di(currentX, currentY, centerWidth, sectionHeight);
         currentX += centerWidth;
         
-        rightRect = Rect2D(currentX, currentY, rightWidth, sectionHeight);
+        rightRect = Rect2Di(currentX, currentY, rightWidth, sectionHeight);
     }
     
     float CalculateSectionWidth(const ButtonSection& section, float totalWidth) {
@@ -368,8 +369,8 @@ private:
     }
     
     // ===== RENDERING METHODS =====
-    void DrawButtonBackground() {
-        Rect2D bounds = GetBounds();
+    void DrawButtonBackground(IRenderContext* ctx) {
+        Rect2Di bounds = GetBounds();
         
         // Determine background color based on state
         Color bgColor = appearance.backgroundColor;
@@ -385,11 +386,11 @@ private:
         if (appearance.cornerRadius > 0.0f) {
             ctx->DrawRoundedRectangle(bounds, appearance.cornerRadius, bgColor, appearance.borderColor, appearance.borderWidth);
         } else {
-            UltraCanvas::DrawFilledRect(bounds, bgColor, appearance.borderColor, appearance.borderWidth);
+            ctx->DrawFilledRectangle(bounds, bgColor, appearance.borderColor, appearance.borderWidth);
         }
     }
     
-    void DrawSection(const ButtonSection& section, const Rect2D& rect, int sectionIndex) {
+    void DrawSection(const ButtonSection& section, const Rect2Di& rect, int sectionIndex) {
         if (section.type == SectionType::Empty || rect.width <= 0) return;
         
         // Draw section background if specified
@@ -424,11 +425,11 @@ private:
         }
     }
     
-    void DrawSectionText(const ButtonSection& section, const Rect2D& rect, int sectionIndex) {
+    void DrawSectionText(const ButtonSection& section, const Rect2Di& rect, int sectionIndex) {
         if (section.content.empty()) return;
         
         // Calculate text position based on alignment
-        Point2D textPos = CalculateTextPosition(section, rect);
+        Point2Df textPos = CalculateTextPosition(section, rect);
         
         // Set text color (dimmed if button is disabled)
         Color textColor = section.textColor;
@@ -440,12 +441,12 @@ private:
         ctx->DrawText(section.content, textPos);
     }
     
-    void DrawSectionIcon(const ButtonSection& section, const Rect2D& rect, int sectionIndex) {
+    void DrawSectionIcon(const ButtonSection& section, const Rect2Di& rect, int sectionIndex) {
         if (section.content.empty()) return;
         
         // Calculate icon position (centered)
         float iconSize = std::min(rect.width, rect.height) - section.padding * 2;
-        Point2D iconPos(
+        Point2Di iconPos(
             rect.x + (rect.width - iconSize) / 2,
             rect.y + (rect.height - iconSize) / 2
         );
@@ -453,11 +454,11 @@ private:
         // Draw icon with opacity based on enabled state
         float opacity = IsEnabled() ? 1.0f : 0.5f;
         SetGlobalAlpha(opacity);
-        ctx->DrawImage(section.content, Rect2D(iconPos.x, iconPos.y, iconSize, iconSize));
+        ctx->DrawImage(section.content, Rect2Di(iconPos.x, iconPos.y, iconSize, iconSize));
         SetGlobalAlpha(1.0f);
     }
     
-    Point2D CalculateTextPosition(const ButtonSection& section, const Rect2D& rect) {
+    Point2Df CalculateTextPosition(const ButtonSection& section, const Rect2Di& rect) {
         float textWidth = GetTextWidth(section.content);
         float textHeight = GetTextHeight(section.content);
         
@@ -480,7 +481,7 @@ private:
         // Vertical centering
         y = rect.y + (rect.height + textHeight) / 2;
         
-        return Point2D(x, y);
+        return Point2Df(x, y);
     }
     
     void DrawSectionSeparators() {
@@ -489,7 +490,7 @@ private:
             float x = leftRect.x + leftRect.width;
             ctx->SetStrokeColor(appearance.separatorColor);
             ctx->SetStrokeWidth(appearance.separatorWidth);
-            ctx->DrawLine(Point2D(x, GetY() + 2), Point2D(x, GetY() + GetHeight() - 2));
+            ctx->DrawLine(x, GetY() + 2, x, GetY() + GetHeight() - 2);
         }
         
         if (centerRect.width > 0 && rightRect.width > 0) {
@@ -497,12 +498,12 @@ private:
             float x = centerRect.x + centerRect.width;
             ctx->SetStrokeColor(appearance.separatorColor);
             ctx->SetStrokeWidth(appearance.separatorWidth);
-            ctx->DrawLine(Point2D(x, GetY() + 2), Point2D(x, GetY() + GetHeight() - 2));
+            ctx->DrawLine(x, GetY() + 2, x, GetY() + GetHeight() - 2);
         }
     }
     
     void DrawButtonShadow() {
-        Rect2D shadowRect = GetBounds();
+        Rect2Di shadowRect = GetBounds();
         shadowRect.x += appearance.shadowOffset.x;
         shadowRect.y += appearance.shadowOffset.y;
         
@@ -520,7 +521,7 @@ private:
         
         SetFocus(true);
         isPressed = true;
-        pressedSection = GetSectionAtPoint(Point2D(event.x, event.y));
+        pressedSection = GetSectionAtPoint(event.x, event.y);
         
         if (onPressed) onPressed();
     }
@@ -530,7 +531,7 @@ private:
             isPressed = false;
             
             if (Contains(event.x, event.y)) {
-                int clickedSection = GetSectionAtPoint(Point2D(event.x, event.y));
+                int clickedSection = GetSectionAtPoint(event.x, event.y);
                 
                 // Trigger appropriate click handlers
                 if (clickedSection >= 0) {
@@ -547,7 +548,7 @@ private:
     
     void HandleMouseMove(const UCEvent& event) {
         int newHoveredSection = Contains(event.x, event.y) ? 
-                               GetSectionAtPoint(Point2D(event.x, event.y)) : -1;
+                               GetSectionAtPoint(event.x, event.y) : -1;
         
         if (newHoveredSection != hoveredSection) {
             hoveredSection = newHoveredSection;
@@ -555,10 +556,10 @@ private:
         }
     }
     
-    int GetSectionAtPoint(const Point2D& point) {
-        if (leftRect.Contains(point) && leftSection.type != SectionType::Empty) return 0;
-        if (centerRect.Contains(point) && centerSection.type != SectionType::Empty) return 1;
-        if (rightRect.Contains(point) && rightSection.type != SectionType::Empty) return 2;
+    int GetSectionAtPoint(int x, int y) {
+        if (leftRect.Contains(x, y) && leftSection.type != SectionType::Empty) return 0;
+        if (centerRect.Contains(x, y) && centerSection.type != SectionType::Empty) return 1;
+        if (rightRect.Contains(x, y) && rightSection.type != SectionType::Empty) return 2;
         return -1;
     }
 };
@@ -600,7 +601,7 @@ inline ButtonSection ButtonSection::Empty(float width) {
     return section;
 }
 
-inline ButtonSection ButtonSection::Custom(std::function<void(const Rect2D&)> renderCallback) {
+inline ButtonSection ButtonSection::Custom(std::function<void(const Rect2Di&)> renderCallback) {
     ButtonSection section;
     section.type = SectionType::Custom;
     section.SetCustomRenderer(renderCallback);

@@ -47,7 +47,7 @@ enum class ValidationState {
     Required        // Required field indicator
 };
 
-// *** REMOVED DUPLICATE ENUM - Using TextAlign from UltraCanvasRenderInterface.h ***
+// *** REMOVED DUPLICATE ENUM - Using TextAlignment from UltraCanvasRenderInterface.h ***
 
 enum class AutoComplete {
     Off, On, Name, Email, Username, CurrentPassword, NewPassword, 
@@ -287,7 +287,7 @@ struct TextInputStyle {
     std::string fontFamily = "Arial";
     float fontSize = 12.0f;
     FontWeight fontWeight = FontWeight::Normal;
-    TextAlign textAlignment = TextAlign::Left;
+    TextAlignment textAlignment = TextAlignment::Left;
     
     // Caret
     int caretWidth = 1.0f;

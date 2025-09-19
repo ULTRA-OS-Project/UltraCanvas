@@ -242,10 +242,6 @@ namespace UltraCanvas {
                     RenderProgressSlider(bounds, ctx);
                     break;
 
-                case SliderStyle::Range:
-                    RenderRangeSlider(bounds, ctx);
-                    break;
-
                 case SliderStyle::Rounded:
                     RenderRoundedSlider(bounds, ctx);
                     break;
@@ -409,12 +405,6 @@ namespace UltraCanvas {
             ctx->SetStrokeColor(style.handleBorderColor);
             ctx->SetStrokeWidth(style.borderWidth);
             ctx->DrawRectangle(bounds);
-        }
-
-        void RenderRangeSlider(const Rect2Di& bounds, IRenderContext* ctx) {
-            // For now, render as normal slider
-            // TODO: Implement proper dual-handle range slider
-            RenderLinearSlider(bounds, ctx);
         }
 
         void RenderHandle(const Point2Di& position, IRenderContext* ctx) {

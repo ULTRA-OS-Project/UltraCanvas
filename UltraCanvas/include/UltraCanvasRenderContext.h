@@ -99,14 +99,6 @@ class UltraCanvasBaseWindow;
         float globalAlpha = 1.0f;
     };
 
-// ===== TEXT RENDERING STRUCTURES =====
-    enum class TextAlign {
-        Left,
-        Center,
-        Right,
-        Justify
-    };
-
     enum class TextBaseline {
         Top,
         Middle,
@@ -133,7 +125,7 @@ class UltraCanvasBaseWindow;
         FontWeight fontWeight = FontWeight::Normal;
         FontStyle fontStyle = FontStyle::Normal;
         Color textColor = Colors::Black;
-        TextAlign alignment = TextAlign::Left;
+        TextAlignment alignment = TextAlignment::Left;
         TextBaseline baseline = TextBaseline::Baseline;
         float lineHeight = 1.2f;
         float letterSpacing = 0.0f;
@@ -414,7 +406,7 @@ class UltraCanvasBaseWindow;
             SetTextStyle(style);
         }
 
-        virtual void SetTextAlign(TextAlign align) {
+        virtual void SetTextAlignment(TextAlignment align) {
             TextStyle style = GetTextStyle();
             style.alignment = align;
             SetTextStyle(style);

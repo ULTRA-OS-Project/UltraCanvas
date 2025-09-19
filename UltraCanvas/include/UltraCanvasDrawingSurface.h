@@ -84,7 +84,7 @@ private:
     DrawingState currentState;          // Current drawing parameters
     std::stack<DrawingState> stateStack; // State save/restore stack
     
-    std::vector<Point2D> currentPath;  // Current drawing path
+    std::vector<Point2Df> currentPath;  // Current drawing path
     bool isDrawing;                     // Currently in drawing operation
     Point2D lastDrawPoint;              // Last mouse position for drawing
     

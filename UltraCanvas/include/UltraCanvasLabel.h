@@ -13,20 +13,6 @@
 
 namespace UltraCanvas {
 
-// ===== LABEL ALIGNMENT OPTIONS =====
-    enum class LabelAlignment {
-        Left = 0,
-        Center = 1,
-        Right = 2,
-        Justify = 3
-    };
-
-    enum class LabelVerticalAlignment {
-        Top = 0,
-        Middle = 1,
-        Bottom = 2
-    };
-
 // ===== LABEL STYLE CONFIGURATION =====
     struct LabelStyle {
         // Text appearance
@@ -42,8 +28,8 @@ namespace UltraCanvas {
         float borderRadius = 0.0f;
 
         // Text alignment
-        LabelAlignment horizontalAlign = LabelAlignment::Left;
-        LabelVerticalAlignment verticalAlign = LabelVerticalAlignment::Middle;
+        TextAlignment horizontalAlign = TextAlignment::Left;
+        TextVerticalAlignment verticalAlign = TextVerticalAlignment::Middle;
 
         // Padding
         float paddingLeft = 4.0f;
@@ -191,6 +177,13 @@ namespace UltraCanvas {
             }
         }
 
+        void SetFontWeight(const FontWeight w) {
+            style.fontWeight = w;
+            if (style.autoResize) {
+                AutoResize();
+            }
+        }
+
         void SetTextColor(const Color& color) {
             style.textColor = color;
         }
@@ -208,7 +201,7 @@ namespace UltraCanvas {
             needsLayout = true;
         }
 
-        void SetAlignment(LabelAlignment horizontal, LabelVerticalAlignment vertical = LabelVerticalAlignment::Middle) {
+        void SetAlignment(TextAlignment horizontal, TextVerticalAlignment vertical = TextVerticalAlignment::Middle) {
             style.horizontalAlign = horizontal;
             style.verticalAlign = vertical;
             needsLayout = true;
@@ -290,16 +283,16 @@ namespace UltraCanvas {
                 // Calculate horizontal position
                 float textX = textArea.x;
                 switch (style.horizontalAlign) {
-                    case LabelAlignment::Left:
+                    case TextAlignment::Left:
                         textX = textArea.x;
                         break;
-                    case LabelAlignment::Center:
+                    case TextAlignment::Center:
                         textX = textArea.x + (textArea.width - textSize.x) / 2;
                         break;
-                    case LabelAlignment::Right:
+                    case TextAlignment::Right:
                         textX = textArea.x + textArea.width - textSize.x;
                         break;
-                    case LabelAlignment::Justify:
+                    case TextAlignment::Justify:
                         textX = textArea.x; // For single line, same as left
                         break;
                 }
@@ -307,13 +300,13 @@ namespace UltraCanvas {
                 // Calculate vertical position
                 float textY = textArea.y;
                 switch (style.verticalAlign) {
-                    case LabelVerticalAlignment::Top:
+                    case TextVerticalAlignment::Top:
                         textY = textArea.y; // Baseline offset
                         break;
-                    case LabelVerticalAlignment::Middle:
+                    case TextVerticalAlignment::Middle:
                         textY = textArea.y + (textArea.height / 2) - textSize.y / 2;
                         break;
-                    case LabelVerticalAlignment::Bottom:
+                    case TextVerticalAlignment::Bottom:
                         textY = textArea.y + textArea.height;
                         break;
                 }
@@ -505,7 +498,7 @@ namespace UltraCanvas {
             return *this;
         }
 
-        LabelBuilder& SetAlignment(LabelAlignment align) {
+        LabelBuilder& SetAlignment(TextAlignment align) {
             label->SetAlignment(align);
             return *this;
         }
@@ -560,7 +553,7 @@ auto label4 = CreateLabelBuilder("custom", 1004, 10, 150)
     .SetFont("Arial", 14.0f)
     .SetTextColor(Colors::Blue)
     .SetBackgroundColor(Color(240, 240, 240, 255))
-    .SetAlignment(LabelAlignment::Center)
+    .SetAlignment(TextAlignment::Center)
     .SetPadding(8.0f)
     .OnClick([]() { std::cout << "Label clicked!" << std::endl; })
     .Build();

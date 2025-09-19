@@ -1,4 +1,3 @@
-// main.cpp
 // UltraCanvas Framework Demonstration Program Entry Point
 // Version: 1.0.0
 // Last Modified: 2024-12-19
@@ -8,11 +7,13 @@
 #include <memory>
 #include <exception>
 #include <string>
+#include <thread>
+#include <chrono>
 
 // UltraCanvas Core Headers
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasWindow.h"
-#include "UltraCanvasSupport.h"
+#include "UltraCanvasApplication.h"
 
 // OS-specific initialization if needed
 #ifdef _WIN32
@@ -63,7 +64,7 @@ void SignalHandler(int signal) {
 #endif
 
 // ===== SYSTEM INITIALIZATION =====
-bool InitializeSystem() {
+bool InitializeSystem(UltraCanvasApplication& g_app) {
     std::cout << "=== UltraCanvas Framework Demonstration Program ===" << std::endl;
     std::cout << "Version: 1.0.0" << std::endl;
     std::cout << "Build Date: " << __DATE__ << " " << __TIME__ << std::endl;
@@ -102,22 +103,19 @@ bool InitializeSystem() {
         // Initialize UltraCanvas framework
         std::cout << "Initializing UltraCanvas framework..." << std::endl;
 
-        if (!UltraCanvasSupport::Initialize()) {
-            HandleFatalError("Failed to initialize UltraCanvas framework");
+        if (!g_app.Initialize()) {
+            HandleFatalError("Failed to initialize UltraCanvas application");
             return false;
         }
 
         std::cout << "✓ UltraCanvas framework initialized successfully" << std::endl;
 
-        // Check framework capabilities
-        auto capabilities = UltraCanvasSupport::GetCapabilities();
+        // Show framework capabilities
         std::cout << "Framework Capabilities:" << std::endl;
-        std::cout << "  • OpenGL Support: " << (capabilities.openglSupport ? "Yes" : "No") << std::endl;
-        std::cout << "  • Vulkan Support: " << (capabilities.vulkanSupport ? "Yes" : "No") << std::endl;
-        std::cout << "  • Audio Support: " << (capabilities.audioSupport ? "Yes" : "No") << std::endl;
-        std::cout << "  • Video Support: " << (capabilities.videoSupport ? "Yes" : "No") << std::endl;
-        std::cout << "  • PDF Support: " << (capabilities.pdfSupport ? "Yes" : "No") << std::endl;
-        std::cout << "  • 3D Model Support: " << (capabilities.model3DSupport ? "Yes" : "No") << std::endl;
+        std::cout << "  • Platform: " << UltraCanvasApplication::GetPlatformName() << std::endl;
+        std::cout << "  • Desktop Platform: " << (UltraCanvasApplication::IsDesktopPlatform() ? "Yes" : "No") << std::endl;
+        std::cout << "  • Mobile Platform: " << (UltraCanvasApplication::IsMobilePlatform() ? "Yes" : "No") << std::endl;
+        std::cout << "  • Web Platform: " << (UltraCanvasApplication::IsWebPlatform() ? "Yes" : "No") << std::endl;
         std::cout << std::endl;
 
     } catch (const std::exception& e) {
@@ -137,22 +135,12 @@ void ShutdownSystem() {
         g_demoApp.reset();
         std::cout << "✓ Demo application shut down" << std::endl;
     }
-
-    // Shutdown UltraCanvas framework
-    try {
-        UltraCanvasSupport::Shutdown();
-        std::cout << "✓ UltraCanvas framework shut down" << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "Warning: Framework shutdown error: " << e.what() << std::endl;
-    }
-
-    std::cout << "=== Demo Application Terminated ===" << std::endl;
 }
 
 // ===== MAIN APPLICATION ENTRY POINT =====
 int main(int argc, char* argv[]) {
     std::cout << std::endl;
-
+    UltraCanvasApplication g_app;
     try {
         // Process command line arguments
         bool verboseMode = false;
@@ -188,8 +176,9 @@ int main(int argc, char* argv[]) {
             }
         }
 
+
         // Initialize system
-        if (!InitializeSystem()) {
+        if (!InitializeSystem(g_app)) {
             return EXIT_FAILURE;
         }
 
@@ -228,16 +217,6 @@ int main(int argc, char* argv[]) {
 
         // Run the demo application
         g_demoApp->Run();
-
-        // In a real implementation, this would block until the window is closed
-        // For demonstration purposes, we'll simulate running for a short time
-        if (testMode) {
-            std::cout << "Test mode - running for 5 seconds..." << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(5));
-        } else {
-            std::cout << "Press Enter to continue or Ctrl+C to exit..." << std::endl;
-            std::cin.get();
-        }
 
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Unhandled exception: ") + e.what());

@@ -112,7 +112,7 @@ public:
         
         // Copy button - uses the new modular system
         copyButton = CreateButton("copyBtn", 2002, 20, 300, 150, 30, "Copy to Clipboard");
-        copyButton->onClicked = [this]() {
+        copyButton->onClick = [this]() {
             if (textInput) {
                 std::string text = textInput->GetText();
                 if (!text.empty()) {
@@ -129,7 +129,7 @@ public:
         
         // Paste button - uses the new modular system
         pasteButton = CreateButton("pasteBtn", 2003, 200, 300, 150, 30, "Paste from Clipboard");
-        pasteButton->onClicked = [this]() {
+        pasteButton->onClick = [this]() {
             std::string clipboardText;
             if (GetClipboardText(clipboardText)) {
                 if (textInput) {
@@ -144,7 +144,7 @@ public:
         
         // Show clipboard history button
         showClipboardButton = CreateButton("showClipboardBtn", 2004, 380, 300, 180, 30, "Show Clipboard History");
-        showClipboardButton->onClicked = [this]() {
+        showClipboardButton->onClick = [this]() {
             ShowClipboard();
             std::cout << "📋 Clipboard history window opened" << std::endl;
         };
@@ -152,7 +152,7 @@ public:
         
         // Add entry button - demonstrates programmatic addition
         auto addEntryButton = CreateButton("addEntryBtn", 2005, 580, 300, 150, 30, "Add Sample Entry");
-        addEntryButton->onClicked = [this]() {
+        addEntryButton->onClick = [this]() {
             ClipboardData sampleEntry(ClipboardDataType::Text, "Sample programmatically added entry");
             AddClipboardEntry(sampleEntry);
             std::cout << "✅ Sample entry added to clipboard history" << std::endl;

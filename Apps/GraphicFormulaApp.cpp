@@ -213,23 +213,23 @@ private:
         leftPanel->AddChild(statusLabel);
 
         // Create control panel in right side
-        controlPanel = std::make_shared<UltraCanvasContainer>("ControlPanel", 70,
-                                                              0, 0, rightWidth, 120);
+//        controlPanel = std::make_shared<UltraCanvasContainer>("ControlPanel", 70,
+//                                                              0, 0, rightWidth, 120);
 
         // Graphics output area
         int outputHeight = windowHeight - 170; // Leave space for controls and status
         graphicsOutput = std::make_shared<UltraCanvasProceduralBackground>("GraphicsOutput", 71,
-                                                                           10, 130, rightWidth - 20, outputHeight);
+                                                                           10, 10, rightWidth - 40, outputHeight);
 
         // Status display
         auto rightStatusPanel = std::make_shared<UltraCanvasContainer>("RightStatusPanel", 81,
                                                                        0, windowHeight - 50, rightWidth, 50);
         auto performanceLabel = std::make_shared<UltraCanvasLabel>("PerformanceLabel", 82,
-                                                                   10, 10, rightWidth - 20, 30, "FPS: 0");
+                                                                   10, 10, rightWidth - 40, 30, "FPS: 0");
 
         rightStatusPanel->AddChild(performanceLabel);
 
-        rightPanel->AddChild(controlPanel);
+        //rightPanel->AddChild(controlPanel);
         rightPanel->AddChild(graphicsOutput);
         rightPanel->AddChild(rightStatusPanel);
 
@@ -328,7 +328,11 @@ private:
 
         if (name == "Dust") {
             formula.description = "Cosmic dust particles with swirling motion";
-            formula.formula = "vec3 p=vec3((FC.xy-.5)*2.,0),d=normalize(vec3(cos(t*.1),sin(t*.1)*.3,1)),o=vec3(0);for(int i=0;i<40;i++){p+=d*.1;float n=length(p.xy);o+=cos(p*10.+t)/n;}o=o*.1;";
+            formula.formula = "vec3 p=vec3((FC.xy-.5)*2.,0),d=normalize(vec3(cos(t*.1),\n"
+                              "sin(t*.1)*.3,1)),o=vec3(0);\n"
+                              "for(int i=0;i<40;i++){\n"
+                              "p+=d*.1;float n=length(p.xy);o+=cos(p*10.+t)/n;\n"
+                              "}o=o*.1;";
             formula.animationSpeed = 1.0f;
             formula.complexity = 7.5f;
         } else if (name == "Hive") {

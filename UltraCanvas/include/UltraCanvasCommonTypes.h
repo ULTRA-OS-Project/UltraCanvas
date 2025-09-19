@@ -300,6 +300,20 @@ enum class Alignment {
     Justify
 };
 
+enum class TextAlignment {
+    Left,
+    Center,
+    Right,
+    Justify
+};
+
+enum class TextVerticalAlignment {
+    Top = 0,
+    Middle = 1,
+    Bottom = 2,
+    Baseline = 3
+};
+
 enum class Direction {
     Horizontal,
     Vertical

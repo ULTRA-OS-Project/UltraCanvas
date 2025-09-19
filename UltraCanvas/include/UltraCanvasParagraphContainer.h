@@ -39,7 +39,7 @@ struct ParagraphRun {
 // ===== STYLED PARAGRAPH STRUCTURE =====
 struct StyledParagraph {
     std::vector<ParagraphRun> runs;
-    TextAlign alignment = TextAlign::Left;
+    TextAlignment alignment = TextAlignment::Left;
     float lineHeight = 1.2f;
     int leftMargin = 0;
     int rightMargin = 0;

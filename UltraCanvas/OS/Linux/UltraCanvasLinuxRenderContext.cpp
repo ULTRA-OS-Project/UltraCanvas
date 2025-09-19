@@ -382,13 +382,13 @@ namespace UltraCanvas {
             // Set alignment
             PangoAlignment alignment = PANGO_ALIGN_LEFT;
             switch (currentState.textStyle.alignment) {
-                case TextAlign::Center:
+                case TextAlignment::Center:
                     alignment = PANGO_ALIGN_CENTER;
                     break;
-                case TextAlign::Right:
+                case TextAlignment::Right:
                     alignment = PANGO_ALIGN_RIGHT;
                     break;
-                case TextAlign::Justify:
+                case TextAlignment::Justify:
                     alignment = PANGO_ALIGN_LEFT;
                     break;
                 default:

@@ -158,6 +158,33 @@ namespace UltraCanvas {
             CalculateLayout();
         }
 
+        void SetTabHeight(int th) {
+            tabHeight = th;
+            CalculateLayout();
+        }
+
+        int GetTabHeight() const {
+            return tabHeight;
+        }
+
+        void SetTabMinWidth(int w) {
+            tabMinWidth = w;
+            CalculateLayout();
+        }
+
+        int GetTabMinWidth() const {
+            return tabMinWidth;
+        }
+
+        void SetTabMaxWidth(int w) {
+            tabMaxWidth = w;
+            CalculateLayout();
+        }
+
+        int GetTabMaxWidth() const {
+            return tabMaxWidth;
+        }
+
         // ===== OVERFLOW DROPDOWN CONFIGURATION =====
         void SetOverflowDropdownPosition(OverflowDropdownPosition position) {
             overflowDropdownPosition = position;

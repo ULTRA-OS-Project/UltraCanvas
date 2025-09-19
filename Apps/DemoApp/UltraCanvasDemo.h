@@ -14,9 +14,8 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasTabbedContainer.h"
-#include "UltraCanvasDrawingSurface.h"
-#include "UltraCanvasPDFViewer.h"
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasApplication.h"
 #include <memory>
 #include <map>
 #include <functional>
@@ -62,7 +61,10 @@ namespace UltraCanvas {
     };
 
 // ===== MAIN DEMO APPLICATION CLASS =====
+    class DemoCategoryBuilder;
+
     class UltraCanvasDemoApplication {
+    friend DemoCategoryBuilder;
     private:
         // Core components
         std::shared_ptr<UltraCanvasWindow> mainWindow;
@@ -129,7 +131,6 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasElement> CreateVideoExamples();
 
         // Document Elements
-        std::shared_ptr<UltraCanvasElement> CreatePDFExamples();
         std::shared_ptr<UltraCanvasElement> CreateTextDocumentExamples();
         std::shared_ptr<UltraCanvasElement> CreateMarkdownExamples();
         std::shared_ptr<UltraCanvasElement> CreateCodeEditorExamples();
@@ -142,6 +143,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasElement> CreateChartExamples();
         std::shared_ptr<UltraCanvasElement> CreateInfoGraphicsExamples();
 
+        std::shared_ptr<UltraCanvasElement> CreatePDFExamples();
         // ===== APPLICATION LIFECYCLE =====
         void Run();
         void Shutdown();

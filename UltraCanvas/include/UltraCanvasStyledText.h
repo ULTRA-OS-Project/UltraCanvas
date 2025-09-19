@@ -703,9 +703,9 @@ namespace UltraCanvas {
                 float textY = lineRect.y + block.style.fontSize; // Baseline
 
                 // Apply alignment
-                if (block.style.alignment == TextAlign::Center) {
+                if (block.style.alignment == TextAlignment::Center) {
                     textX = lineRect.x + (lineRect.width - GetTextWidth(lines[i].c_str())) / 2;
-                } else if (block.style.alignment == TextAlign::Right) {
+                } else if (block.style.alignment == TextAlignment::Right) {
                     textX = lineRect.x + lineRect.width - GetTextWidth(lines[i].c_str());
                 }
 

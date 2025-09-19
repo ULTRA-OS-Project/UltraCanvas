@@ -45,7 +45,7 @@ namespace UltraCanvas {
         std::string fontFamily = "Arial";
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
-        TextAlign textAlign = TextAlign::Center;
+        TextAlignment textAlign = TextAlignment::Center;
 
         // Layout
         int paddingLeft = 8;
@@ -195,7 +195,7 @@ namespace UltraCanvas {
                 centeredTextStyle.fontFamily = style.fontFamily;
                 centeredTextStyle.fontSize = style.fontSize;
                 centeredTextStyle.textColor = textColor;
-                centeredTextStyle.alignment = TextAlign::Center;
+                centeredTextStyle.alignment = TextAlignment::Center;
                 centeredTextStyle.baseline = TextBaseline::Middle;  // This ensures vertical centering
                 ctx->SetTextStyle(centeredTextStyle);
 

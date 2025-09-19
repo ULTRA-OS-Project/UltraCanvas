@@ -569,8 +569,11 @@ namespace UltraCanvas {
         }
 
         void UpdateRenderResolution() {
-            renderWidth = (int)(GetWidth() * currentFormula.qualityScale);
-            renderHeight = (int)(GetHeight() * currentFormula.qualityScale);
+//            renderWidth = (int)(GetWidth() * currentFormula.qualityScale);
+//            renderHeight = (int)(GetHeight() * currentFormula.qualityScale);
+            //
+            renderWidth = GetWidth();
+            renderHeight = GetHeight();
 
             if (renderWidth <= 0) renderWidth = 1;
             if (renderHeight <= 0) renderHeight = 1;

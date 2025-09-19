@@ -24,10 +24,19 @@ namespace UltraCanvas {
     bool UltraCanvasDemoApplication::Initialize() {
         std::cout << "Initializing UltraCanvas Demo Application..." << std::endl;
 
-        // Create main window
-        mainWindow = std::make_shared<UltraCanvasWindow>("DemoMainWindow", 1, 50, 50, 1400, 900);
-        mainWindow->SetTitle("UltraCanvas Framework - Component Demonstration");
-        mainWindow->SetResizable(true);
+        // Create main window using proper configuration
+        WindowConfig config;
+        config.title = "UltraCanvas Framework - Component Demonstration";
+        config.width = 1400;
+        config.height = 900;
+        config.resizable = true;
+        config.type = WindowType::Standard;
+
+        mainWindow = std::make_shared<UltraCanvasWindow>();
+        if (!mainWindow->Create(config)) {
+            std::cerr << "Failed to create main window" << std::endl;
+            return false;
+        }
 
         // Create tree view for categories (left side)
         categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 10, 60, 350, 780);
@@ -37,10 +46,11 @@ namespace UltraCanvas {
 
         // Create display container (right side)
         displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 3, 370, 60, 1020, 650);
-        displayContainer->SetBackgroundColor(Color(248, 248, 248, 255));
-        displayContainer->SetBorderStyle(BorderStyle::Solid);
-        displayContainer->SetBorderWidth(1.0f);
-        displayContainer->SetBorderColor(Color(200, 200, 200, 255));
+        ContainerStyle displayContainerStyle;
+        displayContainerStyle.backgroundColor = Color(248, 248, 248, 255);
+        displayContainerStyle.borderWidth = 1.0f;
+        displayContainerStyle.borderColor = Color(200, 200, 200, 255);
+        displayContainer->SetContainerStyle(displayContainerStyle);
 
         // Create status label (bottom left)
         statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 850, 350, 25);
@@ -64,10 +74,10 @@ namespace UltraCanvas {
         };
 
         // Add elements to window
-        mainWindow->AddElement(categoryTreeView.get());
-        mainWindow->AddElement(displayContainer.get());
-        mainWindow->AddElement(statusLabel.get());
-        mainWindow->AddElement(descriptionLabel.get());
+        mainWindow->AddChild(categoryTreeView);
+        mainWindow->AddChild(displayContainer);
+        mainWindow->AddChild(statusLabel);
+        mainWindow->AddChild(descriptionLabel);
 
         std::cout << "✓ Demo application initialized successfully" << std::endl;
         return true;
@@ -202,13 +212,6 @@ namespace UltraCanvas {
         // ===== TEXT DOCUMENTS =====
         auto textDocBuilder = DemoCategoryBuilder(this, DemoCategory::TextDocuments);
 
-        textDocBuilder.AddItem("pdf", "PDF Viewer", "PDF document display and navigation",
-                               ImplementationStatus::FullyImplemented,
-                               [this]() { return CreatePDFExamples(); })
-                .AddVariant("pdf", "Single Page View")
-                .AddVariant("pdf", "Continuous View")
-                .AddVariant("pdf", "Thumbnail Navigation");
-
         textDocBuilder.AddItem("markdown", "Markdown", "Markdown document rendering",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateMarkdownExamples(); });
@@ -219,6 +222,10 @@ namespace UltraCanvas {
                 .AddVariant("codeeditor", "C++ Syntax")
                 .AddVariant("codeeditor", "Pascal Syntax")
                 .AddVariant("codeeditor", "COBOL Syntax");
+
+        textDocBuilder.AddItem("textdocuments", "Text Documents", "ODT, RTF, TeX document support",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreateTextDocumentExamples(); });
 
         // ===== AUDIO ELEMENTS =====
         auto audioBuilder = DemoCategoryBuilder(this, DemoCategory::AudioElements);
@@ -268,7 +275,7 @@ namespace UltraCanvas {
     void UltraCanvasDemoApplication::SetupTreeView() {
         // Setup root node
         TreeNodeData rootData("root", "UltraCanvas Components");
-        rootData.leftIcon = TreeNodeIcon("icons/ultracanvas.png", 16, 16);
+        rootData.leftIcon = TreeNodeIcon("assets/icons/ultracanvas.png", 16, 16);
         TreeNode* rootNode = categoryTreeView->SetRootNode(rootData);
 
         // Add category nodes
@@ -291,14 +298,14 @@ namespace UltraCanvas {
                     "cat_" + std::to_string(static_cast<int>(category)),
                     categoryNames[category]
             );
-            categoryData.leftIcon = TreeNodeIcon("icons/folder.png", 16, 16);
+            categoryData.leftIcon = TreeNodeIcon("assets/icons/folder.png", 16, 16);
             TreeNode* categoryNode = categoryTreeView->AddNode("root", categoryData);
 
             // Add items for this category
             for (const std::string& itemId : items) {
                 const auto& demoItem = demoItems[itemId];
                 TreeNodeData itemData(itemId, demoItem->displayName);
-                itemData.leftIcon = TreeNodeIcon("icons/component.png", 16, 16);
+                itemData.leftIcon = TreeNodeIcon("assets/icons/component.png", 16, 16);
                 itemData.rightIcon = TreeNodeIcon(GetStatusIcon(demoItem->status), 12, 12);
                 categoryTreeView->AddNode(categoryData.nodeId, itemData);
             }
@@ -337,7 +344,7 @@ namespace UltraCanvas {
             try {
                 currentDisplayElement = item->createExample();
                 if (currentDisplayElement) {
-                    displayContainer->AddElement(currentDisplayElement.get());
+                    displayContainer->AddChild(currentDisplayElement);
                     currentSelectedId = itemId;
                 }
             } catch (const std::exception& e) {
@@ -349,11 +356,10 @@ namespace UltraCanvas {
             placeholder->SetText("This component is not yet implemented.\nPlanned for future release.");
             placeholder->SetAlignment(TextAlignment::Center);
             placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
-            placeholder->SetBorderStyle(BorderStyle::Dashed);
             placeholder->SetBorderWidth(2.0f);
             placeholder->SetBorderColor(Color(200, 200, 0, 255));
 
-            displayContainer->AddElement(placeholder.get());
+            displayContainer->AddChild(placeholder);
             currentDisplayElement = placeholder;
             currentSelectedId = itemId;
         }
@@ -361,7 +367,7 @@ namespace UltraCanvas {
 
     void UltraCanvasDemoApplication::ClearDisplay() {
         if (currentDisplayElement) {
-            displayContainer->RemoveElement(currentDisplayElement.get());
+            displayContainer->RemoveChild(currentDisplayElement);
             currentDisplayElement = nullptr;
         }
         currentSelectedId = "";
@@ -403,11 +409,11 @@ namespace UltraCanvas {
 // ===== UTILITY METHODS =====
     std::string UltraCanvasDemoApplication::GetStatusIcon(ImplementationStatus status) const {
         switch (status) {
-            case ImplementationStatus::FullyImplemented: return "icons/check.png";
-            case ImplementationStatus::PartiallyImplemented: return "icons/warning.png";
-            case ImplementationStatus::NotImplemented: return "icons/x.png";
-            case ImplementationStatus::Planned: return "icons/info.png";
-            default: return "icons/unknown.png";
+            case ImplementationStatus::FullyImplemented: return "assets/icons/check.png";
+            case ImplementationStatus::PartiallyImplemented: return "assets/icons/warning.png";
+            case ImplementationStatus::NotImplemented: return "assets/icons/x.png";
+            case ImplementationStatus::Planned: return "assets/icons/info.png";
+            default: return "assets/icons/unknown.png";
         }
     }
 
@@ -423,18 +429,16 @@ namespace UltraCanvas {
 
 // ===== APPLICATION LIFECYCLE =====
     void UltraCanvasDemoApplication::Run() {
-        if (!mainWindow) {
-            std::cerr << "Error: Application not initialized!" << std::endl;
-            return;
-        }
-
+        // Run application main loop
         std::cout << "Running UltraCanvas Demo Application..." << std::endl;
         std::cout << "Select items from the tree view to see implementation examples." << std::endl;
 
-        mainWindow->Show();
-
-        // Main event loop would go here
-        // For now, just keep the window open
+        if (mainWindow) {
+            mainWindow->Show();
+            // The application will handle the event loop
+        }
+        auto app = UltraCanvasApplication::GetInstance();
+        app->Run();
     }
 
     void UltraCanvasDemoApplication::Shutdown() {

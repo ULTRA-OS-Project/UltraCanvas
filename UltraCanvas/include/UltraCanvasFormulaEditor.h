@@ -473,7 +473,7 @@ namespace UltraCanvas {
         void CreateUI() {
             // Main layout: left side editor, right side preview
             Rect2Di bounds = GetContentArea();
-            int editorWidth = bounds.width * 0.5;
+            int editorWidth = bounds.width - 20;
             int previewWidth = static_cast<int>(bounds.width * 0.4f);
 
             // FIXED: Use proper CreateLabel and CreateTextInput signatures with identifiers
