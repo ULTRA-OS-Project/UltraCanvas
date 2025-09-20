@@ -432,19 +432,19 @@ namespace UltraCanvas {
         sideTabs->SetTabHeight(25);
         sideTabs->SetTabMinWidth(80);
 
-        auto sideTab1 = std::make_shared<UltraCanvasLabel>("SideTab1", 707, 10, 10, 300, 170);
-        sideTab1->SetText("Left-side tabs are useful\nfor tool palettes and\nnavigation panels.");
-        sideTab1->SetBackgroundColor(Color(255, 250, 240, 255));
-
-        auto sideTab2 = std::make_shared<UltraCanvasLabel>("SideTab2", 708, 10, 10, 300, 170);
-        sideTab2->SetText("Second side tab content.\nVertical orientation.");
-        sideTab2->SetBackgroundColor(Color(240, 250, 255, 255));
-
-        sideTabs->AddTab("Tools", sideTab1);
-        sideTabs->AddTab("Props", sideTab2);
-        sideTabs->SetActiveTab(0);
-
-        container->AddChild(sideTabs);
+//        auto sideTab1 = std::make_shared<UltraCanvasLabel>("SideTab1", 707, 10, 10, 300, 170);
+//        sideTab1->SetText("Left-side tabs are useful\nfor tool palettes and\nnavigation panels.");
+//        sideTab1->SetBackgroundColor(Color(255, 250, 240, 255));
+//
+//        auto sideTab2 = std::make_shared<UltraCanvasLabel>("SideTab2", 708, 10, 10, 300, 170);
+//        sideTab2->SetText("Second side tab content.\nVertical orientation.");
+//        sideTab2->SetBackgroundColor(Color(240, 250, 255, 255));
+//
+//        sideTabs->AddTab("Tools", sideTab1);
+//        sideTabs->AddTab("Props", sideTab2);
+//        sideTabs->SetActiveTab(0);
+//
+//        container->AddChild(sideTabs);
 
         return container;
     }

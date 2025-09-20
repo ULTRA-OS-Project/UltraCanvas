@@ -91,6 +91,7 @@ endif()
 # ✅ REQUIRED: Source files
 set(ULTRACANVAS_SOURCES
     # Platform-specific sources
+        UltraCanvas/core/UltraCanvasUtils.cpp
         UltraCanvas/core/UltraCanvasApplication.cpp
         UltraCanvas/core/UltraCanvasRenderInterface.cpp
         UltraCanvas/core/UltraCanvasTooltipManager.cpp
@@ -105,6 +106,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasDropdown.cpp
         UltraCanvas/core/UltraCanvasImageElement.cpp
         UltraCanvas/core/UltraCanvasTreeView.cpp
+        UltraCanvas/core/UltraCanvasTabbedContainer.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
