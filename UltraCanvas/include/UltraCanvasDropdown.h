@@ -93,7 +93,8 @@ namespace UltraCanvas {
         int dropdownHeight = 0;
         int dropdownWidth = 0;
         int maxDropdownHeight = 0;
-        bool needsScrollbar = false;
+        bool needScrollbar = false;
+        bool needCalculateDimensions = false;
 
     public:
         UltraCanvasDropdown(const std::string& identifier, long id, long x, long y, long w, long h = 24);
@@ -191,7 +192,7 @@ namespace UltraCanvas {
 //            }
 //
 //            // Draw scrollbar if needed
-//            if (needsScrollbar) {
+//            if (needScrollbar) {
 //                RenderScrollbar(listRect, ctx);
 //            }
 //

@@ -14,22 +14,21 @@ namespace UltraCanvas {
                                                           long w,
                                                           long h)
             : UltraCanvasElement(identifier, id, x, y, w, h) {
-        CalculateDropdownDimensions();
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text) {
         items.emplace_back(text);
-        CalculateDropdownDimensions();
+        needCalculateDimensions = true;
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text, const std::string &value) {
         items.emplace_back(text, value);
-        CalculateDropdownDimensions();
+        needCalculateDimensions = true;
     }
 
     void UltraCanvasDropdown::AddItem(const DropdownItem &item) {
         items.push_back(item);
-        CalculateDropdownDimensions();
+        needCalculateDimensions = true;
     }
 
     void UltraCanvasDropdown::AddSeparator() {
@@ -37,7 +36,7 @@ namespace UltraCanvas {
         separator.separator = true;
         separator.enabled = false;
         items.push_back(separator);
-        CalculateDropdownDimensions();
+        needCalculateDimensions = true;
     }
 
     void UltraCanvasDropdown::ClearItems() {
@@ -45,7 +44,7 @@ namespace UltraCanvas {
         selectedIndex = -1;
         hoveredIndex = -1;
         scrollOffset = 0;
-        CalculateDropdownDimensions();
+        needCalculateDimensions = true;
     }
 
     void UltraCanvasDropdown::RemoveItem(int index) {
@@ -56,7 +55,7 @@ namespace UltraCanvas {
             } else if (selectedIndex > index) {
                 selectedIndex--;
             }
-            CalculateDropdownDimensions();
+            needCalculateDimensions = true;
         }
     }
 
@@ -124,7 +123,7 @@ namespace UltraCanvas {
 
     void UltraCanvasDropdown::SetStyle(const DropdownStyle &newStyle) {
         style = newStyle;
-        CalculateDropdownDimensions();
+        needCalculateDimensions = true;
     }
 
     const DropdownItem *UltraCanvasDropdown::GetItem(int index) const {
@@ -173,6 +172,9 @@ namespace UltraCanvas {
     void UltraCanvasDropdown::RenderPopupContent() {
         auto ctx = GetRenderContext();
         if (ctx && dropdownOpen && !items.empty()) {
+            if (needCalculateDimensions) {
+                CalculateDropdownDimensions();
+            }
             ctx->PushState();
 
             Rect2Di listRect = CalculatePopupPosition();
@@ -197,7 +199,7 @@ namespace UltraCanvas {
             }
 
             // Draw scrollbar if needed
-            if (needsScrollbar) {
+            if (needScrollbar) {
                 RenderScrollbar(listRect, ctx);
             }
             ctx->PopState();
@@ -244,7 +246,7 @@ namespace UltraCanvas {
         int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
         maxDropdownHeight = visibleItems * (int)style.itemHeight;
         dropdownHeight = std::min(maxDropdownHeight, (int)items.size() * (int)style.itemHeight);
-        needsScrollbar = (int)items.size() > style.maxVisibleItems;
+        needScrollbar = (int)items.size() > style.maxVisibleItems;
         dropdownWidth = properties.width_size;
         for(auto it = items.begin(); it < items.end(); it++) {
             if (!it->separator) {
@@ -252,6 +254,7 @@ namespace UltraCanvas {
                 dropdownWidth = std::max(dropdownWidth, std::min(textSize.x + scrollbarWidth + 12, style.maxItemWidth));
             }
         }
+        needCalculateDimensions = false;
     }
 
     void UltraCanvasDropdown::RenderButton(IRenderContext *ctx) {
@@ -376,7 +379,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDropdown::RenderScrollbar(const Rect2Di &listRect, IRenderContext *ctx) {
-        if (!needsScrollbar) return;
+        if (!needScrollbar) return;
 
         Rect2Di scrollbarRect(listRect.x + listRect.width - scrollbarWidth - 1,
                               listRect.y + 1, scrollbarWidth, listRect.height - 2);
@@ -474,7 +477,7 @@ namespace UltraCanvas {
         } else if (dropdownOpen) {
             // Clicked somewhere else while dropdown is open
             std::cout << "UCDropdown::HandleMouseDown - clicked outside while open" << std::endl;
-            int itemIndex = GetItemAtPosition(event.x, event.y);
+            int itemIndex = GetItemAtPosition(event.windowX, event.windowY);
             std::cout << "UCDropdown::HandleMouseDown - item index=" << itemIndex << std::endl;
 
             if (itemIndex >= 0 && items[itemIndex].enabled && !items[itemIndex].separator) {
@@ -495,7 +498,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasDropdown::HandleMouseMove(const UCEvent &event) {
         if (dropdownOpen) {
-            int newHovered = GetItemAtPosition(event.x, event.y);
+            int newHovered = GetItemAtPosition(event.windowX, event.windowY);
 
             if (newHovered != hoveredIndex) {
                 hoveredIndex = newHovered;
@@ -571,7 +574,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasDropdown::HandleMouseWheel(const UCEvent &event) {
-        if (dropdownOpen && needsScrollbar) {
+        if (dropdownOpen && needScrollbar) {
             // Determine scroll direction (negative wheelDelta = scroll down)
             int scrollDirection = (event.wheelDelta > 0) ? -1 : 1;
             int scrollAmount = 3; // Scroll 3 items per wheel notch

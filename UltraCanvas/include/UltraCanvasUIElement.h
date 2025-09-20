@@ -296,9 +296,7 @@ namespace UltraCanvas {
             return window;
         }
 
-        virtual void SetWindow(UltraCanvasWindow* win) {
-            window = win;
-        }
+        virtual void SetWindow(UltraCanvasWindow* win);
 
         //virtual bool IsInPopupState() { return false; }
         virtual void RenderPopupContent() {};

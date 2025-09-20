@@ -179,7 +179,16 @@ namespace UltraCanvas {
     void UltraCanvasElement::SetVisible(bool visible) {
         properties.Visible = visible;
         if (window) {
+            SetFocus(false);
             window->RequestRedraw();
         }
+    }
+
+    void UltraCanvasElement::SetWindow(UltraCanvasWindow *win) {
+        if (win == nullptr && window) {
+            SetFocus(false);
+            RemoveThisPopupElementFromWindow();
+        }
+        window = win;
     }
 }
