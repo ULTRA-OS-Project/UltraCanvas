@@ -53,7 +53,7 @@ namespace UltraCanvas {
         void RegisterWindow(UltraCanvasWindow* window);
         void UnregisterWindow(UltraCanvasWindow* window);
 
-        bool DispatchEvent(const UCEvent &event);
+        void DispatchEvent(const UCEvent &event);
         bool HandleEventWithBubbling(const UCEvent &event, UltraCanvasElement* elem);
         void RegisterGlobalEventHandler(std::function<bool(const UCEvent&)> handler);
         void ClearGlobalEventHandlers() { globalEventHandlers.clear(); }

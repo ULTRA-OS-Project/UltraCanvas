@@ -70,7 +70,8 @@ namespace UltraCanvas {
         bool _focused = false;
         bool _needsRedraw = true;
 
-        std::unordered_set<UltraCanvasElement *> activePopups;
+        std::vector<UltraCanvasElement *> activePopups;
+        std::unordered_set<UltraCanvasElement *> popupsToRemove;
         UltraCanvasElement* _focusedElement = nullptr;  // Current focused element in this window
 
         // Window-specific callbacks
@@ -138,8 +139,10 @@ namespace UltraCanvas {
 
         // Unregister popup element
         void RemovePopupElement(UltraCanvasElement* element);
+        void CleanupRemovedPopupElements();
 
-        std::unordered_set<UltraCanvasElement *>& GetActivePopups() { return activePopups; }
+        std::vector<UltraCanvasElement *>& GetActivePopups() { return activePopups; }
+        bool HasActivePopups() { return !activePopups.empty(); }
 
 //        void SetActivePopupElement(UltraCanvasElement* element) {
 //            if (!element) return;

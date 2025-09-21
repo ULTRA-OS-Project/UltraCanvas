@@ -74,10 +74,10 @@ namespace UltraCanvas {
         };
 
         // Add elements to window
-        mainWindow->AddChild(categoryTreeView);
-        mainWindow->AddChild(displayContainer);
-        mainWindow->AddChild(statusLabel);
-        mainWindow->AddChild(descriptionLabel);
+        mainWindow->AddOrMoveChild(categoryTreeView);
+        mainWindow->AddOrMoveChild(displayContainer);
+        mainWindow->AddOrMoveChild(statusLabel);
+        mainWindow->AddOrMoveChild(descriptionLabel);
 
         std::cout << "✓ Demo application initialized successfully" << std::endl;
         return true;
@@ -125,6 +125,16 @@ namespace UltraCanvas {
                 .AddVariant("label", "Basic Label")
                 .AddVariant("label", "Header Text")
                 .AddVariant("label", "Status Label");
+
+        basicBuilder.AddItem("menu", "Menus", "Various menu types and styles",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateMenuExamples(); })
+                .AddVariant("menu", "Context Menu")
+                .AddVariant("menu", "Main Menu Bar")
+                .AddVariant("menu", "Popup Menu")
+                .AddVariant("menu", "Submenu Navigation")
+                .AddVariant("menu", "Checkbox/Radio Items")
+                .AddVariant("menu", "Styled Menus");
 
         basicBuilder.AddItem("toolbar", "Toolbar", "Tool and action bars",
                              ImplementationStatus::PartiallyImplemented,
@@ -344,7 +354,7 @@ namespace UltraCanvas {
             try {
                 currentDisplayElement = item->createExample();
                 if (currentDisplayElement) {
-                    displayContainer->AddChild(currentDisplayElement);
+                    displayContainer->AddOrMoveChild(currentDisplayElement);
                     currentSelectedId = itemId;
                 }
             } catch (const std::exception& e) {
@@ -359,7 +369,7 @@ namespace UltraCanvas {
             placeholder->SetBorderWidth(2.0f);
             placeholder->SetBorderColor(Color(200, 200, 0, 255));
 
-            displayContainer->AddChild(placeholder);
+            displayContainer->AddOrMoveChild(placeholder);
             currentDisplayElement = placeholder;
             currentSelectedId = itemId;
         }

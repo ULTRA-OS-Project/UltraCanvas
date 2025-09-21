@@ -80,7 +80,7 @@ namespace UltraCanvas {
         if (content) {
             tabData->content = content;
             // Add content as child to container
-            AddChild(tabData->content);
+            AddOrMoveChild(tabData->content);
         }
 
         tabs.push_back(std::move(tabData));
@@ -161,7 +161,7 @@ namespace UltraCanvas {
         st.borderWidth = 1;
         overflowDropdown->SetStyle(st);
         // Add dropdown as child to container
-        AddChild(overflowDropdown);
+        AddOrMoveChild(overflowDropdown);
         overflowDropdown->SetVisible(false);
 
         // Set up dropdown callback with proper base verb form

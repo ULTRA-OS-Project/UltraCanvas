@@ -21,20 +21,20 @@ namespace UltraCanvas {
         title->SetText("Button Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         // Standard Button
         auto standardBtn = std::make_shared<UltraCanvasButton>("StandardButton", 102, 20, 50, 120, 35);
         standardBtn->SetText("Standard Button");
         standardBtn->onClick = [](const UCEvent& ev) { std::cout << "Standard button clicked!" << std::endl; };
-        container->AddChild(standardBtn);
+        container->AddOrMoveChild(standardBtn);
 
         // Icon Button
 //        auto iconBtn = std::make_shared<UltraCanvasButton>("IconButton", 103, 160, 50, 40, 35);
 //        iconBtn->SetIcon("assets/icons/save.png");
 //        iconBtn->SetTooltip("Save File");
 //        iconBtn->onClick = [](const UCEvent& ev) { std::cout << "Save button clicked!" << std::endl; };
-//        container->AddChild(iconBtn);
+//        container->AddOrMoveChild(iconBtn);
 
         // Toggle Button
 //        auto toggleBtn = std::make_shared<UltraCanvasButton>("ToggleButton", 104, 220, 50, 100, 35);
@@ -43,7 +43,7 @@ namespace UltraCanvas {
 //        toggleBtn->onClick = [toggleBtn](const UCEvent& ev) {
 //            std::cout << "Toggle state: " << (toggleBtn->IsToggled() ? "ON" : "OFF") << std::endl;
 //        };
-//        container->AddChild(toggleBtn);
+//        container->AddOrMoveChild(toggleBtn);
 
         // Three-Section Button
 //        auto threeSectionBtn = std::make_shared<UltraCanvasButton3Sections>("ThreeSectionButton", 105, 340, 50, 180, 35);
@@ -53,26 +53,26 @@ namespace UltraCanvas {
 //        threeSectionBtn->onLeftClicked = []() { std::cout << "File section clicked!" << std::endl; };
 //        threeSectionBtn->onCenterClicked = []() { std::cout << "Edit section clicked!" << std::endl; };
 //        threeSectionBtn->onRightClicked = []() { std::cout << "View section clicked!" << std::endl; };
-//        container->AddChild(threeSectionBtn);
+//        container->AddOrMoveChild(threeSectionBtn);
 
         // Disabled Button
         auto disabledBtn = std::make_shared<UltraCanvasButton>("DisabledButton", 106, 20, 100, 120, 35);
         disabledBtn->SetText("Disabled");
         disabledBtn->SetEnabled(false);
-        container->AddChild(disabledBtn);
+        container->AddOrMoveChild(disabledBtn);
 
         // Colored Buttons
         auto primaryBtn = std::make_shared<UltraCanvasButton>("PrimaryButton", 107, 160, 100, 100, 35);
         primaryBtn->SetText("Primary");
         primaryBtn->SetColors(Color(0, 123, 255, 255), Color(0, 100, 225, 255), Color(0, 90, 215, 255), Color(100, 133, 255, 255));
         primaryBtn->SetTextColors(Colors::White, Colors::White, Colors::White, Colors::LightGray);
-        container->AddChild(primaryBtn);
+        container->AddOrMoveChild(primaryBtn);
 
         auto dangerBtn = std::make_shared<UltraCanvasButton>("DangerButton", 108, 280, 100, 100, 35);
         dangerBtn->SetText("Danger");
         dangerBtn->SetColors(Color(220, 53, 69, 255), Color(210, 43, 59, 255), Color(200, 33, 49, 255), Color(255, 153, 169, 255));
         dangerBtn->SetTextColors(Colors::White, Colors::White, Colors::White, Colors::LightGray);
-        container->AddChild(dangerBtn);
+        container->AddOrMoveChild(dangerBtn);
 
         return container;
     }
@@ -85,41 +85,41 @@ namespace UltraCanvas {
         title->SetText("Text Input Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         // Single Line Input
         auto singleLineInput = std::make_shared<UltraCanvasTextInput>("SingleLineInput", 202, 20, 50, 300, 30);
         singleLineInput->SetPlaceholder("Enter single line text...");
         singleLineInput->SetMaxLength(100);
-        container->AddChild(singleLineInput);
+        container->AddOrMoveChild(singleLineInput);
 
         auto singleLineLabel = std::make_shared<UltraCanvasLabel>("SingleLineLabel", 203, 20, 85, 200, 20);
         singleLineLabel->SetText("Single Line Input");
         singleLineLabel->SetFontSize(12);
-        container->AddChild(singleLineLabel);
+        container->AddOrMoveChild(singleLineLabel);
 
         // Multi-line Text Area
         auto multiLineInput = std::make_shared<UltraCanvasTextInput>("MultiLineInput", 204, 20, 120, 400, 100);
         multiLineInput->SetInputType(TextInputType::Multiline);
         multiLineInput->SetPlaceholder("Enter multi-line text...\nSupports line breaks.");
 //        multiLineInput->SetWordWrap(true);
-        container->AddChild(multiLineInput);
+        container->AddOrMoveChild(multiLineInput);
 
         auto multiLineLabel = std::make_shared<UltraCanvasLabel>("MultiLineLabel", 205, 20, 225, 200, 20);
         multiLineLabel->SetText("Multi-line Text Area");
         multiLineLabel->SetFontSize(12);
-        container->AddChild(multiLineLabel);
+        container->AddOrMoveChild(multiLineLabel);
 
         // Password Field
         auto passwordInput = std::make_shared<UltraCanvasTextInput>("PasswordInput", 206, 450, 50, 300, 30);
         passwordInput->SetInputType(TextInputType::Password);
         passwordInput->SetPlaceholder("Enter password...");
-        container->AddChild(passwordInput);
+        container->AddOrMoveChild(passwordInput);
 
         auto passwordLabel = std::make_shared<UltraCanvasLabel>("PasswordLabel", 207, 450, 85, 200, 20);
         passwordLabel->SetText("Password Field");
         passwordLabel->SetFontSize(12);
-        container->AddChild(passwordLabel);
+        container->AddOrMoveChild(passwordLabel);
 
         // Numeric Input
         auto numericInput = std::make_shared<UltraCanvasTextInput>("NumericInput", 208, 450, 120, 200, 30);
@@ -127,12 +127,12 @@ namespace UltraCanvas {
         numericInput->SetPlaceholder("0.00");
 //        numericInput->SetMinValue(0.0);
 //        numericInput->SetMaxValue(1000.0);
-        container->AddChild(numericInput);
+        container->AddOrMoveChild(numericInput);
 
         auto numericLabel = std::make_shared<UltraCanvasLabel>("NumericLabel", 209, 450, 155, 200, 20);
         numericLabel->SetText("Numeric Input (0-1000)");
         numericLabel->SetFontSize(12);
-        container->AddChild(numericLabel);
+        container->AddOrMoveChild(numericLabel);
 
         return container;
     }
@@ -145,7 +145,7 @@ namespace UltraCanvas {
         title->SetText("Dropdown/ComboBox Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         // Simple Dropdown
         auto simpleDropdown = std::make_shared<UltraCanvasDropdown>("SimpleDropdown", 302, 20, 50, 200, 30);
@@ -154,12 +154,12 @@ namespace UltraCanvas {
         simpleDropdown->AddItem("Option 3");
         simpleDropdown->AddItem("Very Long Option Text");
         simpleDropdown->SetSelectedIndex(0);
-        container->AddChild(simpleDropdown);
+        container->AddOrMoveChild(simpleDropdown);
 
         auto simpleLabel = std::make_shared<UltraCanvasLabel>("SimpleLabel", 303, 20, 85, 200, 20);
         simpleLabel->SetText("Simple Dropdown");
         simpleLabel->SetFontSize(12);
-        container->AddChild(simpleLabel);
+        container->AddOrMoveChild(simpleLabel);
 
         // Editable ComboBox
 //        auto editableCombo = std::make_shared<UltraCanvasDropdown>("EditableCombo", 304, 250, 50, 200, 30);
@@ -167,12 +167,12 @@ namespace UltraCanvas {
 //        editableCombo->AddItem("Predefined Item 1");
 //        editableCombo->AddItem("Predefined Item 2");
 //        editableCombo->SetText("Type or select...");
-//        container->AddChild(editableCombo);
+//        container->AddOrMoveChild(editableCombo);
 //
 //        auto editableLabel = std::make_shared<UltraCanvasLabel>("EditableLabel", 305, 250, 85, 200, 20);
 //        editableLabel->SetText("Editable ComboBox");
 //        editableLabel->SetFontSize(12);
-//        container->AddChild(editableLabel);
+//        container->AddOrMoveChild(editableLabel);
 
         // Multi-Select Dropdown
 //        auto multiSelect = std::make_shared<UltraCanvasDropdown>("MultiSelect", 306, 480, 50, 200, 30);
@@ -182,12 +182,12 @@ namespace UltraCanvas {
 //        multiSelect->AddItem("Cherry");
 //        multiSelect->AddItem("Date");
 //        multiSelect->AddItem("Elderberry");
-//        container->AddChild(multiSelect);
+//        container->AddOrMoveChild(multiSelect);
 
 //        auto multiLabel = std::make_shared<UltraCanvasLabel>("MultiLabel", 307, 480, 85, 200, 20);
 //        multiLabel->SetText("Multi-Select Dropdown");
 //        multiLabel->SetFontSize(12);
-//        container->AddChild(multiLabel);
+//        container->AddOrMoveChild(multiLabel);
 
         return container;
     }
@@ -200,7 +200,7 @@ namespace UltraCanvas {
         title->SetText("Slider Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         // Horizontal Slider
         auto hSlider = std::make_shared<UltraCanvasSlider>("HorizontalSlider", 402, 20, 60, 300, 20);
@@ -209,19 +209,19 @@ namespace UltraCanvas {
         hSlider->SetValue(50.0f);
         hSlider->SetStep(10.0f);
 //        hSlider->SetShowTicks(true);
-        container->AddChild(hSlider);
+        container->AddOrMoveChild(hSlider);
 
         auto hSliderLabel = std::make_shared<UltraCanvasLabel>("HSliderLabel", 403, 20, 85, 200, 20);
         hSliderLabel->SetText("Horizontal Slider (0-100)");
         hSliderLabel->SetFontSize(12);
-        container->AddChild(hSliderLabel);
+        container->AddOrMoveChild(hSliderLabel);
 
         // Value display for horizontal slider
         auto hValueLabel = std::make_shared<UltraCanvasLabel>("HValueLabel", 404, 340, 60, 80, 20);
         hValueLabel->SetText("50");
         hValueLabel->SetAlignment(TextAlignment::Center);
         hValueLabel->SetBackgroundColor(Color(240, 240, 240, 255));
-        container->AddChild(hValueLabel);
+        container->AddOrMoveChild(hValueLabel);
 
         hSlider->onValueChanged = [hValueLabel](float value) {
             hValueLabel->SetText(std::to_string(static_cast<int>(value)));
@@ -233,12 +233,12 @@ namespace UltraCanvas {
         vSlider->SetRange(0.0f, 10.0f);
         vSlider->SetValue(5.0f);
         vSlider->SetStep(0.5f);
-        container->AddChild(vSlider);
+        container->AddOrMoveChild(vSlider);
 
         auto vSliderLabel = std::make_shared<UltraCanvasLabel>("VSliderLabel", 406, 530, 60, 150, 20);
         vSliderLabel->SetText("Vertical Slider");
         vSliderLabel->SetFontSize(12);
-        container->AddChild(vSliderLabel);
+        container->AddOrMoveChild(vSliderLabel);
 
         // Range Slider
 //        auto rangeSlider = std::make_shared<UltraCanvasSlider>("RangeSlider", 407, 20, 150, 400, 20);
@@ -247,12 +247,12 @@ namespace UltraCanvas {
 //        rangeSlider->SetRange(0.0f, 1000.0f);
 //        rangeSlider->SetLowerValue(200.0f);
 //        rangeSlider->SetUpperValue(800.0f);
-//        container->AddChild(rangeSlider);
+//        container->AddOrMoveChild(rangeSlider);
 //
 //        auto rangeLabel = std::make_shared<UltraCanvasLabel>("RangeLabel", 408, 20, 175, 200, 20);
 //        rangeLabel->SetText("Range Slider (0-1000)");
 //        rangeLabel->SetFontSize(12);
-//        container->AddChild(rangeLabel);
+//        container->AddOrMoveChild(rangeLabel);
 
         return container;
     }
@@ -265,12 +265,12 @@ namespace UltraCanvas {
         title->SetText("Label Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         // Basic Label
         auto basicLabel = std::make_shared<UltraCanvasLabel>("BasicLabel", 502, 20, 50, 400, 25);
         basicLabel->SetText("This is a basic label with default styling.");
-        container->AddChild(basicLabel);
+        container->AddOrMoveChild(basicLabel);
 
         // Header Text
         auto headerLabel = std::make_shared<UltraCanvasLabel>("HeaderLabel", 503, 20, 90, 500, 35);
@@ -278,7 +278,7 @@ namespace UltraCanvas {
         headerLabel->SetFontSize(24);
         headerLabel->SetFontWeight(FontWeight::Bold);
         headerLabel->SetTextColor(Color(0, 100, 200, 255));
-        container->AddChild(headerLabel);
+        container->AddOrMoveChild(headerLabel);
 
         // Status Labels
         auto successLabel = std::make_shared<UltraCanvasLabel>("SuccessLabel", 504, 20, 140, 150, 25);
@@ -286,21 +286,21 @@ namespace UltraCanvas {
         successLabel->SetBackgroundColor(Color(200, 255, 200, 255));
         successLabel->SetTextColor(Color(0, 150, 0, 255));
         successLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(successLabel);
+        container->AddOrMoveChild(successLabel);
 
         auto warningLabel = std::make_shared<UltraCanvasLabel>("WarningLabel", 505, 180, 140, 150, 25);
         warningLabel->SetText("⚠ Warning");
         warningLabel->SetBackgroundColor(Color(255, 255, 200, 255));
         warningLabel->SetTextColor(Color(200, 150, 0, 255));
         warningLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(warningLabel);
+        container->AddOrMoveChild(warningLabel);
 
         auto errorLabel = std::make_shared<UltraCanvasLabel>("ErrorLabel", 506, 340, 140, 150, 25);
         errorLabel->SetText("✗ Error");
         errorLabel->SetBackgroundColor(Color(255, 200, 200, 255));
         errorLabel->SetTextColor(Color(200, 0, 0, 255));
         errorLabel->SetAlignment(TextAlignment::Center);
-        container->AddChild(errorLabel);
+        container->AddOrMoveChild(errorLabel);
 
         // Multi-line Label
         auto multiLabel = std::make_shared<UltraCanvasLabel>("MultiLabel", 507, 20, 190, 450, 80);
@@ -311,7 +311,7 @@ namespace UltraCanvas {
 //        multiLabel->SetBorderStyle(BorderStyle::Solid);
         multiLabel->SetBorderWidth(1.0f);
         multiLabel->SetPadding(10.0f);
-        container->AddChild(multiLabel);
+        container->AddOrMoveChild(multiLabel);
 
         return container;
     }
@@ -326,7 +326,7 @@ namespace UltraCanvas {
         title->SetText("TreeView Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         // File Explorer Style Tree
         auto fileTree = std::make_shared<UltraCanvasTreeView>("FileTree", 602, 20, 50, 300, 400);
@@ -359,7 +359,7 @@ namespace UltraCanvas {
         };
 
         root->Expand();
-        container->AddChild(fileTree);
+        container->AddOrMoveChild(fileTree);
 
         // Multi-Selection Tree
         auto multiTree = std::make_shared<UltraCanvasTreeView>("MultiTree", 603, 350, 50, 300, 200);
@@ -379,12 +379,12 @@ namespace UltraCanvas {
         multiTree->AddNode("cat2", TreeNodeData("item3", "Item 3"));
 
         multiRootNode->Expand();
-        container->AddChild(multiTree);
+        container->AddOrMoveChild(multiTree);
 
         auto multiLabel = std::make_shared<UltraCanvasLabel>("MultiTreeLabel", 604, 350, 260, 300, 20);
         multiLabel->SetText("Multi-Selection TreeView (Ctrl+Click)");
         multiLabel->SetFontSize(12);
-        container->AddChild(multiLabel);
+        container->AddOrMoveChild(multiLabel);
 
         return container;
     }
@@ -397,7 +397,7 @@ namespace UltraCanvas {
         title->SetText("Tabbed Container Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         // Top Tabs
         auto topTabs = std::make_shared<UltraCanvasTabbedContainer>("TopTabs", 702, 20, 50, 600, 250);
@@ -424,7 +424,7 @@ namespace UltraCanvas {
         topTabs->AddTab("Advanced", tab3Content);
         topTabs->SetActiveTab(0);
 
-        container->AddChild(topTabs);
+        container->AddOrMoveChild(topTabs);
 
         // Side Tabs
         auto sideTabs = std::make_shared<UltraCanvasTabbedContainer>("SideTabs", 706, 20, 320, 400, 200);
@@ -444,7 +444,7 @@ namespace UltraCanvas {
 //        sideTabs->AddTab("Props", sideTab2);
 //        sideTabs->SetActiveTab(0);
 //
-//        container->AddChild(sideTabs);
+//        container->AddOrMoveChild(sideTabs);
 
         return container;
     }
@@ -459,7 +459,7 @@ namespace UltraCanvas {
         title->SetText("PDF Viewer Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
 //        // PDF Viewer
 //        auto pdfViewer = std::make_shared<UltraCanvasPDFViewer>("PDFViewer", 802, 20, 50, 800, 500);
@@ -476,7 +476,7 @@ namespace UltraCanvas {
 //        // Note: In a real implementation, you would load an actual PDF file
 //        // pdfViewer->LoadDocument("sample.pdf");
 //
-//        container->AddChild(pdfViewer);
+//        container->AddOrMoveChild(pdfViewer);
 //
 //        // Info label since we can't load a real PDF in demo
 //        auto infoLabel = std::make_shared<UltraCanvasLabel>("PDFInfo", 803, 30, 70, 600, 100);
@@ -484,7 +484,7 @@ namespace UltraCanvas {
 //        infoLabel->SetBackgroundColor(Color(255, 255, 200, 100));
 //        infoLabel->SetBorderStyle(BorderStyle::Dashed);
 //        infoLabel->SetPadding(10.0f);
-//        container->AddChild(infoLabel);
+//        container->AddOrMoveChild(infoLabel);
 
         return container;
     }
@@ -497,7 +497,7 @@ namespace UltraCanvas {
         title->SetText("Vector Graphics Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         // Drawing Surface
 //        auto drawingSurface = std::make_shared<UltraCanvasDrawingSurface>("DrawingSurface", 902, 20, 50, 600, 400);
@@ -516,7 +516,7 @@ namespace UltraCanvas {
 //        drawingSurface->SetLineWidth(3.0f);
 //        drawingSurface->DrawLine(Point2D(300, 50), Point2D(400, 150));
 //
-//        container->AddChild(drawingSurface);
+//        container->AddOrMoveChild(drawingSurface);
 //
 //        // Drawing tools info
 //        auto toolsLabel = std::make_shared<UltraCanvasLabel>("VectorTools", 903, 650, 70, 320, 200);
@@ -524,7 +524,7 @@ namespace UltraCanvas {
 //        toolsLabel->SetBackgroundColor(Color(240, 255, 240, 255));
 ////        toolsLabel->SetBorderStyle(BorderStyle::Solid);
 //        toolsLabel->SetPadding(10.0f);
-//        container->AddChild(toolsLabel);
+//        container->AddOrMoveChild(toolsLabel);
 
         return container;
     }
@@ -539,7 +539,7 @@ namespace UltraCanvas {
         title->SetText("Toolbar Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         // Placeholder for toolbar implementation
         auto placeholder = std::make_shared<UltraCanvasLabel>("ToolbarPlaceholder", 1002, 20, 50, 800, 400);
@@ -549,7 +549,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -561,7 +561,7 @@ namespace UltraCanvas {
         title->SetText("Table View Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("TableViewPlaceholder", 1102, 20, 50, 800, 400);
         placeholder->SetText("Table View Component - Not Implemented\n\nPlanned Features:\n• Data grid with rows and columns\n• Sortable column headers\n• Cell editing capabilities\n• Row selection (single/multiple)\n• Virtual scrolling for large datasets\n• Custom cell renderers\n• Column resizing and reordering\n• Filtering and search\n• Export to CSV/Excel");
@@ -570,7 +570,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -582,7 +582,7 @@ namespace UltraCanvas {
         title->SetText("List View Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("ListViewPlaceholder", 1202, 20, 50, 800, 400);
         placeholder->SetText("List View Component - Not Implemented\n\nPlanned Features:\n• Vertical and horizontal lists\n• Icon and text display modes\n• Custom item templates\n• Virtual scrolling\n• Item selection and highlighting\n• Drag and drop reordering\n• Search and filtering\n• Group headers\n• Context menus");
@@ -591,29 +591,311 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
 
     std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateMenuExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("MenuExamples", 1300, 0, 0, 1000, 600);
+        std::cout << "Creating Menu Examples..." << std::endl;
 
-        auto title = std::make_shared<UltraCanvasLabel>("MenuTitle", 1301, 10, 10, 300, 30);
-        title->SetText("Menu Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        // Create container for menu examples
+        auto container = std::make_shared<UltraCanvasContainer>("MenuContainer", 100, 0, 0, 1000, 630);
+        ContainerStyle containerStyle;
+        containerStyle.backgroundColor = Color(252, 252, 252, 255);
+        container->SetContainerStyle(containerStyle);
 
-        auto placeholder = std::make_shared<UltraCanvasLabel>("MenuPlaceholder", 1302, 20, 50, 800, 400);
-        placeholder->SetText("Menu Component - Not Implemented\n\nPlanned Features:\n• Menu bars and popup menus\n• Hierarchical submenus\n• Menu item icons and shortcuts\n• Separator lines\n• Checkable menu items\n• Disabled menu items\n• Context-sensitive menus\n• Keyboard navigation\n• Custom menu styling");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        // Section label for Context Menus
+        auto contextLabel = std::make_shared<UltraCanvasLabel>("ContextLabel", 101, 20, 10, 200, 30);
+        contextLabel->SetText("Context Menu Examples:");
+        contextLabel->SetFontSize(14);
+        contextLabel->SetFontWeight(FontWeight::Bold);
+        container->AddOrMoveChild(contextLabel);
 
+        // Button to trigger context menu
+        auto contextMenuBtn = std::make_shared<UltraCanvasButton>("ContextMenuBtn", 102, 20, 45, 180, 35);
+        contextMenuBtn->SetText("Right-Click for Context Menu");
+//        contextMenuBtn->SetTooltipText("Right-click anywhere on this button to show context menu");
+        container->AddOrMoveChild(contextMenuBtn);
+
+        // Create context menu
+        auto contextMenu = std::make_shared<UltraCanvasMenu>("ContextMenu1", 103, 0, 0, 200, 0);
+        contextMenu->SetMenuType(MenuType::PopupMenu);
+
+        // Add context menu items
+        contextMenu->AddItem(MenuItemData::ActionWithShortcut("📋 Copy", "Ctrl+C", []() {
+            std::cout << "Copy action triggered" << std::endl;
+        }));
+
+        contextMenu->AddItem(MenuItemData::ActionWithShortcut("✂️ Cut", "Ctrl+X", []() {
+            std::cout << "Cut action triggered" << std::endl;
+        }));
+
+        contextMenu->AddItem(MenuItemData::ActionWithShortcut("📌 Paste", "Ctrl+V", []() {
+            std::cout << "Paste action triggered" << std::endl;
+        }));
+
+        contextMenu->AddItem(MenuItemData::Separator());
+
+        // Submenu example
+        MenuItemData formatItem("🎨 Format");
+        formatItem.type = MenuItemType::Submenu;
+        formatItem.subItems = {
+                MenuItemData::ActionWithShortcut("Bold", "Ctrl+B", []() { std::cout << "Bold" << std::endl; }),
+                MenuItemData::ActionWithShortcut("Italic", "Ctrl+I", []() { std::cout << "Italic" << std::endl; }),
+                MenuItemData::ActionWithShortcut("Underline", "Ctrl+U", []() { std::cout << "Underline" << std::endl; })
+        };
+        contextMenu->AddItem(formatItem);
+
+        contextMenu->AddItem(MenuItemData::Separator());
+
+        contextMenu->AddItem(MenuItemData::ActionWithShortcut("🗑️ Delete", "Del", []() {
+            std::cout << "Delete action triggered" << std::endl;
+        }));
+
+        // Set right-click handler for button
+        contextMenuBtn->onClick = [contextMenu, contextMenuBtn, container](const UCEvent& ev) {
+            if (ev.button == UCMouseButton::Right) {
+                // move menu to window container
+                container->GetWindow()->AddOrMoveChild(contextMenu);
+                contextMenu->ShowAt(ev.windowX, ev.windowY);
+            }
+        };
+        container->AddOrMoveChild(contextMenu);
+
+        // Section label for Main Menu Bar
+        auto mainMenuLabel = std::make_shared<UltraCanvasLabel>("MainMenuLabel", 104, 20, 100, 200, 30);
+        mainMenuLabel->SetText("Main Menu Bar Example:");
+        mainMenuLabel->SetFontSize(14);
+        mainMenuLabel->SetFontWeight(FontWeight::Bold);
+        container->AddOrMoveChild(mainMenuLabel);
+
+// Create main menu bar using MenuType::Menubar and MenuBuilder
+        auto mainMenuBar = MenuBuilder("MainMenuBar", 105, 20, 135, 960, 32)
+                .SetType(MenuType::Menubar)
+                .AddSubmenu("File", {
+                        MenuItemData::ActionWithShortcut("📄 New", "Ctrl+N", []() {
+                                std::cout << "New file" << std::endl;
+                            }),
+                        MenuItemData::ActionWithShortcut("📂 Open...", "Ctrl+O", []() {
+                                std::cout << "Open file" << std::endl;
+                            }),
+                        MenuItemData::Submenu("📁 Recent Files", {
+                                MenuItemData::Action("Document1.txt", []() {
+                                            std::cout << "Open Document1.txt" << std::endl;
+                                        }),
+                                MenuItemData::Action("Project.cpp", []() {
+                                            std::cout << "Open Project.cpp" << std::endl;
+                                        }),
+                                MenuItemData::Action("Config.json", []() {
+                                            std::cout << "Open Config.json" << std::endl;
+                                        })
+                            }),
+                        MenuItemData::Separator(),
+                        MenuItemData::ActionWithShortcut("💾 Save", "Ctrl+S", []() {
+                                std::cout << "Save file" << std::endl;
+                            }),
+                        MenuItemData::ActionWithShortcut("💾 Save As...", "Ctrl+Shift+S", []() {
+                                std::cout << "Save as" << std::endl;
+                            }),
+                        MenuItemData::Separator(),
+                        MenuItemData::ActionWithShortcut("🚪 Exit", "Alt+F4", []() {
+                                std::cout << "Exit application" << std::endl;
+                            })
+                    })
+                .AddSubmenu("Edit", {
+                            MenuItemData::ActionWithShortcut("↩️ Undo", "Ctrl+Z", []() {
+                                std::cout << "Undo" << std::endl;
+                            }),
+                            MenuItemData::ActionWithShortcut("↪️ Redo", "Ctrl+Y", []() {
+                                std::cout << "Redo" << std::endl;
+                            }),
+                            MenuItemData::Separator(),
+                            MenuItemData::ActionWithShortcut("✂️ Cut", "Ctrl+X", []() {
+                                std::cout << "Cut" << std::endl;
+                            }),
+                            MenuItemData::ActionWithShortcut("📋 Copy", "Ctrl+C", []() {
+                                std::cout << "Copy" << std::endl;
+                            }),
+                            MenuItemData::ActionWithShortcut("📌 Paste", "Ctrl+V", []() {
+                                std::cout << "Paste" << std::endl;
+                            }),
+                            MenuItemData::Separator(),
+                            MenuItemData::ActionWithShortcut("🔍 Find...", "Ctrl+F", []() {
+                                std::cout << "Find" << std::endl;
+                            }),
+                            MenuItemData::ActionWithShortcut("🔄 Replace...", "Ctrl+H", []() {
+                                std::cout << "Replace" << std::endl;
+                            })
+                })
+                .AddSubmenu("View", {
+                        MenuItemData::Checkbox("🔧 Toolbar", true, [](bool checked) {
+                                std::cout << "Toolbar " << (checked ? "shown" : "hidden") << std::endl;
+                            }),
+                            MenuItemData::Checkbox("📊 Status Bar", true, [](bool checked) {
+                                std::cout << "Status bar " << (checked ? "shown" : "hidden") << std::endl;
+                            }),
+                            MenuItemData::Checkbox("📁 Sidebar", false, [](bool checked) {
+                                std::cout << "Sidebar " << (checked ? "shown" : "hidden") << std::endl;
+                            }),
+                            MenuItemData::Separator(),
+                            MenuItemData::Radio("Zoom 50%", 1, false, [](bool checked) {
+                                if (checked) std::cout << "Zoom 50%" << std::endl;
+                            }),
+                            MenuItemData::Radio("Zoom 100%", 1, true, [](bool checked) {
+                                if (checked) std::cout << "Zoom 100%" << std::endl;
+                            }),
+                            MenuItemData::Radio("Zoom 150%", 1, false, [](bool checked) {
+                                if (checked) std::cout << "Zoom 150%" << std::endl;
+                            })
+                })
+                .AddSubmenu("Help", {
+                            MenuItemData::ActionWithShortcut("📖 Documentation", "F1", []() {
+                                std::cout << "Show documentation" << std::endl;
+                            }),
+                            MenuItemData::Action("🎓 Tutorials", []() {
+                                std::cout << "Show tutorials" << std::endl;
+                            }),
+                            MenuItemData::Separator(),
+                            MenuItemData::Action("ℹ️ About UltraCanvas", []() {
+                                std::cout << "About UltraCanvas Framework" << std::endl;
+                            })
+                })
+                .Build();
+
+        container->AddOrMoveChild(mainMenuBar);
+
+        // Dark theme menu
+        auto darkMenuBtn = std::make_shared<UltraCanvasButton>("DarkMenuBtn", 115, 20, 225, 150, 35);
+        darkMenuBtn->SetText("Dark Theme Menu");
+        container->AddOrMoveChild(darkMenuBtn);
+
+        auto darkMenu = std::make_shared<UltraCanvasMenu>("DarkMenu", 116, 0, 0, 200, 0);
+        darkMenu->SetMenuType(MenuType::PopupMenu);
+        darkMenu->SetStyle(MenuStyle::Dark());
+
+        darkMenu->AddItem(MenuItemData::Action("🌙 Dark Mode", []() {
+            std::cout << "Dark mode activated" << std::endl;
+        }));
+
+        darkMenu->AddItem(MenuItemData::Action("☀️ Light Mode", []() {
+            std::cout << "Light mode activated" << std::endl;
+        }));
+
+        darkMenu->AddItem(MenuItemData::Action("🎨 Custom Theme", []() {
+            std::cout << "Custom theme" << std::endl;
+        }));
+
+        darkMenuBtn->onClick = [darkMenu, darkMenuBtn, container](const UCEvent& ev) {
+            container->GetWindow()->AddOrMoveChild(darkMenu);
+            Point2Di pos(darkMenuBtn->GetXInWindow(), darkMenuBtn->GetYInWindow() + darkMenuBtn->GetHeight());
+            darkMenu->ShowAt(pos);
+        };
+
+        container->AddOrMoveChild(darkMenu);
+
+        // Flat style menu
+        auto flatMenuBtn = std::make_shared<UltraCanvasButton>("FlatMenuBtn", 117, 180, 225, 150, 35);
+        flatMenuBtn->SetText("Flat Style Menu");
+        container->AddOrMoveChild(flatMenuBtn);
+
+        auto flatMenu = std::make_shared<UltraCanvasMenu>("FlatMenu", 118, 0, 0, 200, 0);
+        flatMenu->SetMenuType(MenuType::PopupMenu);
+        flatMenu->SetStyle(MenuStyle::Flat());
+
+        flatMenu->AddItem(MenuItemData::Action("📱 Mobile View", []() {
+            std::cout << "Mobile view" << std::endl;
+        }));
+
+        flatMenu->AddItem(MenuItemData::Action("💻 Desktop View", []() {
+            std::cout << "Desktop view" << std::endl;
+        }));
+
+        flatMenu->AddItem(MenuItemData::Action("📱 Tablet View", []() {
+            std::cout << "Tablet view" << std::endl;
+        }));
+
+        flatMenuBtn->onClick = [flatMenu, flatMenuBtn, container](const UCEvent& ev) {
+            container->GetWindow()->AddOrMoveChild(flatMenu);
+            Point2Di pos(flatMenuBtn->GetXInWindow(), flatMenuBtn->GetYInWindow() + flatMenuBtn->GetHeight());
+            flatMenu->ShowAt(pos);
+        };
+
+        container->AddOrMoveChild(flatMenu);
+
+        // Info label about menu features
+        auto infoLabel = std::make_shared<UltraCanvasLabel>("InfoLabel", 119, 20, 300, 960, 60);
+        infoLabel->SetText("Menu Features:\n"
+                           "• Context menus with right-click\n"
+                           "• Main menu bar with dropdowns\n"
+                           "• Submenus and nested navigation\n"
+                           "• Checkbox and radio button items\n"
+                           "• Keyboard shortcuts and icons\n"
+                           "• Multiple visual styles (Default, Dark, Flat)");
+        infoLabel->SetFontSize(11);
+        infoLabel->SetTextColor(Color(80, 80, 80, 255));
+        container->AddOrMoveChild(infoLabel);
+
+        // Popup menu example
+        auto popupLabel = std::make_shared<UltraCanvasLabel>("PopupLabel", 120, 20, 405, 200, 30);
+        popupLabel->SetText("Popup Menu Example:");
+        popupLabel->SetFontSize(14);
+        popupLabel->SetFontWeight(FontWeight::Bold);
+        container->AddOrMoveChild(popupLabel);
+
+        // Create a sample list for popup menu
+        auto listContainer = std::make_shared<UltraCanvasContainer>("ListContainer", 121, 20, 430, 300, 150);
+        ContainerStyle listStyle;
+        listStyle.backgroundColor = Color(255, 255, 255, 255);
+        listStyle.borderWidth = 1.0f;
+        listStyle.borderColor = Color(200, 200, 200, 255);
+        listContainer->SetContainerStyle(listStyle);
+        container->AddOrMoveChild(listContainer);
+
+        // Add sample items to list
+        for (int i = 0; i < 5; i++) {
+            auto itemLabel = std::make_shared<UltraCanvasLabel>(
+                    "ListItem" + std::to_string(i),
+                    122 + i,
+                    10, 10 + i * 25, 280, 20
+            );
+            itemLabel->SetText("Item " + std::to_string(i + 1) + " - Right-click for options");
+            itemLabel->SetBackgroundColor(Color(250, 250, 250, 255));
+
+            // Create item-specific popup menu
+            auto itemMenu = std::make_shared<UltraCanvasMenu>(
+                    "ItemMenu" + std::to_string(i),
+                    130 + i,
+                    0, 0, 150, 0
+            );
+            itemMenu->SetMenuType(MenuType::PopupMenu);
+
+            itemMenu->AddItem(MenuItemData::Action("✏️ Edit", [i]() {
+                std::cout << "Edit item " << (i + 1) << std::endl;
+            }));
+
+            itemMenu->AddItem(MenuItemData::Action("📋 Duplicate", [i]() {
+                std::cout << "Duplicate item " << (i + 1) << std::endl;
+            }));
+
+            itemMenu->AddItem(MenuItemData::Action("🗑️ Delete", [i]() {
+                std::cout << "Delete item " << (i + 1) << std::endl;
+            }));
+
+            // Set right-click handler
+            itemLabel->onClick = [itemMenu, itemLabel, container](const UCEvent& ev) {
+                if (ev.button == UCMouseButton::Right) {
+                    container->GetWindow()->AddOrMoveChild(itemMenu);
+                    //Point2Di pos(itemLabel->GetXInWindow() + 50, itemLabel->GetYInWindow() + itemLabel->GetHeight());
+                    itemMenu->ShowAt(ev.windowX, ev.windowY);
+                }
+            };
+
+            listContainer->AddOrMoveChild(itemLabel);
+            container->AddOrMoveChild(itemMenu);
+        }
+
+        std::cout << "✓ Menu examples created" << std::endl;
         return container;
     }
 
@@ -624,7 +906,7 @@ namespace UltraCanvas {
         title->SetText("Dialog Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("DialogPlaceholder", 1402, 20, 50, 800, 400);
         placeholder->SetText("Dialog Component - Not Implemented\n\nPlanned Features:\n• Modal and modeless dialogs\n• Message boxes (Info, Warning, Error)\n• File open/save dialogs\n• Color picker dialogs\n• Font selection dialogs\n• Custom dialog layouts\n• Dialog result handling\n• Animation effects\n• Keyboard shortcuts (ESC, Enter)");
@@ -633,7 +915,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -645,7 +927,7 @@ namespace UltraCanvas {
         title->SetText("Bitmap Graphics Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("BitmapPlaceholder", 1502, 20, 50, 800, 400);
         placeholder->SetText("Bitmap Graphics - Partially Implemented\n\nSupported Formats:\n• PNG - Full support with transparency\n• JPEG - Standard image display\n• BMP - Basic bitmap support\n• GIF - Including animation support\n• AVIF - Modern format with animation\n\nFeatures:\n• Image scaling and cropping\n• Rotation and transformation\n• Filter effects\n• Multi-frame animation\n• Memory-efficient loading");
@@ -654,7 +936,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -666,7 +948,7 @@ namespace UltraCanvas {
         title->SetText("3D Graphics Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("Graphics3DPlaceholder", 1602, 20, 50, 800, 400);
         placeholder->SetText("3D Graphics - Partially Implemented\n\nSupported Features:\n• 3DS model loading and display\n• 3DM model support\n• Basic scene graph\n• Camera controls (orbit, pan, zoom)\n• Basic lighting and shading\n• Texture mapping\n\nOpenGL/Vulkan Backend:\n• Hardware accelerated rendering\n• Vertex and fragment shaders\n• Multiple render targets\n• Anti-aliasing support");
@@ -675,7 +957,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -687,7 +969,7 @@ namespace UltraCanvas {
         title->SetText("Video Player Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("VideoPlaceholder", 1702, 20, 50, 800, 400);
         placeholder->SetText("Video Player Component - Not Implemented\n\nPlanned Features:\n• MP4, AVI, MOV playback\n• Hardware accelerated decoding\n• Custom playback controls\n• Fullscreen mode\n• Volume and timeline controls\n• Subtitle support\n• Frame-by-frame stepping\n• Video filters and effects\n• Streaming protocol support\n• Audio track selection");
@@ -696,7 +978,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -708,7 +990,7 @@ namespace UltraCanvas {
         title->SetText("Text Document Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("TextDocumentPlaceholder", 1802, 20, 50, 800, 400);
         placeholder->SetText("Text Document Support - Not Implemented\n\nPlanned Document Types:\n• ODT (OpenDocument Text)\n• RTF (Rich Text Format)\n• TeX/LaTeX documents\n• Plain text with syntax highlighting\n• HTML document rendering\n\nFeatures:\n• Document structure navigation\n• Text formatting display\n• Search and replace\n• Print preview\n• Export capabilities\n• Embedded images and tables");
@@ -717,7 +999,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -729,7 +1011,7 @@ namespace UltraCanvas {
         title->SetText("Markdown Viewer Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("MarkdownPlaceholder", 1902, 20, 50, 800, 400);
         placeholder->SetText("Markdown Viewer - Not Implemented\n\nPlanned Features:\n• CommonMark specification support\n• GitHub Flavored Markdown\n• Syntax highlighting for code blocks\n• Table rendering\n• Math formula support (KaTeX)\n• Mermaid diagram integration\n• Live preview mode\n• Custom CSS styling\n• Export to HTML/PDF\n• Plugin system for extensions");
@@ -738,7 +1020,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -750,7 +1032,7 @@ namespace UltraCanvas {
         title->SetText("Code Editor Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         // Formula Editor (partially implemented)
         auto formulaEditor = std::make_shared<UltraCanvasFormulaEditor>("FormulaEditor", 2002, 20, 50, 600, 100);
@@ -758,12 +1040,12 @@ namespace UltraCanvas {
         f.formula = "SUM(A1:A10) + AVERAGE(B1:B10) * 2.5";
         formulaEditor->SetFormula(f);
 //        formulaEditor->SetBackgroundColor(Color(248, 248, 248, 255));
-        container->AddChild(formulaEditor);
+        container->AddOrMoveChild(formulaEditor);
 
         auto formulaLabel = std::make_shared<UltraCanvasLabel>("FormulaLabel", 2003, 20, 160, 600, 20);
         formulaLabel->SetText("Formula Editor (Partially Implemented) - Supports mathematical expressions");
         formulaLabel->SetFontSize(12);
-        container->AddChild(formulaLabel);
+        container->AddOrMoveChild(formulaLabel);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("CodeEditorPlaceholder", 2004, 20, 200, 800, 300);
         placeholder->SetText("Code Editor Component - Partially Implemented\n\nCurrent Features:\n• Formula/Expression editing\n• Basic syntax validation\n\nPlanned Features:\n• C++ syntax highlighting\n• Pascal/Delphi support\n• COBOL syntax support\n• Line numbers and folding\n• Auto-completion\n• Error markers and tooltips\n• Find and replace\n• Multiple cursors\n• Code formatting\n• Plugin architecture for languages");
@@ -772,7 +1054,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -784,7 +1066,7 @@ namespace UltraCanvas {
         title->SetText("Audio Player Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("AudioPlaceholder", 2102, 20, 50, 800, 400);
         placeholder->SetText("Audio Player Component - Not Implemented\n\nPlanned Features:\n• FLAC lossless audio support\n• MP3, WAV, OGG playback\n• Waveform visualization\n• Spectrum analyzer\n• Playback controls (play/pause/stop)\n• Volume and position sliders\n• Playlist management\n• Audio effects and filters\n• Recording capabilities\n• Audio format conversion\n• Metadata display (ID3 tags)");
@@ -793,7 +1075,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -805,7 +1087,7 @@ namespace UltraCanvas {
         title->SetText("Diagram Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("DiagramPlaceholder", 2202, 20, 50, 800, 400);
         placeholder->SetText("Diagram Support - Partially Implemented\n\nPlantUML Integration:\n• Class diagrams\n• Sequence diagrams\n• Activity diagrams\n• Use case diagrams\n• Component diagrams\n• State diagrams\n\nNative Diagram Engine:\n• Flowcharts\n• Organizational charts\n• Network diagrams\n• Mind maps\n• Interactive diagram editing\n• Export to SVG/PNG\n• Automatic layout algorithms");
@@ -814,7 +1096,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -826,7 +1108,7 @@ namespace UltraCanvas {
         title->SetText("Chart Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("ChartPlaceholder", 2302, 20, 50, 800, 400);
         placeholder->SetText("Charts Component - Not Implemented\n\nPlanned Chart Types:\n• Line charts with multiple series\n• Bar charts (vertical/horizontal)\n• Pie and donut charts\n• Scatter plots with trend lines\n• Area charts (stacked/overlapped)\n• Candlestick charts for financial data\n• Heatmaps and bubble charts\n• Real-time updating charts\n\nFeatures:\n• Interactive legends\n• Zooming and panning\n• Data point tooltips\n• Animation effects\n• Custom styling themes\n• Export capabilities\n• Data binding from multiple sources");
@@ -835,7 +1117,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }
@@ -847,7 +1129,7 @@ namespace UltraCanvas {
         title->SetText("Info Graphics Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        container->AddOrMoveChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("InfoGraphicsPlaceholder", 2402, 20, 50, 800, 400);
         placeholder->SetText("Info Graphics Component - Not Implemented\n\nPlanned Widget Types:\n• Dashboard tiles and KPI widgets\n• Gauge and meter displays\n• Progress indicators and health meters\n• Statistical summary panels\n• Interactive data cards\n• Geographic data maps\n• Timeline visualizations\n• Comparison matrices\n\nAdvanced Features:\n• Real-time data updates\n• Responsive layout adaptation\n• Custom color schemes and branding\n• Animation and transition effects\n• Touch and gesture support\n• Export and sharing capabilities\n• Template library");
@@ -856,7 +1138,7 @@ namespace UltraCanvas {
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
         placeholder->SetBorderWidth(2.0f);
         placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
+        container->AddOrMoveChild(placeholder);
 
         return container;
     }

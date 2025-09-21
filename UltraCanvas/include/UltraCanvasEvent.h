@@ -72,6 +72,7 @@ namespace UltraCanvas {
         CommandEventsStart, // custom events just to mark the range
         ButtonClick,
         DropdownSelect,
+        MenuClick,
         CommandEventsEnd, // custom events just to mark the range
 
         Unknown

@@ -122,13 +122,8 @@ namespace UltraCanvas {
 
         Rect2Di GetActualBounds() override;
 
-        bool Contains(float px, float py) override {
+        bool Contains(int px, int py) override {
             return GetActualBounds().Contains(px, py);
-        }
-
-// Also override the Point2Di version for consistency
-        bool Contains(const Point2Di& point) override {
-            return Contains(point.x, point.y);
         }
 
         // ===== DROPDOWN STATE =====

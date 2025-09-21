@@ -10,6 +10,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasDropdown.h"

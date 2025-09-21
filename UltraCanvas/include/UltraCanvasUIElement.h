@@ -319,11 +319,15 @@ namespace UltraCanvas {
         }
 
         // ===== SPATIAL QUERIES =====
-        virtual bool Contains(const Point2Di& point) {
-            return properties.Contains(point);
+        bool Contains(const Point2Di& point) {
+            return Contains(static_cast<int>(point.x), static_cast<int>(point.y));
         }
 
-        virtual bool Contains(float px, float py) {
+        bool Contains(float px, float py) {
+            return Contains(static_cast<int>(px), static_cast<int>(py));
+        }
+
+        virtual bool Contains(int px, int py) {
             return properties.Contains(px, py);
         }
 

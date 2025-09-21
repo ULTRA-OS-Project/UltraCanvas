@@ -321,12 +321,32 @@ namespace UltraCanvas {
     void UltraCanvasBaseWindow::AddPopupElement(UltraCanvasElement *element) {
         if (element) {
             MarkElementDirty(element);
-            activePopups.insert(element);
+            auto found = std::find(activePopups.begin(), activePopups.end(), element);
+            if (found == activePopups.end()) {
+                activePopups.emplace_back(element);
+            }
+            popupsToRemove.erase(element);
         }
     }
 
     void UltraCanvasBaseWindow::RemovePopupElement(UltraCanvasElement *element) {
-        activePopups.erase(element);
+        auto found = std::find(activePopups.begin(), activePopups.end(), element);
+        if (found != activePopups.end()) {
+            popupsToRemove.insert(element);
+        }
+    }
+
+    void UltraCanvasBaseWindow::CleanupRemovedPopupElements() {
+        if (popupsToRemove.empty()) return;
+
+        for(auto it : popupsToRemove) {
+            auto found = std::find(activePopups.begin(), activePopups.end(), it);
+            if (found != activePopups.end()) {
+                activePopups.erase(found);
+            }
+        }
+
+        popupsToRemove.clear();
 //        if (selectiveRenderer) {
 //            selectiveRenderer->RestoreBackgroundFromOverlay();
 //        } else {

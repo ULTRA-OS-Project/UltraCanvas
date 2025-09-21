@@ -92,7 +92,7 @@ namespace UltraCanvas {
         return isDoubleClick;
     }
 
-    bool UltraCanvasBaseApplication::DispatchEvent(const UCEvent &event) {
+    void UltraCanvasBaseApplication::DispatchEvent(const UCEvent &event) {
         // Update modifier states
         if (event.IsKeyboardEvent()) {
             shiftHeld = event.shift;
@@ -104,7 +104,7 @@ namespace UltraCanvas {
         // Call global handlers first
         for (auto& handler : globalEventHandlers) {
             if (handler(event)) {
-                return true; // Event consumed by global handler
+                return; // Event consumed by global handler
             }
         }
 
@@ -139,7 +139,7 @@ namespace UltraCanvas {
                     newEvent.targetElement = capturedElement;
                     capturedElement->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
                     if (capturedElement->OnEvent(newEvent)) {
-                        return true;
+                        return;
                     }
                 }
                 break;
@@ -152,56 +152,55 @@ namespace UltraCanvas {
                 break;
             case UCEventType::WindowFocus:
                 if (targetWindow) {
-                    return HandleWindowFocus(targetWindow);
+                    HandleWindowFocus(targetWindow);
+                    return;
                 }
                 break;
             case UCEventType::WindowBlur:
                 if (targetWindow == focusedWindow) {
-                    return HandleWindowFocus(nullptr);
+                    HandleWindowFocus(nullptr);
+                    return;
                 }
                 break;
         }
         // Dispatch other events to focused element
         if (targetWindow) {
-            if ((event.IsMouseEvent() || event.IsKeyboardEvent()) && !targetWindow->GetActivePopups().empty()) {
-                std::unordered_set<UltraCanvasElement*> activePopupsCopy = targetWindow->GetActivePopups();
-                for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
-                    UltraCanvasElement* activePopupElement = *it;
-                    UCEvent localEvent = event;
-                    localEvent.targetElement = activePopupElement;
-                    activePopupElement->ConvertWindowToParentContainerCoordinates(localEvent.x, localEvent.y);
-                    if (activePopupElement->OnEvent(localEvent)) {
-                        return true;
+            if ((event.IsMouseEvent() || event.IsKeyboardEvent()) && targetWindow->HasActivePopups()) {
+                std::vector<UltraCanvasElement*> activePopupsCopy = targetWindow->GetActivePopups();
+                if (event.IsMouseEvent()) {
+                    for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
+                        UltraCanvasElement* activePopupElement = *it;
+                        UCEvent localEvent = event;
+                        localEvent.targetElement = activePopupElement;
+//                    activePopupElement->ConvertWindowToParentContainerCoordinates(localEvent.x, localEvent.y);
+                        if (activePopupElement->OnEvent(localEvent)) {
+                            goto finish;
+                        }
                     }
+                } else if (event.IsKeyboardEvent()) { // only last (topmost) popup get keyboard events
+                    UltraCanvasElement* activePopupElement = activePopupsCopy.back();
+//                    activePopupElement->ConvertWindowToParentContainerCoordinates(localEvent.x, localEvent.y);
+                    activePopupElement->OnEvent(event);
+                    goto finish;
                 }
             }
 
             if (event.IsKeyboardEvent()) {
                 UltraCanvasElement* focused =  targetWindow->GetFocusedElement();
                 if (focused) {
-                    return HandleEventWithBubbling(event, focused);
+                    HandleEventWithBubbling(event, focused);
+                    goto finish;
                 }
             }
 
             if (event.type == UCEventType::MouseWheel) {
                 auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
                 if (elem) {
-                    return HandleEventWithBubbling(event, elem);
+                    HandleEventWithBubbling(event, elem);
+                    goto finish;
                 }
 
             }
-//            if (event.IsMouseClickEvent()) {
-//                auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
-//                if (elem) {
-//                    auto newEvent = event;
-//                    std::cout << "Ev x=" << event.x << " y=" << event.y;
-//                    elem->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
-//                    std::cout << " Evloc x=" << newEvent.x << " y=" << newEvent.y << std::endl;
-//                    if (elem->OnEvent(newEvent)) {
-//                        return true;
-//                    }
-//                }
-//            }
             if (event.IsMouseEvent()) {
                 auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
                 if (hoveredElement && hoveredElement != elem) {
@@ -231,16 +230,19 @@ namespace UltraCanvas {
                     newEvent.x = localX;
                     newEvent.y = localY;
                     if (elem->OnEvent(newEvent)) {
-                        return true;
+                        goto finish;
                     }
                 }
             }
 
             if (event.isCommandEvent()) {
-                return HandleEventWithBubbling(event, event.targetElement);
+                HandleEventWithBubbling(event, event.targetElement);
+                goto finish;
             }
-            return targetWindow->OnEvent(event);
+            targetWindow->OnEvent(event);
 
+        finish:
+            targetWindow->CleanupRemovedPopupElements();
 //            // Debug logging
 //            if (event.type != UCEventType::MouseMove) {
 //                std::cout << "UltraCanvas: Event type " << static_cast<int>(event.type)
@@ -252,8 +254,6 @@ namespace UltraCanvas {
             std::cout << "UltraCanvas: Warning - Event type " << static_cast<int>(event.type)
                       << " has no target window (X11 Window: " << std::hex << event.nativeWindowHandle << std::dec << ")" << std::endl;
         }
-
-        return false;
     }
 
     bool UltraCanvasBaseApplication::HandleEventWithBubbling(const UCEvent &event, UltraCanvasElement* elem) {
