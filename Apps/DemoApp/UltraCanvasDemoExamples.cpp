@@ -606,14 +606,14 @@ namespace UltraCanvas {
         container->SetContainerStyle(containerStyle);
 
         // Section label for Context Menus
-        auto contextLabel = std::make_shared<UltraCanvasLabel>("ContextLabel", 101, 20, 10, 200, 30);
+        auto contextLabel = std::make_shared<UltraCanvasLabel>("ContextLabel", 101, 20, 10, 300, 30);
         contextLabel->SetText("Context Menu Examples:");
         contextLabel->SetFontSize(14);
         contextLabel->SetFontWeight(FontWeight::Bold);
         container->AddOrMoveChild(contextLabel);
 
         // Button to trigger context menu
-        auto contextMenuBtn = std::make_shared<UltraCanvasButton>("ContextMenuBtn", 102, 20, 45, 180, 35);
+        auto contextMenuBtn = std::make_shared<UltraCanvasButton>("ContextMenuBtn", 102, 20, 45, 280, 35);
         contextMenuBtn->SetText("Right-Click for Context Menu");
 //        contextMenuBtn->SetTooltipText("Right-click anywhere on this button to show context menu");
         container->AddOrMoveChild(contextMenuBtn);
@@ -664,7 +664,7 @@ namespace UltraCanvas {
         container->AddOrMoveChild(contextMenu);
 
         // Section label for Main Menu Bar
-        auto mainMenuLabel = std::make_shared<UltraCanvasLabel>("MainMenuLabel", 104, 20, 100, 200, 30);
+        auto mainMenuLabel = std::make_shared<UltraCanvasLabel>("MainMenuLabel", 104, 20, 100, 250, 30);
         mainMenuLabel->SetText("Main Menu Bar Example:");
         mainMenuLabel->SetFontSize(14);
         mainMenuLabel->SetFontWeight(FontWeight::Bold);
@@ -824,7 +824,7 @@ namespace UltraCanvas {
         container->AddOrMoveChild(flatMenu);
 
         // Info label about menu features
-        auto infoLabel = std::make_shared<UltraCanvasLabel>("InfoLabel", 119, 20, 300, 960, 60);
+        auto infoLabel = std::make_shared<UltraCanvasLabel>("InfoLabel", 119, 20, 270, 960, 140);
         infoLabel->SetText("Menu Features:\n"
                            "• Context menus with right-click\n"
                            "• Main menu bar with dropdowns\n"

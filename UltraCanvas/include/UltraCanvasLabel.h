@@ -357,22 +357,16 @@ namespace UltraCanvas {
                 if (style.hasShadow) {
                     ctx->SetTextColor(style.shadowColor);
                     ctx->SetFont(style.fontFamily, style.fontSize);
-                    Point2Di shadowPos = Point2Di(
-                            textPosition.x + style.shadowOffset.x,
-                            textPosition.y + style.shadowOffset.y
-                    );
-                    ctx->DrawText(text, shadowPos);
+                    Rect2Di shadowRect = textArea;
+                    shadowRect.x += style.shadowOffset.x,
+                    shadowRect.y += style.shadowOffset.y;
+                    ctx->DrawTextInRect(text, shadowRect);
                 }
 
                 // Draw main text
-                SetTextColor(style.textColor);
-                SetFont(style.fontFamily, style.fontSize);
-
-                if (style.wordWrap && textArea.width > 0) {
-                    ctx->DrawTextInRect(text, textArea);
-                } else {
-                    ctx->DrawText(text, textPosition);
-                }
+                ctx->SetTextColor(style.textColor);
+                ctx->SetFont(style.fontFamily, style.fontSize);
+                ctx->DrawTextInRect(text, textArea);
             }
 
             // Draw selection/focus indicator if needed

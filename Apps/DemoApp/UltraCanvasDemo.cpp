@@ -28,7 +28,7 @@ namespace UltraCanvas {
         WindowConfig config;
         config.title = "UltraCanvas Framework - Component Demonstration";
         config.width = 1400;
-        config.height = 900;
+        config.height = 840;
         config.resizable = true;
         config.type = WindowType::Standard;
 
@@ -39,13 +39,13 @@ namespace UltraCanvas {
         }
 
         // Create tree view for categories (left side)
-        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 10, 60, 350, 780);
+        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 10, 10, 350, 780);
         categoryTreeView->SetRowHeight(24);
         categoryTreeView->SetSelectionMode(TreeSelectionMode::Single);
         categoryTreeView->SetLineStyle(TreeLineStyle::Solid);
 
         // Create display container (right side)
-        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 3, 370, 60, 1020, 650);
+        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 3, 370, 10, 1020, 780);
         ContainerStyle displayContainerStyle;
         displayContainerStyle.backgroundColor = Color(248, 248, 248, 255);
         displayContainerStyle.borderWidth = 1.0f;
@@ -53,12 +53,12 @@ namespace UltraCanvas {
         displayContainer->SetContainerStyle(displayContainerStyle);
 
         // Create status label (bottom left)
-        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 850, 350, 25);
+        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 800, 350, 25);
         statusLabel->SetText("Select a component from the tree view to see examples");
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // Create description label (bottom right)
-        descriptionLabel = std::make_shared<UltraCanvasLabel>("DescriptionLabel", 5, 370, 850, 1020, 25);
+        descriptionLabel = std::make_shared<UltraCanvasLabel>("DescriptionLabel", 5, 370, 800, 1020, 25);
         descriptionLabel->SetText("");
         descriptionLabel->SetBackgroundColor(Color(240, 240, 240, 255));
 

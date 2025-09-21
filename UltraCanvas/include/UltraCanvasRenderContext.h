@@ -132,6 +132,7 @@ class UltraCanvasBaseWindow;
         float wordSpacing = 0.0f;
 
         // Text effects
+        bool wrap = false;
         bool hasUnderline = false;
         bool hasStrikethrough = false;
         bool hasOutline = false;

@@ -378,6 +378,7 @@ namespace UltraCanvas {
             pango_layout_set_text(layout, text.c_str(), -1);
             pango_layout_set_width(layout, w * PANGO_SCALE);
             pango_layout_set_height(layout, h * PANGO_SCALE);
+            //pango_layout_set_height(layout,-1);
 
             // Set alignment
             PangoAlignment alignment = PANGO_ALIGN_LEFT;
@@ -396,10 +397,18 @@ namespace UltraCanvas {
                     break;
             }
             pango_layout_set_alignment(layout, alignment);
+            if (currentState.textStyle.wrap) {
+                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
+                pango_layout_set_wrap(layout, PangoWrapMode::PANGO_WRAP_WORD_CHAR);
+            } else {
+                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_END);
+            }
+
             if (currentState.textStyle.baseline == TextBaseline::Middle) {
                 int w1, h1;
                 pango_layout_get_pixel_size(layout, &w1, &h1);
                 cairo_move_to(cairo, x, y + ((h - h1) / 2));
+//                cairo_move_to(cairo, x, y);
             } else {
                 cairo_move_to(cairo, x, y);
             }
