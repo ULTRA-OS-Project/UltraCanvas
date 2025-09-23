@@ -323,13 +323,10 @@ public:
 
         virtual ChartDataBounds CalculateDataBounds();
 
-        virtual void DrawCommonBackground(IRenderContext *ctx);
-
-        virtual void DrawGrid(IRenderContext *ctx);
-
-        virtual void DrawAxes(IRenderContext *ctx);
-
-        virtual void DrawAxisLabels(IRenderContext *ctx);
+        virtual void RenderCommonBackground(IRenderContext *ctx);
+        virtual void RenderGrid(IRenderContext *ctx);
+        virtual void RenderAxes(IRenderContext *ctx);
+        virtual void RenderAxisLabels(IRenderContext *ctx);
 
         std::string FormatAxisLabel(double value);
 

@@ -333,9 +333,9 @@ namespace UltraCanvas {
             if (style.backgroundColor.a > 0) {
                ctx->SetFillColor(style.backgroundColor);
                 if (style.borderRadius > 0) {
-                    ctx->DrawRoundedRectangle(bounds, style.borderRadius);
+                    ctx->FillRoundedRectangle(bounds, style.borderRadius);
                 } else {
-                    ctx->DrawRectangle(bounds);
+                    ctx->FillRectangle(bounds);
                 }
 
             }

@@ -245,8 +245,8 @@ namespace UltraCanvas {
         void UpdateRenderingCache() override;
         void CalculateRenderingAreas();
 
-        void DrawGrid(IRenderContext* ctx) override;
-        void DrawCommonBackground(IRenderContext* ctx) override;
+        void RenderGrid(IRenderContext* ctx) override;
+        void RenderCommonBackground(IRenderContext* ctx) override;
 
         // Enhanced separate chart rendering methods
         void RenderPriceChart(IRenderContext* ctx);

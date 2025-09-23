@@ -97,7 +97,7 @@ namespace UltraCanvas {
         enableTooltips = true;
     }
 
-    void UltraCanvasFinancialChartElement::DrawCommonBackground(IRenderContext *ctx) {
+    void UltraCanvasFinancialChartElement::RenderCommonBackground(IRenderContext *ctx) {
         if (!ctx) return;
 
         // Draw overall background using existing functions
@@ -527,7 +527,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasFinancialChartElement::DrawGrid(IRenderContext *ctx) {
+    void UltraCanvasFinancialChartElement::RenderGrid(IRenderContext *ctx) {
         ctx->SetStrokeColor(gridColor);
         ctx->SetStrokeWidth(1.0f);
 

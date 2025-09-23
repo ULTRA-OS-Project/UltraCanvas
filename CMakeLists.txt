@@ -119,6 +119,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasChartDataStructures.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasFinancialChart.cpp
+        UltraCanvas/Plugins/Charts/UltraCanvasDivergingBarChart.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartElement.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
@@ -139,9 +140,10 @@ set(APP_SOURCES
 #        Apps/UltraCanvasChartExample.cpp
         #Apps/UltraCanvasFinancialChartExample.cpp
         #Apps/TabbedContainerDemo.cpp
-        Apps/DemoApp/UltraCanvasDemo.cpp
-        Apps/DemoApp/UltraCanvasDemoExamples.cpp
-        Apps/DemoApp/main.cpp
+#        Apps/DemoApp/UltraCanvasDemo.cpp
+#        Apps/DemoApp/UltraCanvasDemoExamples.cpp
+#        Apps/DemoApp/main.cpp
+        Apps/DivergingBarChartExample.cpp
         #        Apps/Complete_IBM_Financial_Chart_Example.cpp
         #        Apps/IBM_StockChart_Example.cpp
 

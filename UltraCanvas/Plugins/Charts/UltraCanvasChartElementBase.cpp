@@ -39,7 +39,7 @@ namespace UltraCanvas {
         ctx->SetClipRect(GetActualBounds());
 
         // Draw common background
-        DrawCommonBackground(ctx);
+        RenderCommonBackground(ctx);
 
         // Call derived class to render specific chart type
         RenderChart(ctx);
@@ -152,7 +152,7 @@ namespace UltraCanvas {
         return bounds;
     }
 
-    void UltraCanvasChartElementBase::DrawCommonBackground(IRenderContext *ctx) {
+    void UltraCanvasChartElementBase::RenderCommonBackground(IRenderContext *ctx) {
         if (!ctx) return;
 
         // Draw overall background using existing functions
@@ -170,11 +170,11 @@ namespace UltraCanvas {
 
         // Draw grid if enabled using existing functions
         if (showGrid) {
-            DrawGrid(ctx);
+            RenderGrid(ctx);
         }
 
         // Draw axes using existing functions
-        DrawAxes(ctx);
+        RenderAxes(ctx);
 
         // Draw title using existing functions
         if (!chartTitle.empty()) {
@@ -187,7 +187,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasChartElementBase::DrawGrid(IRenderContext *ctx) {
+    void UltraCanvasChartElementBase::RenderGrid(IRenderContext *ctx) {
         if (!ctx) return;
 
         ctx->SetStrokeColor(gridColor);
@@ -208,7 +208,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasChartElementBase::DrawAxes(IRenderContext *ctx) {
+    void UltraCanvasChartElementBase::RenderAxes(IRenderContext *ctx) {
         if (!ctx) return;
 
         // Set axis style using existing functions
@@ -224,10 +224,10 @@ namespace UltraCanvas {
                       cachedPlotArea.x, cachedPlotArea.y + cachedPlotArea.height);
 
         // Draw basic tick marks and labels
-        DrawAxisLabels(ctx);
+        RenderAxisLabels(ctx);
     }
 
-    void UltraCanvasChartElementBase::DrawAxisLabels(IRenderContext *ctx) {
+    void UltraCanvasChartElementBase::RenderAxisLabels(IRenderContext *ctx) {
         if (!ctx) return;
 
         ctx->SetTextColor(Color(0, 0, 0, 255));

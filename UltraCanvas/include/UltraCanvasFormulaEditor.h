@@ -477,7 +477,7 @@ namespace UltraCanvas {
             int previewWidth = static_cast<int>(bounds.width * 0.4f);
 
             // FIXED: Use proper CreateLabel and CreateTextInput signatures with identifiers
-            nameLabel = CreateLabel("nameLabel", 1001, 0, 0, 120, 30, "Name:");
+            nameLabel = CreateLabel("nameLabel", 1001, 0, 0, 120, 30, "name:");
             nameInput = CreateTextInput("nameInput", 1002, 120, 00, 200, 30);
 
             descriptionLabel = CreateLabel("descLabel", 1003, 00,   35, 120, 30, "Description:");
