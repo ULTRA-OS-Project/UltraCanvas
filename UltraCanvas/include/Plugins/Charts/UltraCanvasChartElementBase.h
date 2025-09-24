@@ -16,37 +16,6 @@
 
 namespace UltraCanvas {
 
-// =============================================================================
-// CHART TOOLTIP CONTENT GENERATORS (SHARED)
-// =============================================================================
-
-//class ChartTooltipContentGenerator {
-//public:
-//    // Generate basic chart tooltip content
-//    static std::string GenerateBasicTooltip(const ChartDataPoint& point, const std::string& seriesName = "");
-//
-//    // Generate financial OHLC tooltip content
-//    static std::string GenerateFinancialTooltip(const ChartDataPoint& point, const std::string& symbol = "");
-//
-//    // Generate statistical tooltip content
-//    static std::string GenerateStatisticalTooltip(const ChartDataPoint& point, const std::string& metric = "");
-//};
-
-// =============================================================================
-// CHART TOOLTIP STYLES (SHARED)
-// =============================================================================
-
-//class ChartTooltipStyles {
-//public:
-//    // Create financial-themed tooltip style
-//    static TooltipStyle CreateFinancialStyle();
-//
-//    // Create dark theme style
-//    static TooltipStyle CreateDarkStyle();
-//
-//    // Create minimal style
-//    static TooltipStyle CreateMinimalStyle();
-//};
 
 // =============================================================================
 // BASE CHART ELEMENT CLASS
@@ -54,14 +23,6 @@ namespace UltraCanvas {
 
 class UltraCanvasChartElementBase : public UltraCanvasElement {
 public:
-    // Tooltip content type enumeration
-//    enum class TooltipContentType {
-//        Basic,
-//        Financial,
-//        Statistical,
-//        Custom
-//    };
-
     protected:
         // Common chart data
         std::shared_ptr<IChartDataSource> dataSource;
@@ -159,45 +120,14 @@ public:
         // TOOLTIP CONFIGURATION METHODS (COMMON)
         // =============================================================================
 
-//    void SetTooltipContentType(TooltipContentType type) {
-//        tooltipContentType = type;
-//    }
-
         void SetSeriesName(const std::string &name) {
             seriesName = name;
         }
-
-//    void SetFinancialSymbol(const std::string& symbol) {
-//        financialSymbol = symbol;
-//        tooltipContentType = TooltipContentType::Financial;
-//        UltraCanvasTooltipManager::SetStyle(ChartTooltipStyles::CreateFinancialStyle());
-//    }
-//
-//    void SetStatisticalMetric(const std::string& metric) {
-//        statisticalMetric = metric;
-//        tooltipContentType = TooltipContentType::Statistical;
-//    }
 
         void SetCustomTooltipGenerator(std::function<std::string(const ChartDataPoint &, size_t)> generator) {
             customTooltipGenerator = generator;
 //        tooltipContentType = TooltipContentType::Custom;
         }
-
-//    void SetTooltipStyle(const TooltipStyle& style) {
-//        UltraCanvasTooltipManager::SetStyle(style);
-//    }
-//
-//    void UseFinancialTooltipStyle() {
-//        UltraCanvasTooltipManager::SetStyle(ChartTooltipStyles::CreateFinancialStyle());
-//    }
-//
-//    void UseDarkTooltipStyle() {
-//        UltraCanvasTooltipManager::SetStyle(ChartTooltipStyles::CreateDarkStyle());
-//    }
-//
-//    void UseMinimalTooltipStyle() {
-//        UltraCanvasTooltipManager::SetStyle(ChartTooltipStyles::CreateMinimalStyle());
-//    }
 
         // =============================================================================
         // STYLING METHODS (COMMON)
@@ -310,17 +240,7 @@ public:
 
         void UpdateAnimation();
 
-        ChartPlotArea CalculatePlotArea() {
-            // Calculate plot area leaving space for axes, titles, legend
-            ChartPlotArea plotArea;
-            plotArea.x = GetX() + 60;  // Left margin for Y-axis labels
-            plotArea.y = GetY() + 30;  // Top margin for title
-            plotArea.width = GetWidth() - 100;   // Right margin for legend
-            plotArea.height = GetHeight() - 80; // Bottom margin for X-axis labels
-
-            return plotArea;
-        }
-
+        virtual ChartPlotArea CalculatePlotArea();
         virtual ChartDataBounds CalculateDataBounds();
 
         virtual void RenderCommonBackground(IRenderContext *ctx);

@@ -1,4 +1,4 @@
-// UltraCanvasDemo.cpp
+// Apps
 // Comprehensive demonstration program implementation
 // Version: 1.0.0
 // Last Modified: 2024-12-19
@@ -267,6 +267,13 @@ namespace UltraCanvas {
                 .AddVariant("charts", "Bar Charts")
                 .AddVariant("charts", "Pie Charts")
                 .AddVariant("charts", "Scatter Plots");
+
+        chartBuilder.AddItem("divergingcharts", "Diverging Bar Charts", "Likert scale and population pyramid charts",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateDivergingChartExamples(); })
+                .AddVariant("divergingcharts", "Likert Scale")
+                .AddVariant("divergingcharts", "Population Pyramid")
+                .AddVariant("divergingcharts", "Tornado Chart");
 
         // ===== INFO GRAPHICS =====
         auto infoBuilder = DemoCategoryBuilder(this, DemoCategory::InfoGraphics);

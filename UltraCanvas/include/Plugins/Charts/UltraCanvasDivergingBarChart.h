@@ -74,6 +74,10 @@ namespace UltraCanvas {
         float maxPositiveValue = 0.0f;
         bool needsRecalculation = true;
 
+    protected:
+        ChartPlotArea CalculatePlotArea() override;
+        ChartDataBounds CalculateDataBounds() override;
+
     public:
         // Constructor
         UltraCanvasDivergingBarChart(const std::string& id, long uid, int x, int y, int width, int height);
@@ -118,9 +122,6 @@ namespace UltraCanvas {
 
     private:
         // ===== INTERNAL RENDERING METHODS =====
-
-        ChartDataBounds CalculateDataBounds() override;
-
         void RenderGrid(IRenderContext* ctx) override;
         void RenderCenterLine(IRenderContext* ctx);
         void RenderPopulationPyramid(IRenderContext* ctx, float animScale);
@@ -128,16 +129,12 @@ namespace UltraCanvas {
         void RenderTornadoChart(IRenderContext* ctx, float animScale);
         void RenderOpposingBars(IRenderContext* ctx, float animScale);
         void RenderRowLabels(IRenderContext* ctx);
-
         void RenderAxisLabels(IRenderContext* ctx) override;
 
         // Helper function to get nice round numbers for axis labels
         float GetNiceRoundNumber(float value);
-
         void FindHoveredBar(const Point2Di& mousePos);
-
         void UpdateTooltip(const Point2Di& mousePos);
-
         float GetAnimationScale();
     };
 

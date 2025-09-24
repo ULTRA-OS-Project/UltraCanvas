@@ -494,7 +494,7 @@ namespace UltraCanvas {
         float rowHeight = cachedPlotArea.height / pointCount;
 
         for (size_t rowIdx = 0; rowIdx < pointCount; ++rowIdx) {
-            float y = cachedPlotArea.y + rowIdx * rowHeight - rowHeight / 2 + 2;
+            float y = cachedPlotArea.y + rowIdx * rowHeight + rowHeight / 2 - 2;
             const auto& point = divergingDataSource->GetDivergingPoint(rowIdx);
 
             // Draw label at center
@@ -674,4 +674,16 @@ namespace UltraCanvas {
         // Ease-out cubic
         return 1.0f - std::pow(1.0f - progress, 3.0f);
     }
+
+    ChartPlotArea UltraCanvasDivergingBarChart::CalculatePlotArea() {
+        // Calculate plot area leaving space for axes, titles, legend
+        ChartPlotArea plotArea;
+        plotArea.x = GetX() + 20;  // Left margin for Y-axis labels
+        plotArea.y = GetY() + 30;  // Top margin for title
+        plotArea.width = GetWidth() - 100;   // Right margin for legend
+        plotArea.height = GetHeight() - 80; // Bottom margin for X-axis labels
+
+        return plotArea;
+    }
+
 }

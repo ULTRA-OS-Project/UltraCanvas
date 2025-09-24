@@ -142,6 +142,7 @@ namespace UltraCanvas {
         // Data Visualization
         std::shared_ptr<UltraCanvasElement> CreateDiagramExamples();
         std::shared_ptr<UltraCanvasElement> CreateChartExamples();
+        std::shared_ptr<UltraCanvasElement> CreateDivergingChartExamples();
         std::shared_ptr<UltraCanvasElement> CreateInfoGraphicsExamples();
 
         std::shared_ptr<UltraCanvasElement> CreatePDFExamples();

@@ -376,4 +376,15 @@ namespace UltraCanvas {
         }
     }
 
+    ChartPlotArea UltraCanvasChartElementBase::CalculatePlotArea() {
+        // Calculate plot area leaving space for axes, titles, legend
+        ChartPlotArea plotArea;
+        plotArea.x = GetX() + 60;  // Left margin for Y-axis labels
+        plotArea.y = GetY() + 30;  // Top margin for title
+        plotArea.width = GetWidth() - 100;   // Right margin for legend
+        plotArea.height = GetHeight() - 80; // Bottom margin for X-axis labels
+
+        return plotArea;
+    }
+
 }

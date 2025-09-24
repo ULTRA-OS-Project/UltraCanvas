@@ -16,7 +16,7 @@
 
 using namespace UltraCanvas;
 
-class DivergingChartDemo {
+class can you integrate the code from {
 private:
     UltraCanvasApplication* app;
     std::shared_ptr<UltraCanvasWindow> window;

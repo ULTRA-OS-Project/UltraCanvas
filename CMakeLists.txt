@@ -140,10 +140,10 @@ set(APP_SOURCES
 #        Apps/UltraCanvasChartExample.cpp
         #Apps/UltraCanvasFinancialChartExample.cpp
         #Apps/TabbedContainerDemo.cpp
-#        Apps/DemoApp/UltraCanvasDemo.cpp
-#        Apps/DemoApp/UltraCanvasDemoExamples.cpp
-#        Apps/DemoApp/main.cpp
-        Apps/DivergingBarChartExample.cpp
+        Apps/DemoApp/UltraCanvasDemo.cpp
+        Apps/DemoApp/UltraCanvasDemoExamples.cpp
+        Apps/DemoApp/main.cpp
+        #        Apps/DivergingBarChartExample.cpp
         #        Apps/Complete_IBM_Financial_Chart_Example.cpp
         #        Apps/IBM_StockChart_Example.cpp
 
