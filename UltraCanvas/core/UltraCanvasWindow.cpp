@@ -35,7 +35,7 @@ namespace UltraCanvas {
 
 // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
 
-    void UltraCanvasBaseWindow::SetFocusedElement(UltraCanvasElement* element) {
+    void UltraCanvasBaseWindow::SetFocusedElement(UltraCanvasUIElement* element) {
         // Don't do anything if already focused
         if (_focusedElement == element) {
             return;
@@ -70,7 +70,7 @@ namespace UltraCanvas {
         SetFocusedElement(nullptr);
     }
 
-    bool UltraCanvasBaseWindow::RequestElementFocus(UltraCanvasElement* element) {
+    bool UltraCanvasBaseWindow::RequestElementFocus(UltraCanvasUIElement* element) {
         // Validate element can receive focus
         if (!element || !element->CanReceiveFocus()) {
             return false;
@@ -82,7 +82,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasBaseWindow::FocusNextElement() {
-        std::vector<UltraCanvasElement*> focusableElements = GetFocusableElements();
+        std::vector<UltraCanvasUIElement*> focusableElements = GetFocusableElements();
 
         if (focusableElements.empty()) {
             return;
@@ -105,7 +105,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasBaseWindow::FocusPreviousElement() {
-        std::vector<UltraCanvasElement*> focusableElements = GetFocusableElements();
+        std::vector<UltraCanvasUIElement*> focusableElements = GetFocusableElements();
 
         if (focusableElements.empty()) {
             return;
@@ -129,8 +129,8 @@ namespace UltraCanvas {
         SetFocusedElement(focusableElements[prevIndex]);
     }
 
-    std::vector<UltraCanvasElement*> UltraCanvasBaseWindow::GetFocusableElements() {
-        std::vector<UltraCanvasElement*> focusableElements;
+    std::vector<UltraCanvasUIElement*> UltraCanvasBaseWindow::GetFocusableElements() {
+        std::vector<UltraCanvasUIElement*> focusableElements;
 
         // Start collecting from the window container itself
         CollectFocusableElements(this, focusableElements);
@@ -139,14 +139,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasBaseWindow::CollectFocusableElements(UltraCanvasContainer* container,
-                                                         std::vector<UltraCanvasElement*>& elements) {
+                                                         std::vector<UltraCanvasUIElement*>& elements) {
         if (!container) return;
 
         // Get all child elements from the container
         const auto& children = container->GetChildren();
 
         for (const auto& child : children) {
-            UltraCanvasElement* element = child.get();
+            UltraCanvasUIElement* element = child.get();
 
             // Check if element can be focused
             if (element && element->CanReceiveFocus()) {
@@ -160,7 +160,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasBaseWindow::SendFocusGainedEvent(UltraCanvasElement* element) {
+    void UltraCanvasBaseWindow::SendFocusGainedEvent(UltraCanvasUIElement* element) {
         if (!element) return;
 
         UCEvent focusEvent;
@@ -169,7 +169,7 @@ namespace UltraCanvas {
         element->OnEvent(focusEvent);
     }
 
-    void UltraCanvasBaseWindow::SendFocusLostEvent(UltraCanvasElement* element) {
+    void UltraCanvasBaseWindow::SendFocusLostEvent(UltraCanvasUIElement* element) {
         if (!element) return;
 
         UCEvent focusEvent;
@@ -197,9 +197,9 @@ namespace UltraCanvas {
         }
 
 //        if (event.IsMouseEvent() && !activePopups.empty()) {
-//            std::unordered_set<UltraCanvasElement*> activePopupsCopy = activePopups;
+//            std::unordered_set<UltraCanvasUIElement*> activePopupsCopy = activePopups;
 //            for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
-//                UltraCanvasElement* activePopupElement = *it;
+//                UltraCanvasUIElement* activePopupElement = *it;
 //                auto localCoords = activePopupElement->ConvertWindowToParentContainerCoordinates(Point2Di(event.x, event.y));
 //                UCEvent localEvent = event;
 //                localEvent.x = localCoords.x;
@@ -304,7 +304,7 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseWindow::RenderActivePopups() {
         // Render popups in z-order
-        for (UltraCanvasElement* popup : activePopups) {
+        for (UltraCanvasUIElement* popup : activePopups) {
             if (popup) {
                 auto ctx = GetRenderContext();
                 ctx->PushState();
@@ -318,7 +318,7 @@ namespace UltraCanvas {
 
 
 
-    void UltraCanvasBaseWindow::AddPopupElement(UltraCanvasElement *element) {
+    void UltraCanvasBaseWindow::AddPopupElement(UltraCanvasUIElement *element) {
         if (element) {
             MarkElementDirty(element);
             auto found = std::find(activePopups.begin(), activePopups.end(), element);
@@ -329,7 +329,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasBaseWindow::RemovePopupElement(UltraCanvasElement *element) {
+    void UltraCanvasBaseWindow::RemovePopupElement(UltraCanvasUIElement *element) {
         auto found = std::find(activePopups.begin(), activePopups.end(), element);
         if (found != activePopups.end()) {
             popupsToRemove.insert(element);
@@ -355,7 +355,7 @@ namespace UltraCanvas {
         _needsRedraw = true;
     }
 
-    void UltraCanvasBaseWindow::MarkElementDirty(UltraCanvasElement* element, bool isOverlay) {
+    void UltraCanvasBaseWindow::MarkElementDirty(UltraCanvasUIElement* element, bool isOverlay) {
 //        if (selectiveRenderer) {
 ////            if (isOverlay) {
 ////                selectiveRenderer->SaveBackgroundForOverlay(element);

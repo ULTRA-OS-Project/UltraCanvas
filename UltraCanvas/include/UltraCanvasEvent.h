@@ -14,7 +14,7 @@
 #include <chrono>
 #include <string>
 namespace UltraCanvas {
-    class UltraCanvasElement;
+    class UltraCanvasUIElement;
 
     enum class UCEventType {
         NoneEvent,
@@ -283,7 +283,7 @@ namespace UltraCanvas {
 
     struct UCEvent {
         UCEventType type = UCEventType::NoneEvent;
-        UltraCanvasElement *targetElement = nullptr;
+        UltraCanvasUIElement *targetElement = nullptr;
 
         // Spatial coordinates
         int x, y;                        // Mouse or touch coordinates

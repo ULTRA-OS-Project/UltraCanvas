@@ -23,7 +23,7 @@ enum class MouseCaptureState {
 
 // ===== MOUSE CAPTURE INFO =====
 struct MouseCaptureInfo {
-    UltraCanvasElement* capturedElement = nullptr;
+    UltraCanvasUIElement* capturedElement = nullptr;
     Point2D captureStartPosition;
     Point2D currentPosition;
     Point2D deltaPosition;
@@ -62,13 +62,13 @@ struct DragDropData {
 class MouseCaptureManager {
 private:
     static MouseCaptureInfo captureInfo;
-    static std::vector<UltraCanvasElement*> hoverStack;
+    static std::vector<UltraCanvasUIElement*> hoverStack;
     static DragDropData currentDragData;
     static bool isDragOperationActive;
     
 public:
     // ===== CAPTURE MANAGEMENT =====
-    static bool CaptureMouse(UltraCanvasElement* element, int button = 1) {
+    static bool CaptureMouse(UltraCanvasUIElement* element, int button = 1) {
         if (!element) return false;
         
         // Release any existing capture
@@ -89,7 +89,7 @@ public:
     static bool ReleaseMouse() {
         if (!captureInfo.capturedElement) return false;
         
-        UltraCanvasElement* element = captureInfo.capturedElement;
+        UltraCanvasUIElement* element = captureInfo.capturedElement;
         
         // End drag operation if active
         if (captureInfo.isDragging) {
@@ -110,7 +110,7 @@ public:
         return true;
     }
     
-    static UltraCanvasElement* GetCapturedElement() {
+    static UltraCanvasUIElement* GetCapturedElement() {
         return captureInfo.capturedElement;
     }
     
@@ -118,7 +118,7 @@ public:
         return captureInfo.capturedElement != nullptr;
     }
     
-    static bool IsElementCapturing(UltraCanvasElement* element) {
+    static bool IsElementCapturing(UltraCanvasUIElement* element) {
         return captureInfo.capturedElement == element;
     }
     
@@ -161,7 +161,7 @@ public:
     }
     
     // ===== DRAG AND DROP =====
-    static bool StartDragOperation(UltraCanvasElement* element, const DragDropData& data) {
+    static bool StartDragOperation(UltraCanvasUIElement* element, const DragDropData& data) {
         if (!element || isDragOperationActive) return false;
         
         currentDragData = data;
@@ -184,7 +184,7 @@ public:
         captureInfo.isDragging = false;
         
         // Find drop target
-        UltraCanvasElement* dropTarget = FindDropTarget(captureInfo.currentPosition);
+        UltraCanvasUIElement* dropTarget = FindDropTarget(captureInfo.currentPosition);
         
         if (dropTarget) {
             // Notify drop target
@@ -219,9 +219,9 @@ public:
     }
     
     // ===== HOVER MANAGEMENT =====
-    static void UpdateHoverState(const Point2D& position, UltraCanvasElement* newHoverElement) {
+    static void UpdateHoverState(const Point2D& position, UltraCanvasUIElement* newHoverElement) {
         // Find current top hover element
-        UltraCanvasElement* currentHover = hoverStack.empty() ? nullptr : hoverStack.back();
+        UltraCanvasUIElement* currentHover = hoverStack.empty() ? nullptr : hoverStack.back();
         
         if (currentHover != newHoverElement) {
             // Mouse left previous element
@@ -255,7 +255,7 @@ public:
         }
     }
     
-    static UltraCanvasElement* GetHoveredElement() {
+    static UltraCanvasUIElement* GetHoveredElement() {
         return hoverStack.empty() ? nullptr : hoverStack.back();
     }
     
@@ -364,7 +364,7 @@ private:
         
         // Handle drag over events
         if (isDragOperationActive) {
-            UltraCanvasElement* dropTarget = FindDropTarget(Point2D(event.x, event.y));
+            UltraCanvasUIElement* dropTarget = FindDropTarget(Point2D(event.x, event.y));
             if (dropTarget) {
                 UCEvent dragOverEvent;
                 dragOverEvent.type = UCEventType::DragOver;
@@ -390,14 +390,14 @@ private:
         return false;
     }
     
-    static UltraCanvasElement* FindDropTarget(const Point2D& position) {
+    static UltraCanvasUIElement* FindDropTarget(const Point2D& position) {
         // This would need to be implemented to find the element at the given position
         // For now, return the hovered element
         return GetHoveredElement();
     }
     
     // ===== PLATFORM-SPECIFIC FUNCTIONS =====
-    static void PlatformCaptureMouse(UltraCanvasElement* element) {
+    static void PlatformCaptureMouse(UltraCanvasUIElement* element) {
         // Platform-specific mouse capture implementation
         // On Linux: XGrabPointer
         // On Windows: SetCapture
@@ -427,64 +427,64 @@ private:
 
 // Static member definitions
 MouseCaptureInfo MouseCaptureManager::captureInfo;
-std::vector<UltraCanvasElement*> MouseCaptureManager::hoverStack;
+std::vector<UltraCanvasUIElement*> MouseCaptureManager::hoverStack;
 DragDropData MouseCaptureManager::currentDragData;
 bool MouseCaptureManager::isDragOperationActive = false;
 
 // ===== ULTRA CANVAS ELEMENT EXTENSIONS =====
-// These methods should be added to the UltraCanvasElement class
+// These methods should be added to the UltraCanvasUIElement class
 
-class UltraCanvasElementMouseCapture {
+class UltraCanvasUIElementMouseCapture {
 public:
     // ===== MOUSE CAPTURE METHODS =====
-    static bool CaptureMouse(UltraCanvasElement* element, int button = 1) {
+    static bool CaptureMouse(UltraCanvasUIElement* element, int button = 1) {
         return MouseCaptureManager::CaptureMouse(element, button);
     }
     
-    static bool ReleaseMouse(UltraCanvasElement* element) {
+    static bool ReleaseMouse(UltraCanvasUIElement* element) {
         if (MouseCaptureManager::IsElementCapturing(element)) {
             return MouseCaptureManager::ReleaseMouse();
         }
         return false;
     }
     
-    static bool IsMouseCaptured(UltraCanvasElement* element) {
+    static bool IsMouseCaptured(UltraCanvasUIElement* element) {
         return MouseCaptureManager::IsElementCapturing(element);
     }
     
     // ===== DRAG AND DROP METHODS =====
-    static bool StartDrag(UltraCanvasElement* element, const std::string& dataType, const std::string& data) {
+    static bool StartDrag(UltraCanvasUIElement* element, const std::string& dataType, const std::string& data) {
         DragDropData dragData(dataType, data);
         return MouseCaptureManager::StartDragOperation(element, dragData);
     }
     
-    static bool StartDrag(UltraCanvasElement* element, const std::string& dataType, const std::vector<uint8_t>& data) {
+    static bool StartDrag(UltraCanvasUIElement* element, const std::string& dataType, const std::vector<uint8_t>& data) {
         DragDropData dragData(dataType, data);
         return MouseCaptureManager::StartDragOperation(element, dragData);
     }
     
-    static bool StartFileDrag(UltraCanvasElement* element, const std::string& filePath) {
+    static bool StartFileDrag(UltraCanvasUIElement* element, const std::string& filePath) {
         DragDropData dragData("file", "");
         dragData.filePath = filePath;
         return MouseCaptureManager::StartDragOperation(element, dragData);
     }
     
     // ===== UTILITY METHODS =====
-    static Point2D GetMouseDelta(UltraCanvasElement* element) {
+    static Point2D GetMouseDelta(UltraCanvasUIElement* element) {
         if (MouseCaptureManager::IsElementCapturing(element)) {
             return MouseCaptureManager::GetDeltaPosition();
         }
         return Point2D(0, 0);
     }
     
-    static float GetDragDistance(UltraCanvasElement* element) {
+    static float GetDragDistance(UltraCanvasUIElement* element) {
         if (MouseCaptureManager::IsElementCapturing(element)) {
             return MouseCaptureManager::GetDragDistance();
         }
         return 0.0f;
     }
     
-    static bool IsDragging(UltraCanvasElement* element) {
+    static bool IsDragging(UltraCanvasUIElement* element) {
         return MouseCaptureManager::IsElementCapturing(element) && 
                MouseCaptureManager::IsDragging();
     }
@@ -494,23 +494,23 @@ public:
 
 // ===== CONVENIENCE MACROS =====
 #define ULTRACANVAS_CAPTURE_MOUSE(element, button) \
-    UltraCanvas::UltraCanvasElementMouseCapture::CaptureMouse(element, button)
+    UltraCanvas::UltraCanvasUIElementMouseCapture::CaptureMouse(element, button)
 
 #define ULTRACANVAS_RELEASE_MOUSE(element) \
-    UltraCanvas::UltraCanvasElementMouseCapture::ReleaseMouse(element)
+    UltraCanvas::UltraCanvasUIElementMouseCapture::ReleaseMouse(element)
 
 #define ULTRACANVAS_START_DRAG(element, type, data) \
-    UltraCanvas::UltraCanvasElementMouseCapture::StartDrag(element, type, data)
+    UltraCanvas::UltraCanvasUIElementMouseCapture::StartDrag(element, type, data)
 
 #define ULTRACANVAS_IS_DRAGGING(element) \
-    UltraCanvas::UltraCanvasElementMouseCapture::IsDragging(element)
+    UltraCanvas::UltraCanvasUIElementMouseCapture::IsDragging(element)
 
 /*
 === USAGE EXAMPLES ===
 
-// In your UltraCanvasElement subclass:
+// In your UltraCanvasUIElement subclass:
 
-class DraggableButton : public UltraCanvasElement {
+class DraggableButton : public UltraCanvasUIElement {
 private:
     bool isDragging = false;
     Point2D dragStartPos;
@@ -545,7 +545,7 @@ public:
 };
 
 // For drop targets:
-class DropZone : public UltraCanvasElement {
+class DropZone : public UltraCanvasUIElement {
 public:
     bool OnEvent(const UCEvent& event) override {
         switch (event.type) {
@@ -595,5 +595,5 @@ This implementation:
 - ✅ Comprehensive drag and drop support
 
 The MouseCaptureManager handles all mouse capture logic centrally,
-while UltraCanvasElementMouseCapture provides element-specific helper methods.
+while UltraCanvasUIElementMouseCapture provides element-specific helper methods.
 */

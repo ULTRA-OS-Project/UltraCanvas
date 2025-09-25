@@ -81,9 +81,9 @@ namespace UltraCanvas {
     };
 
 // ===== ENHANCED CONTAINER CLASS =====
-    class UltraCanvasContainer : public UltraCanvasElement {
+    class UltraCanvasContainer : public UltraCanvasUIElement {
     private:
-        std::vector<std::shared_ptr<UltraCanvasElement>> children;
+        std::vector<std::shared_ptr<UltraCanvasUIElement>> children;
         // Enhanced scrollbar rectangles
         Rect2Di verticalScrollbarRect;
         Rect2Di horizontalScrollbarRect;
@@ -96,8 +96,8 @@ namespace UltraCanvas {
 
         // Callbacks
         std::function<void(int, int)> onScrollChanged;
-        std::function<void(UltraCanvasElement*)> onChildAdded;
-        std::function<void(UltraCanvasElement*)> onChildRemoved;
+        std::function<void(UltraCanvasUIElement*)> onChildAdded;
+        std::function<void(UltraCanvasUIElement*)> onChildRemoved;
 
     protected:
         ContainerStyle style;
@@ -106,7 +106,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasContainer(const std::string& id, long uid, long x, long y, long w, long h)
-                : UltraCanvasElement(id, uid, x, y, w, h) {
+                : UltraCanvasUIElement(id, uid, x, y, w, h) {
             UpdateLayout();
             UpdateScrollability();
         }
@@ -114,14 +114,14 @@ namespace UltraCanvas {
         virtual ~UltraCanvasContainer() = default;
 
         // ===== ENHANCED CHILD MANAGEMENT =====
-        void AddOrMoveChild(std::shared_ptr<UltraCanvasElement> child);
-        void RemoveChild(std::shared_ptr<UltraCanvasElement> child);
+        void AddOrMoveChild(std::shared_ptr<UltraCanvasUIElement> child);
+        void RemoveChild(std::shared_ptr<UltraCanvasUIElement> child);
         void ClearChildren();
-        const std::vector<std::shared_ptr<UltraCanvasElement>>& GetChildren() const { return children; }
+        const std::vector<std::shared_ptr<UltraCanvasUIElement>>& GetChildren() const { return children; }
         size_t GetChildCount() const { return children.size(); }
-        UltraCanvasElement* FindChildById(const std::string& id);
-        UltraCanvasElement* FindElementAtPoint(int x, int y);
-        UltraCanvasElement* FindElementAtPoint(const Point2Di& pos) { return FindElementAtPoint(pos.x, pos.y); }
+        UltraCanvasUIElement* FindChildById(const std::string& id);
+        UltraCanvasUIElement* FindElementAtPoint(int x, int y);
+        UltraCanvasUIElement* FindElementAtPoint(const Point2Di& pos) { return FindElementAtPoint(pos.x, pos.y); }
         void ConvertWindowToContainerCoordinates(int &x, int &y);
 
 //        virtual int GetXInWindow() override;
@@ -158,7 +158,7 @@ namespace UltraCanvas {
         bool HasHorizontalScrollbar() const { return scrollState.showHorizontalScrollbar; }
 
         Rect2Di GetVisibleChildBounds(const Rect2Di& childBounds) const;
-        bool IsChildVisible(UltraCanvasElement* child) const;
+        bool IsChildVisible(UltraCanvasUIElement* child) const;
 
         // ===== ENHANCED STYLE MANAGEMENT =====
         void SetContainerStyle(const ContainerStyle& newStyle);
@@ -170,11 +170,11 @@ namespace UltraCanvas {
             onScrollChanged = callback;
         }
 
-        void SetChildAddedCallback(std::function<void(UltraCanvasElement*)> callback) {
+        void SetChildAddedCallback(std::function<void(UltraCanvasUIElement*)> callback) {
             onChildAdded = callback;
         }
 
-        void SetChildRemovedCallback(std::function<void(UltraCanvasElement*)> callback) {
+        void SetChildRemovedCallback(std::function<void(UltraCanvasUIElement*)> callback) {
             onChildRemoved = callback;
         }
 

@@ -1,4 +1,4 @@
-// UltraCanvasElementDebug.cpp
+// UltraCanvasUIElementDebug.cpp
 // Debug rendering implementation for UltraCanvas elements
 // Version: 1.0.0
 // Last Modified: 2024-12-19

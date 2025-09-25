@@ -324,7 +324,7 @@ struct TextInputState {
 };
 
 // ===== MAIN TEXT INPUT COMPONENT =====
-class UltraCanvasTextInput : public UltraCanvasElement {
+class UltraCanvasTextInput : public UltraCanvasUIElement {
 private:
     // ===== CORE PROPERTIES =====
     std::string text;

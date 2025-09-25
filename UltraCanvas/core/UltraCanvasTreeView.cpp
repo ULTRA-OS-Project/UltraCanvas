@@ -124,7 +124,7 @@ namespace UltraCanvas {
     /* UltraCanvasTreeView */
 
     UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier, long id, int x, int y, int w, int h) :
-            UltraCanvasElement(identifier, id, x,y,w,h)
+            UltraCanvasUIElement(identifier, id, x, y, w, h)
     {
 
         // Tree view specific initialization

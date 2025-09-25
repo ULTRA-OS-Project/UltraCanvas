@@ -87,7 +87,7 @@ namespace UltraCanvas {
     };
 
 // ===== MAIN SCROLLBAR CLASS =====
-    class UltraCanvasScrollbar : public UltraCanvasElement {
+    class UltraCanvasScrollbar : public UltraCanvasUIElement {
     private:
         // ===== STANDARD PROPERTIES =====
         StandardProperties properties;
@@ -108,7 +108,7 @@ namespace UltraCanvas {
         // ===== CONSTRUCTOR =====
         UltraCanvasScrollbar(const std::string& id, long uid, long x, long y, long w, long h,
                              ScrollbarOrientation orient = ScrollbarOrientation::Vertical)
-                : UltraCanvasElement(id, uid, x, y, w, h),
+                : UltraCanvasUIElement(id, uid, x, y, w, h),
                   properties(id, uid, x, y, w, h),
                   orientation(orient) {
 

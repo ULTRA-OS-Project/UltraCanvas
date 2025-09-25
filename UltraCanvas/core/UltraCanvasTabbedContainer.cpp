@@ -75,7 +75,7 @@ namespace UltraCanvas {
         UpdateOverflowDropdown();
     }
 
-    int UltraCanvasTabbedContainer::AddTab(const std::string &title, std::shared_ptr<UltraCanvasElement> content) {
+    int UltraCanvasTabbedContainer::AddTab(const std::string &title, std::shared_ptr<UltraCanvasUIElement> content) {
         auto tabData = std::make_unique<TabData>(title);
         if (content) {
             tabData->content = content;

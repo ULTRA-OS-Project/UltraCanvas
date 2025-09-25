@@ -121,7 +121,7 @@ enum class DateFormat {
 };
 
 // ===== CALENDAR POPUP =====
-class UltraCanvasCalendarPopup : public UltraCanvasElement {
+class UltraCanvasCalendarPopup : public UltraCanvasUIElement {
 private:
     StandardProperties properties;
     Date selectedDate;
@@ -146,7 +146,7 @@ public:
     std::function<void()> onClosed;
     
     UltraCanvasCalendarPopup(const std::string& identifier, long id, long x, long y)
-        : UltraCanvasElement(identifier, id, x, y, 7 * 30 + 20, 6 * 25 + 30 + 20),
+        : UltraCanvasUIElement(identifier, id, x, y, 7 * 30 + 20, 6 * 25 + 30 + 20),
           properties(identifier, id, x, y, 7 * 30 + 20, 6 * 25 + 30 + 20) {
         
         selectedDate = Date::Today();
@@ -442,7 +442,7 @@ private:
 };
 
 // ===== MAIN DATE PICKER COMPONENT =====
-class UltraCanvasDatePicker : public UltraCanvasElement {
+class UltraCanvasDatePicker : public UltraCanvasUIElement {
 private:
     StandardProperties properties;
     
@@ -480,7 +480,7 @@ public:
     // ===== CONSTRUCTOR =====
     UltraCanvasDatePicker(const std::string& identifier = "DatePicker", long id = 0,
                          long x = 0, long y = 0, long w = 200, long h = 30)
-        : UltraCanvasElement(identifier, id, x, y, w, h), properties(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h), properties(identifier, id, x, y, w, h) {
         
         selectedDate = Date::Today();
         
@@ -833,7 +833,7 @@ private:
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasDatePicker> CreateDatePicker(
     const std::string& identifier, long id, long x, long y, long w = 200, long h = 30) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasDatePicker>(id, identifier, id, x, y, w, h);
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasDatePicker>(id, identifier, id, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasDatePicker> CreateDatePicker(

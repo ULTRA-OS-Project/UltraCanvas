@@ -95,7 +95,7 @@ struct Model3DViewParams {
 };
 
 // ===== 3D MODEL ELEMENT =====
-class UltraCanvas3DModelElement : public UltraCanvasElement {
+class UltraCanvas3DModelElement : public UltraCanvasUIElement {
 private:
     StandardProperties properties;
     
@@ -133,7 +133,7 @@ public:
     // ===== CONSTRUCTOR =====
     UltraCanvas3DModelElement(const std::string& identifier = "Model3DElement", long id = 0,
                              long x = 0, long y = 0, long w = 300, long h = 300)
-        : UltraCanvasElement(identifier, id, x, y, w, h), properties(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h), properties(identifier, id, x, y, w, h) {
         
         properties.MousePtr = MousePointer::Default;
         properties.MouseCtrl = MouseControls::Object3D;
@@ -628,7 +628,7 @@ private:
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvas3DModelElement> CreateModel3DElement(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvas3DModelElement>(id, identifier, id, x, y, w, h);
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvas3DModelElement>(id, identifier, id, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvas3DModelElement> LoadModel3DFromFile(
@@ -639,10 +639,10 @@ inline std::shared_ptr<UltraCanvas3DModelElement> LoadModel3DFromFile(
 }
 
 // ===== CONVENIENCE FUNCTIONS (Matching your original API) =====
-inline std::shared_ptr<UltraCanvasElement> LoadModelFromFile(const std::string& modelPath) {
+inline std::shared_ptr<UltraCanvasUIElement> LoadModelFromFile(const std::string& modelPath) {
     auto element = CreateModel3DElement("model3d_" + std::to_string(rand()), rand(), 0, 0, 300, 300);
     element->LoadModelFromFile(modelPath);
-    return std::static_pointer_cast<UltraCanvasElement>(element);
+    return std::static_pointer_cast<UltraCanvasUIElement>(element);
 }
 
 // ===== 3D MODEL PLUGIN =====
@@ -675,15 +675,15 @@ public:
         return fileInfo.formatType == GraphicsFormatType::ThreeD && CanHandle(fileInfo.extension);
     }
     
-    std::shared_ptr<UltraCanvasElement> LoadGraphics(const std::string& filePath) override {
+    std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const std::string& filePath) override {
         return LoadModel3DFromFile("model3d_" + std::to_string(rand()), rand(), 0, 0, 300, 300, filePath);
     }
     
-    std::shared_ptr<UltraCanvasElement> LoadGraphics(const GraphicsFileInfo& fileInfo) override {
+    std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const GraphicsFileInfo& fileInfo) override {
         return LoadGraphics(fileInfo.filename);
     }
     
-    std::shared_ptr<UltraCanvasElement> CreateGraphics(int width, int height, GraphicsFormatType type) override {
+    std::shared_ptr<UltraCanvasUIElement> CreateGraphics(int width, int height, GraphicsFormatType type) override {
         if (type == GraphicsFormatType::ThreeD) {
             return CreateModel3DElement("new_model3d_" + std::to_string(rand()), rand(), 0, 0, width, height);
         }

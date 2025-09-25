@@ -603,7 +603,7 @@ void SVGElementRenderer::RenderDocument(const Rect2D& viewport) {
 
 // ===== SVG UI ELEMENT IMPLEMENTATION =====
 UltraCanvasSVGElement::UltraCanvasSVGElement(const std::string& identifier, long id, long x, long y, long w, long h)
-    : UltraCanvasElement(identifier, id, x, y, w, h) {
+    : UltraCanvasUIElement(identifier, id, x, y, w, h) {
 }
 
 UltraCanvasSVGElement::~UltraCanvasSVGElement() {

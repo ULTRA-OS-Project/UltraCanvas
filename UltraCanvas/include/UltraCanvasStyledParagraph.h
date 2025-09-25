@@ -129,7 +129,7 @@ public:
 };
 
 // ===== STYLED PARAGRAPH COMPONENT =====
-class UltraCanvasStyledParagraph : public UltraCanvasElement {
+class UltraCanvasStyledParagraph : public UltraCanvasUIElement {
 private:
     StandardProperties properties;  // REQUIRED for UltraCanvas compliance
     
@@ -193,7 +193,7 @@ public:
     std::function<void(const std::string&)> onHyperlinkClicked;
     
     UltraCanvasStyledParagraph(const std::string& elementId, long uniqueId, long posX, long posY, long w, long h)
-        : UltraCanvasElement(elementId, uniqueId, posX, posY, w, h)
+        : UltraCanvasUIElement(elementId, uniqueId, posX, posY, w, h)
         , properties(elementId, uniqueId, posX, posY, w, h) {
         
         maxWidth = w - leftMargin - rightMargin;
@@ -396,7 +396,7 @@ public:
     bool OnEvent(const UCEvent& event) override {
         if (!IsActive() || !IsVisible()) return false;;
         
-        UltraCanvasElement::OnEvent(event);
+        UltraCanvasUIElement::OnEvent(event);
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -786,7 +786,7 @@ inline void RenderStyledParagraph(const StyledParagraph& para, int x, int y) {
 - Safe bounds checking
 
 ✅ **UltraCanvas Architecture Compliance**:
-- Proper inheritance from UltraCanvasElement
+- Proper inheritance from UltraCanvasUIElement
 - Correct UCEvent handling
 - Standard factory functions
 - Namespace organization

@@ -73,7 +73,7 @@ namespace UltraCanvas {
     };
 
 // ===== DROPDOWN COMPONENT =====
-    class UltraCanvasDropdown : public UltraCanvasElement {
+    class UltraCanvasDropdown : public UltraCanvasUIElement {
     public:
         // ===== CALLBACKS =====
         std::function<void(int, const DropdownItem&)> onSelectionChanged;

@@ -70,9 +70,9 @@ namespace UltraCanvas {
         bool _focused = false;
         bool _needsRedraw = true;
 
-        std::vector<UltraCanvasElement *> activePopups;
-        std::unordered_set<UltraCanvasElement *> popupsToRemove;
-        UltraCanvasElement* _focusedElement = nullptr;  // Current focused element in this window
+        std::vector<UltraCanvasUIElement *> activePopups;
+        std::unordered_set<UltraCanvasUIElement *> popupsToRemove;
+        UltraCanvasUIElement* _focusedElement = nullptr;  // Current focused element in this window
 
         // Window-specific callbacks
         std::function<void()> onWindowClose;
@@ -114,9 +114,9 @@ namespace UltraCanvas {
 // ===== FOCUS MANAGEMENT PUBLIC INTERFACE =====
         bool IsWindowFocused() const { return _focused; }
         // Set focus to a specific element in this window
-        virtual void SetFocusedElement(UltraCanvasElement* element);
+        virtual void SetFocusedElement(UltraCanvasUIElement* element);
         // Get the currently focused element in this window
-        UltraCanvasElement* GetFocusedElement() const { return _focusedElement; }
+        UltraCanvasUIElement* GetFocusedElement() const { return _focusedElement; }
 
         // Clear focus from current element
         virtual void ClearFocus();
@@ -128,28 +128,28 @@ namespace UltraCanvas {
         // Check if this window has focus (any element focused)
         bool HasFocus() const { return _focusedElement != nullptr; }
         // Internal method for elements to request focus (called by element's SetFocus)
-        virtual bool RequestElementFocus(UltraCanvasElement* element);
+        virtual bool RequestElementFocus(UltraCanvasUIElement* element);
 
 
         // Platform-specific
         virtual unsigned long GetNativeHandle() const = 0;
         virtual void Flush() = 0;
 
-        void AddPopupElement(UltraCanvasElement* element);
+        void AddPopupElement(UltraCanvasUIElement* element);
 
         // Unregister popup element
-        void RemovePopupElement(UltraCanvasElement* element);
+        void RemovePopupElement(UltraCanvasUIElement* element);
         void CleanupRemovedPopupElements();
 
-        std::vector<UltraCanvasElement *>& GetActivePopups() { return activePopups; }
+        std::vector<UltraCanvasUIElement *>& GetActivePopups() { return activePopups; }
         bool HasActivePopups() { return !activePopups.empty(); }
 
-//        void SetActivePopupElement(UltraCanvasElement* element) {
+//        void SetActivePopupElement(UltraCanvasUIElement* element) {
 //            if (!element) return;
 //            activePopupElement = element;
 //        }
 //
-//        void ClearActivePopupElement(UltraCanvasElement* element) {
+//        void ClearActivePopupElement(UltraCanvasUIElement* element) {
 //            if (!element) return;
 //            if (activePopupElement == element) {
 //                activePopupElement = nullptr;
@@ -187,7 +187,7 @@ namespace UltraCanvas {
         void ClearRequestRedraw() { _needsRedraw = false; }
 
 //        void RequestFullRedraw() { useSelectiveRendering = false; _needsRedraw = true; }
-        void MarkElementDirty(UltraCanvasElement* element, bool isOverlay = false);
+        void MarkElementDirty(UltraCanvasUIElement* element, bool isOverlay = false);
 //        bool IsSelectiveRenderingActive();
         virtual IRenderContext* GetRenderContext() const = 0;
 
@@ -223,7 +223,7 @@ namespace UltraCanvas {
 
         // ===== DEBUG METHODS =====
         void DebugPrintElements();
-        std::string GetElementTypeName(UltraCanvasElement* element);
+        std::string GetElementTypeName(UltraCanvasUIElement* element);
 
     protected:
         virtual bool HandleWindowEvent(const UCEvent &event);
@@ -293,19 +293,19 @@ namespace UltraCanvas {
         // ===== FOCUS UTILITY METHODS =====
 
         // Get all focusable elements in this window (recursive search)
-        std::vector<UltraCanvasElement*> GetFocusableElements();
+        std::vector<UltraCanvasUIElement*> GetFocusableElements();
 
         // Collect focusable elements from a container recursively
         void CollectFocusableElements(UltraCanvasContainer* container,
-                                      std::vector<UltraCanvasElement*>& elements);
+                                      std::vector<UltraCanvasUIElement*>& elements);
 
         // Find next/previous focusable element in tab order
-        UltraCanvasElement* FindNextFocusableElement(UltraCanvasElement* current);
-        UltraCanvasElement* FindPreviousFocusableElement(UltraCanvasElement* current);
+        UltraCanvasUIElement* FindNextFocusableElement(UltraCanvasUIElement* current);
+        UltraCanvasUIElement* FindPreviousFocusableElement(UltraCanvasUIElement* current);
 
         // Send focus events to elements
-        void SendFocusGainedEvent(UltraCanvasElement* element);
-        void SendFocusLostEvent(UltraCanvasElement* element);
+        void SendFocusGainedEvent(UltraCanvasUIElement* element);
+        void SendFocusLostEvent(UltraCanvasUIElement* element);
     };
 
 } // namespace UltraCanvas

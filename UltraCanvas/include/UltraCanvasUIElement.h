@@ -19,7 +19,7 @@ namespace UltraCanvas {
 
 // Forward declarations
     class UltraCanvasContainer;
-    class UltraCanvasElement;
+    class UltraCanvasUIElement;
     class UltraCanvasWindow;
     class IRenderContext;
 
@@ -116,7 +116,7 @@ namespace UltraCanvas {
     };
 
 // ===== LEAF UI ELEMENT CLASS (NO CHILDREN) =====
-    class UltraCanvasElement {
+    class UltraCanvasUIElement {
     private:
         // Timing and animation
         std::chrono::steady_clock::time_point lastUpdateTime;
@@ -133,15 +133,15 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
-        UltraCanvasElement(const std::string& identifier = "", long id = 0,
-                           int x = 0, int y = 0, int w = 100, int h = 30)
+        UltraCanvasUIElement(const std::string& identifier = "", long id = 0,
+                             int x = 0, int y = 0, int w = 100, int h = 30)
                 : properties(identifier, id, x, y, w, h),
                   creationTime(std::chrono::steady_clock::now()),
                   lastUpdateTime(creationTime) {
             stateFlags.Reset();
         }
 
-        virtual ~UltraCanvasElement() {
+        virtual ~UltraCanvasUIElement() {
             // Remove from parent container if attached
             if (parentContainer) {
                 // Container will handle removal
@@ -365,7 +365,7 @@ namespace UltraCanvas {
     };
 
 // ===== FACTORY SYSTEM =====
-    class UltraCanvasElementFactory {
+    class UltraCanvasUIElementFactory {
     public:
         template<typename ElementType, typename... Args>
         static std::shared_ptr<ElementType> Create(Args&&... args) {

@@ -183,7 +183,7 @@ struct AudioControlsStyle {
 };
 
 // ===== MAIN AUDIO ELEMENT =====
-class UltraCanvasAudioElement : public UltraCanvasElement {
+class UltraCanvasAudioElement : public UltraCanvasUIElement {
 private:
     // ===== STANDARD PROPERTIES (REQUIRED) =====
     StandardProperties properties;
@@ -222,7 +222,7 @@ public:
     // ===== CONSTRUCTOR (REQUIRED PATTERN) =====
     UltraCanvasAudioElement(const std::string& identifier = "AudioElement", 
                            long id = 0, long x = 0, long y = 0, long w = 400, long h = 120)
-        : UltraCanvasElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         // Initialize standard properties
         properties = StandardProperties(identifier, id, x, y, w, h);
@@ -785,7 +785,7 @@ private:
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasAudioElement> CreateAudioElement(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasAudioElement>(
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasAudioElement>(
         id, identifier, id, x, y, w, h);
 }
 

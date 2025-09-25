@@ -37,7 +37,7 @@ enum class FileDialogType {
 };
 
 // ===== FILE DIALOG COMPONENT =====
-class UltraCanvasFileDialog : public UltraCanvasElement {
+class UltraCanvasFileDialog : public UltraCanvasUIElement {
 public:
     // ===== DIALOG PROPERTIES =====
     FileDialogType dialogType = FileDialogType::Open;
@@ -76,7 +76,7 @@ public:
     std::function<void(const std::string&)> onDirectoryChanged;
     
     UltraCanvasFileDialog(const std::string& elementId, long uniqueId, long posX, long posY, long w, long h)
-        : UltraCanvasElement(elementId, uniqueId, posX, posY, w, h) {
+        : UltraCanvasUIElement(elementId, uniqueId, posX, posY, w, h) {
         
         // Initialize with current directory
         currentPath = std::filesystem::current_path().string();
@@ -194,7 +194,7 @@ public:
     
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override {
-        UltraCanvasElement::OnEvent(event);
+        UltraCanvasUIElement::OnEvent(event);
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -846,7 +846,7 @@ window->AddElement(fileDialog.get());
 === INTEGRATION NOTES ===
 
 This implementation:
-- ✅ Extends UltraCanvasElement properly
+- ✅ Extends UltraCanvasUIElement properly
 - ✅ Uses unified rendering system with ULTRACANVAS_RENDER_SCOPE()
 - ✅ Handles UCEvent properly with comprehensive event processing
 - ✅ Follows naming conventions (PascalCase)

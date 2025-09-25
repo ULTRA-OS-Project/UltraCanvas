@@ -16,7 +16,7 @@ namespace UltraCanvas {
 
 // ===== RENDERING IMPLEMENTATION =====
     void UltraCanvasContainer::SetWindow(UltraCanvasWindow *win) {
-        UltraCanvasElement::SetWindow(win);
+        UltraCanvasUIElement::SetWindow(win);
         // Propagate to children
         for (auto& child : children) {
             child->SetWindow(win);
@@ -111,7 +111,7 @@ namespace UltraCanvas {
         // to element under cursor or to focused element
 
         // Handle base element events
-        return UltraCanvasElement::OnEvent(event);
+        return UltraCanvasUIElement::OnEvent(event);
     }
 
 // ===== PRIVATE IMPLEMENTATION METHODS =====
@@ -449,7 +449,7 @@ namespace UltraCanvas {
                                               horizontalThumbRect.Contains(mousePos);
     }
 
-    void UltraCanvasContainer::AddOrMoveChild(std::shared_ptr<UltraCanvasElement> child) {
+    void UltraCanvasContainer::AddOrMoveChild(std::shared_ptr<UltraCanvasUIElement> child) {
         if (!child || child->GetParentContainer() == this) return;
 
         // Remove from previous parent if any
@@ -484,7 +484,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasContainer::RemoveChild(std::shared_ptr<UltraCanvasElement> child) {
+    void UltraCanvasContainer::RemoveChild(std::shared_ptr<UltraCanvasUIElement> child) {
         auto it = std::find(children.begin(), children.end(), child);
         if (it != children.end()) {
             // Unregister from popup system
@@ -521,7 +521,7 @@ namespace UltraCanvas {
         layoutDirty = true;
     }
 
-    UltraCanvasElement *UltraCanvasContainer::FindChildById(const std::string &id) {
+    UltraCanvasUIElement *UltraCanvasContainer::FindChildById(const std::string &id) {
         for (const auto& child : children) {
             if (child->GetIdentifier() == id) {
                 return child.get();
@@ -537,7 +537,7 @@ namespace UltraCanvas {
         return nullptr;
     }
 
-//    UltraCanvasElement* UltraCanvasContainer::FindElementAtPoint(int x, int y) {
+//    UltraCanvasUIElement* UltraCanvasContainer::FindElementAtPoint(int x, int y) {
 //        // First check if point is within our bounds
 //        if (!Contains(x, y)) {
 //            return nullptr;
@@ -570,7 +570,7 @@ namespace UltraCanvas {
 //                continue;
 //            }
 //
-//            UltraCanvasElement* child = it->get();
+//            UltraCanvasUIElement* child = it->get();
 //
 //            // CRITICAL: Check if the child element intersects with visible content area
 //            Rect2Di childBounds = child->GetBounds();
@@ -586,7 +586,7 @@ namespace UltraCanvas {
 //                // Recursively check child elements
 //                auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
 //                if (childContainer) {
-//                    UltraCanvasElement* hitElement = childContainer->FindElementAtPoint(contentX, contentY);
+//                    UltraCanvasUIElement* hitElement = childContainer->FindElementAtPoint(contentX, contentY);
 //                    if (hitElement) {
 //                        return hitElement;
 //                    }
@@ -598,7 +598,7 @@ namespace UltraCanvas {
 //        return this; // Hit container but no children
 //    }
 
-    UltraCanvasElement* UltraCanvasContainer::FindElementAtPoint(int x, int y) {
+    UltraCanvasUIElement* UltraCanvasContainer::FindElementAtPoint(int x, int y) {
         // First check if point is within our bounds
         if (!Contains(x, y)) {
             return nullptr;
@@ -631,7 +631,7 @@ namespace UltraCanvas {
                 continue;
             }
 
-            UltraCanvasElement* child = it->get();
+            UltraCanvasUIElement* child = it->get();
             Rect2Di childBounds = child->GetBounds();
 
             // CRITICAL FIX: Check if content-relative coordinates are within child bounds
@@ -645,7 +645,7 @@ namespace UltraCanvas {
                     auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
                     if (childContainer) {
                         // Pass child-relative coordinates to child container
-                        UltraCanvasElement* hitElement = childContainer->FindElementAtPoint(contentX, contentY);
+                        UltraCanvasUIElement* hitElement = childContainer->FindElementAtPoint(contentX, contentY);
                         if (hitElement) {
                             return hitElement;
                         }
@@ -697,7 +697,7 @@ namespace UltraCanvas {
     /**
     * Check if a child element is visible (not completely clipped)
     */
-    bool UltraCanvasContainer::IsChildVisible(UltraCanvasElement* child) const {
+    bool UltraCanvasContainer::IsChildVisible(UltraCanvasUIElement* child) const {
         if (!child || !child->IsVisible()) {
             return false;
         }

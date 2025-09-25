@@ -5,7 +5,7 @@
 // Author: UltraCanvas Framework
 #pragma once
 
-#include "UltraCanvasElement.h"
+#include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasLayoutEngine.h"
@@ -423,7 +423,7 @@ private:
 };
 
 // ===== MARKDOWN DISPLAY COMPONENT =====
-class UltraCanvasMarkdownDisplay : public UltraCanvasElement {
+class UltraCanvasMarkdownDisplay : public UltraCanvasUIElement {
 private:
     // Standard properties
     StandardProperties properties;
@@ -453,7 +453,7 @@ public:
     // ===== CONSTRUCTOR =====
     UltraCanvasMarkdownDisplay(const std::string& identifier = "MarkdownDisplay", 
                               long id = 0, long x = 0, long y = 0, long w = 400, long h = 300)
-        : UltraCanvasElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         // Initialize standard properties
         ULTRACANVAS_ELEMENT_PROPERTIES(properties);

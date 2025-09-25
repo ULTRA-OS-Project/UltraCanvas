@@ -61,7 +61,7 @@ namespace UltraCanvas {
     };
 
 // ===== MAIN BUTTON CLASS (DEFINE FIRST) =====
-    class UltraCanvasButton : public UltraCanvasElement {
+    class UltraCanvasButton : public UltraCanvasUIElement {
     private:
         std::string text = "Button";
         ButtonStyle style;
@@ -132,14 +132,14 @@ namespace UltraCanvas {
             const std::string& identifier, long id, long x, long y, long w, long h,
             const std::string& text = "Button") {
 
-        return UltraCanvasElementFactory::CreateWithID<UltraCanvasButton>(
+        return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasButton>(
                 id, identifier, id, x, y, w, h, text);
     }
 
     inline std::shared_ptr<UltraCanvasButton> CreateAutoButton(
             const std::string& identifier, long x, long y, const std::string& text = "Button") {
 
-        auto button = UltraCanvasElementFactory::Create<UltraCanvasButton>(
+        auto button = UltraCanvasUIElementFactory::Create<UltraCanvasButton>(
                 identifier, 0, x, y, 100, 30, text);
         button->AutoResize();
         return button;

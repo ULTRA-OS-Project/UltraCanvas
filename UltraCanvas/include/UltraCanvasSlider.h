@@ -77,7 +77,7 @@ namespace UltraCanvas {
     };
 
 // ===== MAIN SLIDER COMPONENT =====
-    class UltraCanvasSlider : public UltraCanvasElement {
+    class UltraCanvasSlider : public UltraCanvasUIElement {
     private:
         // ===== STANDARD PROPERTIES (REQUIRED) =====
         StandardProperties properties;
@@ -109,7 +109,7 @@ namespace UltraCanvas {
         // ===== CONSTRUCTOR (REQUIRED PATTERN) =====
         UltraCanvasSlider(const std::string& identifier = "Slider",
                           long id = 0, long x = 0, long y = 0, long w = 200, long h = 30)
-                : UltraCanvasElement(identifier, id, x, y, w, h) {
+                : UltraCanvasUIElement(identifier, id, x, y, w, h) {
 
             // Initialize standard properties
             properties = StandardProperties(identifier, id, x, y, w, h);
@@ -283,7 +283,7 @@ namespace UltraCanvas {
                     break;
             }
 
-            return UltraCanvasElement::OnEvent(event);
+            return UltraCanvasUIElement::OnEvent(event);
         }
 
     private:

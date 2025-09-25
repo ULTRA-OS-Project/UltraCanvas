@@ -13,7 +13,7 @@ namespace UltraCanvas {
     UltraCanvasDropdown::UltraCanvasDropdown(const std::string &identifier, long id, long x, long y,
                                                           long w,
                                                           long h)
-            : UltraCanvasElement(identifier, id, x, y, w, h) {
+            : UltraCanvasUIElement(identifier, id, x, y, w, h) {
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text) {

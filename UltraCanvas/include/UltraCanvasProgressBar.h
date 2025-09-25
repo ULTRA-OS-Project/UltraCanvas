@@ -44,7 +44,7 @@ enum class ProgressState {
 };
 
 // ===== PROGRESS BAR COMPONENT =====
-class UltraCanvasProgressBar : public UltraCanvasElement {
+class UltraCanvasProgressBar : public UltraCanvasUIElement {
 public:
     // ===== PROGRESS VALUES =====
     float value = 0.0f;           // Current progress (0.0 to 1.0)
@@ -109,7 +109,7 @@ public:
     std::function<std::string(float)> onFormatText;  // Custom text formatting
     
     UltraCanvasProgressBar(const std::string& elementId, long uniqueId, long posX, long posY, long w, long h)
-        : UltraCanvasElement(elementId, uniqueId, posX, posY, w, h) {
+        : UltraCanvasUIElement(elementId, uniqueId, posX, posY, w, h) {
         
         // Auto-detect orientation based on dimensions
         if (w < h) {
@@ -298,7 +298,7 @@ public:
     
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override {
-        UltraCanvasElement::OnEvent(event);
+        UltraCanvasUIElement::OnEvent(event);
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -904,7 +904,7 @@ window->AddElement(errorProgress.get());
 === INTEGRATION NOTES ===
 
 This implementation:
-- ✅ Extends UltraCanvasElement properly with full inheritance
+- ✅ Extends UltraCanvasUIElement properly with full inheritance
 - ✅ Uses unified rendering system with ULTRACANVAS_RENDER_SCOPE()
 - ✅ Handles UCEvent with mouse and keyboard interaction
 - ✅ Follows naming conventions (PascalCase for all identifiers)

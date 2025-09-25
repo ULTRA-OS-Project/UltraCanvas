@@ -60,7 +60,7 @@ namespace UltraCanvas {
         bool closable = true;
         Color textColor = Colors::Black;
         Color backgroundColor = Color(240, 240, 240);
-        std::shared_ptr<UltraCanvasElement> content = nullptr;
+        std::shared_ptr<UltraCanvasUIElement> content = nullptr;
         void* userData = nullptr;
 
         TabData(const std::string& tabTitle) : title(tabTitle) {}
@@ -182,7 +182,7 @@ namespace UltraCanvas {
         }
 
         // ===== TAB MANAGEMENT =====
-        int AddTab(const std::string& title, std::shared_ptr<UltraCanvasElement> content = nullptr);
+        int AddTab(const std::string& title, std::shared_ptr<UltraCanvasUIElement> content = nullptr);
         void RemoveTab(int index);
         void SetActiveTab(int index);
 

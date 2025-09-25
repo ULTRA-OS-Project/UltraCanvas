@@ -99,7 +99,7 @@ struct Button3SectionsAppearance {
 };
 
 // ===== MAIN COMPONENT CLASS =====
-class UltraCanvasButton3Sections : public UltraCanvasElement {
+class UltraCanvasButton3Sections : public UltraCanvasUIElement {
 private:
     // ===== STANDARD PROPERTIES (REQUIRED) =====
     StandardProperties properties;
@@ -125,7 +125,7 @@ public:
     // ===== CONSTRUCTOR (REQUIRED PATTERN) =====
     UltraCanvasButton3Sections(const std::string& identifier = "Button3Sections", 
                               long id = 0, long x = 0, long y = 0, long w = 150, long h = 30)
-        : UltraCanvasElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         // Initialize standard properties
         properties = StandardProperties(identifier, id, x, y, w, h);
@@ -667,7 +667,7 @@ inline Button3SectionsAppearance Button3SectionsAppearance::Dashboard() {
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasButton3Sections> CreateButton3Sections(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasButton3Sections>(
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasButton3Sections>(
         id, identifier, id, x, y, w, h);
 }
 

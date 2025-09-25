@@ -96,11 +96,11 @@ namespace UltraCanvas {
     };
 
 // ===== ELEMENT DEBUG EXTENSION =====
-    class UltraCanvasElementDebugExtension {
+    class UltraCanvasUIElementDebugExtension {
     public:
-        // Main debug rendering function for any UltraCanvasElement
-        static std::string RenderDebugInfo(UltraCanvasElement* element,
-                                    const DebugRenderSettings& settings = UltraCanvasDebugRenderer::GetGlobalSettings()) {
+        // Main debug rendering function for any UltraCanvasUIElement
+        static std::string RenderDebugInfo(UltraCanvasUIElement* element,
+                                           const DebugRenderSettings& settings = UltraCanvasDebugRenderer::GetGlobalSettings()) {
             if (!element || !UltraCanvasDebugRenderer::IsDebugEnabled()) return "";
             auto ctx = element->GetRenderContext();
             ctx->PushState();
@@ -125,7 +125,7 @@ namespace UltraCanvas {
         }
 
         // Render debug info for element hierarchy
-//        static void RenderDebugHierarchy(UltraCanvasElement* rootElement,
+//        static void RenderDebugHierarchy(UltraCanvasUIElement* rootElement,
 //                                         const DebugRenderSettings& settings = UltraCanvasDebugRenderer::GetGlobalSettings()) {
 //            if (!rootElement || !UltraCanvasDebugRenderer::IsDebugEnabled()) return;
 //
@@ -139,7 +139,7 @@ namespace UltraCanvas {
 //        }
 
         // Quick debug render with default settings
-//        static void QuickDebug(UltraCanvasElement* element) {
+//        static void QuickDebug(UltraCanvasUIElement* element) {
 //            DebugRenderSettings quickSettings;
 //            quickSettings.showBorders = true;
 //            quickSettings.showElementID = true;
@@ -191,7 +191,7 @@ namespace UltraCanvas {
             ctx->PopState();
         }
 
-        static std::string GenerateDebugText(UltraCanvasElement* element, const DebugRenderSettings& settings, IRenderContext* ctx) {
+        static std::string GenerateDebugText(UltraCanvasUIElement* element, const DebugRenderSettings& settings, IRenderContext* ctx) {
             std::ostringstream debugText;
 
             if (settings.showElementID) {
@@ -309,8 +309,8 @@ namespace UltraCanvas {
 // ===== CONVENIENCE FUNCTIONS =====
 
 // Global function for easy debugging
-    inline void DrawElementDebug(UltraCanvasElement* element) {
-        UltraCanvasElementDebugExtension::RenderDebugInfo(element);
+    inline void DrawElementDebug(UltraCanvasUIElement* element) {
+        UltraCanvasUIElementDebugExtension::RenderDebugInfo(element);
     }
 
 // Enable/disable global debugging
@@ -319,25 +319,25 @@ namespace UltraCanvas {
     }
 
 // Quick debug all elements in a container
-    inline void DebugAllElements(const std::vector<UltraCanvasElement*>& elements) {
+    inline void DebugAllElements(const std::vector<UltraCanvasUIElement*>& elements) {
         for (auto* element : elements) {
             if (element) {
-                UltraCanvasElementDebugExtension::RenderDebugInfo(element);
+                UltraCanvasUIElementDebugExtension::RenderDebugInfo(element);
             }
         }
     }
 
 // ===== ELEMENT EXTENSION METHODS =====
 
-// Extension to add debug rendering to any UltraCanvasElement
+// Extension to add debug rendering to any UltraCanvasUIElement
 // This can be called directly on element instances
-    inline void RenderElementDebugOverlay(UltraCanvasElement* element) {
-        UltraCanvasElementDebugExtension::RenderDebugInfo(element);
+    inline void RenderElementDebugOverlay(UltraCanvasUIElement* element) {
+        UltraCanvasUIElementDebugExtension::RenderDebugInfo(element);
     }
 
 // Render debug info with custom settings
-    inline void RenderElementDebugOverlay(UltraCanvasElement* element, const DebugRenderSettings& settings) {
-        UltraCanvasElementDebugExtension::RenderDebugInfo(element, settings);
+    inline void RenderElementDebugOverlay(UltraCanvasUIElement* element, const DebugRenderSettings& settings) {
+        UltraCanvasUIElementDebugExtension::RenderDebugInfo(element, settings);
     }
 
 } // namespace UltraCanvas

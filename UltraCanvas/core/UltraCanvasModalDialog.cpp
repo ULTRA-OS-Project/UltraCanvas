@@ -24,7 +24,7 @@ namespace UltraCanvas {
 // ===== MODAL DIALOG IMPLEMENTATION =====
 
     UltraCanvasModalDialog::UltraCanvasModalDialog(const std::string& identifier, long id, long x, long y, long w, long h)
-            : UltraCanvasElement(identifier, id, x, y, w, h), properties(identifier, id, x, y, w, h),
+            : UltraCanvasUIElement(identifier, id, x, y, w, h), properties(identifier, id, x, y, w, h),
               result(DialogResult::None), isVisible(false), isClosing(false), isDragging(false) {
 
         // Set default configuration
@@ -77,7 +77,7 @@ namespace UltraCanvas {
         CalculateLayout();
     }
 
-    void UltraCanvasModalDialog::AddCustomElement(std::shared_ptr<UltraCanvasElement> element) {
+    void UltraCanvasModalDialog::AddCustomElement(std::shared_ptr<UltraCanvasUIElement> element) {
         if (element) {
             config.customElements.push_back(element);
             CalculateLayout();
@@ -278,7 +278,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasModalDialog::IsVisible() const {
-        return isVisible && UltraCanvasElement::IsVisible();
+        return isVisible && UltraCanvasUIElement::IsVisible();
     }
 
     void UltraCanvasModalDialog::CalculateLayout() {

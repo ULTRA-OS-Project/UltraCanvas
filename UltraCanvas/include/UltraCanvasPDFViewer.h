@@ -58,7 +58,7 @@ struct PDFViewerEvent {
 };
 
 // ===== PDF THUMBNAIL ITEM =====
-class UltraCanvasPDFThumbnail : public UltraCanvasElement {
+class UltraCanvasPDFThumbnail : public UltraCanvasUIElement {
 private:
     StandardProperties properties;
     int pageNumber;
@@ -74,7 +74,7 @@ public:
     std::function<void(int)> onPageSelected;
     
     UltraCanvasPDFThumbnail(const std::string& id, long uid, long x, long y, long w, long h, int page)
-        : UltraCanvasElement(id, uid, x, y, w, h), pageNumber(page), isSelected(false), isLoading(false) {
+        : UltraCanvasUIElement(id, uid, x, y, w, h), pageNumber(page), isSelected(false), isLoading(false) {
         
         properties.SetPosition(x, y);
         properties.SetSize(w, h);
@@ -136,7 +136,7 @@ public:
         }
         
         // Render children (thumbnail image)
-        UltraCanvasElement::HandleRender();
+        UltraCanvasUIElement::HandleRender();
     }
     
     bool HandleEvent(const UCEvent& event) override {
@@ -149,12 +149,12 @@ public:
             }
         }
         
-        return UltraCanvasElement::HandleEvent(event);
+        return UltraCanvasUIElement::HandleEvent(event);
     }
 };
 
 // ===== PDF VIEWER MAIN COMPONENT =====
-class UltraCanvasPDFViewer : public UltraCanvasElement {
+class UltraCanvasPDFViewer : public UltraCanvasUIElement {
 private:
     // ===== STANDARD PROPERTIES (REQUIRED) =====
     StandardProperties properties;
@@ -229,7 +229,7 @@ public:
     std::function<void(float)> onLoadingProgress;  // (progress 0.0-1.0)
     
     UltraCanvasPDFViewer(const std::string& id, long uid, long x, long y, long w, long h)
-        : UltraCanvasElement(id, uid, x, y, w, h) {
+        : UltraCanvasUIElement(id, uid, x, y, w, h) {
         
         properties.SetPosition(x, y);
         properties.SetSize(w, h);
@@ -457,7 +457,7 @@ public:
         }
         
         // Render all child components
-        UltraCanvasElement::HandleRender();
+        UltraCanvasUIElement::HandleRender();
     }
     
     bool HandleEvent(const UCEvent& event) override {
@@ -498,7 +498,7 @@ public:
             return true;
         }
         
-        return UltraCanvasElement::HandleEvent(event);
+        return UltraCanvasUIElement::HandleEvent(event);
     }
 
 private:
@@ -1008,12 +1008,12 @@ private:
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasPDFViewer> CreatePDFViewer(
     const std::string& id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::Create<UltraCanvasPDFViewer>(id, 0, x, y, w, h);
+    return UltraCanvasUIElementFactory::Create<UltraCanvasPDFViewer>(id, 0, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasPDFViewer> CreatePDFViewerWithID(
     const std::string& id, long uid, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasPDFViewer>(uid, id, uid, x, y, w, h);
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasPDFViewer>(uid, id, uid, x, y, w, h);
 }
 
 } // namespace UltraCanvas
@@ -1022,10 +1022,10 @@ inline std::shared_ptr<UltraCanvasPDFViewer> CreatePDFViewerWithID(
 // ===== STUB IMPLEMENTATION WHEN PDF SUPPORT IS DISABLED =====
 namespace UltraCanvas {
 
-class UltraCanvasPDFViewer : public UltraCanvasElement {
+class UltraCanvasPDFViewer : public UltraCanvasUIElement {
 public:
     UltraCanvasPDFViewer(const std::string& id, long uid, long x, long y, long w, long h)
-        : UltraCanvasElement(id, uid, x, y, w, h) {
+        : UltraCanvasUIElement(id, uid, x, y, w, h) {
         std::cerr << "PDF Viewer: Not compiled with PDF support" << std::endl;
     }
     
@@ -1069,7 +1069,7 @@ inline std::shared_ptr<UltraCanvasPDFViewer> CreatePDFViewer(
 - Background and border color customization
 
 ✅ **UltraCanvas Integration**:
-- Extends UltraCanvasElement with StandardProperties
+- Extends UltraCanvasUIElement with StandardProperties
 - Uses unified rendering system (ULTRACANVAS_RENDER_SCOPE)
 - Proper UCEvent handling for all interactions
 - Factory functions for easy creation

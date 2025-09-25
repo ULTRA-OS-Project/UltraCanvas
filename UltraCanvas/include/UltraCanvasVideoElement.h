@@ -220,7 +220,7 @@ public:
 };
 
 // ===== MAIN VIDEO ELEMENT COMPONENT =====
-class UltraCanvasVideoElement : public UltraCanvasElement {
+class UltraCanvasVideoElement : public UltraCanvasUIElement {
 private:
     // ===== STANDARD PROPERTIES (REQUIRED) =====
     StandardProperties properties;
@@ -270,7 +270,7 @@ public:
     // ===== CONSTRUCTOR (REQUIRED PATTERN) =====
     UltraCanvasVideoElement(const std::string& identifier = "VideoElement", 
                            long id = 0, long x = 0, long y = 0, long w = 640, long h = 480)
-        : UltraCanvasElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         // Initialize standard properties
         properties = StandardProperties(identifier, id, x, y, w, h);
@@ -1010,7 +1010,7 @@ inline VideoControlsStyle VideoControlsStyle::Light() {
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasVideoElement> CreateVideoElement(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasVideoElement>(
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasVideoElement>(
         id, identifier, id, x, y, w, h);
 }
 

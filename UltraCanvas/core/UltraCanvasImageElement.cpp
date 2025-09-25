@@ -17,7 +17,7 @@ namespace UltraCanvas {
 
     UltraCanvasImageElement::UltraCanvasImageElement(const std::string &identifier, long id, long x, long y, long w,
                                                      long h)
-            : UltraCanvasElement(identifier, id, x, y, w, h), properties(identifier, id, x, y, w, h) {
+            : UltraCanvasUIElement(identifier, id, x, y, w, h), properties(identifier, id, x, y, w, h) {
 
         properties.MousePtr = MousePointer::Default;
         properties.MouseCtrl = MouseControls::Object2D;

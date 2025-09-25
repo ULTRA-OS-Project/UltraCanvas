@@ -1,248 +1,424 @@
-// include/UltraCanvasTextArea.h
-// Multi-line text editor component with scrollbars, line numbers, and syntax highlighting
-// Version: 1.3.0
-// Last Modified: 2025-08-27
+// UltraCanvasTextArea.h
+// Advanced text area component with syntax highlighting
+// Version: 2.0.0
+// Last Modified: 2024-12-20
 // Author: UltraCanvas Framework
+
 #pragma once
 
-#include "UltraCanvasCommonTypes.h"
-#include "UltraCanvasUIElement.h"
-#include "UltraCanvasRenderContext.h"
+#include "UltraCanvasUI.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasRenderContext.h"
 #include <string>
 #include <vector>
-#include <algorithm>
-#include <cmath>
+#include <functional>
+#include <memory>
+#include <utility>
 
 namespace UltraCanvas {
 
-// ===== TEXT AREA CONFIGURATION =====
-    enum class LineWrapMode {
-        NoneWrap,
-        Word,
-        Character
+// Forward declarations
+    class SyntaxTokenizer;
+    enum class TokenType;
+
+// Syntax highlighting mode
+    enum class SyntaxMode {
+        PlainText,      // No syntax highlighting
+        Programming,    // Uses LanguageRules from UltraCanvasSyntaxHighlightingRules.h
+        Markdown,       // Markdown formatting
+        JSON,           // JSON syntax
+        XML,            // XML/HTML syntax
+        Custom          // User-defined rules
     };
 
-    enum class ScrollBarMode {
-        Auto,
-        AlwaysShow,  // Changed from "Always" to avoid X11 conflict
-        Never
+    struct TokenStyle {
+        Color color = Color(0, 0, 0);
+        bool bold = false;
+        bool italic = false;
+        bool underline = false;
+
+        TokenStyle() = default;
+
+        TokenStyle(const Color &c, bool b = false, bool i = false, bool u = false)
+                : color(c), bold(b), italic(i), underline(u) {}
     };
 
+// Text area style structure
     struct TextAreaStyle {
-        UltraCanvas::Color backgroundColor = UltraCanvas::Colors::White;
-        UltraCanvas::Color textColor = UltraCanvas::Colors::Black;
-        UltraCanvas::Color borderColor = UltraCanvas::Colors::Gray;
-        UltraCanvas::Color selectionColor = UltraCanvas::Color(173, 216, 230, 128); // Light blue with transparency
-        UltraCanvas::Color lineNumberColor = UltraCanvas::Colors::Gray;
-        UltraCanvas::Color lineNumberBackgroundColor = UltraCanvas::Color(248, 248, 248);
-        UltraCanvas::Color scrollbarColor = UltraCanvas::Color(200, 200, 200);
-        UltraCanvas::Color scrollbarThumbColor = UltraCanvas::Color(160, 160, 160);
+        // Font properties
+        std::string fontFamily;
+        int fontSize;
+        Color fontColor;
 
-        std::string fontFamily = "Arial";
-        float fontSize = 12.0f;
-        int lineHeight = 16;
-        int scrollbarThickness = 10;
-        float paddingLeft = 5.0f;     // Left padding inside content area
-        float paddingTop = 2.0f;      // Top padding inside content area
-        float paddingRight = 5.0f;    // Right padding inside content area
-        float paddingBottom = 2.0f;   // Bottom padding inside content area
+        // Background and borders
+        Color backgroundColor;
+        Color borderColor;
+        int borderWidth;
+        int padding;
 
-        bool showLineNumbers = false;
-        bool showScrollbars = true;
-        LineWrapMode wrapMode = LineWrapMode::NoneWrap;
-        ScrollBarMode verticalScrollMode = ScrollBarMode::Auto;
-        ScrollBarMode horizontalScrollMode = ScrollBarMode::Auto;
+        // Selection and cursor
+        Color selectionColor;
+        Color cursorColor;
 
-        int tabSize = 4;
-        bool convertTabsToSpaces = false;
+        // Line numbers
+        bool showLineNumbers;
+        int lineNumbersWidth;
+        Color lineNumbersColor;
+        Color lineNumbersBackgroundColor;
 
-        static TextAreaStyle Default() {
-            return TextAreaStyle();
-        }
+        // Current line highlighting
+        Color currentLineColor;
 
-        static TextAreaStyle Code() {
-            TextAreaStyle style;
-            style.fontFamily = "Courier New";
-            style.showLineNumbers = true;
-            style.backgroundColor = UltraCanvas::Color(248, 248, 248);
-            style.lineNumberBackgroundColor = UltraCanvas::Color(240, 240, 240);
-            return style;
-        }
+        // Syntax highlighting mode
+        SyntaxMode syntaxMode;
+
+        // Syntax highlighting colors
+        struct TokenStyles {
+            TokenStyle keywordStyle;
+            TokenStyle typeStyle;
+            TokenStyle functionStyle;
+            TokenStyle numberStyle;
+            TokenStyle stringStyle;
+            TokenStyle characterStyle;
+            TokenStyle commentStyle;
+            TokenStyle operatorStyle;
+            TokenStyle punctuationStyle;
+            TokenStyle preprocessorStyle;
+            TokenStyle constantStyle;
+            TokenStyle identifierStyle;
+            TokenStyle builtinStyle;
+            TokenStyle assemblyStyle;
+            TokenStyle registerStyle;
+            TokenStyle unknownStyle;
+        } tokenStyles;
     };
 
-// ===== MAIN TEXT AREA CLASS =====
-    class UltraCanvasTextArea : public UltraCanvasElement {
-    private:
-        // Text content
-        std::vector<std::string> lines;
-
-        // Cursor and selection
-        int cursorLine = 0;
-        int cursorColumn = 0;
-        bool hasSelection = false;
-        int selectionStartLine = 0;
-        int selectionStartColumn = 0;
-        int selectionEndLine = 0;
-        int selectionEndColumn = 0;
-
-        // Scrolling
-        int scrollOffsetX = 0;
-        int scrollOffsetY = 0;
-        int maxVisibleLines = 0;
-        int maxVisibleColumns = 0;
-
-        // Scrollbars
-        bool hasVerticalScrollbar = false;
-        bool hasHorizontalScrollbar = false;
-        UltraCanvas::Rect2Di verticalScrollThumb;
-        UltraCanvas::Rect2Di horizontalScrollThumb;
-        bool isDraggingVerticalThumb = false;
-        bool isDraggingHorizontalThumb = false;
-        UltraCanvas::Point2Di dragStartOffset;  // Offset from thumb start when dragging begins
-
-        // Style and configuration
-        TextAreaStyle style;
-        bool readOnly = false;
-        bool isCaretVisible = true;
-
-        // Text measurement cache for performance
-        struct TextMeasurement {
-            std::string text;
-            std::string fontFamily;
-            float fontSize;
-            float width;
-            bool valid = false;
-        };
-        mutable TextMeasurement lastMeasurement;
-
+// Text area control with integrated syntax highlighting
+    class UltraCanvasTextArea : public UltraCanvasUIElement {
     public:
-        // Constructor
-        UltraCanvasTextArea(const std::string& id, long uid, long x, long y, long h, long w, const TextAreaStyle& textStyle = TextAreaStyle::Default());
+        // Constructor and destructor
+        UltraCanvasTextArea(const std::string& name, int id, int x, int y, int width, int height);
+        virtual ~UltraCanvasTextArea();
 
-        // ===== CORE TEXT MEASUREMENT FUNCTIONS =====
+        bool AcceptsFocus() const override { return true; }
+        // Render method
+        virtual void Render() override;
 
-        // Get accurate text width using the rendering system
-        int GetTextWidth(const std::string& text) const;
+        // Event handling
+        virtual bool OnEvent(const UCEvent& event) override;
 
-        // Get character width at specific position (for proportional fonts)
-        float GetCharacterWidth(const std::string& text, size_t position) const;
-
-        // Convert pixel X position to column position in a line
-        int GetColumnFromPixelX(const std::string& lineText, float pixelX) const;
-
-        // Convert column position to pixel X position in a line
-        float GetPixelXFromColumn(const std::string& lineText, int column) const;
-
-        // ===== CURSOR POSITIONING FUNCTIONS =====
-
-        Point2Di GetCursorScreenPosition() const;
-        float GetLineNumberWidth() const;
-        void SetCursorPosition(int line, int column);
-
-        // **Content area calculation methods with padding**
-        Rect2Df GetContentArea() const;
-        Rect2Df GetTextRenderArea() const;
-        float GetEffectiveContentWidth() const;
-        float GetEffectiveContentHeight() const;
-
-        // ===== TEXT CONTENT MANAGEMENT =====
-
+        // Text manipulation
         void SetText(const std::string& text);
         std::string GetText() const;
         void InsertText(const std::string& text);
-
-
-        void SetSelection(int startLine, int startColumn, int endLine, int endColumn);
-        void ClearSelection();
-        void DeleteSelection();
-
-        // ===== SCROLLING AND VISIBILITY =====
-
-        void EnsureCursorVisible();
-        void UpdateScrollBars();
-
-        // ===== RENDERING FUNCTIONS =====
-
-        void Render() override;
-        bool OnEvent(const UCEvent& event) override;
-
-    private:
-        void DrawTextContent(IRenderContext *ctx);
-        void DrawSelection(IRenderContext *ctx);
-        void DrawCursor(IRenderContext *ctx);
-        void DrawLineNumbers(IRenderContext *ctx);
-        void DrawScrollBars(IRenderContext *ctx);
-
-        void InvalidateTextMeasurementCache() { lastMeasurement.valid = false; }
-
-        bool HandleMouseDown(const UCEvent& event);
-        bool HandleMouseMove(const UCEvent& event);
-        bool HandleMouseUp(const UCEvent& event);
-        bool HandleKeyDown(const UCEvent& event);
-        bool HandleMouseWheel(const UCEvent& event);
-        bool HandleTextInput(const std::string& text);
-
-        // ===== CURSOR MOVEMENT HELPERS =====
-
-        void MoveCursor(int deltaColumn, int deltaLine, bool extendSelection);
-        void MoveCursorToLineStart(bool extendSelection);
-        void MoveCursorToLineEnd(bool extendSelection);
-        void MoveCursorByWord(int direction, bool extendSelection);
-        void SetCursorFromPoint(const UltraCanvas::Point2Di& point);
-        // ===== TEXT EDITING OPERATIONS =====
-
+        void InsertCharacter(char ch);
         void InsertNewLine();
         void InsertTab();
+        void DeleteCharacterBackward();
+        void DeleteCharacterForward();
+        void DeleteSelection();
+        void Clear() { SetText(""); }
 
-        void DeleteCharacterBeforeCursor();
-        void DeleteCharacterAfterCursor();
+        // Cursor movement
+        void MoveCursorLeft(bool selecting = false);
+        void MoveCursorRight(bool selecting = false);
+        void MoveCursorUp(bool selecting = false);
+        void MoveCursorDown(bool selecting = false);
+        void MoveCursorToLineStart(bool selecting = false);
+        void MoveCursorToLineEnd(bool selecting = false);
+        void MoveCursorToStart(bool selecting = false);
+        void MoveCursorToEnd(bool selecting = false);
+        void SetCursorPosition(int position);
+        int GetCursorPosition() const { return cursorPosition; }
 
-    public:
-        // ===== ACCESSORS AND MUTATORS =====
-        void UnindentLine();
-        void Undo();
-        void Redo();
-
+        // Selection
         void SelectAll();
-        void CopySelection();
-        void PasteFromClipboard();
-        void CutSelection();
-
-        void SetStyle(const TextAreaStyle& newStyle);
-        const TextAreaStyle& GetStyle() const { return style; }
-
-        void SetReadOnly(bool readOnlyMode);
-        bool IsReadOnly() const { return readOnly;}
-
-        void SetCaretVisible(bool visible);
-        bool IsCaretVisible() const { return isCaretVisible; }
-
-        int GetLineCount() const {
-            return static_cast<int>(lines.size());
-        }
-        std::string GetLine(int lineIndex) const;
-        void SetLine(int lineIndex, const std::string& lineText);
-
-        // Get current cursor position
-        std::pair<int, int> GetCursorPosition() const { return std::make_pair(cursorLine, cursorColumn); }
-        // Get selection bounds
-        std::tuple<int, int, int, int> GetSelection() const;
-        bool HasSelection() const { return hasSelection; }
+        void SelectLine(int lineIndex);
+        void SelectWord();
+        void SetSelection(int start, int end);
+        void ClearSelection();
+        bool HasSelection() const;
         std::string GetSelectedText() const;
 
-        virtual bool AcceptsFocus() const override { return true; }
+        // Clipboard operations
+        void CopySelection();
+        void CutSelection();
+        void PasteClipboard();
+
+        // Syntax highlighting
+        void SetSyntaxMode(SyntaxMode mode);
+        SyntaxMode GetSyntaxMode() const { return style.syntaxMode; }
+        void SetProgrammingLanguage(const std::string& language);
+        void SetProgrammingLanguageByExtension(const std::string& extension);
+        void SetSyntaxTheme(const std::string& theme);
+        void UpdateSyntaxHighlighting();
+
+        // Theme application
+        void ApplyDarkTheme();
+//        void ApplyLightTheme();
+//        void ApplySolarizedTheme();
+//        void ApplyMonokaiTheme();
+        void ApplyCustomTheme(const TextAreaStyle& customStyle);
+
+        // Quick style applications
+        void ApplyCodeStyle(const std::string& language);
+        void ApplyDarkCodeStyle(const std::string& language);
+        void ApplyPlainTextStyle();
+//        void ApplyMarkdownStyle();
+//        void ApplyJSONStyle();
+//        void ApplyXMLStyle();
+
+        // Line operations
+        void GoToLine(int lineNumber);
+        int GetCurrentLine() const;
+        int GetCurrentColumn() const;
+        int GetLineCount() const;
+        std::string GetLine(int lineIndex) const;
+        void SetLine(int lineIndex, const std::string& text);
+
+        // Search and replace
+        void FindText(const std::string& searchText, bool caseSensitive = false);
+        void FindNext();
+        void FindPrevious();
+        void ReplaceText(const std::string& findText, const std::string& replaceText, bool all = false);
+        void HighlightMatches(const std::string& searchText);
+        void ClearHighlights();
+
+        // Undo/Redo (basic support)
+        void Undo();
+        void Redo();
+        bool CanUndo() const;
+        bool CanRedo() const;
+
+        // Properties
+        void SetReadOnly(bool readOnly) { isReadOnly = readOnly; }
+        bool IsReadOnly() const { return isReadOnly; }
+
+        void SetMultiLine(bool multiLine) { isMultiLine = multiLine; }
+        bool IsMultiLine() const { return isMultiLine; }
+
+        void SetWordWrap(bool wrap) { wordWrap = wrap; }
+        bool GetWordWrap() const { return wordWrap; }
+
+        void SetHighlightCurrentLine(bool highlight) { highlightCurrentLine = highlight; }
+        bool GetHighlightCurrentLine() const { return highlightCurrentLine; }
+
+        void SetShowLineNumbers(bool show) { style.showLineNumbers = show; }
+        bool GetShowLineNumbers() const { return style.showLineNumbers; }
+
+        void SetTabSize(int size) { tabSize = size; }
+        int GetTabSize() const { return tabSize; }
+
+        // Style access
+        void SetStyle(const TextAreaStyle& newStyle) { style = newStyle; }
+        TextAreaStyle& GetStyle() { return style; }
+        const TextAreaStyle& GetStyle() const { return style; }
+
+        // Font settings
+        void SetFont(const std::string& family, int size);
+        void SetFontFamily(const std::string& family);
+        void SetFontSize(int size);
+
+        // Color settings
+        void SetTextColor(const Color& color) { style.fontColor = color; }
+        void SetBackgroundColor(const Color& color) { style.backgroundColor = color; }
+        void SetSelectionColor(const Color& color) { style.selectionColor = color; }
+        void SetCursorColor(const Color& color) { style.cursorColor = color; }
+
+        // Scrolling
+        void ScrollTo(int line);
+        void ScrollUp(int lines = 1);
+        void ScrollDown(int lines = 1);
+        void ScrollLeft(int chars = 1);
+        void ScrollRight(int chars = 1);
+        void EnsureCursorVisible();
+
+        // Callbacks
+        using TextChangedCallback = std::function<void(const std::string&)>;
+        using CursorPositionChangedCallback = std::function<void(int line, int column)>;
+        using SelectionChangedCallback = std::function<void(int start, int end)>;
+
+        void SetOnTextChanged(TextChangedCallback callback) { onTextChanged = callback; }
+        void SetOnCursorPositionChanged(CursorPositionChangedCallback callback) { onCursorPositionChanged = callback; }
+        void SetOnSelectionChanged(SelectionChangedCallback callback) { onSelectionChanged = callback; }
+
+        // Auto-completion support
+        void ShowAutoComplete(const std::vector<std::string>& suggestions);
+        void HideAutoComplete();
+        void AcceptAutoComplete();
+
+//        // Code folding support
+//        void FoldLine(int lineIndex);
+//        void UnfoldLine(int lineIndex);
+//        void FoldAll();
+//        void UnfoldAll();
+//        bool IsLineFolded(int lineIndex) const;
+
+        // Bracket matching
+        void HighlightMatchingBrackets();
+        void JumpToMatchingBracket();
+
+        // Indentation
+        void IndentSelection();
+        void UnindentSelection();
+        void AutoIndentLine(int lineIndex);
+
+        // Comments
+        void ToggleLineComment();
+        void ToggleBlockComment();
+
+        // Bookmarks
+        void ToggleBookmark(int lineIndex);
+        void NextBookmark();
+        void PreviousBookmark();
+        void ClearAllBookmarks();
+
+        // Error markers
+        void AddErrorMarker(int lineIndex, const std::string& message);
+        void AddWarningMarker(int lineIndex, const std::string& message);
+        void ClearMarkers();
+
+    protected:
+        // Drawing methods
+        void DrawBackground(IRenderContext* context);
+        void DrawBorder(IRenderContext* context);
+        void DrawLineNumbers(IRenderContext* context);
+        void DrawText(IRenderContext* context);
+        void DrawPlainText(IRenderContext* context);
+        void DrawHighlightedText(IRenderContext* context);
+        void DrawSelection(IRenderContext* context);
+        void DrawCursor(IRenderContext* context);
+        void DrawScrollbars(IRenderContext* context);
+        void DrawAutoComplete(IRenderContext* context);
+        void DrawMarkers(IRenderContext* context);
+
+        // Event handlers
+        bool HandleMouseClick(const UCEvent& event);
+        bool HandleMouseDoubleClick(const UCEvent& event);
+        bool HandleMouseMove(const UCEvent& event);
+        bool HandleMouseDrag(const UCEvent& event);
+        bool HandleMouseWheel(const UCEvent& event);
+        bool HandleKeyPress(const UCEvent& event);
+        bool HandleTextInput(const UCEvent& event);
+
+        // Helper methods
+        std::pair<int, int> GetLineColumnFromPosition(int position) const;
+        int GetPositionFromLineColumn(int line, int column) const;
+        std::pair<int, int> GetLineColumnFromPoint(int x, int y) const;
+        void UpdateVisibleLines();
+        void RebuildText();
+        int GetMaxLineLength() const;
+        int GetVisibleCharactersPerLine() const;
+        bool NeedsScrollbars() const;
+        const TokenStyle& GetStyleForTokenType(TokenType type) const;
+
+        // Clipboard helpers
+        void SetClipboardText(const std::string& text);
+        std::string GetClipboardText() const;
+
+        // Initialization
+        void ApplyDefaultStyle();
+
+    private:
+        // Text data
+        std::string text;
+        std::vector<std::string> lines;
+
+        // Cursor and selection
+        int cursorPosition;
+        int selectionStart;
+        int selectionEnd;
+
+        // Scrolling
+        int horizontalScrollOffset;
+        int verticalScrollOffset;
+        int firstVisibleLine;
+        int maxVisibleLines;
+
+        // Cursor animation
+        double cursorBlinkTime;
+        bool cursorVisible;
+
+        // Properties
+        bool isReadOnly;
+        bool isMultiLine;
+        bool wordWrap;
+        bool highlightCurrentLine;
+        int currentLineIndex;
+        int tabSize = 4;
+
+        // Font metrics
+        int fontSize;
+        int lineHeight;
+        std::string fontFamily;
+        int leftMargin;
+        int characterWidth;
+
+        // Style
+        TextAreaStyle style;
+
+        // Syntax highlighter
+        std::unique_ptr<SyntaxTokenizer> syntaxHighlighter;
+
+        // Search state
+        std::string lastSearchText;
+        int lastSearchPosition;
+        bool lastSearchCaseSensitive;
+
+        // Undo/Redo stacks
+        struct TextState {
+            std::string text;
+            int cursorPosition;
+            int selectionStart;
+            int selectionEnd;
+        };
+        std::vector<TextState> undoStack;
+        std::vector<TextState> redoStack;
+        const size_t maxUndoStackSize = 100;
+
+        // Auto-completion
+        bool showingAutoComplete;
+        std::vector<std::string> autoCompleteSuggestions;
+        int selectedSuggestion;
+
+        // Bookmarks
+        std::vector<int> bookmarks;
+
+        // Error/Warning markers
+        struct Marker {
+            enum Type { Error, Warning, Info };
+            Type type;
+            int line;
+            std::string message;
+        };
+        std::vector<Marker> markers;
+
+        // Callbacks
+        TextChangedCallback onTextChanged;
+        CursorPositionChangedCallback onCursorPositionChanged;
+        SelectionChangedCallback onSelectionChanged;
     };
 
-// ===== FACTORY FUNCTIONS =====
+// Factory functions for quick creation
+    std::shared_ptr<UltraCanvasTextArea> CreateCodeEditor(
+            const std::string& name, int id, int x, int y, int width, int height,
+            const std::string& language = "C++");
 
-    inline std::shared_ptr<UltraCanvasTextArea> CreateTextArea(const std::string& id, long uid, long x, long y, long width, long height) {
-        return std::make_shared<UltraCanvasTextArea>(id, uid, x, y, width, height);
-    }
+    std::shared_ptr<UltraCanvasTextArea> CreateDarkCodeEditor(
+            const std::string& name, int id, int x, int y, int width, int height,
+            const std::string& language = "C++");
 
-    inline std::shared_ptr<UltraCanvasTextArea> CreateTextArea(const std::string& id, long uid, const Rect2Di& bounds) {
-        return std::make_shared<UltraCanvasTextArea>(id, uid, bounds.x, bounds.y, bounds.width, bounds.height);
-    }
+    std::shared_ptr<UltraCanvasTextArea> CreatePlainTextEditor(
+            const std::string& name, int id, int x, int y, int width, int height);
+
+    std::shared_ptr<UltraCanvasTextArea> CreateMarkdownEditor(
+            const std::string& name, int id, int x, int y, int width, int height);
+
+    std::shared_ptr<UltraCanvasTextArea> CreateJSONEditor(
+            const std::string& name, int id, int x, int y, int width, int height);
+
+    std::shared_ptr<UltraCanvasTextArea> CreateXMLEditor(
+            const std::string& name, int id, int x, int y, int width, int height);
 
 } // namespace UltraCanvas
-

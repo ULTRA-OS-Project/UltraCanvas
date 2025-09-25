@@ -144,7 +144,7 @@ namespace UltraCanvas {
     };
 
 // ===== MAIN MENU CLASS =====
-    class UltraCanvasMenu : public UltraCanvasElement, public std::enable_shared_from_this<UltraCanvasMenu> {
+    class UltraCanvasMenu : public UltraCanvasUIElement, public std::enable_shared_from_this<UltraCanvasMenu> {
     private:
         // Menu properties
         MenuType menuType = MenuType::PopupMenu;
@@ -180,7 +180,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTORS =====
         UltraCanvasMenu(const std::string& identifier, long id, long x, long y, long w, long h)
-                : UltraCanvasElement(identifier, id, x, y, w, h) {
+                : UltraCanvasUIElement(identifier, id, x, y, w, h) {
             style = MenuStyle::Default();
         }
 
@@ -385,7 +385,7 @@ namespace UltraCanvas {
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasMenu> CreateMenu(
             const std::string& identifier, long id, long x, long y, long w, long h) {
-        return UltraCanvasElementFactory::CreateWithID<UltraCanvasMenu>(
+        return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasMenu>(
                 id, identifier, id, x, y, w, h);
     }
 

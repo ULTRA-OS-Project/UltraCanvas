@@ -71,7 +71,7 @@ struct ImageData {
 };
 
 // ===== IMAGE ELEMENT COMPONENT =====
-class UltraCanvasImageElement : public UltraCanvasElement {
+class UltraCanvasImageElement : public UltraCanvasUIElement {
 private:
     StandardProperties properties;
     
@@ -195,7 +195,7 @@ private:
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageElement(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasImageElement>(id, identifier, id, x, y, w, h);
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasImageElement>(id, identifier, id, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromFile(

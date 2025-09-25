@@ -410,7 +410,7 @@ private:
 };
 
 // ===== RADIO BUTTON COMPONENT =====
-class UltraCanvasRadioButton : public UltraCanvasElement {
+class UltraCanvasRadioButton : public UltraCanvasUIElement {
 private:
     StandardProperties properties;
     
@@ -429,7 +429,7 @@ private:
 public:
     UltraCanvasRadioButton(const std::string& identifier = "RadioButton", 
                           long id = 0, long x = 0, long y = 0, long w = 120, long h = 24)
-        : UltraCanvasElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         properties = StandardProperties(identifier, id, x, y, w, h);
         properties.MousePtr = MousePointer::Hand;
@@ -716,7 +716,7 @@ private:
 };
 
 // ===== SWITCH COMPONENT =====
-class UltraCanvasSwitch : public UltraCanvasElement {
+class UltraCanvasSwitch : public UltraCanvasUIElement {
 private:
     StandardProperties properties;
     
@@ -740,7 +740,7 @@ private:
 public:
     UltraCanvasSwitch(const std::string& identifier = "Switch", 
                      long id = 0, long x = 0, long y = 0, long w = 80, long h = 32)
-        : UltraCanvasElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         properties = StandardProperties(identifier, id, x, y, w, h);
         properties.MousePtr = MousePointer::Hand;
@@ -1072,7 +1072,7 @@ private:
 };
 
 // ===== RADIO GROUP MANAGER =====
-class UltraCanvasRadioGroup : public UltraCanvasElement {
+class UltraCanvasRadioGroup : public UltraCanvasUIElement {
 private:
     StandardProperties properties;
     std::vector<std::shared_ptr<UltraCanvasRadioButton>> radioButtons;
@@ -1083,7 +1083,7 @@ private:
 public:
     UltraCanvasRadioGroup(const std::string& identifier = "RadioGroup", 
                          long id = 0, long x = 0, long y = 0, long w = 200, long h = 100)
-        : UltraCanvasElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         properties = StandardProperties(identifier, id, x, y, w, h);
     }
@@ -1233,25 +1233,25 @@ inline AdvancedControlStyle AdvancedControlStyle::Dark() {
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasAdvancedSlider> CreateAdvancedSlider(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasAdvancedSlider>(
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasAdvancedSlider>(
         id, identifier, id, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasRadioButton> CreateRadioButton(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasRadioButton>(
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasRadioButton>(
         id, identifier, id, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasSwitch> CreateSwitch(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasSwitch>(
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasSwitch>(
         id, identifier, id, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasRadioGroup> CreateRadioGroup(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasRadioGroup>(
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasRadioGroup>(
         id, identifier, id, x, y, w, h);
 }
 

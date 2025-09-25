@@ -18,7 +18,7 @@
 namespace UltraCanvas {
 
 // Forward declarations
-    class UltraCanvasElement;
+    class UltraCanvasUIElement;
     struct GraphicsFileInfo;
 
 // ===== GRAPHICS MANIPULATION ENUM =====
@@ -257,9 +257,9 @@ namespace UltraCanvas {
         virtual bool CanHandle(const GraphicsFileInfo& fileInfo) const = 0;
 
         // Graphics operations
-        virtual std::shared_ptr<UltraCanvasElement> LoadGraphics(const std::string& filePath) = 0;
-        virtual std::shared_ptr<UltraCanvasElement> LoadGraphics(const GraphicsFileInfo& fileInfo) = 0;
-        virtual std::shared_ptr<UltraCanvasElement> CreateGraphics(int width, int height, GraphicsFormatType type) = 0;
+        virtual std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const std::string& filePath) = 0;
+        virtual std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const GraphicsFileInfo& fileInfo) = 0;
+        virtual std::shared_ptr<UltraCanvasUIElement> CreateGraphics(int width, int height, GraphicsFormatType type) = 0;
 
         // Information and capabilities
         virtual GraphicsManipulation GetSupportedManipulations() const = 0;
@@ -394,14 +394,14 @@ namespace UltraCanvas {
             return info.IsValid() && (info.CanDisplay() || FindPluginForFile(filePath) != nullptr);
         }
 
-        static std::shared_ptr<UltraCanvasElement> LoadGraphics(const std::string& filePath) {
+        static std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const std::string& filePath) {
             auto plugin = FindPluginForFile(filePath);
             if (!plugin) return nullptr;
 
             return plugin->LoadGraphics(filePath);
         }
 
-        static std::shared_ptr<UltraCanvasElement> CreateGraphics(int width, int height, GraphicsFormatType type) {
+        static std::shared_ptr<UltraCanvasUIElement> CreateGraphics(int width, int height, GraphicsFormatType type) {
             for (const auto& plugin : plugins) {
                 auto element = plugin->CreateGraphics(width, height, type);
                 if (element) return element;
@@ -458,7 +458,7 @@ namespace UltraCanvas {
         UltraCanvasGraphicsPluginRegistry::RegisterPlugin(plugin);
     }
 
-    inline std::shared_ptr<UltraCanvasElement> LoadGraphicsFile(const std::string& filePath) {
+    inline std::shared_ptr<UltraCanvasUIElement> LoadGraphicsFile(const std::string& filePath) {
         return UltraCanvasGraphicsPluginRegistry::LoadGraphics(filePath);
     }
 

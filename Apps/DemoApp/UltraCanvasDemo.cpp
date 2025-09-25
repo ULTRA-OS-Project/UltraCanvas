@@ -487,7 +487,7 @@ namespace UltraCanvas {
 // ===== DEMO CATEGORY BUILDER IMPLEMENTATION =====
     DemoCategoryBuilder& DemoCategoryBuilder::AddItem(const std::string& id, const std::string& name,
                                                       const std::string& description, ImplementationStatus status,
-                                                      std::function<std::shared_ptr<UltraCanvasElement>()> creator) {
+                                                      std::function<std::shared_ptr<UltraCanvasUIElement>()> creator) {
         auto item = std::make_unique<DemoItem>(id, name, description, category, status);
         item->createExample = creator;
         app->RegisterDemoItem(std::move(item));

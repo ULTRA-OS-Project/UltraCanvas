@@ -131,7 +131,7 @@ namespace UltraCanvas {
             return pendingShow;
         }
 
-//        static UltraCanvasElement* GetTooltipSource() {
+//        static UltraCanvasUIElement* GetTooltipSource() {
 //            return tooltipSource;
 //        }
         void SetStyle(const TooltipStyle &newStyle);

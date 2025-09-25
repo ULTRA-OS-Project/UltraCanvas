@@ -102,7 +102,7 @@ namespace UltraCanvas {
     };
 
 // ===== TOAST ELEMENT CLASS =====
-    class UltraCanvasToast : public UltraCanvasElement {
+    class UltraCanvasToast : public UltraCanvasUIElement {
     private:
         StandardProperties properties;
         ToastConfig config;

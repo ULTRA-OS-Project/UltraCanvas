@@ -460,7 +460,7 @@ namespace TemplateCustomization {
 
 // Example: Create a custom element factory
 void RegisterCustomElementFactory(UltraCanvasTemplate* template_) {
-    template_->RegisterElementFactory("ColorButton", [](const TemplateElementDescriptor& desc) -> std::shared_ptr<UltraCanvasElement> {
+    template_->RegisterElementFactory("ColorButton", [](const TemplateElementDescriptor& desc) -> std::shared_ptr<UltraCanvasUIElement> {
         auto button = std::make_shared<UltraCanvasButton>(desc.identifier, 0, 0, 0, 24, 24);
         
         // Set button background color from properties

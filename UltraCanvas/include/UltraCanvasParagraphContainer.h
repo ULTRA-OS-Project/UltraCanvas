@@ -127,7 +127,7 @@ struct CursorPosition {
 };
 
 // ===== PARAGRAPH CONTAINER CLASS =====
-class UltraCanvasParagraphContainer : public UltraCanvasElement {
+class UltraCanvasParagraphContainer : public UltraCanvasUIElement {
 private:
     // Standard properties
     StandardProperties properties;
@@ -164,7 +164,7 @@ public:
     // ===== CONSTRUCTOR =====
     UltraCanvasParagraphContainer(const std::string& identifier = "ParagraphContainer", 
                                  long id = 0, long x = 0, long y = 0, long w = 300, long h = 200)
-        : UltraCanvasElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         properties = StandardProperties(identifier, id, x, y, w, h);
         properties.MousePtr = MousePointer::IBeam;
@@ -925,13 +925,13 @@ private:
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasParagraphContainer> CreateParagraphContainer(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasParagraphContainer>(
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasParagraphContainer>(
         id, identifier, id, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasParagraphContainer> CreateRichTextEditor(
     const std::string& identifier, long x, long y, long w, long h) {
-    auto container = UltraCanvasElementFactory::Create<UltraCanvasParagraphContainer>(
+    auto container = UltraCanvasUIElementFactory::Create<UltraCanvasParagraphContainer>(
         identifier, 0, x, y, w, h);
     container->SetEditable(true);
     return container;
@@ -939,7 +939,7 @@ inline std::shared_ptr<UltraCanvasParagraphContainer> CreateRichTextEditor(
 
 inline std::shared_ptr<UltraCanvasParagraphContainer> CreateRichTextViewer(
     const std::string& identifier, long x, long y, long w, long h) {
-    auto container = UltraCanvasElementFactory::Create<UltraCanvasParagraphContainer>(
+    auto container = UltraCanvasUIElementFactory::Create<UltraCanvasParagraphContainer>(
         identifier, 0, x, y, w, h);
     container->SetEditable(false);
     return container;
@@ -953,7 +953,7 @@ inline std::shared_ptr<UltraCanvasParagraphContainer> CreateRichTextViewer(
 === FIXES APPLIED FOR ULTRACANVAS INTEGRATION ===
 
 ✅ **Architecture Compliance:**
-1. **Inherits from UltraCanvasElement** - proper hierarchy integration
+1. **Inherits from UltraCanvasUIElement** - proper hierarchy integration
 2. **Uses StandardProperties + macro** - consistent property management
 3. **Unified rendering with ULTRACANVAS_RENDER_SCOPE()** - no direct Cairo calls
 4. **UCEvent handling** - proper event integration

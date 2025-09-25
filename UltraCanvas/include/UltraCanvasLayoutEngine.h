@@ -18,7 +18,7 @@
 namespace UltraCanvas {
 
 // Forward declaration
-class UltraCanvasElement;
+class UltraCanvasUIElement;
 
 // ===== LAYOUT ENUMS =====
 enum class LayoutDirection {
@@ -189,15 +189,15 @@ struct LayoutItem {
     int marginBottom = 0;
     
     // Element reference (optional)
-    UltraCanvasElement* element = nullptr;
+    UltraCanvasUIElement* element = nullptr;
     
     LayoutItem() = default;
     
     LayoutItem(const std::string& id, long uid, float x, float y, float w, float h)
         : Identifier(id), IdentifierID(uid), x_pos(x), y_pos(y), width_size(w), height_size(h) {}
     
-    // Create from UltraCanvasElement
-    static LayoutItem FromElement(UltraCanvasElement* elem) {
+    // Create from UltraCanvasUIElement
+    static LayoutItem FromElement(UltraCanvasUIElement* elem) {
         LayoutItem item;
         if (elem) {
             item.Identifier = elem->GetIdentifier();
@@ -213,7 +213,7 @@ struct LayoutItem {
         return item;
     }
     
-    // Apply back to UltraCanvasElement
+    // Apply back to UltraCanvasUIElement
     void ApplyToElement() {
         if (element) {
             element->SetX(static_cast<long>(x_pos));
@@ -310,13 +310,13 @@ public:
     // ===== CONVENIENCE FUNCTIONS FOR ELEMENTS =====
     static void PerformLayout(float containerWidth, float containerHeight, 
                              const LayoutParams& params, 
-                             std::vector<UltraCanvasElement*>& elements) {
+                             std::vector<UltraCanvasUIElement*>& elements) {
         
         // Convert elements to layout items
         std::vector<LayoutItem> items;
         items.reserve(elements.size());
         
-        for (UltraCanvasElement* elem : elements) {
+        for (UltraCanvasUIElement* elem : elements) {
             if (elem) {
                 items.push_back(LayoutItem::FromElement(elem));
             }
@@ -330,9 +330,9 @@ public:
     
     static void PerformLayout(float containerWidth, float containerHeight, 
                              const LayoutParams& params, 
-                             std::vector<std::shared_ptr<UltraCanvasElement>>& elements) {
+                             std::vector<std::shared_ptr<UltraCanvasUIElement>>& elements) {
         
-        std::vector<UltraCanvasElement*> rawElements;
+        std::vector<UltraCanvasUIElement*> rawElements;
         rawElements.reserve(elements.size());
         
         for (auto& elem : elements) {
@@ -781,12 +781,12 @@ inline void PerformLayout(int containerWidth, int containerHeight,
 
 // Modern functions
 inline void PerformLayout(const Rect2Di& container, const LayoutParams& params,
-                          std::vector<UltraCanvasElement*>& elements) {
+                          std::vector<UltraCanvasUIElement*>& elements) {
     UltraCanvasLayoutEngine::PerformLayout(container.width, container.height, params, elements);
 }
 
 inline void PerformLayout(const Rect2Di& container, const LayoutParams& params,
-                          std::vector<std::shared_ptr<UltraCanvasElement>>& elements) {
+                          std::vector<std::shared_ptr<UltraCanvasUIElement>>& elements) {
     UltraCanvasLayoutEngine::PerformLayout(container.width, container.height, params, elements);
 }
 
@@ -850,11 +850,11 @@ public:
     }
     
     // Apply layout immediately
-    void Apply(const Rect2Di& container, std::vector<UltraCanvasElement*>& elements) {
+    void Apply(const Rect2Di& container, std::vector<UltraCanvasUIElement*>& elements) {
         UltraCanvasLayoutEngine::PerformLayout(container.width, container.height, params, elements);
     }
     
-    void Apply(const Rect2Di& container, std::vector<std::shared_ptr<UltraCanvasElement>>& elements) {
+    void Apply(const Rect2Di& container, std::vector<std::shared_ptr<UltraCanvasUIElement>>& elements) {
         UltraCanvasLayoutEngine::PerformLayout(container.width, container.height, params, elements);
     }
 };
@@ -871,7 +871,7 @@ public:
 2. **UltraCanvas Namespace** - proper organization
 3. **Modern C++ Features** - enums classes, smart pointers, RAII
 4. **StandardProperties Integration** - works with LayoutItem::FromElement()
-5. **Element Integration** - direct UltraCanvasElement support
+5. **Element Integration** - direct UltraCanvasUIElement support
 
 ✅ **Enhanced Layout System:**
 1. **Multiple Layout Types** - Horizontal, Vertical, Grid, Stack, Dock, Flow, Absolute
@@ -883,7 +883,7 @@ public:
 ✅ **Modern Features:**
 1. **Builder Pattern** - LayoutBuilder for fluent configuration
 2. **Constraint System** - LayoutConstraints for flexible sizing
-3. **Element Integration** - direct support for UltraCanvasElement
+3. **Element Integration** - direct support for UltraCanvasUIElement
 4. **Size Calculation** - calculate required container size
 5. **Wrapping Support** - flow layouts with line wrapping
 

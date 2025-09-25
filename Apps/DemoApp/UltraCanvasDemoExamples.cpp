@@ -16,7 +16,8 @@ namespace UltraCanvas {
 
 // ===== BASIC UI ELEMENTS =====
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateButtonExamples() {
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateButtonExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("ButtonExamples", 100, 0, 0, 1000, 600);
 
         // Title
@@ -80,7 +81,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateTextInputExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextInputExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("TextInputExamples", 200, 0, 0, 1000, 600);
 
         // Title
@@ -109,7 +110,7 @@ namespace UltraCanvas {
         container->AddOrMoveChild(multiLineInput);
 
         auto multiLineLabel = std::make_shared<UltraCanvasLabel>("MultiLineLabel", 205, 20, 225, 200, 20);
-        multiLineLabel->SetText("Multi-line Text Area");
+        multiLineLabel->SetText("Multi-line Text Input");
         multiLineLabel->SetFontSize(12);
         container->AddOrMoveChild(multiLineLabel);
 
@@ -137,10 +138,20 @@ namespace UltraCanvas {
         numericLabel->SetFontSize(12);
         container->AddOrMoveChild(numericLabel);
 
+        auto textAreaInput = std::make_shared<UltraCanvasTextArea>("TextArea", 204, 20, 270, 400, 100);
+//        textAreaInput->SetPlaceholder("Enter multi-line text...\nSupports line breaks.");
+//        multiLineInput->SetWordWrap(true);
+        container->AddOrMoveChild(textAreaInput);
+
+        auto textAreaLabel = std::make_shared<UltraCanvasLabel>("TextAreaLabel", 205, 20, 375, 200, 20);
+        textAreaLabel->SetText("Text Area");
+        textAreaLabel->SetFontSize(12);
+        container->AddOrMoveChild(textAreaLabel);
+
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateDropdownExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDropdownExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("DropdownExamples", 300, 0, 0, 1000, 600);
 
         // Title
@@ -195,7 +206,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateSliderExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSliderExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("SliderExamples", 400, 0, 0, 1000, 600);
 
         // Title
@@ -260,7 +271,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateLabelExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLabelExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("LabelExamples", 500, 0, 0, 1000, 600);
 
         // Title
@@ -321,7 +332,7 @@ namespace UltraCanvas {
 
 // ===== EXTENDED FUNCTIONALITY =====
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateTreeViewExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTreeViewExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("TreeViewExamples", 600, 0, 0, 1000, 600);
 
         // Title
@@ -392,7 +403,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateTabExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTabExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("TabExamples", 700, 0, 0, 1000, 600);
 
         // Title
@@ -454,7 +465,7 @@ namespace UltraCanvas {
 
 // ===== GRAPHICS AND MEDIA EXAMPLES =====
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreatePDFExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePDFExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("PDFExamples", 800, 0, 0, 1000, 600);
 
         // Title
@@ -492,7 +503,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateVectorExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("VectorExamples", 900, 0, 0, 1000, 600);
 
         // Title
@@ -534,7 +545,7 @@ namespace UltraCanvas {
 
 // ===== NOT IMPLEMENTED PLACEHOLDERS =====
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateToolbarExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateToolbarExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("ToolbarExamples", 1000, 0, 0, 1000, 600);
 
         // Title
@@ -557,7 +568,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateTableViewExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTableViewExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("TableViewExamples", 1100, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("TableViewTitle", 1101, 10, 10, 300, 30);
@@ -578,7 +589,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateListViewExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateListViewExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("ListViewExamples", 1200, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("ListViewTitle", 1201, 10, 10, 300, 30);
@@ -599,7 +610,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateMenuExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuExamples() {
         std::cout << "Creating Menu Examples..." << std::endl;
 
         // Create container for menu examples
@@ -902,7 +913,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateDialogExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDialogExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("DialogExamples", 1400, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("DialogTitle", 1401, 10, 10, 300, 30);
@@ -923,7 +934,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateBitmapExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBitmapExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("BitmapExamples", 1500, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("BitmapTitle", 1501, 10, 10, 300, 30);
@@ -944,7 +955,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::Create3DExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::Create3DExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("Graphics3DExamples", 1600, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("Graphics3DTitle", 1601, 10, 10, 300, 30);
@@ -965,7 +976,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateVideoExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("VideoExamples", 1700, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("VideoTitle", 1701, 10, 10, 300, 30);
@@ -986,7 +997,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateTextDocumentExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextDocumentExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("TextDocumentExamples", 1800, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("TextDocumentTitle", 1801, 10, 10, 300, 30);
@@ -1007,7 +1018,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateMarkdownExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarkdownExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("MarkdownExamples", 1900, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("MarkdownTitle", 1901, 10, 10, 300, 30);
@@ -1028,7 +1039,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateCodeEditorExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCodeEditorExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("CodeEditorExamples", 2000, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("CodeEditorTitle", 2001, 10, 10, 300, 30);
@@ -1062,7 +1073,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateAudioExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAudioExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("AudioExamples", 2100, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("AudioTitle", 2101, 10, 10, 300, 30);
@@ -1083,7 +1094,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateDiagramExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDiagramExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("DiagramExamples", 2200, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("DiagramTitle", 2201, 10, 10, 300, 30);
@@ -1104,7 +1115,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateChartExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChartExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("ChartExamples", 2300, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("ChartTitle", 2301, 10, 10, 300, 30);
@@ -1125,7 +1136,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateInfoGraphicsExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateInfoGraphicsExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("InfoGraphicsExamples", 2400, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("InfoGraphicsTitle", 2401, 10, 10, 300, 30);
@@ -1146,7 +1157,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasElement> UltraCanvasDemoApplication::CreateDivergingChartExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDivergingChartExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("DivergingChartExamples", 2500, 0, 0, 1000, 600);
 
         // Title

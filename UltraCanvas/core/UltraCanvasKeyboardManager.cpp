@@ -39,7 +39,7 @@ namespace UltraCanvas {
     std::vector<std::function<void(UCKeys, KeyState)>> UltraCanvasKeyboardManager::keyStateCallbacks;
     std::vector<std::function<void(const std::string&)>> UltraCanvasKeyboardManager::textInputCallbacks;
 
-    UltraCanvasElement* UltraCanvasKeyboardManager::focusedElement = nullptr;
+    UltraCanvasUIElement* UltraCanvasKeyboardManager::focusedElement = nullptr;
     bool UltraCanvasKeyboardManager::captureFocus = false;
 
     bool UltraCanvasKeyboardManager::debugMode = false;

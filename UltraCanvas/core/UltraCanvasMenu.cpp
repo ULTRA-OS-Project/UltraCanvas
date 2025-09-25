@@ -162,7 +162,7 @@ namespace UltraCanvas {
 
         // If not handled, pass to base class
         if (!handled) {
-            return UltraCanvasElement::OnEvent(event);
+            return UltraCanvasUIElement::OnEvent(event);
         }
         return true;
     }

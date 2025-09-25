@@ -98,7 +98,7 @@ public:
 };
 
 // ===== SVG UI ELEMENT =====
-class UltraCanvasSVGElement : public UltraCanvasElement {
+class UltraCanvasSVGElement : public UltraCanvasUIElement {
 private:
     std::shared_ptr<SVGDocument> document;
     SVGElementRenderer* renderer = nullptr;
@@ -124,7 +124,7 @@ public:
     std::shared_ptr<SVGDocument> GetDocument() const { return document; }
     const std::string& GetSVGContent() const { return svgContent; }
     
-    // UltraCanvasElement interface
+    // UltraCanvasUIElement interface
     void Render() override;
     bool HandleEvent(const UCEvent& event) override { return false; }
     

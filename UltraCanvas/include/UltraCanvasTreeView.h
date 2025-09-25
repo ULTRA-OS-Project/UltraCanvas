@@ -105,7 +105,7 @@ public:
 };
 
 // ===== TREE VIEW CLASS =====
-class UltraCanvasTreeView : public UltraCanvasElement {
+class UltraCanvasTreeView : public UltraCanvasUIElement {
 private:
     // ===== TREE VIEW SPECIFIC PROPERTIES =====
     std::unique_ptr<TreeNode> rootNode;

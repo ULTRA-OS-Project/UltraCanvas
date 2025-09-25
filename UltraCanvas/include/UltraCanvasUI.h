@@ -22,7 +22,7 @@
 #include "UltraCanvasLayoutEngine.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasMenu.h"
-#include "UltraCanvasStyledText.h"
-#include "UltraCanvasShapePrimitives.h"
+//#include "UltraCanvasStyledText.h"
+//#include "UltraCanvasShapePrimitives.h"
 
 #endif

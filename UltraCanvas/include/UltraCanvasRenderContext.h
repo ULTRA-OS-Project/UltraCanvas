@@ -401,6 +401,12 @@ class UltraCanvasBaseWindow;
             SetTextStyle(style);
         }
 
+        virtual void SetFontWeight(FontWeight w) {
+            TextStyle style = GetTextStyle();
+            style.fontWeight = w;
+            SetTextStyle(style);
+        }
+
         virtual void SetTextColor(const Color& color) {
             TextStyle style = GetTextStyle();
             style.textColor = color;

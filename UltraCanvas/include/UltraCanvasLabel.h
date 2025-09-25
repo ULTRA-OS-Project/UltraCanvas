@@ -84,7 +84,7 @@ namespace UltraCanvas {
     };
 
 // ===== LABEL COMPONENT =====
-    class UltraCanvasLabel : public UltraCanvasElement {
+    class UltraCanvasLabel : public UltraCanvasUIElement {
     private:
         // ===== LABEL PROPERTIES =====
         std::string text;
@@ -104,7 +104,7 @@ namespace UltraCanvas {
         UltraCanvasLabel(const std::string& identifier = "Label",
                          long id = 0, long x = 0, long y = 0, long w = 100, long h = 25,
                          const std::string& labelText = "")
-                : UltraCanvasElement(identifier, id, x, y, w, h), text(labelText) {
+                : UltraCanvasUIElement(identifier, id, x, y, w, h), text(labelText) {
 
             // Initialize style
             style = LabelStyle::DefaultStyle();
@@ -411,7 +411,7 @@ namespace UltraCanvas {
                     break;
             }
 
-            return UltraCanvasElement::OnEvent(event);
+            return UltraCanvasUIElement::OnEvent(event);
         }
 
         // ===== SIZE CHANGES =====

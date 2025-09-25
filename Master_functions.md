@@ -303,14 +303,14 @@ static std::shared_ptr<ElementType> CreateWithIdentifier(const std::string& iden
 ### **Element Hierarchy Functions** 
 *Source: UltraCanvasUIElement.h*
 ```cpp
-UltraCanvasElement* FindElementByID(UltraCanvasElement* root, const std::string& id);
-Rect2D CalculateTotalBounds(UltraCanvasElement* root);
+UltraCanvasUIElement* FindElementByID(UltraCanvasUIElement* root, const std::string& id);
+Rect2Di CalculateTotalBounds(UltraCanvasUIElement* root);
 ```
 
 ### **Find Element Functions**
 *Source: UltraCanvasContainer.h*
 ```cpp
-UltraCanvasElement* FindElementAtPoint(int x, int y);
+UltraCanvasUIElement* FindElementAtPoint(int x, int y);
 ```
 
 ---
@@ -347,22 +347,22 @@ std::string FindSystemFont(const std::string& fontName);
 
 ### **Event Dispatch**
 ```cpp
-void DispatchEventToElements(const UCEvent& event, std::vector<UltraCanvasElement*>& elements);
-bool HandleMouseDown(const UCEvent& event, std::vector<UltraCanvasElement*>& elements);
-bool HandleMouseUp(const UCEvent& event, std::vector<UltraCanvasElement*>& elements);
-bool HandleMouseMove(const UCEvent& event, std::vector<UltraCanvasElement*>& elements);
-bool HandleMouseDoubleClick(const UCEvent& event, std::vector<UltraCanvasElement*>& elements);
-bool HandleMouseWheel(const UCEvent& event, std::vector<UltraCanvasElement*>& elements);
-bool HandleKeyboardEvent(const UCEvent& event, std::vector<UltraCanvasElement*>& elements);
+void DispatchEventToElements(const UCEvent& event, std::vector<UltraCanvasUIElement*>& elements);
+bool HandleMouseDown(const UCEvent& event, std::vector<UltraCanvasUIElement*>& elements);
+bool HandleMouseUp(const UCEvent& event, std::vector<UltraCanvasUIElement*>& elements);
+bool HandleMouseMove(const UCEvent& event, std::vector<UltraCanvasUIElement*>& elements);
+bool HandleMouseDoubleClick(const UCEvent& event, std::vector<UltraCanvasUIElement*>& elements);
+bool HandleMouseWheel(const UCEvent& event, std::vector<UltraCanvasUIElement*>& elements);
+bool HandleKeyboardEvent(const UCEvent& event, std::vector<UltraCanvasUIElement*>& elements);
 ```
 
 ### **Focus Management**
 ```cpp
-void FocusNextElement(std::vector<UltraCanvasElement*>& elements, bool reverse = false);
-void FocusPreviousElement(std::vector<UltraCanvasElement*>& elements);
-UltraCanvasElement* GetFocusedElement();
-UltraCanvasElement* GetHoveredElement();
-void SetGlobalFocus(UltraCanvasElement* element);
+void FocusNextElement(std::vector<UltraCanvasUIElement*>& elements, bool reverse = false);
+void FocusPreviousElement(std::vector<UltraCanvasUIElement*>& elements);
+UltraCanvasUIElement* GetFocusedElement();
+UltraCanvasUIElement* GetHoveredElement();
+void SetGlobalFocus(UltraCanvasUIElement* element);
 void ClearGlobalFocus();
 ```
 
@@ -373,7 +373,7 @@ bool IsShiftHeld();
 bool IsCtrlHeld();
 bool IsAltHeld();
 bool IsMetaHeld();
-void CaptureMouse(UltraCanvasElement* element);
+void CaptureMouse(UltraCanvasUIElement* element);
 void ReleaseMouse();
 ```
 
@@ -388,7 +388,7 @@ void ClearGlobalEventHandlers();
 void PrintEventInfo(const UCEvent& event);
 void PrintFocusInfo();
 void ResetEventDispatcher();
-UltraCanvasElement* FindElementAtPoint(int x, int y, std::vector<UltraCanvasElement*>& elements);
+UltraCanvasUIElement* FindElementAtPoint(int x, int y, std::vector<UltraCanvasUIElement*>& elements);
 ```
 
 ---
@@ -469,11 +469,11 @@ static MenuItemData Input(const std::string& label, const std::string& placehold
 
 ### **Template Element Creation**
 ```cpp
-std::shared_ptr<UltraCanvasElement> CreateButtonElement(const TemplateElementDescriptor& desc);
-std::shared_ptr<UltraCanvasElement> CreateLabelElement(const TemplateElementDescriptor& desc);
-std::shared_ptr<UltraCanvasElement> CreateDropDownElement(const TemplateElementDescriptor& desc);
-std::shared_ptr<UltraCanvasElement> CreateSeparatorElement(const TemplateElementDescriptor& desc);
-std::shared_ptr<UltraCanvasElement> CreateSpacerElement(const TemplateElementDescriptor& desc);
+std::shared_ptr<UltraCanvasUIElement> CreateButtonElement(const TemplateElementDescriptor& desc);
+std::shared_ptr<UltraCanvasUIElement> CreateLabelElement(const TemplateElementDescriptor& desc);
+std::shared_ptr<UltraCanvasUIElement> CreateDropDownElement(const TemplateElementDescriptor& desc);
+std::shared_ptr<UltraCanvasUIElement> CreateSeparatorElement(const TemplateElementDescriptor& desc);
+std::shared_ptr<UltraCanvasUIElement> CreateSpacerElement(const TemplateElementDescriptor& desc);
 ```
 
 ---

@@ -21,7 +21,7 @@ namespace UltraCanvas {
 // BASE CHART ELEMENT CLASS
 // =============================================================================
 
-class UltraCanvasChartElementBase : public UltraCanvasElement {
+class UltraCanvasChartElementBase : public UltraCanvasUIElement {
 public:
     protected:
         // Common chart data
@@ -71,9 +71,9 @@ public:
 
     public:
         UltraCanvasChartElementBase(const std::string &id, long uid, int x, int y, int width, int height) :
-                UltraCanvasElement(id, uid, x, y, width, height) {};
+                UltraCanvasUIElement(id, uid, x, y, width, height) {};
 //    UltraCanvasChartElementBase(const std::string& id, long uid, int x, int y, int width, int height)
-//            : UltraCanvasElement(id, uid, x, y, width, height) {
+//            : UltraCanvasUIElement(id, uid, x, y, width, height) {
 //
 //        // Enable interactive features by default
 //

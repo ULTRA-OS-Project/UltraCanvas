@@ -104,7 +104,7 @@ void UltraCanvasTemplate::ClearElements() {
 }
 
 // ===== ELEMENT ACCESS =====
-std::shared_ptr<UltraCanvasElement> UltraCanvasTemplate::GetElement(const std::string& identifier) {
+std::shared_ptr<UltraCanvasUIElement> UltraCanvasTemplate::GetElement(const std::string& identifier) {
     for (auto& element : templateElements) {
         if (element && element->GetIdentifier() == identifier) {
             return element;
@@ -408,7 +408,7 @@ Rect2D UltraCanvasTemplate::GetDragHandleRect() const {
 
 // ===== ELEMENT FACTORY REGISTRATION =====
 void UltraCanvasTemplate::RegisterElementFactory(const std::string& elementType,
-                                                 std::function<std::shared_ptr<UltraCanvasElement>(const TemplateElementDescriptor&)> factory) {
+                                                 std::function<std::shared_ptr<UltraCanvasUIElement>(const TemplateElementDescriptor&)> factory) {
     elementFactories[elementType] = factory;
 }
 
@@ -451,7 +451,7 @@ void UltraCanvasTemplate::ApplyLayout() {
     }
     
     // Convert template elements to layout items
-    std::vector<UltraCanvasElement*> elements;
+    std::vector<UltraCanvasUIElement*> elements;
     for (auto& element : templateElements) {
         if (element && element->IsVisible()) {
             elements.push_back(element.get());
@@ -661,7 +661,7 @@ void UltraCanvasTemplate::RegisterDefaultFactories() {
     });
 }
 
-std::shared_ptr<UltraCanvasElement> UltraCanvasTemplate::CreateButtonElement(const TemplateElementDescriptor& desc) {
+std::shared_ptr<UltraCanvasUIElement> UltraCanvasTemplate::CreateButtonElement(const TemplateElementDescriptor& desc) {
     auto button = std::make_shared<UltraCanvasButton>(desc.identifier, 0, 0, 0, 80, 24);
     
     button->SetText(desc.text);
@@ -680,7 +680,7 @@ std::shared_ptr<UltraCanvasElement> UltraCanvasTemplate::CreateButtonElement(con
     return button;
 }
 
-std::shared_ptr<UltraCanvasElement> UltraCanvasTemplate::CreateLabelElement(const TemplateElementDescriptor& desc) {
+std::shared_ptr<UltraCanvasUIElement> UltraCanvasTemplate::CreateLabelElement(const TemplateElementDescriptor& desc) {
     auto label = std::make_shared<UltraCanvasLabel>(desc.identifier, 0, 0, 0, 60, 20);
     
     label->SetText(desc.text);
@@ -691,7 +691,7 @@ std::shared_ptr<UltraCanvasElement> UltraCanvasTemplate::CreateLabelElement(cons
     return label;
 }
 
-std::shared_ptr<UltraCanvasElement> UltraCanvasTemplate::CreateDropDownElement(const TemplateElementDescriptor& desc) {
+std::shared_ptr<UltraCanvasUIElement> UltraCanvasTemplate::CreateDropDownElement(const TemplateElementDescriptor& desc) {
     auto dropdown = std::make_shared<UltraCanvasDropDown>(desc.identifier, 0, 0, 0, 100, 24);
     
     // Add items from properties
@@ -718,7 +718,7 @@ std::shared_ptr<UltraCanvasElement> UltraCanvasTemplate::CreateDropDownElement(c
     return dropdown;
 }
 
-std::shared_ptr<UltraCanvasElement> UltraCanvasTemplate::CreateSeparatorElement(const TemplateElementDescriptor& desc) {
+std::shared_ptr<UltraCanvasUIElement> UltraCanvasTemplate::CreateSeparatorElement(const TemplateElementDescriptor& desc) {
     bool vertical = false;
     auto verticalIt = desc.properties.find("vertical");
     if (verticalIt != desc.properties.end()) {
@@ -732,7 +732,7 @@ std::shared_ptr<UltraCanvasElement> UltraCanvasTemplate::CreateSeparatorElement(
     return separator;
 }
 
-std::shared_ptr<UltraCanvasElement> UltraCanvasTemplate::CreateSpacerElement(const TemplateElementDescriptor& desc) {
+std::shared_ptr<UltraCanvasUIElement> UltraCanvasTemplate::CreateSpacerElement(const TemplateElementDescriptor& desc) {
     float size = 8.0f;
     auto sizeIt = desc.properties.find("size");
     if (sizeIt != desc.properties.end()) {
@@ -740,7 +740,7 @@ std::shared_ptr<UltraCanvasElement> UltraCanvasTemplate::CreateSpacerElement(con
     }
     
     // Create an invisible element as spacer
-    auto spacer = std::make_shared<UltraCanvasElement>(desc.identifier, 0, 0, 0, 
+    auto spacer = std::make_shared<UltraCanvasUIElement>(desc.identifier, 0, 0, 0,
                                                       static_cast<long>(size), static_cast<long>(size));
     spacer->SetVisible(false); // Invisible but takes up space in layout
     

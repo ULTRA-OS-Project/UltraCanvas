@@ -184,7 +184,7 @@ namespace UltraCanvas {
 //        }
 //    }
 
-//    void UltraCanvasTooltipManager::OnElementHover(UltraCanvasElement *element, const std::string &tooltipText,
+//    void UltraCanvasTooltipManager::OnElementHover(UltraCanvasUIElement *element, const std::string &tooltipText,
 //                                                   const Point2Di &mousePosition) {
 //        UpdateCursorPosition(mousePosition);
 //
@@ -199,7 +199,7 @@ namespace UltraCanvas {
 //        }
 //    }
 //
-//    void UltraCanvasTooltipManager::OnElementLeave(UltraCanvasElement *element) {
+//    void UltraCanvasTooltipManager::OnElementLeave(UltraCanvasUIElement *element) {
 //        if (hoveredElement == element) {
 //            hoveredElement = nullptr;
 //            HideTooltip();

@@ -136,7 +136,7 @@ public:
 };
 
 // ===== MAIN COLOR PICKER COMPONENT =====
-class UltraCanvasColorPicker : public UltraCanvasElement {
+class UltraCanvasColorPicker : public UltraCanvasUIElement {
 private:
     // ===== STANDARD PROPERTIES (REQUIRED) =====
     StandardProperties properties;
@@ -169,7 +169,7 @@ public:
     // ===== CONSTRUCTOR (REQUIRED PATTERN) =====
     UltraCanvasColorPicker(const std::string& identifier = "ColorPicker", 
                           long id = 0, long x = 0, long y = 0, long w = 300, long h = 250)
-        : UltraCanvasElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         // Initialize standard properties
         properties = StandardProperties(identifier, id, x, y, w, h);
@@ -1203,7 +1203,7 @@ inline ColorPickerStyle ColorPickerStyle::Professional() {
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasColorPicker> CreateColorPicker(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasColorPicker>(
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasColorPicker>(
         id, identifier, id, x, y, w, h);
 }
 

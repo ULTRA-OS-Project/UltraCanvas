@@ -41,7 +41,7 @@ namespace UltraCanvas {
     };
 
 // ===== SCROLLABLE WINDOW CLASS =====
-    class UltraCanvasScrollableWindow : public UltraCanvasElement {
+    class UltraCanvasScrollableWindow : public UltraCanvasUIElement {
     private:
         // ===== STANDARD PROPERTIES =====
         StandardProperties properties;
@@ -54,7 +54,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasScrollbar> horizontalScrollbar;
 
         // ===== CHILD ELEMENTS =====
-        std::vector<std::shared_ptr<UltraCanvasElement>> children;
+        std::vector<std::shared_ptr<UltraCanvasUIElement>> children;
 
         // ===== LAYOUT STATE =====
         Rect2D contentArea;
@@ -65,7 +65,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR =====
         UltraCanvasScrollableWindow(const std::string& id, long uid, long x, long y, long w, long h)
-                : UltraCanvasElement(id, uid, x, y, w, h),
+                : UltraCanvasUIElement(id, uid, x, y, w, h),
                   properties(id, uid, x, y, w, h),
                   scrollOffset(0, 0) {
 
@@ -87,7 +87,7 @@ namespace UltraCanvas {
         const ScrollableWindowConfig& GetScrollableWindowConfig() const { return config; }
 
         // ===== CHILD MANAGEMENT =====
-        void AddChild(std::shared_ptr<UltraCanvasElement> child) {
+        void AddChild(std::shared_ptr<UltraCanvasUIElement> child) {
             if (child) {
                 children.push_back(child);
                 layoutDirty = true;
@@ -96,7 +96,7 @@ namespace UltraCanvas {
             }
         }
 
-        void RemoveChild(std::shared_ptr<UltraCanvasElement> child) {
+        void RemoveChild(std::shared_ptr<UltraCanvasUIElement> child) {
             auto it = std::find(children.begin(), children.end(), child);
             if (it != children.end()) {
                 children.erase(it);
@@ -113,7 +113,7 @@ namespace UltraCanvas {
             UpdateScrollbars();
         }
 
-        const std::vector<std::shared_ptr<UltraCanvasElement>>& GetChildren() const {
+        const std::vector<std::shared_ptr<UltraCanvasUIElement>>& GetChildren() const {
             return children;
         }
 

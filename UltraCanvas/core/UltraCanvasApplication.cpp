@@ -64,7 +64,7 @@ namespace UltraCanvas {
         return (it != windows.end()) ? *it : nullptr;
     }
 
-    UltraCanvasElement* UltraCanvasBaseApplication::GetFocusedElement() {
+    UltraCanvasUIElement* UltraCanvasBaseApplication::GetFocusedElement() {
         if (focusedWindow) {
             return focusedWindow->GetFocusedElement();
         }
@@ -166,10 +166,10 @@ namespace UltraCanvas {
         // Dispatch other events to focused element
         if (targetWindow) {
             if ((event.IsMouseEvent() || event.IsKeyboardEvent()) && targetWindow->HasActivePopups()) {
-                std::vector<UltraCanvasElement*> activePopupsCopy = targetWindow->GetActivePopups();
+                std::vector<UltraCanvasUIElement*> activePopupsCopy = targetWindow->GetActivePopups();
                 if (event.IsMouseEvent()) {
                     for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
-                        UltraCanvasElement* activePopupElement = *it;
+                        UltraCanvasUIElement* activePopupElement = *it;
                         UCEvent localEvent = event;
                         localEvent.targetElement = activePopupElement;
 //                    activePopupElement->ConvertWindowToParentContainerCoordinates(localEvent.x, localEvent.y);
@@ -178,7 +178,7 @@ namespace UltraCanvas {
                         }
                     }
                 } else if (event.IsKeyboardEvent()) { // only last (topmost) popup get keyboard events
-                    UltraCanvasElement* activePopupElement = activePopupsCopy.back();
+                    UltraCanvasUIElement* activePopupElement = activePopupsCopy.back();
 //                    activePopupElement->ConvertWindowToParentContainerCoordinates(localEvent.x, localEvent.y);
                     activePopupElement->OnEvent(event);
                     goto finish;
@@ -186,7 +186,7 @@ namespace UltraCanvas {
             }
 
             if (event.IsKeyboardEvent()) {
-                UltraCanvasElement* focused =  targetWindow->GetFocusedElement();
+                UltraCanvasUIElement* focused =  targetWindow->GetFocusedElement();
                 if (focused) {
                     HandleEventWithBubbling(event, focused);
                     goto finish;
@@ -256,7 +256,7 @@ namespace UltraCanvas {
         }
     }
 
-    bool UltraCanvasBaseApplication::HandleEventWithBubbling(const UCEvent &event, UltraCanvasElement* elem) {
+    bool UltraCanvasBaseApplication::HandleEventWithBubbling(const UCEvent &event, UltraCanvasUIElement* elem) {
         if (!event.isCommandEvent()) {
             auto newEvent = event;
             newEvent.targetElement = elem;

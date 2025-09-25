@@ -17,7 +17,7 @@
 
 namespace UltraCanvas {
     class UltraCanvasWindow;
-    class UltraCanvasElement;
+    class UltraCanvasUIElement;
     struct WindowConfig;
 
     class UltraCanvasBaseApplication {
@@ -29,9 +29,9 @@ namespace UltraCanvas {
         std::vector<UltraCanvasWindow*> windows;
 
         UltraCanvasWindow* focusedWindow = nullptr;
-        UltraCanvasElement* hoveredElement = nullptr;
-        UltraCanvasElement* capturedElement = nullptr;
-        UltraCanvasElement* draggedElement = nullptr;
+        UltraCanvasUIElement* hoveredElement = nullptr;
+        UltraCanvasUIElement* capturedElement = nullptr;
+        UltraCanvasUIElement* draggedElement = nullptr;
 
         std::vector<std::function<bool(const UCEvent&)>> globalEventHandlers;
         std::function<void()> eventLoopCallback;
@@ -54,7 +54,7 @@ namespace UltraCanvas {
         void UnregisterWindow(UltraCanvasWindow* window);
 
         void DispatchEvent(const UCEvent &event);
-        bool HandleEventWithBubbling(const UCEvent &event, UltraCanvasElement* elem);
+        bool HandleEventWithBubbling(const UCEvent &event, UltraCanvasUIElement* elem);
         void RegisterGlobalEventHandler(std::function<bool(const UCEvent&)> handler);
         void ClearGlobalEventHandlers() { globalEventHandlers.clear(); }
         void RegisterEventLoopRunCallback(std::function<void()> callback);
@@ -67,9 +67,9 @@ namespace UltraCanvas {
         bool IsMetaHeld() { return metaHeld; }
 
         UltraCanvasWindow* GetFocusedWindow() { return focusedWindow; }
-        UltraCanvasElement* GetFocusedElement();
-        UltraCanvasElement* GetHoveredElement() { return hoveredElement; }
-        UltraCanvasElement* GetCapturedElement() { return capturedElement; }
+        UltraCanvasUIElement* GetFocusedElement();
+        UltraCanvasUIElement* GetHoveredElement() { return hoveredElement; }
+        UltraCanvasUIElement* GetCapturedElement() { return capturedElement; }
 
         UltraCanvasWindow* FindWindow(unsigned long nativeHandle);
 
@@ -77,8 +77,8 @@ namespace UltraCanvas {
         virtual void FocusPreviousElement();
 
         // ===== MOUSE CAPTURE =====
-        void CaptureMouse(UltraCanvasElement* element) { capturedElement = element; }
-        void ReleaseMouse(UltraCanvasElement* element) { if (element && element == capturedElement) capturedElement = nullptr; }
+        void CaptureMouse(UltraCanvasUIElement* element) { capturedElement = element; }
+        void ReleaseMouse(UltraCanvasUIElement* element) { if (element && element == capturedElement) capturedElement = nullptr; }
 
         virtual bool Initialize() = 0;
         virtual void Run() = 0;

@@ -123,7 +123,7 @@ private:
     
     // ===== GRID ELEMENTS AND LAYOUT =====
     struct GridElement {
-        std::shared_ptr<UltraCanvasElement> element;
+        std::shared_ptr<UltraCanvasUIElement> element;
         GridCellInfo cellInfo;
         Rect2D calculatedBounds;
     };
@@ -209,7 +209,7 @@ public:
     const std::vector<GridRowDefinition>& GetRowDefinitions() const { return rowDefinitions; }
     
     // ===== ELEMENT MANAGEMENT =====
-    void AddElement(std::shared_ptr<UltraCanvasElement> element, int row, int column, 
+    void AddElement(std::shared_ptr<UltraCanvasUIElement> element, int row, int column,
                    int rowSpan = 1, int columnSpan = 1) {
         if (!element) return;
         
@@ -223,7 +223,7 @@ public:
         gridLayoutDirty = true;
     }
     
-    void AddElement(std::shared_ptr<UltraCanvasElement> element, const GridCellInfo& cellInfo) {
+    void AddElement(std::shared_ptr<UltraCanvasUIElement> element, const GridCellInfo& cellInfo) {
         if (!element) return;
         
         GridElement gridElem;
@@ -236,7 +236,7 @@ public:
         gridLayoutDirty = true;
     }
     
-    void RemoveElement(std::shared_ptr<UltraCanvasElement> element) {
+    void RemoveElement(std::shared_ptr<UltraCanvasUIElement> element) {
         auto it = std::find_if(gridElements.begin(), gridElements.end(),
                               [&element](const GridElement& ge) { return ge.element == element; });
         if (it != gridElements.end()) {
@@ -246,7 +246,7 @@ public:
         }
     }
     
-    void SetElementCellInfo(std::shared_ptr<UltraCanvasElement> element, const GridCellInfo& cellInfo) {
+    void SetElementCellInfo(std::shared_ptr<UltraCanvasUIElement> element, const GridCellInfo& cellInfo) {
         auto it = std::find_if(gridElements.begin(), gridElements.end(),
                               [&element](GridElement& ge) { return ge.element == element; });
         if (it != gridElements.end()) {
@@ -255,13 +255,13 @@ public:
         }
     }
     
-    GridCellInfo GetElementCellInfo(std::shared_ptr<UltraCanvasElement> element) const {
+    GridCellInfo GetElementCellInfo(std::shared_ptr<UltraCanvasUIElement> element) const {
         auto it = std::find_if(gridElements.begin(), gridElements.end(),
                               [&element](const GridElement& ge) { return ge.element == element; });
         return (it != gridElements.end()) ? it->cellInfo : GridCellInfo();
     }
     
-    std::shared_ptr<UltraCanvasElement> GetElementAt(int row, int column) const {
+    std::shared_ptr<UltraCanvasUIElement> GetElementAt(int row, int column) const {
         for (const auto& gridElem : gridElements) {
             const auto& info = gridElem.cellInfo;
             if (row >= info.row && row < info.row + info.rowSpan &&
@@ -427,8 +427,8 @@ public:
     
     // ===== EVENT CALLBACKS =====
     std::function<void(int row, int column)> onCellClicked;
-    std::function<void(std::shared_ptr<UltraCanvasElement>, int row, int column)> onElementAdded;
-    std::function<void(std::shared_ptr<UltraCanvasElement>)> onElementRemoved;
+    std::function<void(std::shared_ptr<UltraCanvasUIElement>, int row, int column)> onElementAdded;
+    std::function<void(std::shared_ptr<UltraCanvasUIElement>)> onElementRemoved;
     std::function<void()> onGridLayoutChanged;
 
 private:
@@ -638,7 +638,7 @@ private:
         }
     }
     
-    Rect2D CalculateElementBounds(std::shared_ptr<UltraCanvasElement> element, 
+    Rect2D CalculateElementBounds(std::shared_ptr<UltraCanvasUIElement> element,
                                  const Rect2D& cellBounds, GridAlignment alignment) {
         if (!element) return cellBounds;
         
@@ -741,7 +741,7 @@ private:
 inline std::shared_ptr<UltraCanvasGridPanel> CreateGridPanel(
     const std::string& identifier, long id, long x, long y, long w, long h,
     int columns = 3, int rows = 3) {
-    auto grid = UltraCanvasElementFactory::CreateWithID<UltraCanvasGridPanel>(
+    auto grid = UltraCanvasUIElementFactory::CreateWithID<UltraCanvasGridPanel>(
         id, identifier, id, x, y, w, h);
     
     // Initialize with specified grid size
@@ -764,7 +764,7 @@ inline std::shared_ptr<UltraCanvasGridPanel> CreateGridPanel(
 inline std::shared_ptr<UltraCanvasGridPanel> CreateFixedGridPanel(
     const std::string& identifier, long id, long x, long y, long w, long h,
     const std::vector<float>& columnWidths, const std::vector<float>& rowHeights) {
-    auto grid = UltraCanvasElementFactory::CreateWithID<UltraCanvasGridPanel>(
+    auto grid = UltraCanvasUIElementFactory::CreateWithID<UltraCanvasGridPanel>(
         id, identifier, id, x, y, w, h);
     
     std::vector<GridColumnDefinition> cols;
@@ -819,7 +819,7 @@ public:
     GridPanelBuilder& OnCellClicked(std::function<void(int, int)> handler) { cellClickHandler = handler; return *this; }
     
     std::shared_ptr<UltraCanvasGridPanel> Build() {
-        auto grid = UltraCanvasElementFactory::CreateWithID<UltraCanvasGridPanel>(
+        auto grid = UltraCanvasUIElementFactory::CreateWithID<UltraCanvasGridPanel>(
             id, identifier, id, x, y, w, h);
         
         if (!columns.empty()) grid->SetColumnDefinitions(columns);

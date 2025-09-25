@@ -58,7 +58,7 @@ struct DrawingState {
 };
 
 // ===== DRAWING SURFACE CLASS =====
-class UltraCanvasDrawingSurface : public UltraCanvasElement {
+class UltraCanvasDrawingSurface : public UltraCanvasUIElement {
 private:
     // ===== STANDARD ULTRACANVAS PROPERTIES =====
     std::string Identifier;          // [text] Element identifier

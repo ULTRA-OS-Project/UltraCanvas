@@ -49,7 +49,7 @@ namespace UltraCanvas {
         static std::string FormatCairoMatrix(const CairoMatrixInfo& matrix, bool verbose = false);
 
         // Draw Cairo transformation debug overlay
-        static std::string DrawCairoTransformDebug(UltraCanvasElement* element, const DebugRenderSettings& settings);
+        static std::string DrawCairoTransformDebug(UltraCanvasUIElement* element, const DebugRenderSettings& settings);
 
         // Draw Cairo matrix visualization
         static void DrawMatrixVisualization(const CairoMatrixInfo& matrix, const Point2Di& position,
@@ -193,7 +193,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         return ss.str();
     }
 
-    std::string UltraCanvasCairoDebugExtension::DrawCairoTransformDebug(UltraCanvasElement* element,
+    std::string UltraCanvasCairoDebugExtension::DrawCairoTransformDebug(UltraCanvasUIElement* element,
                                                                  const DebugRenderSettings& settings) {
         if (!element) return "";
 
@@ -215,7 +215,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         cairoSettings.textBackgroundColor = Color(0, 0, 50, 200); // Dark blue background
         cairoSettings.textSize = settings.textSize - 1;          // Slightly smaller text
 
-        UltraCanvasElementDebugExtension::DrawDebugText(matrixText, bounds, debugPos, cairoSettings);
+        UltraCanvasUIElementDebugExtension::DrawDebugText(matrixText, bounds, debugPos, cairoSettings);
 
         return matrixText;
         // Draw matrix visualization if not identity
@@ -345,7 +345,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
     };
 
 // Enhanced debug function that includes Cairo matrix info
-    inline void RenderElementDebugWithCairo(UltraCanvasElement* element) {
+    inline void RenderElementDebugWithCairo(UltraCanvasUIElement* element) {
         if (!UltraCanvasDebugRenderer::IsDebugEnabled()) return;
 
         CairoDebugRenderSettings settings;

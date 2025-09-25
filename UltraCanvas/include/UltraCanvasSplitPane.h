@@ -31,11 +31,11 @@ enum class SplitterStyle {
 };
 
 // ===== SPLIT PANE COMPONENT =====
-class UltraCanvasSplitPane : public UltraCanvasElement {
+class UltraCanvasSplitPane : public UltraCanvasUIElement {
 public:
     // ===== CONTENT PANES =====
-    UltraCanvasElement* leftPane = nullptr;   // or topPane for vertical split
-    UltraCanvasElement* rightPane = nullptr;  // or bottomPane for vertical split
+    UltraCanvasUIElement* leftPane = nullptr;   // or topPane for vertical split
+    UltraCanvasUIElement* rightPane = nullptr;  // or bottomPane for vertical split
     
     // ===== SPLIT CONFIGURATION =====
     SplitOrientation orientation = SplitOrientation::Horizontal;
@@ -84,13 +84,13 @@ public:
     std::function<bool(float)> onSplitRatioChanging;  // Return false to prevent
     
     UltraCanvasSplitPane(const std::string& elementId, long uniqueId, long posX, long posY, long w, long h)
-        : UltraCanvasElement(elementId, uniqueId, posX, posY, w, h) {
+        : UltraCanvasUIElement(elementId, uniqueId, posX, posY, w, h) {
         
         UpdatePaneLayout();
     }
     
     // ===== PANE MANAGEMENT =====
-    void SetLeftPane(UltraCanvasElement* pane) {
+    void SetLeftPane(UltraCanvasUIElement* pane) {
         if (leftPane) {
             leftPane->SetParent(nullptr);
         }
@@ -103,7 +103,7 @@ public:
         UpdatePaneLayout();
     }
     
-    void SetRightPane(UltraCanvasElement* pane) {
+    void SetRightPane(UltraCanvasUIElement* pane) {
         if (rightPane) {
             rightPane->SetParent(nullptr);
         }
@@ -116,13 +116,13 @@ public:
         UpdatePaneLayout();
     }
     
-    void SetPanes(UltraCanvasElement* left, UltraCanvasElement* right) {
+    void SetPanes(UltraCanvasUIElement* left, UltraCanvasUIElement* right) {
         SetLeftPane(left);
         SetRightPane(right);
     }
     
-    UltraCanvasElement* GetLeftPane() const { return leftPane; }
-    UltraCanvasElement* GetRightPane() const { return rightPane; }
+    UltraCanvasUIElement* GetLeftPane() const { return leftPane; }
+    UltraCanvasUIElement* GetRightPane() const { return rightPane; }
     
     // ===== SPLIT CONFIGURATION =====
     void SetOrientation(SplitOrientation orient) {
@@ -264,7 +264,7 @@ public:
     
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override {
-        UltraCanvasElement::OnEvent(event);
+        UltraCanvasUIElement::OnEvent(event);
         
         if (!resizable) {
             ForwardEventToPanes(event);
@@ -794,7 +794,7 @@ window->AddElement(verticalSplit.get());
 === INTEGRATION NOTES ===
 
 This implementation:
-- ✅ Extends UltraCanvasElement properly with full inheritance
+- ✅ Extends UltraCanvasUIElement properly with full inheritance
 - ✅ Uses unified rendering system with ULTRACANVAS_RENDER_SCOPE()
 - ✅ Handles UCEvent with comprehensive mouse interaction
 - ✅ Follows naming conventions (PascalCase for all identifiers)

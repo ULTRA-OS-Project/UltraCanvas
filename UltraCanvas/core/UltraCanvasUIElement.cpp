@@ -9,7 +9,7 @@
 
 namespace UltraCanvas {
     // new here
-    void UltraCanvasElement::ConvertWindowToParentContainerCoordinates(int &x, int &y) {
+    void UltraCanvasUIElement::ConvertWindowToParentContainerCoordinates(int &x, int &y) {
         if (parentContainer) {
             auto pc = parentContainer;
             while(pc) {
@@ -21,55 +21,55 @@ namespace UltraCanvas {
         }
     }
 
-    Point2Di UltraCanvasElement::ConvertWindowToParentContainerCoordinates(const Point2Di &globalPos) {
+    Point2Di UltraCanvasUIElement::ConvertWindowToParentContainerCoordinates(const Point2Di &globalPos) {
         Point2Di pos = globalPos;
         ConvertWindowToParentContainerCoordinates(pos.x, pos.y);
         return pos;
     }
 
-    void UltraCanvasElement::ConvertContainerToWindowCoordinates(int &x, int &y) {
+    void UltraCanvasUIElement::ConvertContainerToWindowCoordinates(int &x, int &y) {
         x = GetXInWindow() + x;
         y = GetYInWindow() + y;
     }
 
-    Point2Di UltraCanvasElement::ConvertContainerToWindowCoordinates(const Point2Di &localPos) {
+    Point2Di UltraCanvasUIElement::ConvertContainerToWindowCoordinates(const Point2Di &localPos) {
         Point2Di pos = localPos;
         ConvertContainerToWindowCoordinates(pos.x, pos.y);
         return pos;
     }
 
-    void UltraCanvasElement::RequestRedraw() {
+    void UltraCanvasUIElement::RequestRedraw() {
         if (window) {
             window->MarkElementDirty(this);
         }
     }
 
-//    void UltraCanvasElement::RequestFullRedraw() {
+//    void UltraCanvasUIElement::RequestFullRedraw() {
 //        if (window) {
 //            window->RequestFullRedraw();
 //        }
 //    }
 
-    IRenderContext* UltraCanvasElement::GetRenderContext() const {
+    IRenderContext* UltraCanvasUIElement::GetRenderContext() const {
         if (window) {
             return window->GetRenderContext();
         }
         return nullptr;
     }
 
-    void UltraCanvasElement::AddThisPopupElementToWindow() {
+    void UltraCanvasUIElement::AddThisPopupElementToWindow() {
         if (window) {
             window->AddPopupElement(this);
         }
     }
 
-    void UltraCanvasElement::RemoveThisPopupElementFromWindow() {
+    void UltraCanvasUIElement::RemoveThisPopupElementFromWindow() {
         if (window) {
             window->RemovePopupElement(this);
         }
     }
 
-    UltraCanvasContainer* UltraCanvasElement::GetRootContainer() {
+    UltraCanvasContainer* UltraCanvasUIElement::GetRootContainer() {
         UltraCanvasContainer* root = parentContainer;
         while (root && root->GetParentContainer()) {
             root = root->GetParentContainer();
@@ -77,7 +77,7 @@ namespace UltraCanvas {
         return root;
     }
 
-    bool UltraCanvasElement::IsDescendantOf(const UltraCanvasContainer* container) const {
+    bool UltraCanvasUIElement::IsDescendantOf(const UltraCanvasContainer* container) const {
         if (!container) return false;
 
         UltraCanvasContainer* current = parentContainer;
@@ -88,7 +88,7 @@ namespace UltraCanvas {
         return false;
     }
 
-//    int UltraCanvasElement::GetXInWindow() {
+//    int UltraCanvasUIElement::GetXInWindow() {
 //        int totalX = properties.x_pos;
 //
 //        if (parentContainer) {
@@ -106,7 +106,7 @@ namespace UltraCanvas {
 //    }
 //
 //// Fixed version of GetYInWindow() in UltraCanvasUIElement.cpp
-//    int UltraCanvasElement::GetYInWindow() {
+//    int UltraCanvasUIElement::GetYInWindow() {
 //        int totalY = properties.y_pos;
 //
 //        if (parentContainer) {
@@ -123,7 +123,7 @@ namespace UltraCanvas {
 //        return totalY;
 //    }
 
-    int UltraCanvasElement::GetXInWindow() {
+    int UltraCanvasUIElement::GetXInWindow() {
         int pos = 0;
         if (parentContainer) {
             auto pc = parentContainer;
@@ -135,7 +135,7 @@ namespace UltraCanvas {
         return pos + properties.x_pos;
     }
 
-    int UltraCanvasElement::GetYInWindow() {
+    int UltraCanvasUIElement::GetYInWindow() {
         int pos = 0;
         if (parentContainer) {
             auto pc = parentContainer;
@@ -147,7 +147,7 @@ namespace UltraCanvas {
         return pos + properties.y_pos;
     }
 
-    bool UltraCanvasElement::SetFocus(bool focus) {
+    bool UltraCanvasUIElement::SetFocus(bool focus) {
         // If trying to set focus, delegate to window's focus management
         if (focus) {
             if (!window) {
@@ -168,7 +168,7 @@ namespace UltraCanvas {
         return false;
     }
 
-    bool UltraCanvasElement::IsFocused() const {
+    bool UltraCanvasUIElement::IsFocused() const {
         if (window && window->IsWindowFocused() && window->GetFocusedElement() == this) {
             return true;
         }
@@ -176,7 +176,7 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasElement::SetVisible(bool visible) {
+    void UltraCanvasUIElement::SetVisible(bool visible) {
         properties.Visible = visible;
         if (window) {
             SetFocus(false);
@@ -184,7 +184,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasElement::SetWindow(UltraCanvasWindow *win) {
+    void UltraCanvasUIElement::SetWindow(UltraCanvasWindow *win) {
         if (win == nullptr && window) {
             SetFocus(false);
             RemoveThisPopupElementFromWindow();

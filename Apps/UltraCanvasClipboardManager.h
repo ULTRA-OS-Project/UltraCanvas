@@ -59,7 +59,7 @@ namespace UltraCanvas {
     };
 
 // ===== CLIPBOARD ITEM UI COMPONENT =====
-    class UltraCanvasClipboardItem : public UltraCanvasElement {
+    class UltraCanvasClipboardItem : public UltraCanvasUIElement {
     private:
         StandardProperties properties;
         ClipboardEntry entry;
@@ -82,7 +82,7 @@ namespace UltraCanvas {
 
     public:
         UltraCanvasClipboardItem(const std::string& id, long uid, long x, long y, long w, long h, const ClipboardEntry& clipEntry)
-                : UltraCanvasElement(id, uid, x, y, w, h), properties(id, uid, x, y, w, h), entry(clipEntry) {
+                : UltraCanvasUIElement(id, uid, x, y, w, h), properties(id, uid, x, y, w, h), entry(clipEntry) {
             CalculateLayout();
         }
 

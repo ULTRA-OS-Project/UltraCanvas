@@ -206,7 +206,7 @@ namespace UltraCanvas {
     };
 
 // ===== MODAL DIALOG CLASS =====
-    class UltraCanvasModalDialog : public UltraCanvasElement {
+    class UltraCanvasModalDialog : public UltraCanvasUIElement {
     private:
         DialogConfig config;
         DialogResult result;
@@ -215,7 +215,7 @@ namespace UltraCanvas {
         float animationProgress;
 
         // Child elements
-        std::vector<std::shared_ptr<UltraCanvasElement>> childElements;
+        std::vector<std::shared_ptr<UltraCanvasUIElement>> childElements;
         std::vector<std::shared_ptr<UltraCanvasButton>> buttons;
 
         // Layout areas
@@ -235,7 +235,7 @@ namespace UltraCanvas {
         bool isDragging;
         Point2D dragOffset;
         UltraCanvasWindow* parentWindow;
-        std::shared_ptr<UltraCanvasElement> backgroundOverlay;
+        std::shared_ptr<UltraCanvasUIElement> backgroundOverlay;
 
     public:
         // ===== CONSTRUCTION =====
@@ -293,8 +293,8 @@ namespace UltraCanvas {
         void SetButtonVisible(DialogButton button, bool visible);
 
         // ===== CONTENT MANAGEMENT =====
-        void AddElement(std::shared_ptr<UltraCanvasElement> element);
-        void RemoveElement(std::shared_ptr<UltraCanvasElement> element);
+        void AddElement(std::shared_ptr<UltraCanvasUIElement> element);
+        void RemoveElement(std::shared_ptr<UltraCanvasUIElement> element);
         void ClearElements();
 
     protected:

@@ -87,7 +87,7 @@ namespace UltraCanvas {
     };
 
 // ===== BASE SHAPE CLASS =====
-    class UltraCanvasShape : public UltraCanvasElement {
+    class UltraCanvasShape : public UltraCanvasUIElement {
     protected:
     protected:
         // ===== SHAPE-SPECIFIC PROPERTIES =====
@@ -103,7 +103,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR =====
         UltraCanvasShape(const std::string& id, long uid, long x, long y, long w, long h, ShapeType type = ShapeType::Rectangle)
-                : UltraCanvasElement(id, uid, x, y, w, h)
+                : UltraCanvasUIElement(id, uid, x, y, w, h)
                 , shapeType(type)
                 , antiAliased(true)
                 , rotationAngle(0.0f)
@@ -118,7 +118,7 @@ namespace UltraCanvas {
 
         // ===== INHERITED PROPERTY ACCESSORS =====
         // Note: GetX(), SetX(), GetY(), SetY(), GetWidth(), SetHeight(), etc.
-        // are automatically inherited from UltraCanvasElement base class
+        // are automatically inherited from UltraCanvasUIElement base class
 
         // ===== SHAPE PROPERTIES =====
         ShapeType GetShapeType() const { return shapeType; }

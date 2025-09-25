@@ -13,7 +13,7 @@ namespace UltraCanvas {
 
     UltraCanvasButton::UltraCanvasButton(const std::string &identifier, long id, long x, long y, long w, long h,
                                          const std::string &buttonText)
-            : UltraCanvasElement(identifier, id, x, y, w, h), text(buttonText) {
+            : UltraCanvasUIElement(identifier, id, x, y, w, h), text(buttonText) {
 
         currentState = ButtonState::Normal;
         pressed = false;

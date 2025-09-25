@@ -15,7 +15,7 @@
 
 namespace UltraCanvas {
     // Forward declarations
-    class UltraCanvasElement;
+    class UltraCanvasUIElement;
     class UltraCanvasBaseWindow;
     class UltraCanvasContainer;
     class UltraCanvasDropdown;
@@ -40,9 +40,9 @@ namespace UltraCanvas {
         // ===== CORE SORTING METHODS =====
 
         // Sort elements by z-index (lower values render first, higher values on top)
-        static void SortElementsByZOrder(std::vector<UltraCanvasElement*>& elements) {
+        static void SortElementsByZOrder(std::vector<UltraCanvasUIElement*>& elements) {
             std::stable_sort(elements.begin(), elements.end(),
-                             [](const UltraCanvasElement* a, const UltraCanvasElement* b) {
+                             [](const UltraCanvasUIElement* a, const UltraCanvasUIElement* b) {
                                  if (!a) return true;  // null elements go to beginning
                                  if (!b) return false;
                                  return a->GetZIndex() < b->GetZIndex();
@@ -50,9 +50,9 @@ namespace UltraCanvas {
         }
 
         // Sort shared_ptr elements by z-index
-        static void SortElementsByZOrder(std::vector<std::shared_ptr<UltraCanvasElement>>& elements) {
+        static void SortElementsByZOrder(std::vector<std::shared_ptr<UltraCanvasUIElement>>& elements) {
             std::stable_sort(elements.begin(), elements.end(),
-                             [](const std::shared_ptr<UltraCanvasElement>& a, const std::shared_ptr<UltraCanvasElement>& b) {
+                             [](const std::shared_ptr<UltraCanvasUIElement>& a, const std::shared_ptr<UltraCanvasUIElement>& b) {
                                  if (!a) return true;  // null elements go to beginning
                                  if (!b) return false;
                                  return a->GetZIndex() < b->GetZIndex();
@@ -60,9 +60,9 @@ namespace UltraCanvas {
         }
 
         // Get elements sorted by z-order (creates new vector, original unchanged)
-        static std::vector<UltraCanvasElement*> GetElementsSortedByZOrder(
-                const std::vector<UltraCanvasElement*>& elements) {
-            std::vector<UltraCanvasElement*> sorted = elements;
+        static std::vector<UltraCanvasUIElement*> GetElementsSortedByZOrder(
+                const std::vector<UltraCanvasUIElement*>& elements) {
+            std::vector<UltraCanvasUIElement*> sorted = elements;
             SortElementsByZOrder(sorted);
             return sorted;
         }
@@ -70,11 +70,11 @@ namespace UltraCanvas {
         // ===== HIERARCHICAL Z-ORDER METHODS =====
 
         // Collect all elements from containers recursively, maintaining hierarchy
-        static std::vector<UltraCanvasElement*> GetAllElementsFlattened(
-                const std::vector<UltraCanvasElement*>& topLevelElements) {
+        static std::vector<UltraCanvasUIElement*> GetAllElementsFlattened(
+                const std::vector<UltraCanvasUIElement*>& topLevelElements) {
 
-            std::vector<UltraCanvasElement*> allElements;
-            std::unordered_set<UltraCanvasElement*> visited;
+            std::vector<UltraCanvasUIElement*> allElements;
+            std::unordered_set<UltraCanvasUIElement*> visited;
 
             for (auto* element : topLevelElements) {
                 CollectElementsRecursively(element, allElements, visited);
@@ -84,8 +84,8 @@ namespace UltraCanvas {
         }
 
         // Get flattened elements sorted by z-order
-        static std::vector<UltraCanvasElement*> GetAllElementsSortedByZOrder(
-                const std::vector<UltraCanvasElement*>& topLevelElements) {
+        static std::vector<UltraCanvasUIElement*> GetAllElementsSortedByZOrder(
+                const std::vector<UltraCanvasUIElement*>& topLevelElements) {
 
             auto allElements = GetAllElementsFlattened(topLevelElements);
             SortElementsByZOrder(allElements);
@@ -95,7 +95,7 @@ namespace UltraCanvas {
         // ===== Z-INDEX UTILITY METHODS =====
 
         // Find the highest z-index in a collection
-        static long GetMaxZIndex(const std::vector<UltraCanvasElement*>& elements) {
+        static long GetMaxZIndex(const std::vector<UltraCanvasUIElement*>& elements) {
             long maxZ = UltraCanvas::ZLayers::Background;
             for (const auto* element : elements) {
                 if (element && element->GetZIndex() > maxZ) {
@@ -106,7 +106,7 @@ namespace UltraCanvas {
         }
 
         // Find the lowest z-index in a collection
-        static long GetMinZIndex(const std::vector<UltraCanvasElement*>& elements) {
+        static long GetMinZIndex(const std::vector<UltraCanvasUIElement*>& elements) {
             long minZ = UltraCanvas::ZLayers::Debug;
             bool first = true;
             for (const auto* element : elements) {
@@ -123,24 +123,24 @@ namespace UltraCanvas {
         // ===== ELEMENT MANIPULATION METHODS =====
 
         // Bring element to front (highest z-index + 1)
-        static void BringToFront(UltraCanvasElement* element,
-                                 const std::vector<UltraCanvasElement*>& allElements) {
+        static void BringToFront(UltraCanvasUIElement* element,
+                                 const std::vector<UltraCanvasUIElement*>& allElements) {
             if (!element) return;
             long maxZ = GetMaxZIndex(allElements);
             element->SetZIndex(maxZ + 1);
         }
 
         // Send element to back (lowest z-index - 1)
-        static void SendToBack(UltraCanvasElement* element,
-                               const std::vector<UltraCanvasElement*>& allElements) {
+        static void SendToBack(UltraCanvasUIElement* element,
+                               const std::vector<UltraCanvasUIElement*>& allElements) {
             if (!element) return;
             long minZ = GetMinZIndex(allElements);
             element->SetZIndex(minZ - 1);
         }
 
         // Move element up one layer
-        static void MoveUp(UltraCanvasElement* element,
-                           const std::vector<UltraCanvasElement*>& allElements) {
+        static void MoveUp(UltraCanvasUIElement* element,
+                           const std::vector<UltraCanvasUIElement*>& allElements) {
             if (!element) return;
 
             // Find the next highest z-index
@@ -160,8 +160,8 @@ namespace UltraCanvas {
         }
 
         // Move element down one layer
-        static void MoveDown(UltraCanvasElement* element,
-                             const std::vector<UltraCanvasElement*>& allElements) {
+        static void MoveDown(UltraCanvasUIElement* element,
+                             const std::vector<UltraCanvasUIElement*>& allElements) {
             if (!element) return;
 
             // Find the next lowest z-index
@@ -183,7 +183,7 @@ namespace UltraCanvas {
         // ===== AUTO Z-INDEX ASSIGNMENT =====
 
         // Auto-assign z-indexes to ensure proper layering for specific element types
-        static void AutoAssignZIndexes(std::vector<UltraCanvasElement*>& elements) {
+        static void AutoAssignZIndexes(std::vector<UltraCanvasUIElement*>& elements) {
             // Assign default z-indexes based on element type priority
             long backgroundZ = UltraCanvas::ZLayers::Background;
             long contentZ = UltraCanvas::ZLayers::Content;
@@ -237,11 +237,11 @@ namespace UltraCanvas {
         // ===== HIT TESTING METHODS =====
 
         // Get elements at a specific point, sorted by z-order (highest first for hit testing)
-        static std::vector<UltraCanvasElement*> GetElementsAtPoint(
-                const std::vector<UltraCanvasElement*>& elements,
+        static std::vector<UltraCanvasUIElement*> GetElementsAtPoint(
+                const std::vector<UltraCanvasUIElement*>& elements,
                 const Point2D& point) {
 
-            std::vector<UltraCanvasElement*> hitElements;
+            std::vector<UltraCanvasUIElement*> hitElements;
 
             // Collect all elements that contain the point (including nested containers)
             auto allElements = GetAllElementsFlattened(elements);
@@ -254,7 +254,7 @@ namespace UltraCanvas {
 
             // Sort by z-order, highest first (for hit testing)
             std::stable_sort(hitElements.begin(), hitElements.end(),
-                             [](const UltraCanvasElement* a, const UltraCanvasElement* b) {
+                             [](const UltraCanvasUIElement* a, const UltraCanvasUIElement* b) {
                                  return a->GetZIndex() > b->GetZIndex();
                              });
 
@@ -262,8 +262,8 @@ namespace UltraCanvas {
         }
 
         // Get the topmost element at a point
-        static UltraCanvasElement* GetTopElementAtPoint(
-                const std::vector<UltraCanvasElement*>& elements,
+        static UltraCanvasUIElement* GetTopElementAtPoint(
+                const std::vector<UltraCanvasUIElement*>& elements,
                 const Point2D& point) {
 
             auto hitElements = GetElementsAtPoint(elements, point);
@@ -273,7 +273,7 @@ namespace UltraCanvas {
         // ===== DEBUGGING AND DIAGNOSTIC METHODS =====
 
         // Print z-order hierarchy for debugging
-        static void PrintZOrderHierarchy(const std::vector<UltraCanvasElement*>& elements,
+        static void PrintZOrderHierarchy(const std::vector<UltraCanvasUIElement*>& elements,
                                          const std::string& title = "Z-Order Hierarchy") {
             std::cout << "=== " << title << " ===" << std::endl;
 
@@ -299,7 +299,7 @@ namespace UltraCanvas {
         }
 
         // Validate z-order consistency
-        static bool ValidateZOrder(const std::vector<UltraCanvasElement*>& elements) {
+        static bool ValidateZOrder(const std::vector<UltraCanvasUIElement*>& elements) {
             bool valid = true;
             auto sorted = GetElementsSortedByZOrder(elements);
 
@@ -317,9 +317,9 @@ namespace UltraCanvas {
         // ===== PRIVATE HELPER METHODS =====
 
         // Recursively collect all elements from containers
-        static void CollectElementsRecursively(UltraCanvasElement* element,
-                                               std::vector<UltraCanvasElement*>& collection,
-                                               std::unordered_set<UltraCanvasElement*>& visited) {
+        static void CollectElementsRecursively(UltraCanvasUIElement* element,
+                                               std::vector<UltraCanvasUIElement*>& collection,
+                                               std::unordered_set<UltraCanvasUIElement*>& visited) {
             if (!element || visited.find(element) != visited.end()) {
                 return;  // Already visited or null
             }
@@ -357,7 +357,7 @@ inline void RenderElementsWithZOrder(const ElementContainer& elements) {
 // ===== Z-ORDER UTILITY FUNCTIONS =====
 
 // Convenience functions for common z-order operations
-inline void BringElementToFront(UltraCanvasElement* element, UltraCanvasBaseWindow* window) {
+inline void BringElementToFront(UltraCanvasUIElement* element, UltraCanvasBaseWindow* window) {
     if (!element || !window) return;
 
     // Get all elements from window and bring this one to front
@@ -366,7 +366,7 @@ inline void BringElementToFront(UltraCanvasElement* element, UltraCanvasBaseWind
     window->RequestZOrderUpdate();
 }
 
-inline void SendElementToBack(UltraCanvasElement* element, UltraCanvasBaseWindow* window) {
+inline void SendElementToBack(UltraCanvasUIElement* element, UltraCanvasBaseWindow* window) {
     if (!element || !window) return;
 
     auto allElements = window->GetAllElements();
@@ -389,7 +389,7 @@ inline void HandleDropdownOpened(UltraCanvasDropdown* dropdown, UltraCanvasBaseW
 class UltraCanvasZOrderAwareContainer {
 protected:
     bool _zOrderDirty;
-    std::vector<UltraCanvasElement*> sortedChildren;
+    std::vector<UltraCanvasUIElement*> sortedChildren;
 
     void UpdateChildrenZOrder() {
         if (!_zOrderDirty) return;
@@ -411,7 +411,7 @@ protected:
         std::cout << "Container z-order updated with " << sortedChildren.size() << " children" << std::endl;
     }
 
-    virtual std::vector<std::shared_ptr<UltraCanvasElement>> GetDirectChildren() = 0;
+    virtual std::vector<std::shared_ptr<UltraCanvasUIElement>> GetDirectChildren() = 0;
 
 public:
     UltraCanvasZOrderAwareContainer() : _zOrderDirty(true) {}

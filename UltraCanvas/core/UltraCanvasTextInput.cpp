@@ -15,7 +15,7 @@
 namespace UltraCanvas {
 
     UltraCanvasTextInput::UltraCanvasTextInput(const std::string &id, long uid, long x, long y, long w, long h)
-            : UltraCanvasElement(id, uid, x, y, w, h)
+            : UltraCanvasUIElement(id, uid, x, y, w, h)
             , text("")
             , placeholderText("")
             , inputType(TextInputType::Text)

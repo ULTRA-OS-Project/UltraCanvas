@@ -5,7 +5,7 @@
 // Author: UltraCanvas Framework
 #pragma once
 
-#include "UltraCanvasElement.h"
+#include "UltraCanvasUIElement.h"
 #include "UltraCanvasLayoutEngine.h"
 #include "UltraCanvasContainer.h"
 #include <string>
@@ -304,7 +304,7 @@ private:
     
     // Template elements
     std::vector<TemplateElementDescriptor> elementDescriptors;
-    std::vector<std::shared_ptr<UltraCanvasElement>> templateElements;
+    std::vector<std::shared_ptr<UltraCanvasUIElement>> templateElements;
     
     // State
     bool isDirty = true;
@@ -313,7 +313,7 @@ private:
     Point2D dragOffset;
     
     // Element factory
-    std::unordered_map<std::string, std::function<std::shared_ptr<UltraCanvasElement>(const TemplateElementDescriptor&)>> elementFactories;
+    std::unordered_map<std::string, std::function<std::shared_ptr<UltraCanvasUIElement>(const TemplateElementDescriptor&)>> elementFactories;
 
 public:
     // ===== CONSTRUCTOR =====
@@ -346,7 +346,7 @@ public:
     void ClearElements();
     
     // ===== ELEMENT ACCESS =====
-    std::shared_ptr<UltraCanvasElement> GetElement(const std::string& identifier);
+    std::shared_ptr<UltraCanvasUIElement> GetElement(const std::string& identifier);
     template<typename T>
     std::shared_ptr<T> GetElementAs(const std::string& identifier) {
         return std::dynamic_pointer_cast<T>(GetElement(identifier));
@@ -380,7 +380,7 @@ public:
     
     // ===== ELEMENT FACTORY REGISTRATION =====
     void RegisterElementFactory(const std::string& elementType, 
-                               std::function<std::shared_ptr<UltraCanvasElement>(const TemplateElementDescriptor&)> factory);
+                               std::function<std::shared_ptr<UltraCanvasUIElement>(const TemplateElementDescriptor&)> factory);
     
 protected:
     // ===== INTERNAL METHODS =====
@@ -391,11 +391,11 @@ protected:
     
     // Default element factories
     void RegisterDefaultFactories();
-    std::shared_ptr<UltraCanvasElement> CreateButtonElement(const TemplateElementDescriptor& desc);
-    std::shared_ptr<UltraCanvasElement> CreateLabelElement(const TemplateElementDescriptor& desc);
-    std::shared_ptr<UltraCanvasElement> CreateDropDownElement(const TemplateElementDescriptor& desc);
-    std::shared_ptr<UltraCanvasElement> CreateSeparatorElement(const TemplateElementDescriptor& desc);
-    std::shared_ptr<UltraCanvasElement> CreateSpacerElement(const TemplateElementDescriptor& desc);
+    std::shared_ptr<UltraCanvasUIElement> CreateButtonElement(const TemplateElementDescriptor& desc);
+    std::shared_ptr<UltraCanvasUIElement> CreateLabelElement(const TemplateElementDescriptor& desc);
+    std::shared_ptr<UltraCanvasUIElement> CreateDropDownElement(const TemplateElementDescriptor& desc);
+    std::shared_ptr<UltraCanvasUIElement> CreateSeparatorElement(const TemplateElementDescriptor& desc);
+    std::shared_ptr<UltraCanvasUIElement> CreateSpacerElement(const TemplateElementDescriptor& desc);
 };
 
 // ===== TEMPLATE BUILDER =====

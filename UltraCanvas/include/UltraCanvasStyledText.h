@@ -120,7 +120,7 @@ namespace UltraCanvas {
     };
 
 // ===== MAIN STYLED TEXT CLASS =====
-    class UltraCanvasStyledText : public UltraCanvasElement {
+    class UltraCanvasStyledText : public UltraCanvasUIElement {
     private:
         // Content
         std::vector<TextBlock> textBlocks;
@@ -163,7 +163,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTORS =====
         UltraCanvasStyledText(const std::string& identifier, long id, long x, long y, long w, long h)
-                : UltraCanvasElement(identifier, id, x, y, w, h) {
+                : UltraCanvasUIElement(identifier, id, x, y, w, h) {
             lastCaretBlink = std::chrono::steady_clock::now();
 
             // Add default text block
@@ -969,7 +969,7 @@ namespace UltraCanvas {
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasStyledText> CreateStyledText(
             const std::string& identifier, long id, long x, long y, long w, long h) {
-        return UltraCanvasElementFactory::CreateWithID<UltraCanvasStyledText>(
+        return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasStyledText>(
                 id, identifier, id, x, y, w, h);
     }
 

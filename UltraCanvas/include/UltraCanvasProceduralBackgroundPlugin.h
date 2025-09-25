@@ -422,7 +422,7 @@ namespace UltraCanvas {
     };
 
 // ===== PROCEDURAL BACKGROUND ELEMENT =====
-    class UltraCanvasProceduralBackground : public UltraCanvasElement {
+    class UltraCanvasProceduralBackground : public UltraCanvasUIElement {
     private:
         ProceduralFormula currentFormula;
         std::unique_ptr<ProceduralFormulaInterpreter> interpreter;
@@ -450,10 +450,10 @@ namespace UltraCanvas {
         int maxCachedFrames = 300; // 10 seconds at 30fps
 
     public:
-        // Fixed constructor to match UltraCanvasElement base class signature
+        // Fixed constructor to match UltraCanvasUIElement base class signature
         UltraCanvasProceduralBackground(const std::string& identifier, long id = 0,
                                         long x = 0, long y = 0, long w = 100, long h = 30)
-                : UltraCanvasElement(identifier, id, x, y, w, h) {
+                : UltraCanvasUIElement(identifier, id, x, y, w, h) {
             interpreter = std::make_unique<CPUMathematicalInterpreter>();
             startTime = std::chrono::steady_clock::now();
             lastFrameTime = startTime;
@@ -789,18 +789,18 @@ namespace UltraCanvas {
                    CanHandle(fileInfo.filename);
         }
 
-        std::shared_ptr<UltraCanvasElement> LoadGraphics(const std::string& filePath) override {
+        std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const std::string& filePath) override {
             auto background = std::make_shared<UltraCanvasProceduralBackground>(
                     "procedural_" + std::to_string(rand()),
                     rand(), 0, 0, 400, 300);
             return background;
         }
 
-        std::shared_ptr<UltraCanvasElement> LoadGraphics(const GraphicsFileInfo& fileInfo) override {
+        std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const GraphicsFileInfo& fileInfo) override {
             return LoadGraphics(fileInfo.filename);
         }
 
-        std::shared_ptr<UltraCanvasElement> CreateGraphics(int width, int height, GraphicsFormatType type) override {
+        std::shared_ptr<UltraCanvasUIElement> CreateGraphics(int width, int height, GraphicsFormatType type) override {
             if (type == GraphicsFormatType::Procedural) {
                 return std::make_shared<UltraCanvasProceduralBackground>(
                         "new_procedural_" + std::to_string(rand()),

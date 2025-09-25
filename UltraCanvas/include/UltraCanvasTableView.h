@@ -82,7 +82,7 @@ struct SelectionInfo {
 };
 
 // ===== MAIN TABLE VIEW COMPONENT =====
-class UltraCanvasTableView : public UltraCanvasElement {
+class UltraCanvasTableView : public UltraCanvasUIElement {
 private:
     StandardProperties properties;
     
@@ -153,7 +153,7 @@ public:
     // ===== CONSTRUCTOR =====
     UltraCanvasTableView(const std::string& identifier = "TableView", long id = 0,
                         long x = 0, long y = 0, long w = 400, long h = 300)
-        : UltraCanvasElement(identifier, id, x, y, w, h), properties(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h), properties(identifier, id, x, y, w, h) {
         
         properties.MousePtr = MousePointer::Default;
         properties.MouseCtrl = MouseControls::Object2D;
@@ -1075,7 +1075,7 @@ private:
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasTableView> CreateTableView(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasTableView>(id, identifier, id, x, y, w, h);
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasTableView>(id, identifier, id, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasTableView> CreateTableView(

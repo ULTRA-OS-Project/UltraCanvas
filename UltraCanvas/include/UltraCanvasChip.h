@@ -192,7 +192,7 @@ struct ChipData {
 };
 
 // ===== MAIN CHIP COMPONENT =====
-class UltraCanvasChip : public UltraCanvasElement {
+class UltraCanvasChip : public UltraCanvasUIElement {
 private:
     // ===== STANDARD PROPERTIES (REQUIRED) =====
     StandardProperties properties;
@@ -220,7 +220,7 @@ public:
     // ===== CONSTRUCTOR (REQUIRED PATTERN) =====
     UltraCanvasChip(const std::string& identifier = "Chip", 
                    long id = 0, long x = 0, long y = 0, long w = 100, long h = 32)
-        : UltraCanvasElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         // Initialize standard properties
         properties = StandardProperties(identifier, id, x, y, w, h);
@@ -381,7 +381,7 @@ public:
     bool IsSelected() const { return chipData.selected; }
     
     void SetEnabled(bool enabled) override {
-        UltraCanvasElement::SetEnabled(enabled);
+        UltraCanvasUIElement::SetEnabled(enabled);
         chipData.enabled = enabled;
         UpdateState();
     }
@@ -813,7 +813,7 @@ private:
 };
 
 // ===== CHIP COLLECTION COMPONENT =====
-class UltraCanvasChipGroup : public UltraCanvasElement {
+class UltraCanvasChipGroup : public UltraCanvasUIElement {
 private:
     StandardProperties properties;
     std::vector<std::shared_ptr<UltraCanvasChip>> chips;
@@ -827,7 +827,7 @@ private:
 public:
     UltraCanvasChipGroup(const std::string& identifier = "ChipGroup", 
                         long id = 0, long x = 0, long y = 0, long w = 300, long h = 100)
-        : UltraCanvasElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         properties = StandardProperties(identifier, id, x, y, w, h);
     }
@@ -984,7 +984,7 @@ private:
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasChip> CreateChip(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasChip>(
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasChip>(
         id, identifier, id, x, y, w, h);
 }
 
@@ -1027,7 +1027,7 @@ inline std::shared_ptr<UltraCanvasChip> CreateActionChip(
 
 inline std::shared_ptr<UltraCanvasChipGroup> CreateChipGroup(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasElementFactory::CreateWithID<UltraCanvasChipGroup>(
+    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasChipGroup>(
         id, identifier, id, x, y, w, h);
 }
 

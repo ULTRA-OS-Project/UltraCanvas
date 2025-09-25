@@ -17,7 +17,7 @@
 namespace UltraCanvas {
 
 // ===== SPIN BOX COMPONENT =====
-class UltraCanvasSpinBox : public UltraCanvasElement {
+class UltraCanvasSpinBox : public UltraCanvasUIElement {
 public:
     // ===== VALUE PROPERTIES =====
     int value = 0;
@@ -79,7 +79,7 @@ public:
     std::function<bool(int)> onValidateValue;
     
     UltraCanvasSpinBox(const std::string& elementId, long uniqueId, long posX, long posY, long w, long h)
-        : UltraCanvasElement(elementId, uniqueId, posX, posY, w, h) {
+        : UltraCanvasUIElement(elementId, uniqueId, posX, posY, w, h) {
         
         UpdateEditText();
     }
@@ -222,7 +222,7 @@ public:
     
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override {
-        UltraCanvasElement::OnEvent(event);
+        UltraCanvasUIElement::OnEvent(event);
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -801,7 +801,7 @@ window->AddElement(percentSpinBox.get());
 === INTEGRATION NOTES ===
 
 This implementation:
-- ✅ Extends UltraCanvasElement properly
+- ✅ Extends UltraCanvasUIElement properly
 - ✅ Uses unified rendering system with ULTRACANVAS_RENDER_SCOPE()
 - ✅ Handles UCEvent with comprehensive input support
 - ✅ Follows naming conventions (PascalCase)
