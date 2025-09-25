@@ -49,6 +49,7 @@ namespace UltraCanvas {
         // Font properties
         std::string fontFamily;
         int fontSize;
+        int lineHeight;
         Color fontColor;
 
         // Background and borders
@@ -59,6 +60,7 @@ namespace UltraCanvas {
 
         // Selection and cursor
         Color selectionColor;
+        Color currentLineHighlightColor;
         Color cursorColor;
 
         // Line numbers
@@ -72,6 +74,9 @@ namespace UltraCanvas {
 
         // Syntax highlighting mode
         SyntaxMode syntaxMode;
+
+        Color scrollbarTrackColor;
+        Color scrollbarColor;
 
         // Syntax highlighting colors
         struct TokenStyles {
@@ -195,9 +200,6 @@ namespace UltraCanvas {
         void SetReadOnly(bool readOnly) { isReadOnly = readOnly; }
         bool IsReadOnly() const { return isReadOnly; }
 
-        void SetMultiLine(bool multiLine) { isMultiLine = multiLine; }
-        bool IsMultiLine() const { return isMultiLine; }
-
         void SetWordWrap(bool wrap) { wordWrap = wrap; }
         bool GetWordWrap() const { return wordWrap; }
 
@@ -294,23 +296,23 @@ namespace UltraCanvas {
         void DrawMarkers(IRenderContext* context);
 
         // Event handlers
-        bool HandleMouseClick(const UCEvent& event);
+        bool HandleMouseDown(const UCEvent& event);
         bool HandleMouseDoubleClick(const UCEvent& event);
         bool HandleMouseMove(const UCEvent& event);
+        bool HandleMouseUp(const UCEvent &event);
         bool HandleMouseDrag(const UCEvent& event);
         bool HandleMouseWheel(const UCEvent& event);
         bool HandleKeyPress(const UCEvent& event);
-        bool HandleTextInput(const UCEvent& event);
 
+        int MeasureTextWidth(const std::string& txt) const;
         // Helper methods
         std::pair<int, int> GetLineColumnFromPosition(int position) const;
         int GetPositionFromLineColumn(int line, int column) const;
         std::pair<int, int> GetLineColumnFromPoint(int x, int y) const;
-        void UpdateVisibleLines();
+        void UpdateVisibleArea();
         void RebuildText();
         int GetMaxLineLength() const;
         int GetVisibleCharactersPerLine() const;
-        bool NeedsScrollbars() const;
         const TokenStyle& GetStyleForTokenType(TokenType type) const;
 
         // Clipboard helpers
@@ -319,6 +321,9 @@ namespace UltraCanvas {
 
         // Initialization
         void ApplyDefaultStyle();
+        bool IsNeedVerticalScrollbar();
+        bool IsNeedHorizontalScrollbar();
+        int GetMaxLineWidth();
 
     private:
         // Text data
@@ -335,6 +340,13 @@ namespace UltraCanvas {
         int verticalScrollOffset;
         int firstVisibleLine;
         int maxVisibleLines;
+        int maxLineWidth;
+        Rect2Di visibleTextArea;
+        Rect2Di horizontalScrollThumb;
+        Rect2Di verticalScrollThumb;
+        Point2Di dragStartOffset;
+        bool isDraggingHorizontalThumb = false;
+        bool isDraggingVerticalThumb = false;
 
         // Cursor animation
         double cursorBlinkTime;
@@ -342,18 +354,10 @@ namespace UltraCanvas {
 
         // Properties
         bool isReadOnly;
-        bool isMultiLine;
         bool wordWrap;
         bool highlightCurrentLine;
         int currentLineIndex;
         int tabSize = 4;
-
-        // Font metrics
-        int fontSize;
-        int lineHeight;
-        std::string fontFamily;
-        int leftMargin;
-        int characterWidth;
 
         // Style
         TextAreaStyle style;
@@ -376,11 +380,6 @@ namespace UltraCanvas {
         std::vector<TextState> undoStack;
         std::vector<TextState> redoStack;
         const size_t maxUndoStackSize = 100;
-
-        // Auto-completion
-        bool showingAutoComplete;
-        std::vector<std::string> autoCompleteSuggestions;
-        int selectedSuggestion;
 
         // Bookmarks
         std::vector<int> bookmarks;

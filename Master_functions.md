@@ -168,6 +168,7 @@ int GetHeight();
 int GetTextWidth(const std::string& text);
 int GetTextHeight(const std::string& text);
 bool MeasureText(const std::string& text, int& w, int& h);
+int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0);
 Point2Df CalculateCenteredTextPosition(const std::string& text, const Rect2Df& bounds);
 ```
 

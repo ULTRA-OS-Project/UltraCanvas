@@ -468,7 +468,7 @@ namespace UltraCanvas {
     }
 
     int LinuxRenderContext::GetTextIndexForXY(const std::string &text, int x, int y, int w, int h) {
-        int index, trailing;
+        int index = 0, trailing;
         if (!pangoContext || text.empty()) {
             return -1;
         }
@@ -488,7 +488,7 @@ namespace UltraCanvas {
 
             pango_layout_set_text(layout, text.c_str(), -1);
 
-            if (!pango_layout_xy_to_index(layout, x, y, &index, &trailing)) {
+            if (!pango_layout_xy_to_index(layout, x * PANGO_SCALE, y * PANGO_SCALE, &index, &trailing)) {
                 index = -1;
             }
 
