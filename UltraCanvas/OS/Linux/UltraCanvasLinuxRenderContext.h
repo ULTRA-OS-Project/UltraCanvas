@@ -172,11 +172,11 @@ namespace UltraCanvas {
         void ApplyGradientFill(const Gradient& gradient);
 
         PangoFontDescription *CreatePangoFont(const TextStyle &style);
+        PangoLayout * CreatePangoLayout(PangoFontDescription *desc, int w=0, int h=0);
 
         // Add a flag to track if we're being destroyed
         bool destroying = false;
         bool enableDoubleBuffering = false;
-
         bool SaveXlibSurface(cairo_surface_t *surface, const Rect2Di &region,
                              X11PixelBuffer &buffer);
 
@@ -245,6 +245,7 @@ namespace UltraCanvas {
         void DrawText(const std::string &text, float x, float y) override;
         void DrawTextInRect(const std::string &text, float x, float y, float w, float h) override;
         bool MeasureText(const std::string &text, int &w, int &h) override;
+        int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) override;
 
         // Image rendering
         void DrawImage(const std::string &imagePath, float x, float y) override;

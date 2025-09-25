@@ -303,6 +303,8 @@ class UltraCanvasBaseWindow;
             return h;
         };
 
+        virtual int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) = 0;
+
         // ===== IMAGE RENDERING =====
         virtual void DrawImage(const std::string& imagePath, float x, float y) = 0;
         virtual void DrawImage(const std::string& imagePath, float x, float y, float w, float h) = 0;

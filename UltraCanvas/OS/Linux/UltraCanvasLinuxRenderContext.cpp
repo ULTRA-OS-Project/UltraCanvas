@@ -315,73 +315,20 @@ namespace UltraCanvas {
         cairo_stroke(cairo);
     }
 
-// ===== TEXT RENDERING (FIXED) =====
-    void LinuxRenderContext::DrawText(const std::string &text, float x, float y) {
-        // Comprehensive null checks
-        if (text.empty()) {
-            return; // Nothing to draw
+    PangoLayout* LinuxRenderContext::CreatePangoLayout(PangoFontDescription *desc, int w, int h) {
+        PangoLayout *layout = pango_layout_new(pangoContext);
+        if (!layout) {
+            std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
+            return nullptr;
         }
 
-        try {
-            //std::cout << "DrawText: Rendering '" << text << "' at (" << position.x << "," << position.y << ")" << std::endl;
-
-            ApplyTextStyle(currentState.textStyle);
-
-            PangoLayout *layout = pango_layout_new(pangoContext);
-            if (!layout) {
-                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
-                return;
-            }
-
-            PangoFontDescription *desc = CreatePangoFont(currentState.textStyle);
-            if (!desc) {
-                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
-                g_object_unref(layout);
-                return;
-            }
-
-            pango_layout_set_font_description(layout, desc);
-            pango_layout_set_text(layout, text.c_str(), -1);
-
-            cairo_move_to(cairo, x, y);
-            pango_cairo_show_layout(cairo, layout);
-
-            // Cleanup
-            pango_font_description_free(desc);
-            g_object_unref(layout);
-
-//            std::cout << "DrawText: Completed successfully" << std::endl;
-
-        } catch (const std::exception &e) {
-            std::cerr << "ERROR: Exception in DrawText: " << e.what() << std::endl;
-        } catch (...) {
-            std::cerr << "ERROR: Unknown exception in DrawText" << std::endl;
-        }
-    }
-
-    void LinuxRenderContext::DrawTextInRect(const std::string &text, float x, float y, float w, float h) {
-        if (text.empty()) return;
-
-        try {
-            ApplyTextStyle(currentState.textStyle);
-
-            PangoLayout *layout = pango_layout_new(pangoContext);
-            if (!layout) return;
-
-            PangoFontDescription *desc = CreatePangoFont(currentState.textStyle);
-            if (!desc) {
-                g_object_unref(layout);
-                return;
-            }
-
-            pango_layout_set_font_description(layout, desc);
-            pango_layout_set_text(layout, text.c_str(), -1);
+        pango_layout_set_font_description(layout, desc);
+        if (w > 0 && h > 0) {
             pango_layout_set_width(layout, w * PANGO_SCALE);
             pango_layout_set_height(layout, h * PANGO_SCALE);
-            //pango_layout_set_height(layout,-1);
 
-            // Set alignment
             PangoAlignment alignment = PANGO_ALIGN_LEFT;
+
             switch (currentState.textStyle.alignment) {
                 case TextAlignment::Center:
                     alignment = PANGO_ALIGN_CENTER;
@@ -403,6 +350,66 @@ namespace UltraCanvas {
             } else {
                 pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_END);
             }
+        }
+
+        return layout;
+    }
+// ===== TEXT RENDERING (FIXED) =====
+    void LinuxRenderContext::DrawText(const std::string &text, float x, float y) {
+        // Comprehensive null checks
+        if (text.empty()) {
+            return; // Nothing to draw
+        }
+
+        try {
+            //std::cout << "DrawText: Rendering '" << text << "' at (" << position.x << "," << position.y << ")" << std::endl;
+            PangoFontDescription *desc = CreatePangoFont(currentState.textStyle);
+            if (!desc) {
+                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
+                return;
+            }
+            PangoLayout *layout = CreatePangoLayout(desc);
+            if (!layout) {
+                pango_font_description_free(desc);
+                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
+                return;
+            }
+
+            pango_layout_set_text(layout, text.c_str(), -1);
+
+            SetCairoColor(currentState.textStyle.textColor);
+            cairo_move_to(cairo, x, y);
+            pango_cairo_show_layout(cairo, layout);
+
+            // Cleanup
+            pango_font_description_free(desc);
+            g_object_unref(layout);
+
+//            std::cout << "DrawText: Completed successfully" << std::endl;
+
+        } catch (const std::exception &e) {
+            std::cerr << "ERROR: Exception in DrawText: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "ERROR: Unknown exception in DrawText" << std::endl;
+        }
+    }
+
+    void LinuxRenderContext::DrawTextInRect(const std::string &text, float x, float y, float w, float h) {
+        if (text.empty()) return;
+
+        try {
+            PangoFontDescription *desc = CreatePangoFont(currentState.textStyle);
+            if (!desc) {
+                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
+                return;
+            }
+            PangoLayout *layout = CreatePangoLayout(desc, w, h);
+            if (!layout) {
+                pango_font_description_free(desc);
+                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
+                return;
+            }
+            pango_layout_set_text(layout, text.c_str(), -1);
 
             if (currentState.textStyle.baseline == TextBaseline::Middle) {
                 int w1, h1;
@@ -412,6 +419,7 @@ namespace UltraCanvas {
             } else {
                 cairo_move_to(cairo, x, y);
             }
+            SetCairoColor(currentState.textStyle.textColor);
             pango_cairo_show_layout(cairo, layout);
 
             pango_font_description_free(desc);
@@ -430,16 +438,18 @@ namespace UltraCanvas {
         }
 
         try {
-            PangoLayout *layout = pango_layout_new(pangoContext);
-            if (!layout) return false;
-
             PangoFontDescription *desc = CreatePangoFont(currentState.textStyle);
             if (!desc) {
-                g_object_unref(layout);
+                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
+                return false;
+            }
+            PangoLayout *layout = CreatePangoLayout(desc);
+            if (!layout) {
+                pango_font_description_free(desc);
+                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
                 return false;
             }
 
-            pango_layout_set_font_description(layout, desc);
             pango_layout_set_text(layout, text.c_str(), -1);
 
             int width, height;
@@ -454,6 +464,41 @@ namespace UltraCanvas {
         } catch (...) {
             std::cerr << "ERROR: Exception in MeasureText" << std::endl;
             return false;
+        }
+    }
+
+    int LinuxRenderContext::GetTextIndexForXY(const std::string &text, int x, int y, int w, int h) {
+        int index, trailing;
+        if (!pangoContext || text.empty()) {
+            return -1;
+        }
+
+        try {
+            PangoFontDescription *desc = CreatePangoFont(currentState.textStyle);
+            if (!desc) {
+                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
+                return -1;
+            }
+            PangoLayout *layout = CreatePangoLayout(desc, w, h);
+            if (!layout) {
+                pango_font_description_free(desc);
+                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
+                return -1;
+            }
+
+            pango_layout_set_text(layout, text.c_str(), -1);
+
+            if (!pango_layout_xy_to_index(layout, x, y, &index, &trailing)) {
+                index = -1;
+            }
+
+            pango_font_description_free(desc);
+            g_object_unref(layout);
+            return index;
+
+        } catch (...) {
+            std::cerr << "ERROR: Exception in TextXYToIndex" << std::endl;
+            return -1;
         }
     }
 
