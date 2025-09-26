@@ -1455,7 +1455,7 @@ if __name__ == "__main__":
 
         // ===== TEXTAREA 3: Pascal Code with Custom Settings =====
         // Right column
-        auto pascalLabel = std::make_shared<UltraCanvasLabel>("PascalLabel", 1031, 20, 480, 245, 20);
+        auto pascalLabel = std::make_shared<UltraCanvasLabel>("PascalLabel", 1031, 20, 480, 265, 20);
         pascalLabel->SetText("Pascal Syntax (Custom Theme)");
         pascalLabel->SetFontSize(12);
         pascalLabel->SetFontWeight(FontWeight::Bold);

@@ -93,6 +93,7 @@ namespace UltraCanvas {
         }
 
         auto ctx = GetRenderContext();
+        ctx->PushState();
         // Draw background
         DrawBackground(ctx);
 
@@ -123,6 +124,7 @@ namespace UltraCanvas {
 
         // Draw scrollbars if needed
         DrawScrollbars(ctx);
+        ctx->PopState();
     }
 
 // Draw background
