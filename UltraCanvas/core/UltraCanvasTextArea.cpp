@@ -492,8 +492,7 @@ namespace UltraCanvas {
                 context->SetFontWeight(FontWeight::Normal);
 
                 // Use the built-in GetTextIndexForXY function
-                clickedCol = context->GetTextIndexForXY(lines[clickedLine], relativeX, 0);
-
+                clickedCol = std::max(0, context->GetTextIndexForXY(lines[clickedLine], relativeX, 0));
                 context->PopState();
             }
         }
@@ -623,7 +622,7 @@ namespace UltraCanvas {
                 context->SetFont(style.fontFamily, style.fontSize);
                 context->SetFontWeight(FontWeight::Normal);
 
-                draggedCol = context->GetTextIndexForXY(lines[draggedLine], relativeX, 0);
+                draggedCol = std::max(0, context->GetTextIndexForXY(lines[draggedLine], relativeX, 0));
 
                 context->PopState();
             }
@@ -777,6 +776,10 @@ namespace UltraCanvas {
         }
 
         auto [line, col] = GetLineColumnFromPosition(cursorPosition);
+
+        if (lines.empty()) {
+            lines.push_back("");
+        }
 
         // Insert text at cursor position
         for (char ch : textToInsert) {
@@ -1119,17 +1122,18 @@ namespace UltraCanvas {
 // Theme application methods
     void UltraCanvasTextArea::ApplyDarkTheme() {
         style.backgroundColor = {30, 30, 30, 255};
-        style.fontColor = {220, 220, 220, 255};
-        style.currentLineColor = {40, 40, 40, 255};
+        style.fontColor = {210, 210, 210, 255};
+        style.currentLineColor = {60, 60, 60, 255};
         style.lineNumbersColor = {100, 100, 100, 255};
         style.lineNumbersBackgroundColor = {25, 25, 25, 255};
         style.selectionColor = {60, 90, 150, 100};
 
-        style.tokenStyles.keywordStyle.color = {86, 156, 214, 255};
-        style.tokenStyles.functionStyle.color = {220, 220, 170, 255};
-        style.tokenStyles.stringStyle.color = {206, 145, 120, 255};
+        style.tokenStyles.keywordStyle.color = {86, 156, 244, 255};
+        style.tokenStyles.functionStyle.color = {230, 230, 170, 255};
+        style.tokenStyles.stringStyle.color = {246, 155, 140, 255};
         style.tokenStyles.commentStyle.color = {106, 153, 85, 255};
         style.tokenStyles.numberStyle.color = {181, 206, 168, 255};
+        style.tokenStyles.defaultStyle.color = {240, 240, 240, 255};
 
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();

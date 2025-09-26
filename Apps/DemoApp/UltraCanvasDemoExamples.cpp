@@ -1333,7 +1333,7 @@ namespace UltraCanvas {
         cppTextArea->ApplyDarkCodeStyle("C++");
         cppTextArea->SetShowLineNumbers(true);
         cppTextArea->SetHighlightCurrentLine(true);
-        cppTextArea->SetFontSize(11);
+        cppTextArea->SetFontSize(13);
 
         // Sample C++ code
         std::string cppCode = R"(// UltraCanvas Example
@@ -1396,7 +1396,7 @@ int main() {
         pythonTextArea->ApplyCodeStyle("Python");
         pythonTextArea->SetShowLineNumbers(true);
         pythonTextArea->SetHighlightCurrentLine(true);
-        pythonTextArea->SetFontSize(11);
+        pythonTextArea->SetFontSize(13);
 
         // Sample Python code
         std::string pythonCode = R"(# UltraCanvas Python Example
@@ -1468,8 +1468,8 @@ if __name__ == "__main__":
         // Apply custom style for Pascal
         pascalTextArea->ApplyCodeStyle("Pascal");
         pascalTextArea->SetShowLineNumbers(true);
-        pascalTextArea->SetHighlightCurrentLine(false); // Different setting
-        pascalTextArea->SetFontSize(11);
+        pascalTextArea->SetHighlightCurrentLine(true); // Different setting
+        pascalTextArea->SetFontSize(13);
 
         // Custom color scheme for Pascal
         TextAreaStyle pascalStyle = pascalTextArea->GetStyle();
@@ -1634,7 +1634,7 @@ end.)";
 //        container->AddChild(themeDropdown);
 
         // Font size label
-        auto fontSizeLabel = std::make_shared<UltraCanvasLabel>("FontSizeLabel", 1044, 430, 720, 70, 40);
+        auto fontSizeLabel = std::make_shared<UltraCanvasLabel>("FontSizeLabel", 1044, 420, 720, 90, 20);
         fontSizeLabel->SetText("Font Size:");
         fontSizeLabel->SetAlignment(TextAlignment::Right);
         container->AddChild(fontSizeLabel);
