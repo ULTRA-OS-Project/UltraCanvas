@@ -508,20 +508,20 @@ namespace UltraCanvas {
             );
 
             // Add all components to container
-            AddOrMoveChild(nameLabel);
-            AddOrMoveChild(nameInput);
-            AddOrMoveChild(descriptionLabel);
-            AddOrMoveChild(descriptionInput);
-            AddOrMoveChild(codeEditor);
-            AddOrMoveChild(validateButton);
-            AddOrMoveChild(previewButton);
-            AddOrMoveChild(saveButton);
-            AddOrMoveChild(loadButton);
-            AddOrMoveChild(statusLabel);
-            AddOrMoveChild(complexityLabel);
-            AddOrMoveChild(animationSpeedSlider);
-            AddOrMoveChild(formulaLibrary);
-            //AddOrMoveChild(livePreview);
+            AddChild(nameLabel);
+            AddChild(nameInput);
+            AddChild(descriptionLabel);
+            AddChild(descriptionInput);
+            AddChild(codeEditor);
+            AddChild(validateButton);
+            AddChild(previewButton);
+            AddChild(saveButton);
+            AddChild(loadButton);
+            AddChild(statusLabel);
+            AddChild(complexityLabel);
+            AddChild(animationSpeedSlider);
+            AddChild(formulaLibrary);
+            //AddChild(livePreview);
         }
 
         virtual void Render() {

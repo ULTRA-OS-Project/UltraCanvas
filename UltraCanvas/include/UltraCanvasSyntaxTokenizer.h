@@ -1,5 +1,5 @@
 // UltraCanvasSyntaxHighlighter.h
-// Comprehensive syntax highlighting rules for major programming languages
+// Comprehensive syntax highlighting languagesRules for major programming languagesRules
 // Version: 1.0.0
 // Last Modified: 2025-09-20
 // Author: UltraCanvas Framework
@@ -17,6 +17,8 @@ namespace UltraCanvas {
 
 // ===== TOKEN TYPES =====
     enum class TokenType {
+        Newline,           // new line char
+        Whitespace,        // spaces, tabs
         Keyword,           // int, class, public, etc.
         Type,              // int, float, string, custom types
         Function,          // function calls
@@ -30,7 +32,6 @@ namespace UltraCanvas {
         Preprocessor,      // #include, #define
         Constant,          // true, false, NULL
         Identifier,        // user-defined names
-//        Whitespace,        // spaces, tabs
 //        StringInterpolation, // ${variable} in template strings
 //        Attribute,         // @annotation, [[attribute]]
 //        Label,             // goto labels
@@ -42,21 +43,8 @@ namespace UltraCanvas {
         Unknown,           // unrecognized tokens
     };
 
-// ===== STYLE DEFINITION =====
-//    struct TokenStyle {
-//        Color color = Color(0, 0, 0);
-//        bool bold = false;
-//        bool italic = false;
-//        bool underline = false;
-//
-//        TokenStyle() = default;
-//
-//        TokenStyle(const Color &c, bool b = false, bool i = false, bool u = false)
-//                : color(c), bold(b), italic(i), underline(u) {}
-//    };
-
 // ===== LANGUAGE RULES =====
-    struct LanguageRules {
+    struct SyntaxTokenizationRules {
         std::string name;
         std::vector<std::string> fileExtensions;
 
@@ -106,22 +94,22 @@ namespace UltraCanvas {
         struct Token {
             TokenType type;
             std::string text;
-            size_t start;
+//            size_t start;
             size_t length;
-            int line;
-            int column;
+//            int line;
+//            int column;
         };
 
     private:
-        std::unordered_map<std::string, LanguageRules> languages;
+        std::unordered_map<std::string, SyntaxTokenizationRules> languagesRules;
 //        std::unordered_map<TokenType, TokenStyle> tokenStyles;
-        LanguageRules *currentLanguage = nullptr;
+        SyntaxTokenizationRules *currentRules = nullptr;
 
     public:
         SyntaxTokenizer();
 
         // Language management
-        void RegisterLanguage(const LanguageRules &rules);
+        void RegisterLanguage(const SyntaxTokenizationRules &rules);
 
         bool SetLanguage(const std::string &languageName);
 
@@ -183,74 +171,74 @@ namespace UltraCanvas {
 
 // ===== LANGUAGE DEFINITIONS =====
 
-// Factory functions for creating language rules
-    LanguageRules CreateCppRules();
+// Factory functions for creating language languagesRules
+    SyntaxTokenizationRules CreateCppRules();
 
-    LanguageRules CreateCRules();
+    SyntaxTokenizationRules CreateCRules();
 
-    LanguageRules CreateJavaRules();
+    SyntaxTokenizationRules CreateJavaRules();
 
-    LanguageRules CreateCSharpRules();
+    SyntaxTokenizationRules CreateCSharpRules();
 
-    LanguageRules CreatePythonRules();
+    SyntaxTokenizationRules CreatePythonRules();
 
-    LanguageRules CreateJavaScriptRules();
+    SyntaxTokenizationRules CreateJavaScriptRules();
 
-    LanguageRules CreateTypeScriptRules();
+    SyntaxTokenizationRules CreateTypeScriptRules();
 
-    LanguageRules CreatePascalRules();
+    SyntaxTokenizationRules CreatePascalRules();
 
-    LanguageRules CreateFortranRules();
+    SyntaxTokenizationRules CreateFortranRules();
 
-    LanguageRules CreateBasicRules();
+    SyntaxTokenizationRules CreateBasicRules();
 
-    LanguageRules CreateLuaRules();
+    SyntaxTokenizationRules CreateLuaRules();
 
-    LanguageRules CreateLispRules();
+    SyntaxTokenizationRules CreateLispRules();
 
-    LanguageRules CreateCommonLispRules();
+    SyntaxTokenizationRules CreateCommonLispRules();
 
-    LanguageRules CreateSmalltalkRules();
+    SyntaxTokenizationRules CreateSmalltalkRules();
 
-    LanguageRules CreatePrologRules();
+    SyntaxTokenizationRules CreatePrologRules();
 
-    LanguageRules CreatePerlRules();
+    SyntaxTokenizationRules CreatePerlRules();
 
-    LanguageRules CreateRubyRules();
+    SyntaxTokenizationRules CreateRubyRules();
 
-    LanguageRules CreateGoRules();
+    SyntaxTokenizationRules CreateGoRules();
 
-    LanguageRules CreateSwiftRules();
+    SyntaxTokenizationRules CreateSwiftRules();
 
-    LanguageRules CreateKotlinRules();
+    SyntaxTokenizationRules CreateKotlinRules();
 
-    LanguageRules CreateDartRules();
+    SyntaxTokenizationRules CreateDartRules();
 
-    LanguageRules CreateRustRules();
+    SyntaxTokenizationRules CreateRustRules();
 
-    LanguageRules CreateElixirRules();
+    SyntaxTokenizationRules CreateElixirRules();
 
-    LanguageRules CreateHtmlRules();
+    SyntaxTokenizationRules CreateHtmlRules();
 
-    LanguageRules CreateCssRules();
+    SyntaxTokenizationRules CreateCssRules();
 
-    LanguageRules CreateSqlRules();
+    SyntaxTokenizationRules CreateSqlRules();
 
-    LanguageRules CreatePhpRules();
+    SyntaxTokenizationRules CreatePhpRules();
 
-// Assembly language rules
-    LanguageRules CreateX86AssemblyRules();
+// Assembly language languagesRules
+    SyntaxTokenizationRules CreateX86AssemblyRules();
 
-    LanguageRules CreateArmAssemblyRules();
+    SyntaxTokenizationRules CreateArmAssemblyRules();
 
-    LanguageRules Create68000AssemblyRules();
+    SyntaxTokenizationRules Create68000AssemblyRules();
 
-    LanguageRules CreateZ80AssemblyRules();
+    SyntaxTokenizationRules CreateZ80AssemblyRules();
 
 // ===== IMPLEMENTATION =====
 
     inline SyntaxTokenizer::SyntaxTokenizer() {
-        // Register all supported languages
+        // Register all supported languagesRules
         RegisterLanguage(CreateCppRules());
         RegisterLanguage(CreateCRules());
         RegisterLanguage(CreateJavaRules());
@@ -279,14 +267,14 @@ namespace UltraCanvas {
         RegisterLanguage(CreateSqlRules());
         RegisterLanguage(CreatePhpRules());
 
-        // Additional languages from the top 20 list
+        // Additional languagesRules from the top 20 list
 //        RegisterLanguage(CreateRRules());
 //        RegisterLanguage(CreateScalaRules());
 //        RegisterLanguage(CreateMatlabRules());
 //        RegisterLanguage(CreateVbaRules());
 //        RegisterLanguage(CreateShellScriptRules());
 
-        // Assembly languages
+        // Assembly languagesRules
         RegisterLanguage(CreateX86AssemblyRules());
         RegisterLanguage(CreateArmAssemblyRules());
         RegisterLanguage(Create68000AssemblyRules());
@@ -295,14 +283,14 @@ namespace UltraCanvas {
         //LoadDefaultStyles();
     }
 
-    inline void SyntaxTokenizer::RegisterLanguage(const LanguageRules &rules) {
-        languages[rules.name] = rules;
+    inline void SyntaxTokenizer::RegisterLanguage(const SyntaxTokenizationRules &rules) {
+        languagesRules[rules.name] = rules;
     }
 
     inline bool SyntaxTokenizer::SetLanguage(const std::string &languageName) {
-        auto it = languages.find(languageName);
-        if (it != languages.end()) {
-            currentLanguage = &it->second;
+        auto it = languagesRules.find(languageName);
+        if (it != languagesRules.end()) {
+            currentRules = &it->second;
             return true;
         }
         return false;
@@ -312,10 +300,10 @@ namespace UltraCanvas {
         std::string ext = fileExtension;
         if (ext.front() == '.') ext = ext.substr(1);
 
-        for (auto &[name, rules]: languages) {
+        for (auto &[name, rules]: languagesRules) {
             for (const std::string &ruleExt: rules.fileExtensions) {
                 if (ruleExt == ext) {
-                    currentLanguage = &rules;
+                    currentRules = &rules;
                     return true;
                 }
             }
@@ -325,7 +313,7 @@ namespace UltraCanvas {
 
     inline std::vector<std::string> SyntaxTokenizer::GetSupportedLanguages() const {
         std::vector<std::string> result;
-        for (const auto &[name, rules]: languages) {
+        for (const auto &[name, rules]: languagesRules) {
             result.push_back(name);
         }
         return result;
@@ -363,8 +351,8 @@ namespace UltraCanvas {
 //    }
 
 // ===== C++ LANGUAGE RULES =====
-    inline LanguageRules CreateCppRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateCppRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "C++";
         rules.fileExtensions = {"cpp", "cxx", "cc", "c++", "hpp", "hxx", "h++", "h"};
 
@@ -414,8 +402,8 @@ namespace UltraCanvas {
     }
 
 // ===== R LANGUAGE RULES =====
-    inline LanguageRules CreateRRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateRRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "R";
         rules.fileExtensions = {"r", "R", "rmd", "Rmd"};
 
@@ -467,8 +455,8 @@ namespace UltraCanvas {
     }
 
 // ===== SCALA LANGUAGE RULES =====
-    inline LanguageRules CreateScalaRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateScalaRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Scala";
         rules.fileExtensions = {"scala", "sc"};
 
@@ -521,8 +509,8 @@ namespace UltraCanvas {
     }
 
 // ===== MATLAB LANGUAGE RULES =====
-    inline LanguageRules CreateMatlabRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateMatlabRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "MATLAB";
         rules.fileExtensions = {"m", "mlx", "mat"};
 
@@ -567,8 +555,8 @@ namespace UltraCanvas {
     }
 
 // ===== VBA (VISUAL BASIC FOR APPLICATIONS) LANGUAGE RULES =====
-    inline LanguageRules CreateVbaRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateVbaRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "VBA";
         rules.fileExtensions = {"vba", "bas", "cls", "frm"};
         rules.isCaseSensitive = false;
@@ -623,8 +611,8 @@ namespace UltraCanvas {
     }
 
 // ===== SHELL SCRIPTING LANGUAGE RULES =====
-    inline LanguageRules CreateShellScriptRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateShellScriptRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Shell Script";
         rules.fileExtensions = {"sh", "bash", "zsh", "ksh", "csh", "tcsh", "fish"};
 
@@ -674,8 +662,8 @@ namespace UltraCanvas {
     }
 
 // ===== C LANGUAGE RULES =====
-    inline LanguageRules CreateCRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateCRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "C";
         rules.fileExtensions = {"c", "h"};
 
@@ -712,8 +700,8 @@ namespace UltraCanvas {
     }
 
 // ===== JAVA LANGUAGE RULES =====
-    inline LanguageRules CreateJavaRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateJavaRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Java";
         rules.fileExtensions = {"java"};
 
@@ -752,8 +740,8 @@ namespace UltraCanvas {
     }
 
 // ===== C# LANGUAGE RULES =====
-    inline LanguageRules CreateCSharpRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateCSharpRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "C#";
         rules.fileExtensions = {"cs"};
 
@@ -797,8 +785,8 @@ namespace UltraCanvas {
     }
 
 // ===== PYTHON LANGUAGE RULES =====
-    inline LanguageRules CreatePythonRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreatePythonRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Python";
         rules.fileExtensions = {"py", "pyw", "pyi"};
 
@@ -842,8 +830,8 @@ namespace UltraCanvas {
     }
 
 // ===== PASCAL LANGUAGE RULES =====
-    inline LanguageRules CreatePascalRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreatePascalRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Pascal";
         rules.fileExtensions = {"pas", "pp", "inc"};
         rules.isCaseSensitive = false;
@@ -883,8 +871,8 @@ namespace UltraCanvas {
     }
 
 // ===== FORTRAN LANGUAGE RULES =====
-    inline LanguageRules CreateFortranRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateFortranRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Fortran";
         rules.fileExtensions = {"f", "f90", "f95", "f03", "f08", "for", "ftn"};
         rules.isCaseSensitive = false;
@@ -926,8 +914,8 @@ namespace UltraCanvas {
     }
 
 // ===== BASIC LANGUAGE RULES =====
-    inline LanguageRules CreateBasicRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateBasicRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "BASIC";
         rules.fileExtensions = {"bas", "basic"};
         rules.isCaseSensitive = false;
@@ -957,8 +945,8 @@ namespace UltraCanvas {
     }
 
 // ===== LUA LANGUAGE RULES =====
-    inline LanguageRules CreateLuaRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateLuaRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Lua";
         rules.fileExtensions = {"lua"};
 
@@ -991,8 +979,8 @@ namespace UltraCanvas {
     }
 
 // ===== LISP LANGUAGE RULES =====
-    inline LanguageRules CreateLispRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateLispRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Lisp";
         rules.fileExtensions = {"lisp", "lsp", "l"};
 
@@ -1034,8 +1022,8 @@ namespace UltraCanvas {
     }
 
 // ===== COMMON LISP LANGUAGE RULES =====
-    inline LanguageRules CreateCommonLispRules() {
-        LanguageRules rules = CreateLispRules();
+    inline SyntaxTokenizationRules CreateCommonLispRules() {
+        SyntaxTokenizationRules rules = CreateLispRules();
         rules.name = "Common Lisp";
         rules.fileExtensions = {"cl", "lisp", "lsp"};
 
@@ -1050,8 +1038,8 @@ namespace UltraCanvas {
     }
 
 // ===== SMALLTALK LANGUAGE RULES =====
-    inline LanguageRules CreateSmalltalkRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateSmalltalkRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Smalltalk";
         rules.fileExtensions = {"st"};
 
@@ -1086,8 +1074,8 @@ namespace UltraCanvas {
     }
 
 // ===== PROLOG LANGUAGE RULES =====
-    inline LanguageRules CreatePrologRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreatePrologRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Prolog";
         rules.fileExtensions = {"pl", "pro", "prolog"};
 
@@ -1131,8 +1119,8 @@ namespace UltraCanvas {
     }
 
 // ===== PERL LANGUAGE RULES =====
-    inline LanguageRules CreatePerlRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreatePerlRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Perl";
         rules.fileExtensions = {"pl", "pm", "perl"};
 
@@ -1190,8 +1178,8 @@ namespace UltraCanvas {
     }
 
 // ===== RUBY LANGUAGE RULES =====
-    inline LanguageRules CreateRubyRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateRubyRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Ruby";
         rules.fileExtensions = {"rb", "ruby", "rbw"};
 
@@ -1230,8 +1218,8 @@ namespace UltraCanvas {
     }
 
 // ===== GO LANGUAGE RULES =====
-    inline LanguageRules CreateGoRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateGoRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Go";
         rules.fileExtensions = {"go"};
 
@@ -1270,8 +1258,8 @@ namespace UltraCanvas {
     }
 
 // ===== SWIFT LANGUAGE RULES =====
-    inline LanguageRules CreateSwiftRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateSwiftRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Swift";
         rules.fileExtensions = {"swift"};
 
@@ -1313,8 +1301,8 @@ namespace UltraCanvas {
     }
 
 // ===== KOTLIN LANGUAGE RULES =====
-    inline LanguageRules CreateKotlinRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateKotlinRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Kotlin";
         rules.fileExtensions = {"kt", "kts"};
 
@@ -1362,8 +1350,8 @@ namespace UltraCanvas {
     }
 
 // ===== DART LANGUAGE RULES =====
-    inline LanguageRules CreateDartRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateDartRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Dart";
         rules.fileExtensions = {"dart"};
 
@@ -1406,8 +1394,8 @@ namespace UltraCanvas {
     }
 
 // ===== RUST LANGUAGE RULES =====
-    inline LanguageRules CreateRustRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateRustRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Rust";
         rules.fileExtensions = {"rs"};
 
@@ -1450,8 +1438,8 @@ namespace UltraCanvas {
     }
 
 // ===== ELIXIR LANGUAGE RULES =====
-    inline LanguageRules CreateElixirRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateElixirRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Elixir";
         rules.fileExtensions = {"ex", "exs"};
 
@@ -1505,8 +1493,8 @@ namespace UltraCanvas {
 // ===== ASSEMBLY LANGUAGE RULES =====
 
 // X86 Assembly
-    inline LanguageRules CreateX86AssemblyRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateX86AssemblyRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "x86 Assembly";
         rules.fileExtensions = {"asm", "s", "S"};
         rules.isAssembly = true;
@@ -1570,8 +1558,8 @@ namespace UltraCanvas {
     }
 
 // ARM Assembly
-    inline LanguageRules CreateArmAssemblyRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateArmAssemblyRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "ARM Assembly";
         rules.fileExtensions = {"s", "S", "arm"};
         rules.isAssembly = true;
@@ -1619,8 +1607,8 @@ namespace UltraCanvas {
     }
 
 // 68000 Assembly
-    inline LanguageRules Create68000AssemblyRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules Create68000AssemblyRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "68000 Assembly";
         rules.fileExtensions = {"68k", "asm", "s"};
         rules.isAssembly = true;
@@ -1667,8 +1655,8 @@ namespace UltraCanvas {
     }
 
 // Z80 Assembly
-    inline LanguageRules CreateZ80AssemblyRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateZ80AssemblyRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "Z80 Assembly";
         rules.fileExtensions = {"z80", "asm", "s"};
         rules.isAssembly = true;
@@ -1707,8 +1695,8 @@ namespace UltraCanvas {
     }
 
 // ===== HTML LANGUAGE RULES =====
-    inline LanguageRules CreateHtmlRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateHtmlRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "HTML";
         rules.fileExtensions = {"html", "htm", "xhtml"};
         rules.isCaseSensitive = false;
@@ -1742,8 +1730,8 @@ namespace UltraCanvas {
     }
 
 // ===== CSS LANGUAGE RULES =====
-    inline LanguageRules CreateCssRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateCssRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "CSS";
         rules.fileExtensions = {"css"};
 
@@ -1796,8 +1784,8 @@ namespace UltraCanvas {
     }
 
 // ===== SQL LANGUAGE RULES =====
-    inline LanguageRules CreateSqlRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateSqlRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "SQL";
         rules.fileExtensions = {"sql"};
         rules.isCaseSensitive = false;
@@ -1855,8 +1843,8 @@ namespace UltraCanvas {
     }
 
 // ===== PHP LANGUAGE RULES =====
-    inline LanguageRules CreatePhpRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreatePhpRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "PHP";
         rules.fileExtensions = {"php", "php3", "php4", "php5", "phtml"};
 
@@ -1960,8 +1948,8 @@ namespace UltraCanvas {
     }
 
 // ===== JAVASCRIPT LANGUAGE RULES =====
-    inline LanguageRules CreateJavaScriptRules() {
-        LanguageRules rules;
+    inline SyntaxTokenizationRules CreateJavaScriptRules() {
+        SyntaxTokenizationRules rules;
         rules.name = "JavaScript";
         rules.fileExtensions = {"js", "mjs", "jsx"};
 
@@ -2006,8 +1994,8 @@ namespace UltraCanvas {
     }
 
 // ===== TYPESCRIPT LANGUAGE RULES =====
-    inline LanguageRules CreateTypeScriptRules() {
-        LanguageRules rules = CreateJavaScriptRules();
+    inline SyntaxTokenizationRules CreateTypeScriptRules() {
+        SyntaxTokenizationRules rules = CreateJavaScriptRules();
         rules.name = "TypeScript";
         rules.fileExtensions = {"ts", "tsx"};
 

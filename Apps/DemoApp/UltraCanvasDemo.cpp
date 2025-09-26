@@ -39,13 +39,13 @@ namespace UltraCanvas {
         }
 
         // Create tree view for categories (left side)
-        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 10, 10, 350, 780);
+        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 10, 10, 350, 800);
         categoryTreeView->SetRowHeight(24);
         categoryTreeView->SetSelectionMode(TreeSelectionMode::Single);
         categoryTreeView->SetLineStyle(TreeLineStyle::Solid);
 
         // Create display container (right side)
-        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 3, 370, 10, 1020, 780);
+        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 3, 370, 10, 1020, 800);
         ContainerStyle displayContainerStyle;
         displayContainerStyle.backgroundColor = Color(248, 248, 248, 255);
         displayContainerStyle.borderWidth = 1.0f;
@@ -53,12 +53,12 @@ namespace UltraCanvas {
         displayContainer->SetContainerStyle(displayContainerStyle);
 
         // Create status label (bottom left)
-        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 800, 350, 25);
+        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 810, 350, 25);
         statusLabel->SetText("Select a component from the tree view to see examples");
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // Create description label (bottom right)
-        descriptionLabel = std::make_shared<UltraCanvasLabel>("DescriptionLabel", 5, 370, 800, 1020, 25);
+        descriptionLabel = std::make_shared<UltraCanvasLabel>("DescriptionLabel", 5, 370, 810, 1020, 25);
         descriptionLabel->SetText("");
         descriptionLabel->SetBackgroundColor(Color(240, 240, 240, 255));
 
@@ -74,10 +74,10 @@ namespace UltraCanvas {
         };
 
         // Add elements to window
-        mainWindow->AddOrMoveChild(categoryTreeView);
-        mainWindow->AddOrMoveChild(displayContainer);
-        mainWindow->AddOrMoveChild(statusLabel);
-        mainWindow->AddOrMoveChild(descriptionLabel);
+        mainWindow->AddChild(categoryTreeView);
+        mainWindow->AddChild(displayContainer);
+        mainWindow->AddChild(statusLabel);
+        mainWindow->AddChild(descriptionLabel);
 
         std::cout << "✓ Demo application initialized successfully" << std::endl;
         return true;
@@ -173,6 +173,15 @@ namespace UltraCanvas {
                 .AddVariant("listview", "Simple List")
                 .AddVariant("listview", "Icon List")
                 .AddVariant("listview", "Detail View");
+
+        extendedBuilder.AddItem("textarea", "Advanced Text Area", "Advanced text editing with syntax highlighting",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateTextAreaExamples(); })
+                .AddVariant("textarea", "C++ Syntax Highlighting")
+                .AddVariant("textarea", "Python Syntax Highlighting")
+                .AddVariant("textarea", "Pascal Syntax Highlighting")
+                .AddVariant("textarea", "Line Numbers Display")
+                .AddVariant("textarea", "Theme Support");
 
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
@@ -361,7 +370,7 @@ namespace UltraCanvas {
             try {
                 currentDisplayElement = item->createExample();
                 if (currentDisplayElement) {
-                    displayContainer->AddOrMoveChild(currentDisplayElement);
+                    displayContainer->AddChild(currentDisplayElement);
                     currentSelectedId = itemId;
                 }
             } catch (const std::exception& e) {
@@ -376,7 +385,7 @@ namespace UltraCanvas {
             placeholder->SetBorderWidth(2.0f);
             placeholder->SetBorderColor(Color(200, 200, 0, 255));
 
-            displayContainer->AddOrMoveChild(placeholder);
+            displayContainer->AddChild(placeholder);
             currentDisplayElement = placeholder;
             currentSelectedId = itemId;
         }

@@ -308,10 +308,13 @@ UltraCanvasUIElement* FindElementByID(UltraCanvasUIElement* root, const std::str
 Rect2Di CalculateTotalBounds(UltraCanvasUIElement* root);
 ```
 
-### **Find Element Functions**
+### **Container Functions**
 *Source: UltraCanvasContainer.h*
 ```cpp
 UltraCanvasUIElement* FindElementAtPoint(int x, int y);
+void AddChild(std::shared_ptr<UltraCanvasUIElement> child);
+void RemoveChild(std::shared_ptr<UltraCanvasUIElement> child);
+void ClearChildren();
 ```
 
 ---

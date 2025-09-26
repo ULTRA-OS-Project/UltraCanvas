@@ -449,7 +449,7 @@ namespace UltraCanvas {
                                               horizontalThumbRect.Contains(mousePos);
     }
 
-    void UltraCanvasContainer::AddOrMoveChild(std::shared_ptr<UltraCanvasUIElement> child) {
+    void UltraCanvasContainer::AddChild(std::shared_ptr<UltraCanvasUIElement> child) {
         if (!child || child->GetParentContainer() == this) return;
 
         // Remove from previous parent if any

@@ -4,7 +4,7 @@
 // Last Modified: 2024-12-20
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasSyntaxHighlighter.h"
+#include "UltraCanvasSyntaxTokenizer.h"
 #include <algorithm>
 #include <cctype>
 #include <sstream>
@@ -15,34 +15,60 @@ namespace UltraCanvas {
     std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::Tokenize(const std::string& text) const {
         std::vector<Token> tokens;
 
-        if (!currentLanguage || text.empty()) {
+        if (!currentRules || text.empty()) {
             return tokens;
         }
 
+//        int currentLine = 0;
         size_t position = 0;
-        int currentLine = 0;
         int currentColumn = 0;
+        std::string whitespacePrefix = "";
 
         while (position < text.length()) {
             // Track newlines
+            if (text[position] == '\r' && text[position + 1] == '\n') {
+//                currentLine++;
+                currentColumn = 0;
+                position += 2;
+                Token token;
+                token.type = TokenType::Newline;
+                token.text = "\n";
+                token.length = 1;
+                continue;
+            }
+
             if (text[position] == '\n') {
-                currentLine++;
+//                currentLine++;
                 currentColumn = 0;
                 position++;
+                Token token;
+                token.type = TokenType::Newline;
+                token.text = "\n";
+                token.length = 1;
                 continue;
             }
 
             // Skip whitespace (but track column position)
             if (IsWhitespace(text[position])) {
+                whitespacePrefix.push_back(text[position]);
                 currentColumn++;
                 position++;
                 continue;
             }
 
+            if (!whitespacePrefix.empty()) {
+                Token token;
+                token.type = TokenType::Whitespace;
+                token.length = whitespacePrefix.length();
+                token.text = whitespacePrefix;
+                tokens.push_back(token);
+                whitespacePrefix.clear();
+            }
+
             Token token;
-            token.line = currentLine;
-            token.column = currentColumn;
-            token.start = position;
+//            token.line = currentLine;
+//            token.column = currentColumn;
+//            token.start = position;
 
             // Try to match comments first (they have priority)
             auto commentResult = ParseComment(text, position);
@@ -55,7 +81,7 @@ namespace UltraCanvas {
                 // Update position and column
                 for (size_t i = 0; i < token.length; i++) {
                     if (text[position + i] == '\n') {
-                        currentLine++;
+//                        currentLine++;
                         currentColumn = 0;
                     } else {
                         currentColumn++;
@@ -66,19 +92,19 @@ namespace UltraCanvas {
             }
 
             // Try to match strings
-            if (text[position] == '\n') {
-                auto stringResult = ParseString(text, position, text[position]);
-                if (stringResult.first > position) {
-                    token.type = stringResult.second;
-                    token.length = stringResult.first - position;
-                    token.text = text.substr(position, token.length);
-                    tokens.push_back(token);
-
-                    currentColumn += token.length;
-                    position = stringResult.first;
-                    continue;
-                }
-            }
+//            if (text[position] == '\n') {
+//                auto stringResult = ParseString(text, position, text[position]);
+//                if (stringResult.first > position) {
+//                    token.type = stringResult.second;
+//                    token.length = stringResult.first - position;
+//                    token.text = text.substr(position, token.length);
+//                    tokens.push_back(token);
+//
+//                    currentColumn += token.length;
+//                    position = stringResult.first;
+//                    continue;
+//                }
+//            }
 
             // Try to match character literals
             if (IsCharacterDelimiter(text[position])) {
@@ -112,7 +138,7 @@ namespace UltraCanvas {
             }
 
             // Try to match preprocessor directives
-            if (currentLanguage->hasPreprocessor && text[position] == '#' && currentColumn == 0) {
+            if (currentRules->hasPreprocessor && text[position] == '#' && currentColumn == 0) {
                 auto preprocessorResult = ParsePreprocessor(text, position);
                 if (preprocessorResult.first > position) {
                     token.type = TokenType::Preprocessor;
@@ -171,29 +197,40 @@ namespace UltraCanvas {
     std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::TokenizeLine(const std::string& line, int lineNumber) const {
         std::vector<Token> tokens;
 
-        if (!currentLanguage || line.empty()) {
+        if (!currentRules || line.empty()) {
             return tokens;
         }
 
         size_t position = 0;
         int currentColumn = 0;
+        std::string whitespacePrefix = "";
 
         while (position < line.length()) {
             // Skip whitespace
             if (IsWhitespace(line[position])) {
+                whitespacePrefix.push_back(line[position]);
                 currentColumn++;
                 position++;
                 continue;
             }
 
+            if (!whitespacePrefix.empty()) {
+                Token token;
+                token.type = TokenType::Whitespace;
+                token.length = whitespacePrefix.length();
+                token.text = whitespacePrefix;
+                tokens.push_back(token);
+                whitespacePrefix.clear();
+            }
+
             Token token;
-            token.line = lineNumber;
-            token.column = currentColumn;
-            token.start = position;
+//            token.line = lineNumber;
+//            token.column = currentColumn;
+//            token.start = position;
 
             // Try to match single-line comments
             bool foundComment = false;
-            for (const auto& commentPrefix : currentLanguage->singleLineComments) {
+            for (const auto& commentPrefix : currentRules->singleLineComments) {
                 if (line.substr(position, commentPrefix.length()) == commentPrefix) {
                     token.type = TokenType::Comment;
                     token.length = line.length() - position;
@@ -204,7 +241,7 @@ namespace UltraCanvas {
             }
 
             // Try to match multi-line comment starts
-            for (const auto& [startDelim, endDelim] : currentLanguage->multiLineComments) {
+            for (const auto& [startDelim, endDelim] : currentRules->multiLineComments) {
                 if (line.substr(position, startDelim.length()) == startDelim) {
                     // Find the end delimiter on the same line
                     size_t endPos = line.find(endDelim, position + startDelim.length());
@@ -214,7 +251,7 @@ namespace UltraCanvas {
                         token.text = line.substr(position, token.length);
                         tokens.push_back(token);
 
-                        currentColumn += token.length;
+//                        currentColumn += token.length;
                         position += token.length;
                         foundComment = true;
                         break;
@@ -278,7 +315,7 @@ namespace UltraCanvas {
             }
 
             // Try to match preprocessor directives (only at start of line)
-            if (currentLanguage->hasPreprocessor && line[position] == '#' && currentColumn == 0) {
+            if (currentRules->hasPreprocessor && line[position] == '#' && currentColumn == 0) {
                 token.type = TokenType::Preprocessor;
                 token.length = line.length() - position;
                 token.text = line.substr(position);
@@ -294,7 +331,7 @@ namespace UltraCanvas {
                 token.text = line.substr(position, token.length);
                 tokens.push_back(token);
 
-                currentColumn += token.length;
+//                currentColumn += token.length;
                 position = operatorResult.first;
                 continue;
             }
@@ -309,7 +346,7 @@ namespace UltraCanvas {
                     token.text = word;
                     tokens.push_back(token);
 
-                    currentColumn += token.length;
+//                    currentColumn += token.length;
                     position = wordResult.first;
                     continue;
                 }
@@ -332,34 +369,34 @@ namespace UltraCanvas {
 
 // Check if a word is a keyword
     bool SyntaxTokenizer::IsKeyword(const std::string& word) const {
-        if (!currentLanguage) return false;
-        return currentLanguage->keywords.find(word) != currentLanguage->keywords.end();
+        if (!currentRules) return false;
+        return currentRules->keywords.find(word) != currentRules->keywords.end();
     }
 
 // Check if a word is a type
     bool SyntaxTokenizer::IsType(const std::string& word) const {
-        if (!currentLanguage) return false;
-        return currentLanguage->types.find(word) != currentLanguage->types.end();
+        if (!currentRules) return false;
+        return currentRules->types.find(word) != currentRules->types.end();
     }
 
 // Check if a word is a built-in function
     bool SyntaxTokenizer::IsBuiltin(const std::string& word) const {
-        if (!currentLanguage) return false;
-        return currentLanguage->builtins.find(word) != currentLanguage->builtins.end();
+        if (!currentRules) return false;
+        return currentRules->builtins.find(word) != currentRules->builtins.end();
     }
 
 // Check if a word is a constant
     bool SyntaxTokenizer::IsConstant(const std::string& word) const {
-        if (!currentLanguage) return false;
-        return currentLanguage->constants.find(word) != currentLanguage->constants.end();
+        if (!currentRules) return false;
+        return currentRules->constants.find(word) != currentRules->constants.end();
     }
 
 // Check if text is an operator
     bool SyntaxTokenizer::IsOperator(const std::string& text) const {
-        if (!currentLanguage) return false;
-        return std::find(currentLanguage->operators.begin(),
-                         currentLanguage->operators.end(),
-                         text) != currentLanguage->operators.end();
+        if (!currentRules) return false;
+        return std::find(currentRules->operators.begin(),
+                         currentRules->operators.end(),
+                         text) != currentRules->operators.end();
     }
 
 // Check if text is a number
@@ -423,21 +460,21 @@ namespace UltraCanvas {
         return true;
     }
 
-// Check if text is a register (for assembly languages)
+// Check if text is a register (for assembly languagesRules)
     bool SyntaxTokenizer::IsRegister(const std::string& text) const {
-        if (!currentLanguage) return false;
-        return currentLanguage->registers.find(text) != currentLanguage->registers.end();
+        if (!currentRules) return false;
+        return currentRules->registers.find(text) != currentRules->registers.end();
     }
 
-// Check if text is an instruction (for assembly languages)
+// Check if text is an instruction (for assembly languagesRules)
     bool SyntaxTokenizer::IsInstruction(const std::string& text) const {
-        if (!currentLanguage) return false;
-        return currentLanguage->instructions.find(text) != currentLanguage->instructions.end();
+        if (!currentRules) return false;
+        return currentRules->instructions.find(text) != currentRules->instructions.end();
     }
 
 // Classify a word into its token type
     TokenType SyntaxTokenizer::ClassifyWord(const std::string& word) const {
-        if (!currentLanguage) return TokenType::Identifier;
+        if (!currentRules) return TokenType::Identifier;
 
         // Check in order of priority
         if (IsKeyword(word)) return TokenType::Keyword;
@@ -457,14 +494,14 @@ namespace UltraCanvas {
 
 // Parse a string literal
     std::pair<size_t, TokenType> SyntaxTokenizer::ParseString(const std::string& text, size_t pos, char delimiter) const {
-        if (!currentLanguage) return {pos, TokenType::Unknown};
+        if (!currentRules) return {pos, TokenType::Unknown};
 
         size_t endPos = pos + 1;
 
         while (endPos < text.length()) {
             if (text[endPos] == delimiter) {
                 // Check if it's escaped
-                if (endPos > 0 && text[endPos - 1] == '\\' && currentLanguage->hasEscapeSequences) {
+                if (endPos > 0 && text[endPos - 1] == '\\' && currentRules->hasEscapeSequences) {
                     // Count consecutive backslashes
                     int backslashCount = 0;
                     size_t checkPos = endPos - 1;
@@ -482,7 +519,7 @@ namespace UltraCanvas {
             }
 
             // Check for string interpolation (template literals)
-            if (currentLanguage->hasStringInterpolation) {
+            if (currentRules->hasStringInterpolation) {
                 if (delimiter == '`' && text[endPos] == '$' && endPos + 1 < text.length() && text[endPos + 1] == '{') {
                     // Handle interpolation - for now, just continue
                     endPos++;
@@ -499,10 +536,10 @@ namespace UltraCanvas {
 
 // Parse a comment
     std::pair<size_t, TokenType> SyntaxTokenizer::ParseComment(const std::string& text, size_t pos) const {
-        if (!currentLanguage) return {pos, TokenType::Unknown};
+        if (!currentRules) return {pos, TokenType::Unknown};
 
         // Check single-line comments
-        for (const auto& commentPrefix : currentLanguage->singleLineComments) {
+        for (const auto& commentPrefix : currentRules->singleLineComments) {
             if (text.substr(pos, commentPrefix.length()) == commentPrefix) {
                 size_t endPos = text.find('\n', pos);
                 if (endPos == std::string::npos) {
@@ -513,7 +550,7 @@ namespace UltraCanvas {
         }
 
         // Check multi-line comments
-        for (const auto& [startDelim, endDelim] : currentLanguage->multiLineComments) {
+        for (const auto& [startDelim, endDelim] : currentRules->multiLineComments) {
             if (text.substr(pos, startDelim.length()) == startDelim) {
                 size_t endPos = text.find(endDelim, pos + startDelim.length());
                 if (endPos != std::string::npos) {
@@ -530,12 +567,12 @@ namespace UltraCanvas {
 
 // Parse a number
     std::pair<size_t, TokenType> SyntaxTokenizer::ParseNumber(const std::string& text, size_t pos) const {
-        if (!currentLanguage) return {pos, TokenType::Unknown};
+        if (!currentRules) return {pos, TokenType::Unknown};
 
         size_t endPos = pos;
 
         // Check for hex numbers (0x or 0X)
-        if (currentLanguage->hasHexNumbers &&
+        if (currentRules->hasHexNumbers &&
             endPos + 1 < text.length() &&
             text[endPos] == '0' &&
             (text[endPos + 1] == 'x' || text[endPos + 1] == 'X')) {
@@ -547,7 +584,7 @@ namespace UltraCanvas {
         }
 
         // Check for binary numbers (0b or 0B)
-        if (currentLanguage->hasBinaryNumbers &&
+        if (currentRules->hasBinaryNumbers &&
             endPos + 1 < text.length() &&
             text[endPos] == '0' &&
             (text[endPos + 1] == 'b' || text[endPos + 1] == 'B')) {
@@ -565,10 +602,10 @@ namespace UltraCanvas {
         while (endPos < text.length()) {
             if (IsDigit(text[endPos])) {
                 endPos++;
-            } else if (currentLanguage->hasFloatNumbers && text[endPos] == '.' && !hasDecimalPoint && !hasExponent) {
+            } else if (currentRules->hasFloatNumbers && text[endPos] == '.' && !hasDecimalPoint && !hasExponent) {
                 hasDecimalPoint = true;
                 endPos++;
-            } else if (currentLanguage->hasFloatNumbers &&
+            } else if (currentRules->hasFloatNumbers &&
                        (text[endPos] == 'e' || text[endPos] == 'E') &&
                        !hasExponent) {
                 hasExponent = true;
@@ -613,10 +650,10 @@ namespace UltraCanvas {
 
 // Parse an operator
     std::pair<size_t, TokenType> SyntaxTokenizer::ParseOperator(const std::string& text, size_t pos) const {
-        if (!currentLanguage) return {pos, TokenType::Unknown};
+        if (!currentRules) return {pos, TokenType::Unknown};
 
         // Sort operators by length (longest first) to match multi-character operators
-        std::vector<std::string> sortedOps = currentLanguage->operators;
+        std::vector<std::string> sortedOps = currentRules->operators;
         std::sort(sortedOps.begin(), sortedOps.end(),
                   [](const std::string& a, const std::string& b) { return a.length() > b.length(); });
 
@@ -650,17 +687,17 @@ namespace UltraCanvas {
 // ===== ADDITIONAL HELPER METHODS =====
 
     bool SyntaxTokenizer::IsStringDelimiter(char c) const {
-        if (!currentLanguage) return false;
-        return std::find(currentLanguage->stringDelimiters.begin(),
-                         currentLanguage->stringDelimiters.end(),
-                         c) != currentLanguage->stringDelimiters.end();
+        if (!currentRules) return false;
+        return std::find(currentRules->stringDelimiters.begin(),
+                         currentRules->stringDelimiters.end(),
+                         c) != currentRules->stringDelimiters.end();
     }
 
     bool SyntaxTokenizer::IsCharacterDelimiter(char c) const {
-        if (!currentLanguage) return false;
-        return std::find(currentLanguage->characterDelimiters.begin(),
-                         currentLanguage->characterDelimiters.end(),
-                         c) != currentLanguage->characterDelimiters.end();
+        if (!currentRules) return false;
+        return std::find(currentRules->characterDelimiters.begin(),
+                         currentRules->characterDelimiters.end(),
+                         c) != currentRules->characterDelimiters.end();
     }
 
     bool SyntaxTokenizer::IsNumberSuffix(char c) const {
@@ -674,7 +711,7 @@ namespace UltraCanvas {
 
         while (endPos < line.length()) {
             if (line[endPos] == delimiter) {
-                if (endPos > 0 && line[endPos - 1] == '\\' && currentLanguage->hasEscapeSequences) {
+                if (endPos > 0 && line[endPos - 1] == '\\' && currentRules->hasEscapeSequences) {
                     int backslashCount = 0;
                     size_t checkPos = endPos - 1;
                     while (checkPos > pos && line[checkPos] == '\\') {
@@ -700,7 +737,7 @@ namespace UltraCanvas {
         size_t endPos = pos + 1;
 
         // Handle escape sequences
-        if (line[endPos] == '\\' && currentLanguage->hasEscapeSequences && endPos + 1 < line.length()) {
+        if (line[endPos] == '\\' && currentRules->hasEscapeSequences && endPos + 1 < line.length()) {
             endPos += 2;
         } else {
             endPos++;
@@ -731,14 +768,14 @@ namespace UltraCanvas {
     }
 
     std::pair<size_t, TokenType> SyntaxTokenizer::ParseCharacter(const std::string& text, size_t pos) const {
-        if (!currentLanguage || pos >= text.length()) return {pos, TokenType::Unknown};
+        if (!currentRules || pos >= text.length()) return {pos, TokenType::Unknown};
 
         if (!IsCharacterDelimiter(text[pos])) return {pos, TokenType::Unknown};
 
         size_t endPos = pos + 1;
 
         // Handle escape sequences
-        if (endPos < text.length() && text[endPos] == '\\' && currentLanguage->hasEscapeSequences) {
+        if (endPos < text.length() && text[endPos] == '\\' && currentRules->hasEscapeSequences) {
             endPos += 2; // Skip escape sequence
         } else if (endPos < text.length()) {
             endPos++; // Regular character
@@ -754,7 +791,7 @@ namespace UltraCanvas {
     }
 
     std::pair<size_t, TokenType> SyntaxTokenizer::ParsePreprocessor(const std::string& text, size_t pos) const {
-        if (!currentLanguage || !currentLanguage->hasPreprocessor) return {pos, TokenType::Unknown};
+        if (!currentRules || !currentRules->hasPreprocessor) return {pos, TokenType::Unknown};
 
         if (text[pos] != '#') return {pos, TokenType::Unknown};
 

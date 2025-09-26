@@ -108,7 +108,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasTreeView.cpp
         UltraCanvas/core/UltraCanvasTabbedContainer.cpp
         UltraCanvas/core/UltraCanvasButton.cpp
-        UltraCanvas/core/UltraCanvasSyntaxHighlighter.cpp
+        UltraCanvas/core/UltraCanvasSyntaxTokenizer.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp

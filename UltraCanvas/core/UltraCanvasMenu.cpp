@@ -254,7 +254,7 @@ namespace UltraCanvas {
 
         if (parentWindow) {
             // Add the submenu to the window's element collection so it gets rendered
-//            parentWindow->AddOrMoveChild(activeSubmenu);
+//            parentWindow->AddChild(activeSubmenu);
             std::cout << "Added submenu '" << activeSubmenu->GetIdentifier()
                       << "' to window for rendering" << std::endl;
             activeSubmenu->SetWindow(parentWindow);

@@ -23,15 +23,6 @@ namespace UltraCanvas {
     enum class TokenType;
 
 // Syntax highlighting mode
-    enum class SyntaxMode {
-        PlainText,      // No syntax highlighting
-        Programming,    // Uses LanguageRules from UltraCanvasSyntaxHighlightingRules.h
-        Markdown,       // Markdown formatting
-        JSON,           // JSON syntax
-        XML,            // XML/HTML syntax
-        Custom          // User-defined rules
-    };
-
     struct TokenStyle {
         Color color = Color(0, 0, 0);
         bool bold = false;
@@ -73,7 +64,7 @@ namespace UltraCanvas {
         Color currentLineColor;
 
         // Syntax highlighting mode
-        SyntaxMode syntaxMode;
+        bool highlightSyntax;
 
         Color scrollbarTrackColor;
         Color scrollbarColor;
@@ -95,7 +86,7 @@ namespace UltraCanvas {
             TokenStyle builtinStyle;
             TokenStyle assemblyStyle;
             TokenStyle registerStyle;
-            TokenStyle unknownStyle;
+            TokenStyle defaultStyle;
         } tokenStyles;
     };
 
@@ -112,6 +103,8 @@ namespace UltraCanvas {
 
         // Event handling
         virtual bool OnEvent(const UCEvent& event) override;
+
+        void Invalidate();
 
         // Text manipulation
         void SetText(const std::string& text);
@@ -152,8 +145,8 @@ namespace UltraCanvas {
         void PasteClipboard();
 
         // Syntax highlighting
-        void SetSyntaxMode(SyntaxMode mode);
-        SyntaxMode GetSyntaxMode() const { return style.syntaxMode; }
+        void SetHighlightSyntax(bool);
+        bool GetHighlightSyntax() const { return style.highlightSyntax; }
         void SetProgrammingLanguage(const std::string& language);
         void SetProgrammingLanguageByExtension(const std::string& extension);
         void SetSyntaxTheme(const std::string& theme);
@@ -197,19 +190,19 @@ namespace UltraCanvas {
         bool CanRedo() const;
 
         // Properties
-        void SetReadOnly(bool readOnly) { isReadOnly = readOnly; }
+        void SetReadOnly(bool readOnly) { isReadOnly = readOnly; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool IsReadOnly() const { return isReadOnly; }
 
-        void SetWordWrap(bool wrap) { wordWrap = wrap; }
+        void SetWordWrap(bool wrap) { wordWrap = wrap; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool GetWordWrap() const { return wordWrap; }
 
-        void SetHighlightCurrentLine(bool highlight) { highlightCurrentLine = highlight; }
+        void SetHighlightCurrentLine(bool highlight) { highlightCurrentLine = highlight; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool GetHighlightCurrentLine() const { return highlightCurrentLine; }
 
-        void SetShowLineNumbers(bool show) { style.showLineNumbers = show; }
+        void SetShowLineNumbers(bool show) { style.showLineNumbers = show; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool GetShowLineNumbers() const { return style.showLineNumbers; }
 
-        void SetTabSize(int size) { tabSize = size; }
+        void SetTabSize(int size) { tabSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         int GetTabSize() const { return tabSize; }
 
         // Style access
@@ -218,15 +211,17 @@ namespace UltraCanvas {
         const TextAreaStyle& GetStyle() const { return style; }
 
         // Font settings
-        void SetFont(const std::string& family, int size);
-        void SetFontFamily(const std::string& family);
-        void SetFontSize(int size);
+        void SetFont(const std::string& family, int size) { style.fontFamily = family, style.fontSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
+        void SetFontFamily(const std::string& family) { style.fontFamily = family; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
+        const std::string& GetFontFamily() { return style.fontFamily; }
+        void SetFontSize(int size) { style.fontSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
+        int GetFontSize() { return style.fontSize; }
 
         // Color settings
-        void SetTextColor(const Color& color) { style.fontColor = color; }
-        void SetBackgroundColor(const Color& color) { style.backgroundColor = color; }
-        void SetSelectionColor(const Color& color) { style.selectionColor = color; }
-        void SetCursorColor(const Color& color) { style.cursorColor = color; }
+        void SetTextColor(const Color& color) { style.fontColor = color;  RequestRedraw(); }
+        void SetBackgroundColor(const Color& color) { style.backgroundColor = color; RequestRedraw(); }
+        void SetSelectionColor(const Color& color) { style.selectionColor = color; RequestRedraw(); }
+        void SetCursorColor(const Color& color) { style.cursorColor = color; RequestRedraw(); }
 
         // Scrolling
         void ScrollTo(int line);
@@ -309,7 +304,7 @@ namespace UltraCanvas {
         std::pair<int, int> GetLineColumnFromPosition(int position) const;
         int GetPositionFromLineColumn(int line, int column) const;
         std::pair<int, int> GetLineColumnFromPoint(int x, int y) const;
-        void UpdateVisibleArea();
+        void CalculateVisibleArea();
         void RebuildText();
         int GetMaxLineLength() const;
         int GetVisibleCharactersPerLine() const;
@@ -353,6 +348,7 @@ namespace UltraCanvas {
         bool cursorVisible;
 
         // Properties
+        bool isNeedRecalculateVisibleArea;
         bool isReadOnly;
         bool wordWrap;
         bool highlightCurrentLine;
@@ -363,7 +359,7 @@ namespace UltraCanvas {
         TextAreaStyle style;
 
         // Syntax highlighter
-        std::unique_ptr<SyntaxTokenizer> syntaxHighlighter;
+        std::unique_ptr<SyntaxTokenizer> syntaxTokenizer;
 
         // Search state
         std::string lastSearchText;

@@ -114,7 +114,7 @@ namespace UltraCanvas {
         virtual ~UltraCanvasContainer() = default;
 
         // ===== ENHANCED CHILD MANAGEMENT =====
-        void AddOrMoveChild(std::shared_ptr<UltraCanvasUIElement> child);
+        void AddChild(std::shared_ptr<UltraCanvasUIElement> child);
         void RemoveChild(std::shared_ptr<UltraCanvasUIElement> child);
         void ClearChildren();
         const std::vector<std::shared_ptr<UltraCanvasUIElement>>& GetChildren() const { return children; }

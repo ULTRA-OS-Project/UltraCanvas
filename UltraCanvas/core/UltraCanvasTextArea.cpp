@@ -5,7 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
-#include "UltraCanvasSyntaxHighlighter.h"
+#include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUtils.h"
 #include <algorithm>
@@ -30,17 +30,18 @@ namespace UltraCanvas {
               isReadOnly(false),
               wordWrap(false),
               highlightCurrentLine(false),
+              isNeedRecalculateVisibleArea(true),
               currentLineIndex(0) {
 
         // Initialize style with defaults
         ApplyDefaultStyle();
 
         // Calculate visible lines
-        UpdateVisibleArea();
+        CalculateVisibleArea();
 
         // Initialize syntax highlighter if needed
-        if (style.syntaxMode == SyntaxMode::Programming) {
-            syntaxHighlighter = std::make_unique<SyntaxTokenizer>();
+        if (style.highlightSyntax) {
+            syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
         }
     }
 
@@ -67,7 +68,7 @@ namespace UltraCanvas {
         style.padding = 5;
         style.showLineNumbers = false;
         style.lineNumbersWidth = 50;
-        style.syntaxMode = SyntaxMode::PlainText;
+        style.highlightSyntax = false;
 
         // Syntax highlighting colors
         style.tokenStyles.keywordStyle.color = {0, 0, 255, 255};
@@ -86,6 +87,11 @@ namespace UltraCanvas {
 // Render implementation
     void UltraCanvasTextArea::Render() {
         if (!IsVisible()) return;
+
+        if (isNeedRecalculateVisibleArea) {
+            CalculateVisibleArea();
+        }
+
         auto ctx = GetRenderContext();
         // Draw background
         DrawBackground(ctx);
@@ -96,7 +102,7 @@ namespace UltraCanvas {
         }
 
         // Draw text with syntax highlighting
-        if (style.syntaxMode != SyntaxMode::PlainText && syntaxHighlighter) {
+        if (style.highlightSyntax && syntaxTokenizer) {
             DrawHighlightedText(ctx);
         } else {
             DrawPlainText(ctx);
@@ -216,8 +222,9 @@ namespace UltraCanvas {
 
 // Draw text with syntax highlighting
     void UltraCanvasTextArea::DrawHighlightedText(IRenderContext* context) {
-        if (!syntaxHighlighter) return;
+        if (!syntaxTokenizer) return;
         context->PushState();
+        context->SetClipRect(visibleTextArea);
         context->SetFont(style.fontFamily, style.fontSize);
 
         int textX = visibleTextArea.x;
@@ -227,7 +234,7 @@ namespace UltraCanvas {
             const std::string& line = lines[i];
             if (!line.empty()) {
                 // Tokenize line
-                auto tokens = syntaxHighlighter->TokenizeLine(line);
+                auto tokens = syntaxTokenizer->TokenizeLine(line);
 
                 int x = textX;
                 for (const auto& token : tokens) {
@@ -280,7 +287,7 @@ namespace UltraCanvas {
             case TokenType::Register:
                 return style.tokenStyles.registerStyle;
             default:
-                return style.tokenStyles.unknownStyle;
+                return style.tokenStyles.defaultStyle;
         }
     }
 
@@ -297,7 +304,7 @@ namespace UltraCanvas {
         auto [startLine, startCol] = GetLineColumnFromPosition(startPos);
         auto [endLine, endCol] = GetLineColumnFromPosition(endPos);
 
-        int textX = bounds.x + style.padding + (style.showLineNumbers ? style.lineNumbersWidth + 5 : 0);
+        int textX = visibleTextArea.x;
 
         for (int line = startLine; line <= endLine; line++) {
             if (line < firstVisibleLine || line >= firstVisibleLine + maxVisibleLines) continue;
@@ -540,6 +547,7 @@ namespace UltraCanvas {
             } else {
                 verticalScrollOffset = 0;
             }
+
             RequestRedraw();
             return true;
         }
@@ -564,6 +572,7 @@ namespace UltraCanvas {
             } else {
                 horizontalScrollOffset = 0;
             }
+
             RequestRedraw();
             return true;
         }
@@ -647,6 +656,7 @@ namespace UltraCanvas {
                                         std::min(firstVisibleLine,
                                                  static_cast<int>(lines.size()) - maxVisibleLines));
         }
+
         RequestRedraw();
         return true;
     }
@@ -719,7 +729,6 @@ namespace UltraCanvas {
         }
 
         if (handled) {
-            UpdateSyntaxHighlighting();
             EnsureCursorVisible();
         }
 
@@ -748,8 +757,7 @@ namespace UltraCanvas {
         selectionStart = -1;
         selectionEnd = -1;
 
-        // Update syntax highlighting
-        UpdateSyntaxHighlighting();
+        RebuildText();
 
         // Trigger text changed callback
         if (onTextChanged) {
@@ -792,9 +800,6 @@ namespace UltraCanvas {
         // Rebuild full text
         RebuildText();
 
-        // Update syntax highlighting
-        UpdateSyntaxHighlighting();
-
         // Trigger callback
         if (onTextChanged) {
             onTextChanged(text);
@@ -821,8 +826,6 @@ namespace UltraCanvas {
                 lines[line].insert(col, 1, ch);
                 cursorPosition++;
             }
-
-
             RebuildText();
         }
     }
@@ -865,7 +868,6 @@ namespace UltraCanvas {
             }
 
             RebuildText();
-            RequestRedraw();
             if (onTextChanged) {
                 onTextChanged(text);
             }
@@ -896,7 +898,6 @@ namespace UltraCanvas {
         selectionEnd = -1;
 
         RebuildText();
-        RequestRedraw();
         if (onTextChanged) {
             onTextChanged(text);
         }
@@ -1086,40 +1087,31 @@ namespace UltraCanvas {
     }
 
 // Syntax highlighting methods
-    void UltraCanvasTextArea::SetSyntaxMode(SyntaxMode mode) {
-        style.syntaxMode = mode;
+    void UltraCanvasTextArea::SetHighlightSyntax(bool on) {
+        style.highlightSyntax = on;
 
-        if (mode == SyntaxMode::Programming && !syntaxHighlighter) {
-            syntaxHighlighter = std::make_unique<SyntaxTokenizer>();
+        if (on && !syntaxTokenizer) {
+            syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
         }
-
-        UpdateSyntaxHighlighting();
+        RequestRedraw();
     }
 
     void UltraCanvasTextArea::SetProgrammingLanguage(const std::string& language) {
-        if (style.syntaxMode == SyntaxMode::Programming) {
-            if (!syntaxHighlighter) {
-                syntaxHighlighter = std::make_unique<SyntaxTokenizer>();
+        if (style.highlightSyntax) {
+            if (!syntaxTokenizer) {
+                syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
             }
-            syntaxHighlighter->SetLanguage(language);
-            UpdateSyntaxHighlighting();
+            syntaxTokenizer->SetLanguage(language);
+            RequestRedraw();
         }
     }
 
     void UltraCanvasTextArea::SetProgrammingLanguageByExtension(const std::string& extension) {
-        if (style.syntaxMode == SyntaxMode::Programming) {
-            if (!syntaxHighlighter) {
-                syntaxHighlighter = std::make_unique<SyntaxTokenizer>();
+        if (style.highlightSyntax) {
+            if (!syntaxTokenizer) {
+                syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
             }
-            syntaxHighlighter->SetLanguageByExtension(extension);
-            UpdateSyntaxHighlighting();
-        }
-    }
-
-    void UltraCanvasTextArea::UpdateSyntaxHighlighting() {
-        if (style.syntaxMode == SyntaxMode::Programming && syntaxHighlighter) {
-            // Syntax highlighter will tokenize during rendering
-            //Invalidate();
+            syntaxTokenizer->SetLanguageByExtension(extension);
             RequestRedraw();
         }
     }
@@ -1138,34 +1130,46 @@ namespace UltraCanvas {
         style.tokenStyles.stringStyle.color = {206, 145, 120, 255};
         style.tokenStyles.commentStyle.color = {106, 153, 85, 255};
         style.tokenStyles.numberStyle.color = {181, 206, 168, 255};
+
+        isNeedRecalculateVisibleArea = true;
+        RequestRedraw();
     }
 
-// Style application methods for specific languages
+// Style application methods for specific languagesRules
     void UltraCanvasTextArea::ApplyCodeStyle(const std::string& language) {
         ApplyDefaultStyle();
-        SetSyntaxMode(SyntaxMode::Programming);
+        SetHighlightSyntax(true);
         SetProgrammingLanguage(language);
         style.showLineNumbers = true;
         style.fontFamily = "Courier New";
         highlightCurrentLine = true;
+
+        isNeedRecalculateVisibleArea = true;
+        RequestRedraw();
     }
 
     void UltraCanvasTextArea::ApplyDarkCodeStyle(const std::string& language) {
         ApplyDefaultStyle();
         ApplyDarkTheme();
-        SetSyntaxMode(SyntaxMode::Programming);
+        SetHighlightSyntax(true);
         SetProgrammingLanguage(language);
         style.showLineNumbers = true;
         style.fontFamily = "Courier New";
         highlightCurrentLine = true;
+
+        isNeedRecalculateVisibleArea = true;
+        RequestRedraw();
     }
 
     void UltraCanvasTextArea::ApplyPlainTextStyle() {
         ApplyDefaultStyle();
-        SetSyntaxMode(SyntaxMode::PlainText);
+        SetHighlightSyntax(false);
         style.showLineNumbers = false;
         style.fontFamily = "Arial";
         highlightCurrentLine = false;
+
+        isNeedRecalculateVisibleArea = true;
+        RequestRedraw();
     }
 
 // Line operations
@@ -1293,11 +1297,10 @@ namespace UltraCanvas {
         } else {
             horizontalScrollOffset = 0;
         }
+        RequestRedraw();
     }
 
-    void UltraCanvasTextArea::UpdateVisibleArea() {
-        auto bounds = GetBounds();
-
+    void UltraCanvasTextArea::CalculateVisibleArea() {
         visibleTextArea = GetBounds();
         visibleTextArea.x += style.padding;
         visibleTextArea.y += style.padding;
@@ -1329,6 +1332,7 @@ namespace UltraCanvas {
                 }
             }
         }
+        isNeedRecalculateVisibleArea = false;
     }
 
 
@@ -1341,8 +1345,8 @@ namespace UltraCanvas {
             }
         }
 
-        UpdateVisibleArea();
         RequestRedraw();
+
         if (onTextChanged) {
             onTextChanged(text);
         }
@@ -1377,7 +1381,7 @@ namespace UltraCanvas {
         return width;
     }
 
-// Factory functions
+    // Factory functions
     std::shared_ptr<UltraCanvasTextArea> CreateCodeEditor(const std::string& name, int id,
                                                           int x, int y, int width, int height,
                                                           const std::string& language) {
