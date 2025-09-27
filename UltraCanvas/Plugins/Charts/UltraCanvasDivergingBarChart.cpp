@@ -141,6 +141,8 @@ namespace UltraCanvas {
         if (prevHoveredRow != hoveredRowIndex || prevHoveredCategory != hoveredCategory) {
             if (enableTooltips && hoveredRowIndex >= 0 && !hoveredCategory.empty()) {
                 UpdateTooltip(mousePos);
+            } else {
+                UltraCanvasTooltipManager::HideTooltip();
             }
             RequestRedraw();
             return true;
@@ -657,9 +659,9 @@ namespace UltraCanvas {
             float value = point.categoryValues.at(hoveredCategory);
             tooltipText += std::to_string(static_cast<int>(value));
         }
-
+        auto mouseGlobalPos = ConvertContainerToWindowCoordinates(mousePos);
         // Show tooltip using tooltip manager
-        UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, mousePos);
+        UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, mouseGlobalPos);
     }
 
     float UltraCanvasDivergingBarChart::GetAnimationScale() {

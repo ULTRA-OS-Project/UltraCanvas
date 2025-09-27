@@ -1195,10 +1195,10 @@ namespace UltraCanvas {
 
         // Set up Likert scale categories
         std::vector<DivergingCategory> categories;
-        categories.emplace_back("Strongly Disagree", Color(178, 24, 43, 255), false);
+        categories.emplace_back("Strongly Disagree", Color(0xff, 0x50, 0x33, 255), false);
         categories.emplace_back("Disagree", Color(244, 165, 130, 255), false);
         categories.emplace_back("Neutral", Color(220, 220, 220, 255), false);
-        categories.emplace_back("Agree", Color(146, 197, 222, 255), true);
+        categories.emplace_back("Agree", Color(04, 0xd1, 0xd6, 255), true);
         categories.emplace_back("Strongly Agree", Color(33, 102, 172, 255), true);
 
         // Create Likert Scale chart
