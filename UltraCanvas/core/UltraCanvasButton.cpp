@@ -73,21 +73,32 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasButton::AutoResize() {
-        if (text.empty()) return;
+        if (!autoresize || text.empty()) return;
 
         // Simple auto-resize logic
-        int newWidth = static_cast<int>(text.length() * style.fontSize * 0.6f) +
-                       style.paddingLeft + style.paddingRight;
-        int newHeight = static_cast<int>(style.fontSize * 1.5f) +
-                        style.paddingTop + style.paddingBottom;
+        auto ctx = GetRenderContext();
+        if (ctx) {
+            int txtw, txth;
+            ctx->MeasureText(text, txtw, txth);
+            int newWidth = txtw +
+                           style.paddingLeft + style.paddingRight;
+            int newHeight = txth +
+                            style.paddingTop + style.paddingBottom;
 
-        SetWidth(newWidth);
-        SetHeight(newHeight);
+            SetWidth(newWidth);
+            SetHeight(newHeight);
+            isNeedAutoresize = false;
+        }
+        isNeedAutoresize = true;
     }
 
     void UltraCanvasButton::Render() {
         IRenderContext *ctx = GetRenderContext();
         if (!IsVisible() || !ctx) return;
+
+        if (isNeedAutoresize) {
+            AutoResize();
+        }
 
         ctx->PushState();
 

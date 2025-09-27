@@ -67,7 +67,8 @@ namespace UltraCanvas {
         ButtonStyle style;
         ButtonState currentState = ButtonState::Normal;
         bool pressed = false;
-
+        bool autoresize = false;
+        bool isNeedAutoresize = false;
     public:
         // ===== CONSTRUCTOR =====
         UltraCanvasButton(const std::string& identifier = "Button", long id = 0,
@@ -88,6 +89,9 @@ namespace UltraCanvas {
         bool IsPressed() const { return pressed; }
 
         bool AcceptsFocus() const override { return true; }
+
+        void SetAutoresize(bool value) { autoresize = value; AutoResize(); }
+        bool GetAutoresize() const { return autoresize; }
 
         // ===== STYLE CONVENIENCE METHODS (THESE NEED TO BE DEFINED FIRST) =====
         void SetColors(const Color& normal, const Color& hover, const Color& pressed, const Color& disabled);

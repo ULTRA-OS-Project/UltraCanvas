@@ -80,8 +80,10 @@ namespace UltraCanvas {
         void CaptureMouse(UltraCanvasUIElement* element) { capturedElement = element; }
         void ReleaseMouse(UltraCanvasUIElement* element) { if (element && element == capturedElement) capturedElement = nullptr; }
 
-        virtual bool Initialize() = 0;
-        virtual void Run() = 0;
+        void Run();
+        bool Initialize();
+        virtual bool InitializeNative() = 0;
+        virtual void RunNative() = 0;
         virtual void RunInEventLoop() {};
         virtual void Exit() = 0;
 

@@ -47,7 +47,7 @@ namespace UltraCanvas {
         // Create display container (right side)
         displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 3, 370, 10, 1020, 800);
         ContainerStyle displayContainerStyle;
-        displayContainerStyle.backgroundColor = Color(248, 248, 248, 255);
+        displayContainerStyle.backgroundColor = Colors::White;
         displayContainerStyle.borderWidth = 1.0f;
         displayContainerStyle.borderColor = Color(200, 200, 200, 255);
         displayContainer->SetContainerStyle(displayContainerStyle);
@@ -473,10 +473,6 @@ namespace UltraCanvas {
         ClearDisplay();
         demoItems.clear();
         categoryItems.clear();
-
-        if (mainWindow) {
-            mainWindow->Hide();
-        }
     }
 
 // ===== DEMO ITEM REGISTRATION =====

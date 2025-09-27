@@ -16,11 +16,25 @@
 namespace UltraCanvas {
     UltraCanvasApplication* UltraCanvasApplication::instance = nullptr;
 
+    bool UltraCanvasBaseApplication::Initialize() {
+        if (InitializeNative()) {
+            if (!InitializeClipboard()) {
+                std::cerr << "UltraCanvas: Failed to initialize clipboard" << std::endl;
+            }
+            return true;
+        } else {
+            std::cerr << "UltraCanvas: Failed to initialize application" << std::endl;
+            return false;
+        }
+    }
+
+    void UltraCanvasBaseApplication::Run() {
+        RunNative();
+        ShutdownClipboard();
+    }
+
     // ===== WINDOW MANAGEMENT =====
     void UltraCanvasBaseApplication::RegisterWindow(UltraCanvasWindow *window) {
-        if (!initialized) {
-            std::cerr << "UltraCanvas: Cannot register window - application not initialized" << std::endl;
-        }
         if (window && window->GetNativeHandle() != 0) {
             std::cout << "UltraCanvas: Linux window created successfully" << std::endl;
             windows.push_back(window);

@@ -90,8 +90,8 @@ namespace UltraCanvas {
         virtual ~UltraCanvasLinuxApplication();
 
         // ===== INHERITED FROM BASE APPLICATION =====
-        virtual bool Initialize() override;
-        virtual void Run() override;
+        virtual bool InitializeNative() override;
+        virtual void RunNative() override;
         virtual void Exit() override;
 
         // ===== LINUX-SPECIFIC METHODS =====

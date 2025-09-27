@@ -42,7 +42,7 @@ namespace UltraCanvas {
     }
 
 // ===== INITIALIZATION =====
-    bool UltraCanvasLinuxApplication::Initialize() {
+    bool UltraCanvasLinuxApplication::InitializeNative() {
         if (initialized) {
             std::cout << "UltraCanvas: Already initialized" << std::endl;
             return true;
@@ -144,7 +144,7 @@ namespace UltraCanvas {
     }
 
 // ===== MAIN LOOP =====
-    void UltraCanvasLinuxApplication::Run() {
+    void UltraCanvasLinuxApplication::RunNative() {
         if (!initialized) {
             std::cerr << "UltraCanvas: Cannot run - application not initialized" << std::endl;
             return;
@@ -629,7 +629,7 @@ namespace UltraCanvas {
     void UltraCanvasLinuxApplication::EventThreadFunction() {
         std::cout << "UltraCanvas: Event thread running..." << std::endl;
 
-        while (eventThreadRunning && initialized && display) {
+        while (eventThreadRunning && display) {
             try {
                 if (XPending(display) > 0) {
                     XEvent xEvent;

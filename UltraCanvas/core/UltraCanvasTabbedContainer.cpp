@@ -636,6 +636,7 @@ namespace UltraCanvas {
             int newHoveredTab = GetTabAtPosition(event.x, event.y);
             if (newHoveredTab != hoveredTabIndex) {
                 hoveredTabIndex = newHoveredTab;
+                RequestRedraw();
             }
 
             // Handle tab dragging
@@ -656,9 +657,13 @@ namespace UltraCanvas {
                         draggingTabIndex = targetTab;
                     }
                 }
+                RequestRedraw();
             }
             return true;
         } else {
+            if (hoveredTabIndex != -1) {
+                RequestRedraw();
+            }
             hoveredTabIndex = -1;
             hoveredCloseButtonIndex = -1;
         }

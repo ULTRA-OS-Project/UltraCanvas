@@ -498,7 +498,7 @@ namespace UltraCanvas {
             const auto& point = divergingDataSource->GetDivergingPoint(rowIdx);
 
             // Draw label at center
-            ctx->DrawText(point.rowLabel, cachedPlotArea.x + cachedPlotArea.width + 2, y);
+            ctx->DrawText(point.rowLabel, cachedPlotArea.x + cachedPlotArea.width + 7, y);
         }
     }
 
