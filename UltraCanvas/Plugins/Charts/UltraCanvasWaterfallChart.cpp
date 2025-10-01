@@ -143,11 +143,6 @@ namespace UltraCanvas {
 //        }
 //        DrawAxes(ctx);
 
-        // Draw starting bar if enabled
-        if (showStartingBar && GetWaterfallDataSource()->GetStartingValue() != 0.0) {
-            DrawStartingBar(ctx);
-        }
-
         // Draw main waterfall bars
         DrawWaterfallBars(ctx);
 
@@ -179,8 +174,7 @@ namespace UltraCanvas {
         size_t pointCount = waterfallData->GetPointCount();
         if (pointCount == 0) return;
 
-        // Account for starting bar if shown
-        size_t totalBars = pointCount + (showStartingBar && waterfallData->GetStartingValue() != 0.0 ? 1 : 0);
+        size_t totalBars = pointCount;
 
         // Calculate bar dimensions
         float totalWidth = cachedPlotArea.width;
@@ -203,9 +197,9 @@ namespace UltraCanvas {
         // Calculate positions for each bar
         float currentX = cachedPlotArea.x + renderCache.barSpacing;
 
-        // Skip starting bar position if enabled
-        if (showStartingBar && waterfallData->GetStartingValue() != 0.0) {
-            currentX += renderCache.barWidth + renderCache.barSpacing;
+        // Ensure we have valid data bounds
+        if (cachedDataBounds.maxY <= cachedDataBounds.minY) {
+            return; // Invalid bounds, avoid division by zero
         }
 
         for (size_t i = 0; i < pointCount; ++i) {
@@ -214,59 +208,102 @@ namespace UltraCanvas {
             // Calculate bar position and height
             renderCache.barX.push_back(currentX);
 
-            // For waterfall charts, bars represent changes, not absolute values
+            // Convert data values to screen coordinates
+            auto dataToScreenY = [this](double value) -> float {
+                double normalized = (value - cachedDataBounds.minY) / (cachedDataBounds.maxY - cachedDataBounds.minY);
+                // Clamp to [0,1] to prevent drawing outside bounds
+                normalized = std::max(0.0, std::min(1.0, normalized));
+                return cachedPlotArea.GetBottom() - static_cast<float>(normalized * cachedPlotArea.height);
+            };
+
             float barTop, barBottom;
 
             if (point.isTotal || point.isSubtotal) {
                 // Total/subtotal bars go from 0 to cumulative value
-                barBottom = cachedPlotArea.GetBottom() -
-                            ((0 - cachedDataBounds.minY) / (cachedDataBounds.maxY - cachedDataBounds.minY)) * cachedPlotArea.height;
-                barTop = cachedPlotArea.GetBottom() -
-                         ((point.cumulativeValue - cachedDataBounds.minY) / (cachedDataBounds.maxY - cachedDataBounds.minY)) * cachedPlotArea.height;
+                float zeroY = dataToScreenY(0.0);
+                float valueY = dataToScreenY(point.cumulativeValue);
+
+                barTop = std::min(zeroY, valueY);
+                barBottom = std::max(zeroY, valueY);
             } else {
                 // Regular bars show the change
-                double prevCumulative = (i > 0) ? waterfallData->GetWaterfallPoint(i-1).cumulativeValue : waterfallData->GetStartingValue();
+                double prevCumulative = (i > 0) ?
+                                        waterfallData->GetWaterfallPoint(i-1).cumulativeValue :
+                                        0.0;
 
-                if (point.value >= 0) {
-                    // Positive change: bar goes from previous cumulative to current cumulative
-                    barBottom = cachedPlotArea.GetBottom() -
-                                ((prevCumulative - cachedDataBounds.minY) / (cachedDataBounds.maxY - cachedDataBounds.minY)) * cachedPlotArea.height;
-                    barTop = cachedPlotArea.GetBottom() -
-                             ((point.cumulativeValue - cachedDataBounds.minY) / (cachedDataBounds.maxY - cachedDataBounds.minY)) * cachedPlotArea.height;
-                } else {
-                    // Negative change: bar goes from current cumulative to previous cumulative
-                    barBottom = cachedPlotArea.GetBottom() -
-                                ((point.cumulativeValue - cachedDataBounds.minY) / (cachedDataBounds.maxY - cachedDataBounds.minY)) * cachedPlotArea.height;
-                    barTop = cachedPlotArea.GetBottom() -
-                             ((prevCumulative - cachedDataBounds.minY) / (cachedDataBounds.maxY - cachedDataBounds.minY)) * cachedPlotArea.height;
-                }
+                float prevY = dataToScreenY(prevCumulative);
+                float currentY = dataToScreenY(point.cumulativeValue);
+
+                barTop = std::min(prevY, currentY);
+                barBottom = std::max(prevY, currentY);
             }
 
+            // Store the top position and height
             renderCache.barY.push_back(barTop);
-            renderCache.barHeight.push_back(std::abs(barBottom - barTop));
+            renderCache.barHeight.push_back(barBottom - barTop);
             renderCache.barColors.push_back(GetBarColor(point));
 
             currentX += renderCache.barWidth + renderCache.barSpacing;
         }
     }
-
-    ChartDataBounds UltraCanvasWaterfallChartElement::CalculateDataBounds()  {
+    ChartDataBounds UltraCanvasWaterfallChartElement::CalculateDataBounds() {
         auto ds = GetWaterfallDataSource();
-        auto pointCount = ds->GetPointCount();
-        if (!ds || pointCount == 0) return ChartDataBounds();
-
-        double minY = ds->GetStartingValue();
-        double maxY = minY;
-        for (size_t i = 0; i < pointCount; ++i) {
-            auto point = ds->GetWaterfallPoint(i);
-            minY = std::min(minY, point.cumulativeValue - std::abs(point.value));
-            maxY = std::max(maxY, point.cumulativeValue);
+        if (!ds || ds->GetPointCount() == 0) {
+            return ChartDataBounds();
         }
 
+        size_t pointCount = ds->GetPointCount();
+
+        double minY = 0.0;
+        double maxY = 0.0;
+        // Track cumulative value as we iterate through points
+        double currentCumulative = 0.0;
+
+        // Also consider zero as a potential bound (for axis display)
+        minY = std::min(minY, 0.0);
+        maxY = std::max(maxY, 0.0);
+
+        for (size_t i = 0; i < pointCount; ++i) {
+            const auto& point = ds->GetWaterfallPoint(i);
+
+            // For regular bars, we need to consider both the start and end of the bar
+            if (!point.isTotal && !point.isSubtotal) {
+                // The bar starts at currentCumulative
+                minY = std::min(minY, currentCumulative);
+                maxY = std::max(maxY, currentCumulative);
+
+                // The bar ends at the new cumulative value
+                minY = std::min(minY, point.cumulativeValue);
+                maxY = std::max(maxY, point.cumulativeValue);
+
+                // Update current cumulative for next iteration
+                currentCumulative = point.cumulativeValue;
+            } else {
+                // For totals and subtotals, bar goes from 0 to cumulative value
+                minY = std::min(minY, 0.0);
+                minY = std::min(minY, point.cumulativeValue);
+                maxY = std::max(maxY, 0.0);
+                maxY = std::max(maxY, point.cumulativeValue);
+
+                // Reset cumulative tracking after total/subtotal
+                currentCumulative = point.cumulativeValue;
+            }
+        }
+
+        // Add padding to prevent bars from touching the edges
+        double range = maxY - minY;
+        if (range > 0) {
+//            double padding = range; // 10% padding
+//            minY -= padding;
+            maxY += range * 0.1;
+        } else if (range == 0) {
+            // If all values are the same, add some default padding
+            minY -= 1.0;
+            maxY += 1.0;
+        }
 
         return ChartDataBounds(0, static_cast<double>(pointCount - 1), minY, maxY);
     }
-
 // =============================================================================
 // BAR RENDERING METHODS
 // =============================================================================
@@ -287,25 +324,6 @@ namespace UltraCanvas {
                               renderCache.barColors[i]);
             }
         }
-    }
-
-    void UltraCanvasWaterfallChartElement::DrawStartingBar(IRenderContext* ctx) {
-        auto waterfallData = GetWaterfallDataSource();
-        if (!waterfallData || waterfallData->GetStartingValue() == 0.0) return;
-
-        float startX = cachedPlotArea.x + renderCache.barSpacing;
-
-        // Calculate starting bar height and position
-        double startValue = waterfallData->GetStartingValue();
-        float barBottom = cachedPlotArea.GetBottom() -
-                          ((0 - cachedDataBounds.minY) / (cachedDataBounds.maxY - cachedDataBounds.minY)) * cachedPlotArea.height;
-        float barTop = cachedPlotArea.GetBottom() -
-                       ((startValue - cachedDataBounds.minY) / (cachedDataBounds.maxY - cachedDataBounds.minY)) * cachedPlotArea.height;
-
-        float barY = std::min(barTop, barBottom);
-        float barHeight = std::abs(barTop - barBottom);
-
-        DrawSingleBar(ctx, startX, barY, renderCache.barWidth, barHeight, startingBarColor);
     }
 
     void UltraCanvasWaterfallChartElement::DrawSingleBar(IRenderContext* ctx, float x, float y,
@@ -355,28 +373,39 @@ namespace UltraCanvas {
 
     void UltraCanvasWaterfallChartElement::DrawConnectionLines(IRenderContext* ctx) {
         auto waterfallData = GetWaterfallDataSource();
-        if (!waterfallData || renderCache.barX.size() < 2) return;
+        if (!waterfallData) return;
 
         ctx->SetStrokeColor(connectionLineColor);
         ctx->SetStrokeWidth(connectionLineWidth);
 
         size_t pointCount = waterfallData->GetPointCount();
 
+        // Ensure we have valid data bounds
+        if (cachedDataBounds.maxY <= cachedDataBounds.minY) {
+            return; // Invalid bounds, avoid division by zero
+        }
+
+        // Convert data values to screen coordinates
+        auto dataToScreenY = [this](double value) -> float {
+            double normalized = (value - cachedDataBounds.minY) / (cachedDataBounds.maxY - cachedDataBounds.minY);
+            // Clamp to [0,1] to prevent drawing outside bounds
+            normalized = std::max(0.0, std::min(1.0, normalized));
+            return cachedPlotArea.GetBottom() - static_cast<float>(normalized * cachedPlotArea.height);
+        };
+
         for (size_t i = 1; i < pointCount; ++i) {
             const auto& currentPoint = waterfallData->GetWaterfallPoint(i);
             const auto& prevPoint = waterfallData->GetWaterfallPoint(i-1);
 
             // Skip connection lines for totals and subtotals
-            if (currentPoint.isTotal || currentPoint.isSubtotal) continue;
+            //if (currentPoint.isTotal || currentPoint.isSubtotal) continue;
 
             // Calculate connection line endpoints
             float prevBarRight = renderCache.barX[i-1] + renderCache.barWidth;
             float currentBarLeft = renderCache.barX[i];
 
             // Y position is at the level where the previous bar ended
-            double prevCumulative = prevPoint.cumulativeValue;
-            float lineY = cachedPlotArea.GetBottom() -
-                          ((prevCumulative - cachedDataBounds.minY) / (cachedDataBounds.maxY - cachedDataBounds.minY)) * cachedPlotArea.height;
+            float lineY = dataToScreenY(prevPoint.cumulativeValue);
 
             DrawConnectionLine(ctx, prevBarRight, lineY, currentBarLeft, lineY);
         }
@@ -457,13 +486,18 @@ namespace UltraCanvas {
 
             if (showValueLabels) {
                 // Show the change value above/below the bar
-                std::string valueText = FormatValue(point.value);
+                std::string valueText;
+                if (point.isSubtotal || point.isTotal) {
+                    valueText = FormatValue(point.cumulativeValue);
+                } else {
+                    valueText = FormatValue(point.value);
+                }
                 int textWidth, textHeight;
                 ctx->MeasureText(valueText, textWidth, textHeight);
 
                 float labelY = (point.value >= 0) ?
-                               renderCache.barY[i] - 5 :
-                               renderCache.barY[i] + renderCache.barHeight[i] + textHeight + 5;
+                               renderCache.barY[i] - (textHeight + 3):
+                               renderCache.barY[i] + renderCache.barHeight[i] + 1;
 
                 ctx->DrawText(valueText, barCenterX - textWidth/2, labelY);
             }

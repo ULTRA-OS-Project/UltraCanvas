@@ -38,18 +38,17 @@ namespace UltraCanvas {
         // =============================================================================
 
         auto revenueData = std::make_shared<WaterfallChartDataVector>();
-        revenueData->SetStartingValue(500.0);  // $500K starting
-
-        revenueData->AddWaterfallPoint("Q1 Sales", 150.0);
-        revenueData->AddWaterfallPoint("Q2 Sales", 120.0);
-        revenueData->AddWaterfallPoint("Q3 Sales", 180.0);
-        revenueData->AddWaterfallPoint("Q4 Sales", 90.0);
-        revenueData->AddWaterfallPoint("Returns", -25.0);
-        revenueData->AddWaterfallPoint("Discounts", -40.0);
-        revenueData->AddWaterfallPoint("Total", 0.0, false, true);
+        revenueData->AddWaterfallPoint("Start", 500.0);
+        revenueData->AddWaterfallPoint("Q1", 150.0);
+        revenueData->AddWaterfallPoint("Q2", 120.0);
+        revenueData->AddWaterfallPoint("Q3", 180.0);
+        revenueData->AddWaterfallPoint("Q4", 90.0);
+        revenueData->AddWaterfallPoint("Return", -25.0);
+        revenueData->AddWaterfallPoint("Discount", -40.0);
+        revenueData->AddWaterfallPoint("Total", 0.0, true, false);
 
         auto revenueChart = CreateWaterfallChartWithData(
-                "revenue_chart", 3010, 20, 50, 460, 300,
+                "revenue_chart", 3010, 10, 50, 500, 300,
                 revenueData, "Revenue Flow ($K)"
         );
 
@@ -59,7 +58,7 @@ namespace UltraCanvas {
         revenueChart->SetTotalBarColor(Color(33, 150, 243, 255));      // Blue
         revenueChart->SetBarStyle(UltraCanvasWaterfallChartElement::BarStyle::Standard);
         revenueChart->SetConnectionLineStyle(
-                UltraCanvasWaterfallChartElement::ConnectionStyle::Dotted
+                UltraCanvasWaterfallChartElement::ConnectionStyle::Solid
         );
         revenueChart->SetShowValueLabels(true);
 
@@ -70,10 +69,9 @@ namespace UltraCanvas {
         // =============================================================================
 
         auto cashFlowData = std::make_shared<WaterfallChartDataVector>();
-        cashFlowData->SetStartingValue(100.0);
-
+        cashFlowData->AddWaterfallPoint("Start", 100.0);
         cashFlowData->AddWaterfallPoint("Revenue", 1200.0);
-        cashFlowData->AddWaterfallPoint("Op. Costs", -800.0);
+        cashFlowData->AddWaterfallPoint("Costs", -800.0);
         cashFlowData->AddWaterfallPoint("Q1", 0.0, true, false);  // Subtotal
         cashFlowData->AddWaterfallPoint("Marketing", -150.0);
         cashFlowData->AddWaterfallPoint("R&D", -120.0);
@@ -82,7 +80,7 @@ namespace UltraCanvas {
         cashFlowData->AddWaterfallPoint("Final", 0.0, false, true);
 
         auto cashFlowChart = CreateWaterfallChartWithData(
-                "cashflow_chart", 3020, 520, 50, 460, 300,
+                "cashflow_chart", 3020, 470, 50, 540, 300,
                 cashFlowData, "Cash Flow ($K)"
         );
 
@@ -93,7 +91,7 @@ namespace UltraCanvas {
         cashFlowChart->SetTotalBarColor(Color(63, 81, 181, 255));
         cashFlowChart->SetBarStyle(UltraCanvasWaterfallChartElement::BarStyle::Rounded);
         cashFlowChart->SetConnectionLineStyle(
-                UltraCanvasWaterfallChartElement::ConnectionStyle::Dashed,
+                UltraCanvasWaterfallChartElement::ConnectionStyle::Solid,
                 Color(117, 117, 117, 255), 2.0f
         );
 
@@ -104,8 +102,7 @@ namespace UltraCanvas {
         // =============================================================================
 
         auto performanceData = std::make_shared<WaterfallChartDataVector>();
-        performanceData->SetStartingValue(100.0);  // Baseline
-
+        performanceData->AddWaterfallPoint("Start", 100.0);
         performanceData->AddWaterfallPoint("Training", 25.0);
         performanceData->AddWaterfallPoint("Tools", 15.0);
         performanceData->AddWaterfallPoint("Process", 12.0);
@@ -114,7 +111,7 @@ namespace UltraCanvas {
         performanceData->AddWaterfallPoint("Final", 0.0, false, true);
 
         auto performanceChart = CreateWaterfallChartWithData(
-                "performance_chart", 3030, 20, 380, 460, 300,
+                "performance_chart", 3030, 10, 340, 520, 300,
                 performanceData, "Performance Impact"
         );
 
@@ -172,7 +169,7 @@ namespace UltraCanvas {
 
             // Update revenue data
             revenueData->ClearData();
-            revenueData->SetStartingValue(400.0 + dist(gen));
+            revenueData->AddWaterfallPoint("Start", 400.0 + dist(gen));
             revenueData->AddWaterfallPoint("Q1", dist(gen));
             revenueData->AddWaterfallPoint("Q2", dist(gen));
             revenueData->AddWaterfallPoint("Q3", dist(gen));

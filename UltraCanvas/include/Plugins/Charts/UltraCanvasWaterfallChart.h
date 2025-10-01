@@ -50,10 +50,10 @@ namespace UltraCanvas {
         }
 
         // Waterfall-specific methods
-        void SetStartingValue(double startValue) {
-            startingValue = startValue;
-            RecalculateCumulativeValues();
-        }
+//        void SetStartingValue(double startValue) {
+//            startingValue = startValue;
+//            RecalculateCumulativeValues();
+//        }
 
         void AddWaterfallPoint(const WaterfallChartDataPoint& point) {
             waterfallData.push_back(point);
@@ -67,7 +67,7 @@ namespace UltraCanvas {
 
         void ClearData() {
             waterfallData.clear();
-            startingValue = 0.0;
+//            startingValue = 0.0;
         }
 
         const WaterfallChartDataPoint& GetWaterfallPoint(size_t index) const {
@@ -82,9 +82,9 @@ namespace UltraCanvas {
             }
         }
 
-        double GetStartingValue() const { return startingValue; }
+//        double GetStartingValue() const { return startingValue; }
         double GetFinalValue() const {
-            return waterfallData.empty() ? startingValue : waterfallData.back().cumulativeValue;
+            return waterfallData.empty() ? 0.0 : waterfallData.back().cumulativeValue;
         }
 
         bool SupportsStreaming() const override { return false; }
@@ -93,7 +93,7 @@ namespace UltraCanvas {
 
     private:
         void RecalculateCumulativeValues() {
-            double cumulative = startingValue;
+            double cumulative = 0.0;
             for (auto& point : waterfallData) {
                 if (point.isTotal) {
                     point.cumulativeValue = cumulative + point.value;
