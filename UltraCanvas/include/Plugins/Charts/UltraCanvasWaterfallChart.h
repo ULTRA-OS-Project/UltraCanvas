@@ -285,6 +285,7 @@ namespace UltraCanvas {
         void UpdateRenderingCache() override;
         void CalculateBarDimensions();
 
+        void RenderAxisLabels(UltraCanvas::IRenderContext *ctx) override;
         void DrawCommonBackground(IRenderContext* ctx);
         void DrawWaterfallBars(IRenderContext* ctx);
         void DrawConnectionLines(IRenderContext* ctx);

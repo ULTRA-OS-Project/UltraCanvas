@@ -92,32 +92,32 @@ namespace UltraCanvas {
 //        DrawAxisLabels(ctx);
 //    }
 
-//    void UltraCanvasWaterfallChartElement::DrawAxisLabels(IRenderContext* ctx) {
-//        if (!ctx) return;
-//
-//        ctx->SetTextColor(Color(0, 0, 0, 255));
-//        ctx->SetFont("Arial", 10.0f);
-//
-//        // Y-axis labels (values)
-//        int numYTicks = 6;
-//        for (int i = 0; i <= numYTicks; ++i) {
-//            double value = cachedDataBounds.minY +
-//                           (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
-//            float y = cachedPlotArea.GetBottom() -
-//                      (i * cachedPlotArea.height / numYTicks);
-//
-//            // Draw tick mark
-//            ctx->DrawLine(cachedPlotArea.x - 5, y, cachedPlotArea.x, y);
-//
-//            // Draw label
-//            std::string label = FormatValue(value);
-//            int textWidth, textHeight;
-//            ctx->MeasureText(label, textWidth, textHeight);
-//            ctx->DrawText(label, cachedPlotArea.x - textWidth - 8, y - textHeight/2);
-//        }
-//
-//        // X-axis labels are drawn in DrawValueLabels() for each bar
-//    }
+    void UltraCanvasWaterfallChartElement::RenderAxisLabels(UltraCanvas::IRenderContext *ctx) {
+        if (!ctx) return;
+
+        ctx->SetTextColor(Color(0, 0, 0, 255));
+        ctx->SetFont("Arial", 10.0f);
+
+        // Y-axis labels (values)
+        int numYTicks = 6;
+        for (int i = 0; i <= numYTicks; ++i) {
+            double value = cachedDataBounds.minY +
+                           (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
+            float y = cachedPlotArea.GetBottom() -
+                      (i * cachedPlotArea.height / numYTicks);
+
+            // Draw tick mark
+            ctx->DrawLine(cachedPlotArea.x - 5, y, cachedPlotArea.x, y);
+
+            // Draw label
+            std::string label = FormatValue(value);
+            int textWidth, textHeight;
+            ctx->MeasureText(label, textWidth, textHeight);
+            ctx->DrawText(label, cachedPlotArea.x - textWidth - 8, y - textHeight/2);
+        }
+
+        // X-axis labels are drawn in DrawValueLabels() for each bar
+    }
 
 // =============================================================================
 // MAIN RENDERING METHOD
@@ -482,7 +482,7 @@ namespace UltraCanvas {
             if (!point.label.empty()) {
                 int textWidth, textHeight;
                 ctx->MeasureText(point.label, textWidth, textHeight);
-                float labelY = cachedPlotArea.GetBottom() + 15;
+                float labelY = cachedPlotArea.GetBottom() + 5;
                 ctx->DrawText(point.label, barCenterX - textWidth/2, labelY);
             }
         }
