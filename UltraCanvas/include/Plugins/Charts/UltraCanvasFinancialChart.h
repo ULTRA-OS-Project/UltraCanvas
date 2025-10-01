@@ -43,11 +43,11 @@ namespace UltraCanvas {
     public:
         size_t GetPointCount() const override { return financialData.size(); }
 
-        ChartDataPoint GetPoint(size_t index) const override {
+        ChartDataPoint GetPoint(size_t index) override {
             return financialData[index];
         }
 
-        FinancialChartDataPoint GetFinancialPoint(size_t index) const {
+        FinancialChartDataPoint GetFinancialPoint(size_t index) {
             return financialData[index];
         }
 

@@ -29,13 +29,13 @@ namespace UltraCanvas {
         ExtendedFunctionality,
         BitmapElements,
         VectorElements,
+        Diagrams,
+        Charts,
+        InfoGraphics,
         Graphics3D,
         VideoElements,
         TextDocuments,
-        AudioElements,
-        Diagrams,
-        Charts,
-        InfoGraphics
+        AudioElements
     };
 
 // ===== IMPLEMENTATION STATUS =====
@@ -145,6 +145,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDivergingChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateInfoGraphicsExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateWaterfallChartExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
         // ===== APPLICATION LIFECYCLE =====

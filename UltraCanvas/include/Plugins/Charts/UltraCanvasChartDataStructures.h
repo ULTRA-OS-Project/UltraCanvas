@@ -39,7 +39,7 @@ namespace UltraCanvas {
     public:
         virtual ~IChartDataSource() = default;
         virtual size_t GetPointCount() const = 0;
-        virtual ChartDataPoint GetPoint(size_t index) const = 0;
+        virtual ChartDataPoint GetPoint(size_t index) = 0;
         virtual bool SupportsStreaming() const = 0;
         virtual void LoadFromCSV(const std::string& filePath) = 0;
         virtual void LoadFromArray(const std::vector<ChartDataPoint>& data) = 0;
@@ -52,7 +52,7 @@ namespace UltraCanvas {
 
     public:
         size_t GetPointCount() const override { return data.size(); }
-        ChartDataPoint GetPoint(size_t index) const override { return data[index]; }
+        ChartDataPoint GetPoint(size_t index) override { return data[index]; }
         bool SupportsStreaming() const override { return false; }
         void LoadFromCSV(const std::string& filePath) override;
         void LoadFromArray(const std::vector<ChartDataPoint>& newData) override { data = newData; }
@@ -77,7 +77,7 @@ namespace UltraCanvas {
         ChartDataStream(const std::string& path) : filePath(path) {}
 
         size_t GetPointCount() const override;
-        ChartDataPoint GetPoint(size_t index) const override;
+        ChartDataPoint GetPoint(size_t index) override;
         bool SupportsStreaming() const override { return true; }
         void LoadFromCSV(const std::string& path) override;
         void LoadFromArray(const std::vector<ChartDataPoint>& data) override;

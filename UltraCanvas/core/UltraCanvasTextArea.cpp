@@ -50,7 +50,7 @@ namespace UltraCanvas {
 
 // Initialize default style
     void UltraCanvasTextArea::ApplyDefaultStyle() {
-        style.fontFamily = "Courier New";
+        style.fontFamily = "DejaVu Sans Mono";
         style.fontSize = 14;
         style.fontColor = {0, 0, 0, 255};
         style.lineHeight = 20;
@@ -1129,13 +1129,20 @@ namespace UltraCanvas {
         style.lineNumbersColor = {100, 100, 100, 255};
         style.lineNumbersBackgroundColor = {25, 25, 25, 255};
         style.selectionColor = {60, 90, 150, 100};
+        style.cursorColor = {255, 255, 255, 255};
 
-        style.tokenStyles.keywordStyle.color = {86, 156, 244, 255};
-        style.tokenStyles.functionStyle.color = {230, 230, 170, 255};
-        style.tokenStyles.stringStyle.color = {246, 155, 140, 255};
-        style.tokenStyles.commentStyle.color = {106, 153, 85, 255};
-        style.tokenStyles.numberStyle.color = {181, 206, 168, 255};
-        style.tokenStyles.defaultStyle.color = {240, 240, 240, 255};
+        style.tokenStyles.keywordStyle.color = {0x4c, 0xbb, 0xc9, 255};
+        style.tokenStyles.functionStyle.color = {0xdc, 0xd6, 0xa2, 255};
+        style.tokenStyles.stringStyle.color = {0xce, 0x91, 0x78, 255};
+        style.tokenStyles.characterStyle.color = {0xce, 0x91, 0x78, 255};
+        style.tokenStyles.commentStyle.color = {0x68, 0x86, 0x42, 255};
+        style.tokenStyles.numberStyle.color = {0xa2, 0xcc, 0x9d, 255};
+        style.tokenStyles.identifierStyle.color = {0xdc, 0xd6, 0xa2, 255};
+        style.tokenStyles.operatorStyle.color = {0xce, 0xbd, 0x88, 255};
+        style.tokenStyles.constantStyle.color = {0x4e, 0xb8, 0xbe, 255};
+        style.tokenStyles.preprocessorStyle.color = {128, 240, 128, 255};
+        style.tokenStyles.builtinStyle.color = {0xdc, 0xd6, 0xa2, 255};
+        style.tokenStyles.defaultStyle.color = {0xe0, 0xe0, 0xe0, 255};
 
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
@@ -1147,7 +1154,7 @@ namespace UltraCanvas {
         SetHighlightSyntax(true);
         SetProgrammingLanguage(language);
         style.showLineNumbers = true;
-        style.fontFamily = "Courier New";
+        style.fontFamily = "DejaVu Sans Mono";
         highlightCurrentLine = true;
 
         isNeedRecalculateVisibleArea = true;
@@ -1160,7 +1167,7 @@ namespace UltraCanvas {
         SetHighlightSyntax(true);
         SetProgrammingLanguage(language);
         style.showLineNumbers = true;
-        style.fontFamily = "Courier New";
+        style.fontFamily = "DejaVu Sans Mono";
         highlightCurrentLine = true;
 
         isNeedRecalculateVisibleArea = true;

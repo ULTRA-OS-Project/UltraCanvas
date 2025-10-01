@@ -1,4 +1,4 @@
-// Apps
+// Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
 // Version: 1.0.0
 // Last Modified: 2024-12-19
@@ -208,6 +208,51 @@ namespace UltraCanvas {
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateVectorExamples(); });
 
+        // ===== DIAGRAMS =====
+        auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
+
+        diagramBuilder.AddItem("plantuml", "PlantUML", "UML and diagram generation",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateDiagramExamples(); })
+                .AddVariant("plantuml", "Class Diagrams")
+                .AddVariant("plantuml", "Sequence Diagrams")
+                .AddVariant("plantuml", "Activity Diagrams");
+
+        // ===== CHARTS =====
+        auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
+
+        chartBuilder.AddItem("charts", "Charts", "Data visualization charts",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return CreateChartExamples(); })
+                .AddVariant("charts", "Line Charts")
+                .AddVariant("charts", "Bar Charts")
+                .AddVariant("charts", "Pie Charts")
+                .AddVariant("charts", "Scatter Plots");
+
+        chartBuilder.AddItem("divergingcharts", "Diverging Bar Charts", "Likert scale and population pyramid charts",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateDivergingChartExamples(); })
+                .AddVariant("divergingcharts", "Likert Scale")
+                .AddVariant("divergingcharts", "Population Pyramid")
+                .AddVariant("divergingcharts", "Tornado Chart");
+
+        chartBuilder.AddItem("waterfallcharts", "Waterfall Charts", "Cumulative flow visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateWaterfallChartExamples(); })
+                .AddVariant("waterfallcharts", "Revenue Flow")
+                .AddVariant("waterfallcharts", "Cash Flow with Subtotals")
+                .AddVariant("waterfallcharts", "Performance Impact");
+
+        // ===== INFO GRAPHICS =====
+        auto infoBuilder = DemoCategoryBuilder(this, DemoCategory::InfoGraphics);
+
+        infoBuilder.AddItem("infographics", "Info Graphics", "Complex data visualizations",
+                            ImplementationStatus::NotImplemented,
+                            [this]() { return CreateInfoGraphicsExamples(); })
+                .AddVariant("infographics", "Dashboard Widgets")
+                .AddVariant("infographics", "Statistical Displays")
+                .AddVariant("infographics", "Interactive Maps");
+
         // ===== 3D ELEMENTS =====
         auto graphics3DBuilder = DemoCategoryBuilder(this, DemoCategory::Graphics3D);
 
@@ -246,6 +291,7 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
 
+
         // ===== AUDIO ELEMENTS =====
         auto audioBuilder = DemoCategoryBuilder(this, DemoCategory::AudioElements);
 
@@ -255,44 +301,6 @@ namespace UltraCanvas {
                 .AddVariant("audio", "FLAC Support")
                 .AddVariant("audio", "MP3 Playback")
                 .AddVariant("audio", "Waveform Visualization");
-
-        // ===== DIAGRAMS =====
-        auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
-
-        diagramBuilder.AddItem("plantuml", "PlantUML", "UML and diagram generation",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateDiagramExamples(); })
-                .AddVariant("plantuml", "Class Diagrams")
-                .AddVariant("plantuml", "Sequence Diagrams")
-                .AddVariant("plantuml", "Activity Diagrams");
-
-        // ===== CHARTS =====
-        auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
-
-        chartBuilder.AddItem("charts", "Charts", "Data visualization charts",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return CreateChartExamples(); })
-                .AddVariant("charts", "Line Charts")
-                .AddVariant("charts", "Bar Charts")
-                .AddVariant("charts", "Pie Charts")
-                .AddVariant("charts", "Scatter Plots");
-
-        chartBuilder.AddItem("divergingcharts", "Diverging Bar Charts", "Likert scale and population pyramid charts",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateDivergingChartExamples(); })
-                .AddVariant("divergingcharts", "Likert Scale")
-                .AddVariant("divergingcharts", "Population Pyramid")
-                .AddVariant("divergingcharts", "Tornado Chart");
-
-        // ===== INFO GRAPHICS =====
-        auto infoBuilder = DemoCategoryBuilder(this, DemoCategory::InfoGraphics);
-
-        infoBuilder.AddItem("infographics", "Info Graphics", "Complex data visualizations",
-                            ImplementationStatus::NotImplemented,
-                            [this]() { return CreateInfoGraphicsExamples(); })
-                .AddVariant("infographics", "Dashboard Widgets")
-                .AddVariant("infographics", "Statistical Displays")
-                .AddVariant("infographics", "Interactive Maps");
 
         std::cout << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
@@ -310,13 +318,13 @@ namespace UltraCanvas {
                 {DemoCategory::ExtendedFunctionality, "Extended Functionality"},
                 {DemoCategory::BitmapElements, "Bitmap Elements"},
                 {DemoCategory::VectorElements, "Vector Graphics"},
+                {DemoCategory::Diagrams, "Diagrams"},
+                {DemoCategory::Charts, "Charts"},
+                {DemoCategory::InfoGraphics, "Info Graphics"},
                 {DemoCategory::Graphics3D, "3D Graphics"},
                 {DemoCategory::VideoElements, "Video Elements"},
                 {DemoCategory::TextDocuments, "Text Documents"},
-                {DemoCategory::AudioElements, "Audio Elements"},
-                {DemoCategory::Diagrams, "Diagrams"},
-                {DemoCategory::Charts, "Charts"},
-                {DemoCategory::InfoGraphics, "Info Graphics"}
+                {DemoCategory::AudioElements, "Audio Elements"}
         };
 
         for (const auto& [category, items] : categoryItems) {

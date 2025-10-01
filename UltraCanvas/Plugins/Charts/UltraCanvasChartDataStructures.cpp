@@ -72,7 +72,7 @@ namespace UltraCanvas {
         return totalPoints;
     }
 
-    ChartDataPoint ChartDataStream::GetPoint(size_t index) const {
+    ChartDataPoint ChartDataStream::GetPoint(size_t index) {
         // Check if point is in current cache
         if (index >= cacheStartIndex && index < cacheStartIndex + cache.size()) {
             return cache[index - cacheStartIndex];

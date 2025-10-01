@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(UltraCanvasClipboardApp)
+project(UltraCanvasApp)
 
 # ✅ REQUIRED: C++20 standard
 set(CMAKE_CXX_STANDARD 20)
@@ -121,6 +121,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/Plugins/Charts/UltraCanvasChartDataStructures.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasFinancialChart.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasDivergingBarChart.cpp
+        UltraCanvas/Plugins/Charts/UltraCanvasWaterfallChart.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartElement.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
@@ -138,12 +139,9 @@ set(APP_SOURCES
 
 # formula app
 #        Apps/GraphicFormulaApp.cpp
-#        Apps/UltraCanvasChartExample.cpp
+        Apps/UltraCanvasChartExample.cpp
         #Apps/UltraCanvasFinancialChartExample.cpp
         #Apps/TabbedContainerDemo.cpp
-        Apps/DemoApp/UltraCanvasDemo.cpp
-        Apps/DemoApp/UltraCanvasDemoExamples.cpp
-        Apps/DemoApp/main.cpp
         #        Apps/DivergingBarChartExample.cpp
         #        Apps/Complete_IBM_Financial_Chart_Example.cpp
         #        Apps/IBM_StockChart_Example.cpp
@@ -151,6 +149,13 @@ set(APP_SOURCES
         #image rendeing
 #        Apps/ImageRenderingExample.cpp
         # Add your source files here
+)
+
+set(MAIN_DEMOAPP_SOURCES
+        Apps/DemoApp/UltraCanvasDemo.cpp
+        Apps/DemoApp/UltraCanvasDemoExamples.cpp
+        Apps/DemoApp/main.cpp
+        Apps/DemoApp/UltraCanvasWatefallDemo.cpp
 )
 
 # ✅ ADDED: Check that source files exist
@@ -168,7 +173,7 @@ endforeach()
 
 # ✅ REQUIRED: Create executable
 add_executable(${PROJECT_NAME}
-    ${APP_SOURCES}
+    ${MAIN_DEMOAPP_SOURCES}
     ${ULTRACANVAS_SOURCES}
 )
 

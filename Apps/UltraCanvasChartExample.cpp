@@ -136,7 +136,7 @@ public:
         instructionLabel->SetFont("Arial", 13.0f, FontWeight::Normal);
         instructionLabel->SetTextColor(Color(40, 40, 40, 255));
 
-        instructionLabel->SetAlignment(LabelAlignment::Left, LabelVerticalAlignment::Middle);
+        instructionLabel->SetAlignment(TextAlignment::Left, TextVerticalAlignment::Middle);
         instructionLabel->SetBackgroundColor(Color(255, 255, 255, 200));
         instructionLabel->SetPadding(4.0f, 4.0f, 2.0f, 2.0f);
     }
