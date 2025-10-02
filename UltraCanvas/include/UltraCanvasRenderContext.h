@@ -512,6 +512,30 @@ class UltraCanvasBaseWindow;
             FillCircle(center.x, center.y, radius);
         }
 
+        void DrawEllipse(int x, int y, int w, int h) {
+            DrawEllipse(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
+        }
+        void DrawEllipse(const Rect2Df& rect) {
+            DrawEllipse(rect.x, rect.y, rect.width, rect.height);
+        }
+
+        void DrawEllipse(const Rect2Di& rect) {
+            DrawEllipse(rect.x, rect.y, rect.width, rect.height);
+        }
+
+
+        void FillEllipse(int x, int y, int w, int h) {
+            FillEllipse(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
+        }
+
+        void FillEllipse(const Rect2Df& rect) {
+            FillEllipse(rect.x, rect.y, rect.width, rect.height);
+        }
+
+        void FillEllipse(const Rect2Di& rect) {
+            FillEllipse(rect.x, rect.y, rect.width, rect.height);
+        }
+
         void DrawText(const std::string& text, int x, int y) {
             DrawText(text, static_cast<float>(x), static_cast<float>(y));
         }

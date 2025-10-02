@@ -313,7 +313,9 @@ namespace UltraCanvas {
 
         virtual bool OnEvent(const UCEvent& event) {
             if (eventCallback) {
-                return eventCallback(event);
+                if (eventCallback(event)) {
+                    return true;
+                }
             }
             return false;
         }

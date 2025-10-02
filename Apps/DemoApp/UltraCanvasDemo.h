@@ -148,6 +148,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateWaterfallChartExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();
+
         // ===== APPLICATION LIFECYCLE =====
         void Run();
         void Shutdown();

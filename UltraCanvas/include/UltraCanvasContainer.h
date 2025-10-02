@@ -27,9 +27,9 @@ namespace UltraCanvas {
         Color scrollbarThumbPressedColor = Color(128, 128, 128, 255);
 
         // Border and background
+        int borderWidth = 0;
         Color borderColor = Color(200, 200, 200, 255);
         Color backgroundColor = Color(255, 255, 255, 255);
-        int borderWidth = 0;
 
         // Padding for content area
         int paddingLeft = 0;

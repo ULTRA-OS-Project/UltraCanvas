@@ -4,7 +4,7 @@
 // Last Modified: 2025-07-17
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasSVGPlugin.h"
+#include "Plugins/SVG/UltraCanvasSVGPlugin.h"
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -58,7 +58,7 @@ Color SimpleSVGParser::ParseColor(const std::string& colorStr) {
                 int b = std::stoi(hex.substr(4, 2), nullptr, 16);
                 return Color(r, g, b);
             } catch (...) {
-                return defaultValue;
+                return Colors::Black;
             }
         }
     }
@@ -108,8 +108,8 @@ float SimpleSVGParser::ParseLength(const std::string& lengthStr, float reference
     return number.empty() ? 0.0f : std::stof(number);
 }
 
-std::vector<Point2D> SimpleSVGParser::ParsePoints(const std::string& pointsStr) {
-    std::vector<Point2D> points;
+std::vector<Point2Df> SimpleSVGParser::ParsePoints(const std::string& pointsStr) {
+    std::vector<Point2Df> points;
     if (pointsStr.empty()) return points;
     
     std::string clean = pointsStr;
@@ -124,39 +124,39 @@ std::vector<Point2D> SimpleSVGParser::ParsePoints(const std::string& pointsStr) 
     return points;
 }
 
-std::vector<Point2D> SimpleSVGParser::ParsePath(const std::string& pathStr) {
-    std::vector<Point2D> points;
+std::vector<Point2Df> SimpleSVGParser::ParsePath(const std::string& pathStr) {
+    std::vector<Point2Df> points;
     if (pathStr.empty()) return points;
     
     // Simplified path parsing - handles basic MoveTo and LineTo commands
     std::istringstream iss(pathStr);
-    std::string token;
-    Point2D current(0, 0);
+    char token;
+    Point2Df current(0, 0);
     
     while (iss >> token) {
-        if (token == "M" || token == "m") {
+        if (token == 'M' || token == 'm') {
             // MoveTo
             float x, y;
             if (iss >> x >> y) {
-                if (token == "m") {
+                if (token == 'm') {
                     current.x += x; current.y += y; // Relative
                 } else {
                     current.x = x; current.y = y; // Absolute
                 }
                 points.push_back(current);
             }
-        } else if (token == "L" || token == "l") {
+        } else if (token == 'L' || token == 'l') {
             // LineTo
             float x, y;
             if (iss >> x >> y) {
-                if (token == "l") {
+                if (token == 'l') {
                     current.x += x; current.y += y; // Relative
                 } else {
                     current.x = x; current.y = y; // Absolute
                 }
                 points.push_back(current);
             }
-        } else if (token == "Z" || token == "z") {
+        } else if (token == 'Z' || token == 'z') {
             // ClosePath - connect back to start
             if (!points.empty()) {
                 points.push_back(points[0]);
@@ -344,8 +344,6 @@ std::shared_ptr<SVGDocument> SimpleSVGParser::Parse(const std::string& svgConten
 
 // ===== SVG ELEMENT RENDERER IMPLEMENTATION =====
 void SVGElementRenderer::ApplyStyles(const SVGElement& element) {
-    ctx->PushState();
-    
     // Parse and apply fill
     std::string fill = element.attributes.Get("fill", "black");
     if (fill != "none") {
@@ -366,7 +364,7 @@ void SVGElementRenderer::ApplyStyles(const SVGElement& element) {
     // Apply opacity
     float opacity = element.attributes.GetFloat("opacity", 1.0f);
     if (opacity < 1.0f) {
-        SetGlobalAlpha(opacity);
+        ctx->SetGlobalAlpha(opacity);
     }
 }
 
@@ -380,7 +378,7 @@ void SVGElementRenderer::RenderRect(const SVGElement& element) {
     
     if (width <= 0 || height <= 0) return;
     
-    Rect2D rect(x, y, width, height);
+    Rect2Df rect(x, y, width, height);
     
     ApplyStyles(element);
     
@@ -409,13 +407,13 @@ void SVGElementRenderer::RenderCircle(const SVGElement& element) {
     
     if (r <= 0) return;
     
-    Point2D center(cx, cy);
+    Point2Df center(cx, cy);
     
     ApplyStyles(element);
     
     // Use existing UltraCanvas functions
     if (element.attributes.Get("fill", "black") != "none") {
-        FillCircle(center, r);
+        ctx->FillCircle(center, r);
     }
     
     if (element.attributes.Get("stroke", "none") != "none") {
@@ -431,17 +429,17 @@ void SVGElementRenderer::RenderEllipse(const SVGElement& element) {
     
     if (rx <= 0 || ry <= 0) return;
     
-    Rect2D ellipseRect(cx - rx, cy - ry, rx * 2, ry * 2);
+    Rect2Df ellipseRect(cx - rx, cy - ry, rx * 2, ry * 2);
     
     ApplyStyles(element);
     
     // Use existing UltraCanvas functions
     if (element.attributes.Get("fill", "black") != "none") {
-        FillEllipse(ellipseRect);
+        ctx->FillEllipse(ellipseRect);
     }
     
     if (element.attributes.Get("stroke", "none") != "none") {
-        DrawEllipse(ellipseRect);
+        ctx->DrawEllipse(ellipseRect);
     }
 }
 
@@ -451,8 +449,8 @@ void SVGElementRenderer::RenderLine(const SVGElement& element) {
     float x2 = element.attributes.GetFloat("x2", 0.0f);
     float y2 = element.attributes.GetFloat("y2", 0.0f);
     
-    Point2D start(x1, y1);
-    Point2D end(x2, y2);
+    Point2Df start(x1, y1);
+    Point2Df end(x2, y2);
     
     ApplyStyles(element);
     
@@ -464,7 +462,7 @@ void SVGElementRenderer::RenderPolyline(const SVGElement& element) {
     std::string pointsStr = element.attributes.Get("points");
     if (pointsStr.empty()) return;
     
-    std::vector<Point2D> points = SimpleSVGParser::ParsePoints(pointsStr);
+    std::vector<Point2Df> points = SimpleSVGParser::ParsePoints(pointsStr);
     if (points.size() < 2) return;
     
     ApplyStyles(element);
@@ -479,7 +477,7 @@ void SVGElementRenderer::RenderPolygon(const SVGElement& element) {
     std::string pointsStr = element.attributes.Get("points");
     if (pointsStr.empty()) return;
     
-    std::vector<Point2D> points = SimpleSVGParser::ParsePoints(pointsStr);
+    std::vector<Point2Df> points = SimpleSVGParser::ParsePoints(pointsStr);
     if (points.size() < 3) return;
     
     ApplyStyles(element);
@@ -488,8 +486,8 @@ void SVGElementRenderer::RenderPolygon(const SVGElement& element) {
     if (element.attributes.Get("fill", "black") != "none") {
         // Use the existing DrawPolygon with fill from UltraCanvasDrawingSurface
         // For now, simulate with individual triangles from center
-        Point2D center(0, 0);
-        for (const Point2D& p : points) {
+        Point2Df center(0, 0);
+        for (const Point2Df& p : points) {
             center.x += p.x; center.y += p.y;
         }
         center.x /= points.size(); center.y /= points.size();
@@ -497,7 +495,7 @@ void SVGElementRenderer::RenderPolygon(const SVGElement& element) {
         for (size_t i = 0; i < points.size(); ++i) {
             size_t next = (i + 1) % points.size();
             // Create triangle: center -> point[i] -> point[next]
-            std::vector<Point2D> triangle = {center, points[i], points[next]};
+            std::vector<Point2Df> triangle = {center, points[i], points[next]};
             // DrawPolygon(triangle, true); // Would use if available
         }
     }
@@ -515,7 +513,7 @@ void SVGElementRenderer::RenderPath(const SVGElement& element) {
     std::string pathStr = element.attributes.Get("d");
     if (pathStr.empty()) return;
     
-    std::vector<Point2D> points = SimpleSVGParser::ParsePath(pathStr);
+    std::vector<Point2Df> points = SimpleSVGParser::ParsePath(pathStr);
     if (points.size() < 2) return;
     
     ApplyStyles(element);
@@ -535,8 +533,8 @@ void SVGElementRenderer::RenderText(const SVGElement& element) {
     ApplyStyles(element);
     
     // Use existing UltraCanvas text function
-    Point2D position(x, y);
-    DrawText(element.textContent, position);
+    Point2Df position(x, y);
+    ctx->DrawText(element.textContent, position);
 }
 
 void SVGElementRenderer::RenderGroup(const SVGElement& element) {
@@ -550,6 +548,7 @@ void SVGElementRenderer::RenderGroup(const SVGElement& element) {
             RenderElement(*child);
         }
     }
+    ctx->PopState();
 }
 
 void SVGElementRenderer::RenderElement(const SVGElement& element) {
@@ -575,11 +574,10 @@ void SVGElementRenderer::RenderElement(const SVGElement& element) {
     // Note: Additional elements like gradients, patterns, etc. would be added here
 }
 
-void SVGElementRenderer::RenderDocument(const Rect2D& viewport) {
-    ctx->PushState();
-    
+void SVGElementRenderer::RenderDocument(const Rect2Df& viewport) {
     if (!document.root) return;
-    
+    ctx->PushState();
+
     // Apply viewport transformation if needed
     if (document.hasViewBox) {
         // Calculate scale to fit viewBox in viewport
@@ -588,17 +586,14 @@ void SVGElementRenderer::RenderDocument(const Rect2D& viewport) {
         float scale = std::min(scaleX, scaleY);
         
         // Apply transformation
-        PushMatrix();
-        Translate(viewport.x, viewport.y);
-        Scale(scale, scale);
-        Translate(-document.viewBox.x, -document.viewBox.y);
+        ctx->Translate(viewport.x, viewport.y);
+        ctx->Scale(scale, scale);
+        ctx->Translate(-document.viewBox.x, -document.viewBox.y);
     }
     
     RenderElement(*document.root);
     
-    if (document.hasViewBox) {
-        PopMatrix();
-    }
+    ctx->PopState();
 }
 
 // ===== SVG UI ELEMENT IMPLEMENTATION =====
@@ -622,10 +617,7 @@ bool UltraCanvasSVGElement::LoadFromString(const std::string& svgContent) {
         }
         return false;
     }
-    
-    delete renderer;
-    renderer = new SVGElementRenderer(*document);
-    
+
     if (autoResize) {
         UpdateSizeFromSVG();
     }
@@ -652,38 +644,42 @@ bool UltraCanvasSVGElement::LoadFromFile(const std::string& filePath) {
 }
 
 void UltraCanvasSVGElement::Render() {
-        IRenderContext *ctx = GetRenderContext();
-    ctx->PushState();
-    
-    if (!renderer || !document) return;
-    
-    Rect2D viewport(0, 0, GetWidth(), GetHeight());
-    
-    if (scaleFactor != 1.0f) {
-        PushMatrix();
-        Scale(scaleFactor, scaleFactor);
+    IRenderContext *ctx = GetRenderContext();
+    if (!document) return;
+
+    if (!renderer) {
+        renderer = new SVGElementRenderer(*document, ctx);
     }
+
+
+    Rect2Df viewport(0, 0, static_cast<float>(GetWidth()), static_cast<float>(GetHeight()));
+    
+//    if (scaleFactor != 1.0f) {
+//        PushMatrix();
+//        Scale(scaleFactor, scaleFactor);
+//    }
     
     renderer->RenderDocument(viewport);
     
-    if (scaleFactor != 1.0f) {
-        PopMatrix();
-    }
+//    if (scaleFactor != 1.0f) {
+//        PopMatrix();
+//    }
 }
 
 void UltraCanvasSVGElement::UpdateSizeFromSVG() {
     if (!document) return;
     
     if (document->width > 0 && document->height > 0) {
-        SetWidth(static_cast<long>(document->width));
-        SetHeight(static_cast<long>(document->height));
+        SetWidth(static_cast<int>(document->width));
+        SetHeight(static_cast<int>(document->height));
     } else if (document->hasViewBox) {
-        SetWidth(static_cast<long>(document->viewBox.width));
-        SetHeight(static_cast<long>(document->viewBox.height));
+        SetWidth(static_cast<int>(document->viewBox.width));
+        SetHeight(static_cast<int>(document->viewBox.height));
     }
 }
 
 // ===== SVG PLUGIN IMPLEMENTATION =====
+/*
 bool UltraCanvasSVGPlugin::CanHandle(const std::string& filePath) const {
     std::string ext = GetFileExtension(filePath);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
@@ -725,7 +721,7 @@ bool UltraCanvasSVGPlugin::LoadFromMemory(const std::vector<uint8_t>& data) {
     return false;
 }
 
-void UltraCanvasSVGPlugin::Render(const Rect2D& bounds) {
+void UltraCanvasSVGPlugin::Render(const Rect2Df& bounds) {
     if (currentKey.empty()) return;
     
     auto it = documentCache.find(currentKey);
@@ -781,5 +777,5 @@ std::string UltraCanvasSVGPlugin::GetFileExtension(const std::string& filePath) 
 std::string UltraCanvasSVGPlugin::GenerateKey(const std::string& identifier) const {
     return identifier;
 }
-
+*/
 } // namespace UltraCanvas

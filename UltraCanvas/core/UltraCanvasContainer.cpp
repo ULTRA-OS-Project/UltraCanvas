@@ -773,6 +773,7 @@ namespace UltraCanvas {
         style = newStyle;
         UpdateScrollbarAppearance();
         UpdateLayout();
+        RequestRedraw();
     }
 
     void UltraCanvasContainer::SetShowHorizontalScrollbar(bool show) {

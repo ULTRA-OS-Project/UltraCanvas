@@ -199,7 +199,7 @@ namespace UltraCanvas {
 
         vectorBuilder.AddItem("svg", "SVG Graphics", "Scalable vector graphics rendering",
                               ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateVectorExamples(); })
+                              [this]() { return CreateSVGVectorExamples(); })
                 .AddVariant("svg", "SVG File Display")
                 .AddVariant("svg", "Interactive SVG")
                 .AddVariant("svg", "SVG Animations");
