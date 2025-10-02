@@ -861,6 +861,46 @@ namespace UltraCanvas {
         cairo_fill(cairo);
     }
 
+    void LinuxRenderContext::PathArc(float xc, float yc, float radius, float angle1, float angle2) {
+        cairo_arc(cairo, x, y, radius, startAngle, endAngle);
+    }
+    void LinuxRenderContext::PathMoveTo(float x, float y) {
+        cairo_move_to(cairo, x, y);
+    }
+    void LinuxRenderContext::PathLineTo(float x, float y) {
+        cairo_line_to(cairo, x, y);
+    }
+    void LinuxRenderContext::PathCurveTo(float x1, float y1, float x2, float y2, float x, float y) {
+        cairo_curve_to(cairo, x1, y1, x2, y2, x,y);
+    }
+    // Drawing using relative coordinates
+    void LinuxRenderContext::PathRelMoveTo(float x, float y) {
+        cairo_rel_move_to(cairo, x, y);
+    }
+    void LinuxRenderContext::PathRelLineTo(float x, float y) {
+        cairo_rel_line_to(cairo, x, y);
+    }
+    void LinuxRenderContext::PathRelCurveTo(float x1, float y1, float x2, float y2, float x, float y) {
+        cairo_rel_curve_to(cairo, x1, y1, x2, y2, x,y);
+    }
+    void LinuxRenderContext::PathExtents(float &x, float &y, float &width, float &height) {
+        double x2, y2, x1, y1;
+        cairo_path_extents(cairo, &x1, &y1, &x2, &y2);
+        x = x1;
+        y = y1;
+        width = std::abs(x2 - x1);
+        height = std::abs(y2 - y1);
+    }
+
+    void LinuxRenderContext::PathStroke() {
+        ApplyStrokeStyle(currentState.style);
+        cairo_stroke(cairo);
+    }
+    void LinuxRenderContext::PathFill() {
+        ApplyFillStyle(currentState.style);
+        cairo_fill(cairo);
+    }
+
     void LinuxRenderContext::DrawBezier(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2,
                                         const Point2Df &end) {
         ApplyStrokeStyle(currentState.style);

@@ -241,6 +241,19 @@ namespace UltraCanvas {
         void DrawPath(const std::vector<Point2Df> &points, bool closePath) override;
         void FillPath(const std::vector<Point2Df> &points) override;
 
+        void PathArc(float xc, float yc, float radius, float angle1, float angle2) override; // The arc is centered at (xc , yc ), begins at angle1 and proceeds in the direction of increasing angles to end at angle2 .
+        void PathMoveTo(float x, float y) override; // Begin a new sub-path. After this call the current point will be (x , y ).
+        void PathLineTo(float x, float y) override; // Adds a line to the path from the current point to position (x , y ) in user-space coordinates. After this call the current point will be (x , y ).
+        void PathCurveTo(float x1, float y1, float x2, float y2, float x, float y) override; // Adds a cubic Bézier spline to the path from the current point to position (x3 , y3 ) in user-space coordinates, using (x1 , y1 ) and (x2 , y2 ) as the control points. After this call the current point will be (x3 , y3 ).
+        // Drawing using relative coordinates
+        void PathRelMoveTo(float x, float y) override; // Begin a new sub-path. After this call the current point will be (x , y ).
+        void PathRelLineTo(float x, float y) override; // Adds a line to the path from the current point to position (x , y ) in user-space coordinates. After this call the current point will be (x , y ).
+        void PathRelCurveTo(float x1, float y1, float x2, float y2, float x, float y) override; // Adds a cubic Bézier spline to the path from the current point to position (x3 , y3 ) in user-space coordinates, using (x1 , y1 ) and (x2 , y2 ) as the control points. After this call the current point will be (x3 , y3 ).
+        void PathExtents(float &x1, float &x2, float &width, float &height) override; // measure extents of current path
+        void PathStroke() override;
+        void PathFill() override;
+
+
         // Text rendering
         void DrawText(const std::string &text, float x, float y) override;
         void DrawTextInRect(const std::string &text, float x, float y, float w, float h) override;

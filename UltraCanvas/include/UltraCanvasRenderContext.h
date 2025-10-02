@@ -280,9 +280,23 @@ class UltraCanvasBaseWindow;
         virtual void FillEllipse(float x, float y, float w, float h) = 0;
         virtual void DrawArc(float x, float y, float radius, float startAngle, float endAngle) = 0;
         virtual void FillArc(float x, float y, float radius, float startAngle, float endAngle) = 0;
+
         virtual void DrawBezier(const Point2Df& start, const Point2Df& cp1, const Point2Df& cp2, const Point2Df& end) = 0;
         virtual void DrawPath(const std::vector<Point2Df>& points, bool closePath = false) = 0;
         virtual void FillPath(const std::vector<Point2Df>& points) = 0;
+
+        virtual void PathArc(float xc, float yc, float radius, float startAngle, float endAngle) = 0; // The arc is centered at (xc , yc ), begins at angle1 and proceeds in the direction of increasing angles to end at angle2 .
+        virtual void PathMoveTo(float x, float y) = 0; // Begin a new sub-path. After this call the current point will be (x , y ).
+        virtual void PathLineTo(float x, float y) = 0; // Adds a line to the path from the current point to position (x , y ) in user-space coordinates. After this call the current point will be (x , y ).
+        virtual void PathCurveTo(float x1, float y1, float x2, float y2, float x, float y) = 0; // Adds a cubic Bézier spline to the path from the current point to position (x3 , y3 ) in user-space coordinates, using (x1 , y1 ) and (x2 , y2 ) as the control points. After this call the current point will be (x3 , y3 ).
+        // Drawing using relative coordinates
+        virtual void PathRelMoveTo(float x, float y) = 0; // Begin a new sub-path. After this call the current point will be (x , y ).
+        virtual void PathRelLineTo(float x, float y) = 0; // Adds a line to the path from the current point to position (x , y ) in user-space coordinates. After this call the current point will be (x , y ).
+        virtual void PathRelCurveTo(float x1, float y1, float x2, float y2, float x, float y) = 0; // Adds a cubic Bézier spline to the path from the current point to position (x3 , y3 ) in user-space coordinates, using (x1 , y1 ) and (x2 , y2 ) as the control points. After this call the current point will be (x3 , y3 ).
+        virtual void PathExtents(float &x1, float &x2, float &width, float &height) = 0; // measure extents of current path
+        virtual void PathStroke() = 0;
+        virtual void PathFill() = 0;
+
 
 //        virtual void ClosePath() = 0;
 //        virtual void FillPath() = 0;
