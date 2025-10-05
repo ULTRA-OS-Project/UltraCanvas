@@ -177,7 +177,7 @@ namespace UltraCanvas {
         bool doubleBufferingEnabled = false;
 
         // Internal helper methods
-        void ApplyDrawingStyle(const DrawingStyle &style);
+//        void ApplyDrawingStyle(const DrawingStyle &style);
 //        void ApplyTextStyle(const TextStyle &style);
 //        void ApplyFillStyle(const DrawingStyle &style);
 //        void ApplyStrokeStyle(const DrawingStyle &style);

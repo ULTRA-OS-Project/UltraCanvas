@@ -916,12 +916,12 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::SetStrokeWidth(float width) {
-        currentState.style.strokeWidth = width;
+//        currentState.style.strokeWidth = width;
         cairo_set_line_width(cairo, width);
     }
 
     void LinuxRenderContext::SetLineCap(LineCap cap) {
-        currentState.style.lineCap = cap;
+//        currentState.style.lineCap = cap;
         cairo_line_cap_t cairoCap = CAIRO_LINE_CAP_BUTT;
         switch (cap) {
             case LineCap::Round: cairoCap = CAIRO_LINE_CAP_ROUND; break;

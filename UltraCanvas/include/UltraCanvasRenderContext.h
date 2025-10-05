@@ -1,4 +1,4 @@
-// include/UltraCanvasRenderContext.h - Enhanced Version
+// include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
 // Version: 2.2.0
 // Last Modified: 2025-07-11
@@ -75,31 +75,6 @@ class UltraCanvasBaseWindow;
         virtual void* GetHandle() = 0;
     };
 
-    struct DrawingStyle {
-        // Fill properties
-        FillMode fillMode = FillMode::Solid;
-        Color color = Colors::White;
-//        Gradient fillGradient;
-//        std::string patternPath;
-
-        // Stroke properties
-//        bool hasStroke = false;
-        float strokeWidth = 1.0f;
-        StrokeStyle strokeStyle = StrokeStyle::Solid;
-        LineCap lineCap = LineCap::Butt;
-        LineJoin lineJoin = LineJoin::Miter;
-        std::vector<float> dashPattern;
-
-        // Shadow properties
-//        bool hasShadow = false;
-//        Color shadowColor = Color(0, 0, 0, 128);
-//        Point2Df shadowOffset = Point2Df(2, 2);
-//        float shadowBlur = 2.0f;
-
-        // Alpha blending
-//        float globalAlpha = 1.0f;
-    };
-
     enum class TextVerticalAlignement {
         Top,
         Middle,
@@ -146,7 +121,6 @@ class UltraCanvasBaseWindow;
 
 // ===== RENDERING STATE =====
     struct RenderState {
-        DrawingStyle style;
         FontStyle fontStyle;
         TextStyle textStyle;
         Rect2Df clipRect;
