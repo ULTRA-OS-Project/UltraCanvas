@@ -705,8 +705,8 @@ private:
         Rect2D headerRect(GetX(), GetY(), GetWidth(), headerHeight);
         UltraCanvas::DrawFilledRect(headerRect, headerBackgroundColor, gridLineColor, 1.0f);
         
-        ctx->SetTextColor(headerTextColor);
-        ctx->SetFont("Arial", 11.0f);
+        ctx->PaintWidthColorheaderTextColor);
+        ctx->SetFontSize(11.0f);
         
         int x = GetX() - scrollOffsetX;
         
@@ -736,7 +736,7 @@ private:
             
             // Draw column separator
             if (showGridLines) {
-                ctx->SetStrokeColor(gridLineColor);
+                ctx->PaintWidthColorgridLineColor);
                 ctx->DrawLine(Point2D(x + colWidth, GetY()), Point2D(x + colWidth, GetY() + headerHeight));
             }
             
@@ -753,7 +753,7 @@ private:
         int lastVisibleRow = std::min(static_cast<int>(GetDisplayRowCount()),
                                      firstVisibleRow + (visibleHeight / rowHeight) + 2);
         
-        ctx->SetFont("Arial", 10.0f);
+        ctx->SetFontSize(10.0f);
         
         for (int displayRow = firstVisibleRow; displayRow < lastVisibleRow; displayRow++) {
             int actualRow = GetActualRowIndex(displayRow);
@@ -775,7 +775,7 @@ private:
             
             // Draw horizontal grid line
             if (showGridLines) {
-                ctx->SetStrokeColor(gridLineColor);
+                ctx->PaintWidthColorgridLineColor);
                 ctx->DrawLine(Point2D(GetX(), y + rowHeight), Point2D(GetX() + GetWidth(), y + rowHeight));
             }
         }
@@ -797,7 +797,7 @@ private:
             }
             
             // Draw cell text
-            ctx->SetTextColor(cell.textColor);
+            ctx->PaintWidthColorcell.textColor);
             
             Rect2D textRect(x + cellPadding, y, colWidth - cellPadding * 2, rowHeight);
             Point2D textPos(x + cellPadding, y + (rowHeight + 10) / 2);
@@ -817,7 +817,7 @@ private:
             
             // Draw vertical grid line
             if (showGridLines) {
-                ctx->SetStrokeColor(gridLineColor);
+                ctx->PaintWidthColorgridLineColor);
                 ctx->DrawLine(Point2D(x + colWidth, y), Point2D(x + colWidth, y + rowHeight));
             }
             
@@ -855,7 +855,7 @@ private:
     }
     
     void DrawSortIndicator(int x, int y, bool ascending) {
-        ctx->SetStrokeColor(headerTextColor);
+        ctx->PaintWidthColorheaderTextColor);
         ctx->SetStrokeWidth(1.0f);
         
         int size = 4;
@@ -872,7 +872,7 @@ private:
     
     void DrawResizeIndicator() {
         if (resizingColumn >= 0) {
-            ctx->SetStrokeColor(focusColor);
+            ctx->PaintWidthColorfocusColor);
             ctx->SetStrokeWidth(2.0f);
             
             int x = GetX() + GetColumnOffset(resizingColumn + 1) - scrollOffsetX;

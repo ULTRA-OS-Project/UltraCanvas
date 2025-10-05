@@ -537,7 +537,7 @@ namespace UltraCanvas {
 
     void UltraCanvasToast::RenderBorder() {
         if (config.borderWidth > 0) {
-            UltraCanvasRenderInterface::ctx->SetStrokeColor(config.borderColor);
+            UltraCanvasRenderInterface::ctx->PaintWidthColorconfig.borderColor);
             UltraCanvasRenderInterface::ctx->SetStrokeWidth(config.borderWidth);
             UltraCanvasRenderInterface::ctx->DrawRectangle(GetBounds());
         }
@@ -545,7 +545,7 @@ namespace UltraCanvas {
 
     void UltraCanvasToast::RenderIcon() {
         // Simple geometric icon based on type
-        UltraCanvasRenderInterface::ctx->SetFillColor(config.iconColor);
+        UltraCanvasRenderInterface::ctx->PaintWidthColorconfig.iconColor);
 
         Point2D center(iconRect.x + iconRect.width / 2, iconRect.y + iconRect.height / 2);
 

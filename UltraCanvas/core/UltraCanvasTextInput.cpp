@@ -244,11 +244,11 @@ namespace UltraCanvas {
         Rect2Di bounds = GetBounds();
 
         // Draw background
-        ctx->SetFillColor(backgroundColor);
+        ctx->PaintWithColor(backgroundColor);
         ctx->DrawRectangle(bounds);
 
         // Draw border
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWithColor(borderColor);
         ctx->SetStrokeWidth(style.borderWidth);
         ctx->DrawRectangle(bounds);
 
@@ -365,11 +365,7 @@ namespace UltraCanvas {
             std::string currentLine = displayText.substr(lineStart, lineEnd - lineStart);
 
             // Set text style for measurement
-            TextStyle textStyle;
-            textStyle.fontFamily = style.fontFamily;
-            textStyle.fontSize = style.fontSize;
-            textStyle.fontWeight = style.fontWeight;
-            ctx->SetTextStyle(textStyle);
+            ctx->SetFontStyle(style.fontStyle);
 
             float lineWidth = ctx->GetTextWidth(currentLine);
             float maxScroll = std::max(0.0f, lineWidth - textArea.width + style.paddingRight);
@@ -379,11 +375,7 @@ namespace UltraCanvas {
             std::string displayText = GetDisplayText();
 
             // Set text style for measurement
-            TextStyle textStyle;
-            textStyle.fontFamily = style.fontFamily;
-            textStyle.fontSize = style.fontSize;
-            textStyle.fontWeight = style.fontWeight;
-            ctx->SetTextStyle(textStyle);
+            ctx->SetFontStyle(style.fontStyle);
 
             float totalTextWidth = ctx->GetTextWidth(displayText);
             float maxScroll = std::max(0.0f, totalTextWidth - textArea.width + style.paddingRight);
@@ -419,20 +411,18 @@ namespace UltraCanvas {
 
         // Set text style
         TextStyle textStyle;
-        textStyle.fontFamily = style.fontFamily;
-        textStyle.fontSize = style.fontSize;
-        textStyle.fontWeight = style.fontWeight;
+        ctx->SetFontStyle(style.fontStyle);
         textStyle.textColor = color;
         textStyle.alignment = style.textAlignment;
         ctx->SetTextStyle(textStyle);
 
         if (inputType == TextInputType::Multiline) {
             // Start at baseline position
-            Point2Di textPos(area.x - scrollOffset, area.y + (style.fontSize * 0.8f));
+            Point2Di textPos(area.x - scrollOffset, area.y + (style.fontStyle.fontSize * 0.8f));
             RenderMultilineText(area, renderText, textPos, ctx);
         } else {
             // Match the baseline calculation used in GetCaretYPosition
-            float lineHeight = style.fontSize * 1.2f;
+            float lineHeight = style.fontStyle.fontSize * 1.2f;
             float centeredY = area.y + (area.height - lineHeight) / 2.0f;
             //float baselineY = centeredY + (style.fontSize * 0.8f);
             float baselineY = centeredY;
@@ -444,11 +434,9 @@ namespace UltraCanvas {
 
     void UltraCanvasTextInput::RenderPlaceholder(const Rect2Df &area, IRenderContext* ctx) {
         TextStyle placeholderStyle;
-        placeholderStyle.fontFamily = style.fontFamily;
-        placeholderStyle.fontSize = style.fontSize;
-        placeholderStyle.fontWeight = style.fontWeight;
         placeholderStyle.textColor = style.placeholderColor;
         placeholderStyle.alignment = style.textAlignment;
+        ctx->SetFontStyle(style.fontStyle);
         ctx->SetTextStyle(placeholderStyle);
 
         ctx->DrawText(placeholderText, Point2Di(area.x, area.y));
@@ -460,11 +448,7 @@ namespace UltraCanvas {
         std::string displayText = GetDisplayText();
 
         // Set proper text style for measurement
-        TextStyle textStyle;
-        textStyle.fontFamily = style.fontFamily;
-        textStyle.fontSize = style.fontSize;
-        textStyle.fontWeight = style.fontWeight;
-        ctx->SetTextStyle(textStyle);
+        ctx->SetFontStyle(style.fontStyle);
 
         // Get text segments for accurate measurement
         std::string textBeforeSelection = displayText.substr(0, selectionStart);
@@ -474,8 +458,8 @@ namespace UltraCanvas {
         float selWidth = ctx->GetTextWidth(selectedText);
 
         // Calculate proper selection height based on font metrics
-        float ascender = style.fontSize * 0.8f;
-        float descender = style.fontSize * 0.2f;
+        float ascender = style.fontStyle.fontSize * 0.8f;
+        float descender = style.fontStyle.fontSize * 0.2f;
         float selectionHeight = ascender + descender;
         float selectionY = area.y + (area.height - selectionHeight) / 2.0f;
 
@@ -485,7 +469,7 @@ namespace UltraCanvas {
 
         if (visibleEndX > visibleStartX) {
             Rect2Df selectionRect(visibleStartX, selectionY, visibleEndX - visibleStartX, selectionHeight);
-           ctx->SetFillColor(style.selectionColor);
+            ctx->PaintWithColor(style.selectionColor);
             ctx->DrawRectangle(selectionRect);
         }
     }
@@ -518,18 +502,14 @@ namespace UltraCanvas {
             }
 
             // Set text style for accurate measurement
-            TextStyle textStyle;
-            textStyle.fontFamily = style.fontFamily;
-            textStyle.fontSize = style.fontSize;
-            textStyle.fontWeight = style.fontWeight;
-            ctx->SetTextStyle(textStyle);
+            ctx->SetFontStyle(style.fontStyle);
 
             float textWidth = ctx->GetTextWidth(textUpToCaret);
             // FIXED: Match text rendering position exactly
             caretX = textArea.x + textWidth - scrollOffset;
         }
 
-        float lineHeight = style.fontSize * 1.4f;
+        float lineHeight = style.fontStyle.fontSize * 1.4f;
         // Total height should be about lineHeight for visibility
         float caretStartY = GetCaretYPosition();
         float caretEndY = caretStartY + lineHeight;
@@ -540,7 +520,7 @@ namespace UltraCanvas {
             return;
         }
 
-        ctx->SetStrokeColor(style.caretColor);
+        ctx->PaintWithColor(style.caretColor);
         ctx->SetStrokeWidth(style.caretWidth);
 
         // Draw caret line with proper height and position
@@ -565,7 +545,7 @@ namespace UltraCanvas {
         }
         lines.push_back(currentLine);
 
-        float lineHeight = style.fontSize * 1.2f;
+        float lineHeight = style.fontStyle.fontSize * 1.2f;
         float currentBaselineY = startPos.y; // startPos.y is baseline
 
         for (const auto& line : lines) {
@@ -595,7 +575,7 @@ namespace UltraCanvas {
         }
 
         // Draw validation border
-        ctx->SetStrokeColor(feedbackColor);
+        ctx->PaintWithColor(feedbackColor);
         ctx->SetStrokeWidth(2.0f);
         ctx->DrawRectangle(bounds);
 
@@ -603,14 +583,14 @@ namespace UltraCanvas {
         if (lastValidationResult.state == ValidationState::Valid) {
             // Draw checkmark
             Point2Di iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2);
-            ctx->SetStrokeColor(style.validBorderColor);
+            ctx->PaintWithColor(style.validBorderColor);
             ctx->SetStrokeWidth(2.0f);
             ctx->DrawLine(iconPos, Point2Di(iconPos.x + 4, iconPos.y + 4));
             ctx->DrawLine(Point2Di(iconPos.x + 4, iconPos.y + 4), Point2Di(iconPos.x + 12, iconPos.y - 4));
         } else if (lastValidationResult.state == ValidationState::Invalid) {
             // Draw X
             Point2Di iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2 - 6);
-            ctx->SetStrokeColor(style.invalidBorderColor);
+            ctx->PaintWithColor(style.invalidBorderColor);
             ctx->SetStrokeWidth(2.0f);
             ctx->DrawLine(iconPos, Point2Di(iconPos.x + 12, iconPos.y + 12));
             ctx->DrawLine(Point2Di(iconPos.x, iconPos.y + 12), Point2Di(iconPos.x + 12, iconPos.y));
@@ -627,7 +607,7 @@ namespace UltraCanvas {
                 bounds.height
         );
 
-        ctx->SetFillColor(style.shadowColor);
+        ctx->PaintWithColor(style.shadowColor);
         ctx->DrawRectangle(shadowRect);
     }
 
@@ -686,7 +666,7 @@ namespace UltraCanvas {
 
         if (inputType == TextInputType::Multiline) {
             // Calculate which line was clicked
-            float lineHeight = style.fontSize * 1.2f;
+            float lineHeight = style.fontStyle.fontSize * 1.2f;
             int clickedLine = static_cast<int>((point.y - textArea.y) / lineHeight);
             clickedLine = std::max(0, clickedLine);
 
@@ -717,11 +697,7 @@ namespace UltraCanvas {
             if (relativeX <= 0) return lineStartPos;
 
             // Set text style for measurement
-            TextStyle textStyle;
-            textStyle.fontFamily = style.fontFamily;
-            textStyle.fontSize = style.fontSize;
-            textStyle.fontWeight = style.fontWeight;
-            ctx->SetTextStyle(textStyle);
+            ctx->SetFontStyle(style.fontStyle);
 
             // Binary search within the line
             size_t left = 0, right = lineText.length();
@@ -753,11 +729,7 @@ namespace UltraCanvas {
             std::string displayText = GetDisplayText();
 
             // Set text style for measurement
-            TextStyle textStyle;
-            textStyle.fontFamily = style.fontFamily;
-            textStyle.fontSize = style.fontSize;
-            textStyle.fontWeight = style.fontWeight;
-            ctx->SetTextStyle(textStyle);
+            ctx->SetFontStyle(style.fontStyle);
 
             // Binary search for position
             size_t left = 0, right = displayText.length();
@@ -1152,7 +1124,7 @@ namespace UltraCanvas {
 
     float UltraCanvasTextInput::GetLineYPosition(int lineNumber) const {
         Rect2Df textArea = GetTextArea();
-        float lineHeight = style.fontSize * 1.2f;
+        float lineHeight = style.fontStyle.fontSize * 1.2f;
         return textArea.y + (lineNumber * lineHeight);
     }
 
@@ -1174,11 +1146,7 @@ namespace UltraCanvas {
         std::string textInLine = displayText.substr(lineStart, caretPosition - lineStart);
 
         // Set text style for measurement
-        TextStyle textStyle;
-        textStyle.fontFamily = style.fontFamily;
-        textStyle.fontSize = style.fontSize;
-        textStyle.fontWeight = style.fontWeight;
-        ctx->SetTextStyle(textStyle);
+        ctx->SetFontStyle(style.fontStyle);
 
         float textWidth = ctx->GetTextWidth(textInLine);
         return style.paddingLeft + textWidth;
@@ -1203,11 +1171,7 @@ namespace UltraCanvas {
             std::string textInLine = displayText.substr(lineStart, caretPosition - lineStart);
 
             // Set text style for measurement
-            TextStyle textStyle;
-            textStyle.fontFamily = style.fontFamily;
-            textStyle.fontSize = style.fontSize;
-            textStyle.fontWeight = style.fontWeight;
-            ctx->SetTextStyle(textStyle);
+            ctx->SetFontStyle(style.fontStyle);
 
             float textWidth = ctx->GetTextWidth(textInLine);
             return style.paddingLeft + textWidth;
@@ -1216,11 +1180,7 @@ namespace UltraCanvas {
             std::string textUpToCaret = displayText.substr(0, std::min(caretPosition, displayText.length()));
 
             // Set text style for measurement
-            TextStyle textStyle;
-            textStyle.fontFamily = style.fontFamily;
-            textStyle.fontSize = style.fontSize;
-            textStyle.fontWeight = style.fontWeight;
-            ctx->SetTextStyle(textStyle);
+            ctx->SetFontStyle(style.fontStyle);
 
             float textWidth = ctx->GetTextWidth(textUpToCaret);
             return style.paddingLeft + textWidth;
@@ -1241,12 +1201,12 @@ namespace UltraCanvas {
                 }
             }
 
-            float lineHeight = style.fontSize * 1.2f;
+            float lineHeight = style.fontStyle.fontSize * 1.2f;
             // CRITICAL: Return baseline position, not top of line
-            return textArea.y + (lineNumber * lineHeight) + (style.fontSize * 0.8f);
+            return textArea.y + (lineNumber * lineHeight) + (style.fontStyle.fontSize * 0.8f);
         } else {
             // Single line: match baseline positioning
-            float lineHeight = style.fontSize * 1.2f;
+            float lineHeight = style.fontStyle.fontSize * 1.2f;
             float centeredY = textArea.y + (textArea.height - lineHeight) / 2.0f;
             return centeredY;
         }

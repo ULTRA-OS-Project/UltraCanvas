@@ -342,12 +342,12 @@ namespace UltraCanvas {
             Rect2D bounds = GetBounds();
 
             // Draw background
-           ctx->SetFillColor(config.backgroundColor);
+           ctx->PaintWidthColorconfig.backgroundColor);
             DrawFilledRect(bounds);
 
             // Draw border
             if (config.borderWidth > 0) {
-                ctx->SetStrokeColor(config.borderColor);
+                ctx->PaintWidthColorconfig.borderColor);
                 ctx->SetStrokeWidth(config.borderWidth);
                 ctx->DrawRectangle(bounds);
             }

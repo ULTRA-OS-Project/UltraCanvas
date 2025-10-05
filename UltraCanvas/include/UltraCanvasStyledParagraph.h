@@ -365,13 +365,13 @@ public:
         
         // Draw background
         if (backgroundColor != Colors::Transparent) {
-            ctx->SetFillColor(backgroundColor);
+            ctx->PaintWidthColorbackgroundColor);
             ctx->DrawRectangle(bounds);
         }
         
         // Draw border
         if (showBorder) {
-            ctx->SetStrokeColor(borderColor);
+            ctx->PaintWidthColorborderColor);
             ctx->SetStrokeWidth(static_cast<float>(borderWidth));
             ctx->DrawRectangle(bounds);  // Draw border as stroked rectangle
         }
@@ -549,7 +549,7 @@ private:
         
         // Render list prefix
         if (!listPrefix.empty()) {
-            ctx->SetTextColor(Colors::Black);
+            ctx->PaintWidthColorColors::Black);
             SetTextFont("Arial", 12);
             ctx->DrawText(listPrefix, Point2D(currentX, currentY + 12));
             
@@ -579,20 +579,20 @@ private:
         // Draw background if specified
         if (run.backgroundColor != Colors::Transparent) {
             Point2D textSize = run.Measure();
-            ctx->SetFillColor(run.backgroundColor);
+            ctx->PaintWidthColorrun.backgroundColor);
             ctx->DrawRectangle(Rect2D(x, y - run.fontSize, textSize.x, textSize.y));
         }
         
         // Draw shadow if enabled
         if (run.HasShadow()) {
-            ctx->SetTextColor(run.shadowColor);
+            ctx->PaintWidthColorrun.shadowColor);
             ctx->DrawText(displayText, Point2D(x + run.shadowOffsetX, y + run.shadowOffsetY));
         }
         
         // Draw outline if enabled
         if (run.HasOutline()) {
             // Simplified outline by drawing text multiple times
-            ctx->SetTextColor(run.outlineColor);
+            ctx->PaintWidthColorrun.outlineColor);
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
                     if (dx != 0 || dy != 0) {
@@ -603,20 +603,20 @@ private:
         }
         
         // Draw main text
-        ctx->SetTextColor(run.textColor);
+        ctx->PaintWidthColorrun.textColor);
         ctx->DrawText(displayText, Point2D(x, y));
         
         // Draw text decorations
         if (run.IsUnderline()) {
             Point2D textSize = run.Measure();
-            ctx->SetStrokeColor(run.textColor);
+            ctx->PaintWidthColorrun.textColor);
             ctx->SetStrokeWidth(1);
             ctx->DrawLine(Point2D(x, y + 2), Point2D(x + textSize.x, y + 2));
         }
         
         if (run.IsStrikethrough()) {
             Point2D textSize = run.Measure();
-            ctx->SetStrokeColor(run.textColor);
+            ctx->PaintWidthColorrun.textColor);
             ctx->SetStrokeWidth(1);
             ctx->DrawLine(Point2D(x, y - run.fontSize / 2), Point2D(x + textSize.x, y - run.fontSize / 2));
         }
@@ -637,7 +637,7 @@ private:
         
         // Draw drop cap
         SetTextFont(dropCapFont, dropCapSize);
-        ctx->SetTextColor(runs[0]->textColor);
+        ctx->PaintWidthColorruns[0]->textColor);
         ctx->DrawText(firstChar, Point2D(area.x, currentY + dropCapSize));
         
         // Modify first run to remove first character
@@ -754,7 +754,7 @@ inline void RenderStyledParagraph(const StyledParagraph& para, int x, int y) {
 
 ✅ **Fixed Function Dependencies**:
 - MeasureTextWidth() → GetTextExtents()
-- DrawRectOutline() → ctx->SetStrokeColor() + ctx->DrawRectangle()
+- DrawRectOutline() → ctx->PaintWidthColor) + ctx->DrawRectangle()
 - ResetClip() → ClearClipRect()
 - MeasureText() → GetTextExtents()
 

@@ -237,14 +237,14 @@ namespace UltraCanvas {
 
                 // Set color from palette
                 Color sliceColor = GetColorFromPalette(i);
-                ctx->SetFillColor(sliceColor);
+                ctx->PaintWithColor(sliceColor);
 
                 // Use existing FillArc function
                 ctx->FillArc(center.x, center.y, radius, currentAngle, currentAngle + sliceAngle);
 
                 // Draw slice border using existing DrawArc
                 if (borderWidth > 0) {
-                    ctx->SetStrokeColor(borderColor);
+                    ctx->PaintWithColor(borderColor);
                     ctx->SetStrokeWidth(borderWidth);
                     ctx->DrawArc(center.x, center.y, radius, currentAngle, currentAngle + sliceAngle);
                 }
@@ -325,6 +325,7 @@ namespace UltraCanvas {
         float pointRadius = 3.0f;
         bool enableSmoothing = false;
         bool enableGradientFill = false;
+        void* gradientFill = nullptr;
         Color gradientStartColor = Color(0, 102, 204, 200);
         Color gradientEndColor = Color(0, 102, 204, 50);
 
@@ -428,8 +429,8 @@ namespace UltraCanvas {
                 return;
             }
 
-            ctx->SetFillColor(pointColor);
-            ctx->SetStrokeColor(Color(255, 255, 255, 255));
+            ctx->PaintWithColor(pointColor);
+            ctx->PaintWithColor(Color(255, 255, 255, 255));
             ctx->SetStrokeWidth(1.0f);
 
             // Draw points only for data points (skip baseline start/end)
@@ -452,11 +453,14 @@ namespace UltraCanvas {
                 minY = std::min(minY, point.y);
                 maxY = std::max(maxY, point.y);
             }
-
+            auto gradient = ctx->CreateLinearGradientPattern(0, minY, 0, maxY,
+                                                             {GradientStop(0, gradientStartColor),
+                                                              GradientStop(1, gradientEndColor)});
             // Create vertical gradient from top to bottom
-            ctx->SetFillGradient(gradientStartColor, gradientEndColor,
-                                 Point2Df(0, minY), Point2Df(0, maxY));
-            ctx->FillPath(areaPoints);
+//            ctx->SetFillGradient(gradientStartColor, gradientEndColor,
+//                                 Point2Df(0, minY), Point2Df(0, maxY));
+            ctx->PaintWithPattern(std::move(gradient));
+            ctx->FillLinePath(areaPoints);
         }
     };
 

@@ -43,21 +43,16 @@ class UltraCanvasBaseWindow;
             radius1 = radius2 = 0;
         }
     };
-
 // ===== DRAWING STYLES =====
     enum class FillMode {
-        NoneFill,
         Solid,
-        Gradient,
-        Pattern,
-        Texture
+        Gradient
     };
 
     enum class StrokeStyle {
         Solid,
         Dashed,
-        Dotted,
-        DashDot,
+        Gradient,
         Custom
     };
 
@@ -73,16 +68,22 @@ class UltraCanvasBaseWindow;
         Bevel
     };
 
+    // pattern interface mainly to automatically destory patters
+    class IDrawingPattern {
+    public:
+        virtual ~IDrawingPattern() = default;
+        virtual void* GetHandle() = 0;
+    };
+
     struct DrawingStyle {
         // Fill properties
         FillMode fillMode = FillMode::Solid;
-        Color fillColor = Colors::White;
-        Gradient fillGradient;
-        std::string patternPath;
+        Color color = Colors::White;
+//        Gradient fillGradient;
+//        std::string patternPath;
 
         // Stroke properties
-        bool hasStroke = false;
-        Color strokeColor = Colors::Black;
+//        bool hasStroke = false;
         float strokeWidth = 1.0f;
         StrokeStyle strokeStyle = StrokeStyle::Solid;
         LineCap lineCap = LineCap::Butt;
@@ -90,16 +91,16 @@ class UltraCanvasBaseWindow;
         std::vector<float> dashPattern;
 
         // Shadow properties
-        bool hasShadow = false;
-        Color shadowColor = Color(0, 0, 0, 128);
-        Point2Df shadowOffset = Point2Df(2, 2);
-        float shadowBlur = 2.0f;
+//        bool hasShadow = false;
+//        Color shadowColor = Color(0, 0, 0, 128);
+//        Point2Df shadowOffset = Point2Df(2, 2);
+//        float shadowBlur = 2.0f;
 
         // Alpha blending
-        float globalAlpha = 1.0f;
+//        float globalAlpha = 1.0f;
     };
 
-    enum class TextBaseline {
+    enum class TextVerticalAlignement {
         Top,
         Middle,
         Bottom,
@@ -108,25 +109,28 @@ class UltraCanvasBaseWindow;
 
     enum class FontWeight {
         Normal,
-        Bold,
         Light,
+        Bold,
         ExtraBold
     };
 
-    enum class FontStyle {
+    enum class FontSlant {
         Normal,
         Italic,
         Oblique
     };
 
-    struct TextStyle {
+    struct FontStyle {
         std::string fontFamily = "Arial";
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
-        FontStyle fontStyle = FontStyle::Normal;
-        Color textColor = Colors::Black;
+        FontSlant fontSlant = FontSlant::Normal;
+    };
+
+    struct TextStyle {
         TextAlignment alignment = TextAlignment::Left;
-        TextBaseline baseline = TextBaseline::Baseline;
+        TextVerticalAlignement verticalAlignement = TextVerticalAlignement::Baseline;
+        Color textColor = Colors::Black;
         float lineHeight = 1.2f;
         float letterSpacing = 0.0f;
         float wordSpacing = 0.0f;
@@ -143,12 +147,15 @@ class UltraCanvasBaseWindow;
 // ===== RENDERING STATE =====
     struct RenderState {
         DrawingStyle style;
+        FontStyle fontStyle;
         TextStyle textStyle;
         Rect2Df clipRect;
         Point2Df translation;
         float rotation = 0.0f;
         Point2Df scale = Point2Df(1.0f, 1.0f);
         float globalAlpha = 1.0f;
+//        Color fillColor = Colors::Black;
+//        Color strokeColor = Colors::Black;
 
         RenderState() {
             clipRect = Rect2Df(0, 0, 10000, 10000); // Large default clip
@@ -251,22 +258,16 @@ class UltraCanvasBaseWindow;
         virtual void Translate(float x, float y) = 0;
         virtual void Rotate(float angle) = 0;
         virtual void Scale(float sx, float sy) = 0;
-        virtual void SetTransform(float a, float b, float c, float d, float e, float f) = 0;
+        virtual void SetTransform(float a, float b, float c, float d, float e, float f) = 0; // set matrix to
+        virtual void Transform(float a, float b, float c, float d, float e, float f) = 0; // adjust current matrix by this one
         virtual void ResetTransform() = 0;
 
         // ===== CLIPPING =====
         virtual void SetClipRect(float x, float y, float w, float h) = 0;
         virtual void ClearClipRect() = 0;
-        virtual void IntersectClipRect(float x, float y, float w, float h) = 0;
+        virtual void ClipRect(float x, float y, float w, float h) = 0;
+        virtual void ClipPath() = 0;
 //        virtual Rect2Df GetClipRect() const = 0;
-
-        // ===== STYLE MANAGEMENT =====
-        virtual void SetDrawingStyle(const DrawingStyle& style) = 0;
-        virtual void SetTextStyle(const TextStyle& style) = 0;
-        virtual void SetGlobalAlpha(float alpha) = 0;
-        virtual float GetGlobalAlpha() const = 0;
-        virtual const DrawingStyle& GetDrawingStyle() const = 0;
-        virtual const TextStyle& GetTextStyle() const = 0;
 
         // ===== BASIC SHAPES =====
         virtual void DrawLine(float x, float y, float x1, float y1) = 0;
@@ -282,25 +283,72 @@ class UltraCanvasBaseWindow;
         virtual void FillArc(float x, float y, float radius, float startAngle, float endAngle) = 0;
 
         virtual void DrawBezier(const Point2Df& start, const Point2Df& cp1, const Point2Df& cp2, const Point2Df& end) = 0;
-        virtual void DrawPath(const std::vector<Point2Df>& points, bool closePath = false) = 0;
-        virtual void FillPath(const std::vector<Point2Df>& points) = 0;
+        virtual void DrawLinePath(const std::vector<Point2Df>& points, bool closePath) = 0;
+        virtual void FillLinePath(const std::vector<Point2Df>& points) = 0;
 
-        virtual void PathArc(float xc, float yc, float radius, float startAngle, float endAngle) = 0; // The arc is centered at (xc , yc ), begins at angle1 and proceeds in the direction of increasing angles to end at angle2 .
-        virtual void PathMoveTo(float x, float y) = 0; // Begin a new sub-path. After this call the current point will be (x , y ).
-        virtual void PathLineTo(float x, float y) = 0; // Adds a line to the path from the current point to position (x , y ) in user-space coordinates. After this call the current point will be (x , y ).
-        virtual void PathCurveTo(float x1, float y1, float x2, float y2, float x, float y) = 0; // Adds a cubic Bézier spline to the path from the current point to position (x3 , y3 ) in user-space coordinates, using (x1 , y1 ) and (x2 , y2 ) as the control points. After this call the current point will be (x3 , y3 ).
-        // Drawing using relative coordinates
-        virtual void PathRelMoveTo(float x, float y) = 0; // Begin a new sub-path. After this call the current point will be (x , y ).
-        virtual void PathRelLineTo(float x, float y) = 0; // Adds a line to the path from the current point to position (x , y ) in user-space coordinates. After this call the current point will be (x , y ).
-        virtual void PathRelCurveTo(float x1, float y1, float x2, float y2, float x, float y) = 0; // Adds a cubic Bézier spline to the path from the current point to position (x3 , y3 ) in user-space coordinates, using (x1 , y1 ) and (x2 , y2 ) as the control points. After this call the current point will be (x3 , y3 ).
-        virtual void PathExtents(float &x1, float &x2, float &width, float &height) = 0; // measure extents of current path
-        virtual void PathStroke() = 0;
-        virtual void PathFill() = 0;
+        // PATH functions
+        virtual void ClearPath() = 0;
+        virtual void ClosePath() = 0;
+        virtual void MoveTo(float x, float y) = 0;
+        virtual void RelMoveTo(float x, float y) = 0;
+        virtual void LineTo(float x, float y) = 0;
+        virtual void RelLineTo(float x, float y) = 0;
+        virtual void QuadraticCurveTo(float cpx, float cpy, float x, float y) = 0;
+        virtual void BezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y) = 0;
+        virtual void RelBezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y) = 0;
+        virtual void Arc(float cx, float cy, float radius, float startAngle, float endAngle) = 0;
+        virtual void ArcTo(float x1, float y1, float x2, float y2, float radius) = 0;
+        virtual void Circle(float x, float y, float radius) = 0;
+        virtual void Ellipse(float cx, float cy, float rx, float ry, float rotation, float startAngle, float endAngle) = 0;
+        virtual void Rect(float x, float y, float width, float height) = 0;
+        virtual void RoundedRect(float x, float y, float width, float height, float radius) = 0;
+
+        virtual void FillPath() = 0;
+        virtual void StrokePath() = 0;
+        virtual void GetPathExtents(float &x, float &y, float &width, float &height) = 0;
+
+        // === Gradient Methods ===
+        virtual std::unique_ptr<IDrawingPattern> CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
+                                                              const std::vector<GradientStop>& stops) = 0;
+        virtual std::unique_ptr<IDrawingPattern> CreateRadialGradientPattern(float cx1, float cy1, float r1,
+                                                              float cx2, float cy2, float r2,
+                                                              const std::vector<GradientStop>& stops) = 0;
+        virtual void PaintWithPattern(std::unique_ptr<IDrawingPattern> pattern) = 0;
+        virtual void PaintWithColor(const Color& color) = 0;
 
 
-//        virtual void ClosePath() = 0;
-//        virtual void FillPath() = 0;
-//        virtual void StrokePath() = 0;
+        // ===== STYLE MANAGEMENT =====
+//        virtual void SetDrawingStyle(const DrawingStyle& style) = 0;
+        virtual void SetAlpha(float alpha) = 0;
+        virtual float GetAlpha() const = 0;
+//        virtual const DrawingStyle& GetDrawingStyle() const = 0;
+
+        // === Style Methods ===
+        virtual void SetStrokeWidth(float width) = 0;
+        virtual void SetLineCap(LineCap cap) = 0;
+        virtual void SetLineJoin(LineJoin join) = 0;
+        virtual void SetMiterLimit(float limit) = 0;
+        virtual void SetLineDash(const std::vector<float>& pattern, float offset = 0) = 0;
+
+        // === Text Methods ===
+        virtual void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) = 0;
+        virtual void SetFontSize(float size) = 0;
+        virtual void SetFontWeight(FontWeight fw) = 0;
+        virtual void SetFontSlant(FontSlant fs) = 0;
+
+        void SetFontStyle(const FontStyle& style) {
+            SetFontFace(style.fontFamily, style.fontWeight, style.fontSlant);
+            SetFontSize(style.fontSize);
+        }
+
+        virtual const TextStyle& GetTextStyle() const = 0;
+        virtual void SetTextStyle(const TextStyle& style) = 0;
+        virtual void SetTextAlignment(TextAlignment align) = 0;
+
+        virtual void FillText(const std::string& text, float x, float y) = 0;
+        virtual void StrokeText(const std::string& text, float x, float y) = 0;
+
+        // === Transform Methods ===
 
         // ===== TEXT RENDERING =====
         virtual void DrawText(const std::string& text, float x, float y) = 0;
@@ -343,98 +391,6 @@ class UltraCanvasBaseWindow;
         virtual void Flush() = 0;
         virtual void* GetNativeContext() = 0;
 
-        virtual void SetFillColor(const Color& color) {
-            DrawingStyle style = GetDrawingStyle();
-            style.fillColor = color;
-            SetDrawingStyle(style);
-        }
-
-        virtual void SetStrokeColor(const Color& color) {
-            DrawingStyle style = GetDrawingStyle();
-            style.strokeColor = color;
-            style.hasStroke = true;
-            SetDrawingStyle(style);
-        }
-
-        virtual void SetFillGradient(const Color& startColor, const Color& endColor,
-                             const Point2Df& startPoint, const Point2Df& endPoint)  = 0;
-
-        void SetFillGradient(const Color& startColor, const Color& endColor,
-                                     float start_x, float start_y, float end_x, float end_y)  {
-            SetFillGradient(startColor, endColor,
-                            Point2Df(start_x, start_y),
-                            Point2Df(end_x, end_y));
-        }
-
-        void SetFillGradient(const Color& startColor, const Color& endColor,
-                                     int start_x, int start_y, int end_x, int end_y) {
-            SetFillGradient(startColor, endColor,
-                            static_cast<float>(start_x), static_cast<float>(start_y),
-                            static_cast<float>(end_x), static_cast<float>(end_y));
-        }
-
-        /**
-        * Set gradient fill using integer coordinates
-        */
-        void SetFillGradient(const Color& startColor, const Color& endColor,
-                             const Point2Di& startPoint, const Point2Di& endPoint) {
-            SetFillGradient(startColor, endColor,
-                        Point2Df(static_cast<float>(startPoint.x), static_cast<float>(startPoint.y)),
-                        Point2Df(static_cast<float>(endPoint.x), static_cast<float>(endPoint.y)));
-        }
-
-/**
- * Set horizontal gradient fill across a rectangle
- */
-        void SetHorizontalGradientFill(const Color& leftColor, const Color& rightColor,
-                                       const Rect2Df& bounds) {
-            SetFillGradient(leftColor, rightColor,
-                            Point2Df(bounds.x, bounds.y + bounds.height / 2.0f),
-                            Point2Df(bounds.x + bounds.width, bounds.y + bounds.height / 2.0f));
-        }
-
-/**
- * Set vertical gradient fill across a rectangle
- */
-        void SetVerticalGradientFill(const Color& topColor, const Color& bottomColor,
-                                     const Rect2Df& bounds) {
-            SetFillGradient(topColor, bottomColor,
-                            Point2Df(bounds.x + bounds.width / 2.0f, bounds.y),
-                            Point2Df(bounds.x + bounds.width / 2.0f, bounds.y + bounds.height));
-        }
-
-        virtual void SetStrokeWidth(float width) {
-            DrawingStyle style = GetDrawingStyle();
-            style.strokeWidth = width;
-            style.hasStroke = (width > 0);
-            SetDrawingStyle(style);
-        }
-
-        virtual void SetFont(const std::string& fontFamily, float fontSize) {
-            TextStyle style = GetTextStyle();
-            style.fontFamily = fontFamily;
-            style.fontSize = fontSize;
-            SetTextStyle(style);
-        }
-
-        virtual void SetFontWeight(FontWeight w) {
-            TextStyle style = GetTextStyle();
-            style.fontWeight = w;
-            SetTextStyle(style);
-        }
-
-        virtual void SetTextColor(const Color& color) {
-            TextStyle style = GetTextStyle();
-            style.textColor = color;
-            SetTextStyle(style);
-        }
-
-        virtual void SetTextAlignment(TextAlignment align) {
-            TextStyle style = GetTextStyle();
-            style.alignment = align;
-            SetTextStyle(style);
-        }
-
         void DrawLine(const Point2Df& start, const Point2Df& end) {
             DrawLine(start.x, start.y, end.x, end.y);
         }
@@ -448,12 +404,12 @@ class UltraCanvasBaseWindow;
         }
 
         void DrawLine(float start_x, float start_y, float end_x, float end_y, const Color &col) {
-            SetStrokeColor(col);
+            PaintWithColor(col);
             DrawLine(start_x, start_y, end_x, end_y);
         }
 
         void DrawLine(int start_x, int start_y, int end_x, int end_y, const Color &col) {
-            SetStrokeColor(col);
+            PaintWithColor(col);
             DrawLine(static_cast<float>(start_x), static_cast<float>(start_y), static_cast<float>(end_x), static_cast<float>(end_y));
         }
 
@@ -590,14 +546,14 @@ class UltraCanvasBaseWindow;
             SetClipRect(rect.x, rect.y, rect.width, rect.height);
         }
 
-        void IntersectClipRect(int x, int y, int w, int h) {
-            IntersectClipRect(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
+        void ClipRect(int x, int y, int w, int h) {
+            ClipRect(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
         }
-        void IntersectClipRect(const Rect2Df& rect) {
-            IntersectClipRect(rect.x, rect.y, rect.width, rect.height);
+        void ClipRect(const Rect2Df& rect) {
+            ClipRect(rect.x, rect.y, rect.width, rect.height);
         }
-        void IntersectClipRect(const Rect2Di& rect) {
-            IntersectClipRect(rect.x, rect.y, rect.width, rect.height);
+        void ClipRect(const Rect2Di& rect) {
+            ClipRect(rect.x, rect.y, rect.width, rect.height);
         }
 
         Point2Di MeasureText(const std::string& text) {
@@ -616,13 +572,6 @@ class UltraCanvasBaseWindow;
         }
 
         // ===== ALTERNATIVE: USE DRAWTEXT WITH RECTANGLE =====
-        //void DrawCenteredText(const std::string& text, const Rect2Df& bounds) {
-        //    // Set text style for centering
-        //    // Draw text in the center of the rectangle
-        //    Point2Df center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-        //    DrawText(text, center);
-        //}
-
         void DrawTextInRect(const std::string& text, const Rect2Di& bounds) {
             DrawTextInRect(text, static_cast<float>(bounds.x), static_cast<float>(bounds.y), static_cast<float>(bounds.width), static_cast<float>(bounds.height));
         }
@@ -633,38 +582,48 @@ class UltraCanvasBaseWindow;
 
         // Draw filled rectangle with border
         void DrawFilledRectangle(const Rect2Df& rect, const Color& fillColor,
-                                        const Color& borderColor = Colors::Transparent, float borderWidth = 1.0f, float borderRadius = 0.0f) {
+                        float borderWidth = 1.0f, const Color& borderColor = Colors::Transparent, float borderRadius = 0.0f) {
             PushState();
-            // Draw fill background
+            if (borderRadius > 0) {
+                RoundedRect(rect.x, rect.y, rect.width, rect.height, borderRadius);
+            } else {
+                Rect(rect.x, rect.y, rect.width, rect.height);
+            }
             if (fillColor.a > 0) {
-                SetFillColor(fillColor);
-                FillRectangle(rect);
+                PaintWithColor(fillColor);
+                FillPath();
             }
-
-            // Draw border
-            if (borderColor.a > 0 && borderWidth > 0) {
-                SetStrokeColor(borderColor);
+            if (borderWidth > 0 && borderColor.a > 0) {
+                PaintWithColor(borderColor);
                 SetStrokeWidth(borderWidth);
-                DrawRectangle(rect);  // <-- FIXED: Use DrawRectangle for stroke only
+                StrokePath();
             }
+            ClearPath();
             PopState();
         }
 
         void DrawFilledRectangle(const Rect2Di& rect, const Color& fillColor,
-                                        const Color& borderColor = Colors::Transparent, float borderWidth = 1.0f, float borderRadius = 0.0f) {
-            DrawFilledRectangle(Rect2Df(rect.x, rect.y, rect.width, rect.height), fillColor, borderColor, borderWidth, borderRadius);
+                                float borderWidth = 0.0f,
+                                const Color& borderColor = Colors::Transparent,
+                                float borderRadius = 0.0f) {
+            DrawFilledRectangle(Rect2Df(rect.x, rect.y, rect.width, rect.height), fillColor, borderWidth, borderColor, borderRadius);
         }
 
-        void DrawFilledCircle(const Point2Df& center, float radius, const Color& fillColor) {
+        void DrawFilledCircle(const Point2Df& center, float radius, const Color& fillColor, const Color& borderColor = Colors::Transparent, float borderWidth = 1.0f) {
+            PushState();
+
+            Circle(center.x, center.y, radius);
             if (fillColor.a > 0) {
-                PushState();
-                SetFillColor(fillColor);
-                DrawingStyle style = GetDrawingStyle();
-                style.hasStroke = false;
-                SetDrawingStyle(style);
-                DrawCircle(center, radius);
-                PopState();
+                PaintWithColor(fillColor);
+                FillPath();
             }
+            if (borderWidth > 0) {
+                SetStrokeWidth(borderWidth);
+                PaintWithColor(borderColor);
+                StrokePath();
+            }
+            ClearPath();
+            PopState();
         }
 
         void DrawFilledCircle(const Point2Di& center, float radius, const Color& fillColor) {
@@ -681,53 +640,9 @@ class UltraCanvasBaseWindow;
                 DrawFilledRectangle(Rect2Df(position.x, position.y, txt_w, txt_h), backgroundColor);
             }
 
-            SetTextColor(textColor);
+            PaintWithColor(textColor);
             DrawText(text, position);
             PopState();
-        }
-
-// Draw gradient rectangle
-        void DrawGradientRect(const Rect2Df& rect, const Color& startColor, const Color& endColor,
-                                     bool horizontal = true) {
-            PushState();
-
-            DrawingStyle style = GetDrawingStyle();
-            style.fillMode = FillMode::Gradient;
-            style.fillGradient.type = GradientType::Linear;
-            style.fillGradient.startPoint = Point2Df(rect.x, rect.y);
-            style.fillGradient.endPoint = horizontal ?
-                                          Point2Df(rect.x + rect.width, rect.y) :
-                                          Point2Df(rect.x, rect.y + rect.height);
-            style.fillGradient.stops.clear();
-            style.fillGradient.stops.emplace_back(0.0f, startColor);
-            style.fillGradient.stops.emplace_back(1.0f, endColor);
-            style.hasStroke = false;
-
-            SetDrawingStyle(style);
-            DrawRectangle(rect);
-
-            PopState();
-        }
-
-// Draw shadow
-        void DrawShadow(const Rect2Df& rect, const Color& shadowColor = Color(0, 0, 0, 64),
-                               const Point2Df& offset = Point2Df(2, 2)) {
-            PushState();
-
-            Rect2Df shadowRect(rect.x + offset.x, rect.y + offset.y, rect.width, rect.height);
-            SetFillColor(shadowColor);
-            DrawingStyle style = GetDrawingStyle();
-            style.hasStroke = false;
-            SetDrawingStyle(style);
-            DrawRectangle(shadowRect);
-
-            PopState();
-        }
-
-        void DrawShadow(const Rect2Di& rect, const Color& shadowColor = Color(0, 0, 0, 64),
-                               const Point2Di& offset = Point2Di(2, 2)) {
-            DrawShadow(Rect2Df(rect.x, rect.y, rect.width, rect.height),
-                       shadowColor, Point2Df (offset.x, offset.y));
         }
     };
 } // namespace UltraCanvas

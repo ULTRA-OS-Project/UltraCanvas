@@ -111,7 +111,7 @@ namespace UltraCanvas {
         Color inactiveTabTextColor = Color(100, 100, 100);
         Color disabledTabTextColor = Color(150, 150, 150);
         std::string fontFamily = "Arial";
-        int fontSize = 12;
+        float fontSize = 12;
 
         // ===== LAYOUT =====
         int tabHeight = 30;

@@ -284,9 +284,7 @@ struct TextInputStyle {
     int paddingBottom = 6;
     
     // Typography (inherits from TextStyle in RenderInterface)
-    std::string fontFamily = "Arial";
-    float fontSize = 12.0f;
-    FontWeight fontWeight = FontWeight::Normal;
+    FontStyle fontStyle;
     TextAlignment textAlignment = TextAlignment::Left;
     
     // Caret
@@ -559,11 +557,6 @@ private:
     void RenderValidationFeedback(const Rect2Di& bounds, IRenderContext* ctx) const;
     
     void DrawShadow(const Rect2Di& bounds, IRenderContext* ctx);
-    
-    float GetAverageCharacterWidth() {
-        // Simplified character width calculation
-        return style.fontSize * 0.6f; // Rough approximation
-    }
     
     std::vector<std::string> SplitTextIntoLines(const std::string& text, float maxWidth);
     

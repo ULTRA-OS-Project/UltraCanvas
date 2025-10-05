@@ -366,12 +366,12 @@ private:
         Rect2D bounds = GetBounds();
         
         // Draw background
-        ctx->SetFillColor(backgroundColor);
+        ctx->PaintWidthColorbackgroundColor);
         ctx->DrawRectangle(bounds);
         
         // Draw border
         if (showBorder) {
-            ctx->SetStrokeColor(borderColor);
+            ctx->PaintWidthColorborderColor);
             ctx->SetStrokeWidth(borderWidth);
             DrawRectOutline(bounds);
         }
@@ -388,12 +388,12 @@ private:
         Rect2D bounds = GetBounds();
         
         // Draw background
-        ctx->SetFillColor(backgroundColor);
+        ctx->PaintWidthColorbackgroundColor);
         ctx->DrawRoundedRectangle(bounds, cornerRadius);
         
         // Draw border
         if (showBorder) {
-            ctx->SetStrokeColor(borderColor);
+            ctx->PaintWidthColorborderColor);
             ctx->SetStrokeWidth(borderWidth);
             DrawRoundedRectOutline(bounds, cornerRadius);
         }
@@ -412,12 +412,12 @@ private:
         float radius = std::min(bounds.width, bounds.height) / 2 - borderWidth;
         
         // Draw background circle
-        ctx->SetFillColor(backgroundColor);
+        ctx->PaintWidthColorbackgroundColor);
         ctx->DrawCircle(center, radius);
         
         // Draw border
         if (showBorder) {
-            ctx->SetStrokeColor(borderColor);
+            ctx->PaintWidthColorborderColor);
             ctx->SetStrokeWidth(borderWidth);
             DrawCircleOutline(center, radius);
         }
@@ -426,13 +426,13 @@ private:
         if (state != ProgressState::Indeterminate) {
             float progressAngle = GetPercentage() * sweepAngle;
             if (progressAngle > 0) {
-                ctx->SetFillColor(GetCurrentProgressColor());
+                ctx->PaintWidthColorGetCurrentProgressColor());
                 DrawPieSlice(center, radius - borderWidth, startAngle, progressAngle);
             }
         } else {
             // Indeterminate circular animation
             float animAngle = indeterminatePosition * 360.0f;
-            ctx->SetFillColor(GetCurrentProgressColor());
+            ctx->PaintWidthColorGetCurrentProgressColor());
             DrawPieSlice(center, radius - borderWidth, animAngle, 60.0f); // 60-degree arc
         }
     }
@@ -444,7 +444,7 @@ private:
         float innerRadius = outerRadius - thickness;
         
         // Draw background ring
-        ctx->SetStrokeColor(backgroundColor);
+        ctx->PaintWidthColorbackgroundColor);
         ctx->SetStrokeWidth(thickness);
         DrawCircleOutline(center, (outerRadius + innerRadius) / 2);
         
@@ -452,14 +452,14 @@ private:
         if (state != ProgressState::Indeterminate) {
             float progressAngle = GetPercentage() * sweepAngle;
             if (progressAngle > 0) {
-                ctx->SetStrokeColor(GetCurrentProgressColor());
+                ctx->PaintWidthColorGetCurrentProgressColor());
                 ctx->SetStrokeWidth(thickness);
                 DrawArc(center, (outerRadius + innerRadius) / 2, startAngle, startAngle + progressAngle);
             }
         } else {
             // Indeterminate ring animation
             float animAngle = indeterminatePosition * 360.0f;
-            ctx->SetStrokeColor(GetCurrentProgressColor());
+            ctx->PaintWidthColorGetCurrentProgressColor());
             ctx->SetStrokeWidth(thickness);
             DrawArc(center, (outerRadius + innerRadius) / 2, animAngle, animAngle + 60.0f);
         }
@@ -469,12 +469,12 @@ private:
         Rect2D bounds = GetBounds();
         
         // Draw background
-        ctx->SetFillColor(backgroundColor);
+        ctx->PaintWidthColorbackgroundColor);
         ctx->DrawRectangle(bounds);
         
         // Draw border
         if (showBorder) {
-            ctx->SetStrokeColor(borderColor);
+            ctx->PaintWidthColorborderColor);
             ctx->SetStrokeWidth(borderWidth);
             DrawRectOutline(bounds);
         }
@@ -491,7 +491,7 @@ private:
                     std::min(255, static_cast<int>(currentColor.b * 1.3f))
                 );
                 
-                ctx->SetFillColor(lightColor);
+                ctx->PaintWidthColorlightColor);
                 ctx->DrawRectangle(progressBounds);
             }
         }
@@ -501,12 +501,12 @@ private:
         Rect2D bounds = GetBounds();
         
         // Draw background
-        ctx->SetFillColor(backgroundColor);
+        ctx->PaintWidthColorbackgroundColor);
         ctx->DrawRectangle(bounds);
         
         // Draw border
         if (showBorder) {
-            ctx->SetStrokeColor(borderColor);
+            ctx->PaintWidthColorborderColor);
             ctx->SetStrokeWidth(borderWidth);
             DrawRectOutline(bounds);
         }
@@ -515,7 +515,7 @@ private:
         if (state != ProgressState::Indeterminate) {
             Rect2D progressBounds = GetProgressBounds(bounds);
             if (progressBounds.width > 0 && progressBounds.height > 0) {
-                ctx->SetFillColor(GetCurrentProgressColor());
+                ctx->PaintWidthColorGetCurrentProgressColor());
                 ctx->DrawRectangle(progressBounds);
                 
                 // Draw animated stripes
@@ -528,12 +528,12 @@ private:
         Rect2D bounds = GetBounds();
         
         // Draw background
-        ctx->SetFillColor(backgroundColor);
+        ctx->PaintWidthColorbackgroundColor);
         ctx->DrawRectangle(bounds);
         
         // Draw border
         if (showBorder) {
-            ctx->SetStrokeColor(borderColor);
+            ctx->PaintWidthColorborderColor);
             ctx->SetStrokeWidth(borderWidth);
             DrawRectOutline(bounds);
         }
@@ -547,7 +547,7 @@ private:
                 Color pulseColor = GetCurrentProgressColor();
                 pulseColor.a = static_cast<uint8_t>(pulseColor.a * alpha);
                 
-                ctx->SetFillColor(pulseColor);
+                ctx->PaintWidthColorpulseColor);
                 ctx->DrawRectangle(progressBounds);
             }
         }
@@ -561,7 +561,7 @@ private:
     void RenderDeterminateProgress(const Rect2D& bounds) {
         Rect2D progressBounds = GetProgressBounds(bounds);
         if (progressBounds.width > 0 && progressBounds.height > 0) {
-            ctx->SetFillColor(GetCurrentProgressColor());
+            ctx->PaintWidthColorGetCurrentProgressColor());
             ctx->DrawRectangle(progressBounds);
         }
     }
@@ -569,7 +569,7 @@ private:
     void RenderDeterminateProgressRounded(const Rect2D& bounds) {
         Rect2D progressBounds = GetProgressBounds(bounds);
         if (progressBounds.width > 0 && progressBounds.height > 0) {
-            ctx->SetFillColor(GetCurrentProgressColor());
+            ctx->PaintWidthColorGetCurrentProgressColor());
             ctx->DrawRoundedRectangle(progressBounds, cornerRadius);
         }
     }
@@ -589,7 +589,7 @@ private:
                                        bounds.width - 2 * borderWidth, barHeight);
         }
         
-        ctx->SetFillColor(GetCurrentProgressColor());
+        ctx->PaintWidthColorGetCurrentProgressColor());
         if (style == ProgressBarStyle::Rounded) {
             ctx->DrawRoundedRectangle(indeterminateBounds, cornerRadius);
         } else {
@@ -601,7 +601,7 @@ private:
         Rect2D bounds = GetBounds();
         std::string text = GetFormattedText();
         
-        ctx->SetTextColor(textColor);
+        ctx->PaintWidthColortextColor);
         SetTextFont(fontFamily, fontSize);
         
         Point2D textSize = ctx->MeasureText(text);
@@ -630,7 +630,7 @@ private:
     
     void DrawStripes(const Rect2D& bounds) {
         // Draw animated diagonal stripes
-        ctx->SetStrokeColor(Color(255, 255, 255, 100)); // Semi-transparent white
+        ctx->PaintWidthColorColor(255, 255, 255, 100)); // Semi-transparent white
         ctx->SetStrokeWidth(2);
         
         float offset = animationOffset * stripeWidth * 2;
@@ -646,7 +646,7 @@ private:
     void DrawPieSlice(const Point2D& center, float radius, float startAngle, float sweepAngle) {
         // Simplified pie slice drawing
         // In a full implementation, this would draw a proper arc segment
-        ctx->SetFillColor(GetCurrentProgressColor());
+        ctx->PaintWidthColorGetCurrentProgressColor());
         
         float endAngle = startAngle + sweepAngle;
         std::vector<Point2D> points;

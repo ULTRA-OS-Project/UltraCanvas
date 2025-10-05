@@ -3,8 +3,6 @@
 // Version: 1.6.0
 // Last Modified: 2025-09-14
 // Author: UltraCanvas Framework
-#pragma once
-
 #include "UltraCanvasTabbedContainer.h"
 #include <string>
 #include <vector>
@@ -370,7 +368,7 @@ namespace UltraCanvas {
         }
 
         // Draw tab bar border
-        ctx->SetStrokeColor(tabBorderColor);
+        ctx->PaintWithColor(tabBorderColor);
         ctx->DrawRectangle(tabBarBounds);
     }
 
@@ -406,7 +404,7 @@ namespace UltraCanvas {
         }
 
         // Draw tab background
-        ctx->DrawFilledRectangle(tabBounds, bgColor, tabBorderColor);
+        ctx->DrawFilledRectangle(tabBounds, bgColor, 1.0, tabBorderColor);
         // Calculate text area (reserve space for close button if needed)
         Rect2Di textArea = tabBounds;
         textArea.x += tabPadding;
@@ -420,8 +418,8 @@ namespace UltraCanvas {
         if (textArea.width > 0) {
             std::string displayText = GetTruncatedTabText(ctx, tab->title, textArea.width);
 
-            ctx->SetTextColor(textColor);
-            ctx->SetFont(fontFamily, fontSize);
+            ctx->PaintWithColor(textColor);
+            ctx->SetFontSize(fontSize);
             int txtW, txtH;
             ctx->MeasureText(displayText, txtW, txtH);
             int textY = tabBounds.y + (tabBounds.height - txtH) / 2;
@@ -447,7 +445,7 @@ namespace UltraCanvas {
 
         // Draw X symbol
         int halfSize = closeButtonSize / 4;
-        ctx->SetStrokeColor(buttonColor);
+        ctx->PaintWithColor(buttonColor);
         ctx->DrawLine(Point2Di(center.x - halfSize, center.y - halfSize),
                       Point2Di(center.x + halfSize, center.y + halfSize));
         ctx->DrawLine(Point2Di(center.x + halfSize, center.y - halfSize),
@@ -462,11 +460,11 @@ namespace UltraCanvas {
         Rect2Di rightButton(tabBarBounds.x + tabBarBounds.width - 20, tabBarBounds.y, 20, tabBarBounds.height);
 
         // Draw button backgrounds and borders
-        ctx->DrawFilledRectangle(leftButton, Color(220, 220, 220), tabBorderColor);
-        ctx->DrawFilledRectangle(rightButton, Color(220, 220, 220), tabBorderColor);
+        ctx->DrawFilledRectangle(leftButton, Color(220, 220, 220), 1.0, tabBorderColor);
+        ctx->DrawFilledRectangle(rightButton, Color(220, 220, 220), 1.0, tabBorderColor);
 
         // Draw arrows
-        ctx->SetStrokeColor(Colors::Black);
+        ctx->PaintWithColor(Colors::Black);
         Point2Di leftCenter(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
         ctx->DrawLine(Point2Di(leftCenter.x - 3, leftCenter.y), Point2Di(leftCenter.x + 3, leftCenter.y - 3));
         ctx->DrawLine(Point2Di(leftCenter.x - 3, leftCenter.y), Point2Di(leftCenter.x + 3, leftCenter.y + 3));
@@ -478,7 +476,7 @@ namespace UltraCanvas {
 
     void UltraCanvasTabbedContainer::RenderContentArea(IRenderContext *ctx) {
         Rect2Di contentBounds = GetContentAreaBounds();
-        ctx->DrawFilledRectangle(contentBounds, contentAreaColor, tabBorderColor);
+        ctx->DrawFilledRectangle(contentBounds, contentAreaColor, 1.0, tabBorderColor);
 
         ctx->PushState();
 
@@ -733,10 +731,7 @@ namespace UltraCanvas {
         if (!autoSizeTab) return tabMaxWidth;
 
         auto ctx = GetRenderContext();
-        TextStyle st;
-        st.fontSize = fontSize;
-        st.fontFamily = fontFamily;
-        ctx->SetTextStyle(st);
+        ctx->SetFontStyle({.fontFamily=fontFamily, .fontSize=fontSize});
         const std::string& title = tabs[index]->title;
         int textWidth = ctx->GetTextWidth(title);
         int width = textWidth + tabPadding * 2;
@@ -750,7 +745,7 @@ namespace UltraCanvas {
 
     std::string UltraCanvasTabbedContainer::GetTruncatedTabText(IRenderContext* ctx, const std::string &text, int maxWidth) const {
         int textWidth, txtH;
-        ctx->SetFont(fontFamily, fontSize);
+        ctx->SetFontStyle({.fontFamily=fontFamily, .fontSize=fontSize});
         ctx->MeasureText(text, textWidth, txtH);
         if (textWidth <= maxWidth) return text;
 

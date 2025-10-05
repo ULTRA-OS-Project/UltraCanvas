@@ -203,8 +203,8 @@ private:
         
         // Month/Year text
         std::string monthYear = GetMonthName(displayMonth.month) + " " + std::to_string(displayMonth.year);
-        ctx->SetTextColor(headerTextColor);
-        ctx->SetFont("Arial", 12.0f);
+        ctx->PaintWidthColorheaderTextColor);
+        ctx->SetFontSize(12.0f);
         
         Point2D textSize = GetRenderContext()->ctx->MeasureText(monthYear);
         Point2D textPos(
@@ -234,7 +234,7 @@ private:
     }
     
     void DrawArrow(const Point2D& center, int size, bool pointingLeft) {
-        ctx->SetStrokeColor(headerTextColor);
+        ctx->PaintWidthColorheaderTextColor);
         ctx->SetStrokeWidth(2.0f);
         
         int offset = size / 4;
@@ -250,8 +250,8 @@ private:
     void DrawDayHeaders() {
         const char* dayNames[] = { "Su", "Mo", "Tu", "We", "Th", "Fr", "Sa" };
         
-        ctx->SetTextColor(Colors::Gray);
-        ctx->SetFont("Arial", 10.0f);
+        ctx->PaintWidthColorColors::Gray);
+        ctx->SetFontSize(10.0f);
         
         for (int i = 0; i < 7; i++) {
             int x = GetX() + 10 + i * cellWidth;
@@ -269,7 +269,7 @@ private:
         int firstDayOfWeek = GetDayOfWeek(firstOfMonth);
         int daysInMonth = Date::GetDaysInMonth(displayMonth.year, displayMonth.month);
         
-        ctx->SetFont("Arial", 11.0f);
+        ctx->SetFontSize(11.0f);
         
         // Draw calendar days
         int dayNumber = 1;
@@ -301,7 +301,7 @@ private:
                 }
                 
                 // Draw day number
-                ctx->SetTextColor(cellDate == selectedDate ? Colors::White : textColor);
+                ctx->PaintWidthColorcellDate == selectedDate ? Colors::White : textColor);
                 std::string dayStr = std::to_string(dayNumber);
                 Point2D textSize = GetRenderContext()->ctx->MeasureText(dayStr);
                 Point2D textPos(
@@ -666,8 +666,8 @@ private:
     void DrawDateText() {
         std::string dateText = GetDateString();
         
-        ctx->SetTextColor(textColor);
-        ctx->SetFont("Arial", 11.0f);
+        ctx->PaintWidthColortextColor);
+        ctx->SetFontSize(11.0f);
         
         // Calculate text position
         Point2D textSize = GetRenderContext()->ctx->MeasureText(dateText);
@@ -695,7 +695,7 @@ private:
         UltraCanvas::DrawFilledRect(buttonRect, currentButtonColor, borderColor, 1.0f);
         
         // Draw dropdown arrow
-        ctx->SetStrokeColor(Colors::Black);
+        ctx->PaintWidthColorColors::Black);
         ctx->SetStrokeWidth(1.0f);
         
         Point2D center(buttonX + buttonWidth / 2, GetY() + GetHeight() / 2);

@@ -28,6 +28,7 @@ namespace UltraCanvas {
         std::string fontFamily = "Arial";
         float fontSize = 11.0f;
         FontWeight fontWeight = FontWeight::Normal;
+        FontSlant fontStyle = FontSlant::Normal;
 
         // Layout
         int paddingLeft = 6;

@@ -31,7 +31,6 @@ namespace UltraCanvas {
         auto standardBtn = std::make_shared<UltraCanvasButton>("StandardButton", 102, 20, 50, 120, 35);
         standardBtn->SetText("Standard Button");
         standardBtn->onClick = [](const UCEvent& ev) { std::cout << "Standard button clicked!" << std::endl; };
-        container->AddChild(standardBtn);
 
         // Icon Button
 //        auto iconBtn = std::make_shared<UltraCanvasButton>("IconButton", 103, 160, 50, 40, 35);
@@ -63,20 +62,23 @@ namespace UltraCanvas {
         auto disabledBtn = std::make_shared<UltraCanvasButton>("DisabledButton", 106, 20, 100, 120, 35);
         disabledBtn->SetText("Disabled");
         disabledBtn->SetEnabled(false);
-        container->AddChild(disabledBtn);
 
-        // Colored Buttons
+//        // Colored Buttons
         auto primaryBtn = std::make_shared<UltraCanvasButton>("PrimaryButton", 107, 160, 100, 100, 35);
         primaryBtn->SetText("Primary");
         primaryBtn->SetColors(Color(0, 123, 255, 255), Color(0, 100, 225, 255), Color(0, 90, 215, 255), Color(100, 133, 255, 255));
         primaryBtn->SetTextColors(Colors::White, Colors::White, Colors::White, Colors::LightGray);
-        container->AddChild(primaryBtn);
 
         auto dangerBtn = std::make_shared<UltraCanvasButton>("DangerButton", 108, 280, 100, 100, 35);
         dangerBtn->SetText("Danger");
+//        dangerBtn->SetColors(Color(0, 123, 255, 255), Color(0, 100, 225, 255), Color(0, 90, 215, 255), Color(100, 133, 255, 255));
         dangerBtn->SetColors(Color(220, 53, 69, 255), Color(210, 43, 59, 255), Color(200, 33, 49, 255), Color(255, 153, 169, 255));
         dangerBtn->SetTextColors(Colors::White, Colors::White, Colors::White, Colors::LightGray);
+
+        container->AddChild(disabledBtn);
         container->AddChild(dangerBtn);
+        container->AddChild(primaryBtn);
+        container->AddChild(standardBtn);
 
         return container;
     }

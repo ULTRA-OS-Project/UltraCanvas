@@ -197,11 +197,11 @@ public:
         Rect2D textArea = GetTextAreaBounds();
         
         // Draw background
-        ctx->SetFillColor(IsEnabled() ? backgroundColor : disabledColor);
+        ctx->PaintWidthColorIsEnabled() ? backgroundColor : disabledColor);
         ctx->DrawRectangle(bounds);
         
         // Draw border
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->SetStrokeWidth(1);
         DrawRectOutline(bounds);
         
@@ -376,7 +376,7 @@ private:
         ctx->SetClipRect(textArea);
         
         // Draw text
-        ctx->SetTextColor(IsEnabled() ? textColor : disabledTextColor);
+        ctx->PaintWidthColorIsEnabled() ? textColor : disabledTextColor);
         SetTextFont(fontFamily, fontSize);
         
         std::string displayText = isEditing ? editText : prefix + std::to_string(value) + suffix;
@@ -402,7 +402,7 @@ private:
         int cursorY = textArea.y + 2;
         int cursorHeight = textArea.height - 4;
         
-        ctx->SetStrokeColor(textColor);
+        ctx->PaintWidthColortextColor);
         ctx->SetStrokeWidth(1);
         ctx->DrawLine(
             Point2D(cursorX, cursorY),
@@ -424,11 +424,11 @@ private:
         }
         
         // Draw button background
-        ctx->SetFillColor(bgColor);
+        ctx->PaintWidthColorbgColor);
         ctx->DrawRectangle(buttonBounds);
         
         // Draw button border
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->SetStrokeWidth(1);
         DrawRectOutline(buttonBounds);
         
@@ -450,11 +450,11 @@ private:
         }
         
         // Draw button background
-        ctx->SetFillColor(bgColor);
+        ctx->PaintWidthColorbgColor);
         ctx->DrawRectangle(buttonBounds);
         
         // Draw button border
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->SetStrokeWidth(1);
         DrawRectOutline(buttonBounds);
         
@@ -466,7 +466,7 @@ private:
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         int arrowSize = 4;
         
-        ctx->SetStrokeColor(IsEnabled() ? Colors::Black : disabledTextColor);
+        ctx->PaintWidthColorIsEnabled() ? Colors::Black : disabledTextColor);
         ctx->SetStrokeWidth(1);
         
         // Draw triangle pointing up
@@ -482,7 +482,7 @@ private:
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         int arrowSize = 4;
         
-        ctx->SetStrokeColor(IsEnabled() ? Colors::Black : disabledTextColor);
+        ctx->PaintWidthColorIsEnabled() ? Colors::Black : disabledTextColor);
         ctx->SetStrokeWidth(1);
         
         // Draw triangle pointing down

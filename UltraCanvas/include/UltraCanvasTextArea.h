@@ -38,8 +38,7 @@ namespace UltraCanvas {
 // Text area style structure
     struct TextAreaStyle {
         // Font properties
-        std::string fontFamily;
-        int fontSize;
+        FontStyle fontStyle;
         int lineHeight;
         Color fontColor;
 
@@ -211,11 +210,11 @@ namespace UltraCanvas {
         const TextAreaStyle& GetStyle() const { return style; }
 
         // Font settings
-        void SetFont(const std::string& family, int size) { style.fontFamily = family, style.fontSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
-        void SetFontFamily(const std::string& family) { style.fontFamily = family; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
-        const std::string& GetFontFamily() { return style.fontFamily; }
-        void SetFontSize(int size) { style.fontSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
-        int GetFontSize() { return style.fontSize; }
+        void SetFont(const std::string& family, float size) { style.fontStyle.fontFamily = family, style.fontStyle.fontSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
+        void SetFontFamily(const std::string& family) { style.fontStyle.fontFamily = family; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
+        const std::string& GetFontFamily() { return style.fontStyle.fontFamily; }
+        void SetFontSize(float size) { style.fontStyle.fontSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
+        float GetFontSize() { return style.fontStyle.fontSize; }
 
         // Color settings
         void SetTextColor(const Color& color) { style.fontColor = color;  RequestRedraw(); }

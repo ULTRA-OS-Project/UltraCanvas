@@ -795,7 +795,7 @@ private:
     void RenderVideoFrame() {
         if (currentFrame.data.empty() || currentFrame.width <= 0 || currentFrame.height <= 0) {
             // Draw placeholder or black background
-           ctx->SetFillColor(Colors::Black);
+           ctx->PaintWidthColorColors::Black);
             ctx->DrawRectangle(videoRect);
             return;
         }
@@ -868,11 +868,11 @@ private:
     void RenderVideoFrameData(const VideoFrame& frame, const Rect2D& destRect) {
         // This would need platform-specific implementation to render video frame data
         // For now, just draw a placeholder
-       ctx->SetFillColor(Color(64, 64, 64));
+       ctx->PaintWidthColorColor(64, 64, 64));
         ctx->DrawRectangle(destRect);
         
         // Draw frame info text (for debugging)
-        ctx->SetTextColor(Colors::White);
+        ctx->PaintWidthColorColors::White);
         std::string frameInfo = "Frame " + std::to_string(frame.frameNumber) + 
                                " (" + std::to_string(frame.width) + "x" + std::to_string(frame.height) + ")";
         DrawText(frameInfo, Point2D(destRect.x + 10, destRect.y + 30));
@@ -882,7 +882,7 @@ private:
         if (controlsRect.width <= 0) return;
         
         // Draw controls background
-       ctx->SetFillColor(controlsStyle.backgroundColor);
+       ctx->PaintWidthColorcontrolsStyle.backgroundColor);
         if (controlsStyle.cornerRadius > 0) {
             ctx->DrawRoundedRectangle(controlsRect, controlsStyle.cornerRadius);
         } else {
@@ -908,7 +908,7 @@ private:
         std::string timeText = FormatTime(currentPos) + " / " + FormatTime(duration);
         
         SetTextColor(controlsStyle.textColor);
-        ctx->SetFont("Arial", 12);
+        ctx->SetFontSize(12);
         
         // Position time display in controls area
         Point2D textPos(controlsRect.x + controlsRect.width - 120, 

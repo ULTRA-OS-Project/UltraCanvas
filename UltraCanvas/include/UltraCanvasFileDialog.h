@@ -176,11 +176,11 @@ public:
         Rect2D bounds = GetBounds();
         
         // Draw background
-        ctx->SetFillColor(backgroundColor);
+        ctx->PaintWidthColorbackgroundColor);
         ctx->DrawRectangle(bounds);
         
         // Draw border
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->SetStrokeWidth(1);
         ctx->DrawRectangle(bounds);
         
@@ -333,14 +333,14 @@ private:
         Rect2D pathBounds = GetPathBarBounds();
         
         // Draw path background
-        ctx->SetFillColor(Colors::White);
+        ctx->PaintWidthColorColors::White);
         ctx->DrawRectangle(pathBounds);
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->DrawRectangle(pathBounds);
         
         // Draw path text
-        ctx->SetTextColor(Colors::Black);
-        ctx->SetFont("Arial", 12);
+        ctx->PaintWidthColorColors::Black);
+        ctx->SetFontSize(12);
         ctx->DrawText(currentPath, Point2D(pathBounds.x + 5, pathBounds.y + 18));
     }
     
@@ -348,15 +348,15 @@ private:
         Rect2D listBounds = GetFileListBounds();
         
         // Draw list background
-        ctx->SetFillColor(Colors::White);
+        ctx->PaintWidthColorColors::White);
         ctx->DrawRectangle(listBounds);
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->DrawRectangle(listBounds);
         
         // Set clipping for list content
         ctx->SetClipRect(listBounds);
         
-        ctx->SetFont("Arial", 12);
+        ctx->SetFontSize(12);
         int currentY = (int)listBounds.y + 2;
         int itemIndex = 0;
         
@@ -402,12 +402,12 @@ private:
         
         // Draw selection background
         if (isSelected) {
-            ctx->SetFillColor(selectedItemColor);
+            ctx->PaintWidthColorselectedItemColor);
             ctx->DrawRectangle(Rect2D(listBounds.x + 1, y, listBounds.width - 2, itemHeight));
         }
         
         // Draw icon (simple text indicator)
-        ctx->SetTextColor(isDirectory ? Colors::Blue : Colors::Black);
+        ctx->PaintWidthColorisDirectory ? Colors::Blue : Colors::Black);
         std::string icon = isDirectory ? "📁 " : "📄 ";
         ctx->DrawText(icon + name, Point2D(listBounds.x + 5, y + 14));
     }
@@ -425,7 +425,7 @@ private:
         );
         
         // Draw scrollbar background
-        ctx->SetFillColor(Color(240, 240, 240));
+        ctx->PaintWidthColorColor(240, 240, 240));
         ctx->DrawRectangle(scrollBounds);
         
         // Draw scrollbar thumb
@@ -433,7 +433,7 @@ private:
         float thumbY = scrollBounds.y + (scrollOffset * (scrollBounds.height - thumbHeight)) / 
                       (totalItems - maxVisibleItems);
         
-        ctx->SetFillColor(Color(160, 160, 160));
+        ctx->PaintWidthColorColor(160, 160, 160));
         ctx->DrawRectangle(Rect2D(scrollBounds.x + 2, thumbY, 11, thumbHeight));
     }
     
@@ -443,14 +443,14 @@ private:
         Rect2D inputBounds = GetFileNameInputBounds();
         
         // Draw label
-        ctx->SetTextColor(Colors::Black);
-        ctx->SetFont("Arial", 12);
+        ctx->PaintWidthColorColors::Black);
+        ctx->SetFontSize(12);
         ctx->DrawText("File name:", Point2D(inputBounds.x - 75, inputBounds.y + 14));
         
         // Draw input background
-        ctx->SetFillColor(Colors::White);
+        ctx->PaintWidthColorColors::White);
         ctx->DrawRectangle(inputBounds);
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->DrawRectangle(inputBounds);
         
         // Draw input text
@@ -459,7 +459,7 @@ private:
         // Draw cursor if focused
         if (IsFocused()) {
             int textWidth = (int)ctx->MeasureText(fileNameText).x;
-            ctx->SetStrokeColor(Colors::Black);
+            ctx->PaintWidthColorColors::Black);
             ctx->DrawLine(
                 Point2D(inputBounds.x + 5 + textWidth, inputBounds.y + 2),
                 Point2D(inputBounds.x + 5 + textWidth, inputBounds.y + inputBounds.height - 2)
@@ -471,14 +471,14 @@ private:
         Rect2D filterBounds = GetFilterSelectorBounds();
         
         // Draw label
-        ctx->SetTextColor(Colors::Black);
-        ctx->SetFont("Arial", 12);
+        ctx->PaintWidthColorColors::Black);
+        ctx->SetFontSize(12);
         ctx->DrawText("Files of type:", Point2D(filterBounds.x - 75, filterBounds.y + 16));
         
         // Draw filter dropdown background
-        ctx->SetFillColor(buttonColor);
+        ctx->PaintWidthColorbuttonColor);
         ctx->DrawRectangle(filterBounds);
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->DrawRectangle(filterBounds);
         
         // Draw current filter text
@@ -501,13 +501,13 @@ private:
     void DrawButtons() {
         // OK Button
         Rect2D okBounds = GetOkButtonBounds();
-        ctx->SetFillColor(buttonColor);
+        ctx->PaintWidthColorbuttonColor);
         ctx->DrawRectangle(okBounds);
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->DrawRectangle(okBounds);
         
-        ctx->SetTextColor(Colors::Black);
-        ctx->SetFont("Arial", 12);
+        ctx->PaintWidthColorColors::Black);
+        ctx->SetFontSize(12);
         std::string okText = (dialogType == FileDialogType::Save) ? "Save" : "Open";
         Point2D okTextSize = ctx->MeasureText(okText);
         ctx->DrawText(okText, Point2D(
@@ -517,9 +517,9 @@ private:
         
         // Cancel Button
         Rect2D cancelBounds = GetCancelButtonBounds();
-        ctx->SetFillColor(buttonColor);
+        ctx->PaintWidthColorbuttonColor);
         ctx->DrawRectangle(cancelBounds);
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->DrawRectangle(cancelBounds);
         
         Point2D cancelTextSize = ctx->MeasureText("Cancel");

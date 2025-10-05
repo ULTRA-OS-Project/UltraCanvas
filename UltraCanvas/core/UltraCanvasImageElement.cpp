@@ -240,7 +240,7 @@ namespace UltraCanvas {
     void UltraCanvasImageElement::DrawLoadedImage(IRenderContext *ctx) {
 
         // Apply global alpha
-        ctx->SetGlobalAlpha(opacity);
+        ctx->SetAlpha(opacity);
 
         // Apply transformations
         if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
@@ -283,8 +283,8 @@ namespace UltraCanvas {
 
         // Draw error message
         if (!errorMessage.empty()) {
-            ctx->SetTextColor(Colors::Red);
-            ctx->SetFont("Arial", 10.0f);
+            ctx->PaintWithColor(Colors::Red);
+            ctx->SetFontStyle({.fontFamily="Arial", .fontSize=10});
 
             Rect2Di textRect = GetBounds();
             textRect.y += GetHeight() / 2 + 10;
@@ -302,11 +302,11 @@ namespace UltraCanvas {
     UltraCanvasImageElement::DrawImagePlaceholder(const Rect2Di &rect, const std::string &text, const Color &bgColor) {
         // Draw background
         auto ctx = GetRenderContext();
-        ctx->DrawFilledRectangle(rect, bgColor, Colors::Gray, 1.0f);
+        ctx->DrawFilledRectangle(rect, bgColor, 1.0f, Colors::Gray);
 
         // Draw text
-        ctx->SetTextColor(Colors::Gray);
-        ctx->SetFont("Arial", 14.0f);
+        ctx->PaintWithColor(Colors::Gray);
+        ctx->SetFontSize(14.0f);
         Point2Di textSize = ctx->MeasureText(text);
         Point2Di textPos(
                 rect.x + (rect.width - textSize.x) / 2,

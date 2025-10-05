@@ -359,8 +359,8 @@ private:
 //    }
 
 //    void DrawInstructions(IRenderContext* ctx) {
-//        ctx->SetTextColor(Color(0, 0, 0, 255));
-//        ctx->SetFont("Arial", 12.0f);
+//        ctx->PaintWidthColorColor(0, 0, 0, 255));
+//        ctx->SetFontSize(12.0f);
 //
 //        std::vector<std::string> instructions = {
 //            "Chart Controls:",

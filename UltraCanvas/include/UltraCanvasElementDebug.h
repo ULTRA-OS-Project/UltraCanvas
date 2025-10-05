@@ -31,8 +31,10 @@ namespace UltraCanvas {
         Color textColor = Color(255, 255, 255, 255);      // White text
         Color textBackgroundColor = Color(0, 0, 0, 200);  // Semi-transparent black
         float borderWidth = 2.0f;
-        float textSize = 12.0f;
-        std::string fontFamily = "Arial";
+        FontStyle fontStyle = {
+            .fontFamily = "Arial",
+            .fontSize = 12.0f
+        };
 
         // Layout settings
         float textPadding = 4.0f;
@@ -151,7 +153,7 @@ namespace UltraCanvas {
         static void DrawDebugBorder(const Rect2Di& bounds, const DebugRenderSettings& settings, IRenderContext* ctx) {
             ctx->PushState();
 
-            ctx->SetStrokeColor(settings.borderColor);
+            ctx->PaintWithColor(settings.borderColor);
             ctx->SetStrokeWidth(settings.borderWidth);
 
             // Draw main border rectangle
@@ -161,7 +163,7 @@ namespace UltraCanvas {
             float markerSize = 8.0f;
             Color markerColor = Color(settings.borderColor.r, settings.borderColor.g,
                                       settings.borderColor.b, settings.borderColor.a + 75);
-            ctx->SetStrokeColor(markerColor);
+            ctx->PaintWithColor(markerColor);
             ctx->SetStrokeWidth(1.0f);
 
             // Top-left corner
@@ -272,7 +274,7 @@ namespace UltraCanvas {
             ctx->PushState();
 
             // Set up text rendering
-            ctx->SetFont(settings.fontFamily, settings.textSize);
+            ctx->SetFontStyle(settings.fontStyle);
 
             // Measure text to calculate background size
             Point2Di textSize = ctx->MeasureText(text);
@@ -296,11 +298,11 @@ namespace UltraCanvas {
                 );
 
                 ctx->DrawFilledRectangle(backgroundRect, settings.textBackgroundColor,
-                               Colors::Transparent, 0, settings.cornerRadius);
+                               0.0, Colors::Transparent, settings.cornerRadius);
             }
 
             // Draw the text
-            ctx->SetTextColor(settings.textColor);
+            ctx->PaintWithColor(settings.textColor);
             ctx->DrawText(text, textPos);
             ctx->PopState();
         }

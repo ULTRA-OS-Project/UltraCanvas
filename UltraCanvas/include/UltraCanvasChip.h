@@ -487,7 +487,7 @@ public:
         
         // Draw text
         if (!chipData.text.empty()) {
-            ctx->SetTextColor(textColor);
+            ctx->PaintWidthColortextColor);
             ctx->SetFont(style.fontFamily, style.fontSize);
             ctx->DrawText(chipData.text, Point2D(textBounds.x, textBounds.y + textBounds.height * 0.7f));
         }
@@ -678,7 +678,7 @@ private:
             ctx->DrawImage(icon.iconPath, bounds);
         } else if (!icon.iconText.empty()) {
             // Draw text icon
-            ctx->SetTextColor(chipData.selected ? style.iconSelectedColor : style.iconColor);
+            ctx->PaintWidthColorchipData.selected ? style.iconSelectedColor : style.iconColor);
             ctx->SetFont(style.fontFamily, icon.iconSize);
             ctx->DrawText(icon.iconText, Point2D(bounds.x, bounds.y + bounds.height * 0.7f));
         }
@@ -691,7 +691,7 @@ private:
                          ? style.removeIconHoverColor 
                          : style.removeIconColor;
         
-        ctx->SetStrokeColor(iconColor);
+        ctx->PaintWidthColoriconColor);
         ctx->SetStrokeWidth(2.0f);
         
         // Draw X icon
@@ -709,7 +709,7 @@ private:
         shadowRect.y += style.shadowOffset.y;
         
         // Simplified shadow - would need proper shadow rendering
-        ctx->SetFillColor(style.shadowColor);
+        ctx->PaintWidthColorstyle.shadowColor);
         if (style.borderRadius > 0) {
             ctx->DrawRoundedRectangle(shadowRect, style.borderRadius, style.shadowColor, Colors::Transparent, 0);
         } else {
@@ -727,7 +727,7 @@ private:
             float radius = progress * bounds.width / 2.0f;
             
             Color rippleColor = style.textColor.WithAlpha(static_cast<uint8_t>(50 * (1.0f - progress)));
-            ctx->SetFillColor(rippleColor);
+            ctx->PaintWidthColorrippleColor);
             
             Point2D center(bounds.x + bounds.width / 2.0f, bounds.y + bounds.height / 2.0f);
             ctx->DrawCircle(center, radius);
@@ -735,11 +735,11 @@ private:
     }
     
     void DrawRoundedRectangle(const Rect2D& rect, float radius, const Color& fillColor, const Color& borderColor, float borderWidth) {
-        ctx->SetFillColor(fillColor);
+        ctx->PaintWidthColorfillColor);
         ctx->DrawRectangle(rect); // Simplified - would need proper rounded rectangle
         
         if (borderWidth > 0.0f) {
-            ctx->SetStrokeColor(borderColor);
+            ctx->PaintWidthColorborderColor);
             ctx->SetStrokeWidth(borderWidth);
             ctx->DrawRectangle(rect);
         }

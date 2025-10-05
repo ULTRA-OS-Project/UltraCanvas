@@ -490,7 +490,7 @@ public:
         }
         
         // Draw background
-        ctx->SetFillColor(Colors::White);
+        ctx->PaintWidthColorColors::White);
         ctx->DrawRectangle(GetBounds());
         
         // Render state-specific content
@@ -627,8 +627,8 @@ private:
     }
     
     void RenderEmptyState() {
-        ctx->SetTextColor(Colors::Gray);
-        ctx->SetFont("Arial", 14.0f);
+        ctx->PaintWidthColorColors::Gray);
+        ctx->SetFontSize(14.0f);
         
         std::string message = "No diagram loaded";
         Point2D center(GetX() + GetWidth() / 2.0f, GetY() + GetHeight() / 2.0f);
@@ -636,8 +636,8 @@ private:
     }
     
     void RenderLoadingState() {
-        ctx->SetTextColor(Colors::Blue);
-        ctx->SetFont("Arial", 14.0f);
+        ctx->PaintWidthColorColors::Blue);
+        ctx->SetFontSize(14.0f);
         
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - renderStartTime);
@@ -647,7 +647,7 @@ private:
         ctx->DrawText(message, Point2D(center.x - 60, center.y));
         
         // Simple progress indicator
-        ctx->SetFillColor(Colors::Blue);
+        ctx->PaintWidthColorColors::Blue);
         float progress = (elapsed.count() % 10) / 10.0f;
         Rect2D progressBar(GetX() + 20, center.y + 20, (GetWidth() - 40) * progress, 4);
         ctx->DrawRectangle(progressBar);
@@ -659,11 +659,11 @@ private:
     }
     
     void RenderErrorState() {
-        ctx->SetFillColor(Color(255, 240, 240));
+        ctx->PaintWidthColorColor(255, 240, 240));
         ctx->DrawRectangle(GetBounds());
         
-        ctx->SetTextColor(Colors::Red);
-        ctx->SetFont("Arial", 12.0f);
+        ctx->PaintWidthColorColors::Red);
+        ctx->SetFontSize(12.0f);
         
         ctx->DrawText("Error: " + lastError, Point2D(GetX() + 10, GetY() + 20));
         
@@ -678,11 +678,11 @@ private:
     
     void RenderSourceOverlay() {
         // Semi-transparent overlay with source text
-        ctx->SetFillColor(Color(0, 0, 0, 180));
+        ctx->PaintWidthColorColor(0, 0, 0, 180));
         Rect2D overlay(GetX(), GetY(), GetWidth(), GetHeight());
         ctx->DrawRectangle(overlay);
         
-        ctx->SetTextColor(Colors::White);
+        ctx->PaintWidthColorColors::White);
         ctx->SetFont("Courier New", 10.0f);
         
         // Show first few lines of source

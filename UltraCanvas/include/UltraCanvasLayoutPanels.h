@@ -703,12 +703,12 @@ private:
     }
     
     void DrawBackground() {
-        ctx->SetFillColor(GetBackgroundColor());
+        ctx->PaintWidthColorGetBackgroundColor());
         UltraCanvas::DrawFilledRect(GetBounds(), GetBackgroundColor(), GetBorderColor(), GetBorderWidth());
     }
     
     void DrawGridLines() {
-        ctx->SetStrokeColor(gridLineColor);
+        ctx->PaintWidthColorgridLineColor);
         ctx->SetStrokeWidth(gridLineWidth);
         
         Rect2D contentArea = GetContentArea();

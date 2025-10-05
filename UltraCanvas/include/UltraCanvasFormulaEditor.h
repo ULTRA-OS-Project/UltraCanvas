@@ -329,7 +329,7 @@ namespace UltraCanvas {
             Rect2Di bounds = GetBounds();
 
             // Draw a small indicator that syntax highlighting is enabled
-            ctx->SetFillColor(Color(0, 255, 0, 100));
+            ctx->PaintWithColor(Color(0, 255, 0, 100));
             ctx->DrawRectangle(Rect2Di(bounds.x + bounds.width - 20, bounds.y + 5, 15, 10));
         }
     };

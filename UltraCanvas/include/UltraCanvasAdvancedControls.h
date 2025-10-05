@@ -232,7 +232,7 @@ private:
     }
     
     void RenderLabel() {
-        ctx->SetTextColor(controlStyle.textColor);
+        ctx->PaintWidthColorcontrolStyle.textColor);
         ctx->SetFont(controlStyle.fontFamily, controlStyle.fontSize);
         
         Point2D labelPos = CalculateLabelPosition();
@@ -251,7 +251,7 @@ private:
             float endX = area.x + (endValue - GetMinValue()) / (GetMaxValue() - GetMinValue()) * area.width;
             
             Rect2D segment(startX, trackY, endX - startX, trackHeight);
-            ctx->SetFillColor(colorSegments[i].second);
+            ctx->PaintWidthColorcolorSegments[i].second);
             ctx->DrawRectangle(segment);
         }
     }
@@ -261,7 +261,7 @@ private:
         float trackY = area.y + (area.height - trackHeight) / 2.0f;
         Rect2D track(area.x, trackY, area.width, trackHeight);
         
-        ctx->SetFillColor(controlStyle.backgroundColor);
+        ctx->PaintWidthColorcontrolStyle.backgroundColor);
         if (controlStyle.borderRadius > 0) {
             // Would need rounded rectangle function
             ctx->DrawRectangle(track);
@@ -269,7 +269,7 @@ private:
             ctx->DrawRectangle(track);
         }
         
-        ctx->SetStrokeColor(controlStyle.borderColor);
+        ctx->PaintWidthColorcontrolStyle.borderColor);
         ctx->SetStrokeWidth(controlStyle.borderWidth);
         ctx->DrawRectangle(track);
     }
@@ -280,12 +280,12 @@ private:
         float trackY = area.y + (area.height - trackHeight) / 2.0f;
         
         Rect2D trail(area.x, trackY, area.width * progress, trackHeight);
-        ctx->SetFillColor(trailColor);
+        ctx->PaintWidthColortrailColor);
         ctx->DrawRectangle(trail);
     }
     
     void RenderTickMarks(const Rect2D& area) {
-        ctx->SetStrokeColor(controlStyle.borderColor);
+        ctx->PaintWidthColorcontrolStyle.borderColor);
         ctx->SetStrokeWidth(1.0f);
         
         for (size_t i = 0; i < tickMarks.size(); ++i) {
@@ -297,7 +297,7 @@ private:
             
             // Draw tick label if available
             if (i < tickLabels.size()) {
-                ctx->SetTextColor(controlStyle.textColor);
+                ctx->PaintWidthColorcontrolStyle.textColor);
                 ctx->SetFont(controlStyle.fontFamily, controlStyle.fontSize * 0.8f);
                 ctx->DrawText(tickLabels[i], Point2D(tickX - 10, area.y + area.height + 12));
             }
@@ -315,18 +315,18 @@ private:
         // Handle shadow
         if (controlStyle.showShadow) {
             Point2D shadowCenter = handleCenter + controlStyle.shadowOffset;
-            ctx->SetFillColor(controlStyle.shadowColor);
+            ctx->PaintWidthColorcontrolStyle.shadowColor);
             ctx->DrawCircle(shadowCenter, handleSize / 2.0f + 1);
         }
         
         // Handle background
         Color handleColor = IsHovered() ? controlStyle.hoverColor : controlStyle.normalColor;
         if (IsFocused()) {
-            ctx->SetFillColor(controlStyle.focusColor);
+            ctx->PaintWidthColorcontrolStyle.focusColor);
             ctx->DrawCircle(handleCenter, handleSize / 2.0f + 2);
         }
         
-        ctx->SetFillColor(handleColor);
+        ctx->PaintWidthColorhandleColor);
         
         switch (handleShape) {
             case HandleShape::Circle:
@@ -353,7 +353,7 @@ private:
         }
         
         // Handle border
-        ctx->SetStrokeColor(controlStyle.borderColor);
+        ctx->PaintWidthColorcontrolStyle.borderColor);
         ctx->SetStrokeWidth(controlStyle.borderWidth);
         ctx->DrawCircle(handleCenter, handleSize / 2.0f);
     }
@@ -369,7 +369,7 @@ private:
         
         Point2D valuePos = CalculateValuePosition();
         
-        ctx->SetTextColor(controlStyle.textColor);
+        ctx->PaintWidthColorcontrolStyle.textColor);
         ctx->SetFont(controlStyle.fontFamily, controlStyle.fontSize * 0.9f);
         ctx->DrawText(valueText, valuePos);
     }
@@ -500,7 +500,7 @@ public:
         
         // Render label
         if (!labelText.empty()) {
-            ctx->SetTextColor(IsEnabled() ? controlStyle.textColor : controlStyle.disabledColor);
+            ctx->PaintWidthColorIsEnabled() ? controlStyle.textColor : controlStyle.disabledColor);
             ctx->SetFont(controlStyle.fontFamily, controlStyle.fontSize);
             ctx->DrawText(labelText, labelPos);
         }
@@ -610,31 +610,31 @@ private:
         float radius = area.width / 2;
         
         // Outer circle
-        ctx->SetFillColor(bgColor);
+        ctx->PaintWidthColorbgColor);
         ctx->DrawCircle(center, radius);
         
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->SetStrokeWidth(controlStyle.borderWidth);
         ctx->DrawCircle(center, radius);
         
         // Inner dot if selected
         if (selected) {
-           ctx->SetFillColor(controlStyle.selectedColor);
+           ctx->PaintWidthColorcontrolStyle.selectedColor);
             ctx->DrawCircle(center, radius * 0.5f);
         }
     }
     
     void RenderSquareRadio(const Rect2D& area, const Color& bgColor, const Color& borderColor) {
-       ctx->SetFillColor(bgColor);
+       ctx->PaintWidthColorbgColor);
         ctx->DrawRectangle(area);
         
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->SetStrokeWidth(controlStyle.borderWidth);
         ctx->DrawRectangle(area);
         
         if (selected) {
             Rect2D innerRect(area.x + 3, area.y + 3, area.width - 6, area.height - 6);
-           ctx->SetFillColor(controlStyle.selectedColor);
+           ctx->PaintWidthColorcontrolStyle.selectedColor);
             ctx->DrawRectangle(innerRect);
         }
     }
@@ -646,7 +646,7 @@ private:
         Rect2D toggleArea(area.x, area.y + (area.height - toggleHeight) / 2, toggleWidth, toggleHeight);
         
         Color toggleBg = selected ? controlStyle.selectedColor : bgColor;
-       ctx->SetFillColor(toggleBg);
+       ctx->PaintWidthColortoggleBg);
         ctx->DrawRectangle(toggleArea);  // Would be rounded in full implementation
         
         // Handle
@@ -654,7 +654,7 @@ private:
         float handleX = selected ? (toggleArea.x + toggleArea.width - handleSize - 2) : (toggleArea.x + 2);
         Point2D handleCenter(handleX + handleSize / 2, toggleArea.y + toggleArea.height / 2);
         
-       ctx->SetFillColor(Colors::White);
+       ctx->PaintWidthColorColors::White);
         ctx->DrawCircle(handleCenter, handleSize / 2);
     }
     
@@ -665,10 +665,10 @@ private:
         Color cardBg = selected ? controlStyle.selectedColor.WithAlpha(50) : bgColor;
         Color cardBorder = selected ? controlStyle.selectedColor : borderColor;
         
-       ctx->SetFillColor(cardBg);
+       ctx->PaintWidthColorcardBg);
         ctx->DrawRectangle(cardArea);
         
-        ctx->SetStrokeColor(cardBorder);
+        ctx->PaintWidthColorcardBorder);
         ctx->SetStrokeWidth(selected ? 2.0f : controlStyle.borderWidth);
         ctx->DrawRectangle(cardArea);
     }
@@ -680,16 +680,16 @@ private:
         Color buttonBg = selected ? controlStyle.selectedColor : bgColor;
         Color textColor = selected ? Colors::White : controlStyle.textColor;
         
-       ctx->SetFillColor(buttonBg);
+       ctx->PaintWidthColorbuttonBg);
         ctx->DrawRectangle(buttonArea);
         
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->SetStrokeWidth(controlStyle.borderWidth);
         ctx->DrawRectangle(buttonArea);
     }
     
     void RenderFocusIndicator(const Rect2D& area) {
-        ctx->SetStrokeColor(controlStyle.focusColor);
+        ctx->PaintWidthColorcontrolStyle.focusColor);
         SetStrokeWidth(2.0f);
         
         Rect2D focusRect(area.x - 2, area.y - 2, area.width + 4, area.height + 4);
@@ -817,7 +817,7 @@ public:
         
         // Render label
         if (!labelText.empty()) {
-            ctx->SetTextColor(IsEnabled() ? controlStyle.textColor : controlStyle.disabledColor);
+            ctx->PaintWidthColorIsEnabled() ? controlStyle.textColor : controlStyle.disabledColor);
             ctx->SetFont(controlStyle.fontFamily, controlStyle.fontSize);
             ctx->DrawText(labelText, labelPos);
         }
@@ -914,10 +914,10 @@ private:
     void RenderToggleSwitch(const Rect2D& area) {
         // Background track
         Color trackColor = switchState ? controlStyle.selectedColor : controlStyle.backgroundColor;
-       ctx->SetFillColor(trackColor);
+       ctx->PaintWidthColortrackColor);
         ctx->DrawRectangle(area);  // Would be rounded in full implementation
         
-        ctx->SetStrokeColor(controlStyle.borderColor);
+        ctx->PaintWidthColorcontrolStyle.borderColor);
         SetStrokeWidth(controlStyle.borderWidth);
         ctx->DrawRectangle(area);
         
@@ -929,10 +929,10 @@ private:
         
         Point2D thumbCenter(thumbX + thumbSize / 2, thumbY + thumbSize / 2);
         
-       ctx->SetFillColor(Colors::White);
+       ctx->PaintWidthColorColors::White);
         ctx->DrawCircle(thumbCenter, thumbSize / 2);
         
-        ctx->SetStrokeColor(controlStyle.borderColor);
+        ctx->PaintWidthColorcontrolStyle.borderColor);
         SetStrokeWidth(1.0f);
         ctx->DrawCircle(thumbCenter, thumbSize / 2);
     }
@@ -940,7 +940,7 @@ private:
     void RenderIOSSwitch(const Rect2D& area) {
         // iOS-style switch with more rounded appearance
         Color trackColor = switchState ? Color(52, 199, 89) : Color(229, 229, 234);
-       ctx->SetFillColor(trackColor);
+       ctx->PaintWidthColortrackColor);
         ctx->DrawRectangle(area);  // Would be fully rounded in complete implementation
         
         // Thumb
@@ -953,17 +953,17 @@ private:
         
         // Thumb shadow
         Point2D shadowCenter(thumbCenter.x, thumbCenter.y + 1);
-       ctx->SetFillColor(Color(0, 0, 0, 30));
+       ctx->PaintWidthColorColor(0, 0, 0, 30));
         ctx->DrawCircle(shadowCenter, thumbSize / 2);
         
-       ctx->SetFillColor(Colors::White);
+       ctx->PaintWidthColorColors::White);
         ctx->DrawCircle(thumbCenter, thumbSize / 2);
     }
     
     void RenderMaterialSwitch(const Rect2D& area) {
         // Material Design switch
         Color trackColor = switchState ? controlStyle.selectedColor.WithAlpha(128) : Color(0, 0, 0, 38);
-       ctx->SetFillColor(trackColor);
+       ctx->PaintWidthColortrackColor);
         ctx->DrawRectangle(area);
         
         // Thumb
@@ -975,12 +975,12 @@ private:
         Point2D thumbCenter(thumbX + thumbSize / 2, thumbY + thumbSize / 2);
         
         Color thumbColor = switchState ? controlStyle.selectedColor : Color(250, 250, 250);
-       ctx->SetFillColor(thumbColor);
+       ctx->PaintWidthColorthumbColor);
         ctx->DrawCircle(thumbCenter, thumbSize / 2);
         
         // Ripple effect when pressed
         if (IsPressed()) {
-           ctx->SetFillColor(Color(158, 158, 158, 100));
+           ctx->PaintWidthColorColor(158, 158, 158, 100));
             ctx->DrawCircle(thumbCenter, thumbSize);
         }
     }
@@ -988,16 +988,16 @@ private:
     void RenderCheckboxSwitch(const Rect2D& area) {
         // Checkbox-style toggle
         Color bgColor = switchState ? controlStyle.selectedColor : controlStyle.backgroundColor;
-       ctx->SetFillColor(bgColor);
+       ctx->PaintWidthColorbgColor);
         ctx->DrawRectangle(area);
         
-        ctx->SetStrokeColor(controlStyle.borderColor);
+        ctx->PaintWidthColorcontrolStyle.borderColor);
         SetStrokeWidth(controlStyle.borderWidth);
         ctx->DrawRectangle(area);
         
         if (switchState) {
             // Draw checkmark
-            ctx->SetStrokeColor(Colors::White);
+            ctx->PaintWidthColorColors::White);
             SetStrokeWidth(2.0f);
             
             Point2D p1(area.x + area.width * 0.3f, area.y + area.height * 0.5f);
@@ -1016,16 +1016,16 @@ private:
         Color buttonBg = switchState ? controlStyle.selectedColor : controlStyle.backgroundColor;
         Color textColor = switchState ? Colors::White : controlStyle.textColor;
         
-       ctx->SetFillColor(buttonBg);
+       ctx->PaintWidthColorbuttonBg);
         ctx->DrawRectangle(buttonArea);
         
-        ctx->SetStrokeColor(controlStyle.borderColor);
+        ctx->PaintWidthColorcontrolStyle.borderColor);
         SetStrokeWidth(controlStyle.borderWidth);
         ctx->DrawRectangle(buttonArea);
         
         // Show ON/OFF text
         std::string stateText = switchState ? "ON" : "OFF";
-        ctx->SetTextColor(textColor);
+        ctx->PaintWidthColortextColor);
         ctx->SetFont(controlStyle.fontFamily, controlStyle.fontSize * 0.8f);
         
         Point2D textPos(buttonArea.x + (buttonArea.width - GetTextWidth(stateText)) / 2, 
@@ -1034,7 +1034,7 @@ private:
     }
     
     void RenderFocusIndicator(const Rect2D& area) {
-        ctx->SetStrokeColor(controlStyle.focusColor);
+        ctx->PaintWidthColorcontrolStyle.focusColor);
         SetStrokeWidth(2.0f);
         
         Rect2D focusRect(area.x - 2, area.y - 2, area.width + 4, area.height + 4);
@@ -1152,7 +1152,7 @@ public:
         
         // Render group label if present
         if (!groupLabel.empty()) {
-            SetTextColor(Colors::Black);
+            SetColor(Colors::Black);
             SetFont("Arial", 14.0f);
             DrawText(groupLabel, Point2D(GetX(), GetY() + 15));
         }

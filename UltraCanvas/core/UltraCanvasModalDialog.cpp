@@ -374,16 +374,16 @@ namespace UltraCanvas {
         UltraCanvas::DrawFilledRect(titleBarRect, titleBg, Color(200, 200, 200, 255), 1);
 
         // Title text
-        ctx->SetTextColor(Colors::Black);
-        ctx->SetFont("Arial", 12.0f, FontWeight::Bold);
+        ctx->PaintWidthColorColors::Black);
+        ctx->SetFontSize(12.0f, FontWeight::Bold);
         Point2D titlePos(titleBarRect.x + 10, titleBarRect.y + 20);
         ctx->DrawText(config.title, titlePos);
 
         // Close button (X)
         Rect2D closeButtonRect(titleBarRect.x + titleBarRect.width - 25, titleBarRect.y + 5, 20, 20);
         UltraCanvas::DrawFilledRect(closeButtonRect, Color(220, 220, 220, 255));
-        ctx->SetTextColor(Colors::Black);
-        ctx->SetFont("Arial", 10.0f);
+        ctx->PaintWidthColorColors::Black);
+        ctx->SetFontSize(10.0f);
         ctx->DrawText("×", Point2D(closeButtonRect.x + 6, closeButtonRect.y + 14));
     }
 
@@ -395,7 +395,7 @@ namespace UltraCanvas {
         UltraCanvas::DrawFilledRect(iconRect, iconColor);
 
         // Draw icon symbol
-        ctx->SetTextColor(Colors::White);
+        ctx->PaintWidthColorColors::White);
         ctx->SetFont("Arial", 20.0f, FontWeight::Bold);
         std::string iconText = GetTypeIcon();
         Point2D iconTextPos(iconRect.x + 10, iconRect.y + 22);
@@ -405,8 +405,8 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::RenderMessage() {
         if (config.message.empty()) return;
 
-        ctx->SetTextColor(Colors::Black);
-        ctx->SetFont("Arial", 11.0f);
+        ctx->PaintWidthColorColors::Black);
+        ctx->SetFontSize(11.0f);
 
         // Word wrap message if too long
         std::vector<std::string> lines;
@@ -443,7 +443,7 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::RenderDetails() {
         if (config.details.empty()) return;
 
-        ctx->SetTextColor(Color(100, 100, 100, 255));
+        ctx->PaintWidthColorColor(100, 100, 100, 255));
         ctx->SetFont("Arial", 9.0f);
         Point2D detailsPos(detailsRect.x, detailsRect.y + 12);
         DrawText(config.details, detailsPos);

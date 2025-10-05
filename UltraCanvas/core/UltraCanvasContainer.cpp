@@ -42,13 +42,13 @@ namespace UltraCanvas {
         }
 
         if (style.backgroundColor.a > 0) {
-            ctx->SetFillColor(style.backgroundColor);
+            ctx->PaintWithColor(style.backgroundColor);
             ctx->FillRectangle(bounds);
         }
 
         // Render border
         if (style.borderWidth > 0) {
-            ctx->SetStrokeColor(style.borderColor);
+            ctx->PaintWithColor(style.borderColor);
             ctx->SetStrokeWidth(style.borderWidth);
             ctx->DrawRectangle(bounds);
         }
@@ -56,7 +56,7 @@ namespace UltraCanvas {
 //        if (!window->IsSelectiveRenderingActive()) {
             // Render container background
             ctx->PushState();
-            ctx->IntersectClipRect(contentArea);
+            ctx->ClipRect(contentArea);
 
             ctx->Translate(contentArea.x - scrollState.horizontalPosition,
                       contentArea.y - scrollState.verticalPosition);
@@ -401,7 +401,7 @@ namespace UltraCanvas {
 
     void UltraCanvasContainer::RenderVerticalScrollbar(IRenderContext *ctx) {
         // Render scrollbar track
-        ctx->SetFillColor(style.scrollbarTrackColor);
+        ctx->PaintWithColor(style.scrollbarTrackColor);
         ctx->FillRectangle(verticalScrollbarRect);
 
         // Render scrollbar thumb
@@ -413,13 +413,13 @@ namespace UltraCanvas {
             thumbColor = style.scrollbarThumbPressedColor;
         }
 
-        ctx->SetFillColor(thumbColor);
+        ctx->PaintWithColor(thumbColor);
         ctx->FillRectangle(verticalThumbRect);
     }
 
     void UltraCanvasContainer::RenderHorizontalScrollbar(IRenderContext *ctx) {
         // Render scrollbar track
-        ctx->SetFillColor(style.scrollbarTrackColor);
+        ctx->PaintWithColor(style.scrollbarTrackColor);
         ctx->FillRectangle(horizontalScrollbarRect);
 
         // Render scrollbar thumb
@@ -431,7 +431,7 @@ namespace UltraCanvas {
             thumbColor = style.scrollbarThumbPressedColor;
         }
 
-        ctx->SetFillColor(thumbColor);
+        ctx->PaintWithColor(thumbColor);
         ctx->FillRectangle(horizontalThumbRect);
     }
 

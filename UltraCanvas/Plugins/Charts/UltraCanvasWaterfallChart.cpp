@@ -22,16 +22,16 @@ namespace UltraCanvas {
 //        if (!ctx) return;
 //
 //        // Draw overall background
-//        ctx->SetFillColor(backgroundColor);
+//        ctx->PaintWithColor(backgroundColor);
 //        ctx->FillRectangle(GetX(), GetY(), GetWidth(), GetHeight());
 //
 //        // Draw plot area background
-//        ctx->SetFillColor(plotAreaColor);
+//        ctx->PaintWithColor(plotAreaColor);
 //        ctx->FillRectangle(cachedPlotArea.x, cachedPlotArea.y,
 //                           cachedPlotArea.width, cachedPlotArea.height);
 //
 //        // Draw plot area border
-//        ctx->SetStrokeColor(Color(180, 180, 180, 255));
+//        ctx->PaintWithColor(Color(180, 180, 180, 255));
 //        ctx->SetStrokeWidth(1.0f);
 //        ctx->DrawRectangle(cachedPlotArea.x, cachedPlotArea.y,
 //                           cachedPlotArea.width, cachedPlotArea.height);
@@ -39,7 +39,7 @@ namespace UltraCanvas {
 //        // Draw title if present
 //        if (!chartTitle.empty()) {
 //            ctx->SetTextColor(Color(0, 0, 0, 255));
-//            ctx->SetFont("Arial", 16.0f);
+//            ctx->SetFontSize(16.0f);
 //
 //            int textWidth, textHeight;
 //            ctx->MeasureText(chartTitle, textWidth, textHeight);
@@ -52,7 +52,7 @@ namespace UltraCanvas {
 //    void UltraCanvasWaterfallChartElement::DrawGrid(IRenderContext* ctx) {
 //        if (!ctx || !showGrid) return;
 //
-//        ctx->SetStrokeColor(gridColor);
+//        ctx->PaintWithColor(gridColor);
 //        ctx->SetStrokeWidth(1.0f);
 //
 //        // Horizontal grid lines
@@ -66,7 +66,7 @@ namespace UltraCanvas {
 //        // Vertical grid lines (light)
 //        auto waterfallData = GetWaterfallDataSource();
 //        if (waterfallData && renderCache.barX.size() > 0) {
-//            ctx->SetStrokeColor(Color(gridColor.r, gridColor.g, gridColor.b, 100)); // Lighter
+//            ctx->PaintWithColor(Color(gridColor.r, gridColor.g, gridColor.b, 100)); // Lighter
 //            for (size_t i = 0; i < renderCache.barX.size(); ++i) {
 //                float x = renderCache.barX[i] + renderCache.barWidth / 2;
 //                ctx->DrawLine(x, cachedPlotArea.y, x, cachedPlotArea.GetBottom());
@@ -77,7 +77,7 @@ namespace UltraCanvas {
 //    void UltraCanvasWaterfallChartElement::DrawAxes(IRenderContext* ctx) {
 //        if (!ctx) return;
 //
-//        ctx->SetStrokeColor(Color(0, 0, 0, 255));
+//        ctx->PaintWithColor(Color(0, 0, 0, 255));
 //        ctx->SetStrokeWidth(2.0f);
 //
 //        // Draw X-axis
@@ -95,8 +95,8 @@ namespace UltraCanvas {
     void UltraCanvasWaterfallChartElement::RenderAxisLabels(UltraCanvas::IRenderContext *ctx) {
         if (!ctx) return;
 
-        ctx->SetTextColor(Color(0, 0, 0, 255));
-        ctx->SetFont("Arial", 10.0f);
+        ctx->PaintWithColor(Color(0, 0, 0, 255));
+        ctx->SetFontSize(10.0f);
 
         // Y-axis labels (values)
         int numYTicks = 6;
@@ -332,12 +332,12 @@ namespace UltraCanvas {
 
         switch (barStyle) {
             case BarStyle::Standard:
-                ctx->SetFillColor(fillColor);
+                ctx->PaintWithColor(fillColor);
                 ctx->FillRectangle(x, y, width, height);
                 break;
 
             case BarStyle::Rounded:
-                ctx->SetFillColor(fillColor);
+                ctx->PaintWithColor(fillColor);
                 ctx->FillRoundedRectangle(x, y, width, height, 4.0f);
                 break;
 
@@ -349,14 +349,21 @@ namespace UltraCanvas {
                         std::min(255, static_cast<int>(fillColor.b * 1.2f)),
                         fillColor.a
                 );
-                ctx->SetFillGradient(lighterColor, fillColor, Point2Df(x, y), Point2Df(x, y + height));
+                auto gradient = ctx->CreateLinearGradientPattern(x,y, x, x + height, {
+                        GradientStop(0, lighterColor),
+                        GradientStop(1, fillColor),
+                });
+                ctx->PaintWithPattern(ctx->CreateLinearGradientPattern(x,y, x, x + height, {
+                        GradientStop(0, lighterColor),
+                        GradientStop(1, fillColor),
+                }));
                 ctx->FillRectangle(x, y, width, height);
                 break;
         }
 
         // Draw border if enabled
         if (hasBorder && barBorderWidth > 0) {
-            ctx->SetStrokeColor(barBorderColor);
+            ctx->PaintWithColor(barBorderColor);
             ctx->SetStrokeWidth(barBorderWidth);
 
             if (barStyle == BarStyle::Rounded) {
@@ -375,7 +382,7 @@ namespace UltraCanvas {
         auto waterfallData = GetWaterfallDataSource();
         if (!waterfallData) return;
 
-        ctx->SetStrokeColor(connectionLineColor);
+        ctx->PaintWithColor(connectionLineColor);
         ctx->SetStrokeWidth(connectionLineWidth);
 
         size_t pointCount = waterfallData->GetPointCount();
@@ -474,8 +481,8 @@ namespace UltraCanvas {
         auto waterfallData = GetWaterfallDataSource();
         if (!waterfallData) return;
 
-        ctx->SetTextColor(labelTextColor);
-        ctx->SetFont("Arial", labelFontSize);
+        ctx->PaintWithColor(labelTextColor);
+        ctx->SetFontSize(labelFontSize);
 
         size_t pointCount = waterfallData->GetPointCount();
 

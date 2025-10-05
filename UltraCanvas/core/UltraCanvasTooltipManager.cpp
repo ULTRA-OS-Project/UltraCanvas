@@ -151,16 +151,19 @@ namespace UltraCanvas {
 
         // Draw shadow first
         if (style.hasShadow) {
-            DrawShadow(ctx);
+            Rect2Di shadowRect(
+                    tooltipPosition.x + style.shadowOffset.x,
+                    tooltipPosition.y + style.shadowOffset.y,
+                    tooltipSize.x,
+                    tooltipSize.y
+            );
+
+            ctx->DrawFilledRectangle(shadowRect, style.shadowColor, 0, Colors::Transparent, style.cornerRadius);
         }
 
         // Draw tooltip background
-        DrawBackground(ctx);
-
-        // Draw border
-        if (style.borderWidth > 0) {
-            DrawBorder(ctx);
-        }
+        Rect2Di bgRect(tooltipPosition.x, tooltipPosition.y, tooltipSize.x, tooltipSize.y);
+        ctx->DrawFilledRectangle(bgRect, style.backgroundColor, style.borderWidth, style.borderColor, style.cornerRadius);
 
         // Draw text
         DrawText(ctx);
@@ -318,50 +321,12 @@ namespace UltraCanvas {
         return words;
     }
 
-    void UltraCanvasTooltipManager::DrawShadow(IRenderContext* ctx) {
-        Rect2Di shadowRect(
-                tooltipPosition.x + style.shadowOffset.x,
-                tooltipPosition.y + style.shadowOffset.y,
-                tooltipSize.x,
-                tooltipSize.y
-        );
-
-        ctx->SetFillColor(style.shadowColor);
-        if (style.cornerRadius > 0) {
-            ctx->FillRoundedRectangle(shadowRect, style.cornerRadius);
-        } else {
-            ctx->FillRectangle(shadowRect);
-        }
-    }
-
-    void UltraCanvasTooltipManager::DrawBackground(IRenderContext* ctx) {
-        Rect2Di bgRect(tooltipPosition.x, tooltipPosition.y, tooltipSize.x, tooltipSize.y);
-
-        ctx->SetFillColor(style.backgroundColor);
-        if (style.cornerRadius > 0) {
-            ctx->FillRoundedRectangle(bgRect, style.cornerRadius);
-        } else {
-            ctx->FillRectangle(bgRect);
-        }
-    }
-
-    void UltraCanvasTooltipManager::DrawBorder(IRenderContext* ctx) {
-        Rect2Di borderRect(tooltipPosition.x, tooltipPosition.y, tooltipSize.x, tooltipSize.y);
-
-        ctx->SetStrokeColor(style.borderColor);
-        ctx->SetStrokeWidth(style.borderWidth);
-        if (style.cornerRadius > 0) {
-            ctx->DrawRoundedRectangle(borderRect, style.cornerRadius);
-        } else {
-            ctx->DrawRectangle(borderRect);
-        }
-    }
-
     void UltraCanvasTooltipManager::DrawText(IRenderContext* ctx) {
-        ctx->SetTextColor(style.textColor);
-        ctx->SetFont(style.fontFamily, style.fontSize);
+        ctx->PaintWithColor(style.textColor);
+        ctx->SetFontFace(style.fontFamily, style.fontWeight, style.fontStyle);
+        ctx->SetFontSize(style.fontSize);
 
-        float textX = tooltipPosition.x + style.paddingLeft;
+                float textX = tooltipPosition.x + style.paddingLeft;
         float textY = tooltipPosition.y + style.paddingTop;
         float lineHeight = (tooltipSize.y - style.paddingTop - style.paddingBottom) / wrappedLines.size();
         for (const std::string& line : wrappedLines) {

@@ -16,4 +16,8 @@
 namespace UltraCanvas {
 
     std::string ToLowerCase(const std::string &str);
+    bool StartsWith(const std::string& str, const std::string& prefix);
+    std::string Trim(const std::string& str);
+    std::vector<std::string> Split(const std::string& str, char delimiter);
+
 }

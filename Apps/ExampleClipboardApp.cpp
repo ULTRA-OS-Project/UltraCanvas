@@ -245,19 +245,19 @@ public:
         ULTRACANVAS_RENDER_SCOPE();
         
         // Draw title
-        SetTextColor(Color(50, 50, 150, 255));
+        SetColor(Color(50, 50, 150, 255));
         SetFont("Arial", 16.0f);
         DrawText("UltraCanvas Modular Clipboard Demo", Point2D(20, 40));
         
         // Draw architecture info
-        SetTextColor(Colors::DarkGray);
+        SetColor(Colors::DarkGray);
         SetFont("Arial", 12.0f);
         DrawText("Architecture: Core + Backend + UI separation", Point2D(20, 350));
         
         // Draw clipboard status
         UltraCanvasClipboard* clipboard = GetClipboard();
         if (clipboard) {
-            SetTextColor(Colors::Blue);
+            SetColor(Colors::Blue);
             SetFont("Arial", 12.0f);
             
             size_t entryCount = clipboard->GetEntryCount();
@@ -279,7 +279,7 @@ public:
         }
         
         // Draw instructions
-        SetTextColor(Colors::Gray);
+        SetColor(Colors::Gray);
         SetFont("Arial", 11.0f);
         
         std::vector<std::string> instructions = {
@@ -312,10 +312,10 @@ public:
             }
             
             if (instruction[0] == '✨' || instruction[0] == '🎯' || instruction[0] == '🔧') {
-                SetTextColor(Color(100, 50, 150, 255));
+                SetColor(Color(100, 50, 150, 255));
                 SetFont("Arial", 12.0f);
             } else {
-                SetTextColor(Colors::Gray);
+                SetColor(Colors::Gray);
                 SetFont("Arial", 11.0f);
             }
             

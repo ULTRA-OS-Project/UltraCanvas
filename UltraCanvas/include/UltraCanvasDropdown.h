@@ -175,7 +175,7 @@ namespace UltraCanvas {
 //
 //            // Draw list background
 //            std::cout << "RenderDropdownList UltraCanvas::DrawFilledRect" << std::endl;
-//            ctx->DrawFilledRectangle(listRect, style.listBackgroundColor, style.listBorderColor, 1.0f);
+//            ctx->DrawFilledRectangle(listRect, style.listBackgroundColor, 1.0, style.listBorderColor);
 //
 //            // Render visible items
 //            int visibleItems = std::min((int)items.size(), style.maxVisibleItems);

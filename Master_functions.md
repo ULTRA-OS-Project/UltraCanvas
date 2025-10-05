@@ -12,46 +12,62 @@
 
 ## **CORE RENDERING FUNCTIONS** 
 *Source: UltraCanvasRenderContext.h*
-
-### **Line Drawing**
 ```cpp
+// **Path functions**
+void ClearPath();
+void ClosePath();
+void MoveTo(float x, float y);
+void RelMoveTo(float x, float y);
+void LineTo(float x, float y);
+void RelLineTo(float x, float y);
+void QuadraticCurveTo(float cpx, float cpy, float x, float y);
+void BezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y);
+void RelBezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y);
+void Arc(float cx, float cy, float radius, float startAngle, float endAngle);
+void ArcTo(float x1, float y1, float x2, float y2, float radius);
+void Circle(float x, float y, float radius);
+void Ellipse(float cx, float cy, float rx, float ry, float rotation, float startAngle, float endAngle);
+void Rect(float x, float y, float width, float height);
+void RoundedRect(float x, float y, float width, float height, float radius);
+
+void FillPath();
+void StrokePath();
+void GetPathExtents(float &x, float &y, float &width, float &height);
+
+// text path drawing
+virtual void FillText(const std::string& text, float x, float y) = 0;
+virtual void StrokeText(const std::string& text, float x, float y) = 0;
+
+
+// **Drawing**
+// lines
 void DrawLine(float x1, float y1, float x2, float y2);
 void DrawLine(float x1, float y1, float x2, float y2, const Color& col);
 void DrawLine(const Point2Df& start, const Point2Df& end);
 void DrawLine(const Point2Di& start, const Point2Di& end);
 void DrawLine(const Point2Df& start, const Point2Df& end, const Color& col);
 void DrawLine(const Point2Di& start, const Point2Di& end, const Color& col);
-```
-
-### **Rectangle Drawing**
-```cpp
 // Basic rectangles
 void DrawRectangle(float x, float y, float w, float h);
 void DrawRectangle(int x, int y, int w, int h);
 void DrawRectangle(const Rect2Df& rect);
 void DrawRectangle(const Rect2Di& rect);
-
 // Filled rectangles
 void FillRectangle(float x, float y, float w, float h);
 void FillRectangle(int x, int y, int w, int h);
 void FillRectangle(const Rect2Df& rect);
 void FillRectangle(const Rect2Di& rect);
-
 // Rounded rectangles
 void DrawRoundedRectangle(float x, float y, float w, float h, float radius);
 void DrawRoundedRectangle(int x, int y, int w, int h, int radius);
 void DrawRoundedRectangle(const Rect2Df& rect, float radius);
 void DrawRoundedRectangle(const Rect2Di& rect, float radius);
-
-
+// Filled rectangles
 void FillRoundedRectangle(float x, float y, float w, float h, float radius);
 void FillRoundedRectangle(int x, int y, int w, int h, int radius);
 void FillRoundedRectangle(const Rect2Df& rect, float radius);
 void FillRoundedRectangle(const Rect2Di& rect, float radius);
-```
-
-### **Circle Drawing**
-```cpp
+// circle
 void DrawCircle(float x, float y, float radius);
 void DrawCircle(int x, int y, float radius);
 void DrawCircle(const Point2Df& center, float radius);
@@ -61,29 +77,19 @@ void FillCircle(float x, float y, float radius);
 void FillCircle(int x, int y, int radius);
 void FillCircle(const Point2Df& center, float radius);
 void FillCircle(const Point2Di& center, float radius);
-```
-
-### **Ellipse Drawing**
-```cpp
+// ellipse
 void DrawEllipse(float x, float y, float w, float h);
 void FillEllipse(float x, float y, float w, float h);
-```
-
-### **Arc Drawing**
-```cpp
+// arc
 void DrawArc(float x, float y, float radius, float startAngle, float endAngle);
 void FillArc(float x, float y, float radius, float startAngle, float endAngle);
-```
 
-### **Bezier & Complex Shapes**
-```cpp
+// **Bezier & Complex Shapes**
 void DrawBezier(const Point2Df& start, const Point2Df& cp1, const Point2Df& cp2, const Point2Df& end);
-void DrawPath(const std::vector<Point2Df>& points, bool closePath = false);
-void FillPath(const std::vector<Point2Df>& points);
-```
+void DrawLinePath(const std::vector<Point2Df>& points, bool closePath = false);
+void FillLinePath(const std::vector<Point2Df>& points);
 
-### **Text Rendering**
-```cpp
+// **Text Rendering**
 void DrawText(const std::string& text, float x, float y);
 void DrawText(const std::string& text, int x, int y);
 void DrawText(const std::string& text, const Point2Di& position);
@@ -91,10 +97,8 @@ void DrawText(const std::string& text, const Point2Df& position);
 void DrawTextInRect(const std::string& text, float x, float y, float w, float h);
 void DrawTextInRect(const std::string& text, const Rect2Df& rect);
 void DrawTextInRect(const std::string& text, const Rect2Di& rect);
-```
 
-### **Image Rendering**
-```cpp
+// **Image Rendering**
 void DrawImage(const std::string &imagePath, float x, float y);
 void DrawImage(const std::string &imagePath, float x, float y, float w, float h);
 void DrawImage(const std::string &imagePath, const Rect2Df &srcRect, const Rect2Df &destRect);
@@ -104,43 +108,68 @@ void DrawImage(const std::string& imagePath, const Point2Di& position);
 void DrawImage(const std::string& imagePath, int x, int y, int w, int h);
 void DrawImage(const std::string& imagePath, const Rect2Df& position);
 void DrawImage(const std::string& imagePath, const Rect2Di& position);
-```
 
-### **Style & State Functions**
-```cpp
+
+// **Painting with colors/patterns/gradients functions**
+void PaintWithColor(const Color& color);
+std::unique_ptr<IDrawingPattern> CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
+                                                      const std::vector<GradientStop>& stops);
+std::unique_ptr<IDrawingPattern> CreateRadialGradientPattern(float cx1, float cy1, float r1,
+                                                      float cx2, float cy2, float r2,
+                                                      const std::vector<GradientStop>& stops);
+void PaintWithPattern(std::unique_ptr<IDrawingPattern> pattern);
+void PaintWithColor(const Color& color);
+
+
+// **Style & State Functions**
+
 // Fill and stroke
-void SetFillColor(const Color& color);
-void SetStrokeColor(const Color& color);
 void SetStrokeWidth(float width);
+void SetAlpha(float alpha);
+virtual void SetStrokeWidth(float width) = 0;
+virtual void SetLineCap(LineCap cap) = 0;
+virtual void SetLineJoin(LineJoin join) = 0;
+virtual void SetMiterLimit(float limit) = 0;
+virtual void SetLineDash(const std::vector<float>& pattern, float offset = 0) = 0;
 
 // Text styling
-void SetFont(const std::string& fontFamily, float fontSize);
-void SetTextColor(const Color& color);
-void SetTextAlignment(TextAlignment align);
-void SetTextStyle(const TextStyle& style);
+virtual void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) = 0;
+virtual void SetFontSize(float size) = 0;
+virtual void SetFontWeight(FontWeight fw) = 0;
+virtual void SetFontSlant(FontSlant fs) = 0;
 
-// Transformations
+virtual const TextStyle& GetTextStyle() const = 0;
+virtual void SetTextStyle(const TextStyle& style) = 0;
+virtual void SetTextAlignment(TextAlignment align) = 0;
+
+
+// **Transformations**
 void Translate(float x, float y);
 void Rotate(float angle);
 void Scale(float sx, float sy);
 void SetTransform(float a, float b, float c, float d, float e, float f);
+// set matrix to
+void SetTransform(float a, float b, float c, float d, float e, float f);
+// adjust current matrix by this one
+void Transform(float a, float b, float c, float d, float e, float f); 
 void ResetTransform();
 
-// Clipping
+// **Clipping**
 void SetClipRect(float x, float y, float w, float h);
 void SetClipRect(int x, int y, int w, int h);
 void SetClipRect(const Rect2Df& rect);
 void SetClipRect(const Rect2Di& rect);
 void ClearClipRect();
-void IntersectClipRect(float x, float y, float w, float h);
-void IntersectClipRect(int x, int y, int w, int h);
-void IntersectClipRect(const Rect2Df& rect);
-void IntersectClipRect(const Rect2Di& rect);
+void ClipRect(float x, float y, float w, float h);
+void ClipRect(int x, int y, int w, int h);
+void ClipRect(const Rect2Df& rect);
+void ClipRect(const Rect2Di& rect);
+
 
 // State management
 void PushState();
 void PopState();
-void SetGlobalAlpha(float alpha);
+void ResetState();
 
 
 // PIXEL OPERATIONS (on whole pixel buffer)
@@ -170,15 +199,13 @@ int GetTextHeight(const std::string& text);
 bool MeasureText(const std::string& text, int& w, int& h);
 int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0);
 Point2Df CalculateCenteredTextPosition(const std::string& text, const Rect2Df& bounds);
-```
 
-### **Enhanced Drawing Helpers**
-```cpp
-void DrawFilledRectangle(const Rect2Df& rect, const Color& fillColor, const Color& borderColor, float borderWidth, float borderRadius);
-void DrawFilledRectangle(const Rect2Di& rect, const Color& fillColor, const Color& borderColor, float borderWidth, float borderRadius);
+
+//  **Enhanced Drawing Helpers**
+void DrawFilledRectangle(const Rect2Df& rect, const Color& fillColor, float borderWidth, const Color& borderColor, float borderRadius);
+void DrawFilledRectangle(const Rect2Di& rect, const Color& fillColor, float borderWidth, const Color& borderColor, float borderRadius);
 void DrawFilledCircle(const Point2Df& center, float radius, const Color& fillColor);
 void DrawFilledCircle(const Point2Di& center, float radius, const Color& fillColor);
-void DrawGradientRect(const Rect2Df& rect, const Color& startColor, const Color& endColor, bool horizontal);
 ```
 
 ---
@@ -489,7 +516,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateSpacerElement(const TemplateElementD
 â�Œ Create[BasicShape]()        // Use existing CreateRectangleShape, CreateCircleShape, etc.
 â�Œ Draw[BasicShape]()         // Use existing DrawCircle, DrawRectangle, etc.
 â�Œ Fill[BasicShape]()         // Use existing FillCircle, FillRectangle, etc.
-â�Œ Set[RenderState]()         // Use existing SetFillColor, SetStrokeColor, etc.
+â�Œ Set[RenderState]()         // Use existing SetColor, PaintWithColor, etc.
 â�Œ Get[RenderState]()         // Use existing GetTextWidth, MeasureText, etc.
 â�Œ Handle[StandardEvent]()    // Use existing HandleMouseDown, HandleKeyboardEvent, etc.
 â�Œ [Component]Factory()       // Use existing Create[Component] pattern

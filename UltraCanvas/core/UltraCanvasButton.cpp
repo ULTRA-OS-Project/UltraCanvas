@@ -110,36 +110,17 @@ namespace UltraCanvas {
         Rect2Di bounds = GetBounds();
 
         // Draw background
-        if (style.cornerRadius > 0) {
-            ctx->DrawFilledRectangle(bounds, bgColor, Colors::Transparent, 0, style.cornerRadius);
-        } else {
-            ctx->DrawFilledRectangle(bounds, bgColor);
-        }
+        ctx->DrawFilledRectangle(bounds, bgColor, style.borderWidth, style.borderColor, style.cornerRadius);
 
-        // Draw border
-        if (style.borderWidth > 0) {
-            // Simple border using lines
-            ctx->DrawLine(bounds.x, bounds.y,
-                          bounds.x + bounds.width, bounds.y, style.borderColor);
-            ctx->DrawLine(bounds.x + bounds.width, bounds.y,
-                          bounds.x + bounds.width, bounds.y + bounds.height, style.borderColor);
-            ctx->DrawLine(bounds.x + bounds.width, bounds.y + bounds.height,
-                          bounds.x, bounds.y + bounds.height, style.borderColor);
-            ctx->DrawLine(bounds.x, bounds.y + bounds.height,
-                          bounds.x, bounds.y, style.borderColor);
-        }
-
-        // Draw text (FIXED CENTERING)
+        // Draw text
         if (!text.empty()) {
             // Set text style with middle baseline
             TextStyle centeredTextStyle;
-            centeredTextStyle.fontFamily = style.fontFamily;
-            centeredTextStyle.fontSize = style.fontSize;
             centeredTextStyle.textColor = textColor;
             centeredTextStyle.alignment = TextAlignment::Center;
-            centeredTextStyle.baseline = TextBaseline::Middle;  // This ensures vertical centering
+            centeredTextStyle.verticalAlignement = TextVerticalAlignement::Middle;  // This ensures vertical centering
             ctx->SetTextStyle(centeredTextStyle);
-
+            ctx->SetFontStyle({.fontFamily=style.fontFamily, .fontSize=style.fontSize});
             ctx->DrawTextInRect(text, bounds);
         }
 
@@ -147,14 +128,7 @@ namespace UltraCanvas {
         if (IsFocused()) {
             // Simple focus rectangle
             Rect2Di focusRect(bounds.x + 2, bounds.y + 2, bounds.width - 4, bounds.height - 4);
-            ctx->DrawLine(focusRect.x, focusRect.y,
-                          focusRect.x + focusRect.width, focusRect.y, Colors::Blue);
-            ctx->DrawLine(focusRect.x + focusRect.width, focusRect.y,
-                          focusRect.x + focusRect.width, focusRect.y + focusRect.height, Colors::Blue);
-            ctx->DrawLine(focusRect.x + focusRect.width, focusRect.y + focusRect.height,
-                          focusRect.x, focusRect.y + focusRect.height, Colors::Blue);
-            ctx->DrawLine(focusRect.x, focusRect.y + focusRect.height,
-                          focusRect.x, focusRect.y, Colors::Blue);
+            ctx->DrawFilledRectangle(focusRect, Colors::Transparent, 1, Colors::Blue);
         }
 
         ctx->PopState();

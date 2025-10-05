@@ -437,7 +437,7 @@ public:
         ctx->PushState();
         
         // Draw background
-        ctx->SetFillColor(controlsStyle.backgroundColor);
+        ctx->PaintWidthColorcontrolsStyle.backgroundColor);
         ctx->DrawRectangle(GetBounds());
         
         if (!showControls) return;
@@ -560,13 +560,13 @@ private:
     
     // ===== RENDERING HELPERS =====
     float RenderMetadata(const Rect2D& area, float y) {
-        ctx->SetTextColor(controlsStyle.titleColor);
+        ctx->PaintWidthColorcontrolsStyle.titleColor);
         ctx->SetFont(controlsStyle.fontFamily, controlsStyle.titleFontSize);
         
         std::string title = metadata.GetDisplayTitle();
         ctx->DrawText(title, Point2D(area.x, y));
         
-        ctx->SetTextColor(controlsStyle.textColor);
+        ctx->PaintWidthColorcontrolsStyle.textColor);
         ctx->SetFont(controlsStyle.fontFamily, controlsStyle.fontSize);
         
         std::string artist = metadata.GetDisplayArtist();
@@ -587,19 +587,19 @@ private:
         Rect2D progressBg(area.x, barY, area.width, controlsStyle.progressHeight);
         
         // Background
-        ctx->SetFillColor(controlsStyle.progressBackgroundColor);
+        ctx->PaintWidthColorcontrolsStyle.progressBackgroundColor);
         ctx->DrawRectangle(progressBg);
         
         // Progress
         if (duration > 0.0f) {
             float progressWidth = (position / duration) * area.width;
             Rect2D progressBar(area.x, barY, progressWidth, controlsStyle.progressHeight);
-            ctx->SetFillColor(controlsStyle.progressBarColor);
+            ctx->PaintWidthColorcontrolsStyle.progressBarColor);
             ctx->DrawRectangle(progressBar);
         }
         
         // Time labels
-        ctx->SetTextColor(controlsStyle.textColor);
+        ctx->PaintWidthColorcontrolsStyle.textColor);
         ctx->SetFont(controlsStyle.fontFamily, controlsStyle.fontSize);
         
         std::string positionText = FormatTime(position);
@@ -619,11 +619,11 @@ private:
         
         // Play/Pause button
         Rect2D playButton(currentX, buttonY, controlsStyle.buttonSize, controlsStyle.buttonSize);
-        ctx->SetFillColor(controlsStyle.controlColor);
+        ctx->PaintWidthColorcontrolsStyle.controlColor);
         ctx->DrawRectangle(playButton);
         
         // Draw play/pause icon (simplified)
-        ctx->SetTextColor(controlsStyle.backgroundColor);
+        ctx->PaintWidthColorcontrolsStyle.backgroundColor);
         ctx->SetFont(controlsStyle.fontFamily, controlsStyle.buttonSize * 0.6f);
         
         std::string icon = (currentState == AudioState::Playing) ? "||" : "▶";
@@ -633,7 +633,7 @@ private:
         
         // Stop button
         Rect2D stopButton(currentX, buttonY, controlsStyle.buttonSize, controlsStyle.buttonSize);
-       ctx->SetFillColor(controlsStyle.controlColor);
+       ctx->PaintWidthColorcontrolsStyle.controlColor);
         ctx->DrawRectangle(stopButton);
         
         DrawText("■", Point2D(currentX + 6, buttonY + 4));
@@ -641,19 +641,19 @@ private:
         
         // Volume control
         if (controlsStyle.showVolume) {
-            ctx->SetTextColor(controlsStyle.textColor);
+            ctx->PaintWidthColorcontrolsStyle.textColor);
             ctx->SetFont(controlsStyle.fontFamily, controlsStyle.fontSize);
             DrawText("Vol:", Point2D(currentX, buttonY + 6));
             currentX += 30;
             
             // Volume slider
             Rect2D volumeBg(currentX, buttonY + 8, controlsStyle.volumeSliderWidth, 8);
-           ctx->SetFillColor(controlsStyle.progressBackgroundColor);
+           ctx->PaintWidthColorcontrolsStyle.progressBackgroundColor);
             ctx->DrawRectangle(volumeBg);
             
             float volumeWidth = volume * controlsStyle.volumeSliderWidth;
             Rect2D volumeBar(currentX, buttonY + 8, volumeWidth, 8);
-           ctx->SetFillColor(controlsStyle.progressBarColor);
+           ctx->PaintWidthColorcontrolsStyle.progressBarColor);
             ctx->DrawRectangle(volumeBar);
         }
         
@@ -666,7 +666,7 @@ private:
         float vizHeight = 40.0f;
         float barWidth = area.width / spectrumData.size();
         
-       ctx->SetFillColor(controlsStyle.progressBarColor);
+       ctx->PaintWidthColorcontrolsStyle.progressBarColor);
         
         for (size_t i = 0; i < spectrumData.size(); ++i) {
             float barHeight = spectrumData[i] * vizHeight;

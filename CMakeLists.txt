@@ -122,6 +122,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/Plugins/Charts/UltraCanvasFinancialChart.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasDivergingBarChart.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasWaterfallChart.cpp
+        UltraCanvas/Plugins/SVG/UltraCanvasSVGPlugin.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartElement.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
@@ -152,10 +153,12 @@ set(APP_SOURCES
 )
 
 set(MAIN_DEMOAPP_SOURCES
+#        Apps/UltraCanvasChartExample.cpp
         Apps/DemoApp/UltraCanvasDemo.cpp
         Apps/DemoApp/UltraCanvasDemoExamples.cpp
         Apps/DemoApp/main.cpp
         Apps/DemoApp/UltraCanvasWatefallDemo.cpp
+        Apps/DemoApp/UltraCanvasSVGDemo.cpp
 )
 
 # ✅ ADDED: Check that source files exist

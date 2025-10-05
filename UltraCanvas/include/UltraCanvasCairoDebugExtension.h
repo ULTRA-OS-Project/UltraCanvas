@@ -233,7 +233,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         Point2Df center = Point2Df(position.x + gridSize, position.y + gridSize);
 
         // Draw coordinate system grid
-        ctx->SetStrokeColor(Color(128, 128, 128, 150));
+        ctx->PaintWidthColorColor(128, 128, 128, 150));
         ctx->SetStrokeWidth(1.0f);
 
         // Grid lines
@@ -248,7 +248,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         }
 
         // Draw original coordinate system (red)
-        ctx->SetStrokeColor(Color(255, 100, 100, 200));
+        ctx->PaintWidthColorColor(255, 100, 100, 200));
         ctx->SetStrokeWidth(2.0f);
 
         // Original X axis
@@ -257,7 +257,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         ctx->DrawLine(center.x, center.y - gridSize / 2, center.x, center.y + gridSize / 2);
 
         // Draw transformed coordinate system (green)
-        ctx->SetStrokeColor(Color(100, 255, 100, 200));
+        ctx->PaintWidthColorColor(100, 255, 100, 200));
         SetStrokeWidth(2.0f);
 
         // Apply transformation to unit vectors
@@ -277,19 +277,19 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
 
         // Draw origin translation
         if (std::abs(matrix.x0) > 0.1 || std::abs(matrix.y0) > 0.1) {
-            ctx->SetStrokeColor(Color(255, 255, 100, 200)); // Yellow for translation
+            ctx->PaintWidthColorColor(255, 255, 100, 200)); // Yellow for translation
             SetStrokeWidth(1.0f);
 
             Point2Df translatedOrigin = Point2Df(center.x + matrix.x0 / 10, center.y + matrix.y0 / 10);
             ctx->DrawLine(center, translatedOrigin);
 
             // Draw small circle at translated origin
-           ctx->SetFillColor(Color(255, 255, 100, 200));
+           ctx->PaintWidthColorColor(255, 255, 100, 200));
             DrawFilledCircle(translatedOrigin, 3.0f, Color(255, 255, 100, 200));
         }
 
         // Label the visualization
-        ctx->SetTextColor(Color(200, 200, 200, 255));
+        ctx->PaintWidthColorColor(200, 200, 200, 255));
         ctx->SetFont(settings.fontFamily, settings.textSize - 2);
         DrawText("Matrix Viz", Point2Di(position.x, position.y - 5));
     }

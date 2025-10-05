@@ -38,7 +38,19 @@
 
 namespace UltraCanvas {
 
-        class LinuxCairoDoubleBuffer : public IDoubleBuffer {
+    class LinuxDrawingPattern : public IDrawingPattern {
+    private:
+        cairo_pattern_t *pattern = nullptr;
+    public:
+        LinuxDrawingPattern() = delete;
+        explicit LinuxDrawingPattern(cairo_pattern_t *pat) : pattern(pat) {};
+        ~LinuxDrawingPattern() override {
+            cairo_pattern_destroy(pattern);
+        };
+        void* GetHandle() override { return pattern; };
+    };
+
+    class LinuxCairoDoubleBuffer : public IDoubleBuffer {
         private:
             mutable std::mutex bufferMutex;
 
@@ -166,12 +178,12 @@ namespace UltraCanvas {
 
         // Internal helper methods
         void ApplyDrawingStyle(const DrawingStyle &style);
-        void ApplyTextStyle(const TextStyle &style);
-        void ApplyFillStyle(const DrawingStyle &style);
-        void ApplyStrokeStyle(const DrawingStyle &style);
-        void ApplyGradientFill(const Gradient& gradient);
+//        void ApplyTextStyle(const TextStyle &style);
+//        void ApplyFillStyle(const DrawingStyle &style);
+//        void ApplyStrokeStyle(const DrawingStyle &style);
+//        void ApplyGradientFill(const Gradient& gradient);
 
-        PangoFontDescription *CreatePangoFont(const TextStyle &style);
+        PangoFontDescription *CreatePangoFont(const FontStyle &style);
         PangoLayout * CreatePangoLayout(PangoFontDescription *desc, int w=0, int h=0);
 
         // Add a flag to track if we're being destroyed
@@ -206,24 +218,42 @@ namespace UltraCanvas {
         void Rotate(float angle) override;
         void Scale(float sx, float sy) override;
         void SetTransform(float a, float b, float c, float d, float e, float f) override;
+        void Transform(float a, float b, float c, float d, float e, float f) override;
         void ResetTransform() override;
 
         // Clipping
         void SetClipRect(float x, float y, float w, float h) override;
         void ClearClipRect() override;
-        void IntersectClipRect(float x, float y, float w, float h) override;
+        void ClipRect(float x, float y, float w, float h) override;
+        void ClipPath() override;
 
         // Style management
-        void SetDrawingStyle(const DrawingStyle &style) override;
-        const DrawingStyle &GetDrawingStyle() const override;
+        //void SetDrawingStyle(const DrawingStyle &style) override;
         void SetTextStyle(const TextStyle &style) override;
         const TextStyle &GetTextStyle() const override;
+        void SetStrokeWidth(float width) override;
+        //void SetLineWidth(float width) override;
+        void SetLineCap(LineCap cap) override;
+        void SetLineJoin(LineJoin join) override;
+        void SetMiterLimit(float limit)  override;
+        void SetLineDash(const std::vector<float>& pattern, float offset = 0) override;
 
-        void SetGlobalAlpha(float alpha) override;
-        float GetGlobalAlpha() const override;
+        // === Text Methods ===
+        void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) override;
+        void SetFontSize(float size) override;
+        void SetFontWeight(FontWeight fw) override;
+        void SetFontSlant(FontSlant fs) override;
+        void SetTextAlignment(TextAlignment align) override;
 
-        void SetFillGradient(const Color& startColor, const Color& endColor,
-                             const Point2Df& startPoint, const Point2Df& endPoint);
+        void SetAlpha(float alpha) override;
+        float GetAlpha() const override;
+        void PaintWithColor(const Color& color) override;
+        void PaintWithPattern(std::unique_ptr<IDrawingPattern> pattern) override;
+        std::unique_ptr<IDrawingPattern> CreateRadialGradientPattern(float cx1, float cy1, float r1,
+                                                              float cx2, float cy2, float r2,
+                                                              const std::vector<GradientStop>& stops) override;
+        std::unique_ptr<IDrawingPattern> CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
+                                                              const std::vector<GradientStop>& stops) override;
 
         // Basic drawing
         void DrawLine(float x, float y, float x1, float y1) override;
@@ -238,21 +268,31 @@ namespace UltraCanvas {
         void DrawArc(float x, float y, float radius, float startAngle, float endAngle) override;
         void FillArc(float x, float y, float radius, float startAngle, float endAngle) override;
         void DrawBezier(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2, const Point2Df &end) override;
-        void DrawPath(const std::vector<Point2Df> &points, bool closePath) override;
-        void FillPath(const std::vector<Point2Df> &points) override;
+        void DrawLinePath(const std::vector<Point2Df> &points, bool closePath) override;
+        void FillLinePath(const std::vector<Point2Df> &points) override;
 
-        void PathArc(float xc, float yc, float radius, float angle1, float angle2) override; // The arc is centered at (xc , yc ), begins at angle1 and proceeds in the direction of increasing angles to end at angle2 .
-        void PathMoveTo(float x, float y) override; // Begin a new sub-path. After this call the current point will be (x , y ).
-        void PathLineTo(float x, float y) override; // Adds a line to the path from the current point to position (x , y ) in user-space coordinates. After this call the current point will be (x , y ).
-        void PathCurveTo(float x1, float y1, float x2, float y2, float x, float y) override; // Adds a cubic Bézier spline to the path from the current point to position (x3 , y3 ) in user-space coordinates, using (x1 , y1 ) and (x2 , y2 ) as the control points. After this call the current point will be (x3 , y3 ).
-        // Drawing using relative coordinates
-        void PathRelMoveTo(float x, float y) override; // Begin a new sub-path. After this call the current point will be (x , y ).
-        void PathRelLineTo(float x, float y) override; // Adds a line to the path from the current point to position (x , y ) in user-space coordinates. After this call the current point will be (x , y ).
-        void PathRelCurveTo(float x1, float y1, float x2, float y2, float x, float y) override; // Adds a cubic Bézier spline to the path from the current point to position (x3 , y3 ) in user-space coordinates, using (x1 , y1 ) and (x2 , y2 ) as the control points. After this call the current point will be (x3 , y3 ).
-        void PathExtents(float &x1, float &x2, float &width, float &height) override; // measure extents of current path
-        void PathStroke() override;
-        void PathFill() override;
+        // path functions
+        void ClearPath() override;
+        void ClosePath() override;
+        void MoveTo(float x, float y) override;
+        void RelMoveTo(float x, float y) override;
+        void LineTo(float x, float y) override;
+        void RelLineTo(float x, float y) override;
+        void QuadraticCurveTo(float cpx, float cpy, float x, float y) override;
+        void BezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y) override;
+        void RelBezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y) override;
+        void Arc(float cx, float cy, float radius, float startAngle, float endAngle) override;
+        void ArcTo(float x1, float y1, float x2, float y2, float radius) override;
+        void Ellipse(float cx, float cy, float rx, float ry, float rotation, float startAngle, float endAngle) override;
+        void Rect(float x, float y, float width, float height) override;
+        void RoundedRect(float x, float y, float width, float height, float radius) override;
+        void Circle(float x, float y, float radius) override;
 
+        void GetPathExtents(float &x, float &y, float &width, float &height) override;
+        void StrokePath() override;
+        void FillPath() override;
+        void FillText(const std::string& text, float x, float y) override;
+        void StrokeText(const std::string& text, float x, float y) override;
 
         // Text rendering
         void DrawText(const std::string &text, float x, float y) override;

@@ -12,7 +12,7 @@ namespace UltraCanvas {
         ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
 
         // Set line style using existing functions
-        ctx->SetStrokeColor(lineColor);
+        ctx->PaintWithColor(lineColor);
         ctx->SetStrokeWidth(lineWidth);
 
         // Build path points
@@ -23,18 +23,18 @@ namespace UltraCanvas {
             linePoints. push_back(screenPos);
         }
 
-// Draw line using existing DrawPath function
+// Draw line using existing DrawLinePath function
         if (linePoints.size() > 1) {
             if (enableSmoothing) {
                 DrawSmoothLine(ctx, linePoints);
             } else {
-                ctx->DrawPath(linePoints, false);
+                ctx->DrawLinePath(linePoints, false);
             }
         }
 
 // Draw data points if enabled using existing FillCircle
         if (showDataPoints) {
-            ctx->SetFillColor(pointColor);
+            ctx->PaintWithColor(pointColor);
             for (const auto &point : linePoints) {
                 ctx->FillCircle(point.x, point.y, pointRadius);
             }
@@ -124,12 +124,12 @@ namespace UltraCanvas {
             }
 
             // Use existing FillRectangle function
-            ctx->SetFillColor(barColor);
+            ctx->PaintWithColor(barColor);
             ctx->FillRectangle(barX, topPos.y, actualBarWidth, barHeight);
 
             // Use existing DrawRectangle for border
             if (barBorderWidth > 0) {
-                ctx->SetStrokeColor(barBorderColor);
+                ctx->PaintWithColor(barBorderColor);
                 ctx->SetStrokeWidth(barBorderWidth);
                 ctx->DrawRectangle(barX, topPos.y, actualBarWidth, barHeight);
             }
@@ -169,7 +169,7 @@ namespace UltraCanvas {
         if (!ctx || !dataSource || dataSource->GetPointCount() == 0) return;
 
         ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-        ctx->SetFillColor(pointColor);
+        ctx->PaintWithColor(pointColor);
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
@@ -200,7 +200,7 @@ namespace UltraCanvas {
                             Point2Df(screenPos.x - currentPointSize * 0.866f, screenPos.y + currentPointSize * 0.5f),
                             Point2Df(screenPos.x + currentPointSize * 0.866f, screenPos.y + currentPointSize * 0.5f)
                     };
-                    ctx->FillPath(trianglePoints);
+                    ctx->FillLinePath(trianglePoints);
                     break;
                 }
                 case PointShape::Diamond: {
@@ -210,7 +210,7 @@ namespace UltraCanvas {
                             Point2Df(screenPos.x, screenPos.y + currentPointSize),
                             Point2Df(screenPos.x - currentPointSize, screenPos.y)
                     };
-                    ctx->FillPath(diamondPoints);
+                    ctx->FillLinePath(diamondPoints);
                     break;
                 }
             }
@@ -298,17 +298,17 @@ namespace UltraCanvas {
             RenderGradientFill(ctx, renderPoints);
         } else {
             // Standard solid fill using existing IRenderContext methods
-            ctx->SetFillColor(fillColor);
-            ctx->FillPath(renderPoints);
+            ctx->PaintWithColor(fillColor);
+            ctx->FillLinePath(renderPoints);
         }
 
         // Draw the top edge line (data line) using existing methods
         if (lineWidth > 0.0f) {
-            ctx->SetStrokeColor(lineColor);
+            ctx->PaintWithColor(lineColor);
             ctx->SetStrokeWidth(lineWidth);
 
             // Draw line connecting all data points (skip baseline points)
-            ctx->DrawPath(renderPoints);
+            ctx->DrawLinePath(renderPoints, false);
         }
 
         // Render data points if enabled

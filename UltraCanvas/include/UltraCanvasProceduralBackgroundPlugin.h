@@ -639,7 +639,7 @@ namespace UltraCanvas {
             if (static_cast<size_t>(frameIndex) < cachedFrames.size()) {
                 pixelBuffer = cachedFrames[frameIndex];
 
-//                ctx->SetFillColor(Colors::Black);
+//                ctx->PaintWithColor(Colors::Black);
 //                ctx->FillRectangle(Rect2Di(GetX(), GetY(), GetWidth(), GetHeight()));
                 ctx->PaintPixelBuffer(GetX(), GetY(), pixelBuffer);
             }
@@ -660,7 +660,7 @@ namespace UltraCanvas {
 
             // TODO: Load and draw the actual image
             // For now, draw a placeholder rectangle
-            ctx->SetFillColor(Color(255, 255, 255, (uint8_t)(animatedOpacity * 255)));
+            ctx->PaintWithColor(Color(255, 255, 255, (uint8_t) (animatedOpacity * 255)));
             int scaledWidth = (int)(100 * animatedScale); // Placeholder size
             int scaledHeight = (int)(50 * animatedScale);
             ctx->FillRectangle(Rect2Di(position.x, position.y, scaledWidth, scaledHeight));

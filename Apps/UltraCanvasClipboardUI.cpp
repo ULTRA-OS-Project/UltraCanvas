@@ -56,11 +56,11 @@ namespace UltraCanvas {
         // Background
         Color bgColor = isSelected ? selectedColor : (IsHovered() ?
                                                       hoverColor : normalColor);
-        SetFillColor(bgColor);
+        SetColor(bgColor);
         DrawRectangle(bounds);
 
         // Border
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         ctx->SetStrokeWidth(1.0f);
         DrawRectangle(bounds);
 
@@ -78,8 +78,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasClipboardItem::RenderContent() {
-        ctx->SetTextColor(Colors::Black);
-        ctx->SetFont("Arial", 11.0f);
+        ctx->PaintWidthColorColors::Black);
+        ctx->SetFontSize(11.0f);
 
         // Display entry information based on type
         std::string displayText;
@@ -138,7 +138,7 @@ namespace UltraCanvas {
 
         // Draw details in smaller font
         ctx->SetFont("Arial", 9.0f);
-        ctx->SetTextColor(Color(100, 100, 100, 255));
+        ctx->PaintWidthColorColor(100, 100, 100, 255));
         DrawText(details, Point2D(contentRect.x, contentRect.y + 35));
 
         // Draw timestamp
@@ -149,11 +149,11 @@ namespace UltraCanvas {
 
     void UltraCanvasClipboardItem::DrawTypeIcon() {
         // Simple type indicators in thumbnail area
-        SetFillColor(Color(220, 220, 220, 255));
+        SetColor(Color(220, 220, 220, 255));
         DrawRectangle(thumbnailRect);
 
-        ctx->SetTextColor(Colors::Black);
-        ctx->SetFont("Arial", 10.0f);
+        ctx->PaintWidthColorColors::Black);
+        ctx->SetFontSize(10.0f);
 
         std::string icon;
         switch (entry.type) {
@@ -175,26 +175,26 @@ namespace UltraCanvas {
     void UltraCanvasClipboardItem::RenderActionButtons() {
         // Copy button
         Color copyColor = copyButtonRect.Contains(lastMousePos) ? Color(100, 200, 100, 255) : Color(150, 150, 150, 255);
-        SetFillColor(copyColor);
+        SetColor(copyColor);
         DrawRectangle(copyButtonRect);
-        ctx->SetTextColor(Colors::White);
-        ctx->SetFont("Arial", 10.0f);
+        ctx->PaintWidthColorColors::White);
+        ctx->SetFontSize(10.0f);
         DrawText("C", Point2D(copyButtonRect.x + 6, copyButtonRect.y + 14));
 
         // Save button
         Color saveColor = saveButtonRect.Contains(lastMousePos) ? Color(100, 150, 200, 255) : Color(150, 150, 150, 255);
-        SetFillColor(saveColor);
+        SetColor(saveColor);
         DrawRectangle(saveButtonRect);
-        ctx->SetTextColor(Colors::White);
-        ctx->SetFont("Arial", 10.0f);
+        ctx->PaintWidthColorColors::White);
+        ctx->SetFontSize(10.0f);
         DrawText("S", Point2D(saveButtonRect.x + 6, saveButtonRect.y + 14));
 
         // Delete button
         Color deleteColor = deleteButtonRect.Contains(lastMousePos) ? Color(200, 100, 100, 255) : Color(150, 150, 150, 255);
-        SetFillColor(deleteColor);
+        SetColor(deleteColor);
         DrawRectangle(deleteButtonRect);
-        ctx->SetTextColor(Colors::White);
-        ctx->SetFont("Arial", 10.0f);
+        ctx->PaintWidthColorColors::White);
+        ctx->SetFontSize(10.0f);
         DrawText("X", Point2D(deleteButtonRect.x + 6, deleteButtonRect.y + 14));
     }
 

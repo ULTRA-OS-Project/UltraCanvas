@@ -50,8 +50,8 @@ namespace UltraCanvas {
 
 // Initialize default style
     void UltraCanvasTextArea::ApplyDefaultStyle() {
-        style.fontFamily = "DejaVu Sans Mono";
-        style.fontSize = 14;
+        style.fontStyle.fontFamily = "DejaVu Sans Mono";
+        style.fontStyle.fontSize = 14;
         style.fontColor = {0, 0, 0, 255};
         style.lineHeight = 20;
         style.backgroundColor = {255, 255, 255, 255};
@@ -130,13 +130,13 @@ namespace UltraCanvas {
 // Draw background
     void UltraCanvasTextArea::DrawBackground(IRenderContext* context) {
         auto bounds = GetBounds();
-        context->SetFillColor(style.backgroundColor);
+        context->PaintWithColor(style.backgroundColor);
         context->FillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
 
         // Draw current line highlight
         if (highlightCurrentLine && currentLineIndex >= firstVisibleLine &&
             currentLineIndex < firstVisibleLine + maxVisibleLines) {
-            context->SetFillColor(style.currentLineHighlightColor);
+            context->PaintWithColor(style.currentLineHighlightColor);
             int lineY = bounds.y + style.padding + (currentLineIndex - firstVisibleLine) * style.lineHeight;
             int highlightX = style.showLineNumbers ? bounds.x + style.lineNumbersWidth : bounds.x;
             context->FillRectangle(highlightX, lineY,
@@ -149,7 +149,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::DrawBorder(IRenderContext* context) {
         auto bounds = GetBounds();
         if (style.borderWidth > 0) {
-            context->SetStrokeColor(style.borderColor);
+            context->PaintWithColor(style.borderColor);
             context->SetStrokeWidth(style.borderWidth);
             context->DrawRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
         }
@@ -160,19 +160,18 @@ namespace UltraCanvas {
         auto bounds = GetBounds();
 
         // Draw line numbers background
-        context->SetFillColor(style.lineNumbersBackgroundColor);
+        context->PaintWithColor(style.lineNumbersBackgroundColor);
         context->FillRectangle(bounds.x, bounds.y, style.lineNumbersWidth, bounds.height);
 
         // Draw line numbers separator
-        context->SetStrokeColor(style.borderColor);
+        context->PaintWithColor(style.borderColor);
         context->SetStrokeWidth(1);
         context->DrawLine(bounds.x + style.lineNumbersWidth, bounds.y,
                           bounds.x + style.lineNumbersWidth, bounds.y + bounds.height);
 
         // Draw line numbers text
-        context->SetFont(style.fontFamily, style.fontSize);
-        context->SetTextColor(style.lineNumbersColor);
-        context->SetFontWeight(FontWeight::Normal);
+        context->SetFontStyle(style.fontStyle);
+        context->PaintWithColor(style.lineNumbersColor);
 
         for (int i = 0; i < maxVisibleLines && firstVisibleLine + i < static_cast<int>(lines.size()); i++) {
             int lineNum = firstVisibleLine + i + 1;
@@ -183,10 +182,10 @@ namespace UltraCanvas {
 
             // Highlight current line number
             if (firstVisibleLine + i == currentLineIndex) {
-                context->SetTextColor(style.fontColor);
+                context->PaintWithColor(style.fontColor);
                 context->SetFontWeight(FontWeight::Bold);
             } else {
-                context->SetTextColor(style.lineNumbersColor);
+                context->PaintWithColor(style.lineNumbersColor);
                 context->SetFontWeight(FontWeight::Normal);
             }
             context->SetTextAlignment(TextAlignment::Right);
@@ -199,9 +198,8 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::DrawPlainText(IRenderContext* context) {
         auto bounds = GetBounds();
         context->PushState();
-        context->SetFont(style.fontFamily, style.fontSize);
-        context->SetTextColor(style.fontColor);
-        context->SetFontWeight(FontWeight::Normal);
+        context->SetFontStyle(style.fontStyle);
+        context->PaintWithColor(style.fontColor);
         context->SetClipRect(visibleTextArea);
 
         for (int i = 0; i < maxVisibleLines && firstVisibleLine + i < static_cast<int>(lines.size()); i++) {
@@ -227,7 +225,7 @@ namespace UltraCanvas {
         if (!syntaxTokenizer) return;
         context->PushState();
         context->SetClipRect(visibleTextArea);
-        context->SetFont(style.fontFamily, style.fontSize);
+        context->SetFontStyle(style.fontStyle);
 
         int textX = visibleTextArea.x;
         int textY = visibleTextArea.y;
@@ -242,7 +240,7 @@ namespace UltraCanvas {
                 for (const auto& token : tokens) {
                     // Set color based on token type
                     TokenStyle tokenStyle = GetStyleForTokenType(token.type);
-                    context->SetTextColor(tokenStyle.color);
+                    context->PaintWithColor(tokenStyle.color);
                     context->SetFontWeight(tokenStyle.bold ? FontWeight::Bold : FontWeight::Normal);
 
                     // Draw token text
@@ -298,7 +296,7 @@ namespace UltraCanvas {
         if (!HasSelection()) return;
 
         auto bounds = GetBounds();
-        context->SetFillColor(style.selectionColor);
+        context->PaintWithColor(style.selectionColor);
 
         int startPos = std::min(selectionStart, selectionEnd);
         int endPos = std::max(selectionStart, selectionEnd);
@@ -381,7 +379,7 @@ namespace UltraCanvas {
                                     std::max(1, static_cast<int>(lines.size()) - maxVisibleLines);
 
             // Draw scrollbar track
-            context->SetFillColor(style.scrollbarTrackColor);
+            context->PaintWithColor(style.scrollbarTrackColor);
             context->FillRectangle(scrollbarX, bounds.y, 15, scrollbarHeight);
 
             verticalScrollThumb.x = scrollbarX;
@@ -390,7 +388,7 @@ namespace UltraCanvas {
             verticalScrollThumb.height = thumbHeight;
 
             // Draw scrollbar thumb
-            context->SetFillColor(style.scrollbarColor);
+            context->PaintWithColor(style.scrollbarColor);
             context->FillRectangle(scrollbarX + 2, thumbY, 11, thumbHeight);
         }
 
@@ -407,7 +405,7 @@ namespace UltraCanvas {
             float thumbX = static_cast<float>(bounds.x) + scrollRatio * (scrollbarWidth - thumbWidth);
 
             // Draw scrollbar track
-            context->SetFillColor(style.scrollbarTrackColor);
+            context->PaintWithColor(style.scrollbarTrackColor);
             context->FillRectangle(static_cast<float>(bounds.x), scrollbarY, scrollbarWidth, 15.0f);
 
             horizontalScrollThumb.x = thumbX;
@@ -416,7 +414,7 @@ namespace UltraCanvas {
             horizontalScrollThumb.height = 15;
 
             // Draw scrollbar thumb
-            context->SetFillColor(style.scrollbarColor);
+            context->PaintWithColor(style.scrollbarColor);
             context->FillRectangle(thumbX, scrollbarY + 2, thumbWidth, 11.0f);
         }
     }
@@ -490,7 +488,7 @@ namespace UltraCanvas {
             auto context = GetRenderContext();
             if (context) {
                 context->PushState();
-                context->SetFont(style.fontFamily, style.fontSize);
+                context->SetFontStyle(style.fontStyle);
                 context->SetFontWeight(FontWeight::Normal);
 
                 // Use the built-in GetTextIndexForXY function
@@ -621,7 +619,7 @@ namespace UltraCanvas {
             auto context = GetRenderContext();
             if (context) {
                 context->PushState();
-                context->SetFont(style.fontFamily, style.fontSize);
+                context->SetFontStyle(style.fontStyle);
                 context->SetFontWeight(FontWeight::Normal);
 
                 draggedCol = std::max(0, context->GetTextIndexForXY(lines[draggedLine], relativeX, 0));
@@ -1154,7 +1152,7 @@ namespace UltraCanvas {
         SetHighlightSyntax(true);
         SetProgrammingLanguage(language);
         style.showLineNumbers = true;
-        style.fontFamily = "DejaVu Sans Mono";
+        style.fontStyle.fontFamily = "DejaVu Sans Mono";
         highlightCurrentLine = true;
 
         isNeedRecalculateVisibleArea = true;
@@ -1167,7 +1165,7 @@ namespace UltraCanvas {
         SetHighlightSyntax(true);
         SetProgrammingLanguage(language);
         style.showLineNumbers = true;
-        style.fontFamily = "DejaVu Sans Mono";
+        style.fontStyle.fontFamily = "DejaVu Sans Mono";
         highlightCurrentLine = true;
 
         isNeedRecalculateVisibleArea = true;
@@ -1178,7 +1176,7 @@ namespace UltraCanvas {
         ApplyDefaultStyle();
         SetHighlightSyntax(false);
         style.showLineNumbers = false;
-        style.fontFamily = "Arial";
+        style.fontStyle.fontFamily = "Arial";
         highlightCurrentLine = false;
 
         isNeedRecalculateVisibleArea = true;
@@ -1385,7 +1383,7 @@ namespace UltraCanvas {
         if (!context || text.empty()) return 0.0f;
 
         context->PushState();
-        context->SetFont(style.fontFamily, style.fontSize);
+        context->SetFontStyle(style.fontStyle);
         context->SetFontWeight(FontWeight::Normal);
 
         int width = context->GetTextWidth(text);

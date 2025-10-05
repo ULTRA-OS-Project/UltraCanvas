@@ -182,12 +182,12 @@ namespace UltraCanvas {
 
             // Draw shadow
             if (style.hasShadow) {
-                ctx->DrawShadow(listRect, style.shadowColor, style.shadowOffset);
+                //ctx->DrawShadow(listRect, style.shadowColor, style.shadowOffset);
             }
 
             // Draw list background
             std::cout << "RenderDropdownList UltraCanvas::DrawFilledRect" << std::endl;
-            ctx->DrawFilledRectangle(listRect, style.listBackgroundColor, style.listBorderColor, 1.0f);
+            ctx->DrawFilledRectangle(listRect, style.listBackgroundColor, 1.0, style.listBorderColor);
 
             // Render visible items
             int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
@@ -279,17 +279,17 @@ namespace UltraCanvas {
 
         // Draw shadow
         if (style.hasShadow && !dropdownOpen) {
-            ctx->DrawShadow(buttonRect, style.shadowColor, style.shadowOffset);
+            //ctx->DrawShadow(buttonRect, style.shadowColor, style.shadowOffset);
         }
 
         // Draw ONLY the button background (not full screen)
-        ctx->DrawFilledRectangle(buttonRect, bgColor, borderColor, style.borderWidth);
+        ctx->DrawFilledRectangle(buttonRect, bgColor, style.borderWidth, borderColor);
 
         // Draw text
         std::string displayText = GetDisplayText();
         if (!displayText.empty()) {
-            ctx->SetTextColor(textColor);
-            ctx->SetFont(style.fontFamily, style.fontSize);
+            ctx->PaintWithColor(textColor);
+            ctx->SetFontStyle({.fontFamily=style.fontFamily, .fontSize=style.fontSize});
 
             Point2Di textSize = ctx->MeasureText(displayText);
             float fontHeight = textSize.y;
@@ -306,12 +306,12 @@ namespace UltraCanvas {
         if (IsFocused() && !dropdownOpen) {
             Rect2Di focusRect(buttonRect.x + 1, buttonRect.y + 1,
                               buttonRect.width - 2, buttonRect.height - 2);
-            ctx->DrawFilledRectangle(focusRect, Colors::Transparent, style.focusBorderColor, 1.0f);
+            ctx->DrawFilledRectangle(focusRect, Colors::Transparent, 1.0, style.focusBorderColor);
         }
     }
 
     void UltraCanvasDropdown::RenderDropdownArrow(const Rect2Di &buttonRect, const Color &color, IRenderContext *ctx) {
-        ctx->SetFillColor(color);
+        ctx->PaintWithColor(color);
 
         float arrowX = buttonRect.x + buttonRect.width - (style.arrowSize + style.arrowSize);
         float arrowY = buttonRect.y + (buttonRect.height - style.arrowSize) / 2 + 2;
@@ -320,7 +320,7 @@ namespace UltraCanvas {
         float arrowCenterX = arrowX + style.arrowSize / 2;
         float arrowBottom = arrowY + style.arrowSize / 2;
 
-        ctx->SetStrokeColor(color);
+        ctx->PaintWithColor(color);
         ctx->SetStrokeWidth(1.0f);
 
         // Draw down arrow using lines
@@ -343,7 +343,7 @@ namespace UltraCanvas {
         if (item.separator) {
             // Draw separator line
             float sepY = itemY + style.itemHeight / 2;
-            ctx->SetStrokeColor(style.listBorderColor);
+            ctx->PaintWithColor(style.listBorderColor);
             ctx->DrawLine(Point2Di(itemRect.x + 4, sepY), Point2Di(itemRect.x + itemRect.width - 4, sepY));
             return;
         }
@@ -363,8 +363,8 @@ namespace UltraCanvas {
 
         // Draw text
         if (!item.text.empty()) {
-            ctx->SetTextColor(textColor);
-            ctx->SetFont("Arial", 12);
+            ctx->PaintWithColor(textColor);
+            ctx->SetFontSize(12);
 
             Point2Di textSize = ctx->MeasureText(item.text);
             float fontHeight = textSize.y;

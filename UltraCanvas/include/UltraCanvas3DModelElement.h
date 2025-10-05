@@ -460,7 +460,7 @@ private:
     }
     
     void DrawWireframe(const std::vector<Point2D>& vertices) {
-        ctx->SetStrokeColor(Colors::White);
+        ctx->PaintWidthColorColors::White);
         ctx->SetStrokeWidth(1.0f);
         
         // Draw edges based on indices
@@ -481,7 +481,7 @@ private:
     
     void DrawSolidFaces(const std::vector<Point2D>& vertices) {
         // Simple filled triangles
-        ctx->SetFillColor(Color(180, 180, 180, 255));
+        ctx->PaintWidthColorColor(180, 180, 180, 255));
         
         for (size_t i = 0; i < modelData.indices.size(); i += 3) {
             if (i + 2 < modelData.indices.size()) {
@@ -500,8 +500,8 @@ private:
     void DrawInfoOverlay() {
         if (!modelData.IsValid()) return;
         
-        ctx->SetTextColor(Colors::White);
-        ctx->SetFont("Arial", 10.0f);
+        ctx->PaintWidthColorColors::White);
+        ctx->SetFontSize(10.0f);
         
         std::string info = "Vertices: " + std::to_string(modelData.vertexCount) + 
                           " | Faces: " + std::to_string(modelData.faceCount);
@@ -513,8 +513,8 @@ private:
         Rect2D bounds = GetBounds();
         Point2D center = bounds.Center();
         
-        ctx->SetTextColor(Colors::White);
-        ctx->SetFont("Arial", 14.0f);
+        ctx->PaintWidthColorColors::White);
+        ctx->SetFontSize(14.0f);
         ctx->DrawText("Loading 3D Model...", Point2D(center.x - 50, center.y));
     }
     
@@ -522,12 +522,12 @@ private:
         Rect2D bounds = GetBounds();
         Point2D center = bounds.Center();
         
-        ctx->SetTextColor(Colors::Red);
-        ctx->SetFont("Arial", 12.0f);
+        ctx->PaintWidthColorColors::Red);
+        ctx->SetFontSize(12.0f);
         ctx->DrawText("Error loading model", Point2D(center.x - 60, center.y - 10));
         
         if (!errorMessage.empty()) {
-            ctx->SetFont("Arial", 10.0f);
+            ctx->SetFontSize(10.0f);
             ctx->DrawText(errorMessage, Point2D(center.x - 80, center.y + 10));
         }
     }
@@ -537,15 +537,15 @@ private:
         Point2D center = bounds.Center();
         
         // Draw placeholder cube outline
-        ctx->SetStrokeColor(Colors::Gray);
+        ctx->PaintWidthColorColors::Gray);
         ctx->SetStrokeWidth(2.0f);
         
         float size = 50;
         Rect2D cubeRect(center.x - size/2, center.y - size/2, size, size);
         UltraCanvas::DrawFilledRect(cubeRect, Colors::Transparent, Colors::Gray, 2.0f);
         
-        ctx->SetTextColor(Colors::Gray);
-        ctx->SetFont("Arial", 12.0f);
+        ctx->PaintWidthColorColors::Gray);
+        ctx->SetFontSize(12.0f);
         DrawText("3D Model", Point2D(center.x - 30, center.y + size/2 + 20));
     }
     

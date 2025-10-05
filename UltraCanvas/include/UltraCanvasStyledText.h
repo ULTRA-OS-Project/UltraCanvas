@@ -509,7 +509,7 @@ namespace UltraCanvas {
             Rect2D bounds = GetBounds();
 
             // Draw background
-            ctx->SetFillColor(Colors::White);
+            ctx->PaintWidthColorColors::White);
             ctx->DrawRectangle(bounds);
 
             // Set clipping to content area
@@ -686,11 +686,11 @@ namespace UltraCanvas {
         void RenderTextBlock(const TextBlock& block) {
             // Set font and color using framework functions
             ctx->SetFont(block.style.fontFamily, block.style.fontSize);
-            ctx->SetTextColor(block.style.textColor);
+            ctx->PaintWidthColorblock.style.textColor);
 
             // Draw background if specified
             if (block.style.backgroundColor.a > 0) {
-                ctx->SetFillColor(block.style.backgroundColor);
+                ctx->PaintWidthColorblock.style.backgroundColor);
                 ctx->DrawRectangle(block.bounds);
             }
 
@@ -714,7 +714,7 @@ namespace UltraCanvas {
                 // Draw decorations
                 if (block.style.textDecoration & static_cast<int>(TextDecoration::Underline)) {
                     float underlineY = textY + 2;
-                    ctx->SetStrokeColor(block.style.textColor);
+                    ctx->PaintWidthColorblock.style.textColor);
                     ctx->SetStrokeWidth(1.0f);
                     ctx->DrawLine(Point2D(textX, underlineY), Point2D(textX + GetTextWidth(lines[i].c_str()), underlineY));
                 }
@@ -724,7 +724,7 @@ namespace UltraCanvas {
         void RenderSelection() {
             if (!HasSelection()) return;
 
-            ctx->SetFillColor(selection.selectionColor);
+            ctx->PaintWidthColorselection.selectionColor);
 
             // Simple selection rendering - would need proper text position calculations
             size_t start = selection.GetStart();
@@ -736,7 +736,7 @@ namespace UltraCanvas {
         }
 
         void RenderSearchHighlights() {
-            ctx->SetFillColor(Color(255, 255, 0, 100)); // Yellow highlight
+            ctx->PaintWidthColorColor(255, 255, 0, 100)); // Yellow highlight
 
             for (const auto& result : searchResults) {
                 // Simple highlighting - would need proper text position calculations
@@ -754,7 +754,7 @@ namespace UltraCanvas {
             float caretY = lineRect.y;
             float caretHeight = lineRect.height;
 
-            ctx->SetStrokeColor(Colors::Black);
+            ctx->PaintWidthColorColors::Black);
             ctx->SetStrokeWidth(1.0f);
             ctx->DrawLine(Point2D(caretX, caretY), Point2D(caretX, caretY + caretHeight));
         }

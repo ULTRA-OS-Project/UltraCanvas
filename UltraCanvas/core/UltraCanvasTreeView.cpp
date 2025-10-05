@@ -338,7 +338,7 @@ namespace UltraCanvas {
         auto ctx = GetRenderContext();
 
         // Draw background / border
-        ctx->DrawFilledRectangle(GetBounds(), backgroundColor, Colors::Gray);
+        ctx->DrawFilledRectangle(GetBounds(), backgroundColor, 1.0, Colors::Gray);
 
         if (rootNode) {
             int currentY = GetY() - scrollOffsetY;
@@ -477,7 +477,7 @@ namespace UltraCanvas {
             int buttonY = nodeY + (rowHeight - 12) / 2;
 
             // Draw button background
-            ctx->DrawFilledRectangle(Rect2Di(buttonX, buttonY, 12, 12), Colors::LightGray, Colors::Gray);
+            ctx->DrawFilledRectangle(Rect2Di(buttonX, buttonY, 12, 12), Colors::LightGray, 1.0, Colors::Gray);
 
             // Draw +/- symbol
             ctx->DrawFilledRectangle(Rect2Di(buttonX + 3, buttonY + 5, 6, 2), Colors::Black);

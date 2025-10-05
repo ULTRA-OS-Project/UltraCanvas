@@ -144,12 +144,12 @@ public:
         ULTRACANVAS_RENDER_SCOPE();
         
         // Draw title
-        SetTextColor(Colors::Black);
+        SetColor(Colors::Black);
         SetFont("Arial", 24.0f);
         DrawText("UltraCanvas Multi-Entry Clipboard Demo", Point2D(20, 40));
         
         // Draw status
-        SetTextColor(Colors::Blue);
+        SetColor(Colors::Blue);
         SetFont("Arial", 12.0f);
         
         size_t entryCount = GetClipboardEntryCount();
@@ -157,7 +157,7 @@ public:
         DrawText(statusText, Point2D(20, 350));
         
         // Draw instructions
-        SetTextColor(Colors::Gray);
+        SetColor(Colors::Gray);
         SetFont("Arial", 11.0f);
         
         std::vector<std::string> instructions = {

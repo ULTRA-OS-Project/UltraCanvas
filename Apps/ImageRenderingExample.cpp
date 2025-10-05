@@ -201,7 +201,7 @@ public:
 
         // Draw demo title
         std::cout << "Drawing demo title..." << std::endl;
-        context->SetTextColor(Colors::White);
+        context->PaintWidthColorColors::White);
         context->SetFont("Arial", 24.0f);
         context->DrawText("UltraCanvas Linux Image Rendering Demo", Point2D(20, 60));
 
@@ -234,11 +234,11 @@ public:
         // Show image info if enabled
         if (showImageInfo) {
             std::cout << "Rendering image info..." << std::endl;
-            context->SetStrokeColor(Color(200, 200, 200, 255));
+            context->PaintWidthColorColor(200, 200, 200, 255));
             context->SetStrokeWidth(1.0f);
             context->ctx->DrawRectangle(Rect2D(50, 380, 900, 100));
 
-            context->SetTextColor(Colors::White);
+            context->PaintWidthColorColors::White);
             context->SetFont("Arial", 12.0f);
             context->DrawText("Image Information:", Point2D(60, 400));
 

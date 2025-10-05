@@ -109,27 +109,27 @@ public:
         ctx->PushState();
         
         // Draw background
-       ctx->SetFillColor(isSelected ? selectedColor : normalColor);
+       ctx->PaintWidthColorisSelected ? selectedColor : normalColor);
         ctx->DrawRectangle(GetX(), GetY(), GetWidth(), GetHeight());
         
         // Draw border
-        ctx->SetStrokeColor(borderColor);
+        ctx->PaintWidthColorborderColor);
         SetStrokeWidth(isSelected ? 3.0f : 1.0f);
         DrawRectangleBorder(GetX(), GetY(), GetWidth(), GetHeight());
         
         // Draw page number at bottom
-        SetTextColor(Colors::Black);
-        ctx->SetFont("Arial", 10.0f);
+        SetColor(Colors::Black);
+        ctx->SetFontSize(10.0f);
         std::string pageText = std::to_string(pageNumber);
         Point2D textPos(GetX() + GetWidth()/2 - 10, GetY() + GetHeight() - 10);
         DrawText(pageText, textPos);
         
         // Draw loading indicator if needed
         if (isLoading) {
-           ctx->SetFillColor(Color(255, 255, 255, 128));
+           ctx->PaintWidthColorColor(255, 255, 255, 128));
             ctx->DrawRectangle(GetX() + 5, GetY() + 20, GetWidth() - 10, GetHeight() - 40);
             
-            SetTextColor(Colors::Gray);
+            SetColor(Colors::Gray);
             ctx->SetFont("Arial", 8.0f);
             Point2D loadingPos(GetX() + GetWidth()/2 - 20, GetY() + GetHeight()/2);
             DrawText("Loading...", loadingPos);
@@ -412,36 +412,36 @@ public:
         ctx->PushState();
         
         // Draw background
-       ctx->SetFillColor(Color(240, 240, 240, 255));
+       ctx->PaintWidthColorColor(240, 240, 240, 255));
         ctx->DrawRectangle(GetX(), GetY(), GetWidth(), GetHeight());
         
         // Draw toolbar background
-       ctx->SetFillColor(Color(250, 250, 250, 255));
+       ctx->PaintWidthColorColor(250, 250, 250, 255));
         ctx->DrawRectangle(toolbarArea.x, toolbarArea.y, toolbarArea.width, toolbarArea.height);
         
         // Draw thumbnail panel background if visible
         if (isThumbnailPanelVisible) {
-           ctx->SetFillColor(Color(245, 245, 245, 255));
+           ctx->PaintWidthColorColor(245, 245, 245, 255));
             ctx->DrawRectangle(thumbnailArea.x, thumbnailArea.y, thumbnailArea.width, thumbnailArea.height);
             
             // Draw separator line
-            ctx->SetStrokeColor(Color(200, 200, 200, 255));
+            ctx->PaintWidthColorColor(200, 200, 200, 255));
             SetStrokeWidth(1.0f);
             ctx->DrawLine(Point2D(thumbnailArea.x + thumbnailArea.width, thumbnailArea.y),
                     Point2D(thumbnailArea.x + thumbnailArea.width, thumbnailArea.y + thumbnailArea.height));
         }
         
         // Draw page area background
-       ctx->SetFillColor(Color(255, 255, 255, 255));
+       ctx->PaintWidthColorColor(255, 255, 255, 255));
         ctx->DrawRectangle(pageArea.x, pageArea.y, pageArea.width, pageArea.height);
         
         // Draw status bar
-       ctx->SetFillColor(Color(230, 230, 230, 255));
+       ctx->PaintWidthColorColor(230, 230, 230, 255));
         ctx->DrawRectangle(statusArea.x, statusArea.y, statusArea.width, statusArea.height);
         
         // Draw status text
         if (isDocumentLoaded) {
-            SetTextColor(Colors::Black);
+            SetColor(Colors::Black);
             SetFont("Arial", 10.0f);
             
             std::string statusText = "Page " + std::to_string(currentPage) + 

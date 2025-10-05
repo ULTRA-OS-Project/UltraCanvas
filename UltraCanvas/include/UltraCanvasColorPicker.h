@@ -488,7 +488,7 @@ private:
     // ===== RENDERING METHODS =====
     void RenderCompactMode() {
         // Draw color swatch
-        ctx->SetFillColor(currentColor);
+        ctx->PaintWidthColorcurrentColor);
         UltraCanvas::DrawFilledRect(previewRect, currentColor, style.borderColor, 1.0f);
         
         // Draw popup if open
@@ -499,7 +499,7 @@ private:
     
     void RenderInlineMode() {
         // Draw background
-        ctx->SetFillColor(style.backgroundColor);
+        ctx->PaintWidthColorstyle.backgroundColor);
         UltraCanvas::DrawFilledRect(GetBounds(), style.backgroundColor, style.borderColor, 1.0f);
         
         // Draw color wheel/square
@@ -563,7 +563,7 @@ private:
             float angle = i * M_PI / 180.0f;
             HSVColor hueColor(i, 1.0f, 1.0f, 1.0f);
             
-            ctx->SetStrokeColor(hueColor.ToRGB());
+            ctx->PaintWidthColorhueColor.ToRGB());
             ctx->SetStrokeWidth(2.0f);
             
             float x1 = wheelCenter.x + (wheelRadius - 10) * cos(angle);
@@ -585,7 +585,7 @@ private:
         
         // Draw black overlay for value
         Color blackOverlay(0, 0, 0, static_cast<uint8_t>((1.0f - currentHSV.v) * 255));
-        ctx->SetFillColor(blackOverlay);
+        ctx->PaintWidthColorblackOverlay);
         ctx->DrawRectangle(svSquare);
     }
     
@@ -599,7 +599,7 @@ private:
         // Draw selection crosshair
         Point2D selectionPos = CalculateSelectionPosition();
         
-        ctx->SetStrokeColor(Colors::White);
+        ctx->PaintWidthColorColors::White);
         ctx->SetStrokeWidth(2.0f);
         
         // Draw crosshair
@@ -658,7 +658,7 @@ private:
             float hue = (i / rect.width) * 360.0f;
             HSVColor hueColor(hue, 1.0f, 1.0f);
             
-            ctx->SetStrokeColor(hueColor.ToRGB());
+            ctx->PaintWidthColorhueColor.ToRGB());
             ctx->SetStrokeWidth(1.0f);
             ctx->DrawLine(Point2D(rect.x + i, rect.y),
                     Point2D(rect.x + i, rect.y + rect.height));
@@ -703,8 +703,8 @@ private:
     }
     
     void RenderSliderHandle(const Point2D& position) {
-        ctx->SetFillColor(style.sliderHandleColor);
-        ctx->SetStrokeColor(Colors::Gray);
+        ctx->PaintWidthColorstyle.sliderHandleColor);
+        ctx->PaintWidthColorColors::Gray);
         ctx->SetStrokeWidth(1.0f);
         
         ctx->DrawCircle(position, 6.0f);
@@ -717,11 +717,11 @@ private:
         RenderTransparencyBackground(previewRect);
         
         // Draw current color
-        ctx->SetFillColor(currentColor);
+        ctx->PaintWidthColorcurrentColor);
         UltraCanvas::DrawFilledRect(previewRect, currentColor, style.borderColor, 1.0f);
         
         // Draw label
-        ctx->SetTextColor(style.textColor);
+        ctx->PaintWidthColorstyle.textColor);
         ctx->DrawText("Preview", Point2D(previewRect.x, previewRect.y + previewRect.height + 5));
     }
     
@@ -740,12 +740,12 @@ private:
             }
             
             // Draw color swatch
-            ctx->SetFillColor(color);
+            ctx->PaintWidthColorcolor);
             UltraCanvas::DrawFilledRect(swatch, color, style.borderColor, 1.0f);
             
             // Highlight if this is the current color
             if (color == currentColor) {
-                ctx->SetStrokeColor(Colors::Black);
+                ctx->PaintWidthColorColors::Black);
                 ctx->SetStrokeWidth(2.0f);
                 ctx->DrawRectangle(swatch);
             }
@@ -772,7 +772,7 @@ private:
         for (int y = 0; y < static_cast<int>(rect.height); y += checkSize) {
             for (int x = 0; x < static_cast<int>(rect.width); x += checkSize) {
                 bool isLight = ((x / checkSize) + (y / checkSize)) % 2 == 0;
-               ctx->SetFillColor(isLight ? light : dark);
+               ctx->PaintWidthColorisLight ? light : dark);
                 
                 Rect2D checkRect(rect.x + x, rect.y + y, checkSize, checkSize);
                 ctx->DrawRectangle(checkRect);
@@ -1211,7 +1211,7 @@ inline std::shared_ptr<UltraCanvasColorPicker> CreateCompactColorPicker(
     const std::string& identifier, long id, long x, long y, const Color& initialColor = Colors::Red) {
     auto picker = CreateColorPicker(identifier, id, x, y, 28, 28);
     picker->SetStyle(ColorPickerStyle::Compact());
-    picker->SetColor(initialColor);
+    picker->PaintWidthColorinitialColor);
     return picker;
 }
 
@@ -1219,7 +1219,7 @@ inline std::shared_ptr<UltraCanvasColorPicker> CreateInlineColorPicker(
     const std::string& identifier, long id, long x, long y, const Color& initialColor = Colors::Red) {
     auto picker = CreateColorPicker(identifier, id, x, y, 400, 300);
     picker->SetStyle(ColorPickerStyle::Inline());
-    picker->SetColor(initialColor);
+    picker->PaintWidthColorinitialColor);
     return picker;
 }
 
@@ -1261,7 +1261,7 @@ public:
     std::shared_ptr<UltraCanvasColorPicker> Build() {
         auto picker = CreateColorPicker(identifier, id, x, y, w, h);
         picker->SetStyle(style);
-        picker->SetColor(initialColor);
+        picker->PaintWidthColorinitialColor);
         
         for (const auto& palette : palettes) {
             picker->AddPalette(palette);

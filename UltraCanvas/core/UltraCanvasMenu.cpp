@@ -77,16 +77,9 @@ namespace UltraCanvas {
 
             // Render background
             Rect2Di bounds = GetBounds();
-            ctx->SetFillColor(style.backgroundColor);
-            ctx->FillRectangle(bounds);
+            ctx->DrawFilledRectangle(bounds, style.backgroundColor, style.borderWidth, style.borderColor);
 
             // Draw border
-            if (style.borderWidth > 0) {
-                ctx->SetStrokeColor(style.borderColor);
-                ctx->SetStrokeWidth(style.borderWidth);
-                ctx->DrawRectangle(bounds);
-            }
-
             // Render items
             for (int i = 0; i < static_cast<int>(items.size()); ++i) {
                 if (items[i].visible) {
@@ -122,15 +115,7 @@ namespace UltraCanvas {
 
         // Render background
         Rect2Di bounds = GetBounds();
-        ctx->SetFillColor(style.backgroundColor);
-        ctx->FillRectangle(bounds);
-
-        // Draw border
-        if (style.borderWidth > 0) {
-            ctx->SetStrokeColor(style.borderColor);
-            ctx->SetStrokeWidth(style.borderWidth);
-            ctx->DrawRectangle(bounds);
-        }
+        ctx->DrawFilledRectangle(bounds, style.backgroundColor, style.borderWidth, style.borderColor);
 
         // Render items
         for (int i = 0; i < static_cast<int>(items.size()); ++i) {
@@ -421,14 +406,12 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::RenderItem(int index, const MenuItemData &item, IRenderContext *ctx) {
         if (!item.visible) return;
-
         Rect2Di itemBounds = GetItemBounds(index);
 
         // Draw item background
         Color bgColor = GetItemBackgroundColor(index, item);
         if (bgColor.a > 0) {
-            ctx->SetFillColor(bgColor);
-            ctx->FillRectangle(itemBounds);
+            ctx->DrawFilledRectangle(itemBounds, bgColor);
         }
 
         // Handle separator
@@ -461,7 +444,7 @@ namespace UltraCanvas {
                               (index == hoveredIndex ? style.hoverTextColor : style.textColor) :
                               style.disabledTextColor;
 
-            ctx->SetTextColor(textColor);
+            ctx->PaintWithColor(textColor);
             ctx->DrawText(item.label, Point2Di(currentX, textY));
         }
 
@@ -469,7 +452,7 @@ namespace UltraCanvas {
         if (!item.shortcut.empty() && orientation == MenuOrientation::Vertical) {
             int shortcutX = itemBounds.x + itemBounds.width - style.paddingRight -
                               ctx->GetTextWidth(item.shortcut.c_str());
-            ctx->SetTextColor(style.shortcutColor);
+            ctx->PaintWithColor(style.shortcutColor);
             ctx->DrawText(item.shortcut, Point2Di(shortcutX, textY));
         }
 
@@ -573,7 +556,7 @@ namespace UltraCanvas {
         int startX = bounds.x + style.paddingLeft;
         int endX = bounds.x + bounds.width - style.paddingRight;
 
-        ctx->SetStrokeColor(style.separatorColor);
+        ctx->PaintWithColor(style.separatorColor);
         ctx->SetStrokeWidth(1.0f);
         ctx->DrawLine(Point2Di(startX, centerY), Point2Di(endX, centerY));
     }
@@ -581,12 +564,12 @@ namespace UltraCanvas {
     void UltraCanvasMenu::RenderCheckbox(const MenuItemData &item, const Point2Di &position, IRenderContext* ctx) {
         Rect2Di checkRect(position.x, position.y, style.iconSize, style.iconSize);
 
-        ctx->SetStrokeColor(style.borderColor);
+        ctx->PaintWithColor(style.borderColor);
         ctx->SetStrokeWidth(1.0f);
         ctx->DrawRectangle(checkRect);
 
         if (item.checked) {
-            ctx->SetStrokeColor(style.textColor);
+            ctx->PaintWithColor(style.textColor);
             ctx->SetStrokeWidth(2.0f);
 
             if (item.type == MenuItemType::Checkbox) {
@@ -606,7 +589,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::RenderSubmenuArrow(const Point2Di &position, IRenderContext* ctx) {
-        ctx->SetStrokeColor(style.textColor);
+        ctx->PaintWithColor(style.textColor);
         ctx->SetStrokeWidth(1.5f);
 
         if (orientation == MenuOrientation::Vertical) {
@@ -632,14 +615,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::RenderKeyboardHighlight(const Rect2Di &bounds, IRenderContext* ctx) {
-        ctx->SetStrokeColor(style.selectedColor);
+        ctx->PaintWithColor(style.selectedColor);
         ctx->SetStrokeWidth(2.0f);
         ctx->DrawRectangle(bounds);
     }
 
     void UltraCanvasMenu::RenderShadow(IRenderContext *ctx) {
         Rect2Di bounds = GetBounds();
-        ctx->SetFillColor(style.shadowColor);
+        ctx->PaintWithColor(style.shadowColor);
         ctx->DrawRectangle(bounds.x + style.shadowOffset.x, bounds.y + style.shadowOffset.y, bounds.width, bounds.height);
     }
 

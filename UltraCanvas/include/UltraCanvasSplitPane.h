@@ -489,17 +489,17 @@ private:
     }
     
     void DrawSimpleSplitter(const Rect2D& bounds, const Color& color) {
-        ctx->SetFillColor(color);
+        ctx->PaintWidthColorcolor);
         ctx->DrawRectangle(bounds);
     }
     
     void DrawRaisedSplitter(const Rect2D& bounds) {
         // Draw 3D raised effect
-        ctx->SetFillColor(splitterColor);
+        ctx->PaintWidthColorsplitterColor);
         ctx->DrawRectangle(bounds);
         
         // Highlight on top/left
-        ctx->SetStrokeColor(Color(255, 255, 255));
+        ctx->PaintWidthColorColor(255, 255, 255));
         ctx->SetStrokeWidth(1);
         if (orientation == SplitOrientation::Horizontal) {
             ctx->DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x, bounds.y + bounds.height));
@@ -508,7 +508,7 @@ private:
         }
         
         // Shadow on bottom/right
-        ctx->SetStrokeColor(Color(128, 128, 128));
+        ctx->PaintWidthColorColor(128, 128, 128));
         if (orientation == SplitOrientation::Horizontal) {
             ctx->DrawLine(Point2D(bounds.x + bounds.width - 1, bounds.y),
                     Point2D(bounds.x + bounds.width - 1, bounds.y + bounds.height));
@@ -520,11 +520,11 @@ private:
     
     void DrawSunkenSplitter(const Rect2D& bounds) {
         // Draw 3D sunken effect
-        ctx->SetFillColor(splitterColor);
+        ctx->PaintWidthColorsplitterColor);
         ctx->DrawRectangle(bounds);
         
         // Shadow on top/left
-        ctx->SetStrokeColor(Color(128, 128, 128));
+        ctx->PaintWidthColorColor(128, 128, 128));
         ctx->SetStrokeWidth(1);
         if (orientation == SplitOrientation::Horizontal) {
             ctx->DrawLine(Point2D(bounds.x, bounds.y), Point2D(bounds.x, bounds.y + bounds.height));
@@ -533,7 +533,7 @@ private:
         }
         
         // Highlight on bottom/right
-        ctx->SetStrokeColor(Color(255, 255, 255));
+        ctx->PaintWidthColorColor(255, 255, 255));
         if (orientation == SplitOrientation::Horizontal) {
             ctx->DrawLine(Point2D(bounds.x + bounds.width - 1, bounds.y),
                     Point2D(bounds.x + bounds.width - 1, bounds.y + bounds.height));
@@ -544,11 +544,11 @@ private:
     }
     
     void DrawFlatSplitter(const Rect2D& bounds, const Color& color) {
-        ctx->SetFillColor(color);
+        ctx->PaintWidthColorcolor);
         ctx->DrawRectangle(bounds);
         
         // Draw subtle border
-        ctx->SetStrokeColor(splitterLineColor);
+        ctx->PaintWidthColorsplitterLineColor);
         ctx->SetStrokeWidth(1);
         ctx->DrawRectangle(bounds);
     }
@@ -560,7 +560,7 @@ private:
     
     void DrawResizeHandle(const Rect2D& bounds) {
         // Draw dots or lines to indicate resize capability
-        ctx->SetFillColor(splitterLineColor);
+        ctx->PaintWidthColorsplitterLineColor);
         
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         

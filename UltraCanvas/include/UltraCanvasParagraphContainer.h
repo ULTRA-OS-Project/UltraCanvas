@@ -582,7 +582,7 @@ private:
             
             // Set font and color
             ctx->SetFont(run.fontFamily, run.fontSize);
-            ctx->SetTextColor(run.textColor);
+            ctx->PaintWidthColorrun.textColor);
             
             // Draw background if needed
             if (run.backgroundColor.a > 0) {
@@ -598,12 +598,12 @@ private:
                 Point2D textSize = GetRenderContext()->MeasureText(run.text);
                 
                 if (run.hasUnderline) {
-                    ctx->SetStrokeColor(run.textColor);
+                    ctx->PaintWidthColorrun.textColor);
                     ctx->DrawLine(Point2D(currentX, currentY + 2), Point2D(currentX + textSize.x, currentY + 2));
                 }
                 
                 if (run.hasStrikethrough) {
-                    ctx->SetStrokeColor(run.textColor);
+                    ctx->PaintWidthColorrun.textColor);
                     ctx->DrawLine(Point2D(currentX, currentY - run.fontSize/3), Point2D(currentX + textSize.x, currentY - run.fontSize/3));
                 }
             }
@@ -641,7 +641,7 @@ private:
             int cursorY = yOffset;
             int cursorHeight = GetLineHeight();
             
-            ctx->SetStrokeColor(style.cursorColor);
+            ctx->PaintWidthColorstyle.cursorColor);
             ctx->SetStrokeWidth(style.cursorWidth);
             ctx->DrawLine(Point2D(cursorX, cursorY), Point2D(cursorX, cursorY + cursorHeight));
         }
@@ -973,7 +973,7 @@ inline std::shared_ptr<UltraCanvasParagraphContainer> CreateRichTextViewer(
 5. **Consistent naming** - follows UltraCanvas conventions
 
 ✅ **Linux Integration:**
-- Uses ctx->DrawRectangle(), DrawText(), ctx->SetFillColor() etc.
+- Uses ctx->DrawRectangle(), DrawText(), ctx->PaintWidthColor) etc.
 - All calls go through LinuxRenderContext automatically
 - No platform-specific code needed
 - Works with X11 event conversion

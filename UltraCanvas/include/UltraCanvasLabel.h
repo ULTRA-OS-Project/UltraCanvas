@@ -16,9 +16,7 @@ namespace UltraCanvas {
 // ===== LABEL STYLE CONFIGURATION =====
     struct LabelStyle {
         // Text appearance
-        std::string fontFamily = "Arial";
-        float fontSize = 12.0f;
-        FontWeight fontWeight = FontWeight::Normal;
+        FontStyle fontStyle;
         Color textColor = Colors::Black;
 
         // Background and border
@@ -52,30 +50,30 @@ namespace UltraCanvas {
 
         static LabelStyle HeaderStyle() {
             LabelStyle style;
-            style.fontSize = 18.0f;
-            style.fontWeight = FontWeight::Bold;
+            style.fontStyle.fontSize = 18.0f;
+            style.fontStyle.fontWeight = FontWeight::Bold;
             style.textColor = Color(40, 40, 40, 255);
             return style;
         }
 
         static LabelStyle SubHeaderStyle() {
             LabelStyle style;
-            style.fontSize = 14.0f;
-            style.fontWeight = FontWeight::Bold;
+            style.fontStyle.fontSize = 14.0f;
+            style.fontStyle.fontWeight = FontWeight::Bold;
             style.textColor = Color(60, 60, 60, 255);
             return style;
         }
 
         static LabelStyle CaptionStyle() {
             LabelStyle style;
-            style.fontSize = 10.0f;
+            style.fontStyle.fontSize = 10.0f;
             style.textColor = Color(120, 120, 120, 255);
             return style;
         }
 
         static LabelStyle StatusStyle() {
             LabelStyle style;
-            style.fontSize = 11.0f;
+            style.fontStyle.fontSize = 11.0f;
             style.textColor = Color(100, 100, 100, 255);
             style.paddingLeft = 8.0f;
             style.paddingRight = 8.0f;
@@ -160,9 +158,9 @@ namespace UltraCanvas {
 
         // ===== CONVENIENCE STYLE SETTERS =====
         void SetFont(const std::string& fontFamily, float fontSize = 12.0f, FontWeight weight = FontWeight::Normal) {
-            style.fontFamily = fontFamily;
-            style.fontSize = fontSize;
-            style.fontWeight = weight;
+            style.fontStyle.fontFamily = fontFamily;
+            style.fontStyle.fontSize = fontSize;
+            style.fontStyle.fontWeight = weight;
             needsLayout = true;
 
             if (style.autoResize) {
@@ -171,14 +169,14 @@ namespace UltraCanvas {
         }
 
         void SetFontSize(float fontSize) {
-            style.fontSize = fontSize;
+            style.fontStyle.fontSize = fontSize;
             if (style.autoResize) {
                 AutoResize();
             }
         }
 
         void SetFontWeight(const FontWeight w) {
-            style.fontWeight = w;
+            style.fontStyle.fontWeight = w;
             if (style.autoResize) {
                 AutoResize();
             }
@@ -236,11 +234,11 @@ namespace UltraCanvas {
             auto ctx = GetRenderContext();
             if (text.empty()) {
                 preferredSize = Point2Di(style.paddingLeft + style.paddingRight + 20,
-                                        style.paddingTop + style.paddingBottom + style.fontSize + 4);
+                                        style.paddingTop + style.paddingBottom + style.fontStyle.fontSize + 4);
             } else {
                 // Set text style for measurement
                 ctx->PushState();
-                ctx->SetFont(style.fontFamily, style.fontSize);
+                ctx->SetFontStyle(style.fontStyle);
 
                 Point2Di textSize = ctx->MeasureText(text);
                 preferredSize = Point2Di(
@@ -276,7 +274,7 @@ namespace UltraCanvas {
             if (!text.empty()) {
                 // Set text style for measurement
                 ctx->PushState();
-                ctx->SetFont(style.fontFamily, style.fontSize);
+                ctx->SetFontStyle(style.fontStyle);
 
                 Point2Di textSize = ctx->MeasureText(text);
 
@@ -331,7 +329,7 @@ namespace UltraCanvas {
 
             // Draw background
             if (style.backgroundColor.a > 0) {
-               ctx->SetFillColor(style.backgroundColor);
+                ctx->PaintWithColor(style.backgroundColor);
                 if (style.borderRadius > 0) {
                     ctx->FillRoundedRectangle(bounds, style.borderRadius);
                 } else {
@@ -342,7 +340,7 @@ namespace UltraCanvas {
 
             // Draw border
             if (style.borderWidth > 0 && style.borderColor.a > 0) {
-                ctx->SetStrokeColor(style.borderColor);
+                ctx->PaintWithColor(style.borderColor);
                 ctx->SetStrokeWidth(style.borderWidth);
                 if (style.borderRadius > 0) {
                     ctx->DrawRoundedRectangle(bounds, style.borderRadius);
@@ -355,8 +353,8 @@ namespace UltraCanvas {
             if (!text.empty()) {
                 // Draw shadow if enabled
                 if (style.hasShadow) {
-                    ctx->SetTextColor(style.shadowColor);
-                    ctx->SetFont(style.fontFamily, style.fontSize);
+                    ctx->PaintWithColor(style.shadowColor);
+                    ctx->SetFontStyle(style.fontStyle);
                     Rect2Di shadowRect = textArea;
                     shadowRect.x += style.shadowOffset.x,
                     shadowRect.y += style.shadowOffset.y;
@@ -364,14 +362,14 @@ namespace UltraCanvas {
                 }
 
                 // Draw main text
-                ctx->SetTextColor(style.textColor);
-                ctx->SetFont(style.fontFamily, style.fontSize);
+                ctx->PaintWithColor(style.textColor);
+                ctx->SetFontStyle(style.fontStyle);
                 ctx->DrawTextInRect(text, textArea);
             }
 
             // Draw selection/focus indicator if needed
             if (IsFocused()) {
-                ctx->SetStrokeColor(Color(0, 120, 215, 200));
+                ctx->PaintWithColor(Color(0, 120, 215, 200));
                 ctx->SetStrokeWidth(2.0f);
                 ctx->DrawRectangle(bounds);
             }
@@ -528,49 +526,3 @@ namespace UltraCanvas {
     }
 
 } // namespace UltraCanvas
-
-/*
-=== USAGE EXAMPLES ===
-
-// Basic label
-auto label1 = CreateLabel("status", 1001, 10, 10, 200, 25, "Status: Ready");
-
-// Auto-sizing label
-auto label2 = CreateAutoLabel("title", 1002, 10, 50, "Application Title");
-
-// Header label
-auto label3 = CreateHeaderLabel("header", 1003, 10, 100, 400, 30, "Main Header");
-
-// Builder pattern
-auto label4 = CreateLabelBuilder("custom", 1004, 10, 150)
-    .SetText("Custom Label")
-    .SetFont("Arial", 14.0f)
-    .SetTextColor(Colors::Blue)
-    .SetBackgroundColor(Color(240, 240, 240, 255))
-    .SetAlignment(TextAlignment::Center)
-    .SetPadding(8.0f)
-    .OnClick([]() { std::cout << "Label clicked!" << std::endl; })
-    .Build();
-
-// Style variants
-auto statusLabel = CreateLabel("status", 1005, 10, 200, 300, 20);
-statusLabel->SetStyle(LabelStyle::Status());
-statusLabel->SetText("Application Status: Running");
-
-=== KEY FEATURES ===
-
-✅ **Modern C++ Design**: Smart pointers, RAII, proper inheritance
-✅ **UltraCanvas Integration**: Uses StandardProperties, unified rendering
-✅ **Rich Styling**: Fonts, colors, alignment, padding, borders, shadows
-✅ **Auto-sizing**: Automatic size calculation based on text content
-✅ **Multiple Alignment**: Horizontal and vertical text alignment options
-✅ **Word Wrapping**: Optional text wrapping within label bounds
-✅ **Event Handling**: Click, hover, focus events with callbacks
-✅ **Factory Functions**: Easy creation with CreateLabel() and variants
-✅ **Builder Pattern**: Fluent interface for complex configuration
-✅ **Style Presets**: Header, SubHeader, Caption, Status styles
-✅ **Cross-Platform**: Uses unified rendering system
-
-This implementation provides a complete, production-ready label control
-that integrates seamlessly with the UltraCanvas framework!
-*/

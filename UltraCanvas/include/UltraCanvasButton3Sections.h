@@ -384,9 +384,9 @@ private:
         
         // Draw background
         if (appearance.cornerRadius > 0.0f) {
-            ctx->DrawRoundedRectangle(bounds, appearance.cornerRadius, bgColor, appearance.borderColor, appearance.borderWidth);
+            ctx->DrawRoundedRectangle(bounds, appearance.cornerRadius, bgColor, appearance.borderWidth, appearance.borderColor);
         } else {
-            ctx->DrawFilledRectangle(bounds, bgColor, appearance.borderColor, appearance.borderWidth);
+            ctx->DrawFilledRectangle(bounds, bgColor, appearance.borderWidth, appearance.borderColor);
         }
     }
     
@@ -395,7 +395,7 @@ private:
         
         // Draw section background if specified
         if (section.backgroundColor.a > 0) {
-            ctx->SetFillColor(section.backgroundColor);
+            ctx->PaintWidthColorsection.backgroundColor);
             ctx->DrawRectangle(rect);
         }
         
@@ -419,7 +419,7 @@ private:
         
         // Draw section border if specified
         if (section.borderColor.a > 0) {
-            ctx->SetStrokeColor(section.borderColor);
+            ctx->PaintWidthColorsection.borderColor);
             ctx->SetStrokeWidth(1.0f);
             ctx->DrawRectangle(rect);
         }
@@ -437,7 +437,7 @@ private:
             textColor = Color(textColor.r, textColor.g, textColor.b, textColor.a / 2);
         }
         
-        ctx->SetTextColor(textColor);
+        ctx->PaintWidthColortextColor);
         ctx->DrawText(section.content, textPos);
     }
     
@@ -453,9 +453,9 @@ private:
         
         // Draw icon with opacity based on enabled state
         float opacity = IsEnabled() ? 1.0f : 0.5f;
-        SetGlobalAlpha(opacity);
+        SetAlpha(opacity);
         ctx->DrawImage(section.content, Rect2Di(iconPos.x, iconPos.y, iconSize, iconSize));
-        SetGlobalAlpha(1.0f);
+        SetAlpha(1.0f);
     }
     
     Point2Df CalculateTextPosition(const ButtonSection& section, const Rect2Di& rect) {
@@ -488,7 +488,7 @@ private:
         if (leftRect.width > 0 && centerRect.width > 0) {
             // Left-center separator
             float x = leftRect.x + leftRect.width;
-            ctx->SetStrokeColor(appearance.separatorColor);
+            ctx->PaintWidthColorappearance.separatorColor);
             ctx->SetStrokeWidth(appearance.separatorWidth);
             ctx->DrawLine(x, GetY() + 2, x, GetY() + GetHeight() - 2);
         }
@@ -496,7 +496,7 @@ private:
         if (centerRect.width > 0 && rightRect.width > 0) {
             // Center-right separator
             float x = centerRect.x + centerRect.width;
-            ctx->SetStrokeColor(appearance.separatorColor);
+            ctx->PaintWidthColorappearance.separatorColor);
             ctx->SetStrokeWidth(appearance.separatorWidth);
             ctx->DrawLine(x, GetY() + 2, x, GetY() + GetHeight() - 2);
         }
@@ -507,7 +507,7 @@ private:
         shadowRect.x += appearance.shadowOffset.x;
         shadowRect.y += appearance.shadowOffset.y;
         
-        ctx->SetFillColor(appearance.shadowColor);
+        ctx->PaintWidthColorappearance.shadowColor);
         if (appearance.cornerRadius > 0.0f) {
             ctx->DrawRoundedRectangle(shadowRect, appearance.cornerRadius);
         } else {

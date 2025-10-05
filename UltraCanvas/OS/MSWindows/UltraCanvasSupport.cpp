@@ -366,7 +366,7 @@ void DrawRectWindows(float x, float y, float w, float h, float r, float g, float
     D2D1_COLOR_F color = ColorToD2D1(r, g, b, a);
     
     if (g_windowsRenderContext->currentBrush) {
-        g_windowsRenderContext->currentBrush->SetColor(color);
+        g_windowsRenderContext->currentBrush->PaintWidthColorcolor);
         g_windowsRenderContext->renderTarget->DrawRectangle(rect, g_windowsRenderContext->currentBrush,
                                                            g_windowsRenderContext->currentStrokeWidth);
     }
@@ -379,7 +379,7 @@ void FillRectWindows(float x, float y, float w, float h, float r, float g, float
     D2D1_COLOR_F color = ColorToD2D1(r, g, b, a);
     
     if (g_windowsRenderContext->currentBrush) {
-        g_windowsRenderContext->currentBrush->SetColor(color);
+        g_windowsRenderContext->currentBrush->PaintWidthColorcolor);
         g_windowsRenderContext->renderTarget->FillRectangle(rect, g_windowsRenderContext->currentBrush);
     }
 }
@@ -392,7 +392,7 @@ void DrawLineWindows(float x1, float y1, float x2, float y2, float r, float g, f
     D2D1_COLOR_F color = ColorToD2D1(r, g, b, a);
     
     if (g_windowsRenderContext->currentBrush) {
-        g_windowsRenderContext->currentBrush->SetColor(color);
+        g_windowsRenderContext->currentBrush->PaintWidthColorcolor);
         g_windowsRenderContext->renderTarget->DrawLine(point1, point2, g_windowsRenderContext->currentBrush,
                                                       g_windowsRenderContext->currentStrokeWidth);
     }
@@ -405,7 +405,7 @@ void DrawCircleWindows(float cx, float cy, float radius, float r, float g, float
     D2D1_COLOR_F color = ColorToD2D1(r, g, b, a);
     
     if (g_windowsRenderContext->currentBrush) {
-        g_windowsRenderContext->currentBrush->SetColor(color);
+        g_windowsRenderContext->currentBrush->PaintWidthColorcolor);
         g_windowsRenderContext->renderTarget->DrawEllipse(ellipse, g_windowsRenderContext->currentBrush,
                                                          g_windowsRenderContext->currentStrokeWidth);
     }
@@ -418,7 +418,7 @@ void FillCircleWindows(float cx, float cy, float radius, float r, float g, float
     D2D1_COLOR_F color = ColorToD2D1(r, g, b, a);
     
     if (g_windowsRenderContext->currentBrush) {
-        g_windowsRenderContext->currentBrush->SetColor(color);
+        g_windowsRenderContext->currentBrush->PaintWidthColorcolor);
         g_windowsRenderContext->renderTarget->FillEllipse(ellipse, g_windowsRenderContext->currentBrush);
     }
 }
@@ -441,7 +441,7 @@ void DrawTextWithFontWindows(const char* text, const char* fontFamily, float fon
     }
     
     if (g_windowsRenderContext->currentTextFormat && g_windowsRenderContext->currentBrush) {
-        g_windowsRenderContext->currentBrush->SetColor(color);
+        g_windowsRenderContext->currentBrush->PaintWidthColorcolor);
         
         D2D1_RECT_F layoutRect = D2D1::RectF(x, y, x + 1000, y + 100); // Large enough for single line
         g_windowsRenderContext->renderTarget->DrawTextW(wText.c_str(), static_cast<UINT32>(wText.length()),

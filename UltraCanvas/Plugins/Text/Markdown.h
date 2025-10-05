@@ -568,7 +568,7 @@ public:
         
         // Draw background
         if (style.backgroundColor.a > 0) {
-           ctx->SetFillColor(style.backgroundColor);
+           ctx->PaintWidthColorstyle.backgroundColor);
             FillRect(bounds);
         }
         
@@ -812,7 +812,7 @@ private:
         int level = std::clamp(element->level - 1, 0, 5);
         
         SetFont(style.fontFamily, style.headerSizes[level]);
-        SetTextColor(style.headerColors[level]);
+        SetColor(style.headerColors[level]);
         SetFontWeight(FontWeight::Bold);
         
         Point2D position = GetAdjustedPosition(element->bounds);
@@ -821,7 +821,7 @@ private:
     
     void RenderParagraph(std::shared_ptr<MarkdownElement> element) {
         SetFont(style.fontFamily, style.fontSize);
-        SetTextColor(style.textColor);
+        SetColor(style.textColor);
         SetFontWeight(FontWeight::Normal);
         
         Point2D position = GetAdjustedPosition(element->bounds);
@@ -832,17 +832,17 @@ private:
         Rect2D adjustedBounds = GetAdjustedBounds(element->bounds);
         
         // Draw background
-       ctx->SetFillColor(style.codeBlockBackgroundColor);
+       ctx->PaintWidthColorstyle.codeBlockBackgroundColor);
         FillRect(adjustedBounds);
         
         // Draw border
-        ctx->SetStrokeColor(style.codeBlockBorderColor);
+        ctx->PaintWidthColorstyle.codeBlockBorderColor);
         SetStrokeWidth(style.codeBlockBorderWidth);
         DrawRect(adjustedBounds);
         
         // Draw text
         SetFont(style.codeFont, style.codeFontSize);
-        SetTextColor(style.codeTextColor);
+        SetColor(style.codeTextColor);
         
         Rect2D textBounds = Rect2D(
             adjustedBounds.x + style.codeBlockPadding,
@@ -858,7 +858,7 @@ private:
         Rect2D adjustedBounds = GetAdjustedBounds(element->bounds);
         
         // Draw left border
-        ctx->SetStrokeColor(style.quoteBorderColor);
+        ctx->PaintWidthColorstyle.quoteBorderColor);
         SetStrokeWidth(style.quoteBorderWidth);
         ctx->DrawLine(
             Point2D(adjustedBounds.x, adjustedBounds.y),
@@ -867,7 +867,7 @@ private:
         
         // Draw text
         SetFont(style.fontFamily, style.fontSize);
-        SetTextColor(style.quoteTextColor);
+        SetColor(style.quoteTextColor);
         SetFontStyle(FontStyle::Italic);
         
         Rect2D textBounds = Rect2D(
@@ -885,7 +885,7 @@ private:
         
         // Draw bullet or number
         SetFont(style.fontFamily, style.fontSize);
-        SetTextColor(style.bulletColor);
+        SetColor(style.bulletColor);
         
         if (element->ordered) {
             // Would need to track list item numbers
@@ -895,14 +895,14 @@ private:
         }
         
         // Draw text
-        SetTextColor(style.textColor);
+        SetColor(style.textColor);
         DrawTextWrapped(element->text, GetAdjustedBounds(element->bounds), style.lineHeight);
     }
     
     void RenderHorizontalRule(std::shared_ptr<MarkdownElement> element) {
         Rect2D adjustedBounds = GetAdjustedBounds(element->bounds);
         
-        ctx->SetStrokeColor(style.horizontalRuleColor);
+        ctx->PaintWidthColorstyle.horizontalRuleColor);
         SetStrokeWidth(style.horizontalRuleWidth);
         ctx->DrawLine(
             Point2D(adjustedBounds.x, adjustedBounds.y + adjustedBounds.height / 2),
@@ -922,7 +922,7 @@ private:
             linkColor = style.linkHoverColor;
         }
         
-        SetTextColor(linkColor);
+        SetColor(linkColor);
         
         Point2D position = GetAdjustedPosition(element->bounds);
         DrawText(element->text, position);
@@ -930,7 +930,7 @@ private:
         // Draw underline if enabled
         if (style.linkUnderline) {
             float textWidth = GetTextWidth(element->text);
-            ctx->SetStrokeColor(linkColor);
+            ctx->PaintWidthColorlinkColor);
             SetStrokeWidth(1.0f);
             ctx->DrawLine(
                 Point2D(position.x, position.y + 2),
@@ -941,7 +941,7 @@ private:
     
     void RenderText(std::shared_ptr<MarkdownElement> element) {
         SetFont(style.fontFamily, style.fontSize);
-        SetTextColor(style.textColor);
+        SetColor(style.textColor);
         
         Point2D position = GetAdjustedPosition(element->bounds);
         DrawText(element->text, position);
@@ -955,7 +955,7 @@ private:
         
         // Draw scrollbar track
         Rect2D trackRect(scrollbarX, bounds.y, scrollbarWidth, bounds.height);
-       ctx->SetFillColor(Color(240, 240, 240));
+       ctx->PaintWidthColorColor(240, 240, 240));
         FillRect(trackRect);
         
         // Draw scrollbar thumb
@@ -963,7 +963,7 @@ private:
         float thumbY = bounds.y + (scrollOffset / contentHeight) * bounds.height;
         
         Rect2D thumbRect(scrollbarX + 2, thumbY, scrollbarWidth - 4, thumbHeight);
-       ctx->SetFillColor(Color(180, 180, 180));
+       ctx->PaintWidthColorColor(180, 180, 180));
         FillRect(thumbRect);
     }
     
