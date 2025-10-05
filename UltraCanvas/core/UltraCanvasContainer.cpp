@@ -41,17 +41,7 @@ namespace UltraCanvas {
             UpdateScrollAnimation();
         }
 
-        if (style.backgroundColor.a > 0) {
-            ctx->PaintWithColor(style.backgroundColor);
-            ctx->FillRectangle(bounds);
-        }
-
-        // Render border
-        if (style.borderWidth > 0) {
-            ctx->PaintWithColor(style.borderColor);
-            ctx->SetStrokeWidth(style.borderWidth);
-            ctx->DrawRectangle(bounds);
-        }
+        ctx->DrawFilledRectangle(bounds, style.backgroundColor, style.borderWidth, style.borderColor);
 
 //        if (!window->IsSelectiveRenderingActive()) {
             // Render container background
@@ -401,8 +391,7 @@ namespace UltraCanvas {
 
     void UltraCanvasContainer::RenderVerticalScrollbar(IRenderContext *ctx) {
         // Render scrollbar track
-        ctx->PaintWithColor(style.scrollbarTrackColor);
-        ctx->FillRectangle(verticalScrollbarRect);
+        ctx->DrawFilledRectangle(verticalScrollbarRect, style.scrollbarTrackColor);
 
         // Render scrollbar thumb
         Color thumbColor = style.scrollbarThumbColor;
@@ -413,14 +402,12 @@ namespace UltraCanvas {
             thumbColor = style.scrollbarThumbPressedColor;
         }
 
-        ctx->PaintWithColor(thumbColor);
-        ctx->FillRectangle(verticalThumbRect);
+        ctx->DrawFilledRectangle(verticalThumbRect, thumbColor);
     }
 
     void UltraCanvasContainer::RenderHorizontalScrollbar(IRenderContext *ctx) {
         // Render scrollbar track
-        ctx->PaintWithColor(style.scrollbarTrackColor);
-        ctx->FillRectangle(horizontalScrollbarRect);
+        ctx->DrawFilledRectangle(horizontalScrollbarRect, style.scrollbarTrackColor);
 
         // Render scrollbar thumb
         Color thumbColor = style.scrollbarThumbColor;
@@ -431,8 +418,7 @@ namespace UltraCanvas {
             thumbColor = style.scrollbarThumbPressedColor;
         }
 
-        ctx->PaintWithColor(thumbColor);
-        ctx->FillRectangle(horizontalThumbRect);
+        ctx->DrawFilledRectangle(horizontalThumbRect, thumbColor);
     }
 
     void UltraCanvasContainer::UpdateScrollbarHoverStates(const Point2Di& mousePos) {

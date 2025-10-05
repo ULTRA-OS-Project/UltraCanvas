@@ -187,7 +187,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDivergingBarChart::RenderGrid(IRenderContext *ctx) {
-        ctx->PaintWithColor(gridColor);
+        ctx->SetStrokePaint(gridColor);
         ctx->SetStrokeWidth(1.0);
 
         float centerX = cachedPlotArea.x + cachedPlotArea.width / 2;
@@ -213,9 +213,9 @@ namespace UltraCanvas {
         }
 
         // Draw horizontal grid lines for rows (optional)
+        ctx->SetStrokePaint(Color(gridColor.r, gridColor.g, gridColor.b, gridColor.a / 2)); // Lighter horizontal lines
         if (divergingDataSource && divergingDataSource->GetPointCount() > 0) {
             float rowHeight = cachedPlotArea.height / divergingDataSource->GetPointCount();
-            ctx->PaintWithColor(Color(gridColor.r, gridColor.g, gridColor.b, gridColor.a / 2)); // Lighter horizontal lines
             for (size_t i = 1; i < divergingDataSource->GetPointCount(); ++i) {
                 float y = cachedPlotArea.y + i * rowHeight;
                 ctx->DrawLine(cachedPlotArea.x, y, cachedPlotArea.x + cachedPlotArea.width, y);
@@ -226,7 +226,7 @@ namespace UltraCanvas {
     void UltraCanvasDivergingBarChart::RenderCenterLine(IRenderContext *ctx) {
         float centerX = cachedPlotArea.x + cachedPlotArea.width / 2;
 
-        ctx->PaintWithColor(centerLineColor);
+        ctx->SetStrokePaint(centerLineColor);
         ctx->SetStrokeWidth(centerLineWidth);
         ctx->DrawLine(centerX, cachedPlotArea.y, centerX, cachedPlotArea.y + cachedPlotArea.height);
     }
@@ -262,7 +262,7 @@ namespace UltraCanvas {
                         fillColor.b = std::min(255, fillColor.b + 30);
                     }
 
-                    ctx->PaintWithColor(fillColor);
+                    ctx->SetFillPaint(fillColor);
                     ctx->FillRectangle(x, y, barWidth, actualBarHeight);
 
                     negativeOffset += barWidth;
@@ -285,7 +285,7 @@ namespace UltraCanvas {
                         fillColor.b = std::min(255, fillColor.b + 30);
                     }
 
-                    ctx->PaintWithColor(fillColor);
+                    ctx->SetFillPaint(fillColor);
                     ctx->FillRectangle(x, y, barWidth, actualBarHeight);
 
                     positiveOffset += barWidth;
@@ -340,7 +340,7 @@ namespace UltraCanvas {
                         fillColor.b = std::min(255, fillColor.b + 30);
                     }
 
-                    ctx->PaintWithColor(fillColor);
+                    ctx->SetFillPaint(fillColor);
                     if (category.isPositive) {
                         barWidth = (value / totalPos) * availableWidth * animScale;
                         // Draw on right side
@@ -402,7 +402,7 @@ namespace UltraCanvas {
 
             float barWidth = (std::abs(netValue) / std::max(maxPositiveValue, maxNegativeValue)) * maxWidth * animScale;
 
-            ctx->PaintWithColor(barColor);
+            ctx->SetFillPaint(barColor);
 
             if (netValue < 0) {
                 // Draw on left side
@@ -459,7 +459,7 @@ namespace UltraCanvas {
                     leftColor.b = std::min(255, leftColor.b + 30);
                 }
 
-                ctx->PaintWithColor(leftColor);
+                ctx->SetFillPaint(leftColor);
                 ctx->FillRectangle(centerX - centerGap/2 - barWidth, y, barWidth, actualBarHeight);
             }
 
@@ -474,7 +474,7 @@ namespace UltraCanvas {
                     rightColor.b = std::min(255, rightColor.b + 30);
                 }
 
-                ctx->PaintWithColor(rightColor);
+                ctx->SetFillPaint(rightColor);
                 ctx->FillRectangle(centerX + centerGap/2, y + actualBarHeight, barWidth, actualBarHeight);
             }
         }
@@ -484,7 +484,7 @@ namespace UltraCanvas {
         if (!divergingDataSource) return;
 
         ctx->SetFontSize(labelFontSize);
-        ctx->PaintWithColor(labelColor);
+        ctx->SetTextPaint(labelColor);
 
         size_t pointCount = divergingDataSource->GetPointCount();
         if (pointCount == 0) return;
@@ -502,7 +502,7 @@ namespace UltraCanvas {
 
     void UltraCanvasDivergingBarChart::RenderAxisLabels(IRenderContext *ctx) {
         ctx->SetFontSize(labelFontSize - 1);
-        ctx->PaintWithColor(Color(100, 100, 100, 255));
+        ctx->SetTextPaint(Color(100, 100, 100, 255));
 
         float centerX = cachedPlotArea.x + cachedPlotArea.width / 2;
         float y = cachedPlotArea.y + cachedPlotArea.height + 2;

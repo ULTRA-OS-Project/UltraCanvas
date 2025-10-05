@@ -31,7 +31,7 @@ void Rect(float x, float y, float width, float height);
 void RoundedRect(float x, float y, float width, float height, float radius);
 
 void FillPath();
-void StrokePath();
+void StrokePathPreserve();
 void GetPathExtents(float &x, float &y, float &width, float &height);
 
 // text path drawing
@@ -111,14 +111,17 @@ void DrawImage(const std::string& imagePath, const Rect2Di& position);
 
 
 // **Painting with colors/patterns/gradients functions**
-void PaintWithColor(const Color& color);
-std::unique_ptr<IDrawingPattern> CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
+std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
                                                       const std::vector<GradientStop>& stops);
-std::unique_ptr<IDrawingPattern> CreateRadialGradientPattern(float cx1, float cy1, float r1,
+std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(float cx1, float cy1, float r1,
                                                       float cx2, float cy2, float r2,
                                                       const std::vector<GradientStop>& stops);
-void PaintWithPattern(std::unique_ptr<IDrawingPattern> pattern);
-void PaintWithColor(const Color& color);
+void SetFillPaint(const Color& color);
+void SetFillPaint(std::shared_ptr<IPaintPattern> pattern);
+void SetStrokePaint(const Color& color);
+void SetStrokePaint(std::shared_ptr<IPaintPattern> pattern);
+void SetTextPaint(const Color& color);
+void SetTextPaint(std::shared_ptr<IPaintPattern> pattern);
 
 
 // **Style & State Functions**

@@ -327,33 +327,13 @@ namespace UltraCanvas {
 
             Rect2Di bounds = GetBounds();
 
-            // Draw background
-            if (style.backgroundColor.a > 0) {
-                ctx->PaintWithColor(style.backgroundColor);
-                if (style.borderRadius > 0) {
-                    ctx->FillRoundedRectangle(bounds, style.borderRadius);
-                } else {
-                    ctx->FillRectangle(bounds);
-                }
-
-            }
-
-            // Draw border
-            if (style.borderWidth > 0 && style.borderColor.a > 0) {
-                ctx->PaintWithColor(style.borderColor);
-                ctx->SetStrokeWidth(style.borderWidth);
-                if (style.borderRadius > 0) {
-                    ctx->DrawRoundedRectangle(bounds, style.borderRadius);
-                } else {
-                    ctx->DrawRectangle(bounds);
-                }
-            }
+            ctx->DrawFilledRectangle(bounds, style.backgroundColor, style.borderWidth, style.borderColor, style.borderRadius);
 
             // Draw text
             if (!text.empty()) {
                 // Draw shadow if enabled
                 if (style.hasShadow) {
-                    ctx->PaintWithColor(style.shadowColor);
+                    ctx->SetTextPaint(style.shadowColor);
                     ctx->SetFontStyle(style.fontStyle);
                     Rect2Di shadowRect = textArea;
                     shadowRect.x += style.shadowOffset.x,
@@ -362,14 +342,14 @@ namespace UltraCanvas {
                 }
 
                 // Draw main text
-                ctx->PaintWithColor(style.textColor);
+                ctx->SetTextPaint(style.textColor);
                 ctx->SetFontStyle(style.fontStyle);
                 ctx->DrawTextInRect(text, textArea);
             }
 
             // Draw selection/focus indicator if needed
             if (IsFocused()) {
-                ctx->PaintWithColor(Color(0, 120, 215, 200));
+                ctx->SetStrokePaint(Color(0, 120, 215, 200));
                 ctx->SetStrokeWidth(2.0f);
                 ctx->DrawRectangle(bounds);
             }

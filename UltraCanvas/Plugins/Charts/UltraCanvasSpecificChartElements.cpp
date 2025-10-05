@@ -12,7 +12,7 @@ namespace UltraCanvas {
         ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
 
         // Set line style using existing functions
-        ctx->PaintWithColor(lineColor);
+        ctx->SetStrokePaint(lineColor);
         ctx->SetStrokeWidth(lineWidth);
 
         // Build path points
@@ -34,7 +34,7 @@ namespace UltraCanvas {
 
 // Draw data points if enabled using existing FillCircle
         if (showDataPoints) {
-            ctx->PaintWithColor(pointColor);
+            ctx->SetFillPaint(pointColor);
             for (const auto &point : linePoints) {
                 ctx->FillCircle(point.x, point.y, pointRadius);
             }
@@ -124,12 +124,12 @@ namespace UltraCanvas {
             }
 
             // Use existing FillRectangle function
-            ctx->PaintWithColor(barColor);
+            ctx->SetFillPaint(barColor);
             ctx->FillRectangle(barX, topPos.y, actualBarWidth, barHeight);
 
             // Use existing DrawRectangle for border
             if (barBorderWidth > 0) {
-                ctx->PaintWithColor(barBorderColor);
+                ctx->SetStrokePaint(barBorderColor);
                 ctx->SetStrokeWidth(barBorderWidth);
                 ctx->DrawRectangle(barX, topPos.y, actualBarWidth, barHeight);
             }
@@ -169,7 +169,7 @@ namespace UltraCanvas {
         if (!ctx || !dataSource || dataSource->GetPointCount() == 0) return;
 
         ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-        ctx->PaintWithColor(pointColor);
+        ctx->SetFillPaint(pointColor);
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
@@ -298,13 +298,13 @@ namespace UltraCanvas {
             RenderGradientFill(ctx, renderPoints);
         } else {
             // Standard solid fill using existing IRenderContext methods
-            ctx->PaintWithColor(fillColor);
+            ctx->SetFillPaint(fillColor);
             ctx->FillLinePath(renderPoints);
         }
 
         // Draw the top edge line (data line) using existing methods
         if (lineWidth > 0.0f) {
-            ctx->PaintWithColor(lineColor);
+            ctx->SetStrokePaint(lineColor);
             ctx->SetStrokeWidth(lineWidth);
 
             // Draw line connecting all data points (skip baseline points)

@@ -309,18 +309,12 @@ namespace UltraCanvas {
             Rect2Di trackRect = GetTrackRect(bounds, isVertical);
 
             // Draw track background
-            ctx->PaintWithColor(GetCurrentTrackColor());
-            ctx->FillRectangle(trackRect);
-
-            // Draw track border
-            ctx->PaintWithColor(style.handleBorderColor);
-            ctx->SetStrokeWidth(1.0f);
-            ctx->DrawRectangle(trackRect);
+            ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, style.handleBorderColor);
 
             // Calculate and draw active track
             Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
             if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
-                ctx->PaintWithColor(style.activeTrackColor);
+                ctx->SetFillPaint(style.activeTrackColor);
                 ctx->FillRectangle(activeRect);
             }
 
@@ -336,18 +330,12 @@ namespace UltraCanvas {
             Rect2Di trackRect = GetTrackRect(bounds, isVertical);
 
             // Draw track background
-            ctx->PaintWithColor(GetCurrentTrackColor());
-            ctx->FillRoundedRectangle(trackRect, style.cornerRadius);
-
-            // Draw track border
-            ctx->PaintWithColor(style.handleBorderColor);
-            ctx->SetStrokeWidth(1.0f);
-            ctx->DrawRoundedRectangle(trackRect, style.cornerRadius);
+            ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, style.handleBorderColor, style.cornerRadius);
 
             // Calculate and draw active track
             Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
             if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
-                ctx->PaintWithColor(style.activeTrackColor);
+                ctx->SetFillPaint(style.activeTrackColor);
                 ctx->FillRoundedRectangle(activeRect, style.cornerRadius);
             }
 
@@ -361,7 +349,7 @@ namespace UltraCanvas {
             float radius = std::min(bounds.width, bounds.height) / 2 - style.handleSize / 2 - 2;
 
             // Draw track circle
-            ctx->PaintWithColor(GetCurrentTrackColor());
+            ctx->SetStrokePaint(GetCurrentTrackColor());
             ctx->SetStrokeWidth(style.trackHeight);
             ctx->DrawCircle(center, radius);
 
@@ -371,7 +359,7 @@ namespace UltraCanvas {
             float endAngle = startAngle + percentage * 2 * M_PI;
 
             if (percentage > 0) {
-                ctx->PaintWithColor(style.activeTrackColor);
+                ctx->SetStrokePaint(style.activeTrackColor);
                 ctx->SetStrokeWidth(style.trackHeight);
                 ctx->DrawArc(center.x, center.y, radius, startAngle, endAngle);
             }
@@ -390,18 +378,18 @@ namespace UltraCanvas {
             bool isVertical = (orientation == SliderOrientation::Vertical);
 
             // Draw background
-            ctx->PaintWithColor(GetCurrentTrackColor());
+            ctx->SetFillPaint(GetCurrentTrackColor());
             ctx->FillRectangle(bounds);
 
             // Draw progress
             Rect2Di progressRect = GetActiveTrackRect(bounds, isVertical);
             if ((isVertical && progressRect.height > 0) || (!isVertical && progressRect.width > 0)) {
-                ctx->PaintWithColor(style.activeTrackColor);
+                ctx->SetFillPaint(style.activeTrackColor);
                 ctx->FillRectangle(progressRect);
             }
 
             // Draw border
-            ctx->PaintWithColor(style.handleBorderColor);
+            ctx->SetStrokePaint(style.handleBorderColor);
             ctx->SetStrokeWidth(style.borderWidth);
             ctx->DrawRectangle(bounds);
         }
@@ -416,13 +404,7 @@ namespace UltraCanvas {
             );
 
             // Fill handle
-            ctx->PaintWithColor(GetCurrentHandleColor());
-            ctx->FillEllipse(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
-
-            // Draw handle border
-            ctx->PaintWithColor(style.handleBorderColor);
-            ctx->SetStrokeWidth(style.borderWidth);
-            ctx->DrawEllipse(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
+            ctx->DrawFilledRectangle(handleRect, GetCurrentHandleColor(), style.borderWidth, style.handleBorderColor, handleRadius);
         }
 
         void RenderRoundedHandle(const Point2Di& position, IRenderContext* ctx) {
@@ -435,11 +417,11 @@ namespace UltraCanvas {
             );
 
             // Fill handle
-            ctx->PaintWithColor(GetCurrentHandleColor());
+            ctx->SetFillPaint(GetCurrentHandleColor());
             ctx->FillRoundedRectangle(handleRect, handleRadius);
 
             // Draw handle border
-            ctx->PaintWithColor(style.handleBorderColor);
+            ctx->SetStrokePaint(style.handleBorderColor);
             ctx->SetStrokeWidth(style.borderWidth);
             ctx->DrawRoundedRectangle(handleRect, handleRadius);
         }
@@ -448,7 +430,7 @@ namespace UltraCanvas {
             std::string text = GetDisplayText();
             if (text.empty()) return;
 
-            ctx->PaintWithColor(IsEnabled() ? style.textColor : style.disabledTextColor);
+            ctx->SetTextPaint(IsEnabled() ? style.textColor : style.disabledTextColor);
             ctx->SetFontStyle(style.fontStyle);
 
             Point2Di textSize = ctx->MeasureText(text);
@@ -458,11 +440,7 @@ namespace UltraCanvas {
             if (valueDisplay == SliderValueDisplay::Tooltip && showTooltip) {
                 Rect2Di tooltipBg(textPos.x - 4, textPos.y - textSize.y - 2,
                                  textSize.x + 8, textSize.y + 4);
-                ctx->PaintWithColor(Color(255, 255, 200, 240));
-                ctx->FillRoundedRectangle(tooltipBg, 3.0f);
-                ctx->PaintWithColor(Color(180, 180, 180));
-                ctx->SetStrokeWidth(1.0f);
-                ctx->DrawRoundedRectangle(tooltipBg, 3.0f);
+                ctx->DrawFilledRectangle(tooltipBg, Color(255, 255, 200, 240), 1.0, Color(180, 180, 180), 3.0f);
             }
 
             ctx->DrawText(text, textPos);

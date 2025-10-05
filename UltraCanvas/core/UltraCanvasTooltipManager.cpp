@@ -322,7 +322,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTooltipManager::DrawText(IRenderContext* ctx) {
-        ctx->PaintWithColor(style.textColor);
+        ctx->SetTextPaint(style.textColor);
         ctx->SetFontFace(style.fontFamily, style.fontWeight, style.fontStyle);
         ctx->SetFontSize(style.fontSize);
 

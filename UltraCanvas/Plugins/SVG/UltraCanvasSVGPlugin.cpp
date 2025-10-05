@@ -1,1310 +1,1397 @@
 // UltraCanvasSVGPlugin.cpp
-// Lightweight SVG plugin implementation leveraging existing UltraCanvas infrastructure
-// Version: 1.0.0
-// Last Modified: 2025-07-17
+// Complete SVG rendering plugin implementation
+// Version: 2.0.0
+// Last Modified: 2024-12-19
 // Author: UltraCanvas Framework
 
 #include "Plugins/SVG/UltraCanvasSVGPlugin.h"
-#include <fstream>
-#include <sstream>
+#include <cmath>
 #include <algorithm>
 #include <cctype>
-#include <cmath>
+#include <iomanip>
 
 namespace UltraCanvas {
 
-// Updated ParsePath to return path commands instead of points
+    //UltraCanvasSVGPlugin* UltraCanvasSVGPlugin::instance = nullptr;
 
-    void SimpleSVGParser::ParsePathCommands(const std::string& pathStr, std::vector<SVGPathCommand>& commands) {
-        if (pathStr.empty()) return;
-
-        std::istringstream iss(pathStr);
-
-        auto skipCommaWhitespace = [&iss]() {
-            while (iss.peek() == ',' || std::isspace(iss.peek())) {
-                iss.ignore();
-            }
-        };
-
-        auto readNumber = [&iss, &skipCommaWhitespace]() -> float {
-            skipCommaWhitespace();
-            float value = 0;
-            if (!(iss >> value)) {
-                return 0;
-            }
-            skipCommaWhitespace();
-            return value;
-        };
-
-        char command;
-        while (iss >> command) {
-            skipCommaWhitespace();
-            SVGPathCommand cmd;
-            cmd.type = command;
-
-            // Determine how many parameters each command needs
-            switch (command) {
-                case 'M': case 'm': // MoveTo: x y
-                case 'L': case 'l': // LineTo: x y
-                case 'T': case 't': // Smooth quadratic Bezier: x y
-                    // Read pairs of coordinates
-                    do {
-                        float x = readNumber();
-                        if (iss.fail()) break;
-                        float y = readNumber();
-                        if (iss.fail()) break;
-                        cmd.params.push_back(x);
-                        cmd.params.push_back(y);
-                    } while (iss.peek() != EOF && !std::isalpha(iss.peek()));
-                    break;
-
-                case 'H': case 'h': // Horizontal line: x
-                case 'V': case 'v': // Vertical line: y
-                    // Read single coordinates
-                    do {
-                        float coord = readNumber();
-                        if (iss.fail()) break;
-                        cmd.params.push_back(coord);
-                    } while (iss.peek() != EOF && !std::isalpha(iss.peek()));
-                    break;
-
-                case 'C': case 'c': // Cubic Bezier: x1 y1 x2 y2 x y
-                    // Read sets of 6 coordinates
-                    do {
-                        for (int i = 0; i < 6; i++) {
-                            float coord = readNumber();
-                            if (iss.fail()) break;
-                            cmd.params.push_back(coord);
-                        }
-                        if (iss.fail()) break;
-                    } while (iss.peek() != EOF && !std::isalpha(iss.peek()));
-                    break;
-
-                case 'S': case 's': // Smooth cubic Bezier: x2 y2 x y
-                case 'Q': case 'q': // Quadratic Bezier: x1 y1 x y
-                    // Read sets of 4 coordinates
-                    do {
-                        for (int i = 0; i < 4; i++) {
-                            float coord = readNumber();
-                            if (iss.fail()) break;
-                            cmd.params.push_back(coord);
-                        }
-                        if (iss.fail()) break;
-                    } while (iss.peek() != EOF && !std::isalpha(iss.peek()));
-                    break;
-
-                case 'A': case 'a': // Arc: rx ry x-axis-rotation large-arc-flag sweep-flag x y
-                    // Read sets of 7 parameters
-                    do {
-                        for (int i = 0; i < 7; i++) {
-                            float param = readNumber();
-                            if (iss.fail()) break;
-                            cmd.params.push_back(param);
-                        }
-                        if (iss.fail()) break;
-                    } while (iss.peek() != EOF && !std::isalpha(iss.peek()));
-                    break;
-
-                case 'Z': case 'z': // ClosePath: no parameters
-                    // No parameters needed
-                    break;
-
-                default:
-                    // Unknown command, skip until next letter
-                    char c;
-                    while (iss >> c && !std::isalpha(c)) {
-                        // Skip
-                    }
-                    if (std::isalpha(c)) {
-                        iss.putback(c);
-                    }
-                    continue;
-            }
-
-            if (!cmd.params.empty() || command == 'Z' || command == 'z') {
-                commands.push_back(cmd);
+// Helper functions
+    static float ParseFloatAttribute(const tinyxml2::XMLElement* elem, const char* name, float defaultValue = 0.0f) {
+        const char* attr = elem->Attribute(name);
+        if (attr) {
+            try {
+                return std::stof(attr);
+            } catch (...) {
+                return defaultValue;
             }
         }
-
-        return;
+        return defaultValue;
     }
 
-// New method to execute path commands using native Path functions
-
-// ===== COLOR PARSING UTILITIES =====
-    Color SVGAttributes::GetColor(const std::string& name, const Color& defaultValue) const {
-        std::string value = Get(name);
-        if (value.empty()) return defaultValue;
-        return SimpleSVGParser::ParseColor(value);
+    static std::string GetAttribute(const tinyxml2::XMLElement* elem, const char* name, const std::string& defaultValue = "") {
+        const char* attr = elem->Attribute(name);
+        return attr ? attr : defaultValue;
     }
 
-    Color SimpleSVGParser::ParseColor(const std::string& colorStr) {
-        if (colorStr.empty() || colorStr == "none") {
-            return Colors::Transparent;
-        }
-
-        // Named colors
-        static const std::unordered_map<std::string, Color> namedColors = {
-                {"black", Colors::Black}, {"white", Colors::White}, {"red", Colors::Red},
-                {"green", Colors::Green}, {"blue", Colors::Blue}, {"yellow", Colors::Yellow},
-                {"cyan", Colors::Cyan}, {"magenta", Colors::Magenta}, {"gray", Colors::Gray},
-                {"orange", Color(255, 165, 0)}, {"purple", Color(128, 0, 128)},
-                {"brown", Color(165, 42, 42)}, {"pink", Color(255, 192, 203)},
-                {"transparent", Colors::Transparent}
-        };
-
-        std::string lower = colorStr;
-        std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-
-        auto it = namedColors.find(lower);
-        if (it != namedColors.end()) {
-            return it->second;
-        }
-
-        // Hex colors
-        if (colorStr[0] == '#') {
-            std::string hex = colorStr.substr(1);
-            if (hex.length() == 3) {
-                // Expand shorthand: #RGB -> #RRGGBB
-                hex = std::string(1, hex[0]) + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
-            }
-
-            if (hex.length() == 6) {
-                try {
-                    int r = std::stoi(hex.substr(0, 2), nullptr, 16);
-                    int g = std::stoi(hex.substr(2, 2), nullptr, 16);
-                    int b = std::stoi(hex.substr(4, 2), nullptr, 16);
-                    return Color(r, g, b);
-                } catch (...) {
-                    return Colors::Black;
+// SVGTransform implementation
+    void SVGTransform::ApplyToContext(IRenderContext* ctx) const {
+        switch (type) {
+            case Matrix:
+                if (values.size() >= 6) {
+                    ctx->Transform(values[0], values[1], values[2], values[3], values[4], values[5]);
                 }
-            }
-        }
-
-        // RGB functions: rgb(255, 128, 0)
-        if (colorStr.substr(0, 4) == "rgb(") {
-            size_t start = 4;
-            size_t end = colorStr.find(')', start);
-            if (end != std::string::npos) {
-                std::string params = colorStr.substr(start, end - start);
-                std::replace(params.begin(), params.end(), ',', ' ');
-
-                std::istringstream iss(params);
-                int r, g, b;
-                if (iss >> r >> g >> b) {
-                    return Color(r, g, b);
+                break;
+            case Translate:
+                if (values.size() >= 1) {
+                    float tx = values[0];
+                    float ty = values.size() >= 2 ? values[1] : 0;
+                    ctx->Translate(tx, ty);
                 }
-            }
+                break;
+            case Scale:
+                if (values.size() >= 1) {
+                    float sx = values[0];
+                    float sy = values.size() >= 2 ? values[1] : sx;
+                    ctx->Scale(sx, sy);
+                }
+                break;
+            case Rotate:
+                if (values.size() >= 1) {
+                    float angle = values[0] * M_PI / 180.0f; // Convert to radians
+                    if (values.size() >= 3) {
+                        float cx = values[1];
+                        float cy = values[2];
+                        ctx->Translate(cx, cy);
+                        ctx->Rotate(angle);
+                        ctx->Translate(-cx, -cy);
+                    } else {
+                        ctx->Rotate(angle);
+                    }
+                }
+                break;
+            case SkewX:
+                if (values.size() >= 1) {
+                    float angle = values[0] * M_PI / 180.0f;
+                    ctx->Transform(1, 0, std::tan(angle), 1, 0, 0);
+                }
+                break;
+            case SkewY:
+                if (values.size() >= 1) {
+                    float angle = values[0] * M_PI / 180.0f;
+                    ctx->Transform(1, std::tan(angle), 0, 1, 0, 0);
+                }
+                break;
         }
-
-        return Colors::Black; // Default fallback
     }
 
-    float SimpleSVGParser::ParseLength(const std::string& lengthStr, float referenceValue) {
-        if (lengthStr.empty()) return 0.0f;
-
-        // Remove whitespace
-        std::string clean = lengthStr;
-        clean.erase(std::remove_if(clean.begin(), clean.end(), ::isspace), clean.end());
-
-        // Check for percentage
-        if (clean.back() == '%') {
-            float percent = std::stof(clean.substr(0, clean.length() - 1));
-            return (percent / 100.0f) * referenceValue;
-        }
-
-        // Remove unit suffixes (px, pt, em, etc.) - just use the number
-        std::string number;
-        for (char c : clean) {
-            if (std::isdigit(c) || c == '.' || c == '-') {
-                number += c;
+// SVGStyle implementation
+    void SVGStyle::ParseFromAttributes(const tinyxml2::XMLElement* elem) {
+        // Parse fill
+        const char* fill = elem->Attribute("fill");
+        if (fill) {
+            std::string fillStr(fill);
+            if (fillStr.find("url(#") == 0) {
+                size_t start = 5;
+                size_t end = fillStr.find(')', start);
+                if (end != std::string::npos) {
+                    fillGradientId = fillStr.substr(start, end - start);
+                }
+            } else if (fillStr != "none") {
+                // Parse color - simplified for now
+                if (fillStr[0] == '#') {
+                    unsigned int rgb = std::stoul(fillStr.substr(1), nullptr, 16);
+                    fillColor.r = (rgb >> 16) & 0xFF;
+                    fillColor.g = (rgb >> 8) & 0xFF;
+                    fillColor.b = rgb & 0xFF;
+                    fillColor.a = 255;
+                }
             } else {
-                break; // Stop at first non-numeric character
+                fillColor.a = 0; // Transparent
             }
         }
 
-        return number.empty() ? 0.0f : std::stof(number);
-    }
-
-    std::vector<Point2Df> SimpleSVGParser::ParsePoints(const std::string& pointsStr) {
-        std::vector<Point2Df> points;
-        if (pointsStr.empty()) return points;
-
-        std::string clean = pointsStr;
-        std::replace(clean.begin(), clean.end(), ',', ' ');
-
-        std::istringstream iss(clean);
-        float x, y;
-        while (iss >> x >> y) {
-            points.emplace_back(x, y);
-        }
-
-        return points;
-    }
-
-// ===== SIMPLE SVG PARSER IMPLEMENTATION =====
-    void SimpleSVGParser::SkipWhitespace() {
-        while (position < content.length() && std::isspace(content[position])) {
-            position++;
-        }
-    }
-
-    std::string SimpleSVGParser::ReadUntil(char delimiter) {
-        std::string result;
-        while (position < content.length() && content[position] != delimiter) {
-            result += content[position++];
-        }
-        return result;
-    }
-
-    std::string SimpleSVGParser::ReadTagName() {
-        std::string tagName;
-        while (position < content.length() &&
-               (std::isalnum(content[position]) || content[position] == '-' || content[position] == ':')) {
-            tagName += content[position++];
-        }
-        return tagName;
-    }
-
-    SVGAttributes SimpleSVGParser::ParseAttributes() {
-        SVGAttributes attrs;
-        SkipWhitespace();
-
-        while (position < content.length() && content[position] != '>' && content[position] != '/') {
-            // Read attribute name
-            std::string name = ReadTagName();
-            if (name.empty()) break;
-
-            SkipWhitespace();
-            if (position < content.length() && content[position] == '=') {
-                position++; // Skip '='
-                SkipWhitespace();
-
-                // Read attribute value
-                std::string value;
-                if (position < content.length() && (content[position] == '"' || content[position] == '\'')) {
-                    char quote = content[position++];
-                    value = ReadUntil(quote);
-                    if (position < content.length()) position++; // Skip closing quote
-                } else {
-                    // Unquoted value (read until whitespace or >)
-                    while (position < content.length() && !std::isspace(content[position]) &&
-                           content[position] != '>' && content[position] != '/') {
-                        value += content[position++];
-                    }
+        // Parse stroke
+        const char* stroke = elem->Attribute("stroke");
+        if (stroke) {
+            std::string strokeStr(stroke);
+            if (strokeStr.find("url(#") == 0) {
+                size_t start = 5;
+                size_t end = strokeStr.find(')', start);
+                if (end != std::string::npos) {
+                    strokeGradientId = strokeStr.substr(start, end - start);
                 }
-
-                attrs.attrs[name] = value;
+            } else if (strokeStr != "none") {
+                if (strokeStr[0] == '#') {
+                    unsigned int rgb = std::stoul(strokeStr.substr(1), nullptr, 16);
+                    strokeColor.r = (rgb >> 16) & 0xFF;
+                    strokeColor.g = (rgb >> 8) & 0xFF;
+                    strokeColor.b = rgb & 0xFF;
+                    strokeColor.a = 255;
+                }
             }
-
-            SkipWhitespace();
         }
 
-        return attrs;
+        // Parse other attributes
+        strokeWidth = ParseFloatAttribute(elem, "stroke-width", strokeWidth);
+        opacity = ParseFloatAttribute(elem, "opacity", opacity);
+        fillOpacity = ParseFloatAttribute(elem, "fill-opacity", fillOpacity);
+        strokeOpacity = ParseFloatAttribute(elem, "stroke-opacity", strokeOpacity);
+
+        // Parse style attribute if present
+        const char* style = elem->Attribute("style");
+        if (style) {
+            ParseFromStyle(style);
+        }
     }
 
-    std::shared_ptr<SVGElement> SimpleSVGParser::ParseElement() {
-        SkipWhitespace();
+    void SVGStyle::ParseFromStyle(const std::string& styleStr) {
+        std::istringstream iss(styleStr);
+        std::string property;
 
-        if (position >= content.length() || content[position] != '<') {
-            return nullptr;
+        while (std::getline(iss, property, ';')) {
+            size_t colonPos = property.find(':');
+            if (colonPos != std::string::npos) {
+                std::string key = property.substr(0, colonPos);
+                std::string value = property.substr(colonPos + 1);
+
+                // Trim whitespace
+                key.erase(0, key.find_first_not_of(" \t"));
+                key.erase(key.find_last_not_of(" \t") + 1);
+                value.erase(0, value.find_first_not_of(" \t"));
+                value.erase(value.find_last_not_of(" \t") + 1);
+
+                // Parse properties
+                if (key == "fill") {
+                    if (value[0] == '#') {
+                        unsigned int rgb = std::stoul(value.substr(1), nullptr, 16);
+                        fillColor.r = (rgb >> 16) & 0xFF;
+                        fillColor.g = (rgb >> 8) & 0xFF;
+                        fillColor.b = rgb & 0xFF;
+                        fillColor.a = 255;
+                    }
+                } else if (key == "stroke") {
+                    if (value[0] == '#') {
+                        unsigned int rgb = std::stoul(value.substr(1), nullptr, 16);
+                        strokeColor.r = (rgb >> 16) & 0xFF;
+                        strokeColor.g = (rgb >> 8) & 0xFF;
+                        strokeColor.b = rgb & 0xFF;
+                        strokeColor.a = 255;
+                    }
+                } else if (key == "stroke-width") {
+                    strokeWidth = std::stof(value);
+                } else if (key == "opacity") {
+                    opacity = std::stof(value);
+                }
+            }
         }
+    }
 
-        position++; // Skip '<'
+// SVGLinearGradient implementation
+    std::shared_ptr<IPaintPattern> SVGLinearGradient::CreatePattern(IRenderContext* ctx, const Rect2Df& bounds) {
+        float actualX1 = x1, actualY1 = y1, actualX2 = x2, actualY2 = y2;
 
-        // Check for comment or other special elements
-        if (position < content.length() && content[position] == '!') {
-            // Skip comments and other special elements
-            ReadUntil('>');
-            if (position < content.length()) position++; // Skip '>'
-            return ParseElement(); // Try next element
-        }
-
-        std::string tagName = ReadTagName();
-        if (tagName.empty()) return nullptr;
-
-        std::shared_ptr<SVGElement> element;
-        if (tagName == "path") {
-            auto elem = std::make_shared<SVGPathElement>(tagName);
-            elem->attributes = ParseAttributes();
-            ParsePathCommands(elem->attributes.Get("d"), elem->pathCommands);
-            element = elem;
+        if (units == "userSpaceOnUse") {
+            // Use absolute coordinates
         } else {
-            element = std::make_shared<SVGElement>(tagName);
-            element->attributes = ParseAttributes();
-        }
-        SkipWhitespace();
-
-        // Check for self-closing tag
-        if (position < content.length() && content[position] == '/') {
-            position++; // Skip '/'
-            SkipWhitespace();
-            if (position < content.length() && content[position] == '>') {
-                position++; // Skip '>'
-            }
-            return element;
+            // objectBoundingBox - scale to bounds
+            actualX1 = bounds.x + x1 * bounds.width;
+            actualY1 = bounds.y + y1 * bounds.height;
+            actualX2 = bounds.x + x2 * bounds.width;
+            actualY2 = bounds.y + y2 * bounds.height;
         }
 
-        if (position < content.length() && content[position] == '>') {
-            position++; // Skip '>'
+        return ctx->CreateLinearGradientPattern(actualX1, actualY1, actualX2, actualY2, stops);
+    }
 
-            // Parse content and children
-            std::string closingTag = "</" + tagName;
-            size_t contentStart = position;
-            size_t closingPos = content.find(closingTag, position);
+// SVGRadialGradient implementation
+    std::shared_ptr<IPaintPattern> SVGRadialGradient::CreatePattern(IRenderContext* ctx, const Rect2Df& bounds) {
+        float actualCx = cx, actualCy = cy, actualR = r;
+        float actualFx = fx, actualFy = fy;
 
-            if (closingPos != std::string::npos) {
-                std::string elementContent = content.substr(contentStart, closingPos - contentStart);
+        if (units == "userSpaceOnUse") {
+            // Use absolute coordinates
+        } else {
+            // objectBoundingBox - scale to bounds
+            actualCx = bounds.x + cx * bounds.width;
+            actualCy = bounds.y + cy * bounds.height;
+            actualR = r * std::max(bounds.width, bounds.height);
+            actualFx = bounds.x + fx * bounds.width;
+            actualFy = bounds.y + fy * bounds.height;
+        }
+        return ctx->CreateRadialGradientPattern(actualFx, actualFy, 0, actualCx, actualCy, actualR, stops);;
+    }
 
-                // Simple text content detection
-                if (elementContent.find('<') == std::string::npos) {
-                    element->textContent = elementContent;
-                } else {
-                    // Parse child elements
-                    SimpleSVGParser childParser;
-                    childParser.content = elementContent;
-                    childParser.position = 0;
+// SVGGaussianBlur implementation
+    void SVGGaussianBlur::Apply(IRenderContext* ctx) {
+        //ctx->ApplyGaussianBlur(stdDeviationX, stdDeviationY);
+    }
 
-                    while (childParser.position < childParser.content.length()) {
-                        auto child = childParser.ParseElement();
-                        if (child) {
-                            element->children.push_back(child);
-                        } else {
-                            childParser.position++;
-                        }
+// SVGFilter implementation
+    void SVGFilter::Apply(IRenderContext* ctx, const Rect2Df& bounds) {
+        for (const auto& effect : effects) {
+            effect->Apply(ctx);
+        }
+    }
+
+// SVGPathParser implementation
+    std::vector<PathCommand> SVGPathParser::Parse(const std::string& pathData) {
+        std::vector<PathCommand> commands;
+        size_t pos = 0;
+
+        while (pos < pathData.length()) {
+            SkipWhitespace(pathData, pos);
+            if (pos >= pathData.length()) break;
+
+            char cmd = pathData[pos];
+            if (std::isalpha(cmd)) {
+                pos++;
+                PathCommand command;
+                command.type = cmd;
+                command.params = ParseNumbers(pathData, pos);
+                commands.push_back(command);
+            } else {
+                // Implicit command repetition
+                if (!commands.empty()) {
+                    PathCommand command;
+                    command.type = commands.back().type;
+                    if (command.type == 'M') command.type = 'L';
+                    if (command.type == 'm') command.type = 'l';
+                    command.params = ParseNumbers(pathData, pos);
+                    if (!command.params.empty()) {
+                        commands.push_back(command);
                     }
                 }
-
-                position = closingPos + closingTag.length();
-                if (position < content.length() && content[position] == '>') {
-                    position++; // Skip '>'
-                }
             }
         }
 
-        return element;
+        return commands;
     }
 
-    std::shared_ptr<SVGDocument> SimpleSVGParser::Parse(const std::string& svgContent) {
-        content = svgContent;
-        position = 0;
+    void SVGPathParser::RenderPath(IRenderContext* ctx, const std::vector<PathCommand>& commands) {
+        float currentX = 0, currentY = 0;
+        float startX = 0, startY = 0;
+        float controlX = 0, controlY = 0;
 
-        auto document = std::make_shared<SVGDocument>();
-
-        // Find and parse the root <svg> element
-        size_t svgStart = content.find("<svg");
-        if (svgStart == std::string::npos) {
-            return nullptr;
-        }
-
-        position = svgStart;
-        document->root = ParseElement();
-
-        if (document->root) {
-            // Parse document-level attributes
-            std::string widthStr = document->root->attributes.Get("width");
-            std::string heightStr = document->root->attributes.Get("height");
-            std::string viewBoxStr = document->root->attributes.Get("viewBox");
-
-            document->width = widthStr.empty() ? 100.0f : ParseLength(widthStr);
-            document->height = heightStr.empty() ? 100.0f : ParseLength(heightStr);
-
-            if (!viewBoxStr.empty()) {
-                std::istringstream iss(viewBoxStr);
-                float x, y, w, h;
-                if (iss >> x >> y >> w >> h) {
-                    document->viewBox = Rect2D(x, y, w, h);
-                    document->hasViewBox = true;
-                }
-            }
-        }
-
-        return document;
-    }
-
-// ===== SVG ELEMENT RENDERER IMPLEMENTATION =====
-    void SVGElementRenderer::ApplyStrokeStyles(const SVGElement& element) {
-        // Parse and apply fill
-        // Parse and apply stroke
-        std::string stroke = element.attributes.Get("stroke", "none");
-        if (stroke != "none") {
-            Color strokeColor = SimpleSVGParser::ParseColor(stroke);
-            float strokeWidth = element.attributes.GetFloat("stroke-width", 1.0f);
-
-            ctx->PaintWithColor(strokeColor);
-            ctx->SetStrokeWidth(strokeWidth);
-        }
-
-        // Apply opacity
-        float opacity = element.attributes.GetFloat("opacity", 1.0f);
-        if (opacity < 1.0f) {
-            ctx->SetAlpha(opacity);
-        }
-    }
-
-    void SVGElementRenderer::ApplyFillStyles(const SVGElement& element) {
-        // Parse and apply fill
-        std::string fill = element.attributes.Get("fill", "black");
-        if (fill != "none") {
-            Color fillColor = SimpleSVGParser::ParseColor(fill);
-            ctx->PaintWithColor(fillColor);
-        }
-
-        // Apply opacity
-        float opacity = element.attributes.GetFloat("opacity", 1.0f);
-        if (opacity < 1.0f) {
-            ctx->SetAlpha(opacity);
-        }
-    }
-
-    void SVGElementRenderer::RenderRect(const SVGElement& element) {
-        float x = element.attributes.GetFloat("x", 0.0f);
-        float y = element.attributes.GetFloat("y", 0.0f);
-        float width = element.attributes.GetFloat("width", 0.0f);
-        float height = element.attributes.GetFloat("height", 0.0f);
-        float rx = element.attributes.GetFloat("rx", 0.0f);
-        float ry = element.attributes.GetFloat("ry", 0.0f);
-
-        if (width <= 0 || height <= 0) return;
-
-        Rect2Df rect(x, y, width, height);
-
-        // Use existing UltraCanvas functions
-        if (element.attributes.Get("fill", "black") != "none") {
-            ApplyFillStyles(element);
-            if (rx > 0 || ry > 0) {
-                ctx->FillRoundedRectangle(rect, std::max(rx, ry));
-            } else {
-                ctx->FillRectangle(rect);
-            }
-        }
-
-        if (element.attributes.Get("stroke", "none") != "none") {
-            ApplyStrokeStyles(element);
-            if (rx > 0 || ry > 0) {
-                ctx->DrawRoundedRectangle(rect, std::max(rx, ry));
-            } else {
-                ctx->DrawRectangle(rect);
-            }
-        }
-    }
-
-    void SVGElementRenderer::RenderCircle(const SVGElement& element) {
-        float cx = element.attributes.GetFloat("cx", 0.0f);
-        float cy = element.attributes.GetFloat("cy", 0.0f);
-        float r = element.attributes.GetFloat("r", 0.0f);
-
-        if (r <= 0) return;
-
-        Point2Df center(cx, cy);
-
-        ApplyFillStyles(element);
-
-        // Use existing UltraCanvas functions
-        if (element.attributes.Get("fill", "black") != "none") {
-            ctx->FillCircle(center, r);
-        }
-
-        if (element.attributes.Get("stroke", "none") != "none") {
-            ctx->DrawCircle(center, r);
-        }
-    }
-
-    void SVGElementRenderer::RenderEllipse(const SVGElement& element) {
-        float cx = element.attributes.GetFloat("cx", 0.0f);
-        float cy = element.attributes.GetFloat("cy", 0.0f);
-        float rx = element.attributes.GetFloat("rx", 0.0f);
-        float ry = element.attributes.GetFloat("ry", 0.0f);
-
-        if (rx <= 0 || ry <= 0) return;
-
-        Rect2Df ellipseRect(cx - rx, cy - ry, rx * 2, ry * 2);
-
-        ApplyFillStyles(element);
-
-        // Use existing UltraCanvas functions
-        if (element.attributes.Get("fill", "black") != "none") {
-            ctx->FillEllipse(ellipseRect);
-        }
-
-        if (element.attributes.Get("stroke", "none") != "none") {
-            ctx->DrawEllipse(ellipseRect);
-        }
-    }
-
-    void SVGElementRenderer::RenderLine(const SVGElement& element) {
-        float x1 = element.attributes.GetFloat("x1", 0.0f);
-        float y1 = element.attributes.GetFloat("y1", 0.0f);
-        float x2 = element.attributes.GetFloat("x2", 0.0f);
-        float y2 = element.attributes.GetFloat("y2", 0.0f);
-
-        Point2Df start(x1, y1);
-        Point2Df end(x2, y2);
-
-        ApplyFillStyles(element);
-
-        // Use existing UltraCanvas function
-        ctx->DrawLine(start, end);
-    }
-
-    void SVGElementRenderer::RenderPolyline(const SVGElement& element) {
-        std::string pointsStr = element.attributes.Get("points");
-        if (pointsStr.empty()) return;
-
-        std::vector<Point2Df> points = SimpleSVGParser::ParsePoints(pointsStr);
-        if (points.size() < 2) return;
-
-        ApplyFillStyles(element);
-
-        // Use existing UltraCanvas drawing - draw as connected lines
-        for (size_t i = 0; i < points.size() - 1; ++i) {
-            ctx->DrawLine(points[i], points[i + 1]);
-        }
-    }
-
-    void SVGElementRenderer::RenderPolygon(const SVGElement& element) {
-        std::string pointsStr = element.attributes.Get("points");
-        if (pointsStr.empty()) return;
-
-        std::vector<Point2Df> points = SimpleSVGParser::ParsePoints(pointsStr);
-        if (points.size() < 3) return;
-
-        ApplyFillStyles(element);
-
-        // Use existing UltraCanvas polygon function from UltraCanvasDrawingSurface
-        if (element.attributes.Get("fill", "black") != "none") {
-            // Use the existing DrawPolygon with fill from UltraCanvasDrawingSurface
-            // For now, simulate with individual triangles from center
-            Point2Df center(0, 0);
-            for (const Point2Df& p : points) {
-                center.x += p.x; center.y += p.y;
-            }
-            center.x /= points.size(); center.y /= points.size();
-
-            for (size_t i = 0; i < points.size(); ++i) {
-                size_t next = (i + 1) % points.size();
-                // Create triangle: center -> point[i] -> point[next]
-                std::vector<Point2Df> triangle = {center, points[i], points[next]};
-                // DrawPolygon(triangle, true); // Would use if available
-            }
-        }
-
-        if (element.attributes.Get("stroke", "none") != "none") {
-            // Draw outline
-            for (size_t i = 0; i < points.size(); ++i) {
-                size_t next = (i + 1) % points.size();
-                ctx->DrawLine(points[i], points[next]);
-            }
-        }
-    }
-
-    void SVGElementRenderer::ExecutePathCommands(IRenderContext* ctx, const std::vector<SVGPathCommand>& commands) {
-        if (!ctx || commands.empty()) return;
-
-        Point2Df currentPoint(0, 0);
-        Point2Df startPoint(0, 0);
-        Point2Df lastControlPoint(0, 0);
-        char lastCommand = 0;
+        ctx->ClearPath();
 
         for (const auto& cmd : commands) {
-            size_t paramIndex = 0;
-
             switch (cmd.type) {
                 case 'M': // Move to absolute
-                    while (paramIndex + 1 < cmd.params.size()) {
-                        float x = cmd.params[paramIndex++];
-                        float y = cmd.params[paramIndex++];
-                        ctx->MoveTo(x, y);
-                        currentPoint.x = x;
-                        currentPoint.y = y;
-                        startPoint = currentPoint;
+                    if (cmd.params.size() >= 2) {
+                        currentX = cmd.params[0];
+                        currentY = cmd.params[1];
+                        startX = currentX;
+                        startY = currentY;
+                        ctx->MoveTo(currentX, currentY);
 
-                        // Subsequent pairs are implicit LineTo
-                        while (paramIndex + 1 < cmd.params.size()) {
-                            x = cmd.params[paramIndex++];
-                            y = cmd.params[paramIndex++];
-                            ctx->LineTo(x, y);
-                            currentPoint.x = x;
-                            currentPoint.y = y;
+                        // Additional points are line-to commands
+                        for (size_t i = 2; i + 1 < cmd.params.size(); i += 2) {
+                            currentX = cmd.params[i];
+                            currentY = cmd.params[i + 1];
+                            ctx->LineTo(currentX, currentY);
                         }
                     }
                     break;
 
                 case 'm': // Move to relative
-                    while (paramIndex + 1 < cmd.params.size()) {
-                        float dx = cmd.params[paramIndex++];
-                        float dy = cmd.params[paramIndex++];
-
-                        if (paramIndex == 2) {
-                            // First move is relative to current point
-                            ctx->RelMoveTo(dx, dy);
+                    if (cmd.params.size() >= 2) {
+                        if (currentX == 0 && currentY == 0) {
+                            // First move is absolute
+                            currentX = cmd.params[0];
+                            currentY = cmd.params[1];
+                            ctx->MoveTo(currentX, currentY);
                         } else {
-                            // Subsequent moves are implicit relative LineTo
-                            ctx->RelLineTo(dx, dy);
+                            ctx->RelMoveTo(cmd.params[0], cmd.params[1]);
+                            currentX += cmd.params[0];
+                            currentY += cmd.params[1];
                         }
-                        currentPoint.x += dx;
-                        currentPoint.y += dy;
+                        startX = currentX;
+                        startY = currentY;
 
-                        if (paramIndex == 2) {
-                            startPoint = currentPoint;
+                        for (size_t i = 2; i + 1 < cmd.params.size(); i += 2) {
+                            ctx->RelLineTo(cmd.params[i], cmd.params[i + 1]);
+                            currentX += cmd.params[i];
+                            currentY += cmd.params[i + 1];
                         }
                     }
                     break;
 
                 case 'L': // Line to absolute
-                    while (paramIndex + 1 < cmd.params.size()) {
-                        float x = cmd.params[paramIndex++];
-                        float y = cmd.params[paramIndex++];
-                        ctx->LineTo(x, y);
-                        currentPoint.x = x;
-                        currentPoint.y = y;
+                    for (size_t i = 0; i + 1 < cmd.params.size(); i += 2) {
+                        currentX = cmd.params[i];
+                        currentY = cmd.params[i + 1];
+                        ctx->LineTo(currentX, currentY);
                     }
                     break;
 
                 case 'l': // Line to relative
-                    while (paramIndex + 1 < cmd.params.size()) {
-                        float dx = cmd.params[paramIndex++];
-                        float dy = cmd.params[paramIndex++];
-                        ctx->RelLineTo(dx, dy);
-                        currentPoint.x += dx;
-                        currentPoint.y += dy;
+                    for (size_t i = 0; i + 1 < cmd.params.size(); i += 2) {
+                        ctx->RelLineTo(cmd.params[i], cmd.params[i + 1]);
+                        currentX += cmd.params[i];
+                        currentY += cmd.params[i + 1];
                     }
                     break;
 
                 case 'H': // Horizontal line absolute
-                    while (paramIndex < cmd.params.size()) {
-                        float x = cmd.params[paramIndex++];
-                        ctx->LineTo(x, currentPoint.y);
-                        currentPoint.x = x;
+                    for (size_t i = 0; i < cmd.params.size(); i++) {
+                        currentX = cmd.params[i];
+                        ctx->LineTo(currentX, currentY);
                     }
                     break;
 
                 case 'h': // Horizontal line relative
-                    while (paramIndex < cmd.params.size()) {
-                        float dx = cmd.params[paramIndex++];
-                        ctx->RelLineTo(dx, 0);
-                        currentPoint.x += dx;
+                    for (size_t i = 0; i < cmd.params.size(); i++) {
+                        ctx->RelLineTo(cmd.params[i], 0);
+                        currentX += cmd.params[i];
                     }
                     break;
 
                 case 'V': // Vertical line absolute
-                    while (paramIndex < cmd.params.size()) {
-                        float y = cmd.params[paramIndex++];
-                        ctx->LineTo(currentPoint.x, y);
-                        currentPoint.y = y;
+                    for (size_t i = 0; i < cmd.params.size(); i++) {
+                        currentY = cmd.params[i];
+                        ctx->LineTo(currentX, currentY);
                     }
                     break;
 
                 case 'v': // Vertical line relative
-                    while (paramIndex < cmd.params.size()) {
-                        float dy = cmd.params[paramIndex++];
-                        ctx->RelLineTo(0, dy);
-                        currentPoint.y += dy;
+                    for (size_t i = 0; i < cmd.params.size(); i++) {
+                        ctx->RelLineTo(0, cmd.params[i]);
+                        currentY += cmd.params[i];
                     }
                     break;
 
-                case 'C': // Cubic Bezier curve absolute
-                    while (paramIndex + 5 < cmd.params.size()) {
-                        float x1 = cmd.params[paramIndex++];
-                        float y1 = cmd.params[paramIndex++];
-                        float x2 = cmd.params[paramIndex++];
-                        float y2 = cmd.params[paramIndex++];
-                        float x = cmd.params[paramIndex++];
-                        float y = cmd.params[paramIndex++];
-
-                        ctx->BezierCurveTo(x1, y1, x2, y2, x, y);
-                        lastControlPoint.x = x2;
-                        lastControlPoint.y = y2;
-                        currentPoint.x = x;
-                        currentPoint.y = y;
+                case 'C': // Cubic Bezier absolute
+                    for (size_t i = 0; i + 5 < cmd.params.size(); i += 6) {
+                        float cp1x = cmd.params[i];
+                        float cp1y = cmd.params[i + 1];
+                        float cp2x = cmd.params[i + 2];
+                        float cp2y = cmd.params[i + 3];
+                        currentX = cmd.params[i + 4];
+                        currentY = cmd.params[i + 5];
+                        ctx->BezierCurveTo(cp1x, cp1y, cp2x, cp2y, currentX, currentY);
+                        controlX = cp2x;
+                        controlY = cp2y;
                     }
                     break;
 
-                case 'c': // Cubic Bezier curve relative
-                    while (paramIndex + 5 < cmd.params.size()) {
-                        float dx1 = cmd.params[paramIndex++];
-                        float dy1 = cmd.params[paramIndex++];
-                        float dx2 = cmd.params[paramIndex++];
-                        float dy2 = cmd.params[paramIndex++];
-                        float dx = cmd.params[paramIndex++];
-                        float dy = cmd.params[paramIndex++];
-
-                        ctx->RelBezierCurveTo(dx1, dy1, dx2, dy2, dx, dy);
-                        lastControlPoint.x = currentPoint.x + dx2;
-                        lastControlPoint.y = currentPoint.y + dy2;
-                        currentPoint.x += dx;
-                        currentPoint.y += dy;
+                case 'c': // Cubic Bezier relative
+                    for (size_t i = 0; i + 5 < cmd.params.size(); i += 6) {
+                        float cp1x = cmd.params[i];
+                        float cp1y = cmd.params[i + 1];
+                        float cp2x = cmd.params[i + 2];
+                        float cp2y = cmd.params[i + 3];
+                        float dx = cmd.params[i + 4];
+                        float dy = cmd.params[i + 5];
+                        ctx->RelBezierCurveTo(cp1x, cp1y, cp2x, cp2y, dx, dy);
+                        controlX = currentX + cp2x;
+                        controlY = currentY + cp2y;
+                        currentX += dx;
+                        currentY += dy;
                     }
                     break;
 
                 case 'S': // Smooth cubic Bezier absolute
-                    while (paramIndex + 3 < cmd.params.size()) {
-                        float x2 = cmd.params[paramIndex++];
-                        float y2 = cmd.params[paramIndex++];
-                        float x = cmd.params[paramIndex++];
-                        float y = cmd.params[paramIndex++];
-
-                        // Calculate reflected control point
-                        float x1, y1;
-                        if (lastCommand == 'C' || lastCommand == 'c' ||
-                            lastCommand == 'S' || lastCommand == 's') {
-                            x1 = 2 * currentPoint.x - lastControlPoint.x;
-                            y1 = 2 * currentPoint.y - lastControlPoint.y;
-                        } else {
-                            x1 = currentPoint.x;
-                            y1 = currentPoint.y;
-                        }
-
-                        ctx->BezierCurveTo(x1, y1, x2, y2, x, y);
-                        lastControlPoint.x = x2;
-                        lastControlPoint.y = y2;
-                        currentPoint.x = x;
-                        currentPoint.y = y;
+                    for (size_t i = 0; i + 3 < cmd.params.size(); i += 4) {
+                        float cp1x = 2 * currentX - controlX;
+                        float cp1y = 2 * currentY - controlY;
+                        float cp2x = cmd.params[i];
+                        float cp2y = cmd.params[i + 1];
+                        currentX = cmd.params[i + 2];
+                        currentY = cmd.params[i + 3];
+                        ctx->BezierCurveTo(cp1x, cp1y, cp2x, cp2y, currentX, currentY);
+                        controlX = cp2x;
+                        controlY = cp2y;
                     }
                     break;
 
                 case 's': // Smooth cubic Bezier relative
-                    while (paramIndex + 3 < cmd.params.size()) {
-                        float dx2 = cmd.params[paramIndex++];
-                        float dy2 = cmd.params[paramIndex++];
-                        float dx = cmd.params[paramIndex++];
-                        float dy = cmd.params[paramIndex++];
-
-                        // Calculate reflected control point (relative)
-                        float dx1, dy1;
-                        if (lastCommand == 'C' || lastCommand == 'c' ||
-                            lastCommand == 'S' || lastCommand == 's') {
-                            dx1 = currentPoint.x - lastControlPoint.x;
-                            dy1 = currentPoint.y - lastControlPoint.y;
-                        } else {
-                            dx1 = 0;
-                            dy1 = 0;
-                        }
-
-                        ctx->RelBezierCurveTo(dx1, dy1, dx2, dy2, dx, dy);
-                        lastControlPoint.x = currentPoint.x + dx2;
-                        lastControlPoint.y = currentPoint.y + dy2;
-                        currentPoint.x += dx;
-                        currentPoint.y += dy;
+                    for (size_t i = 0; i + 3 < cmd.params.size(); i += 4) {
+                        float cp1x = currentX - controlX;
+                        float cp1y = currentY - controlY;
+                        float cp2x = cmd.params[i];
+                        float cp2y = cmd.params[i + 1];
+                        float dx = cmd.params[i + 2];
+                        float dy = cmd.params[i + 3];
+                        ctx->RelBezierCurveTo(cp1x, cp1y, cp2x, cp2y, dx, dy);
+                        controlX = currentX + cp2x;
+                        controlY = currentY + cp2y;
+                        currentX += dx;
+                        currentY += dy;
                     }
                     break;
 
-                case 'Q': // Quadratic Bezier curve absolute
-                    while (paramIndex + 3 < cmd.params.size()) {
-                        float x1 = cmd.params[paramIndex++];
-                        float y1 = cmd.params[paramIndex++];
-                        float x = cmd.params[paramIndex++];
-                        float y = cmd.params[paramIndex++];
-
-                        // Convert quadratic to cubic Bezier
-                        float cx1 = currentPoint.x + 2.0f/3.0f * (x1 - currentPoint.x);
-                        float cy1 = currentPoint.y + 2.0f/3.0f * (y1 - currentPoint.y);
-                        float cx2 = x + 2.0f/3.0f * (x1 - x);
-                        float cy2 = y + 2.0f/3.0f * (y1 - y);
-
-                        ctx->BezierCurveTo(cx1, cy1, cx2, cy2, x, y);
-                        lastControlPoint.x = x1;
-                        lastControlPoint.y = y1;
-                        currentPoint.x = x;
-                        currentPoint.y = y;
+                case 'Q': // Quadratic Bezier absolute
+                    for (size_t i = 0; i + 3 < cmd.params.size(); i += 4) {
+                        float cpx = cmd.params[i];
+                        float cpy = cmd.params[i + 1];
+                        currentX = cmd.params[i + 2];
+                        currentY = cmd.params[i + 3];
+                        ctx->QuadraticCurveTo(cpx, cpy, currentX, currentY);
+                        controlX = cpx;
+                        controlY = cpy;
                     }
                     break;
 
-                case 'q': // Quadratic Bezier curve relative
-                    while (paramIndex + 3 < cmd.params.size()) {
-                        float dx1 = cmd.params[paramIndex++];
-                        float dy1 = cmd.params[paramIndex++];
-                        float dx = cmd.params[paramIndex++];
-                        float dy = cmd.params[paramIndex++];
-
-                        // Convert quadratic to cubic Bezier (relative)
-                        float cx1 = 2.0f/3.0f * dx1;
-                        float cy1 = 2.0f/3.0f * dy1;
-                        float cx2 = dx + 2.0f/3.0f * (dx1 - dx);
-                        float cy2 = dy + 2.0f/3.0f * (dy1 - dy);
-
-                        ctx->RelBezierCurveTo(cx1, cy1, cx2, cy2, dx, dy);
-                        lastControlPoint.x = currentPoint.x + dx1;
-                        lastControlPoint.y = currentPoint.y + dy1;
-                        currentPoint.x += dx;
-                        currentPoint.y += dy;
+                case 'q': // Quadratic Bezier relative
+                    for (size_t i = 0; i + 3 < cmd.params.size(); i += 4) {
+                        float cpx = cmd.params[i];
+                        float cpy = cmd.params[i + 1];
+                        float dx = cmd.params[i + 2];
+                        float dy = cmd.params[i + 3];
+                        controlX = currentX + cpx;
+                        controlY = currentY + cpy;
+                        currentX += dx;
+                        currentY += dy;
+                        ctx->QuadraticCurveTo(controlX, controlY, currentX, currentY);
                     }
                     break;
 
                 case 'T': // Smooth quadratic Bezier absolute
-                    while (paramIndex + 1 < cmd.params.size()) {
-                        float x = cmd.params[paramIndex++];
-                        float y = cmd.params[paramIndex++];
-
-                        // Calculate reflected control point
-                        float x1, y1;
-                        if (lastCommand == 'Q' || lastCommand == 'q' ||
-                            lastCommand == 'T' || lastCommand == 't') {
-                            x1 = 2 * currentPoint.x - lastControlPoint.x;
-                            y1 = 2 * currentPoint.y - lastControlPoint.y;
-                        } else {
-                            x1 = currentPoint.x;
-                            y1 = currentPoint.y;
-                        }
-
-                        // Convert quadratic to cubic Bezier
-                        float cx1 = currentPoint.x + 2.0f/3.0f * (x1 - currentPoint.x);
-                        float cy1 = currentPoint.y + 2.0f/3.0f * (y1 - currentPoint.y);
-                        float cx2 = x + 2.0f/3.0f * (x1 - x);
-                        float cy2 = y + 2.0f/3.0f * (y1 - y);
-
-                        ctx->BezierCurveTo(cx1, cy1, cx2, cy2, x, y);
-                        lastControlPoint.x = x1;
-                        lastControlPoint.y = y1;
-                        currentPoint.x = x;
-                        currentPoint.y = y;
+                    for (size_t i = 0; i + 1 < cmd.params.size(); i += 2) {
+                        float cpx = 2 * currentX - controlX;
+                        float cpy = 2 * currentY - controlY;
+                        currentX = cmd.params[i];
+                        currentY = cmd.params[i + 1];
+                        ctx->QuadraticCurveTo(cpx, cpy, currentX, currentY);
+                        controlX = cpx;
+                        controlY = cpy;
                     }
                     break;
 
                 case 't': // Smooth quadratic Bezier relative
-                    while (paramIndex + 1 < cmd.params.size()) {
-                        float dx = cmd.params[paramIndex++];
-                        float dy = cmd.params[paramIndex++];
-
-                        // Calculate reflected control point (relative)
-                        float dx1, dy1;
-                        if (lastCommand == 'Q' || lastCommand == 'q' ||
-                            lastCommand == 'T' || lastCommand == 't') {
-                            dx1 = currentPoint.x - lastControlPoint.x;
-                            dy1 = currentPoint.y - lastControlPoint.y;
-                        } else {
-                            dx1 = 0;
-                            dy1 = 0;
-                        }
-
-                        // Convert quadratic to cubic Bezier (relative)
-                        float cx1 = 2.0f/3.0f * dx1;
-                        float cy1 = 2.0f/3.0f * dy1;
-                        float cx2 = dx + 2.0f/3.0f * (dx1 - dx);
-                        float cy2 = dy + 2.0f/3.0f * (dy1 - dy);
-
-                        ctx->RelBezierCurveTo(cx1, cy1, cx2, cy2, dx, dy);
-                        lastControlPoint.x = currentPoint.x + dx1;
-                        lastControlPoint.y = currentPoint.y + dy1;
-                        currentPoint.x += dx;
-                        currentPoint.y += dy;
+                    for (size_t i = 0; i + 1 < cmd.params.size(); i += 2) {
+                        float cpx = currentX - controlX;
+                        float cpy = currentY - controlY;
+                        float dx = cmd.params[i];
+                        float dy = cmd.params[i + 1];
+                        controlX = currentX + cpx;
+                        controlY = currentY + cpy;
+                        currentX += dx;
+                        currentY += dy;
+                        ctx->QuadraticCurveTo(controlX, controlY, currentX, currentY);
                     }
                     break;
 
-                case 'A': case 'a': // Elliptical arc
-                    while (paramIndex + 6 < cmd.params.size()) {
-                        float rx = cmd.params[paramIndex++];
-                        float ry = cmd.params[paramIndex++];
-                        float xAxisRotation = cmd.params[paramIndex++];
-                        float largeArcFlag = cmd.params[paramIndex++];
-                        float sweepFlag = cmd.params[paramIndex++];
-                        float x = cmd.params[paramIndex++];
-                        float y = cmd.params[paramIndex++];
+                case 'A': // Arc absolute
+                case 'a': // Arc relative
+                    for (size_t i = 0; i + 6 < cmd.params.size(); i += 7) {
+                        float rx = cmd.params[i];
+                        float ry = cmd.params[i + 1];
+                        float rotation = cmd.params[i + 2];
+                        float largeArc = cmd.params[i + 3];
+                        float sweep = cmd.params[i + 4];
+                        float endX = (cmd.type == 'A') ? cmd.params[i + 5] : currentX + cmd.params[i + 5];
+                        float endY = (cmd.type == 'A') ? cmd.params[i + 6] : currentY + cmd.params[i + 6];
 
-                        // Calculate end point
-                        Point2Df endPoint;
-                        if (cmd.type == 'a') {
-                            endPoint.x = currentPoint.x + x;
-                            endPoint.y = currentPoint.y + y;
-                        } else {
-                            endPoint.x = x;
-                            endPoint.y = y;
-                        }
+                        ctx->ArcTo(currentX, currentY, endX, endY, std::max(rx, ry));
 
-                        // Convert arc to cubic bezier curves
-                        ConvertArcToCubicBezier(ctx, currentPoint, rx, ry, xAxisRotation,
-                                                largeArcFlag != 0, sweepFlag != 0, endPoint);
-
-                        currentPoint = endPoint;
+                        currentX = endX;
+                        currentY = endY;
                     }
                     break;
 
-                case 'Z': case 'z': // Close path
-                    ctx->LineTo(startPoint.x, startPoint.y);
+                case 'Z':
+                case 'z': // Close path
                     ctx->ClosePath();
-                    currentPoint = startPoint;
+                    currentX = startX;
+                    currentY = startY;
                     break;
             }
-
-            lastCommand = cmd.type;
         }
     }
 
-// Helper function to convert SVG arc to cubic bezier curves
-    void SVGElementRenderer::ConvertArcToCubicBezier(IRenderContext* ctx, const Point2Df& start,
-                                                     float rx, float ry, float xAxisRotation,
-                                                     bool largeArc, bool sweep, const Point2Df& end) {
-        // Handle degenerate cases
-        if (rx == 0 || ry == 0) {
-            ctx->LineTo(end.x, end.y);
-            return;
-        }
+    std::vector<float> SVGPathParser::ParseNumbers(const std::string& str, size_t& pos) {
+        std::vector<float> numbers;
 
-        rx = std::abs(rx);
-        ry = std::abs(ry);
+        while (pos < str.length()) {
+            SkipWhitespace(str, pos);
+            if (pos >= str.length()) break;
 
-        float phi = xAxisRotation * M_PI / 180.0f;
-        float cosPhi = std::cos(phi);
-        float sinPhi = std::sin(phi);
+            // Check if next character is a command letter
+            if (std::isalpha(str[pos])) break;
 
-        // Calculate center point using SVG arc algorithm
-        float dx = (start.x - end.x) / 2.0f;
-        float dy = (start.y - end.y) / 2.0f;
-        float x1p = cosPhi * dx + sinPhi * dy;
-        float y1p = -sinPhi * dx + cosPhi * dy;
+            // Parse number
+            size_t startPos = pos;
+            bool hasDecimal = false;
+            bool hasExponent = false;
 
-        // Correct radii if needed
-        float lambda = (x1p * x1p) / (rx * rx) + (y1p * y1p) / (ry * ry);
-        if (lambda > 1) {
-            rx *= std::sqrt(lambda);
-            ry *= std::sqrt(lambda);
-        }
+            if (str[pos] == '-' || str[pos] == '+') pos++;
 
-        // Calculate center
-        float sign = (largeArc != sweep) ? 1.0f : -1.0f;
-        float sq = std::max(0.0f, (rx * rx * ry * ry - rx * rx * y1p * y1p - ry * ry * x1p * x1p) /
-                                  (rx * rx * y1p * y1p + ry * ry * x1p * x1p));
-        float cxp = sign * std::sqrt(sq) * rx * y1p / ry;
-        float cyp = -sign * std::sqrt(sq) * ry * x1p / rx;
+            while (pos < str.length()) {
+                char c = str[pos];
+                if (std::isdigit(c)) {
+                    pos++;
+                } else if (c == '.' && !hasDecimal && !hasExponent) {
+                    hasDecimal = true;
+                    pos++;
+                } else if ((c == 'e' || c == 'E') && !hasExponent) {
+                    hasExponent = true;
+                    pos++;
+                    if (pos < str.length() && (str[pos] == '-' || str[pos] == '+')) {
+                        pos++;
+                    }
+                } else {
+                    break;
+                }
+            }
 
-        float cx = cosPhi * cxp - sinPhi * cyp + (start.x + end.x) / 2.0f;
-        float cy = sinPhi * cxp + cosPhi * cyp + (start.y + end.y) / 2.0f;
+            if (pos > startPos) {
+                std::string numStr = str.substr(startPos, pos - startPos);
+                try {
+                    numbers.push_back(std::stof(numStr));
+                } catch (...) {
+                    // Invalid number, skip
+                }
+            }
 
-        // Calculate angles
-        float ux = (x1p - cxp) / rx;
-        float uy = (y1p - cyp) / ry;
-        float startAngle = std::atan2(uy, ux);
-
-        float vx = (-x1p - cxp) / rx;
-        float vy = (-y1p - cyp) / ry;
-        float deltaAngle = std::atan2(vy, vx) - startAngle;
-
-        // Adjust angle based on sweep flag
-        if (sweep && deltaAngle < 0) {
-            deltaAngle += 2 * M_PI;
-        } else if (!sweep && deltaAngle > 0) {
-            deltaAngle -= 2 * M_PI;
-        }
-
-        // Convert arc to bezier curves (maximum 4 curves for full circle)
-        const int maxCurves = 4;
-        int numCurves = std::min(maxCurves, static_cast<int>(std::ceil(std::abs(deltaAngle) / (M_PI / 2))));
-        float anglePerCurve = deltaAngle / numCurves;
-
-        for (int i = 0; i < numCurves; i++) {
-            float theta1 = startAngle + i * anglePerCurve;
-            float theta2 = startAngle + (i + 1) * anglePerCurve;
-
-            // Calculate control points for this segment
-            float alpha = std::sin(theta2 - theta1) * (std::sqrt(4 + 3 * std::tan((theta2 - theta1) / 2) *
-                                                                     std::tan((theta2 - theta1) / 2)) - 1) / 3;
-
-            float ex1 = std::cos(theta1);
-            float ey1 = std::sin(theta1);
-            float ex2 = std::cos(theta2);
-            float ey2 = std::sin(theta2);
-
-            float q1x = ex1 - ey1 * alpha;
-            float q1y = ey1 + ex1 * alpha;
-            float q2x = ex2 + ey2 * alpha;
-            float q2y = ey2 - ex2 * alpha;
-
-            // Transform back to original coordinate system
-            float cp1x = rx * q1x;
-            float cp1y = ry * q1y;
-            float cp2x = rx * q2x;
-            float cp2y = ry * q2y;
-            float epx = rx * ex2;
-            float epy = ry * ey2;
-
-            // Rotate and translate
-            float c1x = cosPhi * cp1x - sinPhi * cp1y + cx;
-            float c1y = sinPhi * cp1x + cosPhi * cp1y + cy;
-            float c2x = cosPhi * cp2x - sinPhi * cp2y + cx;
-            float c2y = sinPhi * cp2x + cosPhi * cp2y + cy;
-            float endx = cosPhi * epx - sinPhi * epy + cx;
-            float endy = sinPhi * epx + cosPhi * epy + cy;
-
-            ctx->BezierCurveTo(c1x, c1y, c2x, c2y, endx, endy);
-        }
-    }
-
-// Updated RenderPath method in SVGElementRenderer
-    void SVGElementRenderer::RenderPath(const SVGElement& element) {
-        // path commands
-        const std::vector<SVGPathCommand> commands = ((SVGPathElement&)element).pathCommands;
-        if (commands.empty()) return;
-
-        // Apply styles
-        ApplyFillStyles(element);
-
-        // Execute path commands using native Path functions
-        ExecutePathCommands(ctx, commands);
-
-        // Stroke or fill based on style attributes
-        std::string fill = element.attributes.Get("fill", "black");
-        std::string stroke = element.attributes.Get("stroke", "none");
-
-        if (fill != "none") {
-            ctx->FillPath();
-        }
-        if (stroke != "none") {
-            ctx->StrokePath();
-        }
-    }
-
-    void SVGElementRenderer::RenderText(const SVGElement& element) {
-        float x = element.attributes.GetFloat("x", 0.0f);
-        float y = element.attributes.GetFloat("y", 0.0f);
-
-        if (element.textContent.empty()) return;
-
-        ApplyFillStyles(element);
-
-        // Use existing UltraCanvas text function
-        Point2Df position(x, y);
-        ctx->DrawText(element.textContent, position);
-    }
-
-    void SVGElementRenderer::RenderGroup(const SVGElement& element) {
-        ctx->PushState();
-
-        ApplyFillStyles(element);
-
-        // Render all children
-        for (const auto& child : element.children) {
-            if (child) {
-                RenderElement(*child);
+            // Skip comma if present
+            SkipWhitespace(str, pos);
+            if (pos < str.length() && str[pos] == ',') {
+                pos++;
             }
         }
-        ctx->PopState();
+
+        return numbers;
     }
 
-    void SVGElementRenderer::RenderElement(const SVGElement& element) {
-        if (element.tagName == "rect") {
-            RenderRect(element);
-        } else if (element.tagName == "circle") {
-            RenderCircle(element);
-        } else if (element.tagName == "ellipse") {
-            RenderEllipse(element);
-        } else if (element.tagName == "line") {
-            RenderLine(element);
-        } else if (element.tagName == "polyline") {
-            RenderPolyline(element);
-        } else if (element.tagName == "polygon") {
-            RenderPolygon(element);
-        } else if (element.tagName == "path") {
-            RenderPath(element);
-        } else if (element.tagName == "text") {
-            RenderText(element);
-        } else if (element.tagName == "g" || element.tagName == "svg") {
-            RenderGroup(element);
+    void SVGPathParser::SkipWhitespace(const std::string& str, size_t& pos) {
+        while (pos < str.length() && std::isspace(str[pos])) {
+            pos++;
         }
-        // Note: Additional elements like gradients, patterns, etc. would be added here
     }
 
-    void SVGElementRenderer::RenderDocument(const Rect2Df& viewport) {
+// SVGDocument implementation
+    SVGDocument::SVGDocument() {}
+
+    SVGDocument::~SVGDocument() {}
+
+    bool SVGDocument::LoadFromFile(const std::string& filepath) {
+        if (xmlDoc.LoadFile(filepath.c_str()) != tinyxml2::XML_SUCCESS) {
+            return false;
+        }
+
+        root = xmlDoc.FirstChildElement("svg");
+        if (!root) {
+            return false;
+        }
+
+        // Parse dimensions
+        width = ParseFloatAttribute(root, "width", 100);
+        height = ParseFloatAttribute(root, "height", 100);
+
+        // Parse viewBox
+        const char* viewBoxAttr = root->Attribute("viewBox");
+        if (viewBoxAttr) {
+            ParseViewBox(viewBoxAttr);
+        } else {
+            viewBox = {0, 0, width, height};
+        }
+
+        // Parse defs
+        tinyxml2::XMLElement* defs = root->FirstChildElement("defs");
+        if (defs) {
+            ParseDefs(defs);
+        }
+
+        return true;
+    }
+
+    bool SVGDocument::LoadFromString(const std::string& svgContent) {
+        if (xmlDoc.Parse(svgContent.c_str()) != tinyxml2::XML_SUCCESS) {
+            return false;
+        }
+
+        root = xmlDoc.FirstChildElement("svg");
+        if (!root) {
+            return false;
+        }
+
+        // Parse dimensions
+        width = ParseFloatAttribute(root, "width", 100);
+        height = ParseFloatAttribute(root, "height", 100);
+
+        // Parse viewBox
+        const char* viewBoxAttr = root->Attribute("viewBox");
+        if (viewBoxAttr) {
+            ParseViewBox(viewBoxAttr);
+        } else {
+            viewBox = {0, 0, width, height};
+        }
+
+        // Parse defs
+        tinyxml2::XMLElement* defs = root->FirstChildElement("defs");
+        if (defs) {
+            ParseDefs(defs);
+        }
+
+        return true;
+    }
+
+    void SVGDocument::ParseViewBox(const std::string& viewBoxStr) {
+        std::istringstream iss(viewBoxStr);
+        iss >> viewBox.x >> viewBox.y >> viewBox.width >> viewBox.height;
+    }
+
+    void SVGDocument::ParseDefs(tinyxml2::XMLElement* defs) {
+        for (tinyxml2::XMLElement* elem = defs->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
+            std::string name = elem->Name();
+
+            if (name == "linearGradient" || name == "radialGradient") {
+                ParseGradient(elem);
+            } else if (name == "filter") {
+                ParseFilter(elem);
+            } else if (name == "clipPath") {
+                ParseClipPath(elem);
+            }
+        }
+    }
+
+    void SVGDocument::ParseGradient(tinyxml2::XMLElement* elem) {
+        std::string type = elem->Name();
+        std::string id = GetAttribute(elem, "id");
+
+        if (id.empty()) return;
+
+        std::unique_ptr<SVGGradient> gradient;
+
+        if (type == "linearGradient") {
+            auto linear = std::make_unique<SVGLinearGradient>();
+            linear->x1 = ParseFloatAttribute(elem, "x1", 0);
+            linear->y1 = ParseFloatAttribute(elem, "y1", 0);
+            linear->x2 = ParseFloatAttribute(elem, "x2", 1);
+            linear->y2 = ParseFloatAttribute(elem, "y2", 0);
+            gradient = std::move(linear);
+        } else if (type == "radialGradient") {
+            auto radial = std::make_unique<SVGRadialGradient>();
+            radial->cx = ParseFloatAttribute(elem, "cx", 0.5f);
+            radial->cy = ParseFloatAttribute(elem, "cy", 0.5f);
+            radial->r = ParseFloatAttribute(elem, "r", 0.5f);
+            radial->fx = ParseFloatAttribute(elem, "fx", radial->cx);
+            radial->fy = ParseFloatAttribute(elem, "fy", radial->cy);
+            gradient = std::move(radial);
+        }
+
+        if (gradient) {
+            gradient->id = id;
+            gradient->units = GetAttribute(elem, "gradientUnits", "objectBoundingBox");
+            gradient->spreadMethod = GetAttribute(elem, "spreadMethod", "pad");
+            gradient->href = GetAttribute(elem, "xlink:href");
+
+            // Parse stops
+            for (tinyxml2::XMLElement* stop = elem->FirstChildElement("stop"); stop; stop = stop->NextSiblingElement("stop")) {
+                GradientStop gradStop;
+                gradStop.position = ParseFloatAttribute(stop, "offset", 0);
+
+                const char* stopColor = stop->Attribute("stop-color");
+                if (stopColor && stopColor[0] == '#') {
+                    unsigned int rgb = std::stoul(std::string(stopColor).substr(1), nullptr, 16);
+                    gradStop.color.r = (rgb >> 16) & 0xFF;
+                    gradStop.color.g = (rgb >> 8) & 0xFF;
+                    gradStop.color.b = rgb & 0xFF;
+                    gradStop.color.a = 255;
+                }
+
+                gradStop.color.a = static_cast<uint8_t >(255.0 / ParseFloatAttribute(stop, "stop-opacity", 1));
+                gradient->stops.push_back(gradStop);
+            }
+
+            gradients[id] = std::move(gradient);
+        }
+    }
+
+    void SVGDocument::ParseFilter(tinyxml2::XMLElement* elem) {
+        std::string id = GetAttribute(elem, "id");
+        if (id.empty()) return;
+
+        auto filter = std::make_unique<SVGFilter>();
+        filter->id = id;
+        filter->filterUnits = GetAttribute(elem, "filterUnits", "objectBoundingBox");
+
+        // Parse filter effects
+        for (tinyxml2::XMLElement* effect = elem->FirstChildElement(); effect; effect = effect->NextSiblingElement()) {
+            std::string effectType = effect->Name();
+
+            if (effectType == "feGaussianBlur") {
+                auto blur = std::make_unique<SVGGaussianBlur>();
+                float stdDev = ParseFloatAttribute(effect, "stdDeviation", 0);
+                blur->stdDeviationX = stdDev;
+                blur->stdDeviationY = stdDev;
+                blur->in = GetAttribute(effect, "in");
+                blur->result = GetAttribute(effect, "result");
+                filter->effects.push_back(std::move(blur));
+            }
+            // Add more filter effects as needed
+        }
+
+        filters[id] = std::move(filter);
+    }
+
+    void SVGDocument::ParseClipPath(tinyxml2::XMLElement* elem) {
+        std::string id = GetAttribute(elem, "id");
+        if (id.empty()) return;
+
+        // Parse first path element in clipPath
+        tinyxml2::XMLElement* pathElem = elem->FirstChildElement("path");
+        if (pathElem) {
+            const char* d = pathElem->Attribute("d");
+            if (d) {
+                clipPaths[id] = SVGPathParser::Parse(d);
+            }
+        }
+    }
+
+    void SVGDocument::AddGradient(std::unique_ptr<SVGGradient> gradient) {
+        if (gradient && !gradient->id.empty()) {
+            gradients[gradient->id] = std::move(gradient);
+        }
+    }
+
+    void SVGDocument::AddFilter(std::unique_ptr<SVGFilter> filter) {
+        if (filter && !filter->id.empty()) {
+            filters[filter->id] = std::move(filter);
+        }
+    }
+
+    void SVGDocument::AddClipPath(const std::string& id, std::vector<PathCommand> path) {
+        if (!id.empty()) {
+            clipPaths[id] = std::move(path);
+        }
+    }
+
+    SVGGradient* SVGDocument::GetGradient(const std::string& id) {
+        auto it = gradients.find(id);
+        return (it != gradients.end()) ? it->second.get() : nullptr;
+    }
+
+    SVGFilter* SVGDocument::GetFilter(const std::string& id) {
+        auto it = filters.find(id);
+        return (it != filters.end()) ? it->second.get() : nullptr;
+    }
+
+    std::vector<PathCommand>* SVGDocument::GetClipPath(const std::string& id) {
+        auto it = clipPaths.find(id);
+        return (it != clipPaths.end()) ? &it->second : nullptr;
+    }
+
+// SVGElementRenderer implementation
+    SVGElementRenderer::SVGElementRenderer(const SVGDocument& doc, IRenderContext* ctx)
+            : document(doc), context(ctx) {
+        // Initialize with default style
+        SVGStyle defaultStyle;
+        styleStack.push(defaultStyle);
+    }
+
+    SVGElementRenderer::~SVGElementRenderer() {}
+
+    void SVGElementRenderer::Render() {
         if (!document.root) return;
-        ctx->PushState();
 
-        // Apply viewport transformation if needed
-        if (document.hasViewBox) {
-            // Calculate scale to fit viewBox in viewport
-            float scaleX = viewport.width / document.viewBox.width;
-            float scaleY = viewport.height / document.viewBox.height;
-            float scale = std::min(scaleX, scaleY);
+        // Set up viewport transformation
+        if (document.viewBox.width > 0 && document.viewBox.height > 0) {
+            float scaleX = document.width / document.viewBox.width;
+            float scaleY = document.height / document.viewBox.height;
 
-            // Apply transformation
-            ctx->Translate(viewport.x, viewport.y);
-            ctx->Scale(scale, scale);
-            ctx->Translate(-document.viewBox.x, -document.viewBox.y);
+            context->PushState();
+            context->Scale(scaleX, scaleY);
+            context->Translate(-document.viewBox.x, -document.viewBox.y);
         }
 
-        RenderElement(*document.root);
+        // Render all child elements
+        for (tinyxml2::XMLElement* elem = document.root->FirstChildElement(); elem; elem = elem->NextSiblingElement()) {
+            RenderElement(elem);
+        }
 
-        ctx->PopState();
+        if (document.viewBox.width > 0 && document.viewBox.height > 0) {
+            context->PopState();
+        }
     }
 
-// ===== SVG UI ELEMENT IMPLEMENTATION =====
-    UltraCanvasSVGElement::UltraCanvasSVGElement(const std::string& identifier, long id, long x, long y, long w, long h)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+    void SVGElementRenderer::RenderElement(tinyxml2::XMLElement* elem) {
+        if (!elem) return;
+
+        std::string name = elem->Name();
+
+        // Save context state
+        context->PushState();
+
+        // Parse and apply style
+        SVGStyle style = ParseStyle(elem);
+        PushStyle(style);
+
+        // Parse and apply transform
+        const char* transformAttr = elem->Attribute("transform");
+        if (transformAttr) {
+            SVGTransform transform = ParseTransform(transformAttr);
+            transform.ApplyToContext(context);
+        }
+
+        // Apply opacity
+        if (style.opacity < 1.0f) {
+            context->SetAlpha(style.opacity);
+        }
+
+        // Render based on element type
+        if (name == "g") {
+            RenderGroup(elem);
+        } else if (name == "path") {
+            RenderPath(elem);
+        } else if (name == "rect") {
+            RenderRect(elem);
+        } else if (name == "circle") {
+            RenderCircle(elem);
+        } else if (name == "ellipse") {
+            RenderEllipse(elem);
+        } else if (name == "line") {
+            RenderLine(elem);
+        } else if (name == "polyline") {
+            RenderPolyline(elem);
+        } else if (name == "polygon") {
+            RenderPolygon(elem);
+        } else if (name == "text") {
+            RenderText(elem);
+        } else if (name == "image") {
+            RenderImage(elem);
+        } else if (name == "use") {
+            RenderUse(elem);
+        }
+
+        // Pop style
+        PopStyle();
+
+        // Restore context state
+        context->PopState();
     }
 
-    UltraCanvasSVGElement::~UltraCanvasSVGElement() {
-        delete renderer;
+    void SVGElementRenderer::RenderGroup(tinyxml2::XMLElement* elem) {
+        // Render all children
+        for (tinyxml2::XMLElement* child = elem->FirstChildElement(); child; child = child->NextSiblingElement()) {
+            RenderElement(child);
+        }
+    }
+
+    void SVGElementRenderer::RenderPath(tinyxml2::XMLElement* elem) {
+        const char* d = elem->Attribute("d");
+        if (!d) return;
+
+        std::vector<PathCommand> commands = SVGPathParser::Parse(d);
+        SVGPathParser::RenderPath(context, commands);
+
+        SVGStyle& style = styleStack.top();
+        Rect2Df bounds = GetElementBounds(elem);
+
+        FillAndStroke(style, bounds);
+    }
+
+    void SVGElementRenderer::RenderRect(tinyxml2::XMLElement* elem) {
+        float x = ParseFloatAttribute(elem, "x", 0);
+        float y = ParseFloatAttribute(elem, "y", 0);
+        float width = ParseFloatAttribute(elem, "width", 0);
+        float height = ParseFloatAttribute(elem, "height", 0);
+        float rx = ParseFloatAttribute(elem, "rx", 0);
+        float ry = ParseFloatAttribute(elem, "ry", 0);
+
+        context->ClearPath();
+
+        if (rx > 0 || ry > 0) {
+            // Rounded rectangle
+            context->RoundedRect(x, y, width, height, std::max(rx, ry));
+        } else {
+            // Regular rectangle
+            context->Rect(x, y, width, height);
+        }
+
+        SVGStyle& style = styleStack.top();
+        Rect2Df bounds = {x, y, width, height};
+
+        FillAndStroke(style, bounds);
+    }
+
+    void SVGElementRenderer::RenderCircle(tinyxml2::XMLElement* elem) {
+        float cx = ParseFloatAttribute(elem, "cx", 0);
+        float cy = ParseFloatAttribute(elem, "cy", 0);
+        float r = ParseFloatAttribute(elem, "r", 0);
+
+        context->ClearPath();
+        context->Circle(cx, cy, r);
+
+        SVGStyle& style = styleStack.top();
+        Rect2Df bounds = {cx - r, cy - r, 2 * r, 2 * r};
+
+        FillAndStroke(style, bounds);
+    }
+
+    void SVGElementRenderer::RenderEllipse(tinyxml2::XMLElement* elem) {
+        float cx = ParseFloatAttribute(elem, "cx", 0);
+        float cy = ParseFloatAttribute(elem, "cy", 0);
+        float rx = ParseFloatAttribute(elem, "rx", 0);
+        float ry = ParseFloatAttribute(elem, "ry", 0);
+
+        context->ClearPath();
+        context->Ellipse(cx, cy, rx, ry, 0, 0, 2 * M_PI);
+
+        SVGStyle& style = styleStack.top();
+        Rect2Df bounds = {cx - rx, cy - ry, 2 * rx, 2 * ry};
+
+        FillAndStroke(style, bounds);
+    }
+
+    void SVGElementRenderer::RenderPolygon(tinyxml2::XMLElement* elem) {
+        const char* pointsAttr = elem->Attribute("points");
+        if (!pointsAttr) return;
+
+        std::vector<Point2Df> points = ParsePoints(pointsAttr);
+        if (points.size() < 3) return;
+
+        context->ClearPath();
+        context->MoveTo(points[0].x, points[0].y);
+
+        for (size_t i = 1; i < points.size(); i++) {
+            context->LineTo(points[i].x, points[i].y);
+        }
+
+        context->ClosePath();
+
+        SVGStyle& style = styleStack.top();
+        Rect2Df bounds = GetElementBounds(elem);
+
+        FillAndStroke(style, bounds);
+    }
+
+    void SVGElementRenderer::RenderLine(tinyxml2::XMLElement* elem) {
+        float x1 = ParseFloatAttribute(elem, "x1", 0);
+        float y1 = ParseFloatAttribute(elem, "y1", 0);
+        float x2 = ParseFloatAttribute(elem, "x2", 0);
+        float y2 = ParseFloatAttribute(elem, "y2", 0);
+
+        context->ClearPath();
+        context->MoveTo(x1, y1);
+        context->LineTo(x2, y2);
+
+        SVGStyle& style = styleStack.top();
+        Rect2Df bounds = {std::min(x1, x2), std::min(y1, y2),
+                       std::abs(x2 - x1), std::abs(y2 - y1)};
+
+        // Lines only have stroke
+        if (style.strokeColor.a > 0 || !style.strokeGradientId.empty()) {
+            ApplyStroke(style, bounds);
+            context->Stroke();
+        }
+    }
+
+    void SVGElementRenderer::RenderPolyline(tinyxml2::XMLElement* elem) {
+        const char* pointsAttr = elem->Attribute("points");
+        if (!pointsAttr) return;
+
+        std::vector<Point2Df> points = ParsePoints(pointsAttr);
+        if (points.size() < 2) return;
+
+        context->ClearPath();
+        context->MoveTo(points[0].x, points[0].y);
+
+        for (size_t i = 1; i < points.size(); i++) {
+            context->LineTo(points[i].x, points[i].y);
+        }
+
+        SVGStyle& style = styleStack.top();
+        Rect2Df bounds = GetElementBounds(elem);
+
+        // Polylines typically only have stroke
+        if (style.strokeColor.a > 0 || !style.strokeGradientId.empty()) {
+            ApplyStroke(style, bounds);
+            context->Stroke();
+        }
+    }
+
+    void SVGElementRenderer::RenderText(tinyxml2::XMLElement* elem) {
+        float x = ParseFloatAttribute(elem, "x", 0);
+        float y = ParseFloatAttribute(elem, "y", 0);
+
+        const char* text = elem->GetText();
+        if (!text) return;
+
+        SVGStyle& style = styleStack.top();
+
+        // Set font properties
+        const char* fontFamily = elem->Attribute("font-family");
+        float fontSize = ParseFloatAttribute(elem, "font-size", 12);
+        const char* fontWeight = elem->Attribute("font-weight");
+        FontWeight fw = FontWeight::Normal;
+        if (strcmp(fontWeight, "bold") == 0) {
+            fw = FontWeight::Bold;
+        }
+        context->SetFontFace(fontFamily ? fontFamily : "Arial", fw, FontSlant::Normal);
+        context->SetFontSize(fontSize);
+
+        // Apply fill for text
+        if (style.fillColor.a > 0) {
+            context->SetFillPaint(style.fillColor);
+            context->FillText(text, x, y);
+        }
+
+        // Apply stroke for text
+        if (style.strokeColor.a > 0 && style.strokeWidth > 0) {
+            context->SetStrokePaint(style.strokeColor);
+            context->SetStrokeWidth(style.strokeWidth);
+            context->StrokeText(text, x, y);
+        }
+    }
+
+    void SVGElementRenderer::RenderImage(tinyxml2::XMLElement* elem) {
+        float x = ParseFloatAttribute(elem, "x", 0);
+        float y = ParseFloatAttribute(elem, "y", 0);
+        float width = ParseFloatAttribute(elem, "width", 0);
+        float height = ParseFloatAttribute(elem, "height", 0);
+
+        const char* href = elem->Attribute("xlink:href");
+        if (!href) href = elem->Attribute("href");
+
+        if (href) {
+            // Load and render image
+            // This would need actual image loading implementation
+            context->DrawImage(href, x, y, width, height);
+        }
+    }
+
+    void SVGElementRenderer::RenderUse(tinyxml2::XMLElement* elem) {
+        const char* href = elem->Attribute("xlink:href");
+        if (!href) href = elem->Attribute("href");
+
+        if (href && href[0] == '#') {
+            std::string id = href + 1;
+
+            // Find referenced element
+            // This would need to search through the document for the element with matching id
+            // For now, simplified implementation
+        }
+    }
+
+    void SVGElementRenderer::FillAndStroke(const SVGStyle& style, const Rect2Df& bounds) {
+        // Apply fill
+        if (style.fillColor.a > 0 || !style.fillGradientId.empty()) {
+            ApplyFill(style, bounds);
+            context->Fill();
+        }
+
+        // Apply stroke
+        if (style.strokeColor.a > 0 || !style.strokeGradientId.empty()) {
+            ApplyStroke(style, bounds);
+            context->Stroke();
+        }
+        context->ClearPath();
+    }
+
+    void SVGElementRenderer::PushStyle(const SVGStyle& style) {
+        SVGStyle newStyle = styleStack.top();
+
+        // Merge with new style
+        if (style.fillColor.a > 0) newStyle.fillColor = style.fillColor;
+        if (!style.fillGradientId.empty()) newStyle.fillGradientId = style.fillGradientId;
+        if (style.strokeColor.a > 0) newStyle.strokeColor = style.strokeColor;
+        if (!style.strokeGradientId.empty()) newStyle.strokeGradientId = style.strokeGradientId;
+        if (style.strokeWidth > 0) newStyle.strokeWidth = style.strokeWidth;
+
+        newStyle.opacity *= style.opacity;
+        newStyle.fillOpacity *= style.fillOpacity;
+        newStyle.strokeOpacity *= style.strokeOpacity;
+
+        styleStack.push(newStyle);
+    }
+
+    void SVGElementRenderer::PopStyle() {
+        if (styleStack.size() > 1) {
+            styleStack.pop();
+        }
+    }
+
+    void SVGElementRenderer::ApplyFill(const SVGStyle& style, const Rect2Df& bounds) {
+        if (!style.fillGradientId.empty()) {
+            SVGGradient* gradient = const_cast<SVGDocument&>(document).GetGradient(style.fillGradientId);
+            if (gradient) {
+                context->SetFillPaint(gradient->CreatePattern(context, bounds));
+            }
+        } else {
+            Color fillColor = style.fillColor;
+            fillColor.a = static_cast<uint8_t>(fillColor.a * style.fillOpacity);
+            context->SetFillPaint(fillColor);
+        }
+    }
+
+    void SVGElementRenderer::ApplyStroke(const SVGStyle& style, const Rect2Df& bounds) {
+        if (!style.strokeGradientId.empty()) {
+            SVGGradient* gradient = const_cast<SVGDocument&>(document).GetGradient(style.strokeGradientId);
+            if (gradient) {
+                context->SetStrokePaint(gradient->CreatePattern(context, bounds));
+            }
+        } else {
+            Color strokeColor = style.strokeColor;
+            strokeColor.a = static_cast<uint8_t>(strokeColor.a * style.strokeOpacity);
+            context->SetStrokePaint(strokeColor);
+        }
+
+        context->SetStrokeWidth(style.strokeWidth);
+
+        // Apply line cap
+        switch (style.lineCap) {
+            case SVGStyle::Butt:
+                context->SetLineCap(LineCap::Butt);
+                break;
+            case SVGStyle::Round:
+                context->SetLineCap(LineCap::Round);
+                break;
+            case SVGStyle::Square:
+                context->SetLineCap(LineCap::Square);
+                break;
+        }
+
+        // Apply line join
+        switch (style.lineJoin) {
+            case SVGStyle::Miter:
+                context->SetLineJoin(LineJoin::Miter);
+                break;
+            case SVGStyle::RoundJoin:
+                context->SetLineJoin(LineJoin::Round);
+                break;
+            case SVGStyle::Bevel:
+                context->SetLineJoin(LineJoin::Bevel);
+                break;
+        }
+
+        if (style.dashArray.size() > 0) {
+            context->SetLineDash(style.dashArray, style.dashArray.size());
+        }
+    }
+
+    SVGStyle SVGElementRenderer::ParseStyle(tinyxml2::XMLElement* elem) {
+        SVGStyle style = styleStack.top();
+        style.ParseFromAttributes(elem);
+        return style;
+    }
+
+    SVGTransform SVGElementRenderer::ParseTransform(const std::string& transformStr) {
+        SVGTransform transform;
+
+        // Simple transform parser - handles basic cases
+        std::regex transformRegex(R"((\w+)\s*\(([\d\s,.\-+e]+)\))");
+        std::smatch match;
+
+        if (std::regex_search(transformStr, match, transformRegex)) {
+            std::string type = match[1];
+            std::string params = match[2];
+
+            // Parse parameters
+            size_t pos = 0;
+            transform.values = SVGPathParser::ParseNumbers(params, pos);
+
+            // Determine transform type
+            if (type == "matrix") {
+                transform.type = SVGTransform::Matrix;
+            } else if (type == "translate") {
+                transform.type = SVGTransform::Translate;
+            } else if (type == "scale") {
+                transform.type = SVGTransform::Scale;
+            } else if (type == "rotate") {
+                transform.type = SVGTransform::Rotate;
+            } else if (type == "skewX") {
+                transform.type = SVGTransform::SkewX;
+            } else if (type == "skewY") {
+                transform.type = SVGTransform::SkewY;
+            }
+        }
+
+        return transform;
+    }
+
+    std::vector<Point2Df> SVGElementRenderer::ParsePoints(const std::string& pointsStr) {
+        std::vector<Point2Df> points;
+        size_t pos = 0;
+        std::vector<float> coords = SVGPathParser::ParseNumbers(pointsStr, pos);
+
+        for (size_t i = 0; i + 1 < coords.size(); i += 2) {
+            points.push_back({coords[i], coords[i + 1]});
+        }
+
+        return points;
+    }
+
+    Color SVGElementRenderer::ParseColor(const std::string& colorStr) {
+        Color color{0, 0, 0, 255};
+
+        if (colorStr[0] == '#') {
+            unsigned int rgb = std::stoul(colorStr.substr(1), nullptr, 16);
+            color.r = (rgb >> 16) & 0xFF;
+            color.g = (rgb >> 8) & 0xFF;
+            color.b = rgb & 0xFF;
+        }
+        // Add support for named colors and rgb() format as needed
+
+        return color;
+    }
+
+    float SVGElementRenderer::ParseLength(const std::string& lengthStr, float reference) {
+        if (lengthStr.empty()) return 0;
+
+        // Simple length parser - handles px and %
+        if (lengthStr.back() == '%') {
+            float percentage = std::stof(lengthStr.substr(0, lengthStr.length() - 1));
+            return percentage * reference / 100.0f;
+        }
+
+        // Remove unit suffix if present
+        std::string numStr = lengthStr;
+        if (numStr.find("px") != std::string::npos) {
+            numStr = numStr.substr(0, numStr.find("px"));
+        }
+
+        return std::stof(numStr);
+    }
+
+    Rect2Df SVGElementRenderer::GetElementBounds(tinyxml2::XMLElement* elem) {
+        // Simple bounds calculation - would need more sophisticated implementation
+        std::string name = elem->Name();
+        Rect2Df bounds{0, 0, 100, 100};
+
+        if (name == "rect") {
+            bounds.x = ParseFloatAttribute(elem, "x", 0);
+            bounds.y = ParseFloatAttribute(elem, "y", 0);
+            bounds.width = ParseFloatAttribute(elem, "width", 100);
+            bounds.height = ParseFloatAttribute(elem, "height", 100);
+        } else if (name == "circle") {
+            float cx = ParseFloatAttribute(elem, "cx", 0);
+            float cy = ParseFloatAttribute(elem, "cy", 0);
+            float r = ParseFloatAttribute(elem, "r", 50);
+            bounds = {cx - r, cy - r, 2 * r, 2 * r};
+        } else if (name == "ellipse") {
+            float cx = ParseFloatAttribute(elem, "cx", 0);
+            float cy = ParseFloatAttribute(elem, "cy", 0);
+            float rx = ParseFloatAttribute(elem, "rx", 50);
+            float ry = ParseFloatAttribute(elem, "ry", 50);
+            bounds = {cx - rx, cy - ry, 2 * rx, 2 * ry};
+        } else if (name == "line") {
+            float x1 = ParseFloatAttribute(elem, "x1", 0);
+            float y1 = ParseFloatAttribute(elem, "y1", 0);
+            float x2 = ParseFloatAttribute(elem, "x2", 100);
+            float y2 = ParseFloatAttribute(elem, "y2", 100);
+            bounds = {std::min(x1, x2), std::min(y1, y2),
+                      std::abs(x2 - x1), std::abs(y2 - y1)};
+        } else if (name == "polygon" || name == "polyline") {
+            const char* pointsAttr = elem->Attribute("points");
+            if (pointsAttr) {
+                std::vector<Point2Df> points = ParsePoints(pointsAttr);
+                if (!points.empty()) {
+                    float minX = points[0].x, maxX = points[0].x;
+                    float minY = points[0].y, maxY = points[0].y;
+
+                    for (const auto& pt : points) {
+                        minX = std::min(minX, pt.x);
+                        maxX = std::max(maxX, pt.x);
+                        minY = std::min(minY, pt.y);
+                        maxY = std::max(maxY, pt.y);
+                    }
+
+                    bounds = {minX, minY, maxX - minX, maxY - minY};
+                }
+            }
+        } else if (name == "path") {
+            // For paths, we'd need to calculate bounds from path data
+            // This is complex, so using default for now
+            bounds = {0, 0, 100, 100};
+        }
+
+        return bounds;
+    }
+
+// UltraCanvasSVGElement implementation
+    UltraCanvasSVGElement::UltraCanvasSVGElement(const std::string& identifier, long id, long x, long y, long w, long h = 24)
+            : UltraCanvasUIElement(identifier, id, x, y, w, h),
+            document(std::make_unique<SVGDocument>()) {
+    }
+
+    bool UltraCanvasSVGElement::LoadFromFile(const std::string& filepath) {
+        return document->LoadFromFile(filepath);
     }
 
     bool UltraCanvasSVGElement::LoadFromString(const std::string& svgContent) {
-        this->svgContent = svgContent;
-
-        SimpleSVGParser parser;
-        document = parser.Parse(svgContent);
-
-        if (!document) {
-            if (onLoadError) {
-                onLoadError("Failed to parse SVG content");
-            }
-            return false;
-        }
-
-        if (autoResize) {
-            UpdateSizeFromSVG();
-        }
-
-        if (onLoadComplete) {
-            onLoadComplete();
-        }
-
-        return true;
-    }
-
-    bool UltraCanvasSVGElement::LoadFromFile(const std::string& filePath) {
-        std::ifstream file(filePath);
-        if (!file.is_open()) {
-            if (onLoadError) {
-                onLoadError("Failed to open file: " + filePath);
-            }
-            return false;
-        }
-
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        return LoadFromString(buffer.str());
+        return document->LoadFromString(svgContent);
     }
 
     void UltraCanvasSVGElement::Render() {
-        IRenderContext *ctx = GetRenderContext();
-        if (!document) return;
+        auto context = GetRenderContext();
+        if (!document || !context) return;
 
-        if (!renderer) {
-            renderer = new SVGElementRenderer(*document, ctx);
+        context->PushState();
+
+        // Apply element transform
+        Rect2Di bounds = GetBounds();
+        context->Translate(bounds.x, bounds.y);
+
+        // Apply scale
+        if (scale != 1.0f) {
+            context->Scale(scale, scale);
         }
 
+        // Handle aspect ratio
+        if (preserveAspectRatio) {
+            float docAspect = document->GetWidth() / document->GetHeight();
+            float boundsAspect = static_cast<float>(bounds.width) / static_cast<float>(bounds.height);
 
-        Rect2Df viewport(0, 0, static_cast<float>(GetWidth()), static_cast<float>(GetHeight()));
+            if (docAspect > boundsAspect) {
+                // Document is wider - scale based on width
+                float scaleFactor = static_cast<float>(bounds.width) / document->GetWidth();
+                context->Scale(scaleFactor, scaleFactor);
+            } else {
+                // Document is taller - scale based on height
+                float scaleFactor = static_cast<float>(bounds.height) / document->GetHeight();
+                context->Scale(scaleFactor, scaleFactor);
+            }
+        } else {
+            // Stretch to fill
+            float scaleX = static_cast<float>(bounds.width) / document->GetWidth();
+            float scaleY = static_cast<float>(bounds.height) / document->GetHeight();
+            context->Scale(scaleX, scaleY);
+        }
 
-//    if (scaleFactor != 1.0f) {
-//        PushMatrix();
-//        Scale(scaleFactor, scaleFactor);
+        // Render the SVG
+        SVGElementRenderer renderer(*document, context);
+        renderer.Render();
+
+        context->PopState();
+    }
+
+//    Size UltraCanvasSVGElement::GetPreferredSize() const {
+//        if (document) {
+//            return {document->GetWidth() * scale, document->GetHeight() * scale};
+//        }
+//        return {100, 100};
 //    }
 
-        renderer->RenderDocument(viewport);
-
-//    if (scaleFactor != 1.0f) {
-//        PopMatrix();
+// UltraCanvasSVGPlugin implementation
+//    UltraCanvasSVGPlugin::UltraCanvasSVGPlugin() {
+//        instance = this;
 //    }
-    }
+//
+//    UltraCanvasSVGPlugin::~UltraCanvasSVGPlugin() {
+//        if (instance == this) {
+//            instance = nullptr;
+//        }
+//    }
+//
+//    bool UltraCanvasSVGPlugin::Initialize() {
+//        // Register SVG file extensions
+//        RegisterFileExtension(".svg", "Scalable Vector Graphics");
+//        RegisterFileExtension(".svgz", "Compressed SVG");
+//
+//        return true;
+//    }
+//
+//    void UltraCanvasSVGPlugin::Shutdown() {
+//        // Cleanup resources
+//    }
+//
+//    std::unique_ptr<UltraCanvasSVGElement> UltraCanvasSVGPlugin::CreateSVGElement(const std::string& filepath) {
+//        auto element = std::make_unique<UltraCanvasSVGElement>();
+//        if (element->LoadFromFile(filepath)) {
+//            return element;
+//        }
+//        return nullptr;
+//    }
 
-    void UltraCanvasSVGElement::UpdateSizeFromSVG() {
-        if (!document) return;
-
-        if (document->width > 0 && document->height > 0) {
-            SetWidth(static_cast<int>(document->width));
-            SetHeight(static_cast<int>(document->height));
-        } else if (document->hasViewBox) {
-            SetWidth(static_cast<int>(document->viewBox.width));
-            SetHeight(static_cast<int>(document->viewBox.height));
-        }
-    }
-
-// ===== SVG PLUGIN IMPLEMENTATION =====
-/*
-bool UltraCanvasSVGPlugin::CanHandle(const std::string& filePath) const {
-    std::string ext = GetFileExtension(filePath);
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-    return ext == ".svg" || ext == ".svgz";
-}
-
-bool UltraCanvasSVGPlugin::CanHandle(const GraphicsFileInfo& fileInfo) const {
-    return fileInfo.formatType == GraphicsFormatType::Vector &&
-           (fileInfo.extension == ".svg" || fileInfo.extension == ".svgz");
-}
-
-bool UltraCanvasSVGPlugin::LoadFromFile(const std::string& filePath) {
-    std::ifstream file(filePath);
-    if (!file.is_open()) return false;
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-
-    auto document = parser.Parse(buffer.str());
-    if (document) {
-        currentKey = GenerateKey(filePath);
-        documentCache[currentKey] = document;
-        return true;
-    }
-
-    return false;
-}
-
-bool UltraCanvasSVGPlugin::LoadFromMemory(const std::vector<uint8_t>& data) {
-    std::string content(data.begin(), data.end());
-    auto document = parser.Parse(content);
-
-    if (document) {
-        currentKey = GenerateKey("memory_" + std::to_string(data.size()));
-        documentCache[currentKey] = document;
-        return true;
-    }
-
-    return false;
-}
-
-void UltraCanvasSVGPlugin::Render(const Rect2Df& bounds) {
-    if (currentKey.empty()) return;
-
-    auto it = documentCache.find(currentKey);
-    if (it != documentCache.end()) {
-        SVGElementRenderer renderer(*it->second);
-        renderer.RenderDocument(bounds);
-    }
-}
-
-Size2D UltraCanvasSVGPlugin::GetNaturalSize() const {
-    if (currentKey.empty()) return Size2D(100, 100);
-
-    auto it = documentCache.find(currentKey);
-    if (it != documentCache.end()) {
-        return Size2D(it->second->width, it->second->height);
-    }
-
-    return Size2D(100, 100);
-}
-
-GraphicsFileInfo UltraCanvasSVGPlugin::GetFileInfo(const std::string& filePath) {
-    GraphicsFileInfo info(filePath);
-    info.formatType = GraphicsFormatType::Vector;
-
-    if (CanHandle(filePath) && LoadFromFile(filePath)) {
-        auto document = GetDocument(GenerateKey(filePath));
-        if (document) {
-            info.width = static_cast<int>(document->width);
-            info.height = static_cast<int>(document->height);
-            info.metadata["scalable"] = "true";
-            info.metadata["format"] = "SVG";
-        }
-    }
-
-    return info;
-}
-
-std::shared_ptr<SVGDocument> UltraCanvasSVGPlugin::GetDocument(const std::string& key) const {
-    auto it = documentCache.find(key);
-    return (it != documentCache.end()) ? it->second : nullptr;
-}
-
-void UltraCanvasSVGPlugin::ClearCache() {
-    documentCache.clear();
-    currentKey.clear();
-}
-
-std::string UltraCanvasSVGPlugin::GetFileExtension(const std::string& filePath) const {
-    size_t pos = filePath.find_last_of('.');
-    return (pos != std::string::npos) ? filePath.substr(pos) : "";
-}
-
-std::string UltraCanvasSVGPlugin::GenerateKey(const std::string& identifier) const {
-    return identifier;
-}
-*/
 } // namespace UltraCanvas

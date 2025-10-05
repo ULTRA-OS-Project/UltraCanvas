@@ -156,15 +156,14 @@ namespace UltraCanvas {
         if (!ctx) return;
 
         // Draw overall background using existing functions
-        ctx->PaintWithColor(backgroundColor);
-        ctx->FillRectangle(GetX(), GetY(), GetWidth(), GetHeight());
+        ctx->DrawFilledRectangle(GetBounds(), backgroundColor);
 
         // Draw plot area background using existing functions
-        ctx->PaintWithColor(plotAreaColor);
+        ctx->SetFillPaint(plotAreaColor);
         ctx->FillRectangle(cachedPlotArea.x, cachedPlotArea.y, cachedPlotArea.width, cachedPlotArea.height);
 
         // Draw plot area border using existing functions
-        ctx->PaintWithColor(Color(180, 180, 180, 255));
+        ctx->SetStrokePaint(Color(180, 180, 180, 255));
         ctx->SetStrokeWidth(1.0f);
         ctx->DrawRectangle(cachedPlotArea.x, cachedPlotArea.y, cachedPlotArea.width, cachedPlotArea.height);
 
@@ -178,7 +177,7 @@ namespace UltraCanvas {
 
         // Draw title using existing functions
         if (!chartTitle.empty()) {
-            ctx->PaintWithColor(Color(0, 0, 0, 255));
+            ctx->SetTextPaint(Color(0, 0, 0, 255));
             ctx->SetFontSize(16.0f);
 
             // Calculate center position (simplified)
@@ -190,7 +189,7 @@ namespace UltraCanvas {
     void UltraCanvasChartElementBase::RenderGrid(IRenderContext *ctx) {
         if (!ctx) return;
 
-        ctx->PaintWithColor(gridColor);
+        ctx->SetStrokePaint(gridColor);
         ctx->SetStrokeWidth(1.0f);
 
         // Vertical grid lines using existing DrawLine
@@ -212,7 +211,7 @@ namespace UltraCanvas {
         if (!ctx) return;
 
         // Set axis style using existing functions
-        ctx->PaintWithColor(Color(0, 0, 0, 255));
+        ctx->SetStrokePaint(Color(0, 0, 0, 255));
         ctx->SetStrokeWidth(1.0f);
 
         // Draw X-axis using existing DrawLine
@@ -230,7 +229,8 @@ namespace UltraCanvas {
     void UltraCanvasChartElementBase::RenderAxisLabels(IRenderContext *ctx) {
         if (!ctx) return;
 
-        ctx->PaintWithColor(Color(0, 0, 0, 255));
+        ctx->SetStrokePaint(Color(0, 0, 0, 255));
+        ctx->SetTextPaint(Color(0, 0, 0, 255));
         ctx->SetFontSize(10.0f);
 
         // X-axis labels
@@ -288,17 +288,17 @@ namespace UltraCanvas {
         float indicatorSize = 8.0f;
 
         // Use existing IRenderContext drawing functions
-        ctx->PaintWithColor(Color(255, 0, 0, 255)); // Red selection indicator
+        ctx->SetStrokePaint(Color(255, 0, 0, 255)); // Red selection indicator
         ctx->SetStrokeWidth(2.0f);
         ctx->DrawCircle(screenPos.x, screenPos.y, indicatorSize);
     }
 
     void UltraCanvasChartElementBase::DrawEmptyState(IRenderContext *ctx) {
         // Use existing IRenderContext functions
-        ctx->PaintWithColor(Color(240, 240, 240, 255));
+        ctx->SetFillPaint(Color(240, 240, 240, 255));
         ctx->FillRectangle(GetX(), GetY(), GetWidth(), GetHeight());
 
-        ctx->PaintWithColor(Color(128, 128, 128, 255));
+        ctx->SetTextPaint(Color(128, 128, 128, 255));
         ctx->SetFontSize(14.0f);
 
         std::string emptyText = "No data to display";

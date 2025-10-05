@@ -244,13 +244,7 @@ namespace UltraCanvas {
         Rect2Di bounds = GetBounds();
 
         // Draw background
-        ctx->PaintWithColor(backgroundColor);
-        ctx->DrawRectangle(bounds);
-
-        // Draw border
-        ctx->PaintWithColor(borderColor);
-        ctx->SetStrokeWidth(style.borderWidth);
-        ctx->DrawRectangle(bounds);
+        ctx->DrawFilledRectangle(bounds, backgroundColor, style.borderWidth, style.borderColor);
 
         // Get text area (excluding padding)
         Rect2Df textArea = GetTextArea();
@@ -469,8 +463,8 @@ namespace UltraCanvas {
 
         if (visibleEndX > visibleStartX) {
             Rect2Df selectionRect(visibleStartX, selectionY, visibleEndX - visibleStartX, selectionHeight);
-            ctx->PaintWithColor(style.selectionColor);
-            ctx->DrawRectangle(selectionRect);
+            ctx->SetFillPaint(style.selectionColor);
+            ctx->FillRectangle(selectionRect);
         }
     }
 
@@ -520,7 +514,7 @@ namespace UltraCanvas {
             return;
         }
 
-        ctx->PaintWithColor(style.caretColor);
+        ctx->SetStrokePaint(style.caretColor);
         ctx->SetStrokeWidth(style.caretWidth);
 
         // Draw caret line with proper height and position
@@ -575,7 +569,7 @@ namespace UltraCanvas {
         }
 
         // Draw validation border
-        ctx->PaintWithColor(feedbackColor);
+        ctx->SetStrokePaint(feedbackColor);
         ctx->SetStrokeWidth(2.0f);
         ctx->DrawRectangle(bounds);
 
@@ -583,14 +577,14 @@ namespace UltraCanvas {
         if (lastValidationResult.state == ValidationState::Valid) {
             // Draw checkmark
             Point2Di iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2);
-            ctx->PaintWithColor(style.validBorderColor);
+            ctx->SetStrokePaint(style.validBorderColor);
             ctx->SetStrokeWidth(2.0f);
             ctx->DrawLine(iconPos, Point2Di(iconPos.x + 4, iconPos.y + 4));
             ctx->DrawLine(Point2Di(iconPos.x + 4, iconPos.y + 4), Point2Di(iconPos.x + 12, iconPos.y - 4));
         } else if (lastValidationResult.state == ValidationState::Invalid) {
             // Draw X
             Point2Di iconPos(bounds.x + bounds.width - 20, bounds.y + bounds.height / 2 - 6);
-            ctx->PaintWithColor(style.invalidBorderColor);
+            ctx->SetStrokePaint(style.invalidBorderColor);
             ctx->SetStrokeWidth(2.0f);
             ctx->DrawLine(iconPos, Point2Di(iconPos.x + 12, iconPos.y + 12));
             ctx->DrawLine(Point2Di(iconPos.x, iconPos.y + 12), Point2Di(iconPos.x + 12, iconPos.y));
@@ -607,7 +601,7 @@ namespace UltraCanvas {
                 bounds.height
         );
 
-        ctx->PaintWithColor(style.shadowColor);
+        ctx->SetStrokePaint(style.shadowColor);
         ctx->DrawRectangle(shadowRect);
     }
 

@@ -8,6 +8,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include <thread>
 #include <unordered_map>
+#include <memory>
 #include <iostream>
 #include <mutex>
 #include <stack>
@@ -69,9 +70,9 @@ class UltraCanvasBaseWindow;
     };
 
     // pattern interface mainly to automatically destory patters
-    class IDrawingPattern {
+    class IPaintPattern {
     public:
-        virtual ~IDrawingPattern() = default;
+        virtual ~IPaintPattern() = default;
         virtual void* GetHandle() = 0;
     };
 
@@ -128,8 +129,15 @@ class UltraCanvasBaseWindow;
         float rotation = 0.0f;
         Point2Df scale = Point2Df(1.0f, 1.0f);
         float globalAlpha = 1.0f;
-//        Color fillColor = Colors::Black;
-//        Color strokeColor = Colors::Black;
+
+        std::shared_ptr<IPaintPattern> fillSourcePattern = nullptr;
+        std::shared_ptr<IPaintPattern> strokeSourcePattern = nullptr;
+        std::shared_ptr<IPaintPattern> textSourcePattern = nullptr;
+        std::shared_ptr<IPaintPattern> currentSourcePattern = nullptr;
+        Color fillSourceColor = Colors::Transparent;
+        Color strokeSourceColor = Colors::Transparent;
+        Color textSourceColor = Colors::Transparent;
+        Color currentSourceColor = Colors::Transparent;
 
         RenderState() {
             clipRect = Rect2Df(0, 0, 10000, 10000); // Large default clip
@@ -277,18 +285,24 @@ class UltraCanvasBaseWindow;
         virtual void Rect(float x, float y, float width, float height) = 0;
         virtual void RoundedRect(float x, float y, float width, float height, float radius) = 0;
 
-        virtual void FillPath() = 0;
-        virtual void StrokePath() = 0;
+        virtual void FillPathPreserve() = 0;
+        virtual void StrokePathPreserve() = 0;
         virtual void GetPathExtents(float &x, float &y, float &width, float &height) = 0;
 
         // === Gradient Methods ===
-        virtual std::unique_ptr<IDrawingPattern> CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
-                                                              const std::vector<GradientStop>& stops) = 0;
-        virtual std::unique_ptr<IDrawingPattern> CreateRadialGradientPattern(float cx1, float cy1, float r1,
-                                                              float cx2, float cy2, float r2,
-                                                              const std::vector<GradientStop>& stops) = 0;
-        virtual void PaintWithPattern(std::unique_ptr<IDrawingPattern> pattern) = 0;
-        virtual void PaintWithColor(const Color& color) = 0;
+        virtual std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
+                                                                           const std::vector<GradientStop>& stops) = 0;
+        virtual std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(float cx1, float cy1, float r1,
+                                                                           float cx2, float cy2, float r2,
+                                                                           const std::vector<GradientStop>& stops) = 0;
+        virtual void SetFillPaint(std::shared_ptr<IPaintPattern> pattern) = 0;
+        virtual void SetFillPaint(const Color& color) = 0;
+        virtual void SetStrokePaint(std::shared_ptr<IPaintPattern> pattern) = 0;
+        virtual void SetStrokePaint(const Color& color) = 0;
+        virtual void SetTextPaint(std::shared_ptr<IPaintPattern> pattern) = 0;
+        virtual void SetTextPaint(const Color& color) = 0;
+        virtual void Fill() = 0;
+        virtual void Stroke() = 0;
 
 
         // ===== STYLE MANAGEMENT =====
@@ -378,12 +392,12 @@ class UltraCanvasBaseWindow;
         }
 
         void DrawLine(float start_x, float start_y, float end_x, float end_y, const Color &col) {
-            PaintWithColor(col);
+            SetStrokePaint(col);
             DrawLine(start_x, start_y, end_x, end_y);
         }
 
         void DrawLine(int start_x, int start_y, int end_x, int end_y, const Color &col) {
-            PaintWithColor(col);
+            SetStrokePaint(col);
             DrawLine(static_cast<float>(start_x), static_cast<float>(start_y), static_cast<float>(end_x), static_cast<float>(end_y));
         }
 
@@ -557,6 +571,9 @@ class UltraCanvasBaseWindow;
         // Draw filled rectangle with border
         void DrawFilledRectangle(const Rect2Df& rect, const Color& fillColor,
                         float borderWidth = 1.0f, const Color& borderColor = Colors::Transparent, float borderRadius = 0.0f) {
+
+            if (fillColor.a == 0 && borderColor.a == 0) return;
+
             PushState();
             if (borderRadius > 0) {
                 RoundedRect(rect.x, rect.y, rect.width, rect.height, borderRadius);
@@ -564,13 +581,13 @@ class UltraCanvasBaseWindow;
                 Rect(rect.x, rect.y, rect.width, rect.height);
             }
             if (fillColor.a > 0) {
-                PaintWithColor(fillColor);
-                FillPath();
+                SetFillPaint(fillColor);
+                FillPathPreserve();
             }
             if (borderWidth > 0 && borderColor.a > 0) {
-                PaintWithColor(borderColor);
+                SetStrokePaint(borderColor);
                 SetStrokeWidth(borderWidth);
-                StrokePath();
+                StrokePathPreserve();
             }
             ClearPath();
             PopState();
@@ -588,13 +605,13 @@ class UltraCanvasBaseWindow;
 
             Circle(center.x, center.y, radius);
             if (fillColor.a > 0) {
-                PaintWithColor(fillColor);
-                FillPath();
+                SetFillPaint(fillColor);
+                FillPathPreserve();
             }
             if (borderWidth > 0) {
                 SetStrokeWidth(borderWidth);
-                PaintWithColor(borderColor);
-                StrokePath();
+                SetStrokePaint(borderColor);
+                StrokePathPreserve();
             }
             ClearPath();
             PopState();
@@ -614,7 +631,7 @@ class UltraCanvasBaseWindow;
                 DrawFilledRectangle(Rect2Df(position.x, position.y, txt_w, txt_h), backgroundColor);
             }
 
-            PaintWithColor(textColor);
+            SetTextPaint(textColor);
             DrawText(text, position);
             PopState();
         }

@@ -66,12 +66,10 @@ namespace UltraCanvas {
             // Load the same SVG file
             if (!svgFilePath.empty()) {
                 fullscreenSVG->LoadFromFile(svgFilePath);
-            } else if (svgElement && !svgElement->GetSVGContent().empty()) {
-                fullscreenSVG->LoadFromString(svgElement->GetSVGContent());
             }
 
             // Set auto-resize to fit the screen
-            fullscreenSVG->SetAutoResize(true);
+            //fullscreenSVG->SetAutoResize(true);
 
             // Add SVG to fullscreen window
             fullscreenWindow->AddChild(fullscreenSVG);

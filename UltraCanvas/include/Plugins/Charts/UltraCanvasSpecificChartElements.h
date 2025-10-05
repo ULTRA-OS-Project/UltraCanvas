@@ -237,14 +237,14 @@ namespace UltraCanvas {
 
                 // Set color from palette
                 Color sliceColor = GetColorFromPalette(i);
-                ctx->PaintWithColor(sliceColor);
+                ctx->SetFillPaint(sliceColor);
 
                 // Use existing FillArc function
                 ctx->FillArc(center.x, center.y, radius, currentAngle, currentAngle + sliceAngle);
 
                 // Draw slice border using existing DrawArc
                 if (borderWidth > 0) {
-                    ctx->PaintWithColor(borderColor);
+                    ctx->SetStrokePaint(borderColor);
                     ctx->SetStrokeWidth(borderWidth);
                     ctx->DrawArc(center.x, center.y, radius, currentAngle, currentAngle + sliceAngle);
                 }
@@ -429,8 +429,8 @@ namespace UltraCanvas {
                 return;
             }
 
-            ctx->PaintWithColor(pointColor);
-            ctx->PaintWithColor(Color(255, 255, 255, 255));
+            ctx->SetFillPaint(pointColor);
+            ctx->SetStrokePaint(Color(255, 255, 255, 255));
             ctx->SetStrokeWidth(1.0f);
 
             // Draw points only for data points (skip baseline start/end)
@@ -459,7 +459,7 @@ namespace UltraCanvas {
             // Create vertical gradient from top to bottom
 //            ctx->SetFillGradient(gradientStartColor, gradientEndColor,
 //                                 Point2Df(0, minY), Point2Df(0, maxY));
-            ctx->PaintWithPattern(std::move(gradient));
+            ctx->SetFillPaint(gradient);
             ctx->FillLinePath(areaPoints);
         }
     };

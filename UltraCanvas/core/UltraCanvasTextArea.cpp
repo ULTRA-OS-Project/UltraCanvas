@@ -130,13 +130,13 @@ namespace UltraCanvas {
 // Draw background
     void UltraCanvasTextArea::DrawBackground(IRenderContext* context) {
         auto bounds = GetBounds();
-        context->PaintWithColor(style.backgroundColor);
+        context->SetFillPaint(style.backgroundColor);
         context->FillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
 
         // Draw current line highlight
         if (highlightCurrentLine && currentLineIndex >= firstVisibleLine &&
             currentLineIndex < firstVisibleLine + maxVisibleLines) {
-            context->PaintWithColor(style.currentLineHighlightColor);
+            context->SetFillPaint(style.currentLineHighlightColor);
             int lineY = bounds.y + style.padding + (currentLineIndex - firstVisibleLine) * style.lineHeight;
             int highlightX = style.showLineNumbers ? bounds.x + style.lineNumbersWidth : bounds.x;
             context->FillRectangle(highlightX, lineY,
@@ -149,9 +149,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::DrawBorder(IRenderContext* context) {
         auto bounds = GetBounds();
         if (style.borderWidth > 0) {
-            context->PaintWithColor(style.borderColor);
-            context->SetStrokeWidth(style.borderWidth);
-            context->DrawRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
+            context->DrawFilledRectangle(bounds, Colors::Transparent, style.borderWidth, style.borderColor);
         }
     }
 
@@ -160,18 +158,17 @@ namespace UltraCanvas {
         auto bounds = GetBounds();
 
         // Draw line numbers background
-        context->PaintWithColor(style.lineNumbersBackgroundColor);
+        context->SetFillPaint(style.lineNumbersBackgroundColor);
         context->FillRectangle(bounds.x, bounds.y, style.lineNumbersWidth, bounds.height);
 
         // Draw line numbers separator
-        context->PaintWithColor(style.borderColor);
+        context->SetStrokePaint(style.borderColor);
         context->SetStrokeWidth(1);
         context->DrawLine(bounds.x + style.lineNumbersWidth, bounds.y,
                           bounds.x + style.lineNumbersWidth, bounds.y + bounds.height);
 
         // Draw line numbers text
         context->SetFontStyle(style.fontStyle);
-        context->PaintWithColor(style.lineNumbersColor);
 
         for (int i = 0; i < maxVisibleLines && firstVisibleLine + i < static_cast<int>(lines.size()); i++) {
             int lineNum = firstVisibleLine + i + 1;
@@ -182,10 +179,10 @@ namespace UltraCanvas {
 
             // Highlight current line number
             if (firstVisibleLine + i == currentLineIndex) {
-                context->PaintWithColor(style.fontColor);
+                context->SetTextPaint(style.fontColor);
                 context->SetFontWeight(FontWeight::Bold);
             } else {
-                context->PaintWithColor(style.lineNumbersColor);
+                context->SetTextPaint(style.lineNumbersColor);
                 context->SetFontWeight(FontWeight::Normal);
             }
             context->SetTextAlignment(TextAlignment::Right);
@@ -199,7 +196,7 @@ namespace UltraCanvas {
         auto bounds = GetBounds();
         context->PushState();
         context->SetFontStyle(style.fontStyle);
-        context->PaintWithColor(style.fontColor);
+        context->SetTextPaint(style.fontColor);
         context->SetClipRect(visibleTextArea);
 
         for (int i = 0; i < maxVisibleLines && firstVisibleLine + i < static_cast<int>(lines.size()); i++) {
@@ -240,7 +237,7 @@ namespace UltraCanvas {
                 for (const auto& token : tokens) {
                     // Set color based on token type
                     TokenStyle tokenStyle = GetStyleForTokenType(token.type);
-                    context->PaintWithColor(tokenStyle.color);
+                    context->SetTextPaint(tokenStyle.color);
                     context->SetFontWeight(tokenStyle.bold ? FontWeight::Bold : FontWeight::Normal);
 
                     // Draw token text
@@ -296,7 +293,6 @@ namespace UltraCanvas {
         if (!HasSelection()) return;
 
         auto bounds = GetBounds();
-        context->PaintWithColor(style.selectionColor);
 
         int startPos = std::min(selectionStart, selectionEnd);
         int endPos = std::max(selectionStart, selectionEnd);
@@ -328,6 +324,7 @@ namespace UltraCanvas {
                 selWidth = MeasureTextWidth(selectedText);
             }
 
+            context->SetFillPaint(style.selectionColor);
             context->FillRectangle(selX, lineY, selWidth, style.lineHeight);
         }
     }
@@ -379,7 +376,7 @@ namespace UltraCanvas {
                                     std::max(1, static_cast<int>(lines.size()) - maxVisibleLines);
 
             // Draw scrollbar track
-            context->PaintWithColor(style.scrollbarTrackColor);
+            context->SetFillPaint(style.scrollbarTrackColor);
             context->FillRectangle(scrollbarX, bounds.y, 15, scrollbarHeight);
 
             verticalScrollThumb.x = scrollbarX;
@@ -388,7 +385,7 @@ namespace UltraCanvas {
             verticalScrollThumb.height = thumbHeight;
 
             // Draw scrollbar thumb
-            context->PaintWithColor(style.scrollbarColor);
+            context->SetFillPaint(style.scrollbarColor);
             context->FillRectangle(scrollbarX + 2, thumbY, 11, thumbHeight);
         }
 
@@ -405,7 +402,7 @@ namespace UltraCanvas {
             float thumbX = static_cast<float>(bounds.x) + scrollRatio * (scrollbarWidth - thumbWidth);
 
             // Draw scrollbar track
-            context->PaintWithColor(style.scrollbarTrackColor);
+            context->SetFillPaint(style.scrollbarTrackColor);
             context->FillRectangle(static_cast<float>(bounds.x), scrollbarY, scrollbarWidth, 15.0f);
 
             horizontalScrollThumb.x = thumbX;
@@ -414,7 +411,7 @@ namespace UltraCanvas {
             horizontalScrollThumb.height = 15;
 
             // Draw scrollbar thumb
-            context->PaintWithColor(style.scrollbarColor);
+            context->SetFillPaint(style.scrollbarColor);
             context->FillRectangle(thumbX, scrollbarY + 2, thumbWidth, 11.0f);
         }
     }

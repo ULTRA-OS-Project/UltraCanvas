@@ -660,7 +660,7 @@ namespace UltraCanvas {
 
             // TODO: Load and draw the actual image
             // For now, draw a placeholder rectangle
-            ctx->PaintWithColor(Color(255, 255, 255, (uint8_t) (animatedOpacity * 255)));
+            ctx->SetFillPaint(Color(255, 255, 255, (uint8_t) (animatedOpacity * 255)));
             int scaledWidth = (int)(100 * animatedScale); // Placeholder size
             int scaledHeight = (int)(50 * animatedScale);
             ctx->FillRectangle(Rect2Di(position.x, position.y, scaledWidth, scaledHeight));

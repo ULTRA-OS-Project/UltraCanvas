@@ -101,12 +101,12 @@ namespace UltraCanvas {
         if (!ctx) return;
 
         // Draw overall background using existing functions
-        ctx->PaintWithColor(backgroundColor);
+        ctx->SetFillPaint(backgroundColor);
         ctx->FillRectangle(GetX(), GetY(), GetWidth(), GetHeight());
 
         // Draw title using existing functions
         if (!chartTitle.empty()) {
-            ctx->PaintWithColor(Color(0, 0, 0, 255));
+            ctx->SetTextPaint(Color(0, 0, 0, 255));
             ctx->SetFontSize(16.0f);
 
             // Calculate center position (simplified)
@@ -186,20 +186,20 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFinancialChartElement::DrawPriceChartBackground(IRenderContext *ctx) {
-        ctx->PaintWithColor(plotAreaColor);
+        ctx->SetFillPaint(plotAreaColor);
         ctx->FillRectangle(priceRenderArea.x, priceRenderArea.y,
                            priceRenderArea.width, priceRenderArea.height);
     }
 
     void UltraCanvasFinancialChartElement::DrawPriceChartBorder(IRenderContext *ctx) {
-        ctx->PaintWithColor(Color(150, 150, 150, 255));
+        ctx->SetStrokePaint(Color(150, 150, 150, 255));
         ctx->SetStrokeWidth(1.0f);
         ctx->DrawRectangle(priceRenderArea.x, priceRenderArea.y,
                            priceRenderArea.width, priceRenderArea.height);
     }
 
     void UltraCanvasFinancialChartElement::DrawPriceChartGrid(IRenderContext *ctx) {
-        ctx->PaintWithColor(gridColor);
+        ctx->SetStrokePaint(gridColor);
         ctx->SetStrokeWidth(1.0f);
 
         // Vertical grid lines
@@ -235,7 +235,7 @@ namespace UltraCanvas {
         }
 
         // Draw price chart axes
-        ctx->PaintWithColor(Color(100, 100, 100, 255));
+        ctx->SetStrokePaint(Color(100, 100, 100, 255));
         ctx->SetStrokeWidth(2.0f);
 
         // Draw X-axis (bottom of price chart)
@@ -248,7 +248,8 @@ namespace UltraCanvas {
 
         // Draw price Y-axis labels
         ctx->SetStrokeWidth(1.0f);
-        ctx->PaintWithColor(Color(80, 80, 80, 255));
+        ctx->SetTextPaint(Color(80, 80, 80, 255));
+        ctx->SetStrokePaint(Color(80, 80, 80, 255));
         ctx->SetFontSize(10.0f);
 
         int numPriceLabels = 6;
@@ -293,20 +294,20 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFinancialChartElement::DrawVolumeChartBackground(IRenderContext *ctx) {
-        ctx->PaintWithColor(volumeChartBackgroundColor);
+        ctx->SetFillPaint(volumeChartBackgroundColor);
         ctx->FillRectangle(volumeRenderArea.x, volumeRenderArea.y,
                            volumeRenderArea.width, volumeRenderArea.height);
     }
 
     void UltraCanvasFinancialChartElement::DrawVolumeChartBorder(IRenderContext *ctx) {
-        ctx->PaintWithColor(volumeChartBorderColor);
+        ctx->SetStrokePaint(volumeChartBorderColor);
         ctx->SetStrokeWidth(1.5f);
         ctx->DrawRectangle(volumeRenderArea.x, volumeRenderArea.y,
                            volumeRenderArea.width, volumeRenderArea.height);
     }
 
     void UltraCanvasFinancialChartElement::DrawVolumeGrid(IRenderContext *ctx) {
-        ctx->PaintWithColor(volumeGridColor);
+        ctx->SetStrokePaint(volumeGridColor);
         ctx->SetStrokeWidth(1.0f);
 
         // Vertical grid lines (align with price chart)
@@ -339,7 +340,7 @@ namespace UltraCanvas {
         }
 
         // Draw volume chart axes
-        ctx->PaintWithColor(Color(100, 100, 100, 255));
+        ctx->SetStrokePaint(Color(100, 100, 100, 255));
         ctx->SetStrokeWidth(2.0f);
 
         // Draw X-axis (bottom of volume chart)
@@ -352,7 +353,7 @@ namespace UltraCanvas {
 
         // Draw volume Y-axis labels
         ctx->SetStrokeWidth(1.0f);
-        ctx->PaintWithColor(volumeAxisLabelColor);
+        ctx->SetStrokePaint(volumeAxisLabelColor);
         ctx->SetFontSize(10.0f);
 
         int numVolumeLabels = 4;
@@ -411,7 +412,7 @@ namespace UltraCanvas {
 
         if (maxVolume == 0) return;
 
-        ctx->PaintWithColor(volumeAxisLabelColor);
+        ctx->SetTextPaint(volumeAxisLabelColor);
         ctx->SetFontSize(10.0f);
 
         // Draw volume scale labels
@@ -528,7 +529,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFinancialChartElement::RenderGrid(IRenderContext *ctx) {
-        ctx->PaintWithColor(gridColor);
+        ctx->SetStrokePaint(gridColor);
         ctx->SetStrokeWidth(1.0f);
 
         // Vertical grid lines (only for price chart)
@@ -610,7 +611,7 @@ namespace UltraCanvas {
         float barSpacing = volumeRenderArea.width / static_cast<float>(pointCount);
         float actualBarWidth = barSpacing * candleWidthRatio;
 
-        ctx->PaintWithColor(volumeBarColor);
+        ctx->SetFillPaint(volumeBarColor);
 
         for (size_t i = 0; i < pointCount; ++i) {
             FinancialChartDataPoint financialPoint = ds->GetFinancialPoint(i);
@@ -641,7 +642,7 @@ namespace UltraCanvas {
 
         if (maxVolume == 0) return;
 
-        ctx->PaintWithColor(volumeMovingAverageColor);
+        ctx->SetStrokePaint(volumeMovingAverageColor);
         ctx->SetStrokeWidth(2.0f);
 
         float barSpacing = volumeRenderArea.width / static_cast<float>(pointCount);
@@ -695,7 +696,7 @@ namespace UltraCanvas {
         double priceRange = maxPrice - minPrice;
         if (priceRange == 0) return;
 
-        ctx->PaintWithColor(movingAverageLineColor);
+        ctx->SetStrokePaint(movingAverageLineColor);
         ctx->SetStrokeWidth(2.0f);
 
         float candleSpacing = priceRenderArea.width / static_cast<float>(pointCount);
@@ -740,7 +741,7 @@ namespace UltraCanvas {
         float closeY = priceRenderArea.GetBottom() - ((point.close - minPrice) / priceRange) * priceRenderArea.height;
 
         // Draw wick (high-low line)
-        ctx->PaintWithColor(wickLineColor);
+        ctx->SetStrokePaint(wickLineColor);
         ctx->SetStrokeWidth(1.0f);
         ctx->DrawLine(x, highY, x, lowY);
 
@@ -748,8 +749,8 @@ namespace UltraCanvas {
         bool isBullish = point.close > point.open;
         Color candleColor = isBullish ? bullishCandleColor : bearishCandleColor;
 
-        ctx->PaintWithColor(candleColor);
-        ctx->PaintWithColor(candleColor);
+        ctx->SetStrokePaint(candleColor);
+        ctx->SetFillPaint(candleColor);
         ctx->SetStrokeWidth(1.0f);
 
         float bodyTop = std::min(openY, closeY);
@@ -777,7 +778,7 @@ namespace UltraCanvas {
         bool isBullish = point.close > point.open;
         Color barColor = isBullish ? bullishCandleColor : bearishCandleColor;
 
-        ctx->PaintWithColor(barColor);
+        ctx->SetStrokePaint(barColor);
         ctx->SetStrokeWidth(2.0f);
 
         // Draw main vertical line (high-low)

@@ -153,7 +153,7 @@ namespace UltraCanvas {
         static void DrawDebugBorder(const Rect2Di& bounds, const DebugRenderSettings& settings, IRenderContext* ctx) {
             ctx->PushState();
 
-            ctx->PaintWithColor(settings.borderColor);
+            ctx->SetStrokePaint(settings.borderColor);
             ctx->SetStrokeWidth(settings.borderWidth);
 
             // Draw main border rectangle
@@ -163,7 +163,7 @@ namespace UltraCanvas {
             float markerSize = 8.0f;
             Color markerColor = Color(settings.borderColor.r, settings.borderColor.g,
                                       settings.borderColor.b, settings.borderColor.a + 75);
-            ctx->PaintWithColor(markerColor);
+            ctx->SetStrokePaint(markerColor);
             ctx->SetStrokeWidth(1.0f);
 
             // Top-left corner
@@ -302,7 +302,7 @@ namespace UltraCanvas {
             }
 
             // Draw the text
-            ctx->PaintWithColor(settings.textColor);
+            ctx->SetTextPaint(settings.textColor);
             ctx->DrawText(text, textPos);
             ctx->PopState();
         }

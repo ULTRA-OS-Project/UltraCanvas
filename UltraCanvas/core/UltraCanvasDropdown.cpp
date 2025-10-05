@@ -288,7 +288,7 @@ namespace UltraCanvas {
         // Draw text
         std::string displayText = GetDisplayText();
         if (!displayText.empty()) {
-            ctx->PaintWithColor(textColor);
+            ctx->SetTextPaint(textColor);
             ctx->SetFontStyle({.fontFamily=style.fontFamily, .fontSize=style.fontSize});
 
             Point2Di textSize = ctx->MeasureText(displayText);
@@ -311,8 +311,6 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDropdown::RenderDropdownArrow(const Rect2Di &buttonRect, const Color &color, IRenderContext *ctx) {
-        ctx->PaintWithColor(color);
-
         float arrowX = buttonRect.x + buttonRect.width - (style.arrowSize + style.arrowSize);
         float arrowY = buttonRect.y + (buttonRect.height - style.arrowSize) / 2 + 2;
 
@@ -320,7 +318,7 @@ namespace UltraCanvas {
         float arrowCenterX = arrowX + style.arrowSize / 2;
         float arrowBottom = arrowY + style.arrowSize / 2;
 
-        ctx->PaintWithColor(color);
+        ctx->SetStrokePaint(color);
         ctx->SetStrokeWidth(1.0f);
 
         // Draw down arrow using lines
@@ -343,7 +341,7 @@ namespace UltraCanvas {
         if (item.separator) {
             // Draw separator line
             float sepY = itemY + style.itemHeight / 2;
-            ctx->PaintWithColor(style.listBorderColor);
+            ctx->SetStrokePaint(style.listBorderColor);
             ctx->DrawLine(Point2Di(itemRect.x + 4, sepY), Point2Di(itemRect.x + itemRect.width - 4, sepY));
             return;
         }
@@ -363,7 +361,7 @@ namespace UltraCanvas {
 
         // Draw text
         if (!item.text.empty()) {
-            ctx->PaintWithColor(textColor);
+            ctx->SetTextPaint(textColor);
             ctx->SetFontSize(12);
 
             Point2Di textSize = ctx->MeasureText(item.text);

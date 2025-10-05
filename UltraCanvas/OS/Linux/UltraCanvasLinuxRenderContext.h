@@ -38,14 +38,18 @@
 
 namespace UltraCanvas {
 
-    class LinuxDrawingPattern : public IDrawingPattern {
+    class LinuxPaintPattern : public IPaintPattern {
     private:
         cairo_pattern_t *pattern = nullptr;
     public:
-        LinuxDrawingPattern() = delete;
-        explicit LinuxDrawingPattern(cairo_pattern_t *pat) : pattern(pat) {};
-        ~LinuxDrawingPattern() override {
-            cairo_pattern_destroy(pattern);
+        LinuxPaintPattern() = delete;
+        explicit LinuxPaintPattern(cairo_pattern_t *pat) {
+            pattern = pat;
+        };
+        ~LinuxPaintPattern() override {
+            if (pattern) {
+                cairo_pattern_destroy(pattern);
+            }
         };
         void* GetHandle() override { return pattern; };
     };
@@ -179,7 +183,19 @@ namespace UltraCanvas {
         // Internal helper methods
 //        void ApplyDrawingStyle(const DrawingStyle &style);
 //        void ApplyTextStyle(const TextStyle &style);
-//        void ApplyFillStyle(const DrawingStyle &style);
+        void ApplySource(const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern = nullptr);
+        void ApplyTextSource() {
+            ApplySource(currentState.textSourceColor, currentState.textSourcePattern);
+        }
+
+        void ApplyFillSource() {
+            ApplySource(currentState.fillSourceColor, currentState.fillSourcePattern);
+        }
+
+        void ApplyStrokeSource() {
+            ApplySource(currentState.fillSourceColor, currentState.fillSourcePattern);
+        }
+
 //        void ApplyStrokeStyle(const DrawingStyle &style);
 //        void ApplyGradientFill(const Gradient& gradient);
 
@@ -247,13 +263,17 @@ namespace UltraCanvas {
 
         void SetAlpha(float alpha) override;
         float GetAlpha() const override;
-        void PaintWithColor(const Color& color) override;
-        void PaintWithPattern(std::unique_ptr<IDrawingPattern> pattern) override;
-        std::unique_ptr<IDrawingPattern> CreateRadialGradientPattern(float cx1, float cy1, float r1,
-                                                              float cx2, float cy2, float r2,
-                                                              const std::vector<GradientStop>& stops) override;
-        std::unique_ptr<IDrawingPattern> CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
-                                                              const std::vector<GradientStop>& stops) override;
+        std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(float cx1, float cy1, float r1,
+                                                                   float cx2, float cy2, float r2,
+                                                                   const std::vector<GradientStop>& stops) override;
+        std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
+                                                                   const std::vector<GradientStop>& stops) override;
+        void SetFillPaint(std::shared_ptr<IPaintPattern> pattern) override;
+        void SetFillPaint(const Color& color) override;
+        void SetStrokePaint(std::shared_ptr<IPaintPattern> pattern) override;
+        void SetStrokePaint(const Color& color) override;
+        void SetTextPaint(std::shared_ptr<IPaintPattern> pattern) override;
+        void SetTextPaint(const Color& color) override;
 
         // Basic drawing
         void DrawLine(float x, float y, float x1, float y1) override;
@@ -289,10 +309,12 @@ namespace UltraCanvas {
         void Circle(float x, float y, float radius) override;
 
         void GetPathExtents(float &x, float &y, float &width, float &height) override;
-        void StrokePath() override;
-        void FillPath() override;
+        void StrokePathPreserve() override;
+        void FillPathPreserve() override;
         void FillText(const std::string& text, float x, float y) override;
         void StrokeText(const std::string& text, float x, float y) override;
+        void Fill() override;
+        void Stroke() override;
 
         // Text rendering
         void DrawText(const std::string &text, float x, float y) override;

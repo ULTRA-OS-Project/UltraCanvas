@@ -95,7 +95,8 @@ namespace UltraCanvas {
     void UltraCanvasWaterfallChartElement::RenderAxisLabels(UltraCanvas::IRenderContext *ctx) {
         if (!ctx) return;
 
-        ctx->PaintWithColor(Color(0, 0, 0, 255));
+        ctx->SetStrokePaint(Color(0, 0, 0, 255));
+        ctx->SetTextPaint(Color(0, 0, 0, 255));
         ctx->SetFontSize(10.0f);
 
         // Y-axis labels (values)
@@ -332,12 +333,12 @@ namespace UltraCanvas {
 
         switch (barStyle) {
             case BarStyle::Standard:
-                ctx->PaintWithColor(fillColor);
+                ctx->SetFillPaint(fillColor);
                 ctx->FillRectangle(x, y, width, height);
                 break;
 
             case BarStyle::Rounded:
-                ctx->PaintWithColor(fillColor);
+                ctx->SetFillPaint(fillColor);
                 ctx->FillRoundedRectangle(x, y, width, height, 4.0f);
                 break;
 
@@ -349,11 +350,7 @@ namespace UltraCanvas {
                         std::min(255, static_cast<int>(fillColor.b * 1.2f)),
                         fillColor.a
                 );
-                auto gradient = ctx->CreateLinearGradientPattern(x,y, x, x + height, {
-                        GradientStop(0, lighterColor),
-                        GradientStop(1, fillColor),
-                });
-                ctx->PaintWithPattern(ctx->CreateLinearGradientPattern(x,y, x, x + height, {
+                ctx->SetFillPaint(ctx->CreateLinearGradientPattern(x,y, x, x + height, {
                         GradientStop(0, lighterColor),
                         GradientStop(1, fillColor),
                 }));
@@ -363,7 +360,7 @@ namespace UltraCanvas {
 
         // Draw border if enabled
         if (hasBorder && barBorderWidth > 0) {
-            ctx->PaintWithColor(barBorderColor);
+            ctx->SetStrokePaint(barBorderColor);
             ctx->SetStrokeWidth(barBorderWidth);
 
             if (barStyle == BarStyle::Rounded) {
@@ -382,7 +379,7 @@ namespace UltraCanvas {
         auto waterfallData = GetWaterfallDataSource();
         if (!waterfallData) return;
 
-        ctx->PaintWithColor(connectionLineColor);
+        ctx->SetStrokePaint(connectionLineColor);
         ctx->SetStrokeWidth(connectionLineWidth);
 
         size_t pointCount = waterfallData->GetPointCount();
@@ -481,7 +478,7 @@ namespace UltraCanvas {
         auto waterfallData = GetWaterfallDataSource();
         if (!waterfallData) return;
 
-        ctx->PaintWithColor(labelTextColor);
+        ctx->SetTextPaint(labelTextColor);
         ctx->SetFontSize(labelFontSize);
 
         size_t pointCount = waterfallData->GetPointCount();

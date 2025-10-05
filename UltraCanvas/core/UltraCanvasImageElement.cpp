@@ -283,7 +283,7 @@ namespace UltraCanvas {
 
         // Draw error message
         if (!errorMessage.empty()) {
-            ctx->PaintWithColor(Colors::Red);
+            ctx->SetTextPaint(Colors::Red);
             ctx->SetFontStyle({.fontFamily="Arial", .fontSize=10});
 
             Rect2Di textRect = GetBounds();
@@ -305,7 +305,7 @@ namespace UltraCanvas {
         ctx->DrawFilledRectangle(rect, bgColor, 1.0f, Colors::Gray);
 
         // Draw text
-        ctx->PaintWithColor(Colors::Gray);
+        ctx->SetTextPaint(Colors::Gray);
         ctx->SetFontSize(14.0f);
         Point2Di textSize = ctx->MeasureText(text);
         Point2Di textPos(

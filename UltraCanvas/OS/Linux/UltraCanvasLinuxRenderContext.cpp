@@ -218,7 +218,7 @@ namespace UltraCanvas {
         //ApplyFillStyle(currentState.style);
 
         cairo_rectangle(cairo, x, y, w, h);
-        cairo_fill(cairo);
+        Fill();
 
 //        std::cout << "LinuxRenderContext::FillRectangle: Complete" << std::endl;
     }
@@ -230,7 +230,7 @@ namespace UltraCanvas {
         //ApplyStrokeStyle(currentState.style);
 
         cairo_rectangle(cairo, x, y, w, h);
-        cairo_stroke(cairo);
+        Stroke();
 
 //        std::cout << "LinuxRenderContext::DrawRectangle: Complete" << std::endl;
     }
@@ -249,7 +249,7 @@ namespace UltraCanvas {
         cairo_arc(cairo, x + radius, y + radius, radius, M_PI, 3 * M_PI_2);
         cairo_close_path(cairo);
 
-        cairo_fill(cairo);
+        Fill();
     }
 
     void LinuxRenderContext::DrawRoundedRectangle(float x, float y, float w, float h, float radius) {
@@ -266,7 +266,7 @@ namespace UltraCanvas {
         cairo_arc(cairo, x + radius, y + radius, radius, M_PI, 3 * M_PI_2);
         cairo_close_path(cairo);
 
-        cairo_stroke(cairo);
+        Stroke();
     }
 
     void LinuxRenderContext::FillCircle(float x, float y, float radius) {
@@ -274,9 +274,8 @@ namespace UltraCanvas {
 
         // *** Apply fill style ***
         //ApplyFillStyle(currentState.style);
-
         cairo_arc(cairo, x, y, radius, 0, 2 * M_PI);
-        cairo_fill(cairo);
+        Fill();
     }
 
     void LinuxRenderContext::DrawCircle(float x, float y, float radius) {
@@ -284,9 +283,8 @@ namespace UltraCanvas {
 
         // *** Apply stroke style ***
         //ApplyStrokeStyle(currentState.style);
-
         cairo_arc(cairo, x, y, radius, 0, 2 * M_PI);
-        cairo_stroke(cairo);
+        Stroke();
     }
 
     void LinuxRenderContext::DrawLine(float start_x, float start_y, float end_x, float end_y) {
@@ -297,7 +295,7 @@ namespace UltraCanvas {
 
         cairo_move_to(cairo, start_x, start_y);
         cairo_line_to(cairo, end_x, end_y);
-        cairo_stroke(cairo);
+        Stroke();
     }
 
     PangoLayout* LinuxRenderContext::CreatePangoLayout(PangoFontDescription *desc, int w, int h) {
@@ -362,7 +360,7 @@ namespace UltraCanvas {
 
             pango_layout_set_text(layout, text.c_str(), -1);
 
-            //SetCairoColor(currentState.textStyle.textColor);
+            ApplyTextSource();
 
             cairo_move_to(cairo, x, y);
             pango_cairo_show_layout(cairo, layout);
@@ -405,7 +403,9 @@ namespace UltraCanvas {
             } else {
                 cairo_move_to(cairo, x, y);
             }
-            //SetCairoColor(currentState.textStyle.textColor);
+
+            ApplyTextSource();
+
             pango_cairo_show_layout(cairo, layout);
 
             pango_font_description_free(desc);
@@ -666,21 +666,25 @@ namespace UltraCanvas {
 
 
     void LinuxRenderContext::FillEllipse(float x, float y, float w, float h) {
+
         cairo_save(cairo);
         cairo_translate(cairo, x + w / 2, y + h / 2);
         cairo_scale(cairo, w / 2, h / 2);
         cairo_arc(cairo, 0, 0, 1, 0, 2 * M_PI);
         cairo_restore(cairo);
-        cairo_fill(cairo);
+
+        Fill();
     }
 
     void LinuxRenderContext::DrawEllipse(float x, float y, float w, float h) {
+
         cairo_save(cairo);
         cairo_translate(cairo, x + w / 2, y + h / 2);
         cairo_scale(cairo, w / 2, h / 2);
         cairo_arc(cairo, 0, 0, 1, 0, 2 * M_PI);
         cairo_restore(cairo);
-        cairo_stroke(cairo);
+
+        Stroke();
     }
 
     void LinuxRenderContext::FillLinePath(const std::vector<Point2Df> &points) {
@@ -691,7 +695,7 @@ namespace UltraCanvas {
             cairo_line_to(cairo, points[i].x, points[i].y);
         }
         cairo_close_path(cairo);
-        cairo_fill(cairo);
+        Fill();
     }
 
     void LinuxRenderContext::DrawLinePath(const std::vector<Point2Df> &points, bool closePath) {
@@ -706,14 +710,14 @@ namespace UltraCanvas {
             cairo_close_path(cairo);
         }
 
-        cairo_stroke(cairo);
+        Stroke();
     }
 
 
     void LinuxRenderContext::DrawArc(float x, float y, float radius, float startAngle, float endAngle) {
         //ApplyStrokeStyle(currentState.style);
         cairo_arc(cairo, x, y, radius, startAngle, endAngle);
-        cairo_stroke(cairo);
+        Stroke();
     }
 
     void LinuxRenderContext::FillArc(float x, float y, float radius, float startAngle, float endAngle) {
@@ -721,7 +725,7 @@ namespace UltraCanvas {
         cairo_move_to(cairo, x, y);
         cairo_arc(cairo, x, y, radius, startAngle, endAngle);
         cairo_close_path(cairo);
-        cairo_fill(cairo);
+        Fill();
     }
 
 //    void LinuxRenderContext::PathStroke() {
@@ -738,7 +742,7 @@ namespace UltraCanvas {
 //        ApplyStrokeStyle(currentState.style);
         cairo_move_to(cairo, start.x, start.y);
         cairo_curve_to(cairo, cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y);
-        cairo_stroke(cairo);
+        Stroke();
     }
 
 
@@ -837,21 +841,6 @@ namespace UltraCanvas {
         cairo_arc(cairo, x, y, radius, 0, 2 * M_PI);
     }
 
-    // Drawing Methods
-    void LinuxRenderContext::FillPath() {
-//        if (currentGradient) {
-//            cairo_set_source(cairo, currentGradient);
-//        }
-        cairo_fill_preserve(cairo);
-    }
-
-    void LinuxRenderContext::StrokePath() {
-//        if (currentGradient) {
-//            cairo_set_source(cairo, currentGradient);
-//        }
-        cairo_stroke_preserve(cairo);
-    }
-
     void LinuxRenderContext::GetPathExtents(float &x, float &y, float &width, float &height) {
         double x2, y2, x1, y1;
         cairo_path_extents(cairo, &x1, &y1, &x2, &y2);
@@ -862,8 +851,8 @@ namespace UltraCanvas {
     }
 
 // Cached Gradient Pattern Methods
-    std::unique_ptr<IDrawingPattern> LinuxRenderContext::CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
-                                      const std::vector<GradientStop>& stops) {
+    std::shared_ptr<IPaintPattern> LinuxRenderContext::CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
+                                                                                   const std::vector<GradientStop>& stops) {
         cairo_pattern_t* pattern = cairo_pattern_create_linear(x1, y1, x2, y2);
 
         for (const auto& stop : stops) {
@@ -874,15 +863,15 @@ namespace UltraCanvas {
 
         cairo_pattern_set_extend(pattern, CAIRO_EXTEND_PAD);
         if (cairo_pattern_status(pattern) == CAIRO_STATUS_SUCCESS) {
-            return std::make_unique<LinuxDrawingPattern>(pattern);
+            return std::make_shared<LinuxPaintPattern>(pattern);
         } else {
-            return std::make_unique<LinuxDrawingPattern>(nullptr);
+            return std::make_shared<LinuxPaintPattern>(nullptr);
         }
     }
 
-    std::unique_ptr<IDrawingPattern> LinuxRenderContext::CreateRadialGradientPattern(float cx1, float cy1, float r1,
-                                  float cx2, float cy2, float r2,
-                                  const std::vector<GradientStop>& stops) {
+    std::shared_ptr<IPaintPattern> LinuxRenderContext::CreateRadialGradientPattern(float cx1, float cy1, float r1,
+                                                                                   float cx2, float cy2, float r2,
+                                                                                   const std::vector<GradientStop>& stops) {
         cairo_pattern_t* pattern = cairo_pattern_create_radial(cx1, cy1, r1, cx2, cy2, r2);
 
         for (const auto& stop : stops) {
@@ -894,25 +883,64 @@ namespace UltraCanvas {
         cairo_pattern_set_extend(pattern, CAIRO_EXTEND_PAD);
 
         if (cairo_pattern_status(pattern) == CAIRO_STATUS_SUCCESS) {
-            return std::make_unique<LinuxDrawingPattern>(pattern);
+            return std::make_shared<LinuxPaintPattern>(pattern);
         } else {
-            return std::make_unique<LinuxDrawingPattern>(nullptr);
+            return std::make_shared<LinuxPaintPattern>(nullptr);
         }
     }
 
-    void LinuxRenderContext::PaintWithPattern(std::unique_ptr<IDrawingPattern> pattern) {
-        auto ptr = pattern.get();
-        if (ptr) {
-            auto handle = static_cast<cairo_pattern_t*>(ptr->GetHandle());
+    void LinuxRenderContext::SetFillPaint(std::shared_ptr<IPaintPattern> pattern) {
+        currentState.fillSourcePattern = pattern;
+        currentState.fillSourceColor = Colors::Transparent;
+    }
+
+    void LinuxRenderContext::SetFillPaint(const Color& color) {
+        currentState.fillSourcePattern = nullptr;
+        currentState.fillSourceColor = color;
+    }
+
+    void LinuxRenderContext::SetStrokePaint(std::shared_ptr<IPaintPattern> pattern) {
+        currentState.strokeSourcePattern = pattern;
+        currentState.strokeSourceColor = Colors::Transparent;
+    }
+
+    void LinuxRenderContext::SetStrokePaint(const Color& color) {
+        currentState.strokeSourceColor = color;
+        currentState.strokeSourcePattern = nullptr;
+    }
+
+    void LinuxRenderContext::SetTextPaint(std::shared_ptr<IPaintPattern> pattern) {
+        currentState.textSourcePattern = pattern;
+        currentState.textSourceColor = Colors::Transparent;
+    }
+
+    void LinuxRenderContext::SetTextPaint(const Color& color) {
+        currentState.textSourcePattern = nullptr;
+        currentState.textSourceColor = color;
+    }
+
+    void LinuxRenderContext::ApplySource(const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern) {
+        if (sourceColor.a > 0) {
+            if (currentState.currentSourceColor != sourceColor) {
+                currentState.currentSourceColor = sourceColor;
+                SetCairoColor(sourceColor);
+                currentState.currentSourcePattern = nullptr;
+            }
+        } else if (sourcePattern != nullptr && sourcePattern != currentState.currentSourcePattern) {
+            auto handle = static_cast<cairo_pattern_t*>(sourcePattern->GetHandle());
             if (handle) {
                 cairo_set_source(cairo, handle);
+//                cairo_pattern_t* sourceHandle = nullptr;
+//                if (currentState.currentSourcePattern != nullptr) {
+//                    sourceHandle = static_cast<cairo_pattern_t*>(currentState.currentSourcePattern->GetHandle());
+//                }
+//                if (handle != sourceHandle) {
+//                    cairo_set_source(cairo, handle);
+//                }
             }
+            currentState.currentSourcePattern = sourcePattern;
+            currentState.currentSourceColor = Colors::Transparent;
         }
-    }
-
-    // Style Methods
-    void LinuxRenderContext::PaintWithColor(const UltraCanvas::Color &color) {
-        SetCairoColor(color);
     }
 
     void LinuxRenderContext::SetStrokeWidth(float width) {
@@ -991,11 +1019,13 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::FillText(const std::string& text, float x, float y) {
+        ApplyFillSource();
         cairo_move_to(cairo, x, y);
         cairo_show_text(cairo, text.c_str());
     }
 
     void LinuxRenderContext::StrokeText(const std::string& text, float x, float y) {
+        ApplyStrokeSource();
         cairo_move_to(cairo, x, y);
         cairo_text_path(cairo, text.c_str());
         cairo_stroke(cairo);
@@ -1861,6 +1891,26 @@ namespace UltraCanvas {
         UpdateContext(originalWindowContext);
 
         std::cout << "SwitchToWindowSurface: Switched back to window surface" << std::endl;
+    }
+
+    void LinuxRenderContext::FillPathPreserve() {
+        ApplySource(currentState.fillSourceColor, currentState.fillSourcePattern);
+        cairo_fill_preserve(cairo);
+    }
+
+    void LinuxRenderContext::StrokePathPreserve() {
+        ApplySource(currentState.strokeSourceColor, currentState.strokeSourcePattern);
+        cairo_stroke_preserve(cairo);
+    }
+
+    void LinuxRenderContext::Stroke() {
+        ApplySource(currentState.strokeSourceColor, currentState.strokeSourcePattern);
+        cairo_stroke(cairo);
+    }
+
+    void LinuxRenderContext::Fill() {
+        ApplySource(currentState.fillSourceColor, currentState.fillSourcePattern);
+        cairo_fill(cairo);
     }
 
     XImageBuffer::XImageBuffer(XImageBuffer &&other) noexcept {

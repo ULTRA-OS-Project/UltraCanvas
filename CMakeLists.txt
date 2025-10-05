@@ -51,13 +51,18 @@ if(UNIX AND NOT APPLE)
     if(NOT FREETYPE_FOUND)
         message(FATAL_ERROR "FreeType development package not found. Install with: sudo apt-get install libfreetype6-dev")
     endif()
-    
+
+    pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
+    if(NOT TINYXML2_FOUND)
+        message(FATAL_ERROR "libtinyxml2 is required")
+    endif()
+
     # ✅ ADDED: Print found package info for debugging
     message(STATUS "Found X11: ${X11_VERSION}")
     message(STATUS "Found Cairo: ${CAIRO_VERSION}")
     message(STATUS "Found Pango: ${PANGO_VERSION}")
     message(STATUS "Found PangoCairo: ${PANGOCAIRO_VERSION}")
-    message(STATUS "Found1 FreeType: ${FREETYPE_VERSION}")
+    message(STATUS "Found FreeType: ${FREETYPE_VERSION}")
 endif()
 
 # ✅ REQUIRED: Include directories - CORRECT ORDER
@@ -76,6 +81,7 @@ if(UNIX AND NOT APPLE)
         ${JPEG_INCLUDE_DIRS}
         ${PANGOCAIRO_INCLUDE_DIRS}
         ${FREETYPE_INCLUDE_DIRS}
+        ${TINYXML2_INCLUDE_DIRS}
     )
     
     # ✅ ADDED: Set link directories
@@ -85,6 +91,7 @@ if(UNIX AND NOT APPLE)
         ${PANGO_LIBRARY_DIRS}
         ${PANGOCAIRO_LIBRARY_DIRS}
         ${FREETYPE_LIBRARY_DIRS}
+        ${TINYXML2_LIBRARY_DIRS}
     )
 endif()
 
@@ -190,6 +197,7 @@ if(UNIX AND NOT APPLE)
         ${FREETYPE_LIBRARIES}
         ${PNG_LIBRARIES}
         ${JPEG_LIBRARIES}
+        ${TINYXML2_LIBRARIES}
         pthread
     )
 

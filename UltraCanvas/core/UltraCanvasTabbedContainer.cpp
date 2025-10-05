@@ -368,7 +368,7 @@ namespace UltraCanvas {
         }
 
         // Draw tab bar border
-        ctx->PaintWithColor(tabBorderColor);
+        ctx->SetStrokePaint(tabBorderColor);
         ctx->DrawRectangle(tabBarBounds);
     }
 
@@ -418,7 +418,7 @@ namespace UltraCanvas {
         if (textArea.width > 0) {
             std::string displayText = GetTruncatedTabText(ctx, tab->title, textArea.width);
 
-            ctx->PaintWithColor(textColor);
+            ctx->SetTextPaint(textColor);
             ctx->SetFontSize(fontSize);
             int txtW, txtH;
             ctx->MeasureText(displayText, txtW, txtH);
@@ -445,7 +445,7 @@ namespace UltraCanvas {
 
         // Draw X symbol
         int halfSize = closeButtonSize / 4;
-        ctx->PaintWithColor(buttonColor);
+        ctx->SetStrokePaint(buttonColor);
         ctx->DrawLine(Point2Di(center.x - halfSize, center.y - halfSize),
                       Point2Di(center.x + halfSize, center.y + halfSize));
         ctx->DrawLine(Point2Di(center.x + halfSize, center.y - halfSize),
@@ -464,7 +464,7 @@ namespace UltraCanvas {
         ctx->DrawFilledRectangle(rightButton, Color(220, 220, 220), 1.0, tabBorderColor);
 
         // Draw arrows
-        ctx->PaintWithColor(Colors::Black);
+        ctx->SetStrokePaint(Colors::Black);
         Point2Di leftCenter(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
         ctx->DrawLine(Point2Di(leftCenter.x - 3, leftCenter.y), Point2Di(leftCenter.x + 3, leftCenter.y - 3));
         ctx->DrawLine(Point2Di(leftCenter.x - 3, leftCenter.y), Point2Di(leftCenter.x + 3, leftCenter.y + 3));
