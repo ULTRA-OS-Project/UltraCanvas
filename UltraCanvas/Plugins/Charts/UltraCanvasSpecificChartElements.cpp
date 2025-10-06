@@ -45,7 +45,7 @@ namespace UltraCanvas {
         // Simple smoothing using bezier curves
         for (size_t i = 0; i < points.size() - 1; ++i) {
             if (i + 2 < points.size()) {
-                // Create smooth curve using existing DrawBezier
+                // Create smooth curve using existing DrawBezierCurve
                 Point2Df cp1 = Point2Df(
                         points[i].x + (points[i+1].x - points[i].x) * 0.3f,
                         points[i].y + (points[i+1].y - points[i].y) * 0.3f
@@ -54,7 +54,7 @@ namespace UltraCanvas {
                         points[i+1].x - (points[i+2].x - points[i+1].x) * 0.3f,
                         points[i+1].y - (points[i+2].y - points[i+1].y) * 0.3f
                 );
-                ctx->DrawBezier(points[i], cp1, cp2, points[i+1]);
+                ctx->DrawBezierCurve(points[i], cp1, cp2, points[i + 1]);
             } else {
                 ctx->DrawLine(points[i].x, points[i].y, points[i+1].x, points[i+1].y);
             }

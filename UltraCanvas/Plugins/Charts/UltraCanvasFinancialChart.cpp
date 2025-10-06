@@ -265,7 +265,7 @@ namespace UltraCanvas {
             priceLabel << std::fixed << std::setprecision(2) << "$" << priceValue;
 
             int textWidth, textHeight;
-            ctx->MeasureText(priceLabel.str(), textWidth, textHeight);
+            ctx->GetTextDimension(priceLabel.str(), textWidth, textHeight);
             ctx->DrawText(priceLabel.str(), priceRenderArea.x - textWidth - 8, y - textHeight/2);
         }
 
@@ -288,7 +288,7 @@ namespace UltraCanvas {
             }
 
             int textWidth, textHeight;
-            ctx->MeasureText(dateLabel, textWidth, textHeight);
+            ctx->GetTextDimension(dateLabel, textWidth, textHeight);
             ctx->DrawText(dateLabel, x - textWidth/2, priceRenderArea.GetBottom() + 12);
         }
     }
@@ -368,7 +368,7 @@ namespace UltraCanvas {
             std::string label = FormatVolumeValue(volumeValue);
 
             int textWidth, textHeight;
-            ctx->MeasureText(label, textWidth, textHeight);
+            ctx->GetTextDimension(label, textWidth, textHeight);
             ctx->DrawText(label, volumeRenderArea.x - textWidth - 8, y - textHeight/2);
         }
 
@@ -391,7 +391,7 @@ namespace UltraCanvas {
             }
 
             int textWidth, textHeight;
-            ctx->MeasureText(dateLabel, textWidth, textHeight);
+            ctx->GetTextDimension(dateLabel, textWidth, textHeight);
             ctx->DrawText(dateLabel, x - textWidth/2, volumeRenderArea.GetBottom() + 12);
         }
     }
@@ -425,7 +425,7 @@ namespace UltraCanvas {
 
             // Measure text to position it properly
             int textWidth, textHeight;
-            ctx->MeasureText(label, textWidth, textHeight);
+            ctx->GetTextDimension(label, textWidth, textHeight);
 
             // Draw label to the left of the volume area
             ctx->DrawText(label, volumeRenderArea.x - textWidth - 5, y - textHeight/2);
@@ -434,7 +434,7 @@ namespace UltraCanvas {
         // Draw "Volume" label vertically on the left
         ctx->SetFontSize(12.0f);
         int labelWidth, labelHeight;
-        ctx->MeasureText("Volume", labelWidth, labelHeight);
+        ctx->GetTextDimension("Volume", labelWidth, labelHeight);
         ctx->DrawText("Volume", volumeRenderArea.x - 40, volumeRenderArea.GetCenter().y - labelHeight/2);
     }
 

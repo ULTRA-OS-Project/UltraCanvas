@@ -260,7 +260,7 @@ namespace UltraCanvas {
             // Draw label using existing DrawText
             double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
             std::string label = FormatAxisLabel(labelValue);
-            ctx->MeasureText(label, txtW, txtH);
+            ctx->GetTextDimension(label, txtW, txtH);
             ctx->DrawText(label, tickX - txtW - 8, y - (txtH / 2));
         }
     }

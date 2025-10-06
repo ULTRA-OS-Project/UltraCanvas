@@ -79,7 +79,7 @@ namespace UltraCanvas {
         auto ctx = GetRenderContext();
         if (ctx) {
             int txtw, txth;
-            ctx->MeasureText(text, txtw, txth);
+            ctx->GetTextDimension(text, txtw, txth);
             int newWidth = txtw +
                            style.paddingLeft + style.paddingRight;
             int newHeight = txth +

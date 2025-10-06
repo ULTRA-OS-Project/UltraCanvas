@@ -264,7 +264,7 @@ class UltraCanvasBaseWindow;
         virtual void DrawArc(float x, float y, float radius, float startAngle, float endAngle) = 0;
         virtual void FillArc(float x, float y, float radius, float startAngle, float endAngle) = 0;
 
-        virtual void DrawBezier(const Point2Df& start, const Point2Df& cp1, const Point2Df& cp2, const Point2Df& end) = 0;
+        virtual void DrawBezierCurve(const Point2Df& start, const Point2Df& cp1, const Point2Df& cp2, const Point2Df& end) = 0;
         virtual void DrawLinePath(const std::vector<Point2Df>& points, bool closePath) = 0;
         virtual void FillLinePath(const std::vector<Point2Df>& points) = 0;
 
@@ -341,15 +341,15 @@ class UltraCanvasBaseWindow;
         // ===== TEXT RENDERING =====
         virtual void DrawText(const std::string& text, float x, float y) = 0;
         virtual void DrawTextInRect(const std::string& text, float x, float y, float w, float h) = 0;
-        virtual bool MeasureText(const std::string& text, int& w, int& h) = 0;
+        virtual bool GetTextDimension(const std::string& text, int& w, int& h) = 0;
         int GetTextWidth(const std::string& text) {
             int w, h;
-            MeasureText(text, w, h);
+            GetTextDimension(text, w, h);
             return w;
         };
         int GetTextHeight(const std::string& text) {
             int w, h;
-            MeasureText(text, w, h);
+            GetTextDimension(text, w, h);
             return h;
         };
 
@@ -546,13 +546,13 @@ class UltraCanvasBaseWindow;
 
         Point2Di MeasureText(const std::string& text) {
             Point2Di p = {0, 0};
-            MeasureText(text, p.x, p.y);
+            GetTextDimension(text, p.x, p.y);
             return p;
         }
 
         Point2Df CalculateCenteredTextPosition(const std::string& text, const Rect2Df& bounds) {
             int txt_w, txt_h;
-            MeasureText(text, txt_w, txt_h);
+            GetTextDimension(text, txt_w, txt_h);
             return Point2Df(
                     bounds.x + (bounds.width - static_cast<float>(txt_w)) / 2,     // Center horizontally
                     bounds.y + (bounds.height - static_cast<float>(txt_h)) / 2   // Center vertically (baseline adjusted)
@@ -627,7 +627,7 @@ class UltraCanvasBaseWindow;
             PushState();
             if (backgroundColor.a > 0) {
                 int txt_w, txt_h;
-                MeasureText(text, txt_w, txt_h);
+                GetTextDimension(text, txt_w, txt_h);
                 DrawFilledRectangle(Rect2Df(position.x, position.y, txt_w, txt_h), backgroundColor);
             }
 

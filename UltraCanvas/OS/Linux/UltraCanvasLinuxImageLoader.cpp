@@ -119,7 +119,22 @@ cairo_surface_t* LinuxImageLoader::LoadPngImage(const std::string& filePath, int
         uint8_t g = (pixel >> 8) & 0xFF;
         uint8_t b = (pixel >> 16) & 0xFF;
         uint8_t a = (pixel >> 24) & 0xFF;
-        pixels[i] = (a << 24) | (r << 16) | (g << 8) | b; // ARGB for Cairo
+
+        // Apply premultiplied alpha
+        if (a == 0) {
+            // Fully transparent pixel
+            pixels[i] = 0;
+        } else if (a == 255) {
+            // Fully opaque pixel - no premultiplication needed
+            pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
+        } else {
+            // Partially transparent - premultiply RGB by alpha
+            uint8_t premul_r = (r * a) / 255;
+            uint8_t premul_g = (g * a) / 255;
+            uint8_t premul_b = (b * a) / 255;
+            pixels[i] = (a << 24) | (premul_r << 16) | (premul_g << 8) | premul_b;
+        }
+        //pixels[i] = (a << 24) | (r << 16) | (g << 8) | b; // ARGB for Cairo
     }
 
     cairo_surface_mark_dirty(surface);
@@ -321,7 +336,20 @@ cairo_surface_t* LinuxImageLoader::LoadPngFromMemory(const uint8_t* data, size_t
             uint8_t g = (pixel >> 8) & 0xFF;
             uint8_t b = (pixel >> 16) & 0xFF;
             uint8_t a = (pixel >> 24) & 0xFF;
-            pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
+
+            if (a == 0) {
+                // Fully transparent pixel
+                pixels[i] = 0;
+            } else if (a == 255) {
+                // Fully opaque pixel - no premultiplication needed
+                pixels[i] = (a << 24) | (r << 16) | (g << 8) | b;
+            } else {
+                // Partially transparent - premultiply RGB by alpha
+                uint8_t premul_r = (r * a) / 255;
+                uint8_t premul_g = (g * a) / 255;
+                uint8_t premul_b = (b * a) / 255;
+                pixels[i] = (a << 24) | (premul_r << 16) | (premul_g << 8) | premul_b;
+            }
         }
         cairo_surface_mark_dirty(surface);
     } else {

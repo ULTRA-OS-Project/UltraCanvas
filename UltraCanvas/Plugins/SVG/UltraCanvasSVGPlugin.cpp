@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "Plugins/SVG/UltraCanvasSVGPlugin.h"
+#include "UltraCanvasUtils.h"
 #include <cmath>
 #include <algorithm>
 #include <cctype>
@@ -89,6 +90,7 @@ namespace UltraCanvas {
         const char* fill = elem->Attribute("fill");
         if (fill) {
             std::string fillStr(fill);
+
             if (fillStr.find("url(#") == 0) {
                 size_t start = 5;
                 size_t end = fillStr.find(')', start);
@@ -97,13 +99,14 @@ namespace UltraCanvas {
                 }
             } else if (fillStr != "none") {
                 // Parse color - simplified for now
-                if (fillStr[0] == '#') {
-                    unsigned int rgb = std::stoul(fillStr.substr(1), nullptr, 16);
-                    fillColor.r = (rgb >> 16) & 0xFF;
-                    fillColor.g = (rgb >> 8) & 0xFF;
-                    fillColor.b = rgb & 0xFF;
-                    fillColor.a = 255;
-                }
+                fillColor = ParseColor(fillStr);
+//                if (fillStr[0] == '#') {
+//                    unsigned int rgb = std::stoul(fillStr.substr(1), nullptr, 16);
+//                    fillColor.r = (rgb >> 16) & 0xFF;
+//                    fillColor.g = (rgb >> 8) & 0xFF;
+//                    fillColor.b = rgb & 0xFF;
+//                    fillColor.a = 255;
+//                }
             } else {
                 fillColor.a = 0; // Transparent
             }
@@ -120,13 +123,14 @@ namespace UltraCanvas {
                     strokeGradientId = strokeStr.substr(start, end - start);
                 }
             } else if (strokeStr != "none") {
-                if (strokeStr[0] == '#') {
-                    unsigned int rgb = std::stoul(strokeStr.substr(1), nullptr, 16);
-                    strokeColor.r = (rgb >> 16) & 0xFF;
-                    strokeColor.g = (rgb >> 8) & 0xFF;
-                    strokeColor.b = rgb & 0xFF;
-                    strokeColor.a = 255;
-                }
+                strokeColor = ParseColor(strokeStr);
+//                if (strokeStr[0] == '#') {
+//                    unsigned int rgb = std::stoul(strokeStr.substr(1), nullptr, 16);
+//                    strokeColor.r = (rgb >> 16) & 0xFF;
+//                    strokeColor.g = (rgb >> 8) & 0xFF;
+//                    strokeColor.b = rgb & 0xFF;
+//                    strokeColor.a = 255;
+//                }
             }
         }
 
@@ -161,21 +165,23 @@ namespace UltraCanvas {
 
                 // Parse properties
                 if (key == "fill") {
-                    if (value[0] == '#') {
-                        unsigned int rgb = std::stoul(value.substr(1), nullptr, 16);
-                        fillColor.r = (rgb >> 16) & 0xFF;
-                        fillColor.g = (rgb >> 8) & 0xFF;
-                        fillColor.b = rgb & 0xFF;
-                        fillColor.a = 255;
-                    }
+                    fillColor = ParseColor(value);
+//                    if (value[0] == '#') {
+//                        unsigned int rgb = std::stoul(value.substr(1), nullptr, 16);
+//                        fillColor.r = (rgb >> 16) & 0xFF;
+//                        fillColor.g = (rgb >> 8) & 0xFF;
+//                        fillColor.b = rgb & 0xFF;
+//                        fillColor.a = 255;
+//                    }
                 } else if (key == "stroke") {
-                    if (value[0] == '#') {
-                        unsigned int rgb = std::stoul(value.substr(1), nullptr, 16);
-                        strokeColor.r = (rgb >> 16) & 0xFF;
-                        strokeColor.g = (rgb >> 8) & 0xFF;
-                        strokeColor.b = rgb & 0xFF;
-                        strokeColor.a = 255;
-                    }
+                    strokeColor = ParseColor(value);
+//                    if (value[0] == '#') {
+//                        unsigned int rgb = std::stoul(value.substr(1), nullptr, 16);
+//                        strokeColor.r = (rgb >> 16) & 0xFF;
+//                        strokeColor.g = (rgb >> 8) & 0xFF;
+//                        strokeColor.b = rgb & 0xFF;
+//                        strokeColor.a = 255;
+//                    }
                 } else if (key == "stroke-width") {
                     strokeWidth = std::stof(value);
                 } else if (key == "opacity") {
@@ -679,15 +685,18 @@ namespace UltraCanvas {
             // Parse stops
             for (tinyxml2::XMLElement* stop = elem->FirstChildElement("stop"); stop; stop = stop->NextSiblingElement("stop")) {
                 GradientStop gradStop;
-                gradStop.position = ParseFloatAttribute(stop, "offset", 0);
+                const char* offsetStr = stop->Attribute("offset");
+                if (!offsetStr || strlen(offsetStr) == 0) continue;
+                float offsetFloat = ParseFloatAttribute(stop, "offset", 0);
+                if (offsetStr[strlen(offsetStr) - 1] == '%') {
+                    gradStop.position = offsetFloat / 100.0;
+                } else {
+                    gradStop.position = offsetFloat;
+                }
 
                 const char* stopColor = stop->Attribute("stop-color");
-                if (stopColor && stopColor[0] == '#') {
-                    unsigned int rgb = std::stoul(std::string(stopColor).substr(1), nullptr, 16);
-                    gradStop.color.r = (rgb >> 16) & 0xFF;
-                    gradStop.color.g = (rgb >> 8) & 0xFF;
-                    gradStop.color.b = rgb & 0xFF;
-                    gradStop.color.a = 255;
+                if (stopColor) {
+                    gradStop.color = ParseColor(stopColor);
                 }
 
                 gradStop.color.a = static_cast<uint8_t >(255.0 / ParseFloatAttribute(stop, "stop-opacity", 1));
@@ -1015,7 +1024,7 @@ namespace UltraCanvas {
         float fontSize = ParseFloatAttribute(elem, "font-size", 12);
         const char* fontWeight = elem->Attribute("font-weight");
         FontWeight fw = FontWeight::Normal;
-        if (strcmp(fontWeight, "bold") == 0) {
+        if (fontWeight && strcmp(fontWeight, "bold") == 0) {
             fw = FontWeight::Bold;
         }
         context->SetFontFace(fontFamily ? fontFamily : "Arial", fw, FontSlant::Normal);

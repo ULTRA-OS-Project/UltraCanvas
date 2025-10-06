@@ -287,7 +287,7 @@ namespace UltraCanvas {
         void FillEllipse(float x, float y, float w, float h) override;
         void DrawArc(float x, float y, float radius, float startAngle, float endAngle) override;
         void FillArc(float x, float y, float radius, float startAngle, float endAngle) override;
-        void DrawBezier(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2, const Point2Df &end) override;
+        void DrawBezierCurve(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2, const Point2Df &end) override;
         void DrawLinePath(const std::vector<Point2Df> &points, bool closePath) override;
         void FillLinePath(const std::vector<Point2Df> &points) override;
 
@@ -319,7 +319,7 @@ namespace UltraCanvas {
         // Text rendering
         void DrawText(const std::string &text, float x, float y) override;
         void DrawTextInRect(const std::string &text, float x, float y, float w, float h) override;
-        bool MeasureText(const std::string &text, int &w, int &h) override;
+        bool GetTextDimension(const std::string &text, int &w, int &h) override;
         int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) override;
 
         // Image rendering

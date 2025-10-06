@@ -416,7 +416,7 @@ namespace UltraCanvas {
         }
     }
 
-    bool LinuxRenderContext::MeasureText(const std::string &text, int &w, int &h) {
+    bool LinuxRenderContext::GetTextDimension(const std::string &text, int &w, int &h) {
         w = 0;
         h = 0;
         if (!pangoContext || text.empty()) {
@@ -448,7 +448,7 @@ namespace UltraCanvas {
             return true;
 
         } catch (...) {
-            std::cerr << "ERROR: Exception in MeasureText" << std::endl;
+            std::cerr << "ERROR: Exception in GetTextDimension" << std::endl;
             return false;
         }
     }
@@ -737,8 +737,8 @@ namespace UltraCanvas {
 //        cairo_fill(cairo);
 //    }
 
-    void LinuxRenderContext::DrawBezier(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2,
-                                        const Point2Df &end) {
+    void LinuxRenderContext::DrawBezierCurve(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2,
+                                             const Point2Df &end) {
 //        ApplyStrokeStyle(currentState.style);
         cairo_move_to(cairo, start.x, start.y);
         cairo_curve_to(cairo, cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y);
@@ -1111,6 +1111,7 @@ namespace UltraCanvas {
             if (currentState.globalAlpha < 1.0f) {
                 cairo_paint_with_alpha(cairo, currentState.globalAlpha);
             } else {
+                //cairo_paint_with_alpha(cairo, currentState.globalAlpha);
                 cairo_paint(cairo);
             }
 

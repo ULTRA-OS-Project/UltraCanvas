@@ -421,7 +421,7 @@ namespace UltraCanvas {
             ctx->SetTextPaint(textColor);
             ctx->SetFontSize(fontSize);
             int txtW, txtH;
-            ctx->MeasureText(displayText, txtW, txtH);
+            ctx->GetTextDimension(displayText, txtW, txtH);
             int textY = tabBounds.y + (tabBounds.height - txtH) / 2;
             ctx->DrawText(displayText, Point2Di(textArea.x, textY));
         }
@@ -746,7 +746,7 @@ namespace UltraCanvas {
     std::string UltraCanvasTabbedContainer::GetTruncatedTabText(IRenderContext* ctx, const std::string &text, int maxWidth) const {
         int textWidth, txtH;
         ctx->SetFontStyle({.fontFamily=fontFamily, .fontSize=fontSize});
-        ctx->MeasureText(text, textWidth, txtH);
+        ctx->GetTextDimension(text, textWidth, txtH);
         if (textWidth <= maxWidth) return text;
 
         // Truncate with ellipsis
