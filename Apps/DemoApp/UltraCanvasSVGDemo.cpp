@@ -60,16 +60,13 @@ namespace UltraCanvas {
                     "FullscreenSVG",
                     10001,
                     0, 0,
-                    screenWidth, screenHeight
+                    1900, 1000
             );
 
             // Load the same SVG file
             if (!svgFilePath.empty()) {
                 fullscreenSVG->LoadFromFile(svgFilePath);
             }
-
-            // Set auto-resize to fit the screen
-            //fullscreenSVG->SetAutoResize(true);
 
             // Add SVG to fullscreen window
             fullscreenWindow->AddChild(fullscreenSVG);
@@ -110,7 +107,7 @@ namespace UltraCanvas {
 
 // ===== VECTOR/SVG EXAMPLES IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSVGVectorExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("VectorExamples", 900, 0, 0, 1000, 600);
+        auto container = std::make_shared<UltraCanvasContainer>("VectorExamples", 900, 0, 0, 1000, 780);
 
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("VectorTitle", 901, 10, 10, 500, 30);
@@ -196,14 +193,130 @@ namespace UltraCanvas {
                 case UCEventType::MouseEnter: {
                     auto style = svgContainer->GetContainerStyle();
                     style.borderColor = Color(100, 149, 237, 255);
-                    style.borderWidth = 3;
                     svgContainer->SetContainerStyle(style);
                     return true;
                 }
                 case UCEventType::MouseLeave: {
                     auto style = svgContainer->GetContainerStyle();
                     style.borderColor = Color(180, 180, 180, 255);
-                    style.borderWidth = 2;
+                    svgContainer->SetContainerStyle(style);
+                    return true;
+                }
+                default:
+                    return false;
+            }
+        });
+
+        auto svgContainer2 = std::make_shared<UltraCanvasContainer>("SVGContainer", 903, 280, 100, 240, 240);
+        svgContainer2->SetContainerStyle(style);
+
+        // Create SVG Element (200x200 inside the container with padding)
+        auto svgElement2 = std::make_shared<UltraCanvasSVGElement>(
+                "DemoSVG2",
+                904,
+                20, 20,  // 20px padding inside container
+                200, 200
+        );
+
+        // Try to load from file, fallback to inline SVG if file not found
+        svgElement2->LoadFromFile("assets/robot.svg");
+        // Create demo handler for click interaction
+        auto demoHandler2 = std::make_shared<SVGDemoHandler>(svgElement2, "assets/robot.svg");
+
+        // Set click handler on the SVG element
+        svgElement2->SetEventCallback([demoHandler2, svgContainer2](const UCEvent& event) {
+            switch (event.type) {
+                case UCEventType::MouseUp:
+                    demoHandler2->OnSVGClick();
+                    return true;
+                case UCEventType::MouseEnter: {
+                    auto style = svgContainer2->GetContainerStyle();
+                    style.borderColor = Color(100, 149, 237, 255);
+                    svgContainer2->SetContainerStyle(style);
+                    return true;
+                }
+                case UCEventType::MouseLeave: {
+                    auto style = svgContainer2->GetContainerStyle();
+                    style.borderColor = Color(180, 180, 180, 255);
+                    svgContainer2->SetContainerStyle(style);
+                    return true;
+                }
+                default:
+                    return false;
+            }
+        });
+
+        auto svgContainer3 = std::make_shared<UltraCanvasContainer>("SVGContainer", 903, 540, 100, 240, 240);
+        svgContainer3->SetContainerStyle(style);
+
+        // Create SVG Element (200x200 inside the container with padding)
+        auto svgElement3 = std::make_shared<UltraCanvasSVGElement>(
+                "DemoSVG2",
+                904,
+                20, 20,  // 20px padding inside container
+                200, 200
+        );
+
+        // Try to load from file, fallback to inline SVG if file not found
+        svgElement3->LoadFromFile("assets/astronaut.svg");
+        // Create demo handler for click interaction
+        auto demoHandler3 = std::make_shared<SVGDemoHandler>(svgElement3, "assets/astronaut.svg");
+
+        // Set click handler on the SVG element
+        svgElement3->SetEventCallback([demoHandler3, svgContainer3](const UCEvent& event) {
+            switch (event.type) {
+                case UCEventType::MouseUp:
+                    demoHandler3->OnSVGClick();
+                    return true;
+                case UCEventType::MouseEnter: {
+                    auto style = svgContainer3->GetContainerStyle();
+                    style.borderColor = Color(100, 149, 237, 255);
+                    svgContainer3->SetContainerStyle(style);
+                    return true;
+                }
+                case UCEventType::MouseLeave: {
+                    auto style = svgContainer3->GetContainerStyle();
+                    style.borderColor = Color(180, 180, 180, 255);
+                    svgContainer3->SetContainerStyle(style);
+                    return true;
+                }
+                default:
+                    return false;
+            }
+        });
+
+        auto svgContainer4 = std::make_shared<UltraCanvasContainer>("SVGContainer", 903, 20, 360, 240, 240);
+        svgContainer4->SetContainerStyle(style);
+
+        // Create SVG Element (200x200 inside the container with padding)
+        auto svgElement4 = std::make_shared<UltraCanvasSVGElement>(
+                "DemoSVG2",
+                904,
+                20, 20,  // 20px padding inside container
+                200, 200
+        );
+
+        // Try to load from file, fallback to inline SVG if file not found
+        svgElement4->LoadFromFile("assets/photo-camera.svg");
+        // Create demo handler for click interaction
+        auto demoHandler4 = std::make_shared<SVGDemoHandler>(svgElement3, "assets/photo-camera.svg");
+
+        // Set click handler on the SVG element
+        svgElement4->SetEventCallback([demoHandler4, svgContainer4](const UCEvent& event) {
+            switch (event.type) {
+                case UCEventType::MouseUp:
+                    demoHandler4->OnSVGClick();
+                    return true;
+                case UCEventType::MouseEnter: {
+                    auto style = svgContainer4->GetContainerStyle();
+                    style.borderColor = Color(100, 149, 237, 255);
+                    svgContainer4->SetContainerStyle(style);
+                    return true;
+                }
+                case UCEventType::MouseLeave: {
+                    auto style = svgContainer4->GetContainerStyle();
+                    style.borderColor = Color(180, 180, 180, 255);
+                    svgContainer4->SetContainerStyle(style);
                     return true;
                 }
                 default:
@@ -216,10 +329,16 @@ namespace UltraCanvas {
 
         // Add SVG to container
         svgContainer->AddChild(svgElement);
+        svgContainer2->AddChild(svgElement2);
+        svgContainer3->AddChild(svgElement3);
+        svgContainer4->AddChild(svgElement4);
         container->AddChild(svgContainer);
+        container->AddChild(svgContainer2);
+        container->AddChild(svgContainer3);
+        container->AddChild(svgContainer4);
 
         // Information panel
-        auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 905, 280, 100, 320, 320);
+        auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 905, 540, 360, 320, 320);
         ContainerStyle st = infoPanel->GetContainerStyle();
         st.backgroundColor = Color(245, 245, 245, 255);
         st.borderWidth = 1;
@@ -253,16 +372,6 @@ namespace UltraCanvas {
         infoPanel->AddChild(infoText);
 
         container->AddChild(infoPanel);
-
-        // Status bar
-        auto statusBar = std::make_shared<UltraCanvasLabel>("StatusBar", 908, 20, 460, 580, 30);
-        statusBar->SetText("SVG Plugin Status: Active | Click the image to view in fullscreen");
-        statusBar->SetFontSize(11);
-        statusBar->SetTextColor(Color(100, 100, 100, 255));
-        statusBar->SetBackgroundColor(Color(240, 240, 240, 255));
-        statusBar->SetPadding(5.0f);
-        statusBar->SetAlignment(TextAlignment::Center);
-        container->AddChild(statusBar);
 
         return container;
     }

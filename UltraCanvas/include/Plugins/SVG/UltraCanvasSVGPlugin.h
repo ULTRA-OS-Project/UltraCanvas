@@ -42,7 +42,7 @@ namespace UltraCanvas {
 
 // SVG Style properties
     struct SVGStyle {
-        Color fillColor{0, 0, 0, 255};
+        Color fillColor{0, 0, 0, 0};
         Color strokeColor{0, 0, 0, 0};
         float strokeWidth{1.0f};
         float opacity{1.0f};
@@ -249,7 +249,6 @@ namespace UltraCanvas {
         bool LoadFromString(const std::string& svgContent);
 
         void Render() override;
-        //virtual Size GetPreferredSize() const override;
 
         void SetScale(float scale) { this->scale = scale; }
         float GetScale() const { return scale; }
@@ -257,6 +256,9 @@ namespace UltraCanvas {
         void SetPreserveAspectRatio(bool preserve) { preserveAspectRatio = preserve; }
         bool GetPreserveAspectRatio() const { return preserveAspectRatio; }
 
+        const SVGDocument* GetDocument() {
+            return document.get();
+        }
     private:
         std::unique_ptr<SVGDocument> document;
         float scale{1.0f};

@@ -52,6 +52,17 @@ typedef struct Point2D<float> Point2Df;
 typedef struct Point2D<int> Point2Di;
 typedef struct Point2D<long> Point2Dl;
 
+
+template <typename T>
+struct Size2D {
+    T width, height;
+
+    Size2D(T w = 0, T h = 0) : width(w), height(h) {}
+};
+typedef struct Size2D<float> Size2Df;
+typedef struct Size2D<int> Size2Di;
+typedef struct Size2D<long> Size2Dl;
+
 template <typename T>
 struct Rect2D {
     T x, y, width, height;

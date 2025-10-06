@@ -97,18 +97,9 @@ namespace UltraCanvas {
                 if (end != std::string::npos) {
                     fillGradientId = fillStr.substr(start, end - start);
                 }
-            } else if (fillStr != "none") {
+            } else {
                 // Parse color - simplified for now
                 fillColor = ParseColor(fillStr);
-//                if (fillStr[0] == '#') {
-//                    unsigned int rgb = std::stoul(fillStr.substr(1), nullptr, 16);
-//                    fillColor.r = (rgb >> 16) & 0xFF;
-//                    fillColor.g = (rgb >> 8) & 0xFF;
-//                    fillColor.b = rgb & 0xFF;
-//                    fillColor.a = 255;
-//                }
-            } else {
-                fillColor.a = 0; // Transparent
             }
         }
 
@@ -122,15 +113,8 @@ namespace UltraCanvas {
                 if (end != std::string::npos) {
                     strokeGradientId = strokeStr.substr(start, end - start);
                 }
-            } else if (strokeStr != "none") {
+            } else {
                 strokeColor = ParseColor(strokeStr);
-//                if (strokeStr[0] == '#') {
-//                    unsigned int rgb = std::stoul(strokeStr.substr(1), nullptr, 16);
-//                    strokeColor.r = (rgb >> 16) & 0xFF;
-//                    strokeColor.g = (rgb >> 8) & 0xFF;
-//                    strokeColor.b = rgb & 0xFF;
-//                    strokeColor.a = 255;
-//                }
             }
         }
 
@@ -581,14 +565,22 @@ namespace UltraCanvas {
         }
 
         // Parse dimensions
-        width = ParseFloatAttribute(root, "width", 100);
-        height = ParseFloatAttribute(root, "height", 100);
+        width = ParseFloatAttribute(root, "width", 0);
+        height = ParseFloatAttribute(root, "height", 0);
 
         // Parse viewBox
         const char* viewBoxAttr = root->Attribute("viewBox");
         if (viewBoxAttr) {
             ParseViewBox(viewBoxAttr);
+            if (width == 0 || height == 0) {
+                width = viewBox.width;
+                height = viewBox.height;
+            }
         } else {
+            if (width == 0 || height == 0) {
+                width = 100;
+                height = 100;
+            }
             viewBox = {0, 0, width, height};
         }
 
@@ -800,8 +792,12 @@ namespace UltraCanvas {
             float scaleY = document.height / document.viewBox.height;
 
             context->PushState();
-            context->Scale(scaleX, scaleY);
-            context->Translate(-document.viewBox.x, -document.viewBox.y);
+            if (scaleX != 1 || scaleY != 1) {
+                context->Scale(scaleX, scaleY);
+            }
+            if (document.viewBox.x > 0 || document.viewBox.y > 0) {
+                context->Translate(-document.viewBox.x, -document.viewBox.y);
+            }
         }
 
         // Render all child elements
@@ -888,6 +884,8 @@ namespace UltraCanvas {
         Rect2Df bounds = GetElementBounds(elem);
 
         FillAndStroke(style, bounds);
+
+        context->ClearPath();
     }
 
     void SVGElementRenderer::RenderRect(tinyxml2::XMLElement* elem) {
@@ -1077,13 +1075,13 @@ namespace UltraCanvas {
         // Apply fill
         if (style.fillColor.a > 0 || !style.fillGradientId.empty()) {
             ApplyFill(style, bounds);
-            context->Fill();
+            context->FillPathPreserve();
         }
 
         // Apply stroke
         if (style.strokeColor.a > 0 || !style.strokeGradientId.empty()) {
             ApplyStroke(style, bounds);
-            context->Stroke();
+            context->StrokePathPreserve();
         }
         context->ClearPath();
     }
@@ -1330,13 +1328,8 @@ namespace UltraCanvas {
 
         // Apply element transform
         Rect2Di bounds = GetBounds();
-        context->Translate(bounds.x, bounds.y);
 
         // Apply scale
-        if (scale != 1.0f) {
-            context->Scale(scale, scale);
-        }
-
         // Handle aspect ratio
         if (preserveAspectRatio) {
             float docAspect = document->GetWidth() / document->GetHeight();
@@ -1344,15 +1337,23 @@ namespace UltraCanvas {
 
             if (docAspect > boundsAspect) {
                 // Document is wider - scale based on width
-                float scaleFactor = static_cast<float>(bounds.width) / document->GetWidth();
+                float scaleFactor = static_cast<float>(bounds.width) / document->GetWidth() * scale;
+                float pos_y = (bounds.height - document->GetHeight() * scaleFactor) / 2 + bounds.y;
+                context->Translate(bounds.x, pos_y);
                 context->Scale(scaleFactor, scaleFactor);
             } else {
                 // Document is taller - scale based on height
                 float scaleFactor = static_cast<float>(bounds.height) / document->GetHeight();
+                float pos_x = (bounds.width - document->GetWidth() * scaleFactor) / 2 + bounds.x;
+                context->Translate(pos_x, bounds.y);
                 context->Scale(scaleFactor, scaleFactor);
             }
         } else {
             // Stretch to fill
+            if (scale != 1.0f) {
+                context->Scale(scale, scale);
+            }
+            context->Translate(bounds.x, bounds.y);
             float scaleX = static_cast<float>(bounds.width) / document->GetWidth();
             float scaleY = static_cast<float>(bounds.height) / document->GetHeight();
             context->Scale(scaleX, scaleY);
@@ -1364,13 +1365,6 @@ namespace UltraCanvas {
 
         context->PopState();
     }
-
-//    Size UltraCanvasSVGElement::GetPreferredSize() const {
-//        if (document) {
-//            return {document->GetWidth() * scale, document->GetHeight() * scale};
-//        }
-//        return {100, 100};
-//    }
 
 // UltraCanvasSVGPlugin implementation
 //    UltraCanvasSVGPlugin::UltraCanvasSVGPlugin() {
