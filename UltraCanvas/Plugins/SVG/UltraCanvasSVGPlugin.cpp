@@ -1,4 +1,4 @@
-// UltraCanvasSVGPlugin.cpp
+// Plugins/SVG/UltraCanvasSVGPlugin.cpp
 // Complete SVG rendering plugin implementation
 // Version: 2.0.0
 // Last Modified: 2024-12-19
@@ -261,6 +261,9 @@ namespace UltraCanvas {
         float startX = 0, startY = 0;
         float controlX = 0, controlY = 0;
 
+        // Track if last command was a curve (for smooth curve commands)
+        bool lastWasCurve = false;
+
         ctx->ClearPath();
 
         for (const auto& cmd : commands) {
@@ -271,6 +274,12 @@ namespace UltraCanvas {
                         currentY = cmd.params[1];
                         startX = currentX;
                         startY = currentY;
+
+                        // CRITICAL: Reset control point to current position after move
+                        controlX = currentX;
+                        controlY = currentY;
+                        lastWasCurve = false;
+
                         ctx->MoveTo(currentX, currentY);
 
                         // Additional points are line-to commands
@@ -278,6 +287,8 @@ namespace UltraCanvas {
                             currentX = cmd.params[i];
                             currentY = cmd.params[i + 1];
                             ctx->LineTo(currentX, currentY);
+                            controlX = currentX;
+                            controlY = currentY;
                         }
                     }
                     break;
@@ -297,10 +308,17 @@ namespace UltraCanvas {
                         startX = currentX;
                         startY = currentY;
 
+                        // CRITICAL: Reset control point to current position after move
+                        controlX = currentX;
+                        controlY = currentY;
+                        lastWasCurve = false;
+
                         for (size_t i = 2; i + 1 < cmd.params.size(); i += 2) {
                             ctx->RelLineTo(cmd.params[i], cmd.params[i + 1]);
                             currentX += cmd.params[i];
                             currentY += cmd.params[i + 1];
+                            controlX = currentX;
+                            controlY = currentY;
                         }
                     }
                     break;
@@ -310,6 +328,10 @@ namespace UltraCanvas {
                         currentX = cmd.params[i];
                         currentY = cmd.params[i + 1];
                         ctx->LineTo(currentX, currentY);
+                        // Lines reset the control point
+                        controlX = currentX;
+                        controlY = currentY;
+                        lastWasCurve = false;
                     }
                     break;
 
@@ -318,6 +340,10 @@ namespace UltraCanvas {
                         ctx->RelLineTo(cmd.params[i], cmd.params[i + 1]);
                         currentX += cmd.params[i];
                         currentY += cmd.params[i + 1];
+                        // Lines reset the control point
+                        controlX = currentX;
+                        controlY = currentY;
+                        lastWasCurve = false;
                     }
                     break;
 
@@ -325,6 +351,9 @@ namespace UltraCanvas {
                     for (size_t i = 0; i < cmd.params.size(); i++) {
                         currentX = cmd.params[i];
                         ctx->LineTo(currentX, currentY);
+                        controlX = currentX;
+                        controlY = currentY;
+                        lastWasCurve = false;
                     }
                     break;
 
@@ -332,6 +361,9 @@ namespace UltraCanvas {
                     for (size_t i = 0; i < cmd.params.size(); i++) {
                         ctx->RelLineTo(cmd.params[i], 0);
                         currentX += cmd.params[i];
+                        controlX = currentX;
+                        controlY = currentY;
+                        lastWasCurve = false;
                     }
                     break;
 
@@ -339,6 +371,9 @@ namespace UltraCanvas {
                     for (size_t i = 0; i < cmd.params.size(); i++) {
                         currentY = cmd.params[i];
                         ctx->LineTo(currentX, currentY);
+                        controlX = currentX;
+                        controlY = currentY;
+                        lastWasCurve = false;
                     }
                     break;
 
@@ -346,6 +381,9 @@ namespace UltraCanvas {
                     for (size_t i = 0; i < cmd.params.size(); i++) {
                         ctx->RelLineTo(0, cmd.params[i]);
                         currentY += cmd.params[i];
+                        controlX = currentX;
+                        controlY = currentY;
+                        lastWasCurve = false;
                     }
                     break;
 
@@ -360,6 +398,7 @@ namespace UltraCanvas {
                         ctx->BezierCurveTo(cp1x, cp1y, cp2x, cp2y, currentX, currentY);
                         controlX = cp2x;
                         controlY = cp2y;
+                        lastWasCurve = true;
                     }
                     break;
 
@@ -371,41 +410,88 @@ namespace UltraCanvas {
                         float cp2y = cmd.params[i + 3];
                         float dx = cmd.params[i + 4];
                         float dy = cmd.params[i + 5];
+
+                        // Store absolute position of second control point
+                        float absCP2X = currentX + cp2x;
+                        float absCP2Y = currentY + cp2y;
+
                         ctx->RelBezierCurveTo(cp1x, cp1y, cp2x, cp2y, dx, dy);
-                        controlX = currentX + cp2x;
-                        controlY = currentY + cp2y;
+
+                        // Update control point to absolute position
+                        controlX = absCP2X;
+                        controlY = absCP2Y;
+
+                        // Update current position
                         currentX += dx;
                         currentY += dy;
+                        lastWasCurve = true;
                     }
                     break;
 
                 case 'S': // Smooth cubic Bezier absolute
                     for (size_t i = 0; i + 3 < cmd.params.size(); i += 4) {
-                        float cp1x = 2 * currentX - controlX;
-                        float cp1y = 2 * currentY - controlY;
+                        float cp1x, cp1y;
+
+                        if (lastWasCurve) {
+                            // Reflect previous control point
+                            cp1x = 2 * currentX - controlX;
+                            cp1y = 2 * currentY - controlY;
+                        } else {
+                            // No previous curve, use current point
+                            cp1x = currentX;
+                            cp1y = currentY;
+                        }
+
                         float cp2x = cmd.params[i];
                         float cp2y = cmd.params[i + 1];
                         currentX = cmd.params[i + 2];
                         currentY = cmd.params[i + 3];
+
                         ctx->BezierCurveTo(cp1x, cp1y, cp2x, cp2y, currentX, currentY);
                         controlX = cp2x;
                         controlY = cp2y;
+                        lastWasCurve = true;
                     }
                     break;
 
                 case 's': // Smooth cubic Bezier relative
                     for (size_t i = 0; i + 3 < cmd.params.size(); i += 4) {
-                        float cp1x = currentX - controlX;
-                        float cp1y = currentY - controlY;
+                        float cp1x, cp1y;
+
+                        if (lastWasCurve) {
+                            // Reflect previous control point
+                            cp1x = 2 * currentX - controlX;
+                            cp1y = 2 * currentY - controlY;
+                        } else {
+                            // No previous curve, use current point
+                            cp1x = currentX;
+                            cp1y = currentY;
+                        }
+
+                        // Get relative control point and endpoint
                         float cp2x = cmd.params[i];
                         float cp2y = cmd.params[i + 1];
                         float dx = cmd.params[i + 2];
                         float dy = cmd.params[i + 3];
-                        ctx->RelBezierCurveTo(cp1x, cp1y, cp2x, cp2y, dx, dy);
-                        controlX = currentX + cp2x;
-                        controlY = currentY + cp2y;
+
+                        // Calculate absolute position of second control point
+                        float absCP2X = currentX + cp2x;
+                        float absCP2Y = currentY + cp2y;
+
+                        // Convert first control point to relative coordinates
+                        float relCP1X = cp1x - currentX;
+                        float relCP1Y = cp1y - currentY;
+
+                        ctx->RelBezierCurveTo(relCP1X, relCP1Y, cp2x, cp2y, dx, dy);
+
+                        // Update control point to absolute position
+                        controlX = absCP2X;
+                        controlY = absCP2Y;
+
+                        // Update current position
                         currentX += dx;
                         currentY += dy;
+                        lastWasCurve = true;
                     }
                     break;
 
@@ -418,6 +504,7 @@ namespace UltraCanvas {
                         ctx->QuadraticCurveTo(cpx, cpy, currentX, currentY);
                         controlX = cpx;
                         controlY = cpy;
+                        lastWasCurve = true;
                     }
                     break;
 
@@ -427,37 +514,78 @@ namespace UltraCanvas {
                         float cpy = cmd.params[i + 1];
                         float dx = cmd.params[i + 2];
                         float dy = cmd.params[i + 3];
-                        controlX = currentX + cpx;
-                        controlY = currentY + cpy;
-                        currentX += dx;
-                        currentY += dy;
-                        ctx->QuadraticCurveTo(controlX, controlY, currentX, currentY);
+
+                        // Calculate absolute control point position
+                        float absCPX = currentX + cpx;
+                        float absCPY = currentY + cpy;
+
+                        // Calculate absolute end point
+                        float absX = currentX + dx;
+                        float absY = currentY + dy;
+
+                        ctx->QuadraticCurveTo(absCPX, absCPY, absX, absY);
+
+                        // Update positions
+                        controlX = absCPX;
+                        controlY = absCPY;
+                        currentX = absX;
+                        currentY = absY;
+                        lastWasCurve = true;
                     }
                     break;
 
                 case 'T': // Smooth quadratic Bezier absolute
                     for (size_t i = 0; i + 1 < cmd.params.size(); i += 2) {
-                        float cpx = 2 * currentX - controlX;
-                        float cpy = 2 * currentY - controlY;
+                        float cpx, cpy;
+
+                        if (lastWasCurve) {
+                            // Reflect previous control point
+                            cpx = 2 * currentX - controlX;
+                            cpy = 2 * currentY - controlY;
+                        } else {
+                            // No previous curve, use current point
+                            cpx = currentX;
+                            cpy = currentY;
+                        }
+
                         currentX = cmd.params[i];
                         currentY = cmd.params[i + 1];
                         ctx->QuadraticCurveTo(cpx, cpy, currentX, currentY);
                         controlX = cpx;
                         controlY = cpy;
+                        lastWasCurve = true;
                     }
                     break;
 
                 case 't': // Smooth quadratic Bezier relative
                     for (size_t i = 0; i + 1 < cmd.params.size(); i += 2) {
-                        float cpx = currentX - controlX;
-                        float cpy = currentY - controlY;
+                        float cpx, cpy;
+
+                        if (lastWasCurve) {
+                            // Reflect previous control point
+                            cpx = 2 * currentX - controlX;
+                            cpy = 2 * currentY - controlY;
+                        } else {
+                            // No previous curve, use current point
+                            cpx = currentX;
+                            cpy = currentY;
+                        }
+
                         float dx = cmd.params[i];
                         float dy = cmd.params[i + 1];
-                        controlX = currentX + cpx;
-                        controlY = currentY + cpy;
-                        currentX += dx;
-                        currentY += dy;
-                        ctx->QuadraticCurveTo(controlX, controlY, currentX, currentY);
+
+                        // Calculate absolute end point
+                        float absX = currentX + dx;
+                        float absY = currentY + dy;
+
+                        ctx->QuadraticCurveTo(cpx, cpy, absX, absY);
+
+                        // Update positions
+                        controlX = cpx;
+                        controlY = cpy;
+                        currentX = absX;
+                        currentY = absY;
+                        lastWasCurve = true;
                     }
                     break;
 
@@ -472,18 +600,27 @@ namespace UltraCanvas {
                         float endX = (cmd.type == 'A') ? cmd.params[i + 5] : currentX + cmd.params[i + 5];
                         float endY = (cmd.type == 'A') ? cmd.params[i + 6] : currentY + cmd.params[i + 6];
 
-                        ctx->ArcTo(currentX, currentY, endX, endY, std::max(rx, ry));
+                        // Arc implementation would go here
+                        // For now, approximate with line
+                        ctx->LineTo(endX, endY);
 
                         currentX = endX;
                         currentY = endY;
+                        // Arcs reset control point
+                        controlX = currentX;
+                        controlY = currentY;
+                        lastWasCurve = false;
                     }
                     break;
 
-                case 'Z':
-                case 'z': // Close path
+                case 'Z': // Close path
+                case 'z':
                     ctx->ClosePath();
                     currentX = startX;
                     currentY = startY;
+                    controlX = currentX;
+                    controlY = currentY;
+                    lastWasCurve = false;
                     break;
             }
         }
