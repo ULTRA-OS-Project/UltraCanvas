@@ -186,13 +186,32 @@ namespace UltraCanvas {
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
 
-        bitmapBuilder.AddItem("images", "Images", "Image display and manipulation",
-                              ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateBitmapExamples(); })
-                .AddVariant("images", "PNG/JPEG Display")
-                .AddVariant("images", "GIF Animation")
-                .AddVariant("images", "AVIF Support")
-                .AddVariant("images", "BMP Display");
+        bitmapBuilder.AddItem("pngimages", "PNG Images", "PNG Image display and manipulation",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreatePNGExamples(); })
+                .AddVariant("images", "PNG/JPEG Display");
+        bitmapBuilder.AddItem("jpegimages", "JPEG Images", "JPEG Image display and manipulation",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateJPEGExamples(); })
+                .AddVariant("images", "PNG/JPEG Display");
+        bitmapBuilder.AddItem("gifimages", "GIF Images", "GIF Image display and manipulation",
+                              ImplementationStatus::NotImplemented,
+                              [this]() { return CreateBitmapNotImplementedExamples("GIF"); });
+        bitmapBuilder.AddItem("avifimages", "AVIF Images", "AVIF Image display and manipulation",
+                              ImplementationStatus::NotImplemented,
+                              [this]() { return CreateBitmapNotImplementedExamples("AVIF"); });
+        bitmapBuilder.AddItem("tiffimages", "TIFF Images", "TIFF Image display and manipulation",
+                              ImplementationStatus::NotImplemented,
+                              [this]() { return CreateBitmapNotImplementedExamples("TIFF"); });
+        bitmapBuilder.AddItem("webpimages", "WEBP Images", "WEBP Image display and manipulation",
+                              ImplementationStatus::NotImplemented,
+                              [this]() { return CreateBitmapNotImplementedExamples("WEBP"); });
+        bitmapBuilder.AddItem("qoiimages", "QOI Images", "QOI Image display and manipulation",
+                              ImplementationStatus::NotImplemented,
+                              [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
+        bitmapBuilder.AddItem("rawimages", "RAW Images", "RAW Image display and manipulation",
+                              ImplementationStatus::NotImplemented,
+                              [this]() { return CreateBitmapNotImplementedExamples("TIFF"); });
 
         // ===== VECTOR ELEMENTS =====
         auto vectorBuilder = DemoCategoryBuilder(this, DemoCategory::VectorElements);
@@ -205,29 +224,53 @@ namespace UltraCanvas {
                 .AddVariant("svg", "SVG Animations");
 
         vectorBuilder.AddItem("drawing", "Drawing Surface", "Vector drawing and primitives",
-                              ImplementationStatus::FullyImplemented,
+                              ImplementationStatus::NotImplemented,
                               [this]() { return CreateVectorExamples(); });
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
 
         diagramBuilder.AddItem("plantuml", "PlantUML", "UML and diagram generation",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::NotImplemented,
                                [this]() { return CreateDiagramExamples(); })
                 .AddVariant("plantuml", "Class Diagrams")
                 .AddVariant("plantuml", "Sequence Diagrams")
                 .AddVariant("plantuml", "Activity Diagrams");
 
+        diagramBuilder.AddItem("blockdiagram", "Block diagram", "Block diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return nullptr; });
+
+        diagramBuilder.AddItem("nodediagram", "Node diagram", "Node diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return nullptr; });
+
+        diagramBuilder.AddItem("sankeydiagram", "Sankey diagram", "Sankey diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return nullptr; });
+
+        diagramBuilder.AddItem("venndiagram", "Venn diagram", "Venn diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return nullptr; });
+
         // ===== CHARTS =====
         auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
 
-        chartBuilder.AddItem("charts", "Charts", "Data visualization charts",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return CreateChartExamples(); })
-                .AddVariant("charts", "Line Charts")
-                .AddVariant("charts", "Bar Charts")
-                .AddVariant("charts", "Pie Charts")
-                .AddVariant("charts", "Scatter Plots");
+        chartBuilder.AddItem("linecharts", "Line Chart", "Line chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateLineChartsExamples(); });
+
+        chartBuilder.AddItem("barcharts", "Bar Chart", "Bar chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateBarChartsExamples(); });
+
+        chartBuilder.AddItem("scattercharts", "Scatter Plot Chart", "Scatter plot chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateScatterPlotChartsExamples(); });
+
+        chartBuilder.AddItem("areacharts", "Area Chart", "Area chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateAreaChartsExamples(); });
 
         chartBuilder.AddItem("divergingcharts", "Diverging Bar Charts", "Likert scale and population pyramid charts",
                              ImplementationStatus::FullyImplemented,
@@ -243,6 +286,26 @@ namespace UltraCanvas {
                 .AddVariant("waterfallcharts", "Cash Flow with Subtotals")
                 .AddVariant("waterfallcharts", "Performance Impact");
 
+        chartBuilder.AddItem("sunburstcharts", "Sunburst Chart", "Sunburst Chart",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return nullptr; });
+
+        chartBuilder.AddItem("ganttcharts", "Gantt Chart", "Gantt Chart",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return nullptr; });
+
+        chartBuilder.AddItem("quadrantcharts", "Quadrant Chart", "Quadrant Chart",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return nullptr; });
+
+        chartBuilder.AddItem("circularcharts", "Circular Chart", "Circular Chart",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return nullptr; });
+
+        chartBuilder.AddItem("polarcharts", "Polar Chart", "Polar Chart",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return nullptr; });
+
         // ===== INFO GRAPHICS =====
         auto infoBuilder = DemoCategoryBuilder(this, DemoCategory::InfoGraphics);
 
@@ -257,7 +320,7 @@ namespace UltraCanvas {
         auto graphics3DBuilder = DemoCategoryBuilder(this, DemoCategory::Graphics3D);
 
         graphics3DBuilder.AddItem("models3d", "3D Models", "3D model display and interaction",
-                                  ImplementationStatus::PartiallyImplemented,
+                                  ImplementationStatus::NotImplemented,
                                   [this]() { return Create3DExamples(); })
                 .AddVariant("models3d", "3DS Models")
                 .AddVariant("models3d", "3DM Models")
@@ -432,7 +495,9 @@ namespace UltraCanvas {
                 break;
         }
 
-        statusText << " | Variants: " << item->variants.size();
+        if (!item->variants.empty()) {
+            statusText << " | Variants: " << item->variants.size();
+        }
         statusLabel->SetText(statusText.str());
         statusLabel->SetTextColor(GetStatusColor(item->status));
 

@@ -251,7 +251,7 @@ namespace UltraCanvas {
             ctx->Translate(center.x, center.y);
 
             // Apply transformations
-            if (rotation != 0.0f) ctx->Rotate(rotation);
+            if (rotation != 0.0f) ctx->Rotate(rotation * M_PI/180.0);
             if (scale.x != 1.0f || scale.y != 1.0f) ctx->Scale(scale.x, scale.y);
             if (offset.x != 0.0f || offset.y != 0.0f) ctx->Translate(offset.x, offset.y);
 

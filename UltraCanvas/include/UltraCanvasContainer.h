@@ -161,8 +161,17 @@ namespace UltraCanvas {
         bool IsChildVisible(UltraCanvasUIElement* child) const;
 
         // ===== ENHANCED STYLE MANAGEMENT =====
+        void SetBorderWidth(int width) {
+            auto s = GetContainerStyle();
+            s.borderWidth = width;
+            SetContainerStyle(s);
+        }
+        void SetBackgroundColor(const Color& c) {
+            auto s = GetContainerStyle();
+            s.backgroundColor = c;
+            SetContainerStyle(s);
+        }
         void SetContainerStyle(const ContainerStyle& newStyle);
-
         const ContainerStyle& GetContainerStyle() const { return style; }
 
         // ===== ENHANCED EVENT CALLBACKS =====

@@ -130,6 +130,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/Plugins/Charts/UltraCanvasDivergingBarChart.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasWaterfallChart.cpp
         UltraCanvas/Plugins/SVG/UltraCanvasSVGPlugin.cpp
+        UltraCanvas/core/UltraCanvasGraphicsPluginSystem.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartElement.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
@@ -164,8 +165,20 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasDemo.cpp
         Apps/DemoApp/UltraCanvasDemoExamples.cpp
         Apps/DemoApp/main.cpp
-        Apps/DemoApp/UltraCanvasWatefallDemo.cpp
-        Apps/DemoApp/UltraCanvasSVGDemo.cpp
+        Apps/DemoApp/UltraCanvasBitmapExamples.cpp
+        Apps/DemoApp/UltraCanvasButtonExamples.cpp
+        Apps/DemoApp/UltraCanvasDropDownExamples.cpp
+        Apps/DemoApp/UltraCanvasLabelExamples.cpp
+        Apps/DemoApp/UltraCanvasMenuExamples.cpp
+        Apps/DemoApp/UltraCanvasSliderExamples.cpp
+        Apps/DemoApp/UltraCanvasSVGExamples.cpp
+        Apps/DemoApp/UltraCanvasTabExamples.cpp
+        Apps/DemoApp/UltraCanvasTextAreaExamples.cpp
+        Apps/DemoApp/UltraCanvasTextInputExamples.cpp
+        Apps/DemoApp/UltraCanvasTreeViewExamples.cpp
+        Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
+        Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
+        Apps/DemoApp/UltraCanvasWatefallChartExamples.cpp
 )
 
 # ✅ ADDED: Check that source files exist

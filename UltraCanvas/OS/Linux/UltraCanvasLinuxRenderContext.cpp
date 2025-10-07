@@ -989,6 +989,7 @@ namespace UltraCanvas {
         if (cairo_pattern_get_rgba(pattern, &r, &g, &b, &a) == CAIRO_STATUS_SUCCESS) {
             cairo_set_source_rgba(cairo, r, g, b, alpha);
         }
+        currentState.globalAlpha = alpha;
     }
 
     // Text Methods

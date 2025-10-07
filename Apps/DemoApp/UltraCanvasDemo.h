@@ -127,7 +127,9 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTextAreaExamples();
 
         // Graphics Elements
-        std::shared_ptr<UltraCanvasUIElement> CreateBitmapExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateBitmapNotImplementedExamples(const std::string& format);
+        std::shared_ptr<UltraCanvasUIElement> CreatePNGExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateJPEGExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateVectorExamples();
         std::shared_ptr<UltraCanvasUIElement> Create3DExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateVideoExamples();
@@ -142,12 +144,17 @@ namespace UltraCanvas {
 
         // Data Visualization
         std::shared_ptr<UltraCanvasUIElement> CreateDiagramExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateChartExamples();
+
+        std::shared_ptr<UltraCanvasUIElement> CreateLineChartsExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateBarChartsExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateScatterPlotChartsExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateAreaChartsExamples();
+
         std::shared_ptr<UltraCanvasUIElement> CreateDivergingChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateInfoGraphicsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateWaterfallChartExamples();
 
-        std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
+//        std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();
 
         // ===== APPLICATION LIFECYCLE =====

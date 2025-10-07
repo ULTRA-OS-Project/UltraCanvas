@@ -89,8 +89,8 @@ private:
     
     // Transform properties
     float rotation = 0.0f;
-    Point2Di scale = Point2Di(1.0f, 1.0f);
-    Point2Di offset = Point2Di(0.0f, 0.0f);
+    Point2Df scale = Point2Df(1.0f, 1.0f);
+    Point2Df offset = Point2Df(0.0f, 0.0f);
     
     // Interaction
     bool clickable = false;
@@ -130,9 +130,9 @@ public:
     
     ImageScaleMode GetScaleMode() const { return scaleMode; }
     void SetTintColor(const Color& color) { tintColor = color; }
-    void SetOpacity(float alpha) { opacity = std::max(0.0f, std::min(1.0f, alpha)); }
+    void SetOpacity(float alpha) { opacity = std::max(0.0f, std::min(1.0f, alpha)); RequestRedraw(); }
     float GetOpacity() const { return opacity; }
-    void SetRotation(float degrees) { rotation = degrees; }
+    void SetRotation(float degrees) { rotation = degrees; RequestRedraw(); }
     void SetScale(float sx, float sy) {
         scale.x = sx;
         scale.y = sy;

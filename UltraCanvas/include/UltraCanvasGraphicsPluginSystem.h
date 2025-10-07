@@ -440,11 +440,6 @@ namespace UltraCanvas {
         }
     };
 
-// ===== STATIC MEMBER DEFINITIONS =====
-    std::vector<std::shared_ptr<IGraphicsPlugin>> UltraCanvasGraphicsPluginRegistry::plugins;
-    std::map<std::string, std::shared_ptr<IGraphicsPlugin>> UltraCanvasGraphicsPluginRegistry::extensionMap;
-    bool UltraCanvasGraphicsPluginRegistry::initialized = false;
-
 // ===== CONVENIENCE FUNCTIONS =====
     inline void InitializeGraphicsPluginSystem() {
         UltraCanvasGraphicsPluginRegistry::Initialize();
