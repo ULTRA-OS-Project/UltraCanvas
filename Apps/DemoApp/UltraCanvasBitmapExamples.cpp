@@ -153,21 +153,21 @@ namespace UltraCanvas {
 
         auto btnIcon = std::make_shared<UltraCanvasButton>("BtnIcon", 1525, 10, 505, 100, 30);
         btnIcon->SetText("Load Icon");
-        btnIcon->onClick = [pngImage](const UCEvent&) {
+        btnIcon->onClick = [pngImage]() {
             pngImage->LoadFromFile("assets/images/icon_48x48.png");
         };
         container->AddChild(btnIcon);
 
         auto btnLogo = std::make_shared<UltraCanvasButton>("BtnLogo", 1526, 120, 505, 100, 30);
         btnLogo->SetText("Load Logo");
-        btnLogo->onClick = [pngImage](const UCEvent&) {
+        btnLogo->onClick = [pngImage]() {
             pngImage->LoadFromFile("assets/images/logo_transparent.png");
         };
         container->AddChild(btnLogo);
 
         auto btnScreenshot = std::make_shared<UltraCanvasButton>("BtnScreenshot", 1527, 230, 505, 150, 30);
         btnScreenshot->SetText("Load Screenshot");
-        btnScreenshot->onClick = [pngImage](const UCEvent&) {
+        btnScreenshot->onClick = [pngImage]() {
             pngImage->LoadFromFile("assets/images/screenshot.png");
         };
         container->AddChild(btnScreenshot);
@@ -295,14 +295,14 @@ namespace UltraCanvas {
 
         auto btnPhoto = std::make_shared<UltraCanvasButton>("BtnPhoto", 1551, 10, 505, 100, 30);
         btnPhoto->SetText("Load Photo");
-        btnPhoto->onClick = [jpegImage](const UCEvent&) {
+        btnPhoto->onClick = [jpegImage]() {
             jpegImage->LoadFromFile("assets/images/landscape.jpg");
         };
         container->AddChild(btnPhoto);
 
         auto btnPortrait = std::make_shared<UltraCanvasButton>("BtnPortrait", 1552, 120, 505, 100, 30);
         btnPortrait->SetText("Load Portrait");
-        btnPortrait->onClick = [jpegImage](const UCEvent&) {
+        btnPortrait->onClick = [jpegImage]() {
             jpegImage->LoadFromFile("assets/images/portrait.jpg");
         };
         container->AddChild(btnPortrait);

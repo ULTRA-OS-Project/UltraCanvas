@@ -234,17 +234,17 @@ private:
         rightPanel->AddChild(rightStatusPanel);
 
         // Setup event handlers
-        startButton->onClick = [this](const UCEvent& ev) { ToggleAnimation(); };
-        stopButton->onClick = [this](const UCEvent& ev) {
+        startButton->onClick = [this]() { ToggleAnimation(); };
+        stopButton->onClick = [this]() {
             isAnimating = false;
             startButton->SetText("Start Animation");
             statusLabel->SetText("Animation stopped");
         };
 
         // Setup other event handlers
-        newButton->onClick = [this](const UCEvent& ev) { CreateNewFormula(); };
-        openButton->onClick = [this](const UCEvent& ev) { OpenFormula(); };
-        saveButton->onClick = [this](const UCEvent& ev) { SaveFormula(); };
+        newButton->onClick = [this]() { CreateNewFormula(); };
+        openButton->onClick = [this]() { OpenFormula(); };
+        saveButton->onClick = [this]() { SaveFormula(); };
 
         // Fixed: Use correct dropdown callback signature
         formulaDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {

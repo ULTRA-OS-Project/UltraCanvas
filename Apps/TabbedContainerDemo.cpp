@@ -84,7 +84,7 @@ public:
                 button->SetText(buttonText.str());
 
                 // Set up click handler
-                button->onClick = [this, row, col](const UCEvent& ev) {
+                button->onClick = [this, row, col]() {
                     buttonClickCount++;
                     std::ostringstream status;
                     status << "Button (" << row << "," << col << ") clicked! Total clicks: " << buttonClickCount;
@@ -348,7 +348,7 @@ private:
         };
 
         // Control button handlers
-        addTabButton->onClick = [this](const UCEvent& ev) {
+        addTabButton->onClick = [this]() {
             tabCounter++;
             std::ostringstream tabName;
             tabName << "🆕 Dynamic " << tabCounter;
@@ -377,7 +377,7 @@ private:
             statusLabel->SetTextColor(Color(0, 150, 0));
         };
 
-        removeTabButton->onClick = [this](const UCEvent& ev) {
+        removeTabButton->onClick = [this]() {
             int activeTab = mainTabbedContainer->GetActiveTab();
             if (activeTab >= 0 && mainTabbedContainer->GetTabCount() > 1) {
                 std::string tabTitle = mainTabbedContainer->GetTabTitle(activeTab);
@@ -393,7 +393,7 @@ private:
             }
         };
 
-        toggleDropdownButton->onClick = [this](const UCEvent& ev) {
+        toggleDropdownButton->onClick = [this]() {
             auto currentPos = mainTabbedContainer->GetOverflowDropdownPosition();
             OverflowDropdownPosition newPos;
             std::string posName;
@@ -421,7 +421,7 @@ private:
             statusLabel->SetTextColor(Color(0, 100, 150));
         };
 
-        toggleSearchButton->onClick = [this](const UCEvent& ev) {
+        toggleSearchButton->onClick = [this]() {
             bool currentSearch = mainTabbedContainer->IsDropdownSearchEnabled();
             mainTabbedContainer->SetDropdownSearchEnabled(!currentSearch);
 

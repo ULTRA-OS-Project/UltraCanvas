@@ -30,20 +30,20 @@ namespace UltraCanvas {
         // Standard Button
         auto standardBtn = std::make_shared<UltraCanvasButton>("StandardButton", 102, 20, 50, 120, 35);
         standardBtn->SetText("Standard Button");
-        standardBtn->onClick = [](const UCEvent& ev) { std::cout << "Standard button clicked!" << std::endl; };
+        standardBtn->onClick = []() { std::cout << "Standard button clicked!" << std::endl; };
 
         // Icon Button
 //        auto iconBtn = std::make_shared<UltraCanvasButton>("IconButton", 103, 160, 50, 40, 35);
 //        iconBtn->SetIcon("assets/icons/save.png");
 //        iconBtn->SetTooltip("Save File");
-//        iconBtn->onClick = [](const UCEvent& ev) { std::cout << "Save button clicked!" << std::endl; };
+//        iconBtn->onClick = []() { std::cout << "Save button clicked!" << std::endl; };
 //        container->AddChild(iconBtn);
 
         // Toggle Button
 //        auto toggleBtn = std::make_shared<UltraCanvasButton>("ToggleButton", 104, 220, 50, 100, 35);
 //        toggleBtn->SetText("Toggle");
 //        toggleBtn->SetToggleable(true);
-//        toggleBtn->onClick = [toggleBtn](const UCEvent& ev) {
+//        toggleBtn->onClick = [toggleBtn]() {
 //            std::cout << "Toggle state: " << (toggleBtn->IsToggled() ? "ON" : "OFF") << std::endl;
 //        };
 //        container->AddChild(toggleBtn);

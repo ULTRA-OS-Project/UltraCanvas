@@ -152,7 +152,7 @@ namespace UltraCanvas {
                     auto newEvent = event;
                     newEvent.targetElement = capturedElement;
                     capturedElement->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
-                    if (capturedElement->OnEvent(newEvent)) {
+                    if (DispatchEventToElement(capturedElement, newEvent)) {
                         return;
                     }
                 }
@@ -187,14 +187,14 @@ namespace UltraCanvas {
                         UCEvent localEvent = event;
                         localEvent.targetElement = activePopupElement;
 //                    activePopupElement->ConvertWindowToParentContainerCoordinates(localEvent.x, localEvent.y);
-                        if (activePopupElement->OnEvent(localEvent)) {
+                        if (DispatchEventToElement(activePopupElement, localEvent)) {
                             goto finish;
                         }
                     }
                 } else if (event.IsKeyboardEvent()) { // only last (topmost) popup get keyboard events
                     UltraCanvasUIElement* activePopupElement = activePopupsCopy.back();
 //                    activePopupElement->ConvertWindowToParentContainerCoordinates(localEvent.x, localEvent.y);
-                    activePopupElement->OnEvent(event);
+                    DispatchEventToElement(activePopupElement, event);
                     goto finish;
                 }
             }
@@ -223,7 +223,7 @@ namespace UltraCanvas {
                     leaveEvent.x = -1;
                     leaveEvent.y = -1;
                     leaveEvent.targetElement = hoveredElement;
-                    hoveredElement->OnEvent(leaveEvent);
+                    DispatchEventToElement(hoveredElement, leaveEvent);
                     hoveredElement = nullptr;
                 }
                 if (elem) {
@@ -236,14 +236,14 @@ namespace UltraCanvas {
                         enterEvent.type = UCEventType::MouseEnter;
                         enterEvent.x = localX;
                         enterEvent.y = localY;
-                        elem->OnEvent(enterEvent);
+                        DispatchEventToElement(elem, enterEvent);
                         hoveredElement = elem;
                     }
                     auto newEvent = event;
                     newEvent.targetElement = elem;
                     newEvent.x = localX;
                     newEvent.y = localY;
-                    if (elem->OnEvent(newEvent)) {
+                    if (DispatchEventToElement(elem, newEvent)) {
                         goto finish;
                     }
                 }
@@ -253,7 +253,7 @@ namespace UltraCanvas {
                 HandleEventWithBubbling(event, event.targetElement);
                 goto finish;
             }
-            targetWindow->OnEvent(event);
+            DispatchEventToElement(targetWindow, event);
 
         finish:
             targetWindow->CleanupRemovedPopupElements();
@@ -277,7 +277,7 @@ namespace UltraCanvas {
             if (event.IsMouseEvent()) {
                 elem->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
             }
-            if (elem->OnEvent(newEvent)) {
+            if (DispatchEventToElement(elem, newEvent)) {
                 return true;
             }
         }
@@ -288,7 +288,7 @@ namespace UltraCanvas {
             if (event.IsMouseEvent()) {
                 parent->ConvertWindowToParentContainerCoordinates(newParentEvent.x, newParentEvent.y);
             }
-            if (parent->OnEvent(newParentEvent)) {
+            if (DispatchEventToElement(parent, newParentEvent)) {
                 return true;
             }
             parent = parent->GetParentContainer();
@@ -311,7 +311,7 @@ namespace UltraCanvas {
                 blurEvent.timestamp = std::chrono::steady_clock::now();
                 blurEvent.targetWindow = static_cast<void*>(previousFocusedWindow);
                 blurEvent.nativeWindowHandle = previousFocusedWindow->GetXWindow();
-                previousFocusedWindow->OnEvent(blurEvent);
+                DispatchEventToElement(previousFocusedWindow, blurEvent);
 
                 std::cout << "UltraCanvasBaseApplication: Window " << previousFocusedWindow << " lost focus" << std::endl;
             }
@@ -323,7 +323,7 @@ namespace UltraCanvas {
                 focusEvent.timestamp = std::chrono::steady_clock::now();
                 focusEvent.targetWindow = static_cast<void*>(focusedWindow);
                 focusEvent.nativeWindowHandle = focusedWindow->GetXWindow();
-                focusedWindow->OnEvent(focusEvent);
+                DispatchEventToElement(focusedWindow, focusEvent);
 
                 std::cout << "UltraCanvasBaseApplication: Window " << focusedWindow << " gained focus" << std::endl;
             }
@@ -350,6 +350,11 @@ namespace UltraCanvas {
 
     void UltraCanvasBaseApplication::RegisterEventLoopRunCallback(std::function<void()> callback) {
         eventLoopCallback = callback;
+    }
+
+    bool UltraCanvasBaseApplication::DispatchEventToElement(UltraCanvasUIElement *elem, const UCEvent &event) {
+        currentEvent = event;
+        return elem->OnEvent(event);
     }
 
     void UltraCanvasApplication::RunInEventLoop() {

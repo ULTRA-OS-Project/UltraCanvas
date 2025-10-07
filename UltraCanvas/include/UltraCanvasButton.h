@@ -89,25 +89,22 @@ namespace UltraCanvas {
         bool IsPressed() const { return pressed; }
 
         bool AcceptsFocus() const override { return true; }
-
         void SetAutoresize(bool value) { autoresize = value; AutoResize(); }
         bool GetAutoresize() const { return autoresize; }
 
         // ===== STYLE CONVENIENCE METHODS (THESE NEED TO BE DEFINED FIRST) =====
         void SetColors(const Color& normal, const Color& hover, const Color& pressed, const Color& disabled);
-
         void SetTextColors(const Color& normal, const Color& hover, const Color& pressed, const Color& disabled);
-
         void SetFont(const std::string& fontFamily, float fontSize, FontWeight weight = FontWeight::Normal);
-
         void SetPadding(int left, int right, int top, int bottom);
-
         void SetCornerRadius(float radius);
-
         void SetShadow(bool enabled, const Color& color = Color(0, 0, 0, 64),
                        const Point2Di& offset = Point2Di(1, 1));
 
         void Click(const UCEvent& ev);
+        void SetOnClick(std::function<void()> _onClick) {
+            onClick = _onClick;
+        }
 
         void AutoResize();
 
@@ -118,11 +115,11 @@ namespace UltraCanvas {
         bool OnEvent(const UCEvent& event) override;
 
         // ===== EVENT CALLBACKS =====
-        std::function<void(const UCEvent&)> onClick;
-        std::function<void(const UCEvent&)> onPress;
-        std::function<void(const UCEvent&)> onRelease;
-        std::function<void(const UCEvent&)> onHoverEnter;
-        std::function<void(const UCEvent&)> onHoverLeave;
+        std::function<void()> onClick;
+        std::function<void()> onPress;
+        std::function<void()> onRelease;
+        std::function<void()> onHoverEnter;
+        std::function<void()> onHoverLeave;
 
     private:
         // ===== HELPER METHODS =====
@@ -190,12 +187,12 @@ namespace UltraCanvas {
             return *this;
         }
 
-        ButtonBuilder& OnClick(std::function<void(const UCEvent&)> callback) {
+        ButtonBuilder& OnClick(std::function<void()> callback) {
             button->onClick = callback;
             return *this;
         }
 
-        ButtonBuilder& OnHover(std::function<void(const UCEvent&)> enter, std::function<void(const UCEvent&)> leave = nullptr) {
+        ButtonBuilder& OnHover(std::function<void()> enter, std::function<void()> leave = nullptr) {
             button->onHoverEnter = enter;
             if (leave) button->onHoverLeave = leave;
             return *this;

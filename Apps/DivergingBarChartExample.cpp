@@ -262,36 +262,36 @@ public:
 
     void SetupEventHandlers() {
         // Style change handlers
-        btnPyramid->onClick = [this](const UCEvent& ev) {
+        btnPyramid->onClick = [this]() {
             divergingChart->SetChartStyle(DivergingChartStyle::PopulationPyramid);
             UpdateButtonHighlights(btnPyramid);
         };
 
-        btnLikert->onClick = [this](const UCEvent& ev) {
+        btnLikert->onClick = [this]() {
             divergingChart->SetChartStyle(DivergingChartStyle::LikertScale);
             UpdateButtonHighlights(btnLikert);
         };
 
-        btnTornado->onClick = [this](const UCEvent& ev) {
+        btnTornado->onClick = [this]() {
             divergingChart->SetChartStyle(DivergingChartStyle::TornadoChart);
             UpdateButtonHighlights(btnTornado);
         };
 
         // Toggle controls
         static bool showGrid = true;
-        btnToggleGrid->onClick = [this](const UCEvent& ev) {
+        btnToggleGrid->onClick = [this]() {
             showGrid = !showGrid;
             divergingChart->SetGridEnabled(showGrid);
         };
 
         static bool showLabels = true;
-        btnToggleLabels->onClick = [this](const UCEvent& ev) {
+        btnToggleLabels->onClick = [this]() {
             showLabels = !showLabels;
             divergingChart->SetShowRowLabels(showLabels);
         };
 
         // Generate new data
-        btnGenerateData->onClick = [this](const UCEvent& ev) {
+        btnGenerateData->onClick = [this]() {
             GenerateRandomData();
         };
 

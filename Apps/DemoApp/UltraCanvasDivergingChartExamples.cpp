@@ -129,7 +129,7 @@ namespace UltraCanvas {
         btnToggleGrid->SetText("Toggle Grid");
         btnToggleGrid->SetColors(Color(70, 130, 180, 255), Color(90, 150, 200, 255), Color(50, 100, 160, 255), Color(150, 200, 240, 255));
         btnToggleGrid->SetTextColors(Colors::White, Colors::White, Colors::White, Colors::White);
-        btnToggleGrid->onClick = [likertChart, pyramidChart, tornadoChart](const UCEvent&) {
+        btnToggleGrid->onClick = [likertChart, pyramidChart, tornadoChart]() {
             static bool showGrid = true;
             showGrid = !showGrid;
             likertChart->SetGridEnabled(showGrid);
@@ -143,7 +143,7 @@ namespace UltraCanvas {
         btnGenerateData->SetText("Random Data");
         btnGenerateData->SetColors(Color(70, 130, 180, 255), Color(90, 150, 200, 255), Color(50, 100, 160, 255), Color(150, 200, 240, 255));
         btnGenerateData->SetTextColors(Colors::White, Colors::White, Colors::White, Colors::White);
-        btnGenerateData->onClick = [likertChart, pyramidChart, tornadoChart, categories](const UCEvent&) {
+        btnGenerateData->onClick = [likertChart, pyramidChart, tornadoChart, categories]() {
             // Generate new random data for all three charts
             std::random_device rd;
             std::mt19937 gen(rd());

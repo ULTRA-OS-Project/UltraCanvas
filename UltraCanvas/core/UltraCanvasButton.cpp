@@ -63,7 +63,7 @@ namespace UltraCanvas {
     void UltraCanvasButton::Click(const UCEvent &ev) {
         if (IsEnabled()) {
             if (onClick) {
-                onClick(ev);
+                onClick();
             }
             UCEvent evclick = ev;
             evclick.type = UCEventType::ButtonClick;
@@ -142,7 +142,7 @@ namespace UltraCanvas {
                 if (Contains(event.x, event.y) && IsEnabled()) {
                     pressed = true;
                     SetFocus(true);
-                    if (onPress) onPress(event);
+                    if (onPress) onPress();
                 }
                 break;
 
@@ -150,8 +150,7 @@ namespace UltraCanvas {
                 if (IsEnabled()) {
                     bool wasPressed = pressed;
                     pressed = false;
-
-                    if (onRelease) onRelease(event);
+                    if (onRelease) onRelease();
 
                     if (wasPressed && Contains(event.x, event.y)) {
                         Click(event);
@@ -162,7 +161,7 @@ namespace UltraCanvas {
 
             case UCEventType::MouseEnter:
                 SetHovered(true);
-                if (onHoverEnter) onHoverEnter(event);
+                if (onHoverEnter) onHoverEnter();
                 RequestRedraw();
                 break;
 
@@ -170,9 +169,9 @@ namespace UltraCanvas {
                 SetHovered(false);
                 if (pressed) {
                     pressed = false;
-                    if (onRelease) onRelease(event);
+                    if (onRelease) onRelease();
                 }
-                if (onHoverLeave) onHoverLeave(event);
+                if (onHoverLeave) onHoverLeave();
                 RequestRedraw();
                 break;
 

@@ -364,7 +364,7 @@ namespace UltraCanvas {
                     if (Contains(event.x, event.y)) {
                         SetFocus(true);
                         if (onClick) {
-                            onClick(event);
+                            onClick();
                         }
                         return true;
                     }
@@ -375,14 +375,14 @@ namespace UltraCanvas {
                         if (!IsHovered()) {
                             SetHovered(true);
                             if (onHoverEnter) {
-                                onHoverEnter(event);
+                                onHoverEnter();
                             }
                         }
                     } else {
                         if (IsHovered()) {
                             SetHovered(false);
                             if (onHoverLeave) {
-                                onHoverLeave(event);
+                                onHoverLeave();
                             }
                         }
                     }
@@ -402,9 +402,9 @@ namespace UltraCanvas {
         }
 
         // ===== EVENT CALLBACKS =====
-        std::function<void(const UCEvent& ev)> onClick;
-        std::function<void(const UCEvent& ev)> onHoverEnter;
-        std::function<void(const UCEvent& ev)> onHoverLeave;
+        std::function<void()> onClick;
+        std::function<void()> onHoverEnter;
+        std::function<void()> onHoverLeave;
         std::function<void(const std::string&)> onTextChanged;
         std::function<void(long, long)> onSizeChanged;
     };
@@ -490,7 +490,7 @@ namespace UltraCanvas {
             return *this;
         }
 
-        LabelBuilder& OnClick(std::function<void(const UCEvent& ev)> callback) {
+        LabelBuilder& OnClick(std::function<void()> callback) {
             label->onClick = callback;
             return *this;
         }

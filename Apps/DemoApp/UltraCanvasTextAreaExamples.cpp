@@ -358,7 +358,7 @@ end.)";
         // Decrease font button
         auto decreaseFontBtn = std::make_shared<UltraCanvasButton>("DecreaseFontBtn", 1045, 515, 720, 30, 25);
         decreaseFontBtn->SetText("-");
-        decreaseFontBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea](const UCEvent& ev) {
+        decreaseFontBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             int newSize = cppTextArea->GetFontSize() - 1;
             if (newSize >= 8) {
                 cppTextArea->SetFontSize(newSize);
@@ -371,7 +371,7 @@ end.)";
         // Increase font button
         auto increaseFontBtn = std::make_shared<UltraCanvasButton>("IncreaseFontBtn", 1046, 550, 720, 30, 25);
         increaseFontBtn->SetText("+");
-        increaseFontBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea](const UCEvent& ev) {
+        increaseFontBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             int newSize = cppTextArea->GetFontSize() + 1;
             if (newSize <= 20) {
                 cppTextArea->SetFontSize(newSize);
@@ -385,7 +385,7 @@ end.)";
         auto clearAllBtn = std::make_shared<UltraCanvasButton>("ClearAllBtn", 1047, 590, 720, 90, 25);
         clearAllBtn->SetText("Clear All");
 //        clearAllBtn->SetButtonStyle(ButtonStyle::Danger);
-        clearAllBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea](const UCEvent& ev) {
+        clearAllBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             cppTextArea->Clear();
             pythonTextArea->Clear();
             pascalTextArea->Clear();
@@ -396,7 +396,7 @@ end.)";
         auto lineNumBtn = std::make_shared<UltraCanvasButton>("LineNumBtn", 1048, 700, 720, 100, 25);
         lineNumBtn->SetText("Toggle Lines");
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
-        lineNumBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea](const UCEvent& ev) {
+        lineNumBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             bool showLines = !cppTextArea->GetShowLineNumbers();
             cppTextArea->SetShowLineNumbers(showLines);
             pythonTextArea->SetShowLineNumbers(showLines);
@@ -407,7 +407,7 @@ end.)";
         auto syntaxToggleBtn = std::make_shared<UltraCanvasButton>("syntaxToggleBtn", 1048, 810, 720, 100, 25);
         syntaxToggleBtn->SetText("Toggle syntax");
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
-        syntaxToggleBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea](const UCEvent& ev) {
+        syntaxToggleBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
             bool showSyntax = !cppTextArea->GetHighlightSyntax();
             cppTextArea->SetHighlightSyntax(showSyntax);
             pythonTextArea->SetHighlightSyntax(showSyntax);

@@ -37,6 +37,7 @@ namespace UltraCanvas {
         std::function<void()> eventLoopCallback;
 
         UCEvent lastMouseEvent;
+        UCEvent currentEvent;
         std::chrono::steady_clock::time_point lastClickTime;
         const float DOUBLE_CLICK_TIME = 0;
         const int DOUBLE_CLICK_DISTANCE = 0;
@@ -72,6 +73,10 @@ namespace UltraCanvas {
         UltraCanvasUIElement* GetCapturedElement() { return capturedElement; }
 
         UltraCanvasWindow* FindWindow(unsigned long nativeHandle);
+
+        const UCEvent& GetCurrentEvent() { return currentEvent; }
+
+        bool DispatchEventToElement(UltraCanvasUIElement* elem, const UCEvent &event);
 
         virtual void FocusNextElement();
         virtual void FocusPreviousElement();

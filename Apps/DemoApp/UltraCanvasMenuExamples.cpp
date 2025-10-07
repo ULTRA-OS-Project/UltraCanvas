@@ -72,7 +72,8 @@ namespace UltraCanvas {
         }));
 
         // Set right-click handler for button
-        contextMenuBtn->onClick = [contextMenu, contextMenuBtn, container](const UCEvent& ev) {
+        contextMenuBtn->onClick = [contextMenu, contextMenuBtn, container]() {
+            auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
             if (ev.button == UCMouseButton::Right) {
                 // move menu to window container
                 container->GetWindow()->AddChild(contextMenu);
@@ -204,7 +205,7 @@ namespace UltraCanvas {
             std::cout << "Custom theme" << std::endl;
         }));
 
-        darkMenuBtn->onClick = [darkMenu, darkMenuBtn, container](const UCEvent& ev) {
+        darkMenuBtn->onClick = [darkMenu, darkMenuBtn, container]() {
             container->GetWindow()->AddChild(darkMenu);
             Point2Di pos(darkMenuBtn->GetXInWindow(), darkMenuBtn->GetYInWindow() + darkMenuBtn->GetHeight());
             darkMenu->ShowAt(pos);
@@ -233,7 +234,7 @@ namespace UltraCanvas {
             std::cout << "Tablet view" << std::endl;
         }));
 
-        flatMenuBtn->onClick = [flatMenu, flatMenuBtn, container](const UCEvent& ev) {
+        flatMenuBtn->onClick = [flatMenu, flatMenuBtn, container]() {
             container->GetWindow()->AddChild(flatMenu);
             Point2Di pos(flatMenuBtn->GetXInWindow(), flatMenuBtn->GetYInWindow() + flatMenuBtn->GetHeight());
             flatMenu->ShowAt(pos);
@@ -301,7 +302,8 @@ namespace UltraCanvas {
             }));
 
             // Set right-click handler
-            itemLabel->onClick = [itemMenu, itemLabel, container](const UCEvent& ev) {
+            itemLabel->onClick = [itemMenu, itemLabel, container]() {
+                auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
                 if (ev.button == UCMouseButton::Right) {
                     container->GetWindow()->AddChild(itemMenu);
                     //Point2Di pos(itemLabel->GetXInWindow() + 50, itemLabel->GetYInWindow() + itemLabel->GetHeight());

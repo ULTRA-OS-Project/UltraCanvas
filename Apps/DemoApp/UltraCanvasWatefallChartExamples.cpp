@@ -139,7 +139,7 @@ namespace UltraCanvas {
         btnToggleStyle->SetText("Toggle Bar Style");
 
         static int styleIndex = 0;
-        btnToggleStyle->onClick = [revenueChart, cashFlowChart, performanceChart](const UCEvent& ev) {
+        btnToggleStyle->onClick = [revenueChart, cashFlowChart, performanceChart]() {
             styleIndex = (styleIndex + 1) % 3;
 
             UltraCanvasWaterfallChartElement::BarStyle newStyle;
@@ -162,7 +162,7 @@ namespace UltraCanvas {
         );
         btnRandomData->SetText("Generate Random Data");
 
-        btnRandomData->onClick = [revenueData](const UCEvent& ev) {
+        btnRandomData->onClick = [revenueData]() {
             std::random_device rd;
             std::mt19937 gen(rd());
             std::uniform_real_distribution<> dist(50.0, 200.0);
