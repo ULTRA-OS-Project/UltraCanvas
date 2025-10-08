@@ -209,6 +209,9 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("qoiimages", "QOI Images", "QOI Image display and manipulation",
                               ImplementationStatus::NotImplemented,
                               [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
+        bitmapBuilder.AddItem("xarimages", "XAR Images", "XAR Image display and manipulation",
+                              ImplementationStatus::NotImplemented,
+                              [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
         bitmapBuilder.AddItem("rawimages", "RAW Images", "RAW Image display and manipulation",
                               ImplementationStatus::NotImplemented,
                               [this]() { return CreateBitmapNotImplementedExamples("TIFF"); });
