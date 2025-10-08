@@ -5,10 +5,196 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasTextArea.h"
 #include <iostream>
 #include <sstream>
 
 namespace UltraCanvas {
+    DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier, long id,
+                                             long x, long y, long width, long height)
+            : UltraCanvasContainer(identifier, id, x, y, width, height) {
+
+        // Create title label (left side)
+        titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle", id + 1, 10, 5, width - 200, 30);
+        titleLabel->SetFontSize(14);
+        titleLabel->SetFontWeight(FontWeight::Bold);
+        titleLabel->SetText("Demo Title");
+        AddChild(titleLabel);
+
+        // Create source button (right side)
+        sourceButton = std::make_shared<UltraCanvasButton>("SourceBtn", id + 2, width - 160, 5, 65, 28);
+        sourceButton->SetText("Source");
+        sourceButton->SetEnabled(false);  // Initially disabled
+        sourceButton->onClick = [this]() { ShowSourceWindow(); };
+        AddChild(sourceButton);
+
+        // Create documentation button (right side)
+        docButton = std::make_shared<UltraCanvasButton>("DocBtn", id + 3, width - 75, 5, 65, 28);
+        docButton->SetText("Docs");
+        docButton->SetEnabled(false);  // Initially disabled
+        docButton->onClick = [this]() { ShowDocumentationWindow(); };
+        AddChild(docButton);
+
+        // Create divider line at the bottom
+        dividerLine = std::make_shared<UltraCanvasContainer>("Divider", id + 4, 0, 38, width, 2);
+        ContainerStyle dividerStyle;
+        dividerStyle.backgroundColor = Color(200, 200, 200, 255);
+        dividerStyle.borderWidth = 0;
+        dividerLine->SetContainerStyle(dividerStyle);
+        AddChild(dividerLine);
+
+        // Set container style
+        ContainerStyle containerStyle;
+        containerStyle.backgroundColor = Color(245, 245, 245, 255);
+        containerStyle.borderWidth = 0;
+        SetContainerStyle(containerStyle);
+    }
+
+    void DemoHeaderContainer::SetDemoTitle(const std::string& title) {
+        if (titleLabel) {
+            titleLabel->SetText(title);
+        }
+    }
+
+    void DemoHeaderContainer::SetSourceFile(const std::string& sourceFile) {
+        currentSourceFile = sourceFile;
+        if (sourceButton) {
+            sourceButton->SetEnabled(!sourceFile.empty());
+        }
+    }
+
+    void DemoHeaderContainer::SetDocFile(const std::string& docFile) {
+        currentDocFile = docFile;
+        if (docButton) {
+            docButton->SetEnabled(!docFile.empty());
+        }
+    }
+
+    std::string DemoHeaderContainer::LoadFileContent(const std::string& filePath) {
+        if (filePath.empty()) return "";
+
+        std::ifstream file(filePath);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open file: " << filePath << std::endl;
+            return "// Error: Could not load file: " + filePath;
+        }
+
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        file.close();
+
+        return buffer.str();
+    }
+
+    std::string DemoHeaderContainer::GetFileExtension(const std::string& filePath) {
+        size_t lastDot = filePath.find_last_of('.');
+        if (lastDot != std::string::npos) {
+            return filePath.substr(lastDot + 1);
+        }
+        return "";
+    }
+
+    void DemoHeaderContainer::ShowSourceWindow() {
+        if (currentSourceFile.empty()) return;
+
+        std::string content = LoadFileContent(currentSourceFile);
+        CreateSourceWindow(content, "Source Code: " + currentSourceFile);
+    }
+
+    void DemoHeaderContainer::ShowDocumentationWindow() {
+        if (currentDocFile.empty()) return;
+
+        std::string content = LoadFileContent(currentDocFile);
+        CreateDocumentationWindow(content, "Documentation: " + currentDocFile);
+    }
+
+
+    void DemoHeaderContainer::CreateSourceWindow(const std::string& content, const std::string& title) {
+        // Create a new window for source code display
+        WindowConfig config;
+        config.title = title;
+        config.width = 1200;
+        config.height = 600;
+        config.resizable = true;
+        config.type = WindowType::Standard;
+
+        sourceWindow = std::make_shared<UltraCanvasWindow>();
+        if (!sourceWindow->Create(config)) {
+            std::cerr << "Failed to create source window" << std::endl;
+            return;
+        }
+
+        // Create text area for source code with syntax highlighting
+        auto textArea = std::make_shared<UltraCanvasTextArea>("SourceCode", 1000, 5, 5, 1190, 590);
+        textArea->SetText(content);
+        //textArea->SetReadOnly(true);
+        textArea->SetShowLineNumbers(true);
+        textArea->SetHighlightSyntax(true);
+
+        // Determine language from file extension and apply syntax highlighting
+        std::string ext = GetFileExtension(currentSourceFile);
+        if (ext == "cpp" || ext == "c" || ext == "cc" || ext == "cxx" || ext == "h" || ext == "hpp") {
+            textArea->SetProgrammingLanguageByExtension(ext);
+        } else {
+            textArea->ApplyCodeStyle("text");
+        }
+
+        sourceWindow->SetEventCallback([this](const UCEvent& event) {
+            if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
+                sourceWindow->Close();
+                sourceWindow.reset();
+                return true;
+            }
+            return false;
+        });
+
+        sourceWindow->AddChild(textArea);
+        sourceWindow->Show();
+    }
+
+    void DemoHeaderContainer::CreateDocumentationWindow(const std::string& content, const std::string& title) {
+        // Create a new window for documentation display
+        WindowConfig config;
+        config.title = title;
+        config.width = 1200;
+        config.height = 600;
+        config.resizable = true;
+        config.type = WindowType::Standard;
+
+        docWindow = std::make_shared<UltraCanvasWindow>();
+        if (!docWindow->Create(config)) {
+            std::cerr << "Failed to create documentation window" << std::endl;
+            return;
+        }
+
+        // Create text area for documentation
+        auto textArea = std::make_shared<UltraCanvasTextArea>("Documentation", 2000, 5, 5, 1190, 590);
+        textArea->SetText(content);
+        textArea->SetReadOnly(true);
+        textArea->SetWordWrap(true);
+        textArea->SetShowLineNumbers(false);
+
+        // Check if it's a markdown file
+        std::string ext = GetFileExtension(currentDocFile);
+        if (ext == "md" || ext == "markdown") {
+            // Could apply markdown styling here if supported
+            textArea->ApplyPlainTextStyle();
+        } else {
+            textArea->ApplyPlainTextStyle();
+        }
+
+        docWindow->SetEventCallback([this](const UCEvent& event) {
+            if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
+                docWindow->Close();
+                docWindow.reset();
+                return true;
+            }
+            return false;
+        });
+
+        docWindow->AddChild(textArea);
+        docWindow->Show();
+    }
 
 // ===== CONSTRUCTOR / DESTRUCTOR =====
     UltraCanvasDemoApplication::UltraCanvasDemoApplication() {
@@ -28,7 +214,7 @@ namespace UltraCanvas {
         WindowConfig config;
         config.title = "UltraCanvas Framework - Component Demonstration";
         config.width = 1400;
-        config.height = 840;
+        config.height = 880;
         config.resizable = true;
         config.type = WindowType::Standard;
 
@@ -39,26 +225,45 @@ namespace UltraCanvas {
         }
 
         // Create tree view for categories (left side)
-        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 10, 10, 350, 800);
+        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 5, 5, 350, 840);
         categoryTreeView->SetRowHeight(24);
         categoryTreeView->SetSelectionMode(TreeSelectionMode::Single);
         categoryTreeView->SetLineStyle(TreeLineStyle::Solid);
 
-        // Create display container (right side)
-        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 3, 370, 10, 1020, 800);
+        mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 3, 360, 5, 1030, 840);
+        ContainerStyle mainContainerStyle;
+        mainContainerStyle.backgroundColor = Colors::White;
+        mainContainerStyle.borderWidth = 1.0f;
+        mainContainerStyle.borderColor = Color(200, 200, 200, 255);
+        mainContainer->SetContainerStyle(mainContainerStyle);
+
+        // Create header container (inside main container)
+        headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 4, 0, 0, 1028, 40);
+        mainContainer->AddChild(headerContainer);
+
+        // Create display container (below header)
+        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 5, 0, 40, 1028, 785);
         ContainerStyle displayContainerStyle;
         displayContainerStyle.backgroundColor = Colors::White;
-        displayContainerStyle.borderWidth = 1.0f;
-        displayContainerStyle.borderColor = Color(200, 200, 200, 255);
+        displayContainerStyle.borderWidth = 0;
         displayContainer->SetContainerStyle(displayContainerStyle);
+        mainContainer->AddChild(displayContainer);
+
+//        // Create display container (right side)
+//        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 3, 370, 10, 1020, 800);
+//        ContainerStyle displayContainerStyle;
+//        displayContainerStyle.backgroundColor = Colors::White;
+//        displayContainerStyle.borderWidth = 1.0f;
+//        displayContainerStyle.borderColor = Color(200, 200, 200, 255);
+//        displayContainer->SetContainerStyle(displayContainerStyle);
 
         // Create status label (bottom left)
-        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 810, 350, 25);
+        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 850, 350, 25);
         statusLabel->SetText("Select a component from the tree view to see examples");
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // Create description label (bottom right)
-        descriptionLabel = std::make_shared<UltraCanvasLabel>("DescriptionLabel", 5, 370, 810, 1020, 25);
+        descriptionLabel = std::make_shared<UltraCanvasLabel>("DescriptionLabel", 5, 370, 850, 1020, 25);
         descriptionLabel->SetText("");
         descriptionLabel->SetBackgroundColor(Color(240, 240, 240, 255));
 
@@ -75,7 +280,7 @@ namespace UltraCanvas {
 
         // Add elements to window
         mainWindow->AddChild(categoryTreeView);
-        mainWindow->AddChild(displayContainer);
+        mainWindow->AddChild(mainContainer);
         mainWindow->AddChild(statusLabel);
         mainWindow->AddChild(descriptionLabel);
 
@@ -91,7 +296,10 @@ namespace UltraCanvas {
 
         basicBuilder.AddItem("button", "Button", "Interactive buttons with various styles and states",
                              ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateButtonExamples(); })
+                             [this]() { return CreateButtonExamples(); },
+                             "Examples/UltraCanvasButtonExamples.cpp",
+                             "Examples/UltraCanvasButtonExamples.md"
+                             )
                 .AddVariant("button", "Standard Button")
                 .AddVariant("button", "Icon Button")
                 .AddVariant("button", "Toggle Button")
@@ -99,7 +307,10 @@ namespace UltraCanvas {
 
         basicBuilder.AddItem("textinput", "Text Input", "Text input fields with validation and formatting",
                              ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateTextInputExamples(); })
+                             [this]() { return CreateTextInputExamples(); },
+                            "Examples/UltraCanvasTextInputExamples.cpp",
+                            "Examples/UltraCanvasTextInputExamples.md"
+                             )
                 .AddVariant("textinput", "Single Line Input")
                 .AddVariant("textinput", "Multi-line Text Area")
                 .AddVariant("textinput", "Password Field")
@@ -425,11 +636,14 @@ namespace UltraCanvas {
         if (demoItems.find(nodeId) != demoItems.end()) {
             DisplayDemoItem(nodeId);
             UpdateStatusDisplay(nodeId);
+            UpdateHeaderDisplay(nodeId);
         } else {
             // Category selected - clear display
             ClearDisplay();
             statusLabel->SetText("Category: " + node->data.text + " - Select a specific component to view examples");
-        }
+            headerContainer->SetDemoTitle("Category: " + node->data.text);
+            headerContainer->SetSourceFile("");
+            headerContainer->SetDocFile("");        }
     }
 
     void UltraCanvasDemoApplication::DisplayDemoItem(const std::string& itemId) {
@@ -508,6 +722,20 @@ namespace UltraCanvas {
         descriptionLabel->SetText(item->description);
     }
 
+    void UltraCanvasDemoApplication::UpdateHeaderDisplay(const std::string& itemId) {
+        auto it = demoItems.find(itemId);
+        if (it != demoItems.end()) {
+            const auto& item = it->second;
+
+            // Set title from description field
+            headerContainer->SetDemoTitle(item->description);
+
+            // Set source and doc files
+            headerContainer->SetSourceFile(item->demoSource);
+            headerContainer->SetDocFile(item->demoDoc);
+        }
+    }
+
 // ===== UTILITY METHODS =====
     std::string UltraCanvasDemoApplication::GetStatusIcon(ImplementationStatus status) const {
         switch (status) {
@@ -568,9 +796,13 @@ namespace UltraCanvas {
 // ===== DEMO CATEGORY BUILDER IMPLEMENTATION =====
     DemoCategoryBuilder& DemoCategoryBuilder::AddItem(const std::string& id, const std::string& name,
                                                       const std::string& description, ImplementationStatus status,
-                                                      std::function<std::shared_ptr<UltraCanvasUIElement>()> creator) {
+                                                      std::function<std::shared_ptr<UltraCanvasUIElement>()> creator,
+                                                      const std::string& sourceFile,
+                                                      const std::string& docFile) {
         auto item = std::make_unique<DemoItem>(id, name, description, category, status);
         item->createExample = creator;
+        item->demoSource = sourceFile;
+        item->demoDoc = docFile;
         app->RegisterDemoItem(std::move(item));
         return *this;
     }

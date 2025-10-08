@@ -228,14 +228,45 @@ namespace UltraCanvas {
     void UltraCanvasLinuxWindow::SetWindowTitle(const std::string& title) {
         config_.title = title;
 
-        auto application = UltraCanvasApplication::GetInstance();
-        if (_created) {
-            XStoreName(application->GetDisplay(), xWindow, title.c_str());
+        if (xWindow != 0) {
+            auto application = UltraCanvasApplication::GetInstance();
+            if (!application) {
+                std::cerr << "UltraCanvas Linux: Application instance not available" << std::endl;
+                return;
+            }
 
-            Atom netWmName = XInternAtom(application->GetDisplay(), "_NET_WM_NAME", False);
-            Atom utf8String = XInternAtom(application->GetDisplay(), "UTF8_STRING", False);
-            XChangeProperty(application->GetDisplay(), xWindow, netWmName, utf8String, 8,
-                            PropModeReplace, (unsigned char*)title.c_str(), title.length());
+            Display* display = application->GetDisplay();
+            if (!display) {
+                std::cerr << "UltraCanvas Linux: Display not available" << std::endl;
+                return;
+            }
+
+            // Set the window title using XStoreName
+            XStoreName(display, xWindow, title.c_str());
+
+            // Also set the _NET_WM_NAME property for modern window managers
+            Atom netWmName = XInternAtom(display, "_NET_WM_NAME", False);
+            Atom utf8String = XInternAtom(display, "UTF8_STRING", False);
+
+            if (netWmName != None && utf8String != None) {
+                XChangeProperty(display, xWindow, netWmName, utf8String, 8,
+                                PropModeReplace,
+                                reinterpret_cast<const unsigned char*>(title.c_str()),
+                                title.length());
+            }
+
+            // Also set WM_NAME for compatibility with older window managers
+            XTextProperty textProp;
+            char *title_str = const_cast<char *>(title.c_str());
+            if (XStringListToTextProperty(&title_str, 1, &textProp) != 0) {
+                XSetWMName(display, xWindow, &textProp);
+                XFree(textProp.value);
+            }
+
+            // CRITICAL: Flush the X11 display to ensure changes are sent to the X server
+            XFlush(display);
+
+            std::cout << "UltraCanvas Linux: Window title set to: \"" << title << "\"" << std::endl;
         }
     }
 
@@ -281,6 +312,10 @@ namespace UltraCanvas {
 
         XMapWindow(application->GetDisplay(), xWindow);
         XFlush(application->GetDisplay());
+
+        if (config_.type == WindowType::Fullscreen) {
+            SetFullscreen(true);
+        }
 
         _visible = true;
 
@@ -394,7 +429,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::SetFullscreen(bool fullscreen) {
-        if (!_created) {
+        if (xWindow == 0) {
             return;
         }
         auto application = UltraCanvasApplication::GetInstance();
@@ -419,10 +454,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::SetWindowHints() {
-        auto application = UltraCanvasApplication::GetInstance();
-        if (!_created || !application) {
+        if (xWindow == 0) {
             return;
         }
+        auto application = UltraCanvasApplication::GetInstance();
         Display* display = application->GetDisplay();
 
         XSizeHints hints;

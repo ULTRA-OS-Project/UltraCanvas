@@ -56,11 +56,41 @@ namespace UltraCanvas {
         std::function<std::shared_ptr<UltraCanvasUIElement>()> createExample;
         std::vector<std::string> variants;
 
+        std::string demoSource;  // File path for demo source code
+        std::string demoDoc;      // File path for documentation
+
         DemoItem(const std::string& itemId, const std::string& name, const std::string& desc,
                  DemoCategory cat, ImplementationStatus stat)
                 : id(itemId), displayName(name), description(desc), category(cat), status(stat) {}
     };
 
+    class DemoHeaderContainer : public UltraCanvasContainer {
+    private:
+        std::shared_ptr<UltraCanvasLabel> titleLabel;
+        std::shared_ptr<UltraCanvasButton> sourceButton;
+        std::shared_ptr<UltraCanvasButton> docButton;
+        std::shared_ptr<UltraCanvasContainer> dividerLine;
+        std::shared_ptr<UltraCanvasWindow> sourceWindow;
+        std::shared_ptr<UltraCanvasWindow> docWindow;
+        std::string currentSourceFile;
+        std::string currentDocFile;
+
+    public:
+        DemoHeaderContainer(const std::string& identifier, long id, long x, long y, long width, long height);
+
+        void SetDemoTitle(const std::string& title);
+        void SetSourceFile(const std::string& sourceFile);
+        void SetDocFile(const std::string& docFile);
+
+        void ShowSourceWindow();
+        void ShowDocumentationWindow();
+
+    private:
+        std::string LoadFileContent(const std::string& filePath);
+        std::string GetFileExtension(const std::string& filePath);
+        void CreateSourceWindow(const std::string& content, const std::string& title);
+        void CreateDocumentationWindow(const std::string& content, const std::string& title);
+    };
 // ===== MAIN DEMO APPLICATION CLASS =====
     class DemoCategoryBuilder;
 
@@ -70,7 +100,9 @@ namespace UltraCanvas {
         // Core components
         std::shared_ptr<UltraCanvasWindow> mainWindow;
         std::shared_ptr<UltraCanvasTreeView> categoryTreeView;
-        std::shared_ptr<UltraCanvasContainer> displayContainer;
+        std::shared_ptr<UltraCanvasContainer> mainContainer;  // Main container for display area
+        std::shared_ptr<DemoHeaderContainer> headerContainer;  // Header with title and buttons
+        std::shared_ptr<UltraCanvasContainer> displayContainer;  // Content display area
         std::shared_ptr<UltraCanvasLabel> statusLabel;
         std::shared_ptr<UltraCanvasLabel> descriptionLabel;
 
@@ -97,6 +129,7 @@ namespace UltraCanvas {
         void DisplayDemoItem(const std::string& itemId);
         void ClearDisplay();
         void UpdateStatusDisplay(const std::string& itemId);
+        void UpdateHeaderDisplay(const std::string& itemId);
 
         // ===== EVENT HANDLERS =====
         void OnTreeNodeSelected(TreeNode* node);
@@ -174,7 +207,9 @@ namespace UltraCanvas {
 
         DemoCategoryBuilder& AddItem(const std::string& id, const std::string& name,
                                      const std::string& description, ImplementationStatus status,
-                                     std::function<std::shared_ptr<UltraCanvasUIElement>()> creator);
+                                     std::function<std::shared_ptr<UltraCanvasUIElement>()> creator,
+                                     const std::string& sourceFile = "",
+                                     const std::string& docFile = "");
 
         DemoCategoryBuilder& AddVariant(const std::string& itemId, const std::string& variant);
     };
