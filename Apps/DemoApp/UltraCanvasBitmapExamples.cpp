@@ -1,4 +1,4 @@
-// UltraCanvasDemoBitmapExamples.cpp
+// Apps/DemoApp/UltraCanvasDemoBitmapExamples.cpp
 // Enhanced bitmap image demonstrations for JPG and PNG formats
 // Version: 1.3.0
 // Last Modified: 2025-01-09
