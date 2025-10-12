@@ -67,8 +67,8 @@ namespace UltraCanvas {
     class DemoHeaderContainer : public UltraCanvasContainer {
     private:
         std::shared_ptr<UltraCanvasLabel> titleLabel;
-        std::shared_ptr<UltraCanvasButton> sourceButton;
-        std::shared_ptr<UltraCanvasButton> docButton;
+        std::shared_ptr<UltraCanvasImageElement> sourceButton;
+        std::shared_ptr<UltraCanvasImageElement> docButton;
         std::shared_ptr<UltraCanvasContainer> dividerLine;
         std::shared_ptr<UltraCanvasWindow> sourceWindow;
         std::shared_ptr<UltraCanvasWindow> docWindow;
@@ -148,6 +148,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateDropdownExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSliderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLabelExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateCheckboxExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateToolbarExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTabExamples();
 
@@ -182,6 +183,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateBarChartsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateScatterPlotChartsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateAreaChartsExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateFinancialChartExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateDivergingChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateInfoGraphicsExamples();

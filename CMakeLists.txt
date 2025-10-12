@@ -4,6 +4,8 @@ project(UltraCanvasApp)
 # ✅ REQUIRED: C++20 standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+#set(BUILD_SHARED_LIBS OFF)
+#set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 
 # ✅ REQUIRED: Find platform packages
 find_package(PkgConfig REQUIRED)
@@ -116,6 +118,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasTabbedContainer.cpp
         UltraCanvas/core/UltraCanvasButton.cpp
         UltraCanvas/core/UltraCanvasSyntaxTokenizer.cpp
+        UltraCanvas/core/UltraCanvasCheckbox.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
@@ -179,6 +182,8 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasBasicChartsExamples.cpp
         Apps/DemoApp/UltraCanvasDivergingChartExamples.cpp
         Apps/DemoApp/UltraCanvasWatefallChartExamples.cpp
+        Apps/DemoApp/UltraCanvasFinancialChartExamples.cpp
+        Apps/DemoApp/UltraCanvasCheckboxExamples.cpp
 )
 
 # ✅ ADDED: Check that source files exist
@@ -193,6 +198,8 @@ foreach(source_file ${ULTRACANVAS_SOURCES})
         message(WARNING "UltraCanvas source file not found: ${source_file}")
     endif()
 endforeach()
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
 
 # ✅ REQUIRED: Create executable
 add_executable(${PROJECT_NAME}

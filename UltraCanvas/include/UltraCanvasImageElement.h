@@ -111,7 +111,7 @@ public:
     // ===== EVENTS =====
     std::function<void()> onImageLoaded;
     std::function<void(const std::string&)> onImageLoadFailed;
-    std::function<void()> onImageClicked;
+    std::function<void()> onClick;
     std::function<void(const Point2Di&)> onImageDragged;
     
     // ===== CONSTRUCTOR =====
@@ -227,7 +227,7 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateClickableImage(
     const std::string& imagePath, std::function<void()> clickCallback) {
     auto image = CreateImageFromFile(identifier, id, x, y, w, h, imagePath);
     image->SetClickable(true);
-    image->onImageClicked = clickCallback;
+    image->onClick = clickCallback;
     return image;
 }
 

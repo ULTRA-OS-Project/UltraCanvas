@@ -224,7 +224,6 @@ namespace UltraCanvas {
         context->SetClipRect(visibleTextArea);
         context->SetFontStyle(style.fontStyle);
 
-        int textX = visibleTextArea.x;
         int textY = visibleTextArea.y;
 
         for (int i = firstVisibleLine; i < firstVisibleLine + maxVisibleLines && i < static_cast<int>(lines.size()); i++) {
@@ -233,16 +232,27 @@ namespace UltraCanvas {
                 // Tokenize line
                 auto tokens = syntaxTokenizer->TokenizeLine(line);
 
-                int x = textX;
-                for (const auto& token : tokens) {
-                    // Set color based on token type
-                    TokenStyle tokenStyle = GetStyleForTokenType(token.type);
-                    context->SetTextPaint(tokenStyle.color);
-                    context->SetFontWeight(tokenStyle.bold ? FontWeight::Bold : FontWeight::Normal);
+                // Start drawing position accounting for horizontal scroll
+                int x = visibleTextArea.x - horizontalScrollOffset;
 
-                    // Draw token text
-                    context->DrawText(token.text, x, textY);
-                    x += context->GetTextWidth(token.text);
+                for (const auto& token : tokens) {
+                    // Calculate token width first
+                    context->SetFontWeight(GetStyleForTokenType(token.type).bold ?
+                                           FontWeight::Bold : FontWeight::Normal);
+                    int tokenWidth = context->GetTextWidth(token.text);
+
+                    // Only draw if token is visible (optimization)
+                    if (x + tokenWidth >= visibleTextArea.x && x <= visibleTextArea.x + visibleTextArea.width) {
+                        // Set color based on token type
+                        TokenStyle tokenStyle = GetStyleForTokenType(token.type);
+                        context->SetTextPaint(tokenStyle.color);
+
+                        // Draw token text
+                        context->DrawText(token.text, x, textY);
+                    }
+
+                    // Move x position for next token
+                    x += tokenWidth;
                 }
             }
             textY += style.lineHeight;
@@ -371,14 +381,25 @@ namespace UltraCanvas {
         if (IsNeedVerticalScrollbar()) {
             int scrollbarX = bounds.x + bounds.width - 15;
             int scrollbarHeight = bounds.height;
-            int thumbHeight = std::max(20, (maxVisibleLines * scrollbarHeight) / static_cast<int>(lines.size()));
-            int thumbY = bounds.y + (firstVisibleLine * (scrollbarHeight - thumbHeight)) /
-                                    std::max(1, static_cast<int>(lines.size()) - maxVisibleLines);
+            int totalLines = static_cast<int>(lines.size());
+            int visibleLines = maxVisibleLines;
+
+            // Calculate thumb size based on visible/total ratio
+            int thumbHeight = std::max(20, (visibleLines * scrollbarHeight) / totalLines);
+
+            // Calculate thumb position based on firstVisibleLine
+            int maxThumbY = scrollbarHeight - thumbHeight;
+            int thumbY = bounds.y;
+
+            if (totalLines > visibleLines && maxThumbY > 0) {
+                thumbY = bounds.y + (firstVisibleLine * maxThumbY) / (totalLines - visibleLines);
+            }
 
             // Draw scrollbar track
             context->SetFillPaint(style.scrollbarTrackColor);
             context->FillRectangle(scrollbarX, bounds.y, 15, scrollbarHeight);
 
+            // Update thumb rectangle for hit testing
             verticalScrollThumb.x = scrollbarX;
             verticalScrollThumb.y = thumbY;
             verticalScrollThumb.width = 15;
@@ -395,24 +416,30 @@ namespace UltraCanvas {
             float scrollbarWidth = static_cast<float>(bounds.width - (IsNeedVerticalScrollbar() ? 15 : 0));
 
             float thumbWidthRatio = static_cast<float>(visibleTextArea.width) / static_cast<float>(maxLineWidth);
-            float thumbWidth = std::min(scrollbarWidth, scrollbarWidth * thumbWidthRatio);
+            float thumbWidth = std::max(20.0f, scrollbarWidth * thumbWidthRatio);
 
-            float maxScroll = static_cast<float>(maxLineWidth - visibleTextArea.width);
-            float scrollRatio = static_cast<float>(horizontalScrollOffset) / maxScroll;
-            float thumbX = static_cast<float>(bounds.x) + scrollRatio * (scrollbarWidth - thumbWidth);
+            float maxThumbX = scrollbarWidth - thumbWidth;
+            float thumbX = static_cast<float>(bounds.x);
+
+            if (maxLineWidth > visibleTextArea.width && maxThumbX > 0) {
+                float scrollRatio = static_cast<float>(horizontalScrollOffset) /
+                                    static_cast<float>(maxLineWidth - visibleTextArea.width);
+                thumbX = static_cast<float>(bounds.x) + scrollRatio * maxThumbX;
+            }
 
             // Draw scrollbar track
             context->SetFillPaint(style.scrollbarTrackColor);
             context->FillRectangle(static_cast<float>(bounds.x), scrollbarY, scrollbarWidth, 15.0f);
 
-            horizontalScrollThumb.x = thumbX;
-            horizontalScrollThumb.y = scrollbarY;
-            horizontalScrollThumb.width = thumbWidth;
+            // Update thumb rectangle for hit testing
+            horizontalScrollThumb.x = static_cast<int>(thumbX);
+            horizontalScrollThumb.y = static_cast<int>(scrollbarY);
+            horizontalScrollThumb.width = static_cast<int>(thumbWidth);
             horizontalScrollThumb.height = 15;
 
             // Draw scrollbar thumb
             context->SetFillPaint(style.scrollbarColor);
-            context->FillRectangle(thumbX, scrollbarY + 2, thumbWidth, 11.0f);
+            context->FillRectangle(thumbX + 2, scrollbarY + 2, thumbWidth - 4, 11.0f);
         }
     }
 
@@ -533,14 +560,19 @@ namespace UltraCanvas {
             int newThumbY = event.y - bounds.y - dragStartOffset.y;
             newThumbY = std::max(0, std::min(newThumbY, maxThumbY));
 
-            // Convert thumb position to scroll offset
+            // Convert thumb position to firstVisibleLine
             int totalLines = static_cast<int>(lines.size());
             int visibleLines = maxVisibleLines;
+
             if (totalLines > visibleLines && maxThumbY > 0) {
-                // Use the same formula as in UpdateScrollBars but inverted
-                verticalScrollOffset = (newThumbY * (totalLines - visibleLines)) / maxThumbY;
-                verticalScrollOffset = std::max(0, std::min(verticalScrollOffset, totalLines - visibleLines));
+                // Calculate the new first visible line based on thumb position
+                firstVisibleLine = (newThumbY * (totalLines - visibleLines)) / maxThumbY;
+                firstVisibleLine = std::max(0, std::min(firstVisibleLine, totalLines - visibleLines));
+
+                // Also update verticalScrollOffset for consistency
+                verticalScrollOffset = firstVisibleLine;
             } else {
+                firstVisibleLine = 0;
                 verticalScrollOffset = 0;
             }
 
@@ -560,7 +592,6 @@ namespace UltraCanvas {
             newThumbX = std::max(0, std::min(newThumbX, maxThumbX));
 
             // Convert thumb position to scroll offset
-
             int visibleWidth = visibleTextArea.width;
             if (maxLineWidth > visibleWidth && maxThumbX > 0) {
                 horizontalScrollOffset = static_cast<int>((newThumbX * (maxLineWidth - visibleWidth)) / maxThumbX);
@@ -636,9 +667,7 @@ namespace UltraCanvas {
         if (!Contains(event.x, event.y)) return false;
 
         if (event.shift) {
-            auto ctx = GetRenderContext();
             // Horizontal scroll with Shift+Wheel
-
             if (IsNeedHorizontalScrollbar()) {
                 horizontalScrollOffset -= event.wheelDelta * 20;
                 horizontalScrollOffset = std::max(0,
@@ -646,15 +675,32 @@ namespace UltraCanvas {
             }
         } else {
             // Vertical scroll
-            int scrollAmount = (event.wheelDelta > 0) ? -2 : 2;
-            firstVisibleLine += scrollAmount;
-            firstVisibleLine = std::max(0,
-                                        std::min(firstVisibleLine,
-                                                 static_cast<int>(lines.size()) - maxVisibleLines));
+            int scrollAmount = (event.wheelDelta > 0) ? -3 : 3;  // Scroll 3 lines at a time
+            int totalLines = static_cast<int>(lines.size());
+            int visibleLines = maxVisibleLines;
+
+            if (totalLines > visibleLines) {
+                firstVisibleLine += scrollAmount;
+                firstVisibleLine = std::max(0, std::min(firstVisibleLine, totalLines - visibleLines));
+
+                // Keep verticalScrollOffset in sync
+                verticalScrollOffset = firstVisibleLine;
+            }
         }
 
         RequestRedraw();
         return true;
+    }
+
+    // Additional helper method to ensure consistency
+    void UltraCanvasTextArea::SetFirstVisibleLine(int line) {
+        int totalLines = static_cast<int>(lines.size());
+        int visibleLines = maxVisibleLines;
+
+        firstVisibleLine = std::max(0, std::min(line, std::max(0, totalLines - visibleLines)));
+        verticalScrollOffset = firstVisibleLine;
+
+        RequestRedraw();
     }
 
 // Handle key press

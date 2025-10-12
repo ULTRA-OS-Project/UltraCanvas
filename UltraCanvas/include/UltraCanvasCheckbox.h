@@ -81,6 +81,8 @@ namespace UltraCanvas {
         bool isPressed = false;
         bool hasFocus = false;
         bool allowIndeterminate = false;
+        bool layoutDirty = true;
+        bool autoSize = false;
 
         // Layout calculations
         Rect2Df boxRect;
@@ -97,6 +99,7 @@ namespace UltraCanvas {
 
         Color GetCurrentBoxColor() const;
         Color GetCurrentCheckmarkColor() const;
+        void CalculateAutoSize();
 
     public:
         // ===== CONSTRUCTORS =====
@@ -119,6 +122,7 @@ namespace UltraCanvas {
         void SetAllowIndeterminate(bool allow) { allowIndeterminate = allow; }
         bool GetAllowIndeterminate() const { return allowIndeterminate; }
 
+        void SetAutoSize(bool val) { autoSize = val; }
         void Toggle();
 
         // ===== APPEARANCE =====
@@ -151,7 +155,6 @@ namespace UltraCanvas {
         std::function<void()> onIndeterminate;
 
         // ===== AUTO-SIZING =====
-        void AutoSize();
 
         // ===== FACTORY METHODS =====
         static std::shared_ptr<UltraCanvasCheckbox> CreateCheckbox(

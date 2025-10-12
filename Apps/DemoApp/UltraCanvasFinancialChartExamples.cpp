@@ -64,9 +64,9 @@ namespace UltraCanvas {
         auto forexData = GenerateSampleForexData("EUR/USD", 30);  // 30 days of forex data
 
         // ===== MAIN FINANCIAL CHART (Stock Market) =====
-        auto stockChart = CreateFinancialChartElement("StockChart", 1002, 20, 50, 680, 400);
+        auto stockChart = CreateFinancialChartElement("StockChart", 1002, 20, 50, 980, 400);
         stockChart->SetFinancialDataSource(stockData);
-        stockChart->SetChartTitle("ULTR - UltraCanvas Technologies Inc. (90 Day Chart)");
+        stockChart->SetChartTitle("FCHI - Fantasy Chart Inc. (90 Day Chart)");
         stockChart->SetCandleDisplayStyle(financialChartControls.candleStyle);
         stockChart->SetShowVolumePanel(true);
         stockChart->SetVolumePanelHeightRatio(0.25f);
@@ -80,24 +80,24 @@ namespace UltraCanvas {
         container->AddChild(stockChart);
 
         // ===== CRYPTOCURRENCY CHART =====
-        auto cryptoChart = CreateFinancialChartElement("CryptoChart", 1003, 720, 50, 260, 200);
-        cryptoChart->SetFinancialDataSource(cryptoData);
-        cryptoChart->SetChartTitle("BTC/USD - Bitcoin");
-        cryptoChart->SetCandleDisplayStyle(UltraCanvasFinancialChartElement::CandleDisplayStyle::Candlestick);
-        cryptoChart->SetShowVolumePanel(false);  // Hide volume for smaller chart
-        cryptoChart->SetBullishCandleColor(Color(255, 153, 0, 255));  // Bitcoin orange
-        cryptoChart->SetBearishCandleColor(Color(100, 100, 100, 255));
-        container->AddChild(cryptoChart);
+//        auto cryptoChart = CreateFinancialChartElement("CryptoChart", 1003, 720, 50, 260, 200);
+//        cryptoChart->SetFinancialDataSource(cryptoData);
+//        cryptoChart->SetChartTitle("BTC/USD - Bitcoin");
+//        cryptoChart->SetCandleDisplayStyle(UltraCanvasFinancialChartElement::CandleDisplayStyle::Candlestick);
+//        cryptoChart->SetShowVolumePanel(false);  // Hide volume for smaller chart
+//        cryptoChart->SetBullishCandleColor(Color(255, 153, 0, 255));  // Bitcoin orange
+//        cryptoChart->SetBearishCandleColor(Color(100, 100, 100, 255));
+//        container->AddChild(cryptoChart);
 
         // ===== FOREX CHART =====
-        auto forexChart = CreateFinancialChartElement("ForexChart", 1004, 720, 260, 260, 190);
-        forexChart->SetFinancialDataSource(forexData);
-        forexChart->SetChartTitle("EUR/USD - Forex");
-        forexChart->SetCandleDisplayStyle(UltraCanvasFinancialChartElement::CandleDisplayStyle::OHLCBars);
-        forexChart->SetShowVolumePanel(false);
-        forexChart->SetBullishCandleColor(Color(0, 50, 150, 255));
-        forexChart->SetBearishCandleColor(Color(150, 50, 0, 255));
-        container->AddChild(forexChart);
+//        auto forexChart = CreateFinancialChartElement("ForexChart", 1004, 720, 260, 260, 190);
+//        forexChart->SetFinancialDataSource(forexData);
+//        forexChart->SetChartTitle("EUR/USD - Forex");
+//        forexChart->SetCandleDisplayStyle(UltraCanvasFinancialChartElement::CandleDisplayStyle::OHLCBars);
+//        forexChart->SetShowVolumePanel(false);
+//        forexChart->SetBullishCandleColor(Color(0, 50, 150, 255));
+//        forexChart->SetBearishCandleColor(Color(150, 50, 0, 255));
+//        container->AddChild(forexChart);
 
         // ===== CONTROL PANEL =====
         CreateFinancialChartControlPanel(container, stockChart, 20, 470);

@@ -385,8 +385,8 @@ namespace UltraCanvas {
     void UltraCanvasImageElement::HandleMouseDown(const UCEvent &event) {
         if (!Contains(event.x, event.y)) return;
 
-        if (clickable && onImageClicked) {
-            onImageClicked();
+        if (clickable && onClick) {
+            onClick();
         }
 
         if (draggable) {

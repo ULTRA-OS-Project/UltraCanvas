@@ -229,6 +229,7 @@ namespace UltraCanvas {
         void ScrollLeft(int chars = 1);
         void ScrollRight(int chars = 1);
         void EnsureCursorVisible();
+        void SetFirstVisibleLine(int line);
 
         // Callbacks
         using TextChangedCallback = std::function<void(const std::string&)>;

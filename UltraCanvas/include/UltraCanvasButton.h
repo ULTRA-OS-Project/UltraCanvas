@@ -1,7 +1,7 @@
 // include/UltraCanvasButton.h
-// Refactored button component using unified base system
-// Version: 2.0.0
-// Last Modified: 2024-12-19
+// Interactive button component with icon and text display support
+// Version: 2.1.0
+// Last Modified: 2025-01-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -16,6 +16,15 @@ namespace UltraCanvas {
 
 // ===== FORWARD DECLARATIONS =====
     class UltraCanvasButton;
+
+// ===== ICON POSITION =====
+    enum class IconPosition {
+        Left,       // Icon on the left of text
+        Right,      // Icon on the right of text
+        Top,        // Icon above text
+        Bottom,     // Icon below text
+        Center      // Icon only (no text displayed when Center)
+    };
 
 // ===== BUTTON STATES =====
     enum class ButtonState {
@@ -32,6 +41,7 @@ namespace UltraCanvas {
         Color hoverColor = Colors::SelectionHover;
         Color pressedColor = Color(204, 228, 247, 255);
         Color disabledColor = Colors::LightGray;
+        Color focusedColor = Color(80, 80, 80, 255);
 
         Color normalTextColor = Colors::TextDefault;
         Color hoverTextColor = Colors::TextDefault;
@@ -40,6 +50,12 @@ namespace UltraCanvas {
 
         Color borderColor = Colors::ButtonShadow;
         float borderWidth = 1.0f;
+
+        // Icon colors (tinting)
+        Color normalIconColor = Colors::White;  // White = no tinting
+        Color hoverIconColor = Colors::White;
+        Color pressedIconColor = Colors::White;
+        Color disabledIconColor = Color(255, 255, 255, 128);  // Semi-transparent
 
         // Text styling
         std::string fontFamily = "Arial";
@@ -52,7 +68,8 @@ namespace UltraCanvas {
         int paddingRight = 8;
         int paddingTop = 4;
         int paddingBottom = 4;
-        float cornerRadius = 0.0f;
+        int iconSpacing = 4;  // Space between icon and text
+        float cornerRadius = 3.0f;
 
         // Effects
         bool hasShadow = false;
@@ -60,47 +77,134 @@ namespace UltraCanvas {
         Point2Di shadowOffset = Point2Di(1, 1);
     };
 
-// ===== MAIN BUTTON CLASS (DEFINE FIRST) =====
+// ===== MAIN BUTTON CLASS =====
     class UltraCanvasButton : public UltraCanvasUIElement {
     private:
         std::string text = "Button";
+        std::string iconPath;
         ButtonStyle style;
         ButtonState currentState = ButtonState::Normal;
+        IconPosition iconPosition = IconPosition::Left;
+
+        // Icon properties
+        int iconWidth = 16;
+        int iconHeight = 16;
+        bool scaleIconToFit = false;
+        bool maintainIconAspectRatio = true;
+
+        // State
         bool pressed = false;
         bool autoresize = false;
         bool isNeedAutoresize = false;
+
+        // Cached layout calculations
+        Rect2Di iconRect;
+        Rect2Di textRect;
+        bool layoutDirty = true;
+
     public:
         // ===== CONSTRUCTOR =====
         UltraCanvasButton(const std::string& identifier = "Button", long id = 0,
                           long x = 0, long y = 0, long w = 100, long h = 30,
                           const std::string& buttonText = "Button");
 
-        // ===== BUTTON-SPECIFIC METHODS =====
+        // ===== TEXT METHODS =====
         const std::string& GetText() const { return text; }
         void SetText(const std::string& newText) {
             text = newText;
+            layoutDirty = true;
             AutoResize();
         }
 
+        // ===== ICON METHODS =====
+        const std::string& GetIcon() const { return iconPath; }
+        void SetIcon(const std::string& path) {
+            iconPath = path;
+            layoutDirty = true;
+            AutoResize();
+        }
+
+        void ClearIcon() {
+            iconPath.clear();
+            layoutDirty = true;
+            AutoResize();
+        }
+
+        bool HasIcon() const { return !iconPath.empty(); }
+
+        void SetIconPosition(IconPosition position) {
+            iconPosition = position;
+            layoutDirty = true;
+            AutoResize();
+        }
+
+        IconPosition GetIconPosition() const { return iconPosition; }
+
+        void SetIconSize(int width, int height) {
+            iconWidth = width;
+            iconHeight = height;
+            layoutDirty = true;
+            AutoResize();
+        }
+
+        void GetIconSize(int& width, int& height) const {
+            width = iconWidth;
+            height = iconHeight;
+        }
+
+        void SetScaleIconToFit(bool scale) {
+            scaleIconToFit = scale;
+            layoutDirty = true;
+        }
+
+        bool GetScaleIconToFit() const { return scaleIconToFit; }
+
+        void SetMaintainIconAspectRatio(bool maintain) {
+            maintainIconAspectRatio = maintain;
+            layoutDirty = true;
+        }
+
+        bool GetMaintainIconAspectRatio() const { return maintainIconAspectRatio; }
+
+        // ===== STYLE METHODS =====
         const ButtonStyle& GetStyle() const { return style; }
-        void SetStyle(const ButtonStyle& newStyle) { style = newStyle; }
+        void SetStyle(const ButtonStyle& newStyle) {
+            style = newStyle;
+            layoutDirty = true;
+        }
 
         ButtonState GetButtonState() const { return currentState; }
         bool IsPressed() const { return pressed; }
 
         bool AcceptsFocus() const override { return true; }
-        void SetAutoresize(bool value) { autoresize = value; AutoResize(); }
+        void SetAutoresize(bool value) {
+            autoresize = value;
+            AutoResize();
+        }
         bool GetAutoresize() const { return autoresize; }
 
-        // ===== STYLE CONVENIENCE METHODS (THESE NEED TO BE DEFINED FIRST) =====
+        // ===== STYLE CONVENIENCE METHODS =====
         void SetColors(const Color& normal, const Color& hover, const Color& pressed, const Color& disabled);
         void SetTextColors(const Color& normal, const Color& hover, const Color& pressed, const Color& disabled);
+        void SetIconColors(const Color& normal, const Color& hover, const Color& pressed, const Color& disabled);
         void SetFont(const std::string& fontFamily, float fontSize, FontWeight weight = FontWeight::Normal);
         void SetPadding(int left, int right, int top, int bottom);
+        void SetIconSpacing(int spacing);
         void SetCornerRadius(float radius);
         void SetShadow(bool enabled, const Color& color = Color(0, 0, 0, 64),
                        const Point2Di& offset = Point2Di(1, 1));
 
+        // ===== TOOLTIP SUPPORT =====
+        void SetTooltip(const std::string& tooltip) {
+            // Store tooltip for display on hover
+            properties.tooltip = tooltip;
+        }
+
+        const std::string& GetTooltip() const {
+            return properties.tooltip;
+        }
+
+        // ===== EVENT METHODS =====
         void Click(const UCEvent& ev);
         void SetOnClick(std::function<void()> _onClick) {
             onClick = _onClick;
@@ -114,56 +218,75 @@ namespace UltraCanvas {
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
 
-        // ===== EVENT CALLBACKS =====
+        // ===== PUBLIC CALLBACKS =====
         std::function<void()> onClick;
         std::function<void()> onPress;
         std::function<void()> onRelease;
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;
 
-    private:
-        // ===== HELPER METHODS =====
+    protected:
+        // ===== INTERNAL METHODS =====
         void UpdateButtonState();
-
-        void GetCurrentColors(Color& bgColor, Color& textColor);
+        void GetCurrentColors(Color& bgColor, Color& textColor, Color& iconColor);
+        void CalculateLayout();
+        void DrawIcon(IRenderContext* ctx);
+        void DrawText(IRenderContext* ctx);
     };
 
-// ===== FACTORY FUNCTIONS (AFTER BUTTON CLASS) =====
+// ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasButton> CreateButton(
             const std::string& identifier, long id, long x, long y, long w, long h,
             const std::string& text = "Button") {
-
-        return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasButton>(
-                id, identifier, id, x, y, w, h, text);
+        return std::make_shared<UltraCanvasButton>(identifier, id, x, y, w, h, text);
     }
 
-    inline std::shared_ptr<UltraCanvasButton> CreateAutoButton(
-            const std::string& identifier, long x, long y, const std::string& text = "Button") {
-
-        auto button = UltraCanvasUIElementFactory::Create<UltraCanvasButton>(
-                identifier, 0, x, y, 100, 30, text);
-        button->AutoResize();
+    inline std::shared_ptr<UltraCanvasButton> CreateIconButton(
+            const std::string& identifier, long id, long x, long y, long w, long h,
+            const std::string& iconPath, const std::string& text = "") {
+        auto button = CreateButton(identifier, id, x, y, w, h, text);
+        button->SetIcon(iconPath);
         return button;
     }
 
-// ===== BUTTON BUILDER (DEFINE AFTER BUTTON CLASS) =====
+// ===== BUTTON BUILDER (FLUENT INTERFACE) =====
     class ButtonBuilder {
     private:
         std::shared_ptr<UltraCanvasButton> button;
 
     public:
-        ButtonBuilder(const std::string& identifier, long x, long y, const std::string& text) {
-            button = CreateAutoButton(identifier, x, y, text);
+        ButtonBuilder(const std::string& identifier = "Button", long id = 0) {
+            button = std::make_shared<UltraCanvasButton>(identifier, id);
         }
 
-        ButtonBuilder(const std::string& identifier, long id, int x, int y,  int w, int h, const std::string& text) {
-            button = CreateButton(identifier, id, x, y, w, h, text);
+        ButtonBuilder& SetPosition(long x, long y) {
+            button->SetX(x);
+            button->SetY(y);
+            return *this;
         }
 
-        // NOW these methods can call UltraCanvasButton methods because they're defined above
-        ButtonBuilder& SetColors(const Color& normal, const Color& hover,
-                                 const Color& pressed, const Color& disabled) {
-            button->SetColors(normal, hover, pressed, disabled);
+        ButtonBuilder& SetText(const std::string& text) {
+            button->SetText(text);
+            return *this;
+        }
+
+        ButtonBuilder& SetIcon(const std::string& iconPath) {
+            button->SetIcon(iconPath);
+            return *this;
+        }
+
+        ButtonBuilder& SetIconPosition(IconPosition position) {
+            button->SetIconPosition(position);
+            return *this;
+        }
+
+        ButtonBuilder& SetIconSize(int width, int height) {
+            button->SetIconSize(width, height);
+            return *this;
+        }
+
+        ButtonBuilder& SetStyle(const ButtonStyle& style) {
+            button->SetStyle(style);
             return *this;
         }
 
@@ -184,6 +307,11 @@ namespace UltraCanvas {
 
         ButtonBuilder& SetShadow(bool enabled = true) {
             button->SetShadow(enabled);
+            return *this;
+        }
+
+        ButtonBuilder& SetTooltip(const std::string& tooltip) {
+            button->SetTooltip(tooltip);
             return *this;
         }
 
@@ -209,13 +337,13 @@ namespace UltraCanvas {
         }
     };
 
-// ===== PREDEFINED STYLES (AFTER EVERYTHING ELSE) =====
+// ===== PREDEFINED STYLES =====
     namespace ButtonStyles {
         inline ButtonStyle Default() {
             return ButtonStyle();
         }
 
-        inline ButtonStyle Primary() {
+        inline ButtonStyle PrimaryStyle() {
             ButtonStyle style;
             style.normalColor = Colors::Selection;
             style.hoverColor = Color(0, 90, 180, 255);
@@ -227,7 +355,53 @@ namespace UltraCanvas {
             return style;
         }
 
-        // ... other styles
+        inline ButtonStyle SecondaryStyle() {
+            ButtonStyle style;
+            style.normalColor = Colors::ButtonFace;
+            style.borderWidth = 2.0f;
+            style.borderColor = Colors::Selection;
+            style.hoverColor = Color(240, 240, 250, 255);
+            return style;
+        }
+
+        inline ButtonStyle DangerStyle() {
+            ButtonStyle style;
+            style.normalColor = Color(220, 53, 69, 255);
+            style.hoverColor = Color(200, 35, 51, 255);
+            style.pressedColor = Color(180, 20, 36, 255);
+            style.normalTextColor = Colors::White;
+            style.hoverTextColor = Colors::White;
+            style.pressedTextColor = Colors::White;
+            return style;
+        }
+
+        inline ButtonStyle SuccessStyle() {
+            ButtonStyle style;
+            style.normalColor = Color(40, 167, 69, 255);
+            style.hoverColor = Color(34, 142, 59, 255);
+            style.pressedColor = Color(28, 117, 49, 255);
+            style.normalTextColor = Colors::White;
+            style.hoverTextColor = Colors::White;
+            style.pressedTextColor = Colors::White;
+            return style;
+        }
+
+        inline ButtonStyle FlatStyle() {
+            ButtonStyle style;
+            style.normalColor = Colors::Transparent;
+            style.hoverColor = Color(240, 240, 240, 128);
+            style.pressedColor = Color(220, 220, 220, 180);
+            style.borderWidth = 0.0f;
+            style.hasShadow = false;
+            return style;
+        }
+
+        inline ButtonStyle IconOnlyStyle() {
+            ButtonStyle style = FlatStyle();
+            style.paddingLeft = style.paddingRight = 4;
+            style.paddingTop = style.paddingBottom = 4;
+            return style;
+        }
     }
 
 } // namespace UltraCanvas

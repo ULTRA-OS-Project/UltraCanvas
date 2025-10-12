@@ -1,4 +1,4 @@
-// Apps/DemoApp/UltraCanvasDemoExamples.cpp
+// Apps/DemoApp/UltraCanvasTextInputExamples.cpp
 // Implementation of all component example creators
 // Version: 1.0.0
 // Last Modified: 2024-12-19

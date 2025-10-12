@@ -47,6 +47,8 @@ namespace UltraCanvas {
 //        long ParentObject = 0;
         int z_index = 0;
 
+        std::string tooltip = "";
+
         // Extended properties
         std::string Script = "";
         std::vector<uint8_t> Cache;

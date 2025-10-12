@@ -20,7 +20,7 @@ namespace UltraCanvas {
         style = CheckboxStyle::Standard;
         allowIndeterminate = false;
 
-        CalculateLayout();
+        layoutDirty = true;
     }
 
 // ===== LAYOUT CALCULATION =====
@@ -48,6 +48,8 @@ namespace UltraCanvas {
         totalBounds.y = GetY();
         totalBounds.width = GetWidth();
         totalBounds.height = GetHeight();
+
+        layoutDirty = false;
     }
 
 // ===== STATE MANAGEMENT =====
@@ -117,7 +119,7 @@ namespace UltraCanvas {
         visualStyle.fontFamily = family;
         visualStyle.fontSize = size;
         visualStyle.fontWeight = weight;
-        CalculateLayout();
+        layoutDirty = true;
         RequestRedraw();
     }
 
@@ -156,6 +158,13 @@ namespace UltraCanvas {
 
         auto ctx = GetRenderContext();
         if (!ctx) return;
+
+        if (layoutDirty) {
+            if (autoSize) {
+                CalculateAutoSize();
+            }
+            CalculateLayout();
+        }
 
         ctx->PushState();
 
@@ -360,7 +369,7 @@ namespace UltraCanvas {
     }
 
 // ===== AUTO-SIZING =====
-    void UltraCanvasCheckbox::AutoSize() {
+    void UltraCanvasCheckbox::CalculateAutoSize() {
         auto ctx = GetRenderContext();
         if (!ctx || text.empty()) return;
 
@@ -374,7 +383,6 @@ namespace UltraCanvas {
         float totalHeight = std::max(visualStyle.boxSize + 8.0f, static_cast<float>(textHeight + 8));
 
         SetSize(static_cast<int>(totalWidth), static_cast<int>(totalHeight));
-        CalculateLayout();
     }
 
 // ===== FACTORY METHODS =====
@@ -387,7 +395,7 @@ namespace UltraCanvas {
         checkbox->SetChecked(checked);
 
         if (w == 0 || h == 0) {
-            checkbox->AutoSize();
+            checkbox->SetAutoSize(true);
         }
 
         return checkbox;
@@ -406,7 +414,7 @@ namespace UltraCanvas {
         switchBox->visualStyle.boxSize = 20.0f;
         switchBox->visualStyle.cornerRadius = 10.0f;
 
-        switchBox->AutoSize();
+        switchBox->SetAutoSize(true);
         return switchBox;
     }
 
@@ -423,7 +431,7 @@ namespace UltraCanvas {
         // Configure radio-specific visual style
         radio->visualStyle.cornerRadius = radio->visualStyle.boxSize / 2.0f;  // Make it circular
 
-        radio->AutoSize();
+        radio->SetAutoSize(true);
         return radio;
     }
 
