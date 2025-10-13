@@ -1,7 +1,7 @@
 // include/Plugins/Charts/UltraCanvasChartElementBase.h
 // Base class for all chart elements with common functionality
-// Version: 1.0.0
-// Last Modified: 2025-09-10
+// Version: 1.1.0
+// Last Modified: 2025-01-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -16,13 +16,20 @@
 
 namespace UltraCanvas {
 
+// =============================================================================
+// X-AXIS LABEL MODE ENUM
+// =============================================================================
+
+    enum class XAxisLabelMode {
+        NumericValue,    // Use the 'x' numeric value (default)
+        DataLabel       // Use the 'label' string property
+    };
 
 // =============================================================================
 // BASE CHART ELEMENT CLASS
 // =============================================================================
 
-class UltraCanvasChartElementBase : public UltraCanvasUIElement {
-public:
+    class UltraCanvasChartElementBase : public UltraCanvasUIElement {
     protected:
         // Common chart data
         std::shared_ptr<IChartDataSource> dataSource;
@@ -47,11 +54,10 @@ public:
         bool cacheValid = false;
 
         // Enhanced tooltip configuration
-//    TooltipContentType tooltipContentType = TooltipContentType::Basic;
         std::string seriesName = "";
         std::string financialSymbol = "";
         std::string statisticalMetric = "";
-        std::function<std::string(const ChartDataPoint &, size_t)> customTooltipGenerator;
+        std::function<std::string(const ChartDataPoint&, size_t)> customTooltipGenerator;
 
         // Tooltip tracking
         size_t hoveredPointIndex = SIZE_MAX;
@@ -63,6 +69,12 @@ public:
         bool showGrid = true;
         Color gridColor = Color(220, 220, 220, 255);
 
+        // X-axis label configuration
+        XAxisLabelMode xAxisLabelMode = XAxisLabelMode::NumericValue;
+        bool rotateXAxisLabels = false;
+        float xAxisLabelRotation = 0.0f; // Rotation angle in degrees
+        bool useIndexBasedPositioning = false; // When true, use index-based positioning for data points
+
         // Interactive features
         bool enableTooltips = true;
         bool enableZoom = false;
@@ -70,19 +82,8 @@ public:
         bool enableSelection = false;
 
     public:
-        UltraCanvasChartElementBase(const std::string &id, long uid, int x, int y, int width, int height) :
+        UltraCanvasChartElementBase(const std::string& id, long uid, int x, int y, int width, int height) :
                 UltraCanvasUIElement(id, uid, x, y, width, height) {};
-//    UltraCanvasChartElementBase(const std::string& id, long uid, int x, int y, int width, int height)
-//            : UltraCanvasUIElement(id, uid, x, y, width, height) {
-//
-//        // Enable interactive features by default
-//
-//        // Set default tooltip style
-//        //UltraCanvasTooltipManager::SetStyle(ChartTooltipStyles::CreateMinimalStyle());
-//
-//        // Initialize animation time
-//        //animationStartTime = std::chrono::steady_clock::now();
-//    }
 
         virtual ~UltraCanvasChartElementBase() = default;
 
@@ -91,13 +92,10 @@ public:
         // =============================================================================
 
         // Pure virtual render method - each chart type implements its own rendering
-        virtual void RenderChart(IRenderContext *ctx) = 0;
-
-        // Pure virtual method to get chart type
-//    virtual ChartType GetChartType() const = 0;
+        virtual void RenderChart(IRenderContext* ctx) = 0;
 
         // Pure virtual method to handle chart-specific mouse interactions
-        virtual bool HandleChartMouseMove(const Point2Di &mousePos) = 0;
+        virtual bool HandleChartMouseMove(const Point2Di& mousePos) = 0;
 
         // =============================================================================
         // DATA MANAGEMENT (COMMON)
@@ -107,49 +105,92 @@ public:
 
         std::shared_ptr<IChartDataSource> GetDataSource() const { return dataSource; }
 
-        void SetChartTitle(const std::string &title) {
+        void SetChartTitle(const std::string& title) {
             chartTitle = title;
             RequestRedraw();
         }
 
-        const std::string &GetChartTitle() const {
+        const std::string& GetChartTitle() const {
             return chartTitle;
+        }
+
+        // =============================================================================
+        // X-AXIS LABEL CONFIGURATION
+        // =============================================================================
+
+        void SetXAxisLabelMode(XAxisLabelMode mode) {
+            xAxisLabelMode = mode;
+            useIndexBasedPositioning = (mode == XAxisLabelMode::DataLabel);
+            cacheValid = false;
+            RequestRedraw();
+        }
+
+        XAxisLabelMode GetXAxisLabelMode() const {
+            return xAxisLabelMode;
+        }
+
+        void SetRotateXAxisLabels(bool rotate, float angle = 45.0f) {
+            rotateXAxisLabels = rotate;
+            xAxisLabelRotation = angle;
+            RequestRedraw();
+        }
+
+        bool GetRotateXAxisLabels() const {
+            return rotateXAxisLabels;
+        }
+
+        float GetXAxisLabelRotation() const {
+            return xAxisLabelRotation;
         }
 
         // =============================================================================
         // TOOLTIP CONFIGURATION METHODS (COMMON)
         // =============================================================================
 
-        void SetSeriesName(const std::string &name) {
+        void SetSeriesName(const std::string& name) {
             seriesName = name;
         }
 
-        void SetCustomTooltipGenerator(std::function<std::string(const ChartDataPoint &, size_t)> generator) {
+        const std::string& GetSeriesName() const {
+            return seriesName;
+        }
+
+        void SetEnableTooltips(bool enable) {
+            enableTooltips = enable;
+            if (!enable && isTooltipActive) {
+                HideTooltip();
+            }
+        }
+
+        bool GetEnableTooltips() const {
+            return enableTooltips;
+        }
+
+        void SetCustomTooltipGenerator(std::function<std::string(const ChartDataPoint&, size_t)> generator) {
             customTooltipGenerator = generator;
-//        tooltipContentType = TooltipContentType::Custom;
         }
 
         // =============================================================================
-        // STYLING METHODS (COMMON)
+        // VISUAL CONFIGURATION (COMMON)
         // =============================================================================
 
-        void SetBackgroundColor(const Color &color) {
+        void SetBackgroundColor(const Color& color) {
             backgroundColor = color;
             RequestRedraw();
         }
 
-        void SetPlotAreaColor(const Color &color) {
+        void SetPlotAreaColor(const Color& color) {
             plotAreaColor = color;
             RequestRedraw();
         }
 
-        void SetGridEnabled(bool enabled) {
-            showGrid = enabled;
+        void SetGridColor(const Color& color) {
+            gridColor = color;
             RequestRedraw();
         }
 
-        void SetGridColor(const Color &color) {
-            gridColor = color;
+        void SetShowGrid(bool show) {
+            showGrid = show;
             RequestRedraw();
         }
 
@@ -165,125 +206,142 @@ public:
             enablePan = enable;
         }
 
-        void SetEnableTooltips(bool enable) {
-            enableTooltips = enable;
-        }
-
-        void SetEnableAnimations(bool enable) {
-            animationEnabled = enable;
-        }
-
         void SetEnableSelection(bool enable) {
             enableSelection = enable;
         }
 
-        void SetZoom(float zoom) {
-            zoomLevel = std::clamp(zoom, 0.1f, 10.0f);
-            InvalidateCache();
+        bool GetEnableZoom() const { return enableZoom; }
+        bool GetEnablePan() const { return enablePan; }
+        bool GetEnableSelection() const { return enableSelection; }
+
+        void SetTitle(const std::string& title) {
+            chartTitle = title;
             RequestRedraw();
-        }
-
-        float GetZoom() const {
-            return zoomLevel;
-        }
-
-        void ZoomIn() {
-            SetZoom(zoomLevel * 1.2f);
-        }
-
-        void ZoomOut() {
-            SetZoom(zoomLevel / 1.2f);
-        }
-
-        void ZoomToFit() {
-            SetZoom(1.0f);
-            panOffset = Point2Di(0, 0);
-            InvalidateCache();
-            RequestRedraw();
-        }
-
-        void SetPan(const Point2Di &offset) {
-            panOffset = offset;
-            InvalidateCache();
-            RequestRedraw();
-        }
-
-        const Point2Di &GetPan() const {
-            return panOffset;
         }
 
         // =============================================================================
-        // MAIN RENDERING OVERRIDE - CALLS DERIVED CLASS RenderChart()
+        // RENDERING OVERRIDE FROM UIELEM
         // =============================================================================
 
         void Render() override;
 
         // =============================================================================
-        // EVENT HANDLING - CALLS DERIVED CLASS METHODS
+        // EVENT HANDLING OVERRIDE
         // =============================================================================
 
-        bool OnEvent(const UCEvent &event) override;
+        bool OnEvent(const UCEvent& event);
+
+        // =============================================================================
+        // PROTECTED RENDERING HELPERS (COMMON)
+        // =============================================================================
 
     protected:
-        // =============================================================================
-        // COMMON HELPER METHODS
-        // =============================================================================
-
-        void InvalidateCache() { cacheValid = false; }
-
-        void StartAnimation() {
-            animationComplete = false;
-            animationStartTime = std::chrono::steady_clock::now();
+        virtual void UpdateRenderingCache() {
+            if (!cacheValid) {
+                // Calculate plot area based on margin needs
+                cachedPlotArea = CalculatePlotArea();
+                // Calculate data bounds from current data source
+                cachedDataBounds = CalculateDataBounds();
+                cacheValid = true;
+            }
         }
 
-        virtual void UpdateRenderingCache();
+        virtual ChartPlotArea CalculatePlotArea() {
+            // Default implementation with margins for axes and labels
+            int marginLeft = 60;
+            int marginRight = 20;
+            int marginTop = 40;
+            int marginBottom = 50;
 
-        void UpdateAnimation();
+            return ChartPlotArea(
+                    GetX() + marginLeft,
+                    GetY() + marginTop,
+                    GetWidth() - marginLeft - marginRight,
+                    GetHeight() - marginTop - marginBottom
+            );
+        }
 
-        virtual ChartPlotArea CalculatePlotArea();
         virtual ChartDataBounds CalculateDataBounds();
 
-        virtual void RenderCommonBackground(IRenderContext *ctx);
-        virtual void RenderGrid(IRenderContext *ctx);
-        virtual void RenderAxes(IRenderContext *ctx);
-        virtual void RenderAxisLabels(IRenderContext *ctx);
+        void InvalidateCache() {
+            cacheValid = false;
+        }
+
+        void StartAnimation() {
+            animationStartTime = std::chrono::steady_clock::now();
+            animationComplete = false;
+        }
+
+        void UpdateAnimation() {
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration<float>(now - animationStartTime).count();
+            if (elapsed >= animationDuration) {
+                animationComplete = true;
+            }
+        }
+
+        float GetAnimationProgress() const {
+            if (animationComplete) return 1.0f;
+            auto now = std::chrono::steady_clock::now();
+            auto elapsed = std::chrono::duration<float>(now - animationStartTime).count();
+            return std::min(1.0f, elapsed / animationDuration);
+        }
+
+        virtual void RenderCommonBackground(IRenderContext* ctx);
+        virtual void RenderGrid(IRenderContext* ctx);
+        virtual void RenderAxes(IRenderContext* ctx);
+        virtual void RenderAxisLabels(IRenderContext* ctx);
+//        virtual void RenderXAxisLabelsWithMode(IRenderContext* ctx); // New method for X-axis label handling
+
+        virtual float GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints);
 
         std::string FormatAxisLabel(double value);
+        void DrawSelectionIndicators(IRenderContext* ctx);
+        void DrawEmptyState(IRenderContext* ctx);
 
-        void DrawSelectionIndicators(IRenderContext *ctx);
+        bool HandleMouseMove(const UCEvent& event);
+        bool HandleMouseDown(const UCEvent& event);
+        bool HandleMouseUp(const UCEvent& event);
+        bool HandleMouseWheel(const UCEvent& event);
 
-        void DrawEmptyState(IRenderContext *ctx);
+        // Helper method to get screen position for a data point
+        Point2Df GetDataPointScreenPosition(size_t index, const ChartDataPoint& point) {
+            if (useIndexBasedPositioning && dataSource) {
+                // Use index-based positioning (for categorical data with labels)
+                size_t totalPoints = dataSource->GetPointCount();
+                if (totalPoints <= 1) {
+                    // Single point - center it
+                    float x = cachedPlotArea.x + cachedPlotArea.width / 2;
+                    ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
+                    return Point2Df(x, transform.DataToScreen(point.x, point.y).y);
+                } else {
+                    // Multiple points - distribute evenly
+                    float x = cachedPlotArea.x + (index * cachedPlotArea.width / (totalPoints - 1));
+                    ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
+                    return Point2Df(x, transform.DataToScreen(point.x, point.y).y);
+                }
+            } else {
+                // Use actual x coordinate positioning (for numeric data)
+                ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
+                return transform.DataToScreen(point.x, point.y);
+            }
+        }
 
-        // =============================================================================
-        // MOUSE EVENT HANDLING (COMMON)
-        // =============================================================================
-
-        bool HandleMouseMove(const UCEvent &event);
-
-        bool HandleMouseDown(const UCEvent &event);
-
-        bool HandleMouseUp(const UCEvent &event);
-
-        bool HandleMouseWheel(const UCEvent &event);
-
-        bool HandleKeyDown(const UCEvent &event);
-
+        bool IsUsingIndexBasedPositioning() const { return useIndexBasedPositioning; }
         // =============================================================================
         // TOOLTIP INTEGRATION WITH EXISTING SYSTEM
         // =============================================================================
 
-        void ShowChartPointTooltip(const Point2Di &mousePos, const ChartDataPoint &point, size_t index) {
+        void ShowChartPointTooltip(const Point2Di& mousePos, const ChartDataPoint& point, size_t index) {
             std::string tooltipContent = GenerateTooltipContent(point, index);
             UltraCanvasTooltipManager::UpdateAndShowTooltip(this->window, tooltipContent, mousePos);
             isTooltipActive = true;
             hoveredPointIndex = index;
         }
 
-//
         void HideTooltip();
 
-        virtual std::string GenerateTooltipContent(const ChartDataPoint &point, size_t index) {
-
+        virtual std::string GenerateTooltipContent(const ChartDataPoint& point, size_t index) {
             if (customTooltipGenerator) {
                 return customTooltipGenerator(point, index);
             }
@@ -294,8 +352,8 @@ public:
                 content += seriesName + "\n";
             }
 
-            // Add X value
-            if (!point.label.empty()) {
+            // Add X value or label based on mode
+            if (xAxisLabelMode == XAxisLabelMode::DataLabel && !point.label.empty()) {
                 content += "X: " + point.label + "\n";
             } else {
                 content += "X: " + FormatAxisLabel(point.x) + "\n";
@@ -304,18 +362,9 @@ public:
             // Add Y value
             content += "Y: " + FormatAxisLabel(point.y);
 
-            // Add additional data if available
-//            if (point.z.has_value()) {
-//                content += "\nZ: " + FormatAxisLabel(point.z.value());
-//            }
-//
-//            if (point.size.has_value()) {
-//                content += "\nSize: " + FormatAxisLabel(point.size.value());
-//            }
-
             return content;
         }
-};
+    };
 
 // Generic Chart Factory with Data
     template<typename ChartElementType>

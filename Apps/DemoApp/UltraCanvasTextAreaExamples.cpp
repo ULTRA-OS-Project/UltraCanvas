@@ -49,7 +49,7 @@ namespace UltraCanvas {
         cppTextArea->ApplyDarkCodeStyle("C++");
         cppTextArea->SetShowLineNumbers(true);
         cppTextArea->SetHighlightCurrentLine(true);
-        cppTextArea->SetFontSize(13);
+        cppTextArea->SetFontSize(12);
 
         // Sample C++ code
         std::string cppCode = R"(// UltraCanvas Example
@@ -112,7 +112,7 @@ int main() {
         pythonTextArea->ApplyCodeStyle("Python");
         pythonTextArea->SetShowLineNumbers(true);
         pythonTextArea->SetHighlightCurrentLine(true);
-        pythonTextArea->SetFontSize(13);
+        pythonTextArea->SetFontSize(12);
 
         // Sample Python code
         std::string pythonCode = R"(# UltraCanvas Python Example
@@ -185,7 +185,7 @@ if __name__ == "__main__":
         pascalTextArea->ApplyCodeStyle("Pascal");
         pascalTextArea->SetShowLineNumbers(true);
         pascalTextArea->SetHighlightCurrentLine(true); // Different setting
-        pascalTextArea->SetFontSize(13);
+        pascalTextArea->SetFontSize(12);
 
         // Custom color scheme for Pascal
         TextAreaStyle pascalStyle = pascalTextArea->GetStyle();

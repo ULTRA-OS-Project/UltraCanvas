@@ -97,6 +97,7 @@ static struct ChartControls {
         lineChart->SetEnableTooltips(true);
         lineChart->SetEnableZoom(true);
         lineChart->SetEnablePan(true);
+        lineChart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
 
         container->AddChild(lineChart);
 
@@ -251,6 +252,7 @@ static struct ChartControls {
         barChart->SetBarBorderWidth(2.0f);
         barChart->SetBarSpacing(0.2f);                          // 20% spacing between bars
         barChart->SetEnableTooltips(true);
+        barChart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
 
         container->AddChild(barChart);
 
@@ -453,10 +455,11 @@ static struct ChartControls {
                 Color(0, 150, 136, 180),    // Teal top
                 Color(0, 150, 136, 40)      // Faded teal bottom
         );
-        areaChart->SetSmoothingEnabled(false);
+        areaChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
         areaChart->SetEnableTooltips(true);
         areaChart->SetEnableZoom(true);
         areaChart->SetEnablePan(true);
+        areaChart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
 
         container->AddChild(areaChart);
 
@@ -526,16 +529,16 @@ static struct ChartControls {
         container->AddChild(btnTogglePoints);
 
         // Toggle Smoothing button
-//        buttonX += buttonWidth + buttonSpacing;
-//        auto btnToggleSmoothing = std::make_shared<UltraCanvasButton>("btnToggleSmoothing", 3035,
-//                                                                      buttonX, buttonY, buttonWidth, buttonHeight);
-//        btnToggleSmoothing->SetText("Toggle Smooth");
-//        btnToggleSmoothing->SetOnClick([areaChart]() {
-//            chartControl.smoothingEnabled = !chartControl.smoothingEnabled;
-//            areaChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
-//            //areaChart->Invalidate();
-//        });
-//        container->AddChild(btnToggleSmoothing);
+        buttonX += buttonWidth + buttonSpacing;
+        auto btnToggleSmoothing = std::make_shared<UltraCanvasButton>("btnToggleSmoothing", 3035,
+                                                                      buttonX, buttonY, buttonWidth, buttonHeight);
+        btnToggleSmoothing->SetText("Toggle Smooth");
+        btnToggleSmoothing->SetOnClick([areaChart]() {
+            chartControl.smoothingEnabled = !chartControl.smoothingEnabled;
+            areaChart->SetSmoothingEnabled(chartControl.smoothingEnabled);
+            //areaChart->Invalidate();
+        });
+        container->AddChild(btnToggleSmoothing);
 
         return container;
     }

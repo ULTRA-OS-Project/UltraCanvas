@@ -65,7 +65,7 @@ namespace UltraCanvas {
         likertChart->SetChartStyle(DivergingChartStyle::LikertScale);
         likertChart->SetBarHeight(0.85f);
         likertChart->SetCenterGap(5.0f);
-        likertChart->SetGridEnabled(true);
+        likertChart->SetShowGrid(true);
         likertChart->SetShowCenterLine(true);
         likertChart->SetShowRowLabels(true);
         likertChart->SetCategories(categories);
@@ -82,7 +82,7 @@ namespace UltraCanvas {
         pyramidChart->SetChartStyle(DivergingChartStyle::PopulationPyramid);
         pyramidChart->SetBarHeight(0.85f);
         pyramidChart->SetCenterGap(5.0f);
-        pyramidChart->SetGridEnabled(true);
+        pyramidChart->SetShowGrid(true);
         pyramidChart->SetShowCenterLine(true);
         pyramidChart->SetShowRowLabels(true);
         pyramidChart->SetCategories(categories);
@@ -99,7 +99,7 @@ namespace UltraCanvas {
         tornadoChart->SetChartStyle(DivergingChartStyle::TornadoChart);
         tornadoChart->SetBarHeight(0.85f);
         tornadoChart->SetCenterGap(5.0f);
-        tornadoChart->SetGridEnabled(true);
+        tornadoChart->SetShowGrid(true);
         tornadoChart->SetShowCenterLine(true);
         tornadoChart->SetShowRowLabels(true);
         tornadoChart->SetCategories(categories);
@@ -132,9 +132,9 @@ namespace UltraCanvas {
         btnToggleGrid->onClick = [likertChart, pyramidChart, tornadoChart]() {
             static bool showGrid = true;
             showGrid = !showGrid;
-            likertChart->SetGridEnabled(showGrid);
-            pyramidChart->SetGridEnabled(showGrid);
-            tornadoChart->SetGridEnabled(showGrid);
+            likertChart->SetShowGrid(showGrid);
+            pyramidChart->SetShowGrid(showGrid);
+            tornadoChart->SetShowGrid(showGrid);
         };
         container->AddChild(btnToggleGrid);
         currentX += buttonWidth + buttonSpacing;

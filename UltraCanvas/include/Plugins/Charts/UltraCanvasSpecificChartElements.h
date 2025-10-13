@@ -113,7 +113,7 @@ namespace UltraCanvas {
         }
 
         void RenderChart(IRenderContext *ctx) override;
-
+        float GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) override;
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
     };
 
@@ -392,76 +392,6 @@ namespace UltraCanvas {
         void RenderChart(IRenderContext *ctx) override;
 
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
-
-    private:
-        std::vector<Point2Df> SmoothAreaPoints(const std::vector<Point2Df> &points) const {
-            if (points.size() < 4 || !enableSmoothing) {
-                return points;
-            }
-
-            std::vector<Point2Df> smoothed;
-            smoothed.reserve(points.size() * 2);
-
-            // Keep baseline start point
-            smoothed.push_back(points[0]);
-
-            // Smooth the data points (skip baseline points)
-            for (size_t i = 1; i < points.size() - 1; ++i) {
-                smoothed.push_back(points[i]);
-
-                // Add interpolated point if not the last data point
-                if (i < points.size() - 2) {
-                    Point2Df interpolated;
-                    interpolated.x = (points[i].x + points[i + 1].x) * 0.5f;
-                    interpolated.y = (points[i].y + points[i + 1].y) * 0.5f;
-                    smoothed.push_back(interpolated);
-                }
-            }
-
-            // Keep baseline end point
-            smoothed.push_back(points.back());
-
-            return smoothed;
-        }
-
-        void RenderDataPoints(IRenderContext *ctx, const std::vector<Point2Df> &areaPoints) const {
-            if (!showDataPoints || pointRadius <= 0.0f || areaPoints.size() < 3) {
-                return;
-            }
-
-            ctx->SetFillPaint(pointColor);
-            ctx->SetStrokePaint(Color(255, 255, 255, 255));
-            ctx->SetStrokeWidth(1.0f);
-
-            // Draw points only for data points (skip baseline start/end)
-            for (size_t i = 1; i < areaPoints.size() - 1; ++i) {
-                ctx->FillCircle(areaPoints[i].x, areaPoints[i].y, pointRadius);
-                ctx->DrawCircle(areaPoints[i].x, areaPoints[i].y, pointRadius);
-            }
-        }
-
-        void RenderGradientFill(IRenderContext *ctx, const std::vector<Point2Df> &areaPoints) const {
-            if (!enableGradientFill || areaPoints.size() < 3) {
-                return;
-            }
-
-            // Find top and bottom of area for gradient direction
-            float minY = areaPoints[0].y;
-            float maxY = areaPoints[0].y;
-
-            for (const auto &point: areaPoints) {
-                minY = std::min(minY, point.y);
-                maxY = std::max(maxY, point.y);
-            }
-            auto gradient = ctx->CreateLinearGradientPattern(0, minY, 0, maxY,
-                                                             {GradientStop(0, gradientStartColor),
-                                                              GradientStop(1, gradientEndColor)});
-            // Create vertical gradient from top to bottom
-//            ctx->SetFillGradient(gradientStartColor, gradientEndColor,
-//                                 Point2Df(0, minY), Point2Df(0, maxY));
-            ctx->SetFillPaint(gradient);
-            ctx->FillLinePath(areaPoints);
-        }
     };
 
 // =============================================================================

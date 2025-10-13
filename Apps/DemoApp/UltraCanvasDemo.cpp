@@ -532,7 +532,7 @@ namespace UltraCanvas {
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateFinancialChartExamples(); },
                              "Examples/UltraCanvasFinancialChartExamples.cpp",
-                             "Docs/UltraCanvasFinancialChartExamples.md")
+                             "Docs/UltraCanvasFinancialChart.md")
                 .AddVariant("financialcharts", "Candlestick Chart")
                 .AddVariant("financialcharts", "OHLC Bar Chart")
                 .AddVariant("financialcharts", "Heikin-Ashi Chart")

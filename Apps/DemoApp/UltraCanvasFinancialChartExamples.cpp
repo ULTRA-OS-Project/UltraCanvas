@@ -236,7 +236,7 @@ namespace UltraCanvas {
         gridCheckbox->SetText("Show Grid");
         gridCheckbox->SetChecked(true);
         gridCheckbox->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
-            chart->SetGridEnabled(newState == CheckboxState::Checked);
+            chart->SetShowGrid(newState == CheckboxState::Checked);
             chart->RequestRedraw();
         };
         controlPanel->AddChild(gridCheckbox);
