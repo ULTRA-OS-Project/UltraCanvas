@@ -18,6 +18,7 @@ namespace UltraCanvas {
 static struct ChartControls {
     bool showPoints = true;
     bool smoothingEnabled = true;
+    bool valueLabelsEnabled = true;
     int currentShape = 0;
 } chartControl;
 
@@ -71,7 +72,7 @@ static struct ChartControls {
         }
         randomData->LoadFromArray(randomPoints);
 
-        auto container = std::make_shared<UltraCanvasContainer>("LineChartExamples", 100, 0, 0, 800, 700);
+        auto container = std::make_shared<UltraCanvasContainer>("LineChartExamples", 100, 0, 0, 950, 700);
 
         // Add description label
         auto descLabel = std::make_shared<UltraCanvasLabel>("LineChartDescription", 2001, 50, 20, 700, 60);
@@ -97,6 +98,7 @@ static struct ChartControls {
         lineChart->SetEnableTooltips(true);
         lineChart->SetEnableZoom(true);
         lineChart->SetEnablePan(true);
+        lineChart->SetShowValueLabels(chartControl.valueLabelsEnabled);
         lineChart->SetXAxisLabelMode(XAxisLabelMode::DataLabel);
 
         container->AddChild(lineChart);
@@ -177,6 +179,18 @@ static struct ChartControls {
             //lineChart->Invalidate();
         };
         container->AddChild(btnToggleSmoothing);
+
+        buttonX += buttonWidth + buttonSpacing;
+
+        auto btnToggleValueLabels = std::make_shared<UltraCanvasButton>("btnToggleValueLabels", 3005,
+                                                                      buttonX, buttonY, buttonWidth, buttonHeight);
+        btnToggleValueLabels->SetText("Toggle Labels");
+        btnToggleValueLabels->onClick = [lineChart]()  {
+            chartControl.valueLabelsEnabled = !chartControl.valueLabelsEnabled;
+            lineChart->SetShowValueLabels(chartControl.valueLabelsEnabled);
+            //lineChart->Invalidate();
+        };
+        container->AddChild(btnToggleValueLabels);
 
         return container;
     }
@@ -539,6 +553,17 @@ static struct ChartControls {
             //areaChart->Invalidate();
         });
         container->AddChild(btnToggleSmoothing);
+
+        buttonX += buttonWidth + buttonSpacing;
+        auto btnToggleValueLabels = std::make_shared<UltraCanvasButton>("btnToggleValueLabels", 3005,
+                                                                        buttonX, buttonY, buttonWidth, buttonHeight);
+        btnToggleValueLabels->SetText("Toggle Labels");
+        btnToggleValueLabels->onClick = [areaChart]()  {
+            chartControl.valueLabelsEnabled = !chartControl.valueLabelsEnabled;
+            areaChart->SetShowValueLabels(chartControl.valueLabelsEnabled);
+            //lineChart->Invalidate();
+        };
+        container->AddChild(btnToggleValueLabels);
 
         return container;
     }

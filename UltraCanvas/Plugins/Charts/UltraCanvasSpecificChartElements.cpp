@@ -49,6 +49,10 @@ namespace UltraCanvas {
                 ctx->FillCircle(screenPos.x, screenPos.y, pointRadius);
             }
         }
+
+        if (showValueLabels) {
+            RenderValueLabels(ctx, linePoints);
+        }
     }
 
     void UltraCanvasLineChartElement::DrawSmoothLine(IRenderContext* ctx, const std::vector<Point2Df>& points) {
@@ -418,7 +422,7 @@ namespace UltraCanvas {
         ctx->SetStrokePaint(lineColor);
         ctx->SetStrokeWidth(lineWidth);
 
-        for (size_t i = 1; i < smoothedAreaPoints.size() - 3; ++i) {
+        for (size_t i = 1; i < smoothedAreaPoints.size() - 2; ++i) {
             ctx->DrawLine(smoothedAreaPoints[i-1].x, smoothedAreaPoints[i-1].y,
                           smoothedAreaPoints[i].x, smoothedAreaPoints[i].y);
         }
@@ -429,6 +433,10 @@ namespace UltraCanvas {
             for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
                 ctx->FillCircle(areaPoints[i].x, areaPoints[i].y, pointRadius);
             }
+        }
+
+        if (showValueLabels) {
+            RenderValueLabels(ctx, areaPoints);
         }
     }
 

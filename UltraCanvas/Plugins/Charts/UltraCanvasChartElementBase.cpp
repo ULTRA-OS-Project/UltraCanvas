@@ -307,6 +307,81 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasChartElementBase::RenderValueLabels(IRenderContext* ctx, const std::vector<Point2Df>& screenPositions) {
+        if (!dataSource) return;
+
+        ctx->SetTextPaint(valueLabelColor);
+        ctx->SetFontSize(valueLabelFontSize);
+
+        for (size_t i = 0; i < dataSource->GetPointCount() && i < screenPositions.size(); ++i) {
+            auto point = dataSource->GetPoint(i);
+            Point2Df labelPos = CalculateValueLabelPosition(screenPositions[i], i, dataSource->GetPointCount());
+
+            // Format the value - use the formatted value from ChartDataPoint if available
+            std::string valueText;
+//            if (point.value != 0) {
+//                // Use the pre-formatted value if it's set
+//                std::ostringstream oss;
+//                oss << std::fixed << std::setprecision(0) << point.value;
+//                valueText = oss.str();
+//            } else {
+//                // Fall back to Y value
+            valueText = FormatAxisLabel(point.y);
+//            }
+
+            // Handle rotation if needed
+            if (valueLabelAutoRotate && dataSource->GetPointCount() > 10) {
+                // Auto-rotate for crowded charts
+                ctx->PushState();
+                ctx->Translate(labelPos.x, labelPos.y);
+                ctx->Rotate(-45 * M_PI / 180.0f);
+                ctx->DrawText(valueText, 0, 0);
+                ctx->PopState();
+            } else if (valueLabelRotation != 0.0f) {
+                // Manual rotation
+                ctx->PushState();
+                ctx->Translate(labelPos.x, labelPos.y);
+                ctx->Rotate(valueLabelRotation * M_PI / 180.0f);
+                ctx->DrawText(valueText, 0, 0);
+                ctx->PopState();
+            } else {
+                // No rotation - center the text
+                int txtW, txtH;
+                ctx->GetTextDimension(valueText, txtW, txtH);
+                ctx->DrawText(valueText, static_cast<int>(labelPos.x - txtW/2), static_cast<int>(labelPos.y));
+            }
+        }
+    }
+
+    Point2Df UltraCanvasChartElementBase::CalculateValueLabelPosition(const Point2Df& pointPos, size_t index, size_t totalPoints) {
+        Point2Df labelPos = pointPos;
+
+        switch (valueLabelPosition) {
+            case ValueLabelPosition::LabelAbove:
+                labelPos.y -= (pointRadius + valueLabelOffset);
+                break;
+            case ValueLabelPosition::LabelBelow:
+                labelPos.y += (pointRadius + valueLabelOffset);
+                break;
+            case ValueLabelPosition::LabelLeft:
+                labelPos.x -= (pointRadius + valueLabelOffset);
+                break;
+            case ValueLabelPosition::LabelRight:
+                labelPos.x += (pointRadius + valueLabelOffset);
+                break;
+            case ValueLabelPosition::LabelAuto:
+                // Auto position - alternate above/below for crowded charts
+                if (totalPoints > 10 && index % 2 == 1) {
+                    labelPos.y += (pointRadius + valueLabelOffset);
+                } else {
+                    labelPos.y -= (pointRadius + valueLabelOffset);
+                }
+                break;
+        }
+
+        return labelPos;
+    }
+
     std::string UltraCanvasChartElementBase::FormatAxisLabel(double value) {
         // Simple number formatting
         if (std::abs(value) >= 1e6) {

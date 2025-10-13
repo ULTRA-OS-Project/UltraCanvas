@@ -52,11 +52,6 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
-        void SetPointRadius(float radius) {
-            pointRadius = radius;
-            RequestRedraw();
-        }
-
         void SetSmoothingEnabled(bool enabled) {
             enableSmoothing = enabled;
             RequestRedraw();
@@ -322,7 +317,7 @@ namespace UltraCanvas {
         float lineWidth = 2.0f;
         bool showDataPoints = false;
         Color pointColor = Color(0, 102, 204, 255);
-        float pointRadius = 3.0f;
+
         bool enableSmoothing = false;
         bool enableGradientFill = false;
         void* gradientFill = nullptr;
@@ -363,11 +358,6 @@ namespace UltraCanvas {
 
         void SetPointColor(const Color &color) {
             pointColor = color;
-            RequestRedraw();
-        }
-
-        void SetPointRadius(float radius) {
-            pointRadius = std::max(0.0f, radius);
             RequestRedraw();
         }
 

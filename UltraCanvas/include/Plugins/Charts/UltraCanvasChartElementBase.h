@@ -81,6 +81,24 @@ namespace UltraCanvas {
         bool enablePan = false;
         bool enableSelection = false;
 
+        float pointRadius = 3.0f;
+
+        // Value label properties
+        bool showValueLabels = true;
+        Color valueLabelColor = Color(0, 0, 0, 255);
+        float valueLabelFontSize = 10.0f;
+        int valueLabelOffset = 20;  // Pixels above the point
+        bool valueLabelAutoRotate = false;  // Auto-rotate to avoid overlap
+        float valueLabelRotation = 0.0f;    // Manual rotation angle in degrees
+        enum class ValueLabelPosition {
+            LabelAbove,
+            LabelBelow,
+            LabelLeft,
+            LabelRight,
+            LabelAuto  // Automatically choose best position
+        };
+        ValueLabelPosition valueLabelPosition = ValueLabelPosition::LabelAbove;
+
     public:
         UltraCanvasChartElementBase(const std::string& id, long uid, int x, int y, int width, int height) :
                 UltraCanvasUIElement(id, uid, x, y, width, height) {};
@@ -194,6 +212,16 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
+        void SetShowValueLabels(bool show) {
+            showValueLabels = show;
+            RequestRedraw();
+        }
+
+        void SetPointRadius(float radius) {
+            pointRadius = std::max(0.0f, radius);
+            RequestRedraw();
+        }
+
         // =============================================================================
         // INTERACTIVE FEATURES (COMMON)
         // =============================================================================
@@ -292,6 +320,9 @@ namespace UltraCanvas {
         virtual void RenderAxes(IRenderContext* ctx);
         virtual void RenderAxisLabels(IRenderContext* ctx);
 //        virtual void RenderXAxisLabelsWithMode(IRenderContext* ctx); // New method for X-axis label handling
+
+        void RenderValueLabels(IRenderContext *ctx, const std::vector<Point2Df> &screenPositions);
+        Point2Df CalculateValueLabelPosition(const Point2Df &pointPos, size_t index, size_t totalPoints);
 
         virtual float GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints);
 
