@@ -116,8 +116,8 @@ namespace UltraCanvas {
         IconPosition iconPosition = IconPosition::Left;
 
         // Icon properties
-        int iconWidth = 16;
-        int iconHeight = 16;
+        int iconWidth = 24;
+        int iconHeight = 24;
         bool scaleIconToFit = false;
         bool maintainIconAspectRatio = true;
 
