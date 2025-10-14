@@ -1,4 +1,4 @@
-// UltraCanvasDemo.h
+// Apps/DemoApp/UltraCanvasDemo.h
 // Comprehensive demonstration program showing all UltraCanvas display elements
 // Version: 1.0.0
 // Last Modified: 2024-12-19

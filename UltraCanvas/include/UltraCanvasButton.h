@@ -160,7 +160,7 @@ namespace UltraCanvas {
         }
 
         void SetSplitButtonRatio(float ratio) {
-            style.splitStyle.primaryRatio = std::max(0.1f, std::min(0.9f, ratio));
+            style.splitStyle.primaryRatio = std::min(0.9f, ratio);
             layoutDirty = true;
             RequestRedraw();
         }

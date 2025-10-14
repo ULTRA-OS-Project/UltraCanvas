@@ -65,7 +65,8 @@ namespace UltraCanvas {
     void UltraCanvasButton::GetSplitColors(Color& primaryBg, Color& primaryText,
                                            Color& secondaryBg, Color& secondaryText) {
         // Get base colors for primary section
-        GetCurrentColors(primaryBg, primaryText, primaryBg); // Reusing primaryBg for icon placeholder
+        Color picon;
+        GetCurrentColors(primaryBg, primaryText, picon); // Reusing primaryBg for icon placeholder
 
         // Secondary section colors based on state
         const SplitButtonStyle& split = style.splitStyle;
@@ -236,7 +237,7 @@ namespace UltraCanvas {
                 textRect = Rect2Di(contentX, contentY,
                                    contentWidth, contentHeight - iconHeight - style.iconSpacing);
                 iconRect = Rect2Di(contentX + (contentWidth - iconWidth) / 2,
-                                   contentY + contentHeight - iconHeight,
+                                   contentY + contentHeight - iconHeight - style.iconSpacing,
                                    iconWidth, iconHeight);
             } else if (iconPosition == IconPosition::Center) {
                 iconRect = Rect2Di(contentX + (contentWidth - iconWidth) / 2,
@@ -262,8 +263,18 @@ namespace UltraCanvas {
 
         if (split.horizontal) {
             // Horizontal split layout
-            int primaryWidth = bounds.width * split.primaryRatio;
-            int secondaryWidth = bounds.width - primaryWidth;
+            int primaryWidth, secondaryWidth;
+
+            if (split.primaryRatio == 0) {
+                int textWidth, textHeight;
+                auto ctx  = GetRenderContext();
+                ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
+                ctx->GetTextDimension(split.secondaryText, textWidth, textHeight);
+                primaryWidth = bounds.width - (textWidth + style.paddingLeft + style.paddingRight + split.separatorWidth);
+            } else {
+                primaryWidth = bounds.width * split.primaryRatio;
+            }
+            secondaryWidth = bounds.width - primaryWidth;
 
             if (split.showSeparator) {
                 primaryWidth -= split.separatorWidth / 2;
@@ -421,7 +432,7 @@ namespace UltraCanvas {
                 primaryDraw.y += 1;
             }
             ctx->DrawFilledRectangle(primaryDraw, primaryBg, 0, Colors::Transparent,
-                                     style.cornerRadius);
+                                     0);
 
             // Right side with right corners rounded
             Rect2Di secondaryDraw = secondarySectionRect;
@@ -430,7 +441,7 @@ namespace UltraCanvas {
                 secondaryDraw.y += 1;
             }
             ctx->DrawFilledRectangle(secondaryDraw, secondaryBg, 0, Colors::Transparent,
-                                     style.cornerRadius);
+                                     0);
         } else {
             // Top section with top corners rounded
             Rect2Di primaryDraw = primarySectionRect;
@@ -459,13 +470,13 @@ namespace UltraCanvas {
             if (split.horizontal) {
                 int separatorX = primarySectionRect.x + primarySectionRect.width;
                 if (currentState == ButtonState::Pressed) separatorX += 1;
-                ctx->DrawLine(Point2Di(separatorX, drawBounds.y + 4),
-                              Point2Di(separatorX, drawBounds.y + drawBounds.height - 4));
+                ctx->DrawLine(Point2Di(separatorX, drawBounds.y),
+                              Point2Di(separatorX, drawBounds.y + drawBounds.height));
             } else {
                 int separatorY = primarySectionRect.y + primarySectionRect.height;
                 if (currentState == ButtonState::Pressed) separatorY += 1;
-                ctx->DrawLine(Point2Di(drawBounds.x + 4, separatorY),
-                              Point2Di(drawBounds.x + drawBounds.width - 4, separatorY));
+                ctx->DrawLine(Point2Di(drawBounds.x, separatorY),
+                              Point2Di(drawBounds.x + drawBounds.width, separatorY));
             }
         }
 
