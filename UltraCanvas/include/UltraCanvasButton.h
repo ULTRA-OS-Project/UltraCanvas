@@ -1,6 +1,6 @@
 // include/UltraCanvasButton.h
-// Interactive button component with icon and text display support
-// Version: 2.1.0
+// Interactive button component with styling options
+// Version: 2.2.0
 // Last Modified: 2025-01-11
 // Author: UltraCanvas Framework
 #pragma once
@@ -32,6 +32,32 @@ namespace UltraCanvas {
         Hovered,
         Pressed,
         Disabled
+    };
+
+// ===== SPLIT BUTTON STYLE =====
+    struct SplitButtonStyle {
+        // Enable split button mode
+        bool enabled = false;
+
+        // Split orientation (true = horizontal, false = vertical)
+        bool horizontal = true;
+
+        // Section proportions (0.0 to 1.0)
+        float primaryRatio = 0.75f;
+
+        // Secondary section text
+        std::string secondaryText;
+
+        // Colors for secondary section
+        Color secondaryBackgroundColor = Color(240, 240, 240, 255);
+        Color secondaryTextColor = Color(128, 128, 128, 255);
+        Color secondaryHoverColor = Color(230, 230, 230, 255);
+        Color secondaryPressedColor = Color(200, 200, 200, 255);
+
+        // Separator styling
+        bool showSeparator = true;
+        Color separatorColor = Color(200, 200, 200, 255);
+        float separatorWidth = 1.0f;
     };
 
 // ===== BUTTON STYLE =====
@@ -75,6 +101,9 @@ namespace UltraCanvas {
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
         Point2Di shadowOffset = Point2Di(1, 1);
+
+        // Split button style
+        SplitButtonStyle splitStyle;
     };
 
 // ===== MAIN BUTTON CLASS =====
@@ -100,6 +129,9 @@ namespace UltraCanvas {
         // Cached layout calculations
         Rect2Di iconRect;
         Rect2Di textRect;
+        Rect2Di secondaryTextRect;  // For split button secondary section
+        Rect2Di primarySectionRect;  // Primary section bounds
+        Rect2Di secondarySectionRect;  // Secondary section bounds
         bool layoutDirty = true;
 
     public:
@@ -107,6 +139,46 @@ namespace UltraCanvas {
         UltraCanvasButton(const std::string& identifier = "Button", long id = 0,
                           long x = 0, long y = 0, long w = 100, long h = 30,
                           const std::string& buttonText = "Button");
+
+        // ===== SPLIT BUTTON METHODS =====
+        void EnableSplitButton(bool enable = true) {
+            style.splitStyle.enabled = enable;
+            layoutDirty = true;
+            RequestRedraw();
+        }
+
+        bool IsSplitButtonEnabled() const { return style.splitStyle.enabled; }
+
+        void SetSplitButtonSecondaryText(const std::string& text) {
+            style.splitStyle.secondaryText = text;
+            layoutDirty = true;
+            RequestRedraw();
+        }
+
+        const std::string& GetSplitButtonSecondaryText() const {
+            return style.splitStyle.secondaryText;
+        }
+
+        void SetSplitButtonRatio(float ratio) {
+            style.splitStyle.primaryRatio = std::max(0.1f, std::min(0.9f, ratio));
+            layoutDirty = true;
+            RequestRedraw();
+        }
+
+        void SetSplitButtonColors(const Color& primaryBg, const Color& primaryText,
+                                  const Color& secondaryBg, const Color& secondaryText) {
+            style.normalColor = primaryBg;
+            style.normalTextColor = primaryText;
+            style.splitStyle.secondaryBackgroundColor = secondaryBg;
+            style.splitStyle.secondaryTextColor = secondaryText;
+            RequestRedraw();
+        }
+
+        void SetSplitButtonOrientation(bool horizontal = true) {
+            style.splitStyle.horizontal = horizontal;
+            layoutDirty = true;
+            RequestRedraw();
+        }
 
         // ===== TEXT METHODS =====
         const std::string& GetText() const { return text; }
@@ -196,7 +268,6 @@ namespace UltraCanvas {
 
         // ===== TOOLTIP SUPPORT =====
         void SetTooltip(const std::string& tooltip) {
-            // Store tooltip for display on hover
             properties.tooltip = tooltip;
         }
 
@@ -220,6 +291,7 @@ namespace UltraCanvas {
 
         // ===== PUBLIC CALLBACKS =====
         std::function<void()> onClick;
+        std::function<void()> onSecondaryClick;  // For split button secondary section
         std::function<void()> onPress;
         std::function<void()> onRelease;
         std::function<void()> onHoverEnter;
@@ -229,9 +301,15 @@ namespace UltraCanvas {
         // ===== INTERNAL METHODS =====
         void UpdateButtonState();
         void GetCurrentColors(Color& bgColor, Color& textColor, Color& iconColor);
+        void GetSplitColors(Color& primaryBg, Color& primaryText,
+                            Color& secondaryBg, Color& secondaryText);
         void CalculateLayout();
+        void CalculateSplitLayout();
         void DrawIcon(IRenderContext* ctx);
         void DrawText(IRenderContext* ctx);
+        void DrawSplitButton(IRenderContext* ctx);
+        bool IsPointInPrimarySection(int x, int y) const;
+        bool IsPointInSecondarySection(int x, int y) const;
     };
 
 // ===== FACTORY FUNCTIONS =====
@@ -267,6 +345,32 @@ namespace UltraCanvas {
 
         ButtonBuilder& SetText(const std::string& text) {
             button->SetText(text);
+            return *this;
+        }
+
+        ButtonBuilder& EnableSplitButton(bool enable = true) {
+            button->EnableSplitButton(enable);
+            return *this;
+        }
+
+        ButtonBuilder& SetSplitSecondaryText(const std::string& text) {
+            button->SetSplitButtonSecondaryText(text);
+            return *this;
+        }
+
+        ButtonBuilder& SetSplitRatio(float ratio) {
+            button->SetSplitButtonRatio(ratio);
+            return *this;
+        }
+
+        ButtonBuilder& SetSplitColors(const Color& primaryBg, const Color& primaryText,
+                                      const Color& secondaryBg, const Color& secondaryText) {
+            button->SetSplitButtonColors(primaryBg, primaryText, secondaryBg, secondaryText);
+            return *this;
+        }
+
+        ButtonBuilder& OnSecondaryClick(std::function<void()> callback) {
+            button->onSecondaryClick = callback;
             return *this;
         }
 
@@ -400,6 +504,36 @@ namespace UltraCanvas {
             ButtonStyle style = FlatStyle();
             style.paddingLeft = style.paddingRight = 4;
             style.paddingTop = style.paddingBottom = 4;
+            return style;
+        }
+
+        inline ButtonStyle SplitButtonStyle() {
+            ButtonStyle style;
+            style.splitStyle.enabled = true;
+            style.splitStyle.showSeparator = true;
+            style.splitStyle.primaryRatio = 0.75f;
+            return style;
+        }
+
+        inline ButtonStyle BadgeButtonStyle() {
+            ButtonStyle style;
+            style.splitStyle.enabled = true;
+            style.splitStyle.showSeparator = false;
+            style.splitStyle.primaryRatio = 0.8f;
+            style.splitStyle.secondaryBackgroundColor = Color(255, 100, 100, 255);
+            style.splitStyle.secondaryTextColor = Colors::White;
+            style.cornerRadius = 5.0f;
+            return style;
+        }
+
+        inline ButtonStyle CounterButtonStyle() {
+            ButtonStyle style;
+            style.splitStyle.enabled = true;
+            style.splitStyle.primaryRatio = 0.70f;
+            style.splitStyle.secondaryBackgroundColor = Color(100, 150, 255, 255);
+            style.splitStyle.secondaryTextColor = Colors::White;
+            style.splitStyle.separatorColor = Colors::White;
+            style.splitStyle.separatorWidth = 2.0f;
             return style;
         }
     }
