@@ -254,6 +254,9 @@ namespace UltraCanvas {
         const std::string& GetScript() const { return properties.Script; }
         void SetScript(const std::string& script) { properties.Script = script; }
 
+        const std::string& GetTooltip() const { return properties.tooltip; }
+        void SetTooltip(const std::string& tooltip) { properties.tooltip = tooltip; }
+
         // ===== HIERARCHY MANAGEMENT =====
 //        UltraCanvasContainer* GetParent() const { return parent; }
 //        void SetParent(UltraCanvasContainer* newParent) { parent = newParent; }

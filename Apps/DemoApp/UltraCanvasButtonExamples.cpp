@@ -144,7 +144,7 @@ namespace UltraCanvas {
             // Icon Left
             auto iconLeftBtn = CreateButton("IconLeft", 132, 130, yOffset, 120, 35, "Save");
             iconLeftBtn->SetIcon("assets/icons/save.png");
-            iconLeftBtn->SetIconPosition(IconPosition::Left);
+            iconLeftBtn->SetIconPosition(ButtonIconPosition::Left);
             iconLeftBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Save button clicked\nIcon positioned on the left");
             };
@@ -153,43 +153,44 @@ namespace UltraCanvas {
             // Icon Right
             auto iconRightBtn = CreateButton("IconRight", 133, 260, yOffset, 120, 35, "Next");
             iconRightBtn->SetIcon("assets/icons/arrow-right.png");
-            iconRightBtn->SetIconPosition(IconPosition::Right);
+            iconRightBtn->SetIconPosition(ButtonIconPosition::Right);
             iconRightBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Next button clicked\nIcon positioned on the right");
             };
             mainContainer->AddChild(iconRightBtn);
 
             // Icon Only
-            auto iconOnlyBtn = CreateButton("IconOnly", 134, 390, yOffset, 40, 35, "");
-            iconOnlyBtn->SetIcon("assets/icons/settings.png");
-            iconOnlyBtn->SetStyle(ButtonStyles::IconOnlyStyle());
-            iconOnlyBtn->SetTooltip("Settings");
-            iconOnlyBtn->onClick = [statusLabel]() {
-                statusLabel->SetText("Settings button clicked\nIcon-only button with tooltip");
-            };
-            mainContainer->AddChild(iconOnlyBtn);
+//            auto iconOnlyBtn = CreateButton("IconOnly", 134, 390, yOffset, 40, 35, "");
+//            iconOnlyBtn->SetIcon("assets/icons/settings.png");
+//            iconOnlyBtn->SetStyle(ButtonStyles::IconOnlyStyle());
+////            iconOnlyBtn->SetTooltip("Settings");
+//            iconOnlyBtn->onClick = [statusLabel]() {
+//                statusLabel->SetText("Settings button clicked\nIcon-only button with tooltip");
+//            };
+//            mainContainer->AddChild(iconOnlyBtn);
 
             // Icon Top
-            auto iconTopBtn = CreateButton("IconTop", 135, 440, yOffset, 80, 62, "Upload");
+            auto iconTopBtn = CreateButton("IconTop", 135, 390, yOffset, 80, 62, "Upload");
             iconTopBtn->SetIcon("assets/icons/upload.png");
-            iconTopBtn->SetIconPosition(IconPosition::Top);
+            iconTopBtn->SetIconPosition(ButtonIconPosition::Top);
             iconTopBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Upload button clicked\nIcon positioned above text");
             };
             mainContainer->AddChild(iconTopBtn);
 
             // Icon Bottom
-            auto iconBottomBtn = CreateButton("IconBottom", 136, 530, yOffset, 80, 62, "Download");
+            auto iconBottomBtn = CreateButton("IconBottom", 136, 480, yOffset, 90, 62, "Download");
             iconBottomBtn->SetIcon("assets/icons/download.png");
-            iconBottomBtn->SetIconPosition(IconPosition::Bottom);
+            iconBottomBtn->SetIconPosition(ButtonIconPosition::Bottom);
             iconBottomBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Download button clicked\nIcon positioned below text");
             };
             mainContainer->AddChild(iconBottomBtn);
 
-            auto iconRightBtn2 = CreateButton("IconRight", 133, 630, yOffset, 250, 35, "Continue with UltraCanvas");
+            auto iconRightBtn2 = CreateButton("IconRight", 133, 580, yOffset, 250, 35, "Continue with UltraCanvas");
             iconRightBtn2->SetIcon("assets/images/UltraCanvas-logo.png");
-            iconRightBtn2->SetIconPosition(IconPosition::Left);
+            iconRightBtn2->SetIconSize(20, 20);
+            iconRightBtn2->SetIconPosition(ButtonIconPosition::Left);
             iconRightBtn2->SetColors(Colors::White, Color(240, 240, 240, 255), Colors::Gray, Colors::LightGray);
             iconRightBtn2->onClick = [statusLabel]() {
                 statusLabel->SetText("Continue with UltraCanvas button clicked\nIcon positioned on the right");
@@ -210,8 +211,8 @@ namespace UltraCanvas {
 
             // Basic Split Button
             auto splitBtn = CreateButton("SplitButton", 141, 20, yOffset, 130, 35, "Action");
-            splitBtn->EnableSplitButton(true);
-            splitBtn->SetSplitButtonSecondaryText("▼");
+            splitBtn->SetSplitEnabled(true);
+            splitBtn->SetSplitSecondaryText("▼");
             splitBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Split button primary clicked\nMain action executed");
             };
@@ -223,10 +224,9 @@ namespace UltraCanvas {
             // Badge Style (Sponsors)
             auto sponsorBtn = CreateButton("SponsorButton", 142, 160, yOffset, 140, 35, "sponsors");
             sponsorBtn->SetStyle(ButtonStyles::BadgeButtonStyle());
-            sponsorBtn->SetSplitButtonSecondaryText("31");
-            sponsorBtn->SetSplitButtonColors(
-                    Colors::ButtonFace, Colors::TextDefault,
-                    Color(52, 152, 219, 255), Colors::White
+            sponsorBtn->SetSplitSecondaryText("31");
+            sponsorBtn->SetSplitColors(
+                    Color(52, 152, 219, 255), Colors::White, Colors::LightGray, Colors::Gray
             );
             sponsorBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Sponsors button clicked\nNavigate to sponsors page");
@@ -238,15 +238,14 @@ namespace UltraCanvas {
 
             // Badge Style (Patreon)
             auto patreonBtn = CreateButton("PatreonButton", 143, 310, yOffset, 140, 35, "Patreon");
-            patreonBtn->EnableSplitButton(true);
+            patreonBtn->SetSplitEnabled(true);
             patreonBtn->SetIcon("assets/icons/patreon.png");
-            patreonBtn->SetIconPosition(IconPosition::Left);
+            patreonBtn->SetIconPosition(ButtonIconPosition::Left);
             patreonBtn->SetIconSize(20,20);
             patreonBtn->SetIconSpacing(7);
-            patreonBtn->SetSplitButtonSecondaryText("122");
-            patreonBtn->SetSplitButtonColors(
-                    Colors::ButtonFace, Colors::TextDefault,
-                    Color(249, 104, 84, 255), Colors::White
+            patreonBtn->SetSplitSecondaryText("122");
+            patreonBtn->SetSplitColors(
+                    Color(249, 104, 84, 255), Colors::White, Colors::LightGray, Colors::Gray
             );
             patreonBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Patreon button clicked\nOpen Patreon page");
@@ -258,11 +257,10 @@ namespace UltraCanvas {
 
             // Badge Style (Liberapay)
             auto liberapayBtn = CreateButton("LiberapayButton", 144, 460, yOffset, 140, 35, "liberapay");
-            liberapayBtn->EnableSplitButton(true);
-            liberapayBtn->SetSplitButtonSecondaryText("5");
-            liberapayBtn->SetSplitButtonColors(
-                    Colors::ButtonFace, Colors::TextDefault,
-                    Color(255, 193, 7, 255), Colors::Black
+            liberapayBtn->SetSplitEnabled(true);
+            liberapayBtn->SetSplitSecondaryText("5");
+            liberapayBtn->SetSplitColors(
+                    Color(255, 193, 7, 255), Colors::Black, Colors::LightGray, Colors::Gray
             );
             liberapayBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Liberapay button clicked\nOpen Liberapay page");
@@ -274,15 +272,14 @@ namespace UltraCanvas {
 
             // PayPal Style
             auto paypalBtn = CreateButton("PaypalButton", 145, 610, yOffset, 140, 35, "Paypal");
-            paypalBtn->EnableSplitButton(true);
+            paypalBtn->SetSplitEnabled(true);
             paypalBtn->SetIcon("assets/icons/paypal.png");
-            paypalBtn->SetIconPosition(IconPosition::Left);
+            paypalBtn->SetIconPosition(ButtonIconPosition::Left);
             paypalBtn->SetIconSize(20,20);
             paypalBtn->SetIconSpacing(7);
-            paypalBtn->SetSplitButtonSecondaryText("297");
-            paypalBtn->SetSplitButtonColors(
-                    Colors::ButtonFace, Colors::TextDefault,
-                    Color(0, 112, 186, 255), Colors::White
+            paypalBtn->SetSplitSecondaryText("297");
+            paypalBtn->SetSplitColors(
+                    Color(0, 112, 186, 255), Colors::White, Colors::LightGray, Colors::Gray
             );
             paypalBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("PayPal button clicked\nOpen PayPal donation page");
@@ -297,7 +294,7 @@ namespace UltraCanvas {
             // Counter Style Split Buttons
             auto counterBtn = CreateButton("CounterButton", 146, 20, yOffset, 130, 35, "Likes");
             counterBtn->SetStyle(ButtonStyles::CounterButtonStyle());
-            counterBtn->SetSplitButtonSecondaryText("1.2k");
+            counterBtn->SetSplitSecondaryText("1.2k");
             counterBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Like button clicked\nAdded your like!");
             };
@@ -308,9 +305,9 @@ namespace UltraCanvas {
 
             // Vertical Split Button
             auto vertSplitBtn = CreateButton("VertSplitButton", 147, 160, yOffset, 100, 50, "File");
-            vertSplitBtn->EnableSplitButton(true);
-            vertSplitBtn->SetSplitButtonOrientation(false); // Vertical
-            vertSplitBtn->SetSplitButtonSecondaryText("Menu ▼");
+            vertSplitBtn->SetSplitEnabled(true);
+            vertSplitBtn->SetSplitHorizontal(false); // Vertical
+            vertSplitBtn->SetSplitSecondaryText("Menu ▼");
             vertSplitBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("File action clicked\nOpen file dialog");
             };
@@ -416,9 +413,9 @@ namespace UltraCanvas {
             // Counter Example
             auto counterExampleBtn = CreateButton("CounterExample", 162, 150, yOffset, 140, 35, "Clicks: 0");
             int* clickCount = new int(0);
-            counterExampleBtn->EnableSplitButton(true);
-            counterExampleBtn->SetSplitButtonRatio(0);
-            counterExampleBtn->SetSplitButtonSecondaryText("Reset");
+            counterExampleBtn->SetSplitEnabled(true);
+            counterExampleBtn->SetSplitRatio(0);
+            counterExampleBtn->SetSplitSecondaryText("Reset");
             counterExampleBtn->onClick = [counterExampleBtn, clickCount, statusLabel]() {
                 (*clickCount)++;
                 std::ostringstream text;
@@ -438,10 +435,11 @@ namespace UltraCanvas {
 
             // Multi-Action Button
             auto multiBtn = CreateButton("MultiAction", 163, 300, yOffset, 170, 35, "Save");
-            multiBtn->EnableSplitButton(true);
-            multiBtn->SetSplitButtonRatio(0);
-            multiBtn->SetSplitButtonSecondaryText("Options");
+            multiBtn->SetSplitEnabled(true);
+            multiBtn->SetSplitRatio(0);
+//            multiBtn->SetSplitSecondaryText("");
             multiBtn->SetIcon("assets/icons/save.png");
+            multiBtn->SetSplitSecondaryIcon("assets/icons/settings.png");
             multiBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Quick save executed\nFile saved with default settings");
             };
@@ -469,8 +467,10 @@ namespace UltraCanvas {
                     .SetText("Built with Builder")
                     .SetIcon("assets/icons/build.png")
                     .SetStyle(ButtonStyles::PrimaryStyle())
-                    .EnableSplitButton(true)
-                    .SetSplitSecondaryText("→")
+                    .SetSplitEnabled(true)
+                    .SetSplitSecondaryIcon("assets/icons/arrow-right.png")
+                    .SetSplitIconSize(24,24)
+//                    .SetSplitSecondaryText("→")
                     .SetSplitRatio(0.8)
                     .SetCornerRadius(8.0f)
                     .SetTooltip("This button was created using the Builder pattern")
@@ -488,7 +488,7 @@ namespace UltraCanvas {
                     .SetPosition(260, yOffset)
                     .SetSize(180, 40)
                     .SetText("Complex")
-                    .EnableSplitButton(true)
+                    .SetSplitEnabled(true)
                     .SetSplitSecondaryText("99+")
                     .SetSplitRatio(0)
                     .SetSplitColors(

@@ -1,7 +1,7 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
-// Version: 2.2.0
-// Last Modified: 2025-01-11
+// Version: 2.3.1
+// Last Modified: 2025-01-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -18,7 +18,7 @@ namespace UltraCanvas {
     class UltraCanvasButton;
 
 // ===== ICON POSITION =====
-    enum class IconPosition {
+    enum class ButtonIconPosition {
         Left,       // Icon on the left of text
         Right,      // Icon on the right of text
         Top,        // Icon above text
@@ -32,6 +32,12 @@ namespace UltraCanvas {
         Hovered,
         Pressed,
         Disabled
+    };
+
+// ===== SECONDARY ICON POSITION =====
+    enum class ButtonSecondaryIconPosition {
+        Left,       // Icon on the left of secondary text
+        Right       // Icon on the right of secondary text
     };
 
 // ===== SPLIT BUTTON STYLE =====
@@ -48,11 +54,24 @@ namespace UltraCanvas {
         // Secondary section text
         std::string secondaryText;
 
+        // Secondary section icon (new feature)
+        std::string secondaryIconPath;
+        ButtonSecondaryIconPosition secondaryIconPosition = ButtonSecondaryIconPosition::Left;
+        int secondaryIconWidth = 16;
+        int secondaryIconHeight = 16;
+        int secondaryIconSpacing = 4;  // Space between secondary icon and text
+
         // Colors for secondary section
         Color secondaryBackgroundColor = Color(240, 240, 240, 255);
         Color secondaryTextColor = Color(128, 128, 128, 255);
         Color secondaryHoverColor = Color(230, 230, 230, 255);
         Color secondaryPressedColor = Color(200, 200, 200, 255);
+
+        // Icon colors for secondary section
+        Color secondaryNormalIconColor = Colors::White;  // White = no tinting
+        Color secondaryHoverIconColor = Colors::White;
+        Color secondaryPressedIconColor = Colors::White;
+        Color secondaryDisabledIconColor = Color(255, 255, 255, 128);
 
         // Separator styling
         bool showSeparator = true;
@@ -113,7 +132,7 @@ namespace UltraCanvas {
         std::string iconPath;
         ButtonStyle style;
         ButtonState currentState = ButtonState::Normal;
-        IconPosition iconPosition = IconPosition::Left;
+        ButtonIconPosition iconPosition = ButtonIconPosition::Left;
 
         // Icon properties
         int iconWidth = 24;
@@ -130,6 +149,7 @@ namespace UltraCanvas {
         Rect2Di iconRect;
         Rect2Di textRect;
         Rect2Di secondaryTextRect;  // For split button secondary section
+        Rect2Di secondaryIconRect;  // For split button secondary icon (new)
         Rect2Di primarySectionRect;  // Primary section bounds
         Rect2Di secondarySectionRect;  // Secondary section bounds
         bool layoutDirty = true;
@@ -141,175 +161,105 @@ namespace UltraCanvas {
                           const std::string& buttonText = "Button");
 
         // ===== SPLIT BUTTON METHODS =====
-        void EnableSplitButton(bool enable = true) {
-            style.splitStyle.enabled = enable;
-            layoutDirty = true;
-            RequestRedraw();
+        void SetSplitEnabled(bool enabled);
+        void SetSplitRatio(float primaryRatio = 0.75f);
+        void SetSplitHorizontal(bool horizontal);
+        void SetSplitSecondaryText(const std::string& secondaryText);
+
+        // New methods for secondary icon support
+        void SetSplitSecondaryIcon(const std::string& iconPath,
+                                   ButtonSecondaryIconPosition position = ButtonSecondaryIconPosition::Left);
+        void SetSplitSecondaryIconSize(int width, int height);
+        void SetSplitSecondaryIconSpacing(int spacing);
+        void SetSplitSecondaryIconPosition(ButtonSecondaryIconPosition position);
+        void SetSplitSecondaryIconColors(const Color& normal, const Color& hover,
+                                         const Color& pressed, const Color& disabled);
+
+        void SetSplitColors(const Color& secBg, const Color& secText,
+                            const Color& secHover, const Color& secPressed);
+        void SetSplitSeparator(bool show, const Color& color, float width);
+        SplitButtonStyle& GetSplitStyle() { return style.splitStyle; }
+        bool IsSplitButton() const { return style.splitStyle.enabled; }
+
+        // Check if secondary icon exists
+        bool HasSecondaryIcon() const {
+            return style.splitStyle.enabled && !style.splitStyle.secondaryIconPath.empty();
         }
-
-        bool IsSplitButtonEnabled() const { return style.splitStyle.enabled; }
-
-        void SetSplitButtonSecondaryText(const std::string& text) {
-            style.splitStyle.secondaryText = text;
-            layoutDirty = true;
-            RequestRedraw();
-        }
-
-        const std::string& GetSplitButtonSecondaryText() const {
-            return style.splitStyle.secondaryText;
-        }
-
-        void SetSplitButtonRatio(float ratio) {
-            style.splitStyle.primaryRatio = std::min(0.9f, ratio);
-            layoutDirty = true;
-            RequestRedraw();
-        }
-
-        void SetSplitButtonColors(const Color& primaryBg, const Color& primaryText,
-                                  const Color& secondaryBg, const Color& secondaryText) {
-            style.normalColor = primaryBg;
-            style.normalTextColor = primaryText;
-            style.splitStyle.secondaryBackgroundColor = secondaryBg;
-            style.splitStyle.secondaryTextColor = secondaryText;
-            RequestRedraw();
-        }
-
-        void SetSplitButtonOrientation(bool horizontal = true) {
-            style.splitStyle.horizontal = horizontal;
-            layoutDirty = true;
-            RequestRedraw();
-        }
-
-        // ===== TEXT METHODS =====
-        const std::string& GetText() const { return text; }
-        void SetText(const std::string& newText) {
-            text = newText;
-            layoutDirty = true;
-            AutoResize();
-        }
-
-        // ===== ICON METHODS =====
-        const std::string& GetIcon() const { return iconPath; }
-        void SetIcon(const std::string& path) {
-            iconPath = path;
-            layoutDirty = true;
-            AutoResize();
-        }
-
-        void ClearIcon() {
-            iconPath.clear();
-            layoutDirty = true;
-            AutoResize();
-        }
-
+        // ===== TEXT & ICON METHODS =====
+        void SetText(const std::string& buttonText);
+        std::string GetText() const { return text; }
+        void SetIcon(const std::string& iconPath);
+        void SetIconPosition(ButtonIconPosition position);
+        void SetIconSize(int width, int height);
+        void SetIconScaleToFit(bool scale) { scaleIconToFit = scale; }
+        void SetMaintainAspectRatio(bool maintain) { maintainIconAspectRatio = maintain; }
         bool HasIcon() const { return !iconPath.empty(); }
 
-        void SetIconPosition(IconPosition position) {
-            iconPosition = position;
-            layoutDirty = true;
-            AutoResize();
-        }
-
-        IconPosition GetIconPosition() const { return iconPosition; }
-
-        void SetIconSize(int width, int height) {
-            iconWidth = width;
-            iconHeight = height;
-            layoutDirty = true;
-            AutoResize();
-        }
-
-        void GetIconSize(int& width, int& height) const {
-            width = iconWidth;
-            height = iconHeight;
-        }
-
-        void SetScaleIconToFit(bool scale) {
-            scaleIconToFit = scale;
-            layoutDirty = true;
-        }
-
-        bool GetScaleIconToFit() const { return scaleIconToFit; }
-
-        void SetMaintainIconAspectRatio(bool maintain) {
-            maintainIconAspectRatio = maintain;
-            layoutDirty = true;
-        }
-
-        bool GetMaintainIconAspectRatio() const { return maintainIconAspectRatio; }
-
-        // ===== STYLE METHODS =====
-        const ButtonStyle& GetStyle() const { return style; }
-        void SetStyle(const ButtonStyle& newStyle) {
-            style = newStyle;
-            layoutDirty = true;
-        }
-
-        ButtonState GetButtonState() const { return currentState; }
-        bool IsPressed() const { return pressed; }
-
-        bool AcceptsFocus() const override { return true; }
-        void SetAutoresize(bool value) {
-            autoresize = value;
-            AutoResize();
-        }
-        bool GetAutoresize() const { return autoresize; }
-
-        // ===== STYLE CONVENIENCE METHODS =====
-        void SetColors(const Color& normal, const Color& hover, const Color& pressed, const Color& disabled);
-        void SetTextColors(const Color& normal, const Color& hover, const Color& pressed, const Color& disabled);
-        void SetIconColors(const Color& normal, const Color& hover, const Color& pressed, const Color& disabled);
-        void SetFont(const std::string& fontFamily, float fontSize, FontWeight weight = FontWeight::Normal);
+        // ===== STYLING METHODS =====
+        void SetColors(const Color& normal, const Color& hover,
+                       const Color& pressed, const Color& disabled);
+        void SetTextColors(const Color& normal, const Color& hover,
+                           const Color& pressed, const Color& disabled);
+        void SetIconColors(const Color& normal, const Color& hover,
+                           const Color& pressed, const Color& disabled);
+        void SetBorder(float width, const Color& color);
+        void SetFont(const std::string& family, float size,
+                     FontWeight weight = FontWeight::Normal);
+        void SetTextAlign(TextAlignment align);
         void SetPadding(int left, int right, int top, int bottom);
         void SetIconSpacing(int spacing);
         void SetCornerRadius(float radius);
         void SetShadow(bool enabled, const Color& color = Color(0, 0, 0, 64),
                        const Point2Di& offset = Point2Di(1, 1));
+        void SetStyle(const ButtonStyle& newStyle);
+        ButtonStyle& GetStyle() { return style; }
 
-        // ===== TOOLTIP SUPPORT =====
-        void SetTooltip(const std::string& tooltip) {
-            properties.tooltip = tooltip;
-        }
+        // ===== STATE MANAGEMENT =====
+        void SetEnabled(bool enabled);
+        bool IsEnabled() const { return currentState != ButtonState::Disabled; }
+        void SetPressed(bool isPressed) { pressed = isPressed; }
+        bool IsPressed() const { return pressed; }
+        ButtonState GetButtonState() const { return currentState; }
 
-        const std::string& GetTooltip() const {
-            return properties.tooltip;
-        }
-
-        // ===== EVENT METHODS =====
-        void Click(const UCEvent& ev);
-        void SetOnClick(std::function<void()> _onClick) {
-            onClick = _onClick;
-        }
-
+        // ===== AUTO-RESIZE =====
+        void SetAutoResize(bool enable) { autoresize = enable; }
+        bool IsAutoResize() const { return autoresize; }
         void AutoResize();
 
-        // ===== RENDERING =====
-        void Render() override;
+        void SetOnClick(std::function<void()> onClick_) {
+            onClick = onClick_;
+        };
 
-        // ===== EVENT HANDLING =====
-        bool OnEvent(const UCEvent& event) override;
-
-        // ===== PUBLIC CALLBACKS =====
+        // ===== CALLBACKS =====
         std::function<void()> onClick;
-        std::function<void()> onSecondaryClick;  // For split button secondary section
-        std::function<void()> onPress;
-        std::function<void()> onRelease;
+        std::function<void()> onPress;      // When button is pressed down
+        std::function<void()> onRelease;    // When button is released
+        std::function<void()> onSecondaryClick;  // For secondary section click
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;
 
+        // ===== OVERRIDES =====
+        void Render() override;
+        bool OnEvent(const UCEvent& event) override;
+        bool AcceptsFocus() const override { return true; }
+
     protected:
-        // ===== INTERNAL METHODS =====
-        void UpdateButtonState();
-        void GetCurrentColors(Color& bgColor, Color& textColor, Color& iconColor);
-        void GetSplitColors(Color& primaryBg, Color& primaryText,
-                            Color& secondaryBg, Color& secondaryText);
+        // ===== LAYOUT HELPERS =====
         void CalculateLayout();
         void CalculateSplitLayout();
-        void DrawIcon(IRenderContext* ctx);
-        void DrawText(IRenderContext* ctx);
-        void DrawSplitButton(IRenderContext* ctx);
         bool IsPointInPrimarySection(int x, int y) const;
         bool IsPointInSecondarySection(int x, int y) const;
+
+        // ===== RENDERING HELPERS =====
+        void UpdateButtonState();
+        void DrawIcon(IRenderContext* ctx);
+        void DrawSecondaryIcon(IRenderContext* ctx);  // New method
+        void DrawText(IRenderContext* ctx);
+        void DrawSplitButton(IRenderContext* ctx);
+        void GetCurrentColors(Color& bgColor, Color& textColor, Color& iconColor) const;
+        void GetSplitColors(Color& primaryBg, Color& primaryText, Color& secondaryBg, Color& secondaryText);
+        void GetSecondaryIconColor(Color& iconColor) const;  // New method
+        void Click(const UCEvent& event);  // Helper for click handling
     };
 
 // ===== FACTORY FUNCTIONS =====
@@ -348,24 +298,29 @@ namespace UltraCanvas {
             return *this;
         }
 
-        ButtonBuilder& EnableSplitButton(bool enable = true) {
-            button->EnableSplitButton(enable);
+        ButtonBuilder& SetSplitEnabled(bool enable = true) {
+            button->SetSplitEnabled(enable);
             return *this;
         }
 
         ButtonBuilder& SetSplitSecondaryText(const std::string& text) {
-            button->SetSplitButtonSecondaryText(text);
+            button->SetSplitSecondaryText(text);
+            return *this;
+        }
+
+        ButtonBuilder& SetSplitSecondaryIcon(const std::string& icon) {
+            button->SetSplitSecondaryIcon(icon);
             return *this;
         }
 
         ButtonBuilder& SetSplitRatio(float ratio) {
-            button->SetSplitButtonRatio(ratio);
+            button->SetSplitRatio(ratio);
             return *this;
         }
 
-        ButtonBuilder& SetSplitColors(const Color& primaryBg, const Color& primaryText,
-                                      const Color& secondaryBg, const Color& secondaryText) {
-            button->SetSplitButtonColors(primaryBg, primaryText, secondaryBg, secondaryText);
+        ButtonBuilder& SetSplitColors(const Color& secBg, const Color& secText,
+                                      const Color& secHover, const Color& secPressed) {
+            button->SetSplitColors(secBg, secText, secHover, secPressed);
             return *this;
         }
 
@@ -379,7 +334,7 @@ namespace UltraCanvas {
             return *this;
         }
 
-        ButtonBuilder& SetIconPosition(IconPosition position) {
+        ButtonBuilder& SetIconPosition(ButtonIconPosition position) {
             button->SetIconPosition(position);
             return *this;
         }
@@ -389,11 +344,15 @@ namespace UltraCanvas {
             return *this;
         }
 
+        ButtonBuilder& SetSplitIconSize(int width, int height) {
+            button->SetSplitSecondaryIconSize(width, height);
+            return *this;
+        }
+
         ButtonBuilder& SetStyle(const ButtonStyle& style) {
             button->SetStyle(style);
             return *this;
         }
-
         ButtonBuilder& SetFont(const std::string& family, float size, FontWeight weight = FontWeight::Normal) {
             button->SetFont(family, size, weight);
             return *this;
@@ -522,6 +481,8 @@ namespace UltraCanvas {
             style.splitStyle.primaryRatio = 0.8f;
             style.splitStyle.secondaryBackgroundColor = Color(255, 100, 100, 255);
             style.splitStyle.secondaryTextColor = Colors::White;
+            style.splitStyle.secondaryHoverColor = Colors::LightGray;
+            style.splitStyle.secondaryPressedColor = Colors::Gray;
             style.cornerRadius = 5.0f;
             return style;
         }
@@ -532,6 +493,8 @@ namespace UltraCanvas {
             style.splitStyle.primaryRatio = 0.70f;
             style.splitStyle.secondaryBackgroundColor = Color(100, 150, 255, 255);
             style.splitStyle.secondaryTextColor = Colors::White;
+            style.splitStyle.secondaryHoverColor = Colors::LightGray;
+            style.splitStyle.secondaryPressedColor = Colors::Gray;
             style.splitStyle.separatorColor = Colors::White;
             style.splitStyle.separatorWidth = 2.0f;
             return style;

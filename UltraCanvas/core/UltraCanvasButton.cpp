@@ -1,11 +1,10 @@
 // core/UltraCanvasButton.cpp
-// Interactive button component implementation with split button support
-// Version: 2.2.0
-// Last Modified: 2025-01-11
+// Interactive button component implementation with secondary icon support
+// Version: 2.3.1
+// Last Modified: 2025-01-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
-#include "UltraCanvasWindow.h"
 #include <algorithm>
 
 namespace UltraCanvas {
@@ -14,74 +13,121 @@ namespace UltraCanvas {
     UltraCanvasButton::UltraCanvasButton(const std::string& identifier, long id,
                                          long x, long y, long w, long h,
                                          const std::string& buttonText)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h) {
-        SetText(buttonText);
+            : UltraCanvasUIElement(identifier, id, x, y, w, h), text(buttonText) {
     }
 
-// ===== STATE MANAGEMENT =====
-    void UltraCanvasButton::UpdateButtonState() {
-        ButtonState oldState = currentState;
-
-        if (!IsEnabled()) {
-            currentState = ButtonState::Disabled;
-        } else if (pressed) {
-            currentState = ButtonState::Pressed;
-        } else if (IsHovered()) {
-            currentState = ButtonState::Hovered;
-        } else {
-            currentState = ButtonState::Normal;
-        }
-
-        if (oldState != currentState) {
-            RequestRedraw();
-        }
+// ===== SPLIT BUTTON METHODS =====
+    void UltraCanvasButton::SetSplitEnabled(bool enabled) {
+        style.splitStyle.enabled = enabled;
+        layoutDirty = true;
+        RequestRedraw();
     }
 
-    void UltraCanvasButton::GetCurrentColors(Color& bgColor, Color& textColor, Color& iconColor) {
-        switch (currentState) {
-            case ButtonState::Disabled:
-                bgColor = style.disabledColor;
-                textColor = style.disabledTextColor;
-                iconColor = style.disabledIconColor;
-                break;
-            case ButtonState::Pressed:
-                bgColor = style.pressedColor;
-                textColor = style.pressedTextColor;
-                iconColor = style.pressedIconColor;
-                break;
-            case ButtonState::Hovered:
-                bgColor = style.hoverColor;
-                textColor = style.hoverTextColor;
-                iconColor = style.hoverIconColor;
-                break;
-            default:
-                bgColor = style.normalColor;
-                textColor = style.normalTextColor;
-                iconColor = style.normalIconColor;
-                break;
-        }
+    void UltraCanvasButton::SetSplitRatio(float primaryRatio) {
+        style.splitStyle.primaryRatio = primaryRatio;
+        layoutDirty = true;
+        RequestRedraw();
     }
 
-    void UltraCanvasButton::GetSplitColors(Color& primaryBg, Color& primaryText,
-                                           Color& secondaryBg, Color& secondaryText) {
-        // Get base colors for primary section
-        Color picon;
-        GetCurrentColors(primaryBg, primaryText, picon); // Reusing primaryBg for icon placeholder
-
-        // Secondary section colors based on state
-        const SplitButtonStyle& split = style.splitStyle;
-
-        if (currentState == ButtonState::Pressed) {
-            secondaryBg = split.secondaryPressedColor;
-        } else if (currentState == ButtonState::Hovered) {
-            secondaryBg = split.secondaryHoverColor;
-        } else {
-            secondaryBg = split.secondaryBackgroundColor;
-        }
-        secondaryText = split.secondaryTextColor;
+    void UltraCanvasButton::SetSplitHorizontal(bool horizontal) {
+        style.splitStyle.horizontal = horizontal;
+        layoutDirty = true;
+        RequestRedraw();
     }
 
-// ===== STYLE CONVENIENCE METHODS =====
+    void UltraCanvasButton::SetSplitSecondaryText(const std::string& secondaryText) {
+        style.splitStyle.secondaryText = secondaryText;
+        layoutDirty = true;
+        AutoResize();
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetSplitSecondaryIcon(const std::string& iconPath,
+                                                  ButtonSecondaryIconPosition position) {
+        style.splitStyle.secondaryIconPath = iconPath;
+        style.splitStyle.secondaryIconPosition = position;
+        layoutDirty = true;
+        AutoResize();
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetSplitSecondaryIconSize(int width, int height) {
+        style.splitStyle.secondaryIconWidth = width;
+        style.splitStyle.secondaryIconHeight = height;
+        layoutDirty = true;
+        AutoResize();
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetSplitSecondaryIconSpacing(int spacing) {
+        style.splitStyle.secondaryIconSpacing = spacing;
+        layoutDirty = true;
+        AutoResize();
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetSplitSecondaryIconPosition(ButtonSecondaryIconPosition position) {
+        style.splitStyle.secondaryIconPosition = position;
+        layoutDirty = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetSplitSecondaryIconColors(const Color& normal, const Color& hover,
+                                                        const Color& pressed, const Color& disabled) {
+        style.splitStyle.secondaryNormalIconColor = normal;
+        style.splitStyle.secondaryHoverIconColor = hover;
+        style.splitStyle.secondaryPressedIconColor = pressed;
+        style.splitStyle.secondaryDisabledIconColor = disabled;
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetSplitColors(const Color& secBg, const Color& secText,
+                                           const Color& secHover, const Color& secPressed) {
+        style.splitStyle.secondaryBackgroundColor = secBg;
+        style.splitStyle.secondaryTextColor = secText;
+        style.splitStyle.secondaryHoverColor = secHover;
+        style.splitStyle.secondaryPressedColor = secPressed;
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetSplitSeparator(bool show, const Color& color, float width) {
+        style.splitStyle.showSeparator = show;
+        style.splitStyle.separatorColor = color;
+        style.splitStyle.separatorWidth = width;
+        layoutDirty = true;
+        RequestRedraw();
+    }
+
+// ===== TEXT & ICON METHODS =====
+    void UltraCanvasButton::SetText(const std::string& buttonText) {
+        text = buttonText;
+        layoutDirty = true;
+        AutoResize();
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetIcon(const std::string& path) {
+        iconPath = path;
+        layoutDirty = true;
+        AutoResize();
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetIconPosition(ButtonIconPosition position) {
+        iconPosition = position;
+        layoutDirty = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetIconSize(int width, int height) {
+        iconWidth = width;
+        iconHeight = height;
+        layoutDirty = true;
+        AutoResize();
+        RequestRedraw();
+    }
+
+// ===== STYLING METHODS =====
     void UltraCanvasButton::SetColors(const Color& normal, const Color& hover,
                                       const Color& pressed, const Color& disabled) {
         style.normalColor = normal;
@@ -109,12 +155,24 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasButton::SetFont(const std::string& fontFamily, float fontSize, FontWeight weight) {
-        style.fontFamily = fontFamily;
-        style.fontSize = fontSize;
+    void UltraCanvasButton::SetBorder(float width, const Color& color) {
+        style.borderWidth = width;
+        style.borderColor = color;
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetFont(const std::string& family, float size, FontWeight weight) {
+        style.fontFamily = family;
+        style.fontSize = size;
         style.fontWeight = weight;
         layoutDirty = true;
         AutoResize();
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetTextAlign(TextAlignment align) {
+        style.textAlign = align;
+        RequestRedraw();
     }
 
     void UltraCanvasButton::SetPadding(int left, int right, int top, int bottom) {
@@ -144,6 +202,25 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasButton::SetStyle(const ButtonStyle& newStyle) {
+        style = newStyle;
+        layoutDirty = true;
+        AutoResize();
+        RequestRedraw();
+    }
+
+// ===== STATE MANAGEMENT =====
+    void UltraCanvasButton::SetEnabled(bool enabled) {
+        if (enabled) {
+            if (currentState == ButtonState::Disabled) {
+                currentState = ButtonState::Normal;
+            }
+        } else {
+            currentState = ButtonState::Disabled;
+        }
+        RequestRedraw();
+    }
+
 // ===== LAYOUT CALCULATION =====
     void UltraCanvasButton::AutoResize() {
         if (!autoresize) return;
@@ -164,30 +241,49 @@ namespace UltraCanvas {
             newHeight = std::max(newHeight, textHeight + style.paddingTop + style.paddingBottom);
         }
 
-        // Add split button secondary text dimensions
-        if (style.splitStyle.enabled && !style.splitStyle.secondaryText.empty()) {
-            int secTextWidth, secTextHeight;
-            ctx->GetTextDimension(style.splitStyle.secondaryText, secTextWidth, secTextHeight);
+        // Add split button secondary section dimensions
+        if (style.splitStyle.enabled) {
+            const SplitButtonStyle& split = style.splitStyle;
+            int secWidth = 0, secHeight = 0;
 
-            if (style.splitStyle.horizontal) {
-                newWidth += secTextWidth + 10; // Add padding for secondary section
-                if (style.splitStyle.showSeparator) {
-                    newWidth += style.splitStyle.separatorWidth;
+            // Calculate secondary text dimensions
+            if (!split.secondaryText.empty()) {
+                int secTextWidth, secTextHeight;
+                ctx->GetTextDimension(split.secondaryText, secTextWidth, secTextHeight);
+                secWidth += secTextWidth;
+                secHeight = std::max(secHeight, secTextHeight);
+            }
+
+            // Calculate secondary icon dimensions
+            if (HasSecondaryIcon()) {
+                secWidth += split.secondaryIconWidth;
+                secHeight = std::max(secHeight, split.secondaryIconHeight);
+
+                // Add spacing between icon and text if both exist
+                if (!split.secondaryText.empty()) {
+                    secWidth += split.secondaryIconSpacing;
+                }
+            }
+
+            if (split.horizontal) {
+                newWidth += secWidth + 10; // Add padding for secondary section
+                if (split.showSeparator) {
+                    newWidth += split.separatorWidth;
                 }
             } else {
-                newHeight += secTextHeight + 10;
-                if (style.splitStyle.showSeparator) {
-                    newHeight += style.splitStyle.separatorWidth;
+                newHeight += secHeight + 10;
+                if (split.showSeparator) {
+                    newHeight += split.separatorWidth;
                 }
             }
         }
 
-        // Add icon dimensions
+        // Add icon dimensions for primary section
         if (HasIcon()) {
             newWidth += iconWidth;
             newHeight = std::max(newHeight, iconHeight + style.paddingTop + style.paddingBottom);
 
-            if (!text.empty() && (iconPosition == IconPosition::Left || iconPosition == IconPosition::Right)) {
+            if (!text.empty() && (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
                 newWidth += style.iconSpacing;
             }
         }
@@ -212,34 +308,35 @@ namespace UltraCanvas {
         iconRect = Rect2Di(0, 0, 0, 0);
         textRect = Rect2Di(0, 0, 0, 0);
         secondaryTextRect = Rect2Di(0, 0, 0, 0);
+        secondaryIconRect = Rect2Di(0, 0, 0, 0);
         primarySectionRect = Rect2Di(0, 0, 0, 0);
         secondarySectionRect = Rect2Di(0, 0, 0, 0);
 
         if (HasIcon() && !text.empty()) {
             // Both icon and text
-            if (iconPosition == IconPosition::Left) {
+            if (iconPosition == ButtonIconPosition::Left) {
                 iconRect = Rect2Di(contentX, contentY + (contentHeight - iconHeight) / 2,
                                    iconWidth, iconHeight);
                 textRect = Rect2Di(contentX + iconWidth + style.iconSpacing, contentY,
                                    contentWidth - iconWidth - style.iconSpacing, contentHeight);
-            } else if (iconPosition == IconPosition::Right) {
+            } else if (iconPosition == ButtonIconPosition::Right) {
                 textRect = Rect2Di(contentX, contentY,
                                    contentWidth - iconWidth - style.iconSpacing, contentHeight);
                 iconRect = Rect2Di(contentX + contentWidth - iconWidth,
                                    contentY + (contentHeight - iconHeight) / 2,
                                    iconWidth, iconHeight);
-            } else if (iconPosition == IconPosition::Top) {
+            } else if (iconPosition == ButtonIconPosition::Top) {
                 iconRect = Rect2Di(contentX + (contentWidth - iconWidth) / 2, contentY,
                                    iconWidth, iconHeight);
                 textRect = Rect2Di(contentX, contentY + iconHeight + style.iconSpacing,
                                    contentWidth, contentHeight - iconHeight - style.iconSpacing);
-            } else if (iconPosition == IconPosition::Bottom) {
+            } else if (iconPosition == ButtonIconPosition::Bottom) {
                 textRect = Rect2Di(contentX, contentY,
                                    contentWidth, contentHeight - iconHeight - style.iconSpacing);
                 iconRect = Rect2Di(contentX + (contentWidth - iconWidth) / 2,
-                                   contentY + contentHeight - iconHeight - style.iconSpacing,
+                                   contentY + contentHeight - iconHeight,
                                    iconWidth, iconHeight);
-            } else if (iconPosition == IconPosition::Center) {
+            } else if (iconPosition == ButtonIconPosition::Center) {
                 iconRect = Rect2Di(contentX + (contentWidth - iconWidth) / 2,
                                    contentY + (contentHeight - iconHeight) / 2,
                                    iconWidth, iconHeight);
@@ -266,15 +363,30 @@ namespace UltraCanvas {
             int primaryWidth, secondaryWidth;
 
             if (split.primaryRatio == 0) {
-                int textWidth, textHeight;
-                auto ctx  = GetRenderContext();
-                ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-                ctx->GetTextDimension(split.secondaryText, textWidth, textHeight);
-                primaryWidth = bounds.width - (textWidth + style.paddingLeft + style.paddingRight + split.separatorWidth);
+                // Auto-size secondary section based on content
+                int contentWidth = 0;
+                auto ctx = GetRenderContext();
+
+                if (!split.secondaryText.empty()) {
+                    int textWidth, textHeight;
+                    ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
+                    ctx->GetTextDimension(split.secondaryText, textWidth, textHeight);
+                    contentWidth += textWidth;
+                }
+
+                if (HasSecondaryIcon()) {
+                    contentWidth += split.secondaryIconWidth;
+                    if (!split.secondaryText.empty()) {
+                        contentWidth += split.secondaryIconSpacing;
+                    }
+                }
+
+                secondaryWidth = contentWidth + style.paddingLeft + style.paddingRight;
+                primaryWidth = bounds.width - secondaryWidth;
             } else {
                 primaryWidth = bounds.width * split.primaryRatio;
+                secondaryWidth = bounds.width - primaryWidth;
             }
-            secondaryWidth = bounds.width - primaryWidth;
 
             if (split.showSeparator) {
                 primaryWidth -= split.separatorWidth / 2;
@@ -292,19 +404,51 @@ namespace UltraCanvas {
                                primarySectionRect.width - style.paddingLeft - style.paddingRight,
                                primarySectionRect.height - style.paddingTop - style.paddingBottom);
 
-            secondaryTextRect = Rect2Di(secondarySectionRect.x + 4,
-                                        secondarySectionRect.y + style.paddingTop,
-                                        secondarySectionRect.width - 8,
-                                        secondarySectionRect.height - style.paddingTop - style.paddingBottom);
+            // Secondary section layout with icon support
+            int secContentX = secondarySectionRect.x + style.paddingLeft;
+            int secContentY = secondarySectionRect.y + style.paddingTop;
+            int secContentWidth = secondarySectionRect.width - style.paddingLeft - style.paddingRight;
+            int secContentHeight = secondarySectionRect.height - style.paddingTop - style.paddingBottom;
 
-            // Icon positioning for split button (always in primary section)
+            if (HasSecondaryIcon() && !split.secondaryText.empty()) {
+                // Both icon and text in secondary section
+                if (split.secondaryIconPosition == ButtonSecondaryIconPosition::Left) {
+                    secondaryIconRect = Rect2Di(secContentX,
+                                                secContentY + (secContentHeight - split.secondaryIconHeight) / 2,
+                                                split.secondaryIconWidth, split.secondaryIconHeight);
+                    secondaryTextRect = Rect2Di(secContentX + split.secondaryIconWidth + split.secondaryIconSpacing,
+                                                secContentY,
+                                                secContentWidth - split.secondaryIconWidth - split.secondaryIconSpacing,
+                                                secContentHeight);
+                } else {
+                    // Icon on right
+                    secondaryTextRect = Rect2Di(secContentX, secContentY,
+                                                secContentWidth - split.secondaryIconWidth - split.secondaryIconSpacing,
+                                                secContentHeight);
+                    secondaryIconRect = Rect2Di(secContentX + secContentWidth - split.secondaryIconWidth,
+                                                secContentY + (secContentHeight - split.secondaryIconHeight) / 2,
+                                                split.secondaryIconWidth, split.secondaryIconHeight);
+                }
+            } else if (HasSecondaryIcon()) {
+                // Icon only in secondary section
+                secondaryIconRect = Rect2Di(secContentX + (secContentWidth - split.secondaryIconWidth) / 2,
+                                            secContentY + (secContentHeight - split.secondaryIconHeight) / 2,
+                                            split.secondaryIconWidth, split.secondaryIconHeight);
+                secondaryTextRect = Rect2Di(0, 0, 0, 0);
+            } else {
+                // Text only in secondary section
+                secondaryTextRect = Rect2Di(secContentX, secContentY, secContentWidth, secContentHeight);
+                secondaryIconRect = Rect2Di(0, 0, 0, 0);
+            }
+
+            // Icon positioning for primary section
             if (HasIcon()) {
-                if (iconPosition == IconPosition::Left) {
+                if (iconPosition == ButtonIconPosition::Left) {
                     iconRect = Rect2Di(textRect.x, textRect.y + (textRect.height - iconHeight) / 2,
                                        iconWidth, iconHeight);
                     textRect.x += iconWidth + style.iconSpacing;
                     textRect.width -= iconWidth + style.iconSpacing;
-                } else if (iconPosition == IconPosition::Right) {
+                } else if (iconPosition == ButtonIconPosition::Right) {
                     iconRect = Rect2Di(textRect.x + textRect.width - iconWidth,
                                        textRect.y + (textRect.height - iconHeight) / 2,
                                        iconWidth, iconHeight);
@@ -332,10 +476,30 @@ namespace UltraCanvas {
                                primarySectionRect.width - style.paddingLeft - style.paddingRight,
                                primarySectionRect.height - style.paddingTop - style.paddingBottom);
 
-            secondaryTextRect = Rect2Di(secondarySectionRect.x + style.paddingLeft,
-                                        secondarySectionRect.y + 2,
-                                        secondarySectionRect.width - style.paddingLeft - style.paddingRight,
-                                        secondarySectionRect.height - 4);
+            // Secondary section layout for vertical split
+            int secContentX = secondarySectionRect.x + style.paddingLeft;
+            int secContentY = secondarySectionRect.y + 2;
+            int secContentWidth = secondarySectionRect.width - style.paddingLeft - style.paddingRight;
+            int secContentHeight = secondarySectionRect.height - 4;
+
+            // For vertical split, always stack icon above text
+            if (HasSecondaryIcon() && !split.secondaryText.empty()) {
+                // Icon above text
+                secondaryIconRect = Rect2Di(secContentX + (secContentWidth - split.secondaryIconWidth) / 2,
+                                            secContentY, split.secondaryIconWidth, split.secondaryIconHeight);
+                secondaryTextRect = Rect2Di(secContentX,
+                                            secContentY + split.secondaryIconHeight + split.secondaryIconSpacing,
+                                            secContentWidth,
+                                            secContentHeight - split.secondaryIconHeight - split.secondaryIconSpacing);
+            } else if (HasSecondaryIcon()) {
+                secondaryIconRect = Rect2Di(secContentX + (secContentWidth - split.secondaryIconWidth) / 2,
+                                            secContentY + (secContentHeight - split.secondaryIconHeight) / 2,
+                                            split.secondaryIconWidth, split.secondaryIconHeight);
+                secondaryTextRect = Rect2Di(0, 0, 0, 0);
+            } else {
+                secondaryTextRect = Rect2Di(secContentX, secContentY, secContentWidth, secContentHeight);
+                secondaryIconRect = Rect2Di(0, 0, 0, 0);
+            }
         }
 
         layoutDirty = false;
@@ -351,7 +515,83 @@ namespace UltraCanvas {
         return secondarySectionRect.Contains(x, y);
     }
 
-// ===== RENDERING =====
+// ===== RENDERING HELPERS =====
+    void UltraCanvasButton::UpdateButtonState() {
+        // State management is handled in OnEvent
+    }
+
+    void UltraCanvasButton::GetCurrentColors(Color& bgColor, Color& textColor, Color& iconColor) const {
+        switch (currentState) {
+            case ButtonState::Normal:
+                bgColor = style.normalColor;
+                textColor = style.normalTextColor;
+                iconColor = style.normalIconColor;
+                break;
+            case ButtonState::Hovered:
+                bgColor = style.hoverColor;
+                textColor = style.hoverTextColor;
+                iconColor = style.hoverIconColor;
+                break;
+            case ButtonState::Pressed:
+                bgColor = style.pressedColor;
+                textColor = style.pressedTextColor;
+                iconColor = style.pressedIconColor;
+                break;
+            case ButtonState::Disabled:
+                bgColor = style.disabledColor;
+                textColor = style.disabledTextColor;
+                iconColor = style.disabledIconColor;
+                break;
+        }
+    }
+
+    void UltraCanvasButton::GetSplitColors(Color& primaryBg, Color& primaryText,
+                                           Color& secondaryBg, Color& secondaryText)  {
+        // Primary section uses normal button colors
+        Color picon;
+        GetCurrentColors(primaryBg, primaryText, picon);
+
+        // Secondary section colors based on state
+        const SplitButtonStyle& split = style.splitStyle;
+
+        switch (currentState) {
+            case ButtonState::Normal:
+                secondaryBg = split.secondaryBackgroundColor;
+                secondaryText = split.secondaryTextColor;
+                break;
+            case ButtonState::Hovered:
+                secondaryBg = split.secondaryHoverColor;
+                secondaryText = split.secondaryTextColor;
+                break;
+            case ButtonState::Pressed:
+                secondaryBg = split.secondaryPressedColor;
+                secondaryText = split.secondaryTextColor;
+                break;
+            case ButtonState::Disabled:
+                secondaryBg = style.disabledColor;
+                secondaryText = style.disabledTextColor;
+                break;
+        }
+    }
+
+    void UltraCanvasButton::GetSecondaryIconColor(Color& iconColor) const {
+        const SplitButtonStyle& split = style.splitStyle;
+        switch (currentState) {
+            case ButtonState::Normal:
+                iconColor = split.secondaryNormalIconColor;
+                break;
+            case ButtonState::Hovered:
+                iconColor = split.secondaryHoverIconColor;
+                break;
+            case ButtonState::Pressed:
+                iconColor = split.secondaryPressedIconColor;
+                break;
+            case ButtonState::Disabled:
+                iconColor = split.secondaryDisabledIconColor;
+                break;
+        }
+    }
+
     void UltraCanvasButton::DrawIcon(IRenderContext* ctx) {
         if (!HasIcon() || iconRect.width <= 0) return;
 
@@ -364,11 +604,22 @@ namespace UltraCanvas {
         }
 
         // Draw the icon
-        if (scaleIconToFit) {
-            ctx->DrawImage(iconPath, iconRect);
-        } else {
-            ctx->DrawImage(iconPath, iconRect);
+        ctx->DrawImage(iconPath, iconRect);
+    }
+
+    void UltraCanvasButton::DrawSecondaryIcon(IRenderContext* ctx) {
+        if (!HasSecondaryIcon() || secondaryIconRect.width <= 0) return;
+
+        Color iconColor;
+        GetSecondaryIconColor(iconColor);
+
+        // Apply icon tinting if needed
+        if (iconColor != Colors::White) {
+            // TODO: Apply color tinting to icon
         }
+
+        // Draw the secondary icon
+        ctx->DrawImage(style.splitStyle.secondaryIconPath, secondaryIconRect);
     }
 
     void UltraCanvasButton::DrawText(IRenderContext* ctx) {
@@ -381,7 +632,7 @@ namespace UltraCanvas {
         ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
         ctx->SetFontSize(style.fontSize);
 
-        // Center text vertically in rectangle
+        // Get text dimensions
         int textWidth, textHeight;
         ctx->GetTextDimension(text, textWidth, textHeight);
 
@@ -423,27 +674,25 @@ namespace UltraCanvas {
             drawBounds.y += 1;
         }
 
-        // Draw primary section background
+        // Draw primary and secondary sections
         if (split.horizontal) {
-            // Left side with left corners rounded
+            // Draw primary section
             Rect2Di primaryDraw = primarySectionRect;
             if (currentState == ButtonState::Pressed) {
                 primaryDraw.x += 1;
                 primaryDraw.y += 1;
             }
-            ctx->DrawFilledRectangle(primaryDraw, primaryBg, 0, Colors::Transparent,
-                                     0);
+            ctx->DrawFilledRectangle(primaryDraw, primaryBg, 0, Colors::Transparent, 0);
 
-            // Right side with right corners rounded
+            // Draw secondary section
             Rect2Di secondaryDraw = secondarySectionRect;
             if (currentState == ButtonState::Pressed) {
                 secondaryDraw.x += 1;
                 secondaryDraw.y += 1;
             }
-            ctx->DrawFilledRectangle(secondaryDraw, secondaryBg, 0, Colors::Transparent,
-                                     0);
+            ctx->DrawFilledRectangle(secondaryDraw, secondaryBg, 0, Colors::Transparent, 0);
         } else {
-            // Top section with top corners rounded
+            // Vertical split
             Rect2Di primaryDraw = primarySectionRect;
             if (currentState == ButtonState::Pressed) {
                 primaryDraw.x += 1;
@@ -452,7 +701,6 @@ namespace UltraCanvas {
             ctx->DrawFilledRectangle(primaryDraw, primaryBg, 0, Colors::Transparent,
                                      style.cornerRadius);
 
-            // Bottom section with bottom corners rounded
             Rect2Di secondaryDraw = secondarySectionRect;
             if (currentState == ButtonState::Pressed) {
                 secondaryDraw.x += 1;
@@ -480,7 +728,7 @@ namespace UltraCanvas {
             }
         }
 
-        // Draw icon in primary section
+        // Draw primary section icon
         DrawIcon(ctx);
 
         // Draw primary text
@@ -493,12 +741,10 @@ namespace UltraCanvas {
             ctx->GetTextDimension(text, textWidth, textHeight);
 
             Point2Df primaryTextPos;
-            if (HasIcon() && (iconPosition == IconPosition::Left || iconPosition == IconPosition::Right)) {
-                // Text already positioned by icon layout
+            if (HasIcon() && (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
                 primaryTextPos.x = textRect.x;
                 primaryTextPos.y = textRect.y + (textRect.height - textHeight) / 2;
             } else {
-                // Center text in primary section
                 primaryTextPos.x = textRect.x + (textRect.width - textWidth) / 2;
                 primaryTextPos.y = textRect.y + (textRect.height - textHeight) / 2;
             }
@@ -511,6 +757,9 @@ namespace UltraCanvas {
             ctx->DrawText(text, primaryTextPos);
         }
 
+        // Draw secondary section icon
+        DrawSecondaryIcon(ctx);
+
         // Draw secondary text
         if (!split.secondaryText.empty()) {
             ctx->SetTextPaint(secondaryText);
@@ -520,10 +769,18 @@ namespace UltraCanvas {
             int textWidth, textHeight;
             ctx->GetTextDimension(split.secondaryText, textWidth, textHeight);
 
-            Point2Df secondaryTextPos(
-                    secondaryTextRect.x + (secondaryTextRect.width - textWidth) / 2,
-                    secondaryTextRect.y + (secondaryTextRect.height - textHeight) / 2
-            );
+            Point2Df secondaryTextPos;
+
+            // Position text based on whether there's an icon
+            if (HasSecondaryIcon() && split.horizontal) {
+                // Text position already calculated in layout
+                secondaryTextPos.x = secondaryTextRect.x;
+                secondaryTextPos.y = secondaryTextRect.y + (secondaryTextRect.height - textHeight) / 2;
+            } else {
+                // Center text if no icon
+                secondaryTextPos.x = secondaryTextRect.x + (secondaryTextRect.width - textWidth) / 2;
+                secondaryTextPos.y = secondaryTextRect.y + (secondaryTextRect.height - textHeight) / 2;
+            }
 
             if (currentState == ButtonState::Pressed) {
                 secondaryTextPos.x += 1;
@@ -547,13 +804,12 @@ namespace UltraCanvas {
         }
     }
 
+// ===== MAIN RENDER METHOD =====
     void UltraCanvasButton::Render() {
         if (!IsVisible()) return;
 
         auto ctx = GetRenderContext();
         if (!ctx) return;
-
-        UpdateButtonState();
 
         // Update layout if needed
         if (layoutDirty) {
@@ -562,7 +818,6 @@ namespace UltraCanvas {
 
         ctx->PushState();
 
-        // Handle split button rendering
         if (style.splitStyle.enabled) {
             DrawSplitButton(ctx);
         } else {
@@ -592,10 +847,8 @@ namespace UltraCanvas {
             ctx->DrawFilledRectangle(bounds, bgColor, style.borderWidth,
                                      style.borderColor, style.cornerRadius);
 
-            // Draw icon
+            // Draw icon and text
             DrawIcon(ctx);
-
-            // Draw text
             DrawText(ctx);
 
             // Draw focus indicator if focused
@@ -608,14 +861,14 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
-// ===== EVENT HANDLING =====
+// ===== CLICK HELPER =====
     void UltraCanvasButton::Click(const UCEvent& event) {
         if (style.splitStyle.enabled) {
             // Determine which section was clicked
-            if (IsPointInPrimarySection(event.x, event.y)) {
-                if (onClick) onClick();
-            } else if (IsPointInSecondarySection(event.x, event.y)) {
+            if (IsPointInSecondarySection(event.x, event.y)) {
                 if (onSecondaryClick) onSecondaryClick();
+            } else {
+                if (onClick) onClick();
             }
         } else {
             // Regular button click
@@ -623,6 +876,7 @@ namespace UltraCanvas {
         }
     }
 
+// ===== EVENT HANDLING =====
     bool UltraCanvasButton::OnEvent(const UCEvent& event) {
         if (!IsEnabled() || !IsVisible()) return false;
 
@@ -630,6 +884,7 @@ namespace UltraCanvas {
             case UCEventType::MouseDown:
                 if (Contains(event.x, event.y)) {
                     pressed = true;
+                    currentState = ButtonState::Pressed;
                     SetFocus();
                     if (onPress) onPress();
                     RequestRedraw();
@@ -641,31 +896,43 @@ namespace UltraCanvas {
                 if (pressed) {
                     bool wasInside = Contains(event.x, event.y);
                     pressed = false;
-                    if (onRelease) onRelease();
                     if (wasInside) {
+                        currentState = ButtonState::Hovered;
                         Click(event);
+                    } else {
+                        currentState = ButtonState::Normal;
                     }
+                    if (onRelease) onRelease();
                     RequestRedraw();
                     return true;
                 }
                 break;
 
             case UCEventType::MouseMove:
-                if (pressed) {
+                if (!pressed) {
                     bool inside = Contains(event.x, event.y);
-                    SetHovered(inside);
-                    RequestRedraw();
-                    return true;
+                    ButtonState newState = inside ? ButtonState::Hovered : ButtonState::Normal;
+                    if (newState != currentState) {
+                        currentState = newState;
+                        RequestRedraw();
+                    }
                 }
+                return false;
                 break;
 
             case UCEventType::MouseEnter:
-                SetHovered(true);
-                if (onHoverEnter) onHoverEnter();
-                RequestRedraw();
+                if (!pressed) {
+                    currentState = ButtonState::Hovered;
+                    SetHovered(true);
+                    if (onHoverEnter) onHoverEnter();
+                    RequestRedraw();
+                }
                 return true;
 
             case UCEventType::MouseLeave:
+                if (!pressed) {
+                    currentState = ButtonState::Normal;
+                }
                 SetHovered(false);
                 if (onHoverLeave) onHoverLeave();
                 RequestRedraw();
@@ -674,6 +941,7 @@ namespace UltraCanvas {
             case UCEventType::KeyDown:
                 if (IsFocused() && (event.virtualKey == UCKeys::Space || event.virtualKey == UCKeys::Return)) {
                     pressed = true;
+                    currentState = ButtonState::Pressed;
                     if (onPress) onPress();
                     RequestRedraw();
                     return true;
@@ -683,6 +951,7 @@ namespace UltraCanvas {
             case UCEventType::KeyUp:
                 if (IsFocused() && pressed && (event.virtualKey == UCKeys::Space || event.virtualKey == UCKeys::Return)) {
                     pressed = false;
+                    currentState = ButtonState::Normal;
                     if (onRelease) onRelease();
                     Click(event);
                     RequestRedraw();
