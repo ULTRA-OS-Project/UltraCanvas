@@ -46,6 +46,30 @@ namespace UltraCanvas {
         Planned             // Blue info icon
     };
 
+    // ===== INFO WINDOW CLASS =====
+    class InfoWindow : public UltraCanvasWindow {
+    private:
+        std::shared_ptr<UltraCanvasLabel> titleLabel;
+        std::shared_ptr<UltraCanvasLabel> infoLabel1;
+        std::shared_ptr<UltraCanvasLabel> infoLabel2;
+        std::shared_ptr<UltraCanvasLabel> infoLabel3;
+        std::shared_ptr<UltraCanvasImageElement> programmersGuideIcon;
+        std::shared_ptr<UltraCanvasImageElement> exampleCodeIcon;
+        std::shared_ptr<UltraCanvasButton> okButton;
+        std::function<void()> onOkCallback;
+
+    public:
+        InfoWindow();
+        ~InfoWindow();
+
+        bool Initialize();
+        void SetOkCallback(std::function<void()> callback);
+
+    private:
+        void OnOkButtonClick();
+        void CreateInfoContent();
+    };
+
 // ===== DEMO ITEM STRUCTURE =====
     struct DemoItem {
         std::string id;
@@ -99,6 +123,7 @@ namespace UltraCanvas {
     private:
         // Core components
         std::shared_ptr<UltraCanvasWindow> mainWindow;
+        std::shared_ptr<InfoWindow> infoWindow;
         std::shared_ptr<UltraCanvasTreeView> categoryTreeView;
         std::shared_ptr<UltraCanvasContainer> mainContainer;  // Main container for display area
         std::shared_ptr<DemoHeaderContainer> headerContainer;  // Header with title and buttons
@@ -113,6 +138,7 @@ namespace UltraCanvas {
         // Current display state
         std::string currentSelectedId;
         std::shared_ptr<UltraCanvasUIElement> currentDisplayElement;
+        bool infoWindowShown;
 
     public:
         UltraCanvasDemoApplication();
@@ -123,6 +149,10 @@ namespace UltraCanvas {
         void RegisterAllDemoItems();
         void SetupTreeView();
         void SetupLayout();
+
+        // Info window
+        void ShowInfoWindow();
+        void CloseInfoWindow();
 
         // ===== DEMO ITEM MANAGEMENT =====
         void RegisterDemoItem(std::unique_ptr<DemoItem> item);

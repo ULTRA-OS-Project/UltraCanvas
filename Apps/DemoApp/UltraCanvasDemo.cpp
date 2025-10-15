@@ -824,6 +824,10 @@ namespace UltraCanvas {
             mainWindow->Show();
             // The application will handle the event loop
         }
+
+        // Show the info window at startup
+        ShowInfoWindow();
+
         auto app = UltraCanvasApplication::GetInstance();
         app->Run();
     }
