@@ -10,6 +10,72 @@
 #include <sstream>
 
 namespace UltraCanvas {
+    DemoLegendContainer::DemoLegendContainer(const std::string& identifier, long id, long x, long y, long width, long height)
+            : UltraCanvasContainer(identifier, id, x, y, width, height) {
+
+        // Set container style
+        ContainerStyle legendStyle;
+        legendStyle.backgroundColor = Color(245, 245, 245, 255);
+        legendStyle.borderWidth = 1.0f;
+        legendStyle.borderColor = Color(200, 200, 200, 255);
+        SetContainerStyle(legendStyle);
+
+        // Create legend title
+        legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", id + 1, 10, 5, width - 20, 20);
+        legendTitle->SetText("Component Status Legend");
+        legendTitle->SetFontSize(12);
+        legendTitle->SetFontWeight(FontWeight::Bold);
+        legendTitle->SetTextColor(Color(80, 80, 80, 255));
+        AddChild(legendTitle);
+
+        // Implemented status (row 1)
+        implementedIcon = std::make_shared<UltraCanvasImageElement>("ImplementedIcon", id + 2, 10, 30, 16, 16);
+        AddChild(implementedIcon);
+
+        implementedLabel = std::make_shared<UltraCanvasLabel>("ImplementedLabel", id + 3, 32, 30, width - 42, 16);
+        implementedLabel->SetText("Fully Implemented");
+        implementedLabel->SetFontSize(11);
+        implementedLabel->SetTextColor(Color(0, 150, 0, 255));
+        AddChild(implementedLabel);
+
+        // Partially implemented status (row 2)
+        partialIcon = std::make_shared<UltraCanvasImageElement>("PartialIcon", id + 4, 10, 50, 16, 16);
+        AddChild(partialIcon);
+
+        partialLabel = std::make_shared<UltraCanvasLabel>("PartialLabel", id + 5, 32, 50, width - 42, 16);
+        partialLabel->SetText("Partially Implemented");
+        partialLabel->SetFontSize(11);
+        partialLabel->SetTextColor(Color(0x21, 0x96, 0xf3, 255));
+        AddChild(partialLabel);
+
+        // Not implemented status (row 3)
+        notImplementedIcon = std::make_shared<UltraCanvasImageElement>("NotImplementedIcon", id + 6, 10, 70, 16, 16);
+        AddChild(notImplementedIcon);
+
+        notImplementedLabel = std::make_shared<UltraCanvasLabel>("NotImplementedLabel", id + 7, 32, 70, width - 42, 16);
+        notImplementedLabel->SetText("Not Implemented Yet");
+        notImplementedLabel->SetFontSize(11);
+        notImplementedLabel->SetTextColor(Color(200, 0, 0, 255));
+        AddChild(notImplementedLabel);
+    }
+
+    void DemoLegendContainer::SetupLegend(const std::string& implementedIconPath,
+                                          const std::string& partialIconPath,
+                                          const std::string& notImplementedIconPath) {
+        // Load icon images
+        if (implementedIcon) {
+            implementedIcon->LoadFromFile(implementedIconPath);
+        }
+
+        if (partialIcon) {
+            partialIcon->LoadFromFile(partialIconPath);
+        }
+
+        if (notImplementedIcon) {
+            notImplementedIcon->LoadFromFile(notImplementedIconPath);
+        }
+    }
+
     DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier, long id,
                                              long x, long y, long width, long height)
             : UltraCanvasContainer(identifier, id, x, y, width, height) {
@@ -226,11 +292,20 @@ namespace UltraCanvas {
             return false;
         }
 
-        // Create tree view for categories (left side)
-        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 5, 5, 350, 840);
+        // Calculate positions for adjusted layout
+        const int treeViewHeight = 740;  // Reduced from 840 to make room for legend
+        const int legendHeight = 95;     // Height for legend container
+        const int treeViewWidth = 350;   // Width for both treeview and legend
+
+// Create tree view for categories (left side, reduced height)
+        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 5, 5, treeViewWidth, treeViewHeight);
         categoryTreeView->SetRowHeight(24);
         categoryTreeView->SetSelectionMode(TreeSelectionMode::Single);
         categoryTreeView->SetLineStyle(TreeLineStyle::Solid);
+
+        // Create legend container below tree view
+        legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 6, 5, treeViewHeight + 10, treeViewWidth, legendHeight);
+        SetupLegendContainer();
 
         mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 3, 360, 5, 1030, 840);
         ContainerStyle mainContainerStyle;
@@ -260,14 +335,9 @@ namespace UltraCanvas {
 //        displayContainer->SetContainerStyle(displayContainerStyle);
 
         // Create status label (bottom left)
-        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 850, 350, 25);
+        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 850, 850, 25);
         statusLabel->SetText("Select a component from the tree view to see examples");
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
-
-        // Create description label (bottom right)
-        descriptionLabel = std::make_shared<UltraCanvasLabel>("DescriptionLabel", 5, 370, 850, 1020, 25);
-        descriptionLabel->SetText("");
-        descriptionLabel->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // Register all demo items
         RegisterAllDemoItems();
@@ -282,12 +352,26 @@ namespace UltraCanvas {
 
         // Add elements to window
         mainWindow->AddChild(categoryTreeView);
+        mainWindow->AddChild(legendContainer);  // Add legend container
         mainWindow->AddChild(mainContainer);
         mainWindow->AddChild(statusLabel);
-        mainWindow->AddChild(descriptionLabel);
+        //mainWindow->AddChild(descriptionLabel);
 
         std::cout << "✓ Demo application initialized successfully" << std::endl;
         return true;
+    }
+
+    // ===== SETUP LEGEND CONTAINER METHOD =====
+    void UltraCanvasDemoApplication::SetupLegendContainer() {
+        if (legendContainer) {
+            // Get icon paths using the existing GetStatusIcon method
+            std::string implementedIcon = GetStatusIcon(ImplementationStatus::FullyImplemented);
+            std::string partialIcon = GetStatusIcon(ImplementationStatus::PartiallyImplemented);
+            std::string notImplementedIcon = GetStatusIcon(ImplementationStatus::NotImplemented);
+
+            // Setup the legend with the appropriate icons
+            legendContainer->SetupLegend(implementedIcon, partialIcon, notImplementedIcon);
+        }
     }
 
     void UltraCanvasDemoApplication::RegisterAllDemoItems() {
@@ -774,9 +858,6 @@ namespace UltraCanvas {
         }
         statusLabel->SetText(statusText.str());
         statusLabel->SetTextColor(GetStatusColor(item->status));
-
-        // Update description label
-        descriptionLabel->SetText(item->description);
     }
 
     void UltraCanvasDemoApplication::UpdateHeaderDisplay(const std::string& itemId) {
@@ -797,7 +878,7 @@ namespace UltraCanvas {
     std::string UltraCanvasDemoApplication::GetStatusIcon(ImplementationStatus status) const {
         switch (status) {
             case ImplementationStatus::FullyImplemented: return "assets/icons/check.png";
-            case ImplementationStatus::PartiallyImplemented: return "assets/icons/warning.png";
+            case ImplementationStatus::PartiallyImplemented: return "assets/icons/warning-blue.png";
             case ImplementationStatus::NotImplemented: return "assets/icons/x.png";
             case ImplementationStatus::Planned: return "assets/icons/info.png";
             default: return "assets/icons/unknown.png";

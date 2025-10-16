@@ -62,7 +62,7 @@ namespace UltraCanvas {
 
         // Create info text
         infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1", 1002, 10, 100, 600, 25);
-        infoLabel1->SetText("On the right side of the title of each category you can find these icons:");
+        infoLabel1->SetText("On the right side of the title of each UC element you can find these icons:");
         infoLabel1->SetFontSize(14);
         infoLabel1->SetAlignment(TextAlignment::Center);
         infoLabel1->SetTextColor(Color(60, 60, 60, 255));

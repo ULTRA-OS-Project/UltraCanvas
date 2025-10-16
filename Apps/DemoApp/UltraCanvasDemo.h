@@ -88,6 +88,24 @@ namespace UltraCanvas {
                 : id(itemId), displayName(name), description(desc), category(cat), status(stat) {}
     };
 
+    // ===== LEGEND CONTAINER CLASS =====
+    class DemoLegendContainer : public UltraCanvasContainer {
+    private:
+        std::shared_ptr<UltraCanvasLabel> legendTitle;
+        std::shared_ptr<UltraCanvasImageElement> implementedIcon;
+        std::shared_ptr<UltraCanvasLabel> implementedLabel;
+        std::shared_ptr<UltraCanvasImageElement> partialIcon;
+        std::shared_ptr<UltraCanvasLabel> partialLabel;
+        std::shared_ptr<UltraCanvasImageElement> notImplementedIcon;
+        std::shared_ptr<UltraCanvasLabel> notImplementedLabel;
+
+    public:
+        DemoLegendContainer(const std::string& identifier, long id, long x, long y, long width, long height);
+        void SetupLegend(const std::string& implementedIconPath,
+                         const std::string& partialIconPath,
+                         const std::string& notImplementedIconPath);
+    };
+
     class DemoHeaderContainer : public UltraCanvasContainer {
     private:
         std::shared_ptr<UltraCanvasLabel> titleLabel;
@@ -128,6 +146,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasContainer> mainContainer;  // Main container for display area
         std::shared_ptr<DemoHeaderContainer> headerContainer;  // Header with title and buttons
         std::shared_ptr<UltraCanvasContainer> displayContainer;  // Content display area
+        std::shared_ptr<DemoLegendContainer> legendContainer;  // Legend container for status icons
         std::shared_ptr<UltraCanvasLabel> statusLabel;
         std::shared_ptr<UltraCanvasLabel> descriptionLabel;
 
@@ -149,6 +168,7 @@ namespace UltraCanvas {
         void RegisterAllDemoItems();
         void SetupTreeView();
         void SetupLayout();
+        void SetupLegendContainer();  // New method for legend setup
 
         // Info window
         void ShowInfoWindow();
