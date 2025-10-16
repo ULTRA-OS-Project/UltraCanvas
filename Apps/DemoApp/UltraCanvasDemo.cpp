@@ -720,6 +720,20 @@ namespace UltraCanvas {
                 .AddVariant("audio", "MP3 Playback")
                 .AddVariant("audio", "Waveform Visualization");
 
+        auto toolsBuilder = DemoCategoryBuilder(this, DemoCategory::Tools);
+
+        toolsBuilder.AddItem("qrcode", "QR code", "QR code scanner",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return CreateBitmapNotImplementedExamples(""); });
+
+        toolsBuilder.AddItem("fileloader", "File Loader", "File Loader",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return CreateBitmapNotImplementedExamples(""); });
+
+        toolsBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return CreateBitmapNotImplementedExamples(""); });
+
         std::cout << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
     }
@@ -742,7 +756,8 @@ namespace UltraCanvas {
                 {DemoCategory::Graphics3D, "3D Graphics"},
                 {DemoCategory::VideoElements, "Video Elements"},
                 {DemoCategory::TextDocuments, "Text Documents"},
-                {DemoCategory::AudioElements, "Audio Elements"}
+                {DemoCategory::AudioElements, "Audio Elements"},
+                {DemoCategory::Tools, "Tools"}
         };
 
         for (const auto& [category, items] : categoryItems) {

@@ -35,7 +35,8 @@ namespace UltraCanvas {
         Graphics3D,
         VideoElements,
         TextDocuments,
-        AudioElements
+        AudioElements,
+        Tools
     };
 
 // ===== IMPLEMENTATION STATUS =====
