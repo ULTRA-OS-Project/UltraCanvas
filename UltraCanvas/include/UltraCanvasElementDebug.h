@@ -277,7 +277,7 @@ namespace UltraCanvas {
             ctx->SetFontStyle(settings.fontStyle);
 
             // Measure text to calculate background size
-            Point2Di textSize = ctx->MeasureText(text);
+            Point2Di textSize = ctx->GetTextDimension(text);
 
             // Calculate text position (top-left corner of element, with padding)
             Point2Di textPos = Point2Di(bounds.x + settings.textPadding,

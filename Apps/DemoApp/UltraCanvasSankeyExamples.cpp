@@ -24,7 +24,7 @@ namespace UltraCanvas {
         auto mainContainer = std::make_shared<UltraCanvasContainer>(
                 "SankeyExamples", 5000, 0, 0, 1000, 780
         );
-
+/*
         auto financeContainer = std::make_shared<UltraCanvasContainer>(
                 "FinanceTab", 5200, 0, 0, 970, 640
         );
@@ -54,11 +54,11 @@ namespace UltraCanvas {
 //            ss << "Financial Entity: " << nodeId;
 //            statusLabel->SetText(ss.str());
 //        };
-
         financeContainer->AddChild(financeSankey);
         mainContainer->AddChild(financeContainer);
         return mainContainer;
-/*
+*/
+
         // ===== PAGE HEADER =====
         auto title = std::make_shared<UltraCanvasLabel>(
                 "SankeyTitle", 5001, 20, 10, 500, 35
@@ -691,6 +691,5 @@ namespace UltraCanvas {
         mainContainer->AddChild(tabbedContainer);
 
         return mainContainer;
-*/
     }
 } // namespace UltraCanvas

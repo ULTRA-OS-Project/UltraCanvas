@@ -544,7 +544,7 @@ class UltraCanvasBaseWindow;
             ClipRect(rect.x, rect.y, rect.width, rect.height);
         }
 
-        Point2Di MeasureText(const std::string& text) {
+        Point2Di GetTextDimension(const std::string& text) {
             Point2Di p = {0, 0};
             GetTextDimension(text, p.x, p.y);
             return p;

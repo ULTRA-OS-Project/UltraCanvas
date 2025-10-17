@@ -240,7 +240,7 @@ namespace UltraCanvas {
                 ctx->PushState();
                 ctx->SetFontStyle(style.fontStyle);
 
-                Point2Di textSize = ctx->MeasureText(text);
+                Point2Di textSize = ctx->GetTextDimension(text);
                 preferredSize = Point2Di(
                         textSize.x + style.paddingLeft + style.paddingRight + style.borderWidth * 2,
                         textSize.y + style.paddingTop + style.paddingBottom + style.borderWidth * 2
@@ -276,7 +276,7 @@ namespace UltraCanvas {
                 ctx->PushState();
                 ctx->SetFontStyle(style.fontStyle);
 
-                Point2Di textSize = ctx->MeasureText(text);
+                Point2Di textSize = ctx->GetTextDimension(text);
 
                 // Calculate horizontal position
                 float textX = textArea.x;

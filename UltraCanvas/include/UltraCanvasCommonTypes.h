@@ -195,7 +195,27 @@ struct Color {
             static_cast<uint8_t>(a + (other.a - a) * factor)
         );
     }
-    
+
+    std::string ToHexString() const {
+        char hexColor[8];
+        snprintf(hexColor, sizeof(hexColor), "#%02X%02X%02X",
+                 static_cast<int>(r),
+                 static_cast<int>(g),
+                 static_cast<int>(b));
+        return std::string(hexColor);
+    }
+
+// If you want to include alpha channel in the hex string (8-digit hex):
+    std::string ToHexStringWithAlpha() const {
+        char hexColor[10];
+        snprintf(hexColor, sizeof(hexColor), "#%02X%02X%02X%02X",
+                 static_cast<int>(r),
+                 static_cast<int>(g),
+                 static_cast<int>(b),
+                 static_cast<int>(a));
+        return std::string(hexColor);
+    }
+
     // Operators
     bool operator==(const Color& other) const {
         return r == other.r && g == other.g && b == other.b && a == other.a;
@@ -213,7 +233,9 @@ namespace Colors {
     const Color Black(0, 0, 0, 255);
     const Color Red(255, 0, 0, 255);
     const Color Green(0, 255, 0, 255);
+    const Color DarkGreen(0, 0x64, 0, 255);
     const Color Blue(0, 0, 255, 255);
+    const Color DarkBlue(0, 0, 0x35, 255);
     const Color LightBlue(128, 128, 255, 255);
     const Color Yellow(255, 255, 0, 255);
     const Color Cyan(0, 255, 255, 255);

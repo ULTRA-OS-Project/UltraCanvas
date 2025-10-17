@@ -250,7 +250,7 @@ namespace UltraCanvas {
         dropdownWidth = properties.width_size;
         for(auto it = items.begin(); it < items.end(); it++) {
             if (!it->separator) {
-                Point2Di textSize = ctx->MeasureText(it->text);
+                Point2Di textSize = ctx->GetTextDimension(it->text);
                 dropdownWidth = std::max(dropdownWidth, std::min(textSize.x + scrollbarWidth + 12, style.maxItemWidth));
             }
         }
@@ -291,7 +291,7 @@ namespace UltraCanvas {
             ctx->SetTextPaint(textColor);
             ctx->SetFontStyle({.fontFamily=style.fontFamily, .fontSize=style.fontSize});
 
-            Point2Di textSize = ctx->MeasureText(displayText);
+            Point2Di textSize = ctx->GetTextDimension(displayText);
             float fontHeight = textSize.y;
             float textX = buttonRect.x + style.paddingLeft;
             float textY = buttonRect.y + (buttonRect.height - fontHeight) / 2;
@@ -364,7 +364,7 @@ namespace UltraCanvas {
             ctx->SetTextPaint(textColor);
             ctx->SetFontSize(12);
 
-            Point2Di textSize = ctx->MeasureText(item.text);
+            Point2Di textSize = ctx->GetTextDimension(item.text);
             float fontHeight = textSize.y;
 
             float textY = itemRect.y + (style.itemHeight - fontHeight) / 2;

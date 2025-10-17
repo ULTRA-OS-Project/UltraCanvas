@@ -420,7 +420,7 @@ namespace UltraCanvas {
             return;
         }
 
-        Point2Di textSize = ctx->MeasureText(item.label);
+        Point2Di textSize = ctx->GetTextDimension(item.label);
         int fontHeight = textSize.y;
         int currentX = itemBounds.x + style.paddingLeft;
         int textY = itemBounds.y + (itemBounds.height - fontHeight) / 2;

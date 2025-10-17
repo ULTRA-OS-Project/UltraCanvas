@@ -307,7 +307,7 @@ namespace UltraCanvas {
         // Draw text
         ctx->SetTextPaint(Colors::Gray);
         ctx->SetFontSize(14.0f);
-        Point2Di textSize = ctx->MeasureText(text);
+        Point2Di textSize = ctx->GetTextDimension(text);
         Point2Di textPos(
                 rect.x + (rect.width - textSize.x) / 2,
                 rect.y + (rect.height + textSize.y) / 2

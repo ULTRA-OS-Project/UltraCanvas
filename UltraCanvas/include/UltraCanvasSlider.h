@@ -433,7 +433,7 @@ namespace UltraCanvas {
             ctx->SetTextPaint(IsEnabled() ? style.textColor : style.disabledTextColor);
             ctx->SetFontStyle(style.fontStyle);
 
-            Point2Di textSize = ctx->MeasureText(text);
+            Point2Di textSize = ctx->GetTextDimension(text);
             Point2Di textPos = CalculateTextPosition(bounds, textSize);
 
             // Draw background for tooltip

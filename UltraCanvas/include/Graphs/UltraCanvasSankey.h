@@ -71,14 +71,15 @@ namespace UltraCanvas {
         // ===== CONSTRUCTOR =====
         UltraCanvasSankeyRenderer(const std::string& id, long uid, long x, long y, long w, long h)
                 : UltraCanvasUIElement(id, uid, x, y, w, h) {
-            nodeWidth = 20.0f;
-            nodePadding = 10.0f;
+            nodeWidth = 15.0f;  // Slightly thinner to give more space for labels
+            nodePadding = 8.0f;
             linkCurvature = 0.5f;
             iterations = 32;
             alignment = SankeyAlignment::Justify;
             theme = SankeyTheme::Default;
             enableAnimation = true;
             enableTooltips = true;
+            maxLabelWidth = 200.0f;  // Maximum width for labels
             ApplyTheme(theme);
         }
 
@@ -172,56 +173,100 @@ namespace UltraCanvas {
                 std::stringstream ss(line);
                 std::string source, target, valueStr;
 
-                std::getline(ss, source, ',');
-                std::getline(ss, target, ',');
-                std::getline(ss, valueStr, ',');
+                if (std::getline(ss, source, ',') &&
+                    std::getline(ss, target, ',') &&
+                    std::getline(ss, valueStr, ',')) {
 
-                if (!source.empty() && !target.empty() && !valueStr.empty()) {
                     try {
                         float value = std::stof(valueStr);
                         AddLink(source, target, value);
                     } catch (...) {
-                        // Skip invalid lines
+                        // Skip malformed lines
                     }
                 }
             }
 
             file.close();
-            return !links.empty();
+            RequestRedraw();
+            return true;
         }
 
         bool SaveToSVG(const std::string& filePath) {
             std::ofstream file(filePath);
             if (!file.is_open()) return false;
+
             auto bounds = GetBounds();
-
             file << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-            file << "<svg width=\"" << bounds.width << "\" height=\"" << bounds.height
-                 << "\" xmlns=\"http://www.w3.org/2000/svg\">\n";
+            file << "<svg xmlns=\"http://www.w3.org/2000/svg\" ";
+            file << "width=\"" << bounds.width << "\" ";
+            file << "height=\"" << bounds.height << "\">\n";
 
-            // Export links
+            // Write links
             for (const auto& link : links) {
-                auto sourceNode = nodes.find(link.source);
-                auto targetNode = nodes.find(link.target);
-                if (sourceNode != nodes.end() && targetNode != nodes.end()) {
-                    file << "  <path d=\"";
-                    file << GetLinkPath(
-                            sourceNode->second.x + nodeWidth, link.sourceY,
-                            targetNode->second.x, link.targetY, link.width
-                    );
-                    file << "\" fill=\"" << ColorToHex(link.color) << "\" opacity=\""
-                         << (link.opacity) << "\"/>\n";
+                auto sourceIt = nodes.find(link.source);
+                auto targetIt = nodes.find(link.target);
+                if (sourceIt != nodes.end() && targetIt != nodes.end()) {
+                    float x0 = sourceIt->second.x + nodeWidth;
+                    float y0 = link.sourceY;
+                    float x1 = targetIt->second.x;
+                    float y1 = link.targetY;
+                    float midX = x0 + (x1 - x0) * linkCurvature;
+
+                    file << "<path d=\"M" << x0 << "," << (y0 - link.width/2);
+                    file << " C" << midX << "," << (y0 - link.width/2);
+                    file << " " << midX << "," << (y1 - link.width/2);
+                    file << " " << x1 << "," << (y1 - link.width/2);
+                    file << " L" << x1 << "," << (y1 + link.width/2);
+                    file << " C" << midX << "," << (y1 + link.width/2);
+                    file << " " << midX << "," << (y0 + link.width/2);
+                    file << " " << x0 << "," << (y0 + link.width/2);
+                    file << " Z\" ";
+                    file << "fill=\"" << link.color.ToHexString() << "\" ";
+                    file << "opacity=\"" << link.opacity << "\"/>\n";
                 }
             }
 
-            // Export nodes
+            // Write nodes
             for (const auto& [id, node] : nodes) {
-                file << "  <rect x=\"" << node.x << "\" y=\"" << node.y
-                     << "\" width=\"" << nodeWidth << "\" height=\"" << node.height
-                     << "\" fill=\"" << ColorToHex(node.color) << "\"/>\n";
-                file << "  <text x=\"" << (node.x + nodeWidth + 5) << "\" y=\""
-                     << (node.y + node.height/2) << "\" alignment-baseline=\"middle\">"
-                     << node.label << "</text>\n";
+                file << "<rect x=\"" << node.x << "\" ";
+                file << "y=\"" << node.y << "\" ";
+                file << "width=\"" << nodeWidth << "\" ";
+                file << "height=\"" << node.height << "\" ";
+                file << "fill=\"" << node.color.ToHexString() << "\"/>\n";
+
+                // Write labels
+                float labelY = node.y + node.height / 2.0f;
+                std::string anchor;
+                float labelX;
+
+                // Check if this is a terminal node
+                bool isTerminal = true;
+                for (const auto& link : links) {
+                    if (link.source == node.id) {
+                        isTerminal = false;
+                        break;
+                    }
+                }
+
+                if (node.depth == 0) {
+                    labelX = node.x - 8;
+                    anchor = "end";
+                } else if (isTerminal) {
+                    labelX = node.x + nodeWidth + 8;
+                    anchor = "start";
+                } else {
+                    // Intermediate nodes
+                    labelX = (alignment == SankeyAlignment::Left) ?
+                             node.x - 8 : node.x + nodeWidth + 8;
+                    anchor = (alignment == SankeyAlignment::Left) ? "end" : "start";
+                }
+
+                file << "<text x=\"" << labelX << "\" ";
+                file << "y=\"" << labelY << "\" ";
+                file << "text-anchor=\"" << anchor << "\" ";
+                file << "dominant-baseline=\"middle\" ";
+                file << "font-family=\"Arial\" font-size=\"12\">";
+                file << node.label << "</text>\n";
             }
 
             file << "</svg>\n";
@@ -234,14 +279,15 @@ namespace UltraCanvas {
             if (nodes.empty() || links.empty()) return;
 
             ComputeNodeDepths();
-            ComputeNodeBreadths();
             ComputeNodeValues();
+            ComputeNodeBreadths();
             ComputeLinkBreadths();
 
             // Iterative relaxation
             for (int i = 0; i < iterations; ++i) {
                 RelaxRightToLeft();
                 RelaxLeftToRight();
+                ComputeLinkBreadths();  // Recompute after relaxation
             }
 
             needsLayout = false;
@@ -336,6 +382,28 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
+        void SetFontSize(float size) {
+            style.fontSize = size;
+            needsLayout = true;  // Need to recalculate padding
+            RequestRedraw();
+        }
+
+        void SetFontFamily(const std::string& family) {
+            style.fontFamily = family;
+            needsLayout = true;  // Need to recalculate padding
+            RequestRedraw();
+        }
+
+        void SetMaxLabelWidth(float width) {
+            maxLabelWidth = width;
+            needsLayout = true;
+            RequestRedraw();
+        }
+
+        float GetMaxLabelWidth() const {
+            return maxLabelWidth;
+        }
+
         // ===== CALLBACKS =====
         std::function<void(const std::string&)> onNodeClick;
         std::function<void(const std::string&, const std::string&)> onLinkClick;
@@ -353,6 +421,7 @@ namespace UltraCanvas {
         int iterations;
         SankeyAlignment alignment;
         SankeyTheme theme;
+        float maxLabelWidth;
 
         bool needsLayout = true;
         bool enableAnimation;
@@ -418,14 +487,37 @@ namespace UltraCanvas {
             }
         }
 
+        void ComputeNodeValues() {
+            // Calculate node values based on incoming and outgoing flows
+            for (auto& [id, node] : nodes) {
+                float incomingValue = 0;
+                float outgoingValue = 0;
+
+                for (const auto& link : links) {
+                    if (link.target == id) {
+                        incomingValue += link.value;
+                    }
+                    if (link.source == id) {
+                        outgoingValue += link.value;
+                    }
+                }
+
+                // Node value is the maximum of incoming or outgoing flow
+                node.value = std::max(incomingValue, outgoingValue);
+                if (node.value == 0) {
+                    node.value = 10.0f; // Default minimum value
+                }
+            }
+        }
+
         void ComputeNodeBreadths() {
             auto bounds = GetBounds();
+
+            // Find max depth
             int maxDepth = 0;
             for (const auto& [id, node] : nodes) {
                 maxDepth = std::max(maxDepth, node.depth);
             }
-
-            float xStep = (bounds.width - nodeWidth - 2 * nodePadding) / std::max(1, maxDepth);
 
             // Group nodes by depth
             std::map<int, std::vector<std::string>> nodesByDepth;
@@ -433,137 +525,189 @@ namespace UltraCanvas {
                 nodesByDepth[node.depth].push_back(id);
             }
 
-            // Position nodes
-            for (auto& [depth, nodeIds] : nodesByDepth) {
-                float x = bounds.x + nodePadding + depth * xStep;
-                float y = bounds.y + nodePadding;
+            // Calculate required padding for labels
+            float leftPadding = nodePadding;
+            float rightPadding = nodePadding;
 
-                for (const auto& id : nodeIds) {
-                    nodes[id].x = x;
-                    nodes[id].y = y;
-                    y += nodes[id].height + nodePadding;
-                }
-            }
-        }
+            // Get render context for text measurement
+            IRenderContext* ctx = GetRenderContext();
+            if (ctx) {
+                ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+                ctx->SetFontSize(style.fontSize);
 
-        void ComputeNodeValues() {
-            for (auto& [id, node] : nodes) {
-                node.value = 0;
-
-                // Sum incoming values
-                for (const auto& link : links) {
-                    if (link.target == id) {
-                        node.value += link.value;
+                // Measure left side labels (source nodes at depth 0)
+                for (const auto& [id, node] : nodes) {
+                    if (node.depth == 0) {
+                        float textWidth = ctx->GetTextWidth(node.label);
+                        textWidth = std::min(textWidth, maxLabelWidth);
+                        leftPadding = std::max(leftPadding, textWidth + 15.0f);
                     }
                 }
 
-                // Sum outgoing values if no incoming
-                if (node.value == 0) {
+                // Measure right side labels (terminal nodes)
+                for (const auto& [id, node] : nodes) {
+                    bool isTerminal = true;
                     for (const auto& link : links) {
                         if (link.source == id) {
-                            node.value += link.value;
+                            isTerminal = false;
+                            break;
                         }
                     }
-                }
-
-                // Convert value to height
-                float totalValue = 0;
-                for (const auto& [nid, n] : nodes) {
-                    if (n.depth == node.depth) {
-                        totalValue += n.value;
+                    if (isTerminal) {
+                        float textWidth = ctx->GetTextWidth(node.label);
+                        textWidth = std::min(textWidth, maxLabelWidth);
+                        rightPadding = std::max(rightPadding, textWidth + 15.0f);
                     }
                 }
+            } else {
+                // Fallback if no context available
+                leftPadding = 100.0f;
+                rightPadding = 100.0f;
+            }
 
-                if (totalValue > 0) {
-                    float availableHeight = GetHeight() - 2 * nodePadding -
-                                            (GetNodeCountAtDepth(node.depth) - 1) * nodePadding;
-                    node.height = (node.value / totalValue) * availableHeight;
-                    node.height = std::max(1.0f, node.height);
-                } else {
-                    node.height = 30.0f; // Default height
+            // Calculate horizontal spacing between columns
+            float availableWidth = bounds.width - nodeWidth - leftPadding - rightPadding;
+            float xStep = availableWidth / std::max(1, maxDepth);
+
+            // Ensure minimum spacing between columns
+            xStep = std::max(xStep, nodeWidth + 20.0f);
+
+            // Calculate the maximum total value across all columns
+            float maxColumnValue = 0;
+            for (const auto& [depth, nodeIds] : nodesByDepth) {
+                float columnValue = 0;
+                for (const auto& id : nodeIds) {
+                    columnValue += nodes[id].value;
+                }
+                maxColumnValue = std::max(maxColumnValue, columnValue);
+            }
+
+            // Use available height minus padding for nodes
+            float availableHeight = bounds.height - 2 * nodePadding;
+
+            // Position nodes at each depth
+            for (auto& [depth, nodeIds] : nodesByDepth) {
+                float x = bounds.x + leftPadding + depth * xStep;
+
+                // Calculate total value for this depth
+                float totalValue = 0;
+                for (const auto& id : nodeIds) {
+                    totalValue += nodes[id].value;
+                }
+
+                // Calculate padding between nodes in this column
+                float columnPadding = (nodeIds.size() > 1) ?
+                                      nodePadding * (nodeIds.size() - 1) : 0;
+
+                // Available height for actual nodes (excluding padding between them)
+                float nodeAreaHeight = availableHeight - columnPadding;
+
+                // Scaling factor - use global maximum for consistent scaling
+                float scale = nodeAreaHeight / maxColumnValue;
+
+                // Calculate actual height used by this column
+                float columnHeight = totalValue * scale + columnPadding;
+
+                // Center the column vertically
+                float y = bounds.y + nodePadding + (availableHeight - columnHeight) / 2.0f;
+
+                // Position each node in the column
+                for (const auto& id : nodeIds) {
+                    auto& node = nodes[id];
+                    node.x = x;
+                    node.y = y;
+                    node.width = nodeWidth;
+                    node.height = std::max(1.0f, node.value * scale);
+                    y += node.height + nodePadding;
                 }
             }
-        }
-
-        int GetNodeCountAtDepth(int depth) {
-            int count = 0;
-            for (const auto& [id, node] : nodes) {
-                if (node.depth == depth) count++;
-            }
-            return count;
         }
 
         void ComputeLinkBreadths() {
-            // Initialize link positions
-            for (auto& link : links) {
-                auto sourceIt = nodes.find(link.source);
-                auto targetIt = nodes.find(link.target);
-
-                if (sourceIt != nodes.end() && targetIt != nodes.end()) {
-                    // Calculate link width based on value
-                    float maxValue = 0;
-                    for (const auto& l : links) {
-                        maxValue = std::max(maxValue, l.value);
-                    }
-
-                    if (maxValue > 0) {
-                        link.width = (link.value / maxValue) *
-                                     std::min(sourceIt->second.height, targetIt->second.height) * 0.9f;
-                    } else {
-                        link.width = 10.0f;
-                    }
-
-                    link.sourceY = sourceIt->second.y + sourceIt->second.height / 2.0f;
-                    link.targetY = targetIt->second.y + targetIt->second.height / 2.0f;
-                }
+            // Reset link widths based on their values
+            float maxLinkValue = 0;
+            for (const auto& link : links) {
+                maxLinkValue = std::max(maxLinkValue, link.value);
             }
 
-            // Adjust link positions to avoid overlaps
-            AdjustLinkPositions();
-        }
-
-        void AdjustLinkPositions() {
-            // Group links by source node
+            // Group links by source and target nodes
             std::map<std::string, std::vector<SankeyLink*>> linksBySource;
+            std::map<std::string, std::vector<SankeyLink*>> linksByTarget;
+
             for (auto& link : links) {
                 linksBySource[link.source].push_back(&link);
+                linksByTarget[link.target].push_back(&link);
             }
 
-            // Adjust source positions
+            // Calculate link widths and positions for each node
             for (auto& [nodeId, nodeLinks] : linksBySource) {
                 auto nodeIt = nodes.find(nodeId);
                 if (nodeIt == nodes.end()) continue;
 
-                float totalWidth = 0;
+                const auto& node = nodeIt->second;
+
+                // Sort links by target depth for better visual flow
+                std::sort(nodeLinks.begin(), nodeLinks.end(),
+                          [this](const SankeyLink* a, const SankeyLink* b) {
+                              auto targetA = nodes.find(a->target);
+                              auto targetB = nodes.find(b->target);
+                              if (targetA != nodes.end() && targetB != nodes.end()) {
+                                  return targetA->second.y < targetB->second.y;
+                              }
+                              return false;
+                          });
+
+                // Calculate total outgoing flow
+                float totalFlow = 0;
                 for (const auto* link : nodeLinks) {
-                    totalWidth += link->width;
+                    totalFlow += link->value;
                 }
 
-                float y = nodeIt->second.y + (nodeIt->second.height - totalWidth) / 2.0f;
+                // Scale factor for link widths
+                float scale = (totalFlow > 0) ? node.height / totalFlow : 0;
+
+                // Position links along the source node
+                float y = node.y;
                 for (auto* link : nodeLinks) {
+                    link->width = link->value * scale;
                     link->sourceY = y + link->width / 2.0f;
                     y += link->width;
                 }
             }
 
-            // Group links by target node
-            std::map<std::string, std::vector<SankeyLink*>> linksByTarget;
-            for (auto& link : links) {
-                linksByTarget[link.target].push_back(&link);
-            }
-
-            // Adjust target positions
+            // Position links along target nodes
             for (auto& [nodeId, nodeLinks] : linksByTarget) {
                 auto nodeIt = nodes.find(nodeId);
                 if (nodeIt == nodes.end()) continue;
 
-                float totalWidth = 0;
+                const auto& node = nodeIt->second;
+
+                // Sort links by source depth
+                std::sort(nodeLinks.begin(), nodeLinks.end(),
+                          [this](const SankeyLink* a, const SankeyLink* b) {
+                              auto sourceA = nodes.find(a->source);
+                              auto sourceB = nodes.find(b->source);
+                              if (sourceA != nodes.end() && sourceB != nodes.end()) {
+                                  return sourceA->second.y < sourceB->second.y;
+                              }
+                              return false;
+                          });
+
+                // Calculate total incoming flow
+                float totalFlow = 0;
                 for (const auto* link : nodeLinks) {
-                    totalWidth += link->width;
+                    totalFlow += link->value;
                 }
 
-                float y = nodeIt->second.y + (nodeIt->second.height - totalWidth) / 2.0f;
+                // Scale factor for link widths
+                float scale = (totalFlow > 0) ? node.height / totalFlow : 0;
+
+                // Position links along the target node
+                float y = node.y;
                 for (auto* link : nodeLinks) {
+                    // Update width to match target scaling if needed
+                    float targetWidth = link->value * scale;
+                    link->width = std::min(link->width, targetWidth);
                     link->targetY = y + link->width / 2.0f;
                     y += link->width;
                 }
@@ -571,44 +715,120 @@ namespace UltraCanvas {
         }
 
         void RelaxLeftToRight() {
-            // Implement node position relaxation algorithm
-            // This is simplified - full implementation would include collision detection
-            for (auto& [id, node] : nodes) {
-                float targetY = 0;
-                float weightSum = 0;
+            // Group nodes by depth
+            std::map<int, std::vector<std::string>> nodesByDepth;
+            for (const auto& [id, node] : nodes) {
+                nodesByDepth[node.depth].push_back(id);
+            }
 
-                for (const auto& link : links) {
-                    if (link.target == id) {
-                        targetY += link.sourceY * link.value;
-                        weightSum += link.value;
+            // Relax from left to right
+            for (auto& [depth, nodeIds] : nodesByDepth) {
+                if (depth == 0) continue; // Skip source nodes
+
+                for (const auto& nodeId : nodeIds) {
+                    auto& node = nodes[nodeId];
+
+                    float targetY = 0;
+                    float weightSum = 0;
+
+                    // Calculate weighted center based on incoming links
+                    for (const auto& link : links) {
+                        if (link.target == nodeId) {
+                            targetY += link.sourceY * link.value;
+                            weightSum += link.value;
+                        }
+                    }
+
+                    if (weightSum > 0) {
+                        float newY = targetY / weightSum - node.height / 2.0f;
+                        auto bounds = GetBounds();
+                        node.y = std::clamp(newY,
+                                            bounds.y + nodePadding,
+                                            bounds.y + bounds.height - node.height - nodePadding);
                     }
                 }
 
-                if (weightSum > 0) {
-                    float newY = targetY / weightSum - node.height / 2.0f;
-                    node.y = std::clamp(newY, GetY() + nodePadding,
-                                        GetY() + GetHeight() - node.height - nodePadding);
-                }
+                // Resolve collisions within this depth
+                ResolveCollisions(nodeIds);
             }
         }
 
         void RelaxRightToLeft() {
-            // Similar to RelaxLeftToRight but in reverse
-            for (auto& [id, node] : nodes) {
-                float targetY = 0;
-                float weightSum = 0;
+            // Group nodes by depth
+            std::map<int, std::vector<std::string>> nodesByDepth;
+            for (const auto& [id, node] : nodes) {
+                nodesByDepth[node.depth].push_back(id);
+            }
 
-                for (const auto& link : links) {
-                    if (link.source == id) {
-                        targetY += link.targetY * link.value;
-                        weightSum += link.value;
+            // Find max depth
+            int maxDepth = 0;
+            for (const auto& [depth, nodeIds] : nodesByDepth) {
+                maxDepth = std::max(maxDepth, depth);
+            }
+
+            // Relax from right to left
+            for (int depth = maxDepth - 1; depth >= 0; --depth) {
+                auto it = nodesByDepth.find(depth);
+                if (it == nodesByDepth.end()) continue;
+
+                for (const auto& nodeId : it->second) {
+                    auto& node = nodes[nodeId];
+
+                    float targetY = 0;
+                    float weightSum = 0;
+
+                    // Calculate weighted center based on outgoing links
+                    for (const auto& link : links) {
+                        if (link.source == nodeId) {
+                            targetY += link.targetY * link.value;
+                            weightSum += link.value;
+                        }
+                    }
+
+                    if (weightSum > 0) {
+                        float newY = targetY / weightSum - node.height / 2.0f;
+                        auto bounds = GetBounds();
+                        node.y = std::clamp(newY,
+                                            bounds.y + nodePadding,
+                                            bounds.y + bounds.height - node.height - nodePadding);
                     }
                 }
 
-                if (weightSum > 0) {
-                    float newY = targetY / weightSum - node.height / 2.0f;
-                    node.y = std::clamp(newY, GetY() + nodePadding,
-                                        GetY() + GetHeight() - node.height - nodePadding);
+                // Resolve collisions within this depth
+                ResolveCollisions(it->second);
+            }
+        }
+
+        void ResolveCollisions(const std::vector<std::string>& nodeIds) {
+            if (nodeIds.size() <= 1) return;
+
+            // Sort nodes by Y position
+            std::vector<std::string> sortedIds = nodeIds;
+            std::sort(sortedIds.begin(), sortedIds.end(),
+                      [this](const std::string& a, const std::string& b) {
+                          return nodes[a].y < nodes[b].y;
+                      });
+
+            // Push overlapping nodes apart
+            for (size_t i = 1; i < sortedIds.size(); ++i) {
+                auto& prevNode = nodes[sortedIds[i-1]];
+                auto& currNode = nodes[sortedIds[i]];
+
+                float minY = prevNode.y + prevNode.height + nodePadding;
+                if (currNode.y < minY) {
+                    currNode.y = minY;
+                }
+            }
+
+            // Ensure nodes stay within bounds
+            auto bounds = GetBounds();
+            float maxY = bounds.y + bounds.height - nodePadding;
+
+            for (auto it = sortedIds.rbegin(); it != sortedIds.rend(); ++it) {
+                auto& node = nodes[*it];
+                if (node.y + node.height > maxY) {
+                    node.y = maxY - node.height;
+                    maxY = node.y - nodePadding;
                 }
             }
         }
@@ -631,16 +851,39 @@ namespace UltraCanvas {
             ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
             ctx->SetFontSize(style.fontSize);
 
-            float labelX = node.x;
             float labelY = node.y + node.height / 2.0f;
 
-            // Position label based on alignment
-            if (alignment == SankeyAlignment::Left || node.depth == 0) {
-                labelX = node.x - 5;
-                ctx->DrawText(node.label, labelX - ctx->GetTextWidth(node.label), labelY);
+            // Position label based on node depth
+            if (node.depth == 0) {
+                // Left-aligned labels for source nodes
+                float labelX = node.x - 8;
+                float textWidth = ctx->GetTextWidth(node.label);
+                ctx->DrawText(node.label, labelX - textWidth, labelY);
             } else {
-                labelX = node.x + nodeWidth + 5;
-                ctx->DrawText(node.label, labelX, labelY);
+                // Check if this is a terminal node (no outgoing links)
+                bool isTerminal = true;
+                for (const auto& link : links) {
+                    if (link.source == node.id) {
+                        isTerminal = false;
+                        break;
+                    }
+                }
+
+                if (isTerminal) {
+                    // Right-aligned labels for terminal nodes
+                    float labelX = node.x + nodeWidth + 8;
+                    ctx->DrawText(node.label, labelX, labelY);
+                } else {
+                    // For intermediate nodes, position based on alignment preference
+                    if (alignment == SankeyAlignment::Left) {
+                        float labelX = node.x - 8;
+                        float textWidth = ctx->GetTextWidth(node.label);
+                        ctx->DrawText(node.label, labelX - textWidth, labelY);
+                    } else {
+                        float labelX = node.x + nodeWidth + 8;
+                        ctx->DrawText(node.label, labelX, labelY);
+                    }
+                }
             }
         }
 
@@ -726,29 +969,31 @@ namespace UltraCanvas {
                 auto nodeIt = nodes.find(draggedNodeId);
                 if (nodeIt != nodes.end()) {
                     nodeIt->second.y = mousePos.y - dragOffset.y;
+                    auto bounds = GetBounds();
                     nodeIt->second.y = std::clamp(nodeIt->second.y,
-                                                  GetY() + nodePadding,
-                                                  GetY() + GetHeight() - nodeIt->second.height - nodePadding);
+                                                  bounds.y + nodePadding,
+                                                  bounds.y + bounds.height - nodeIt->second.height - nodePadding);
                     ComputeLinkBreadths();
                     RequestRedraw();
-                    return true;
                 }
+                return true;
             }
 
-            // Check for hover
-            std::string oldHoveredId = hoveredNodeId;
-            hoveredNodeId.clear();
-
+            // Check for node hover
+            std::string newHoveredNodeId;
             for (const auto& [id, node] : nodes) {
                 if (mousePos.x >= node.x && mousePos.x <= node.x + nodeWidth &&
                     mousePos.y >= node.y && mousePos.y <= node.y + node.height) {
-                    hoveredNodeId = id;
-                    if (onNodeHover) onNodeHover(id);
+                    newHoveredNodeId = id;
                     break;
                 }
             }
 
-            if (oldHoveredId != hoveredNodeId) {
+            if (newHoveredNodeId != hoveredNodeId) {
+                hoveredNodeId = newHoveredNodeId;
+                if (!hoveredNodeId.empty() && onNodeHover) {
+                    onNodeHover(hoveredNodeId);
+                }
                 RequestRedraw();
             }
 
@@ -756,213 +1001,97 @@ namespace UltraCanvas {
         }
 
         bool HandleMouseDown(const UCEvent& event) {
-            if (!hoveredNodeId.empty()) {
-                draggedNodeId = hoveredNodeId;
-                auto nodeIt = nodes.find(draggedNodeId);
-                if (nodeIt != nodes.end()) {
-                    dragOffset.x = event.x - nodeIt->second.x;
-                    dragOffset.y = event.y - nodeIt->second.y;
+            Point2D mousePos(event.x, event.y);
+
+            // Check if clicking on a node
+            for (const auto& [id, node] : nodes) {
+                if (mousePos.x >= node.x && mousePos.x <= node.x + nodeWidth &&
+                    mousePos.y >= node.y && mousePos.y <= node.y + node.height) {
+
+                    if (onNodeClick) {
+                        onNodeClick(id);
+                    }
+
+                    // Start dragging
+                    draggedNodeId = id;
+                    dragOffset.x = mousePos.x - node.x;
+                    dragOffset.y = mousePos.y - node.y;
+
+                    return true;
                 }
-                return true;
             }
+
             return false;
         }
 
         bool HandleMouseUp(const UCEvent& event) {
             if (!draggedNodeId.empty()) {
                 draggedNodeId.clear();
-                needsLayout = false; // Keep custom position
+                needsLayout = true; // Trigger full layout after drag
+                RequestRedraw();
                 return true;
             }
-
-            // Check for click
-            if (!hoveredNodeId.empty() && onNodeClick) {
-                onNodeClick(hoveredNodeId);
-                return true;
-            }
-
             return false;
         }
 
-        // ===== THEME MANAGEMENT =====
+        // ===== HELPER METHODS =====
+        Color GetNodeColor(size_t index) {
+            static const std::vector<Color> palette = {
+                    Color(141, 211, 199),  // Teal
+                    Color(255, 255, 179),  // Light Yellow
+                    Color(190, 186, 218),  // Lavender
+                    Color(251, 128, 114),  // Salmon
+                    Color(128, 177, 211),  // Sky Blue
+                    Color(253, 180, 98),   // Orange
+                    Color(179, 222, 105),  // Light Green
+                    Color(252, 205, 229),  // Pink
+                    Color(217, 217, 217),  // Light Gray
+                    Color(188, 128, 189),  // Purple
+                    Color(204, 235, 197)   // Mint
+            };
+            return palette[index % palette.size()];
+        }
+
         void ApplyTheme(SankeyTheme t) {
             switch (t) {
                 case SankeyTheme::Energy:
                     style.backgroundColor = Color(240, 248, 255);
-                    style.nodeStrokeColor = Color(70, 130, 180);
-                    style.textColor = Color(25, 25, 112);
+                    style.nodeStrokeColor = Colors::DarkBlue;
+                    style.textColor = Colors::DarkBlue;
                     break;
-
                 case SankeyTheme::Finance:
-                    style.backgroundColor = Color(245, 255, 250);
-                    style.nodeStrokeColor = Color(34, 139, 34);
-                    style.textColor = Color(0, 100, 0);
+                    style.backgroundColor = Color(245, 245, 240);
+                    style.nodeStrokeColor = Colors::DarkGreen;
+                    style.textColor = Colors::DarkGreen;
                     break;
-
                 case SankeyTheme::WebTraffic:
-                    style.backgroundColor = Color(255, 248, 240);
-                    style.nodeStrokeColor = Color(255, 140, 0);
-                    style.textColor = Color(139, 69, 19);
+                    style.backgroundColor = Color(250, 250, 250);
+                    style.nodeStrokeColor = Colors::Gray;
+                    style.textColor = Colors::DarkGray;
                     break;
-
-                case SankeyTheme::Default:
-                case SankeyTheme::Custom:
                 default:
-                    // Use default style values
+                    // Keep default theme
                     break;
             }
         }
-
-        // ===== UTILITY METHODS =====
-        Color GetNodeColor(size_t index) {
-            static const std::vector<Color> palette = {
-                    Color(31, 119, 180),   // Blue
-                    Color(255, 127, 14),   // Orange
-                    Color(44, 160, 44),    // Green
-                    Color(214, 39, 40),    // Red
-                    Color(148, 103, 189),  // Purple
-                    Color(140, 86, 75),    // Brown
-                    Color(227, 119, 194),  // Pink
-                    Color(127, 127, 127),  // Gray
-                    Color(188, 189, 34),   // Olive
-                    Color(23, 190, 207)    // Cyan
-            };
-
-            return palette[index % palette.size()];
-        }
-
-        std::string GetLinkPath(float x0, float y0, float x1, float y1, float width) {
-            std::stringstream ss;
-            float midX = x0 + (x1 - x0) * linkCurvature;
-
-            ss << "M " << x0 << " " << (y0 - width/2);
-            ss << " C " << midX << " " << (y0 - width/2) << ", ";
-            ss << midX << " " << (y1 - width/2) << ", ";
-            ss << x1 << " " << (y1 - width/2);
-            ss << " L " << x1 << " " << (y1 + width/2);
-            ss << " C " << midX << " " << (y1 + width/2) << ", ";
-            ss << midX << " " << (y0 + width/2) << ", ";
-            ss << x0 << " " << (y0 + width/2);
-            ss << " Z";
-
-            return ss.str();
-        }
-
-        std::string ColorToHex(const Color& color) {
-            char buffer[8];
-            snprintf(buffer, sizeof(buffer), "#%02X%02X%02X",
-                     color.r, color.g, color.b);
-            return std::string(buffer);
-        }
     };
 
-// ===== SANKEY PLUGIN CLASS =====
-//    class UltraCanvasSankey : public IGraphicsPlugin {
-//    public:
-//        // ===== PLUGIN INFORMATION =====
-//        std::string GetPluginName() const override {
-//            return "SankeyDiagram";
-//        }
-//
-//        std::string GetPluginVersion() const override {
-//            return "1.3.0";
-//        }
-//
-//        std::vector<std::string> GetSupportedExtensions() const override {
-//            return {"sankey", "flow", "csv"};
-//        }
-//
-//        // ===== FILE HANDLING =====
-//        bool CanHandle(const std::string& filePath) const override {
-//            std::string ext = GetFileExtension(filePath);
-//            auto extensions = GetSupportedExtensions();
-//            return std::find(extensions.begin(), extensions.end(), ext) != extensions.end();
-//        }
-//
-//        bool CanHandle(const GraphicsFileInfo& fileInfo) const override {
-//            return CanHandle(fileInfo.filename);
-//        }
-//
-//        // ===== GRAPHICS OPERATIONS =====
-//        std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const std::string& filePath) override {
-//            auto renderer = std::make_shared<UltraCanvasSankeyRenderer>(
-//                    "sankey", GenerateUID(), 0, 0, 800, 600
-//            );
-//
-//            if (renderer->LoadFromCSV(filePath)) {
-//                return renderer;
-//            }
-//
-//            return nullptr;
-//        }
-//
-//        std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const GraphicsFileInfo& fileInfo) override {
-//            return LoadGraphics(fileInfo.filename);
-//        }
-//
-//        std::shared_ptr<UltraCanvasUIElement> CreateGraphics(int width, int height, GraphicsFormatType type) override {
-//            return std::make_shared<UltraCanvasSankeyRenderer>(
-//                    "sankey", GenerateUID(), 0, 0, width, height
-//            );
-//        }
-//
-//        // ===== CAPABILITIES =====
-//        GraphicsManipulation GetSupportedManipulations() const override {
-//            return GraphicsManipulation::Move |
-//                   GraphicsManipulation::Resize |
-//                   GraphicsManipulation::Select;
-//        }
-//
-//        GraphicsFileInfo GetFileInfo(const std::string& filePath) override {
-//            GraphicsFileInfo info;
-//            info.filename = filePath;
-//            info.extension = GetFileExtension(filePath);
-//            info.formatType = GraphicsFormatType::Data;
-//            return info;
-//        }
-//
-//        bool ValidateFile(const std::string& filePath) override {
-//            std::ifstream file(filePath);
-//            return file.is_open();
-//        }
-//
-//    private:
-//        std::string GetFileExtension(const std::string& filePath) const {
-//            size_t dotPos = filePath.find_last_of('.');
-//            if (dotPos == std::string::npos) return "";
-//            std::string ext = filePath.substr(dotPos + 1);
-//            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-//            return ext;
-//        }
-//
-//        long GenerateUID() const {
-//            static long uid = 100000;
-//            return ++uid;
-//        }
-//    };
-//
 //// ===== FACTORY FUNCTIONS =====
-//    inline std::shared_ptr<UltraCanvasSankeyRenderer> CreateSankeyRenderer(
-//            const std::string& id, long uid, long x, long y, long w, long h
-//    ) {
-//        return std::make_shared<UltraCanvasSankeyRenderer>(id, uid, x, y, w, h);
-//    }
-//
-//    inline void RegisterSankeyPlugin() {
-//        UltraCanvasGraphicsPluginRegistry::RegisterPlugin(
-//                std::make_shared<UltraCanvasSankey>()
-//        );
-//    }
+    inline std::shared_ptr<UltraCanvasSankeyRenderer> CreateSankeyRenderer(
+            const std::string& id, long uid, long x, long y, long w, long h
+    ) {
+        return std::make_shared<UltraCanvasSankeyRenderer>(id, uid, x, y, w, h);
+    }
 
 // ===== EXAMPLE DATA GENERATORS =====
     inline void GenerateEnergySankeyData(UltraCanvasSankeyRenderer* renderer) {
         // Energy flow example
-        renderer->AddLink("Coal", "Electricity", 45.0f);
+        renderer->AddLink("Coal", "Electricity", 35.0f);
         renderer->AddLink("Natural Gas", "Electricity", 35.0f);
-        renderer->AddLink("Nuclear", "Electricity", 20.0f);
-//        renderer->AddLink("Solar", "Electricity", 5.0f);
-//        renderer->AddLink("Wind", "Electricity", 8.0f);
-//        renderer->AddLink("Hydro", "Electricity", 7.0f);
+        renderer->AddLink("Nuclear", "Electricity", 10.0f);
+        renderer->AddLink("Solar", "Electricity", 3.0f);
+        renderer->AddLink("Wind", "Electricity", 2.0f);
+        renderer->AddLink("Hydro", "Electricity", 5.0f);
 
         renderer->AddLink("Electricity", "Residential", 40.0f);
         renderer->AddLink("Electricity", "Commercial", 35.0f);
@@ -976,37 +1105,22 @@ namespace UltraCanvas {
 
     inline void GenerateFinanceSankeyData(UltraCanvasSankeyRenderer* renderer) {
         // Financial flow example
-//        renderer->AddLink("Revenue", "Product Sales", 65.0f);
-//        renderer->AddLink("Revenue", "Services", 35.0f);
-//
-//        renderer->AddLink("Product Sales", "Profit", 20.0f);
-//        renderer->AddLink("Product Sales", "Manufacturing", 30.0f);
-//        renderer->AddLink("Product Sales", "Marketing", 15.0f);
-//
-//        renderer->AddLink("Services", "Profit", 15.0f);
-//        renderer->AddLink("Services", "Operations", 10.0f);
-//        renderer->AddLink("Services", "Support", 10.0f);
-//
-//        renderer->AddLink("Profit", "Dividends", 15.0f);
-//        renderer->AddLink("Profit", "R&D", 10.0f);
-//        renderer->AddLink("Profit", "Reserves", 10.0f);
-//
-//        renderer->SetTheme(SankeyTheme::Finance);
-        renderer->AddLink("Coal", "Electricity", 45.0f);
-        renderer->AddLink("Natural Gas", "Electricity", 35.0f);
-        renderer->AddLink("Nuclear", "Electricity", 20.0f);
+        renderer->AddLink("Revenue", "Product Sales", 65.0f);
+        renderer->AddLink("Revenue", "Services", 35.0f);
 
-        renderer->AddLink("Natural Gas", "Residential Heating", 15.0f);
-        renderer->AddLink("Natural Gas", "Commercial Heating", 10.0f);
-//        renderer->AddLink("Solar", "Electricity", 5.0f);
-//        renderer->AddLink("Wind", "Electricity", 8.0f);
-//        renderer->AddLink("Hydro", "Electricity", 7.0f);
+        renderer->AddLink("Product Sales", "Profit", 20.0f);
+        renderer->AddLink("Product Sales", "Manufacturing", 30.0f);
+        renderer->AddLink("Product Sales", "Marketing", 15.0f);
 
-        renderer->AddLink("Electricity", "Residential", 40.0f);
-        renderer->AddLink("Electricity", "Commercial", 35.0f);
-        renderer->AddLink("Electricity", "Industrial", 45.0f);
+        renderer->AddLink("Services", "Profit", 15.0f);
+        renderer->AddLink("Services", "Operations", 10.0f);
+        renderer->AddLink("Services", "Support", 10.0f);
 
-        renderer->SetTheme(SankeyTheme::Energy);
+        renderer->AddLink("Profit", "Dividends", 15.0f);
+        renderer->AddLink("Profit", "R&D", 10.0f);
+        renderer->AddLink("Profit", "Reserves", 10.0f);
+
+        renderer->SetTheme(SankeyTheme::Finance);
     }
 
     inline void GenerateWebTrafficSankeyData(UltraCanvasSankeyRenderer* renderer) {
@@ -1015,107 +1129,22 @@ namespace UltraCanvas {
         // Clear existing data
         renderer->ClearAll();
 
-        // 2020 Energy Sources
-        renderer->AddLink("2020 Coal", "Fossil Phase-Out", 3800.0f);
-        renderer->AddLink("2020 Natural Gas", "Transition Fuel", 3200.0f);
-        renderer->AddLink("2020 Oil", "Fossil Phase-Out", 4100.0f);
-        renderer->AddLink("2020 Nuclear", "Stable Nuclear", 700.0f);
-        renderer->AddLink("2020 Hydro", "Renewable Growth", 1200.0f);
-        renderer->AddLink("2020 Wind", "Renewable Growth", 600.0f);
-        renderer->AddLink("2020 Solar", "Renewable Growth", 400.0f);
-        renderer->AddLink("2020 Other Renewables", "Renewable Growth", 300.0f);
+        renderer->AddLink("Search", "Homepage", 30.0f);
+        renderer->AddLink("Social Media", "Homepage", 30.0f);
+        renderer->AddLink("Direct", "Homepage", 25.0f);
+        renderer->AddLink("Referral", "Homepage", 25.0f);
 
-        // Transition pathways
-        renderer->AddLink("Fossil Phase-Out", "2030 Reduced Fossil", 4500.0f);
-        renderer->AddLink("Fossil Phase-Out", "Carbon Capture", 2400.0f);
-        renderer->AddLink("Fossil Phase-Out", "Decommissioned", 1000.0f);
+        renderer->AddLink("Homepage", "Product Page", 50.0f);
+        renderer->AddLink("Homepage", "About", 20.0f);
+        renderer->AddLink("Homepage", "Blog", 20.0f);
+        renderer->AddLink("Homepage", "Exit", 20.0f);
 
-        renderer->AddLink("Transition Fuel", "2030 Natural Gas", 2800.0f);
-        renderer->AddLink("Transition Fuel", "Hydrogen Production", 400.0f);
+        renderer->AddLink("Product Page", "Checkout", 30.0f);
+        renderer->AddLink("Product Page", "Exit", 20.0f);
 
-        renderer->AddLink("Renewable Growth", "2030 Wind Expansion", 2000.0f);
-        renderer->AddLink("Renewable Growth", "2030 Solar Expansion", 1800.0f);
-        renderer->AddLink("Renewable Growth", "2030 Hydro Stable", 1200.0f);
-        renderer->AddLink("Renewable Growth", "2030 New Tech", 500.0f);
+        renderer->AddLink("Checkout", "Purchase", 25.0f);
+        renderer->AddLink("Checkout", "Exit", 5.0f);
 
-        renderer->AddLink("Stable Nuclear", "2030 Nuclear", 700.0f);
-
-        // 2030 to 2040 transition
-        renderer->AddLink("2030 Reduced Fossil", "2040 Minimal Fossil", 2000.0f);
-        renderer->AddLink("2030 Reduced Fossil", "CCS Equipped", 2500.0f);
-
-        renderer->AddLink("2030 Natural Gas", "2040 Green Hydrogen", 1500.0f);
-        renderer->AddLink("2030 Natural Gas", "2040 Gas with CCS", 1300.0f);
-
-        renderer->AddLink("2030 Wind Expansion", "2040 Wind Dominant", 3500.0f);
-        renderer->AddLink("2030 Solar Expansion", "2040 Solar Dominant", 3200.0f);
-        renderer->AddLink("2030 Hydro Stable", "2040 Hydro", 1200.0f);
-        renderer->AddLink("2030 New Tech", "2040 Advanced Storage", 1000.0f);
-        renderer->AddLink("2030 Nuclear", "2040 Next Gen Nuclear", 900.0f);
-
-        // 2040 to 2050 final transition
-        renderer->AddLink("2040 Minimal Fossil", "2050 Zero Carbon", 500.0f);
-        renderer->AddLink("2040 Minimal Fossil", "2050 CCS Only", 1500.0f);
-
-        renderer->AddLink("2040 Green Hydrogen", "2050 Hydrogen Economy", 2000.0f);
-        renderer->AddLink("2040 Gas with CCS", "2050 CCS Only", 1300.0f);
-
-        renderer->AddLink("2040 Wind Dominant", "2050 Wind Power", 4500.0f);
-        renderer->AddLink("2040 Solar Dominant", "2050 Solar Power", 4200.0f);
-        renderer->AddLink("2040 Hydro", "2050 Hydro Power", 1200.0f);
-        renderer->AddLink("2040 Advanced Storage", "2050 Grid Storage", 1500.0f);
-        renderer->AddLink("2040 Next Gen Nuclear", "2050 Nuclear Fusion", 1200.0f);
-
-        renderer->AddLink("CCS Equipped", "2050 CCS Only", 2500.0f);
-        renderer->AddLink("Carbon Capture", "2050 CCS Only", 2400.0f);
-        renderer->AddLink("Hydrogen Production", "2050 Hydrogen Economy", 400.0f);
-
-        // Final distribution to sectors
-        renderer->AddLink("2050 Wind Power", "Industry 2050", 2000.0f);
-        renderer->AddLink("2050 Wind Power", "Residential 2050", 1500.0f);
-        renderer->AddLink("2050 Wind Power", "Transport 2050", 1000.0f);
-
-        renderer->AddLink("2050 Solar Power", "Residential 2050", 2000.0f);
-        renderer->AddLink("2050 Solar Power", "Industry 2050", 1500.0f);
-        renderer->AddLink("2050 Solar Power", "Commercial 2050", 700.0f);
-
-        renderer->AddLink("2050 Hydrogen Economy", "Transport 2050", 1500.0f);
-        renderer->AddLink("2050 Hydrogen Economy", "Industry 2050", 900.0f);
-
-        renderer->AddLink("2050 Nuclear Fusion", "Industry 2050", 800.0f);
-        renderer->AddLink("2050 Nuclear Fusion", "Commercial 2050", 400.0f);
-
-        renderer->AddLink("2050 Hydro Power", "Residential 2050", 600.0f);
-        renderer->AddLink("2050 Hydro Power", "Industry 2050", 600.0f);
-
-        renderer->AddLink("2050 Grid Storage", "All Sectors 2050", 1500.0f);
-        renderer->AddLink("2050 CCS Only", "Industry 2050", 5700.0f);
-
-        renderer->SetTheme(SankeyTheme::Energy);
-        renderer->SetAlignment(SankeyAlignment::Justify);
-        renderer->SetLinkCurvature(0.5f);
-        renderer->SetNodeWidth(20.0f);
-        renderer->SetIterations(50); // More iterations for complex flow
-
-//        renderer->AddLink("Search", "Homepage", 45.0f);
-//        renderer->AddLink("Social Media", "Homepage", 30.0f);
-//        renderer->AddLink("Direct", "Homepage", 25.0f);
-//        renderer->AddLink("Referral", "Homepage", 15.0f);
-//
-//        renderer->AddLink("Homepage", "Product Page", 50.0f);
-//        renderer->AddLink("Homepage", "About", 20.0f);
-//        renderer->AddLink("Homepage", "Blog", 25.0f);
-//        renderer->AddLink("Homepage", "Exit", 20.0f);
-//
-//        renderer->AddLink("Product Page", "Checkout", 30.0f);
-//        renderer->AddLink("Product Page", "Exit", 20.0f);
-//
-//        renderer->AddLink("Checkout", "Purchase", 25.0f);
-//        renderer->AddLink("Checkout", "Exit", 5.0f);
-//
-//        renderer->SetTheme(SankeyTheme::WebTraffic);
+        renderer->SetTheme(SankeyTheme::WebTraffic);
     }
-
-
-
 } // namespace UltraCanvas
