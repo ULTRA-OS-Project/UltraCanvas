@@ -365,7 +365,8 @@ namespace UltraCanvas {
 
         void ShowChartPointTooltip(const Point2Di& mousePos, const ChartDataPoint& point, size_t index) {
             std::string tooltipContent = GenerateTooltipContent(point, index);
-            UltraCanvasTooltipManager::UpdateAndShowTooltip(this->window, tooltipContent, mousePos);
+            auto windowMousePos = ConvertContainerToWindowCoordinates(mousePos);
+            UltraCanvasTooltipManager::UpdateAndShowTooltip(this->window, tooltipContent, windowMousePos);
             isTooltipActive = true;
             hoveredPointIndex = index;
         }

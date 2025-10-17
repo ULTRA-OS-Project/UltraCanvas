@@ -280,8 +280,8 @@ struct TextInputStyle {
     int borderRadius = 4;
     int paddingLeft = 8;
     int paddingRight = 8;
-    int paddingTop = 6;
-    int paddingBottom = 6;
+    int paddingTop = 2;
+    int paddingBottom = 2;
     
     // Typography (inherits from TextStyle in RenderInterface)
     FontStyle fontStyle;

@@ -45,8 +45,8 @@ namespace UltraCanvas {
         float shadowBlur = 3.0f;
 
         // Behavior
-        float showDelay = 0.8f;        // Seconds to wait before showing
-        float hideDelay = 0.5f;        // Seconds to wait before hiding
+        float showDelay = 0.3f;        // Seconds to wait before showing
+        float hideDelay = 0.2f;        // Seconds to wait before hiding
         int offsetX = 10;              // Offset from cursor
         int offsetY = 10;
         bool followCursor = false;     // Whether tooltip follows mouse movement

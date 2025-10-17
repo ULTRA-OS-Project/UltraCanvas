@@ -1,0 +1,930 @@
+// Plugins/Diagrams/UltraCanvasSankey.cpp
+// Interactive Sankey diagram plugin for data flow visualization
+// Version: 1.3.0
+// Last Modified: 2025-10-16
+// Author: UltraCanvas Framework
+#include "Plugins/Diagrams/UltraCanvasSankey.h"
+#include "UltraCanvasTooltipManager.h"
+
+namespace UltraCanvas {
+    UltraCanvasSankeyRenderer::UltraCanvasSankeyRenderer(const std::string &id, long uid, long x, long y,
+                                                                      long w, long h)
+            : UltraCanvasUIElement(id, uid, x, y, w, h) {
+        nodeWidth = 15.0f;  // Slightly thinner to give more space for labels
+        nodePadding = 8.0f;
+        linkCurvature = 0.5f;
+        iterations = 32;
+        alignment = SankeyAlignment::Justify;
+        theme = SankeyTheme::Default;
+        enableAnimation = true;
+        enableTooltips = true;
+        maxLabelWidth = 200.0f;  // Maximum width for labels
+        ApplyTheme(theme);
+    }
+
+    void UltraCanvasSankeyRenderer::AddNode(const std::string &id, const std::string &label) {
+        if (nodes.find(id) == nodes.end()) {
+            SankeyNode node;
+            node.id = id;
+            node.label = label.empty() ? id : label;
+            node.color = GetNodeColor(nodes.size());
+            nodes[id] = node;
+            needsLayout = true;
+        }
+    }
+
+    void UltraCanvasSankeyRenderer::RemoveNode(const std::string &id) {
+        auto it = nodes.find(id);
+        if (it != nodes.end()) {
+            // Remove associated links
+            links.erase(
+                    std::remove_if(links.begin(), links.end(),
+                                   [&id](const SankeyLink &link) {
+                                       return link.source == id || link.target == id;
+                                   }),
+                    links.end()
+            );
+            nodes.erase(it);
+            needsLayout = true;
+        }
+    }
+
+    void
+    UltraCanvasSankeyRenderer::AddLink(const std::string &source, const std::string &target, float value) {
+        // Auto-create nodes if they don't exist
+        if (nodes.find(source) == nodes.end()) {
+            AddNode(source);
+        }
+        if (nodes.find(target) == nodes.end()) {
+            AddNode(target);
+        }
+
+        SankeyLink link;
+        link.source = source;
+        link.target = target;
+        link.value = value;
+        link.color = nodes[source].color.WithAlpha(180); // Semi-transparent
+        links.push_back(link);
+
+        // Update node connections
+        nodes[source].sourceLinks.push_back(target);
+        nodes[target].targetLinks.push_back(source);
+
+        needsLayout = true;
+    }
+
+    void UltraCanvasSankeyRenderer::RemoveLink(const std::string &source, const std::string &target) {
+        links.erase(
+                std::remove_if(links.begin(), links.end(),
+                               [&source, &target](const SankeyLink &link) {
+                                   return link.source == source && link.target == target;
+                               }),
+                links.end()
+        );
+        needsLayout = true;
+    }
+
+    void UltraCanvasSankeyRenderer::ClearAll() {
+        nodes.clear();
+        links.clear();
+        needsLayout = true;
+        RequestRedraw();
+    }
+
+    bool UltraCanvasSankeyRenderer::LoadFromCSV(const std::string &filePath) {
+        std::ifstream file(filePath);
+        if (!file.is_open()) return false;
+
+        ClearAll();
+        std::string line;
+        bool firstLine = true;
+
+        while (std::getline(file, line)) {
+            if (firstLine) {
+                firstLine = false;
+                continue; // Skip header
+            }
+
+            std::stringstream ss(line);
+            std::string source, target, valueStr;
+
+            if (std::getline(ss, source, ',') &&
+                std::getline(ss, target, ',') &&
+                std::getline(ss, valueStr, ',')) {
+
+                try {
+                    float value = std::stof(valueStr);
+                    AddLink(source, target, value);
+                } catch (...) {
+                    // Skip malformed lines
+                }
+            }
+        }
+
+        file.close();
+        RequestRedraw();
+        return true;
+    }
+
+    bool UltraCanvasSankeyRenderer::SaveToSVG(const std::string &filePath) {
+        std::ofstream file(filePath);
+        if (!file.is_open()) return false;
+
+        auto bounds = GetBounds();
+        file << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+        file << "<svg xmlns=\"http://www.w3.org/2000/svg\" ";
+        file << "width=\"" << bounds.width << "\" ";
+        file << "height=\"" << bounds.height << "\">\n";
+
+        // Write links
+        for (const auto &link: links) {
+            auto sourceIt = nodes.find(link.source);
+            auto targetIt = nodes.find(link.target);
+            if (sourceIt != nodes.end() && targetIt != nodes.end()) {
+                float x0 = sourceIt->second.x + nodeWidth;
+                float y0 = link.sourceY;
+                float x1 = targetIt->second.x;
+                float y1 = link.targetY;
+                float midX = x0 + (x1 - x0) * linkCurvature;
+
+                file << "<path d=\"M" << x0 << "," << (y0 - link.sourceWidth / 2);
+                file << " C" << midX << "," << (y0 - link.sourceWidth / 2);
+                file << " " << midX << "," << (y1 - link.targetWidth / 2);
+                file << " " << x1 << "," << (y1 - link.targetWidth / 2);
+                file << " L" << x1 << "," << (y1 + link.targetWidth / 2);
+                file << " C" << midX << "," << (y1 + link.targetWidth / 2);
+                file << " " << midX << "," << (y0 + link.sourceWidth / 2);
+                file << " " << x0 << "," << (y0 + link.sourceWidth / 2);
+                file << " Z\" ";
+                file << "fill=\"" << link.color.ToHexString() << "\" ";
+                file << "opacity=\"" << link.opacity << "\"/>\n";
+            }
+        }
+
+        // Write nodes
+        for (const auto &[id, node]: nodes) {
+            file << "<rect x=\"" << node.x << "\" ";
+            file << "y=\"" << node.y << "\" ";
+            file << "width=\"" << nodeWidth << "\" ";
+            file << "height=\"" << node.height << "\" ";
+            file << "fill=\"" << node.color.ToHexString() << "\"/>\n";
+
+            // Write labels
+            float labelY = node.y + node.height / 2.0f;
+            std::string anchor;
+            float labelX;
+
+            // Check if this is a terminal node
+            bool isTerminal = true;
+            for (const auto &link: links) {
+                if (link.source == node.id) {
+                    isTerminal = false;
+                    break;
+                }
+            }
+
+            if (node.depth == 0) {
+                labelX = node.x - 8;
+                anchor = "end";
+            } else if (isTerminal) {
+                labelX = node.x + nodeWidth + 8;
+                anchor = "start";
+            } else {
+                // Intermediate nodes
+                labelX = (alignment == SankeyAlignment::Left) ?
+                         node.x - 8 : node.x + nodeWidth + 8;
+                anchor = (alignment == SankeyAlignment::Left) ? "end" : "start";
+            }
+
+            file << "<text x=\"" << labelX << "\" ";
+            file << "y=\"" << labelY << "\" ";
+            file << "text-anchor=\"" << anchor << "\" ";
+            file << "dominant-baseline=\"middle\" ";
+            file << "font-family=\"Arial\" font-size=\"12\">";
+            file << node.label << "</text>\n";
+        }
+
+        file << "</svg>\n";
+        file.close();
+        return true;
+    }
+
+    void UltraCanvasSankeyRenderer::PerformLayout() {
+        if (nodes.empty() || links.empty()) return;
+
+        ComputeNodeDepths();
+        ComputeNodeValues();
+        ComputeNodeBreadths();
+        ComputeLinkBreadths();
+
+        // Iterative relaxation
+        for (int i = 0; i < iterations; ++i) {
+            RelaxRightToLeft();
+            RelaxLeftToRight();
+            ComputeLinkBreadths();  // Recompute after relaxation
+        }
+
+        needsLayout = false;
+    }
+
+    void UltraCanvasSankeyRenderer::Render() {
+        IRenderContext *ctx = GetRenderContext();
+        if (!IsVisible()) return;
+
+        auto bounds = GetBounds();
+
+        if (needsLayout) {
+            PerformLayout();
+        }
+
+        // Draw background if enabled
+        if (style.hasBackground) {
+            ctx->SetFillPaint(style.backgroundColor);
+            ctx->FillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
+        }
+
+        // Draw links
+        for (const auto &link: links) {
+            DrawLink(ctx, link);
+        }
+
+        // Draw nodes
+        for (const auto &[id, node]: nodes) {
+            DrawNode(ctx, node);
+        }
+    }
+
+    bool UltraCanvasSankeyRenderer::OnEvent(const UCEvent &event) {
+        switch (event.type) {
+            case UCEventType::MouseMove:
+                return HandleMouseMove(event);
+            case UCEventType::MouseDown:
+                return HandleMouseDown(event);
+            case UCEventType::MouseUp:
+                return HandleMouseUp(event);
+            case UCEventType::MouseLeave:
+                hoveredNodeId.clear();
+                hoveredLinkIndex = -1;
+                UltraCanvasTooltipManager::HideTooltip();
+//                auto mouseGlobalPos = ConvertContainerToWindowCoordinates(mousePos);
+//                // Show tooltip using tooltip manager
+//                UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, mouseGlobalPos);
+//
+//                RequestRedraw();
+                return true;
+            default:
+                break;
+        }
+        return false;
+    }
+
+    void UltraCanvasSankeyRenderer::SetAlignment(SankeyAlignment align) {
+        alignment = align;
+        needsLayout = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasSankeyRenderer::SetTheme(SankeyTheme t) {
+        theme = t;
+        ApplyTheme(theme);
+        RequestRedraw();
+    }
+
+    void UltraCanvasSankeyRenderer::SetNodeWidth(float width) {
+        nodeWidth = std::max(1.0f, width);
+        needsLayout = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasSankeyRenderer::SetNodePadding(float padding) {
+        nodePadding = std::max(0.0f, padding);
+        needsLayout = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasSankeyRenderer::SetLinkCurvature(float curvature) {
+        linkCurvature = std::clamp(curvature, 0.0f, 1.0f);
+        RequestRedraw();
+    }
+
+    void UltraCanvasSankeyRenderer::SetIterations(int iter) {
+        iterations = std::max(1, iter);
+        needsLayout = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasSankeyRenderer::SetFontSize(float size) {
+        style.fontSize = size;
+        needsLayout = true;  // Need to recalculate padding
+        RequestRedraw();
+    }
+
+    void UltraCanvasSankeyRenderer::SetFontFamily(const std::string &family) {
+        style.fontFamily = family;
+        needsLayout = true;  // Need to recalculate padding
+        RequestRedraw();
+    }
+
+    void UltraCanvasSankeyRenderer::SetMaxLabelWidth(float width) {
+        maxLabelWidth = width;
+        needsLayout = true;
+        RequestRedraw();
+    }
+
+    float UltraCanvasSankeyRenderer::GetMaxLabelWidth() const {
+        return maxLabelWidth;
+    }
+
+    void UltraCanvasSankeyRenderer::ComputeNodeDepths() {
+        // Reset depths
+        for (auto &[id, node]: nodes) {
+            node.depth = -1;
+        }
+
+        // Find nodes with no targets (sources)
+        std::vector<std::string> sources;
+        for (const auto &[id, node]: nodes) {
+            if (node.targetLinks.empty()) {
+                sources.push_back(id);
+            }
+        }
+
+        // Breadth-first traversal
+        for (const auto &source: sources) {
+            AssignDepth(source, 0);
+        }
+
+        // Assign remaining nodes
+        int maxDepth = 0;
+        for (auto &[id, node]: nodes) {
+            if (node.depth == -1) {
+                node.depth = 0;
+            }
+            maxDepth = std::max(maxDepth, node.depth);
+        }
+    }
+
+    void UltraCanvasSankeyRenderer::AssignDepth(const std::string &nodeId, int depth) {
+        auto it = nodes.find(nodeId);
+        if (it == nodes.end()) return;
+
+        if (it->second.depth < depth) {
+            it->second.depth = depth;
+        }
+
+        for (const auto& target : it->second.sourceLinks) {
+            AssignDepth(target, depth + 1);
+        }
+    }
+
+    void UltraCanvasSankeyRenderer::ComputeNodeValues() {
+        // Calculate node values based on incoming and outgoing flows
+        for (auto& [id, node] : nodes) {
+            float incomingValue = 0;
+            float outgoingValue = 0;
+
+            for (const auto& link : links) {
+                if (link.target == id) {
+                    incomingValue += link.value;
+                }
+                if (link.source == id) {
+                    outgoingValue += link.value;
+                }
+            }
+
+            // Node value is the maximum of incoming or outgoing flow
+            node.value = std::max(incomingValue, outgoingValue);
+            if (node.value == 0) {
+                node.value = 10.0f; // Default minimum value
+            }
+        }
+    }
+
+    void UltraCanvasSankeyRenderer::ComputeNodeBreadths() {
+        auto bounds = GetBounds();
+
+        // Find max depth
+        int maxDepth = 0;
+        for (const auto& [id, node] : nodes) {
+            maxDepth = std::max(maxDepth, node.depth);
+        }
+
+        // Group nodes by depth
+        std::map<int, std::vector<std::string>> nodesByDepth;
+        for (const auto& [id, node] : nodes) {
+            nodesByDepth[node.depth].push_back(id);
+        }
+
+        // Calculate required padding for labels
+        float leftPadding = nodePadding;
+        float rightPadding = nodePadding;
+
+        // Get render context for text measurement
+        IRenderContext* ctx = GetRenderContext();
+        if (ctx) {
+            ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+            ctx->SetFontSize(style.fontSize);
+
+            // Measure left side labels (source nodes at depth 0)
+            for (const auto& [id, node] : nodes) {
+                if (node.depth == 0) {
+                    float textWidth = ctx->GetTextWidth(node.label);
+                    textWidth = std::min(textWidth, maxLabelWidth);
+                    leftPadding = std::max(leftPadding, textWidth + 15.0f);
+                }
+            }
+
+            // Measure right side labels (terminal nodes)
+            for (const auto& [id, node] : nodes) {
+                bool isTerminal = true;
+                for (const auto& link : links) {
+                    if (link.source == id) {
+                        isTerminal = false;
+                        break;
+                    }
+                }
+                if (isTerminal) {
+                    float textWidth = ctx->GetTextWidth(node.label);
+                    textWidth = std::min(textWidth, maxLabelWidth);
+                    rightPadding = std::max(rightPadding, textWidth + 15.0f);
+                }
+            }
+        } else {
+            // Fallback if no context available
+            leftPadding = 100.0f;
+            rightPadding = 100.0f;
+        }
+
+        // Calculate horizontal spacing between columns
+        float availableWidth = bounds.width - nodeWidth - leftPadding - rightPadding;
+        float xStep = availableWidth / std::max(1, maxDepth);
+
+        // Ensure minimum spacing between columns
+        xStep = std::max(xStep, nodeWidth + 20.0f);
+
+        // Calculate the maximum total value across all columns
+        float maxColumnValue = 0;
+        for (const auto& [depth, nodeIds] : nodesByDepth) {
+            float columnValue = 0;
+            for (const auto& id : nodeIds) {
+                columnValue += nodes[id].value;
+            }
+            maxColumnValue = std::max(maxColumnValue, columnValue);
+        }
+
+        // Use available height minus padding for nodes
+        float availableHeight = bounds.height - 2 * nodePadding;
+
+        // Position nodes at each depth
+        for (auto& [depth, nodeIds] : nodesByDepth) {
+            float x = bounds.x + leftPadding + depth * xStep;
+
+            // Calculate total value for this depth
+            float totalValue = 0;
+            for (const auto& id : nodeIds) {
+                totalValue += nodes[id].value;
+            }
+
+            // Calculate padding between nodes in this column
+            float columnPadding = (nodeIds.size() > 1) ?
+                                  nodePadding * (nodeIds.size() - 1) : 0;
+
+            // Available height for actual nodes (excluding padding between them)
+            float nodeAreaHeight = availableHeight - columnPadding;
+
+            // Scaling factor - use global maximum for consistent scaling
+            float scale = nodeAreaHeight / maxColumnValue;
+
+            // Calculate actual height used by this column
+            float columnHeight = totalValue * scale + columnPadding;
+
+            // Center the column vertically
+            float y = bounds.y + nodePadding + (availableHeight - columnHeight) / 2.0f;
+
+            // Position each node in the column
+            for (const auto& id : nodeIds) {
+                auto& node = nodes[id];
+                node.x = x;
+                node.y = y;
+                node.width = nodeWidth;
+                node.height = std::max(1.0f, node.value * scale);
+                y += node.height + nodePadding;
+            }
+        }
+    }
+
+    void UltraCanvasSankeyRenderer::ComputeLinkBreadths() {
+        // Group links by source and target nodes
+        std::map<std::string, std::vector<SankeyLink*>> linksBySource;
+        std::map<std::string, std::vector<SankeyLink*>> linksByTarget;
+
+        for (auto& link : links) {
+            linksBySource[link.source].push_back(&link);
+            linksByTarget[link.target].push_back(&link);
+        }
+
+        // Calculate link widths and positions for source side
+        for (auto& [nodeId, nodeLinks] : linksBySource) {
+            auto nodeIt = nodes.find(nodeId);
+            if (nodeIt == nodes.end()) continue;
+
+            const auto& node = nodeIt->second;
+
+            // Sort links by target node Y position for better visual flow
+            std::sort(nodeLinks.begin(), nodeLinks.end(),
+                      [this](const SankeyLink* a, const SankeyLink* b) {
+                          auto targetA = nodes.find(a->target);
+                          auto targetB = nodes.find(b->target);
+                          if (targetA != nodes.end() && targetB != nodes.end()) {
+                              return targetA->second.y < targetB->second.y;
+                          }
+                          return false;
+                      });
+
+            // Calculate total outgoing flow
+            float totalFlow = 0;
+            for (const auto* link : nodeLinks) {
+                totalFlow += link->value;
+            }
+
+            // Scale factor for link widths on source side
+            float scale = (totalFlow > 0) ? node.height / totalFlow : 0;
+
+            // Position links along the source node
+            float y = node.y;
+            for (auto* link : nodeLinks) {
+                link->sourceWidth = link->value * scale;
+                link->sourceY = y + link->sourceWidth / 2.0f;
+                y += link->sourceWidth;
+            }
+        }
+
+        // Calculate link widths and positions for target side
+        for (auto& [nodeId, nodeLinks] : linksByTarget) {
+            auto nodeIt = nodes.find(nodeId);
+            if (nodeIt == nodes.end()) continue;
+
+            const auto& node = nodeIt->second;
+
+            // Sort links by source node Y position
+            std::sort(nodeLinks.begin(), nodeLinks.end(),
+                      [this](const SankeyLink* a, const SankeyLink* b) {
+                          auto sourceA = nodes.find(a->source);
+                          auto sourceB = nodes.find(b->source);
+                          if (sourceA != nodes.end() && sourceB != nodes.end()) {
+                              return sourceA->second.y < sourceB->second.y;
+                          }
+                          return false;
+                      });
+
+            // Calculate total incoming flow
+            float totalFlow = 0;
+            for (const auto* link : nodeLinks) {
+                totalFlow += link->value;
+            }
+
+            // Scale factor for link widths on target side
+            float scale = (totalFlow > 0) ? node.height / totalFlow : 0;
+
+            // Position links along the target node
+            float y = node.y;
+            for (auto* link : nodeLinks) {
+                link->targetWidth = link->value * scale;
+                link->targetY = y + link->targetWidth / 2.0f;
+                y += link->targetWidth;
+            }
+        }
+    }
+
+    void UltraCanvasSankeyRenderer::RelaxLeftToRight() {
+        // Group nodes by depth
+        std::map<int, std::vector<std::string>> nodesByDepth;
+        for (const auto& [id, node] : nodes) {
+            nodesByDepth[node.depth].push_back(id);
+        }
+
+        // Relax from left to right
+        for (auto& [depth, nodeIds] : nodesByDepth) {
+            if (depth == 0) continue; // Skip source nodes
+
+            for (const auto& nodeId : nodeIds) {
+                auto& node = nodes[nodeId];
+
+                float targetY = 0;
+                float weightSum = 0;
+
+                // Calculate weighted center based on incoming links
+                for (const auto& link : links) {
+                    if (link.target == nodeId) {
+                        targetY += link.sourceY * link.value;
+                        weightSum += link.value;
+                    }
+                }
+
+                if (weightSum > 0) {
+                    float newY = targetY / weightSum - node.height / 2.0f;
+                    auto bounds = GetBounds();
+                    node.y = std::clamp(newY,
+                                        bounds.y + nodePadding,
+                                        bounds.y + bounds.height - node.height - nodePadding);
+                }
+            }
+
+            // Resolve collisions within this depth
+            ResolveCollisions(nodeIds);
+        }
+    }
+
+    void UltraCanvasSankeyRenderer::RelaxRightToLeft() {
+        // Group nodes by depth
+        std::map<int, std::vector<std::string>> nodesByDepth;
+        for (const auto& [id, node] : nodes) {
+            nodesByDepth[node.depth].push_back(id);
+        }
+
+        // Find max depth
+        int maxDepth = 0;
+        for (const auto& [depth, nodeIds] : nodesByDepth) {
+            maxDepth = std::max(maxDepth, depth);
+        }
+
+        // Relax from right to left
+        for (int depth = maxDepth - 1; depth >= 0; --depth) {
+            auto it = nodesByDepth.find(depth);
+            if (it == nodesByDepth.end()) continue;
+
+            for (const auto& nodeId : it->second) {
+                auto& node = nodes[nodeId];
+
+                float targetY = 0;
+                float weightSum = 0;
+
+                // Calculate weighted center based on outgoing links
+                for (const auto& link : links) {
+                    if (link.source == nodeId) {
+                        targetY += link.targetY * link.value;
+                        weightSum += link.value;
+                    }
+                }
+
+                if (weightSum > 0) {
+                    float newY = targetY / weightSum - node.height / 2.0f;
+                    auto bounds = GetBounds();
+                    node.y = std::clamp(newY,
+                                        bounds.y + nodePadding,
+                                        bounds.y + bounds.height - node.height - nodePadding);
+                }
+            }
+
+            // Resolve collisions within this depth
+            ResolveCollisions(it->second);
+        }
+    }
+
+    void UltraCanvasSankeyRenderer::ResolveCollisions(const std::vector<std::string> &nodeIds) {
+        if (nodeIds.size() <= 1) return;
+
+        // Sort nodes by Y position
+        std::vector<std::string> sortedIds = nodeIds;
+        std::sort(sortedIds.begin(), sortedIds.end(),
+                  [this](const std::string& a, const std::string& b) {
+                      return nodes[a].y < nodes[b].y;
+                  });
+
+        // Push overlapping nodes apart
+        for (size_t i = 1; i < sortedIds.size(); ++i) {
+            auto& prevNode = nodes[sortedIds[i-1]];
+            auto& currNode = nodes[sortedIds[i]];
+
+            float minY = prevNode.y + prevNode.height + nodePadding;
+            if (currNode.y < minY) {
+                currNode.y = minY;
+            }
+        }
+
+        // Ensure nodes stay within bounds
+        auto bounds = GetBounds();
+        float maxY = bounds.y + bounds.height - nodePadding;
+
+        for (auto it = sortedIds.rbegin(); it != sortedIds.rend(); ++it) {
+            auto& node = nodes[*it];
+            if (node.y + node.height > maxY) {
+                node.y = maxY - node.height;
+                maxY = node.y - nodePadding;
+            }
+        }
+    }
+
+    void UltraCanvasSankeyRenderer::DrawNode(IRenderContext *ctx, const SankeyNode &node) {
+        // Draw node rectangle
+        ctx->SetFillPaint(node.color);
+        ctx->FillRectangle(node.x, node.y, nodeWidth, node.height);
+
+        // Draw node border
+        if (style.nodeStrokeWidth > 0) {
+            ctx->SetStrokePaint(style.nodeStrokeColor);
+            ctx->SetStrokeWidth(style.nodeStrokeWidth);
+            ctx->DrawRectangle(node.x, node.y, nodeWidth, node.height);
+        }
+
+        // Draw label
+        ctx->SetFillPaint(style.textColor);
+        ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+        ctx->SetFontSize(style.fontSize);
+
+        int textWidth, textHeight;
+        ctx->GetTextDimension(node.label, textWidth, textHeight);
+        float labelY = node.y + node.height / 2.0f - static_cast<float>(textHeight)/2;
+
+        // Position label based on node depth
+        if (node.depth == 0) {
+            // Left-aligned labels for source nodes
+            float labelX = node.x - 8;
+            ctx->DrawText(node.label, labelX - textWidth, labelY);
+        } else {
+            // Check if this is a terminal node (no outgoing links)
+            bool isTerminal = true;
+            for (const auto& link : links) {
+                if (link.source == node.id) {
+                    isTerminal = false;
+                    break;
+                }
+            }
+
+            if (isTerminal) {
+                // Right-aligned labels for terminal nodes
+                float labelX = node.x + nodeWidth + 8;
+                ctx->DrawText(node.label, labelX, labelY);
+            } else {
+                // For intermediate nodes, position based on alignment preference
+                if (alignment == SankeyAlignment::Left) {
+                    float labelX = node.x - 8;
+                    float textWidth = ctx->GetTextWidth(node.label);
+                    ctx->DrawText(node.label, labelX - textWidth, labelY);
+                } else {
+                    float labelX = node.x + nodeWidth + 8;
+                    ctx->DrawText(node.label, labelX, labelY);
+                }
+            }
+        }
+    }
+
+    void UltraCanvasSankeyRenderer::DrawLink(IRenderContext *ctx, const SankeyLink &link) {
+        auto sourceIt = nodes.find(link.source);
+        auto targetIt = nodes.find(link.target);
+
+        if (sourceIt == nodes.end() || targetIt == nodes.end()) return;
+
+        float x0 = sourceIt->second.x + nodeWidth;
+        float y0 = link.sourceY;
+        float x1 = targetIt->second.x;
+        float y1 = link.targetY;
+
+        // Draw curved link using bezier curve with separate widths
+        DrawCurvedLink(ctx, x0, y0, x1, y1, link.sourceWidth, link.targetWidth,
+                       link.color.WithAlpha(static_cast<uint8_t>(link.opacity * 255)));
+    }
+
+    void UltraCanvasSankeyRenderer::DrawCurvedLink(IRenderContext *ctx, float x0, float y0, float x1, float y1,
+                                                   float sourceWidth, float targetWidth, const Color &color) {
+        ctx->SetFillPaint(color);
+        ctx->ClearPath();
+
+        // Create path for link with varying thickness
+        float midX = x0 + (x1 - x0) * linkCurvature;
+
+        // Top edge of link (curves from source to target width)
+        ctx->MoveTo(x0, y0 - sourceWidth/2);
+        ctx->BezierCurveTo(midX, y0 - sourceWidth/2, midX, y1 - targetWidth/2, x1, y1 - targetWidth/2);
+
+        // Bottom edge of link
+        ctx->LineTo(x1, y1 + targetWidth/2);
+        ctx->BezierCurveTo(midX, y1 + targetWidth/2, midX, y0 + sourceWidth/2, x0, y0 + sourceWidth/2);
+
+        ctx->ClosePath();
+        ctx->Fill();
+    }
+
+    bool UltraCanvasSankeyRenderer::HandleMouseMove(const UCEvent &event) {
+        Point2D mousePos(event.x, event.y);
+
+        // Check for dragging
+        if (!draggedNodeId.empty()) {
+            auto nodeIt = nodes.find(draggedNodeId);
+            if (nodeIt != nodes.end()) {
+                nodeIt->second.y = mousePos.y - dragOffset.y;
+                auto bounds = GetBounds();
+                nodeIt->second.y = std::clamp(nodeIt->second.y,
+                                              bounds.y + nodePadding,
+                                              bounds.y + bounds.height - nodeIt->second.height - nodePadding);
+                ComputeLinkBreadths();
+                RequestRedraw();
+            }
+            return true;
+        }
+
+        // Check for node hover
+        std::string newHoveredNodeId;
+        for (const auto& [id, node] : nodes) {
+            if (mousePos.x >= node.x && mousePos.x <= node.x + nodeWidth &&
+                mousePos.y >= node.y && mousePos.y <= node.y + node.height) {
+                newHoveredNodeId = id;
+
+                if (enableTooltips) {
+                    std::string tooltipText = node.label + "\nValue: " + std::to_string(static_cast<int>(node.value));
+                    auto mouseGlobalPos = ConvertContainerToWindowCoordinates(mousePos);
+                    // Show tooltip using tooltip manager
+//                    UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, {event.windowX, event.windowY});
+                    UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, mouseGlobalPos);
+                }
+                break;
+            }
+        }
+        if (hoveredNodeId.empty()) {
+            UltraCanvasTooltipManager::HideTooltip();
+        }
+        if (newHoveredNodeId != hoveredNodeId) {
+            hoveredNodeId = newHoveredNodeId;
+            if (!hoveredNodeId.empty() && onNodeHover) {
+                onNodeHover(hoveredNodeId);
+            }
+//            RequestRedraw();
+        }
+
+        return !hoveredNodeId.empty();
+    }
+
+    bool UltraCanvasSankeyRenderer::HandleMouseDown(const UCEvent &event) {
+        Point2D mousePos(event.x, event.y);
+
+        // Check if clicking on a node
+        for (const auto& [id, node] : nodes) {
+            if (mousePos.x >= node.x && mousePos.x <= node.x + nodeWidth &&
+                mousePos.y >= node.y && mousePos.y <= node.y + node.height) {
+
+                if (onNodeClick) {
+                    onNodeClick(id);
+                }
+
+                // Start dragging
+                draggedNodeId = id;
+                dragOffset.x = mousePos.x - node.x;
+                dragOffset.y = mousePos.y - node.y;
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool UltraCanvasSankeyRenderer::HandleMouseUp(const UCEvent &event) {
+        if (!draggedNodeId.empty()) {
+            draggedNodeId.clear();
+            needsLayout = true; // Trigger full layout after drag
+            RequestRedraw();
+            return true;
+        }
+        return false;
+    }
+
+    Color UltraCanvasSankeyRenderer::GetNodeColor(size_t index) {
+        static const std::vector<Color> palette = {
+                Color(141, 211, 199),  // Teal
+                Color(255, 255, 179),  // Light Yellow
+                Color(190, 186, 218),  // Lavender
+                Color(251, 128, 114),  // Salmon
+                Color(128, 177, 211),  // Sky Blue
+                Color(253, 180, 98),   // Orange
+                Color(179, 222, 105),  // Light Green
+                Color(252, 205, 229),  // Pink
+                Color(217, 217, 217),  // Light Gray
+                Color(188, 128, 189),  // Purple
+                Color(204, 235, 197)   // Mint
+        };
+        return palette[index % palette.size()];
+    }
+
+    void UltraCanvasSankeyRenderer::ApplyTheme(SankeyTheme t) {
+        switch (t) {
+            case SankeyTheme::Energy:
+                style.backgroundColor = Color(240, 248, 255);
+                style.nodeStrokeColor = Colors::DarkBlue;
+                style.textColor = Colors::DarkBlue;
+                break;
+            case SankeyTheme::Finance:
+                style.backgroundColor = Color(245, 245, 240);
+                style.nodeStrokeColor = Colors::DarkGreen;
+                style.textColor = Colors::DarkGreen;
+                break;
+            case SankeyTheme::WebTraffic:
+                style.backgroundColor = Color(250, 250, 250);
+                style.nodeStrokeColor = Colors::Gray;
+                style.textColor = Colors::DarkGray;
+                break;
+            default:
+                // Keep default theme
+                break;
+        }
+    }
+}

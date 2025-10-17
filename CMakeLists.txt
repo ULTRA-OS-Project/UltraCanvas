@@ -133,6 +133,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/Plugins/Charts/UltraCanvasDivergingBarChart.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasWaterfallChart.cpp
         UltraCanvas/Plugins/SVG/UltraCanvasSVGPlugin.cpp
+        UltraCanvas/Plugins/Diagrams/UltraCanvasSankey.cpp
         UltraCanvas/core/UltraCanvasGraphicsPluginSystem.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartElement.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartCoreRendering.cpp

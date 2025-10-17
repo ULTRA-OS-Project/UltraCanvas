@@ -28,8 +28,15 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasUIElement::ConvertContainerToWindowCoordinates(int &x, int &y) {
-        x = GetXInWindow() + x;
-        y = GetYInWindow() + y;
+        if (parentContainer) {
+            auto pc = parentContainer;
+            while(pc) {
+                Rect2Di contentArea = pc->GetContentArea();
+                x = x + contentArea.x - pc->GetHorizontalScrollPosition();
+                y = y + contentArea.y - pc->GetVerticalScrollPosition();
+                pc = pc->GetParentContainer();
+            }
+        }
     }
 
     Point2Di UltraCanvasUIElement::ConvertContainerToWindowCoordinates(const Point2Di &localPos) {

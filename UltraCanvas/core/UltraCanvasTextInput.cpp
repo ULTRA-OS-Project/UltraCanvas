@@ -416,7 +416,7 @@ namespace UltraCanvas {
             RenderMultilineText(area, renderText, textPos, ctx);
         } else {
             // Match the baseline calculation used in GetCaretYPosition
-            float lineHeight = style.fontStyle.fontSize * 1.2f;
+            float lineHeight = ctx->GetTextHeight(renderText);
             float centeredY = area.y + (area.height - lineHeight) / 2.0f;
             //float baselineY = centeredY + (style.fontSize * 0.8f);
             float baselineY = centeredY;
@@ -433,7 +433,7 @@ namespace UltraCanvas {
         ctx->SetFontStyle(style.fontStyle);
         ctx->SetTextStyle(placeholderStyle);
 
-        ctx->DrawText(placeholderText, Point2Di(area.x, area.y));
+        ctx->DrawTextInRect(placeholderText, area);
     }
 
     void UltraCanvasTextInput::RenderSelection(const Rect2Df &area, IRenderContext* ctx) {
