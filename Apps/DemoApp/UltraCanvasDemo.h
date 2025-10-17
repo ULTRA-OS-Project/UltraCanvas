@@ -229,12 +229,14 @@ namespace UltraCanvas {
 
         // Data Visualization
         std::shared_ptr<UltraCanvasUIElement> CreateDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSankeyExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateLineChartsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBarChartsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateScatterPlotChartsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateAreaChartsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateFinancialChartExamples();
+
 
         std::shared_ptr<UltraCanvasUIElement> CreateDivergingChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateInfoGraphicsExamples();

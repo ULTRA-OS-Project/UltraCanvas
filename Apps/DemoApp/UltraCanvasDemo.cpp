@@ -664,6 +664,21 @@ namespace UltraCanvas {
         // ===== INFO GRAPHICS =====
         auto infoBuilder = DemoCategoryBuilder(this, DemoCategory::InfoGraphics);
 
+        infoBuilder.AddItem(
+                        "sankey",
+                        "Sankey Diagram",
+                        "Interactive flow diagrams showing relationships and value distributions",
+                        ImplementationStatus::FullyImplemented,
+                        [this]() { return CreateSankeyExamples(); },
+                        "Apps/DemoApp/UltraCanvasSankeyExamples.cpp",
+                        "Docs/UltraCanvasSankeyDiagram.md"
+                )
+                .AddVariant("sankey", "Energy Flow")
+                .AddVariant("sankey", "Financial Flow")
+                .AddVariant("sankey", "Web Traffic")
+                .AddVariant("sankey", "Custom Data")
+                .AddVariant("sankey", "Performance Test");
+
         infoBuilder.AddItem("infographics", "Info Graphics", "Complex data visualizations",
                             ImplementationStatus::NotImplemented,
                             [this]() { return CreateInfoGraphicsExamples(); })
