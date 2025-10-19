@@ -32,7 +32,7 @@ namespace UltraCanvas {
         implementedIcon = std::make_shared<UltraCanvasImageElement>("ImplementedIcon", id + 2, 10, 30, 16, 16);
         AddChild(implementedIcon);
 
-        implementedLabel = std::make_shared<UltraCanvasLabel>("ImplementedLabel", id + 3, 32, 30, width - 42, 16);
+        implementedLabel = std::make_shared<UltraCanvasLabel>("ImplementedLabel", id + 3, 32, 28, width - 42, 16);
         implementedLabel->SetText("Fully Implemented");
         implementedLabel->SetFontSize(11);
         implementedLabel->SetTextColor(Color(0, 150, 0, 255));
@@ -42,7 +42,7 @@ namespace UltraCanvas {
         partialIcon = std::make_shared<UltraCanvasImageElement>("PartialIcon", id + 4, 10, 50, 16, 16);
         AddChild(partialIcon);
 
-        partialLabel = std::make_shared<UltraCanvasLabel>("PartialLabel", id + 5, 32, 50, width - 42, 16);
+        partialLabel = std::make_shared<UltraCanvasLabel>("PartialLabel", id + 5, 32, 48, width - 42, 16);
         partialLabel->SetText("Partially Implemented");
         partialLabel->SetFontSize(11);
         partialLabel->SetTextColor(Color(0x21, 0x96, 0xf3, 255));
@@ -52,7 +52,7 @@ namespace UltraCanvas {
         notImplementedIcon = std::make_shared<UltraCanvasImageElement>("NotImplementedIcon", id + 6, 10, 70, 16, 16);
         AddChild(notImplementedIcon);
 
-        notImplementedLabel = std::make_shared<UltraCanvasLabel>("NotImplementedLabel", id + 7, 32, 70, width - 42, 16);
+        notImplementedLabel = std::make_shared<UltraCanvasLabel>("NotImplementedLabel", id + 7, 32, 68, width - 42, 16);
         notImplementedLabel->SetText("Not Implemented Yet");
         notImplementedLabel->SetFontSize(11);
         notImplementedLabel->SetTextColor(Color(200, 0, 0, 255));
@@ -641,6 +641,12 @@ namespace UltraCanvas {
                 .AddVariant("waterfallcharts", "Cash Flow with Subtotals")
                 .AddVariant("waterfallcharts", "Performance Impact");
 
+        chartBuilder.AddItem("populationcharts", "Population Chart", "Population chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreatePopulationChartExamples(); },
+                             "Examples/UltraCanvasPopulationChartsExamples.cpp",
+                             "Docs/UltraCanvasPopulationChartElement.md");
+
         chartBuilder.AddItem("sunburstcharts", "Sunburst Chart", "Sunburst Chart",
                              ImplementationStatus::NotImplemented,
                              [this]() { return nullptr; });
@@ -670,7 +676,7 @@ namespace UltraCanvas {
                         "Interactive flow diagrams showing relationships and value distributions",
                         ImplementationStatus::FullyImplemented,
                         [this]() { return CreateSankeyExamples(); },
-                        "Apps/DemoApp/UltraCanvasSankeyExamples.cpp",
+                        "Examples/UltraCanvasSankeyExamples.cpp",
                         "Docs/UltraCanvasSankeyDiagram.md"
                 )
                 .AddVariant("sankey", "Energy Flow")

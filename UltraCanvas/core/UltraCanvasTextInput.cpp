@@ -408,11 +408,12 @@ namespace UltraCanvas {
         ctx->SetFontStyle(style.fontStyle);
         textStyle.textColor = color;
         textStyle.alignment = style.textAlignment;
+        textStyle.verticalAlignement = TextVerticalAlignement::Middle;
         ctx->SetTextStyle(textStyle);
 
         if (inputType == TextInputType::Multiline) {
             // Start at baseline position
-            Point2Di textPos(area.x - scrollOffset, area.y + (style.fontStyle.fontSize * 0.8f));
+            Point2Di textPos(area.x - scrollOffset, area.y);
             RenderMultilineText(area, renderText, textPos, ctx);
         } else {
             // Match the baseline calculation used in GetCaretYPosition
@@ -430,6 +431,11 @@ namespace UltraCanvas {
         TextStyle placeholderStyle;
         placeholderStyle.textColor = style.placeholderColor;
         placeholderStyle.alignment = style.textAlignment;
+        if (inputType == TextInputType::Multiline) {
+            placeholderStyle.verticalAlignement = TextVerticalAlignement::Top;
+        } else {
+            placeholderStyle.verticalAlignement = TextVerticalAlignement::Middle;
+        }
         ctx->SetFontStyle(style.fontStyle);
         ctx->SetTextStyle(placeholderStyle);
 
@@ -539,7 +545,7 @@ namespace UltraCanvas {
         }
         lines.push_back(currentLine);
 
-        float lineHeight = style.fontStyle.fontSize * 1.2f;
+        float lineHeight = style.fontStyle.fontSize * 1.4f;
         float currentBaselineY = startPos.y; // startPos.y is baseline
 
         for (const auto& line : lines) {

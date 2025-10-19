@@ -119,6 +119,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasButton.cpp
         UltraCanvas/core/UltraCanvasSyntaxTokenizer.cpp
         UltraCanvas/core/UltraCanvasCheckbox.cpp
+        UltraCanvas/core/UltraCanvasGraphicsPluginSystem.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
@@ -134,7 +135,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/Plugins/Charts/UltraCanvasWaterfallChart.cpp
         UltraCanvas/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         UltraCanvas/Plugins/Diagrams/UltraCanvasSankey.cpp
-        UltraCanvas/core/UltraCanvasGraphicsPluginSystem.cpp
+        UltraCanvas/Plugins/Charts/ltraCanvasPopulationChart.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartElement.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
@@ -187,6 +188,7 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasCheckboxExamples.cpp
         Apps/DemoApp/UltraCanvasDemoInfoWindow.cpp
         Apps/DemoApp/UltraCanvasSankeyExamples.cpp
+        Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
 )
 
 # ✅ ADDED: Check that source files exist

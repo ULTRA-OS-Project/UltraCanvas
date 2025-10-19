@@ -236,6 +236,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateScatterPlotChartsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateAreaChartsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateFinancialChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreatePopulationChartExamples();
 
 
         std::shared_ptr<UltraCanvasUIElement> CreateDivergingChartExamples();

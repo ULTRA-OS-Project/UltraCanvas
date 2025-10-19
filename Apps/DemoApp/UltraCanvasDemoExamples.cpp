@@ -325,7 +325,7 @@ namespace UltraCanvas {
 //    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChartExamples() {
 //        auto container = std::make_shared<UltraCanvasContainer>("ChartExamples", 2300, 0, 0, 1000, 600);
 //
-//        auto title = std::make_shared<UltraCanvasLabel>("ChartTitle", 2301, 10, 10, 300, 30);
+//        auto title = std::make_shared<UltraCanvasLabel>("chartTitle", 2301, 10, 10, 300, 30);
 //        title->SetText("Chart Examples");
 //        title->SetFontSize(16);
 //        title->SetFontWeight(FontWeight::Bold);
