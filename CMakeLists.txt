@@ -120,6 +120,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasSyntaxTokenizer.cpp
         UltraCanvas/core/UltraCanvasCheckbox.cpp
         UltraCanvas/core/UltraCanvasGraphicsPluginSystem.cpp
+        UltraCanvas/core/UltraCanvasSegmentedControl.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
@@ -189,6 +190,7 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasDemoInfoWindow.cpp
         Apps/DemoApp/UltraCanvasSankeyExamples.cpp
         Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
+        Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
 )
 
 # ✅ ADDED: Check that source files exist

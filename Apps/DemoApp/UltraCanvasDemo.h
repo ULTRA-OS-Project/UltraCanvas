@@ -210,6 +210,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateMenuExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDialogExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTextAreaExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSegmentedControlExamples();
 
         // Graphics Elements
         std::shared_ptr<UltraCanvasUIElement> CreateBitmapNotImplementedExamples(const std::string& format);

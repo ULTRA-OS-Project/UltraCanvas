@@ -34,7 +34,7 @@ namespace UltraCanvas {
         // ===== GERMANY POPULATION CHART =====
         auto germanyChart = std::make_shared<UltraCanvasPopulationChart>("GermanyChart", 5010, 20, 75, 480, 640);
         germanyChart->SetTitle("Germany");
-        germanyChart->SetSubtitle("1st of January 2025");
+        germanyChart->SetSubtitle("2024");
         germanyChart->SetAxisLabel("Population (millions)");
         germanyChart->SetMaxAxisValue(4.0);
 
@@ -86,7 +86,7 @@ namespace UltraCanvas {
         // ===== RUSSIA POPULATION CHART =====
         auto russiaChart = std::make_shared<UltraCanvasPopulationChart>("RussiaChart", 5020, 510, 75, 480, 640);
         russiaChart->SetTitle("Russia");
-        russiaChart->SetSubtitle("1st of January 2025");
+        russiaChart->SetSubtitle("2024");
         russiaChart->SetAxisLabel("Population (millions)");
         russiaChart->SetMaxAxisValue(7.0);
 

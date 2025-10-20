@@ -423,6 +423,19 @@ namespace UltraCanvas {
                 .AddVariant("checkbox", "Switch Toggle")
                 .AddVariant("checkbox", "Radio Button");
 
+        basicBuilder.AddItem("segmentedcontrol", "Segmented Control",
+                             "Compact control for selecting between mutually exclusive options",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSegmentedControlExamples(); },
+                             "Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp",
+                             "Docs/UltraCanvasSegmentedControl.md")
+                .AddVariant("segmentedcontrol", "Bordered Style")
+                .AddVariant("segmentedcontrol", "iOS Style")
+                .AddVariant("segmentedcontrol", "Flat Style")
+                .AddVariant("segmentedcontrol", "Bar Style")
+                .AddVariant("segmentedcontrol", "Toggle Mode")
+                .AddVariant("segmentedcontrol", "FitContent Width");
+
         basicBuilder.AddItem("slider", "Slider", "Range and value selection sliders",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateSliderExamples(); },
