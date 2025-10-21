@@ -99,11 +99,6 @@ namespace UltraCanvas {
             DrawLineNumbers(ctx);
         }
 
-        // Draw text preview if enabled
-        if (style.showTextPreview) {
-            DrawTextPreview(ctx);
-        }
-
         // Draw text with syntax highlighting
         if (style.highlightSyntax && syntaxTokenizer) {
             DrawHighlightedText(ctx);
@@ -365,6 +360,15 @@ namespace UltraCanvas {
     bool UltraCanvasTextArea::IsNeedHorizontalScrollbar() {
         return maxLineWidth > visibleTextArea.width;
     }
+
+    int UltraCanvasTextArea::GetMaxLineWidth() {
+        maxLineWidth = 0;
+        for (const auto& line : lines) {
+            maxLineWidth = std::max(maxLineWidth, MeasureTextWidth(line));
+        }
+        return maxLineWidth;
+    }
+
 
 // Draw scrollbars
     void UltraCanvasTextArea::DrawScrollbars(IRenderContext* context) {
@@ -1357,7 +1361,6 @@ namespace UltraCanvas {
         visibleTextArea.y += style.padding;
         visibleTextArea.width -= style.padding * 2;
         visibleTextArea.height -= style.padding * 2;
-
         if (style.showLineNumbers) {
             visibleTextArea.x += (style.lineNumbersWidth + 5);
             visibleTextArea.width -= (style.lineNumbersWidth + 5);
@@ -1387,23 +1390,6 @@ namespace UltraCanvas {
                     visibleTextArea.height -= 15; // Reserve space for horizontal scrollbar
                     maxVisibleLines = std::max(1, visibleTextArea.height / computedLineHeight);
                 }
-            }
-        }
-
-        if (style.showTextPreview) {
-            int previewHeight = style.previewLineCount * style.previewLineHeight;
-
-            // Top preview + separator
-            if (firstVisibleLine > 0) {
-                visibleTextArea.y += previewHeight;
-                visibleTextArea.height -= previewHeight;
-                maxVisibleLines = std::max(1, visibleTextArea.height / computedLineHeight);
-            }
-
-            // Bottom preview + separator
-            if (firstVisibleLine + maxVisibleLines < static_cast<int>(lines.size())) {
-                visibleTextArea.height -= previewHeight;
-                maxVisibleLines = std::max(1, visibleTextArea.height / computedLineHeight);
             }
         }
         isNeedRecalculateVisibleArea = false;
@@ -1453,152 +1439,6 @@ namespace UltraCanvas {
 
         context->PopState();
         return width;
-    }
-
-    void UltraCanvasTextArea::DrawTextPreview(IRenderContext* context) {
-        if (!style.showTextPreview) return;
-
-        auto bounds = GetBounds();
-
-        // Draw top preview if there are lines above visible area
-        if (firstVisibleLine > 0) {
-            DrawTopPreview(context, bounds);
-        }
-
-        // Draw bottom preview if there are lines below visible area
-        if (firstVisibleLine + maxVisibleLines < static_cast<int>(lines.size())) {
-            DrawBottomPreview(context, bounds);
-        }
-    }
-
-// ===== NEW: TOP PREVIEW RENDERING =====
-    void UltraCanvasTextArea::DrawTopPreview(IRenderContext* context, const Rect2Di& bounds) {
-        int previewAreaX = style.showLineNumbers ? bounds.x + style.lineNumbersWidth : bounds.x;
-        int previewAreaY = bounds.y + style.padding;
-        int previewWidth = bounds.width - (style.showLineNumbers ? style.lineNumbersWidth : 0) - style.padding * 2;
-
-        // Get non-empty lines above visible area
-        std::vector<int> previewLineIndices = GetNonEmptyLineIndices(firstVisibleLine - 1, style.previewLineCount, true);
-
-        // Draw preview lines from oldest to newest (top to bottom)
-        std::reverse(previewLineIndices.begin(), previewLineIndices.end());
-
-        for (size_t i = 0; i < previewLineIndices.size(); ++i) {
-            int lineIndex = previewLineIndices[i];
-            if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
-                // Calculate opacity - nearest line has highest opacity
-                float t = static_cast<float>(previewLineIndices.size() - 1 - i) / std::max(1.0f, static_cast<float>(previewLineIndices.size() - 1));
-                float opacity = style.previewOpacityFar + t * (style.previewOpacityNear - style.previewOpacityFar);
-
-                int lineY = previewAreaY + static_cast<int>(i) * style.previewLineHeight;
-                DrawPreviewLine(context, lines[lineIndex], previewAreaX, lineY, opacity);
-            }
-        }
-
-        // Draw separator line
-        int separatorY = previewAreaY + static_cast<int>(previewLineIndices.size()) * style.previewLineHeight;
-        context->SetStrokePaint(style.previewSeparatorColor);
-        context->SetStrokeWidth(style.previewSeparatorHeight);
-        context->DrawLine(previewAreaX, separatorY, previewAreaX + previewWidth, separatorY);
-    }
-
-// ===== NEW: BOTTOM PREVIEW RENDERING =====
-    void UltraCanvasTextArea::DrawBottomPreview(IRenderContext* context, const Rect2Di& bounds) {
-        int previewAreaX = style.showLineNumbers ? bounds.x + style.lineNumbersWidth : bounds.x;
-        int previewWidth = bounds.width - (style.showLineNumbers ? style.lineNumbersWidth : 0) - style.padding * 2;
-
-        // Calculate bottom preview start position
-        int mainTextHeight = maxVisibleLines * computedLineHeight;
-        int topPreviewHeight = (firstVisibleLine > 0) ?
-                               (style.previewLineCount * style.previewLineHeight + style.previewSeparatorHeight) : 0;
-        int previewAreaY = bounds.y + style.padding + topPreviewHeight + mainTextHeight;
-
-        // Draw separator line
-        context->SetStrokePaint(style.previewSeparatorColor);
-        context->SetStrokeWidth(style.previewSeparatorHeight);
-        context->DrawLine(previewAreaX, previewAreaY, previewAreaX + previewWidth, previewAreaY);
-        previewAreaY += style.previewSeparatorHeight;
-
-        // Get non-empty lines below visible area
-        std::vector<int> previewLineIndices = GetNonEmptyLineIndices(firstVisibleLine + maxVisibleLines, style.previewLineCount, false);
-
-        // Draw preview lines from nearest to farthest (top to bottom)
-        for (size_t i = 0; i < previewLineIndices.size(); ++i) {
-            int lineIndex = previewLineIndices[i];
-            if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
-                // Calculate opacity - nearest line has highest opacity
-                float t = static_cast<float>(i) / std::max(1.0f, static_cast<float>(previewLineIndices.size() - 1));
-                float opacity = style.previewOpacityNear - t * (style.previewOpacityNear - style.previewOpacityFar);
-
-                int lineY = previewAreaY + static_cast<int>(i) * style.previewLineHeight;
-                DrawPreviewLine(context, lines[lineIndex], previewAreaX, lineY, opacity);
-            }
-        }
-    }
-
-// ===== NEW: DRAW SINGLE PREVIEW LINE =====
-    void UltraCanvasTextArea::DrawPreviewLine(IRenderContext* context, const std::string& lineText,
-                                              int x, int y, float opacity) {
-        if (lineText.empty()) return;
-
-        context->PushState();
-        context->SetFontStyle(style.fontStyle);
-
-        // Create colors with opacity
-        Color textColor = style.fontColor;
-        textColor.a = static_cast<uint8_t>(textColor.a * opacity);
-
-        Color bgColor = style.backgroundColor;
-        bgColor.a = static_cast<uint8_t>(bgColor.a * opacity);
-
-        int currentX = x;
-
-        // Draw character-by-character representation
-        for (char ch : lineText) {
-            // Calculate character width using actual font
-            std::string charStr(1, ch);
-            int charWidth = MeasureTextWidth(charStr);
-
-            if (charWidth <= 0) charWidth = 1; // Minimum 1 pixel
-
-            if (ch == ' ' || ch == '\t') {
-                // Draw space as background color
-                context->SetFillPaint(bgColor);
-                context->FillRectangle(currentX, y, charWidth, style.previewLineHeight);
-            } else {
-                // Draw character as text color
-                context->SetFillPaint(textColor);
-                context->FillRectangle(currentX, y, charWidth, style.previewLineHeight);
-            }
-
-            currentX += charWidth;
-        }
-
-        context->PopState();
-    }
-
-// ===== NEW: GET NON-EMPTY LINE INDICES =====
-    std::vector<int> UltraCanvasTextArea::GetNonEmptyLineIndices(int startLine, int count, bool searchUp) {
-        std::vector<int> indices;
-        indices.reserve(count);
-
-        if (searchUp) {
-            // Search upward from startLine
-            for (int i = startLine; i >= 0 && static_cast<int>(indices.size()) < count; --i) {
-                if (i < static_cast<int>(lines.size()) && !lines[i].empty()) {
-                    indices.push_back(i);
-                }
-            }
-        } else {
-            // Search downward from startLine
-            for (int i = startLine; i < static_cast<int>(lines.size()) && static_cast<int>(indices.size()) < count; ++i) {
-                if (!lines[i].empty()) {
-                    indices.push_back(i);
-                }
-            }
-        }
-
-        return indices;
     }
 
     // Factory functions

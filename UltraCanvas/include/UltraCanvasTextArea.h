@@ -87,14 +87,6 @@ namespace UltraCanvas {
             TokenStyle registerStyle;
             TokenStyle defaultStyle;
         } tokenStyles;
-        // Text preview settings
-        bool showTextPreview = false;              // Enable/disable preview
-        int previewLineCount = 4;                  // Number of lines to preview
-        int previewLineHeight = 1;                 // Height in pixels per preview line
-        float previewOpacityNear = 0.9f;           // Opacity for nearest preview line
-        float previewOpacityFar = 0.6f;            // Opacity for farthest preview line
-        Color previewSeparatorColor = Color(128, 128, 128, 128);  // Separator line color
-        int previewSeparatorHeight = 2;            // Separator height in pixels    };
     };
 
 // Text area control with integrated syntax highlighting
@@ -230,20 +222,6 @@ namespace UltraCanvas {
         void SetSelectionColor(const Color& color) { style.selectionColor = color; RequestRedraw(); }
         void SetCursorColor(const Color& color) { style.cursorColor = color; RequestRedraw(); }
 
-        void SetShowTextPreview(bool show) {
-            style.showTextPreview = show;
-            isNeedRecalculateVisibleArea = true;
-            RequestRedraw();
-        }
-        bool GetShowTextPreview() const { return style.showTextPreview; }
-
-        void SetPreviewLineCount(int count) {
-            style.previewLineCount = std::max(1, std::min(count, 10));
-            isNeedRecalculateVisibleArea = true;
-            RequestRedraw();
-        }
-        int GetPreviewLineCount() const { return style.previewLineCount; }
-
         // Scrolling
         void ScrollTo(int line);
         void ScrollUp(int lines = 1);
@@ -312,14 +290,6 @@ namespace UltraCanvas {
         void DrawAutoComplete(IRenderContext* context);
         void DrawMarkers(IRenderContext* context);
 
-        // NEW: Preview rendering methods
-        void DrawTextPreview(IRenderContext* context);
-        void DrawTopPreview(IRenderContext* context, const Rect2Di& bounds);
-        void DrawBottomPreview(IRenderContext* context, const Rect2Di& bounds);
-        void DrawPreviewLine(IRenderContext* context, const std::string& lineText,
-                             int x, int y, float opacity);
-        std::vector<int> GetNonEmptyLineIndices(int startLine, int count, bool searchUp);
-
         // Event handlers
         bool HandleMouseDown(const UCEvent& event);
         bool HandleMouseDoubleClick(const UCEvent& event);
@@ -348,6 +318,7 @@ namespace UltraCanvas {
         void ApplyDefaultStyle();
         bool IsNeedVerticalScrollbar();
         bool IsNeedHorizontalScrollbar();
+        int GetMaxLineWidth();
 
     private:
         // Text data
