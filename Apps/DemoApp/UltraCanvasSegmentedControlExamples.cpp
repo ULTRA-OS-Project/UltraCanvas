@@ -192,29 +192,49 @@ namespace UltraCanvas {
         mainContainer->AddChild(section5Label);
         yOffset += 35;
 
-        auto textStyleControl = CreateSegmentedControl("textStyle", 5051, 50, yOffset, 240, 32);
-        textStyleControl->AddSegment("B");   // Bold
-        textStyleControl->AddSegment("I");   // Italic
-        textStyleControl->AddSegment("U");   // Underline
-        textStyleControl->AddSegment("S");   // Strikethrough
-//        textStyleControl->SetStyle(SegmentedControlStyle::Bordered);
+        auto textStyleControl = CreateSegmentedControl("textStyle", 5051, 50, yOffset, 190, 32);
+        textStyleControl->AddSegment("<b>B</b>");   // Bold
+        textStyleControl->AddSegment("<i>I</i>");   // Italic
+        textStyleControl->AddSegment("<u>U</u>");   // Underline
+        textStyleControl->AddSegment("<s>S</s>");   // Strikethrough
         textStyleControl->SetAllowNoSelection(true);  // Allow toggling off
         textStyleControl->SetWidthMode(SegmentWidthMode::Equal);
+        textStyleControl->SetSelectionMode(SegmentSelectionMode::Toggle);
         textStyleControl->onSegmentClick = [statusLabel, textStyleControl](int index) {
-            const char* labels[] = {"Bold", "Italic", "Underline", "Strikethrough"};
-            int selected = textStyleControl->GetSelectedIndex();
-            std::ostringstream oss;
-            if (selected == index) {
-                oss << "Text Style: " << labels[index] << " ENABLED\n";
-            } else {
-                oss << "Text Style: " << labels[index] << " DISABLED\n";
-            }
-            oss << "Mode: Toggle (click again to deselect)";
-            statusLabel->SetText(oss.str());
+                const char* labels[] = {"Bold", "Italic", "Underline", "Strikethrough", "Superscript", "Subscript"};
+                std::ostringstream oss;
+                if (textStyleControl->IsSegmentSelected(index)) {
+                        oss << "Text Style: " << labels[index] << " ENABLED\n";
+                } else {
+                        oss << "Text Style: " << labels[index] << " DISABLED\n";
+                }
+                oss << "Mode: Toggle (click again to deselect)";
+                statusLabel->SetText(oss.str());
         };
-        mainContainer->AddChild(textStyleControl);
 
-        auto textStyleDesc = std::make_shared<UltraCanvasLabel>("TextStyleDesc", 5052, 310, yOffset, 660, 32);
+        auto textStyleControl2 = CreateSegmentedControl("textStyle", 5051, 250, yOffset, 80, 32);
+        textStyleControl2->SetAllowNoSelection(true);  // Allow toggling off
+        textStyleControl2->SetWidthMode(SegmentWidthMode::Equal);
+        textStyleControl2->SetSelectionMode(SegmentSelectionMode::Single);
+        textStyleControl2->AddSegment("X<sup>2</sup>");   // X^2
+        textStyleControl2->AddSegment("X<sub>2</sub>");   // X_2
+//        textStyleControl->SetStyle(SegmentedControlStyle::Bordered);
+        textStyleControl2->onSegmentClick = [statusLabel, textStyleControl2](int index) {
+                const char* labels[] = {"Superscript", "Subscript"};
+                std::ostringstream oss;
+                if (textStyleControl2->IsSegmentSelected(index)) {
+                        oss << "Text Style: " << labels[index] << " ENABLED\n";
+                } else {
+                        oss << "Text Style: " << labels[index] << " DISABLED\n";
+                }
+                oss << "Mode: Toggle (click again to deselect)";
+                statusLabel->SetText(oss.str());
+        };
+
+        mainContainer->AddChild(textStyleControl);
+        mainContainer->AddChild(textStyleControl2);
+
+        auto textStyleDesc = std::make_shared<UltraCanvasLabel>("TextStyleDesc", 5052, 340, yOffset, 660, 32);
         textStyleDesc->SetText("• Text editor formatting toolbar\n• Click to enable, click again to disable\n• AllowNoSelection = true");
         textStyleDesc->SetFontSize(10);
         textStyleDesc->SetTextColor(Color(100, 100, 100, 255));

@@ -113,9 +113,7 @@ class UltraCanvasBaseWindow;
 
         // Text effects
         bool wrap = false;
-        bool hasUnderline = false;
-        bool hasStrikethrough = false;
-        bool hasOutline = false;
+        bool isMarkup = false;
         Color outlineColor = Colors::Black;
         float outlineWidth = 1.0f;
     };
@@ -332,6 +330,7 @@ class UltraCanvasBaseWindow;
         virtual const TextStyle& GetTextStyle() const = 0;
         virtual void SetTextStyle(const TextStyle& style) = 0;
         virtual void SetTextAlignment(TextAlignment align) = 0;
+        virtual void SetTextIsMarkup(bool isMarkup) = 0;
 
         virtual void FillText(const std::string& text, float x, float y) = 0;
         virtual void StrokeText(const std::string& text, float x, float y) = 0;

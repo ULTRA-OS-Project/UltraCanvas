@@ -12,6 +12,8 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <algorithm>
+#include <set>
 
 namespace UltraCanvas {
 
@@ -23,6 +25,11 @@ namespace UltraCanvas {
         Custom        // Custom width per segment
     };
 
+    enum class SegmentSelectionMode {
+        Single,       // Only one segment can be selected at a time (default)
+        Multiple,     // Multiple segments can be selected simultaneously
+        Toggle        // Each segment acts as an independent toggle
+    };
 // ===== SEGMENT DATA STRUCTURE =====
 
     struct SegmentData {
@@ -122,7 +129,11 @@ namespace UltraCanvas {
     private:
         // Segments
         std::vector<SegmentData> segments;
-        int selectedIndex = -1;
+// Selection state
+        SegmentSelectionMode selectionMode = SegmentSelectionMode::Single;
+
+        std::set<int> selectedIndices;  // For multiple selection mode
+        int selectedIndex = -1;  // For single selection mode
         int hoveredIndex = -1;
         int pressedIndex = -1;
 
@@ -176,10 +187,28 @@ namespace UltraCanvas {
 
         // ===== SELECTION =====
 
+        void SetSelectionMode(SegmentSelectionMode mode);
+        SegmentSelectionMode GetSelectionMode() const { return selectionMode; }
+
+        // ===== SINGLE SELECTION (Legacy compatibility) =====
+
         void SetSelectedIndex(int index);
         int GetSelectedIndex() const;
-
         std::string GetSelectedText() const;
+
+        // ===== MULTIPLE SELECTION =====
+
+        void SetSelectedIndices(const std::vector<int>& indices);
+        std::vector<int> GetSelectedIndices() const;
+
+        void SelectSegment(int index, bool select = true);
+        void ToggleSegmentSelection(int index);
+        bool IsSegmentSelected(int index) const;
+
+        void SelectAll();
+        void DeselectAll();
+
+        std::vector<std::string> GetSelectedTexts() const;
 
         void SetAllowNoSelection(bool allow);
 
@@ -200,16 +229,19 @@ namespace UltraCanvas {
         // ===== CALLBACKS =====
 
         std::function<void(int)> onSegmentSelected;      // Called when selection changes
+        std::function<void(const std::vector<int>&)> onSelectionChanged;  // Called when selection changes (multiple mode)
         std::function<void(int)> onSegmentClick;         // Called when segment is clicked
         std::function<void(int)> onSegmentHover;         // Called when segment is hovered
 
     private:
         bool allowNoSelection = false;
 
+        bool CanDeselectSegment(int index) const;
+        bool CanSelectSegment(int index) const;
+
         // ===== LAYOUT CALCULATION =====
 
         void CalculateLayout(IRenderContext *ctx);
-
         int CalculateSegmentContentWidth(IRenderContext *ctx, const SegmentData &segment);
 
         // ===== RENDERING HELPERS =====

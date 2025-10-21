@@ -357,8 +357,11 @@ namespace UltraCanvas {
                 std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
                 return;
             }
-
-            pango_layout_set_text(layout, text.c_str(), -1);
+            if (currentState.textStyle.isMarkup) {
+                pango_layout_set_markup(layout, text.c_str(), -1);
+            } else {
+                pango_layout_set_text(layout, text.c_str(), -1);
+            }
 
             ApplyTextSource();
 
@@ -393,7 +396,11 @@ namespace UltraCanvas {
                 std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
                 return;
             }
-            pango_layout_set_text(layout, text.c_str(), -1);
+            if (currentState.textStyle.isMarkup) {
+                pango_layout_set_markup(layout, text.c_str(), -1);
+            } else {
+                pango_layout_set_text(layout, text.c_str(), -1);
+            }
 
             if (currentState.textStyle.verticalAlignement == TextVerticalAlignement::Middle) {
                 int w1, h1;
@@ -435,8 +442,11 @@ namespace UltraCanvas {
                 std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
                 return false;
             }
-
-            pango_layout_set_text(layout, text.c_str(), -1);
+            if (currentState.textStyle.isMarkup) {
+                pango_layout_set_markup(layout, text.c_str(), -1);
+            } else {
+                pango_layout_set_text(layout, text.c_str(), -1);
+            }
 
             int width, height;
             pango_layout_get_pixel_size(layout, &width, &height);
@@ -1017,6 +1027,10 @@ namespace UltraCanvas {
 
     void LinuxRenderContext::SetTextAlignment(TextAlignment align) {
         currentState.textStyle.alignment = align;
+    }
+
+    void LinuxRenderContext::SetTextIsMarkup(bool isMarkup) {
+        currentState.textStyle.isMarkup = isMarkup;
     }
 
     void LinuxRenderContext::FillText(const std::string& text, float x, float y) {

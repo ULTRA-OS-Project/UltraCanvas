@@ -260,6 +260,7 @@ namespace UltraCanvas {
         void SetFontWeight(FontWeight fw) override;
         void SetFontSlant(FontSlant fs) override;
         void SetTextAlignment(TextAlignment align) override;
+        void SetTextIsMarkup(bool isMarkup) override;
 
         void SetAlpha(float alpha) override;
         float GetAlpha() const override;

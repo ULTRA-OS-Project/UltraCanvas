@@ -102,6 +102,7 @@ namespace UltraCanvas {
         if (segment.HasText()) {
             ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
             ctx->SetFontSize(style.fontSize);
+            ctx->SetTextIsMarkup(true);
 
             int textWidth = 0, textHeight = 0;
             ctx->GetTextDimension(segment.text, textWidth, textHeight);
@@ -180,7 +181,7 @@ namespace UltraCanvas {
 
         // Determine segment state colors
         Color bgColor, textColor;
-        bool isSelected = (index == selectedIndex);
+        bool isSelected = IsSegmentSelected(index);
         bool isHovered = (index == hoveredIndex) && segment.enabled;
         bool isPressed = (index == pressedIndex) && segment.enabled;
 
@@ -310,6 +311,7 @@ namespace UltraCanvas {
             ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
             ctx->SetFontSize(style.fontSize);
             ctx->SetTextAlignment(segment.alignment);
+            ctx->SetTextIsMarkup(true);
             int textWidth = 0, textHeight = 0;
             ctx->GetTextDimension(segment.text, textWidth, textHeight);
 
@@ -378,33 +380,41 @@ namespace UltraCanvas {
         return false;
     }
 
-    bool UltraCanvasSegmentedControl::HandleMouseUp(const UCEvent& event) {
-        if (pressedIndex < 0) return false;
-
-        bool wasPressed = pressedIndex >= 0;
-        int clickedIndex = pressedIndex;
-        pressedIndex = -1;
-
-        if (wasPressed && Contains(event.x, event.y)) {
+    bool UltraCanvasSegmentedControl::HandleMouseUp(const UCEvent &event) {
+        if (pressedIndex >= 0) {
             int index = GetSegmentAtPosition(event.x, event.y);
-            if (index == clickedIndex && segments[index].enabled) {
-                // Handle click
-                if (allowNoSelection && selectedIndex == index) {
-                    SetSelectedIndex(-1);
+
+            if (index == pressedIndex && segments[index].enabled) {
+                // Handle click based on selection mode
+                if (selectionMode == SegmentSelectionMode::Single) {
+                    SelectSegment(index, !IsSegmentSelected(index));
+                } else if (selectionMode == SegmentSelectionMode::Toggle) {
+                    // In toggle mode, always toggle
+                    ToggleSegmentSelection(index);
                 } else {
-                    SetSelectedIndex(index);
+                    // Multiple mode - toggle with modifier key, replace otherwise
+                    if (event.ctrl || event.shift) {
+                        ToggleSegmentSelection(index);
+                    } else {
+                        // Clear and select only this one
+                        selectedIndices.clear();
+                        selectedIndices.insert(index);
+
+                        if (onSelectionChanged) {
+                            onSelectionChanged(GetSelectedIndices());
+                        }
+                    }
                 }
 
                 if (onSegmentClick) {
                     onSegmentClick(index);
                 }
-
-                RequestRedraw();
-                return true;
             }
-        }
 
-        RequestRedraw();
+            pressedIndex = -1;
+            RequestRedraw();
+            return true;
+        }
         return false;
     }
 
@@ -504,8 +514,8 @@ namespace UltraCanvas {
         segments.push_back(SegmentData(text, alignment));
         layoutDirty = true;
 
-        // Select first segment by default
-        if (segments.size() == 1 && allowNoSelection == false) {
+        // Select first segment by default in single mode
+        if (segments.size() == 1 && !allowNoSelection && selectionMode == SegmentSelectionMode::Single) {
             SetSelectedIndex(0);
         }
 
@@ -516,7 +526,7 @@ namespace UltraCanvas {
         segments.push_back(SegmentData(text, iconPath, alignment));
         layoutDirty = true;
 
-        if (segments.size() == 1 && allowNoSelection == false) {
+        if (segments.size() == 1 && !allowNoSelection && selectionMode == SegmentSelectionMode::Single) {
             SetSelectedIndex(0);
         }
 
@@ -529,9 +539,21 @@ namespace UltraCanvas {
         segments.insert(segments.begin() + index, SegmentData(text, alignment));
         layoutDirty = true;
 
-        // Adjust selected index if needed
-        if (selectedIndex >= index) {
-            selectedIndex++;
+        // Adjust selected indices
+        if (selectionMode == SegmentSelectionMode::Single) {
+            if (selectedIndex >= index) {
+                selectedIndex++;
+            }
+        } else {
+            std::set<int> newSelection;
+            for (int idx : selectedIndices) {
+                if (idx >= index) {
+                    newSelection.insert(idx + 1);
+                } else {
+                    newSelection.insert(idx);
+                }
+            }
+            selectedIndices = newSelection;
         }
 
         return index;
@@ -543,20 +565,36 @@ namespace UltraCanvas {
         segments.erase(segments.begin() + index);
         layoutDirty = true;
 
-        // Adjust selected index
-        if (selectedIndex == index) {
-            selectedIndex = -1;
-            if (!allowNoSelection && !segments.empty()) {
-                SetSelectedIndex(std::min(index, static_cast<int>(segments.size()) - 1));
+        // Adjust selection for single mode
+        if (selectionMode == SegmentSelectionMode::Single) {
+            if (selectedIndex == index) {
+                selectedIndex = -1;
+                if (!allowNoSelection && !segments.empty()) {
+                    SetSelectedIndex(std::min(index, static_cast<int>(segments.size()) - 1));
+                }
+            } else if (selectedIndex > index) {
+                selectedIndex--;
             }
-        } else if (selectedIndex > index) {
-            selectedIndex--;
+        }
+            // Adjust selection for multiple mode
+        else {
+            std::set<int> newSelection;
+            for (int idx : selectedIndices) {
+                if (idx < index) {
+                    newSelection.insert(idx);
+                } else if (idx > index) {
+                    newSelection.insert(idx - 1);
+                }
+                // Skip the removed index
+            }
+            selectedIndices = newSelection;
         }
     }
 
     void UltraCanvasSegmentedControl::ClearSegments() {
         segments.clear();
         selectedIndex = -1;
+        selectedIndices.clear();
         hoveredIndex = -1;
         pressedIndex = -1;
         layoutDirty = true;
@@ -568,6 +606,7 @@ namespace UltraCanvas {
             layoutDirty = true;
         }
     }
+
     std::string UltraCanvasSegmentedControl::GetSegmentText(int index) const {
         if (index >= 0 && index < static_cast<int>(segments.size())) {
             return segments[index].text;
@@ -586,17 +625,23 @@ namespace UltraCanvas {
         if (index >= 0 && index < static_cast<int>(segments.size())) {
             segments[index].enabled = enabled;
 
-            // Deselect if disabling selected segment
-            if (!enabled && selectedIndex == index) {
-                selectedIndex = -1;
-                if (!allowNoSelection) {
-                    // Find next enabled segment
-                    for (int i = 0; i < static_cast<int>(segments.size()); i++) {
-                        if (segments[i].enabled) {
-                            SetSelectedIndex(i);
-                            break;
+            if (!enabled) {
+                // Handle disabling in single selection mode
+                if (selectionMode == SegmentSelectionMode::Single && selectedIndex == index) {
+                    selectedIndex = -1;
+                    if (!allowNoSelection) {
+                        // Find next enabled segment
+                        for (int i = 0; i < static_cast<int>(segments.size()); i++) {
+                            if (segments[i].enabled) {
+                                SetSelectedIndex(i);
+                                break;
+                            }
                         }
                     }
+                }
+                    // Handle disabling in multiple selection mode
+                else if (selectionMode != SegmentSelectionMode::Single) {
+                    selectedIndices.erase(index);
                 }
             }
         }
@@ -616,7 +661,57 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasSegmentedControl::SetSelectionMode(SegmentSelectionMode mode) {
+        if (selectionMode == mode) return;
+
+        SegmentSelectionMode oldMode = selectionMode;
+        selectionMode = mode;
+
+        // Convert selection when switching modes
+        if (oldMode == SegmentSelectionMode::Single && mode != SegmentSelectionMode::Single) {
+            // Converting from single to multiple/toggle
+            selectedIndices.clear();
+            if (selectedIndex >= 0) {
+                selectedIndices.insert(selectedIndex);
+            }
+            selectedIndex = -1;
+        } else if (oldMode != SegmentSelectionMode::Single && mode == SegmentSelectionMode::Single) {
+            // Converting from multiple/toggle to single
+            selectedIndex = -1;
+            if (!selectedIndices.empty()) {
+                selectedIndex = *selectedIndices.begin();
+                selectedIndices.clear();
+            }
+
+            // Ensure selection if not allowed to have no selection
+            if (selectedIndex == -1 && !allowNoSelection && !segments.empty()) {
+                for (int i = 0; i < static_cast<int>(segments.size()); i++) {
+                    if (segments[i].enabled) {
+                        selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        RequestRedraw();
+    }
+
     void UltraCanvasSegmentedControl::SetSelectedIndex(int index) {
+        if (selectionMode != SegmentSelectionMode::Single) {
+            // In multiple mode, clear others and select this one
+            selectedIndices.clear();
+            if (index >= 0 && index < static_cast<int>(segments.size()) && segments[index].enabled) {
+                selectedIndices.insert(index);
+
+                if (onSelectionChanged) {
+                    onSelectionChanged(GetSelectedIndices());
+                }
+            }
+            RequestRedraw();
+            return;
+        }
+
         if (index < -1 || index >= static_cast<int>(segments.size())) return;
 
         // Check if no selection is allowed
@@ -647,14 +742,147 @@ namespace UltraCanvas {
     }
 
     int UltraCanvasSegmentedControl::GetSelectedIndex() const {
-        return selectedIndex;
+        if (selectionMode == SegmentSelectionMode::Single) {
+            return selectedIndex;
+        } else {
+            // Return first selected index for backward compatibility
+            return selectedIndices.empty() ? -1 : *selectedIndices.begin();
+        }
     }
 
     std::string UltraCanvasSegmentedControl::GetSelectedText() const {
-        if (selectedIndex >= 0 && selectedIndex < static_cast<int>(segments.size())) {
-            return segments[selectedIndex].text;
+        int idx = GetSelectedIndex();
+        if (idx >= 0 && idx < static_cast<int>(segments.size())) {
+            return segments[idx].text;
         }
         return "";
+    }
+
+    // ===== MULTIPLE SELECTION =====
+
+    void UltraCanvasSegmentedControl::SetSelectedIndices(const std::vector<int>& indices) {
+        selectedIndices.clear();
+
+        for (int index : indices) {
+            if (index >= 0 && index < static_cast<int>(segments.size()) && segments[index].enabled) {
+                selectedIndices.insert(index);
+            }
+        }
+
+        if (onSelectionChanged) {
+            onSelectionChanged(GetSelectedIndices());
+        }
+
+        RequestRedraw();
+    }
+
+    std::vector<int> UltraCanvasSegmentedControl::GetSelectedIndices() const {
+        if (selectionMode == SegmentSelectionMode::Single) {
+            if (selectedIndex >= 0) {
+                return {selectedIndex};
+            }
+            return {};
+        }
+        return std::vector<int>(selectedIndices.begin(), selectedIndices.end());
+    }
+
+    void UltraCanvasSegmentedControl::SelectSegment(int index, bool select) {
+        if (index < 0 || index >= static_cast<int>(segments.size()) || !segments[index].enabled) return;
+
+        if (selectionMode == SegmentSelectionMode::Single) {
+            if (select) {
+                SetSelectedIndex(index);
+            } else if (selectedIndex == index && allowNoSelection) {
+                SetSelectedIndex(-1);
+            }
+            return;
+        }
+
+        bool changed = false;
+
+        if (select) {
+            if (CanSelectSegment(index)) {
+                selectedIndices.insert(index);
+                changed = true;
+            }
+        } else {
+            if (CanDeselectSegment(index)) {
+                selectedIndices.erase(index);
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            if (onSelectionChanged) {
+                onSelectionChanged(GetSelectedIndices());
+            }
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasSegmentedControl::ToggleSegmentSelection(int index) {
+        if (index < 0 || index >= static_cast<int>(segments.size()) || !segments[index].enabled) return;
+
+        bool isSelected = IsSegmentSelected(index);
+        SelectSegment(index, !isSelected);
+    }
+
+    bool UltraCanvasSegmentedControl::IsSegmentSelected(int index) const {
+        if (selectionMode == SegmentSelectionMode::Single) {
+            return index == selectedIndex;
+        }
+        return selectedIndices.find(index) != selectedIndices.end();
+    }
+
+    void UltraCanvasSegmentedControl::SelectAll() {
+        if (selectionMode == SegmentSelectionMode::Single) return;
+
+        selectedIndices.clear();
+        for (int i = 0; i < static_cast<int>(segments.size()); i++) {
+            if (segments[i].enabled) {
+                selectedIndices.insert(i);
+            }
+        }
+
+        if (onSelectionChanged) {
+            onSelectionChanged(GetSelectedIndices());
+        }
+
+        RequestRedraw();
+    }
+
+    void UltraCanvasSegmentedControl::DeselectAll() {
+        if (selectionMode == SegmentSelectionMode::Single) {
+            if (allowNoSelection) {
+                SetSelectedIndex(-1);
+            }
+        } else {
+            selectedIndices.clear();
+
+            if (onSelectionChanged) {
+                onSelectionChanged(GetSelectedIndices());
+            }
+
+            RequestRedraw();
+        }
+    }
+
+    std::vector<std::string> UltraCanvasSegmentedControl::GetSelectedTexts() const {
+        std::vector<std::string> texts;
+
+        if (selectionMode == SegmentSelectionMode::Single) {
+            if (selectedIndex >= 0 && selectedIndex < static_cast<int>(segments.size())) {
+                texts.push_back(segments[selectedIndex].text);
+            }
+        } else {
+            for (int index : selectedIndices) {
+                if (index >= 0 && index < static_cast<int>(segments.size())) {
+                    texts.push_back(segments[index].text);
+                }
+            }
+        }
+
+        return texts;
     }
 
     void UltraCanvasSegmentedControl::SetAllowNoSelection(bool allow) {
@@ -681,5 +909,30 @@ namespace UltraCanvas {
         style = st;
         layoutDirty = true;
         RequestRedraw();
+    }
+
+// ===== INTERNAL HELPERS =====
+
+    bool UltraCanvasSegmentedControl::CanDeselectSegment(int index) const {
+        if (selectionMode == SegmentSelectionMode::Single) {
+            return allowNoSelection;
+        }
+
+        if (selectionMode == SegmentSelectionMode::Toggle) {
+            return true; // Always can deselect in toggle mode
+        }
+
+        // Multiple mode
+        return true;
+    }
+
+    bool UltraCanvasSegmentedControl::CanSelectSegment(int index) const {
+        if (!segments[index].enabled) return false;
+
+        if (selectionMode == SegmentSelectionMode::Single) {
+            return true;
+        }
+
+        return true;
     }
 } // namespace UltraCanvas
