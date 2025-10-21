@@ -196,6 +196,7 @@ if __name__ == "__main__":
         pascalStyle.currentLineColor = Color(245, 245, 240);
         pascalStyle.borderColor = Color(180, 180, 180);
         pascalStyle.borderWidth = 2;
+        pascalStyle.showTextPreview = true;
 
         // Custom token colors for Pascal
         pascalStyle.tokenStyles.keywordStyle = TokenStyle(Color(0, 0, 200), true);      // Blue bold
