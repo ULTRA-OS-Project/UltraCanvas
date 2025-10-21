@@ -84,7 +84,7 @@ namespace UltraCanvas {
             return SegmentedControlStyle();
         }
 
-        static SegmentedControlStyle iOS() {
+        static SegmentedControlStyle Modern() {
             SegmentedControlStyle style;
             style.normalColor = Color(255, 255, 255, 0);
             style.selectedColor = Color(255, 255, 255, 255);
@@ -120,8 +120,6 @@ namespace UltraCanvas {
 
     class UltraCanvasSegmentedControl : public UltraCanvasUIElement {
     private:
-        StandardProperties properties;
-
         // Segments
         std::vector<SegmentData> segments;
         int selectedIndex = -1;

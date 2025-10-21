@@ -39,7 +39,7 @@ namespace UltraCanvas {
     struct TextAreaStyle {
         // Font properties
         FontStyle fontStyle;
-        int lineHeight;
+        float lineHeight;
         Color fontColor;
 
         // Background and borders
@@ -329,6 +329,7 @@ namespace UltraCanvas {
         int cursorPosition;
         int selectionStart;
         int selectionEnd;
+        int computedLineHeight = 12;
 
         // Scrolling
         int horizontalScrollOffset;

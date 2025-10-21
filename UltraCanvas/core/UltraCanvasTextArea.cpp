@@ -36,9 +36,6 @@ namespace UltraCanvas {
         // Initialize style with defaults
         ApplyDefaultStyle();
 
-        // Calculate visible lines
-        CalculateVisibleArea();
-
         // Initialize syntax highlighter if needed
         if (style.highlightSyntax) {
             syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
@@ -53,7 +50,7 @@ namespace UltraCanvas {
         style.fontStyle.fontFamily = "DejaVu Sans Mono";
         style.fontStyle.fontSize = 14;
         style.fontColor = {0, 0, 0, 255};
-        style.lineHeight = 20;
+        style.lineHeight = 1.1;
         style.backgroundColor = {255, 255, 255, 255};
         style.borderColor = {200, 200, 200, 255};
         style.selectionColor = {51, 153, 255, 100};
@@ -137,11 +134,11 @@ namespace UltraCanvas {
         if (highlightCurrentLine && currentLineIndex >= firstVisibleLine &&
             currentLineIndex < firstVisibleLine + maxVisibleLines) {
             context->SetFillPaint(style.currentLineHighlightColor);
-            int lineY = bounds.y + style.padding + (currentLineIndex - firstVisibleLine) * style.lineHeight;
+            int lineY = bounds.y + style.padding + (currentLineIndex - firstVisibleLine) * computedLineHeight;
             int highlightX = style.showLineNumbers ? bounds.x + style.lineNumbersWidth : bounds.x;
             context->FillRectangle(highlightX, lineY,
                                    bounds.width - (style.showLineNumbers ? style.lineNumbersWidth : 0),
-                                   style.lineHeight);
+                                   computedLineHeight);
         }
     }
 
@@ -175,7 +172,7 @@ namespace UltraCanvas {
             std::string numStr = std::to_string(lineNum);
 
             // Measure the actual width of the line number
-            int numY = visibleTextArea.y + i * style.lineHeight;
+            int numY = visibleTextArea.y + i * computedLineHeight;
 
             // Highlight current line number
             if (firstVisibleLine + i == currentLineIndex) {
@@ -186,7 +183,7 @@ namespace UltraCanvas {
                 context->SetFontWeight(FontWeight::Normal);
             }
             context->SetTextAlignment(TextAlignment::Right);
-            context->DrawTextInRect(numStr, bounds.x, numY, style.lineNumbersWidth, style.lineHeight);
+            context->DrawTextInRect(numStr, bounds.x, numY, style.lineNumbersWidth, computedLineHeight);
         }
     }
 
@@ -204,7 +201,7 @@ namespace UltraCanvas {
             const std::string& line = lines[lineIndex];
 
             if (!line.empty()) {
-                int y = visibleTextArea.y + i * style.lineHeight;
+                int y = visibleTextArea.y + i * computedLineHeight;
 
                 // Apply horizontal scroll offset if needed
                 if (horizontalScrollOffset > 0) {
@@ -255,7 +252,7 @@ namespace UltraCanvas {
                     x += tokenWidth;
                 }
             }
-            textY += style.lineHeight;
+            textY += computedLineHeight;
         }
         context->PopState();
     }
@@ -316,7 +313,7 @@ namespace UltraCanvas {
             if (line < firstVisibleLine || line >= firstVisibleLine + maxVisibleLines) continue;
             if (line >= static_cast<int>(lines.size())) break;
 
-            int lineY = bounds.y + style.padding + (line - firstVisibleLine) * style.lineHeight;
+            int lineY = bounds.y + style.padding + (line - firstVisibleLine) * computedLineHeight;
 
             int selStart = (line == startLine) ? startCol : 0;
             int selEnd = (line == endLine) ? endCol : lines[line].length();
@@ -335,7 +332,7 @@ namespace UltraCanvas {
             }
 
             context->SetFillPaint(style.selectionColor);
-            context->FillRectangle(selX, lineY, selWidth, style.lineHeight);
+            context->FillRectangle(selX, lineY, selWidth, computedLineHeight);
         }
     }
 
@@ -350,10 +347,10 @@ namespace UltraCanvas {
             cursorX += MeasureTextWidth(textBeforeCursor);
         }
         if (cursorX > visibleTextArea.x + visibleTextArea.width) return;
-        int cursorY = visibleTextArea.y + (line - firstVisibleLine) * style.lineHeight;
+        int cursorY = visibleTextArea.y + (line - firstVisibleLine) * computedLineHeight;
 
         context->SetStrokeWidth(2);
-        context->DrawLine(cursorX, cursorY, cursorX, cursorY + style.lineHeight, style.cursorColor);
+        context->DrawLine(cursorX, cursorY, cursorX, cursorY + computedLineHeight, style.cursorColor);
     }
 
     bool UltraCanvasTextArea::IsNeedVerticalScrollbar() {
@@ -502,7 +499,7 @@ namespace UltraCanvas {
         int relativeX = event.x - visibleTextArea.x + horizontalScrollOffset;
         int relativeY = event.y - visibleTextArea.y;
 
-        int clickedLine = firstVisibleLine + (relativeY / style.lineHeight);
+        int clickedLine = firstVisibleLine + (relativeY / computedLineHeight);
 
         // Clamp to valid range
         clickedLine = std::max(0, std::min(clickedLine, static_cast<int>(lines.size()) - 1));
@@ -639,7 +636,7 @@ namespace UltraCanvas {
         float relativeX = event.x - textX + horizontalScrollOffset;
         int relativeY = event.y - bounds.y - style.padding;
 
-        int draggedLine = firstVisibleLine + (relativeY / style.lineHeight);
+        int draggedLine = firstVisibleLine + (relativeY / computedLineHeight);
         draggedLine = std::max(0, std::min(draggedLine, static_cast<int>(lines.size()) - 1));
 
         int draggedCol = 0;
@@ -1355,6 +1352,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::CalculateVisibleArea() {
+        auto ctx = GetRenderContext();
+        if (!ctx) {
+            return;
+        }
         visibleTextArea = GetBounds();
         visibleTextArea.x += style.padding;
         visibleTextArea.y += style.padding;
@@ -1365,24 +1366,29 @@ namespace UltraCanvas {
             visibleTextArea.width -= (style.lineNumbersWidth + 5);
         }
 
+        ctx->PushState();
+        ctx->SetFontStyle(style.fontStyle);
+        ctx->SetFontWeight(FontWeight::Normal);
+        computedLineHeight = static_cast<int>(static_cast<float>(ctx->GetTextHeight("M")) * style.lineHeight);
         maxLineWidth = 0;
         for (const auto& line : lines) {
-            maxLineWidth = std::max(maxLineWidth, MeasureTextWidth(line));
+            maxLineWidth = std::max(maxLineWidth, ctx->GetTextWidth(line));
         }
+        ctx->PopState();
 
         if (IsNeedHorizontalScrollbar()) {
             visibleTextArea.height -= 15; // Reserve space for horizontal scrollbar
-            maxVisibleLines = std::max(1, visibleTextArea.height / style.lineHeight);
+            maxVisibleLines = std::max(1, visibleTextArea.height / computedLineHeight);
             if (IsNeedVerticalScrollbar()) {
                 visibleTextArea.width -= 15;
             }
         } else {
-            maxVisibleLines = std::max(1, visibleTextArea.height / style.lineHeight);
+            maxVisibleLines = std::max(1, visibleTextArea.height / computedLineHeight);
             if (IsNeedVerticalScrollbar()) {
                 visibleTextArea.width -= 15;
                 if (IsNeedHorizontalScrollbar()) {
                     visibleTextArea.height -= 15; // Reserve space for horizontal scrollbar
-                    maxVisibleLines = std::max(1, visibleTextArea.height / style.lineHeight);
+                    maxVisibleLines = std::max(1, visibleTextArea.height / computedLineHeight);
                 }
             }
         }

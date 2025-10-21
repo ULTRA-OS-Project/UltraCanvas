@@ -88,13 +88,13 @@ namespace UltraCanvas {
         iOSControl->AddSegment("Map");
         iOSControl->AddSegment("Transit");
         iOSControl->AddSegment("Satellite");
-        iOSControl->SetStyle(SegmentedControlStyle::iOS());
+        iOSControl->SetStyle(SegmentedControlStyle::Modern());
         iOSControl->SetSelectedIndex(0);
         iOSControl->onSegmentSelected = [statusLabel](int index) {
             const char* labels[] = {"Map", "Transit", "Satellite"};
             std::ostringstream oss;
             oss << "iOS Control: Selected '" << labels[index] << "' view\n"
-                << "Style: iOS (Apple Maps) | Blue theme";
+                << "Style: Modern Blue theme";
             statusLabel->SetText(oss.str());
         };
         mainContainer->AddChild(iOSControl);
