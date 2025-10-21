@@ -124,24 +124,6 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
-// Draw background
-    void UltraCanvasTextArea::DrawBackground(IRenderContext* context) {
-        auto bounds = GetBounds();
-        context->SetFillPaint(style.backgroundColor);
-        context->FillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
-
-        // Draw current line highlight
-        if (highlightCurrentLine && currentLineIndex >= firstVisibleLine &&
-            currentLineIndex < firstVisibleLine + maxVisibleLines) {
-            context->SetFillPaint(style.currentLineHighlightColor);
-            int lineY = bounds.y + style.padding + (currentLineIndex - firstVisibleLine) * computedLineHeight;
-            int highlightX = style.showLineNumbers ? bounds.x + style.lineNumbersWidth : bounds.x;
-            context->FillRectangle(highlightX, lineY,
-                                   bounds.width - (style.showLineNumbers ? style.lineNumbersWidth : 0),
-                                   computedLineHeight);
-        }
-    }
-
 // Draw border
     void UltraCanvasTextArea::DrawBorder(IRenderContext* context) {
         auto bounds = GetBounds();
@@ -150,45 +132,6 @@ namespace UltraCanvas {
         }
     }
 
-// Draw line numbers
-    void UltraCanvasTextArea::DrawLineNumbers(IRenderContext* context) {
-        auto bounds = GetBounds();
-
-        // Draw line numbers background
-        context->SetFillPaint(style.lineNumbersBackgroundColor);
-        context->FillRectangle(bounds.x, bounds.y, style.lineNumbersWidth, bounds.height);
-
-        // Draw line numbers separator
-        context->SetStrokePaint(style.borderColor);
-        context->SetStrokeWidth(1);
-        context->DrawLine(bounds.x + style.lineNumbersWidth, bounds.y,
-                          bounds.x + style.lineNumbersWidth, bounds.y + bounds.height);
-
-        // Draw line numbers text
-        context->SetFontStyle(style.fontStyle);
-
-        for (int i = 0; i < maxVisibleLines && firstVisibleLine + i < static_cast<int>(lines.size()); i++) {
-            int lineNum = firstVisibleLine + i + 1;
-            std::string numStr = std::to_string(lineNum);
-
-            // Measure the actual width of the line number
-            int numY = visibleTextArea.y + i * computedLineHeight;
-
-            // Highlight current line number
-            if (firstVisibleLine + i == currentLineIndex) {
-                context->SetTextPaint(style.fontColor);
-                context->SetFontWeight(FontWeight::Bold);
-            } else {
-                context->SetTextPaint(style.lineNumbersColor);
-                context->SetFontWeight(FontWeight::Normal);
-            }
-            context->SetTextAlignment(TextAlignment::Right);
-            context->DrawTextInRect(numStr, bounds.x, numY, style.lineNumbersWidth, computedLineHeight);
-        }
-    }
-
-
-    // Draw plain text
     void UltraCanvasTextArea::DrawPlainText(IRenderContext* context) {
         auto bounds = GetBounds();
         context->PushState();
@@ -196,12 +139,19 @@ namespace UltraCanvas {
         context->SetTextPaint(style.fontColor);
         context->SetClipRect(visibleTextArea);
 
-        for (int i = 0; i < maxVisibleLines && firstVisibleLine + i < static_cast<int>(lines.size()); i++) {
-            int lineIndex = firstVisibleLine + i;
-            const std::string& line = lines[lineIndex];
+        // Calculate which lines are at least partially visible
+        // Include one line above and below for clipped rendering
+        int startLine = std::max(0, firstVisibleLine - 1);
+        int endLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
+
+        // Calculate the Y position for the first line to render
+        int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
+
+        for (int i = startLine; i < endLine; i++) {
+            const std::string& line = lines[i];
 
             if (!line.empty()) {
-                int y = visibleTextArea.y + i * computedLineHeight;
+                int y = baseY + (i - startLine) * computedLineHeight;
 
                 // Apply horizontal scroll offset if needed
                 if (horizontalScrollOffset > 0) {
@@ -214,17 +164,25 @@ namespace UltraCanvas {
         context->PopState();
     }
 
-// Draw text with syntax highlighting
+// Updated DrawHighlightedText method to render partially visible lines
     void UltraCanvasTextArea::DrawHighlightedText(IRenderContext* context) {
         if (!syntaxTokenizer) return;
         context->PushState();
         context->SetClipRect(visibleTextArea);
         context->SetFontStyle(style.fontStyle);
 
-        int textY = visibleTextArea.y;
+        // Calculate which lines are at least partially visible
+        // Include one line above and below for clipped rendering
+        int startLine = std::max(0, firstVisibleLine - 1);
+        int endLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
 
-        for (int i = firstVisibleLine; i < firstVisibleLine + maxVisibleLines && i < static_cast<int>(lines.size()); i++) {
+        // Calculate the Y position for the first line to render
+        int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
+
+        for (int i = startLine; i < endLine; i++) {
             const std::string& line = lines[i];
+            int textY = baseY + (i - startLine) * computedLineHeight;
+
             if (!line.empty()) {
                 // Tokenize line
                 auto tokens = syntaxTokenizer->TokenizeLine(line);
@@ -252,8 +210,164 @@ namespace UltraCanvas {
                     x += tokenWidth;
                 }
             }
-            textY += computedLineHeight;
         }
+        context->PopState();
+    }
+
+// Updated DrawLineNumbers to handle partially visible lines
+    void UltraCanvasTextArea::DrawLineNumbers(IRenderContext* context) {
+        auto bounds = GetBounds();
+
+        // Draw line numbers background
+        context->SetFillPaint(style.lineNumbersBackgroundColor);
+        context->FillRectangle(bounds.x, bounds.y, style.lineNumbersWidth, bounds.height);
+
+        // Draw line numbers separator
+        context->SetStrokePaint(style.borderColor);
+        context->SetStrokeWidth(1);
+        context->DrawLine(bounds.x + style.lineNumbersWidth, bounds.y,
+                          bounds.x + style.lineNumbersWidth, bounds.y + bounds.height);
+
+        // Draw line numbers text
+        context->SetFontStyle(style.fontStyle);
+
+        // Set clipping for line numbers area
+        Rect2Di lineNumberClipRect = {
+                bounds.x,
+                visibleTextArea.y,
+                style.lineNumbersWidth,
+                visibleTextArea.height
+        };
+        context->PushState();
+        context->SetClipRect(lineNumberClipRect);
+
+        // Render line numbers for partially visible lines
+        int startLine = std::max(0, firstVisibleLine - 1);
+        int endLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
+
+        // Calculate the Y position for the first line number
+        int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
+
+        for (int i = startLine; i < endLine; i++) {
+            int lineNum = i + 1;
+            std::string numStr = std::to_string(lineNum);
+
+            int numY = baseY + (i - startLine) * computedLineHeight;
+
+            // Highlight current line number
+            if (i == currentLineIndex) {
+                context->SetTextPaint(style.fontColor);
+                context->SetFontWeight(FontWeight::Bold);
+            } else {
+                context->SetTextPaint(style.lineNumbersColor);
+                context->SetFontWeight(FontWeight::Normal);
+            }
+            context->SetTextAlignment(TextAlignment::Right);
+            context->DrawTextInRect(numStr, bounds.x, numY, style.lineNumbersWidth, computedLineHeight);
+        }
+
+        context->PopState();
+    }
+
+// Updated DrawSelection to handle partially visible lines
+    void UltraCanvasTextArea::DrawSelection(IRenderContext* context) {
+        if (!HasSelection()) return;
+
+        auto bounds = GetBounds();
+
+        int startPos = std::min(selectionStart, selectionEnd);
+        int endPos = std::max(selectionStart, selectionEnd);
+
+        auto [startLine, startCol] = GetLineColumnFromPosition(startPos);
+        auto [endLine, endCol] = GetLineColumnFromPosition(endPos);
+
+        int textX = visibleTextArea.x;
+
+        // Include partially visible lines in selection rendering
+        int visibleStartLine = std::max(0, firstVisibleLine - 1);
+        int visibleEndLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
+
+        for (int line = startLine; line <= endLine; line++) {
+            // Skip lines that are completely outside the visible range
+            if (line < visibleStartLine || line >= visibleEndLine) continue;
+            if (line >= static_cast<int>(lines.size())) break;
+
+            // Calculate Y position accounting for partially visible lines
+            int lineY = visibleTextArea.y + (line - firstVisibleLine) * computedLineHeight;
+
+            int selStart = (line == startLine) ? startCol : 0;
+            int selEnd = (line == endLine) ? endCol : lines[line].length();
+
+            // FIXED: Measure actual text widths
+            int selX = textX - horizontalScrollOffset;
+            if (selStart > 0) {
+                std::string textBeforeSelection = lines[line].substr(0, selStart);
+                selX += MeasureTextWidth(textBeforeSelection);
+            }
+
+            int selWidth = 0;
+            if (selEnd > selStart) {
+                std::string selectedText = lines[line].substr(selStart, selEnd - selStart);
+                selWidth = MeasureTextWidth(selectedText);
+            }
+
+            context->SetFillPaint(style.selectionColor);
+            context->FillRectangle(selX, lineY, selWidth, computedLineHeight);
+        }
+    }
+
+// Updated DrawBackground to handle partially visible current line highlight
+    void UltraCanvasTextArea::DrawBackground(IRenderContext* context) {
+        auto bounds = GetBounds();
+        context->SetFillPaint(style.backgroundColor);
+        context->FillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
+
+        // Draw current line highlight (even if partially visible)
+        if (highlightCurrentLine) {
+            // Check if current line is at least partially visible
+            int visibleStartLine = firstVisibleLine - 1;
+            int visibleEndLine = firstVisibleLine + maxVisibleLines;
+
+            if (currentLineIndex >= visibleStartLine && currentLineIndex <= visibleEndLine) {
+                context->SetFillPaint(style.currentLineHighlightColor);
+                int lineY = visibleTextArea.y + (currentLineIndex - firstVisibleLine) * computedLineHeight;
+                int highlightX = style.showLineNumbers ? bounds.x + style.lineNumbersWidth : bounds.x;
+
+                // Clip the highlight to the visible text area
+                context->PushState();
+                context->SetClipRect(visibleTextArea);
+                context->FillRectangle(highlightX, lineY,
+                                       bounds.width - (style.showLineNumbers ? style.lineNumbersWidth : 0),
+                                       computedLineHeight);
+                context->PopState();
+            }
+        }
+    }
+
+// Updated DrawCursor to handle partially visible lines
+    void UltraCanvasTextArea::DrawCursor(IRenderContext* context) {
+        auto [line, col] = GetLineColumnFromPosition(cursorPosition);
+
+        // Allow cursor to be drawn on partially visible lines
+        int visibleStartLine = firstVisibleLine - 1;
+        int visibleEndLine = firstVisibleLine + maxVisibleLines;
+
+        if (line < visibleStartLine || line > visibleEndLine) return;
+
+        int cursorX = visibleTextArea.x - horizontalScrollOffset;
+        if (col > 0 && line < static_cast<int>(lines.size())) {
+            std::string textBeforeCursor = lines[line].substr(0, col);
+            cursorX += MeasureTextWidth(textBeforeCursor);
+        }
+        if (cursorX > visibleTextArea.x + visibleTextArea.width) return;
+
+        int cursorY = visibleTextArea.y + (line - firstVisibleLine) * computedLineHeight;
+
+        // Ensure cursor is clipped to visible area
+        context->PushState();
+        context->SetClipRect(visibleTextArea);
+        context->SetStrokeWidth(2);
+        context->DrawLine(cursorX, cursorY, cursorX, cursorY + computedLineHeight, style.cursorColor);
         context->PopState();
     }
 
@@ -293,64 +407,6 @@ namespace UltraCanvas {
             default:
                 return style.tokenStyles.defaultStyle;
         }
-    }
-
-// Draw selection
-    void UltraCanvasTextArea::DrawSelection(IRenderContext* context) {
-        if (!HasSelection()) return;
-
-        auto bounds = GetBounds();
-
-        int startPos = std::min(selectionStart, selectionEnd);
-        int endPos = std::max(selectionStart, selectionEnd);
-
-        auto [startLine, startCol] = GetLineColumnFromPosition(startPos);
-        auto [endLine, endCol] = GetLineColumnFromPosition(endPos);
-
-        int textX = visibleTextArea.x;
-
-        for (int line = startLine; line <= endLine; line++) {
-            if (line < firstVisibleLine || line >= firstVisibleLine + maxVisibleLines) continue;
-            if (line >= static_cast<int>(lines.size())) break;
-
-            int lineY = bounds.y + style.padding + (line - firstVisibleLine) * computedLineHeight;
-
-            int selStart = (line == startLine) ? startCol : 0;
-            int selEnd = (line == endLine) ? endCol : lines[line].length();
-
-            // FIXED: Measure actual text widths
-            int selX = textX - horizontalScrollOffset;
-            if (selStart > 0) {
-                std::string textBeforeSelection = lines[line].substr(0, selStart);
-                selX += MeasureTextWidth(textBeforeSelection);
-            }
-
-            int selWidth = 0;
-            if (selEnd > selStart) {
-                std::string selectedText = lines[line].substr(selStart, selEnd - selStart);
-                selWidth = MeasureTextWidth(selectedText);
-            }
-
-            context->SetFillPaint(style.selectionColor);
-            context->FillRectangle(selX, lineY, selWidth, computedLineHeight);
-        }
-    }
-
-    // FIXED: Draw cursor with proper text measurement
-    void UltraCanvasTextArea::DrawCursor(IRenderContext* context) {
-        auto [line, col] = GetLineColumnFromPosition(cursorPosition);
-        if (line < firstVisibleLine || line >= firstVisibleLine + maxVisibleLines) return;
-
-        int cursorX = visibleTextArea.x - horizontalScrollOffset;
-        if (col > 0 && line < static_cast<int>(lines.size())) {
-            std::string textBeforeCursor = lines[line].substr(0, col);
-            cursorX += MeasureTextWidth(textBeforeCursor);
-        }
-        if (cursorX > visibleTextArea.x + visibleTextArea.width) return;
-        int cursorY = visibleTextArea.y + (line - firstVisibleLine) * computedLineHeight;
-
-        context->SetStrokeWidth(2);
-        context->DrawLine(cursorX, cursorY, cursorX, cursorY + computedLineHeight, style.cursorColor);
     }
 
     bool UltraCanvasTextArea::IsNeedVerticalScrollbar() {
@@ -704,67 +760,78 @@ namespace UltraCanvas {
     bool UltraCanvasTextArea::HandleKeyPress(const UCEvent& event) {
         if (!IsFocused() || isReadOnly) return false;
 
-        bool handled = true;
+        bool handled = false;
 
         switch (event.virtualKey) {
             case UCKeys::Backspace:
                 DeleteCharacterBackward();
+                handled = true;
                 break;
             case UCKeys::Delete:
                 DeleteCharacterForward();
+                handled = true;
                 break;
             case UCKeys::Left:
                 MoveCursorLeft(event.shift);
+                handled = true;
                 break;
             case UCKeys::Right:
                 MoveCursorRight(event.shift);
+                handled = true;
                 break;
             case UCKeys::Up:
                 MoveCursorUp(event.shift);
+                handled = true;
                 break;
             case UCKeys::Down:
                 MoveCursorDown(event.shift);
+                handled = true;
                 break;
             case UCKeys::Home:
                 MoveCursorToLineStart(event.shift);
+                handled = true;
                 break;
             case UCKeys::End:
                 MoveCursorToLineEnd(event.shift);
+                handled = true;
                 break;
             case UCKeys::Enter:
                 InsertCharacter('\n');
+                handled = true;
                 break;
             case UCKeys::A:
                 if (event.ctrl) {
                     SelectAll();
+                    handled = true;
                 }
                 break;
             case UCKeys::C:
                 if (event.ctrl) {
                     CopySelection();
+                    handled = true;
                 }
                 break;
             case UCKeys::V:
                 if (event.ctrl) {
                     PasteClipboard();
+                    handled = true;
                 }
                 break;
             case UCKeys::X:
                 if (event.ctrl) {
                     CutSelection();
+                    handled = true;
                 }
                 break;
-            default:
-                if (event.character && !event.ctrl && !event.alt && !event.meta) {
-                    if (HasSelection()) {
-                        DeleteSelection();
-                    }
+        }
 
-                    InsertCharacter(event.character);
-                } else {
-                    handled = false;
-                }
-                break;
+        if (!handled && event.character && !event.ctrl && !event.alt && !event.meta) {
+            if (HasSelection()) {
+                DeleteSelection();
+            }
+
+            InsertCharacter(event.character);
+            handled = true;
         }
 
         if (handled) {
