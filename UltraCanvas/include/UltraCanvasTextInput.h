@@ -16,6 +16,7 @@
 #include <memory>
 #include <chrono>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace UltraCanvas {
 
@@ -68,77 +69,32 @@ struct ValidationRule {
         : name(ruleName), errorMessage(message), validator(validatorFunc), isRequired(required) {}
     
     // Predefined validation rules
-    static ValidationRule Required(const std::string& message = "This field is required") {
-        return ValidationRule("Required", message, [](const std::string& value) {
-            return !value.empty();
-        }, true);
-    }
-    
-    static ValidationRule MinLength(int minLen, const std::string& message = "") {
-        std::string msg = message.empty() ? 
-            "Must be at least " + std::to_string(minLen) + " characters" : message;
-        return ValidationRule("MinLength", msg, [minLen](const std::string& value) {
-            return value.length() >= static_cast<size_t>(minLen);
-        });
-    }
-    
-    static ValidationRule MaxLength(int maxLen, const std::string& message = "") {
-        std::string msg = message.empty() ? 
-            "Must be no more than " + std::to_string(maxLen) + " characters" : message;
-        return ValidationRule("MaxLength", msg, [maxLen](const std::string& value) {
-            return value.length() <= static_cast<size_t>(maxLen);
-        });
-    }
-    
-    static ValidationRule Email(const std::string& message = "Invalid email format") {
-        return ValidationRule("Email", message, [](const std::string& value) {
-            std::regex emailRegex(R"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})");
-            return std::regex_match(value, emailRegex);
-        });
-    }
-    
-    static ValidationRule Phone(const std::string& message = "Invalid phone format") {
-        return ValidationRule("Phone", message, [](const std::string& value) {
-            std::regex phoneRegex(R"(\+?[\d\s\-\(\)\.]{10,})");
-            return std::regex_match(value, phoneRegex);
-        });
-    }
-    
-    static ValidationRule Numeric(const std::string& message = "Must be a number") {
-        return ValidationRule("Numeric", message, [](const std::string& value) {
-            try {
-                std::stod(value);
-                return true;
-            } catch (...) {
-                return false;
-            }
-        });
-    }
-    
-    static ValidationRule Range(double min, double max, const std::string& message = "") {
-        std::string msg = message.empty() ? 
-            "Must be between " + std::to_string(min) + " and " + std::to_string(max) : message;
-        return ValidationRule("Range", msg, [min, max](const std::string& value) {
-            try {
-                double val = std::stod(value);
-                return val >= min && val <= max;
-            } catch (...) {
-                return false;
-            }
-        });
-    }
-    
-    static ValidationRule Pattern(const std::string& pattern, const std::string& message = "Invalid format") {
-        return ValidationRule("Pattern", message, [pattern](const std::string& value) {
-            try {
-                std::regex regex(pattern);
-                return std::regex_match(value, regex);
-            } catch (...) {
-                return false;
-            }
-        });
-    }
+    static ValidationRule Required(const std::string& message = "This field is required");
+    static ValidationRule MinLength(int minLen, const std::string& message = "");
+    static ValidationRule MaxLength(int maxLen, const std::string& message = "");
+    static ValidationRule Email(const std::string& message = "Invalid email format");
+    static ValidationRule Phone(const std::string& message = "Invalid phone format");
+    static ValidationRule Numeric(const std::string& message = "Must be a number");
+    static ValidationRule Range(double min, double max, const std::string& message = "");
+    static ValidationRule Pattern(const std::string& pattern, const std::string& message = "Invalid format");
+    static ValidationRule RequireUppercase(int minCount = 1, const std::string& message = "");
+    static ValidationRule RequireLowercase(int minCount = 1, const std::string& message = "");
+    static ValidationRule RequireDigit(int minCount = 1, const std::string& message = "");
+    static ValidationRule RequireSpecialChar(int minCount = 1, const std::string& message = "");
+    static ValidationRule NoRepeatingChars(int maxRepeat = 3, const std::string& message = "");
+    static ValidationRule NoSequentialChars(int maxSequence = 3, const std::string& message = "");
+    static ValidationRule NoCommonPasswords(const std::string& message = "This password is too common");
+    static ValidationRule NoUserInfo(const std::string& username, const std::string& email = "", const std::string& message = "");
+
+// ===== PASSWORD STRENGTH CALCULATION HELPER =====
+// This is a STATIC HELPER function, not a ValidationRule
+// Add this as a static method in ValidationRule struct
+    static float CalculatePasswordStrength(const std::string& password);
+// ===== PASSWORD STRENGTH LEVEL HELPER =====
+    static std::string GetPasswordStrengthLevel(float strength);
+    static Color GetPasswordStrengthColor(float strength);
 };
+
 
 struct ValidationResult {
     ValidationState state = ValidationState::NoValidation;
@@ -153,11 +109,9 @@ struct ValidationResult {
     static ValidationResult Valid() {
         return ValidationResult(ValidationState::Valid);
     }
-    
     static ValidationResult Invalid(const std::string& message, const std::string& rule = "") {
         return ValidationResult(ValidationState::Invalid, message, rule);
     }
-    
     static ValidationResult Warning(const std::string& message, const std::string& rule = "") {
         return ValidationResult(ValidationState::Warning, message, rule);
     }

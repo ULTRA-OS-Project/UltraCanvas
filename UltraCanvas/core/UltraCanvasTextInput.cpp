@@ -1210,4 +1210,307 @@ namespace UltraCanvas {
             float centeredY = textArea.y + (textArea.height - lineHeight) / 2.0f;
             return centeredY;
         }
-    }}
+    }
+
+    ValidationRule ValidationRule::Required(const std::string &message) {
+        return ValidationRule("Required", message, [](const std::string& value) {
+            return !value.empty();
+        }, true);
+    }
+
+    ValidationRule ValidationRule::MinLength(int minLen, const std::string &message) {
+        std::string msg = message.empty() ?
+                          "Must be at least " + std::to_string(minLen) + " characters" : message;
+        return ValidationRule("MinLength", msg, [minLen](const std::string& value) {
+            return value.length() >= static_cast<size_t>(minLen);
+        });
+    }
+
+    ValidationRule ValidationRule::MaxLength(int maxLen, const std::string &message) {
+        std::string msg = message.empty() ?
+                          "Must be no more than " + std::to_string(maxLen) + " characters" : message;
+        return ValidationRule("MaxLength", msg, [maxLen](const std::string& value) {
+            return value.length() <= static_cast<size_t>(maxLen);
+        });
+    }
+
+    ValidationRule ValidationRule::Email(const std::string &message) {
+        return ValidationRule("Email", message, [](const std::string& value) {
+            std::regex emailRegex(R"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})");
+            return std::regex_match(value, emailRegex);
+        });
+    }
+
+    ValidationRule ValidationRule::Phone(const std::string &message) {
+        return ValidationRule("Phone", message, [](const std::string& value) {
+            std::regex phoneRegex(R"(\+?[\d\s\-\(\)\.]{10,})");
+            return std::regex_match(value, phoneRegex);
+        });
+    }
+
+    ValidationRule ValidationRule::Numeric(const std::string &message) {
+        return ValidationRule("Numeric", message, [](const std::string& value) {
+            try {
+                std::stod(value);
+                return true;
+            } catch (...) {
+                return false;
+            }
+        });
+    }
+
+    ValidationRule ValidationRule::Range(double min, double max, const std::string &message) {
+        std::string msg = message.empty() ?
+                          "Must be between " + std::to_string(min) + " and " + std::to_string(max) : message;
+        return ValidationRule("Range", msg, [min, max](const std::string& value) {
+            try {
+                double val = std::stod(value);
+                return val >= min && val <= max;
+            } catch (...) {
+                return false;
+            }
+        });
+    }
+
+    ValidationRule ValidationRule::Pattern(const std::string &pattern, const std::string &message) {
+        return ValidationRule("Pattern", message, [pattern](const std::string& value) {
+            try {
+                std::regex regex(pattern);
+                return std::regex_match(value, regex);
+            } catch (...) {
+                return false;
+            }
+        });
+    }
+
+    ValidationRule ValidationRule::RequireUppercase(int minCount, const std::string &message) {
+        std::string msg = message.empty() ?
+                          "Must contain at least " + std::to_string(minCount) + " uppercase letter" + (minCount > 1 ? "s" : "") : message;
+        return ValidationRule("RequireUppercase", msg, [minCount](const std::string& value) {
+            int count = 0;
+            for (char c : value) {
+                if (c >= 'A' && c <= 'Z') count++;
+                if (count >= minCount) return true;
+            }
+            return false;
+        });
+    }
+
+    ValidationRule ValidationRule::RequireLowercase(int minCount, const std::string &message) {
+        std::string msg = message.empty() ?
+                          "Must contain at least " + std::to_string(minCount) + " lowercase letter" + (minCount > 1 ? "s" : "") : message;
+        return ValidationRule("RequireLowercase", msg, [minCount](const std::string& value) {
+            int count = 0;
+            for (char c : value) {
+                if (c >= 'a' && c <= 'z') count++;
+                if (count >= minCount) return true;
+            }
+            return false;
+        });
+    }
+
+    ValidationRule ValidationRule::RequireDigit(int minCount, const std::string &message) {
+        std::string msg = message.empty() ?
+                          "Must contain at least " + std::to_string(minCount) + " digit" + (minCount > 1 ? "s" : "") : message;
+        return ValidationRule("RequireDigit", msg, [minCount](const std::string& value) {
+            int count = 0;
+            for (char c : value) {
+                if (c >= '0' && c <= '9') count++;
+                if (count >= minCount) return true;
+            }
+            return false;
+        });
+    }
+
+    ValidationRule ValidationRule::RequireSpecialChar(int minCount, const std::string &message) {
+        std::string msg = message.empty() ?
+                          "Must contain at least " + std::to_string(minCount) + " special character" + (minCount > 1 ? "s" : "") : message;
+        return ValidationRule("RequireSpecialChar", msg, [minCount](const std::string& value) {
+            const std::string specialChars = "!@#$%^&*()_+-=[]{}|;:,.<>?/~`'\"\\";
+            int count = 0;
+            for (char c : value) {
+                if (specialChars.find(c) != std::string::npos) count++;
+                if (count >= minCount) return true;
+            }
+            return false;
+        });
+    }
+
+    ValidationRule ValidationRule::NoRepeatingChars(int maxRepeat, const std::string &message) {
+        std::string msg = message.empty() ?
+                          "Must not contain more than " + std::to_string(maxRepeat) + " repeating characters" : message;
+        return ValidationRule("NoRepeatingChars", msg, [maxRepeat](const std::string& value) {
+            if (value.empty()) return true;
+
+            int count = 1;
+            char prevChar = value[0];
+            for (size_t i = 1; i < value.length(); i++) {
+                if (value[i] == prevChar) {
+                    count++;
+                    if (count > maxRepeat) return false;
+                } else {
+                    count = 1;
+                    prevChar = value[i];
+                }
+            }
+            return true;
+        });
+    }
+
+    ValidationRule ValidationRule::NoSequentialChars(int maxSequence, const std::string &message) {
+        std::string msg = message.empty() ?
+                          "Must not contain more than " + std::to_string(maxSequence) + " sequential characters" : message;
+        return ValidationRule("NoSequentialChars", msg, [maxSequence](const std::string& value) {
+            if (value.length() < 2) return true;
+
+            int ascCount = 1;
+            int descCount = 1;
+
+            for (size_t i = 1; i < value.length(); i++) {
+                // Check ascending sequence
+                if (value[i] == value[i-1] + 1) {
+                    ascCount++;
+                    if (ascCount > maxSequence) return false;
+                    descCount = 1;
+                }
+                    // Check descending sequence
+                else if (value[i] == value[i-1] - 1) {
+                    descCount++;
+                    if (descCount > maxSequence) return false;
+                    ascCount = 1;
+                }
+                else {
+                    ascCount = 1;
+                    descCount = 1;
+                }
+            }
+            return true;
+        });
+    }
+
+    ValidationRule ValidationRule::NoCommonPasswords(const std::string &message) {
+        return ValidationRule("NoCommonPasswords", message, [](const std::string& value) {
+            // List of most common passwords (expandable)
+            static const std::vector<std::string> commonPasswords = {
+                    "password", "123456", "123456789", "12345678", "12345", "1234567",
+                    "password1", "qwerty", "abc123", "111111", "123123", "admin",
+                    "letmein", "welcome", "monkey", "dragon", "master", "sunshine",
+                    "princess", "football", "iloveyou", "123321", "starwars", "654321"
+            };
+
+            // Convert to lowercase for comparison
+            std::string lowerValue = value;
+            std::transform(lowerValue.begin(), lowerValue.end(), lowerValue.begin(), ::tolower);
+
+            for (const auto& common : commonPasswords) {
+                if (lowerValue == common) return false;
+            }
+            return true;
+        });
+    }
+
+    ValidationRule
+    ValidationRule::NoUserInfo(const std::string &username, const std::string &email, const std::string &message) {
+        std::string msg = message.empty() ?
+                          "Password must not contain username or email" : message;
+        return ValidationRule("NoUserInfo", msg, [username, email](const std::string& value) {
+            // Convert all to lowercase for comparison
+            std::string lowerValue = value;
+            std::string lowerUsername = username;
+            std::string lowerEmail = email;
+
+            std::transform(lowerValue.begin(), lowerValue.end(), lowerValue.begin(), ::tolower);
+            std::transform(lowerUsername.begin(), lowerUsername.end(), lowerUsername.begin(), ::tolower);
+            std::transform(lowerEmail.begin(), lowerEmail.end(), lowerEmail.begin(), ::tolower);
+
+            // Check if password contains username
+            if (!lowerUsername.empty() && lowerValue.find(lowerUsername) != std::string::npos) {
+                return false;
+            }
+
+            // Check if password contains email (or email prefix)
+            if (!lowerEmail.empty()) {
+                size_t atPos = lowerEmail.find('@');
+                std::string emailPrefix = (atPos != std::string::npos) ? lowerEmail.substr(0, atPos) : lowerEmail;
+                if (lowerValue.find(emailPrefix) != std::string::npos) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }
+
+    float ValidationRule::CalculatePasswordStrength(const std::string &password) {
+        if (password.empty()) return 0.0f;
+
+        float strength = 0.0f;
+
+        // Length score (0-30 points)
+        int length = password.length();
+        if (length >= 6) strength += 10.0f;
+        if (length >= 8) strength += 10.0f;
+        if (length >= 12) strength += 10.0f;
+        if (length >= 16) strength += 10.0f;
+
+        // Character variety (0-40 points)
+        bool hasUpper = false, hasLower = false, hasDigit = false, hasSpecial = false;
+        for (char c : password) {
+            if (c >= 'A' && c <= 'Z') hasUpper = true;
+            if (c >= 'a' && c <= 'z') hasLower = true;
+            if (c >= '0' && c <= '9') hasDigit = true;
+            if (!isalnum(c)) hasSpecial = true;
+        }
+        if (hasUpper) strength += 15.0f;
+        if (hasLower) strength += 10.0f;
+        if (hasDigit) strength += 10.0f;
+        if (hasSpecial) strength += 15.0f;
+
+        // Pattern complexity (0-30 points)
+        // Check for repeating characters
+        bool hasRepeats = false;
+        for (size_t i = 1; i < password.length(); i++) {
+            if (password[i] == password[i-1]) {
+                hasRepeats = true;
+                break;
+            }
+        }
+        if (!hasRepeats) strength += 10.0f;
+
+        // Check for sequential characters
+        bool hasSequential = false;
+        for (size_t i = 1; i < password.length(); i++) {
+            if (password[i] == password[i-1] + 1 || password[i] == password[i-1] - 1) {
+                hasSequential = true;
+                break;
+            }
+        }
+        if (!hasSequential) strength += 10.0f;
+
+        // Unique character ratio
+//        std::unordered_set<char> uniqueChars(password.begin(), password.end());
+//        float uniqueRatio = static_cast<float>(uniqueChars.size()) / password.length();
+//        if (uniqueRatio > 0.7f) strength += 10.0f;
+
+        // Clamp to 0-100
+        return std::min(100.0f, std::max(0.0f, strength));
+    }
+
+    std::string ValidationRule::GetPasswordStrengthLevel(float strength) {
+        if (strength < 20.0f) return "Very Weak";
+        if (strength < 40.0f) return "Weak";
+        if (strength < 60.0f) return "Fair";
+        if (strength < 80.0f) return "Good";
+        if (strength < 95.0f) return "Strong";
+        return "Very Strong";
+    }
+
+    Color ValidationRule::GetPasswordStrengthColor(float strength) {
+        if (strength < 20.0f) return Color(220, 53, 69);   // Red
+        if (strength < 40.0f) return Color(255, 107, 0);   // Dark Orange
+        if (strength < 60.0f) return Color(255, 193, 7);   // Yellow
+        if (strength < 80.0f) return Color(163, 203, 56);  // Lime
+        if (strength < 95.0f) return Color(40, 167, 69);   // Green
+        return Color(25, 135, 84);                          // Dark Green
+    }
+}

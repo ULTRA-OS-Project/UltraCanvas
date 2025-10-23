@@ -196,7 +196,7 @@ namespace UltraCanvas {
         textStyleControl->AddSegment("<b>B</b>");   // Bold
         textStyleControl->AddSegment("<i>I</i>");   // Italic
         textStyleControl->AddSegment("<u>U</u>");   // Underline
-        textStyleControl->AddSegment("<s>S</s>");   // Strikethrough
+        textStyleControl->AddSegment("<span strikethrough=\"true\">S</span>");   // Strikethrough
         textStyleControl->SetAllowNoSelection(true);  // Allow toggling off
         textStyleControl->SetWidthMode(SegmentWidthMode::Equal);
         textStyleControl->SetSelectionMode(SegmentSelectionMode::Toggle);

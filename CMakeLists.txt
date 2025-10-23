@@ -121,6 +121,8 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasCheckbox.cpp
         UltraCanvas/core/UltraCanvasGraphicsPluginSystem.cpp
         UltraCanvas/core/UltraCanvasSegmentedControl.cpp
+        UltraCanvas/core/UltraCanvasPasswordStrengthMeter.cpp
+        UltraCanvas/core/UltraCanvasPasswordRuleLegend.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
