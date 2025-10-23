@@ -24,8 +24,8 @@ namespace UltraCanvas {
         // Configure the info window
         WindowConfig config;
         config.title = "UltraCanvas Demo - Information";
-        config.width = 600;
-        config.height = 350;
+        config.width = 630;
+        config.height = 440;
         config.resizable = false;
         config.type = WindowType::Dialog;
         config.modal = true;
@@ -44,7 +44,7 @@ namespace UltraCanvas {
 
     void InfoWindow::CreateInfoContent() {
         // Create title label
-        titleLabel = std::make_shared<UltraCanvasLabel>("InfoTitle", 1000, 50, 30, 500, 30);
+        titleLabel = std::make_shared<UltraCanvasLabel>("InfoTitle", 1000, 50, 10, 500, 30);
         titleLabel->SetText("Welcome to UltraCanvas Demo Application");
         titleLabel->SetFontSize(18);
         titleLabel->SetFontWeight(FontWeight::Bold);
@@ -53,15 +53,26 @@ namespace UltraCanvas {
         AddChild(titleLabel);
 
         // Create divider line
-        auto divider = std::make_shared<UltraCanvasContainer>("Divider", 1001, 50, 70, 500, 2);
+        auto divider = std::make_shared<UltraCanvasContainer>("Divider", 1001, 10, 50, 610, 2);
         ContainerStyle dividerStyle;
         dividerStyle.backgroundColor = Color(200, 200, 200, 255);
         dividerStyle.borderWidth = 0;
         divider->SetContainerStyle(dividerStyle);
         AddChild(divider);
 
+        infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1", 1002, 30, 60, 590, 120);
+        infoLabel1->SetText("UltraCanvas is a comprehensive, open source, one-stop, cross-plattform, multi-programming-language GUI for programmers. "
+                            "UltraCanvas will be the main GUI for ULTRA OS.\n"
+                            "UltraCanvas will be available for both desktop as also mobile platforms.\n"
+                            "URL https://www.ultraos.eu, Github: https://github.com/ULTRA-OS-Project/UltraCanvas\n"
+                            "Planned first release 12/2025");
+        infoLabel1->SetFontSize(10);
+        infoLabel1->SetAlignment(TextAlignment::Center);
+        infoLabel1->SetTextColor(Color(60, 60, 60, 255));
+        AddChild(infoLabel1);
+
         // Create info text
-        infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1", 1002, 10, 100, 600, 25);
+        infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1", 1002, 20, 180, 610, 25);
         infoLabel1->SetText("On the right side of the title of each UC element you can find these icons:");
         infoLabel1->SetFontSize(14);
         infoLabel1->SetAlignment(TextAlignment::Center);
@@ -69,7 +80,7 @@ namespace UltraCanvas {
         AddChild(infoLabel1);
 
         // Create icon descriptions with actual icons
-        int iconY = 140;
+        int iconY = 220;
         int iconSize = 24;
         int textOffset = 35;
 
@@ -101,7 +112,7 @@ namespace UltraCanvas {
         AddChild(infoLabel3);
 
         // Create additional info
-        auto additionalInfo = std::make_shared<UltraCanvasLabel>("AdditionalInfo", 1007, 50, 230, 500, 40);
+        auto additionalInfo = std::make_shared<UltraCanvasLabel>("AdditionalInfo", 1007, 50, 310, 500, 40);
         additionalInfo->SetText("Click on any item in the left panel to see its demonstration.\n"
                                 "These icons provide quick access to documentation and source code.");
         additionalInfo->SetFontSize(12);
@@ -111,7 +122,7 @@ namespace UltraCanvas {
         AddChild(additionalInfo);
 
         // Create OK button
-        okButton = std::make_shared<UltraCanvasButton>("OkButton", 1008, 250, 290, 100, 35);
+        okButton = std::make_shared<UltraCanvasButton>("OkButton", 1008, 250, 370, 100, 35);
         okButton->SetText("OK");
         okButton->SetStyle(ButtonStyles::SuccessStyle());
 //        okButton->SetColor(Color(0, 120, 200, 255));

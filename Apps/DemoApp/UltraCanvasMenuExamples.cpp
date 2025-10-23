@@ -207,7 +207,7 @@ namespace UltraCanvas {
 
         darkMenuBtn->onClick = [darkMenu, darkMenuBtn, container]() {
             container->GetWindow()->AddChild(darkMenu);
-            Point2Di pos(darkMenuBtn->GetXInWindow(), darkMenuBtn->GetYInWindow() + darkMenuBtn->GetHeight());
+            Point2Di pos(darkMenuBtn->GetXInWindow(), darkMenuBtn->GetYInWindow() + darkMenuBtn->GetHeight() + 1);
             darkMenu->ShowAt(pos);
         };
 
@@ -230,13 +230,13 @@ namespace UltraCanvas {
             std::cout << "Desktop view" << std::endl;
         }));
 
-        flatMenu->AddItem(MenuItemData::Action("📱 Tablet View", []() {
+        flatMenu->AddItem(MenuItemData::Action("Tablet View", "assets/icons/tablet48px.png", []() {
             std::cout << "Tablet view" << std::endl;
         }));
 
         flatMenuBtn->onClick = [flatMenu, flatMenuBtn, container]() {
             container->GetWindow()->AddChild(flatMenu);
-            Point2Di pos(flatMenuBtn->GetXInWindow(), flatMenuBtn->GetYInWindow() + flatMenuBtn->GetHeight());
+            Point2Di pos(flatMenuBtn->GetXInWindow(), flatMenuBtn->GetYInWindow() + flatMenuBtn->GetHeight() + 1);
             flatMenu->ShowAt(pos);
         };
 

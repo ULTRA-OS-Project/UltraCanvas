@@ -82,7 +82,7 @@ namespace UltraCanvas {
         auto container = std::make_shared<UltraCanvasContainer>("TableViewExamples", 1100, 0, 0, 1000, 600);
 
         auto title = std::make_shared<UltraCanvasLabel>("TableViewTitle", 1101, 10, 10, 300, 30);
-        title->SetText("Table View Examples");
+        title->SetText("Spreadsheet View Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);

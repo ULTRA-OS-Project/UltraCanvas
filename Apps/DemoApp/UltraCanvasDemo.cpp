@@ -494,7 +494,7 @@ namespace UltraCanvas {
                 .AddVariant("treeview", "Multi-Selection Tree")
                 .AddVariant("treeview", "Checkable Nodes");
 
-        extendedBuilder.AddItem("tableview", "Table View", "Data grid with sorting and editing",
+        extendedBuilder.AddItem("tableview", "Spreadsheet View", "Data grid with sorting and editing",
                                 ImplementationStatus::NotImplemented,
                                 [this]() { return CreateTableViewExamples(); })
                 .AddVariant("tableview", "Basic Data Grid")
