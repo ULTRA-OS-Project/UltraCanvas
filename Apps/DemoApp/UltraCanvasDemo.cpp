@@ -576,6 +576,21 @@ namespace UltraCanvas {
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
 
+        diagramBuilder.AddItem(
+                        "sankey",
+                        "Sankey Diagram",
+                        "Interactive flow diagrams showing relationships and value distributions",
+                        ImplementationStatus::FullyImplemented,
+                        [this]() { return CreateSankeyExamples(); },
+                        "Examples/UltraCanvasSankeyExamples.cpp",
+                        "Docs/UltraCanvasSankeyDiagram.md"
+                )
+                .AddVariant("sankey", "Energy Flow")
+                .AddVariant("sankey", "Financial Flow")
+                .AddVariant("sankey", "Web Traffic")
+                .AddVariant("sankey", "Custom Data")
+                .AddVariant("sankey", "Performance Test");
+
         diagramBuilder.AddItem("plantuml", "PlantUML", "UML and diagram generation",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateDiagramExamples(); })
@@ -588,10 +603,6 @@ namespace UltraCanvas {
                                [this]() { return nullptr; });
 
         diagramBuilder.AddItem("nodediagram", "Node diagram", "Node diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return nullptr; });
-
-        diagramBuilder.AddItem("sankeydiagram", "Sankey diagram", "Sankey diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return nullptr; });
 
@@ -683,21 +694,6 @@ namespace UltraCanvas {
 
         // ===== INFO GRAPHICS =====
         auto infoBuilder = DemoCategoryBuilder(this, DemoCategory::InfoGraphics);
-
-        infoBuilder.AddItem(
-                        "sankey",
-                        "Sankey Diagram",
-                        "Interactive flow diagrams showing relationships and value distributions",
-                        ImplementationStatus::FullyImplemented,
-                        [this]() { return CreateSankeyExamples(); },
-                        "Examples/UltraCanvasSankeyExamples.cpp",
-                        "Docs/UltraCanvasSankeyDiagram.md"
-                )
-                .AddVariant("sankey", "Energy Flow")
-                .AddVariant("sankey", "Financial Flow")
-                .AddVariant("sankey", "Web Traffic")
-                .AddVariant("sankey", "Custom Data")
-                .AddVariant("sankey", "Performance Test");
 
         infoBuilder.AddItem("infographics", "Info Graphics", "Complex data visualizations",
                             ImplementationStatus::NotImplemented,
@@ -815,6 +811,7 @@ namespace UltraCanvas {
 
         // Expand root node
         rootNode->Expand();
+        rootNode->FirstChild()->Expand();
     }
 
 // ===== EVENT HANDLERS =====

@@ -573,7 +573,7 @@ namespace UltraCanvas {
 
             // Check if clicking on expand/collapse button
             if (showExpandButtons && clickedNode->HasChildren() &&
-                event.x >= nodeX && event.x <= nodeX + 15) {
+                event.x >= nodeX && event.x <= nodeX + 17) {
                 clickedNode->Toggle();
                 UpdateScrollbars();
 

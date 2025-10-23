@@ -82,9 +82,11 @@ public:
     void RemoveChild(const std::string& nodeId);
     
     TreeNode* FindChild(const std::string& nodeId);
-    
+
     TreeNode* FindDescendant(const std::string& nodeId);
-    
+
+    TreeNode* FirstChild() { return children.empty() ? nullptr : children[0].get(); };
+
     // ===== STATE MANAGEMENT =====
     void Expand();
     

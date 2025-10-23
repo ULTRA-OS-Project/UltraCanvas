@@ -14,7 +14,6 @@
 #include <errno.h>
 
 namespace UltraCanvas {
-
 // ===== CONSTRUCTOR & DESTRUCTOR =====
     UltraCanvasLinuxApplication::UltraCanvasLinuxApplication()
             : display(nullptr)
@@ -303,7 +302,7 @@ namespace UltraCanvas {
                 event.virtualKey = ConvertXKeyToUCKey(XLookupKeysym(const_cast<XKeyEvent*>(&xEvent.xkey), 0));
 
                 // Get character representation
-                char buffer[32];
+                char buffer[32] = {0};
                 KeySym keysym;
                 int len = XLookupString(const_cast<XKeyEvent*>(&xEvent.xkey), buffer, sizeof(buffer), &keysym, nullptr);
                 if (len > 0) {
@@ -324,22 +323,22 @@ namespace UltraCanvas {
                 // ===== FIXED X11 WHEEL EVENTS MAPPING =====
                 unsigned int xButton = xEvent.xbutton.button;
 
+                event.x = event.windowX = xEvent.xbutton.x;
+                event.y = event.windowY = xEvent.xbutton.y;
+                event.globalX = xEvent.xbutton.x_root;
+                event.globalY = xEvent.xbutton.y_root;
+                event.shift = (xEvent.xbutton.state & ShiftMask) != 0;
+                event.ctrl = (xEvent.xbutton.state & ControlMask) != 0;
+                event.alt = (xEvent.xbutton.state & Mod1Mask) != 0;
+                event.meta = (xEvent.xbutton.state & Mod4Mask) != 0;
+                event.button = ConvertXButtonToUCButton(xButton);
+
                 // Handle wheel events (Button4 = WheelUp, Button5 = WheelDown)
                 if (xButton == Button4 || xButton == Button5) {
                     if (xEvent.type == ButtonPress) {
                         event.type = UCEventType::MouseWheel;
-                        event.x = event.windowX = xEvent.xbutton.x;
-                        event.y = event.windowY = xEvent.xbutton.y;
-                        event.globalX = xEvent.xbutton.x_root;
-                        event.globalY = xEvent.xbutton.y_root;
                         event.wheelDelta = (xButton == Button4) ? 5 : -5;
-                        event.button = ConvertXButtonToUCButton(xButton);
-
                         // Set modifier keys
-                        event.shift = (xEvent.xbutton.state & ShiftMask) != 0;
-                        event.ctrl = (xEvent.xbutton.state & ControlMask) != 0;
-                        event.alt = (xEvent.xbutton.state & Mod1Mask) != 0;
-                        event.meta = (xEvent.xbutton.state & Mod4Mask) != 0;
                     } else {
                         event.type = UCEventType::Unknown;
                     }
@@ -348,35 +347,53 @@ namespace UltraCanvas {
                 else if (xButton == 6 || xButton == 7) {
                     if (xEvent.type == ButtonPress) {
                         event.type = UCEventType::MouseWheelHorizontal;
-                        event.x = event.windowX = xEvent.xbutton.x;
-                        event.y = event.windowY = xEvent.xbutton.y;
-                        event.globalX = xEvent.xbutton.x_root;
-                        event.globalY = xEvent.xbutton.y_root;
                         event.wheelDelta = (xButton == 7) ? 5 : -5;
-                        event.button = ConvertXButtonToUCButton(xButton);
-
-                        event.shift = (xEvent.xbutton.state & ShiftMask) != 0;
-                        event.ctrl = (xEvent.xbutton.state & ControlMask) != 0;
-                        event.alt = (xEvent.xbutton.state & Mod1Mask) != 0;
-                        event.meta = (xEvent.xbutton.state & Mod4Mask) != 0;
                     } else {
                         event.type = UCEventType::Unknown;
                     }
                 }
                     // Handle regular mouse button events
                 else {
-                    event.type = (xEvent.type == ButtonPress) ?
-                                 UCEventType::MouseDown : UCEventType::MouseUp;
-                    event.x = event.windowX = xEvent.xbutton.x;
-                    event.y = event.windowY = xEvent.xbutton.y;
-                    event.globalX = xEvent.xbutton.x_root;
-                    event.globalY = xEvent.xbutton.y_root;
-                    event.button = ConvertXButtonToUCButton(xButton);
+// Check for double-click on ButtonPress
+                    bool isDoubleClick = false;
 
-                    event.shift = (xEvent.xbutton.state & ShiftMask) != 0;
-                    event.ctrl = (xEvent.xbutton.state & ControlMask) != 0;
-                    event.alt = (xEvent.xbutton.state & Mod1Mask) != 0;
-                    event.meta = (xEvent.xbutton.state & Mod4Mask) != 0;
+                    if (xEvent.type == ButtonPress) {
+                        // Calculate time difference
+                        Time timeDiff = xEvent.xbutton.time - mouseClickInfo.lastClickTime;
+
+                        // Calculate position difference
+                        int xDiff = abs(xEvent.xbutton.x - mouseClickInfo.lastClickX);
+                        int yDiff = abs(xEvent.xbutton.y - mouseClickInfo.lastClickY);
+
+                        // Check if this qualifies as a double-click
+                        if (mouseClickInfo.window == xEvent.xbutton.window &&
+                            mouseClickInfo.lastButton == xButton &&
+                            timeDiff <= mouseClickInfo.doubleClickTime &&
+                            xDiff <= mouseClickInfo.doubleClickDistance &&
+                            yDiff <= mouseClickInfo.doubleClickDistance) {
+
+                            isDoubleClick = true;
+
+                            // Reset tracker to prevent triple-click detection
+                            mouseClickInfo.lastClickTime = 0;
+                            mouseClickInfo.window = 0;
+                        } else {
+                            // Update tracker for next potential double-click
+                            mouseClickInfo.window = xEvent.xbutton.window;
+                            mouseClickInfo.lastClickTime = xEvent.xbutton.time;
+                            mouseClickInfo.lastClickX = xEvent.xbutton.x;
+                            mouseClickInfo.lastClickY = xEvent.xbutton.y;
+                            mouseClickInfo.lastButton = xButton;
+                        }
+                    }
+
+                    // Set event type
+                    if (isDoubleClick) {
+                        event.type = UCEventType::MouseDoubleClick;
+                    } else {
+                        event.type = (xEvent.type == ButtonPress) ?
+                                     UCEventType::MouseDown : UCEventType::MouseUp;
+                    }
                 }
                 break;
             }

@@ -80,7 +80,7 @@ namespace UltraCanvas {
         cashFlowData->AddWaterfallPoint("Final", 0.0, false, true);
 
         auto cashFlowChart = CreateWaterfallChartWithData(
-                "cashflow_chart", 3020, 470, 50, 540, 300,
+                "cashflow_chart", 3020, 480, 50, 540, 300,
                 cashFlowData, "Cash Flow ($K)"
         );
 

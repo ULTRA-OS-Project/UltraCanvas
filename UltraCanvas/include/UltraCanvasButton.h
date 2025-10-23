@@ -362,7 +362,10 @@ namespace UltraCanvas {
             button->SetPadding(padding, padding, padding/2, padding/2);
             return *this;
         }
-
+        ButtonBuilder& SetIconSpacing(int spacing) {
+            button->SetIconSpacing(spacing);
+            return *this;
+        }
         ButtonBuilder& SetCornerRadius(float radius) {
             button->SetCornerRadius(radius);
             return *this;

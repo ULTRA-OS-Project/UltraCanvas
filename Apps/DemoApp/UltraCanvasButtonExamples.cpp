@@ -303,16 +303,40 @@ namespace UltraCanvas {
             };
             mainContainer->AddChild(counterBtn);
 
-            // Vertical Split Button
+        auto vertSplitMenu = std::make_shared<UltraCanvasMenu>("vertSplitMenu", 116, 0, 0, 200, 0);
+        vertSplitMenu->SetMenuType(MenuType::PopupMenu);
+
+        vertSplitMenu->AddItem(MenuItemData::Action("New file", []() {
+        }));
+
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("📂 Open...", "Ctrl+O", []() {
+              std::cout << "Open file" << std::endl;
+        }));
+
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("💾 Save", "Ctrl+S", []() {
+              std::cout << "Save file" << std::endl;
+        }));
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("💾 Save As...", "Ctrl+Shift+S", []() {
+              std::cout << "Save as" << std::endl;
+          }));
+        vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("🚪 Exit", "Alt+F4", []() {
+            std::cout << "Exit application" << std::endl;
+        }));
+
+
+        // Vertical Split Button
             auto vertSplitBtn = CreateButton("VertSplitButton", 147, 160, yOffset, 100, 50, "File");
             vertSplitBtn->SetSplitEnabled(true);
             vertSplitBtn->SetSplitHorizontal(false); // Vertical
+            vertSplitBtn->SetSplitRatio(0.6);
             vertSplitBtn->SetSplitSecondaryText("Menu ▼");
             vertSplitBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("File action clicked\nOpen file dialog");
             };
-            vertSplitBtn->onSecondaryClick = [statusLabel]() {
-                statusLabel->SetText("File menu clicked\nShow file options menu");
+            vertSplitBtn->onSecondaryClick = [mainContainer, vertSplitMenu]() {
+                auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
+                mainContainer->GetWindow()->AddChild(vertSplitMenu);
+                vertSplitMenu->ShowAt(ev.windowX, ev.windowY);
             };
             mainContainer->AddChild(vertSplitBtn);
 
@@ -462,11 +486,12 @@ namespace UltraCanvas {
 
             // Create button using builder pattern
             auto builderBtn = ButtonBuilder("BuilderButton", 171)
+                    .SetStyle(ButtonStyles::PrimaryStyle())
                     .SetPosition(20, yOffset)
-                    .SetSize(230, 40)
+                    .SetSize(240, 40)
                     .SetText("Built with Builder")
                     .SetIcon("assets/icons/build.png")
-                    .SetStyle(ButtonStyles::PrimaryStyle())
+                    .SetIconSpacing(6)
                     .SetSplitEnabled(true)
                     .SetSplitSecondaryIcon("assets/icons/arrow-right.png")
                     .SetSplitIconSize(24,24)
@@ -485,7 +510,7 @@ namespace UltraCanvas {
 
             // Another builder example - complex configuration
             auto complexBuilderBtn = ButtonBuilder("ComplexBuilder", 172)
-                    .SetPosition(260, yOffset)
+                    .SetPosition(280, yOffset)
                     .SetSize(180, 40)
                     .SetText("Complex")
                     .SetSplitEnabled(true)

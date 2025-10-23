@@ -41,6 +41,16 @@ namespace UltraCanvas {
 // Forward declarations
     class UltraCanvasLinuxWindow;
 
+    struct MouseClickInfo {
+        Window window = 0;
+        Time lastClickTime = 0;
+        int lastClickX = 0;
+        int lastClickY = 0;
+        unsigned int lastButton = 0;
+        Time doubleClickTime = 250; // milliseconds
+        int doubleClickDistance = 5; // pixels
+    };
+
 // ===== LINUX APPLICATION CLASS =====
     class UltraCanvasLinuxApplication : public UltraCanvasBaseApplication {
     private:
@@ -74,6 +84,8 @@ namespace UltraCanvas {
 
         // ===== GLOBAL EVENT HANDLING =====
         std::function<bool(const UCEvent&)> globalEventHandler;
+
+        MouseClickInfo mouseClickInfo;
 
         // ===== SYSTEM ATOMS =====
         Atom wmDeleteWindow;
@@ -138,6 +150,25 @@ namespace UltraCanvas {
         Atom GetWMStateMinimized() const { return wmStateMinimized; }
 
         void ProcessXEvent(XEvent& xEvent);
+
+        /**
+         * Set the maximum time interval (in milliseconds) between clicks
+         * to be considered a double-click
+         * @param milliseconds Time interval (default: 500ms)
+         */
+        void SetDoubleClickTime(unsigned int milliseconds) {
+            mouseClickInfo.doubleClickTime = milliseconds;
+        };
+
+        /**
+         * Set the maximum distance (in pixels) the mouse can move between
+         * clicks to be considered a double-click
+         * @param pixels Distance tolerance (default: 5 pixels)
+         */
+        void SetDoubleClickDistance(int pixels) {
+            mouseClickInfo.doubleClickDistance = pixels;
+        }
+
     private:
         // ===== INTERNAL INITIALIZATION =====
         bool InitializeX11();
