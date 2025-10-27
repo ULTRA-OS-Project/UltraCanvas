@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
+#include "UltraCanvasImageLoader.h"
 #include <algorithm>
 
 namespace UltraCanvas {
@@ -44,7 +45,7 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::SetSplitSecondaryIcon(const std::string& iconPath,
                                                   ButtonSecondaryIconPosition position) {
-        style.splitStyle.secondaryIconPath = iconPath;
+        style.splitStyle.secondaryIcon = GetImageFromFile(iconPath);
         style.splitStyle.secondaryIconPosition = position;
         layoutDirty = true;
         AutoResize();
@@ -107,7 +108,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasButton::SetIcon(const std::string& path) {
-        iconPath = path;
+        icon = GetImageFromFile(path);
         layoutDirty = true;
         AutoResize();
         RequestRedraw();
@@ -604,7 +605,7 @@ namespace UltraCanvas {
         }
 
         // Draw the icon
-        ctx->DrawImage(iconPath, iconRect);
+        ctx->DrawImage(icon, iconRect);
     }
 
     void UltraCanvasButton::DrawSecondaryIcon(IRenderContext* ctx) {
@@ -619,7 +620,7 @@ namespace UltraCanvas {
         }
 
         // Draw the secondary icon
-        ctx->DrawImage(style.splitStyle.secondaryIconPath, secondaryIconRect);
+        ctx->DrawImage(style.splitStyle.secondaryIcon, secondaryIconRect);
     }
 
     void UltraCanvasButton::DrawText(IRenderContext* ctx) {

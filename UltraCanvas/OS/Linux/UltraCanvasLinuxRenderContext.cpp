@@ -4,8 +4,8 @@
 // Last Modified: 2025-07-14
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasImageLoader.h"
 #include "UltraCanvasLinuxRenderContext.h"
-#include "UltraCanvasLinuxImageLoader.h"
 #include <cstring>
 #include <cmath>
 #include <sstream>
@@ -1049,41 +1049,41 @@ namespace UltraCanvas {
     // Image rendering stubs
     // ===== IMAGE RENDERING IMPLEMENTATION =====
 
-    void LinuxRenderContext::DrawImage(const std::string &imagePath, float x, float y) {
-        if (imagePath.empty()) {
-            std::cerr << "LinuxRenderContext::DrawImage: Invalid parameters" << std::endl;
-            return;
-        }
-
+    void LinuxRenderContext::DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h) {
         try {
             // Load the image
-            ImageLoadResult result = LinuxImageLoader::LoadImage(imagePath);
-
-            if (!result.success) {
+            if (!image->IsValid()) {
                 std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
-                          << imagePath << "': " << result.errorMessage << std::endl;
+                          << image->errorMessage << std::endl;
                 return;
             }
 
             // Save current cairo state
             cairo_save(cairo);
 
-            // Apply global alpha
+            // Calculate scaling factors
+            float scaleX = w / static_cast<float>(image->width);
+            float scaleY = h / static_cast<float>(image->height);
+
+            // Apply transformations
+            cairo_translate(cairo, x, y);
+            cairo_scale(cairo, scaleX, scaleY);
+
+            // Set the image as source and paint
+            cairo_set_source_surface(cairo, image->GetSurface(), 0, 0);
+
+            // Apply clipping to ensure we don't draw outside the destination rectangle
+            cairo_rectangle(cairo, 0, 0, image->width, image->height);
+            cairo_clip(cairo);
+
             if (currentState.globalAlpha < 1.0f) {
-                cairo_set_source_surface(cairo, result.surface, x, y);
                 cairo_paint_with_alpha(cairo, currentState.globalAlpha);
             } else {
-                // Direct drawing for better performance when no transparency
-                cairo_set_source_surface(cairo, result.surface, x, y);
                 cairo_paint(cairo);
             }
 
             // Restore cairo state
             cairo_restore(cairo);
-
-            // Release surface reference (if not cached, this will destroy it)
-            cairo_surface_destroy(result.surface);
-
         } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
@@ -1095,74 +1095,64 @@ namespace UltraCanvas {
             return;
         }
 
+        // Load the image
+        auto image = GetImageFromFile(imagePath);
+
+        if (!image->IsValid()) {
+            std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
+                      << imagePath << "': " << image->errorMessage << std::endl;
+            return;
+        }
+
+        DrawImage(image, x, y, w, h);
+    }
+
+    void LinuxRenderContext::DrawImage(std::shared_ptr<UCImage> image, float x, float y) {
         try {
-            // Load the image
-            ImageLoadResult result = LinuxImageLoader::LoadImage(imagePath);
-
-            if (!result.success) {
-                std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
-                          << imagePath << "': " << result.errorMessage << std::endl;
-                return;
-            }
-
             // Save current cairo state
             cairo_save(cairo);
 
-            // Calculate scaling factors
-            float scaleX = w / static_cast<float>(result.width);
-            float scaleY = h / static_cast<float>(result.height);
-
-            // Apply transformations
-            cairo_translate(cairo, x, y);
-            cairo_scale(cairo, scaleX, scaleY);
-
-            // Set the image as source and paint
-            cairo_set_source_surface(cairo, result.surface, 0, 0);
-
-            // Apply clipping to ensure we don't draw outside the destination rectangle
-            cairo_rectangle(cairo, 0, 0, result.width, result.height);
-            cairo_clip(cairo);
-
+            // Apply global alpha
             if (currentState.globalAlpha < 1.0f) {
+                cairo_set_source_surface(cairo, image->GetSurface(), x, y);
                 cairo_paint_with_alpha(cairo, currentState.globalAlpha);
             } else {
-                //cairo_paint_with_alpha(cairo, currentState.globalAlpha);
+                // Direct drawing for better performance when no transparency
+                cairo_set_source_surface(cairo, image->GetSurface(), x, y);
                 cairo_paint(cairo);
             }
 
             // Restore cairo state
             cairo_restore(cairo);
-
-            // Release surface reference
-            cairo_surface_destroy(result.surface);
-
         } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
     }
 
-    void LinuxRenderContext::DrawImage(const std::string &imagePath, const Rect2Df &srcRect, const Rect2Df &destRect) {
+    void LinuxRenderContext::DrawImage(const std::string &imagePath, float x, float y) {
         if (imagePath.empty()) {
             std::cerr << "LinuxRenderContext::DrawImage: Invalid parameters" << std::endl;
             return;
         }
 
+        // Load the image
+        auto image = GetImageFromFile(imagePath);
+
+        if (!image->IsValid()) {
+            std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
+                      << imagePath << "': " << image->errorMessage << std::endl;
+            return;
+        }
+        DrawImage(image, x, y);
+    }
+
+    void LinuxRenderContext::DrawImage(std::shared_ptr<UCImage> image, const Rect2Df &srcRect, const Rect2Df &destRect) {
         try {
-            // Load the image
-            ImageLoadResult result = LinuxImageLoader::LoadImage(imagePath);
-
-            if (!result.success) {
-                std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
-                          << imagePath << "': " << result.errorMessage << std::endl;
-                return;
-            }
-
             // Validate source rectangle bounds
             if (srcRect.x < 0 || srcRect.y < 0 ||
-                srcRect.x + srcRect.width > result.width ||
-                srcRect.y + srcRect.height > result.height) {
+                srcRect.x + srcRect.width > image->width ||
+                srcRect.y + srcRect.height > image->height) {
                 std::cerr << "LinuxRenderContext::DrawImage: Source rectangle out of bounds" << std::endl;
-                cairo_surface_destroy(result.surface);
                 return;
             }
 
@@ -1179,7 +1169,7 @@ namespace UltraCanvas {
             cairo_translate(cairo, -srcRect.x, -srcRect.y);
 
             // Set the image as source
-            cairo_set_source_surface(cairo, result.surface, 0, 0);
+            cairo_set_source_surface(cairo, image->GetSurface(), 0, 0);
 
             // Create clipping rectangle for the destination area
             cairo_reset_clip(cairo);
@@ -1197,63 +1187,48 @@ namespace UltraCanvas {
 
             // Restore cairo state
             cairo_restore(cairo);
-
-            // Release surface reference
-            cairo_surface_destroy(result.surface);
-
         } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
     }
 
-    // ===== ADDITIONAL HELPER METHODS FOR IMAGE RENDERING =====
-
-    bool LinuxRenderContext::IsImageFormatSupported(const std::string &filePath) {
-        std::string ext = GetFileExtension(filePath);
-        return LinuxImageLoader::IsFormatSupported(ext);
-    }
-
-    bool LinuxRenderContext::GetImageDimensions(const std::string &imagePath, int &w, int &h) {
-        w = 0;
-        h = 0;
+    void LinuxRenderContext::DrawImage(const std::string &imagePath, const Rect2Df &srcRect, const Rect2Df &destRect) {
         if (imagePath.empty()) {
-            return false;
+            std::cerr << "LinuxRenderContext::DrawImage: Invalid parameters" << std::endl;
+            return;
         }
 
-        try {
-            ImageLoadResult result = LinuxImageLoader::LoadImage(imagePath);
-            if (result.success) {
-                w = result.width;
-                h = result.height;
-                cairo_surface_destroy(result.surface);
-                return true;
-            }
-        } catch (const std::exception &e) {
-            std::cerr << "LinuxRenderContext::GetImageDimensions: Exception: " << e.what() << std::endl;
-        }
+        // Load the image
+        auto image = GetImageFromFile(imagePath);
 
-        return false;
+        if (!image->IsValid()) {
+            std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
+                      << imagePath << "': " << image->errorMessage << std::endl;
+            return;
+        }
+        DrawImage(image, srcRect, destRect);
     }
 
+    // ===== ADDITIONAL HELPER METHODS FOR IMAGE RENDERING =====
     void LinuxRenderContext::DrawImageWithFilter(const std::string &imagePath, float x, float y, float w, float h,
                                                  cairo_filter_t filter) {
         if (imagePath.empty()) return;
 
         try {
-            ImageLoadResult result = LinuxImageLoader::LoadImage(imagePath);
-            if (!result.success) return;
+            auto image = GetImageFromFile(imagePath);
+            if (!image->IsValid()) return;
 
             cairo_save(cairo);
 
             // Set up scaling pattern with specified filter
-            cairo_pattern_t *pattern = cairo_pattern_create_for_surface(result.surface);
+            cairo_pattern_t *pattern = cairo_pattern_create_for_surface(image->GetSurface());
             cairo_pattern_set_filter(pattern, filter);
 
             // Calculate and apply transformation matrix
             cairo_matrix_t matrix;
             cairo_matrix_init_scale(&matrix,
-                                    static_cast<double>(result.width) / w,
-                                    static_cast<double>(result.height) / h);
+                                    static_cast<double>(image->width) / w,
+                                    static_cast<double>(image->height) / h);
             cairo_matrix_translate(&matrix, -x, -y);
             cairo_pattern_set_matrix(pattern, &matrix);
 
@@ -1270,7 +1245,6 @@ namespace UltraCanvas {
 
             cairo_pattern_destroy(pattern);
             cairo_restore(cairo);
-            cairo_surface_destroy(result.surface);
 
         } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImageWithFilter: Exception: " << e.what() << std::endl;
@@ -1281,13 +1255,13 @@ namespace UltraCanvas {
         if (imagePath.empty()) return;
 
         try {
-            ImageLoadResult result = LinuxImageLoader::LoadImage(imagePath);
-            if (!result.success) return;
+            auto image = GetImageFromFile(imagePath);
+            if (!image->IsValid()) return;
 
             cairo_save(cairo);
 
             // Create repeating pattern
-            cairo_pattern_t *pattern = cairo_pattern_create_for_surface(result.surface);
+            cairo_pattern_t *pattern = cairo_pattern_create_for_surface(image->GetSurface());
             cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
 
             // Set source and fill the rectangle
@@ -1303,23 +1277,10 @@ namespace UltraCanvas {
 
             cairo_pattern_destroy(pattern);
             cairo_restore(cairo);
-            cairo_surface_destroy(result.surface);
 
         } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImageTiled: Exception: " << e.what() << std::endl;
         }
-    }
-
-    void LinuxRenderContext::ClearImageCache() {
-        LinuxImageLoader::ClearCache();
-    }
-
-    void LinuxRenderContext::SetImageCacheSize(size_t maxSizeBytes) {
-        LinuxImageLoader::SetMaxCacheSize(maxSizeBytes);
-    }
-
-    size_t LinuxRenderContext::GetImageCacheMemoryUsage() {
-        return LinuxImageLoader::GetCacheMemoryUsage();
     }
 
     void LinuxRenderContext::UpdateContext(cairo_t *newCairoContext) {

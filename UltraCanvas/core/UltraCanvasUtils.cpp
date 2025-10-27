@@ -339,4 +339,14 @@ namespace UltraCanvas {
         // Default fallback
         return Colors::Black;
     }
+
+    std::string GetFileExtension(const std::string& filePath) {
+        size_t dotPos = filePath.find_last_of('.');
+        if (dotPos == std::string::npos) return "";
+
+        std::string ext = filePath.substr(dotPos + 1);
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        return ext;
+    }
+
 }

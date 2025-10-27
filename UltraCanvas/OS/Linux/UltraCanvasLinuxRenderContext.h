@@ -5,15 +5,11 @@
 // Author: UltraCanvas Framework
 //
 
-#ifndef INC_3_ULTRACANVASX11RENDERCONTEXT_H
-#define INC_3_ULTRACANVASX11RENDERCONTEXT_H
-
+#pragma once
 
 // ===== CORE INCLUDES =====
 #include "../../include/UltraCanvasRenderContext.h"
 #include "../../include/UltraCanvasEvent.h"
-#include "../../include/UltraCanvasCommonTypes.h"
-#include "../../include/UltraCanvasRenderContext.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
 #include <X11/Xlib.h>
@@ -328,21 +324,15 @@ namespace UltraCanvas {
         void DrawImage(const std::string &imagePath, float x, float y, float w, float h) override;
         void DrawImage(const std::string &imagePath, const Rect2Df &srcRect, const Rect2Df &destRect) override;
 
-        // ===== ENHANCED IMAGE RENDERING METHODS =====
-        bool IsImageFormatSupported(const std::string &filePath) override;
-        bool GetImageDimensions(const std::string &imagePath, int &w, int &h) override;
+        void DrawImage(std::shared_ptr<UCImage> image, float x, float y) override;
+        void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h) override;
+        void DrawImage(std::shared_ptr<UCImage> image, const Rect2Df &srcRect, const Rect2Df &destRect) override;
 
+        // ===== ENHANCED IMAGE RENDERING METHODS =====
         void DrawImageWithFilter(const std::string &imagePath, float x, float y, float w, float h,
                                  cairo_filter_t filter = CAIRO_FILTER_BILINEAR);
 
         void DrawImageTiled(const std::string &imagePath, float x, float y, float w, float h);
-
-        // ===== IMAGE CACHE MANAGEMENT =====
-        void ClearImageCache();
-
-        void SetImageCacheSize(size_t maxSizeBytes);
-
-        size_t GetImageCacheMemoryUsage();
 
         // ===== CONTEXT MANAGEMENT =====
         void UpdateContext(cairo_t *newCairoContext);
@@ -406,4 +396,3 @@ namespace UltraCanvas {
     // ===== CONVENIENCE FUNCTIONS FOR IMAGE RENDERING =====
 
 } // namespace UltraCanvas
-#endif //INC_3_ULTRACANVASX11RENDERCONTEXT_H

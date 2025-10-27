@@ -1,0 +1,233 @@
+// core/UltraCanvasImageLoader.cpp
+// Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.0.0
+// Last Modified: 2025-10-24
+// Author: UltraCanvas Framework
+
+#include "UltraCanvasImageLoader.h"
+#include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <mutex>
+#include <unordered_map>
+
+namespace UltraCanvas {
+    std::shared_ptr<UCImage> UltraCanvasImageLoaderBase::GetFromFile(const std::string& filePath) {
+        // Check cache first
+        if (cachingEnabled) {
+            auto cached = GetFromCache(filePath);
+            if (cached) {
+                return cached;
+            }
+        }
+
+        // Platform-specific loading
+        auto image = LoadFromFile(filePath);
+
+        if (image && cachingEnabled) {
+            AddToCache(filePath, image);
+        }
+
+        return image;
+    }
+
+    // ===== CACHE MANAGEMENT =====
+
+    std::shared_ptr<UCImage> UltraCanvasImageLoaderBase::GetFromCache(const std::string& key) {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+
+        auto it = imageCache.find(key);
+        if (it != imageCache.end()) {
+            it->second.lastAccess = std::chrono::steady_clock::now();
+            return it->second.image;
+        }
+
+        return nullptr;
+    }
+
+    void UltraCanvasImageLoaderBase::AddToCache(const std::string& key, std::shared_ptr<UCImage> image) {
+        if (!image.get()) return;
+
+        std::lock_guard<std::mutex> lock(cacheMutex);
+
+        size_t imageSize = image->GetDataSize();
+
+        // Check if we need to make room
+        while (currentCacheSize + imageSize > maxCacheSize && !imageCache.empty()) {
+            RemoveOldestCacheEntry();
+        }
+
+        // Add to cache
+        CacheEntry entry;
+        entry.image = image;
+        entry.size = imageSize;
+        entry.lastAccess = std::chrono::steady_clock::now();
+
+        imageCache[key] = std::move(entry);
+        currentCacheSize += imageSize;
+    }
+
+    void UltraCanvasImageLoaderBase::RemoveOldestCacheEntry() {
+        // Find oldest entry (no lock needed, called from locked context)
+        auto oldest = imageCache.begin();
+        for (auto it = imageCache.begin(); it != imageCache.end(); ++it) {
+            if (it->second.lastAccess < oldest->second.lastAccess) {
+                oldest = it;
+            }
+        }
+
+        if (oldest != imageCache.end()) {
+            currentCacheSize -= oldest->second.size;
+            imageCache.erase(oldest);
+        }
+    }
+
+    void UltraCanvasImageLoaderBase::ClearCache() {
+        std::lock_guard<std::mutex> lock(cacheMutex);
+        imageCache.clear();
+        currentCacheSize = 0;
+    }
+
+    size_t UltraCanvasImageLoaderBase::GetCacheSize() const {
+        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(cacheMutex));
+        return currentCacheSize;
+    }
+
+//        std::unique_ptr<UCImage> GetFromMemory(
+//                const uint8_t* data,
+//                size_t size,
+//                UCImageFormat format) {
+//
+//            if (!data || size == 0) {
+//                SetLastError("Invalid data: null pointer or zero size");
+//                return nullptr;
+//            }
+//
+//            // Clear last error
+//            ClearLastError();
+//
+//            // Auto-detect format if needed
+//            if (format == UCImageFormat::Auto) {
+//                format = DetectFormatFromMemory(data, size);
+//            }
+//
+//            // Platform-specific loading
+//            return LoadFromMemory(data, size, format);
+//        }
+//
+//        // ===== PLATFORM-SPECIFIC LOADING (TO BE IMPLEMENTED) =====
+//
+//        std::unique_ptr<UCImage> LoadFromFilePlatform(const std::string& filePath);
+//        std::unique_ptr<UCImage> LoadFromMemoryPlatform(
+//                const uint8_t* data, size_t size, UCImageFormat format);
+//
+//        // ===== FORMAT DETECTION =====
+//
+//        static UCImageFormat DetectFormatFromPath(const std::string& filePath) {
+//            size_t dotPos = filePath.find_last_of('.');
+//            if (dotPos == std::string::npos) {
+//                return UCImageFormat::Unknown;
+//            }
+//
+//            std::string ext = filePath.substr(dotPos + 1);
+//            std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+//
+//            if (ext == "png") return UCImageFormat::PNG;
+//            if (ext == "jpg" || ext == "jpeg") return UCImageFormat::JPEG;
+//            if (ext == "bmp") return UCImageFormat::BMP;
+//            if (ext == "gif") return UCImageFormat::GIF;
+//            if (ext == "tiff" || ext == "tif") return UCImageFormat::TIFF;
+//            if (ext == "webp") return UCImageFormat::WEBP;
+//            if (ext == "svg") return UCImageFormat::SVG;
+//            if (ext == "ico") return UCImageFormat::ICO;
+//            if (ext == "avif") return UCImageFormat::AVIF;
+//
+//            return UCImageFormat::Unknown;
+//        }
+//
+//        static UCImageFormat DetectFormatFromMemory(const uint8_t* data, size_t size) {
+//            if (!data || size < 8) {
+//                return UCImageFormat::Unknown;
+//            }
+//
+//            // PNG signature
+//            if (size >= 8 && data[0] == 0x89 && data[1] == 0x50 &&
+//                data[2] == 0x4E && data[3] == 0x47) {
+//                return UCImageFormat::PNG;
+//            }
+//
+//            // JPEG signature
+//            if (size >= 2 && data[0] == 0xFF && data[1] == 0xD8) {
+//                return UCImageFormat::JPEG;
+//            }
+//
+//            // BMP signature
+//            if (size >= 2 && data[0] == 0x42 && data[1] == 0x4D) {
+//                return UCImageFormat::BMP;
+//            }
+//
+//            // GIF signature
+//            if (size >= 6 && data[0] == 0x47 && data[1] == 0x49 &&
+//                data[2] == 0x46 && data[3] == 0x38) {
+//                return UCImageFormat::GIF;
+//            }
+//
+//            // WebP signature
+//            if (size >= 12 && data[0] == 0x52 && data[1] == 0x49 &&
+//                data[2] == 0x46 && data[3] == 0x46 &&
+//                data[8] == 0x57 && data[9] == 0x45 &&
+//                data[10] == 0x42 && data[11] == 0x50) {
+//                return UCImageFormat::WEBP;
+//            }
+//
+//            return UCImageFormat::Unknown;
+//        }
+//
+
+//    std::vector<std::string> UltraCanvasImageLoader::GetSupportedLoadFormats() {
+//        // Basic formats most platforms support
+//        return {"png", "jpg", "jpeg", "bmp", "gif"};
+//    }
+//
+//    std::vector<std::string> UltraCanvasImageLoader::GetSupportedSaveFormats() {
+//        // Basic formats most platforms can save
+//        return {"png", "jpg", "jpeg", "bmp"};
+//    }
+//
+//    bool UltraCanvasImageLoader::IsLoadFormatSupported(const std::string& extension) {
+//        auto formats = GetSupportedLoadFormats();
+//        std::string ext = extension;
+//        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+//        return std::find(formats.begin(), formats.end(), ext) != formats.end();
+//    }
+//
+//    bool UltraCanvasImageLoader::IsSaveFormatSupported(const std::string& extension) {
+//        auto formats = GetSupportedSaveFormats();
+//        std::string ext = extension;
+//        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+//        return std::find(formats.begin(), formats.end(), ext) != formats.end();
+//    }
+//
+//    std::vector<std::unique_ptr<UCImage>> UltraCanvasImageLoader::LoadMultiple(
+//            const std::vector<std::string>& filePaths) {
+//
+//        std::vector<std::unique_ptr<UCImage>> images;
+//        images.reserve(filePaths.size());
+//
+//        for (const auto& path : filePaths) {
+//            auto image = LoadFromFile(path);
+//            if (image) {
+//                images.push_back(std::move(image));
+//            }
+//        }
+//
+//        return images;
+//    }
+//
+//    std::vector<std::unique_ptr<UCImage>> UltraCanvasImageLoader::LoadFromDirectory(
+//            const std::string& directoryPath, bool recursive) {
+//        // To be implemented with platform-specific directory traversal
+//        return std::vector<std::unique_ptr<UCImage>>();
+//    }
+
+} // namespace UltraCanvas

@@ -22,4 +22,5 @@ namespace UltraCanvas {
     std::string Trim(const std::string& str);
     std::vector<std::string> Split(const std::string& str, char delimiter);
     Color ParseColor(const std::string& colorStr);
+    std::string GetFileExtension(const std::string& filePath);
 }

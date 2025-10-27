@@ -65,7 +65,7 @@ namespace UltraCanvas {
 
         // Main PNG Image
         auto pngImage = std::make_shared<UltraCanvasImageElement>("PNGMainImage", 1514, 25, 25, 400, 300);
-        pngImage->LoadFromFile("assets/images/logo_transparent.png");
+        pngImage->LoadFromFile("assets/images/transparent_overlay.png");
         pngImage->SetScaleMode(ImageScaleMode::Uniform);
         imageContainer->AddChild(pngImage);
 
@@ -87,15 +87,20 @@ namespace UltraCanvas {
         propsPanel->AddChild(transTitle);
 
         // Background Pattern for Transparency Demo
-        auto bgPattern = std::make_shared<UltraCanvasContainer>("BGPattern", 1518, 10, 70, 200, 100);
+        auto bgPattern = std::make_shared<UltraCanvasContainer>("BGPattern", 1518, 10, 70, 300, 100);
         ContainerStyle bgPatternStyle;
-        bgPatternStyle.backgroundColor = Color(200, 200, 200, 255);
+        bgPatternStyle.backgroundColor = Colors::Transparent;
         bgPattern->SetContainerStyle(bgPatternStyle);
 
         // Transparent PNG overlay
-        auto transImage = std::make_shared<UltraCanvasImageElement>("TransPNG", 1519, 0, 0, 200, 100);
+        auto transImage = std::make_shared<UltraCanvasImageElement>("TransPNG", 1519, 0, 0, 100, 100);
         transImage->LoadFromFile("assets/images/transparent_overlay.png");
         bgPattern->AddChild(transImage);
+
+        auto notransImage = std::make_shared<UltraCanvasImageElement>("NoTransPNG", 1519, 120, 0, 100, 100);
+        notransImage->LoadFromFile("assets/images/ship.jpg");
+        bgPattern->AddChild(notransImage);
+
         propsPanel->AddChild(bgPattern);
 
         // Alpha Channel Control
@@ -154,7 +159,7 @@ namespace UltraCanvas {
         auto btnIcon = std::make_shared<UltraCanvasButton>("BtnIcon", 1525, 10, 505, 100, 30);
         btnIcon->SetText("Load Icon");
         btnIcon->onClick = [pngImage]() {
-            pngImage->LoadFromFile("assets/images/icon_48x48.png");
+            pngImage->LoadFromFile("assets/images/png_68.png");
         };
         container->AddChild(btnIcon);
 

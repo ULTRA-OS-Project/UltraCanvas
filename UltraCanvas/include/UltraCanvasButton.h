@@ -55,7 +55,7 @@ namespace UltraCanvas {
         std::string secondaryText;
 
         // Secondary section icon (new feature)
-        std::string secondaryIconPath;
+        std::shared_ptr<UCImage> secondaryIcon;
         ButtonSecondaryIconPosition secondaryIconPosition = ButtonSecondaryIconPosition::Left;
         int secondaryIconWidth = 16;
         int secondaryIconHeight = 16;
@@ -129,7 +129,7 @@ namespace UltraCanvas {
     class UltraCanvasButton : public UltraCanvasUIElement {
     private:
         std::string text = "Button";
-        std::string iconPath;
+        std::shared_ptr<UCImage> icon;
         ButtonStyle style;
         ButtonState currentState = ButtonState::Normal;
         ButtonIconPosition iconPosition = ButtonIconPosition::Left;
@@ -183,7 +183,7 @@ namespace UltraCanvas {
 
         // Check if secondary icon exists
         bool HasSecondaryIcon() const {
-            return style.splitStyle.enabled && !style.splitStyle.secondaryIconPath.empty();
+            return style.splitStyle.enabled && style.splitStyle.secondaryIcon != nullptr;
         }
         // ===== TEXT & ICON METHODS =====
         void SetText(const std::string& buttonText);
@@ -193,7 +193,7 @@ namespace UltraCanvas {
         void SetIconSize(int width, int height);
         void SetIconScaleToFit(bool scale) { scaleIconToFit = scale; }
         void SetMaintainAspectRatio(bool maintain) { maintainIconAspectRatio = maintain; }
-        bool HasIcon() const { return !iconPath.empty(); }
+        bool HasIcon() const { return icon != nullptr; }
 
         // ===== STYLING METHODS =====
         void SetColors(const Color& normal, const Color& hover,

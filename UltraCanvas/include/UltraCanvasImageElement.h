@@ -50,35 +50,12 @@ enum class ImageLoadState {
     Failed
 };
 
-// ===== IMAGE DATA STRUCTURE =====
-struct ImageData {
-    std::vector<uint8_t> rawData;
-    int width = 0;
-    int height = 0;
-    int channels = 0;
-    ImageFormat format = ImageFormat::Unknown;
-    bool isValid = false;
-    
-    ImageData() = default;
-    
-    size_t GetDataSize() const {
-        return width * height * channels;
-    }
-    
-    bool HasAlpha() const {
-        return channels == 4;
-    }
-};
-
 // ===== IMAGE ELEMENT COMPONENT =====
 class UltraCanvasImageElement : public UltraCanvasUIElement {
 private:
-    StandardProperties properties;
-    
     // Image source
     std::string imagePath;
-    std::vector<uint8_t> imageData;
-    ImageData loadedImage;
+    std::shared_ptr<UCImage> loadedImage;
     ImageLoadState loadState = ImageLoadState::NotLoaded;
     
     // Display properties
@@ -143,20 +120,14 @@ public:
         offset.y = oy;
     }
     
-    // ===== IMAGE INFO =====
-    bool IsLoaded() const { return loadState == ImageLoadState::Loaded && loadedImage.isValid; }
-    bool IsLoading() const { return loadState == ImageLoadState::Loading; }
-    bool HasError() const { return loadState == ImageLoadState::Failed; }
-    const std::string& GetErrorMessage() const { return errorMessage; }
-    
     Point2Di GetImageSize() const {
-        if (IsLoaded()) {
-            return Point2Di(loadedImage.width, loadedImage.height);
+        if (loadedImage->IsValid()) {
+            return Point2Di(loadedImage->width, loadedImage->height);
         }
         return Point2Di(0, 0);
     }
     
-    ImageFormat GetImageFormat() const { return loadedImage.format; }
+//    ImageFormat GetImageFormat() const { return loadedImage.format; }
     const std::string& GetImagePath() const { return imagePath; }
     
     // ===== INTERACTION =====
