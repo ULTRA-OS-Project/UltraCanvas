@@ -5,7 +5,6 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasBaseWindow.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
 //#include "UltraCanvasZOrderManager.h"
@@ -15,7 +14,7 @@
 namespace UltraCanvas {
 
 // ===== RENDERING IMPLEMENTATION =====
-    void UltraCanvasContainer::SetWindow(UltraCanvasWindow *win) {
+    void UltraCanvasContainer::SetWindow(UltraCanvasWindowBase *win) {
         UltraCanvasUIElement::SetWindow(win);
         // Propagate to children
         for (auto& child : children) {

@@ -12,13 +12,27 @@
 namespace UltraCanvas {
 
 // ===== CONSTRUCTOR & DESTRUCTOR =====
-    UltraCanvasLinuxWindow::UltraCanvasLinuxWindow(const WindowConfig& config)
-            : UltraCanvasBaseWindow(config)
-            , xWindow(0)
+    UltraCanvasLinuxWindow::UltraCanvasLinuxWindow()
+            : xWindow(0)
             , cairoSurface(nullptr)
             , cairoContext(nullptr) {
 
         std::cout << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
+    }
+
+    UltraCanvasLinuxWindow::UltraCanvasLinuxWindow(const WindowConfig& config)
+            : xWindow(0)
+            , cairoSurface(nullptr)
+            , cairoContext(nullptr)
+            , UltraCanvasWindowBase(config) {
+
+        std::cout << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
+    }
+
+    UltraCanvasLinuxWindow::~UltraCanvasLinuxWindow() {
+        if (_created) {
+            DestroyNative();
+        }
     }
 
 // ===== WINDOW CREATION =====
@@ -57,8 +71,6 @@ namespace UltraCanvas {
             xWindow = 0;
             return false;
         }
-
-        _created = true;
 
         std::cout << "UltraCanvas Linux: Window created successfully!" << std::endl;
         return true;
@@ -208,7 +220,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLinuxWindow::Destroy() {
+    void UltraCanvasLinuxWindow::DestroyNative() {
         std::cout << "UltraCanvas Linux: Destroying window..." << std::endl;
 
         renderContext.reset();
@@ -279,7 +291,7 @@ namespace UltraCanvas {
             XResizeWindow(application->GetDisplay(), xWindow, width, height);
             UpdateCairoSurface(width, height);
         }
-        UltraCanvasBaseWindow::SetSize(width, height);
+        UltraCanvasWindowBase::SetSize(width, height);
     }
 
     void UltraCanvasLinuxWindow::SetWindowPosition(int x, int y) {
@@ -290,7 +302,7 @@ namespace UltraCanvas {
             auto application = UltraCanvasApplication::GetInstance();
             XMoveWindow(application->GetDisplay(), xWindow, x, y);
         }
-        //UltraCanvasBaseWindow::SetPosition(x, y);
+        //UltraCanvasWindowBase::SetPosition(x, y);
     }
 
     void UltraCanvasLinuxWindow::SetResizable(bool resizable) {
@@ -353,8 +365,9 @@ namespace UltraCanvas {
         }
 
         Hide();
-        Destroy();
 
+        DestroyNative();
+        Destroy();
         std::cout << "UltraCanvas: Window close completed" << std::endl;
     }
 
@@ -494,7 +507,7 @@ namespace UltraCanvas {
     void UltraCanvasLinuxWindow::HandleResizeEvent(int w, int h) {
         if (config_.width != w || config_.height != h) {
             UpdateCairoSurface(w, h);
-            UltraCanvasBaseWindow::HandleResizeEvent(w, h);
+            UltraCanvasWindowBase::HandleResizeEvent(w, h);
             Flush();
         }
     }

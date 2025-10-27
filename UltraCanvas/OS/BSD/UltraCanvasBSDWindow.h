@@ -10,7 +10,6 @@
 #define ULTRACANVAS_BSD_WINDOW_H
 
 // ===== CORE INCLUDES =====
-#include "../../include/UltraCanvasBaseWindow.h"
 #include "../../include/UltraCanvasRenderContext.h"
 #include "../../include/UltraCanvasEvent.h"
 
@@ -30,7 +29,7 @@ namespace UltraCanvas {
 class LinuxRenderContext;  // Reuse Linux render context
 
 // ===== BSD WINDOW CLASS =====
-class UltraCanvasBSDWindow : public UltraCanvasBaseWindow {
+class UltraCanvasBSDWindow : public UltraCanvasWindowBase {
 private:
     // ===== X11 WINDOW =====
     Window xWindow;

@@ -16,7 +16,7 @@
 namespace UltraCanvas {
     // Forward declarations
     class UltraCanvasUIElement;
-    class UltraCanvasBaseWindow;
+    class UltraCanvasWindowBase;
     class UltraCanvasContainer;
     class UltraCanvasDropdown;
 
@@ -357,7 +357,7 @@ inline void RenderElementsWithZOrder(const ElementContainer& elements) {
 // ===== Z-ORDER UTILITY FUNCTIONS =====
 
 // Convenience functions for common z-order operations
-inline void BringElementToFront(UltraCanvasUIElement* element, UltraCanvasBaseWindow* window) {
+inline void BringElementToFront(UltraCanvasUIElement* element, UltraCanvasWindowBase* window) {
     if (!element || !window) return;
 
     // Get all elements from window and bring this one to front
@@ -366,7 +366,7 @@ inline void BringElementToFront(UltraCanvasUIElement* element, UltraCanvasBaseWi
     window->RequestZOrderUpdate();
 }
 
-inline void SendElementToBack(UltraCanvasUIElement* element, UltraCanvasBaseWindow* window) {
+inline void SendElementToBack(UltraCanvasUIElement* element, UltraCanvasWindowBase* window) {
     if (!element || !window) return;
 
     auto allElements = window->GetAllElements();
@@ -375,7 +375,7 @@ inline void SendElementToBack(UltraCanvasUIElement* element, UltraCanvasBaseWind
 }
 
 // Special handling for dropdown z-order management
-inline void HandleDropdownOpened(UltraCanvasDropdown* dropdown, UltraCanvasBaseWindow* window) {
+inline void HandleDropdownOpened(UltraCanvasDropdown* dropdown, UltraCanvasWindowBase* window) {
     if (!dropdown || !window) return;
 
     auto allElements = window->GetAllElements();

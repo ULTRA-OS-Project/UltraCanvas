@@ -18,7 +18,7 @@
 namespace UltraCanvas {
 
 // Forward declarations
-    class UltraCanvasWindow;
+    class UltraCanvasWindowBase;
 
 // ===== DIALOG TYPES =====
     enum class DialogType {
@@ -234,7 +234,7 @@ namespace UltraCanvas {
         // State
         bool isDragging;
         Point2D dragOffset;
-        UltraCanvasWindow* parentWindow;
+        UltraCanvasWindowBase* parentWindow;
         std::shared_ptr<UltraCanvasUIElement> backgroundOverlay;
 
     public:
@@ -243,8 +243,8 @@ namespace UltraCanvas {
         virtual ~UltraCanvasModalDialog();
 
         // ===== DIALOG OPERATIONS =====
-        DialogResult ShowModal(UltraCanvasWindow* parent = nullptr);
-        void Show(UltraCanvasWindow* parent = nullptr);
+        DialogResult ShowModal(UltraCanvasWindowBase* parent = nullptr);
+        void Show(UltraCanvasWindowBase* parent = nullptr);
         void Hide();
         void Close(DialogResult result = DialogResult::Cancel);
 
@@ -389,7 +389,7 @@ namespace UltraCanvas {
 
         // ===== CUSTOM DIALOGS =====
         static std::shared_ptr<UltraCanvasModalDialog> CreateCustomDialog(const DialogConfig& config);
-        static DialogResult ShowCustomDialog(std::shared_ptr<UltraCanvasModalDialog> dialog, UltraCanvasWindow* parent = nullptr);
+        static DialogResult ShowCustomDialog(std::shared_ptr<UltraCanvasModalDialog> dialog, UltraCanvasWindowBase* parent = nullptr);
 
         // ===== DIALOG MANAGEMENT =====
         static void CloseAllDialogs();

@@ -16,6 +16,7 @@
 #include <algorithm>
 
 namespace UltraCanvas {
+    class UltraCanvasWindowBase;
 
 // ===== CONTAINER STYLES =====
     struct ContainerStyle {
@@ -197,7 +198,7 @@ namespace UltraCanvas {
         void Render() override;
         bool OnEvent(const UCEvent& event) override;
 
-        virtual void SetWindow(UltraCanvasWindow* win) override;
+        virtual void SetWindow(UltraCanvasWindowBase* win) override;
 
     private:
         // ===== INTERNAL METHODS =====

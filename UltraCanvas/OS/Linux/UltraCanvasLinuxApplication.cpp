@@ -4,8 +4,7 @@
 // Last Modified: 2025-07-16
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasLinuxApplication.h"
-#include "UltraCanvasLinuxWindow.h"
+#include "UltraCanvasWindow.h"
 #include "UltraCanvasLinuxClipboard.h"
 #include "UltraCanvasApplication.h"
 #include <iostream>
@@ -14,7 +13,9 @@
 #include <errno.h>
 
 namespace UltraCanvas {
-// ===== CONSTRUCTOR & DESTRUCTOR =====
+    UltraCanvasLinuxApplication* UltraCanvasLinuxApplication::instance = nullptr;
+
+    // ===== CONSTRUCTOR & DESTRUCTOR =====
     UltraCanvasLinuxApplication::UltraCanvasLinuxApplication()
             : display(nullptr)
             , screen(0)
@@ -28,7 +29,7 @@ namespace UltraCanvas {
             , targetFPS(60)
             , vsyncEnabled(false)
             , eventThreadRunning(false) {
-
+        instance = this;
         std::cout << "UltraCanvas: Linux Application created" << std::endl;
     }
 
@@ -255,7 +256,7 @@ namespace UltraCanvas {
         if (xEvent.type == SelectionRequest || xEvent.type == SelectionNotify || xEvent.type == SelectionClear) {
             UltraCanvasLinuxClipboard::ProcessClipboardEvent(xEvent);
         } else {
-            UltraCanvasLinuxWindow* window = FindWindow(xEvent.xany.window);
+            auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
 
             if (window) {
                 // Let the window handle the X11 event first
@@ -290,7 +291,7 @@ namespace UltraCanvas {
         event.nativeWindowHandle = xEvent.xany.window;
 
         // Find and store the corresponding UltraCanvas window
-        UltraCanvasLinuxWindow* targetWindow = FindWindow(xEvent.xany.window);
+        auto targetWindow = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
         event.targetWindow = static_cast<void*>(targetWindow);
 
         switch (xEvent.type) {
@@ -563,47 +564,6 @@ namespace UltraCanvas {
             case 6: return UCMouseButton::WheelLeft;
             case 7: return UCMouseButton::WheelRight;
             default: return UCMouseButton::Unknown;
-        }
-    }
-
-// ===== EVENT QUEUE MANAGEMENT =====
-    void UltraCanvasLinuxApplication::PushEvent(const UCEvent& event) {
-        std::lock_guard<std::mutex> lock(eventQueueMutex);
-        eventQueue.push(event);
-        eventCondition.notify_one();
-    }
-
-    bool UltraCanvasLinuxApplication::PopEvent(UCEvent& event) {
-        std::lock_guard<std::mutex> lock(eventQueueMutex);
-        if (eventQueue.empty()) {
-            return false;
-        }
-
-        event = eventQueue.front();
-        eventQueue.pop();
-        return true;
-    }
-
-    void UltraCanvasLinuxApplication::WaitForEvents(int timeoutMs) {
-        std::unique_lock<std::mutex> lock(eventQueueMutex);
-        if (timeoutMs < 0) {
-            eventCondition.wait(lock, [this] { return !eventQueue.empty() || !running; });
-        } else {
-            eventCondition.wait_for(lock, std::chrono::milliseconds(timeoutMs),
-                                    [this] { return !eventQueue.empty() || !running; });
-        }
-    }
-
-    void UltraCanvasLinuxApplication::ProcessEvents() {
-        UCEvent event;
-        int processedEvents = 0;
-
-        while (PopEvent(event) && processedEvents < 100) {
-            processedEvents++;
-            if (!running) {
-                break;
-            }
-            DispatchEvent(event);
         }
     }
 

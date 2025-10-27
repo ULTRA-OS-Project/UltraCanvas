@@ -10,7 +10,6 @@
 #define ULTRACANVAS_MACOS_WINDOW_H
 
 // ===== CORE INCLUDES =====
-#include "../../include/UltraCanvasBaseWindow.h"
 #include "../../include/UltraCanvasEvent.h"
 #include "../../include/UltraCanvasCommonTypes.h"
 #include "UltraCanvasMacOSRenderContext.h"
@@ -43,7 +42,7 @@ namespace UltraCanvas {
 class UltraCanvasMacOSApplication;
 
 // ===== MACOS WINDOW CLASS =====
-class UltraCanvasMacOSWindow : public UltraCanvasBaseWindow {
+class UltraCanvasMacOSWindow : public UltraCanvasWindowBase {
 private:
     // ===== COCOA WINDOW SYSTEM =====
     NSWindow* nsWindow;

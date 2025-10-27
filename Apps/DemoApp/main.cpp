@@ -109,15 +109,6 @@ bool InitializeSystem(UltraCanvasApplication& g_app) {
         }
 
         std::cout << "✓ UltraCanvas framework initialized successfully" << std::endl;
-
-        // Show framework capabilities
-        std::cout << "Framework Capabilities:" << std::endl;
-        std::cout << "  • Platform: " << UltraCanvasApplication::GetPlatformName() << std::endl;
-        std::cout << "  • Desktop Platform: " << (UltraCanvasApplication::IsDesktopPlatform() ? "Yes" : "No") << std::endl;
-        std::cout << "  • Mobile Platform: " << (UltraCanvasApplication::IsMobilePlatform() ? "Yes" : "No") << std::endl;
-        std::cout << "  • Web Platform: " << (UltraCanvasApplication::IsWebPlatform() ? "Yes" : "No") << std::endl;
-        std::cout << std::endl;
-
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Framework initialization failed: ") + e.what());
         return false;

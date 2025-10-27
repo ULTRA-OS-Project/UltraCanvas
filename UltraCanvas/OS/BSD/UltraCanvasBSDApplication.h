@@ -10,7 +10,6 @@
 #define ULTRACANVAS_BSD_APPLICATION_H
 
 // ===== CORE INCLUDES =====
-#include "../../include/UltraCanvasBaseApplication.h"
 #include "../../include/UltraCanvasWindow.h"
 #include "../../include/UltraCanvasEvent.h"
 #include "../../include/UltraCanvasCommonTypes.h"

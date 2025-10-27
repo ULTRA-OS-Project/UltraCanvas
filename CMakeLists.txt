@@ -123,9 +123,11 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasSegmentedControl.cpp
         UltraCanvas/core/UltraCanvasPasswordStrengthMeter.cpp
         UltraCanvas/core/UltraCanvasPasswordRuleLegend.cpp
+        UltraCanvas/core/UltraCanvasImageLoader.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
-        UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
+        UltraCanvas/OS/Linux/UltraCanvasLinuxImage.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
+        UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxApplication.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxWindow.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxClipboard.cpp
@@ -136,9 +138,9 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/Plugins/Charts/UltraCanvasFinancialChart.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasDivergingBarChart.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasWaterfallChart.cpp
+        UltraCanvas/Plugins/Charts/UltraCanvasPopulationChart.cpp
         UltraCanvas/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         UltraCanvas/Plugins/Diagrams/UltraCanvasSankey.cpp
-        UltraCanvas/Plugins/Charts/ltraCanvasPopulationChart.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartElement.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartBasicTypes.cpp

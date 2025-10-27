@@ -191,7 +191,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasUIElement::SetWindow(UltraCanvasWindow *win) {
+    void UltraCanvasUIElement::SetWindow(UltraCanvasWindowBase *win) {
         if (win == nullptr && window) {
             SetFocus(false);
             RemoveThisPopupElementFromWindow();

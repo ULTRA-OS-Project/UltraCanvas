@@ -15,10 +15,6 @@
 #include <stack>
 
 namespace UltraCanvas {
-
-// Forward declarations
-class UltraCanvasWindow;
-class UltraCanvasBaseWindow;
 // ===== GRADIENT STRUCTURES =====
     struct GradientStop {
         float position;    // 0.0 to 1.0

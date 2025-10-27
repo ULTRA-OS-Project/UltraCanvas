@@ -21,7 +21,7 @@ std::unique_ptr<UltraCanvasBaseApplication> CreatePlatformApplication() {
 }
 
 // ===== PLATFORM-SPECIFIC WINDOW FACTORY =====
-std::unique_ptr<UltraCanvasBaseWindow> CreatePlatformWindow(const WindowConfig& config) {
+std::unique_ptr<UltraCanvasWindowBase> CreatePlatformWindow(const WindowConfig& config) {
     return std::make_unique<UltraCanvasMacOSWindow>(config);
 }
 

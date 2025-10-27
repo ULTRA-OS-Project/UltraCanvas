@@ -8,7 +8,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
-#include "UltraCanvasBaseWindow.h"
+#include "UltraCanvasWindow.h"
 #include <string>
 #include <chrono>
 #include <functional>
@@ -58,7 +58,7 @@ namespace UltraCanvas {
     class UltraCanvasTooltipManager {
     private:
         // State tracking
-        static UltraCanvasBaseWindow* targetWindow;
+        static UltraCanvasWindowBase* targetWindow;
         static std::string currentText;
         static Point2Di tooltipPosition;
 //        static Point2Di cursorPosition;
@@ -87,9 +87,9 @@ namespace UltraCanvas {
         static void Update();
 
         // Show tooltip for an element
-        static void UpdateAndShowTooltip(UltraCanvasWindow* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
+        static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
 
-        static void UpdateAndShowTooltip(UltraCanvasWindow* win, const std::string& text, const Point2Di& position) {
+        static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string& text, const Point2Di& position) {
             TooltipStyle style;
             UpdateAndShowTooltip(win, text, position, style);
         }
@@ -99,8 +99,8 @@ namespace UltraCanvas {
         static void HideTooltipImmediately();
 
         // Force immediate show/hide
-        static void UpdateAndShowTooltipImmediately(UltraCanvasWindow* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
-        static void UpdateAndShowTooltipImmediately(UltraCanvasWindow* win, const std::string &text, const Point2Di &position) {
+        static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
+        static void UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position) {
             TooltipStyle style;
             UpdateAndShowTooltipImmediately(win, text, position, style);
         }
@@ -109,7 +109,7 @@ namespace UltraCanvas {
         // ===== RENDERING =====
 
         // Render tooltip - call this during window rendering
-        static void Render(const UltraCanvasBaseWindow* win);
+        static void Render(const UltraCanvasWindowBase* win);
 
         // ===== CONFIGURATION =====
 

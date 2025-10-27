@@ -14,7 +14,7 @@ namespace UltraCanvas {
 // ===== STATIC MEMBER DEFINITIONS =====
     std::string UltraCanvasTooltipManager::currentText;
     Point2Di UltraCanvasTooltipManager::tooltipPosition;
-    UltraCanvasBaseWindow* UltraCanvasTooltipManager::targetWindow = nullptr;
+    UltraCanvasWindowBase* UltraCanvasTooltipManager::targetWindow = nullptr;
 //    Point2Di UltraCanvasTooltipManager::cursorPosition;
     bool UltraCanvasTooltipManager::visible = false;
     bool UltraCanvasTooltipManager::pendingShow = false;
@@ -32,7 +32,7 @@ namespace UltraCanvas {
     bool UltraCanvasTooltipManager::enabled = true;
 //    Rect2Di UltraCanvasTooltipManager::screenBounds = Rect2Di(0, 0, 1920, 1080);
 
-    void UltraCanvasTooltipManager::UpdateAndShowTooltip(UltraCanvasWindow* win, const std::string &text,
+    void UltraCanvasTooltipManager::UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string &text,
                                                 const Point2Di &position, const TooltipStyle& newStyle) {
         if (!enabled) return;
 
@@ -128,7 +128,7 @@ namespace UltraCanvas {
         std::cout << "Tooltip hide requested" << std::endl;
     }
 
-    void UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(UltraCanvasWindow* win, const std::string &text,
+    void UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const std::string &text,
                                                                     const Point2Di &position, const TooltipStyle& newStyle) {
         UpdateAndShowTooltip(win, text, position, newStyle);
         visible = true;
@@ -143,7 +143,7 @@ namespace UltraCanvas {
         targetWindow->RequestRedraw();
     }
 
-    void UltraCanvasTooltipManager::Render(const UltraCanvasBaseWindow* win) {
+    void UltraCanvasTooltipManager::Render(const UltraCanvasWindowBase* win) {
         if (!visible || currentText.empty() || win != targetWindow) return;
         IRenderContext *ctx = targetWindow->GetRenderContext();
 

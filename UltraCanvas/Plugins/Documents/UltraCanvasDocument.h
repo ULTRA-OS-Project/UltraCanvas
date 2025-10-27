@@ -15,7 +15,7 @@
 namespace UltraCanvas {
 
 // Forward declarations
-class UltraCanvasWindow;
+class UltraCanvasWindowBase;
 class UltraCanvasComponent;
 class UltraCanvasPage;
 

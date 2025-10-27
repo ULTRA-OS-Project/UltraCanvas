@@ -10,7 +10,6 @@
 #define ULTRACANVAS_LINUX_APPLICATION_H
 
 // ===== CORE INCLUDES =====
-#include "../../include/UltraCanvasBaseApplication.h"
 #include "../../include/UltraCanvasWindow.h"
 #include "../../include/UltraCanvasEvent.h"
 #include "../../include/UltraCanvasCommonTypes.h"
@@ -54,6 +53,8 @@ namespace UltraCanvas {
 // ===== LINUX APPLICATION CLASS =====
     class UltraCanvasLinuxApplication : public UltraCanvasBaseApplication {
     private:
+        static UltraCanvasLinuxApplication* instance;
+
         // ===== X11 DISPLAY SYSTEM =====
         Display* display;
         int screen;
@@ -66,9 +67,7 @@ namespace UltraCanvas {
         bool glxSupported;
 
         // ===== EVENT SYSTEM =====
-        std::queue<UCEvent> eventQueue;
-        std::mutex eventQueueMutex;
-        std::condition_variable eventCondition;
+
         bool eventThreadRunning;
         std::thread eventThread;
 
@@ -101,6 +100,10 @@ namespace UltraCanvas {
         UltraCanvasLinuxApplication();
         virtual ~UltraCanvasLinuxApplication();
 
+        static UltraCanvasLinuxApplication* GetInstance() {
+            return UltraCanvasLinuxApplication::instance;
+        };
+
         // ===== INHERITED FROM BASE APPLICATION =====
         virtual bool InitializeNative() override;
         virtual void RunNative() override;
@@ -122,12 +125,7 @@ namespace UltraCanvas {
         void DestroyGLXContext();
 
         // Event processing
-        void ProcessEvents();
         void WaitForEvents(int timeoutMs = -1);
-        void PushEvent(const UCEvent& event);
-        bool PopEvent(UCEvent& event);
-
-        // Window management
 
         // Frame rate and timing
         void SetTargetFPS(int fps) { targetFPS = fps; }

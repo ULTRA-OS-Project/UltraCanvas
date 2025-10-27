@@ -9,10 +9,6 @@
 #define ULTRACANVAS_X11_WINDOW_H
 
 // ===== CORE INCLUDES =====
-#include "../../include/UltraCanvasBaseWindow.h"
-#include "../../include/UltraCanvasEvent.h"
-#include "../../include/UltraCanvasCommonTypes.h"
-#include "../../include/UltraCanvasRenderContext.h"
 #include "UltraCanvasLinuxRenderContext.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
@@ -40,21 +36,23 @@ namespace UltraCanvas {
 // Forward declarations
     class UltraCanvasLinuxApplication;
 // ===== LINUX WINDOW CLASS =====
-    class UltraCanvasLinuxWindow : public UltraCanvasBaseWindow {
+    class UltraCanvasLinuxWindow : public UltraCanvasWindowBase {
     protected:
         Window xWindow;
         cairo_surface_t* cairoSurface;
         cairo_t* cairoContext;
         std::unique_ptr<LinuxRenderContext> renderContext;
 
-        bool CreateNative(const WindowConfig& config);
+        bool CreateNative(const WindowConfig& config) override;
+        void DestroyNative() override;
         std::mutex cairoMutex;  // Add this
 
     public:
-        UltraCanvasLinuxWindow(const WindowConfig& config = WindowConfig());
+        UltraCanvasLinuxWindow();
+        UltraCanvasLinuxWindow(const WindowConfig& config);
+        ~UltraCanvasLinuxWindow() override;
 
         // ===== INHERITED FROM BASE WINDOW =====
-        virtual void Destroy() override;
         virtual void Show() override;
         virtual void Hide() override;
         virtual void Close() override;

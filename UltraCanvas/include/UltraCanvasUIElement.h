@@ -20,7 +20,7 @@ namespace UltraCanvas {
 // Forward declarations
     class UltraCanvasContainer;
     class UltraCanvasUIElement;
-    class UltraCanvasWindow;
+    class UltraCanvasWindowBase;
     class IRenderContext;
 
 // ===== MODERN PROPERTIES SYSTEM =====
@@ -128,7 +128,7 @@ namespace UltraCanvas {
         std::function<bool(const UCEvent&)> eventCallback;
 
     protected:
-        UltraCanvasWindow* window = nullptr;
+        UltraCanvasWindowBase* window = nullptr;
         UltraCanvasContainer* parentContainer = nullptr; // Parent container (not element)
         StandardProperties properties;
         ElementStateFlags stateFlags;
@@ -297,11 +297,11 @@ namespace UltraCanvas {
             parentContainer = container;
         }
 
-        UltraCanvasWindow* GetWindow() const {
+        UltraCanvasWindowBase* GetWindow() const {
             return window;
         }
 
-        virtual void SetWindow(UltraCanvasWindow* win);
+        virtual void SetWindow(UltraCanvasWindowBase* win);
 
         //virtual bool IsInPopupState() { return false; }
         virtual void RenderPopupContent() {};

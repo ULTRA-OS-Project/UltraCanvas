@@ -7,10 +7,6 @@
 #ifndef ULTRA_CANVAS_EVENT_H
 #define ULTRA_CANVAS_EVENT_H
 
-#ifdef KeyPress
-#undef KeyPress
-#endif
-
 #include <chrono>
 #include <string>
 namespace UltraCanvas {

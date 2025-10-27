@@ -33,7 +33,7 @@ namespace UltraCanvas {
 
 // ===== CONSTRUCTOR & DESTRUCTOR =====
 UltraCanvasMacOSWindow::UltraCanvasMacOSWindow(const WindowConfig& config)
-    : UltraCanvasBaseWindow(config)
+    : UltraCanvasWindowBase(config)
     , nsWindow(nullptr)
     , contentView(nullptr)
     , customView(nullptr)
@@ -382,7 +382,7 @@ void UltraCanvasMacOSWindow::SetWindowSize(int width, int height) {
         });
     }
 
-    UltraCanvasBaseWindow::SetSize(width, height);
+    UltraCanvasWindowBase::SetSize(width, height);
 }
 
 void UltraCanvasMacOSWindow::SetWindowPosition(int x, int y) {

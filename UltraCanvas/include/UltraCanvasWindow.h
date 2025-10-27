@@ -1,27 +1,322 @@
-// include/UltraCanvasWindow.h
-// Cross-platform window management system with comprehensive features
-// Version: 1.1.3
-// Last Modified: 2025-09-04
+// include/UltraCanvasWindowBase.h
+// Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.0.0
+// Last Modified: 2025-08-24
 // Author: UltraCanvas Framework
+
 #pragma once
 
-#include "UltraCanvasUIElement.h"
-#include "UltraCanvasRenderContext.h"
+#include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
-#include "UltraCanvasBaseWindow.h"
+#include "UltraCanvasContainer.h"
 #include <string>
-#include <vector>
-#include <memory>
 #include <functional>
-#include <chrono>
+#include <memory>
+#include <vector>
+#include <unordered_set>
 
-// ===== PLATFORM-SPECIFIC NATIVE IMPLEMENTATIONS =====
+namespace UltraCanvas {
+    class UltraCanvasWindowBase;
 
-// Include platform-specific headers based on build configuration
+// ===== WINDOW CONFIGURATION =====
+    enum class WindowType {
+        Standard, Dialog, Popup, Tool, Splash,
+        Fullscreen, Borderless, Overlay
+    };
+
+    enum class WindowState {
+        Normal, Minimized, Maximized, Fullscreen, Hidden, Closing
+    };
+
+    struct WindowConfig {
+        std::string title = "UltraCanvas Window";
+        int width = 800;
+        int height = 600;
+        int x = -1; // -1 = use system positioning
+        int y = -1;
+
+        WindowType type = WindowType::Standard;
+        bool resizable = true;
+        bool minimizable = true;
+        bool maximizable = true;
+        bool closable = true;
+        bool alwaysOnTop = false;
+
+        Color backgroundColor = Colors::WindowBackground;
+        int minWidth = 200;
+        int minHeight = 150;
+        int maxWidth = -1; // -1 = no limit
+        int maxHeight = -1;
+        float opacity = 1.0f;
+
+        UltraCanvasWindowBase* parentWindow = nullptr;
+        bool modal = false;
+
+        // Container-specific window settings
+        bool enableWindowScrolling = false;
+        bool autoResizeToContent = false;
+    };
+
+// ===== ENHANCED BASE WINDOW (INHERITS FROM CONTAINER) =====
+    class UltraCanvasWindowBase : public UltraCanvasContainer {
+    protected:
+//        std::unique_ptr<UltraCanvasSelectiveRenderer> selectiveRenderer = nullptr;
+//        bool useSelectiveRendering = false;
+
+        WindowConfig config_;
+        WindowState _state = WindowState::Normal;
+        bool _created = false;
+        bool _visible = false;
+        bool _focused = false;
+        bool _needsRedraw = true;
+
+        std::vector<UltraCanvasUIElement *> activePopups;
+        std::unordered_set<UltraCanvasUIElement *> popupsToRemove;
+        UltraCanvasUIElement* _focusedElement = nullptr;  // Current focused element in this window
+
+        // Window-specific callbacks
+        std::function<void()> onWindowClose;
+        std::function<void(int, int)> onWindowResize;
+        std::function<void(int, int)> onWindowMove;
+        std::function<void()> onWindowMinimize;
+        std::function<void()> onWindowMaximize;
+        std::function<void()> onWindowRestore;
+        std::function<void()> onWindowFocus;
+        std::function<void()> onWindowBlur;
+        std::function<void()> onWindowShow;
+        std::function<void()> onWindowHide;
+
+    public:
+        // ===== CONSTRUCTOR & DESTRUCTOR =====
+        UltraCanvasWindowBase();
+        UltraCanvasWindowBase(const WindowConfig& config);
+
+        virtual ~UltraCanvasWindowBase() { Destroy(); };
+
+        // ===== PURE VIRTUAL INTERFACE =====
+        // Window lifecycle
+        bool Create(const WindowConfig& config);
+        void Destroy();
+        virtual bool CreateNative(const WindowConfig& config) = 0;
+        virtual void DestroyNative() = 0;
+        virtual void Show() = 0;
+        virtual void Hide() = 0;
+        virtual void Close() = 0;
+
+        // Window state
+        virtual void SetWindowTitle(const std::string& title) = 0;
+        virtual void SetWindowPosition(int x, int y) = 0;
+        virtual void SetWindowSize(int width, int height) = 0;
+
+        // Window operations
+        virtual void Minimize() = 0;
+        virtual void Maximize() = 0;
+        virtual void Restore() = 0;
+        virtual void SetFullscreen(bool fullscreen) = 0;
+        virtual void SetResizable(bool resizable) = 0;
+// ===== FOCUS MANAGEMENT PUBLIC INTERFACE =====
+        bool IsWindowFocused() const { return _focused; }
+        // Set focus to a specific element in this window
+        virtual void SetFocusedElement(UltraCanvasUIElement* element);
+        // Get the currently focused element in this window
+        UltraCanvasUIElement* GetFocusedElement() const { return _focusedElement; }
+
+        // Clear focus from current element
+        virtual void ClearFocus();
+
+        // Focus navigation within window
+        virtual void FocusNextElement();
+        virtual void FocusPreviousElement();
+
+        // Check if this window has focus (any element focused)
+        bool HasFocus() const { return _focusedElement != nullptr; }
+        // Internal method for elements to request focus (called by element's SetFocus)
+        virtual bool RequestElementFocus(UltraCanvasUIElement* element);
+
+
+        // Platform-specific
+        virtual unsigned long GetNativeHandle() const = 0;
+        virtual void Flush() = 0;
+
+        void AddPopupElement(UltraCanvasUIElement* element);
+
+        // Unregister popup element
+        void RemovePopupElement(UltraCanvasUIElement* element);
+        void CleanupRemovedPopupElements();
+
+        std::vector<UltraCanvasUIElement *>& GetActivePopups() { return activePopups; }
+        bool HasActivePopups() { return !activePopups.empty(); }
+
+//        void SetActivePopupElement(UltraCanvasUIElement* element) {
+//            if (!element) return;
+//            activePopupElement = element;
+//        }
+//
+//        void ClearActivePopupElement(UltraCanvasUIElement* element) {
+//            if (!element) return;
+//            if (activePopupElement == element) {
+//                activePopupElement = nullptr;
+//            }
+//        }
+
+        // ===== ENHANCED WINDOW PROPERTIES =====
+        std::string GetWindowTitle() const { return config_.title; }
+
+        void GetWindowPosition(int& x, int& y) const {
+            x = config_.x;
+            y = config_.y;
+        }
+
+        void GetWindowSize(int& w, int& h) const {
+            w = config_.width;
+            h = config_.height;
+        }
+
+        bool IsVisible() const { return _visible; }
+        bool IsMinimized() const { return _state == WindowState::Minimized; }
+        bool IsMaximized() const { return _state == WindowState::Maximized; }
+        bool IsFullscreen() const { return _state == WindowState::Fullscreen; }
+        WindowState GetState() const { return _state; }
+
+        const WindowConfig& GetConfig() const { return config_; }
+
+        // ===== ENHANCED RENDERING AND EVENTS =====
+        virtual void Render() override;
+        virtual bool OnEvent(const UCEvent& event) override;
+        virtual void RenderCustomContent() {}
+
+        bool IsNeedsRedraw() const { return _needsRedraw; }
+        void RequestRedraw() { _needsRedraw = true; }
+        void ClearRequestRedraw() { _needsRedraw = false; }
+
+//        void RequestFullRedraw() { useSelectiveRendering = false; _needsRedraw = true; }
+        void MarkElementDirty(UltraCanvasUIElement* element, bool isOverlay = false);
+//        bool IsSelectiveRenderingActive();
+        virtual IRenderContext* GetRenderContext() const = 0;
+
+        // ===== ENHANCED WINDOW CALLBACKS =====
+        void SetWindowCloseCallback(std::function<void()> callback) { onWindowClose = callback; }
+        void SetWindowResizeCallback(std::function<void(int, int)> callback) { onWindowResize = callback; }
+        void SetWindowMoveCallback(std::function<void(int, int)> callback) { onWindowMove = callback; }
+        void SetWindowMinimizeCallback(std::function<void()> callback) { onWindowMinimize = callback; }
+        void SetWindowMaximizeCallback(std::function<void()> callback) { onWindowMaximize = callback; }
+        void SetWindowRestoreCallback(std::function<void()> callback) { onWindowRestore = callback; }
+        void SetWindowBlurCallback(std::function<void()> callback) { onWindowBlur = callback; }
+        void SetWindowFocusCallback(std::function<void()> callback) { onWindowFocus = callback; }
+
+        // ===== UTILITY METHODS =====
+        void CenterOnScreen();
+        void CenterOnParent(UltraCanvasWindowBase* parent);
+
+        // Method chaining for fluent interface
+        UltraCanvasWindowBase& Title(const std::string& title) {
+            SetWindowTitle(title);
+            return *this;
+        }
+
+        UltraCanvasWindowBase& Size(int w, int h) {
+            SetWindowSize(w, h);
+            return *this;
+        }
+
+        UltraCanvasWindowBase& Position(int x, int y) {
+            SetWindowPosition(x, y);
+            return *this;
+        }
+
+        // ===== DEBUG METHODS =====
+        void DebugPrintElements();
+        std::string GetElementTypeName(UltraCanvasUIElement* element);
+
+    protected:
+        virtual bool HandleWindowEvent(const UCEvent &event);
+        virtual void HandleCloseEvent();
+        virtual void HandleResizeEvent(int width, int height);
+        virtual void HandleMoveEvent(int x, int y);
+        virtual void HandleFocusEvent(bool focused);
+
+        // ===== PROTECTED HELPER METHODS =====
+//        void UpdateWindowSize(int width, int height) {
+//            config_.width = width;
+//            config_.height = height;
+//            SetSize(width, height); // Update container size
+//
+//            if (onWindowResize) {
+//                onWindowResize(width, height);
+//            }
+//
+//            _needsRedraw = true;
+//        }
+//
+//        void UpdateWindowPosition(int x, int y) {
+//            config_.x = x;
+//            config_.y = y;
+//            SetPosition(x, y);
+//
+//            if (onWindowMove) {
+//                onWindowMove(x, y);
+//            }
+//        }
+
+//        void SetWindowState(WindowState newState) {
+//            if (_state != newState) {
+//                WindowState oldState = _state;
+//                _state = newState;
+//
+//                // Trigger appropriate callbacks
+//                switch (newState) {
+//                    case WindowState::Minimized:
+//                        if (onWindowMinimize) onWindowMinimize();
+//                        break;
+//                    case WindowState::Maximized:
+//                        if (onWindowMaximize) onWindowMaximize();
+//                        break;
+//                    case WindowState::Normal:
+//                        if (oldState == WindowState::Minimized || oldState == WindowState::Maximized) {
+//                            if (onWindowRestore) onWindowRestore();
+//                        }
+//                        break;
+//                    default:
+//                        break;
+//                }
+//            }
+//        }
+
+        virtual void RenderWindowBackground() {
+            // Default implementation - clear to background color
+            // OS-specific implementations can override
+        }
+
+        virtual void RenderWindowChrome() {
+            // Default implementation - no chrome
+            // OS-specific implementations can add title bars, etc.
+        }
+        void RenderActivePopups();
+
+        // ===== FOCUS UTILITY METHODS =====
+
+        // Get all focusable elements in this window (recursive search)
+        std::vector<UltraCanvasUIElement*> GetFocusableElements();
+
+        // Collect focusable elements from a container recursively
+        void CollectFocusableElements(UltraCanvasContainer* container,
+                                      std::vector<UltraCanvasUIElement*>& elements);
+
+        // Find next/previous focusable element in tab order
+        UltraCanvasUIElement* FindNextFocusableElement(UltraCanvasUIElement* current);
+        UltraCanvasUIElement* FindPreviousFocusableElement(UltraCanvasUIElement* current);
+
+        // Send focus events to elements
+        void SendFocusGainedEvent(UltraCanvasUIElement* element);
+        void SendFocusLostEvent(UltraCanvasUIElement* element);
+    };
+
+} // namespace UltraCanvas
+
 #ifdef __linux__
 #include "../OS/Linux/UltraCanvasLinuxWindow.h"
 namespace UltraCanvas {
-    using UltraCanvasNativeWindow = UltraCanvasLinuxWindow;
+    using UltraCanvasWindow = UltraCanvasLinuxWindow;
 }
 #elif defined(_WIN32) || defined(_WIN64)
 #include "../OS/MSWindows/UltraCanvasWindowsWindow.h"
@@ -65,88 +360,3 @@ namespace UltraCanvas {
 #else
 #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"
 #endif
-
-// ===== PUBLIC CROSS-PLATFORM WINDOW CLASS =====
-namespace UltraCanvas {
-
-    class UltraCanvasWindow : public UltraCanvasNativeWindow {
-    public:
-        UltraCanvasWindow() : UltraCanvasNativeWindow() { SetWindow(this); };
-
-        explicit UltraCanvasWindow(const WindowConfig &config) :
-                UltraCanvasNativeWindow(config)
-        {
-            SetWindow(this);
-            if (!Create(config)) {
-                throw std::runtime_error("UltraCanvasWindow Create failed");
-            }
-        }
-
-        virtual ~UltraCanvasWindow() {
-            std::cout << "~UltraCanvasWindow(): Destroying window..." << std::endl;
-            Destroy();
-        }
-
-        virtual bool Create(const WindowConfig& config) override;
-        virtual void Destroy() override;
-
-        static bool HasNativeWindowDecorations() {
-#if defined(__linux__) || defined(_WIN32) || defined(_WIN64) || (defined(__APPLE__) && TARGET_OS_MAC && !TARGET_OS_IPHONE)
-            return true;
-#else
-            return false; // Mobile and web platforms typically don't have traditional window decorations
-#endif
-        }
-
-        static bool SupportsMultipleWindows() {
-#if defined(__linux__) || defined(_WIN32) || defined(_WIN64) || (defined(__APPLE__) && TARGET_OS_MAC && !TARGET_OS_IPHONE)
-            return true;
-#elif defined(__EMSCRIPTEN__)
-            return false; // Web typically single window
-#else
-            return false; // Mobile platforms typically single window
-#endif
-        }
-        // Platform-specific feature detection
-        static bool SupportsOpenGL() {
-#if defined(__linux__) || defined(_WIN32) || defined(_WIN64) || defined(__APPLE__) || defined(__ANDROID__)
-            return true;
-#else
-            return false;
-#endif
-        }
-
-        static bool SupportsVulkan() {
-#if defined(__linux__) || defined(_WIN32) || defined(_WIN64) || defined(__ANDROID__)
-            return true; // macOS would need MoltenVK
-#else
-            return false;
-#endif
-        }
-
-        static bool SupportsMetal() {
-#if defined(__APPLE__)
-            return true;
-#else
-            return false;
-#endif
-        }
-
-        static bool SupportsDirectX() {
-#if defined(_WIN32) || defined(_WIN64)
-            return true;
-#else
-            return false;
-#endif
-        }
-
-        static bool SupportsWebGL() {
-#ifdef __EMSCRIPTEN__
-            return true;
-#else
-            return false;
-#endif
-        }
-
-    };
-} // namespace UltraCanvas

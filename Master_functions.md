@@ -108,6 +108,9 @@ void DrawImage(const std::string& imagePath, const Point2Di& position);
 void DrawImage(const std::string& imagePath, int x, int y, int w, int h);
 void DrawImage(const std::string& imagePath, const Rect2Df& position);
 void DrawImage(const std::string& imagePath, const Rect2Di& position);
+void DrawImage(std::shared_ptr<UCImage> image, float x, float y) = 0;
+void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h) = 0;
+void DrawImage(std::shared_ptr<UCImage> image, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
 
 
 // **Painting with colors/patterns/gradients functions**

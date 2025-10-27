@@ -9,13 +9,10 @@
 #include <iostream>
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
-#include "UltraCanvasBaseApplication.h"
 #include "UltraCanvasTooltipManager.h"
 
 
 namespace UltraCanvas {
-    UltraCanvasApplication* UltraCanvasApplication::instance = nullptr;
-
     bool UltraCanvasBaseApplication::Initialize() {
         if (InitializeNative()) {
             if (!InitializeClipboard()) {
@@ -33,8 +30,48 @@ namespace UltraCanvas {
         ShutdownClipboard();
     }
 
+    void UltraCanvasBaseApplication::PushEvent(const UCEvent& event) {
+        std::lock_guard<std::mutex> lock(eventQueueMutex);
+        eventQueue.push(event);
+        eventCondition.notify_one();
+    }
+
+    bool UltraCanvasBaseApplication::PopEvent(UCEvent& event) {
+        std::lock_guard<std::mutex> lock(eventQueueMutex);
+        if (eventQueue.empty()) {
+            return false;
+        }
+
+        event = eventQueue.front();
+        eventQueue.pop();
+        return true;
+    }
+
+    void UltraCanvasBaseApplication::ProcessEvents() {
+        UCEvent event;
+        int processedEvents = 0;
+
+        while (PopEvent(event) && processedEvents < 100) {
+            processedEvents++;
+            if (!running) {
+                break;
+            }
+            DispatchEvent(event);
+        }
+    }
+
+    void UltraCanvasBaseApplication::WaitForEvents(int timeoutMs) {
+        std::unique_lock<std::mutex> lock(eventQueueMutex);
+        if (timeoutMs < 0) {
+            eventCondition.wait(lock, [this] { return !eventQueue.empty() || !running; });
+        } else {
+            eventCondition.wait_for(lock, std::chrono::milliseconds(timeoutMs),
+                                    [this] { return !eventQueue.empty() || !running; });
+        }
+    }
+
     // ===== WINDOW MANAGEMENT =====
-    void UltraCanvasBaseApplication::RegisterWindow(UltraCanvasWindow *window) {
+    void UltraCanvasBaseApplication::RegisterWindow(UltraCanvasWindowBase *window) {
         if (window && window->GetNativeHandle() != 0) {
             std::cout << "UltraCanvas: Linux window created successfully" << std::endl;
             windows.push_back(window);
@@ -42,10 +79,10 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasBaseApplication::UnregisterWindow(UltraCanvasWindow *window) {
+    void UltraCanvasBaseApplication::UnregisterWindow(UltraCanvasWindowBase *window) {
         if (window) {
             auto it = std::find_if(windows.begin(), windows.end(),
-                                   [window](const UltraCanvasWindow* ptr) {
+                                   [window](const UltraCanvasWindowBase* ptr) {
                                        return ptr == window;
                                    });
 
@@ -70,9 +107,9 @@ namespace UltraCanvas {
         }
     }
 
-    UltraCanvasWindow* UltraCanvasBaseApplication::FindWindow(unsigned long nativeHandle) {
+    UltraCanvasWindowBase* UltraCanvasBaseApplication::FindWindow(unsigned long nativeHandle) {
         auto it = std::find_if(windows.begin(), windows.end(),
-                               [nativeHandle](const UltraCanvasWindow* ptr) {
+                               [nativeHandle](const UltraCanvasWindowBase* ptr) {
                                    return ptr->GetNativeHandle() == nativeHandle;
                                });
         return (it != windows.end()) ? *it : nullptr;
@@ -123,11 +160,11 @@ namespace UltraCanvas {
         }
 
         // ===== NEW: IMPROVED TARGET WINDOW DETECTION =====
-        UltraCanvasWindow* targetWindow = nullptr;
+        UltraCanvasWindowBase* targetWindow = nullptr;
 
         // First priority: Use the window information stored in the event
         if (event.targetWindow != nullptr) {
-            targetWindow = static_cast<UltraCanvasWindow*>(event.targetWindow);
+            targetWindow = static_cast<UltraCanvasWindowBase*>(event.targetWindow);
         }
             // Fallback: Try to find window by native handle
         else if (event.nativeWindowHandle != 0) {
@@ -297,9 +334,9 @@ namespace UltraCanvas {
     }
 
 
-    bool UltraCanvasBaseApplication::HandleWindowFocus(UltraCanvasWindow* window) {
+    bool UltraCanvasBaseApplication::HandleWindowFocus(UltraCanvasWindowBase* window) {
         if (focusedWindow != window) {
-            UltraCanvasWindow* previousFocusedWindow = focusedWindow;
+            UltraCanvasWindowBase* previousFocusedWindow = focusedWindow;
 
             // Update focused window first
             focusedWindow = window;
@@ -310,7 +347,7 @@ namespace UltraCanvas {
                 blurEvent.type = UCEventType::WindowBlur;
                 blurEvent.timestamp = std::chrono::steady_clock::now();
                 blurEvent.targetWindow = static_cast<void*>(previousFocusedWindow);
-                blurEvent.nativeWindowHandle = previousFocusedWindow->GetXWindow();
+                //blurEvent.nativeWindowHandle = previousFocusedWindow->GetXWindow();
                 DispatchEventToElement(previousFocusedWindow, blurEvent);
 
                 std::cout << "UltraCanvasBaseApplication: Window " << previousFocusedWindow << " lost focus" << std::endl;
@@ -322,7 +359,7 @@ namespace UltraCanvas {
                 focusEvent.type = UCEventType::WindowFocus;
                 focusEvent.timestamp = std::chrono::steady_clock::now();
                 focusEvent.targetWindow = static_cast<void*>(focusedWindow);
-                focusEvent.nativeWindowHandle = focusedWindow->GetXWindow();
+                //focusEvent.nativeWindowHandle = focusedWindow->GetXWindow();
                 DispatchEventToElement(focusedWindow, focusEvent);
 
                 std::cout << "UltraCanvasBaseApplication: Window " << focusedWindow << " gained focus" << std::endl;
@@ -357,7 +394,7 @@ namespace UltraCanvas {
         return elem->OnEvent(event);
     }
 
-    void UltraCanvasApplication::RunInEventLoop() {
+    void UltraCanvasBaseApplication::RunInEventLoop() {
         auto clipbrd = GetClipboard();
         if (clipbrd) {
             clipbrd->Update();

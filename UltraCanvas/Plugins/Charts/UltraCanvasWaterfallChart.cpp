@@ -148,7 +148,7 @@ namespace UltraCanvas {
         DrawWaterfallBars(ctx);
 
         // Draw connecting lines between bars
-        if (enableConnectorLines && connectionStyle != ConnectionStyle::None) {
+        if (enableConnectorLines && connectionStyle != ConnectionStyle::NoneStyle) {
             DrawConnectionLines(ctx);
         }
 
@@ -463,7 +463,7 @@ namespace UltraCanvas {
             }
                 break;
 
-            case ConnectionStyle::None:
+            case ConnectionStyle::NoneStyle:
             default:
                 // No connecting lines
                 break;

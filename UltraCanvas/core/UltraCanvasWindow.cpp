@@ -1,4 +1,4 @@
-// UltraCanvasBaseWindow.cpp
+// UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
 // Version: 1.2.0
 // Last Modified: 2025-07-15
@@ -16,26 +16,24 @@
 #include <algorithm>
 
 namespace UltraCanvas {
-    UltraCanvasBaseWindow::UltraCanvasBaseWindow(const WindowConfig &config)
+    UltraCanvasWindowBase::UltraCanvasWindowBase()
+            : UltraCanvasContainer("Window", 0, 0, 0, 0, 0) {
+        // Configure container for window behavior
+        SetWindow(this);
+    }
+
+    UltraCanvasWindowBase::UltraCanvasWindowBase(const WindowConfig &config)
             : UltraCanvasContainer("Window", 0, 0, 0, config.width, config.height),
               config_(config) {
-        // Configure container for window behavior
-        ContainerStyle containerStyle = GetContainerStyle();
-        containerStyle.enableVerticalScrolling = config.enableWindowScrolling;
-        containerStyle.enableHorizontalScrolling = config.enableWindowScrolling;
-        containerStyle.backgroundColor = config.backgroundColor;
-        containerStyle.borderWidth = 0.0f; // Windows don't need container borders
-        containerStyle.paddingLeft = 0;
-        containerStyle.paddingRight = 0;
-        containerStyle.paddingTop = 0;
-        containerStyle.paddingBottom = 0;
-//        selectiveRenderer = std::make_unique<UltraCanvasSelectiveRenderer>(this);
-        SetContainerStyle(containerStyle);
+        SetWindow(this);
+        if (!Create(config)) {
+            throw std::runtime_error("UltraCanvasWindow Create failed");
+        }
     }
 
 // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
 
-    void UltraCanvasBaseWindow::SetFocusedElement(UltraCanvasUIElement* element) {
+    void UltraCanvasWindowBase::SetFocusedElement(UltraCanvasUIElement* element) {
         // Don't do anything if already focused
         if (_focusedElement == element) {
             return;
@@ -66,11 +64,11 @@ namespace UltraCanvas {
         std::cout << "Focus changed to: " << (element ? element->GetIdentifier() : "none") << std::endl;
     }
 
-    void UltraCanvasBaseWindow::ClearFocus() {
+    void UltraCanvasWindowBase::ClearFocus() {
         SetFocusedElement(nullptr);
     }
 
-    bool UltraCanvasBaseWindow::RequestElementFocus(UltraCanvasUIElement* element) {
+    bool UltraCanvasWindowBase::RequestElementFocus(UltraCanvasUIElement* element) {
         // Validate element can receive focus
         if (!element || !element->CanReceiveFocus()) {
             return false;
@@ -81,7 +79,7 @@ namespace UltraCanvas {
         return true;
     }
 
-    void UltraCanvasBaseWindow::FocusNextElement() {
+    void UltraCanvasWindowBase::FocusNextElement() {
         std::vector<UltraCanvasUIElement*> focusableElements = GetFocusableElements();
 
         if (focusableElements.empty()) {
@@ -104,7 +102,7 @@ namespace UltraCanvas {
         SetFocusedElement(focusableElements[nextIndex]);
     }
 
-    void UltraCanvasBaseWindow::FocusPreviousElement() {
+    void UltraCanvasWindowBase::FocusPreviousElement() {
         std::vector<UltraCanvasUIElement*> focusableElements = GetFocusableElements();
 
         if (focusableElements.empty()) {
@@ -129,7 +127,7 @@ namespace UltraCanvas {
         SetFocusedElement(focusableElements[prevIndex]);
     }
 
-    std::vector<UltraCanvasUIElement*> UltraCanvasBaseWindow::GetFocusableElements() {
+    std::vector<UltraCanvasUIElement*> UltraCanvasWindowBase::GetFocusableElements() {
         std::vector<UltraCanvasUIElement*> focusableElements;
 
         // Start collecting from the window container itself
@@ -138,7 +136,7 @@ namespace UltraCanvas {
         return focusableElements;
     }
 
-    void UltraCanvasBaseWindow::CollectFocusableElements(UltraCanvasContainer* container,
+    void UltraCanvasWindowBase::CollectFocusableElements(UltraCanvasContainer* container,
                                                          std::vector<UltraCanvasUIElement*>& elements) {
         if (!container) return;
 
@@ -160,7 +158,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasBaseWindow::SendFocusGainedEvent(UltraCanvasUIElement* element) {
+    void UltraCanvasWindowBase::SendFocusGainedEvent(UltraCanvasUIElement* element) {
         if (!element) return;
 
         UCEvent focusEvent;
@@ -169,7 +167,7 @@ namespace UltraCanvas {
         element->OnEvent(focusEvent);
     }
 
-    void UltraCanvasBaseWindow::SendFocusLostEvent(UltraCanvasUIElement* element) {
+    void UltraCanvasWindowBase::SendFocusLostEvent(UltraCanvasUIElement* element) {
         if (!element) return;
 
         UCEvent focusEvent;
@@ -178,7 +176,7 @@ namespace UltraCanvas {
         element->OnEvent(focusEvent);
     }
 
-    bool UltraCanvasBaseWindow::OnEvent(const UCEvent &event) {
+    bool UltraCanvasWindowBase::OnEvent(const UCEvent &event) {
         // Handle window-specific events first
         if (HandleWindowEvent(event)) {
             return true;
@@ -213,7 +211,7 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
-    bool UltraCanvasBaseWindow::HandleWindowEvent(const UCEvent &event) {
+    bool UltraCanvasWindowBase::HandleWindowEvent(const UCEvent &event) {
         switch (event.type) {
             case UCEventType::WindowClose:
                 HandleCloseEvent();
@@ -240,13 +238,13 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasBaseWindow::HandleCloseEvent() {
+    void UltraCanvasWindowBase::HandleCloseEvent() {
         Close();
 //        _state = WindowState::Closing;
 //        if (onWindowClose) onWindowClose();
     }
 
-    void UltraCanvasBaseWindow::HandleResizeEvent(int width, int height) {
+    void UltraCanvasWindowBase::HandleResizeEvent(int width, int height) {
         config_.width = width;
         config_.height = height;
         UltraCanvasContainer::SetSize(width, height);
@@ -254,7 +252,7 @@ namespace UltraCanvas {
         if (onWindowResize) onWindowResize(width, height);
     }
 
-    void UltraCanvasBaseWindow::HandleMoveEvent(int x, int y) {
+    void UltraCanvasWindowBase::HandleMoveEvent(int x, int y) {
         config_.x = x;
         config_.y = y;
         // position must be always 0,0
@@ -262,7 +260,7 @@ namespace UltraCanvas {
         if (onWindowMove) onWindowMove(x, y);
     }
 
-    void UltraCanvasBaseWindow::HandleFocusEvent(bool focused) {
+    void UltraCanvasWindowBase::HandleFocusEvent(bool focused) {
         if (focused) {
             if (!_focused) {
                 _focused = true;
@@ -277,7 +275,7 @@ namespace UltraCanvas {
         _needsRedraw = true;
     }
 
-    void UltraCanvasBaseWindow::Render() {
+    void UltraCanvasWindowBase::Render() {
         if (!_visible || !_created) return;
 //        if (useSelectiveRendering && selectiveRenderer) {
 //            // Use simple selective rendering
@@ -302,7 +300,7 @@ namespace UltraCanvas {
 //        }
     }
 
-    void UltraCanvasBaseWindow::RenderActivePopups() {
+    void UltraCanvasWindowBase::RenderActivePopups() {
         // Render popups in z-order
         for (UltraCanvasUIElement* popup : activePopups) {
             if (popup) {
@@ -318,7 +316,7 @@ namespace UltraCanvas {
 
 
 
-    void UltraCanvasBaseWindow::AddPopupElement(UltraCanvasUIElement *element) {
+    void UltraCanvasWindowBase::AddPopupElement(UltraCanvasUIElement *element) {
         if (element) {
             MarkElementDirty(element);
             auto found = std::find(activePopups.begin(), activePopups.end(), element);
@@ -329,14 +327,14 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasBaseWindow::RemovePopupElement(UltraCanvasUIElement *element) {
+    void UltraCanvasWindowBase::RemovePopupElement(UltraCanvasUIElement *element) {
         auto found = std::find(activePopups.begin(), activePopups.end(), element);
         if (found != activePopups.end()) {
             popupsToRemove.insert(element);
         }
     }
 
-    void UltraCanvasBaseWindow::CleanupRemovedPopupElements() {
+    void UltraCanvasWindowBase::CleanupRemovedPopupElements() {
         if (popupsToRemove.empty()) return;
 
         for(auto it : popupsToRemove) {
@@ -355,7 +353,7 @@ namespace UltraCanvas {
         _needsRedraw = true;
     }
 
-    void UltraCanvasBaseWindow::MarkElementDirty(UltraCanvasUIElement* element, bool isOverlay) {
+    void UltraCanvasWindowBase::MarkElementDirty(UltraCanvasUIElement* element, bool isOverlay) {
 //        if (selectiveRenderer) {
 ////            if (isOverlay) {
 ////                selectiveRenderer->SaveBackgroundForOverlay(element);
@@ -365,31 +363,40 @@ namespace UltraCanvas {
         _needsRedraw = true;
     }
 
-//    bool UltraCanvasBaseWindow::IsSelectiveRenderingActive() {
+//    bool UltraCanvasWindowBase::IsSelectiveRenderingActive() {
 //        return selectiveRenderer && selectiveRenderer->IsRenderingActive();
 //    }
 
-    bool UltraCanvasWindow::Create(const WindowConfig& config) {
+    bool UltraCanvasWindowBase::Create(const WindowConfig& config) {
         config_ = config;
         _state = WindowState::Normal;
+
+        ContainerStyle containerStyle;
+        containerStyle.enableVerticalScrolling = config.enableWindowScrolling;
+        containerStyle.enableHorizontalScrolling = config.enableWindowScrolling;
+        containerStyle.backgroundColor = config.backgroundColor;
+        containerStyle.borderWidth = 0.0f; // Windows don't need container borders
+        containerStyle.paddingLeft = 0;
+        containerStyle.paddingRight = 0;
+        containerStyle.paddingTop = 0;
+        containerStyle.paddingBottom = 0;
+        SetContainerStyle(containerStyle);
+
         auto application = UltraCanvasApplication::GetInstance();
         SetBounds(0, 0, config_.width, config_.height);
-        if (UltraCanvasNativeWindow::CreateNative(config)) {
+        if (CreateNative(config)) {
             application->RegisterWindow(this);
+            _created = true;
             return true;
         }
         return false;
     }
 
-    void UltraCanvasWindow::Destroy() {
+    void UltraCanvasWindowBase::Destroy() {
         if (!_created) {
             return;
         }
-        auto application = UltraCanvasApplication::GetInstance();
-        if (application) {
-            application->UnregisterWindow(this);
-        }
-        UltraCanvasNativeWindow::Destroy();
+        UltraCanvasApplication::GetInstance()->UnregisterWindow(this);
         _created = false;
     }
 

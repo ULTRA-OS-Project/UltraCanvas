@@ -114,7 +114,7 @@ namespace UltraCanvas {
     class UltraCanvasWaterfallChartElement : public UltraCanvasChartElementBase {
     public:
         enum class ConnectionStyle {
-            None,           // No connecting lines
+            NoneStyle,           // No connecting lines
             Dotted,         // Dotted connecting lines
             Solid,          // Solid connecting lines
             Dashed          // Dashed connecting lines

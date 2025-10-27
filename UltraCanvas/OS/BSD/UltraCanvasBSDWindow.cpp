@@ -15,7 +15,7 @@ namespace UltraCanvas {
 
 // ===== CONSTRUCTOR & DESTRUCTOR =====
 UltraCanvasBSDWindow::UltraCanvasBSDWindow(const WindowConfig& config)
-    : UltraCanvasBaseWindow(config)
+    : UltraCanvasWindowBase(config)
     , xWindow(0)
     , cairoSurface(nullptr)
     , cairoContext(nullptr) {
