@@ -237,7 +237,7 @@ namespace UltraCanvas {
             ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
             ctx->SetFontSize(style.fontSize);
             int textWidth, textHeight;
-            ctx->GetTextDimension(text, textWidth, textHeight);
+            ctx->GetTextLineDimensions(text, textWidth, textHeight);
             newWidth += textWidth;
             newHeight = std::max(newHeight, textHeight + style.paddingTop + style.paddingBottom);
         }
@@ -250,7 +250,7 @@ namespace UltraCanvas {
             // Calculate secondary text dimensions
             if (!split.secondaryText.empty()) {
                 int secTextWidth, secTextHeight;
-                ctx->GetTextDimension(split.secondaryText, secTextWidth, secTextHeight);
+                ctx->GetTextLineDimensions(split.secondaryText, secTextWidth, secTextHeight);
                 secWidth += secTextWidth;
                 secHeight = std::max(secHeight, secTextHeight);
             }
@@ -371,7 +371,7 @@ namespace UltraCanvas {
                 if (!split.secondaryText.empty()) {
                     int textWidth, textHeight;
                     ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-                    ctx->GetTextDimension(split.secondaryText, textWidth, textHeight);
+                    ctx->GetTextLineDimensions(split.secondaryText, textWidth, textHeight);
                     contentWidth += textWidth;
                 }
 
@@ -635,7 +635,7 @@ namespace UltraCanvas {
 
         // Get text dimensions
         int textWidth, textHeight;
-        ctx->GetTextDimension(text, textWidth, textHeight);
+        ctx->GetTextLineDimensions(text, textWidth, textHeight);
 
         Point2Df textPos;
         if (style.textAlign == TextAlignment::Center) {
@@ -739,7 +739,7 @@ namespace UltraCanvas {
             ctx->SetFontSize(style.fontSize);
 
             int textWidth, textHeight;
-            ctx->GetTextDimension(text, textWidth, textHeight);
+            ctx->GetTextLineDimensions(text, textWidth, textHeight);
 
             Point2Df primaryTextPos;
             if (HasIcon() && (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
@@ -768,7 +768,7 @@ namespace UltraCanvas {
             ctx->SetFontSize(style.fontSize * 0.9f);  // Slightly smaller font
 
             int textWidth, textHeight;
-            ctx->GetTextDimension(split.secondaryText, textWidth, textHeight);
+            ctx->GetTextLineDimensions(split.secondaryText, textWidth, textHeight);
 
             Point2Df secondaryTextPos;
 

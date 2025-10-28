@@ -270,7 +270,7 @@ namespace UltraCanvas {
         ctx->SetTextPaint(textColor);
 
         // Draw text aligned to the middle of the text rect
-        float textY = textRect.y + (textRect.height - ctx->GetTextHeight(text)) / 2.0f;
+        float textY = textRect.y + (textRect.height - ctx->GetTextLineHeight(text)) / 2.0f;
         ctx->DrawText(text, textRect.x, textY);
     }
 
@@ -376,7 +376,7 @@ namespace UltraCanvas {
         ctx->SetFontFace(visualStyle.fontFamily, visualStyle.fontWeight, FontSlant::Normal);
         ctx->SetFontSize(visualStyle.fontSize);
         int textWidth, textHeight;
-        ctx->GetTextDimension(text, textWidth, textHeight);
+        ctx->GetTextLineDimensions(text, textWidth, textHeight);
 
         // Calculate total width needed
         float totalWidth = 8.0f + visualStyle.boxSize + visualStyle.textSpacing + textWidth + 8.0f;

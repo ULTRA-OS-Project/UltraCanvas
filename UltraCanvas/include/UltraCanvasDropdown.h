@@ -179,7 +179,7 @@ namespace UltraCanvas {
 //
 //            // Render visible items
 //            int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
-//            int startIndex = scrollOffset;
+//            int startIndex = verticalScrollOffset;
 //            int endIndex = std::min(startIndex + visibleItems, (int)items.size());
 //
 //            for (int i = startIndex; i < endIndex; i++) {

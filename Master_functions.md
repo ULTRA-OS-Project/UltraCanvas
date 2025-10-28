@@ -200,9 +200,9 @@ int GetHeight();
 
 ### **Text Measurement**
 ```cpp
-int GetTextWidth(const std::string& text);
-int GetTextHeight(const std::string& text);
-bool GetTextDimension(const std::string& text, int& w, int& h);
+int GetTextLineWidth(const std::string& text);
+int GetTextLineHeight(const std::string& text);
+bool GetTextLineDimensions(const std::string& text, int& w, int& h);
 int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0);
 Point2Df CalculateCenteredTextPosition(const std::string& text, const Rect2Df& bounds);
 
@@ -523,10 +523,10 @@ std::shared_ptr<UltraCanvasUIElement> CreateSpacerElement(const TemplateElementD
 â�Œ Draw[BasicShape]()         // Use existing DrawCircle, DrawRectangle, etc.
 â�Œ Fill[BasicShape]()         // Use existing FillCircle, FillRectangle, etc.
 â�Œ Set[RenderState]()         // Use existing SetColor, PaintWithColor, etc.
-â�Œ Get[RenderState]()         // Use existing GetTextWidth, GetTextDimension, etc.
+â�Œ Get[RenderState]()         // Use existing GetTextLineWidth, GetTextLineDimensions, etc.
 â�Œ Handle[StandardEvent]()    // Use existing HandleMouseDown, HandleKeyboardEvent, etc.
 â�Œ [Component]Factory()       // Use existing Create[Component] pattern
-â�Œ Measure[Text]()            // Use existing GetTextDimension, GetTextWidth, etc.
+â�Œ Measure[Text]()            // Use existing GetTextLineDimensions, GetTextLineWidth, etc.
 ```
 
 ### **ALLOWED NEW FUNCTION PATTERNS:**

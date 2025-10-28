@@ -306,38 +306,57 @@ namespace UltraCanvas {
         }
 
         pango_layout_set_font_description(layout, desc);
-        if (w > 0 && h > 0) {
-            pango_layout_set_width(layout, w * PANGO_SCALE);
-            pango_layout_set_height(layout, h * PANGO_SCALE);
+        if (w > 0 || h > 0) {
+            if (w > 0) {
+                pango_layout_set_width(layout, w * PANGO_SCALE);
+            }
+            if (h > 0) {
+                pango_layout_set_height(layout, h * PANGO_SCALE);
+            }
 
             PangoAlignment alignment = PANGO_ALIGN_LEFT;
 
             switch (currentState.textStyle.alignment) {
                 case TextAlignment::Center:
-                    alignment = PANGO_ALIGN_CENTER;
+                    pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
                     break;
                 case TextAlignment::Right:
-                    alignment = PANGO_ALIGN_RIGHT;
+                    pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
                     break;
                 case TextAlignment::Justify:
-                    alignment = PANGO_ALIGN_LEFT;
+                    pango_layout_set_justify(layout, true);
                     break;
                 default:
-                    alignment = PANGO_ALIGN_LEFT;
+                    pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
                     break;
             }
-            pango_layout_set_alignment(layout, alignment);
-            if (currentState.textStyle.wrap) {
-                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
-                pango_layout_set_wrap(layout, PangoWrapMode::PANGO_WRAP_WORD_CHAR);
-            } else {
-                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_END);
+
+            switch (currentState.textStyle.wrap) {
+                case TextWrap::WrapNone:
+//                    pango_layout_set_wrap(layout, PANGO_WRAP_NONE);
+                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_END);
+                    break;
+                case TextWrap::WrapWord:
+                    pango_layout_set_wrap(layout, PANGO_WRAP_WORD);
+                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
+                    break;
+                case TextWrap::WrapWordChar:
+                    pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
+                    break;
+                case TextWrap::WrapChar:
+                    pango_layout_set_wrap(layout, PANGO_WRAP_CHAR);
+                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
+                    break;
             }
+
+            pango_layout_set_line_spacing(layout, currentState.textStyle.lineHeight);
         }
 
         return layout;
     }
-// ===== TEXT RENDERING (FIXED) =====
+
+    // ===== TEXT RENDERING =====
     void LinuxRenderContext::DrawText(const std::string &text, float x, float y) {
         // Comprehensive null checks
         if (text.empty()) {
@@ -357,6 +376,7 @@ namespace UltraCanvas {
                 std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
                 return;
             }
+
             if (currentState.textStyle.isMarkup) {
                 pango_layout_set_markup(layout, text.c_str(), -1);
             } else {
@@ -423,9 +443,9 @@ namespace UltraCanvas {
         }
     }
 
-    bool LinuxRenderContext::GetTextDimension(const std::string &text, int &w, int &h) {
-        w = 0;
-        h = 0;
+    bool LinuxRenderContext::GetTextDimensions(const std::string &text, int rectWidth, int rectHeight, int& retWidth, int &retHeight) {
+        retWidth = 0;
+        retHeight = 0;
         if (!pangoContext || text.empty()) {
             return false;
         }
@@ -436,7 +456,7 @@ namespace UltraCanvas {
                 std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
                 return false;
             }
-            PangoLayout *layout = CreatePangoLayout(desc);
+            PangoLayout *layout = CreatePangoLayout(desc, rectWidth, rectHeight);
             if (!layout) {
                 pango_font_description_free(desc);
                 std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
@@ -453,15 +473,21 @@ namespace UltraCanvas {
 
             pango_font_description_free(desc);
             g_object_unref(layout);
-            w = width;
-            h = height;
+
+            retWidth = width;
+            retHeight = height;
             return true;
 
         } catch (...) {
-            std::cerr << "ERROR: Exception in GetTextDimension" << std::endl;
+            std::cerr << "ERROR: Exception in GetTextLineDimensions" << std::endl;
             return false;
         }
     }
+
+    bool LinuxRenderContext::GetTextLineDimensions(const std::string &text, int &w, int &h) {
+        return GetTextDimensions(text, 0, 0, w, h);
+    }
+
 
     int LinuxRenderContext::GetTextIndexForXY(const std::string &text, int x, int y, int w, int h) {
         int index = 0, trailing;
@@ -990,6 +1016,10 @@ namespace UltraCanvas {
             std::vector<double> dashes(pattern.begin(), pattern.end());
             cairo_set_dash(cairo, dashes.data(), dashes.size(), offset);
         }
+    }
+
+    void LinuxRenderContext::SetTextLineHeight(float height) {
+        currentState.textStyle.lineHeight = height;
     }
 
     void LinuxRenderContext::SetAlpha(float alpha) {

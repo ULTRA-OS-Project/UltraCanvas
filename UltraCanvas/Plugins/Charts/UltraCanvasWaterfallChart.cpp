@@ -42,7 +42,7 @@ namespace UltraCanvas {
 //            ctx->SetFontSize(16.0f);
 //
 //            int textWidth, textHeight;
-//            ctx->GetTextDimension(chartTitle, textWidth, textHeight);
+//            ctx->GetTextLineDimensions(chartTitle, textWidth, textHeight);
 //            int titleX = GetX() + (GetWidth() - textWidth) / 2;
 //            int titleY = GetY() + 10;
 //            ctx->DrawText(chartTitle, titleX, titleY);
@@ -113,7 +113,7 @@ namespace UltraCanvas {
             // Draw label
             std::string label = FormatValue(value);
             int textWidth, textHeight;
-            ctx->GetTextDimension(label, textWidth, textHeight);
+            ctx->GetTextLineDimensions(label, textWidth, textHeight);
             ctx->DrawText(label, cachedPlotArea.x - textWidth - 8, y - textHeight/2);
         }
 
@@ -497,7 +497,7 @@ namespace UltraCanvas {
                     valueText = FormatValue(point.value);
                 }
                 int textWidth, textHeight;
-                ctx->GetTextDimension(valueText, textWidth, textHeight);
+                ctx->GetTextLineDimensions(valueText, textWidth, textHeight);
 
                 float labelY = (point.value >= 0) ?
                                renderCache.barY[i] - (textHeight + 3):
@@ -510,7 +510,7 @@ namespace UltraCanvas {
                 // Show the cumulative value
                 std::string cumulativeText = FormatValue(point.cumulativeValue);
                 int textWidth, textHeight;
-                ctx->GetTextDimension(cumulativeText, textWidth, textHeight);
+                ctx->GetTextLineDimensions(cumulativeText, textWidth, textHeight);
 
                 float labelY = renderCache.barY[i] + renderCache.barHeight[i]/2 - textHeight/2;
                 ctx->DrawText(cumulativeText, barCenterX - textWidth/2, labelY);
@@ -519,7 +519,7 @@ namespace UltraCanvas {
             // Draw category label on X-axis
             if (!point.label.empty()) {
                 int textWidth, textHeight;
-                ctx->GetTextDimension(point.label, textWidth, textHeight);
+                ctx->GetTextLineDimensions(point.label, textWidth, textHeight);
                 float labelY = cachedPlotArea.GetBottom() + 5;
                 ctx->DrawText(point.label, barCenterX - textWidth/2, labelY);
             }

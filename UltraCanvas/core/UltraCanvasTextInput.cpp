@@ -361,7 +361,7 @@ namespace UltraCanvas {
             // Set text style for measurement
             ctx->SetFontStyle(style.fontStyle);
 
-            float lineWidth = ctx->GetTextWidth(currentLine);
+            float lineWidth = ctx->GetTextLineWidth(currentLine);
             float maxScroll = std::max(0.0f, lineWidth - textArea.width + style.paddingRight);
             scrollOffset = std::min(scrollOffset, maxScroll);
         } else {
@@ -371,7 +371,7 @@ namespace UltraCanvas {
             // Set text style for measurement
             ctx->SetFontStyle(style.fontStyle);
 
-            float totalTextWidth = ctx->GetTextWidth(displayText);
+            float totalTextWidth = ctx->GetTextLineWidth(displayText);
             float maxScroll = std::max(0.0f, totalTextWidth - textArea.width + style.paddingRight);
             scrollOffset = std::min(scrollOffset, maxScroll);
         }
@@ -417,7 +417,7 @@ namespace UltraCanvas {
             RenderMultilineText(area, renderText, textPos, ctx);
         } else {
             // Match the baseline calculation used in GetCaretYPosition
-            float lineHeight = ctx->GetTextHeight(renderText);
+            float lineHeight = ctx->GetTextLineHeight(renderText);
             float centeredY = area.y + (area.height - lineHeight) / 2.0f;
             //float baselineY = centeredY + (style.fontSize * 0.8f);
             float baselineY = centeredY;
@@ -454,8 +454,8 @@ namespace UltraCanvas {
         std::string textBeforeSelection = displayText.substr(0, selectionStart);
         std::string selectedText = displayText.substr(selectionStart, selectionEnd - selectionStart);
 
-        float selStartX = area.x + ctx->GetTextWidth(textBeforeSelection);
-        float selWidth = ctx->GetTextWidth(selectedText);
+        float selStartX = area.x + ctx->GetTextLineWidth(textBeforeSelection);
+        float selWidth = ctx->GetTextLineWidth(selectedText);
 
         // Calculate proper selection height based on font metrics
         float ascender = style.fontStyle.fontSize * 0.8f;
@@ -504,7 +504,7 @@ namespace UltraCanvas {
             // Set text style for accurate measurement
             ctx->SetFontStyle(style.fontStyle);
 
-            float textWidth = ctx->GetTextWidth(textUpToCaret);
+            float textWidth = ctx->GetTextLineWidth(textUpToCaret);
             // FIXED: Match text rendering position exactly
             caretX = textArea.x + textWidth - scrollOffset;
         }
@@ -617,7 +617,7 @@ namespace UltraCanvas {
         std::string line;
         auto ctx = GetRenderContext();
         while (std::getline(stream, line)) {
-            if (ctx->GetTextWidth(line) <= maxWidth) {
+            if (ctx->GetTextLineWidth(line) <= maxWidth) {
                 lines.push_back(line);
             } else {
                 // Word wrap logic
@@ -639,7 +639,7 @@ namespace UltraCanvas {
         while (words >> word) {
             std::string testLine = currentLine.empty() ? word : currentLine + " " + word;
 
-            if (ctx->GetTextWidth(testLine) <= maxWidth) {
+            if (ctx->GetTextLineWidth(testLine) <= maxWidth) {
                 currentLine = testLine;
             } else {
                 if (!currentLine.empty()) {
@@ -705,7 +705,7 @@ namespace UltraCanvas {
             while (left < right) {
                 size_t mid = (left + right) / 2;
                 std::string textToMid = lineText.substr(0, mid);
-                float widthToMid = ctx->GetTextWidth(textToMid);
+                float widthToMid = ctx->GetTextLineWidth(textToMid);
 
                 if (widthToMid < relativeX) {
                     left = mid + 1;
@@ -737,7 +737,7 @@ namespace UltraCanvas {
             while (left < right) {
                 size_t mid = (left + right) / 2;
                 std::string textToMid = displayText.substr(0, mid);
-                float widthToMid = ctx->GetTextWidth(textToMid);
+                float widthToMid = ctx->GetTextLineWidth(textToMid);
 
                 if (widthToMid < relativeX) {
                     left = mid + 1;
@@ -1148,7 +1148,7 @@ namespace UltraCanvas {
         // Set text style for measurement
         ctx->SetFontStyle(style.fontStyle);
 
-        float textWidth = ctx->GetTextWidth(textInLine);
+        float textWidth = ctx->GetTextLineWidth(textInLine);
         return style.paddingLeft + textWidth;
     }
 
@@ -1173,7 +1173,7 @@ namespace UltraCanvas {
             // Set text style for measurement
             ctx->SetFontStyle(style.fontStyle);
 
-            float textWidth = ctx->GetTextWidth(textInLine);
+            float textWidth = ctx->GetTextLineWidth(textInLine);
             return style.paddingLeft + textWidth;
         } else {
             // For single line: measure text up to caret
@@ -1182,7 +1182,7 @@ namespace UltraCanvas {
             // Set text style for measurement
             ctx->SetFontStyle(style.fontStyle);
 
-            float textWidth = ctx->GetTextWidth(textUpToCaret);
+            float textWidth = ctx->GetTextLineWidth(textUpToCaret);
             return style.paddingLeft + textWidth;
         }
     }

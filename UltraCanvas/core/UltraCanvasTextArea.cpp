@@ -194,7 +194,7 @@ namespace UltraCanvas {
                     // Calculate token width first
                     context->SetFontWeight(GetStyleForTokenType(token.type).bold ?
                                            FontWeight::Bold : FontWeight::Normal);
-                    int tokenWidth = context->GetTextWidth(token.text);
+                    int tokenWidth = context->GetTextLineWidth(token.text);
 
                     // Only draw if token is visible (optimization)
                     if (x + tokenWidth >= visibleTextArea.x && x <= visibleTextArea.x + visibleTextArea.width) {
@@ -1436,10 +1436,10 @@ namespace UltraCanvas {
         ctx->PushState();
         ctx->SetFontStyle(style.fontStyle);
         ctx->SetFontWeight(FontWeight::Normal);
-        computedLineHeight = static_cast<int>(static_cast<float>(ctx->GetTextHeight("M")) * style.lineHeight);
+        computedLineHeight = static_cast<int>(static_cast<float>(ctx->GetTextLineHeight("M")) * style.lineHeight);
         maxLineWidth = 0;
         for (const auto& line : lines) {
-            maxLineWidth = std::max(maxLineWidth, ctx->GetTextWidth(line));
+            maxLineWidth = std::max(maxLineWidth, ctx->GetTextLineWidth(line));
         }
         ctx->PopState();
 
@@ -1502,7 +1502,7 @@ namespace UltraCanvas {
         context->SetFontStyle(style.fontStyle);
         context->SetFontWeight(FontWeight::Normal);
 
-        int width = context->GetTextWidth(text);
+        int width = context->GetTextLineWidth(text);
 
         context->PopState();
         return width;

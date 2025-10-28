@@ -222,7 +222,7 @@ namespace UltraCanvas {
         int linesCount = 0;
         for (const std::string& line : wrappedLines) {
             int txtW, txtH;
-            targetWindow->GetRenderContext()->GetTextDimension(line, txtW, txtH);
+            targetWindow->GetRenderContext()->GetTextLineDimensions(line, txtW, txtH);
             maxLineWidth = std::max(maxLineWidth, (float )txtW);
             totalHeight += txtH; // Line height
             linesCount++;
@@ -279,7 +279,7 @@ namespace UltraCanvas {
         auto ctx = targetWindow->GetRenderContext();
         for (const std::string& word : words) {
             std::string testLine = currentLine.empty() ? word : currentLine + " " + word;
-            float lineWidth = ctx->GetTextWidth(testLine);
+            float lineWidth = ctx->GetTextLineWidth(testLine);
 
             if (lineWidth <= maxWidth || currentLine.empty()) {
                 currentLine = testLine;

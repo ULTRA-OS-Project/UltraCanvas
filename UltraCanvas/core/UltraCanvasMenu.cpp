@@ -451,7 +451,7 @@ namespace UltraCanvas {
         // Render shortcut (for vertical menus)
         if (!item.shortcut.empty() && orientation == MenuOrientation::Vertical) {
             int shortcutX = itemBounds.x + itemBounds.width - style.paddingRight -
-                              ctx->GetTextWidth(item.shortcut.c_str());
+                    ctx->GetTextLineWidth(item.shortcut.c_str());
             ctx->SetTextPaint(style.shortcutColor);
             ctx->DrawText(item.shortcut, Point2Di(shortcutX, textY));
         }
@@ -509,12 +509,12 @@ namespace UltraCanvas {
 
         // Text width - FIX: Convert std::string to const char*
         if (!item.label.empty()) {
-            width += ctx->GetTextWidth(item.label.c_str());
+            width += ctx->GetTextLineWidth(item.label.c_str());
         }
 
         // Shortcut width - FIX: Convert std::string to const char*
         if (!item.shortcut.empty()) {
-            width += style.shortcutSpacing + ctx->GetTextWidth(item.shortcut.c_str());
+            width += style.shortcutSpacing + ctx->GetTextLineWidth(item.shortcut.c_str());
         }
 
         // Submenu arrow

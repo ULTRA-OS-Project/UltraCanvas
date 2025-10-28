@@ -421,7 +421,7 @@ namespace UltraCanvas {
             ctx->SetTextPaint(textColor);
             ctx->SetFontSize(fontSize);
             int txtW, txtH;
-            ctx->GetTextDimension(displayText, txtW, txtH);
+            ctx->GetTextLineDimensions(displayText, txtW, txtH);
             int textY = tabBounds.y + (tabBounds.height - txtH) / 2;
             ctx->DrawText(displayText, Point2Di(textArea.x, textY));
         }
@@ -733,7 +733,7 @@ namespace UltraCanvas {
         auto ctx = GetRenderContext();
         ctx->SetFontStyle({.fontFamily=fontFamily, .fontSize=fontSize});
         const std::string& title = tabs[index]->title;
-        int textWidth = ctx->GetTextWidth(title);
+        int textWidth = ctx->GetTextLineWidth(title);
         int width = textWidth + tabPadding * 2;
 
         if (ShouldShowCloseButton(tabs[index].get())) {
@@ -746,12 +746,12 @@ namespace UltraCanvas {
     std::string UltraCanvasTabbedContainer::GetTruncatedTabText(IRenderContext* ctx, const std::string &text, int maxWidth) const {
         int textWidth, txtH;
         ctx->SetFontStyle({.fontFamily=fontFamily, .fontSize=fontSize});
-        ctx->GetTextDimension(text, textWidth, txtH);
+        ctx->GetTextLineDimensions(text, textWidth, txtH);
         if (textWidth <= maxWidth) return text;
 
         // Truncate with ellipsis
         std::string truncated = text;
-        while (!truncated.empty() && ctx->GetTextWidth(truncated + "...") > maxWidth) {
+        while (!truncated.empty() && ctx->GetTextLineWidth(truncated + "...") > maxWidth) {
             truncated.pop_back();
         }
 

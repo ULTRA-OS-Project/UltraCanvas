@@ -80,6 +80,13 @@ namespace UltraCanvas {
         Baseline
     };
 
+    enum class TextWrap {
+        WrapNone,
+        WrapWord,
+        WrapChar,
+        WrapWordChar
+    };
+
     enum class FontWeight {
         Normal,
         Light,
@@ -109,7 +116,7 @@ namespace UltraCanvas {
         float wordSpacing = 0.0f;
 
         // Text effects
-        bool wrap = false;
+        TextWrap wrap = TextWrap::WrapWordChar;
         bool isMarkup = false;
         Color outlineColor = Colors::Black;
         float outlineWidth = 1.0f;
@@ -318,6 +325,7 @@ namespace UltraCanvas {
         virtual void SetFontSize(float size) = 0;
         virtual void SetFontWeight(FontWeight fw) = 0;
         virtual void SetFontSlant(FontSlant fs) = 0;
+        virtual void SetTextLineHeight(float height) = 0;
 
         void SetFontStyle(const FontStyle& style) {
             SetFontFace(style.fontFamily, style.fontWeight, style.fontSlant);
@@ -337,15 +345,17 @@ namespace UltraCanvas {
         // ===== TEXT RENDERING =====
         virtual void DrawText(const std::string& text, float x, float y) = 0;
         virtual void DrawTextInRect(const std::string& text, float x, float y, float w, float h) = 0;
-        virtual bool GetTextDimension(const std::string& text, int& w, int& h) = 0;
-        int GetTextWidth(const std::string& text) {
+        virtual bool GetTextLineDimensions(const std::string& text, int& w, int& h) = 0;
+        virtual bool GetTextDimensions(const std::string &text, int rectWidth, int rectHeight, int& retWidth, int &retHeight) = 0;
+
+        int GetTextLineWidth(const std::string& text) {
             int w, h;
-            GetTextDimension(text, w, h);
+            GetTextLineDimensions(text, w, h);
             return w;
         };
-        int GetTextHeight(const std::string& text) {
+        int GetTextLineHeight(const std::string& text) {
             int w, h;
-            GetTextDimension(text, w, h);
+            GetTextLineDimensions(text, w, h);
             return h;
         };
 
@@ -566,13 +576,13 @@ namespace UltraCanvas {
 
         Point2Di GetTextDimension(const std::string& text) {
             Point2Di p = {0, 0};
-            GetTextDimension(text, p.x, p.y);
+            GetTextLineDimensions(text, p.x, p.y);
             return p;
         }
 
         Point2Df CalculateCenteredTextPosition(const std::string& text, const Rect2Df& bounds) {
             int txt_w, txt_h;
-            GetTextDimension(text, txt_w, txt_h);
+            GetTextLineDimensions(text, txt_w, txt_h);
             return Point2Df(
                     bounds.x + (bounds.width - static_cast<float>(txt_w)) / 2,     // Center horizontally
                     bounds.y + (bounds.height - static_cast<float>(txt_h)) / 2   // Center vertically (baseline adjusted)
@@ -647,7 +657,7 @@ namespace UltraCanvas {
             PushState();
             if (backgroundColor.a > 0) {
                 int txt_w, txt_h;
-                GetTextDimension(text, txt_w, txt_h);
+                GetTextLineDimensions(text, txt_w, txt_h);
                 DrawFilledRectangle(Rect2Df(position.x, position.y, txt_w, txt_h), backgroundColor);
             }
 

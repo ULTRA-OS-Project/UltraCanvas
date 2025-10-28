@@ -203,7 +203,7 @@ namespace UltraCanvas {
 //            // Draw label using existing DrawText
 //            double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
 //            std::string label = FormatAxisLabel(labelValue);
-//            ctx->GetTextDimension(label, txtW, txtH);
+//            ctx->GetTextLineDimensions(label, txtW, txtH);
 //            ctx->DrawText(label, tickX - txtW - 8, y - (txtH / 2));
 //        }
 //    }
@@ -261,7 +261,7 @@ namespace UltraCanvas {
                     ctx->PopState();
                 } else {
                     int txtW, txtH;
-                    ctx->GetTextDimension(label, txtW, txtH);
+                    ctx->GetTextLineDimensions(label, txtW, txtH);
                     ctx->DrawText(label, x - txtW / 2, tickY + 8);
                 }
             }
@@ -302,7 +302,7 @@ namespace UltraCanvas {
             // Draw label using existing DrawText
             double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
             std::string label = FormatAxisLabel(labelValue);
-            ctx->GetTextDimension(label, txtW, txtH);
+            ctx->GetTextLineDimensions(label, txtW, txtH);
             ctx->DrawText(label, tickX - txtW - 8, y - (txtH / 2));
         }
     }
@@ -347,7 +347,7 @@ namespace UltraCanvas {
             } else {
                 // No rotation - center the text
                 int txtW, txtH;
-                ctx->GetTextDimension(valueText, txtW, txtH);
+                ctx->GetTextLineDimensions(valueText, txtW, txtH);
                 ctx->DrawText(valueText, static_cast<int>(labelPos.x - txtW/2), static_cast<int>(labelPos.y));
             }
         }

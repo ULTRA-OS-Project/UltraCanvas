@@ -428,7 +428,7 @@ namespace UltraCanvas {
             // Measure left side labels (source nodes at depth 0)
             for (const auto& [id, node] : nodes) {
                 if (node.depth == 0) {
-                    float textWidth = ctx->GetTextWidth(node.label);
+                    float textWidth = ctx->GetTextLineWidth(node.label);
                     textWidth = std::min(textWidth, maxLabelWidth);
                     leftPadding = std::max(leftPadding, textWidth + 15.0f);
                 }
@@ -444,7 +444,7 @@ namespace UltraCanvas {
                     }
                 }
                 if (isTerminal) {
-                    float textWidth = ctx->GetTextWidth(node.label);
+                    float textWidth = ctx->GetTextLineWidth(node.label);
                     textWidth = std::min(textWidth, maxLabelWidth);
                     rightPadding = std::max(rightPadding, textWidth + 15.0f);
                 }
@@ -733,7 +733,7 @@ namespace UltraCanvas {
         ctx->SetFontSize(style.fontSize);
 
         int textWidth, textHeight;
-        ctx->GetTextDimension(node.label, textWidth, textHeight);
+        ctx->GetTextLineDimensions(node.label, textWidth, textHeight);
         float labelY = node.y + node.height / 2.0f - static_cast<float>(textHeight)/2;
 
         // Position label based on node depth
@@ -759,7 +759,7 @@ namespace UltraCanvas {
                 // For intermediate nodes, position based on alignment preference
                 if (alignment == SankeyAlignment::Left) {
                     float labelX = node.x - 8;
-                    float textWidth = ctx->GetTextWidth(node.label);
+                    float textWidth = ctx->GetTextLineWidth(node.label);
                     ctx->DrawText(node.label, labelX - textWidth, labelY);
                 } else {
                     float labelX = node.x + nodeWidth + 8;

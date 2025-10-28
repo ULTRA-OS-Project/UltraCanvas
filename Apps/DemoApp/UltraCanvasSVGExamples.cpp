@@ -368,7 +368,7 @@ namespace UltraCanvas {
         );
         infoText->SetFontSize(12);
         infoText->SetTextColor(Color(60, 60, 60, 255));
-        //infoText->SetLineHeight(1.5f);
+        //infoText->SetTextLineHeight(1.5f);
         infoPanel->AddChild(infoText);
 
         container->AddChild(infoPanel);

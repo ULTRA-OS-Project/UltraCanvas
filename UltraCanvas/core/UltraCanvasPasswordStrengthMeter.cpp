@@ -202,7 +202,7 @@ namespace UltraCanvas {
             ctx->SetFontWeight(FontWeight::Bold);
             std::string percentText = std::to_string(static_cast<int>(currentStrength)) + "%";
             int textWidth, textHeight;
-            ctx->GetTextDimension(percentText, textWidth, textHeight);
+            ctx->GetTextLineDimensions(percentText, textWidth, textHeight);
             ctx->DrawText(percentText, centerX - textWidth / 2, centerY - textHeight / 2);
         }
 
@@ -210,7 +210,7 @@ namespace UltraCanvas {
         if (config.showLabel) {
             ctx->SetFontSize(10);
             ctx->SetFontWeight(FontWeight::Normal);
-            int labelWidth = ctx->GetTextWidth(strengthLabel);
+            int labelWidth = ctx->GetTextLineWidth(strengthLabel);
             ctx->DrawText(strengthLabel, centerX - labelWidth / 2, centerY + radius + 5);
         }
     }
@@ -229,7 +229,7 @@ namespace UltraCanvas {
         }
 
         if (!displayText.empty()) {
-            int textWidth = ctx->GetTextWidth(displayText);
+            int textWidth = ctx->GetTextLineWidth(displayText);
             ctx->DrawText(displayText, bounds.x + (bounds.width - textWidth) / 2, y);
         }
     }

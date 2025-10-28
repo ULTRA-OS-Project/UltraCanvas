@@ -161,7 +161,7 @@ struct MarkdownElement {
     std::unique_ptr<TextStyle> customStyle;
     
     // Layout information (calculated during rendering)
-    Rect2D bounds;
+    Rect2Di bounds;
     bool visible = true;
     bool clickable = false;
     
@@ -454,10 +454,7 @@ public:
     UltraCanvasMarkdownDisplay(const std::string& identifier = "MarkdownDisplay", 
                               long id = 0, long x = 0, long y = 0, long w = 400, long h = 300)
         : UltraCanvasUIElement(identifier, id, x, y, w, h) {
-        
-        // Initialize standard properties
-        ULTRACANVAS_ELEMENT_PROPERTIES(properties);
-        
+
         style = MarkdownStyle::Default();
     }
     
@@ -563,7 +560,7 @@ public:
         }
         
         // Set up clipping
-        Rect2D bounds = GetBounds();
+        Rect2Di bounds = GetBounds();
         ctx->SetClipRect(bounds);
         
         // Draw background
@@ -589,15 +586,15 @@ public:
         
         switch (event.type) {
             case UCEventType::MouseDown:
-                HandleMouseDown(Point2D(event.mouse.x, event.mouse.y), event.mouse.button);
+                HandleMouseDown(Point2Di(event.mouse.x, event.mouse.y), event.mouse.button);
                 break;
                 
             case UCEventType::MouseMove:
-                HandleMouseMove(Point2D(event.mouse.x, event.mouse.y));
+                HandleMouseMove(Point2Di(event.mouse.x, event.mouse.y));
                 break;
                 
             case UCEventType::MouseUp:
-                HandleMouseUp(Point2D(event.mouse.x, event.mouse.y), event.mouse.button);
+                HandleMouseUp(Point2Di(event.mouse.x, event.mouse.y), event.mouse.button);
                 break;
                 
             case UCEventType::MouseWheel:
@@ -720,50 +717,50 @@ private:
         float textHeight = fontSize * style.lineHeight;
         
         y += style.headerMarginTop[level];
-        element->bounds = Rect2D(x, y, width, textHeight);
+        element->bounds = Rect2Di(x, y, width, textHeight);
     }
     
     void LayoutParagraph(std::shared_ptr<MarkdownElement> element, float x, float y, float width) {
         float textHeight = CalculateTextHeight(element->text, width, style.fontSize);
-        element->bounds = Rect2D(x, y, width, textHeight);
+        element->bounds = Rect2Di(x, y, width, textHeight);
     }
     
     void LayoutCodeBlock(std::shared_ptr<MarkdownElement> element, float x, float y, float width) {
         float textHeight = CalculateTextHeight(element->text, width - style.codeBlockPadding * 2, style.codeFontSize);
         float totalHeight = textHeight + style.codeBlockPadding * 2;
-        element->bounds = Rect2D(x, y, width, totalHeight);
+        element->bounds = Rect2Di(x, y, width, totalHeight);
     }
     
     void LayoutQuote(std::shared_ptr<MarkdownElement> element, float x, float y, float width) {
         float availableWidth = width - style.quoteMarginLeft - style.quotePadding * 2;
         float textHeight = CalculateTextHeight(element->text, availableWidth, style.fontSize);
         float totalHeight = textHeight + style.quotePadding * 2;
-        element->bounds = Rect2D(x + style.quoteMarginLeft, y, width - style.quoteMarginLeft, totalHeight);
+        element->bounds = Rect2Di(x + style.quoteMarginLeft, y, width - style.quoteMarginLeft, totalHeight);
     }
     
     void LayoutListItem(std::shared_ptr<MarkdownElement> element, float x, float y, float width) {
         float availableWidth = width - style.listIndent;
         float textHeight = CalculateTextHeight(element->text, availableWidth, style.fontSize);
-        element->bounds = Rect2D(x + style.listIndent, y, availableWidth, textHeight);
+        element->bounds = Rect2Di(x + style.listIndent, y, availableWidth, textHeight);
     }
     
     void LayoutTable(std::shared_ptr<MarkdownElement> element, float x, float y, float width) {
         // Simplified table layout
         float rowHeight = style.fontSize * style.lineHeight + style.tableCellPadding * 2;
         float totalHeight = rowHeight * element->children.size();
-        element->bounds = Rect2D(x, y, width, totalHeight);
+        element->bounds = Rect2Di(x, y, width, totalHeight);
     }
     
     void LayoutHorizontalRule(std::shared_ptr<MarkdownElement> element, float x, float y, float width) {
-        element->bounds = Rect2D(x, y + style.horizontalRuleMargin, width, style.horizontalRuleWidth);
+        element->bounds = Rect2Di(x, y + style.horizontalRuleMargin, width, style.horizontalRuleWidth);
     }
     
     void LayoutText(std::shared_ptr<MarkdownElement> element, float x, float y, float width) {
         float textHeight = CalculateTextHeight(element->text, width, style.fontSize);
-        element->bounds = Rect2D(x, y, width, textHeight);
+        element->bounds = Rect2Di(x, y, width, textHeight);
     }
     
-    void RenderElements(const Rect2D& bounds) {
+    void RenderElements(const Rect2Di& bounds) {
         for (const auto& element : elements) {
             // Check if element is visible in current scroll area
             if (IsElementVisible(element, bounds)) {
@@ -815,7 +812,7 @@ private:
         SetColor(style.headerColors[level]);
         SetFontWeight(FontWeight::Bold);
         
-        Point2D position = GetAdjustedPosition(element->bounds);
+        Point2Di position = GetAdjustedPosition(element->bounds);
         DrawText(element->text, position);
     }
     
@@ -824,12 +821,12 @@ private:
         SetColor(style.textColor);
         SetFontWeight(FontWeight::Normal);
         
-        Point2D position = GetAdjustedPosition(element->bounds);
+        Point2Di position = GetAdjustedPosition(element->bounds);
         DrawTextWrapped(element->text, element->bounds, style.lineHeight);
     }
     
     void RenderCodeBlock(std::shared_ptr<MarkdownElement> element) {
-        Rect2D adjustedBounds = GetAdjustedBounds(element->bounds);
+        Rect2Di adjustedBounds = GetAdjustedBounds(element->bounds);
         
         // Draw background
        ctx->PaintWidthColorstyle.codeBlockBackgroundColor);
@@ -844,7 +841,7 @@ private:
         SetFont(style.codeFont, style.codeFontSize);
         SetColor(style.codeTextColor);
         
-        Rect2D textBounds = Rect2D(
+        Rect2Di textBounds = Rect2Di(
             adjustedBounds.x + style.codeBlockPadding,
             adjustedBounds.y + style.codeBlockPadding,
             adjustedBounds.width - style.codeBlockPadding * 2,
@@ -855,14 +852,14 @@ private:
     }
     
     void RenderQuote(std::shared_ptr<MarkdownElement> element) {
-        Rect2D adjustedBounds = GetAdjustedBounds(element->bounds);
+        Rect2Di adjustedBounds = GetAdjustedBounds(element->bounds);
         
         // Draw left border
         ctx->PaintWidthColorstyle.quoteBorderColor);
         SetStrokeWidth(style.quoteBorderWidth);
         ctx->DrawLine(
-            Point2D(adjustedBounds.x, adjustedBounds.y),
-            Point2D(adjustedBounds.x, adjustedBounds.y + adjustedBounds.height)
+            Point2Di(adjustedBounds.x, adjustedBounds.y),
+            Point2Di(adjustedBounds.x, adjustedBounds.y + adjustedBounds.height)
         );
         
         // Draw text
@@ -870,7 +867,7 @@ private:
         SetColor(style.quoteTextColor);
         SetFontStyle(FontStyle::Italic);
         
-        Rect2D textBounds = Rect2D(
+        Rect2Di textBounds = Rect2Di(
             adjustedBounds.x + style.quotePadding,
             adjustedBounds.y + style.quotePadding,
             adjustedBounds.width - style.quotePadding * 2,
@@ -881,7 +878,7 @@ private:
     }
     
     void RenderListItem(std::shared_ptr<MarkdownElement> element) {
-        Point2D adjustedPosition = GetAdjustedPosition(element->bounds);
+        Point2Di adjustedPosition = GetAdjustedPosition(element->bounds);
         
         // Draw bullet or number
         SetFont(style.fontFamily, style.fontSize);
@@ -889,9 +886,9 @@ private:
         
         if (element->ordered) {
             // Would need to track list item numbers
-            DrawText("1.", Point2D(adjustedPosition.x - style.listIndent, adjustedPosition.y));
+            DrawText("1.", Point2Di(adjustedPosition.x - style.listIndent, adjustedPosition.y));
         } else {
-            DrawText(style.bulletCharacter, Point2D(adjustedPosition.x - style.listIndent, adjustedPosition.y));
+            DrawText(style.bulletCharacter, Point2Di(adjustedPosition.x - style.listIndent, adjustedPosition.y));
         }
         
         // Draw text
@@ -900,13 +897,13 @@ private:
     }
     
     void RenderHorizontalRule(std::shared_ptr<MarkdownElement> element) {
-        Rect2D adjustedBounds = GetAdjustedBounds(element->bounds);
+        Rect2Di adjustedBounds = GetAdjustedBounds(element->bounds);
         
         ctx->PaintWidthColorstyle.horizontalRuleColor);
         SetStrokeWidth(style.horizontalRuleWidth);
         ctx->DrawLine(
-            Point2D(adjustedBounds.x, adjustedBounds.y + adjustedBounds.height / 2),
-            Point2D(adjustedBounds.x + adjustedBounds.width, adjustedBounds.y + adjustedBounds.height / 2)
+            Point2Di(adjustedBounds.x, adjustedBounds.y + adjustedBounds.height / 2),
+            Point2Di(adjustedBounds.x + adjustedBounds.width, adjustedBounds.y + adjustedBounds.height / 2)
         );
     }
     
@@ -924,7 +921,7 @@ private:
         
         SetColor(linkColor);
         
-        Point2D position = GetAdjustedPosition(element->bounds);
+        Point2Di position = GetAdjustedPosition(element->bounds);
         DrawText(element->text, position);
         
         // Draw underline if enabled
@@ -933,8 +930,8 @@ private:
             ctx->PaintWidthColorlinkColor);
             SetStrokeWidth(1.0f);
             ctx->DrawLine(
-                Point2D(position.x, position.y + 2),
-                Point2D(position.x + textWidth, position.y + 2)
+                Point2Di(position.x, position.y + 2),
+                Point2Di(position.x + textWidth, position.y + 2)
             );
         }
     }
@@ -943,18 +940,18 @@ private:
         SetFont(style.fontFamily, style.fontSize);
         SetColor(style.textColor);
         
-        Point2D position = GetAdjustedPosition(element->bounds);
+        Point2Di position = GetAdjustedPosition(element->bounds);
         DrawText(element->text, position);
     }
     
-    void DrawScrollbar(const Rect2D& bounds) {
+    void DrawScrollbar(const Rect2Di& bounds) {
         if (contentHeight <= bounds.height) return;
         
         float scrollbarWidth = 16.0f;
         float scrollbarX = bounds.x + bounds.width - scrollbarWidth;
         
         // Draw scrollbar track
-        Rect2D trackRect(scrollbarX, bounds.y, scrollbarWidth, bounds.height);
+        Rect2Di trackRect(scrollbarX, bounds.y, scrollbarWidth, bounds.height);
        ctx->PaintWidthColorColor(240, 240, 240));
         FillRect(trackRect);
         
@@ -962,22 +959,22 @@ private:
         float thumbHeight = std::max(20.0f, bounds.height * (bounds.height / contentHeight));
         float thumbY = bounds.y + (scrollOffset / contentHeight) * bounds.height;
         
-        Rect2D thumbRect(scrollbarX + 2, thumbY, scrollbarWidth - 4, thumbHeight);
+        Rect2Di thumbRect(scrollbarX + 2, thumbY, scrollbarWidth - 4, thumbHeight);
        ctx->PaintWidthColorColor(180, 180, 180));
         FillRect(thumbRect);
     }
     
     // ===== UTILITY METHODS =====
-    Point2D GetAdjustedPosition(const Rect2D& bounds) {
-        return Point2D(bounds.x, bounds.y - scrollOffset);
+    Point2Di GetAdjustedPosition(const Rect2Di& bounds) {
+        return Point2Di(bounds.x, bounds.y - scrollOffset);
     }
     
-    Rect2D GetAdjustedBounds(const Rect2D& bounds) {
-        return Rect2D(bounds.x, bounds.y - scrollOffset, bounds.width, bounds.height);
+    Rect2Di GetAdjustedBounds(const Rect2Di& bounds) {
+        return Rect2Di(bounds.x, bounds.y - scrollOffset, bounds.width, bounds.height);
     }
     
-    bool IsElementVisible(std::shared_ptr<MarkdownElement> element, const Rect2D& viewport) {
-        Rect2D adjustedBounds = GetAdjustedBounds(element->bounds);
+    bool IsElementVisible(std::shared_ptr<MarkdownElement> element, const Rect2Di& viewport) {
+        Rect2Di adjustedBounds = GetAdjustedBounds(element->bounds);
         return adjustedBounds.Intersects(viewport);
     }
     
@@ -988,9 +985,9 @@ private:
         return lineCount * fontSize * style.lineHeight;
     }
     
-    void DrawTextWrapped(const std::string& text, const Rect2D& bounds, float lineHeight) {
+    void DrawTextWrapped(const std::string& text, const Rect2Di& bounds, float lineHeight) {
         // Simplified text wrapping - would need proper implementation
-        DrawText(text, Point2D(bounds.x, bounds.y + style.fontSize));
+        DrawText(text, Point2Di(bounds.x, bounds.y + style.fontSize));
     }
     
     void SetFontWeight(FontWeight weight) {
@@ -1005,7 +1002,7 @@ private:
         ctx->SetTextStyle(textStyle);
     }
     
-    void HandleMouseDown(const Point2D& position, UCMouseButton button) {
+    void HandleMouseDown(const Point2Di& position, UCMouseButton button) {
         if (button == UCMouseButton::Left) {
             auto element = FindElementAtPosition(position);
             if (element && element->clickable) {
@@ -1014,7 +1011,7 @@ private:
         }
     }
     
-    void HandleMouseMove(const Point2D& position) {
+    void HandleMouseMove(const Point2Di& position) {
         auto element = FindElementAtPosition(position);
         if (element != hoveredElement) {
             hoveredElement = element;
@@ -1022,7 +1019,7 @@ private:
         }
     }
     
-    void HandleMouseUp(const Point2D& position, UCMouseButton button) {
+    void HandleMouseUp(const Point2Di& position, UCMouseButton button) {
         if (button == UCMouseButton::Left && clickedElement) {
             auto element = FindElementAtPosition(position);
             if (element == clickedElement && element->type == MarkdownElementType::Link) {
@@ -1062,11 +1059,10 @@ private:
         }
     }
     
-    std::shared_ptr<MarkdownElement> FindElementAtPosition(const Point2D& position) {
-        Point2D adjustedPosition(position.x, position.y + scrollOffset);
-        
+    std::shared_ptr<MarkdownElement> FindElementAtPosition(const Point2Di& position) {
+
         for (const auto& element : elements) {
-            if (element->bounds.Contains(adjustedPosition)) {
+            if (element->bounds.Contains(position.x, position.y + scrollOffset)) {
                 return element;
             }
         }

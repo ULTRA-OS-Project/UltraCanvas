@@ -6,6 +6,7 @@
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasTextArea.h"
+#include "Plugins/Text/Markdown.h"
 #include <iostream>
 #include <sstream>
 
@@ -206,6 +207,7 @@ namespace UltraCanvas {
         } else {
             textArea->ApplyCodeStyle("text");
         }
+        textArea->SetFontSize(10);
 
         sourceWindow->SetEventCallback([this](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
@@ -236,20 +238,11 @@ namespace UltraCanvas {
         }
 
         // Create text area for documentation
-        auto textArea = std::make_shared<UltraCanvasTextArea>("Documentation", 2000, 5, 5, 1190, 590);
-        textArea->SetText(content);
-        textArea->SetReadOnly(true);
-        textArea->SetWordWrap(true);
-        textArea->SetShowLineNumbers(false);
-
-        // Check if it's a markdown file
-        std::string ext = GetFileExtension(currentDocFile);
-        if (ext == "md" || ext == "markdown") {
-            // Could apply markdown styling here if supported
-            textArea->ApplyPlainTextStyle();
-        } else {
-            textArea->ApplyPlainTextStyle();
-        }
+        auto markDownTextArea = std::make_shared<UltraCanvasMarkdownDisplay>("Documentation", 2000, 5, 5, 1190, 590);
+        markDownTextArea->SetMarkdownText(content);
+        auto markdownStyle = MarkdownStyle();
+        markdownStyle.fontSize = 12;
+        markDownTextArea->SetMarkdownStyle(markdownStyle);
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
@@ -260,7 +253,7 @@ namespace UltraCanvas {
             return false;
         });
 
-        docWindow->AddChild(textArea);
+        docWindow->AddChild(markDownTextArea);
         docWindow->Show();
     }
 
@@ -557,7 +550,7 @@ namespace UltraCanvas {
         auto vectorBuilder = DemoCategoryBuilder(this, DemoCategory::VectorElements);
 
         vectorBuilder.AddItem("svg", "SVG Graphics", "Scalable vector graphics rendering",
-                              ImplementationStatus::PartiallyImplemented,
+                              ImplementationStatus::FullyImplemented,
                               [this]() { return CreateSVGVectorExamples(); },
                               "Examples/UltraCanvasSVGExamples.cpp",
                               "Docs/UltraCanvasSVGExamples.md")
