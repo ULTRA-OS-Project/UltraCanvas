@@ -1,0 +1,4 @@
+## UltraCanvas
+UltraCanvas is a modern C++20 cross-platform GUI framework providing unified windowing, rendering, and event handling across Windows, Linux, macOS, and ULTRA OS. Features a powerful UI toolkit with advanced components, flexible 2D/3D rendering backends, and extensible plugin architecture for media formats. Designed to simplify porting legacy applications between operating systems with minimal code changes. Supports styled text, vector graphics, PDF rendering, 3D models, and interactive UI elements through platform-agnostic APIs. OS-specific implementations are cleanly separated, enabling single-source deployment across multiple platforms with optimized native performance.
+ 
+UltraCanvas will also be the main feature of ULTRA OS. First beta-version will be available end of November 2025 and polished version in December 2025. Downloadable demo is available now for Linux on our website www.ultraos.eu .
