@@ -242,7 +242,7 @@ namespace UltraCanvas {
         markDownTextArea->SetMarkdownText(content);
         auto markdownStyle = MarkdownStyle();
         markdownStyle.fontSize = 12;
-        markDownTextArea->SetMarkdownStyle(markdownStyle);
+        markDownTextArea->SetStyle(markdownStyle);
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {

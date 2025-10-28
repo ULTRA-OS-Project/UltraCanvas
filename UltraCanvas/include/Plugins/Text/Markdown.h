@@ -1,6 +1,6 @@
-// Markdown.h
+// include/Plugins/Text/Markdown.h
 // Markdown text display driver with full formatting and rendering support
-// Version: 1.0.1
+// Version: 1.1.0
 // Last Modified: 2025-10-28
 // Author: UltraCanvas Framework
 #pragma once
@@ -40,7 +40,8 @@ namespace UltraCanvas {
         LineBreak,      // \n or double space
         Strikethrough,  // ~~text~~
         Highlight,      // ==text==
-        Paragraph       // Block of text
+        Paragraph,       // Block of text
+        Unknown
     };
 
 // ===== MARKDOWN STYLING =====
@@ -49,7 +50,7 @@ namespace UltraCanvas {
         std::string fontFamily = "Arial";
         float fontSize = 12.0f;
         Color textColor = Color(50, 50, 50);
-        Color backgroundColor = Colors::Transparent;
+        Color backgroundColor = Colors::White;
         float lineHeight = 1.2f;
 
         // Header styles
@@ -79,54 +80,48 @@ namespace UltraCanvas {
         bool linkUnderline = true;
 
         // List styling
-        float listIndent = 20.0f;
-        float listItemSpacing = 4.0f;
+        int listIndent = 20;
+        int listItemSpacing = 4;
         std::string bulletCharacter = "•";
-        Color bulletColor = Color(100, 100, 100);
+        Color bulletColor = Color(80, 80, 80);
 
         // Quote styling
+        int quoteIndent = 15;
+        int quoteBarWidth = 4;
         Color quoteBarColor = Color(200, 200, 200);
         Color quoteBackgroundColor = Color(250, 250, 250);
-        float quoteBarWidth = 4.0f;
-        float quoteMarginLeft = 15.0f;
-        float quotePadding = 10.0f;
 
         // Table styling
         Color tableBorderColor = Color(200, 200, 200);
         Color tableHeaderBackground = Color(240, 240, 240);
-        float tableBorderWidth = 1.0f;
-        float tableCellPadding = 8.0f;
+        float tablePadding = 8.0f;
 
         // Spacing
-        float paragraphSpacing = 10.0f;
-        float blockSpacing = 15.0f;
+        float paragraphSpacing = 12.0f;
+        float blockSpacing = 8.0f;
 
         // Horizontal rule
         Color horizontalRuleColor = Color(200, 200, 200);
-        float horizontalRuleWidth = 2.0f;
-        float horizontalRuleMargin = 20.0f;
+        float horizontalRuleHeight = 2.0f;
 
-        // Scrolling
-        bool enableScrolling = true;
+        // Scrollbar
         Color scrollbarColor = Color(180, 180, 180);
         Color scrollbarTrackColor = Color(240, 240, 240);
-        int scrollbarWidth = 10;
 
-        // Theme presets
         static MarkdownStyle Default() {
             return MarkdownStyle();
         }
 
-        static MarkdownStyle DarkTheme() {
+        static MarkdownStyle DarkMode() {
             MarkdownStyle style;
-            style.textColor = Color(220, 220, 220);
             style.backgroundColor = Color(30, 30, 30);
+            style.textColor = Color(220, 220, 220);
 
             for (auto& color : style.headerColors) {
                 color = Color(240, 240, 240);
             }
 
-            style.codeTextColor = Color(255, 120, 120);
+            style.codeTextColor = Color(255, 150, 150);
             style.codeBackgroundColor = Color(50, 50, 50);
             style.codeBlockBackgroundColor = Color(40, 40, 40);
             style.codeBlockBorderColor = Color(80, 80, 80);
@@ -210,6 +205,195 @@ namespace UltraCanvas {
         }
     };
 
+// ===== INLINE STYLE CONVERSION FOR PANGO MARKUP =====
+    class MarkdownInlineConverter {
+    public:
+        // Convert markdown inline styles to Pango markup
+        static std::string ConvertToPangoMarkup(const std::string& text) {
+            std::string result = text;
+
+            // Escape existing XML/HTML special characters first
+            result = EscapeXml(result);
+
+            // Convert **bold** or __bold__ to <b>bold</b>
+            result = ConvertBold(result);
+
+            // Convert *italic* or _italic_ to <i>italic</i>
+            result = ConvertItalic(result);
+
+            // Convert `code` to <tt>code</tt>
+            result = ConvertInlineCode(result);
+
+            // Convert ~~strikethrough~~ to <s>strikethrough</s>
+            result = ConvertStrikethrough(result);
+
+            return result;
+        }
+
+    private:
+        // Escape XML special characters
+        static std::string EscapeXml(const std::string& text) {
+            std::string result;
+            result.reserve(text.length() * 1.2);
+
+            for (char ch : text) {
+                switch (ch) {
+                    case '&':  result += "&amp;"; break;
+                    case '<':  result += "&lt;"; break;
+                    case '>':  result += "&gt;"; break;
+                    case '"':  result += "&quot;"; break;
+                    case '\'': result += "&apos;"; break;
+                    default:   result += ch; break;
+                }
+            }
+            return result;
+        }
+
+        // Convert **text** or __text__ to <b>text</b>
+        static std::string ConvertBold(const std::string& text) {
+            std::string result = text;
+
+            // Handle **bold**
+            size_t pos = 0;
+            while ((pos = result.find("**", pos)) != std::string::npos) {
+                size_t end = result.find("**", pos + 2);
+                if (end != std::string::npos) {
+                    std::string content = result.substr(pos + 2, end - pos - 2);
+                    std::string replacement = "<b>" + content + "</b>";
+                    result.replace(pos, end - pos + 2, replacement);
+                    pos += replacement.length();
+                } else {
+                    break;
+                }
+            }
+
+            // Handle __bold__
+            pos = 0;
+            while ((pos = result.find("__", pos)) != std::string::npos) {
+                size_t end = result.find("__", pos + 2);
+                if (end != std::string::npos) {
+                    std::string content = result.substr(pos + 2, end - pos - 2);
+                    std::string replacement = "<b>" + content + "</b>";
+                    result.replace(pos, end - pos + 2, replacement);
+                    pos += replacement.length();
+                } else {
+                    break;
+                }
+            }
+
+            return result;
+        }
+
+        // Convert *text* or _text_ to <i>text</i>
+        static std::string ConvertItalic(const std::string& text) {
+            std::string result = text;
+
+            // Handle *italic* (but not ** which is bold)
+            size_t pos = 0;
+            while ((pos = result.find("*", pos)) != std::string::npos) {
+                // Skip if it's part of **
+                if (pos > 0 && result[pos - 1] == '*') {
+                    pos++;
+                    continue;
+                }
+                if (pos + 1 < result.length() && result[pos + 1] == '*') {
+                    pos += 2;
+                    continue;
+                }
+
+                size_t end = pos + 1;
+                while (end < result.length()) {
+                    if (result[end] == '*' && (end + 1 >= result.length() || result[end + 1] != '*')) {
+                        break;
+                    }
+                    end++;
+                }
+
+                if (end < result.length() && result[end] == '*') {
+                    std::string content = result.substr(pos + 1, end - pos - 1);
+                    std::string replacement = "<i>" + content + "</i>";
+                    result.replace(pos, end - pos + 1, replacement);
+                    pos += replacement.length();
+                } else {
+                    pos++;
+                }
+            }
+
+            // Handle _italic_ (but not __ which is bold)
+            pos = 0;
+            while ((pos = result.find("_", pos)) != std::string::npos) {
+                // Skip if it's part of __
+                if (pos > 0 && result[pos - 1] == '_') {
+                    pos++;
+                    continue;
+                }
+                if (pos + 1 < result.length() && result[pos + 1] == '_') {
+                    pos += 2;
+                    continue;
+                }
+
+                size_t end = pos + 1;
+                while (end < result.length()) {
+                    if (result[end] == '_' && (end + 1 >= result.length() || result[end + 1] != '_')) {
+                        break;
+                    }
+                    end++;
+                }
+
+                if (end < result.length() && result[end] == '_') {
+                    std::string content = result.substr(pos + 1, end - pos - 1);
+                    std::string replacement = "<i>" + content + "</i>";
+                    result.replace(pos, end - pos + 1, replacement);
+                    pos += replacement.length();
+                } else {
+                    pos++;
+                }
+            }
+
+            return result;
+        }
+
+        // Convert `code` to <tt>code</tt>
+        static std::string ConvertInlineCode(const std::string& text) {
+            std::string result = text;
+            size_t pos = 0;
+
+            while ((pos = result.find("`", pos)) != std::string::npos) {
+                size_t end = result.find("`", pos + 1);
+                if (end != std::string::npos) {
+                    std::string content = result.substr(pos + 1, end - pos - 1);
+                    std::string replacement = "<tt>" + content + "</tt>";
+                    result.replace(pos, end - pos + 1, replacement);
+                    pos += replacement.length();
+                } else {
+                    break;
+                }
+            }
+
+            return result;
+        }
+
+        // Convert ~~text~~ to <s>text</s>
+        static std::string ConvertStrikethrough(const std::string& text) {
+            std::string result = text;
+            size_t pos = 0;
+
+            while ((pos = result.find("~~", pos)) != std::string::npos) {
+                size_t end = result.find("~~", pos + 2);
+                if (end != std::string::npos) {
+                    std::string content = result.substr(pos + 2, end - pos - 2);
+                    std::string replacement = "<s>" + content + "</s>";
+                    result.replace(pos, end - pos + 2, replacement);
+                    pos += replacement.length();
+                } else {
+                    break;
+                }
+            }
+
+            return result;
+        }
+    };
+
 // ===== MARKDOWN PARSER =====
     class MarkdownParser {
     public:
@@ -217,86 +401,189 @@ namespace UltraCanvas {
             std::vector<std::shared_ptr<MarkdownElement>> elements;
             std::istringstream stream(markdown);
             std::string line;
+            std::string previousLine;
+            bool inCodeBlock = false;
+            std::string codeBlockContent;
+            std::string codeBlockLanguage;
 
             while (std::getline(stream, line)) {
-                auto element = ParseLine(line);
+                // Handle code blocks
+                if (line.find("```") == 0) {
+                    if (!inCodeBlock) {
+                        // Starting code block
+                        inCodeBlock = true;
+                        codeBlockLanguage = line.substr(3);
+                        codeBlockContent.clear();
+                    } else {
+                        // Ending code block
+                        inCodeBlock = false;
+                        auto element = MarkdownElement::CreateCodeBlock(codeBlockContent, codeBlockLanguage);
+                        elements.push_back(element);
+                        codeBlockContent.clear();
+                        codeBlockLanguage.clear();
+                    }
+                    previousLine = line;
+                    continue;
+                }
+
+                if (inCodeBlock) {
+                    // Accumulate code block content
+                    if (!codeBlockContent.empty()) {
+                        codeBlockContent += "\n";
+                    }
+                    codeBlockContent += line;
+                    previousLine = line;
+                    continue;
+                }
+
+                // Parse regular lines
+                auto element = ParseLine(line, previousLine);
                 if (element) {
                     elements.push_back(element);
                 }
+                previousLine = line;
             }
 
             return elements;
         }
 
     private:
-        static std::shared_ptr<MarkdownElement> ParseLine(const std::string& line) {
-            std::string trimmedLine = Trim(line);
+        static std::shared_ptr<MarkdownElement> ParseLine(const std::string& line, const std::string& previousLine) {
+            std::string trimmed = TrimWhitespace(line);
 
-            if (trimmedLine.empty()) {
-                return nullptr;
+            // Empty line - only create spacing element if previous line wasn't empty
+            if (trimmed.empty()) {
+                if (!previousLine.empty()) {
+                    auto element = std::make_shared<MarkdownElement>(MarkdownElementType::LineBreak);
+                    return element;
+                }
+                return nullptr; // Skip consecutive empty lines
             }
 
-            // Check for headers
-            if (trimmedLine[0] == '#') {
-                int level = 0;
-                while (level < trimmedLine.length() && trimmedLine[level] == '#') {
-                    level++;
-                }
-                if (level <= 6) {
-                    std::string content = Trim(trimmedLine.substr(level));
-                    return MarkdownElement::CreateHeader(level, content);
-                }
+            // Headers
+            if (trimmed[0] == '#') {
+                return ParseHeader(trimmed);
             }
 
-            // Check for horizontal rule
-            if (trimmedLine == "---" || trimmedLine == "***" || trimmedLine == "___") {
+            // Horizontal rules (---, ***, ___)
+            if (IsHorizontalRule(trimmed)) {
                 return std::make_shared<MarkdownElement>(MarkdownElementType::HorizontalRule);
             }
 
-            // Check for code blocks
-            if (trimmedLine.substr(0, 3) == "```") {
-                std::string language = trimmedLine.substr(3);
-                return std::make_shared<MarkdownElement>(MarkdownElementType::CodeBlock);
+            // Quotes
+            if (trimmed[0] == '>') {
+                return ParseQuote(trimmed);
             }
 
-            // Check for quotes
-            if (trimmedLine[0] == '>') {
-                auto element = std::make_shared<MarkdownElement>(MarkdownElementType::Quote);
-                element->text = Trim(trimmedLine.substr(1));
-                return element;
+            // Lists - FIXED: Check for space after marker
+            if (IsListItem(trimmed)) {
+                return ParseListItem(trimmed);
             }
 
-            // Check for lists
-            if (trimmedLine[0] == '-' || trimmedLine[0] == '*' || trimmedLine[0] == '+') {
-                auto element = std::make_shared<MarkdownElement>(MarkdownElementType::ListItem);
-                element->text = Trim(trimmedLine.substr(1));
-                element->ordered = false;
-                return element;
+            // Default: paragraph text with inline styling
+            return ParseParagraph(trimmed);
+        }
+
+        static std::shared_ptr<MarkdownElement> ParseHeader(const std::string& line) {
+            size_t hashCount = 0;
+            while (hashCount < line.length() && line[hashCount] == '#') {
+                hashCount++;
             }
 
-            // Check for ordered lists
-            if (std::isdigit(trimmedLine[0])) {
-                size_t dotPos = trimmedLine.find('.');
-                if (dotPos != std::string::npos) {
-                    auto element = std::make_shared<MarkdownElement>(MarkdownElementType::ListItem);
-                    element->text = Trim(trimmedLine.substr(dotPos + 1));
-                    element->ordered = true;
-                    return element;
-                }
-            }
+            if (hashCount > 6) hashCount = 6;
 
-            // Default to paragraph
-            auto element = std::make_shared<MarkdownElement>(MarkdownElementType::Paragraph);
-            element->text = ParseInlineFormatting(trimmedLine);
+            std::string content = TrimWhitespace(line.substr(hashCount));
+            // Apply inline styling to header content
+            content = MarkdownInlineConverter::ConvertToPangoMarkup(content);
+            return MarkdownElement::CreateHeader(static_cast<int>(hashCount), content);
+        }
+
+        static std::shared_ptr<MarkdownElement> ParseQuote(const std::string& line) {
+            auto element = std::make_shared<MarkdownElement>(MarkdownElementType::Quote);
+            std::string content = TrimWhitespace(line.substr(1));
+            // Apply inline styling to quote content
+            element->text = MarkdownInlineConverter::ConvertToPangoMarkup(content);
             return element;
         }
 
-        static std::string ParseInlineFormatting(const std::string& text) {
-            // Simplified inline formatting - would need more complex parsing for full support
-            return text;
+        // FIXED: Proper list item detection with space requirement
+        static bool IsListItem(const std::string& line) {
+            if (line.empty()) return false;
+
+            std::string trimmed = TrimWhitespace(line);
+            if (trimmed.length() < 2) return false;
+
+            // Check for unordered list: "- ", "* ", "+ " (requires space after marker)
+            if ((trimmed[0] == '-' || trimmed[0] == '*' || trimmed[0] == '+') && trimmed[1] == ' ') {
+                return true;
+            }
+
+            // Check for ordered list: "1. ", "2. ", etc.
+            if (std::isdigit(trimmed[0])) {
+                size_t dotPos = trimmed.find('.');
+                if (dotPos != std::string::npos && dotPos + 1 < trimmed.length() && trimmed[dotPos + 1] == ' ') {
+                    // Verify all characters before dot are digits
+                    for (size_t i = 0; i < dotPos; i++) {
+                        if (!std::isdigit(trimmed[i])) return false;
+                    }
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        static std::string Trim(const std::string& str) {
+        static std::shared_ptr<MarkdownElement> ParseListItem(const std::string& line) {
+            auto element = std::make_shared<MarkdownElement>(MarkdownElementType::ListItem);
+            std::string trimmed = TrimWhitespace(line);
+
+            // Determine if ordered or unordered
+            if (std::isdigit(trimmed[0])) {
+                element->ordered = true;
+                size_t dotPos = trimmed.find('.');
+                std::string content = TrimWhitespace(trimmed.substr(dotPos + 1));
+                // Apply inline styling to list item content
+                element->text = MarkdownInlineConverter::ConvertToPangoMarkup(content);
+            } else {
+                element->ordered = false;
+                // Skip the marker (-, *, +) and space
+                std::string content = TrimWhitespace(trimmed.substr(2));
+                // Apply inline styling to list item content
+                element->text = MarkdownInlineConverter::ConvertToPangoMarkup(content);
+            }
+
+            return element;
+        }
+
+        static std::shared_ptr<MarkdownElement> ParseParagraph(const std::string& line) {
+            auto element = std::make_shared<MarkdownElement>(MarkdownElementType::Paragraph);
+            // Apply inline styling to paragraph content
+            element->text = MarkdownInlineConverter::ConvertToPangoMarkup(line);
+            return element;
+        }
+
+        static bool IsHorizontalRule(const std::string& line) {
+            std::string trimmed = TrimWhitespace(line);
+            if (trimmed.length() < 3) return false;
+
+            // Check for ---, ***, or ___
+            char ch = trimmed[0];
+            if (ch != '-' && ch != '*' && ch != '_') return false;
+
+            for (char c : trimmed) {
+                if (c != ch && c != ' ') return false;
+            }
+
+            // Count non-space characters
+            int count = 0;
+            for (char c : trimmed) {
+                if (c != ' ') count++;
+            }
+
+            return count >= 3;
+        }
+
+        static std::string TrimWhitespace(const std::string& str) {
             size_t start = str.find_first_not_of(" \t\r\n");
             if (start == std::string::npos) return "";
 
@@ -315,7 +602,7 @@ namespace UltraCanvas {
 
         // Layout and rendering
         int contentHeight = 0;
-        int verticalScrollOffset = 0;
+        int scrollOffset = 0;
         bool needsReparse = true;
         bool needsRelayout = true;
 
@@ -327,7 +614,7 @@ namespace UltraCanvas {
         // Event callbacks
         std::function<void(const std::string& url)> onLinkClicked;
         std::function<void(const std::string& text)> onTextSelected;
-        std::function<void(float position)> onScrollChanged;
+        std::function<void(int position)> onScrollChanged;
 
     public:
         // ===== CONSTRUCTOR =====
@@ -346,310 +633,246 @@ namespace UltraCanvas {
                 markdownText = markdown;
                 needsReparse = true;
                 needsRelayout = true;
-                RequestRedraw();
+                RequestRedraw();;
             }
         }
 
-        const std::string& GetMarkdownText() const { return markdownText; }
-
-        void LoadFromFile(const std::string& filePath) {
-            std::ifstream file(filePath);
-            if (file.is_open()) {
-                std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-                SetMarkdownText(content);
-            }
-        }
-
-        void LoadFromUrl(const std::string& url) {
-            // URL loading would require HTTP client
-            // For now, just set placeholder text
-            SetMarkdownText("# Loading...\nFetching content from: " + url);
+        const std::string& GetMarkdownText() const {
+            return markdownText;
         }
 
         // ===== STYLING =====
-        void SetMarkdownStyle(const MarkdownStyle& newStyle) {
+        void SetStyle(const MarkdownStyle& newStyle) {
             style = newStyle;
             needsRelayout = true;
             RequestRedraw();
         }
 
-        const MarkdownStyle& GetMarkdownStyle() const { return style; }
-
-        void SetTheme(const std::string& themeName) {
-            if (themeName == "dark") {
-                style = MarkdownStyle::DarkTheme();
-            } else if (themeName == "document") {
-                style = MarkdownStyle::DocumentStyle();
-            } else {
-                style = MarkdownStyle::Default();
-            }
-            needsRelayout = true;
+        const MarkdownStyle& GetStyle() const {
+            return style;
         }
 
         // ===== SCROLLING =====
-        void ScrollTo(int position) {
+        void SetScrollOffset(int offset) {
             int maxScroll = std::max(0, contentHeight - GetHeight());
-            verticalScrollOffset = std::clamp(position, 0, maxScroll);
-
-            if (onScrollChanged) {
-                onScrollChanged(GetScrollPercentage());
-            }
+            scrollOffset = std::clamp(offset, 0, maxScroll);
+            RequestRedraw();
         }
 
-        void ScrollBy(int delta) {
-            ScrollTo(verticalScrollOffset + delta);
+        int GetScrollOffset() const {
+            return scrollOffset;
         }
 
-        int GetScrollPosition() const { return verticalScrollOffset; }
-
-        float GetScrollPercentage() const {
-            int maxScroll = std::max(0, contentHeight - GetHeight());
-            return maxScroll > 0 ? (static_cast<float>(verticalScrollOffset) / static_cast<float>(maxScroll)) : 0.0f;
+        int GetContentHeight() const {
+            return contentHeight;
         }
 
-        bool CanScrollUp() const { return verticalScrollOffset > 0; }
-        bool CanScrollDown() const { return verticalScrollOffset < (contentHeight - GetHeight()); }
-
-        // ===== EVENT CALLBACKS =====
+        // ===== CALLBACKS =====
         void SetLinkClickCallback(std::function<void(const std::string&)> callback) {
             onLinkClicked = callback;
         }
 
-        void SetTextSelectionCallback(std::function<void(const std::string&)> callback) {
+        void SetTextSelectedCallback(std::function<void(const std::string&)> callback) {
             onTextSelected = callback;
         }
 
-        void SetScrollCallback(std::function<void(float)> callback) {
+        void SetScrollChangedCallback(std::function<void(float)> callback) {
             onScrollChanged = callback;
         }
 
         // ===== RENDERING =====
         void Render() override {
-            if (!IsVisible()) return;
-
-            IRenderContext* ctx = GetRenderContext();
-            if (!ctx) return;
+            auto ctx = GetRenderContext();
+            if (!properties.Visible || !ctx) return;
 
             ctx->PushState();
-
-            // Parse markdown if needed
+            // Parse if needed
             if (needsReparse) {
-                ParseMarkdown();
+                elements = MarkdownParser::Parse(markdownText);
+                needsReparse = false;
                 needsRelayout = true;
             }
 
-            // Layout elements if needed
+            // Layout if needed
             if (needsRelayout) {
-                LayoutElements();
+                PerformLayout(ctx);
+                needsRelayout = false;
             }
-
-            // Set up clipping
-            Rect2Di bounds = GetBounds();
-            ctx->SetClipRect(bounds);
 
             // Draw background
-            if (style.backgroundColor.a > 0) {
-                ctx->SetFillPaint(style.backgroundColor);
-                ctx->FillRectangle(bounds);
-            }
+            ctx->SetFillPaint(style.backgroundColor);
+            ctx->FillRectangle(properties.x_pos, properties.y_pos,
+                               properties.width_size, properties.height_size);
 
-            // Render markdown elements
-            RenderElements(ctx, bounds);
+            // Set clipping region
+            ctx->SetClipRect(properties.x_pos, properties.y_pos,
+                             properties.width_size, properties.height_size);
 
-            // Draw scrollbar if needed
-            if (style.enableScrolling && contentHeight > bounds.height) {
-                DrawScrollbar(ctx, bounds);
-            }
+            // Enable Pango markup for text rendering
+            ctx->SetTextIsMarkup(true);
 
-            ctx->ClearClipRect();
-            ctx->PopState();
-        }
-
-        // ===== EVENT HANDLING =====
-        bool OnEvent(const UCEvent& event) override {
-            if (!IsActive() || !IsVisible()) return false;
-
-            switch (event.type) {
-                case UCEventType::MouseDown:
-                    return HandleMouseDown(event);
-
-                case UCEventType::MouseMove:
-                    return HandleMouseMove(event);
-
-                case UCEventType::MouseUp:
-                    return HandleMouseUp(event);
-
-                case UCEventType::MouseWheel:
-                    if (style.enableScrolling) {
-                        ScrollBy(-event.wheelDelta * 3);
-                        return true;
-                    }
-                    break;
-
-                case UCEventType::KeyDown:
-                    return HandleKeyDown(event.virtualKey);
-
-                default:
-                    break;
-            }
-            return false;
-        }
-
-        // ===== INFORMATION QUERIES =====
-        std::vector<std::string> GetAllLinks() const {
-            std::vector<std::string> links;
-            for (const auto& element : elements) {
-                CollectLinks(element, links);
-            }
-            return links;
-        }
-
-        std::string GetPlainText() const {
-            std::string result;
-            for (const auto& element : elements) {
-                ExtractPlainText(element, result);
-            }
-            return result;
-        }
-
-        int GetElementCount() const {
-            return static_cast<int>(elements.size());
-        }
-
-        float GetContentHeight() const {
-            return contentHeight;
-        }
-
-    private:
-        // ===== PARSING =====
-        void ParseMarkdown() {
-            elements = MarkdownParser::Parse(markdownText);
-            needsReparse = false;
-        }
-
-        // ===== LAYOUT =====
-        void LayoutElements() {
-            int currentY = 0.0f;
-            Rect2Di bounds = GetBounds();
-            int availableWidth = bounds.width - 20; // Padding
-
+            // Render elements
             for (auto& element : elements) {
-                // Add top margin for headers
-                if (element->type == MarkdownElementType::Header) {
-                    currentY += style.headerMarginTop[std::min(element->level - 1, 5)];
-                }
-
-                LayoutElement(element, 10, currentY, availableWidth);
-                currentY += element->bounds.height;
-
-                // Add bottom spacing
-                if (element->type == MarkdownElementType::Header) {
-                    currentY += style.headerMarginBottom[std::min(element->level - 1, 5)];
-                } else if (element->type == MarkdownElementType::Paragraph) {
-                    currentY += style.paragraphSpacing;
-                } else {
-                    currentY += style.blockSpacing;
-                }
-            }
-
-            contentHeight = currentY;
-            needsRelayout = false;
-        }
-
-        void LayoutElement(std::shared_ptr<MarkdownElement> element, int x, int y, int width) {
-            switch (element->type) {
-                case MarkdownElementType::Header:
-                    LayoutHeader(element, x, y, width);
-                    break;
-
-                case MarkdownElementType::Paragraph:
-                    LayoutParagraph(element, x, y, width);
-                    break;
-
-                case MarkdownElementType::CodeBlock:
-                    LayoutCodeBlock(element, x, y, width);
-                    break;
-
-                case MarkdownElementType::Quote:
-                    LayoutQuote(element, x, y, width);
-                    break;
-
-                case MarkdownElementType::ListItem:
-                    LayoutListItem(element, x, y, width);
-                    break;
-
-                case MarkdownElementType::Table:
-                    LayoutTable(element, x, y, width);
-                    break;
-
-                case MarkdownElementType::HorizontalRule:
-                    LayoutHorizontalRule(element, x, y, width);
-                    break;
-
-                default:
-                    LayoutText(element, x, y, width);
-                    break;
-            }
-        }
-
-        void LayoutHeader(std::shared_ptr<MarkdownElement> element, int x, int y, int width) {
-            int level = std::clamp(element->level - 1, 0, 5);
-            int fontSize = style.headerSizes[level];
-            int textHeight = fontSize * style.lineHeight;
-
-            element->bounds = Rect2Di(x, y, width, textHeight);
-        }
-
-        void LayoutParagraph(std::shared_ptr<MarkdownElement> element, int x, int y, int width) {
-            int textHeight = CalculateTextHeight(element->text, width, style.fontSize);
-            element->bounds = Rect2Di(x, y, width, textHeight);
-        }
-
-        void LayoutCodeBlock(std::shared_ptr<MarkdownElement> element, int x, int y, int width) {
-            int textHeight = CalculateTextHeight(element->text, width - style.codeBlockPadding * 2, style.codeFontSize);
-            int totalHeight = textHeight + style.codeBlockPadding * 2;
-            element->bounds = Rect2Di(x, y, width, totalHeight);
-        }
-
-        void LayoutQuote(std::shared_ptr<MarkdownElement> element, int x, int y, int width) {
-            int availableWidth = width - style.quoteMarginLeft - style.quotePadding * 2;
-            int textHeight = CalculateTextHeight(element->text, availableWidth, style.fontSize);
-            int totalHeight = textHeight + style.quotePadding * 2;
-            element->bounds = Rect2Di(x + style.quoteMarginLeft, y, width - style.quoteMarginLeft, totalHeight);
-        }
-
-        void LayoutListItem(std::shared_ptr<MarkdownElement> element, int x, int y, int width) {
-            int availableWidth = width - style.listIndent;
-            int textHeight = CalculateTextHeight(element->text, availableWidth, style.fontSize);
-            element->bounds = Rect2Di(x + style.listIndent, y, availableWidth, textHeight);
-        }
-
-        void LayoutTable(std::shared_ptr<MarkdownElement> element, int x, int y, int width) {
-            // Simplified table layout
-            int rowHeight = style.fontSize * style.lineHeight + style.tableCellPadding * 2;
-            int totalHeight = rowHeight * static_cast<int>(element->children.size());
-            element->bounds = Rect2Di(x, y, width, totalHeight);
-        }
-
-        void LayoutHorizontalRule(std::shared_ptr<MarkdownElement> element, int x, int y, int width) {
-            element->bounds = Rect2Di(x, y + style.horizontalRuleMargin, width, style.horizontalRuleWidth);
-        }
-
-        void LayoutText(std::shared_ptr<MarkdownElement> element, int x, int y, int width) {
-            int textHeight = CalculateTextHeight(element->text, width, style.fontSize);
-            element->bounds = Rect2Di(x, y, width, textHeight);
-        }
-
-        void RenderElements(IRenderContext* ctx, const Rect2Di& bounds) {
-            for (const auto& element : elements) {
-                // Check if element is visible in current scroll area
-                if (IsElementVisible(element, bounds)) {
+                if (element->visible) {
                     RenderElement(ctx, element);
                 }
             }
+
+            // Clear clipping
+            ctx->ClearClipRect();
+
+            // Draw scrollbar if needed
+            if (contentHeight > properties.height_size) {
+                DrawScrollbar(ctx);
+            }
+            ctx->PopState();
+        }
+
+    private:
+        void PerformLayout(IRenderContext* ctx) {
+            int currentY = GetY() + 10;
+            int maxWidth = GetWidth() - 20;
+            MarkdownElementType previousElementType = MarkdownElementType::Unknown;
+
+            for (auto& element : elements) {
+                // Calculate spacing based on element type and previous element
+                float topSpacing = 0.0f;
+
+                // Add block spacing only when there's an actual line break element
+                if (element->type == MarkdownElementType::LineBreak) {
+                    topSpacing = style.blockSpacing;
+                } else if (previousElementType != MarkdownElementType::Unknown && previousElementType != MarkdownElementType::LineBreak) {
+                    // No spacing between consecutive content elements
+                    topSpacing = 0.0f;
+                } else {
+                    // Apply appropriate margins for specific element types
+                    switch (element->type) {
+                        case MarkdownElementType::Header:
+                            topSpacing = style.headerMarginTop[std::clamp(element->level - 1, 0, 5)];
+                            break;
+                        case MarkdownElementType::CodeBlock:
+                        case MarkdownElementType::Quote:
+                            topSpacing = style.blockSpacing;
+                            break;
+                        default:
+                            topSpacing = 0.0f;
+                            break;
+                    }
+                }
+
+                currentY += topSpacing;
+
+                // Calculate element bounds
+                int elementHeight = CalculateElementHeight(ctx, element, maxWidth);
+                element->bounds = Rect2Di(
+                        GetX() + 10,
+                        currentY,
+                        maxWidth,
+                        elementHeight
+                );
+
+                currentY += elementHeight;
+
+                // Add bottom spacing for specific elements
+                switch (element->type) {
+                    case MarkdownElementType::Header:
+                        currentY += style.headerMarginBottom[std::clamp(element->level - 1, 0, 5)];
+                        break;
+                    case MarkdownElementType::Paragraph:
+                        currentY += style.paragraphSpacing;
+                        break;
+                    default:
+                        break;
+                }
+
+                // Track element type for next iteration (skip LineBreak elements)
+                if (element->type != MarkdownElementType::LineBreak) {
+                    previousElementType = element->type;
+                }
+            }
+
+            contentHeight = currentY - GetY();
+        }
+
+        int CalculateElementHeight(IRenderContext* ctx, std::shared_ptr<MarkdownElement> element, int maxWidth) {
+            ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+
+            switch (element->type) {
+                case MarkdownElementType::Header: {
+                    int level = std::clamp(element->level - 1, 0, 5);
+                    ctx->SetFontSize(style.headerSizes[level]);
+                    int w, h;
+                    ctx->GetTextLineDimensions(element->text, w, h);
+                    return h + 10.0f;
+                }
+
+                case MarkdownElementType::Paragraph: {
+                    ctx->SetFontSize(style.fontSize);
+                    return CalculateWrappedTextHeight(ctx, element->text, maxWidth);
+                }
+
+                case MarkdownElementType::CodeBlock: {
+                    ctx->SetFontSize(style.codeFontSize);
+                    int lineCount = 1;
+                    for (char c : element->text) {
+                        if (c == '\n') lineCount++;
+                    }
+                    return lineCount * static_cast<float>(style.codeFontSize) * style.lineHeight * 1.2 +
+                           style.codeBlockPadding * 2;
+                }
+
+                case MarkdownElementType::Quote: {
+                    ctx->SetFontSize(style.fontSize);
+                    return CalculateWrappedTextHeight(ctx, element->text, maxWidth - style.quoteIndent) + 20;
+                }
+
+                case MarkdownElementType::ListItem: {
+                    ctx->SetFontSize(style.fontSize);
+                    return CalculateWrappedTextHeight(ctx, element->text, maxWidth - style.listIndent) +
+                           style.listItemSpacing;
+                }
+
+                case MarkdownElementType::HorizontalRule:
+                    return style.horizontalRuleHeight + 20;
+
+                case MarkdownElementType::LineBreak:
+                    return style.blockSpacing;
+
+                default:
+                    return 20;
+            }
+        }
+
+        int CalculateWrappedTextHeight(IRenderContext* ctx, const std::string& text, int maxWidth) {
+            if (text.empty()) return 0;
+
+            int w, h;
+            ctx->GetTextDimensions(text, maxWidth, 0, w, h);
+            return h;
+        }
+
+        Rect2Di GetAdjustedBounds(const Rect2Di& bounds) {
+            return Rect2Di(
+                    bounds.x,
+                    bounds.y - scrollOffset,
+                    bounds.width,
+                    bounds.height
+            );
+        }
+
+        Point2Di GetAdjustedPosition(const Rect2Di& bounds) {
+            return Point2Di(bounds.x, bounds.y - scrollOffset);
         }
 
         void RenderElement(IRenderContext* ctx, std::shared_ptr<MarkdownElement> element) {
+            // Skip if element is scrolled out of view
+            Rect2Di adjustedBounds = GetAdjustedBounds(element->bounds);
+            if (adjustedBounds.y + adjustedBounds.height < GetY() ||
+                adjustedBounds.y > GetY() + GetHeight()) {
+                return;
+            }
+            ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+
             switch (element->type) {
                 case MarkdownElementType::Header:
                     RenderHeader(ctx, element);
@@ -706,27 +929,29 @@ namespace UltraCanvas {
 
         void RenderCodeBlock(IRenderContext* ctx, std::shared_ptr<MarkdownElement> element) {
             Rect2Di adjustedBounds = GetAdjustedBounds(element->bounds);
-
             // Draw background
-            ctx->SetFillPaint(style.codeBlockBackgroundColor);
-            ctx->FillRoundedRectangle(adjustedBounds, style.codeBlockBorderRadius);
+            ctx->DrawFilledRectangle(adjustedBounds, style.codeBlockBackgroundColor, style.codeBlockBorderWidth, style.codeBlockBorderColor, 0);
 
-            // Draw border
-            ctx->SetStrokePaint(style.codeBlockBorderColor);
-            ctx->SetStrokeWidth(style.codeBlockBorderWidth);
-            ctx->DrawRoundedRectangle(adjustedBounds, style.codeBlockBorderRadius);
-
-            // Draw text
+            // Draw code text (temporarily disable markup for code)
+            ctx->SetTextIsMarkup(false);
+            ctx->SetFontFace(style.codeFont, FontWeight::Normal, FontSlant::Normal);
             ctx->SetFontSize(style.codeFontSize);
             ctx->SetTextPaint(style.codeTextColor);
 
-            Rect2Di textBounds = adjustedBounds;
-            textBounds.x += style.codeBlockPadding;
-            textBounds.y += style.codeBlockPadding;
-            textBounds.width -= style.codeBlockPadding * 2;
-            textBounds.height -= style.codeBlockPadding * 2;
+            Point2Di textPos(
+                    adjustedBounds.x + style.codeBlockPadding,
+                    adjustedBounds.y + style.codeBlockPadding
+            );
 
-            DrawTextWrapped(ctx, element->text, textBounds, 1.2f);
+            // Split into lines and render
+            std::istringstream stream(element->text);
+            std::string line;
+            int lineY = textPos.y;
+
+            while (std::getline(stream, line)) {
+                ctx->DrawText(line, textPos.x, lineY);
+                lineY += static_cast<float>(style.codeFontSize) * style.lineHeight * 1.2;
+            }
         }
 
         void RenderQuote(IRenderContext* ctx, std::shared_ptr<MarkdownElement> element) {
@@ -734,256 +959,204 @@ namespace UltraCanvas {
 
             // Draw background
             ctx->SetFillPaint(style.quoteBackgroundColor);
-            ctx->FillRectangle(adjustedBounds);
+            ctx->FillRectangle(adjustedBounds.x, adjustedBounds.y,
+                               adjustedBounds.width, adjustedBounds.height);
 
             // Draw left bar
-            Rect2Di barRect = adjustedBounds;
-            barRect.width = style.quoteBarWidth;
             ctx->SetFillPaint(style.quoteBarColor);
-            ctx->FillRectangle(barRect);
+            ctx->FillRectangle(adjustedBounds.x, adjustedBounds.y,
+                               static_cast<int>(style.quoteBarWidth), adjustedBounds.height);
 
             // Draw text
             ctx->SetFontSize(style.fontSize);
             ctx->SetTextPaint(style.textColor);
 
-            Rect2Di textBounds = adjustedBounds;
-            textBounds.x += style.quotePadding;
-            textBounds.y += style.quotePadding;
-            textBounds.width -= style.quotePadding * 2;
+            Rect2Di textBounds(
+                    adjustedBounds.x + style.quoteIndent,
+                    adjustedBounds.y + 10,
+                    adjustedBounds.width - style.quoteIndent,
+                    adjustedBounds.height - 20
+            );
 
             DrawTextWrapped(ctx, element->text, textBounds, style.lineHeight);
         }
 
         void RenderListItem(IRenderContext* ctx, std::shared_ptr<MarkdownElement> element) {
             Rect2Di adjustedBounds = GetAdjustedBounds(element->bounds);
-            Point2Di adjustedPosition = GetAdjustedPosition(element->bounds);
+
+            ctx->SetFontSize(style.fontSize);
+            ctx->SetTextPaint(style.textColor);
 
             // Draw bullet or number
-            ctx->SetFontSize(style.fontSize);
-            ctx->SetTextPaint(style.bulletColor);
+            Point2Di bulletPos(adjustedBounds.x, adjustedBounds.y);
 
             if (element->ordered) {
-                ctx->DrawText("1.", Point2Di(adjustedPosition.x - style.listIndent, adjustedPosition.y));
+                // Draw number (would need to track item index in real implementation)
+                ctx->DrawText("1.", bulletPos);
             } else {
-                ctx->DrawText(style.bulletCharacter, Point2Di(adjustedPosition.x - style.listIndent, adjustedPosition.y));
+                // Draw bullet
+                ctx->SetTextPaint(style.bulletColor);
+                ctx->DrawText(style.bulletCharacter, bulletPos);
             }
 
-            // Draw text
+            // Draw item text
             ctx->SetTextPaint(style.textColor);
-            DrawTextWrapped(ctx, element->text, adjustedBounds, style.lineHeight);
+            Rect2Di textBounds(
+                    adjustedBounds.x + style.listIndent,
+                    adjustedBounds.y,
+                    adjustedBounds.width - style.listIndent,
+                    adjustedBounds.height
+            );
+
+            DrawTextWrapped(ctx, element->text, textBounds, style.lineHeight);
         }
 
         void RenderHorizontalRule(IRenderContext* ctx, std::shared_ptr<MarkdownElement> element) {
             Rect2Di adjustedBounds = GetAdjustedBounds(element->bounds);
 
             ctx->SetStrokePaint(style.horizontalRuleColor);
-            ctx->SetStrokeWidth(style.horizontalRuleWidth);
+            ctx->SetStrokeWidth(style.horizontalRuleHeight);
             ctx->DrawLine(
-                    Point2Di(adjustedBounds.x, adjustedBounds.y + adjustedBounds.height / 2),
-                    Point2Di(adjustedBounds.x + adjustedBounds.width, adjustedBounds.y + adjustedBounds.height / 2)
+                    adjustedBounds.x,
+                    adjustedBounds.y + adjustedBounds.height / 2,
+                    adjustedBounds.x + adjustedBounds.width,
+                    adjustedBounds.y + adjustedBounds.height / 2
             );
+            ctx->Stroke();
         }
 
         void RenderLink(IRenderContext* ctx, std::shared_ptr<MarkdownElement> element) {
-            ctx->SetFontSize(style.fontSize);
-
-            // Determine link color
-            Color linkColor = style.linkColor;
-            if (std::find(visitedLinks.begin(), visitedLinks.end(), element->url) != visitedLinks.end()) {
-                linkColor = style.linkVisitedColor;
-            }
-            if (element == hoveredElement) {
-                linkColor = style.linkHoverColor;
-            }
-
-            ctx->SetTextPaint(linkColor);
-
             Point2Di position = GetAdjustedPosition(element->bounds);
+
+            bool isVisited = std::find(visitedLinks.begin(), visitedLinks.end(), element->url) != visitedLinks.end();
+            bool isHovered = (hoveredElement == element);
+
+            Color linkColor = isHovered ? style.linkHoverColor :
+                              (isVisited ? style.linkVisitedColor : style.linkColor);
+
+            ctx->SetFontSize(style.fontSize);
+            ctx->SetTextPaint(linkColor);
             ctx->DrawText(element->text, position);
 
-            // Draw underline if enabled
             if (style.linkUnderline) {
-                int textWidth = ctx->GetTextLineWidth(element->text);
-                ctx->SetStrokePaint(linkColor);
+                int w, h;
+                ctx->GetTextLineDimensions(element->text, w, h);
                 ctx->SetStrokeWidth(1.0f);
-                ctx->DrawLine(
-                        Point2Di(position.x, position.y + 2),
-                        Point2Di(position.x + textWidth, position.y + 2)
-                );
+                ctx->DrawLine(position.x, position.y + h,
+                              position.x + w, position.y + h, linkColor);
             }
         }
 
         void RenderText(IRenderContext* ctx, std::shared_ptr<MarkdownElement> element) {
+            Point2Di position = GetAdjustedPosition(element->bounds);
+
             ctx->SetFontSize(style.fontSize);
             ctx->SetTextPaint(style.textColor);
-
-            Point2Di position = GetAdjustedPosition(element->bounds);
             ctx->DrawText(element->text, position);
         }
 
-        // ===== HELPER FUNCTIONS =====
-        int CalculateTextHeight(const std::string& text, int width, float fontSize) {
-            // Simplified calculation - would need proper text measurement
-            IRenderContext* ctx = GetRenderContext();
-            if (!ctx) return fontSize * style.lineHeight;
-            int w, h;
-            ctx->SetFontSize(fontSize);
-            ctx->SetTextLineHeight(style.lineHeight);
-            ctx->GetTextDimensions(text, width, 0, w, h);
-            return h;
-        }
-
         void DrawTextWrapped(IRenderContext* ctx, const std::string& text, const Rect2Di& bounds, float lineHeight) {
-            ctx->SetTextLineHeight(lineHeight);
-            ctx->DrawTextInRect(text, bounds);
+            if (text.empty()) return;
+
+            ctx->DrawTextInRect(text, bounds.x, bounds.y, bounds.width, bounds.height);
         }
 
-        bool IsElementVisible(std::shared_ptr<MarkdownElement> element, const Rect2Di& viewBounds) {
-            Rect2Di adjustedBounds = GetAdjustedBounds(element->bounds);
-            return adjustedBounds.y + adjustedBounds.height >= viewBounds.y &&
-                   adjustedBounds.y <= viewBounds.y + viewBounds.height;
-        }
-
-        Point2Di GetAdjustedPosition(const Rect2Di& bounds) {
-            return Point2Di(bounds.x, bounds.y - verticalScrollOffset);
-        }
-
-        Rect2Di GetAdjustedBounds(const Rect2Di& bounds) {
-            return Rect2Di(bounds.x, bounds.y - verticalScrollOffset, bounds.width, bounds.height);
-        }
-
-        void DrawScrollbar(IRenderContext* ctx, const Rect2Di& bounds) {
-            int scrollbarX = bounds.x + bounds.width - style.scrollbarWidth;
-            int scrollbarHeight = bounds.height;
+        void DrawScrollbar(IRenderContext* ctx) {
+            int scrollbarWidth = 12;
+            int scrollbarX = GetX() + GetWidth() - scrollbarWidth - 4;
+            int scrollbarY = GetY() + 4;
+            int scrollbarHeight = GetHeight() - 8;
 
             // Draw track
-            Rect2Di trackRect(scrollbarX, bounds.y, style.scrollbarWidth, scrollbarHeight);
             ctx->SetFillPaint(style.scrollbarTrackColor);
-            ctx->FillRectangle(trackRect);
+            ctx->FillRectangle(scrollbarX, scrollbarY,
+                               scrollbarWidth, scrollbarHeight);
+
+            // Calculate thumb size and position
+            int visibleRatio = static_cast<float>(GetHeight()) / static_cast<float>(contentHeight);
+            int thumbHeight = scrollbarHeight * visibleRatio;
+            int maxScroll = contentHeight - GetHeight();
+            int thumbY = scrollbarY + (scrollOffset / maxScroll) * (scrollbarHeight - thumbHeight);
 
             // Draw thumb
-            int maxScroll = std::max(0, contentHeight - bounds.height);
-            int thumbHeight = std::max(20.0f, (static_cast<float>(bounds.height) / static_cast<float>(contentHeight)) * scrollbarHeight);
-            int thumbY = bounds.y + (static_cast<float>(verticalScrollOffset) / static_cast<float>(maxScroll)) * (scrollbarHeight - thumbHeight);
-
-            Rect2Di thumbRect(scrollbarX, thumbY, style.scrollbarWidth, thumbHeight);
             ctx->SetFillPaint(style.scrollbarColor);
-            ctx->FillRectangle(thumbRect);
+            ctx->FillRectangle(scrollbarX, thumbY, scrollbarWidth, thumbHeight);
+        }
+
+        // ===== EVENT HANDLING =====
+        bool OnEvent(const UCEvent& event) override {
+            if (!properties.Active || !properties.Visible) return false;
+
+            switch (event.type) {
+                case UCEventType::MouseWheel:
+                    return HandleMouseWheel(event);
+
+                case UCEventType::MouseDown:
+                    return HandleMouseDown(event);
+
+                case UCEventType::MouseMove:
+                    return HandleMouseMove(event);
+
+                default:
+                    return false;
+            }
+        }
+
+        bool HandleMouseWheel(const UCEvent& event) {
+            int delta = event.wheelDelta * 20;
+            int newOffset = scrollOffset - delta;
+            SetScrollOffset(newOffset);
+
+            if (onScrollChanged) {
+                onScrollChanged(scrollOffset);
+            }
+
+            return true;
         }
 
         bool HandleMouseDown(const UCEvent& event) {
-            if (event.button == UCMouseButton::Left) {
-                auto element = FindElementAtPosition(event.x, event.y);
-                if (element && element->clickable) {
-                    clickedElement = element;
-                    return true;
+            // Check if clicked on a link
+            for (auto& element : elements) {
+                if (element->clickable && element->bounds.Contains(event.x, event.y)) {
+                    if (element->type == MarkdownElementType::Link && onLinkClicked) {
+                        onLinkClicked(element->url);
+                        visitedLinks.push_back(element->url);
+                        RequestRedraw();
+                        return true;
+                    }
                 }
             }
+
             return false;
         }
 
         bool HandleMouseMove(const UCEvent& event) {
-            auto element = FindElementAtPosition(event.x, event.y);
-            if (element != hoveredElement) {
-                hoveredElement = element;
-                // Could trigger redraw for hover effects
-            }
-            return false;
-        }
+            std::shared_ptr<MarkdownElement> newHovered = nullptr;
 
-        bool HandleMouseUp(const UCEvent& event) {
-            if (event.button == UCMouseButton::Left && clickedElement) {
-                auto element = FindElementAtPosition(event.x, event.y);
-                if (element == clickedElement && element->type == MarkdownElementType::Link) {
-                    if (onLinkClicked) {
-                        onLinkClicked(element->url);
-                    }
-                    visitedLinks.push_back(element->url);
-                    return true;
-                }
-                clickedElement = nullptr;
-            }
-            return false;
-        }
-
-        bool HandleKeyDown(UCKeys key) {
-            if (!style.enableScrolling) return false;
-
-            switch (key) {
-                case UCKeys::Up:
-                    ScrollBy(-20.0f);
-                    return true;
-                case UCKeys::Down:
-                    ScrollBy(20.0f);
-                    return true;
-                case UCKeys::PageUp:
-                    ScrollBy(static_cast<int>(static_cast<float>(-GetHeight()) * 0.8f));
-                    return true;
-                case UCKeys::PageDown:
-                    ScrollBy(static_cast<int>(static_cast<float>(GetHeight()) * 0.8f));
-                    return true;
-                case UCKeys::Home:
-                    ScrollTo(0.0f);
-                    return true;
-                case UCKeys::End:
-                    ScrollTo(contentHeight);
-                    return true;
-                default:
+            // Find hovered element
+            for (auto& element : elements) {
+                if (element->clickable && element->bounds.Contains(event.x, event.y)) {
+                    newHovered = element;
                     break;
+                }
             }
+
+            if (newHovered != hoveredElement) {
+                hoveredElement = newHovered;
+                RequestRedraw();
+                return true;
+            }
+
             return false;
-        }
-
-        std::shared_ptr<MarkdownElement> FindElementAtPosition(int x, int y) {
-            y = y + verticalScrollOffset;
-
-            for (const auto& element : elements) {
-                if (element->bounds.Contains(x, y)) {
-                    return element;
-                }
-            }
-
-            return nullptr;
-        }
-
-        void CollectLinks(std::shared_ptr<MarkdownElement> element, std::vector<std::string>& links) const {
-            if (element->type == MarkdownElementType::Link && !element->url.empty()) {
-                links.push_back(element->url);
-            }
-
-            for (const auto& child : element->children) {
-                CollectLinks(child, links);
-            }
-        }
-
-        void ExtractPlainText(std::shared_ptr<MarkdownElement> element, std::string& result) const {
-            if (!element->text.empty()) {
-                result += element->text;
-                if (element->type == MarkdownElementType::Header ||
-                    element->type == MarkdownElementType::Paragraph) {
-                    result += "\n";
-                }
-            }
-
-            for (const auto& child : element->children) {
-                ExtractPlainText(child, result);
-            }
         }
     };
 
-// ===== FACTORY FUNCTIONS =====
+// ===== FACTORY FUNCTION =====
     inline std::shared_ptr<UltraCanvasMarkdownDisplay> CreateMarkdownDisplay(
-            const std::string& identifier, long id, long x, long y, long w, long h) {
-        return std::make_shared<UltraCanvasMarkdownDisplay>(identifier, id, x, y, w, h);
-    }
+            const std::string& identifier = "MarkdownDisplay",
+            long id = 0, long x = 0, long y = 0, long w = 400, long h = 300) {
 
-    inline std::shared_ptr<UltraCanvasMarkdownDisplay> CreateMarkdownViewer(
-            const std::string& identifier, long x, long y, long w, long h, const std::string& markdown = "") {
-        auto viewer = std::make_shared<UltraCanvasMarkdownDisplay>(identifier, 0, x, y, w, h);
-        if (!markdown.empty()) {
-            viewer->SetMarkdownText(markdown);
-        }
-        return viewer;
+        return std::make_shared<UltraCanvasMarkdownDisplay>(identifier, id, x, y, w, h);
     }
 
 } // namespace UltraCanvas
