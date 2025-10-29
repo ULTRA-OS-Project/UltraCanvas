@@ -433,7 +433,7 @@ namespace UltraCanvas {
         // Vertical scrollbar
         if (IsNeedVerticalScrollbar()) {
             int scrollbarX = bounds.x + bounds.width - 15;
-            int scrollbarHeight = bounds.height;
+            int scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
             int totalLines = static_cast<int>(lines.size());
             int visibleLines = maxVisibleLines;
 
@@ -460,7 +460,7 @@ namespace UltraCanvas {
 
             // Draw scrollbar thumb
             context->SetFillPaint(style.scrollbarColor);
-            context->FillRectangle(scrollbarX + 2, thumbY, 11, thumbHeight);
+            context->FillRectangle(scrollbarX + 2, thumbY + 2, 11, thumbHeight - 4);
         }
 
         // Horizontal scrollbar

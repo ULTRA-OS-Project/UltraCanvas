@@ -105,8 +105,11 @@ namespace UltraCanvas {
         float horizontalRuleHeight = 2.0f;
 
         // Scrollbar
+        int scrollbarWidth = 16;
         Color scrollbarColor = Color(180, 180, 180);
         Color scrollbarTrackColor = Color(240, 240, 240);
+        Color scrollbarPressedColor = Color(90, 90, 90);
+        Color scrollbarHoverColor = Color(120, 120, 120);
 
         static MarkdownStyle Default() {
             return MarkdownStyle();
@@ -602,9 +605,18 @@ namespace UltraCanvas {
 
         // Layout and rendering
         int contentHeight = 0;
-        int scrollOffset = 0;
+        int verticalScrollOffset = 0;
         bool needsReparse = true;
         bool needsRelayout = true;
+
+// Scrollbar interaction state
+        Rect2Di scrollbarTrackRect;
+        Rect2Di scrollbarThumbRect;
+        bool isHoveringScrollbar = false;
+        bool isHoveringThumb = false;
+        bool isDraggingThumb = false;
+        int dragStartY = 0;
+        int dragStartScrollOffset = 0;
 
         // Interaction state
         std::shared_ptr<MarkdownElement> hoveredElement;
@@ -653,14 +665,21 @@ namespace UltraCanvas {
         }
 
         // ===== SCROLLING =====
-        void SetScrollOffset(int offset) {
+        void ScrollTo(int offset) {
             int maxScroll = std::max(0, contentHeight - GetHeight());
-            scrollOffset = std::clamp(offset, 0, maxScroll);
+            verticalScrollOffset = std::clamp(offset, 0, maxScroll);
             RequestRedraw();
+            if (onScrollChanged) {
+                onScrollChanged(verticalScrollOffset);
+            }
+        }
+
+        void ScrollBy(int delta) {
+            ScrollTo(verticalScrollOffset + delta);
         }
 
         int GetScrollOffset() const {
-            return scrollOffset;
+            return verticalScrollOffset;
         }
 
         int GetContentHeight() const {
@@ -708,9 +727,6 @@ namespace UltraCanvas {
             ctx->SetClipRect(properties.x_pos, properties.y_pos,
                              properties.width_size, properties.height_size);
 
-            // Enable Pango markup for text rendering
-            ctx->SetTextIsMarkup(true);
-
             // Render elements
             for (auto& element : elements) {
                 if (element->visible) {
@@ -722,16 +738,20 @@ namespace UltraCanvas {
             ctx->ClearClipRect();
 
             // Draw scrollbar if needed
-            if (contentHeight > properties.height_size) {
+            auto bounds = GetBounds();
+            if (contentHeight > bounds.height) {
+                UpdateScrollbarGeometry(bounds);
                 DrawScrollbar(ctx);
             }
+
             ctx->PopState();
         }
 
     private:
         void PerformLayout(IRenderContext* ctx) {
             int currentY = GetY() + 10;
-            int maxWidth = GetWidth() - 20;
+            int maxWidth = GetWidth() - 20 - style.scrollbarWidth;
+
             MarkdownElementType previousElementType = MarkdownElementType::Unknown;
 
             for (auto& element : elements) {
@@ -854,14 +874,14 @@ namespace UltraCanvas {
         Rect2Di GetAdjustedBounds(const Rect2Di& bounds) {
             return Rect2Di(
                     bounds.x,
-                    bounds.y - scrollOffset,
+                    bounds.y - verticalScrollOffset,
                     bounds.width,
                     bounds.height
             );
         }
 
         Point2Di GetAdjustedPosition(const Rect2Di& bounds) {
-            return Point2Di(bounds.x, bounds.y - scrollOffset);
+            return Point2Di(bounds.x, bounds.y - verticalScrollOffset);
         }
 
         void RenderElement(IRenderContext* ctx, std::shared_ptr<MarkdownElement> element) {
@@ -872,6 +892,7 @@ namespace UltraCanvas {
                 return;
             }
             ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+            ctx->SetTextIsMarkup(true);
 
             switch (element->type) {
                 case MarkdownElementType::Header:
@@ -1061,26 +1082,157 @@ namespace UltraCanvas {
             ctx->DrawTextInRect(text, bounds.x, bounds.y, bounds.width, bounds.height);
         }
 
-        void DrawScrollbar(IRenderContext* ctx) {
-            int scrollbarWidth = 12;
-            int scrollbarX = GetX() + GetWidth() - scrollbarWidth - 4;
-            int scrollbarY = GetY() + 4;
-            int scrollbarHeight = GetHeight() - 8;
+        void UpdateScrollbarGeometry(const Rect2Di& bounds) {
+            if (contentHeight <= bounds.height) return;
 
-            // Draw track
-            ctx->SetFillPaint(style.scrollbarTrackColor);
-            ctx->FillRectangle(scrollbarX, scrollbarY,
-                               scrollbarWidth, scrollbarHeight);
+            // Calculate scrollbar track rectangle
+            scrollbarTrackRect = Rect2Di(
+                    bounds.x + bounds.width - style.scrollbarWidth,
+                    bounds.y,
+                    style.scrollbarWidth,
+                    bounds.height
+            );
 
             // Calculate thumb size and position
-            int visibleRatio = static_cast<float>(GetHeight()) / static_cast<float>(contentHeight);
-            int thumbHeight = scrollbarHeight * visibleRatio;
-            int maxScroll = contentHeight - GetHeight();
-            int thumbY = scrollbarY + (scrollOffset / maxScroll) * (scrollbarHeight - thumbHeight);
+            int maxScroll = std::max(0, contentHeight - bounds.height);
+            float visibleRatio = static_cast<float>(bounds.height) / static_cast<float>(contentHeight);
+            int thumbHeight = std::max(20, static_cast<int>(visibleRatio * bounds.height));
+
+            int availableTrackHeight = bounds.height - thumbHeight;
+            int thumbY = bounds.y;
+            if (maxScroll > 0) {
+                thumbY += static_cast<int>((static_cast<float>(verticalScrollOffset) / static_cast<float>(maxScroll)) * availableTrackHeight);
+            }
+
+            scrollbarThumbRect = Rect2Di(
+                    scrollbarTrackRect.x,
+                    thumbY,
+                    style.scrollbarWidth,
+                    thumbHeight
+            );
+        }
+
+        void DrawScrollbar(IRenderContext* ctx) {
+            // Draw track
+            ctx->SetFillPaint(style.scrollbarTrackColor);
+            ctx->FillRectangle(scrollbarTrackRect);
+
+            // Determine thumb color based on interaction state
+            Color thumbColor = style.scrollbarColor;
+            if (isDraggingThumb) {
+                thumbColor = style.scrollbarPressedColor;
+            } else if (isHoveringThumb) {
+                thumbColor = style.scrollbarHoverColor;
+            }
 
             // Draw thumb
-            ctx->SetFillPaint(style.scrollbarColor);
-            ctx->FillRectangle(scrollbarX, thumbY, scrollbarWidth, thumbHeight);
+            ctx->SetFillPaint(thumbColor);
+            ctx->FillRectangle(scrollbarThumbRect);
+        }
+
+// ===== EVENT HANDLERS =====
+        bool HandleMouseDown(const UCEvent& event) {
+            Point2Di mousePos(event.x, event.y);
+
+            // Check if clicking on scrollbar
+            if (contentHeight > GetHeight()) {
+                // Check if clicking on thumb
+                if (scrollbarThumbRect.Contains(mousePos)) {
+                    isDraggingThumb = true;
+                    dragStartY = event.y;
+                    dragStartScrollOffset = verticalScrollOffset;
+                    return true;
+                }
+
+                // Check if clicking on track (page up/down)
+                if (scrollbarTrackRect.Contains(mousePos)) {
+                    if (mousePos.y < scrollbarThumbRect.y) {
+                        // Clicked above thumb - page up
+                        ScrollBy(-GetHeight());
+                    } else if (mousePos.y > scrollbarThumbRect.y + scrollbarThumbRect.height) {
+                        // Clicked below thumb - page down
+                        ScrollBy(GetHeight());
+                    }
+                    return true;
+                }
+            }
+
+            // Check for link clicks
+            if (event.button == UCMouseButton::Left) {
+                auto element = FindElementAtPosition(event.x, event.y);
+                if (element && element->clickable) {
+                    clickedElement = element;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        bool HandleMouseMove(const UCEvent& event) {
+            Point2Di mousePos(event.x, event.y);
+
+            // Handle thumb dragging
+            if (isDraggingThumb) {
+                int deltaY = event.y - dragStartY;
+
+                // Calculate scroll offset based on drag distance
+                int maxScroll = std::max(0, contentHeight - GetHeight());
+                int availableTrackHeight = GetHeight() - scrollbarThumbRect.height;
+
+                if (availableTrackHeight > 0) {
+                    float scrollRatio = static_cast<float>(deltaY) / static_cast<float>(availableTrackHeight);
+                    int newScrollOffset = dragStartScrollOffset + static_cast<int>(scrollRatio * maxScroll);
+                    ScrollTo(newScrollOffset);
+                }
+
+                return true;
+            }
+
+            // Update hover states
+            bool wasHoveringThumb = isHoveringThumb;
+            isHoveringThumb = scrollbarThumbRect.Contains(mousePos);
+            isHoveringScrollbar = scrollbarTrackRect.Contains(mousePos);
+
+            // Update element hover for links
+            auto element = FindElementAtPosition(event.x, event.y);
+            if (element != hoveredElement) {
+                hoveredElement = element;
+                // Could trigger redraw for hover effects
+            }
+
+            // Return true if hover state changed to trigger redraw
+            return (wasHoveringThumb != isHoveringThumb);
+        }
+
+        bool HandleMouseUp(const UCEvent& event) {
+            bool wasHandled = false;
+
+            // End thumb dragging
+            if (isDraggingThumb) {
+                isDraggingThumb = false;
+                wasHandled = true;
+            }
+
+            // Handle link clicks
+            if (clickedElement && clickedElement->clickable) {
+                if (clickedElement == FindElementAtPosition(event.x, event.y)) {
+                    if (onLinkClicked) {
+                        onLinkClicked(clickedElement->url);
+                    }
+                    MarkLinkAsVisited(clickedElement->url);
+                }
+                clickedElement = nullptr;
+                wasHandled = true;
+            }
+
+            return wasHandled;
+        }
+
+        bool HandleMouseWheel(const UCEvent& event) {
+            ScrollBy(-event.wheelDelta * 10);
+
+            return true;
         }
 
         // ===== EVENT HANDLING =====
@@ -1094,60 +1246,39 @@ namespace UltraCanvas {
                 case UCEventType::MouseDown:
                     return HandleMouseDown(event);
 
+                case UCEventType::MouseUp:
+                    return HandleMouseUp(event);
+
                 case UCEventType::MouseMove:
-                    return HandleMouseMove(event);
+                    if (HandleMouseMove(event)) {
+                        RequestRedraw();
+                        return true;
+                    }
 
                 default:
                     return false;
             }
         }
 
-        bool HandleMouseWheel(const UCEvent& event) {
-            int delta = event.wheelDelta * 20;
-            int newOffset = scrollOffset - delta;
-            SetScrollOffset(newOffset);
-
-            if (onScrollChanged) {
-                onScrollChanged(scrollOffset);
-            }
-
-            return true;
-        }
-
-        bool HandleMouseDown(const UCEvent& event) {
-            // Check if clicked on a link
-            for (auto& element : elements) {
-                if (element->clickable && element->bounds.Contains(event.x, event.y)) {
-                    if (element->type == MarkdownElementType::Link && onLinkClicked) {
-                        onLinkClicked(element->url);
-                        visitedLinks.push_back(element->url);
-                        RequestRedraw();
-                        return true;
-                    }
+        std::shared_ptr<MarkdownElement> FindElementAtPosition(int x, int y) {
+            Point2Di mousePos(x, y);
+            for (const auto& element : elements) {
+                Rect2Di adjustedBounds = GetAdjustedBounds(element->bounds);
+                if (adjustedBounds.Contains(mousePos)) {
+                    return element;
                 }
             }
-
-            return false;
+            return nullptr;
         }
 
-        bool HandleMouseMove(const UCEvent& event) {
-            std::shared_ptr<MarkdownElement> newHovered = nullptr;
+        bool IsLinkVisited(const std::string& url) const {
+            return std::find(visitedLinks.begin(), visitedLinks.end(), url) != visitedLinks.end();
+        }
 
-            // Find hovered element
-            for (auto& element : elements) {
-                if (element->clickable && element->bounds.Contains(event.x, event.y)) {
-                    newHovered = element;
-                    break;
-                }
+        void MarkLinkAsVisited(const std::string& url) {
+            if (!IsLinkVisited(url)) {
+                visitedLinks.push_back(url);
             }
-
-            if (newHovered != hoveredElement) {
-                hoveredElement = newHovered;
-                RequestRedraw();
-                return true;
-            }
-
-            return false;
         }
     };
 
