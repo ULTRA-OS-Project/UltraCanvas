@@ -5,7 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
-#include "Plugins/Text/Markdown.h"
+#include "Plugins/Text/UltraCanvasMarkdown.h"
 //#include "UltraCanvasButton3Sections.h"
 #include "UltraCanvasFormulaEditor.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"

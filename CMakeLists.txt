@@ -141,6 +141,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/Plugins/Charts/UltraCanvasPopulationChart.cpp
         UltraCanvas/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         UltraCanvas/Plugins/Diagrams/UltraCanvasSankey.cpp
+        UltraCanvas/Plugins/Text/UltraCanvasMarkdown.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartElement.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartBasicTypes.cpp

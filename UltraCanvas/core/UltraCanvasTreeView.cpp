@@ -1,6 +1,7 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
 #include "UltraCanvasTreeView.h"
+#include "UltraCanvasApplication.h"
 #include <vector>
 #include <string>
 #include <memory>
@@ -311,19 +312,19 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::MouseDown:
-                HandleMouseDown(event);
+                return HandleMouseDown(event);
                 break;
             case UCEventType::MouseMove:
-                HandleMouseMove(event);
+                return HandleMouseMove(event);
                 break;
             case UCEventType::MouseUp:
-                HandleMouseUp(event);
+                return HandleMouseUp(event);
                 break;
             case UCEventType::MouseDoubleClick:
-                HandleMouseDoubleClick(event);
+                return HandleMouseDoubleClick(event);
                 break;
             case UCEventType::MouseWheel:
-                HandleMouseWheel(event);
+                return HandleMouseWheel(event);
                 break;
             case UCEventType::KeyDown:
                 HandleKeyDown(event);
@@ -535,7 +536,7 @@ namespace UltraCanvas {
             int thumbHeight = std::max(20, (GetHeight() * GetHeight()) / (GetHeight() + maxScrollY));
             int thumbY = GetY() + (scrollOffsetY * (GetHeight() - thumbHeight)) / maxScrollY;
 
-            ctx->DrawFilledRectangle(Rect2Di(scrollbarX + 2, thumbY, scrollbarWidth - 4, thumbHeight), Colors::LightGray);
+            ctx->DrawFilledRectangle(Rect2Di(scrollbarX + 2, thumbY, scrollbarWidth - 4, thumbHeight), Colors::Gray);
         }
     }
 
@@ -557,15 +558,16 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTreeView::HandleMouseDown(const UCEvent &event) {
-        if (!Contains(event.x, event.y)) return;
+    bool UltraCanvasTreeView::HandleMouseDown(const UCEvent &event) {
+        if (!Contains(event.x, event.y)) return false;
 
         lastMousePos = Point2Di(event.x, event.y);
 
         // Check if clicking on scrollbar
         if (hasVerticalScrollbar && event.x >= GetX() + GetWidth() - scrollbarWidth) {
             isDragging = true;
-            return;
+            UltraCanvasApplication::GetInstance()->CaptureMouse(this);
+            return true;
         }
 
         TreeNode* clickedNode = GetNodeAtY(event.y);
@@ -588,7 +590,7 @@ namespace UltraCanvas {
                 } else if (!clickedNode->IsExpanded() && onNodeCollapsed) {
                     onNodeCollapsed(clickedNode);
                 }
-                return;
+                return true;
             }
 
             // Regular node selection
@@ -599,17 +601,18 @@ namespace UltraCanvas {
             ClearSelection();
             focusedNode = nullptr;
         }
+        return true;
     }
 
-    void UltraCanvasTreeView::HandleMouseMove(const UCEvent &event) {
+    bool UltraCanvasTreeView::HandleMouseMove(const UCEvent &event) {
         if (isDragging && hasVerticalScrollbar) {
             // Handle scrollbar dragging
             float deltaY = event.y - lastMousePos.y;
-            float scrollRatio = deltaY / (GetHeight() - 20); // 20 = min thumb height
-            scrollOffsetY += (int)(scrollRatio * maxScrollY);
+            scrollOffsetY += deltaY;
             ClampScrollOffset();
             lastMousePos = Point2Di(event.x, event.y);
-            return;
+            RequestRedraw();
+            return true;
         }
 
         // Update hover state
@@ -619,22 +622,29 @@ namespace UltraCanvas {
             hoveredNode = newHovered;
             if (hoveredNode) hoveredNode->hovered = true;
             RequestRedraw();
+            return true;
         }
     }
 
-    void UltraCanvasTreeView::HandleMouseUp(const UCEvent &event) {
-        isDragging = false;
+    bool UltraCanvasTreeView::HandleMouseUp(const UCEvent &event) {
+        if (isDragging)  {
+            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
+            isDragging = false;
+            return true;
+        }
 
         // Handle right-click context menu
         if (event.x > 0) { // Assuming right-click has positive x
             TreeNode* rightClickedNode = GetNodeAtY(event.y);
             if (rightClickedNode && onNodeRightClicked) {
                 onNodeRightClicked(rightClickedNode);
+                return true;
             }
         }
+        return false;
     }
 
-    void UltraCanvasTreeView::HandleMouseDoubleClick(const UCEvent &event) {
+    bool UltraCanvasTreeView::HandleMouseDoubleClick(const UCEvent &event) {
         TreeNode* doubleClickedNode = GetNodeAtY(event.y);
         if (doubleClickedNode) {
             if (doubleClickedNode->HasChildren()) {
@@ -648,12 +658,15 @@ namespace UltraCanvas {
             if (showFirstChildOnExpand && doubleClickedNode->IsExpanded()) {
                 ExpandFirstChildNode(doubleClickedNode);
             }
+            return true;
         }
+        return false;
     }
 
-    void UltraCanvasTreeView::HandleMouseWheel(const UCEvent &event) {
+    bool UltraCanvasTreeView::HandleMouseWheel(const UCEvent &event) {
         int scrollAmount = event.wheelDelta * rowHeight * 3; // Scroll 3 rows per wheel notch
         ScrollBy(-scrollAmount);
+        return true;
     }
 
     void UltraCanvasTreeView::HandleKeyDown(const UCEvent &event) {

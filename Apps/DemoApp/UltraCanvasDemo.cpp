@@ -6,7 +6,7 @@
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasTextArea.h"
-#include "Plugins/Text/Markdown.h"
+#include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <iostream>
 #include <sstream>
 

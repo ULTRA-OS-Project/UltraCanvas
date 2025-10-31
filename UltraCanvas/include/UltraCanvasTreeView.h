@@ -235,11 +235,11 @@ private:
     void CollapseNodeRecursive(TreeNode* node);
     
     // ===== EVENT HANDLERS =====
-    void HandleMouseDown(const UCEvent& event);
-    void HandleMouseMove(const UCEvent& event);
-    void HandleMouseUp(const UCEvent& event);
-    void HandleMouseDoubleClick(const UCEvent& event);
-    void HandleMouseWheel(const UCEvent& event);
+    bool HandleMouseDown(const UCEvent& event);
+    bool HandleMouseMove(const UCEvent& event);
+    bool HandleMouseUp(const UCEvent& event);
+    bool HandleMouseDoubleClick(const UCEvent& event);
+    bool HandleMouseWheel(const UCEvent& event);
     void HandleKeyDown(const UCEvent& event);
     
     void NavigateUp();
