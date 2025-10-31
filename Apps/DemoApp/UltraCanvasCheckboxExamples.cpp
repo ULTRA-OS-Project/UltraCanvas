@@ -23,7 +23,7 @@ namespace UltraCanvas {
 
 // Helper function to create a section title
     std::shared_ptr<UltraCanvasLabel> CreateSectionTitle(long id, long x, long y, const std::string& text) {
-        auto title = std::make_shared<UltraCanvasLabel>("SectionTitle" + std::to_string(id), id, x, y, 300, 25);
+        auto title = std::make_shared<UltraCanvasLabel>("SectionTitle" + std::to_string(id), id, x, y, 600, 25);
         title->SetText(text);
         title->SetFontSize(14);
         title->SetFontWeight(FontWeight::Bold);

@@ -545,6 +545,10 @@ namespace UltraCanvas {
         return cairo;
     }
 
+    void LinuxRenderContext::SetTextWrap(UltraCanvas::TextWrap wrap) {
+        currentState.textStyle.wrap = wrap;
+    }
+
     void LinuxRenderContext::SetTextStyle(const TextStyle &style) {
         currentState.textStyle = style;
         SetCairoColor(style.textColor);

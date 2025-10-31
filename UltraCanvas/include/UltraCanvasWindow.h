@@ -89,7 +89,6 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowBase();
-        UltraCanvasWindowBase(const WindowConfig& config);
 
         virtual ~UltraCanvasWindowBase() { Destroy(); };
 
@@ -345,7 +344,7 @@ namespace UltraCanvas {
     namespace UltraCanvas {
         using UltraCanvasNativeWindow = UltraCanvasAndroidWindow;
     }
-#elif defined(__EMSCRIPTEN__)
+#elif defined(__WASM__)
     // Web/WASM
     #include "../OS/Web/UltraCanvasWebWindow.h"
     namespace UltraCanvas {

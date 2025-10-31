@@ -6,6 +6,8 @@
 
 #include "UltraCanvasUtils.h"
 #include <sstream>
+#include <fstream>
+#include <iostream>
 #include <string>
 
 namespace UltraCanvas {
@@ -349,4 +351,19 @@ namespace UltraCanvas {
         return ext;
     }
 
+    std::string LoadFile(const std::string& filePath) {
+        if (filePath.empty()) return "";
+
+        std::ifstream file(filePath);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open file: " << filePath << std::endl;
+            return "// Error: Could not load file: " + filePath;
+        }
+
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        file.close();
+
+        return buffer.str();
+    }
 }

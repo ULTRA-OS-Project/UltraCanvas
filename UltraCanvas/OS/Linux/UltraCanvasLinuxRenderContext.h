@@ -249,7 +249,6 @@ namespace UltraCanvas {
         void SetLineJoin(LineJoin join) override;
         void SetMiterLimit(float limit)  override;
         void SetLineDash(const std::vector<float>& pattern, float offset = 0) override;
-        void SetTextLineHeight(float height) override;
 
         // === Text Methods ===
         void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) override;
@@ -258,6 +257,8 @@ namespace UltraCanvas {
         void SetFontSlant(FontSlant fs) override;
         void SetTextAlignment(TextAlignment align) override;
         void SetTextIsMarkup(bool isMarkup) override;
+        void SetTextLineHeight(float height) override;
+        void SetTextWrap(TextWrap wrap) override;
 
         void SetAlpha(float alpha) override;
         float GetAlpha() const override;

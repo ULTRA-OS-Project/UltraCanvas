@@ -22,15 +22,6 @@ namespace UltraCanvas {
         SetWindow(this);
     }
 
-    UltraCanvasWindowBase::UltraCanvasWindowBase(const WindowConfig &config)
-            : UltraCanvasContainer("Window", 0, 0, 0, config.width, config.height),
-              config_(config) {
-        SetWindow(this);
-        if (!Create(config)) {
-            throw std::runtime_error("UltraCanvasWindow Create failed");
-        }
-    }
-
 // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
 
     void UltraCanvasWindowBase::SetFocusedElement(UltraCanvasUIElement* element) {

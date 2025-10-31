@@ -23,4 +23,5 @@ namespace UltraCanvas {
     std::vector<std::string> Split(const std::string& str, char delimiter);
     Color ParseColor(const std::string& colorStr);
     std::string GetFileExtension(const std::string& filePath);
+    std::string LoadFile(const std::string& filePath);
 }

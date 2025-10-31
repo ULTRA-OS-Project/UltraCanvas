@@ -240,9 +240,6 @@ namespace UltraCanvas {
         // Create text area for documentation
         auto markDownTextArea = std::make_shared<UltraCanvasMarkdownDisplay>("Documentation", 2000, 5, 5, 1190, 590);
         markDownTextArea->SetMarkdownText(content);
-        auto markdownStyle = MarkdownStyle();
-        markdownStyle.fontSize = 12;
-        markDownTextArea->SetStyle(markdownStyle);
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
             if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
@@ -295,6 +292,7 @@ namespace UltraCanvas {
         categoryTreeView->SetRowHeight(24);
         categoryTreeView->SetSelectionMode(TreeSelectionMode::Single);
         categoryTreeView->SetLineStyle(TreeLineStyle::Solid);
+        categoryTreeView->SetShowFirstChildOnExpand(true);
 
         // Create legend container below tree view
         legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 6, 5, treeViewHeight + 10, treeViewWidth, legendHeight);
@@ -719,15 +717,15 @@ namespace UltraCanvas {
         auto textDocBuilder = DemoCategoryBuilder(this, DemoCategory::TextDocuments);
 
         textDocBuilder.AddItem("markdown", "Markdown", "Markdown document rendering",
-                               ImplementationStatus::NotImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateMarkdownExamples(); });
 
-        textDocBuilder.AddItem("codeeditor", "Code Editor", "Syntax highlighting text editor",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreateCodeEditorExamples(); })
-                .AddVariant("codeeditor", "C++ Syntax")
-                .AddVariant("codeeditor", "Pascal Syntax")
-                .AddVariant("codeeditor", "COBOL Syntax");
+//        textDocBuilder.AddItem("codeeditor", "Code Editor", "Syntax highlighting text editor",
+//                               ImplementationStatus::PartiallyImplemented,
+//                               [this]() { return CreateCodeEditorExamples(); })
+//                .AddVariant("codeeditor", "C++ Syntax")
+//                .AddVariant("codeeditor", "Pascal Syntax")
+//                .AddVariant("codeeditor", "COBOL Syntax");
 
         textDocBuilder.AddItem("textdocuments", "Text Documents", "ODT, RTF, TeX document support",
                                ImplementationStatus::NotImplemented,
@@ -747,16 +745,16 @@ namespace UltraCanvas {
         auto toolsBuilder = DemoCategoryBuilder(this, DemoCategory::Tools);
 
         toolsBuilder.AddItem("qrcode", "QR code", "QR code scanner",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return CreateBitmapNotImplementedExamples(""); });
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateQRCodeExamples(); });
 
         toolsBuilder.AddItem("fileloader", "File Loader", "File Loader",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return CreateBitmapNotImplementedExamples(""); });
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateFileLoaderExamples(); });
 
         toolsBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return CreateBitmapNotImplementedExamples(""); });
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePixeLXExamples(); });
 
         std::cout << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;

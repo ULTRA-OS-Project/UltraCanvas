@@ -124,6 +124,7 @@ private:
     int textPadding;               // Padding around text
     bool showRootLines;            // Show lines for root level
     bool showExpandButtons;        // Show +/- buttons
+    bool showFirstChildOnExpand;   // auto open first child on expand node
     
     // Colors
     Color backgroundColor;       // Tree background color
@@ -177,7 +178,7 @@ public:
     void CollapseNode(TreeNode* node);
     void ExpandAll();
     void CollapseAll();
-    
+
     // ===== VISUAL PROPERTIES =====
     void SetRowHeight(int height) { rowHeight = height; UpdateScrollbars(); }
     int GetRowHeight() const { return rowHeight; }
@@ -193,7 +194,10 @@ public:
     
     void SetShowExpandButtons(bool show) { showExpandButtons = show; }
     bool GetShowExpandButtons() const { return showExpandButtons; }
-    
+
+    void SetShowFirstChildOnExpand(bool show) { showFirstChildOnExpand = show; }
+    bool GetShowFirstChildOnExpand() const { return showFirstChildOnExpand; }
+
     // ===== COLOR PROPERTIES =====
     void SetBackgroundColor(const Color &color) { backgroundColor = color; }
     void SetSelectionColor(const Color &color) { selectionColor = color; }
@@ -244,7 +248,8 @@ private:
     TreeNode* GetPreviousVisibleNode(TreeNode* current);
     TreeNode* GetNextVisibleNode(TreeNode* current);
     TreeNode* GetLastVisibleNode();
-    
+
+    void ExpandFirstChildNode(TreeNode *node);
     void BuildVisibleNodeList(TreeNode* node, std::vector<TreeNode*>& list);
 };
 

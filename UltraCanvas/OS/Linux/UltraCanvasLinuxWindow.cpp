@@ -24,8 +24,10 @@ namespace UltraCanvas {
             : xWindow(0)
             , cairoSurface(nullptr)
             , cairoContext(nullptr)
-            , UltraCanvasWindowBase(config) {
-
+            {
+        if (!Create(config)) {
+            throw std::runtime_error("UltraCanvasWindow Create failed");
+        }
         std::cout << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
     }
 

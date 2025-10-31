@@ -132,7 +132,7 @@ namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasLinuxApplicati
 #elif defined(__ANDROID__)
     #include "../OS/Android/UltraCanvasAndroidApplication.h"
     #define UltraCanvasNativeApplication UltraCanvasAndroidApplication
-#elif defined(__EMSCRIPTEN__)
+#elif defined(__WASM__)
     // Web/WASM
     #include "../OS/Web/UltraCanvasWebApplication.h"
     #define UltraCanvasNativeApplication UltraCanvasWebApplication

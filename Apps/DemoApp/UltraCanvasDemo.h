@@ -247,6 +247,10 @@ namespace UltraCanvas {
 //        std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();
 
+        std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreatePixeLXExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
+
         // ===== APPLICATION LIFECYCLE =====
         void Run();
         void Shutdown();

@@ -48,23 +48,23 @@ namespace UltraCanvas {
     struct MarkdownStyle {
         // Base text style
         std::string fontFamily = "Arial";
-        float fontSize = 12.0f;
+        float fontSize = 10.0f;
         Color textColor = Color(50, 50, 50);
         Color backgroundColor = Colors::White;
         float lineHeight = 1.2f;
 
         // Header styles
-        std::array<float, 6> headerSizes = {24.0f, 20.0f, 18.0f, 16.0f, 14.0f, 12.0f};
+        std::array<float, 6> headerSizes = {20.0f, 18.0f, 16.0f, 14.0f, 12.0f, 10.0f};
         std::array<Color, 6> headerColors = {
                 Color(20, 20, 20), Color(30, 30, 30), Color(40, 40, 40),
                 Color(50, 50, 50), Color(60, 60, 60), Color(70, 70, 70)
         };
-        std::array<float, 6> headerMarginTop = {10.0f, 9.0f, 8.0f, 7.0f, 6.0f, 5.0f};
+        std::array<float, 6> headerMarginTop = {9.0f, 8.0f, 7.0f, 6.0f, 5.0f, 3.0f};
         std::array<float, 6> headerMarginBottom = {6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
 
         // Code styling
         std::string codeFont = "Consolas";
-        float codeFontSize = 12.0f;
+        float codeFontSize = 10.0f;
         Color codeTextColor = Color(200, 50, 50);
         Color codeBackgroundColor = Color(245, 245, 245);
         Color codeBlockBackgroundColor = Color(248, 248, 248);
@@ -97,8 +97,8 @@ namespace UltraCanvas {
         float tablePadding = 8.0f;
 
         // Spacing
-        float paragraphSpacing = 12.0f;
-        float blockSpacing = 8.0f;
+        float paragraphSpacing = 6.0f;
+        float blockSpacing = 4.0f;
 
         // Horizontal rule
         Color horizontalRuleColor = Color(200, 200, 200);

@@ -41,7 +41,7 @@ cp -r OS/WASM/ /path/to/your/UltraCanvas/OS/
 Add after the other platform includes:
 
 ```cpp
-#elif defined(__EMSCRIPTEN__)
+#elif defined(__WASM__)
     // WASM Platform
     #include "../OS/WASM/UltraCanvasWASMApplication.h"
     #define UltraCanvasNativeApplication UltraCanvasWASMApplication
@@ -52,7 +52,7 @@ Add after the other platform includes:
 Add after the other platform includes:
 
 ```cpp
-#elif defined(__EMSCRIPTEN__)
+#elif defined(__WASM__)
     // WASM Platform
     #include "../OS/WASM/UltraCanvasWASMWindow.h"
     namespace UltraCanvas {

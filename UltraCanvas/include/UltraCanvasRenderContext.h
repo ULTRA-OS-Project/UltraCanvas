@@ -326,6 +326,7 @@ namespace UltraCanvas {
         virtual void SetFontWeight(FontWeight fw) = 0;
         virtual void SetFontSlant(FontSlant fs) = 0;
         virtual void SetTextLineHeight(float height) = 0;
+        virtual void SetTextWrap(TextWrap wrap) = 0;
 
         void SetFontStyle(const FontStyle& style) {
             SetFontFace(style.fontFamily, style.fontWeight, style.fontSlant);

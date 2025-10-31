@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "Plugins/Text/Markdown.h"
 //#include "UltraCanvasButton3Sections.h"
 #include "UltraCanvasFormulaEditor.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
@@ -226,59 +227,51 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarkdownExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("MarkdownExamples", 1900, 0, 0, 1000, 600);
+//        auto container = std::make_shared<UltraCanvasContainer>("MarkdownExamples", 1900, 0, 0, 1020, 780);
 
-        auto title = std::make_shared<UltraCanvasLabel>("MarkdownTitle", 1901, 10, 10, 300, 30);
-        title->SetText("Markdown Viewer Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("MarkDownText", 1201, 0, 0, 1026, 785);
+        text->SetMarkdownText(LoadFile("assets/MarkdownExample.md"));
+        MarkdownStyle style = MarkdownStyle::Default();
+        style.fontSize = 12;
+        text->SetStyle(style);
+//        container->AddChild(text);
 
-        auto placeholder = std::make_shared<UltraCanvasLabel>("MarkdownPlaceholder", 1902, 20, 50, 800, 400);
-        placeholder->SetText("Markdown Viewer - Not Implemented\n\nPlanned Features:\n• CommonMark specification support\n• GitHub Flavored Markdown\n• Syntax highlighting for code blocks\n• Table rendering\n• Math formula support (KaTeX)\n• Mermaid diagram integration\n• Live preview mode\n• Custom CSS styling\n• Export to HTML/PDF\n• Plugin system for extensions");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
+        return text;
     }
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCodeEditorExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("CodeEditorExamples", 2000, 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("CodeEditorTitle", 2001, 10, 10, 300, 30);
-        title->SetText("Code Editor Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        // Formula Editor (partially implemented)
-        auto formulaEditor = std::make_shared<UltraCanvasFormulaEditor>("FormulaEditor", 2002, 20, 50, 600, 100);
-        ProceduralFormula f;
-        f.formula = "SUM(A1:A10) + AVERAGE(B1:B10) * 2.5";
-        formulaEditor->SetFormula(f);
-//        formulaEditor->SetBackgroundColor(Color(248, 248, 248, 255));
-        container->AddChild(formulaEditor);
-
-        auto formulaLabel = std::make_shared<UltraCanvasLabel>("FormulaLabel", 2003, 20, 160, 600, 20);
-        formulaLabel->SetText("Formula Editor (Partially Implemented) - Supports mathematical expressions");
-        formulaLabel->SetFontSize(12);
-        container->AddChild(formulaLabel);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("CodeEditorPlaceholder", 2004, 20, 200, 800, 300);
-        placeholder->SetText("Code Editor Component - Partially Implemented\n\nCurrent Features:\n• Formula/Expression editing\n• Basic syntax validation\n\nPlanned Features:\n• C++ syntax highlighting\n• Pascal/Delphi support\n• COBOL syntax support\n• Line numbers and folding\n• Auto-completion\n• Error markers and tooltips\n• Find and replace\n• Multiple cursors\n• Code formatting\n• Plugin architecture for languagesRules");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
-    }
+//    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCodeEditorExamples() {
+//        auto container = std::make_shared<UltraCanvasContainer>("CodeEditorExamples", 2000, 0, 0, 1000, 600);
+//
+//        auto title = std::make_shared<UltraCanvasLabel>("CodeEditorTitle", 2001, 10, 10, 300, 30);
+//        title->SetText("Code Editor Examples");
+//        title->SetFontSize(16);
+//        title->SetFontWeight(FontWeight::Bold);
+//        container->AddChild(title);
+//
+//        // Formula Editor (partially implemented)
+//        auto formulaEditor = std::make_shared<UltraCanvasFormulaEditor>("FormulaEditor", 2002, 20, 50, 600, 100);
+//        ProceduralFormula f;
+//        f.formula = "SUM(A1:A10) + AVERAGE(B1:B10) * 2.5";
+//        formulaEditor->SetFormula(f);
+////        formulaEditor->SetBackgroundColor(Color(248, 248, 248, 255));
+//        container->AddChild(formulaEditor);
+//
+//        auto formulaLabel = std::make_shared<UltraCanvasLabel>("FormulaLabel", 2003, 20, 160, 600, 20);
+//        formulaLabel->SetText("Formula Editor (Partially Implemented) - Supports mathematical expressions");
+//        formulaLabel->SetFontSize(12);
+//        container->AddChild(formulaLabel);
+//
+//        auto placeholder = std::make_shared<UltraCanvasLabel>("CodeEditorPlaceholder", 2004, 20, 200, 800, 300);
+//        placeholder->SetText("Code Editor Component - Partially Implemented\n\nCurrent Features:\n• Formula/Expression editing\n• Basic syntax validation\n\nPlanned Features:\n• C++ syntax highlighting\n• Pascal/Delphi support\n• COBOL syntax support\n• Line numbers and folding\n• Auto-completion\n• Error markers and tooltips\n• Find and replace\n• Multiple cursors\n• Code formatting\n• Plugin architecture for languagesRules");
+//        placeholder->SetAlignment(TextAlignment::Left);
+//        placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
+////        placeholder->SetBorderStyle(BorderStyle::Dashed);
+//        placeholder->SetBorderWidth(2.0f);
+//        placeholder->SetPadding(20.0f);
+//        container->AddChild(placeholder);
+//
+//        return container;
+//    }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAudioExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("AudioExamples", 2100, 0, 0, 1000, 600);
@@ -363,4 +356,104 @@ namespace UltraCanvas {
 
         return container;
     }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFileLoaderExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("FileLoaderExamples", 1200, 0, 0, 1020, 780);
+
+        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("FileLoaderExamplesText", 1201, 10, 10, 1000, 750);
+        text->SetMarkdownText("**FileLoader** is a comprehensive, cross-platform file handling system that eliminates the complexity of working with diverse file formats. Whether you're building desktop applications, content management systems, or media processing tools, FileLoader provides a single, unified API for loading, saving, and converting files across dozens of formats.\n"
+                               "\n"
+                               "-----------------\n"
+                               "\n"
+                               "**Purpose**\n"
+                               "\n"
+                               "Stop wrestling with dozens of different libraries and APIs for each file format. FileLoader gives you:\n"
+                               "\n"
+                               "-   **One API for Everything** - Load images, audio, video, documents, and 3D models through a single, consistent interface\n"
+                               "-   **Effortless Format Conversion** - Convert between compatible formats with a single function call\n"
+                               "-   **Built-in Security** - Automatic malware and virus scanning protects your users\n"
+                               "-   **Cross-Platform Compatibility** - Same code works on Windows, Linux, and macOS\n"
+                               "\n"
+                               "**Supported Formats**\n"
+                               "\n"
+                               "**Images:** PNG, JPEG, WebP, AVIF, HEIC, GIF, BMP, TIFF, SVG, PSD, HDR, TGA, RAW formats\n"
+                               "**Audio:** MP3, FLAC, WAV, OGG, AAC, M4A, OPUS, WMA\n"
+                               "**Video:** MP4, AVI, MKV, WebM, MOV, FLV, WMV\n"
+                               "**Documents:** PDF, DOCX, ODT, RTF, TXT, Markdown\n"
+                               "**3D Models:** OBJ, FBX, GLTF, STL, 3DS, PLY, COLLADA\n"
+                               "**Archives:** ZIP, RAR, 7Z, TAR, GZ, BZ2");
+        MarkdownStyle style = MarkdownStyle::Default();
+        style.fontSize = 12;
+        text->SetStyle(style);
+        container->AddChild(text);
+
+        return container;
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePixeLXExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("Examples", 1200, 0, 0, 1020, 780);
+
+        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("ExamplesText", 1201, 10, 10, 1000, 750);
+        text->SetMarkdownText("###PixelFX -- Professional Bitmap Processing for UltraCanvas\n"
+                              "-----------------------\n"
+                              "\n"
+                              "**Transform pixels into perfection with industrial-strength image processing**\n"
+                              "\n"
+                              "PixelFX is UltraCanvas's comprehensive bitmap manipulation and analytics engine, delivering professional-grade image processing capabilities to any application. Built on proven open-source foundations and wrapped in an intuitive API, PixelFX eliminates the complexity of bitmap operations while providing enterprise-level performance.\n"
+                              "\n"
+                              "**Core Capabilities**\n"
+                              "\n"
+                              "**300+ Operations Across 14 Categories:**\n"
+                              "-   **Arithmetic & Mathematical** -- Pixel-perfect calculations, trigonometry, statistics, and complex number operations\n"
+                              "-   **Color Space Mastery** -- Seamless conversions between RGB, sRGB, HSV, Lab, CMYK, XYZ, and specialized color spaces\n"
+                              "-   **Format Flexibility** -- Cast, scale, and transform between any image format or bit depth\n"
+                              "-   **Advanced Filtering** -- Convolution, edge detection, blur, sharpen, and custom kernel operations\n"
+                              "-   **Histogram Intelligence** -- Analysis, equalization, matching, and adaptive processing\n"
+                              "-   **Morphological Processing** -- Erosion, dilation, opening, closing, and rank filters\n"
+                              "-   **Frequency Domain** -- FFT transforms and frequency-based filtering\n"
+                              "-   **Geometric Transforms** -- Resize, rotate, affine, and perspective corrections\n"
+                              "-   **Drawing Operations** -- Shapes, lines, text, and flood fill with anti-aliasing\n"
+                              "-   **Statistical Analysis** -- Min/max detection, deviation, profiles, and measurements");
+        MarkdownStyle style = MarkdownStyle::Default();
+        style.fontSize = 12;
+        text->SetStyle(style);
+        container->AddChild(text);
+
+        return container;
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateQRCodeExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("QRCodeExamples", 1201, 0, 0, 1020, 780);
+
+        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("QRCodeExamplesText", 1201, 10, 10, 1000, 750);
+        text->SetMarkdownText("###UltraCanvas QR Module -- Seamless Code Integration Across All Platforms\n"
+                              "--------------------------\n"
+                              "\n"
+                              "**Scan. Generate. Integrate. Anywhere.**\n"
+                              "\n"
+                              "The **UltraCanvas QR Module** brings professional QR code capabilities directly into your cross-platform applications with zero platform-specific headaches. Whether you're building inventory systems, contactless payment solutions, event ticketing, or authentication workflows, this module delivers enterprise-grade QR functionality through UltraCanvas's signature unified API.\n"
+                              "\n"
+                              "What It Does\n"
+                              "\n"
+                              "**QR Code Generation**\n"
+                              "\n"
+                              "-   Create customized QR codes with configurable error correction levels\n"
+                              "-   Support for URLs, vCards, WiFi credentials, plain text, and custom data formats\n"
+                              "-   Real-time preview with adjustable size, margin, and styling options\n"
+                              "-   Export to multiple formats: PNG, SVG, PDF, or direct canvas rendering\n"
+                              "\n"
+                              "**QR Code Scanning**\n"
+                              "\n"
+                              "-   High-speed camera integration with automatic focus and frame detection\n"
+                              "-   Multi-code detection -- scan multiple QR codes simultaneously\n"
+                              "-   Works with webcams, USB cameras, and built-in device cameras\n"
+                              "-   Robust decoding even with damaged, rotated, or partially obscured codes");
+        MarkdownStyle style = MarkdownStyle::Default();
+        style.fontSize = 12;
+        text->SetStyle(style);
+        container->AddChild(text);
+
+        return container;
+    }
+
 } // namespace UltraCanvas

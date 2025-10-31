@@ -332,6 +332,7 @@ namespace UltraCanvas {
             // Draw text
             if (!text.empty()) {
                 // Draw shadow if enabled
+                ctx->SetTextWrap(style.wordWrap ? TextWrap::WrapWordChar : TextWrap::WrapNone);
                 if (style.hasShadow) {
                     ctx->SetTextPaint(style.shadowColor);
                     ctx->SetFontStyle(style.fontStyle);

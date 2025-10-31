@@ -141,6 +141,7 @@ namespace UltraCanvas {
         textPadding = 8;
         showRootLines = true;
         showExpandButtons = true;
+        showFirstChildOnExpand = false;
 
         // Color defaults
         backgroundColor = Colors::White;      // White
@@ -577,8 +578,13 @@ namespace UltraCanvas {
                 clickedNode->Toggle();
                 UpdateScrollbars();
 
-                if (clickedNode->IsExpanded() && onNodeExpanded) {
-                    onNodeExpanded(clickedNode);
+                if (clickedNode->IsExpanded()) {
+                    if (onNodeExpanded) {
+                        onNodeExpanded(clickedNode);
+                    }
+                    if (showFirstChildOnExpand) {
+                        ExpandFirstChildNode(clickedNode);
+                    }
                 } else if (!clickedNode->IsExpanded() && onNodeCollapsed) {
                     onNodeCollapsed(clickedNode);
                 }
@@ -639,6 +645,9 @@ namespace UltraCanvas {
             if (onNodeDoubleClicked) {
                 onNodeDoubleClicked(doubleClickedNode);
             }
+            if (showFirstChildOnExpand && doubleClickedNode->IsExpanded()) {
+                ExpandFirstChildNode(doubleClickedNode);
+            }
         }
     }
 
@@ -682,6 +691,10 @@ namespace UltraCanvas {
                 if (onNodeDoubleClicked) {
                     onNodeDoubleClicked(focusedNode);
                 }
+                if (showFirstChildOnExpand && focusedNode->IsExpanded()) {
+                    ExpandFirstChildNode(focusedNode);
+                }
+
                 break;
             case 32: // Space
                 SelectNode(focusedNode, event.ctrl && selectionMode == TreeSelectionMode::Multiple);
@@ -781,5 +794,10 @@ namespace UltraCanvas {
                 BuildVisibleNodeList(child.get(), list);
             }
         }
+    }
+
+    void UltraCanvasTreeView::ExpandFirstChildNode(TreeNode *node) {
+        if (!node || !node->HasChildren()) return;
+        SelectNode(node->FirstChild(), false);
     }
 }

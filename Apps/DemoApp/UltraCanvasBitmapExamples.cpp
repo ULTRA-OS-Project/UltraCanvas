@@ -124,7 +124,7 @@ namespace UltraCanvas {
         scaleModeLabel->SetFontSize(12);
         propsPanel->AddChild(scaleModeLabel);
 
-        auto scaleModeDropdown = std::make_shared<UltraCanvasDropdown>("ScaleModeDropdown", 1523, 100, 215, 150, 25);
+        auto scaleModeDropdown = std::make_shared<UltraCanvasDropdown>("ScaleModeDropdown", 1523, 110, 215, 150, 25);
         scaleModeDropdown->AddItem("No Scale");
         scaleModeDropdown->AddItem("Stretch");
         scaleModeDropdown->AddItem("Uniform");
@@ -150,27 +150,27 @@ namespace UltraCanvas {
         container->AddChild(propsPanel);
 
         // Load Different PNG Examples
-        auto examplesLabel = std::make_shared<UltraCanvasLabel>("ExamplesLabel", 1524, 10, 480, 200, 20);
+        auto examplesLabel = std::make_shared<UltraCanvasLabel>("ExamplesLabel", 1524, 10, 495, 200, 20);
         examplesLabel->SetText("PNG Examples:");
         examplesLabel->SetFontSize(12);
         examplesLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(examplesLabel);
 
-        auto btnIcon = std::make_shared<UltraCanvasButton>("BtnIcon", 1525, 10, 505, 100, 30);
+        auto btnIcon = std::make_shared<UltraCanvasButton>("BtnIcon", 1525, 10, 520, 100, 30);
         btnIcon->SetText("Load Icon");
         btnIcon->onClick = [pngImage]() {
             pngImage->LoadFromFile("assets/images/png_68.png");
         };
         container->AddChild(btnIcon);
 
-        auto btnLogo = std::make_shared<UltraCanvasButton>("BtnLogo", 1526, 120, 505, 100, 30);
+        auto btnLogo = std::make_shared<UltraCanvasButton>("BtnLogo", 1526, 120, 520, 100, 30);
         btnLogo->SetText("Load Logo");
         btnLogo->onClick = [pngImage]() {
             pngImage->LoadFromFile("assets/images/logo_transparent.png");
         };
         container->AddChild(btnLogo);
 
-        auto btnScreenshot = std::make_shared<UltraCanvasButton>("BtnScreenshot", 1527, 230, 505, 150, 30);
+        auto btnScreenshot = std::make_shared<UltraCanvasButton>("BtnScreenshot", 1527, 230, 520, 150, 30);
         btnScreenshot->SetText("Load Screenshot");
         btnScreenshot->onClick = [pngImage]() {
             pngImage->LoadFromFile("assets/images/screenshot.png");

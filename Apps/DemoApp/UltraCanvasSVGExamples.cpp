@@ -299,7 +299,7 @@ namespace UltraCanvas {
         // Try to load from file, fallback to inline SVG if file not found
         svgElement4->LoadFromFile("assets/photo-camera.svg");
         // Create demo handler for click interaction
-        auto demoHandler4 = std::make_shared<SVGDemoHandler>(svgElement3, "assets/photo-camera.svg");
+        auto demoHandler4 = std::make_shared<SVGDemoHandler>(svgElement4, "assets/photo-camera.svg");
 
         // Set click handler on the SVG element
         svgElement4->SetEventCallback([demoHandler4, svgContainer4](const UCEvent& event) {
