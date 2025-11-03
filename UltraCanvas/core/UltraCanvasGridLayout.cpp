@@ -224,35 +224,63 @@ void UltraCanvasGridLayout::CalculateRowHeights(float availableHeight) {
     int rowCount = static_cast<int>(rowDefinitions.size());
     computedRowHeights.clear();
     computedRowHeights.resize(rowCount, 0);
-    
-    // Calculate fixed and percent sizes first
-    float usedHeight = GetFixedAndPercentSize(rowDefinitions, availableHeight);
-    float remainingHeight = availableHeight - usedHeight;
-    
-    // Distribute remaining space to Star-sized rows
-    float totalStarWeight = GetTotalStarWeight(rowDefinitions);
-    float starUnit = (totalStarWeight > 0 && remainingHeight > 0) ? remainingHeight / totalStarWeight : 0;
-    
-    // Calculate each row height
-    for (int i = 0; i < rowCount; ++i) {
-        const auto& def = rowDefinitions[i];
-        float contentHeight = 0;
-        
-        // Find maximum content height in this row
-        for (const auto& item : items) {
-            if (item->GetRow() == i && item->GetRowSpan() == 1 && item->IsVisible()) {
-                contentHeight = std::max(contentHeight, item->GetPreferredHeight());
+
+    // First pass: calculate content sizes for auto rows
+    std::vector<float> contentHeights(rowCount, 0);
+    for (const auto& item : items) {
+        if (item->GetRowSpan() == 1 && item->IsVisible()) {
+            int row = item->GetRow();
+            if (row >= 0 && row < rowCount) {
+                float itemHeight = item->GetPreferredHeight();
+                // If preferred height is 0 and element exists, use element height
+                if (itemHeight == 0 && item->GetElement()) {
+                    itemHeight = static_cast<float>(item->GetElement()->GetHeight());
+                }
+                contentHeights[row] = std::max(contentHeights[row], itemHeight);
             }
         }
-        
-        computedRowHeights[i] = CalculateSize(def, availableHeight, contentHeight);
-        
+    }
+
+    // Calculate fixed and percent sizes first
+    float usedHeight = 0;
+    int autoCount = 0;
+    float totalStarWeight = 0;
+
+    for (int i = 0; i < rowCount; ++i) {
+        const auto& def = rowDefinitions[i];
+
+        if (def.sizeMode == GridSizeMode::Fixed) {
+            computedRowHeights[i] = def.size;
+            usedHeight += def.size;
+        } else if (def.sizeMode == GridSizeMode::Percent) {
+            computedRowHeights[i] = availableHeight * (def.size / 100.0f);
+            usedHeight += computedRowHeights[i];
+        } else if (def.sizeMode == GridSizeMode::Auto) {
+            // Use content size, with minimum of 20 if no content
+            computedRowHeights[i] = std::max(contentHeights[i], 20.0f);
+            usedHeight += computedRowHeights[i];
+            autoCount++;
+        } else if (def.sizeMode == GridSizeMode::Star) {
+            totalStarWeight += def.size;
+        }
+
+        // Apply min/max constraints
+        computedRowHeights[i] = std::clamp(computedRowHeights[i], def.minSize, def.maxSize);
+    }
+
+    // Distribute remaining space to Star-sized rows
+    float remainingHeight = availableHeight - usedHeight;
+    float starUnit = (totalStarWeight > 0 && remainingHeight > 0) ?
+                     remainingHeight / totalStarWeight : 0;
+
+    for (int i = 0; i < rowCount; ++i) {
+        const auto& def = rowDefinitions[i];
+
         if (def.sizeMode == GridSizeMode::Star) {
             computedRowHeights[i] = starUnit * def.size;
+            // Apply min/max constraints
+            computedRowHeights[i] = std::clamp(computedRowHeights[i], def.minSize, def.maxSize);
         }
-        
-        // Clamp to min/max
-        computedRowHeights[i] = std::clamp(computedRowHeights[i], def.minSize, def.maxSize);
     }
 }
 
@@ -260,92 +288,141 @@ void UltraCanvasGridLayout::CalculateColumnWidths(float availableWidth) {
     int columnCount = static_cast<int>(columnDefinitions.size());
     computedColumnWidths.clear();
     computedColumnWidths.resize(columnCount, 0);
-    
-    // Calculate fixed and percent sizes first
-    float usedWidth = GetFixedAndPercentSize(columnDefinitions, availableWidth);
-    float remainingWidth = availableWidth - usedWidth;
-    
-    // Distribute remaining space to Star-sized columns
-    float totalStarWeight = GetTotalStarWeight(columnDefinitions);
-    float starUnit = (totalStarWeight > 0 && remainingWidth > 0) ? remainingWidth / totalStarWeight : 0;
-    
-    // Calculate each column width
-    for (int i = 0; i < columnCount; ++i) {
-        const auto& def = columnDefinitions[i];
-        float contentWidth = 0;
-        
-        // Find maximum content width in this column
-        for (const auto& item : items) {
-            if (item->GetColumn() == i && item->GetColumnSpan() == 1 && item->IsVisible()) {
-                contentWidth = std::max(contentWidth, item->GetPreferredWidth());
+
+    // First pass: calculate content sizes for auto columns
+    std::vector<float> contentWidths(columnCount, 0);
+    for (const auto& item : items) {
+        if (item->GetColumnSpan() == 1 && item->IsVisible()) {
+            int column = item->GetColumn();
+            if (column >= 0 && column < columnCount) {
+                float itemWidth = item->GetPreferredWidth();
+                // If preferred width is 0 and element exists, use element width
+                if (itemWidth == 0 && item->GetElement()) {
+                    itemWidth = static_cast<float>(item->GetElement()->GetWidth());
+                }
+                contentWidths[column] = std::max(contentWidths[column], itemWidth);
             }
         }
-        
-        computedColumnWidths[i] = CalculateSize(def, availableWidth, contentWidth);
-        
+    }
+
+    // Calculate fixed and percent sizes first
+    float usedWidth = 0;
+    int autoCount = 0;
+    float totalStarWeight = 0;
+
+    for (int i = 0; i < columnCount; ++i) {
+        const auto& def = columnDefinitions[i];
+
+        if (def.sizeMode == GridSizeMode::Fixed) {
+            computedColumnWidths[i] = def.size;
+            usedWidth += def.size;
+        } else if (def.sizeMode == GridSizeMode::Percent) {
+            computedColumnWidths[i] = availableWidth * (def.size / 100.0f);
+            usedWidth += computedColumnWidths[i];
+        } else if (def.sizeMode == GridSizeMode::Auto) {
+            // Use content size, with minimum of 50 if no content
+            computedColumnWidths[i] = std::max(contentWidths[i], 50.0f);
+            usedWidth += computedColumnWidths[i];
+            autoCount++;
+        } else if (def.sizeMode == GridSizeMode::Star) {
+            totalStarWeight += def.size;
+        }
+
+        // Apply min/max constraints
+        computedColumnWidths[i] = std::clamp(computedColumnWidths[i], def.minSize, def.maxSize);
+    }
+
+    // Distribute remaining space to Star-sized columns
+    float remainingWidth = availableWidth - usedWidth;
+    float starUnit = (totalStarWeight > 0 && remainingWidth > 0) ?
+                     remainingWidth / totalStarWeight : 0;
+
+    for (int i = 0; i < columnCount; ++i) {
+        const auto& def = columnDefinitions[i];
+
         if (def.sizeMode == GridSizeMode::Star) {
             computedColumnWidths[i] = starUnit * def.size;
+            // Apply min/max constraints
+            computedColumnWidths[i] = std::clamp(computedColumnWidths[i], def.minSize, def.maxSize);
         }
-        
-        // Clamp to min/max
-        computedColumnWidths[i] = std::clamp(computedColumnWidths[i], def.minSize, def.maxSize);
     }
 }
 
 void UltraCanvasGridLayout::PositionItems() {
-    for (auto& item : items) {
+    for (auto &item: items) {
         if (!item->IsVisible()) continue;
-        
+
         Rect2Df cellBounds = GetCellBounds(item->GetRow(), item->GetColumn(),
-                                          item->GetRowSpan(), item->GetColumnSpan());
-        
-        // Calculate item size based on alignment and size mode
-        float itemWidth = cellBounds.width;
-        float itemHeight = cellBounds.height;
-        float itemX = cellBounds.x;
-        float itemY = cellBounds.y;
-        
-        // Apply size constraints
+                                           item->GetRowSpan(), item->GetColumnSpan());
+
+        // Calculate item size based on size mode
+        float itemWidth = 0;
+        float itemHeight = 0;
+
+        // Determine width based on mode
         if (item->GetWidthMode() == SizeMode::Fixed) {
             itemWidth = item->GetFixedWidth();
         } else if (item->GetWidthMode() == SizeMode::Auto) {
             itemWidth = std::min(item->GetPreferredWidth(), cellBounds.width);
+        } else if (item->GetWidthMode() == SizeMode::Fill) {
+            itemWidth = cellBounds.width;
+        } else {
+            // Default to preferred width
+            itemWidth = std::min(item->GetPreferredWidth(), cellBounds.width);
         }
-        
+
+        // Determine height based on mode
         if (item->GetHeightMode() == SizeMode::Fixed) {
             itemHeight = item->GetFixedHeight();
         } else if (item->GetHeightMode() == SizeMode::Auto) {
             itemHeight = std::min(item->GetPreferredHeight(), cellBounds.height);
+        } else if (item->GetHeightMode() == SizeMode::Fill) {
+            itemHeight = cellBounds.height;
+        } else {
+            // Default to preferred height
+            itemHeight = std::min(item->GetPreferredHeight(), cellBounds.height);
         }
-        
-        // Clamp to min/max
+
+        // Clamp to min/max constraints
         itemWidth = std::clamp(itemWidth, item->GetMinimumWidth(),
-                         std::min(item->GetMaximumWidth(), cellBounds.width));
+                               std::min(item->GetMaximumWidth(), cellBounds.width));
         itemHeight = std::clamp(itemHeight, item->GetMinimumHeight(),
-                          std::min(item->GetMaximumHeight(), cellBounds.height));
-        
-        // Apply horizontal alignment
+                                std::min(item->GetMaximumHeight(), cellBounds.height));
+
+        // Calculate position based on alignment
+        float itemX = cellBounds.x;
+        float itemY = cellBounds.y;
+
+        // Apply horizontal alignment (only if not Fill)
         LayoutItemAlignment hAlign = item->GetHorizontalAlignment();
         if (hAlign == LayoutItemAlignment::Center) {
             itemX += (cellBounds.width - itemWidth) / 2;
         } else if (hAlign == LayoutItemAlignment::End) {
             itemX += cellBounds.width - itemWidth;
+        } else if (hAlign == LayoutItemAlignment::Fill) {
+            // Override width to fill
+            itemWidth = cellBounds.width;
         }
-        
-        // Apply vertical alignment
+        // LayoutItemAlignment::Start uses itemX as-is
+
+        // Apply vertical alignment (only if not Fill)
         LayoutItemAlignment vAlign = item->GetVerticalAlignment();
         if (vAlign == LayoutItemAlignment::Center) {
             itemY += (cellBounds.height - itemHeight) / 2;
         } else if (vAlign == LayoutItemAlignment::End) {
             itemY += cellBounds.height - itemHeight;
+        } else if (vAlign == LayoutItemAlignment::Fill) {
+            // Override height to fill
+            itemHeight = cellBounds.height;
         }
-        
-        // Set computed geometry
+        // LayoutItemAlignment::Start uses itemY as-is
+
+        // Set computed geometry with margins
         item->SetComputedGeometry(
-            itemX + item->GetMarginLeft(),
-            itemY + item->GetMarginTop(),
-            itemWidth,
-            itemHeight
+                itemX + item->GetMarginLeft(),
+                itemY + item->GetMarginTop(),
+                itemWidth,
+                itemHeight
         );
     }
 }
