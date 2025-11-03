@@ -151,19 +151,17 @@ namespace UltraCanvas {
             maxBottom = std::max(maxBottom, childBounds.y + childBounds.height);
         }
 
-        scrollState.contentWidth = maxRight + style.paddingRight;
-        scrollState.contentHeight = maxBottom + style.paddingBottom;
+        scrollState.contentWidth = maxRight;
+        scrollState.contentHeight = maxBottom;
     }
 
     void UltraCanvasContainer::CalculateContentArea() {
         Rect2Di bounds = GetBounds();
 
-        contentArea.x = bounds.x + style.paddingLeft + style.borderWidth;
-        contentArea.y = bounds.y + style.paddingTop + style.borderWidth;
-        contentArea.width = bounds.width - style.paddingLeft - style.paddingRight -
-                            (2 * style.borderWidth);
-        contentArea.height = bounds.height - style.paddingTop - style.paddingBottom -
-                             (2 * style.borderWidth);
+        contentArea.x = bounds.x + style.borderWidth;
+        contentArea.y = bounds.y + style.borderWidth;
+        contentArea.width = bounds.width - (2 * style.borderWidth);
+        contentArea.height = bounds.height - (2 * style.borderWidth);
 
         // Adjust for scrollbars
         if (scrollState.showVerticalScrollbar) {

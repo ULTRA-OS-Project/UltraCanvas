@@ -473,6 +473,17 @@ namespace UltraCanvas {
                 .AddVariant("tabs", "Side Tabs")
                 .AddVariant("tabs", "Closable Tabs");
 
+        basicBuilder.AddItem("layouts", "Layout System",
+                             "Box, Grid, and Flex layout examples",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateLayoutExamples(); },
+                             "Apps/DemoApp/UltraCanvasLayoutExamples.cpp",
+                             "Docs/UltraCanvasLayoutExamples.md")
+                .AddVariant("layouts", "Vertical Box Layout")
+                .AddVariant("layouts", "Horizontal Box Layout")
+                .AddVariant("layouts", "Grid Layout")
+                .AddVariant("layouts", "Flex Layout");
+
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
 

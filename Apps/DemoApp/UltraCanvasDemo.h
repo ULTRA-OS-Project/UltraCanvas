@@ -251,6 +251,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreatePixeLXExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
 
+        std::shared_ptr<UltraCanvasUIElement> CreateLayoutExamples();
+
         // ===== APPLICATION LIFECYCLE =====
         void Run();
         void Shutdown();

@@ -205,6 +205,9 @@ namespace UltraCanvas {
         void SetBounds(int x, int y, int w, int h) {
             SetBounds(Rect2Di(x, y, w, h));
         }
+        void SetBounds(float x, float y, float w, float h) {
+            SetBounds(Rect2Di(static_cast<int>(x), static_cast<int>(y), static_cast<int>(w), static_cast<int>(h)));
+        }
         virtual void SetBounds(const Rect2Di& b) {
             bounds = b;
         }
