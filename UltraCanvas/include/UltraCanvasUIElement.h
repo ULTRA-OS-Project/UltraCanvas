@@ -29,12 +29,6 @@ namespace UltraCanvas {
         std::string Identifier = "";
         long IdentifierID = 0;
 
-        // Position and size
-        int x_pos = 0;
-        int y_pos = 0;
-        int width_size = 100;
-        int height_size = 30;
-
         // State properties
         bool Active = true;
         bool Visible = true;
@@ -56,30 +50,29 @@ namespace UltraCanvas {
         // Constructors
         StandardProperties() = default;
 
-        StandardProperties(const std::string& identifier, long id, int x, int y, int w, int h)
-                : Identifier(identifier), IdentifierID(id), x_pos(x), y_pos(y),
-                  width_size(w), height_size(h) {}
+        StandardProperties(const std::string& identifier, long id)
+                : Identifier(identifier), IdentifierID(id) {}
 
         // Utility methods
-        Rect2Di GetBounds() const {
-            return Rect2Di(x_pos, y_pos, width_size, height_size);
-        }
-
-        Point2Di GetPosition() const {
-            return Point2Di(x_pos, y_pos);
-        }
-
-        Point2Di GetSize() const {
-            return Point2Di(width_size, height_size);
-        }
-
-        bool Contains(const Point2Di& point) const {
-            return GetBounds().Contains(point);
-        }
-
-        bool Contains(int px, int py) const {
-            return Contains(Point2Di(px, py));
-        }
+//        Rect2Di GetBounds() const {
+//            return Rect2Di(x_pos, y_pos, width_size, height_size);
+//        }
+//
+//        Point2Di GetPosition() const {
+//            return Point2Di(x_pos, y_pos);
+//        }
+//
+//        Point2Di GetSize() const {
+//            return Point2Di(width_size, height_size);
+//        }
+//
+//        bool Contains(const Point2Di& point) const {
+//            return GetBounds().Contains(point);
+//        }
+//
+//        bool Contains(int px, int py) const {
+//            return Contains(Point2Di(px, py));
+//        }
     };
 
 // ===== ELEMENT STATE MANAGEMENT =====
@@ -132,13 +125,15 @@ namespace UltraCanvas {
         UltraCanvasContainer* parentContainer = nullptr; // Parent container (not element)
         StandardProperties properties;
         ElementStateFlags stateFlags;
+        Rect2Di bounds;
 
     public:
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
         UltraCanvasUIElement(const std::string& identifier = "", long id = 0,
                              int x = 0, int y = 0, int w = 100, int h = 30)
-                : properties(identifier, id, x, y, w, h),
+                : properties(identifier, id),
                   creationTime(std::chrono::steady_clock::now()),
+                  bounds(x, y, w, h),
                   lastUpdateTime(creationTime) {
             stateFlags.Reset();
         }
@@ -157,6 +152,26 @@ namespace UltraCanvas {
         long GetIdentifierID() const { return properties.IdentifierID; }
         void SetIdentifierID(long id) { properties.IdentifierID = id; }
 
+        const Rect2Di& GetBounds() const {
+            return bounds;
+        }
+
+        Point2Di GetPosition() {
+            return Point2Di(bounds.x, bounds.y);
+        }
+
+        Size2Di GetSize() {
+            return Size2Di(bounds.width, bounds.height);
+        }
+
+        bool Contains(const Point2Di& point) {
+            return bounds.Contains(point);
+        }
+
+        virtual bool Contains(int px, int py) {
+            return bounds.Contains(px, py);
+        }
+
         virtual int GetXInWindow();
 //        void SetAbsoluteX(int x) {
 //            if (parent) {
@@ -174,32 +189,30 @@ namespace UltraCanvas {
 //            }
 //        }
 
-        int GetWidth() const { return properties.width_size; }
-        void SetWidth(int w) { properties.width_size = w; }
-        int GetHeight() const { return properties.height_size; }
-        void SetHeight(int h) { properties.height_size = h; }
+        int GetWidth() const { return bounds.width; }
+        void SetWidth(int w) { bounds.width = w; }
+        int GetHeight() const { return bounds.height; }
+        void SetHeight(int h) { bounds.height = h; }
 
-        int GetX() const { return properties.x_pos; }
-        void SetX(int x) { properties.x_pos = x; }
-        int GetY() const { return properties.y_pos; }
-        void SetY(int y) { properties.y_pos = y; }
+        int GetX() const { return bounds.x; }
+        void SetX(int x) { bounds.x = x; }
+        int GetY() const { return bounds.y; }
+        void SetY(int y) { bounds.y = y; }
 
 //        void SetAbsolutePosition(int x, int y) { SetAbsoluteX(x); SetAbsoluteY(y); }
-        virtual void SetPosition(int x, int y) { properties.x_pos = x; properties.y_pos = y; }
-        virtual void SetSize(int w, int h) { properties.width_size = w; properties.height_size = h; }
+        virtual void SetPosition(int x, int y) { bounds.x = x; bounds.y = y; }
+        virtual void SetSize(int w, int h) { bounds.width = w; bounds.height = h; }
         void SetBounds(int x, int y, int w, int h) {
-            SetPosition(x, y);
-            SetSize(w, h);
+            SetBounds(Rect2Di(x, y, w, h));
+        }
+        virtual void SetBounds(const Rect2Di& b) {
+            bounds = b;
         }
 
 //        Rect2Di GetAbsoluteBounds() const {
 //            return Rect2Di(static_cast<float>(GetAbsoluteX()), static_cast<float>(GetAbsoluteY()),
 //                          static_cast<float>(properties.width_size), static_cast<float>(properties.height_size));
 //        }
-        Rect2Di GetBounds() const {
-            return Rect2Di(properties.x_pos, properties.y_pos,
-                           properties.width_size, properties.height_size);
-        }
         // actual bounds is for variable-sized elements like dropdowns, menus, popups
         virtual Rect2Di GetActualBounds() { return GetBounds(); }
 
@@ -223,14 +236,6 @@ namespace UltraCanvas {
         Point2Di GetPositionInWindow() {
             return Point2Di(GetXInWindow(), GetYInWindow());
         }
-        Rect2Di GetBoundsInWindow() {
-            return Rect2Di (GetXInWindow(), GetYInWindow(), properties.width_size, properties.height_size);
-        }
-        Point2Di GetPosition() const {
-            return Point2Di(static_cast<float>(properties.x_pos), static_cast<float>(properties.y_pos));
-        }
-        Point2Di GetElementSize() const { return properties.GetSize(); }
-
 
         bool IsActive() const { return properties.Active; }
         void SetActive(bool active) { properties.Active = active; }
@@ -326,18 +331,6 @@ namespace UltraCanvas {
         }
 
         // ===== SPATIAL QUERIES =====
-        bool Contains(const Point2Di& point) {
-            return Contains(static_cast<int>(point.x), static_cast<int>(point.y));
-        }
-
-        bool Contains(float px, float py) {
-            return Contains(static_cast<int>(px), static_cast<int>(py));
-        }
-
-        virtual bool Contains(int px, int py) {
-            return properties.Contains(px, py);
-        }
-
         // ===== TIMING AND ANIMATION =====
         float GetAge() const {
             auto now = std::chrono::steady_clock::now();

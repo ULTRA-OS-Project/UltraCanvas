@@ -324,16 +324,6 @@ enum class MouseControls {
 
 // ===== COMMON ENUMS =====
 
-enum class Alignment {
-    Left,
-    Center, 
-    Right,
-    Top,
-    Bottom,
-    Stretch,
-    Justify
-};
-
 enum class TextAlignment {
     Left,
     Center,
@@ -359,28 +349,4 @@ enum class SizeMode {
     Auto,       // Size based on content
     Fill        // Fill remaining space
 };
-
-// ===== UTILITY FUNCTIONS =====
-
-// Safe casting with bounds checking
-template<typename T>
-T Clamp(T value, T min, T max) {
-    return std::max(min, std::min(max, value));
-}
-
-// Linear interpolation
-template<typename T>
-T Lerp(T a, T b, float t) {
-    return a + (b - a) * Clamp(t, 0.0f, 1.0f);
-}
-
-// Distance between two points
-inline float Distance(const Point2Df& a, const Point2Df& b) {
-    return a.Distance(b);
-}
-
-inline int Distance(const Point2Di& a, const Point2Di& b) {
-    return a.Distance(b);
-}
-
 } // namespace UltraCanvas

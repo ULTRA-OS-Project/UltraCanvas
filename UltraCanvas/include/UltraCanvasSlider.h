@@ -111,7 +111,6 @@ namespace UltraCanvas {
                 : UltraCanvasUIElement(identifier, id, x, y, w, h) {
 
             // Initialize standard properties
-            properties = StandardProperties(identifier, id, x, y, w, h);
             properties.MousePtr = MousePointer::Hand;
             properties.MouseCtrl = MouseControls::Object2D;
 

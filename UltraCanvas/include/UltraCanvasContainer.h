@@ -7,9 +7,10 @@
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
-#include "UltraCanvasUIElement.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasUIElement.h"
+#include "UltraCanvasLayout.h"
 #include <vector>
 #include <memory>
 #include <functional>
@@ -100,6 +101,7 @@ namespace UltraCanvas {
         std::function<void(UltraCanvasUIElement*)> onChildAdded;
         std::function<void(UltraCanvasUIElement*)> onChildRemoved;
 
+        std::unique_ptr<UltraCanvasLayout> layout = nullptr;
     protected:
         ContainerStyle style;
         ScrollState scrollState;
@@ -167,6 +169,8 @@ namespace UltraCanvas {
             s.borderWidth = width;
             SetContainerStyle(s);
         }
+        void SetBounds(const Rect2Di& bounds) override;
+
         void SetBackgroundColor(const Color& c) {
             auto s = GetContainerStyle();
             s.backgroundColor = c;
@@ -199,6 +203,17 @@ namespace UltraCanvas {
         bool OnEvent(const UCEvent& event) override;
 
         virtual void SetWindow(UltraCanvasWindowBase* win) override;
+
+        void SetLayout(std::unique_ptr<UltraCanvasLayout> newLayout);
+
+        // Get layout manager (non-owning pointer)
+        UltraCanvasLayout* GetLayout() const { return layout.get(); }
+
+        // Check if container has a layout
+        bool HasLayout() const { return layout != nullptr; }
+
+        // Release layout ownership (returns unique_ptr)
+        std::unique_ptr<UltraCanvasLayout> TakeLayout();
 
     private:
         // ===== INTERNAL METHODS =====

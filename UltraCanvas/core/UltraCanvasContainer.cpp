@@ -7,6 +7,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasLayout.h"
 //#include "UltraCanvasZOrderManager.h"
 #include <algorithm>
 #include <cmath>
@@ -461,6 +462,12 @@ namespace UltraCanvas {
 
         // Update layout and scrolling
         UpdateScrollability();
+
+        if (layout) {
+            layout->Invalidate();
+            layoutDirty = true;
+        }
+
         layoutDirty = true;
 
         // Notify callbacks
@@ -749,6 +756,9 @@ namespace UltraCanvas {
 //    }
 
     void UltraCanvasContainer::UpdateLayout() {
+        if (layout && layout->IsLayoutDirty()) {
+            layout->PerformLayout(GetBounds());
+        }
         CalculateContentArea();
         UpdateScrollbarPositions();
         layoutDirty = false;
@@ -841,6 +851,31 @@ namespace UltraCanvas {
         return contentArea;
     }
 
+    void UltraCanvasContainer::SetLayout(std::unique_ptr<UltraCanvasLayout> newLayout) {
+        layout = std::move(newLayout);
+        if (layout) {
+            layout->SetParentContainer(this);
+            layout->Invalidate();
+        }
+        layoutDirty = true;
+    }
+
+    std::unique_ptr<UltraCanvasLayout> UltraCanvasContainer::TakeLayout() {
+        if (layout) {
+            layout->SetParentContainer(nullptr);
+        }
+        return std::move(layout);
+    }
+
+    void UltraCanvasContainer::SetBounds(const Rect2Di& bounds) {
+        UltraCanvasUIElement::SetBounds(bounds);
+
+        // ===== ADD THIS =====
+        if (layout) {
+            layout->Invalidate();
+            layoutDirty = true;
+        }
+    }
 //    void UltraCanvasContainer::UpdateHoverStates(const UCEvent& event) {
 //        Point2Di mousePos(event.x, event.y);
 //

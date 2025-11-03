@@ -523,15 +523,14 @@ namespace UltraCanvas {
             PerformLayout(ctx);
             needsRelayout = false;
         }
+        auto bounds = GetBounds();
 
         // Draw background
         ctx->SetFillPaint(style.backgroundColor);
-        ctx->FillRectangle(properties.x_pos, properties.y_pos,
-                           properties.width_size, properties.height_size);
+        ctx->FillRectangle(bounds);
 
         // Set clipping region
-        ctx->SetClipRect(properties.x_pos, properties.y_pos,
-                         properties.width_size, properties.height_size);
+        ctx->SetClipRect(bounds);
 
         // Render elements
         for (auto& element : elements) {
@@ -544,7 +543,6 @@ namespace UltraCanvas {
         ctx->ClearClipRect();
 
         // Draw scrollbar if needed
-        auto bounds = GetBounds();
         if (contentHeight > bounds.height) {
             UpdateScrollbarGeometry(bounds);
             DrawScrollbar(ctx);

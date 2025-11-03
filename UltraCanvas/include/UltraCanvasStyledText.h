@@ -399,8 +399,8 @@ namespace UltraCanvas {
         }
 
         void SetScrollOffset(const Point2D& offset) {
-            scrollOffset.x = Clamp(offset.x, 0.0f, maxScrollOffset.x);
-            scrollOffset.y = Clamp(offset.y, 0.0f, maxScrollOffset.y);
+            scrollOffset.x = std::clamp(offset.x, 0.0f, maxScrollOffset.x);
+            scrollOffset.y = std::clamp(offset.y, 0.0f, maxScrollOffset.y);
         }
 
         Point2D GetScrollOffset() const {
@@ -961,7 +961,7 @@ namespace UltraCanvas {
             return result;
         }
 
-        float Clamp(float value, float min, float max) {
+        float std::clamp(float value, float min, float max) {
             return std::max(min, std::min(max, value));
         }
     };

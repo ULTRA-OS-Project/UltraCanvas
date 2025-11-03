@@ -139,7 +139,7 @@ namespace UltraCanvas {
                 pc = pc->parentContainer;
             }
         }
-        return pos + properties.x_pos;
+        return pos + bounds.x;
     }
 
     int UltraCanvasUIElement::GetYInWindow() {
@@ -151,7 +151,7 @@ namespace UltraCanvas {
                 pc = pc->parentContainer;
             }
         }
-        return pos + properties.y_pos;
+        return pos + bounds.y;
     }
 
     bool UltraCanvasUIElement::SetFocus(bool focus) {
