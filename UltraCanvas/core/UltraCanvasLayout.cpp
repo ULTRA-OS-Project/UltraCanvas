@@ -8,9 +8,8 @@
 #include "UltraCanvasContainer.h"
 
 namespace UltraCanvas {
-
-    UltraCanvasLayout::UltraCanvasLayout(UltraCanvasContainer* parent)
-        : parentContainer(parent) {
+    UltraCanvasLayout::UltraCanvasLayout(UltraCanvasContainer* container) {
+        container->SetLayout(this);
     }
 
     void UltraCanvasLayout::Invalidate() {

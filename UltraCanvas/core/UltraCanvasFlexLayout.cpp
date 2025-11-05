@@ -14,112 +14,87 @@ namespace UltraCanvas {
 
 // ===== CONSTRUCTORS =====
 
-UltraCanvasFlexLayout::UltraCanvasFlexLayout(FlexDirection dir)
-    : direction(dir) {
-}
-
 UltraCanvasFlexLayout::UltraCanvasFlexLayout(UltraCanvasContainer* parent, FlexDirection dir)
     : UltraCanvasLayout(parent), direction(dir) {
 }
 
 // ===== ITEM MANAGEMENT =====
 
-void UltraCanvasFlexLayout::AddChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) {
-    if (!item) return;
-    
-    // Try to cast to FlexLayoutItem
-    auto flexItem = std::dynamic_pointer_cast<UltraCanvasFlexLayoutItem>(item);
-    if (flexItem) {
-        items.push_back(flexItem);
-    } else {
-        // Wrap in FlexLayoutItem
-        auto newFlexItem = std::make_shared<UltraCanvasFlexLayoutItem>();
-        newFlexItem->SetElement(item->GetElement());
-        items.push_back(newFlexItem);
-    }
-    
-    Invalidate();
-}
-
-void UltraCanvasFlexLayout::AddChildElement(std::shared_ptr<UltraCanvasUIElement> element) {
-    if (!element) return;
-    
-    // Create default flex layout item
-    auto item = std::make_shared<UltraCanvasFlexLayoutItem>(element);
-    items.push_back(item);
-    
-    // Add element to parent container if we have one
-    if (parentContainer) {
-        parentContainer->AddChild(element);
-    }
-    
-    Invalidate();
-}
-
-void UltraCanvasFlexLayout::RemoveChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) {
-    auto flexItem = std::dynamic_pointer_cast<UltraCanvasFlexLayoutItem>(item);
-    if (!flexItem) return;
-    
-    auto it = std::find(items.begin(), items.end(), flexItem);
-    if (it != items.end()) {
-        items.erase(it);
-        Invalidate();
-    }
-}
-
-void UltraCanvasFlexLayout::RemoveChildElement(std::shared_ptr<UltraCanvasUIElement> element) {
-    if (!element) return;
-    
-    auto it = std::find_if(items.begin(), items.end(),
-        [&element](const std::shared_ptr<UltraCanvasFlexLayoutItem>& item) {
-            return item->GetElement() == element;
-        });
-    
-    if (it != items.end()) {
-        items.erase(it);
-        
-        // Remove from parent container if we have one
-        if (parentContainer) {
-            parentContainer->RemoveChild(element);
+UltraCanvasFlexLayoutItem* UltraCanvasFlexLayout::GetItemForUIElement(std::shared_ptr<UltraCanvasUIElement> element) const {
+    if (element) {
+        for(auto &item : items) {
+            if (item->GetElement() == element) {
+                return item.get();
+            }
         }
-        
-        Invalidate();
-    }
-}
-
-std::shared_ptr<UltraCanvasLayoutItem> UltraCanvasFlexLayout::GetItemAt(int index) const {
-    if (index >= 0 && index < static_cast<int>(items.size())) {
-        return items[index];
     }
     return nullptr;
 }
 
-void UltraCanvasFlexLayout::ClearItems() {
-    items.clear();
-    Invalidate();
+UltraCanvasFlexLayoutItem* UltraCanvasFlexLayout::GetItemAt(int index) const {
+    if (index >= 0 && index < static_cast<int>(items.size())) {
+        return items[index].get();
+    }
+    return nullptr;
 }
 
-// ===== FLEX LAYOUT SPECIFIC =====
+UltraCanvasLayoutItem* UltraCanvasFlexLayout::InsertUIElement(std::shared_ptr<UltraCanvasUIElement> element, int index) {
+    if (!element) return nullptr;
 
-void UltraCanvasFlexLayout::AddItem(std::shared_ptr<UltraCanvasFlexLayoutItem> item) {
-    if (!item) return;
-    
-    items.push_back(item);
-    Invalidate();
-}
+    auto existingItem = GetItemForUIElement(element);
+    if (existingItem) {
+        return existingItem;
+    }
 
-void UltraCanvasFlexLayout::AddElement(std::shared_ptr<UltraCanvasUIElement> element,
-                                      float flexGrow, float flexShrink, float flexBasis) {
-    if (!element) return;
-    
-    auto item = std::make_shared<UltraCanvasFlexLayoutItem>(element);
-    item->SetFlex(flexGrow, flexShrink, flexBasis);
-    items.push_back(item);
-    
-    if (parentContainer) {
+    auto item = std::make_unique<UltraCanvasFlexLayoutItem>(element);
+    auto itemPtr = item.get();
+
+    if (index >= 0 && index <= static_cast<int>(items.size())) {
+        items.insert(items.begin() + index, std::move(item));
+    } else {
+        items.push_back(std::move(item));
+    }
+
+    if (parentContainer && element->GetParentContainer() == nullptr) {
         parentContainer->AddChild(element);
     }
-    
+
+    Invalidate();
+    return itemPtr;
+}
+
+UltraCanvasFlexLayoutItem* UltraCanvasFlexLayout::AddUIElement(std::shared_ptr<UltraCanvasUIElement> element,
+                                                               float flexGrow, float flexShrink, float flexBasis) {
+    if (!element) return nullptr;
+
+    auto item = static_cast<UltraCanvasFlexLayoutItem*>(InsertUIElement(element, -1));
+    item->SetFlex(flexGrow, flexShrink, flexBasis);
+    return item;
+}
+
+
+    void UltraCanvasFlexLayout::RemoveUIElement(std::shared_ptr<UltraCanvasUIElement> element) {
+    if (!element) return;
+
+    auto it = std::find_if(items.begin(), items.end(),
+                           [&element](const std::unique_ptr<UltraCanvasFlexLayoutItem>& item) {
+                               return item->GetElement() == element;
+                           });
+
+    if (it != items.end()) {
+        items.erase(it);
+
+        // Remove from parent container if we have one
+        if (parentContainer) {
+            parentContainer->RemoveChild(element);
+        }
+
+        Invalidate();
+    }
+}
+
+void UltraCanvasFlexLayout::ClearItems() {
+    items.clear();
     Invalidate();
 }
 

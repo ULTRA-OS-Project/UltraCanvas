@@ -56,7 +56,7 @@ struct GridRowColumnDefinition {
 class UltraCanvasGridLayout : public UltraCanvasLayout {
 private:
     // Items in this layout
-    std::vector<std::shared_ptr<UltraCanvasGridLayoutItem>> items;
+    std::vector<std::unique_ptr<UltraCanvasGridLayoutItem>> items;
     
     // Row and column definitions
     std::vector<GridRowColumnDefinition> rowDefinitions;
@@ -71,9 +71,8 @@ private:
     LayoutAlignment defaultVerticalAlignment = LayoutAlignment::Fill;
     
 public:
-    UltraCanvasGridLayout() = default;
-    explicit UltraCanvasGridLayout(UltraCanvasContainer* parent);
-    UltraCanvasGridLayout(UltraCanvasContainer* parent, int rows, int columns);
+    UltraCanvasGridLayout() = delete;
+    explicit UltraCanvasGridLayout(UltraCanvasContainer* parent, int rows = 1, int columns = 1);
     virtual ~UltraCanvasGridLayout() = default;
     
     // ===== ROW/COLUMN DEFINITIONS =====
@@ -122,35 +121,25 @@ public:
     
     LayoutAlignment GetDefaultHorizontalAlignment() const { return defaultHorizontalAlignment; }
     LayoutAlignment GetDefaultVerticalAlignment() const { return defaultVerticalAlignment; }
-    
-    // ===== ITEM MANAGEMENT =====
-    void AddChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) override;
-    void AddChildElement(std::shared_ptr<UltraCanvasUIElement> element) override;
-    
-    void RemoveChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) override;
-    void RemoveChildElement(std::shared_ptr<UltraCanvasUIElement> element) override;
-    
+
+    // ===== GRID ITEMS =====
+    UltraCanvasLayoutItem* InsertUIElement(std::shared_ptr<UltraCanvasUIElement> element, int index) override;
+    void RemoveUIElement(std::shared_ptr<UltraCanvasUIElement> element) override;
     int GetItemCount() const override { return static_cast<int>(items.size()); }
-    std::shared_ptr<UltraCanvasLayoutItem> GetItemAt(int index) const override;
-    
     void ClearItems() override;
-    
-    // ===== GRID LAYOUT SPECIFIC =====
-    // Add item at specific grid position
-    void AddItem(std::shared_ptr<UltraCanvasGridLayoutItem> item, int row, int column);
-    void AddItem(std::shared_ptr<UltraCanvasGridLayoutItem> item, int row, int column, 
-                 int rowSpan, int columnSpan);
-    
-    // Add element at specific grid position
-    void AddElement(std::shared_ptr<UltraCanvasUIElement> element, int row, int column);
-    void AddElement(std::shared_ptr<UltraCanvasUIElement> element, int row, int column,
-                    int rowSpan, int columnSpan);
-    
+
+    UltraCanvasGridLayoutItem* GetItemForUIElement(std::shared_ptr<UltraCanvasUIElement> element) const;
+    UltraCanvasGridLayoutItem* GetItemAt(int index) const;
     // Get item at grid position
-    std::shared_ptr<UltraCanvasGridLayoutItem> GetItemAt(int row, int column) const;
-    
+    UltraCanvasGridLayoutItem* GetItemAt(int row, int column) const;
+
+
+    // Add element at specific grid position
+    UltraCanvasGridLayoutItem* AddUIElement(std::shared_ptr<UltraCanvasUIElement> element, int row, int column,
+                    int rowSpan = 1, int columnSpan = 1);
+
     // Get all items
-    const std::vector<std::shared_ptr<UltraCanvasGridLayoutItem>>& GetItems() const { return items; }
+    const std::vector<std::unique_ptr<UltraCanvasGridLayoutItem>>& GetItems() const { return items; }
     
     // ===== LAYOUT CALCULATION =====
     void PerformLayout(const Rect2Di& containerBounds) override;
@@ -185,11 +174,11 @@ private:
 };
 
 // ===== CONVENIENCE FACTORY FUNCTION =====
-inline std::unique_ptr<UltraCanvasGridLayout> CreateGridLayout(
+inline UltraCanvasGridLayout* CreateGridLayout(
     UltraCanvasContainer* parent = nullptr, 
     int rows = 0, 
     int columns = 0) {
-    return std::make_unique<UltraCanvasGridLayout>(parent, rows, columns);
+    return new UltraCanvasGridLayout(parent, rows, columns);
 }
 
 } // namespace UltraCanvas

@@ -101,7 +101,7 @@ namespace UltraCanvas {
         std::function<void(UltraCanvasUIElement*)> onChildAdded;
         std::function<void(UltraCanvasUIElement*)> onChildRemoved;
 
-        std::unique_ptr<UltraCanvasLayout> layout = nullptr;
+        UltraCanvasLayout* layout = nullptr;
     protected:
         ContainerStyle style;
         ScrollState scrollState;
@@ -114,7 +114,11 @@ namespace UltraCanvas {
             UpdateScrollability();
         }
 
-        virtual ~UltraCanvasContainer() = default;
+        virtual ~UltraCanvasContainer() {
+            if (layout) {
+                delete layout;
+            }
+        };
 
         // ===== ENHANCED CHILD MANAGEMENT =====
         void AddChild(std::shared_ptr<UltraCanvasUIElement> child);
@@ -204,16 +208,13 @@ namespace UltraCanvas {
 
         virtual void SetWindow(UltraCanvasWindowBase* win) override;
 
-        void SetLayout(std::unique_ptr<UltraCanvasLayout> newLayout);
+        void SetLayout(UltraCanvasLayout* newLayout);
 
         // Get layout manager (non-owning pointer)
-        UltraCanvasLayout* GetLayout() const { return layout.get(); }
+        UltraCanvasLayout* GetLayout() const { return layout; }
 
         // Check if container has a layout
         bool HasLayout() const { return layout != nullptr; }
-
-        // Release layout ownership (returns unique_ptr)
-        std::unique_ptr<UltraCanvasLayout> TakeLayout();
 
     private:
         // ===== INTERNAL METHODS =====

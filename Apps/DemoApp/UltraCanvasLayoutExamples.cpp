@@ -94,13 +94,13 @@ namespace UltraCanvas {
         vboxBtn2->SetOnClick([vboxStatus]() { vboxStatus->SetText("Button 2 clicked!"); });
         vboxBtn3->SetOnClick([vboxStatus]() { vboxStatus->SetText("Button 3 clicked!"); });
 
-        vboxLayout->AddElement(vboxBtn1, 0);
-        vboxLayout->AddElement(vboxBtn2, 0);
-        vboxLayout->AddElement(vboxBtn3, 0);
+        vboxLayout->AddUIElement(vboxBtn1, 0);
+        vboxLayout->AddUIElement(vboxBtn2, 0);
+        vboxLayout->AddUIElement(vboxBtn3, 0);
         vboxLayout->AddStretch(1);
-        vboxLayout->AddElement(vboxStatus, 0);
+        vboxLayout->AddUIElement(vboxStatus, 0);
 
-        vboxDemo->SetLayout(std::move(vboxLayout));
+//        vboxDemo->SetLayout(std::move(vboxLayout));
         mainContainer->AddChild(vboxDemo);
 
         // Code explanation
@@ -139,15 +139,15 @@ namespace UltraCanvas {
         auto helpBtn = std::make_shared<UltraCanvasButton>("HelpBtn", 1027, 0, 0, 60, 30);
         helpBtn->SetText("Help");
 
-        hboxLayout->AddElement(newBtn, 0);
-        hboxLayout->AddElement(openBtn, 0);
-        hboxLayout->AddElement(saveBtn, 0);
+        hboxLayout->AddUIElement(newBtn, 0);
+        hboxLayout->AddUIElement(openBtn, 0);
+        hboxLayout->AddUIElement(saveBtn, 0);
         hboxLayout->AddSpacing(15);      // Visual separator
         hboxLayout->AddStretch(1);       // Push remaining buttons right
-        hboxLayout->AddElement(settingsBtn, 0);
-        hboxLayout->AddElement(helpBtn, 0);
+        hboxLayout->AddUIElement(settingsBtn, 0);
+        hboxLayout->AddUIElement(helpBtn, 0);
 
-        hboxDemo->SetLayout(std::move(hboxLayout));
+//        hboxDemo->SetLayout(std::move(hboxLayout));
         mainContainer->AddChild(hboxDemo);
 
         currentY += 60;
@@ -183,28 +183,28 @@ namespace UltraCanvas {
         nameLabel->SetText("Name:");
         nameLabel->SetTextColor(Colors::Black);
         auto nameInput = std::make_shared<UltraCanvasTextInput>("NameIn", 1034, 0, 0, 250, 25);
-        gridLayout->AddElement(nameLabel, row, 0);
-        gridLayout->AddElement(nameInput, row++, 1);
+        gridLayout->AddUIElement(nameLabel, row, 0);
+        gridLayout->AddUIElement(nameInput, row++, 1);
 
         auto emailLabel = std::make_shared<UltraCanvasLabel>("EmailLbl", 1035, 0, 0, 70, 25);
         emailLabel->SetText("Email:");
         emailLabel->SetTextColor(Colors::Black);
         auto emailInput = std::make_shared<UltraCanvasTextInput>("EmailIn", 1036, 0, 0, 250, 25);
-        gridLayout->AddElement(emailLabel, row, 0);
-        gridLayout->AddElement(emailInput, row++, 1);
+        gridLayout->AddUIElement(emailLabel, row, 0);
+        gridLayout->AddUIElement(emailInput, row++, 1);
 
         auto phoneLabel = std::make_shared<UltraCanvasLabel>("PhoneLbl", 1037, 0, 0, 70, 25);
         phoneLabel->SetText("Phone:");
         phoneLabel->SetTextColor(Colors::Black);
         auto phoneInput = std::make_shared<UltraCanvasTextInput>("PhoneIn", 1038, 0, 0, 250, 25);
-        gridLayout->AddElement(phoneLabel, row, 0);
-        gridLayout->AddElement(phoneInput, row++, 1);
+        gridLayout->AddUIElement(phoneLabel, row, 0);
+        gridLayout->AddUIElement(phoneInput, row++, 1);
 
         auto submitBtn = std::make_shared<UltraCanvasButton>("SubmitBtn", 1039, 0, 0, 150, 30);
         submitBtn->SetText("Submit");
-        gridLayout->AddElement(submitBtn, row, 0, 1, 2);  // Span 2 columns
+        gridLayout->AddUIElement(submitBtn, row, 0, 1, 2);  // Span 2 columns
 
-        gridDemo->SetLayout(std::move(gridLayout));
+//        gridDemo->SetLayout(std::move(gridLayout));
         mainContainer->AddChild(gridDemo);
 
         auto gridCode = CreateLayoutDescription(1040, 490, currentY, 490,
@@ -275,16 +275,16 @@ namespace UltraCanvas {
             );
             cardBtn->SetText("Action");
 
-            cardLayout->AddElement(cardTitle, 0);
-            cardLayout->AddElement(cardText, 0);
+            cardLayout->AddUIElement(cardTitle, 0);
+            cardLayout->AddUIElement(cardText, 0);
             cardLayout->AddStretch(1);
-            cardLayout->AddElement(cardBtn, 0);
+            cardLayout->AddUIElement(cardBtn, 0);
 
-            card->SetLayout(std::move(cardLayout));
-            flexLayout->AddElement(card, 0, 1, 220);  // flexBasis = 220
+            //card->SetLayout(std::move(cardLayout));
+            flexLayout->AddUIElement(card, 0, 1, 220);  // flexBasis = 220
         }
 
-        flexDemo->SetLayout(std::move(flexLayout));
+        //flexDemo->SetLayout(std::move(flexLayout));
         mainContainer->AddChild(flexDemo);
 
         currentY += 270;

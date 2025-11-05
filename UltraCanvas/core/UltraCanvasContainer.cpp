@@ -31,6 +31,9 @@ namespace UltraCanvas {
         ctx->PushState();
 
         // Update layout if needed
+        if (layout && layout->IsLayoutDirty()) {
+            layout->PerformLayout(GetBounds());
+        }
         if (layoutDirty) {
 //            UpdateChildZOrder();
             UpdateLayout();
@@ -462,8 +465,7 @@ namespace UltraCanvas {
         UpdateScrollability();
 
         if (layout) {
-            layout->Invalidate();
-            layoutDirty = true;
+            layout->InsertUIElement(child, -1);
         }
 
         layoutDirty = true;
@@ -482,6 +484,9 @@ namespace UltraCanvas {
 
             (*it)->SetParentContainer(nullptr);
             (*it)->SetWindow(nullptr);
+            if (layout) {
+                layout->RemoveUIElement(*it);
+            }
             children.erase(it);
 
             UpdateScrollability();
@@ -754,9 +759,6 @@ namespace UltraCanvas {
 //    }
 
     void UltraCanvasContainer::UpdateLayout() {
-        if (layout && layout->IsLayoutDirty()) {
-            layout->PerformLayout(GetBounds());
-        }
         CalculateContentArea();
         UpdateScrollbarPositions();
         layoutDirty = false;
@@ -849,20 +851,15 @@ namespace UltraCanvas {
         return contentArea;
     }
 
-    void UltraCanvasContainer::SetLayout(std::unique_ptr<UltraCanvasLayout> newLayout) {
-        layout = std::move(newLayout);
+    void UltraCanvasContainer::SetLayout(UltraCanvasLayout* newLayout) {
         if (layout) {
+            delete layout;
+        }
+        if (newLayout) {
+            layout = newLayout;
             layout->SetParentContainer(this);
-            layout->Invalidate();
         }
         layoutDirty = true;
-    }
-
-    std::unique_ptr<UltraCanvasLayout> UltraCanvasContainer::TakeLayout() {
-        if (layout) {
-            layout->SetParentContainer(nullptr);
-        }
-        return std::move(layout);
     }
 
     void UltraCanvasContainer::SetBounds(const Rect2Di& bounds) {

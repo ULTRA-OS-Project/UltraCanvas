@@ -54,8 +54,7 @@ protected:
 public:
     UltraCanvasLayoutItem() = default;
     explicit UltraCanvasLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem);
-    virtual ~UltraCanvasLayoutItem() = default;
-    
+
     // ===== ELEMENT ACCESS =====
     std::shared_ptr<UltraCanvasUIElement> GetElement() const { return element; }
     void SetElement(std::shared_ptr<UltraCanvasUIElement> elem) { element = elem; }
@@ -150,7 +149,7 @@ private:
     float maxHeight = 10000;
     
     // Flex properties (for flexible sizing)
-    int stretch = 0;  // How much to stretch relative to other items (0 = no stretch)
+    float stretch = 0;  // How much to stretch relative to other items (0 = no stretch)
     
     // Alignment within allocated space
     LayoutItemAlignment alignment = LayoutItemAlignment::Start;
@@ -210,8 +209,8 @@ public:
     float GetMaximumHeight() const override { return maxHeight; }
     
     // ===== STRETCH (FLEX GROW) =====
-    void SetStretch(int stretchFactor) { stretch = stretchFactor; }
-    int GetStretch() const { return stretch; }
+    void SetStretch(float stretchFactor) { stretch = stretchFactor; }
+    float GetStretch() const { return stretch; }
     
     // ===== ALIGNMENT =====
     void SetAlignment(LayoutItemAlignment align) { alignment = align; }
@@ -250,10 +249,7 @@ private:
 public:
     UltraCanvasGridLayoutItem() = default;
     explicit UltraCanvasGridLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem);
-    UltraCanvasGridLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem, int row, int col);
-    UltraCanvasGridLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem, int row, int col, 
-                              int rowSpan, int colSpan);
-    
+
     // ===== GRID POSITION =====
     void SetRow(int r) { row = r; }
     void SetColumn(int c) { column = c; }

@@ -13,11 +13,6 @@
 namespace UltraCanvas {
 
 // ===== CONSTRUCTORS =====
-
-UltraCanvasGridLayout::UltraCanvasGridLayout(UltraCanvasContainer* parent)
-    : UltraCanvasLayout(parent) {
-}
-
 UltraCanvasGridLayout::UltraCanvasGridLayout(UltraCanvasContainer* parent, int rows, int columns)
     : UltraCanvasLayout(parent) {
     SetGridSize(rows, columns);
@@ -42,80 +37,76 @@ void UltraCanvasGridLayout::SetGridSize(int rows, int columns) {
 
 // ===== ITEM MANAGEMENT =====
 
-void UltraCanvasGridLayout::AddChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) {
-    if (!item) return;
-    
-    // Try to cast to GridLayoutItem
-    auto gridItem = std::dynamic_pointer_cast<UltraCanvasGridLayoutItem>(item);
-    if (gridItem) {
-        EnsureGridSize(gridItem->GetRow(), gridItem->GetColumn(), 
-                      gridItem->GetRowSpan(), gridItem->GetColumnSpan());
-        items.push_back(gridItem);
-    } else {
-        // Wrap in GridLayoutItem - find next available cell
-        auto newGridItem = std::make_shared<UltraCanvasGridLayoutItem>();
-        newGridItem->SetElement(item->GetElement());
-        // Position at 0,0 by default - user should set position
-        newGridItem->SetPosition(0, 0);
-        EnsureGridSize(0, 0, 1, 1);
-        items.push_back(newGridItem);
+UltraCanvasGridLayoutItem* UltraCanvasGridLayout::GetItemForUIElement(std::shared_ptr<UltraCanvasUIElement> element) const {
+    if (element) {
+        for(auto &item : items) {
+            if (item->GetElement() == element) {
+                return item.get();
+            }
+        }
     }
-    
-    Invalidate();
+    return nullptr;
 }
 
-void UltraCanvasGridLayout::AddChildElement(std::shared_ptr<UltraCanvasUIElement> element) {
-    if (!element) return;
-    
-    // Create default grid layout item at 0,0
-    auto item = std::make_shared<UltraCanvasGridLayoutItem>(element, 0, 0);
-    EnsureGridSize(0, 0, 1, 1);
-    items.push_back(item);
-    
-    // Add element to parent container if we have one
-    if (parentContainer) {
+UltraCanvasGridLayoutItem* UltraCanvasGridLayout::GetItemAt(int index) const {
+    if (index >= 0 && index < static_cast<int>(items.size())) {
+        return items[index].get();
+    }
+    return nullptr;
+}
+
+UltraCanvasGridLayoutItem* UltraCanvasGridLayout::GetItemAt(int row, int column) const {
+    for (const auto& item : items) {
+        if (item->GetRow() == row && item->GetColumn() == column) {
+            return item.get();
+        }
+    }
+    return nullptr;
+}
+
+UltraCanvasLayoutItem* UltraCanvasGridLayout::InsertUIElement(std::shared_ptr<UltraCanvasUIElement> element, int index) {
+    if (!element) return nullptr;
+
+    auto existingItem = GetItemForUIElement(element);
+    if (existingItem) {
+        return existingItem;
+    }
+
+    auto item = std::make_unique<UltraCanvasGridLayoutItem>(element);
+    auto itemPtr = item.get();
+
+    if (index >= 0 && index <= static_cast<int>(items.size())) {
+        items.insert(items.begin() + index, std::move(item));
+    } else {
+        items.push_back(std::move(item));
+    }
+
+    if (parentContainer && element->GetParentContainer() == nullptr) {
         parentContainer->AddChild(element);
     }
-    
+
     Invalidate();
+    return itemPtr;
 }
 
-void UltraCanvasGridLayout::RemoveChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) {
-    auto gridItem = std::dynamic_pointer_cast<UltraCanvasGridLayoutItem>(item);
-    if (!gridItem) return;
-    
-    auto it = std::find(items.begin(), items.end(), gridItem);
-    if (it != items.end()) {
-        items.erase(it);
-        Invalidate();
-    }
-}
-
-void UltraCanvasGridLayout::RemoveChildElement(std::shared_ptr<UltraCanvasUIElement> element) {
+void UltraCanvasGridLayout::RemoveUIElement(std::shared_ptr<UltraCanvasUIElement> element) {
     if (!element) return;
-    
+
     auto it = std::find_if(items.begin(), items.end(),
-        [&element](const std::shared_ptr<UltraCanvasGridLayoutItem>& item) {
-            return item->GetElement() == element;
-        });
-    
+                           [&element](const std::unique_ptr<UltraCanvasGridLayoutItem>& item) {
+                               return item->GetElement() == element;
+                           });
+
     if (it != items.end()) {
         items.erase(it);
-        
+
         // Remove from parent container if we have one
         if (parentContainer) {
             parentContainer->RemoveChild(element);
         }
-        
+
         Invalidate();
     }
-}
-
-std::shared_ptr<UltraCanvasLayoutItem> UltraCanvasGridLayout::GetItemAt(int index) const {
-    if (index >= 0 && index < static_cast<int>(items.size())) {
-        return items[index];
-    }
-    return nullptr;
 }
 
 void UltraCanvasGridLayout::ClearItems() {
@@ -124,65 +115,17 @@ void UltraCanvasGridLayout::ClearItems() {
 }
 
 // ===== GRID LAYOUT SPECIFIC =====
-
-void UltraCanvasGridLayout::AddItem(std::shared_ptr<UltraCanvasGridLayoutItem> item, 
-                                   int row, int column) {
-    if (!item) return;
+UltraCanvasGridLayoutItem* UltraCanvasGridLayout::AddUIElement(std::shared_ptr<UltraCanvasUIElement> element,
+                                      int row, int column, int rowSpan, int columnSpan) {
+    if (!element) return nullptr;
     
-    item->SetPosition(row, column);
-    EnsureGridSize(row, column, 1, 1);
-    items.push_back(item);
-    Invalidate();
-}
-
-void UltraCanvasGridLayout::AddItem(std::shared_ptr<UltraCanvasGridLayoutItem> item,
-                                   int row, int column, int rowSpan, int columnSpan) {
-    if (!item) return;
-    
+    auto item = static_cast<UltraCanvasGridLayoutItem*>(InsertUIElement(element, -1));
     item->SetPosition(row, column);
     item->SetSpan(rowSpan, columnSpan);
+    item->SetWidthMode(SizeMode::Auto);
     EnsureGridSize(row, column, rowSpan, columnSpan);
-    items.push_back(item);
-    Invalidate();
-}
 
-void UltraCanvasGridLayout::AddElement(std::shared_ptr<UltraCanvasUIElement> element,
-                                      int row, int column) {
-    if (!element) return;
-    
-    auto item = std::make_shared<UltraCanvasGridLayoutItem>(element, row, column);
-    EnsureGridSize(row, column, 1, 1);
-    items.push_back(item);
-    
-    if (parentContainer) {
-        parentContainer->AddChild(element);
-    }
-    
-    Invalidate();
-}
-
-void UltraCanvasGridLayout::AddElement(std::shared_ptr<UltraCanvasUIElement> element,
-                                      int row, int column, int rowSpan, int columnSpan) {
-    if (!element) return;
-    
-    auto item = std::make_shared<UltraCanvasGridLayoutItem>(element, row, column, rowSpan, columnSpan);
-    EnsureGridSize(row, column, rowSpan, columnSpan);
-    items.push_back(item);
-    
-    if (parentContainer) {
-        parentContainer->AddChild(element);
-    }
-    
-    Invalidate();
-}
-
-std::shared_ptr<UltraCanvasGridLayoutItem> UltraCanvasGridLayout::GetItemAt(int row, int column) const {
-    for (const auto& item : items) {
-        if (item->GetRow() == row && item->GetColumn() == column) {
-            return item;
-        }
-    }
-    return nullptr;
+    return item;
 }
 
 void UltraCanvasGridLayout::EnsureGridSize(int row, int column, int rowSpan, int columnSpan) {
@@ -296,10 +239,6 @@ void UltraCanvasGridLayout::CalculateColumnWidths(float availableWidth) {
             int column = item->GetColumn();
             if (column >= 0 && column < columnCount) {
                 float itemWidth = item->GetPreferredWidth();
-                // If preferred width is 0 and element exists, use element width
-                if (itemWidth == 0 && item->GetElement()) {
-                    itemWidth = static_cast<float>(item->GetElement()->GetWidth());
-                }
                 contentWidths[column] = std::max(contentWidths[column], itemWidth);
             }
         }

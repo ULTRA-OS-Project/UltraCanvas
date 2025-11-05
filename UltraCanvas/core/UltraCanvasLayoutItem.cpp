@@ -13,8 +13,8 @@ namespace UltraCanvas {
 // ===== BASE LAYOUT ITEM IMPLEMENTATION =====
 
 UltraCanvasLayoutItem::UltraCanvasLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem)
-    : element(elem) {
-}
+    : element(elem)
+    {}
 
 float UltraCanvasLayoutItem::GetPreferredWidth() const {
     if (element) {
@@ -37,9 +37,8 @@ void UltraCanvasLayoutItem::ApplyToElement() {
 }
 
 // ===== BOX LAYOUT ITEM IMPLEMENTATION =====
-
 UltraCanvasBoxLayoutItem::UltraCanvasBoxLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem)
-    : UltraCanvasLayoutItem(elem) {
+        : UltraCanvasLayoutItem(elem) {
 }
 
 float UltraCanvasBoxLayoutItem::GetPreferredWidth() const {
@@ -92,29 +91,23 @@ UltraCanvasGridLayoutItem::UltraCanvasGridLayoutItem(std::shared_ptr<UltraCanvas
     : UltraCanvasLayoutItem(elem) {
 }
 
-UltraCanvasGridLayoutItem::UltraCanvasGridLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem, 
-                                                     int r, int c)
-    : UltraCanvasLayoutItem(elem), row(r), column(c) {
-}
-
-UltraCanvasGridLayoutItem::UltraCanvasGridLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem,
-                                                     int r, int c, int rSpan, int cSpan)
-    : UltraCanvasLayoutItem(elem), row(r), column(c), rowSpan(rSpan), columnSpan(cSpan) {
-}
-
 float UltraCanvasGridLayoutItem::GetPreferredWidth() const {
     switch (widthMode) {
         case SizeMode::Fixed:
             return fixedWidth;
         
         case SizeMode::Auto:
+        case SizeMode::Fill:
             if (element) {
                 return static_cast<float>(element->GetWidth());
             }
             return 0;
         
-        case SizeMode::Fill:
-            return 0; // Will be calculated by layout
+//        case SizeMode::Fill:
+//            if (element) {
+//                return static_cast<float>(element->GetWidth());
+//            }
+//            return 0; // Will be calculated by layout
         
         case SizeMode::Percentage:
             return 0; // Will be calculated by layout based on container

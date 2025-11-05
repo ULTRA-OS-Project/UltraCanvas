@@ -36,7 +36,7 @@ class UltraCanvasLayout {
 protected:
     // Parent container that owns this layout
     UltraCanvasContainer* parentContainer = nullptr;
-    
+
     // Spacing between items
     int spacing = 0;
     
@@ -56,8 +56,8 @@ protected:
     bool layoutDirty = true;
     
 public:
-    UltraCanvasLayout() = default;
-    explicit UltraCanvasLayout(UltraCanvasContainer* parent);
+    UltraCanvasLayout() = delete;
+    explicit UltraCanvasLayout(UltraCanvasContainer* container);
     virtual ~UltraCanvasLayout() = default;
     
     // Prevent copying (layouts are owned by containers)
@@ -66,8 +66,8 @@ public:
     
     // ===== PARENT CONTAINER =====
     UltraCanvasContainer* GetParentContainer() const { return parentContainer; }
-    void SetParentContainer(UltraCanvasContainer* parent) { parentContainer = parent; }
-    
+    void SetParentContainer(UltraCanvasContainer* parent) { parentContainer = parent; Invalidate(); }
+
     // ===== SPACING =====
     void SetSpacing(int space) { 
         spacing = space;
@@ -138,25 +138,23 @@ public:
     // ===== PURE VIRTUAL INTERFACE =====
     // These MUST be implemented by derived classes
     
-    // Add an item to the layout (derived classes manage their own item collections)
-    virtual void AddChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) = 0;
-    
-    // Add an element directly (creates default layout item and adds to container)
-    virtual void AddChildElement(std::shared_ptr<UltraCanvasUIElement> element) = 0;
-    
-    // Remove item from layout
-    virtual void RemoveChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) = 0;
-    
+//    // Add an item to the layout (derived classes manage their own item collections)
+//    virtual void AddChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) = 0;
+//
+//    // Add an element directly (creates default layout item and adds to container)
+//    virtual void AddChildElement(std::shared_ptr<UltraCanvasUIElement> element) = 0;
+//
+//    // Remove item from layout
+//    virtual void RemoveChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) = 0;
+//
+    virtual UltraCanvasLayoutItem* InsertUIElement(std::shared_ptr<UltraCanvasUIElement> element, int index) = 0;
     // Remove element from layout
-    virtual void RemoveChildElement(std::shared_ptr<UltraCanvasUIElement> element) = 0;
-    
+    virtual void RemoveUIElement(std::shared_ptr<UltraCanvasUIElement> element) = 0;
+
     // Get number of items in layout
     virtual int GetItemCount() const = 0;
     
-    // Get item at index
-    virtual std::shared_ptr<UltraCanvasLayoutItem> GetItemAt(int index) const = 0;
-    
-    // Clear all items from layout
+//     Clear all items from layout
     virtual void ClearItems() = 0;
     
     // Perform the layout calculation and apply to items
@@ -183,8 +181,8 @@ protected:
     // Helper: Get available space after padding and margins
     Rect2Di GetContentRect(const Rect2Di& containerBounds) const {
         return Rect2Di(
-            containerBounds.x + marginLeft + paddingLeft,
-            containerBounds.y + marginTop + paddingTop,
+            marginLeft + paddingLeft,
+            marginTop + paddingTop,
             containerBounds.width - GetTotalMarginHorizontal() - GetTotalPaddingHorizontal(),
             containerBounds.height - GetTotalMarginVertical() - GetTotalPaddingVertical()
         );

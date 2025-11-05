@@ -28,7 +28,7 @@ private:
     BoxLayoutDirection direction = BoxLayoutDirection::Vertical;
     
     // Items in this layout
-    std::vector<std::shared_ptr<UltraCanvasBoxLayoutItem>> items;
+    std::vector<std::unique_ptr<UltraCanvasBoxLayoutItem>> items;
     
     // Alignment of items along the cross axis
     LayoutAlignment crossAxisAlignment = LayoutAlignment::Start;
@@ -37,8 +37,7 @@ private:
     LayoutAlignment mainAxisAlignment = LayoutAlignment::Start;
     
 public:
-    UltraCanvasBoxLayout() = default;
-    explicit UltraCanvasBoxLayout(BoxLayoutDirection dir);
+    UltraCanvasBoxLayout() = delete;
     explicit UltraCanvasBoxLayout(UltraCanvasContainer* parent, BoxLayoutDirection dir = BoxLayoutDirection::Vertical);
     virtual ~UltraCanvasBoxLayout() = default;
     
@@ -63,35 +62,27 @@ public:
     LayoutAlignment GetMainAxisAlignment() const { return mainAxisAlignment; }
     
     // ===== ITEM MANAGEMENT =====
-    void AddChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) override;
-    void AddChildElement(std::shared_ptr<UltraCanvasUIElement> element) override;
-    
-    void RemoveChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) override;
-    void RemoveChildElement(std::shared_ptr<UltraCanvasUIElement> element) override;
-    
+    UltraCanvasLayoutItem* InsertUIElement(std::shared_ptr<UltraCanvasUIElement> element, int index) override;
+    void RemoveUIElement(std::shared_ptr<UltraCanvasUIElement> element) override;
     int GetItemCount() const override { return static_cast<int>(items.size()); }
-    std::shared_ptr<UltraCanvasLayoutItem> GetItemAt(int index) const override;
-    
     void ClearItems() override;
-    
+
     // ===== BOX LAYOUT SPECIFIC =====
     // Add item with stretch factor
-    void AddItem(std::shared_ptr<UltraCanvasBoxLayoutItem> item, int stretch = 0);
-    
+    UltraCanvasBoxLayoutItem* GetItemAt(int index) const;
+    UltraCanvasBoxLayoutItem* GetItemForUIElement(std::shared_ptr<UltraCanvasUIElement> elem) const;
+
     // Add element with stretch factor
-    void AddElement(std::shared_ptr<UltraCanvasUIElement> element, int stretch = 0);
-    
+    UltraCanvasBoxLayoutItem* AddUIElement(std::shared_ptr<UltraCanvasUIElement> element, float stretch = 0);
+
     // Add spacing (non-stretchable space)
     void AddSpacing(int size);
     
     // Add stretch (stretchable space)
     void AddStretch(int stretch = 1);
     
-    // Insert item at index
-    void InsertItem(int index, std::shared_ptr<UltraCanvasBoxLayoutItem> item, int stretch = 0);
-    
     // Get all items
-    const std::vector<std::shared_ptr<UltraCanvasBoxLayoutItem>>& GetItems() const { return items; }
+    const std::vector<std::unique_ptr<UltraCanvasBoxLayoutItem>>& GetItems() const { return items; }
     
     // ===== LAYOUT CALCULATION =====
     void PerformLayout(const Rect2Di& containerBounds) override;
@@ -105,7 +96,7 @@ private:
     void LayoutVertical(const Rect2Di& contentRect);
     
     // Calculate total stretch factor
-    int CalculateTotalStretch() const;
+    float CalculateTotalStretch() const;
     
     // Calculate total fixed size along main axis
     float CalculateTotalFixedSize() const;
@@ -118,12 +109,12 @@ private:
 };
 
 // ===== CONVENIENCE FACTORY FUNCTIONS =====
-inline std::unique_ptr<UltraCanvasBoxLayout> CreateHBoxLayout(UltraCanvasContainer* parent = nullptr) {
-    return std::make_unique<UltraCanvasBoxLayout>(parent, BoxLayoutDirection::Horizontal);
+inline UltraCanvasBoxLayout* CreateHBoxLayout(UltraCanvasContainer* parent = nullptr) {
+    return new UltraCanvasBoxLayout(parent, BoxLayoutDirection::Horizontal);
 }
 
-inline std::unique_ptr<UltraCanvasBoxLayout> CreateVBoxLayout(UltraCanvasContainer* parent = nullptr) {
-    return std::make_unique<UltraCanvasBoxLayout>(parent, BoxLayoutDirection::Vertical);
+inline UltraCanvasBoxLayout* CreateVBoxLayout(UltraCanvasContainer* parent = nullptr) {
+    return new UltraCanvasBoxLayout(parent, BoxLayoutDirection::Vertical);
 }
 
 } // namespace UltraCanvas

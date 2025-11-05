@@ -63,7 +63,7 @@ enum class FlexAlignContent {
 class UltraCanvasFlexLayout : public UltraCanvasLayout {
 private:
     // Items in this layout
-    std::vector<std::shared_ptr<UltraCanvasFlexLayoutItem>> items;
+    std::vector<std::unique_ptr<UltraCanvasFlexLayoutItem>> items;
     
     // Flex properties
     FlexDirection direction = FlexDirection::Row;
@@ -77,8 +77,7 @@ private:
     int columnGap = 0;
     
 public:
-    UltraCanvasFlexLayout() = default;
-    explicit UltraCanvasFlexLayout(FlexDirection dir);
+    UltraCanvasFlexLayout() = delete;
     explicit UltraCanvasFlexLayout(UltraCanvasContainer* parent, FlexDirection dir = FlexDirection::Row);
     virtual ~UltraCanvasFlexLayout() = default;
     
@@ -143,27 +142,21 @@ public:
     int GetColumnGap() const { return columnGap; }
     
     // ===== ITEM MANAGEMENT =====
-    void AddChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) override;
-    void AddChildElement(std::shared_ptr<UltraCanvasUIElement> element) override;
-    
-    void RemoveChildItem(std::shared_ptr<UltraCanvasLayoutItem> item) override;
-    void RemoveChildElement(std::shared_ptr<UltraCanvasUIElement> element) override;
-    
+    UltraCanvasLayoutItem* InsertUIElement(std::shared_ptr<UltraCanvasUIElement> element, int index) override;
+    void RemoveUIElement(std::shared_ptr<UltraCanvasUIElement> element) override;
     int GetItemCount() const override { return static_cast<int>(items.size()); }
-    std::shared_ptr<UltraCanvasLayoutItem> GetItemAt(int index) const override;
-    
     void ClearItems() override;
-    
-    // ===== FLEX LAYOUT SPECIFIC =====
-    // Add item with flex properties
-    void AddItem(std::shared_ptr<UltraCanvasFlexLayoutItem> item);
-    
-    // Add element with flex properties
-    void AddElement(std::shared_ptr<UltraCanvasUIElement> element, 
-                    float flexGrow = 0, float flexShrink = 1, float flexBasis = 0);
-    
+
+    // ===== BOX LAYOUT SPECIFIC =====
+    // Add item with stretch factor
+    UltraCanvasFlexLayoutItem* GetItemAt(int index) const;
+    UltraCanvasFlexLayoutItem* GetItemForUIElement(std::shared_ptr<UltraCanvasUIElement> elem) const;
+
+    // Add element with stretch factor
+    UltraCanvasFlexLayoutItem* AddUIElement(std::shared_ptr<UltraCanvasUIElement> element, float flexGrow = 0, float flexShrink = 0, float flexBasis = 0);
+
     // Get all items
-    const std::vector<std::shared_ptr<UltraCanvasFlexLayoutItem>>& GetItems() const { return items; }
+    const std::vector<std::unique_ptr<UltraCanvasFlexLayoutItem>>& GetItems() const { return items; }
     
     // ===== LAYOUT CALCULATION =====
     void PerformLayout(const Rect2Di& containerBounds) override;
@@ -214,10 +207,10 @@ private:
 };
 
 // ===== CONVENIENCE FACTORY FUNCTION =====
-inline std::unique_ptr<UltraCanvasFlexLayout> CreateFlexLayout(
+inline UltraCanvasFlexLayout* CreateFlexLayout(
     UltraCanvasContainer* parent = nullptr,
     FlexDirection direction = FlexDirection::Row) {
-    return std::make_unique<UltraCanvasFlexLayout>(parent, direction);
+    return new UltraCanvasFlexLayout(parent, direction);
 }
 
 } // namespace UltraCanvas
