@@ -54,10 +54,7 @@ namespace UltraCanvas {
 
         // Create divider line
         auto divider = std::make_shared<UltraCanvasContainer>("Divider", 1001, 10, 50, 610, 2);
-        ContainerStyle dividerStyle;
-        dividerStyle.backgroundColor = Color(200, 200, 200, 255);
-        dividerStyle.borderWidth = 0;
-        divider->SetContainerStyle(dividerStyle);
+        divider->SetBackgroundColor(Color(200, 200, 200, 255));
         AddChild(divider);
 
         infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1", 1002, 30, 60, 590, 120);

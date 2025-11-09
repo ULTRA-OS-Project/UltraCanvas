@@ -65,7 +65,7 @@ namespace UltraCanvas {
         multiLabel->SetAlignment(TextAlignment::Left);
         multiLabel->SetBackgroundColor(Color(245, 245, 245, 255));
 //        multiLabel->SetBorderStyle(BorderStyle::Solid);
-        multiLabel->SetBorderWidth(1.0f);
+        multiLabel->SetBorders(1.0f);
         multiLabel->SetPadding(10.0f);
         container->AddChild(multiLabel);
 

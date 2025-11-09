@@ -183,9 +183,9 @@ namespace UltraCanvas {
         const DropdownItem* GetItem(int index) const;
 
         // ===== RENDERING =====
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
 
-        void RenderPopupContent() override;
+        void RenderPopupContent(IRenderContext* ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;

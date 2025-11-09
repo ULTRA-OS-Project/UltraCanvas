@@ -513,7 +513,7 @@ public:
     }
     
     // ===== RENDERING =====
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
         if (!Visible) return;
         
         // This would integrate with your existing render bridge

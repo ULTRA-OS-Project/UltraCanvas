@@ -293,10 +293,9 @@ namespace UltraCanvas {
             tokens = highlighter.HighlightSyntax(text);
         }
 
-        void Render() override {
+        void Render(IRenderContext* ctx) override {
             // Call base render first
-            auto ctx = GetRenderContext();
-            UltraCanvasTextArea::Render();
+            UltraCanvasTextArea::Render(ctx);
 
             // Apply syntax highlighting
             if (syntaxHighlightingEnabled && !tokens.empty()) {
@@ -471,7 +470,7 @@ namespace UltraCanvas {
     private:
         void CreateUI() {
             // Main layout: left side editor, right side preview
-            Rect2Di bounds = GetContentArea();
+            Rect2Di bounds = GetContentRect();
             int editorWidth = bounds.width - 20;
             int previewWidth = static_cast<int>(bounds.width * 0.4f);
 
@@ -523,8 +522,8 @@ namespace UltraCanvas {
             //AddChild(livePreview);
         }
 
-        virtual void Render() {
-            UltraCanvasContainer::Render();
+        virtual void Render(IRenderContext* ctx) {
+            UltraCanvasContainer::Render(ctx);
         }
 
         void SetupEventHandlers() {

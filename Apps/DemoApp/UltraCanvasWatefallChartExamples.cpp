@@ -200,8 +200,7 @@ namespace UltraCanvas {
         infoLabel->SetFontSize(11);
         infoLabel->SetTextColor(Color(60, 60, 60, 255));
         infoLabel->SetBackgroundColor(Color(245, 245, 245, 255));
-        infoLabel->SetBorderWidth(1.0f);
-        infoLabel->SetBorderColor(Color(200, 200, 200, 255));
+        infoLabel->SetBorders(1.0f, Color(200, 200, 200, 255));
         infoLabel->SetPadding(10.0f);
 
         container->AddChild(infoLabel);

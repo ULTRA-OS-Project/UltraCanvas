@@ -9,7 +9,6 @@
 #define ULTRACANVAS_FLEX_LAYOUT_H
 
 #include "UltraCanvasLayout.h"
-#include "UltraCanvasLayoutItem.h"
 #include <vector>
 #include <memory>
 
@@ -57,6 +56,112 @@ enum class FlexAlignContent {
     Stretch = 3,       // Lines stretch to fill
     SpaceBetween = 4,  // Space between lines
     SpaceAround = 5    // Space around lines
+};
+
+class UltraCanvasFlexLayoutItem : public UltraCanvasLayoutItem {
+private:
+    // Flex properties
+    float flexGrow = 0;      // How much to grow (0 = don't grow)
+    float flexShrink = 1;    // How much to shrink (1 = normal shrinking)
+    int flexBasis = 0;     // Base size before growing/shrinking (0 = auto)
+
+    // Size constraints
+    SizeMode widthMode = SizeMode::Auto;
+    SizeMode heightMode = SizeMode::Auto;
+    int fixedWidth = 0;
+    int fixedHeight = 0;
+
+    // Size limits
+    int minWidth = -1;
+    int minHeight = -1;
+    int maxWidth = -1;
+    int maxHeight = -1;
+
+    // Alignment
+    LayoutItemAlignment alignSelf = LayoutItemAlignment::Auto;  // Override container alignment for this item
+
+public:
+    UltraCanvasFlexLayoutItem() = default;
+    explicit UltraCanvasFlexLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem);
+
+    // ===== FLEX PROPERTIES =====
+    UltraCanvasFlexLayoutItem* SetFlexGrow(float grow) { flexGrow = grow; return this; }
+    UltraCanvasFlexLayoutItem* SetFlexShrink(float shrink) { flexShrink = shrink; return this; }
+    UltraCanvasFlexLayoutItem* SetFlexBasis(int basis) { flexBasis = basis; return this; }
+    UltraCanvasFlexLayoutItem* SetFlex(float grow, float shrink, int basis) {
+        flexGrow = grow;
+        flexShrink = shrink;
+        flexBasis = basis;
+        return this;
+    }
+
+    float GetFlexGrow() const { return flexGrow; }
+    float GetFlexShrink() const { return flexShrink; }
+    int GetFlexBasis() const { return flexBasis; }
+
+    // ===== SIZE MODE =====
+    SizeMode GetWidthMode() const override { return widthMode; }
+    SizeMode GetHeightMode() const override { return heightMode; }
+
+    UltraCanvasFlexLayoutItem* SetWidthMode(SizeMode mode) { widthMode = mode; return this; }
+    UltraCanvasFlexLayoutItem* SetHeightMode(SizeMode mode) { heightMode = mode; return this; }
+    UltraCanvasFlexLayoutItem* SetSizeMode(SizeMode width, SizeMode height) {
+        widthMode = width;
+        heightMode = height;
+        return this;
+    }
+
+    // ===== FIXED SIZES =====
+    UltraCanvasFlexLayoutItem* SetFixedWidth(int width) {
+        widthMode = SizeMode::Fixed;
+        fixedWidth = width;
+        return this;
+    }
+
+    UltraCanvasFlexLayoutItem* SetFixedHeight(int height) {
+        heightMode = SizeMode::Fixed;
+        fixedHeight = height;
+        return this;
+    }
+
+    UltraCanvasFlexLayoutItem* SetFixedSize(int width, int height) {
+        SetFixedWidth(width);
+        SetFixedHeight(height);
+        return this;
+    }
+
+    int GetFixedWidth() const { return fixedWidth; }
+    int GetFixedHeight() const { return fixedHeight; }
+
+    // ===== SIZE LIMITS =====
+    UltraCanvasFlexLayoutItem* SetMinimumWidth(int width) { minWidth = width; return this; }
+    UltraCanvasFlexLayoutItem* SetMinimumHeight(int height) { minHeight = height; return this; }
+    UltraCanvasFlexLayoutItem* SetMinimumSize(int width, int height) {
+        minWidth = width;
+        minHeight = height;
+        return this;
+    }
+
+    UltraCanvasFlexLayoutItem* SetMaximumWidth(int width) { maxWidth = width; return this; }
+    UltraCanvasFlexLayoutItem* SetMaximumHeight(int height) { maxHeight = height; return this; }
+    UltraCanvasFlexLayoutItem* SetMaximumSize(int width, int height) {
+        maxWidth = width;
+        maxHeight = height;
+        return this;
+    }
+
+    int GetMinimumWidth() const override { return minWidth != -1 ? minWidth : UltraCanvasLayoutItem::GetMinimumWidth(); }
+    int GetMinimumHeight() const override { return minHeight!= -1 ? minHeight : UltraCanvasLayoutItem::GetMinimumHeight();  }
+    int GetMaximumWidth() const override { return maxWidth != -1 ? maxWidth : UltraCanvasLayoutItem::GetMaximumWidth();  }
+    int GetMaximumHeight() const override { return maxHeight != -1 ? maxHeight : UltraCanvasLayoutItem::GetMaximumHeight();  }
+
+    // ===== ALIGNMENT =====
+    UltraCanvasFlexLayoutItem* SetAlignSelf(LayoutItemAlignment align) { alignSelf = align; return this; }
+    LayoutItemAlignment GetAlignSelf() const { return alignSelf; }
+
+    // ===== PREFERRED SIZE =====
+    int GetPreferredWidth() const override;
+    int GetPreferredHeight() const override;
 };
 
 // ===== FLEX LAYOUT CLASS =====
@@ -159,7 +264,7 @@ public:
     const std::vector<std::unique_ptr<UltraCanvasFlexLayoutItem>>& GetItems() const { return items; }
     
     // ===== LAYOUT CALCULATION =====
-    void PerformLayout(const Rect2Di& containerBounds) override;
+    void PerformLayout() override;
     Size2Di CalculateMinimumSize() const override;
     Size2Di CalculatePreferredSize() const override;
     Size2Di CalculateMaximumSize() const override;
@@ -185,25 +290,25 @@ private:
     }
     
     // Get main axis size of item
-    float GetItemMainSize(UltraCanvasFlexLayoutItem* item) const;
+    int GetItemMainSize(UltraCanvasFlexLayoutItem* item) const;
     
     // Get cross axis size of item
-    float GetItemCrossSize(UltraCanvasFlexLayoutItem* item) const;
+    int GetItemCrossSize(UltraCanvasFlexLayoutItem* item) const;
     
     // Calculate flex lines (for wrapping)
-    std::vector<FlexLine> CalculateFlexLines(float containerMainSize) const;
+    std::vector<FlexLine> CalculateFlexLines(int containerMainSize) const;
     
     // Resolve flexible lengths (flex-grow/flex-shrink)
-    void ResolveFlexibleLengths(FlexLine& line, float containerMainSize);
+    void ResolveFlexibleLengths(FlexLine& line, int containerMainSize);
     
     // Position items along main axis
-    void PositionMainAxis(FlexLine& line, float containerMainSize);
+    void PositionMainAxis(FlexLine& line, int containerMainSize);
     
     // Position items along cross axis
-    void PositionCrossAxis(FlexLine& line, float containerCrossSize);
+    void PositionCrossAxis(FlexLine& line, int containerCrossSize);
     
     // Position all lines
-    void PositionLines(std::vector<FlexLine>& lines, float containerCrossSize);
+    void PositionLines(std::vector<FlexLine>& lines, int containerCrossSize);
 };
 
 // ===== CONVENIENCE FACTORY FUNCTION =====

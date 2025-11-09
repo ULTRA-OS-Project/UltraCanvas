@@ -398,7 +398,7 @@ public:
             UpdateTemplates();
             
             // Render
-            mainWindow->Render();
+            mainWindow->Render(ctx);
             
             // Sleep to maintain frame rate
             Sleep(16); // ~60 FPS

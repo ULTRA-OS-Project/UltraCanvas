@@ -109,7 +109,7 @@ namespace UltraCanvas {
         // ===== RENDERING =====
 
         // Render tooltip - call this during window rendering
-        static void Render(const UltraCanvasWindowBase* win);
+        static void Render(IRenderContext* ctx, const UltraCanvasWindowBase* win);
 
         // ===== CONFIGURATION =====
 

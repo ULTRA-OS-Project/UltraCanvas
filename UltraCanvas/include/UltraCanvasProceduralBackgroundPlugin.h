@@ -519,9 +519,8 @@ namespace UltraCanvas {
         }
 
         // ===== RENDERING =====
-        void Render() override {
-            auto ctx = GetRenderContext();
-            if (!interpreter || !interpreter->IsCompiled() || !ctx) return;
+        void Render(IRenderContext* ctx) override {
+            if (!interpreter || !interpreter->IsCompiled()) return;
 
             auto currentTime = std::chrono::steady_clock::now();
             ctx->PushState();

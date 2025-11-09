@@ -125,10 +125,7 @@ namespace UltraCanvas {
         return unmet;
     }
 
-    void UltraCanvasPasswordRuleLegend::Render() {
-        auto ctx = GetRenderContext();
-        if (!ctx) return;
-
+    void UltraCanvasPasswordRuleLegend::Render(IRenderContext* ctx) {
         Rect2Di bounds = GetBounds();
 
         // Update from linked input if connected
@@ -146,10 +143,7 @@ namespace UltraCanvas {
         }
 
         // Draw background
-        if (config.backgroundColor.a > 0) {
-            ctx->SetFillPaint(config.backgroundColor);
-            ctx->FillRoundedRectangle(bounds.x, bounds.y, bounds.width, bounds.height, 4);
-        }
+        UltraCanvasUIElement::Render(ctx);
 
         // Render based on style
         switch (config.style) {

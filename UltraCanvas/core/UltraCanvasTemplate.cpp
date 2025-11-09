@@ -332,7 +332,7 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING =====
-    void UltraCanvasTemplate::Render() {
+    void UltraCanvasTemplate::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
 
         // Rebuild if necessary
@@ -366,7 +366,7 @@ namespace UltraCanvas {
         }
 
         // Render container children (the template elements)
-        UltraCanvasContainer::Render();
+        UltraCanvasContainer::Render(IRenderContext* ctx);
 
         // Restore clipping
         if (scrollSettings.horizontal != TemplateScrollMode::Off ||
@@ -377,7 +377,7 @@ namespace UltraCanvas {
 
 // ===== EVENT HANDLING =====
     bool UltraCanvasTemplate::OnEvent(const UCEvent& event) {
-        if (!IsEnabled()) return false;
+        if (IsDisabled()) return false;
 
         // Handle drag functionality
         if (dragHandle.enabled) {

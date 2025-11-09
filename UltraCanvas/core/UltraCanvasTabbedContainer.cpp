@@ -16,13 +16,6 @@ namespace UltraCanvas {
     UltraCanvasTabbedContainer::UltraCanvasTabbedContainer(const std::string &elementId, long uniqueId, long posX,
                                                            long posY, long w, long h)
             : UltraCanvasContainer(elementId, uniqueId, posX, posY, w, h) {
-        ContainerStyle st = GetContainerStyle();
-        st.paddingLeft = 0;
-        st.paddingRight = 0;
-        st.paddingTop = 0;
-        st.paddingBottom = 0;
-        st.borderWidth = 0;
-        SetContainerStyle(st);
         InitializeOverflowDropdown();
         CalculateLayout();
     }
@@ -152,7 +145,7 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::InitializeOverflowDropdown() {
         // Create overflow dropdown using existing UltraCanvasDropdown
         overflowDropdown = std::make_shared<UltraCanvasDropdown>(
-                GetIdentifier() + "_overflow", GetIdentifierID() + 1000, 0, 0, overflowDropdownWidth, tabHeight
+                GetIdentifier() + "_overflow", 0, 0, 0, overflowDropdownWidth, tabHeight
         );
         DropdownStyle st;
         st.hasShadow = false;
@@ -327,16 +320,15 @@ namespace UltraCanvas {
         overflowDropdown->SetSize(overflowDropdownWidth, tabBarBounds.height);
     }
 
-    void UltraCanvasTabbedContainer::Render() {
-        auto ctx = GetRenderContext();
-        if (!IsVisible() || !ctx) return;
+    void UltraCanvasTabbedContainer::Render(IRenderContext* ctx) {
+        if (!IsVisible()) return;
 
         ctx->PushState();
         RenderTabBar(ctx);
         if (showOverflowDropdown && overflowDropdown) {
             ctx->PushState();
             ctx->Translate(GetX(), GetY());
-            overflowDropdown->Render();
+            overflowDropdown->Render(ctx);
             ctx->PopState();
         }
         RenderContentArea(ctx);
@@ -487,7 +479,7 @@ namespace UltraCanvas {
         if (activeTabIndex >= 0 && activeTabIndex < (int)tabs.size()) {
             auto content = tabs[activeTabIndex]->content.get();
             if (content && content->IsVisible()) {
-                content->Render();
+                content->Render(ctx);
             }
         }
         ctx->PopState();

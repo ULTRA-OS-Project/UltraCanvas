@@ -90,7 +90,7 @@ namespace UltraCanvas {
         void PerformLayout();
 
         // ===== RENDERING =====
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;

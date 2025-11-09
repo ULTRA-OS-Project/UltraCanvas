@@ -139,13 +139,20 @@ typedef struct Rect2D<float> Rect2Df;
 typedef struct Rect2D<int> Rect2Di;
 typedef struct Rect2D<long> Rect2Dl;
 
+struct UCMargins {
+    int left = 0;
+    int right = 0;
+    int top = 0;
+    int bottom = 0;
+};
+
 // ===== UNIFIED COLOR SYSTEM =====
 
 struct Color {
     uint8_t r, g, b, a;
     
     // Constructors
-    Color(uint8_t red = 0, uint8_t green = 0, uint8_t blue = 0, uint8_t alpha = 255) 
+    Color(uint8_t red = 0, uint8_t green = 0, uint8_t blue = 0, uint8_t alpha = 255)
         : r(red), g(green), b(blue), a(alpha) {}
     
     // Conversion methods
@@ -294,6 +301,14 @@ inline Color HSV(float h, float s, float v, uint8_t a = 255) {
     );
 }
 
+struct UCDashPattern {
+    std::vector<double> dashes;
+    double offset;
+    UCDashPattern() : offset(0.0) {}
+    UCDashPattern(const std::vector<double>& d, double o = 0.0)
+            : dashes(d), offset(o) {}
+};
+
 // ===== MOUSE POINTER TYPES =====
 enum class MousePointer {
     Default = 0,        // Standard arrow
@@ -310,16 +325,6 @@ enum class MousePointer {
     SizeNWSE = 11,     // Northwest-Southeast resize
     SizeNESW = 12,     // Northeast-Southwest resize
     Custom = 99        // Custom cursor
-};
-
-// ===== MOUSE CONTROL TYPES =====
-enum class MouseControls {
-    NoMouse = 1,          // No mouse interaction
-    Input = 2,         // Input controls (text fields, etc.)
-    Button = 3,        // Button controls
-    Object2D = 4,      // 2D object manipulation
-    Object3D = 5,      // 3D object manipulation
-    Custom = 99        // Custom interaction
 };
 
 // ===== COMMON ENUMS =====

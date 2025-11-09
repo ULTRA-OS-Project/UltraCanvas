@@ -230,7 +230,7 @@ public:
     }
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
 
         if (!IsVisible()) return;
         auto ctx = GetRenderContext();
@@ -263,7 +263,7 @@ public:
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
     bool OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible()) return false;
+        if (IsDisabled() || !IsVisible()) return false;
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -374,7 +374,7 @@ private:
         
         // Determine background color based on state
         Color bgColor = appearance.backgroundColor;
-        if (!IsEnabled()) {
+        if (IsDisabled()) {
             bgColor = appearance.disabledColor;
         } else if (isPressed) {
             bgColor = appearance.pressedColor;
@@ -433,7 +433,7 @@ private:
         
         // Set text color (dimmed if button is disabled)
         Color textColor = section.textColor;
-        if (!IsEnabled()) {
+        if (IsDisabled()) {
             textColor = Color(textColor.r, textColor.g, textColor.b, textColor.a / 2);
         }
         

@@ -133,13 +133,13 @@ public:
     // ===== INTERACTION =====
     void SetClickable(bool enable) {
         clickable = enable;
-        properties.MousePtr = enable ? MousePointer::Hand : MousePointer::Default;
+        SetMousePointer(enable ? MousePointer::Hand : MousePointer::Default);
     }
     
     void SetDraggable(bool enable) { draggable = enable; }
     
     // ===== RENDERING =====
-    void Render() override;
+    void Render(IRenderContext* ctx) override;
     
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override;
@@ -166,7 +166,7 @@ private:
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageElement(
     const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasImageElement>(id, identifier, id, x, y, w, h);
+    return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, id, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromFile(

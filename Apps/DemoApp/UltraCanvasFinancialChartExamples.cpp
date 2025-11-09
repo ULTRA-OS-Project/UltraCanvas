@@ -104,12 +104,8 @@ namespace UltraCanvas {
 
         // ===== INFORMATION PANEL =====
         auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 1020, 720, 470, 260, 280);
-        ContainerStyle infoPanelStyle;
-        infoPanelStyle.backgroundColor = Color(250, 250, 250, 255);
-        infoPanelStyle.borderColor = Color(200, 200, 200, 255);
-        infoPanelStyle.borderWidth = 1.0f;
-//        infoPanelStyle.cornerRadius = 5.0f;
-        infoPanel->SetContainerStyle(infoPanelStyle);
+        infoPanel->SetBackgroundColor(Color(250, 250, 250, 255));
+        infoPanel->SetBorders(1, Color(200, 200, 200, 255));
 
         // Add info labels
         auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 1021, 10, 10, 240, 25);
@@ -154,12 +150,8 @@ namespace UltraCanvas {
 
         // Create control panel container
         auto controlPanel = std::make_shared<UltraCanvasContainer>("ControlPanel", 1050, x, y, 680, 280);
-        ContainerStyle panelStyle;
-        panelStyle.backgroundColor = Color(245, 245, 245, 255);
-        panelStyle.borderColor = Color(200, 200, 200, 255);
-        panelStyle.borderWidth = 1.0f;
-//        panelStyle.cornerRadius = 5.0f;
-        controlPanel->SetContainerStyle(panelStyle);
+        controlPanel->SetBackgroundColor(Color(245, 245, 245, 255));
+        controlPanel->SetBorders(1, Color(200, 200, 200, 255));
 
         // Panel title
         auto panelTitle = std::make_shared<UltraCanvasLabel>("PanelTitle", 1051, 10, 10, 660, 25);

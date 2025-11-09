@@ -138,9 +138,11 @@ namespace UltraCanvas {
 
 // ===== TRANSFORMATION =====
     void LinuxRenderContext::Translate(float x, float y) {
-        cairo_translate(cairo, x, y);
-        currentState.translation.x += x;
-        currentState.translation.y += y;
+        if (x != 0 && y != 0) {
+            cairo_translate(cairo, x, y);
+            currentState.translation.x += x;
+            currentState.translation.y += y;
+        }
     }
 
     void LinuxRenderContext::Rotate(float angle) {
@@ -185,30 +187,92 @@ namespace UltraCanvas {
         // Set new clip region
         cairo_rectangle(cairo, x, y, w, h);
         cairo_clip(cairo);
-        currentState.clipRect = Rect2Df(x,y,w,h);
         std::cout << "LinuxRenderContext::SetClipRect - clip region set successfully" << std::endl;
     }
 
     void LinuxRenderContext::ClearClipRect() {
-//        std::cout << "LinuxRenderContext::ClearClipRect - clearing clip region" << std::endl;
+        std::cout << "LinuxRenderContext::ClearClipRect - clearing clip region" << std::endl;
 
         // Reset the clip region to cover the entire surface
         cairo_reset_clip(cairo);
-        currentState.clipRect = Rect2Df(0,0,0,0);
-
 //        std::cout << "LinuxRenderContext::ClearClipRect - clip region cleared successfully" << std::endl;
     }
 
     void LinuxRenderContext::ClipRect(float x, float y, float w, float h) {
+        std::cout << "LinuxRenderContext::ClipRect - setting clip to "
+                  << x << "," << y << " " << w << "x" << h << std::endl;
         cairo_rectangle(cairo, x, y, w, h);
         cairo_clip(cairo);
-        currentState.clipRect = Rect2Df(x, y, w, h);
     }
 
     void LinuxRenderContext::ClipPath() {
         cairo_clip(cairo);
     }
 
+    void LinuxRenderContext::ClipRoundedRectangle(
+            float x, float y, float width, float height,
+            float borderTopLeftRadius, float borderTopRightRadius,
+            float borderBottomRightRadius, float borderBottomLeftRadius) {
+        // Clamp radii to prevent overlapping
+        float maxRadiusX = width / 2.0;
+        float maxRadiusY = height / 2.0;
+
+        float topLeftRadius = std::min({borderTopLeftRadius, maxRadiusX, maxRadiusY});
+        float topRightRadius = std::min({borderTopRightRadius, maxRadiusX, maxRadiusY});
+        float bottomRightRadius = std::min({borderBottomRightRadius, maxRadiusX, maxRadiusY});
+        float bottomLeftRadius = std::min({borderBottomLeftRadius, maxRadiusX, maxRadiusY});
+
+        // Adjust if corners overlap
+        float topScale = 1.0;
+        float bottomScale = 1.0;
+        float leftScale = 1.0;
+        float rightScale = 1.0;
+
+        if (topLeftRadius + topRightRadius > width) {
+            topScale = width / (topLeftRadius + topRightRadius);
+        }
+        if (bottomLeftRadius + bottomRightRadius > width) {
+            bottomScale = width / (bottomLeftRadius + bottomRightRadius);
+        }
+        if (topLeftRadius + bottomLeftRadius > height) {
+            leftScale = height / (topLeftRadius + bottomLeftRadius);
+        }
+        if (topRightRadius + bottomRightRadius > height) {
+            rightScale = height / (topRightRadius + bottomRightRadius);
+        }
+
+        float scale = std::min({topScale, bottomScale, leftScale, rightScale});
+        topLeftRadius *= scale;
+        topRightRadius *= scale;
+        bottomRightRadius *= scale;
+        bottomLeftRadius *= scale;
+
+        cairo_save(cairo);
+
+        // Create the rounded rectangle path
+        cairo_new_path(cairo);
+
+        // Top left corner
+        cairo_arc(cairo, x + topLeftRadius, y + topLeftRadius,
+                  topLeftRadius, M_PI, 3 * M_PI / 2);
+
+        // Top right corner
+        cairo_arc(cairo, x + width - topRightRadius, y + topRightRadius,
+                  topRightRadius, 3 * M_PI / 2, 0);
+
+        // Bottom right corner
+        cairo_arc(cairo, x + width - bottomRightRadius, y + height - bottomRightRadius,
+                  bottomRightRadius, 0, M_PI / 2);
+
+        // Bottom left corner
+        cairo_arc(cairo, x + bottomLeftRadius, y + height - bottomLeftRadius,
+                  bottomLeftRadius, M_PI / 2, M_PI);
+
+        cairo_close_path(cairo);
+
+        // Clip to the rounded rectangle for borders
+        cairo_clip(cairo);
+    }
 
 // ===== BASIC DRAWING =====
     void LinuxRenderContext::FillRectangle(float x, float y, float w, float h) {
@@ -877,6 +941,186 @@ namespace UltraCanvas {
         cairo_close_path(cairo);
     }
 
+    void LinuxRenderContext::DrawRoundedRectangleWidthBorders(
+            float x, float y, float width, float height,
+            bool fill,
+            float borderLeftWidth, float borderRightWidth,
+            float borderTopWidth, float borderBottomWidth,
+            const Color& borderLeftColor, const Color& borderRightColor,
+            const Color& borderTopColor, const Color& borderBottomColor,
+            float borderTopLeftRadius, float borderTopRightRadius,
+            float borderBottomRightRadius, float borderBottomLeftRadius,
+            const UCDashPattern& borderLeftPattern,
+            const UCDashPattern& borderRightPattern,
+            const UCDashPattern& borderTopPattern,
+            const UCDashPattern& borderBottomPattern
+    ) {
+        // Clamp radii to prevent overlapping
+        float maxRadiusX = width / 2.0;
+        float maxRadiusY = height / 2.0;
+
+        float topLeftRadius = std::min({borderTopLeftRadius, maxRadiusX, maxRadiusY});
+        float topRightRadius = std::min({borderTopRightRadius, maxRadiusX, maxRadiusY});
+        float bottomRightRadius = std::min({borderBottomRightRadius, maxRadiusX, maxRadiusY});
+        float bottomLeftRadius = std::min({borderBottomLeftRadius, maxRadiusX, maxRadiusY});
+
+        // Adjust if corners overlap
+        float topScale = 1.0;
+        float bottomScale = 1.0;
+        float leftScale = 1.0;
+        float rightScale = 1.0;
+
+        if (topLeftRadius + topRightRadius > width) {
+            topScale = width / (topLeftRadius + topRightRadius);
+        }
+        if (bottomLeftRadius + bottomRightRadius > width) {
+            bottomScale = width / (bottomLeftRadius + bottomRightRadius);
+        }
+        if (topLeftRadius + bottomLeftRadius > height) {
+            leftScale = height / (topLeftRadius + bottomLeftRadius);
+        }
+        if (topRightRadius + bottomRightRadius > height) {
+            rightScale = height / (topRightRadius + bottomRightRadius);
+        }
+
+        float scale = std::min({topScale, bottomScale, leftScale, rightScale});
+        topLeftRadius *= scale;
+        topRightRadius *= scale;
+        bottomRightRadius *= scale;
+        bottomLeftRadius *= scale;
+
+        cairo_save(cairo);
+
+        // Create the rounded rectangle path
+        cairo_new_path(cairo);
+
+        // Top left corner
+        cairo_arc(cairo, x + topLeftRadius, y + topLeftRadius,
+                  topLeftRadius, M_PI, 3 * M_PI / 2);
+
+        // Top right corner
+        cairo_arc(cairo, x + width - topRightRadius, y + topRightRadius,
+                  topRightRadius, 3 * M_PI / 2, 0);
+
+        // Bottom right corner
+        cairo_arc(cairo, x + width - bottomRightRadius, y + height - bottomRightRadius,
+                  bottomRightRadius, 0, M_PI / 2);
+
+        // Bottom left corner
+        cairo_arc(cairo, x + bottomLeftRadius, y + height - bottomLeftRadius,
+                  bottomLeftRadius, M_PI / 2, M_PI);
+
+        cairo_close_path(cairo);
+
+        // Fill background
+        if (fill) {
+            FillPathPreserve();
+        }
+
+        // Clip to the rounded rectangle for borders
+//        cairo_clip_preserve(cr);
+//        cairo_new_path(cr);
+
+        // Helper lambda to draw a single border side
+        auto drawBorderSide = [&](float x1, float y1, float x2, float y2,
+                                  float width, const Color& color,
+                                  const UCDashPattern& pattern) {
+            if (width <= 0) return;
+
+            cairo_save(cairo);
+            cairo_set_line_width(cairo, width);
+            cairo_set_source_rgba(cairo, color.r, color.g, color.b, color.a);
+
+            if (!pattern.dashes.empty()) {
+                cairo_set_dash(cairo, pattern.dashes.data(),
+                               pattern.dashes.size(), pattern.offset);
+            }
+
+            cairo_move_to(cairo, x1, y1);
+            cairo_line_to(cairo, x2, y2);
+            cairo_stroke(cairo);
+            cairo_restore(cairo);
+        };
+
+        // Draw borders (inset by half the border width for proper positioning)
+        // Top border
+        if (borderTopWidth > 0) {
+            float yPos = y + borderTopWidth / 2.0;
+            drawBorderSide(x + topLeftRadius, yPos,
+                           x + width - topRightRadius, yPos,
+                           borderTopWidth, borderTopColor, borderTopPattern);
+        }
+
+        // Right border
+        if (borderRightWidth > 0) {
+            float xPos = x + width - borderRightWidth / 2.0;
+            drawBorderSide(xPos, y + topRightRadius,
+                           xPos, y + height - bottomRightRadius,
+                           borderRightWidth, borderRightColor, borderRightPattern);
+        }
+
+        // Bottom border
+        if (borderBottomWidth > 0) {
+            float yPos = y + height - borderBottomWidth / 2.0;
+            drawBorderSide(x + bottomLeftRadius, yPos,
+                           x + width - bottomRightRadius, yPos,
+                           borderBottomWidth, borderBottomColor, borderBottomPattern);
+        }
+
+        // Left border
+        if (borderLeftWidth > 0) {
+            float xPos = x + borderLeftWidth / 2.0;
+            drawBorderSide(xPos, y + topLeftRadius,
+                           xPos, y + height - bottomLeftRadius,
+                           borderLeftWidth, borderLeftColor, borderLeftPattern);
+        }
+
+        // Draw rounded corners with borders
+        auto drawCornerBorder = [&](float cx, float cy, float radius,
+                                    float startAngle, float endAngle,
+                                    float width1, float width2,
+                                    const Color& color1, const Color& color2) {
+            if (radius <= 0) return;
+
+            // Use average width and color for corner
+            float avgWidth = (width1 + width2) / 2.0;
+            if (avgWidth <= 0) return;
+
+            Color avgColor(
+                    (color1.r + color2.r) / 2.0,
+                    (color1.g + color2.g) / 2.0,
+                    (color1.b + color2.b) / 2.0,
+                    (color1.a + color2.a) / 2.0
+            );
+
+            cairo_save(cairo);
+            cairo_set_line_width(cairo, avgWidth);
+            cairo_set_source_rgba(cairo, avgColor.r, avgColor.g, avgColor.b, avgColor.a);
+            cairo_arc(cairo, cx, cy, radius - avgWidth / 2.0, startAngle, endAngle);
+            cairo_stroke(cairo);
+            cairo_restore(cairo);
+        };
+
+        // Draw corner borders
+        drawCornerBorder(x + topLeftRadius, y + topLeftRadius, topLeftRadius,
+                         M_PI, 3 * M_PI / 2, borderLeftWidth, borderTopWidth,
+                         borderLeftColor, borderTopColor);
+
+        drawCornerBorder(x + width - topRightRadius, y + topRightRadius, topRightRadius,
+                         3 * M_PI / 2, 2 * M_PI, borderTopWidth, borderRightWidth,
+                         borderTopColor, borderRightColor);
+
+        drawCornerBorder(x + width - bottomRightRadius, y + height - bottomRightRadius,
+                         bottomRightRadius, 0, M_PI / 2, borderRightWidth, borderBottomWidth,
+                         borderRightColor, borderBottomColor);
+
+        drawCornerBorder(x + bottomLeftRadius, y + height - bottomLeftRadius, bottomLeftRadius,
+                         M_PI / 2, M_PI, borderBottomWidth, borderLeftWidth,
+                         borderBottomColor, borderLeftColor);
+
+        cairo_restore(cairo);
+    }
+
     void LinuxRenderContext::Circle(float x, float y, float radius) {
         cairo_arc(cairo, x, y, radius, 0, 2 * M_PI);
     }
@@ -1013,12 +1257,11 @@ namespace UltraCanvas {
         cairo_set_miter_limit(cairo, limit);
     }
 
-    void LinuxRenderContext::SetLineDash(const std::vector<float>& pattern, float offset) {
-        if (pattern.empty()) {
+    void LinuxRenderContext::SetLineDash(const UCDashPattern& pattern) {
+        if (pattern.dashes.empty()) {
             cairo_set_dash(cairo, nullptr, 0, 0);
         } else {
-            std::vector<double> dashes(pattern.begin(), pattern.end());
-            cairo_set_dash(cairo, dashes.data(), dashes.size(), offset);
+            cairo_set_dash(cairo, pattern.dashes.data(), pattern.dashes.size(), pattern.offset);
         }
     }
 

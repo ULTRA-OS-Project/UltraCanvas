@@ -164,7 +164,7 @@ namespace UltraCanvas {
         Rect2D GetContentArea() const { return contentArea; }
 
         // ===== RENDERING =====
-        void Render() override {
+        void Render(IRenderContext* ctx) override {
             ctx->PushState();
 
             UpdateLayout();
@@ -187,7 +187,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override {
-            if (!IsActive() || !IsVisible()) return false;
+            if (IsDisabled() || !IsVisible()) return false;
 
             UpdateLayout();
 

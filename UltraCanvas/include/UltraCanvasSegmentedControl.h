@@ -157,8 +157,7 @@ namespace UltraCanvas {
                                     long id = 0, long x = 0, long y = 0, long w = 300, long h = 32)
                 : UltraCanvasUIElement(identifier, id, x, y, w, h) {
 
-            properties.MousePtr = MousePointer::Hand;
-            properties.MouseCtrl = MouseControls::Button;
+            mousePtr = MousePointer::Hand;
         }
 
         bool AcceptsFocus() const override { return true; }
@@ -221,7 +220,7 @@ namespace UltraCanvas {
 
         // ===== RENDERING =====
 
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent &event) override;
@@ -266,8 +265,8 @@ namespace UltraCanvas {
 
     inline std::shared_ptr<UltraCanvasSegmentedControl> CreateSegmentedControl(
             const std::string& identifier, long id, long x, long y, long w, long h) {
-        return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasSegmentedControl>(
-                id, identifier, id, x, y, w, h
+        return UltraCanvasUIElementFactory::Create<UltraCanvasSegmentedControl>(
+                identifier, id, x, y, w, h
         );
     }
 

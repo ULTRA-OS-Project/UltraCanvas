@@ -66,10 +66,9 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMenu::Render() {
-        IRenderContext *ctx = GetRenderContext();
+    void UltraCanvasMenu::Render(IRenderContext* ctx) {
         // FIX: Simplified visibility check - if not visible at all, don't render
-        if (!IsVisible() || !ctx) return;
+        if (!IsVisible()) return;
         if (menuType == MenuType::Menubar) {
             if (needCalculateSize) {
                 CalculateAndUpdateSize();
@@ -94,10 +93,9 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMenu::RenderPopupContent() {
-        IRenderContext *ctx = GetRenderContext();
+    void UltraCanvasMenu::RenderPopupContent(IRenderContext* ctx) {
         // FIX: Simplified visibility check - if not visible at all, don't render
-        if (!IsVisible() || currentState == MenuState::Hidden || !ctx) return;
+        if (!IsVisible() || currentState == MenuState::Hidden) return;
 
         if (needCalculateSize) {
             CalculateAndUpdateSize();
@@ -219,7 +217,7 @@ namespace UltraCanvas {
         // Create and show new submenu
         activeSubmenu = std::make_shared<UltraCanvasMenu>(
                 GetIdentifier() + "_submenu_" + std::to_string(itemIndex),
-                GetIdentifierID() + 1000 + itemIndex,
+                0,
                 0, 0, 150, 100
         );
 

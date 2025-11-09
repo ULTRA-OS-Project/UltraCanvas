@@ -141,7 +141,7 @@ namespace UltraCanvas {
         float GetProgress() const; // 0.0 - 1.0
 
         // ===== OVERRIDES =====
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
         bool OnEvent(const UCEvent& event) override;
         void Update(float deltaTime);
 
@@ -209,7 +209,7 @@ namespace UltraCanvas {
 
         // ===== SYSTEM METHODS =====
         static void Update(float deltaTime);
-        static void Render();
+        static void Render(IRenderContext* ctx);
         static void Initialize();
         static void Shutdown();
 

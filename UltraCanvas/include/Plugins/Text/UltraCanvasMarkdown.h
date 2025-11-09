@@ -318,7 +318,7 @@ namespace UltraCanvas {
         }
 
         // ===== RENDERING =====
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
 
     private:
         void PerformLayout(IRenderContext* ctx);

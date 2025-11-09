@@ -50,7 +50,7 @@ namespace UltraCanvas {
                 // Scale if needed
                 int spacing = style.segmentSpacing * (static_cast<int>(segments.size()) - 1);
                 float scale = static_cast<float>(availableWidth - spacing) / totalContentWidth;
-                for(auto i = 0; i < segmentWidths.size(); i++) {
+                for(auto i = 0; i < static_cast<int>(segmentWidths.size()); i++) {
                     segmentWidths[i] = segmentWidths[i] * scale;
                 }
                 break;
@@ -114,11 +114,8 @@ namespace UltraCanvas {
 
 // ===== RENDERING IMPLEMENTATION =====
 
-    void UltraCanvasSegmentedControl::Render() {
+    void UltraCanvasSegmentedControl::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
-
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return;
 
         ctx->PushState();
 
@@ -342,7 +339,7 @@ namespace UltraCanvas {
 // ===== EVENT HANDLING =====
 
     bool UltraCanvasSegmentedControl::OnEvent(const UCEvent& event) {
-        if (!IsVisible() || !IsActive()) return false;
+        if (!IsVisible() || IsDisabled()) return false;
 
         switch (event.type) {
             case UCEventType::MouseDown:

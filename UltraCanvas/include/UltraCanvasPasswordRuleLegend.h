@@ -50,7 +50,6 @@ namespace UltraCanvas {
         Color metColor = Color(40, 167, 69);        // Green for met rules
         Color unmetColor = Color(220, 53, 69);      // Red for unmet rules
         Color textColor = Color(60, 60, 60);        // Normal text color
-        Color backgroundColor = Color(250, 250, 250); // Background
 
         // Icons (Unicode characters)
         std::string metIcon = "✓";          // Checkmark
@@ -127,7 +126,7 @@ namespace UltraCanvas {
 
     protected:
         // ===== CORE RENDERING =====
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
 
     private:
         // ===== RULES UPDATE =====

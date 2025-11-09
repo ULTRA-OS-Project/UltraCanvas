@@ -426,7 +426,7 @@ public:
     const TextInputStyle& GetStyle() const { return style; }
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
-    void Render() override;
+    void Render(IRenderContext* ctx) override;
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
     bool OnEvent(const UCEvent& event) override;

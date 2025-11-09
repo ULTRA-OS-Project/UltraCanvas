@@ -105,6 +105,10 @@ namespace UltraCanvas {
         void SetupLegend(const std::string& implementedIconPath,
                          const std::string& partialIconPath,
                          const std::string& notImplementedIconPath);
+
+        void Render(IRenderContext* ctx) override {
+            UltraCanvasContainer::Render(ctx);
+        }
     };
 
     class DemoHeaderContainer : public UltraCanvasContainer {

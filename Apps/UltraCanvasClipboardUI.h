@@ -45,7 +45,7 @@ namespace UltraCanvas {
         }
 
         void CalculateLayout();
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
         void RenderContent();
         void DrawTypeIcon();
         void RenderActionButtons();

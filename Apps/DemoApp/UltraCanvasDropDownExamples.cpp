@@ -311,9 +311,8 @@ namespace UltraCanvas {
         travelStatus->SetWordWrap(true);
         travelStatus->SetFontSize(12);
         travelStatus->SetBackgroundColor(Color(250, 250, 250, 255));
-        travelStatus->SetBorderWidth(1.0f);
-        travelStatus->SetBorderColor(Color(200, 200, 200, 255));
-        travelStatus->SetPadding(5.0f);
+        travelStatus->SetBorders(1, Color(200, 200, 200, 255));
+        travelStatus->SetPadding(5);
 
         // Callback for travel selection
         travelDropdown->onMultiSelectionChanged = [travelStatus](const std::vector<int>& indices) {
@@ -360,8 +359,8 @@ namespace UltraCanvas {
         eventLog->SetWordWrap(true);
         eventLog->SetFontSize(11);
         eventLog->SetBackgroundColor(Color(245, 245, 245, 255));
-        eventLog->SetBorderWidth(1.0f);
-        eventLog->SetBorderColor(Color(180, 180, 180, 255));
+        eventLog->SetBorders(1.0f);
+        eventLog->SetBordersColor(Color(180, 180, 180, 255));
         eventLog->SetPadding(5.0f);
 
         // Set up all callbacks

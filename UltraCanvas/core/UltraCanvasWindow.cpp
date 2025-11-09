@@ -238,7 +238,7 @@ namespace UltraCanvas {
     void UltraCanvasWindowBase::HandleResizeEvent(int width, int height) {
         config_.width = width;
         config_.height = height;
-        UltraCanvasContainer::SetSize(width, height);
+        SetSize(width, height);
         MarkLayoutDirty();
         if (onWindowResize) onWindowResize(width, height);
     }
@@ -266,7 +266,7 @@ namespace UltraCanvas {
         _needsRedraw = true;
     }
 
-    void UltraCanvasWindowBase::Render() {
+    void UltraCanvasWindowBase::Render(IRenderContext* ctx) {
         if (!_visible || !_created) return;
 //        if (useSelectiveRendering && selectiveRenderer) {
 //            // Use simple selective rendering
@@ -276,33 +276,29 @@ namespace UltraCanvas {
 //                _needsRedraw = false;
 //            }
 //        } else {
-            // Clear the window background
-            RenderWindowBackground();
-
             // Render container content (children with scrolling)
-            UltraCanvasContainer::Render();
+            UltraCanvasContainer::Render(ctx);
 
-            RenderActivePopups();
+            RenderActivePopups(ctx);
 
             // Render window-specific overlays
-            RenderWindowChrome();
+            RenderWindowChrome(ctx);
 
 //            useSelectiveRendering = true;
 //        }
     }
 
-    void UltraCanvasWindowBase::RenderActivePopups() {
+    void UltraCanvasWindowBase::RenderActivePopups(IRenderContext* ctx) {
         // Render popups in z-order
         for (UltraCanvasUIElement* popup : activePopups) {
             if (popup) {
-                auto ctx = GetRenderContext();
                 ctx->PushState();
-                popup->RenderPopupContent();
+                popup->RenderPopupContent(ctx);
                 ctx->PopState();
             }
         }
 
-        UltraCanvasTooltipManager::Render(this);
+        UltraCanvasTooltipManager::Render(ctx, this);
     }
 
 
@@ -365,13 +361,8 @@ namespace UltraCanvas {
         ContainerStyle containerStyle;
         containerStyle.enableVerticalScrolling = config.enableWindowScrolling;
         containerStyle.enableHorizontalScrolling = config.enableWindowScrolling;
-        containerStyle.backgroundColor = config.backgroundColor;
-        containerStyle.borderWidth = 0.0f; // Windows don't need container borders
-        containerStyle.paddingLeft = 0;
-        containerStyle.paddingRight = 0;
-        containerStyle.paddingTop = 0;
-        containerStyle.paddingBottom = 0;
         SetContainerStyle(containerStyle);
+        SetBackgroundColor(config.backgroundColor);
 
         auto application = UltraCanvasApplication::GetInstance();
         SetBounds(Rect2Di(0, 0, config_.width, config_.height));

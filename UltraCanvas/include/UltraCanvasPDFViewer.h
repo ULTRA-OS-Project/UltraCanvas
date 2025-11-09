@@ -105,7 +105,7 @@ public:
         RequestRedraw();
     }
     
-    void HandleRender() override {
+    void HandleRender(IRenderContext* ctx) override {
         ctx->PushState();
         
         // Draw background
@@ -408,7 +408,7 @@ public:
     const PDFRenderSettings& GetRenderSettings() const { return renderSettings; }
     
     // ===== UI EVENT HANDLING =====
-    void HandleRender() override {
+    void HandleRender(IRenderContext* ctx) override {
         ctx->PushState();
         
         // Draw background

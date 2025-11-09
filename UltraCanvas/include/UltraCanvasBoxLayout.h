@@ -9,7 +9,6 @@
 #define ULTRACANVAS_BOX_LAYOUT_H
 
 #include "UltraCanvasLayout.h"
-#include "UltraCanvasLayoutItem.h"
 #include <vector>
 #include <memory>
 
@@ -19,6 +18,99 @@ namespace UltraCanvas {
 enum class BoxLayoutDirection {
     Horizontal = 0,  // Left to right
     Vertical = 1     // Top to bottom
+};
+
+class UltraCanvasBoxLayoutItem : public UltraCanvasLayoutItem {
+private:
+    // Size constraints
+    SizeMode widthMode = SizeMode::Auto;
+    SizeMode heightMode = SizeMode::Auto;
+    int fixedWidth = 0;
+    int fixedHeight = 0;
+
+    // Size limits
+    int minWidth = -1;
+    int minHeight = -1;
+    int maxWidth = -1;
+    int maxHeight = -1;
+
+    // Flex properties (for flexible sizing)
+    float stretch = 0;  // How much to stretch relative to other items (0 = no stretch)
+
+    // Alignment within allocated space
+    LayoutItemAlignment alignment = LayoutItemAlignment::Start;
+
+public:
+    UltraCanvasBoxLayoutItem() = default;
+    explicit UltraCanvasBoxLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem);
+
+    // ===== SIZE MODE =====
+    SizeMode GetWidthMode() const override { return widthMode; }
+    SizeMode GetHeightMode() const override { return heightMode; }
+
+    UltraCanvasBoxLayoutItem* SetWidthMode(SizeMode mode) { widthMode = mode; return this; }
+    UltraCanvasBoxLayoutItem* SetHeightMode(SizeMode mode) { heightMode = mode; return this; }
+    UltraCanvasBoxLayoutItem* SetSizeMode(SizeMode width, SizeMode height) {
+        widthMode = width;
+        heightMode = height;
+        return this;
+    }
+
+    // ===== FIXED SIZES =====
+    UltraCanvasBoxLayoutItem* SetFixedWidth(int width) {
+        widthMode = SizeMode::Fixed;
+        fixedWidth = width;
+        return this;
+    }
+
+    UltraCanvasBoxLayoutItem* SetFixedHeight(int height) {
+        heightMode = SizeMode::Fixed;
+        fixedHeight = height;
+        return this;
+    }
+
+    UltraCanvasBoxLayoutItem* SetFixedSize(int width, int height) {
+        SetFixedWidth(width);
+        SetFixedHeight(height);
+        return this;
+    }
+
+    int GetFixedWidth() const { return fixedWidth; }
+    int GetFixedHeight() const { return fixedHeight; }
+
+    // ===== SIZE LIMITS =====
+    UltraCanvasBoxLayoutItem* SetMinimumWidth(int width) { minWidth = width; return this; }
+    UltraCanvasBoxLayoutItem* SetMinimumHeight(int height) { minHeight = height; return this; }
+    UltraCanvasBoxLayoutItem* SetMinimumSize(int width, int height) {
+        minWidth = width;
+        minHeight = height;
+        return this;
+    }
+
+    UltraCanvasBoxLayoutItem* SetMaximumWidth(int width) { maxWidth = width; return this; }
+    UltraCanvasBoxLayoutItem* SetMaximumHeight(int height) { maxHeight = height; return this; }
+    UltraCanvasBoxLayoutItem* SetMaximumSize(int width, int height) {
+        maxWidth = width;
+        maxHeight = height;
+        return this;
+    }
+
+    int GetMinimumWidth() const override { return minWidth != -1 ? minWidth : UltraCanvasLayoutItem::GetMinimumWidth(); }
+    int GetMinimumHeight() const override { return minHeight!= -1 ? minHeight : UltraCanvasLayoutItem::GetMinimumHeight();  }
+    int GetMaximumWidth() const override { return maxWidth != -1 ? maxWidth : UltraCanvasLayoutItem::GetMaximumWidth();  }
+    int GetMaximumHeight() const override { return maxHeight != -1 ? maxHeight : UltraCanvasLayoutItem::GetMaximumHeight();  }
+
+    // ===== STRETCH (FLEX GROW) =====
+    UltraCanvasBoxLayoutItem* SetStretch(float stretchFactor) { stretch = stretchFactor; return this; }
+    float GetStretch() const { return stretch; }
+
+    // ===== ALIGNMENT =====
+    UltraCanvasBoxLayoutItem* SetAlignment(LayoutItemAlignment align) { alignment = align; return this; }
+    LayoutItemAlignment GetAlignment() const { return alignment; }
+
+    // ===== PREFERRED SIZE =====
+    int GetPreferredWidth() const override;
+    int GetPreferredHeight() const override;
 };
 
 // ===== BOX LAYOUT CLASS =====
@@ -85,7 +177,7 @@ public:
     const std::vector<std::unique_ptr<UltraCanvasBoxLayoutItem>>& GetItems() const { return items; }
     
     // ===== LAYOUT CALCULATION =====
-    void PerformLayout(const Rect2Di& containerBounds) override;
+    void PerformLayout() override;
     Size2Di CalculateMinimumSize() const override;
     Size2Di CalculatePreferredSize() const override;
     Size2Di CalculateMaximumSize() const override;
@@ -99,13 +191,13 @@ private:
     float CalculateTotalStretch() const;
     
     // Calculate total fixed size along main axis
-    float CalculateTotalFixedSize() const;
+    int CalculateTotalFixedSize() const;
     
     // Calculate total spacing
     int CalculateTotalSpacing() const;
     
     // Apply cross-axis alignment to item
-    void ApplyCrossAxisAlignment(UltraCanvasBoxLayoutItem* item, float crossStart, float crossSize);
+    void ApplyCrossAxisAlignment(UltraCanvasBoxLayoutItem* item, int crossStart, int crossSize);
 };
 
 // ===== CONVENIENCE FACTORY FUNCTIONS =====

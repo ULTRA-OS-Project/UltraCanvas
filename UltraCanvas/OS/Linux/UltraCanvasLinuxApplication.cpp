@@ -208,9 +208,12 @@ namespace UltraCanvas {
                 // Update and render all windows
                 for (auto& window : windows) {
                     if (window && window->IsVisible() && window->IsNeedsRedraw()) {
-                        window->Render();
-                        window->Flush();
-                        window->ClearRequestRedraw();
+                        auto ctx = window->GetRenderContext();
+                        if (ctx) {
+                            window->Render(ctx);
+                            window->Flush();
+                            window->ClearRequestRedraw();
+                        }
                     }
                 }
                 // Frame rate control

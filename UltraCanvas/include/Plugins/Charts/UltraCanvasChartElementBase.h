@@ -251,7 +251,7 @@ namespace UltraCanvas {
         // RENDERING OVERRIDE FROM UIELEM
         // =============================================================================
 
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
 
         // =============================================================================
         // EVENT HANDLING OVERRIDE

@@ -72,7 +72,7 @@ namespace UltraCanvas {
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
+        placeholder->SetBorders(2.0f);
         placeholder->SetPadding(20.0f);
         container->AddChild(placeholder);
 
@@ -93,7 +93,7 @@ namespace UltraCanvas {
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
+        placeholder->SetBorders(2.0f);
         placeholder->SetPadding(20.0f);
         container->AddChild(placeholder);
 
@@ -114,7 +114,7 @@ namespace UltraCanvas {
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
+        placeholder->SetBorders(2.0f);
         placeholder->SetPadding(20.0f);
         container->AddChild(placeholder);
 
@@ -135,7 +135,7 @@ namespace UltraCanvas {
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
+        placeholder->SetBorders(2.0f);
         placeholder->SetPadding(20.0f);
         container->AddChild(placeholder);
 
@@ -156,7 +156,7 @@ namespace UltraCanvas {
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
+        placeholder->SetBorders(2.0f);
         placeholder->SetPadding(20.0f);
         container->AddChild(placeholder);
 
@@ -177,7 +177,7 @@ namespace UltraCanvas {
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
+        placeholder->SetBorders(2.0f);
         placeholder->SetPadding(20.0f);
         container->AddChild(placeholder);
 
@@ -198,7 +198,7 @@ namespace UltraCanvas {
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
+        placeholder->SetBorders(2.0f);
         placeholder->SetPadding(20.0f);
         container->AddChild(placeholder);
 
@@ -219,7 +219,7 @@ namespace UltraCanvas {
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
+        placeholder->SetBorders(2.0f);
         placeholder->SetPadding(20.0f);
         container->AddChild(placeholder);
 
@@ -266,7 +266,7 @@ namespace UltraCanvas {
 //        placeholder->SetAlignment(TextAlignment::Left);
 //        placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
 ////        placeholder->SetBorderStyle(BorderStyle::Dashed);
-//        placeholder->SetBorderWidth(2.0f);
+//        placeholder->SetBorders(2.0f);
 //        placeholder->SetPadding(20.0f);
 //        container->AddChild(placeholder);
 //
@@ -287,7 +287,7 @@ namespace UltraCanvas {
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
+        placeholder->SetBorders(2.0f);
         placeholder->SetPadding(20.0f);
         container->AddChild(placeholder);
 
@@ -308,7 +308,7 @@ namespace UltraCanvas {
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
+        placeholder->SetBorders(2.0f);
         placeholder->SetPadding(20.0f);
         container->AddChild(placeholder);
 
@@ -329,7 +329,7 @@ namespace UltraCanvas {
 //        placeholder->SetAlignment(TextAlignment::Left);
 //        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
 ////        placeholder->SetBorderStyle(BorderStyle::Dashed);
-//        placeholder->SetBorderWidth(2.0f);
+//        placeholder->SetBorders(2.0f);
 //        placeholder->SetPadding(20.0f);
 //        container->AddChild(placeholder);
 //
@@ -350,7 +350,7 @@ namespace UltraCanvas {
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorderWidth(2.0f);
+        placeholder->SetBorders(2.0f);
         placeholder->SetPadding(20.0f);
         container->AddChild(placeholder);
 

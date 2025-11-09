@@ -85,9 +85,8 @@ namespace UltraCanvas {
 //        return ImageFormat::Unknown;
 //    }
 
-    void UltraCanvasImageElement::Render() {
-        auto ctx = GetRenderContext();
-        if (!IsVisible() || !ctx) return;
+    void UltraCanvasImageElement::Render(IRenderContext* ctx) {
+        if (!IsVisible()) return;
 
         ctx->PushState();
 
@@ -102,7 +101,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasImageElement::OnEvent(const UCEvent &event) {
-        if (!IsActive() || !IsVisible()) return false;
+        if (IsDisabled() || !IsVisible()) return false;
 
         switch (event.type) {
             case UCEventType::MouseDown:

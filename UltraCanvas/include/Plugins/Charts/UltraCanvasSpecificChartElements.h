@@ -194,7 +194,7 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
-        void SetBorderColor(const Color &color) {
+        void SetBordersColor(const Color &color) {
             borderColor = color;
             RequestRedraw();
         }

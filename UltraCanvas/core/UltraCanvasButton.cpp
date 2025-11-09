@@ -210,18 +210,6 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-// ===== STATE MANAGEMENT =====
-    void UltraCanvasButton::SetEnabled(bool enabled) {
-        if (enabled) {
-            if (currentState == ButtonState::Disabled) {
-                currentState = ButtonState::Normal;
-            }
-        } else {
-            currentState = ButtonState::Disabled;
-        }
-        RequestRedraw();
-    }
-
 // ===== LAYOUT CALCULATION =====
     void UltraCanvasButton::AutoResize() {
         if (!autoresize) return;
@@ -522,26 +510,26 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasButton::GetCurrentColors(Color& bgColor, Color& textColor, Color& iconColor) const {
-        switch (currentState) {
-            case ButtonState::Normal:
-                bgColor = style.normalColor;
-                textColor = style.normalTextColor;
-                iconColor = style.normalIconColor;
-                break;
-            case ButtonState::Hovered:
+        switch (GetPrimaryState()) {
+            case ElementState::Hovered:
                 bgColor = style.hoverColor;
                 textColor = style.hoverTextColor;
                 iconColor = style.hoverIconColor;
                 break;
-            case ButtonState::Pressed:
+            case ElementState::Pressed:
                 bgColor = style.pressedColor;
                 textColor = style.pressedTextColor;
                 iconColor = style.pressedIconColor;
                 break;
-            case ButtonState::Disabled:
+            case ElementState::Disabled:
                 bgColor = style.disabledColor;
                 textColor = style.disabledTextColor;
                 iconColor = style.disabledIconColor;
+                break;
+            default:
+                bgColor = style.normalColor;
+                textColor = style.normalTextColor;
+                iconColor = style.normalIconColor;
                 break;
         }
     }
@@ -555,40 +543,40 @@ namespace UltraCanvas {
         // Secondary section colors based on state
         const SplitButtonStyle& split = style.splitStyle;
 
-        switch (currentState) {
-            case ButtonState::Normal:
-                secondaryBg = split.secondaryBackgroundColor;
-                secondaryText = split.secondaryTextColor;
-                break;
-            case ButtonState::Hovered:
+        switch (GetPrimaryState()) {
+            case ElementState::Hovered:
                 secondaryBg = split.secondaryHoverColor;
                 secondaryText = split.secondaryTextColor;
                 break;
-            case ButtonState::Pressed:
+            case ElementState::Pressed:
                 secondaryBg = split.secondaryPressedColor;
                 secondaryText = split.secondaryTextColor;
                 break;
-            case ButtonState::Disabled:
+            case ElementState::Disabled:
                 secondaryBg = style.disabledColor;
                 secondaryText = style.disabledTextColor;
+                break;
+            default:
+                secondaryBg = split.secondaryBackgroundColor;
+                secondaryText = split.secondaryTextColor;
                 break;
         }
     }
 
     void UltraCanvasButton::GetSecondaryIconColor(Color& iconColor) const {
         const SplitButtonStyle& split = style.splitStyle;
-        switch (currentState) {
-            case ButtonState::Normal:
-                iconColor = split.secondaryNormalIconColor;
-                break;
-            case ButtonState::Hovered:
+        switch (GetPrimaryState()) {
+            case ElementState::Hovered:
                 iconColor = split.secondaryHoverIconColor;
                 break;
-            case ButtonState::Pressed:
+            case ElementState::Pressed:
                 iconColor = split.secondaryPressedIconColor;
                 break;
-            case ButtonState::Disabled:
+            case ElementState::Disabled:
                 iconColor = split.secondaryDisabledIconColor;
+                break;
+            default:
+                iconColor = split.secondaryNormalIconColor;
                 break;
         }
     }
@@ -659,7 +647,7 @@ namespace UltraCanvas {
         GetSplitColors(primaryBg, primaryText, secondaryBg, secondaryText);
 
         // Draw shadow if enabled and not pressed
-        if (style.hasShadow && currentState != ButtonState::Pressed) {
+        if (style.hasShadow && GetPrimaryState() != ElementState::Pressed) {
             Rect2Di shadowBounds = bounds;
             shadowBounds.x += style.shadowOffset.x;
             shadowBounds.y += style.shadowOffset.y;
@@ -670,7 +658,7 @@ namespace UltraCanvas {
 
         // Adjust bounds for pressed effect
         Rect2Di drawBounds = bounds;
-        if (currentState == ButtonState::Pressed) {
+        if (GetPrimaryState() == ElementState::Pressed) {
             drawBounds.x += 1;
             drawBounds.y += 1;
         }
@@ -679,7 +667,7 @@ namespace UltraCanvas {
         if (split.horizontal) {
             // Draw primary section
             Rect2Di primaryDraw = primarySectionRect;
-            if (currentState == ButtonState::Pressed) {
+            if (GetPrimaryState() == ElementState::Pressed) {
                 primaryDraw.x += 1;
                 primaryDraw.y += 1;
             }
@@ -687,7 +675,7 @@ namespace UltraCanvas {
 
             // Draw secondary section
             Rect2Di secondaryDraw = secondarySectionRect;
-            if (currentState == ButtonState::Pressed) {
+            if (GetPrimaryState() == ElementState::Pressed) {
                 secondaryDraw.x += 1;
                 secondaryDraw.y += 1;
             }
@@ -695,7 +683,7 @@ namespace UltraCanvas {
         } else {
             // Vertical split
             Rect2Di primaryDraw = primarySectionRect;
-            if (currentState == ButtonState::Pressed) {
+            if (GetPrimaryState() == ElementState::Pressed) {
                 primaryDraw.x += 1;
                 primaryDraw.y += 1;
             }
@@ -703,7 +691,7 @@ namespace UltraCanvas {
                                      style.cornerRadius);
 
             Rect2Di secondaryDraw = secondarySectionRect;
-            if (currentState == ButtonState::Pressed) {
+            if (GetPrimaryState() == ElementState::Pressed) {
                 secondaryDraw.x += 1;
                 secondaryDraw.y += 1;
             }
@@ -718,12 +706,12 @@ namespace UltraCanvas {
 
             if (split.horizontal) {
                 int separatorX = primarySectionRect.x + primarySectionRect.width;
-                if (currentState == ButtonState::Pressed) separatorX += 1;
+                if (GetPrimaryState() == ElementState::Pressed) separatorX += 1;
                 ctx->DrawLine(Point2Di(separatorX, drawBounds.y),
                               Point2Di(separatorX, drawBounds.y + drawBounds.height));
             } else {
                 int separatorY = primarySectionRect.y + primarySectionRect.height;
-                if (currentState == ButtonState::Pressed) separatorY += 1;
+                if (GetPrimaryState() == ElementState::Pressed) separatorY += 1;
                 ctx->DrawLine(Point2Di(drawBounds.x, separatorY),
                               Point2Di(drawBounds.x + drawBounds.width, separatorY));
             }
@@ -750,7 +738,7 @@ namespace UltraCanvas {
                 primaryTextPos.y = textRect.y + (textRect.height - textHeight) / 2;
             }
 
-            if (currentState == ButtonState::Pressed) {
+            if (GetPrimaryState() == ElementState::Pressed) {
                 primaryTextPos.x += 1;
                 primaryTextPos.y += 1;
             }
@@ -783,7 +771,7 @@ namespace UltraCanvas {
                 secondaryTextPos.y = secondaryTextRect.y + (secondaryTextRect.height - textHeight) / 2;
             }
 
-            if (currentState == ButtonState::Pressed) {
+            if (GetPrimaryState() == ElementState::Pressed) {
                 secondaryTextPos.x += 1;
                 secondaryTextPos.y += 1;
             }
@@ -806,11 +794,8 @@ namespace UltraCanvas {
     }
 
 // ===== MAIN RENDER METHOD =====
-    void UltraCanvasButton::Render() {
+    void UltraCanvasButton::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
-
-        auto ctx = GetRenderContext();
-        if (!ctx) return;
 
         // Update layout if needed
         if (layoutDirty) {
@@ -829,7 +814,7 @@ namespace UltraCanvas {
             Rect2Di bounds = GetBounds();
 
             // Draw shadow if enabled and not pressed
-            if (style.hasShadow && currentState != ButtonState::Pressed) {
+            if (style.hasShadow && GetPrimaryState() != ElementState::Pressed) {
                 Rect2Di shadowBounds = bounds;
                 shadowBounds.x += style.shadowOffset.x;
                 shadowBounds.y += style.shadowOffset.y;
@@ -839,7 +824,7 @@ namespace UltraCanvas {
             }
 
             // Adjust bounds for pressed effect
-            if (currentState == ButtonState::Pressed) {
+            if (GetPrimaryState() == ElementState::Pressed) {
                 bounds.x += 1;
                 bounds.y += 1;
             }
@@ -879,13 +864,12 @@ namespace UltraCanvas {
 
 // ===== EVENT HANDLING =====
     bool UltraCanvasButton::OnEvent(const UCEvent& event) {
-        if (!IsEnabled() || !IsVisible()) return false;
+        if (IsDisabled() || !IsVisible()) return false;
 
         switch (event.type) {
             case UCEventType::MouseDown:
                 if (Contains(event.x, event.y)) {
-                    pressed = true;
-                    currentState = ButtonState::Pressed;
+                    SetPressed(true);
                     SetFocus();
                     if (onPress) onPress();
                     RequestRedraw();
@@ -894,68 +878,50 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::MouseUp:
-                if (pressed) {
+                if (IsPressed()) {
                     bool wasInside = Contains(event.x, event.y);
-                    pressed = false;
-                    if (wasInside) {
-                        currentState = ButtonState::Hovered;
-                        Click(event);
-                    } else {
-                        currentState = ButtonState::Normal;
-                    }
+                    SetPressed(false);
                     if (onRelease) onRelease();
-                    RequestRedraw();
+                    if (wasInside) {
+                        Click(event);
+                    }
                     return true;
                 }
                 break;
 
             case UCEventType::MouseMove:
-                if (!pressed) {
+                if (!IsPressed()) {
                     bool inside = Contains(event.x, event.y);
-                    ButtonState newState = inside ? ButtonState::Hovered : ButtonState::Normal;
-                    if (newState != currentState) {
-                        currentState = newState;
-                        RequestRedraw();
-                    }
+                    SetHovered(inside);
                 }
                 return false;
                 break;
 
             case UCEventType::MouseEnter:
-                if (!pressed) {
-                    currentState = ButtonState::Hovered;
+                if (!IsPressed()) {
                     SetHovered(true);
                     if (onHoverEnter) onHoverEnter();
-                    RequestRedraw();
                 }
                 return true;
 
             case UCEventType::MouseLeave:
-                if (!pressed) {
-                    currentState = ButtonState::Normal;
-                }
                 SetHovered(false);
                 if (onHoverLeave) onHoverLeave();
-                RequestRedraw();
                 return true;
 
             case UCEventType::KeyDown:
                 if (IsFocused() && (event.virtualKey == UCKeys::Space || event.virtualKey == UCKeys::Return)) {
-                    pressed = true;
-                    currentState = ButtonState::Pressed;
+                    SetPressed(true);
                     if (onPress) onPress();
-                    RequestRedraw();
                     return true;
                 }
                 break;
 
             case UCEventType::KeyUp:
-                if (IsFocused() && pressed && (event.virtualKey == UCKeys::Space || event.virtualKey == UCKeys::Return)) {
-                    pressed = false;
-                    currentState = ButtonState::Normal;
+                if (IsFocused() && IsPressed() && (event.virtualKey == UCKeys::Space || event.virtualKey == UCKeys::Return)) {
+                    SetPressed(false);
                     if (onRelease) onRelease();
                     Click(event);
-                    RequestRedraw();
                     return true;
                 }
                 break;

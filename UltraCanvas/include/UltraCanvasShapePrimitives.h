@@ -254,7 +254,7 @@ namespace UltraCanvas {
         void SetShapeDragging(bool dragging) { isDragging = dragging; }
 
         // ===== ABSTRACT RENDERING METHOD =====
-        virtual void Render() override {
+        virtual void Render(IRenderContext* ctx) override {
             if (!IsVisible()) return;
 
             ctx->PushState();
@@ -290,7 +290,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override {
-            if (!IsActive() || !IsVisible()) return false;
+            if (IsDisabled() || !IsVisible()) return false;
 
             switch (event.type) {
                 case UCEventType::MouseDown:

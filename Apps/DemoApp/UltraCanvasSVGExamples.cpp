@@ -51,9 +51,7 @@ namespace UltraCanvas {
 
             // Create the fullscreen window
             fullscreenWindow = std::make_shared<UltraCanvasWindow>(config);
-            auto st = fullscreenWindow->GetContainerStyle();
-            st.backgroundColor = Color(32, 32, 32, 255);
-            fullscreenWindow->SetContainerStyle(st); // Dark background
+            fullscreenWindow->SetBackgroundColor(Color(32, 32, 32, 255));
 
             // Create fullscreen SVG element
             auto fullscreenSVG = std::make_shared<UltraCanvasSVGElement>(
@@ -125,11 +123,9 @@ namespace UltraCanvas {
 
         // SVG Container with border
         auto svgContainer = std::make_shared<UltraCanvasContainer>("SVGContainer", 903, 20, 100, 240, 240);
-        auto style = svgContainer->GetContainerStyle();
-        style.backgroundColor = Color(250, 250, 250, 255);
-        style.borderWidth = 2;
-        style.borderColor = Color(180, 180, 180, 255);
-        svgContainer->SetContainerStyle(style);
+        svgContainer->SetBackgroundColor(Color(250, 250, 250, 255));
+        svgContainer->SetBorders(2, Color(180, 180, 180, 255));
+
 
         // Create SVG Element (200x200 inside the container with padding)
         auto svgElement = std::make_shared<UltraCanvasSVGElement>(
@@ -191,15 +187,11 @@ namespace UltraCanvas {
                     demoHandler->OnSVGClick();
                     return true;
                 case UCEventType::MouseEnter: {
-                    auto style = svgContainer->GetContainerStyle();
-                    style.borderColor = Color(100, 149, 237, 255);
-                    svgContainer->SetContainerStyle(style);
+                    svgContainer->SetBordersColor(Color(100, 149, 237, 255));
                     return true;
                 }
                 case UCEventType::MouseLeave: {
-                    auto style = svgContainer->GetContainerStyle();
-                    style.borderColor = Color(180, 180, 180, 255);
-                    svgContainer->SetContainerStyle(style);
+                    svgContainer->SetBordersColor(Color(180, 180, 180, 255));
                     return true;
                 }
                 default:
@@ -208,7 +200,8 @@ namespace UltraCanvas {
         });
 
         auto svgContainer2 = std::make_shared<UltraCanvasContainer>("SVGContainer", 903, 280, 100, 240, 240);
-        svgContainer2->SetContainerStyle(style);
+        svgContainer2->SetBackgroundColor(Color(250, 250, 250, 255));
+        svgContainer2->SetBorders(2, Color(180, 180, 180, 255));
 
         // Create SVG Element (200x200 inside the container with padding)
         auto svgElement2 = std::make_shared<UltraCanvasSVGElement>(
@@ -230,15 +223,11 @@ namespace UltraCanvas {
                     demoHandler2->OnSVGClick();
                     return true;
                 case UCEventType::MouseEnter: {
-                    auto style = svgContainer2->GetContainerStyle();
-                    style.borderColor = Color(100, 149, 237, 255);
-                    svgContainer2->SetContainerStyle(style);
+                    svgContainer2->SetBordersColor(Color(100, 149, 237, 255));
                     return true;
                 }
                 case UCEventType::MouseLeave: {
-                    auto style = svgContainer2->GetContainerStyle();
-                    style.borderColor = Color(180, 180, 180, 255);
-                    svgContainer2->SetContainerStyle(style);
+                    svgContainer2->SetBordersColor(Color(180, 180, 180, 255));
                     return true;
                 }
                 default:
@@ -247,7 +236,8 @@ namespace UltraCanvas {
         });
 
         auto svgContainer3 = std::make_shared<UltraCanvasContainer>("SVGContainer", 903, 540, 100, 240, 240);
-        svgContainer3->SetContainerStyle(style);
+        svgContainer3->SetBackgroundColor(Color(250, 250, 250, 255));
+        svgContainer3->SetBorders(2, Color(180, 180, 180, 255));
 
         // Create SVG Element (200x200 inside the container with padding)
         auto svgElement3 = std::make_shared<UltraCanvasSVGElement>(
@@ -269,15 +259,11 @@ namespace UltraCanvas {
                     demoHandler3->OnSVGClick();
                     return true;
                 case UCEventType::MouseEnter: {
-                    auto style = svgContainer3->GetContainerStyle();
-                    style.borderColor = Color(100, 149, 237, 255);
-                    svgContainer3->SetContainerStyle(style);
+                    svgContainer3->SetBordersColor(Color(100, 149, 237, 255));
                     return true;
                 }
                 case UCEventType::MouseLeave: {
-                    auto style = svgContainer3->GetContainerStyle();
-                    style.borderColor = Color(180, 180, 180, 255);
-                    svgContainer3->SetContainerStyle(style);
+                    svgContainer3->SetBordersColor(Color(180, 180, 180, 255));
                     return true;
                 }
                 default:
@@ -286,7 +272,8 @@ namespace UltraCanvas {
         });
 
         auto svgContainer4 = std::make_shared<UltraCanvasContainer>("SVGContainer", 903, 20, 360, 240, 240);
-        svgContainer4->SetContainerStyle(style);
+        svgContainer4->SetBackgroundColor(Color(250, 250, 250, 255));
+        svgContainer4->SetBorders(2, Color(180, 180, 180, 255));
 
         // Create SVG Element (200x200 inside the container with padding)
         auto svgElement4 = std::make_shared<UltraCanvasSVGElement>(
@@ -308,15 +295,11 @@ namespace UltraCanvas {
                     demoHandler4->OnSVGClick();
                     return true;
                 case UCEventType::MouseEnter: {
-                    auto style = svgContainer4->GetContainerStyle();
-                    style.borderColor = Color(100, 149, 237, 255);
-                    svgContainer4->SetContainerStyle(style);
+                    svgContainer4->SetBordersColor(Color(100, 149, 237, 255));
                     return true;
                 }
                 case UCEventType::MouseLeave: {
-                    auto style = svgContainer4->GetContainerStyle();
-                    style.borderColor = Color(180, 180, 180, 255);
-                    svgContainer4->SetContainerStyle(style);
+                    svgContainer4->SetBordersColor(Color(180, 180, 180, 255));
                     return true;
                 }
                 default:
@@ -339,12 +322,9 @@ namespace UltraCanvas {
 
         // Information panel
         auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 905, 540, 360, 320, 320);
-        ContainerStyle st = infoPanel->GetContainerStyle();
-        st.backgroundColor = Color(245, 245, 245, 255);
-        st.borderWidth = 1;
-        st.borderColor = Color(200, 200, 200, 255);
-        st.paddingBottom = st.paddingTop = st.paddingLeft = st.paddingRight = 15;
-        infoPanel->SetContainerStyle(st);
+        infoPanel->SetBackgroundColor(Color(245, 245, 245, 255));
+        infoPanel->SetPadding(15);
+        infoPanel->SetBorders(1, Color(200, 200, 200, 255));
 
         auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 906, 10, 10, 250, 25);
         infoTitle->SetText("SVG Features:");

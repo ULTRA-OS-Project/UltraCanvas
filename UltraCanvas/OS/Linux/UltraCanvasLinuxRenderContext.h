@@ -237,6 +237,10 @@ namespace UltraCanvas {
         void SetClipRect(float x, float y, float w, float h) override;
         void ClearClipRect() override;
         void ClipRect(float x, float y, float w, float h) override;
+        void ClipRoundedRectangle(
+                float x, float y, float width, float height,
+                float borderTopLeftRadius, float borderTopRightRadius,
+                float borderBottomRightRadius, float borderBottomLeftRadius) override;
         void ClipPath() override;
 
         // Style management
@@ -248,7 +252,7 @@ namespace UltraCanvas {
         void SetLineCap(LineCap cap) override;
         void SetLineJoin(LineJoin join) override;
         void SetMiterLimit(float limit)  override;
-        void SetLineDash(const std::vector<float>& pattern, float offset = 0) override;
+        void SetLineDash(const UCDashPattern& pattern) override;
 
         // === Text Methods ===
         void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) override;
@@ -280,6 +284,18 @@ namespace UltraCanvas {
         void FillRectangle(float x, float y, float w, float h) override;
         void DrawRoundedRectangle(float x, float y, float w, float h, float radius) override;
         void FillRoundedRectangle(float x, float y, float w, float h, float radius) override;
+        void DrawRoundedRectangleWidthBorders(float x, float y, float width, float height,
+                                                     bool fill,
+                                                     float borderLeftWidth, float borderRightWidth,
+                                                     float borderTopWidth, float borderBottomWidth,
+                                                     const Color& borderLeftColor, const Color& borderRightColor,
+                                                     const Color& borderTopColor, const Color& borderBottomColor,
+                                                     float borderTopLeftRadius, float borderTopRightRadius,
+                                                     float borderBottomRightRadius, float borderBottomLeftRadius,
+                                                     const UCDashPattern& borderLeftPattern,
+                                                     const UCDashPattern& borderRightPattern,
+                                                     const UCDashPattern& borderTopPattern,
+                                                     const UCDashPattern& borderBottomPattern) override;
         void DrawCircle(float x, float y, float radius) override;
         void FillCircle(float x, float y, float radius) override;
         void DrawEllipse(float x, float y, float w, float h) override;

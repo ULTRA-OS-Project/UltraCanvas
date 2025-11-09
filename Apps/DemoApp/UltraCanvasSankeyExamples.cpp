@@ -147,7 +147,7 @@ namespace UltraCanvas {
         statusLabel->SetText("Hover over nodes and links to see details\nDrag nodes to adjust layout");
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
-        statusLabel->SetBorderWidth(1.0f);
+        statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(8.0f);
         statusLabel->SetAlignment(TextAlignment::Center);
         mainContainer->AddChild(statusLabel);

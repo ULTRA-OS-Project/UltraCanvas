@@ -920,7 +920,7 @@ namespace UltraCanvas {
 
     SVGElementRenderer::~SVGElementRenderer() {}
 
-    void SVGElementRenderer::Render() {
+    void SVGElementRenderer::Render(IRenderContext* ctx) {
         if (!document.root) return;
 
         // Set up viewport transformation
@@ -1299,9 +1299,7 @@ namespace UltraCanvas {
                 break;
         }
 
-        if (style.dashArray.size() > 0) {
-            context->SetLineDash(style.dashArray, style.dashArray.size());
-        }
+        context->SetLineDash(style.dashPattern);
     }
 
     SVGStyle SVGElementRenderer::ParseStyle(tinyxml2::XMLElement* elem) {
@@ -1457,8 +1455,7 @@ namespace UltraCanvas {
         return document->LoadFromString(svgContent);
     }
 
-    void UltraCanvasSVGElement::Render() {
-        auto context = GetRenderContext();
+    void UltraCanvasSVGElement::Render(IRenderContext* context) {
         if (!document || !context) return;
 
         context->PushState();
@@ -1498,7 +1495,7 @@ namespace UltraCanvas {
 
         // Render the SVG
         SVGElementRenderer renderer(*document, context);
-        renderer.Render();
+        renderer.Render(context);
 
         context->PopState();
     }

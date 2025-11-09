@@ -233,8 +233,8 @@ public:
     public:
         ModularClipboardDemoWindow(ModularClipboardDemoApp* demoApp) : app(demoApp) {}
         
-        void Render() override {
-            UltraCanvasWindow::Render(); // Render base window and elements
+        void Render(IRenderContext* ctx) override {
+            UltraCanvasWindow::Render(IRenderContext* ctx); // Render base window and elements
             if (app) {
                 app->DrawCustomUI(); // Draw custom overlay
             }

@@ -198,7 +198,7 @@ namespace UltraCanvas {
         double GetTotalPopulation() const;
 
         // Override base class rendering
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
         bool OnEvent(const UCEvent& event) override;
     };
 

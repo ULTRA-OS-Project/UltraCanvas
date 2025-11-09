@@ -19,21 +19,9 @@ namespace UltraCanvas {
         FontStyle fontStyle;
         Color textColor = Colors::Black;
 
-        // Background and border
-        Color backgroundColor = Colors::Transparent;
-        Color borderColor = Colors::Transparent;
-        float borderWidth = 0.0f;
-        float borderRadius = 0.0f;
-
         // Text alignment
         TextAlignment horizontalAlign = TextAlignment::Left;
         TextVerticalAlignment verticalAlign = TextVerticalAlignment::Middle;
-
-        // Padding
-        float paddingLeft = 4.0f;
-        float paddingRight = 4.0f;
-        float paddingTop = 2.0f;
-        float paddingBottom = 2.0f;
 
         // Text effects
         bool hasShadow = false;
@@ -75,8 +63,6 @@ namespace UltraCanvas {
             LabelStyle style;
             style.fontStyle.fontSize = 11.0f;
             style.textColor = Color(100, 100, 100, 255);
-            style.paddingLeft = 8.0f;
-            style.paddingRight = 8.0f;
             return style;
         }
     };
@@ -91,11 +77,10 @@ namespace UltraCanvas {
         // ===== COMPUTED LAYOUT =====
         Rect2Di textArea;
         Point2Di textPosition;
-        bool needsLayout = true;
+        bool layoutDirty = true;
 
         // ===== AUTO-SIZING =====
-        Point2Di preferredSize;
-        bool autoSized = false;
+        Size2Di preferredSize;
 
     public:
         // ===== CONSTRUCTOR =====
@@ -106,6 +91,7 @@ namespace UltraCanvas {
 
             // Initialize style
             style = LabelStyle::DefaultStyle();
+            SetText(labelText);
         }
 
         virtual ~UltraCanvasLabel() = default;
@@ -114,11 +100,8 @@ namespace UltraCanvas {
         void SetText(const std::string& newText) {
             if (text != newText) {
                 text = newText;
-                needsLayout = true;
-
-                if (style.autoResize) {
-                    AutoResize();
-                }
+                layoutDirty = true;
+                RequestRedraw();
 
                 if (onTextChanged) {
                     onTextChanged(text);
@@ -145,11 +128,8 @@ namespace UltraCanvas {
         // ===== STYLE MANAGEMENT =====
         void SetStyle(const LabelStyle& newStyle) {
             style = newStyle;
-            needsLayout = true;
-
-            if (style.autoResize) {
-                AutoResize();
-            }
+            layoutDirty = true;
+            RequestRedraw();
         }
 
         const LabelStyle& GetStyle() const {
@@ -161,122 +141,90 @@ namespace UltraCanvas {
             style.fontStyle.fontFamily = fontFamily;
             style.fontStyle.fontSize = fontSize;
             style.fontStyle.fontWeight = weight;
-            needsLayout = true;
-
-            if (style.autoResize) {
-                AutoResize();
-            }
+            layoutDirty = true;
+            RequestRedraw();
         }
 
         void SetFontSize(float fontSize) {
             style.fontStyle.fontSize = fontSize;
-            if (style.autoResize) {
-                AutoResize();
-            }
+            layoutDirty = true;
+            RequestRedraw();
         }
 
         void SetFontWeight(const FontWeight w) {
             style.fontStyle.fontWeight = w;
-            if (style.autoResize) {
-                AutoResize();
-            }
+            layoutDirty = true;
+            RequestRedraw();
         }
 
         void SetTextColor(const Color& color) {
             style.textColor = color;
-        }
-
-        void SetBackgroundColor(const Color& color) {
-            style.backgroundColor = color;
-        }
-
-        void SetBorderColor(const Color& color) {
-            style.borderColor = color;
-        }
-
-        void SetBorderWidth(float width) {
-            style.borderWidth = width;
-            needsLayout = true;
+            RequestRedraw();
         }
 
         void SetAlignment(TextAlignment horizontal, TextVerticalAlignment vertical = TextVerticalAlignment::Middle) {
             style.horizontalAlign = horizontal;
             style.verticalAlign = vertical;
-            needsLayout = true;
-        }
-
-        void SetPadding(float left, float right, float top, float bottom) {
-            style.paddingLeft = left;
-            style.paddingRight = right;
-            style.paddingTop = top;
-            style.paddingBottom = bottom;
-            needsLayout = true;
-        }
-
-        void SetPadding(float padding) {
-            SetPadding(padding, padding, padding, padding);
+            layoutDirty = true;
+            RequestRedraw();
         }
 
         void SetWordWrap(bool wrap) {
             style.wordWrap = wrap;
-            needsLayout = true;
+            layoutDirty = true;
+            RequestRedraw();
         }
 
         void SetAutoResize(bool autoResize) {
             style.autoResize = autoResize;
-            if (autoResize) {
-                AutoResize();
-            }
+            layoutDirty = true;
+            RequestRedraw();
         }
 
         // ===== SIZING =====
-        void AutoResize() {
-            auto ctx = GetRenderContext();
+        void AutoResize(const Size2Di& textDimensions) {
             if (text.empty()) {
-                preferredSize = Point2Di(style.paddingLeft + style.paddingRight + 20,
-                                        style.paddingTop + style.paddingBottom + style.fontStyle.fontSize + 4);
+                preferredSize = Size2Di(GetTotalPaddingHorizontal() + GetTotalBorderHorizontal() + 20,
+                                        GetTotalPaddingVertical() + GetTotalBorderVertical() + style.fontStyle.fontSize + 4);
             } else {
                 // Set text style for measurement
-                ctx->PushState();
-                ctx->SetFontStyle(style.fontStyle);
-
-                Point2Di textSize = ctx->GetTextDimension(text);
-                preferredSize = Point2Di(
-                        textSize.x + style.paddingLeft + style.paddingRight + style.borderWidth * 2,
-                        textSize.y + style.paddingTop + style.paddingBottom + style.borderWidth * 2
-                );
+                if (textDimensions.width > 0) {
+                    preferredSize = Size2Di(
+                            textDimensions.width + GetTotalPaddingHorizontal() + GetTotalBorderHorizontal(),
+                            textDimensions.height + GetTotalPaddingVertical() + GetTotalBorderVertical()
+                    );
+                } else {
+                    preferredSize = GetSize();
+                }
             }
 
-            SetSize(static_cast<long>(preferredSize.x), static_cast<long>(preferredSize.y));
-            autoSized = true;
-            needsLayout = true;
+            SetSize(preferredSize.width, preferredSize.height);
         }
 
-        Point2Di GetPreferredSize() const {
-            return preferredSize;
+        int GetPreferredWidth() const override {
+            return preferredSize.width > 0 ? preferredSize.width : bounds.width;
+        }
+
+        int GetPreferredHeight() const override {
+            return preferredSize.height > 0 ? preferredSize.height : bounds.height;
         }
 
         // ===== LAYOUT CALCULATION =====
-        void CalculateLayout() {
-            auto ctx = GetRenderContext();
-            if (!needsLayout || !ctx) return;
-
+        void CalculateLayout(IRenderContext *ctx) {
             Rect2Di bounds = GetBounds();
+            ctx->PushState();
+            ctx->SetFontStyle(style.fontStyle);
+            Size2Di textDimensions;
+            ctx->GetTextLineDimensions(text, textDimensions.width, textDimensions.height);
+            if (style.autoResize) {
+                AutoResize(textDimensions);
+            }
 
             // Calculate text area (inside padding and borders)
-            textArea = Rect2Di(
-                    bounds.x + style.paddingLeft + style.borderWidth,
-                    bounds.y + style.paddingTop + style.borderWidth,
-                    bounds.width - style.paddingLeft - style.paddingRight - style.borderWidth * 2,
-                    bounds.height - style.paddingTop - style.paddingBottom - style.borderWidth * 2
-            );
+            textArea = GetContentRect();
 
             if (!text.empty()) {
                 // Set text style for measurement
-                ctx->PushState();
-                ctx->SetFontStyle(style.fontStyle);
-
-                Point2Di textSize = ctx->GetTextDimension(text);
 
                 // Calculate horizontal position
                 float textX = textArea.x;
@@ -285,10 +233,10 @@ namespace UltraCanvas {
                         textX = textArea.x;
                         break;
                     case TextAlignment::Center:
-                        textX = textArea.x + (textArea.width - textSize.x) / 2;
+                        textX = textArea.x + (textArea.width - textDimensions.width) / 2;
                         break;
                     case TextAlignment::Right:
-                        textX = textArea.x + textArea.width - textSize.x;
+                        textX = textArea.x + textArea.width - textDimensions.width;
                         break;
                     case TextAlignment::Justify:
                         textX = textArea.x; // For single line, same as left
@@ -302,7 +250,7 @@ namespace UltraCanvas {
                         textY = textArea.y; // Baseline offset
                         break;
                     case TextVerticalAlignment::Middle:
-                        textY = textArea.y + (textArea.height / 2) - textSize.y / 2;
+                        textY = textArea.y + (textArea.height / 2) - textDimensions.height / 2;
                         break;
                     case TextVerticalAlignment::Bottom:
                         textY = textArea.y + textArea.height;
@@ -310,25 +258,25 @@ namespace UltraCanvas {
                 }
 
                 textPosition = Point2Di(textX, textY);
-                ctx->PopState();
             }
 
-            needsLayout = false;
+            ctx->PopState();
+            layoutDirty = false;
         }
 
         // ===== RENDERING =====
-        void Render() override {
-            auto ctx = GetRenderContext();
-            if (!IsVisible() || !ctx) return;
+        void Render(IRenderContext* ctx) override {
+            if (!IsVisible()) return;
 
             ctx->PushState();
 
-            CalculateLayout();
+            if (layoutDirty) {
+                CalculateLayout(ctx);
+            }
+
+            UltraCanvasUIElement::Render(ctx);
 
             Rect2Di bounds = GetBounds();
-
-            ctx->DrawFilledRectangle(bounds, style.backgroundColor, style.borderWidth, style.borderColor, style.borderRadius);
-
             // Draw text
             if (!text.empty()) {
                 // Draw shadow if enabled
@@ -394,12 +342,9 @@ namespace UltraCanvas {
         }
 
         // ===== SIZE CHANGES =====
-        void OnResize(long newWidth, long newHeight) {
-            needsLayout = true;
-
-            if (onSizeChanged) {
-                onSizeChanged(newWidth, newHeight);
-            }
+        void SetBounds(const Rect2Di& bounds) {
+            UltraCanvasUIElement::SetBounds(bounds);
+            layoutDirty = true;
         }
 
         // ===== EVENT CALLBACKS =====
@@ -407,7 +352,6 @@ namespace UltraCanvas {
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;
         std::function<void(const std::string&)> onTextChanged;
-        std::function<void(long, long)> onSizeChanged;
     };
 
 // ===== FACTORY FUNCTIONS =====
@@ -438,6 +382,7 @@ namespace UltraCanvas {
             const std::string& text = "Ready") {
         auto label = CreateLabel(identifier, id, x, y, w, h, text);
         label->SetStyle(LabelStyle::StatusStyle());
+        label->SetPadding(4);
         return label;
     }
 

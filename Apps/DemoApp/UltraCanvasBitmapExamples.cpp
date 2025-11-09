@@ -25,7 +25,7 @@ namespace UltraCanvas {
         label->SetFontSize(11);
         label->SetAlignment(TextAlignment::Left);
         label->SetBackgroundColor(Color(245, 245, 245, 255));
-        label->SetBorderWidth(1.0f);
+        label->SetBorders(1.0f);
         label->SetPadding(8.0f);
         return label;
     }
@@ -33,10 +33,7 @@ namespace UltraCanvas {
 // ===== PNG DEMO PAGE =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePNGExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("PNGDemoPage", 1510, 0, 0, 950, 600);
-        ContainerStyle style;
-        style.backgroundColor = Color(255, 255, 255, 255);
-        //style.borderWidth = 2;
-        container->SetContainerStyle(style);
+        container->SetBackgroundColor(Color(255, 255, 255, 255));
 
         // Page Title
         auto title = std::make_shared<UltraCanvasLabel>("PNGTitle", 1511, 10, 10, 400, 35);
@@ -58,10 +55,8 @@ namespace UltraCanvas {
 
         // Image Display Area
         auto imageContainer = std::make_shared<UltraCanvasContainer>("PNGImageContainer", 1513, 10, 120, 450, 360);
-        ContainerStyle imageContainerStyle;
-        imageContainerStyle.backgroundColor = Color(240, 240, 240, 255);
-        imageContainerStyle.borderWidth = 2;
-        imageContainer->SetContainerStyle(imageContainerStyle);
+        imageContainer->SetBackgroundColor(Color(240, 240, 240, 255));
+        imageContainer->SetBorders(2, Color(200, 200, 200, 255));
 
         // Main PNG Image
         auto pngImage = std::make_shared<UltraCanvasImageElement>("PNGMainImage", 1514, 25, 25, 400, 300);
@@ -88,10 +83,6 @@ namespace UltraCanvas {
 
         // Background Pattern for Transparency Demo
         auto bgPattern = std::make_shared<UltraCanvasContainer>("BGPattern", 1518, 10, 70, 300, 100);
-        ContainerStyle bgPatternStyle;
-        bgPatternStyle.backgroundColor = Colors::Transparent;
-        bgPattern->SetContainerStyle(bgPatternStyle);
-
         // Transparent PNG overlay
         auto transImage = std::make_shared<UltraCanvasImageElement>("TransPNG", 1519, 0, 0, 100, 100);
         transImage->LoadFromFile("assets/images/transparent_overlay.png");
@@ -183,9 +174,7 @@ namespace UltraCanvas {
 // ===== JPEG/JPG DEMO PAGE =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateJPEGExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("JPEGDemoPage", 1530, 0, 0, 950, 600);
-        ContainerStyle containerStyle;
-        containerStyle.backgroundColor = Color(200, 200, 200, 255);
-        container->SetContainerStyle(containerStyle);
+        container->SetBackgroundColor(Colors::LightGray);
 
         // Page Title
         auto title = std::make_shared<UltraCanvasLabel>("JPEGTitle", 1531, 10, 10, 400, 35);
@@ -207,10 +196,8 @@ namespace UltraCanvas {
 
         // Image Display Area
         auto imageContainer = std::make_shared<UltraCanvasContainer>("JPEGImageContainer", 1533, 10, 120, 450, 350);
-        ContainerStyle imageContainerStyle;
-        imageContainerStyle.backgroundColor = Color(240, 240, 240, 255);
-        imageContainerStyle.borderWidth = 2.0f;
-        container->SetContainerStyle(imageContainerStyle);
+        container->SetBorders(2, Colors::LightGray);
+        container->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // Main JPEG Image
         auto jpegImage = std::make_shared<UltraCanvasImageElement>("JPEGMainImage", 1534, 25, 25, 400, 300);

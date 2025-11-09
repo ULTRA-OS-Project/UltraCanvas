@@ -395,22 +395,14 @@ namespace UltraCanvas {
         return listRect;
     }
 
-    void UltraCanvasDropdown::Render() {
-        auto ctx = GetRenderContext();
-        if (!ctx) return;
-
+    void UltraCanvasDropdown::Render(IRenderContext* ctx) {
         ctx->PushState();
-
         RenderButton(ctx);
-
         ctx->PopState();
     }
 
-    void UltraCanvasDropdown::RenderPopupContent() {
+    void UltraCanvasDropdown::RenderPopupContent(IRenderContext* ctx) {
         if (!dropdownOpen || items.empty()) return;
-
-        auto ctx = GetRenderContext();
-        if (!ctx) return;
 
         ctx->PushState();
 
@@ -481,7 +473,7 @@ namespace UltraCanvas {
         Color textColor = style.normalTextColor;
         Color borderColor = style.borderColor;
 
-        if (!IsActive()) {
+        if (IsDisabled()) {
             bgColor = style.disabledColor;
             textColor = style.disabledTextColor;
         } else if (buttonPressed || dropdownOpen) {

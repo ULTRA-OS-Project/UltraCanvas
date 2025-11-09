@@ -35,7 +35,7 @@ namespace UltraCanvas {
             statusLabel->SetText("Click any button to see feedback here");
             statusLabel->SetFontSize(11);
             statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
-            statusLabel->SetBorderWidth(1.0f);
+            statusLabel->SetBorders(1.0f);
             statusLabel->SetPadding(8.0f);
             mainContainer->AddChild(statusLabel);
 
@@ -111,7 +111,7 @@ namespace UltraCanvas {
 
             // Disabled State
             auto disabledBtn = CreateButton("DisabledBtn", 122, 150, yOffset, 120, 35, "Disabled");
-            disabledBtn->SetEnabled(false);
+            disabledBtn->SetDisabled(true);
             mainContainer->AddChild(disabledBtn);
 
             // Focused State (simulated)

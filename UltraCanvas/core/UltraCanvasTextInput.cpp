@@ -227,9 +227,8 @@ namespace UltraCanvas {
         if (onTextChanged) onTextChanged(text);
     }
 
-    void UltraCanvasTextInput::Render() {
-        IRenderContext *ctx = GetRenderContext();
-        if (!IsVisible() && !ctx) return;
+    void UltraCanvasTextInput::Render(IRenderContext* ctx) {
+        if (!IsVisible()) return;
 
         ctx->PushState();
 
@@ -281,7 +280,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextInput::OnEvent(const UCEvent &event) {
-        if (!IsActive() || !IsVisible()) return false;;
+        if (IsDisabled() || !IsVisible()) return false;;
 
         switch (event.type) {
             case UCEventType::MouseDown:

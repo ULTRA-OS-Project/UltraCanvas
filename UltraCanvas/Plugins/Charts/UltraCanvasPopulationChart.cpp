@@ -253,9 +253,8 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING METHODS =====
-    void UltraCanvasPopulationChart::Render() {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx || !IsVisible()) {
+    void UltraCanvasPopulationChart::Render(IRenderContext* ctx) {
+        if (!IsVisible()) {
             return;
         }
 

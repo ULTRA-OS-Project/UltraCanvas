@@ -188,7 +188,7 @@ public:
     }
     
     // ===== RENDERING =====
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
         if (!IsVisible()) return;
         
         ctx->PushState();
@@ -197,7 +197,7 @@ public:
         Rect2D textArea = GetTextAreaBounds();
         
         // Draw background
-        ctx->PaintWidthColorIsEnabled() ? backgroundColor : disabledColor);
+        ctx->PaintWidthColor(IsEnabled() ? backgroundColor : disabledColor);
         ctx->DrawRectangle(bounds);
         
         // Draw border
@@ -376,7 +376,7 @@ private:
         ctx->SetClipRect(textArea);
         
         // Draw text
-        ctx->PaintWidthColorIsEnabled() ? textColor : disabledTextColor);
+        ctx->PaintWidthColor(IsEnabled() ? textColor : disabledTextColor);
         SetTextFont(fontFamily, fontSize);
         
         std::string displayText = isEditing ? editText : prefix + std::to_string(value) + suffix;
@@ -415,7 +415,7 @@ private:
         
         // Determine button color
         Color bgColor = buttonColor;
-        if (!IsEnabled()) {
+        if (IsDisabled()) {
             bgColor = disabledColor;
         } else if (upButtonPressed) {
             bgColor = buttonPressedColor;
@@ -441,7 +441,7 @@ private:
         
         // Determine button color
         Color bgColor = buttonColor;
-        if (!IsEnabled()) {
+        if (IsDisabled()) {
             bgColor = disabledColor;
         } else if (downButtonPressed) {
             bgColor = buttonPressedColor;
@@ -466,7 +466,7 @@ private:
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         int arrowSize = 4;
         
-        ctx->PaintWidthColorIsEnabled() ? Colors::Black : disabledTextColor);
+        ctx->PaintWidthColor(IsEnabled() ? Colors::Black : disabledTextColor);
         ctx->SetStrokeWidth(1);
         
         // Draw triangle pointing up
@@ -482,7 +482,7 @@ private:
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         int arrowSize = 4;
         
-        ctx->PaintWidthColorIsEnabled() ? Colors::Black : disabledTextColor);
+        ctx->PaintWidthColor(IsEnabled() ? Colors::Black : disabledTextColor);
         ctx->SetStrokeWidth(1);
         
         // Draw triangle pointing down
@@ -530,7 +530,7 @@ private:
         Rect2D upButton = GetUpButtonBounds();
         Rect2D downButton = GetDownButtonBounds();
         
-        if (!IsEnabled()) return;
+        if (IsDisabled()) return;
         
         if (showButtons && upButton.Contains(event.x, event.y)) {
             // Up button clicked
@@ -583,7 +583,7 @@ private:
     }
     
     void HandleMouseMove(const UCEvent& event) {
-        if (!IsEnabled()) return;
+        if (IsDisabled()) return;
         
         Rect2D upButton = GetUpButtonBounds();
         Rect2D downButton = GetDownButtonBounds();
@@ -605,7 +605,7 @@ private:
     }
     
     void HandleKeyDown(const UCEvent& event) {
-        if (!IsEnabled()) return;
+        if (IsDisabled()) return;
         
         if (isEditing) {
             switch (event.virtualKey) {
@@ -689,7 +689,7 @@ private:
     }
     
     void HandleMouseWheel(const UCEvent& event) {
-        if (!IsEnabled() || !Contains(event.x, event.y)) return;
+        if (IsDisabled() || !Contains(event.x, event.y)) return;
         
         if (event.wheelDelta > 0) {
             StepUp();

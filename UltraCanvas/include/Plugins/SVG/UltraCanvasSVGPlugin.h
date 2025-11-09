@@ -57,8 +57,7 @@ namespace UltraCanvas {
         enum LineCap { Butt, Round, Square } lineCap{Butt};
         enum LineJoin { Miter, RoundJoin, Bevel } lineJoin{Miter};
         float miterLimit{4.0f};
-        std::vector<float> dashArray;
-        float dashOffset{0.0f};
+        UCDashPattern dashPattern;
 
         void ParseFromAttributes(const tinyxml2::XMLElement* elem);
         void ParseFromStyle(const std::string& styleStr);
@@ -194,7 +193,7 @@ namespace UltraCanvas {
         SVGElementRenderer(const SVGDocument& doc, IRenderContext* ctx);
         ~SVGElementRenderer();
 
-        void Render();
+        void Render(IRenderContext* ctx);
         void RenderElement(tinyxml2::XMLElement* elem);
 
     private:
@@ -248,7 +247,7 @@ namespace UltraCanvas {
         bool LoadFromFile(const std::string& filepath);
         bool LoadFromString(const std::string& svgContent);
 
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
 
         void SetScale(float scale) { this->scale = scale; }
         float GetScale() const { return scale; }

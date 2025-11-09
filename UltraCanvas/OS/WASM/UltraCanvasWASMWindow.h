@@ -73,7 +73,7 @@ public:
     void GetSize(int& width, int& height) const override;
     
     // ===== RENDERING =====
-    void Render() override;
+    void Render(IRenderContext* ctx) override;
     void RequestRedraw() override;
     IRenderContext* GetRenderContext() override;
     

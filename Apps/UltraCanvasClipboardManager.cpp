@@ -93,7 +93,7 @@ namespace UltraCanvas {
         deleteButtonRect = Rect2D(bounds.x + bounds.width - 25, bounds.y + 5, 20, 20);
     }
 
-    void UltraCanvasClipboardItem::Render() {
+    void UltraCanvasClipboardItem::Render(IRenderContext* ctx) {
         IRenderContext *ctx = GetRenderContext();
         ctx->PushState();
 

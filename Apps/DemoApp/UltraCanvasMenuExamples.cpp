@@ -19,9 +19,7 @@ namespace UltraCanvas {
 
         // Create container for menu examples
         auto container = std::make_shared<UltraCanvasContainer>("MenuContainer", 100, 0, 0, 1000, 630);
-        ContainerStyle containerStyle;
-        containerStyle.backgroundColor = Color(252, 252, 252, 255);
-        container->SetContainerStyle(containerStyle);
+        container->SetBackgroundColor(Color(252, 252, 252, 255));
 
         // Section label for Context Menus
         auto contextLabel = std::make_shared<UltraCanvasLabel>("ContextLabel", 101, 20, 10, 300, 30);
@@ -264,11 +262,8 @@ namespace UltraCanvas {
 
         // Create a sample list for popup menu
         auto listContainer = std::make_shared<UltraCanvasContainer>("ListContainer", 121, 20, 430, 300, 150);
-        ContainerStyle listStyle;
-        listStyle.backgroundColor = Color(255, 255, 255, 255);
-        listStyle.borderWidth = 1.0f;
-        listStyle.borderColor = Color(200, 200, 200, 255);
-        listContainer->SetContainerStyle(listStyle);
+        listContainer->SetBackgroundColor(Color(255, 255, 255, 255));
+        listContainer->SetBorders(1, Color(200, 200, 200, 255));
         container->AddChild(listContainer);
 
         // Add sample items to list

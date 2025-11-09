@@ -143,9 +143,8 @@ namespace UltraCanvas {
         targetWindow->RequestRedraw();
     }
 
-    void UltraCanvasTooltipManager::Render(const UltraCanvasWindowBase* win) {
+    void UltraCanvasTooltipManager::Render(IRenderContext* ctx, const UltraCanvasWindowBase* win) {
         if (!visible || currentText.empty() || win != targetWindow) return;
-        IRenderContext *ctx = targetWindow->GetRenderContext();
 
         ctx->PushState();
 

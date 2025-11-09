@@ -168,7 +168,7 @@ public:
     }
     
     // ===== RENDERING =====
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
         if (!IsVisible()) return;
         
         ctx->PushState();

@@ -327,7 +327,7 @@ public:
     bool IsPopupOpen() const { return isPopupOpen; }
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
         if (!IsVisible()) return;
         
         ctx->PushState();
@@ -360,7 +360,7 @@ public:
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
     bool OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible()) return false;
+        if (IsDisabled() || !IsVisible()) return false;
         
         switch (event.type) {
             case UCEventType::MouseDown:

@@ -9,7 +9,6 @@
 #define ULTRACANVAS_GRID_LAYOUT_H
 
 #include "UltraCanvasLayout.h"
-#include "UltraCanvasLayoutItem.h"
 #include <vector>
 #include <memory>
 #include <map>
@@ -27,15 +26,15 @@ enum class GridSizeMode {
 // ===== ROW/COLUMN DEFINITION =====
 struct GridRowColumnDefinition {
     GridSizeMode sizeMode = GridSizeMode::Auto;
-    float size = 0;           // Value depends on sizeMode (pixels, percent, or weight)
-    float minSize = 0;        // Minimum size in pixels
-    float maxSize = 10000;    // Maximum size in pixels
+    int size = 0;           // Value depends on sizeMode (pixels, percent, or weight)
+    int minSize = 0;        // Minimum size in pixels
+    int maxSize = 10000;    // Maximum size in pixels
     
     GridRowColumnDefinition() = default;
-    GridRowColumnDefinition(GridSizeMode mode, float value = 0)
+    GridRowColumnDefinition(GridSizeMode mode, int value = 0)
         : sizeMode(mode), size(value) {}
     
-    static GridRowColumnDefinition Fixed(float pixels) {
+    static GridRowColumnDefinition Fixed(int pixels) {
         return GridRowColumnDefinition(GridSizeMode::Fixed, pixels);
     }
     
@@ -43,13 +42,139 @@ struct GridRowColumnDefinition {
         return GridRowColumnDefinition(GridSizeMode::Auto, 0);
     }
     
-    static GridRowColumnDefinition Percent(float percent) {
+    static GridRowColumnDefinition Percent(int percent) {
         return GridRowColumnDefinition(GridSizeMode::Percent, percent);
     }
     
-    static GridRowColumnDefinition Star(float weight = 1.0f) {
+    static GridRowColumnDefinition Star(int weight = 1) {
         return GridRowColumnDefinition(GridSizeMode::Star, weight);
     }
+};
+
+
+// ===== GRID LAYOUT ITEM =====
+class UltraCanvasGridLayoutItem : public UltraCanvasLayoutItem {
+private:
+    // Grid position
+    int row = 0;
+    int column = 0;
+    int rowSpan = 1;
+    int columnSpan = 1;
+
+    // Size constraints
+    SizeMode widthMode = SizeMode::Fill;  // Grid items default to Fill
+    SizeMode heightMode = SizeMode::Fill;
+    int fixedWidth = 0;
+    int fixedHeight = 0;
+
+    // Size limits
+    int minWidth = -1;
+    int minHeight = -1;
+    int maxWidth = -1;
+    int maxHeight = -1;
+
+    // Alignment within cell
+    LayoutItemAlignment horizontalAlignment = LayoutItemAlignment::Fill;
+    LayoutItemAlignment verticalAlignment = LayoutItemAlignment::Fill;
+
+public:
+    UltraCanvasGridLayoutItem() = default;
+    explicit UltraCanvasGridLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem);
+
+    // ===== GRID POSITION =====
+    UltraCanvasGridLayoutItem* SetRow(int r) { row = r; return this;}
+    UltraCanvasGridLayoutItem* SetColumn(int c) { column = c; return this;}
+    UltraCanvasGridLayoutItem* SetPosition(int r, int c) {
+        row = r;
+        column = c;
+        return this;
+    }
+
+    int GetRow() const { return row; }
+    int GetColumn() const { return column; }
+
+    // ===== SPANNING =====
+    UltraCanvasGridLayoutItem* SetRowSpan(int span) { rowSpan = span; return this;}
+    UltraCanvasGridLayoutItem* SetColumnSpan(int span) { columnSpan = span; return this;}
+    UltraCanvasGridLayoutItem* SetSpan(int rowSpan, int colSpan) {
+        this->rowSpan = rowSpan;
+        this->columnSpan = colSpan;
+        return this;
+    }
+
+    int GetRowSpan() const { return rowSpan; }
+    int GetColumnSpan() const { return columnSpan; }
+
+    // ===== SIZE MODE =====
+    SizeMode GetWidthMode() const override { return widthMode; }
+    SizeMode GetHeightMode() const override { return heightMode; }
+
+    UltraCanvasGridLayoutItem* SetWidthMode(SizeMode mode) { widthMode = mode; return this; }
+    UltraCanvasGridLayoutItem* SetHeightMode(SizeMode mode) { heightMode = mode; return this; }
+    UltraCanvasGridLayoutItem* SetSizeMode(SizeMode width, SizeMode height) {
+        widthMode = width;
+        heightMode = height;
+        return this;
+    }
+
+    // ===== FIXED SIZES =====
+    UltraCanvasGridLayoutItem* SetFixedWidth(int width) {
+        widthMode = SizeMode::Fixed;
+        fixedWidth = width;
+        return this;
+    }
+
+    UltraCanvasGridLayoutItem* SetFixedHeight(int height) {
+        heightMode = SizeMode::Fixed;
+        fixedHeight = height;
+        return this;
+    }
+
+    UltraCanvasGridLayoutItem* SetFixedSize(int width, int height) {
+        SetFixedWidth(width);
+        SetFixedHeight(height);
+        return this;
+    }
+
+    int GetFixedWidth() const { return fixedWidth; }
+    int GetFixedHeight() const { return fixedHeight; }
+
+    // ===== SIZE LIMITS =====
+    UltraCanvasGridLayoutItem* SetMinimumWidth(int width) { minWidth = width; return this;}
+    UltraCanvasGridLayoutItem* SetMinimumHeight(int height) { minHeight = height; return this;}
+    UltraCanvasGridLayoutItem* SetMinimumSize(int width, int height) {
+        minWidth = width;
+        minHeight = height;
+        return this;
+    }
+
+    UltraCanvasGridLayoutItem* SetMaximumWidth(int width) { maxWidth = width; return this; }
+    UltraCanvasGridLayoutItem* SetMaximumHeight(int height) { maxHeight = height; return this; }
+    UltraCanvasGridLayoutItem* SetMaximumSize(int width, int height) {
+        maxWidth = width;
+        maxHeight = height;
+        return this;
+    }
+
+    int GetMinimumWidth() const override { return minWidth != -1 ? minWidth : UltraCanvasLayoutItem::GetMinimumWidth(); }
+    int GetMinimumHeight() const override { return minHeight!= -1 ? minHeight : UltraCanvasLayoutItem::GetMinimumHeight();  }
+    int GetMaximumWidth() const override { return maxWidth != -1 ? maxWidth : UltraCanvasLayoutItem::GetMaximumWidth();  }
+    int GetMaximumHeight() const override { return maxHeight != -1 ? maxHeight : UltraCanvasLayoutItem::GetMaximumHeight();  }
+
+    // ===== ALIGNMENT =====
+    void SetHorizontalAlignment(LayoutItemAlignment align) { horizontalAlignment = align; }
+    void SetVerticalAlignment(LayoutItemAlignment align) { verticalAlignment = align; }
+    void SetAlignment(LayoutItemAlignment horizontal, LayoutItemAlignment vertical) {
+        horizontalAlignment = horizontal;
+        verticalAlignment = vertical;
+    }
+
+    LayoutItemAlignment GetHorizontalAlignment() const { return horizontalAlignment; }
+    LayoutItemAlignment GetVerticalAlignment() const { return verticalAlignment; }
+
+    // ===== PREFERRED SIZE =====
+    int GetPreferredWidth() const override;
+    int GetPreferredHeight() const override;
 };
 
 // ===== GRID LAYOUT CLASS =====
@@ -63,8 +188,8 @@ private:
     std::vector<GridRowColumnDefinition> columnDefinitions;
     
     // Computed row/column sizes (calculated during layout)
-    mutable std::vector<float> computedRowHeights;
-    mutable std::vector<float> computedColumnWidths;
+    mutable std::vector<int> computedRowHeights;
+    mutable std::vector<int> computedColumnWidths;
     
     // Default alignment for items
     LayoutAlignment defaultHorizontalAlignment = LayoutAlignment::Fill;
@@ -142,35 +267,35 @@ public:
     const std::vector<std::unique_ptr<UltraCanvasGridLayoutItem>>& GetItems() const { return items; }
     
     // ===== LAYOUT CALCULATION =====
-    void PerformLayout(const Rect2Di& containerBounds) override;
+    void PerformLayout() override;
     Size2Di CalculateMinimumSize() const override;
     Size2Di CalculatePreferredSize() const override;
     Size2Di CalculateMaximumSize() const override;
     
 private:
     // Internal layout helpers
-    void CalculateRowHeights(float availableHeight);
-    void CalculateColumnWidths(float availableWidth);
+    void CalculateRowHeights(int availableHeight);
+    void CalculateColumnWidths(int availableWidth);
     
     // Position items in grid
     void PositionItems();
     
     // Get cell bounds
-    Rect2Df GetCellBounds(int row, int column, int rowSpan, int columnSpan) const;
+    Rect2Di GetCellBounds(int row, int column, int rowSpan, int columnSpan) const;
     
     // Ensure grid is large enough for item
     void EnsureGridSize(int row, int column, int rowSpan, int columnSpan);
     
     // Calculate size based on mode
-    float CalculateSize(const GridRowColumnDefinition& def, float availableSpace, 
-                       float contentSize) const;
+    int CalculateSize(const GridRowColumnDefinition& def, int availableSpace,
+                       int contentSize) const;
     
     // Get total size of fixed and percent sized rows/columns
-    float GetFixedAndPercentSize(const std::vector<GridRowColumnDefinition>& definitions,
-                                 float availableSpace) const;
+    int GetFixedAndPercentSize(const std::vector<GridRowColumnDefinition>& definitions,
+                                 int availableSpace) const;
     
     // Get total weight of star-sized rows/columns
-    float GetTotalStarWeight(const std::vector<GridRowColumnDefinition>& definitions) const;
+    int GetTotalStarWeight(const std::vector<GridRowColumnDefinition>& definitions) const;
 };
 
 // ===== CONVENIENCE FACTORY FUNCTION =====

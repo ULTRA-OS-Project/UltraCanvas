@@ -70,10 +70,11 @@ namespace UltraCanvas {
         // Create demo container for vertical layout
         auto vboxDemo = std::make_shared<UltraCanvasContainer>("VBoxDemo", 1012, 20, currentY, 300, 200);
         vboxDemo->SetBackgroundColor(Color(245, 245, 250, 255));
+        vboxDemo->SetPadding(15);
 
         auto vboxLayout = CreateVBoxLayout(vboxDemo.get());
         vboxLayout->SetSpacing(10);
-        vboxLayout->SetPadding(15);
+        //vboxLayout->SetPadding(15);
         vboxLayout->SetCrossAxisAlignment(LayoutAlignment::Center);
 
         auto vboxBtn1 = std::make_shared<UltraCanvasButton>("VBtn1", 1013, 0, 0, 150, 35);
@@ -122,10 +123,11 @@ namespace UltraCanvas {
         // Create demo container for horizontal layout
         auto hboxDemo = std::make_shared<UltraCanvasContainer>("HBoxDemo", 1022, 20, currentY, 960, 50);
         hboxDemo->SetBackgroundColor(Color(245, 245, 250, 255));
+        hboxDemo->SetPadding(10);
 
         auto hboxLayout = CreateHBoxLayout(hboxDemo.get());
         hboxLayout->SetSpacing(5);
-        hboxLayout->SetPadding(10);
+        //hboxLayout->SetPadding(10);
         hboxLayout->SetCrossAxisAlignment(LayoutAlignment::Center);
 
         auto newBtn = std::make_shared<UltraCanvasButton>("NewBtn", 1023, 0, 0, 60, 30);
@@ -170,10 +172,11 @@ namespace UltraCanvas {
         // Create demo container for grid layout
         auto gridDemo = std::make_shared<UltraCanvasContainer>("GridDemo", 1032, 20, currentY, 450, 200);
         gridDemo->SetBackgroundColor(Color(245, 245, 250, 255));
+        gridDemo->SetPadding(15);
 
         auto gridLayout = CreateGridLayout(gridDemo.get(), 4, 2);
         gridLayout->SetSpacing(10);
-        gridLayout->SetPadding(15);
+        //gridLayout->SetPadding(15);
         gridLayout->SetColumnDefinition(0, GridRowColumnDefinition::Auto());
         gridLayout->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));
 
@@ -225,13 +228,14 @@ namespace UltraCanvas {
         // Create demo container for flex layout
         auto flexDemo = std::make_shared<UltraCanvasContainer>("FlexDemo", 1052, 20, currentY, 960, 260);
         flexDemo->SetBackgroundColor(Color(245, 245, 250, 255));
+        flexDemo->SetPadding(15);
 
         auto flexLayout = CreateFlexLayout(flexDemo.get(), FlexDirection::Row);
         flexLayout->SetFlexWrap(FlexWrap::Wrap);
         flexLayout->SetJustifyContent(FlexJustifyContent::SpaceAround);
         flexLayout->SetAlignItems(FlexAlignItems::Start);
         flexLayout->SetGap(15, 15);
-        flexLayout->SetPadding(15);
+        //flexLayout->SetPadding(15);
 
         const char* cardTitles[] = {"Card 1", "Card 2", "Card 3", "Card 4"};
         const char* cardTexts[] = {
@@ -247,10 +251,11 @@ namespace UltraCanvas {
                     1053 + i * 10, 0, 0, 220, 110
             );
             card->SetBackgroundColor(Color(255, 255, 255, 255));
+            card->SetPadding(15);
 
             auto cardLayout = CreateVBoxLayout(card.get());
             cardLayout->SetSpacing(8);
-            cardLayout->SetPadding(12);
+            //cardLayout->SetPadding(12);
 
             auto cardTitle = std::make_shared<UltraCanvasLabel>(
                     std::string("CardTitle") + std::to_string(i),

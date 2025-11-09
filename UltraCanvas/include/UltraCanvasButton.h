@@ -26,14 +26,6 @@ namespace UltraCanvas {
         Center      // Icon only (no text displayed when Center)
     };
 
-// ===== BUTTON STATES =====
-    enum class ButtonState {
-        Normal,
-        Hovered,
-        Pressed,
-        Disabled
-    };
-
 // ===== SECONDARY ICON POSITION =====
     enum class ButtonSecondaryIconPosition {
         Left,       // Icon on the left of secondary text
@@ -131,7 +123,6 @@ namespace UltraCanvas {
         std::string text = "Button";
         std::shared_ptr<UCImage> icon;
         ButtonStyle style;
-        ButtonState currentState = ButtonState::Normal;
         ButtonIconPosition iconPosition = ButtonIconPosition::Left;
 
         // Icon properties
@@ -141,7 +132,6 @@ namespace UltraCanvas {
         bool maintainIconAspectRatio = true;
 
         // State
-        bool pressed = false;
         bool autoresize = false;
         bool isNeedAutoresize = false;
 
@@ -214,13 +204,6 @@ namespace UltraCanvas {
         void SetStyle(const ButtonStyle& newStyle);
         ButtonStyle& GetStyle() { return style; }
 
-        // ===== STATE MANAGEMENT =====
-        void SetEnabled(bool enabled);
-        bool IsEnabled() const { return currentState != ButtonState::Disabled; }
-        void SetPressed(bool isPressed) { pressed = isPressed; }
-        bool IsPressed() const { return pressed; }
-        ButtonState GetButtonState() const { return currentState; }
-
         // ===== AUTO-RESIZE =====
         void SetAutoResize(bool enable) { autoresize = enable; }
         bool IsAutoResize() const { return autoresize; }
@@ -239,7 +222,7 @@ namespace UltraCanvas {
         std::function<void()> onHoverLeave;
 
         // ===== OVERRIDES =====
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
         bool OnEvent(const UCEvent& event) override;
         bool AcceptsFocus() const override { return true; }
 

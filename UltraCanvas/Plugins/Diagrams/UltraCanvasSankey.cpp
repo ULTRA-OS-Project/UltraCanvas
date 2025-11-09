@@ -227,8 +227,7 @@ namespace UltraCanvas {
         needsLayout = false;
     }
 
-    void UltraCanvasSankeyRenderer::Render() {
-        IRenderContext *ctx = GetRenderContext();
+    void UltraCanvasSankeyRenderer::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
 
         auto bounds = GetBounds();

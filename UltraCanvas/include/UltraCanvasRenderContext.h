@@ -126,7 +126,6 @@ namespace UltraCanvas {
     struct RenderState {
         FontStyle fontStyle;
         TextStyle textStyle;
-        Rect2Df clipRect;
         Point2Df translation;
         float rotation = 0.0f;
         Point2Df scale = Point2Df(1.0f, 1.0f);
@@ -140,10 +139,6 @@ namespace UltraCanvas {
         Color strokeSourceColor = Colors::Transparent;
         Color textSourceColor = Colors::Transparent;
         Color currentSourceColor = Colors::Transparent;
-
-        RenderState() {
-            clipRect = Rect2Df(0, 0, 10000, 10000); // Large default clip
-        }
     };
 
     class IPixelBuffer {
@@ -251,6 +246,10 @@ namespace UltraCanvas {
         virtual void ClearClipRect() = 0;
         virtual void ClipRect(float x, float y, float w, float h) = 0;
         virtual void ClipPath() = 0;
+        virtual void ClipRoundedRectangle(
+                float x, float y, float width, float height,
+                float borderTopLeftRadius, float borderTopRightRadius,
+                float borderBottomRightRadius, float borderBottomLeftRadius) = 0;
 //        virtual Rect2Df GetClipRect() const = 0;
 
         // ===== BASIC SHAPES =====
@@ -259,6 +258,18 @@ namespace UltraCanvas {
         virtual void FillRectangle(float x, float y, float w, float h) = 0;
         virtual void DrawRoundedRectangle(float x, float y, float w, float h, float radius) = 0;
         virtual void FillRoundedRectangle(float x, float y, float w, float h, float radius) = 0;
+        virtual void DrawRoundedRectangleWidthBorders(float x, float y, float width, float height,
+                                              bool fill,
+                                              float borderLeftWidth, float borderRightWidth,
+                                              float borderTopWidth, float borderBottomWidth,
+                                              const Color& borderLeftColor, const Color& borderRightColor,
+                                              const Color& borderTopColor, const Color& borderBottomColor,
+                                              float borderTopLeftRadius, float borderTopRightRadius,
+                                              float borderBottomRightRadius, float borderBottomLeftRadius,
+                                              const UCDashPattern& borderLeftPattern,
+                                              const UCDashPattern& borderRightPattern,
+                                              const UCDashPattern& borderTopPattern,
+                                              const UCDashPattern& borderBottomPattern) = 0;
         virtual void DrawCircle(float x, float y, float radius) = 0;
         virtual void FillCircle(float x, float y, float radius) = 0;
         virtual void DrawEllipse(float x, float y, float w, float h) = 0;
@@ -318,7 +329,7 @@ namespace UltraCanvas {
         virtual void SetLineCap(LineCap cap) = 0;
         virtual void SetLineJoin(LineJoin join) = 0;
         virtual void SetMiterLimit(float limit) = 0;
-        virtual void SetLineDash(const std::vector<float>& pattern, float offset = 0) = 0;
+        virtual void SetLineDash(const UCDashPattern& pattern) = 0;
 
         // === Text Methods ===
         virtual void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) = 0;

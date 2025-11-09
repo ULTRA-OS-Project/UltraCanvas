@@ -145,7 +145,6 @@ namespace UltraCanvas {
         showFirstChildOnExpand = false;
 
         // Color defaults
-        backgroundColor = Colors::White;      // White
         selectionColor = Colors::Selection;       // Blue selection
         hoverColor = Color(0xE5,0xF3,0xFF);          // Light blue hover
         lineColor = Color(0x80,0x80,0x80);           // Gray lines
@@ -160,6 +159,9 @@ namespace UltraCanvas {
         // Interaction state
         isDragging = false;
         draggedNode = nullptr;
+
+        SetBackgroundColor(Colors::White);
+        SetBorders(1, Colors::Gray);
     }
 
     TreeNode *UltraCanvasTreeView::SetRootNode(const TreeNodeData &rootData) {
@@ -308,7 +310,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTreeView::OnEvent(const UCEvent &event) {
-        if (!IsActive() || !IsVisible()) return false;
+        if (IsDisabled() || !IsVisible()) return false;
 
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -335,12 +337,11 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasTreeView::Render() {
+    void UltraCanvasTreeView::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
-        auto ctx = GetRenderContext();
 
         // Draw background / border
-        ctx->DrawFilledRectangle(GetBounds(), backgroundColor, 1.0, Colors::Gray);
+        UltraCanvasUIElement::Render(ctx);
 
         if (rootNode) {
             int currentY = GetY() - scrollOffsetY;

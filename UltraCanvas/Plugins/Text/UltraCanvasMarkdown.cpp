@@ -506,9 +506,8 @@ namespace UltraCanvas {
         ScrollTo(verticalScrollOffset + delta);
     }
 
-    void UltraCanvasMarkdownDisplay::Render() {
-        auto ctx = GetRenderContext();
-        if (!properties.Visible || !ctx) return;
+    void UltraCanvasMarkdownDisplay::Render(IRenderContext* ctx) {
+        if (!IsVisible()) return;
 
         ctx->PushState();
         // Parse if needed
@@ -1023,7 +1022,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMarkdownDisplay::OnEvent(const UCEvent &event) {
-        if (!properties.Active || !properties.Visible) return false;
+        if (IsDisabled() || !IsVisible()) return false;
 
         switch (event.type) {
             case UCEventType::MouseWheel:

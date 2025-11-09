@@ -125,7 +125,6 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasPasswordRuleLegend.cpp
         UltraCanvas/core/UltraCanvasImageLoader.cpp
         UltraCanvas/core/UltraCanvasLayout.cpp
-        UltraCanvas/core/UltraCanvasLayoutItem.cpp
         UltraCanvas/core/UltraCanvasBoxLayout.cpp
         UltraCanvas/core/UltraCanvasGridLayout.cpp
         UltraCanvas/core/UltraCanvasFlexLayout.cpp

@@ -16,11 +16,8 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasChartElementBase::Render() {
+    void UltraCanvasChartElementBase::Render(IRenderContext* ctx) {
         // Get render interface
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return;
-
         ctx->PushState();
         // Check if we have data
         if (!dataSource || dataSource->GetPointCount() == 0) {
@@ -56,7 +53,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasChartElementBase::OnEvent(const UCEvent& event) {
-        if (!IsActive() || !IsVisible()) return false;
+        if (IsDisabled() || !IsVisible()) return false;
 
         switch (event.type) {
             case UCEventType::MouseDown:

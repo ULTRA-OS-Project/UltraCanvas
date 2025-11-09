@@ -184,7 +184,7 @@ namespace UltraCanvas {
         }
 
         // ===== RENDERING =====
-        void Render() override {
+        void Render(IRenderContext* ctx) override {
             ctx->PushState();
 
             if (!ShouldBeVisible()) return;
@@ -199,7 +199,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override {
-            if (!IsActive() || !ShouldBeVisible()) return false;
+            if (IsDisabled() || !ShouldBeVisible()) return false;
 
             UpdateLayout();
 

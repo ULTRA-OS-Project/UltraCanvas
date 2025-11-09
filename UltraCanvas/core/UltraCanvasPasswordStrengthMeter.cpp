@@ -55,10 +55,7 @@ namespace UltraCanvas {
         UpdateStrength(password);
     }
 
-    void UltraCanvasPasswordStrengthMeter::Render() {
-        auto ctx = GetRenderContext();
-        if (!ctx) return;
-
+    void UltraCanvasPasswordStrengthMeter::Render(IRenderContext* ctx) {
         Rect2Di bounds = GetBounds();
 
         // Update animation

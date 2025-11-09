@@ -21,23 +21,11 @@ namespace UltraCanvas {
 
 // ===== CONTAINER STYLES =====
     struct ContainerStyle {
-        // Scrollbar settings
         int scrollbarWidth = 16;
         Color scrollbarTrackColor = Color(240, 240, 240, 255);
         Color scrollbarThumbColor = Color(192, 192, 192, 255);
         Color scrollbarThumbHoverColor = Color(160, 160, 160, 255);
         Color scrollbarThumbPressedColor = Color(128, 128, 128, 255);
-
-        // Border and background
-        int borderWidth = 0;
-        Color borderColor = Color(200, 200, 200, 255);
-        Color backgroundColor = Color(255, 255, 255, 255);
-
-        // Padding for content area
-        int paddingLeft = 0;
-        int paddingTop = 0;
-        int paddingRight = 0;
-        int paddingBottom = 0;
 
         // Scrolling behavior
         bool autoHideScrollbars = true;
@@ -93,7 +81,6 @@ namespace UltraCanvas {
         Rect2Di horizontalThumbRect;
 
         // Content area management
-        Rect2Di contentArea;
         bool layoutDirty = true;
 
         // Callbacks
@@ -111,7 +98,6 @@ namespace UltraCanvas {
         UltraCanvasContainer(const std::string& id, long uid, long x, long y, long w, long h)
                 : UltraCanvasUIElement(id, uid, x, y, w, h) {
             UpdateLayout();
-            UpdateScrollability();
         }
 
         virtual ~UltraCanvasContainer() {
@@ -164,22 +150,12 @@ namespace UltraCanvas {
         bool HasVerticalScrollbar() const { return scrollState.showVerticalScrollbar; }
         bool HasHorizontalScrollbar() const { return scrollState.showHorizontalScrollbar; }
 
-        Rect2Di GetVisibleChildBounds(const Rect2Di& childBounds) const;
-        bool IsChildVisible(UltraCanvasUIElement* child) const;
+        Rect2Di GetVisibleChildBounds(const Rect2Di& childBounds);
+        bool IsChildVisible(UltraCanvasUIElement* child);
 
-        // ===== ENHANCED STYLE MANAGEMENT =====
-        void SetBorderWidth(int width) {
-            auto s = GetContainerStyle();
-            s.borderWidth = width;
-            SetContainerStyle(s);
-        }
         void SetBounds(const Rect2Di& bounds) override;
+        Rect2Di GetContentRect() override;
 
-        void SetBackgroundColor(const Color& c) {
-            auto s = GetContainerStyle();
-            s.backgroundColor = c;
-            SetContainerStyle(s);
-        }
         void SetContainerStyle(const ContainerStyle& newStyle);
         const ContainerStyle& GetContainerStyle() const { return style; }
 
@@ -200,10 +176,9 @@ namespace UltraCanvas {
         void UpdateLayout();
         void MarkLayoutDirty() { layoutDirty = true; }
         bool IsLayoutDirty() const { return layoutDirty; }
-        Rect2Di GetContentArea();
 
         // ===== OVERRIDDEN ELEMENT METHODS =====
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
         bool OnEvent(const UCEvent& event) override;
 
         virtual void SetWindow(UltraCanvasWindowBase* win) override;
@@ -221,21 +196,17 @@ namespace UltraCanvas {
         void UpdateScrollability();
         void UpdateContentSize();
         void UpdateScrollbarPositions();
-        void UpdateScrollbarAppearance();
-        void CalculateContentArea();
         void UpdateScrollAnimation();
 //        void UpdateHoverStates(const UCEvent& event);
 
         // Event handling helpers
         bool HandleScrollbarEvents(const UCEvent& event);
         bool HandleScrollWheel(const UCEvent& event);
-        bool IsPointInScrollbar(const Point2Di& point, bool& isVertical, bool& isThumb) const;
-        void ForwardEventToChildren(const UCEvent& event);
 
         // Scrolling helpers
         void OnScrollChanged();
-        int CalculateScrollbarThumbSize(bool vertical) const;
-        int CalculateScrollbarThumbPosition(bool vertical) const;
+        int CalculateScrollbarThumbSize(bool vertical);
+        int CalculateScrollbarThumbPosition(bool vertical);
         void RenderVerticalScrollbar(IRenderContext *ctx);
         void RenderHorizontalScrollbar(IRenderContext *ctx);
         void UpdateScrollbarHoverStates(const Point2Di& mousePos);

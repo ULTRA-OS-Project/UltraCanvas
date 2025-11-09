@@ -180,7 +180,7 @@ namespace UltraCanvas {
         const WindowConfig& GetConfig() const { return config_; }
 
         // ===== ENHANCED RENDERING AND EVENTS =====
-        virtual void Render() override;
+        virtual void Render(IRenderContext* ctx) override;
         virtual bool OnEvent(const UCEvent& event) override;
         virtual void RenderCustomContent() {}
 
@@ -281,16 +281,16 @@ namespace UltraCanvas {
 //            }
 //        }
 
-        virtual void RenderWindowBackground() {
+        virtual void RenderWindowBackground(IRenderContext* ctx) {
             // Default implementation - clear to background color
             // OS-specific implementations can override
         }
 
-        virtual void RenderWindowChrome() {
+        virtual void RenderWindowChrome(IRenderContext* ctx) {
             // Default implementation - no chrome
             // OS-specific implementations can add title bars, etc.
         }
-        void RenderActivePopups();
+        void RenderActivePopups(IRenderContext* ctx);
 
         // ===== FOCUS UTILITY METHODS =====
 

@@ -194,7 +194,7 @@ namespace UltraCanvas {
         void PositionOverflowDropdown();
 
         // ===== RENDERING =====
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
         void RenderTabBar(IRenderContext* ctx);
         void RenderTab(int index, IRenderContext* ctx);
         void RenderCloseButton(int index, IRenderContext* ctx);

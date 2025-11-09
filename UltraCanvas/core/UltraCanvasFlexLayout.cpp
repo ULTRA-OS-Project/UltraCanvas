@@ -12,6 +12,62 @@
 
 namespace UltraCanvas {
 
+UltraCanvasFlexLayoutItem::UltraCanvasFlexLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem)
+        : UltraCanvasLayoutItem(elem) {
+}
+
+int UltraCanvasFlexLayoutItem::GetPreferredWidth() const {
+    if (flexBasis > 0) {
+        return flexBasis;
+    }
+
+    switch (widthMode) {
+        case SizeMode::Fixed:
+            return fixedWidth;
+
+        case SizeMode::Auto:
+            if (element) {
+                return element->GetWidth();
+            }
+            return 0;
+
+        case SizeMode::Fill:
+            return 0; // Will be calculated by layout
+
+        case SizeMode::Percentage:
+            return 0; // Will be calculated by layout based on container
+
+        default:
+            return 0;
+    }
+}
+
+int UltraCanvasFlexLayoutItem::GetPreferredHeight() const {
+    if (flexBasis > 0) {
+        return flexBasis;
+    }
+
+    switch (heightMode) {
+        case SizeMode::Fixed:
+            return fixedHeight;
+
+        case SizeMode::Auto:
+            if (element) {
+                return element->GetHeight();
+            }
+            return 0;
+
+        case SizeMode::Fill:
+            return 0; // Will be calculated by layout
+
+        case SizeMode::Percentage:
+            return 0; // Will be calculated by layout based on container
+
+        default:
+            return 0;
+    }
+}
+
 // ===== CONSTRUCTORS =====
 
 UltraCanvasFlexLayout::UltraCanvasFlexLayout(UltraCanvasContainer* parent, FlexDirection dir)
@@ -100,14 +156,14 @@ void UltraCanvasFlexLayout::ClearItems() {
 
 // ===== LAYOUT CALCULATION =====
 
-void UltraCanvasFlexLayout::PerformLayout(const Rect2Di& containerBounds) {
-    if (items.empty()) return;
+void UltraCanvasFlexLayout::PerformLayout() {
+    if (items.empty() || !parentContainer) return;
     
-    Rect2Di contentRect = GetContentRect(containerBounds);
-    float containerMainSize = IsRowDirection() ? 
-        static_cast<float>(contentRect.width) : static_cast<float>(contentRect.height);
-    float containerCrossSize = IsRowDirection() ?
-        static_cast<float>(contentRect.height) : static_cast<float>(contentRect.width);
+    Rect2Di contentRect = parentContainer->GetContentRect();
+    int containerMainSize = IsRowDirection() ?
+        contentRect.width : contentRect.height;
+    int containerCrossSize = IsRowDirection() ?
+        contentRect.height : contentRect.width;
     
     // Calculate flex lines (handles wrapping)
     std::vector<FlexLine> lines = CalculateFlexLines(containerMainSize);
@@ -130,10 +186,11 @@ void UltraCanvasFlexLayout::PerformLayout(const Rect2Di& containerBounds) {
     for (auto& item : items) {
         item->ApplyToElement();
     }
+    layoutDirty = false;
 }
 
 std::vector<UltraCanvasFlexLayout::FlexLine> UltraCanvasFlexLayout::CalculateFlexLines(
-    float containerMainSize) const {
+    int containerMainSize) const {
     
     std::vector<FlexLine> lines;
     
@@ -149,12 +206,12 @@ std::vector<UltraCanvasFlexLayout::FlexLine> UltraCanvasFlexLayout::CalculateFle
     } else {
         // Multiple lines - wrap items
         FlexLine currentLine;
-        float currentMainSize = 0;
+        int currentMainSize = 0;
         
         for (const auto& item : items) {
             if (!item->IsVisible()) continue;
             
-            float itemMainSize = GetItemMainSize(item.get());
+            int itemMainSize = GetItemMainSize(item.get());
             
             // Check if we need to wrap
             if (currentMainSize + itemMainSize > containerMainSize && !currentLine.items.empty()) {
@@ -178,24 +235,24 @@ std::vector<UltraCanvasFlexLayout::FlexLine> UltraCanvasFlexLayout::CalculateFle
     return lines;
 }
 
-void UltraCanvasFlexLayout::PositionLines(std::vector<FlexLine>& lines, float containerCrossSize) {
+void UltraCanvasFlexLayout::PositionLines(std::vector<FlexLine>& lines, int containerCrossSize) {
     // Simplified implementation - positions lines sequentially
-    float position = static_cast<float>(IsRowDirection() ? paddingTop + marginTop : paddingLeft + marginLeft);
+    int position = 0;
     int gapSize = IsRowDirection() ? rowGap : columnGap;
     
     for (size_t i = 0; i < lines.size(); ++i) {
         auto& line = lines[i];
         
         // Calculate line cross size
-        float lineCrossSize = 0;
+        int lineCrossSize = 0;
         for (auto* item : line.items) {
             lineCrossSize = std::max(lineCrossSize, GetItemCrossSize(item));
         }
         
         // Offset all items in this line
         for (auto* item : line.items) {
-            float currentPos = IsRowDirection() ? item->GetComputedY() : item->GetComputedX();
-            float newPos = position + (currentPos - (IsRowDirection() ? paddingTop + marginTop : paddingLeft + marginLeft));
+            int currentPos = IsRowDirection() ? item->GetComputedY() : item->GetComputedX();
+            int newPos = position + currentPos;
             
             if (IsRowDirection()) {
                 item->SetComputedGeometry(item->GetComputedX(), newPos,
@@ -213,7 +270,7 @@ void UltraCanvasFlexLayout::PositionLines(std::vector<FlexLine>& lines, float co
     }
 }
 
-float UltraCanvasFlexLayout::GetItemMainSize(UltraCanvasFlexLayoutItem* item) const {
+int UltraCanvasFlexLayout::GetItemMainSize(UltraCanvasFlexLayoutItem* item) const {
     if (!item) return 0;
     
     if (IsRowDirection()) {
@@ -223,7 +280,7 @@ float UltraCanvasFlexLayout::GetItemMainSize(UltraCanvasFlexLayoutItem* item) co
     }
 }
 
-float UltraCanvasFlexLayout::GetItemCrossSize(UltraCanvasFlexLayoutItem* item) const {
+int UltraCanvasFlexLayout::GetItemCrossSize(UltraCanvasFlexLayoutItem* item) const {
     if (!item) return 0;
     
     if (IsRowDirection()) {
@@ -243,16 +300,16 @@ Size2Di UltraCanvasFlexLayout::CalculateMinimumSize() const {
         if (!item->IsVisible()) continue;
         
         if (IsRowDirection()) {
-            width += static_cast<int>(item->GetMinimumWidth());
-            height = std::max(height, static_cast<int>(item->GetMinimumHeight()));
+            width += item->GetMinimumWidth();
+            height = std::max(height, item->GetMinimumHeight());
         } else {
             height += static_cast<int>(item->GetMinimumHeight());
-            width = std::max(width, static_cast<int>(item->GetMinimumWidth()));
+            width = std::max(width, item->GetMinimumWidth());
         }
     }
     
-    width += GetTotalPaddingHorizontal() + GetTotalMarginHorizontal();
-    height += GetTotalPaddingVertical() + GetTotalMarginVertical();
+//    width += GetTotalPaddingHorizontal() + GetTotalMarginHorizontal();
+//    height += GetTotalPaddingVertical() + GetTotalMarginVertical();
     
     return Size2Di(width, height);
 }
@@ -265,16 +322,16 @@ Size2Di UltraCanvasFlexLayout::CalculatePreferredSize() const {
         if (!item->IsVisible()) continue;
         
         if (IsRowDirection()) {
-            width += static_cast<int>(item->GetPreferredWidth());
-            height = std::max(height, static_cast<int>(item->GetPreferredHeight()));
+            width += item->GetPreferredWidth();
+            height = std::max(height, item->GetPreferredHeight());
         } else {
-            height += static_cast<int>(item->GetPreferredHeight());
-            width = std::max(width, static_cast<int>(item->GetPreferredWidth()));
+            height += item->GetPreferredHeight();
+            width = std::max(width, item->GetPreferredWidth());
         }
     }
     
-    width += GetTotalPaddingHorizontal() + GetTotalMarginHorizontal();
-    height += GetTotalPaddingVertical() + GetTotalMarginVertical();
+//    width += GetTotalPaddingHorizontal() + GetTotalMarginHorizontal();
+//    height += GetTotalPaddingVertical() + GetTotalMarginVertical();
     
     return Size2Di(width, height);
 }
@@ -284,13 +341,13 @@ Size2Di UltraCanvasFlexLayout::CalculateMaximumSize() const {
 }
 
 
-void UltraCanvasFlexLayout::ResolveFlexibleLengths(FlexLine& line, float containerMainSize) {
+void UltraCanvasFlexLayout::ResolveFlexibleLengths(FlexLine& line, int containerMainSize) {
     if (line.items.empty()) return;
 
     // First, initialize all items with their base sizes
     for (auto* item : line.items) {
-        float baseWidth = item->GetPreferredWidth();
-        float baseHeight = item->GetPreferredHeight();
+        int baseWidth = item->GetPreferredWidth();
+        int baseHeight = item->GetPreferredHeight();
 
         // Clamp to min/max constraints
         baseWidth = std::clamp(baseWidth, item->GetMinimumWidth(), item->GetMaximumWidth());
@@ -303,7 +360,7 @@ void UltraCanvasFlexLayout::ResolveFlexibleLengths(FlexLine& line, float contain
     // Calculate total flex grow and shrink
     float totalFlexGrow = 0;
     float totalFlexShrink = 0;
-    float totalMainSize = 0;
+    int totalMainSize = 0;
 
     for (auto* item : line.items) {
         totalFlexGrow += item->GetFlexGrow();
@@ -320,20 +377,20 @@ void UltraCanvasFlexLayout::ResolveFlexibleLengths(FlexLine& line, float contain
     int gapSize = IsRowDirection() ? columnGap : rowGap;
     totalMainSize += gapSize * (line.items.size() - 1);
 
-    float remainingSpace = containerMainSize - totalMainSize;
+    int remainingSpace = containerMainSize - totalMainSize;
 
     // Apply flex grow or shrink
     if (remainingSpace > 0 && totalFlexGrow > 0) {
         // Grow items
-        float flexUnit = remainingSpace / totalFlexGrow;
+        float flexUnit = static_cast<float>(remainingSpace) / totalFlexGrow;
         for (auto* item : line.items) {
             if (IsRowDirection()) {
-                float newWidth = item->GetComputedWidth() + (flexUnit * item->GetFlexGrow());
+                int newWidth = item->GetComputedWidth() + (flexUnit * item->GetFlexGrow());
                 newWidth = std::clamp(newWidth, item->GetMinimumWidth(), item->GetMaximumWidth());
                 item->SetComputedGeometry(item->GetComputedX(), item->GetComputedY(),
                                           newWidth, item->GetComputedHeight());
             } else {
-                float newHeight = item->GetComputedHeight() + (flexUnit * item->GetFlexGrow());
+                int newHeight = item->GetComputedHeight() + (flexUnit * item->GetFlexGrow());
                 newHeight = std::clamp(newHeight, item->GetMinimumHeight(), item->GetMaximumHeight());
                 item->SetComputedGeometry(item->GetComputedX(), item->GetComputedY(),
                                           item->GetComputedWidth(), newHeight);
@@ -341,15 +398,15 @@ void UltraCanvasFlexLayout::ResolveFlexibleLengths(FlexLine& line, float contain
         }
     } else if (remainingSpace < 0 && totalFlexShrink > 0) {
         // Shrink items
-        float flexUnit = -remainingSpace / totalFlexShrink;
+        float flexUnit = -static_cast<float>(remainingSpace) / totalFlexShrink;
         for (auto* item : line.items) {
             if (IsRowDirection()) {
-                float newWidth = item->GetComputedWidth() - (flexUnit * item->GetFlexShrink());
+                int newWidth = item->GetComputedWidth() - (flexUnit * item->GetFlexShrink());
                 newWidth = std::clamp(newWidth, item->GetMinimumWidth(), item->GetMaximumWidth());
                 item->SetComputedGeometry(item->GetComputedX(), item->GetComputedY(),
                                           newWidth, item->GetComputedHeight());
             } else {
-                float newHeight = item->GetComputedHeight() - (flexUnit * item->GetFlexShrink());
+                int newHeight = item->GetComputedHeight() - (flexUnit * item->GetFlexShrink());
                 newHeight = std::clamp(newHeight, item->GetMinimumHeight(), item->GetMaximumHeight());
                 item->SetComputedGeometry(item->GetComputedX(), item->GetComputedY(),
                                           item->GetComputedWidth(), newHeight);
@@ -358,11 +415,11 @@ void UltraCanvasFlexLayout::ResolveFlexibleLengths(FlexLine& line, float contain
     }
 }
 
-void UltraCanvasFlexLayout::PositionMainAxis(FlexLine& line, float containerMainSize) {
+void UltraCanvasFlexLayout::PositionMainAxis(FlexLine& line, int containerMainSize) {
     if (line.items.empty()) return;
 
     // Calculate total main size of items (should use computed sizes now)
-    float totalMainSize = 0;
+    int totalMainSize = 0;
     for (auto* item : line.items) {
         if (IsRowDirection()) {
             totalMainSize += item->GetComputedWidth();
@@ -372,11 +429,11 @@ void UltraCanvasFlexLayout::PositionMainAxis(FlexLine& line, float containerMain
     }
 
     // Add gaps
-    int gapSize = IsRowDirection() ? columnGap : rowGap;
+    float gapSize = IsRowDirection() ? columnGap : rowGap;
     totalMainSize += gapSize * (line.items.size() - 1);
 
     float remainingSpace = containerMainSize - totalMainSize;
-    float position = static_cast<float>(IsRowDirection() ? paddingLeft + marginLeft : paddingTop + marginTop);
+    float position = 0;
 
     // Apply justify content
     float itemSpacing = 0;
@@ -394,7 +451,7 @@ void UltraCanvasFlexLayout::PositionMainAxis(FlexLine& line, float containerMain
 
         case FlexJustifyContent::SpaceBetween:
             if (line.items.size() > 1) {
-                itemSpacing = remainingSpace / (line.items.size() - 1);
+                itemSpacing = static_cast<float>(remainingSpace) / (line.items.size() - 1);
             }
             break;
 
@@ -414,12 +471,12 @@ void UltraCanvasFlexLayout::PositionMainAxis(FlexLine& line, float containerMain
         auto* item = line.items[i];
 
         if (IsRowDirection()) {
-            float itemWidth = item->GetComputedWidth();
+            int itemWidth = item->GetComputedWidth();
             item->SetComputedGeometry(position + item->GetMarginLeft(), item->GetComputedY(),
                                       itemWidth, item->GetComputedHeight());
             position += itemWidth + item->GetTotalMarginHorizontal();
         } else {
-            float itemHeight = item->GetComputedHeight();
+            int itemHeight = item->GetComputedHeight();
             item->SetComputedGeometry(item->GetComputedX(), position + item->GetMarginTop(),
                                       item->GetComputedWidth(), itemHeight);
             position += itemHeight + item->GetTotalMarginVertical();
@@ -432,12 +489,12 @@ void UltraCanvasFlexLayout::PositionMainAxis(FlexLine& line, float containerMain
     }
 }
 
-void UltraCanvasFlexLayout::PositionCrossAxis(FlexLine& line, float containerCrossSize) {
+void UltraCanvasFlexLayout::PositionCrossAxis(FlexLine& line, int containerCrossSize) {
     for (auto* item : line.items) {
-        float crossPosition = static_cast<float>(IsRowDirection() ? paddingTop + marginTop : paddingLeft + marginLeft);
+        float crossPosition = 0;
 
         // Get item's cross size from computed dimensions
-        float itemCrossSize = IsRowDirection() ? item->GetComputedHeight() : item->GetComputedWidth();
+        int itemCrossSize = IsRowDirection() ? item->GetComputedHeight() : item->GetComputedWidth();
 
         // Apply align items or align self
         LayoutItemAlignment alignment = (item->GetAlignSelf() != LayoutItemAlignment::Auto) ?
@@ -447,7 +504,7 @@ void UltraCanvasFlexLayout::PositionCrossAxis(FlexLine& line, float containerCro
         if (alignItems == FlexAlignItems::Stretch && alignment == LayoutItemAlignment::Auto) {
             itemCrossSize = containerCrossSize;
         } else if (alignItems == FlexAlignItems::Center || alignment == LayoutItemAlignment::Center) {
-            crossPosition += (containerCrossSize - itemCrossSize) / 2;
+            crossPosition += static_cast<float>(containerCrossSize - itemCrossSize) / 2;
         } else if (alignItems == FlexAlignItems::End || alignment == LayoutItemAlignment::End) {
             crossPosition += containerCrossSize - itemCrossSize;
         }

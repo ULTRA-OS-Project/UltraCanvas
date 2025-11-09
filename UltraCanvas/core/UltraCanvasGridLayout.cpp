@@ -12,6 +12,56 @@
 
 namespace UltraCanvas {
 
+    UltraCanvasGridLayoutItem::UltraCanvasGridLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem)
+            : UltraCanvasLayoutItem(elem) {
+    }
+
+    int UltraCanvasGridLayoutItem::GetPreferredWidth() const {
+        switch (widthMode) {
+            case SizeMode::Fixed:
+                return fixedWidth;
+
+            case SizeMode::Auto:
+            case SizeMode::Fill:
+                if (element) {
+                    return element->GetWidth();
+                }
+                return 0;
+
+//        case SizeMode::Fill:
+//            if (element) {
+//                return static_cast<float>(element->GetWidth());
+//            }
+//            return 0; // Will be calculated by layout
+
+            case SizeMode::Percentage:
+                return 0; // Will be calculated by layout based on container
+
+            default:
+                return 0;
+        }
+    }
+
+    int UltraCanvasGridLayoutItem::GetPreferredHeight() const {
+        switch (heightMode) {
+            case SizeMode::Fixed:
+                return fixedHeight;
+
+            case SizeMode::Auto:
+            case SizeMode::Fill:
+                if (element) {
+                    return element->GetHeight();
+                }
+                return 0;
+
+            case SizeMode::Percentage:
+                return 0; // Will be calculated by layout based on container
+
+            default:
+                return 0;
+        }
+    }
+
 // ===== CONSTRUCTORS =====
 UltraCanvasGridLayout::UltraCanvasGridLayout(UltraCanvasContainer* parent, int rows, int columns)
     : UltraCanvasLayout(parent) {
@@ -145,14 +195,14 @@ void UltraCanvasGridLayout::EnsureGridSize(int row, int column, int rowSpan, int
 
 // ===== LAYOUT CALCULATION =====
 
-void UltraCanvasGridLayout::PerformLayout(const Rect2Di& containerBounds) {
-    if (items.empty() || rowDefinitions.empty() || columnDefinitions.empty()) return;
+void UltraCanvasGridLayout::PerformLayout() {
+    if (items.empty() || rowDefinitions.empty() || columnDefinitions.empty() || !parentContainer) return;
     
-    Rect2Di contentRect = GetContentRect(containerBounds);
+    Rect2Di contentRect = parentContainer->GetContentRect();
     
     // Calculate row heights and column widths
-    CalculateRowHeights(static_cast<float>(contentRect.height));
-    CalculateColumnWidths(static_cast<float>(contentRect.width));
+    CalculateRowHeights(contentRect.height);
+    CalculateColumnWidths(contentRect.width);
     
     // Position items in grid
     PositionItems();
@@ -161,33 +211,32 @@ void UltraCanvasGridLayout::PerformLayout(const Rect2Di& containerBounds) {
     for (auto& item : items) {
         item->ApplyToElement();
     }
+
+    layoutDirty = false;
 }
 
-void UltraCanvasGridLayout::CalculateRowHeights(float availableHeight) {
+void UltraCanvasGridLayout::CalculateRowHeights(int availableHeight) {
     int rowCount = static_cast<int>(rowDefinitions.size());
     computedRowHeights.clear();
     computedRowHeights.resize(rowCount, 0);
 
     // First pass: calculate content sizes for auto rows
-    std::vector<float> contentHeights(rowCount, 0);
+    std::vector<int> contentHeights(rowCount, 0);
     for (const auto& item : items) {
         if (item->GetRowSpan() == 1 && item->IsVisible()) {
             int row = item->GetRow();
             if (row >= 0 && row < rowCount) {
-                float itemHeight = item->GetPreferredHeight();
+                int itemHeight = item->GetPreferredHeight();
                 // If preferred height is 0 and element exists, use element height
-                if (itemHeight == 0 && item->GetElement()) {
-                    itemHeight = static_cast<float>(item->GetElement()->GetHeight());
-                }
                 contentHeights[row] = std::max(contentHeights[row], itemHeight);
             }
         }
     }
 
     // Calculate fixed and percent sizes first
-    float usedHeight = 0;
+    int usedHeight = 0;
     int autoCount = 0;
-    float totalStarWeight = 0;
+    int totalStarWeight = 0;
 
     for (int i = 0; i < rowCount; ++i) {
         const auto& def = rowDefinitions[i];
@@ -196,11 +245,11 @@ void UltraCanvasGridLayout::CalculateRowHeights(float availableHeight) {
             computedRowHeights[i] = def.size;
             usedHeight += def.size;
         } else if (def.sizeMode == GridSizeMode::Percent) {
-            computedRowHeights[i] = availableHeight * (def.size / 100.0f);
+            computedRowHeights[i] = availableHeight * (static_cast<float>(def.size) / 100.0f);
             usedHeight += computedRowHeights[i];
         } else if (def.sizeMode == GridSizeMode::Auto) {
             // Use content size, with minimum of 20 if no content
-            computedRowHeights[i] = std::max(contentHeights[i], 20.0f);
+            computedRowHeights[i] = std::max(contentHeights[i], 20);
             usedHeight += computedRowHeights[i];
             autoCount++;
         } else if (def.sizeMode == GridSizeMode::Star) {
@@ -214,40 +263,40 @@ void UltraCanvasGridLayout::CalculateRowHeights(float availableHeight) {
     // Distribute remaining space to Star-sized rows
     float remainingHeight = availableHeight - usedHeight;
     float starUnit = (totalStarWeight > 0 && remainingHeight > 0) ?
-                     remainingHeight / totalStarWeight : 0;
+                     remainingHeight / static_cast<float>(totalStarWeight) : 0;
 
     for (int i = 0; i < rowCount; ++i) {
         const auto& def = rowDefinitions[i];
 
         if (def.sizeMode == GridSizeMode::Star) {
-            computedRowHeights[i] = starUnit * def.size;
+            computedRowHeights[i] = static_cast<int>(starUnit * static_cast<float>(def.size));
             // Apply min/max constraints
             computedRowHeights[i] = std::clamp(computedRowHeights[i], def.minSize, def.maxSize);
         }
     }
 }
 
-void UltraCanvasGridLayout::CalculateColumnWidths(float availableWidth) {
+void UltraCanvasGridLayout::CalculateColumnWidths(int availableWidth) {
     int columnCount = static_cast<int>(columnDefinitions.size());
     computedColumnWidths.clear();
     computedColumnWidths.resize(columnCount, 0);
 
     // First pass: calculate content sizes for auto columns
-    std::vector<float> contentWidths(columnCount, 0);
+    std::vector<int> contentWidths(columnCount, 0);
     for (const auto& item : items) {
         if (item->GetColumnSpan() == 1 && item->IsVisible()) {
             int column = item->GetColumn();
             if (column >= 0 && column < columnCount) {
-                float itemWidth = item->GetPreferredWidth();
+                int itemWidth = item->GetPreferredWidth();
                 contentWidths[column] = std::max(contentWidths[column], itemWidth);
             }
         }
     }
 
     // Calculate fixed and percent sizes first
-    float usedWidth = 0;
+    int usedWidth = 0;
     int autoCount = 0;
-    float totalStarWeight = 0;
+    int totalStarWeight = 0;
 
     for (int i = 0; i < columnCount; ++i) {
         const auto& def = columnDefinitions[i];
@@ -256,11 +305,11 @@ void UltraCanvasGridLayout::CalculateColumnWidths(float availableWidth) {
             computedColumnWidths[i] = def.size;
             usedWidth += def.size;
         } else if (def.sizeMode == GridSizeMode::Percent) {
-            computedColumnWidths[i] = availableWidth * (def.size / 100.0f);
+            computedColumnWidths[i] = availableWidth * (static_cast<float>(def.size) / 100.0f);
             usedWidth += computedColumnWidths[i];
         } else if (def.sizeMode == GridSizeMode::Auto) {
             // Use content size, with minimum of 50 if no content
-            computedColumnWidths[i] = std::max(contentWidths[i], 50.0f);
+            computedColumnWidths[i] = std::max(contentWidths[i], 50);
             usedWidth += computedColumnWidths[i];
             autoCount++;
         } else if (def.sizeMode == GridSizeMode::Star) {
@@ -274,13 +323,13 @@ void UltraCanvasGridLayout::CalculateColumnWidths(float availableWidth) {
     // Distribute remaining space to Star-sized columns
     float remainingWidth = availableWidth - usedWidth;
     float starUnit = (totalStarWeight > 0 && remainingWidth > 0) ?
-                     remainingWidth / totalStarWeight : 0;
+                     remainingWidth / static_cast<float>(totalStarWeight) : 0;
 
     for (int i = 0; i < columnCount; ++i) {
         const auto& def = columnDefinitions[i];
 
         if (def.sizeMode == GridSizeMode::Star) {
-            computedColumnWidths[i] = starUnit * def.size;
+            computedColumnWidths[i] = static_cast<int>(starUnit * static_cast<float>(def.size));
             // Apply min/max constraints
             computedColumnWidths[i] = std::clamp(computedColumnWidths[i], def.minSize, def.maxSize);
         }
@@ -291,12 +340,12 @@ void UltraCanvasGridLayout::PositionItems() {
     for (auto &item: items) {
         if (!item->IsVisible()) continue;
 
-        Rect2Df cellBounds = GetCellBounds(item->GetRow(), item->GetColumn(),
+        Rect2Di cellBounds = GetCellBounds(item->GetRow(), item->GetColumn(),
                                            item->GetRowSpan(), item->GetColumnSpan());
 
         // Calculate item size based on size mode
-        float itemWidth = 0;
-        float itemHeight = 0;
+        int itemWidth = 0;
+        int itemHeight = 0;
 
         // Determine width based on mode
         if (item->GetWidthMode() == SizeMode::Fixed) {
@@ -366,11 +415,11 @@ void UltraCanvasGridLayout::PositionItems() {
     }
 }
 
-Rect2Df UltraCanvasGridLayout::GetCellBounds(int row, int column, int rowSpan, int columnSpan) const {
-    float x = static_cast<float>(paddingLeft + marginLeft);
-    float y = static_cast<float>(paddingTop + marginTop);
-    float width = 0;
-    float height = 0;
+Rect2Di UltraCanvasGridLayout::GetCellBounds(int row, int column, int rowSpan, int columnSpan) const {
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
     
     // Calculate X position
     for (int c = 0; c < column && c < static_cast<int>(computedColumnWidths.size()); ++c) {
@@ -394,11 +443,11 @@ Rect2Df UltraCanvasGridLayout::GetCellBounds(int row, int column, int rowSpan, i
         if (r < rowSpan - 1) height += spacing;
     }
     
-    return Rect2Df(x, y, width, height);
+    return Rect2Di(x, y, width, height);
 }
 
-float UltraCanvasGridLayout::CalculateSize(const GridRowColumnDefinition& def,
-                                          float availableSpace, float contentSize) const {
+int UltraCanvasGridLayout::CalculateSize(const GridRowColumnDefinition& def,
+                                          int availableSpace, int contentSize) const {
     switch (def.sizeMode) {
         case GridSizeMode::Fixed:
             return def.size;
@@ -407,7 +456,7 @@ float UltraCanvasGridLayout::CalculateSize(const GridRowColumnDefinition& def,
             return contentSize;
         
         case GridSizeMode::Percent:
-            return availableSpace * (def.size / 100.0f);
+            return availableSpace * (static_cast<float>(def.size) / 100.0f);
         
         case GridSizeMode::Star:
             // Calculated separately
@@ -418,16 +467,16 @@ float UltraCanvasGridLayout::CalculateSize(const GridRowColumnDefinition& def,
     }
 }
 
-float UltraCanvasGridLayout::GetFixedAndPercentSize(
+int UltraCanvasGridLayout::GetFixedAndPercentSize(
     const std::vector<GridRowColumnDefinition>& definitions,
-    float availableSpace) const {
+    int availableSpace) const {
     
     float total = 0;
     for (const auto& def : definitions) {
         if (def.sizeMode == GridSizeMode::Fixed) {
             total += def.size;
         } else if (def.sizeMode == GridSizeMode::Percent) {
-            total += availableSpace * (def.size / 100.0f);
+            total += availableSpace * def.size / 100.0f;
         }
     }
     
@@ -436,13 +485,13 @@ float UltraCanvasGridLayout::GetFixedAndPercentSize(
         total += spacing * (definitions.size() - 1);
     }
     
-    return total;
+    return static_cast<int>(total);
 }
 
-float UltraCanvasGridLayout::GetTotalStarWeight(
+int UltraCanvasGridLayout::GetTotalStarWeight(
     const std::vector<GridRowColumnDefinition>& definitions) const {
     
-    float total = 0;
+    int total = 0;
     for (const auto& def : definitions) {
         if (def.sizeMode == GridSizeMode::Star) {
             total += def.size;
@@ -472,8 +521,8 @@ Size2Di UltraCanvasGridLayout::CalculateMinimumSize() const {
         width += spacing * (columnDefinitions.size() - 1);
     }
     
-    width += GetTotalPaddingHorizontal() + GetTotalMarginHorizontal();
-    height += GetTotalPaddingVertical() + GetTotalMarginVertical();
+//    width += GetTotalPaddingHorizontal() + GetTotalMarginHorizontal();
+//    height += GetTotalPaddingVertical() + GetTotalMarginVertical();
     
     return Size2Di(width, height);
 }

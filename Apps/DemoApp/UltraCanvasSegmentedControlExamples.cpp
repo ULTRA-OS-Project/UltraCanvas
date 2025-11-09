@@ -35,7 +35,7 @@ namespace UltraCanvas {
         statusLabel->SetText("Click any segment to see selection feedback");
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
-        statusLabel->SetBorderWidth(1.0f);
+        statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(8.0f);
         mainContainer->AddChild(statusLabel);
 
@@ -376,8 +376,7 @@ namespace UltraCanvas {
         keyboardDesc->SetFontSize(11);
         keyboardDesc->SetTextColor(Color(80, 80, 80, 255));
         keyboardDesc->SetBackgroundColor(Color(240, 245, 255, 255));
-        keyboardDesc->SetBorderWidth(1.0f);
-        keyboardDesc->SetBorderColor(Color(200, 210, 230, 255));
+        keyboardDesc->SetBorders(1.0f, Color(200, 210, 230, 255));
         keyboardDesc->SetPadding(8.0f);
         mainContainer->AddChild(keyboardDesc);
 

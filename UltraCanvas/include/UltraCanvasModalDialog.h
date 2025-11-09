@@ -281,7 +281,7 @@ namespace UltraCanvas {
         void Update(float deltaTime);
 
         // ===== RENDERING =====
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
 
         // ===== EVENT HANDLING =====
         bool HandleEvent(const UCEvent& event) override;

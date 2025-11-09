@@ -199,7 +199,6 @@ public:
     bool GetShowFirstChildOnExpand() const { return showFirstChildOnExpand; }
 
     // ===== COLOR PROPERTIES =====
-    void SetBackgroundColor(const Color &color) { backgroundColor = color; }
     void SetSelectionColor(const Color &color) { selectionColor = color; }
     void SetHoverColor(const Color &color) { hoverColor = color; }
     void SetLineColor(const Color &color) { lineColor = color; }
@@ -213,7 +212,7 @@ public:
     bool OnEvent(const UCEvent& event) override;
     
     // ===== RENDERING =====
-    void Render() override;
+    void Render(IRenderContext* ctx) override;
     
 private:
 

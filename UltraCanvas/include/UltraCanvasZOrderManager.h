@@ -465,7 +465,7 @@ public:
 
 // Macro to easily add z-order support to existing windows
 #define ULTRACANVAS_ENABLE_ZORDER_RENDERING() \
-    void Render() override { \
+    void Render(IRenderContext* ctx) override { \
         ULTRACANVAS_WINDOW_RENDER_SCOPE(this); \
         int width, height; \
         GetSize(width, height); \

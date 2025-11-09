@@ -189,8 +189,8 @@ namespace UltraCanvas {
         }
 
         // ===== CORE RENDERING =====
-        void Render() override;
-        void RenderPopupContent() override;
+        void Render(IRenderContext* ctx) override;
+        void RenderPopupContent(IRenderContext* ctx) override;
 
         bool OnEvent(const UCEvent& event) override;
 
@@ -385,8 +385,8 @@ namespace UltraCanvas {
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasMenu> CreateMenu(
             const std::string& identifier, long id, long x, long y, long w, long h) {
-        return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasMenu>(
-                id, identifier, id, x, y, w, h);
+        return UltraCanvasUIElementFactory::Create<UltraCanvasMenu>(
+                identifier, id, x, y, w, h);
     }
 
     inline std::shared_ptr<UltraCanvasMenu> CreateMenuBar(

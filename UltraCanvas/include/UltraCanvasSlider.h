@@ -78,9 +78,6 @@ namespace UltraCanvas {
 // ===== MAIN SLIDER COMPONENT =====
     class UltraCanvasSlider : public UltraCanvasUIElement {
     private:
-        // ===== STANDARD PROPERTIES (REQUIRED) =====
-        StandardProperties properties;
-
         // ===== SLIDER PROPERTIES =====
         float minValue = 0.0f;
         float maxValue = 100.0f;
@@ -111,8 +108,7 @@ namespace UltraCanvas {
                 : UltraCanvasUIElement(identifier, id, x, y, w, h) {
 
             // Initialize standard properties
-            properties.MousePtr = MousePointer::Hand;
-            properties.MouseCtrl = MouseControls::Object2D;
+            mousePtr = MousePointer::Hand;
 
             UpdateSliderState();
         }
@@ -217,9 +213,8 @@ namespace UltraCanvas {
         const SliderVisualStyle& GetStyle() const { return style; }
 
         // ===== RENDERING (REQUIRED OVERRIDE) =====
-        void Render() override {
-            IRenderContext* ctx = GetRenderContext();
-            if (!IsVisible() || !ctx) return;
+        void Render(IRenderContext* ctx) override {
+            if (!IsVisible()) return;
             ctx->PushState();
 
             UpdateSliderState();
@@ -254,6 +249,7 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
         bool OnEvent(const UCEvent& event) override {
+            if (!IsVisible() || IsDisabled()) return false;
             switch (event.type) {
                 case UCEventType::MouseDown:
                     return HandleMouseDown(event);
@@ -287,7 +283,7 @@ namespace UltraCanvas {
     private:
         // ===== STATE MANAGEMENT =====
         void UpdateSliderState() {
-            if (!IsEnabled()) {
+            if (IsDisabled()) {
                 currentState = SliderState::Disabled;
             } else if (isDragging) {
                 currentState = SliderState::Pressed;
@@ -429,7 +425,7 @@ namespace UltraCanvas {
             std::string text = GetDisplayText();
             if (text.empty()) return;
 
-            ctx->SetTextPaint(IsEnabled() ? style.textColor : style.disabledTextColor);
+            ctx->SetTextPaint(IsDisabled() ? style.disabledTextColor : style.textColor);
             ctx->SetFontStyle(style.fontStyle);
 
             Point2Di textSize = ctx->GetTextDimension(text);
@@ -486,15 +482,14 @@ namespace UltraCanvas {
         }
 
         Color GetCurrentTrackColor() const {
-            return IsEnabled() ? style.trackColor : style.disabledTrackColor;
+            return IsDisabled() ? style.disabledTrackColor : style.trackColor;
         }
 
         Color GetCurrentHandleColor() const {
-            if (!IsEnabled()) return style.handleDisabledColor;
-
-            switch (currentState) {
-                case SliderState::Pressed: return style.handlePressedColor;
-                case SliderState::Hovered: return style.handleHoverColor;
+            switch(GetPrimaryState()) {
+                case ElementState::Disabled: return style.handleDisabledColor;
+                case ElementState::Pressed: return style.handlePressedColor;
+                case ElementState::Hovered: return style.handleHoverColor;
                 default: return style.handleColor;
             }
         }
@@ -548,7 +543,6 @@ namespace UltraCanvas {
             Point2Di mousePos(event.x, event.y);
 
             if (!Contains(mousePos)) return false;
-            if (!IsEnabled()) return false;
 
             isDragging = true;
             dragStartPos = mousePos;
@@ -594,7 +588,7 @@ namespace UltraCanvas {
         }
 
         bool HandleKeyDown(const UCEvent& event) {
-            if (!IsFocused() || !IsEnabled()) return false;
+            if (!IsFocused()) return false;
 
             float increment = step > 0 ? step : (maxValue - minValue) / 100.0f;
 

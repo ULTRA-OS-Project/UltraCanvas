@@ -13,7 +13,7 @@ namespace UltraCanvas {
         if (parentContainer) {
             auto pc = parentContainer;
             while(pc) {
-                Rect2Di contentArea = pc->GetContentArea();
+                Rect2Di contentArea = pc->GetContentRect();
                 x = x - contentArea.x + pc->GetHorizontalScrollPosition();
                 y = y - contentArea.y + pc->GetVerticalScrollPosition();
                 pc = pc->GetParentContainer();
@@ -31,7 +31,7 @@ namespace UltraCanvas {
         if (parentContainer) {
             auto pc = parentContainer;
             while(pc) {
-                Rect2Di contentArea = pc->GetContentArea();
+                Rect2Di contentArea = pc->GetContentRect();
                 x = x + contentArea.x - pc->GetHorizontalScrollPosition();
                 y = y + contentArea.y - pc->GetVerticalScrollPosition();
                 pc = pc->GetParentContainer();
@@ -129,13 +129,68 @@ namespace UltraCanvas {
 //
 //        return totalY;
 //    }
+    void UltraCanvasUIElement::Render(IRenderContext* ctx) {
+        auto bnds = GetBounds();
+        int leftWidth = GetBorderLeftWidth();
+        int rightWidth = GetBorderRightWidth();
+        int topWidth = GetBorderTopWidth();
+        int bottomWidth = GetBorderBottomWidth();
+        if (leftWidth > 0 || rightWidth > 0 || topWidth > 0 || bottomWidth > 0) {
+            int leftRadius = 0;
+            int rightRadius = 0;
+            int topRadius = 0;
+            int bottomRadius = 0;
+            Color leftColor = Colors::Transparent;
+            Color rightColor = Colors::Transparent;
+            Color topColor = Colors::Transparent;
+            Color bottomColor = Colors::Transparent;
+            UCDashPattern leftDash;
+            UCDashPattern rightDash;
+            UCDashPattern topDash;
+            UCDashPattern bottomDash;
+
+            if (leftWidth > 0) {
+                leftRadius = borderLeft->radius;
+                leftColor = borderLeft->color;
+                leftDash = borderLeft->dashPattern;
+            }
+            if (rightWidth > 0) {
+                rightRadius = borderRight->radius;
+                rightColor = borderRight->color;
+                rightDash = borderRight->dashPattern;
+            }
+            if (topWidth > 0) {
+                topRadius = borderTop->radius;
+                topColor = borderTop->color;
+                topDash = borderTop->dashPattern;
+            }
+            if (bottomWidth > 0) {
+                bottomRadius = borderBottom->radius;
+                bottomColor = borderBottom->color;
+                bottomDash = borderBottom->dashPattern;
+            }
+            if (backgroundColor.a > 0) {
+                ctx->SetFillPaint(backgroundColor);
+            }
+            ctx->DrawRoundedRectangleWidthBorders(bnds.x, bnds.y, bnds.width, bnds.height, backgroundColor.a > 0,
+                                                  leftWidth, rightWidth, topWidth, bottomWidth,
+                                                  leftColor, rightColor, topColor, bottomColor,
+                                                  leftRadius, rightRadius, topRadius, bottomRadius,
+                                                  leftDash, rightDash, topDash, bottomDash);
+        } else {
+            if (backgroundColor.a > 0) {
+                ctx->SetFillPaint(backgroundColor);
+                ctx->FillRectangle(bnds.x, bnds.y, bnds.width, bnds.height);
+            }
+        }
+    }
 
     int UltraCanvasUIElement::GetXInWindow() {
         int pos = 0;
         if (parentContainer) {
             auto pc = parentContainer;
             while(pc) {
-                pos += (pc->GetContentArea().x - pc->GetHorizontalScrollPosition());
+                pos += (pc->GetContentRect().x - pc->GetHorizontalScrollPosition());
                 pc = pc->parentContainer;
             }
         }
@@ -147,7 +202,7 @@ namespace UltraCanvas {
         if (parentContainer) {
             auto pc = parentContainer;
             while(pc) {
-                pos += (pc->GetContentArea().y - pc->GetVerticalScrollPosition());
+                pos += (pc->GetContentRect().y - pc->GetVerticalScrollPosition());
                 pc = pc->parentContainer;
             }
         }
@@ -183,8 +238,8 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasUIElement::SetVisible(bool visible) {
-        properties.Visible = visible;
+    void UltraCanvasUIElement::SetVisible(bool vis) {
+        visible = vis;
         if (window) {
             SetFocus(false);
             window->RequestRedraw();

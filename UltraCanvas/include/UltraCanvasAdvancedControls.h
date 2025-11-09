@@ -163,7 +163,7 @@ public:
     const AdvancedControlStyle& GetControlStyle() const { return controlStyle; }
     
     // ===== ENHANCED RENDERING =====
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
         if (!IsVisible()) return;
         
         ctx->PushState();
@@ -486,7 +486,7 @@ public:
     }
     
     // ===== RENDERING =====
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
         if (!IsVisible()) return;
         
         ctx->PushState();
@@ -512,7 +512,7 @@ public:
     }
     
     bool OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible() || !IsEnabled()) return false;
+        if (IsDisabled() || !IsVisible() || IsDisabled()) return false;
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -697,14 +697,14 @@ private:
     }
     
     Color GetBackgroundColor() const {
-        if (!IsEnabled()) return controlStyle.disabledBackgroundColor;
+        if (IsDisabled()) return controlStyle.disabledBackgroundColor;
         if (IsPressed()) return controlStyle.pressedColor;
         if (IsHovered()) return controlStyle.hoverColor;
         return controlStyle.normalColor;
     }
     
     Color GetBorderColor() const {
-        if (!IsEnabled()) return controlStyle.disabledColor;
+        if (IsDisabled()) return controlStyle.disabledColor;
         if (selected) return controlStyle.selectedColor;
         return controlStyle.borderColor;
     }
@@ -798,7 +798,7 @@ public:
     }
     
     // ===== RENDERING =====
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
         if (!IsVisible()) return;
         
         ctx->PushState();
@@ -829,7 +829,7 @@ public:
     }
     
     bool OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible() || !IsEnabled()) return false;
+        if (IsDisabled() || !IsVisible() || IsDisabled()) return false;
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -1145,7 +1145,7 @@ public:
         allowNoneSelected = allow;
     }
     
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
         if (!IsVisible()) return;
         
         ctx->PushState();

@@ -98,7 +98,7 @@ namespace UltraCanvas {
 
         bool AcceptsFocus() const override { return true; }
         // Render method
-        virtual void Render() override;
+        virtual void Render(IRenderContext* ctx) override;
 
         // Event handling
         virtual bool OnEvent(const UCEvent& event) override;

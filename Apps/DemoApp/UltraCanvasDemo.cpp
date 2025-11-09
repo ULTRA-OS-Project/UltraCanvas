@@ -5,6 +5,8 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasBoxLayout.h"
+#include "UltraCanvasGridLayout.h"
 #include "UltraCanvasTextArea.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <iostream>
@@ -15,11 +17,8 @@ namespace UltraCanvas {
             : UltraCanvasContainer(identifier, id, x, y, width, height) {
 
         // Set container style
-        ContainerStyle legendStyle;
-        legendStyle.backgroundColor = Color(245, 245, 245, 255);
-        legendStyle.borderWidth = 1.0f;
-        legendStyle.borderColor = Color(200, 200, 200, 255);
-        SetContainerStyle(legendStyle);
+        SetBorders(1, Color(200, 200, 200, 255));
+        SetBackgroundColor(Color(245, 245, 245, 255));
 
         // Create legend title
         legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", id + 1, 10, 5, width - 20, 20);
@@ -86,7 +85,8 @@ namespace UltraCanvas {
         titleLabel->SetFontSize(14);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetText("Demo Title");
-        AddChild(titleLabel);
+        titleLabel->SetAutoResize(true);
+        //AddChild(titleLabel);
 
         // Create documentation button (right side)
         docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", id + 3, width - 90, 5, 21, 28);
@@ -94,7 +94,7 @@ namespace UltraCanvas {
         docButton->SetVisible(false);  // Initially disabled
         docButton->SetClickable(true);
         docButton->onClick = [this]() { ShowDocumentationWindow(); };
-        AddChild(docButton);
+        //AddChild(docButton);
 
         // Create source button (right side)
         sourceButton = std::make_shared<UltraCanvasImageElement>("SourceBtn", id + 2, width - 40, 5, 21, 28);
@@ -102,21 +102,28 @@ namespace UltraCanvas {
         sourceButton->SetVisible(false);  // Initially disabled
         sourceButton->SetClickable(true);
         sourceButton->onClick = [this]() { ShowSourceWindow(); };
-        AddChild(sourceButton);
+        //AddChild(sourceButton);
 
         // Create divider line at the bottom
         dividerLine = std::make_shared<UltraCanvasContainer>("Divider", id + 4, 0, 38, width, 2);
-        ContainerStyle dividerStyle;
-        dividerStyle.backgroundColor = Color(200, 200, 200, 255);
-        dividerStyle.borderWidth = 0;
-        dividerLine->SetContainerStyle(dividerStyle);
-        AddChild(dividerLine);
+        dividerLine->SetBackgroundColor(Color(200, 200, 200, 255));
+        //AddChild(dividerLine);
 
         // Set container style
         ContainerStyle containerStyle;
-        containerStyle.backgroundColor = Color(245, 245, 245, 255);
-        containerStyle.borderWidth = 0;
+        containerStyle.enableHorizontalScrolling = false;
+        containerStyle.enableVerticalScrolling = false;
         SetContainerStyle(containerStyle);
+        SetBackgroundColor(Color(245, 245, 245, 255));
+
+        SetMargin(5);
+        auto headerLayout = CreateHBoxLayout(this);
+        headerLayout->SetSpacing(10);
+        headerLayout->AddUIElement(titleLabel);
+        headerLayout->AddStretch(1);
+        headerLayout->AddUIElement(docButton);
+        headerLayout->AddUIElement(sourceButton);
+        headerLayout->AddSpacing(15);
     }
 
     void DemoHeaderContainer::SetDemoTitle(const std::string& title) {
@@ -236,7 +243,6 @@ namespace UltraCanvas {
             std::cerr << "Failed to create documentation window" << std::endl;
             return;
         }
-
         // Create text area for documentation
         auto markDownTextArea = std::make_shared<UltraCanvasMarkdownDisplay>("Documentation", 2000, 5, 5, 1190, 590);
         markDownTextArea->SetMarkdownText(content);
@@ -298,24 +304,20 @@ namespace UltraCanvas {
         legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 6, 5, treeViewHeight + 10, treeViewWidth, legendHeight);
         SetupLegendContainer();
 
+        auto categoryContainer = CreateContainer("catcont", 0, 0, 0, 350, 740);
+
         mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 3, 360, 5, 1030, 840);
-        ContainerStyle mainContainerStyle;
-        mainContainerStyle.backgroundColor = Colors::White;
-        mainContainerStyle.borderWidth = 1.0f;
-        mainContainerStyle.borderColor = Color(200, 200, 200, 255);
-        mainContainer->SetContainerStyle(mainContainerStyle);
+        mainContainer->SetBackgroundColor(Colors::White);
+        mainContainer->SetBorders(1, Color(200, 200, 200, 255));
 
         // Create header container (inside main container)
         headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 4, 0, 0, 1028, 40);
-        mainContainer->AddChild(headerContainer);
+//        mainContainer->AddChild(headerContainer);
 
         // Create display container (below header)
         displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 5, 0, 40, 1028, 785);
-        ContainerStyle displayContainerStyle;
-        displayContainerStyle.backgroundColor = Colors::White;
-        displayContainerStyle.borderWidth = 0;
-        displayContainer->SetContainerStyle(displayContainerStyle);
-        mainContainer->AddChild(displayContainer);
+        displayContainer->SetBackgroundColor(Colors::White);
+//        mainContainer->AddChild(displayContainer);
 
 //        // Create display container (right side)
 //        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 3, 370, 10, 1020, 800);
@@ -342,11 +344,30 @@ namespace UltraCanvas {
         };
 
         // Add elements to window
-        mainWindow->AddChild(categoryTreeView);
-        mainWindow->AddChild(legendContainer);  // Add legend container
-        mainWindow->AddChild(mainContainer);
-        mainWindow->AddChild(statusLabel);
+//        mainWindow->AddChild(categoryTreeView);
+//        mainWindow->AddChild(legendContainer);  // Add legend container
+//        mainWindow->AddChild(mainContainer);
+//        mainWindow->AddChild(statusLabel);
+
         //mainWindow->AddChild(descriptionLabel);
+
+        auto categoryContainerLayout = CreateVBoxLayout(categoryContainer.get());
+        categoryContainerLayout->AddUIElement(categoryTreeView, 1);
+        categoryContainerLayout->AddUIElement(legendContainer);
+
+        auto mainContainerLayout = CreateVBoxLayout(mainContainer.get());
+        mainContainerLayout->AddUIElement(headerContainer)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(40);
+        mainContainerLayout->AddUIElement(displayContainer, 1)->SetWidthMode(SizeMode::Fill);
+
+        auto mainLayout = CreateGridLayout(mainWindow.get(), 2, 2);
+        mainLayout->SetColumnDefinition(0, GridRowColumnDefinition::Fixed(350));
+        mainLayout->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));
+        mainLayout->SetRowDefinition(0, GridRowColumnDefinition::Star(1));
+        mainLayout->SetRowDefinition(1, GridRowColumnDefinition::Fixed(25));
+
+        mainLayout->AddUIElement(categoryContainer, 0, 0)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
+        mainLayout->AddUIElement(mainContainer, 0, 1)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
+        mainLayout->AddUIElement(statusLabel, 1, 0, 1, 2)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
 
         std::cout << "✓ Demo application initialized successfully" << std::endl;
         return true;
@@ -860,8 +881,8 @@ namespace UltraCanvas {
             placeholder->SetText("This component is not yet implemented.\nPlanned for future release.");
             placeholder->SetAlignment(TextAlignment::Center);
             placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
-            placeholder->SetBorderWidth(2.0f);
-            placeholder->SetBorderColor(Color(200, 200, 0, 255));
+            placeholder->SetBorders(2.0f);
+            placeholder->SetBordersColor(Color(200, 200, 0, 255));
 
             displayContainer->AddChild(placeholder);
             currentDisplayElement = placeholder;

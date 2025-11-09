@@ -224,9 +224,8 @@ public:
         
         // Initialize standard properties
         properties = StandardProperties(identifier, id, x, y, w, h);
-        properties.MousePtr = MousePointer::Hand;
-        properties.MouseCtrl = MouseControls::Button;
-        
+        mousePtr = MousePointer::Hand;
+
         // Initialize default style
         style = ChipStyle::Default();
         
@@ -451,7 +450,7 @@ public:
     void* GetUserData() const { return chipData.userData; }
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
         if (!IsVisible()) return;
         
         ctx->PushState();
@@ -510,7 +509,7 @@ public:
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
     bool OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible() || !chipData.enabled) return false;
+        if (IsDisabled() || !IsVisible() || !chipData.enabled) return false;
         
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -930,7 +929,7 @@ public:
         PerformLayout();
     }
     
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
         // Chips render themselves
     }
     

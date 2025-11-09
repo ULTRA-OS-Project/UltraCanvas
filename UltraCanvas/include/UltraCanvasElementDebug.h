@@ -198,9 +198,6 @@ namespace UltraCanvas {
 
             if (settings.showElementID) {
                 debugText << "ID: '" << element->GetIdentifier() << "'";
-                if (element->GetIdentifierID() != 0) {
-                    debugText << " (" << element->GetIdentifierID() << ")";
-                }
                 if (settings.multilineText) debugText << "\n";
                 else debugText << " | ";
             }
@@ -236,7 +233,7 @@ namespace UltraCanvas {
             if (settings.showVisibilityState) {
                 debugText << "V:" << (element->IsVisible() ? "T" : "F");
                 if (settings.showActiveState) {
-                    debugText << " A:" << (element->IsActive() ? "T" : "F");
+                    debugText << " D:" << (element->IsDisabled() ? "T" : "F");
                 }
                 if (settings.multilineText) debugText << "\n";
                 else debugText << " | ";

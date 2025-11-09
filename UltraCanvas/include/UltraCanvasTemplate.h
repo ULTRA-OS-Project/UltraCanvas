@@ -368,7 +368,7 @@ namespace UltraCanvas {
         void ApplyToContainer(const Rect2Df& containerRect);
 
         // ===== RENDERING =====
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;

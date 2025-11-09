@@ -262,7 +262,7 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasModalDialog::Render() {
+    void UltraCanvasModalDialog::Render(IRenderContext* ctx) {
         IRenderContext *ctx = GetRenderContext();
         if (!isVisible) return;
 
@@ -1072,7 +1072,7 @@ namespace UltraCanvas {
         );
     }
 
-    void UltraCanvasDialogManager::Render() {
+    void UltraCanvasDialogManager::Render(IRenderContext* ctx) {
         IRenderContext *ctx = GetRenderContext();
         if (!enabled) return;
 

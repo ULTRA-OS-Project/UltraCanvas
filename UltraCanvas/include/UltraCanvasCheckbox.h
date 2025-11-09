@@ -77,9 +77,6 @@ namespace UltraCanvas {
         CheckboxVisualStyle visualStyle;
 
         // State tracking
-        bool isHovered = false;
-        bool isPressed = false;
-        bool hasFocus = false;
         bool allowIndeterminate = false;
         bool layoutDirty = true;
         bool autoSize = false;
@@ -143,7 +140,7 @@ namespace UltraCanvas {
         void SetFont(const std::string& family, float size, FontWeight weight = FontWeight::Normal);
 
         // ===== RENDERING =====
-        void Render() override;
+        void Render(IRenderContext* ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;

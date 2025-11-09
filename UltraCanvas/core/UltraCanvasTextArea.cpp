@@ -82,14 +82,13 @@ namespace UltraCanvas {
     }
 
 // Render implementation
-    void UltraCanvasTextArea::Render() {
+    void UltraCanvasTextArea::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
 
         if (isNeedRecalculateVisibleArea) {
             CalculateVisibleArea();
         }
 
-        auto ctx = GetRenderContext();
         ctx->PushState();
         // Draw background
         DrawBackground(ctx);
@@ -498,7 +497,7 @@ namespace UltraCanvas {
 
 // Handle events
     bool UltraCanvasTextArea::OnEvent(const UCEvent& event) {
-        if (!IsEnabled() || !IsVisible()) return false;
+        if (IsDisabled() || !IsVisible()) return false;
 
         switch (event.type) {
             case UCEventType::MouseDown:

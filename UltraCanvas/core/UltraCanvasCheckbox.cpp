@@ -125,39 +125,25 @@ namespace UltraCanvas {
 
 // ===== COLOR HELPERS =====
     Color UltraCanvasCheckbox::GetCurrentBoxColor() const {
-        if (!IsActive()) {
-            return visualStyle.boxDisabledColor;
+        switch (GetPrimaryState()) {
+            case ElementState::Disabled: return visualStyle.boxDisabledColor;
+            case ElementState::Pressed: return visualStyle.boxPressedColor;
+            case ElementState::Hovered: return visualStyle.boxHoverColor;
+            default: return visualStyle.boxColor;
         }
-
-        if (isPressed) {
-            return visualStyle.boxPressedColor;
-        }
-
-        if (isHovered) {
-            return visualStyle.boxHoverColor;
-        }
-
-        return visualStyle.boxColor;
     }
 
     Color UltraCanvasCheckbox::GetCurrentCheckmarkColor() const {
-        if (!IsActive()) {
-            return visualStyle.checkmarkDisabledColor;
+        switch (GetPrimaryState()) {
+            case ElementState::Disabled: return visualStyle.checkmarkDisabledColor;
+            case ElementState::Hovered: return visualStyle.checkmarkHoverColor;
+            default: return visualStyle.checkmarkColor;
         }
-
-        if (isHovered) {
-            return visualStyle.checkmarkHoverColor;
-        }
-
-        return visualStyle.checkmarkColor;
     }
 
 // ===== RENDERING =====
-    void UltraCanvasCheckbox::Render() {
+    void UltraCanvasCheckbox::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
-
-        auto ctx = GetRenderContext();
-        if (!ctx) return;
 
         if (layoutDirty) {
             if (autoSize) {
@@ -191,7 +177,7 @@ namespace UltraCanvas {
         }
 
         // Draw focus ring if needed
-        if (hasFocus && visualStyle.hasFocusRing) {
+        if (IsFocused() && visualStyle.hasFocusRing) {
             DrawFocusRing(ctx);
         }
 
@@ -261,8 +247,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasCheckbox::DrawLabel(IRenderContext* ctx) {
-        Color textColor = IsActive() ?
-                          (isHovered ? visualStyle.textHoverColor : visualStyle.textColor) :
+        Color textColor = !IsDisabled() ?
+                          (IsHovered() ? visualStyle.textHoverColor : visualStyle.textColor) :
                           visualStyle.textDisabledColor;
 
         ctx->SetFontFace(visualStyle.fontFamily, visualStyle.fontWeight, FontSlant::Normal);
@@ -291,67 +277,53 @@ namespace UltraCanvas {
 
 // ===== EVENT HANDLING =====
     bool UltraCanvasCheckbox::OnEvent(const UCEvent& event) {
-        if (!IsActive() || !IsVisible()) return false;
+        if (IsDisabled() || !IsVisible()) return false;
 
         bool handled = false;
 
         switch (event.type) {
             case UCEventType::MouseDown:
                 if (totalBounds.Contains(event.x, event.y)) {
-                    isPressed = true;
+                    SetPressed(true);
                     handled = true;
-                    RequestRedraw();
                 }
                 break;
 
             case UCEventType::MouseUp:
-                if (isPressed && totalBounds.Contains(event.x, event.y)) {
+                if (IsPressed() && totalBounds.Contains(event.x, event.y)) {
                     Toggle();
                     handled = true;
                 }
-                isPressed = false;
-                RequestRedraw();
+                SetPressed(false);
                 break;
 
             case UCEventType::MouseMove:
-            {
-                bool wasHovered = isHovered;
-                isHovered = totalBounds.Contains(event.x, event.y);
-                if (wasHovered != isHovered) {
-                    RequestRedraw();
-                }
-            }
+                SetHovered(totalBounds.Contains(event.x, event.y));
                 break;
 
             case UCEventType::MouseEnter:
-                isHovered = true;
-                RequestRedraw();
+                SetHovered(true);
                 break;
 
             case UCEventType::MouseLeave:
-                isHovered = false;
-                isPressed = false;
-                RequestRedraw();
+                SetHovered(false);
                 break;
 
             case UCEventType::KeyDown:
-                if (hasFocus) {
+                if (IsFocused()) {
                     if (event.virtualKey == UCKeys::Space || event.virtualKey == UCKeys::Enter) {
                         Toggle();
                         handled = true;
-                        RequestRedraw();
                     }
                 }
                 break;
 
             case UCEventType::FocusGained:
-                hasFocus = true;
                 RequestRedraw();
                 handled = true;
                 break;
 
             case UCEventType::FocusLost:
-                hasFocus = false;
                 RequestRedraw();
                 handled = true;
                 break;

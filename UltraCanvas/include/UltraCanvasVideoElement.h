@@ -274,9 +274,8 @@ public:
         
         // Initialize standard properties
         properties = StandardProperties(identifier, id, x, y, w, h);
-        properties.MousePtr = MousePointer::Default;
-        properties.MouseCtrl = MouseControls::Object2D;
-        
+        mousePtr = MousePointer::Default;
+
         // Initialize controls style
         controlsStyle = VideoControlsStyle::Default();
         
@@ -528,7 +527,7 @@ public:
     VideoQuality GetVideoQuality() const { return quality; }
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
-    void Render() override {
+    void Render(IRenderContext* ctx) override {
         if (!IsVisible()) return;
         
         ctx->PushState();
@@ -554,7 +553,7 @@ public:
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
     bool OnEvent(const UCEvent& event) override {
-        if (!IsActive() || !IsVisible()) return;
+        if (IsDisabled() || !IsVisible()) return;
         
         // Track user interaction for auto-hide controls
         if (event.type == UCEventType::MouseMove || event.type == UCEventType::MouseDown) {

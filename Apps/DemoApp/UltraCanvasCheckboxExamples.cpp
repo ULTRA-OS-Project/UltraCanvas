@@ -75,13 +75,13 @@ namespace UltraCanvas {
         // Disabled checkbox - unchecked
         auto disabledCheckbox1 = std::make_shared<UltraCanvasCheckbox>("DisabledCheckbox1", 3013, 470, currentY, 200, 24, "Disabled Unchecked");
         disabledCheckbox1->SetChecked(false);
-        disabledCheckbox1->SetActive(false);
+        disabledCheckbox1->SetDisabled(true);
         mainContainer->AddChild(disabledCheckbox1);
 
         // Disabled checkbox - checked
         auto disabledCheckbox2 = std::make_shared<UltraCanvasCheckbox>("DisabledCheckbox2", 3014, 690, currentY, 200, 24, "Disabled Checked");
         disabledCheckbox2->SetChecked(true);
-        disabledCheckbox2->SetActive(false);
+        disabledCheckbox2->SetDisabled(true);
         mainContainer->AddChild(disabledCheckbox2);
 
         currentY += 40;
@@ -364,8 +364,7 @@ namespace UltraCanvas {
         // Feature checkboxes
         auto featureContainer = std::make_shared<UltraCanvasContainer>("FeatureContainer", 3061, 30, currentY, 400, 150);
         featureContainer->SetBackgroundColor(Color(230, 240, 250, 255));
-        featureContainer->SetBorderWidth(1.0f);
-        //featureContainer->SetBorderColor(Color(180, 180, 180, 255));
+        featureContainer->SetBorders(1, Color(180, 180, 180, 255));
 
         auto featureTitle = std::make_shared<UltraCanvasLabel>("FeatureTitle", 3062, 10, 10, 200, 20);
         featureTitle->SetText("Enable Features:");
@@ -441,8 +440,7 @@ namespace UltraCanvas {
         featureStatus->SetText("Selected Features:\nNone");
         featureStatus->SetWordWrap(true);
         featureStatus->SetBackgroundColor(Color(255, 255, 255, 255));
-        featureStatus->SetBorderWidth(1.0f);
-        featureStatus->SetBorderColor(Color(200, 200, 200, 255));
+        featureStatus->SetBorders(1.0f, Color(200, 200, 200, 255));
         featureStatus->SetPadding(5.0f);
 
         // Update feature status
@@ -488,7 +486,7 @@ namespace UltraCanvas {
         currentY += 170;
         auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 3075, 20, currentY, 960, 60);
         infoPanel->SetBackgroundColor(Color(240, 248, 255, 255));
-        infoPanel->SetBorderWidth(1.0f);
+        infoPanel->SetBorders(1.0f);
         //infoPanel->SetBorderColor(Color(100, 150, 200, 255));
 
         auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 3076, 10, 10, 940, 40);
