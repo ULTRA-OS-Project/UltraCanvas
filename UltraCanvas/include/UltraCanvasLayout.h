@@ -239,10 +239,6 @@ public:
             layoutDirty = false;
         }
     }
-    
-protected:
-    // Helper: Get available space after padding and margins
-    Rect2Di GetContentRect(const Rect2Di& containerBounds) const;
 };
 
 } // namespace UltraCanvas

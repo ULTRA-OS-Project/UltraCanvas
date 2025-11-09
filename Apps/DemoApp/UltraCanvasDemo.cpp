@@ -114,9 +114,10 @@ namespace UltraCanvas {
         containerStyle.enableHorizontalScrolling = false;
         containerStyle.enableVerticalScrolling = false;
         SetContainerStyle(containerStyle);
-        SetBackgroundColor(Color(245, 245, 245, 255));
 
-        SetMargin(5);
+        SetBackgroundColor(Color(245, 245, 245, 255));
+        SetPadding(5);
+
         auto headerLayout = CreateHBoxLayout(this);
         headerLayout->SetSpacing(10);
         headerLayout->AddUIElement(titleLabel);
@@ -306,9 +307,9 @@ namespace UltraCanvas {
 
         auto categoryContainer = CreateContainer("catcont", 0, 0, 0, 350, 740);
 
-        mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 3, 360, 5, 1030, 840);
+        mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 3, 360, 0, 1030, 840);
         mainContainer->SetBackgroundColor(Colors::White);
-        mainContainer->SetBorders(1, Color(200, 200, 200, 255));
+        mainContainer->SetBorders(1, Color(20, 20, 20, 255));
 
         // Create header container (inside main container)
         headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 4, 0, 0, 1028, 40);
@@ -633,6 +634,10 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return nullptr; });
 
+        diagramBuilder.AddItem("flowchart", "Flow chart", "Flow chart",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return nullptr; });
+
         // ===== CHARTS =====
         auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
 
@@ -715,6 +720,10 @@ namespace UltraCanvas {
                              ImplementationStatus::NotImplemented,
                              [this]() { return nullptr; });
 
+        chartBuilder.AddItem("flowchart", "Jitter plot", "Jitter plot",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return nullptr; });
+
         // ===== INFO GRAPHICS =====
         auto infoBuilder = DemoCategoryBuilder(this, DemoCategory::InfoGraphics);
 
@@ -724,6 +733,10 @@ namespace UltraCanvas {
                 .AddVariant("infographics", "Dashboard Widgets")
                 .AddVariant("infographics", "Statistical Displays")
                 .AddVariant("infographics", "Interactive Maps");
+
+        infoBuilder.AddItem("infographics", "Heat map", "Heat map",
+                            ImplementationStatus::NotImplemented,
+                            [this]() { return CreateInfoGraphicsExamples(); });
 
         // ===== 3D ELEMENTS =====
         auto graphics3DBuilder = DemoCategoryBuilder(this, DemoCategory::Graphics3D);
@@ -780,13 +793,18 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreateQRCodeExamples(); });
 
-        toolsBuilder.AddItem("fileloader", "File Loader", "File Loader",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreateFileLoaderExamples(); });
 
         toolsBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePixeLXExamples(); });
+
+        auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
+        modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateFileLoaderExamples(); });
+        modulesBuilder.AddItem("qrcode", "GPIO support", "GPIO support",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateGPIOExamples(); });
 
         std::cout << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
@@ -811,7 +829,8 @@ namespace UltraCanvas {
                 {DemoCategory::VideoElements, "Video Elements"},
                 {DemoCategory::TextDocuments, "Text Documents"},
                 {DemoCategory::AudioElements, "Audio Elements"},
-                {DemoCategory::Tools, "Tools"}
+                {DemoCategory::Tools, "Tools"},
+                {DemoCategory::Modules, "Modules"}
         };
 
         for (const auto& [category, items] : categoryItems) {

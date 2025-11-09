@@ -155,6 +155,7 @@ namespace UltraCanvas {
 
         void SetBounds(const Rect2Di& bounds) override;
         Rect2Di GetContentRect() override;
+        Rect2Di GetContentArea(); // zero based rectanble without container offset
 
         void SetContainerStyle(const ContainerStyle& newStyle);
         const ContainerStyle& GetContainerStyle() const { return style; }

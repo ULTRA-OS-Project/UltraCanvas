@@ -158,7 +158,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         if (items.empty() || !parentContainer) return;
 
 
-        Rect2Di contentRect = parentContainer->GetContentRect();
+        Rect2Di contentRect = parentContainer->GetContentArea();
 
         if (direction == BoxLayoutDirection::Horizontal) {
             LayoutHorizontal(contentRect);

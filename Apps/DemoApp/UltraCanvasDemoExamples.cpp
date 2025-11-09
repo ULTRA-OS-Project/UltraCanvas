@@ -422,6 +422,32 @@ namespace UltraCanvas {
         return container;
     }
 
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGPIOExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("GPIOExamples", 1200, 0, 0, 1020, 780);
+
+        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("GPIOExamplesText", 1201, 10, 10, 1000, 750);
+        text->SetMarkdownText("**GPIO**");
+        MarkdownStyle style = MarkdownStyle::Default();
+        style.fontSize = 12;
+        text->SetStyle(style);
+        container->AddChild(text);
+
+        return container;
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScannerSupportExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("ScannerExamples", 1200, 0, 0, 1020, 780);
+
+        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("ScannerExamplesText", 1201, 10, 10, 1000, 750);
+        text->SetMarkdownText("**Scanner support**");
+        MarkdownStyle style = MarkdownStyle::Default();
+        style.fontSize = 12;
+        text->SetStyle(style);
+        container->AddChild(text);
+
+        return container;
+    }
+
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateQRCodeExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("QRCodeExamples", 1201, 0, 0, 1020, 780);
 

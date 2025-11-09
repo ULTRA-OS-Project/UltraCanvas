@@ -36,7 +36,8 @@ namespace UltraCanvas {
         VideoElements,
         TextDocuments,
         AudioElements,
-        Tools
+        Tools,
+        Modules
     };
 
 // ===== IMPLEMENTATION STATUS =====
@@ -254,6 +255,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateFileLoaderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePixeLXExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateGPIOExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateScannerSupportExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateLayoutExamples();
 

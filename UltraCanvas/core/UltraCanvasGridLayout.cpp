@@ -198,7 +198,7 @@ void UltraCanvasGridLayout::EnsureGridSize(int row, int column, int rowSpan, int
 void UltraCanvasGridLayout::PerformLayout() {
     if (items.empty() || rowDefinitions.empty() || columnDefinitions.empty() || !parentContainer) return;
     
-    Rect2Di contentRect = parentContainer->GetContentRect();
+    Rect2Di contentRect = parentContainer->GetContentArea();
     
     // Calculate row heights and column widths
     CalculateRowHeights(contentRect.height);

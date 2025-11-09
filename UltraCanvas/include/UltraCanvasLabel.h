@@ -274,7 +274,7 @@ namespace UltraCanvas {
                 CalculateLayout(ctx);
             }
 
-            UltraCanvasUIElement::Render(ctx);
+             UltraCanvasUIElement::Render(ctx);
 
             Rect2Di bounds = GetBounds();
             // Draw text

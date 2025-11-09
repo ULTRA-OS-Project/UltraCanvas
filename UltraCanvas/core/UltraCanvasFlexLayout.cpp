@@ -159,7 +159,7 @@ void UltraCanvasFlexLayout::ClearItems() {
 void UltraCanvasFlexLayout::PerformLayout() {
     if (items.empty() || !parentContainer) return;
     
-    Rect2Di contentRect = parentContainer->GetContentRect();
+    Rect2Di contentRect = parentContainer->GetContentArea();
     int containerMainSize = IsRowDirection() ?
         contentRect.width : contentRect.height;
     int containerCrossSize = IsRowDirection() ?

@@ -40,7 +40,6 @@ namespace UltraCanvas {
             layout->PerformLayout();
         }
 
-        auto bounds = GetBounds();
         // Update scroll animation if active
         if (scrollState.animatingScroll && style.smoothScrolling) {
             UpdateScrollAnimation();
@@ -173,6 +172,13 @@ namespace UltraCanvas {
         // Ensure minimum size
         rect.width = std::max(0, rect.width);
         rect.height = std::max(0, rect.height);
+        return rect;
+    }
+
+    Rect2Di UltraCanvasContainer::GetContentArea() {
+        auto rect = GetContentRect();
+        rect.x = padding.left + GetBorderLeftWidth();
+        rect.y = padding.top + GetBorderTopWidth();
         return rect;
     }
 
