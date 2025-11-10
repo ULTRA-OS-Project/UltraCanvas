@@ -560,7 +560,7 @@ public:
         UltraCanvas::DrawFilledRect(GetBounds(), Colors::White, gridLineColor, 1.0f);
         
         // Set clipping to table bounds
-        ctx->SetClipRect(GetBounds());
+        ctx->ClipRect(GetBounds());
         
         // Draw header
         if (showHeader) {
@@ -803,7 +803,7 @@ private:
             Point2D textPos(x + cellPadding, y + (rowHeight + 10) / 2);
             
             // Clip text to cell bounds
-            ctx->SetClipRect(textRect);
+            ctx->ClipRect(textRect);
             
             if (isEditing && editingRow == row && editingCol == col) {
                 // Draw editing text
@@ -813,7 +813,7 @@ private:
             }
             
             // Reset clipping
-            ctx->SetClipRect(GetBounds());
+            ctx->ClipRect(GetBounds());
             
             // Draw vertical grid line
             if (showGridLines) {

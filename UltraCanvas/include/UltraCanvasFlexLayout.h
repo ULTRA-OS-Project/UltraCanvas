@@ -189,58 +189,58 @@ public:
     // ===== FLEX DIRECTION =====
     void SetFlexDirection(FlexDirection dir) {
         direction = dir;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     FlexDirection GetFlexDirection() const { return direction; }
     
     // ===== FLEX WRAP =====
     void SetFlexWrap(FlexWrap w) {
         wrap = w;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     FlexWrap GetFlexWrap() const { return wrap; }
     
     // ===== JUSTIFY CONTENT =====
     void SetJustifyContent(FlexJustifyContent justify) {
         justifyContent = justify;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     FlexJustifyContent GetJustifyContent() const { return justifyContent; }
     
     // ===== ALIGN ITEMS =====
     void SetAlignItems(FlexAlignItems align) {
         alignItems = align;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     FlexAlignItems GetAlignItems() const { return alignItems; }
     
     // ===== ALIGN CONTENT =====
     void SetAlignContent(FlexAlignContent align) {
         alignContent = align;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     FlexAlignContent GetAlignContent() const { return alignContent; }
     
     // ===== GAP =====
     void SetGap(int gap) {
         rowGap = columnGap = gap;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     
     void SetGap(int row, int column) {
         rowGap = row;
         columnGap = column;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     
     void SetRowGap(int gap) {
         rowGap = gap;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     
     void SetColumnGap(int gap) {
         columnGap = gap;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     
     int GetRowGap() const { return rowGap; }

@@ -108,15 +108,17 @@ namespace UltraCanvas {
         XSetWindowAttributes attrs;
         memset(&attrs, 0, sizeof(attrs));
 
-        attrs.background_pixel = BlackPixel(display, screen);
-        attrs.border_pixel = BlackPixel(display, screen);
+//        attrs.background_pixel = BlackPixel(display, screen);
+//        attrs.border_pixel = BlackPixel(display, screen);
+        attrs.backing_store = WhenMapped;
         attrs.colormap = colormap;
         attrs.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask |
                            ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
                            StructureNotifyMask | FocusChangeMask | PropertyChangeMask |
                            EnterWindowMask | LeaveWindowMask;
 
-        unsigned long valueMask = CWBackPixel | CWBorderPixel | CWColormap | CWEventMask;
+//        unsigned long valueMask = CWBackPixel | CWBorderPixel | CWColormap | CWEventMask | CWBackingStore;
+        unsigned long valueMask = CWColormap | CWEventMask | CWBackingStore;
 
         std::cout << "UltraCanvas Linux: Creating X11 window with dimensions: "
                   << config_.width << "x" << config_.height
@@ -495,12 +497,13 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxWindow::UpdateCairoSurface(int w, int h) {
         std::lock_guard<std::mutex> lock(cairoMutex);  // Add this
+
         if (cairoSurface) {
             cairo_xlib_surface_set_size(cairoSurface, w, h);
         }
 
         if (renderContext) {
-            renderContext->OnWindowResize(w, h);
+            renderContext->ResizeSurface(w, h);
         }
 
         std::cout << "UltraCanvas Linux: Cairo surface updated successfully" << std::endl;
@@ -511,6 +514,7 @@ namespace UltraCanvas {
             UpdateCairoSurface(w, h);
             UltraCanvasWindowBase::HandleResizeEvent(w, h);
             Flush();
+            XFlush(UltraCanvasApplication::GetInstance()->GetDisplay());
         }
     }
 

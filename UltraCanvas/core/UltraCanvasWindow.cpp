@@ -238,8 +238,7 @@ namespace UltraCanvas {
     void UltraCanvasWindowBase::HandleResizeEvent(int width, int height) {
         config_.width = width;
         config_.height = height;
-        SetSize(width, height);
-        MarkLayoutDirty();
+        SetOriginalSize(width, height);
         if (onWindowResize) onWindowResize(width, height);
     }
 

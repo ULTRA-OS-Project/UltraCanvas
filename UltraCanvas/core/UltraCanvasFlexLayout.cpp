@@ -114,8 +114,7 @@ UltraCanvasLayoutItem* UltraCanvasFlexLayout::InsertUIElement(std::shared_ptr<Ul
     if (parentContainer && element->GetParentContainer() == nullptr) {
         parentContainer->AddChild(element);
     }
-
-    Invalidate();
+    InvalidateContainerLayout();
     return itemPtr;
 }
 
@@ -144,14 +143,12 @@ UltraCanvasFlexLayoutItem* UltraCanvasFlexLayout::AddUIElement(std::shared_ptr<U
         if (parentContainer) {
             parentContainer->RemoveChild(element);
         }
-
-        Invalidate();
     }
 }
 
 void UltraCanvasFlexLayout::ClearItems() {
     items.clear();
-    Invalidate();
+    InvalidateContainerLayout();
 }
 
 // ===== LAYOUT CALCULATION =====
@@ -159,7 +156,7 @@ void UltraCanvasFlexLayout::ClearItems() {
 void UltraCanvasFlexLayout::PerformLayout() {
     if (items.empty() || !parentContainer) return;
     
-    Rect2Di contentRect = parentContainer->GetContentArea();
+    Rect2Di contentRect = parentContainer->GetContentRect();
     int containerMainSize = IsRowDirection() ?
         contentRect.width : contentRect.height;
     int containerCrossSize = IsRowDirection() ?
@@ -186,7 +183,6 @@ void UltraCanvasFlexLayout::PerformLayout() {
     for (auto& item : items) {
         item->ApplyToElement();
     }
-    layoutDirty = false;
 }
 
 std::vector<UltraCanvasFlexLayout::FlexLine> UltraCanvasFlexLayout::CalculateFlexLines(

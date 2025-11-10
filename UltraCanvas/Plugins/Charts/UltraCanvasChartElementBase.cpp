@@ -34,7 +34,7 @@ namespace UltraCanvas {
         }
 
         // Set clipping to element bounds using existing functions
-        ctx->SetClipRect(GetActualBounds());
+        ctx->ClipRect(GetActualBounds());
 
         // Draw common background
         RenderCommonBackground(ctx);
@@ -48,7 +48,6 @@ namespace UltraCanvas {
         }
 
         // Clear clipping using existing functions
-        //ctx->ClearClipRect();
         ctx->PopState();
     }
 

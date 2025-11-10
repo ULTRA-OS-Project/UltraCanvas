@@ -136,20 +136,20 @@ public:
     // ===== DIRECTION =====
     void SetDirection(BoxLayoutDirection dir) {
         direction = dir;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     BoxLayoutDirection GetDirection() const { return direction; }
     
     // ===== ALIGNMENT =====
     void SetCrossAxisAlignment(LayoutAlignment align) {
         crossAxisAlignment = align;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     LayoutAlignment GetCrossAxisAlignment() const { return crossAxisAlignment; }
     
     void SetMainAxisAlignment(LayoutAlignment align) {
         mainAxisAlignment = align;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     LayoutAlignment GetMainAxisAlignment() const { return mainAxisAlignment; }
     

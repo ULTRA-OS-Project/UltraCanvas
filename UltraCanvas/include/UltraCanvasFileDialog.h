@@ -354,7 +354,7 @@ private:
         ctx->DrawRectangle(listBounds);
         
         // Set clipping for list content
-        ctx->SetClipRect(listBounds);
+        ctx->ClipRect(listBounds);
         
         ctx->SetFontSize(12);
         int currentY = (int)listBounds.y + 2;

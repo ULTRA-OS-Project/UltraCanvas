@@ -203,25 +203,25 @@ public:
     // ===== ROW/COLUMN DEFINITIONS =====
     void AddRowDefinition(const GridRowColumnDefinition& def) {
         rowDefinitions.push_back(def);
-        Invalidate();
+        InvalidateContainerLayout();
     }
     
     void AddColumnDefinition(const GridRowColumnDefinition& def) {
         columnDefinitions.push_back(def);
-        Invalidate();
+        InvalidateContainerLayout();
     }
     
     void SetRowDefinition(int row, const GridRowColumnDefinition& def) {
         if (row >= 0 && row < static_cast<int>(rowDefinitions.size())) {
             rowDefinitions[row] = def;
-            Invalidate();
+            InvalidateContainerLayout();
         }
     }
     
     void SetColumnDefinition(int column, const GridRowColumnDefinition& def) {
         if (column >= 0 && column < static_cast<int>(columnDefinitions.size())) {
             columnDefinitions[column] = def;
-            Invalidate();
+            InvalidateContainerLayout();
         }
     }
     
@@ -236,12 +236,12 @@ public:
     // ===== DEFAULT ALIGNMENT =====
     void SetDefaultHorizontalAlignment(LayoutAlignment align) {
         defaultHorizontalAlignment = align;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     
     void SetDefaultVerticalAlignment(LayoutAlignment align) {
         defaultVerticalAlignment = align;
-        Invalidate();
+        InvalidateContainerLayout();
     }
     
     LayoutAlignment GetDefaultHorizontalAlignment() const { return defaultHorizontalAlignment; }

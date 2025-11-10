@@ -473,7 +473,7 @@ namespace UltraCanvas {
         ctx->PushState();
 
         Rect2Di bounds = GetBounds();
-        ctx->SetClipRect(contentBounds);
+        ctx->ClipRect(contentBounds);
         ctx->Translate(bounds.x - scrollState.horizontalPosition, bounds.y - scrollState.verticalPosition);
         // Render active tab content
         if (activeTabIndex >= 0 && activeTabIndex < (int)tabs.size()) {

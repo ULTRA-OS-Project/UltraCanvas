@@ -247,9 +247,9 @@ namespace UltraCanvas {
 
         // Get text area (excluding padding)
         Rect2Df textArea = GetTextArea();
-
+        ctx->PushState();
         // Set clipping for text area ONLY
-        ctx->SetClipRect(textArea);
+        ctx->ClipRect(textArea);
 
         // Draw text content
         if (!text.empty()) {
@@ -262,9 +262,8 @@ namespace UltraCanvas {
         if (HasSelection() && IsFocused()) {
             RenderSelection(textArea, ctx);
         }
-
+        ctx->PopState();
         // CRITICAL: Clear clipping BEFORE drawing caret
-        ctx->ClearClipRect();
 
         // Draw caret WITHOUT clipping so it's always visible
         if (IsFocused() && isCaretVisible && !HasSelection()) {

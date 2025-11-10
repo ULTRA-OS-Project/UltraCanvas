@@ -234,7 +234,7 @@ namespace UltraCanvas {
         void ResetTransform() override;
 
         // Clipping
-        void SetClipRect(float x, float y, float w, float h) override;
+//        void SetClipRect(float x, float y, float w, float h) override;
         void ClearClipRect() override;
         void ClipRect(float x, float y, float w, float h) override;
         void ClipRoundedRectangle(
@@ -393,7 +393,7 @@ namespace UltraCanvas {
         bool EnableDoubleBuffering(int width, int height);
         void DisableDoubleBuffering();
         // Handle window resize - automatically resizes buffer if enabled
-        void OnWindowResize(int newWidth, int newHeight);
+        void ResizeSurface(int newWidth, int newHeight);
 
     private:
         // Internal helper methods

@@ -88,8 +88,6 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             if (parentContainer) {
                 parentContainer->RemoveChild(element);
             }
-
-            Invalidate();
         }
     }
 
@@ -102,7 +100,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
 
     void UltraCanvasBoxLayout::ClearItems() {
         items.clear();
-        Invalidate();
+        InvalidateContainerLayout();
     }
 
 // ===== BOX LAYOUT SPECIFIC =====
@@ -125,8 +123,6 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         if (parentContainer && element->GetParentContainer() == nullptr) {
             parentContainer->AddChild(element);
         }
-
-        Invalidate();
         return itemPtr;
     }
 
@@ -141,7 +137,8 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         item->SetFixedSize(size, size);
         item->SetStretch(0);
         items.push_back(std::move(item));
-        Invalidate();
+
+        InvalidateContainerLayout();
     }
 
     void UltraCanvasBoxLayout::AddStretch(int stretch) {
@@ -149,7 +146,8 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         item->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
         item->SetStretch(stretch);
         items.push_back(std::move(item));
-        Invalidate();
+
+        InvalidateContainerLayout();
     }
 
     // ===== LAYOUT CALCULATION =====
@@ -158,7 +156,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         if (items.empty() || !parentContainer) return;
 
 
-        Rect2Di contentRect = parentContainer->GetContentArea();
+        Rect2Di contentRect = parentContainer->GetContentRect();
 
         if (direction == BoxLayoutDirection::Horizontal) {
             LayoutHorizontal(contentRect);
@@ -170,8 +168,6 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         for (auto& item : items) {
             item->ApplyToElement();
         }
-
-        layoutDirty = false;
     }
 
     void UltraCanvasBoxLayout::LayoutHorizontal(const Rect2Di& contentRect) {
@@ -188,7 +184,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         float stretchUnit = (totalStretch > 0 && remainingSpace > 0) ? static_cast<float>(remainingSpace) / totalStretch : 0;
 
         // Position items
-        int currentX = contentRect.x;
+        int currentX = 0;
 
         for (size_t i = 0; i < items.size(); ++i) {
             auto& item = items[i];
@@ -209,7 +205,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
 
             // Calculate height based on cross-axis alignment
             int itemHeight = 0;
-            int itemY = contentRect.y;
+            int itemY = 0;
 
             if (item->GetHeightMode() == SizeMode::Fixed) {
                 itemHeight = item->GetFixedHeight();
@@ -273,7 +269,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         float stretchUnit = (totalStretch > 0 && remainingSpace > 0) ? static_cast<float>(remainingSpace) / totalStretch : 0;
 
         // Position items
-        int currentY = contentRect.y;
+        int currentY = 0;
 
         for (size_t i = 0; i < items.size(); ++i) {
             auto& item = items[i];
@@ -294,7 +290,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
 
             // Calculate width based on cross-axis alignment
             int itemWidth = 0;
-            int itemX = contentRect.x;
+            int itemX = 0;
 
             if (item->GetWidthMode() == SizeMode::Fixed) {
                 itemWidth = item->GetFixedWidth();

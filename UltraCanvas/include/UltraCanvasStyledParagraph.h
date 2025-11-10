@@ -380,7 +380,8 @@ public:
         Rect2D contentArea = GetContentArea();
         
         // Set clipping
-        ctx->SetClipRect(contentArea);
+        ctx->PushState();
+        ctx->ClipRect(contentArea);
         
         // Render based on column count
         if (columnCount == 1) {
@@ -389,7 +390,8 @@ public:
             RenderMultipleColumns(contentArea);
         }
         
-        ctx->ClearClipRect();  // Standard UltraCanvas function
+        ctx->PopState();  // Standard UltraCanvas function
+        ctx->PopState();
     }
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
@@ -532,7 +534,7 @@ private:
                 contentArea.height
             );
             
-            ctx->SetClipRect(columnArea);
+            ctx->ClipRect(columnArea);
             RenderSingleColumn(columnArea);
         }
     }

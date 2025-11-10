@@ -17,7 +17,7 @@ namespace UltraCanvas {
             : UltraCanvasContainer(identifier, id, x, y, width, height) {
 
         // Set container style
-        SetBorders(1, Color(200, 200, 200, 255));
+//        SetBorders(1, Color(200, 200, 200, 255));
         SetBackgroundColor(Color(245, 245, 245, 255));
 
         // Create legend title
@@ -26,6 +26,7 @@ namespace UltraCanvas {
         legendTitle->SetFontSize(12);
         legendTitle->SetFontWeight(FontWeight::Bold);
         legendTitle->SetTextColor(Color(80, 80, 80, 255));
+        legendTitle->SetAutoResize(true);
         AddChild(legendTitle);
 
         // Implemented status (row 1)
@@ -36,6 +37,7 @@ namespace UltraCanvas {
         implementedLabel->SetText("Fully Implemented");
         implementedLabel->SetFontSize(11);
         implementedLabel->SetTextColor(Color(0, 150, 0, 255));
+        implementedLabel->SetAutoResize(true);
         AddChild(implementedLabel);
 
         // Partially implemented status (row 2)
@@ -46,6 +48,7 @@ namespace UltraCanvas {
         partialLabel->SetText("Partially Implemented");
         partialLabel->SetFontSize(11);
         partialLabel->SetTextColor(Color(0x21, 0x96, 0xf3, 255));
+        partialLabel->SetAutoResize(true);
         AddChild(partialLabel);
 
         // Not implemented status (row 3)
@@ -56,6 +59,7 @@ namespace UltraCanvas {
         notImplementedLabel->SetText("Not Implemented Yet");
         notImplementedLabel->SetFontSize(11);
         notImplementedLabel->SetTextColor(Color(200, 0, 0, 255));
+        notImplementedLabel->SetAutoResize(true);
         AddChild(notImplementedLabel);
     }
 
@@ -116,15 +120,17 @@ namespace UltraCanvas {
         SetContainerStyle(containerStyle);
 
         SetBackgroundColor(Color(245, 245, 245, 255));
-        SetPadding(5);
+        SetPadding(5,10,5,10);
+        SetBorderBottom(2, Colors::Gray);
 
         auto headerLayout = CreateHBoxLayout(this);
         headerLayout->SetSpacing(10);
         headerLayout->AddUIElement(titleLabel);
         headerLayout->AddStretch(1);
         headerLayout->AddUIElement(docButton);
+        headerLayout->AddSpacing(3);
         headerLayout->AddUIElement(sourceButton);
-        headerLayout->AddSpacing(15);
+        headerLayout->AddSpacing(7);
     }
 
     void DemoHeaderContainer::SetDemoTitle(const std::string& title) {
@@ -295,21 +301,26 @@ namespace UltraCanvas {
         const int treeViewWidth = 350;   // Width for both treeview and legend
 
 // Create tree view for categories (left side, reduced height)
-        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 5, 5, treeViewWidth, treeViewHeight);
+        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 0, 0, 100, 100);
         categoryTreeView->SetRowHeight(24);
         categoryTreeView->SetSelectionMode(TreeSelectionMode::Single);
         categoryTreeView->SetLineStyle(TreeLineStyle::Solid);
         categoryTreeView->SetShowFirstChildOnExpand(true);
+        categoryTreeView->SetPadding(1,3,1,3);
 
         // Create legend container below tree view
-        legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 6, 5, treeViewHeight + 10, treeViewWidth, legendHeight);
+        legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 6, 0, 0, 100, legendHeight);
+        legendContainer->SetBorderTop(1, Colors::Gray);
         SetupLegendContainer();
 
-        auto categoryContainer = CreateContainer("catcont", 0, 0, 0, 350, 740);
+        auto categoryContainer = CreateContainer("catcont", 0, 0, 0, 100, 100);
 
-        mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 3, 360, 0, 1030, 840);
-        mainContainer->SetBackgroundColor(Colors::White);
-        mainContainer->SetBorders(1, Color(20, 20, 20, 255));
+        mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 3, 0, 0, 1030, 840);
+        //mainContainer->SetBackgroundColor(Colors::White);
+        //mainContainer->SetBorders(1, Color(20, 20, 20, 255));
+        mainContainer->SetBorderLeft(1, Colors::Gray);
+//        mainContainer->SetBorderBottom(10, Colors::Green);
+//        mainContainer->SetBorderTop(10, Colors::Red);
 
         // Create header container (inside main container)
         headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 4, 0, 0, 1028, 40);
@@ -332,6 +343,7 @@ namespace UltraCanvas {
         statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 850, 850, 25);
         statusLabel->SetText("Select a component from the tree view to see examples");
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
+        statusLabel->SetPadding(3, 7, 3, 7);
 
         // Register all demo items
         RegisterAllDemoItems();
@@ -353,8 +365,8 @@ namespace UltraCanvas {
         //mainWindow->AddChild(descriptionLabel);
 
         auto categoryContainerLayout = CreateVBoxLayout(categoryContainer.get());
-        categoryContainerLayout->AddUIElement(categoryTreeView, 1);
-        categoryContainerLayout->AddUIElement(legendContainer);
+        categoryContainerLayout->AddUIElement(categoryTreeView, 1)->SetWidthMode(SizeMode::Fill);
+        categoryContainerLayout->AddUIElement(legendContainer)->SetWidthMode(SizeMode::Fill);
 
         auto mainContainerLayout = CreateVBoxLayout(mainContainer.get());
         mainContainerLayout->AddUIElement(headerContainer)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(40);

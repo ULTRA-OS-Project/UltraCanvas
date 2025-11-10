@@ -357,7 +357,7 @@ namespace UltraCanvas {
         if (scrollSettings.horizontal != TemplateScrollMode::Off ||
             scrollSettings.vertical != TemplateScrollMode::Off) {
             ctx->PushState();
-            ctx->SetClipRect(
+            ctx->ClipRect(
                     static_cast<float>(GetX()) + appearance.paddingLeft,
                     static_cast<float>(GetY()) + appearance.paddingTop,
                     static_cast<float>(GetWidth()) - appearance.paddingLeft - appearance.paddingRight,

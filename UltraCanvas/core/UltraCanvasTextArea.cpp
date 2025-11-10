@@ -136,7 +136,7 @@ namespace UltraCanvas {
         context->PushState();
         context->SetFontStyle(style.fontStyle);
         context->SetTextPaint(style.fontColor);
-        context->SetClipRect(visibleTextArea);
+        context->ClipRect(visibleTextArea);
 
         // Calculate which lines are at least partially visible
         // Include one line above and below for clipped rendering
@@ -167,7 +167,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::DrawHighlightedText(IRenderContext* context) {
         if (!syntaxTokenizer) return;
         context->PushState();
-        context->SetClipRect(visibleTextArea);
+        context->ClipRect(visibleTextArea);
         context->SetFontStyle(style.fontStyle);
 
         // Calculate which lines are at least partially visible
@@ -238,7 +238,7 @@ namespace UltraCanvas {
                 visibleTextArea.height
         };
         context->PushState();
-        context->SetClipRect(lineNumberClipRect);
+        context->ClipRect(lineNumberClipRect);
 
         // Render line numbers for partially visible lines
         int startLine = std::max(0, firstVisibleLine - 1);
@@ -334,7 +334,7 @@ namespace UltraCanvas {
 
                 // Clip the highlight to the visible text area
                 context->PushState();
-                context->SetClipRect(visibleTextArea);
+                context->ClipRect(visibleTextArea);
                 context->FillRectangle(highlightX, lineY,
                                        bounds.width - (style.showLineNumbers ? style.lineNumbersWidth : 0),
                                        computedLineHeight);
@@ -364,7 +364,7 @@ namespace UltraCanvas {
 
         // Ensure cursor is clipped to visible area
         context->PushState();
-        context->SetClipRect(visibleTextArea);
+        context->ClipRect(visibleTextArea);
         context->SetStrokeWidth(2);
         context->DrawLine(cursorX, cursorY, cursorX, cursorY + computedLineHeight, style.cursorColor);
         context->PopState();

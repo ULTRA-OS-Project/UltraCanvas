@@ -342,10 +342,10 @@ namespace UltraCanvas {
 
         // Draw background / border
         UltraCanvasUIElement::Render(ctx);
-
+        auto contentRect = GetContentRect();
         if (rootNode) {
-            int currentY = GetY() - scrollOffsetY;
-            RenderNode(ctx, rootNode.get(), currentY, 0);
+            int currentY = contentRect.y - scrollOffsetY;
+            RenderNode(ctx, rootNode.get(), currentY, 0, contentRect);
         }
 
         // Draw scrollbar if needed
@@ -437,21 +437,20 @@ namespace UltraCanvas {
         return findNode(rootNode.get());
     }
 
-    void UltraCanvasTreeView::RenderNode(IRenderContext *ctx, TreeNode *node, int &currentY, int level) {
+    void UltraCanvasTreeView::RenderNode(IRenderContext *ctx, TreeNode *node, int &currentY, int level, const Rect2Di& contentRect) {
         if (!node || !node->data.visible) return;
-
         // Skip if outside visible area
-        if (currentY + rowHeight < GetY() || currentY > GetY() + GetHeight()) {
+        if (currentY + rowHeight < contentRect.y || currentY > contentRect.Bottom()) {
             currentY += rowHeight;
             if (node->IsExpanded()) {
                 for (auto& child : node->children) {
-                    RenderNode(ctx, child.get(), currentY, level + 1);
+                    RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
                 }
             }
             return;
         }
 
-        int nodeX = GetX() + level * indentSize;
+        int nodeX = contentRect.x + level * indentSize;
         int nodeY = currentY;
 
         // Draw node background
@@ -465,7 +464,7 @@ namespace UltraCanvas {
         }
 
         if (bgColor != backgroundColor) {
-            ctx->DrawFilledRectangle(Rect2Di(GetX() + 1, nodeY, GetWidth() - 2, rowHeight), bgColor);
+            ctx->DrawFilledRectangle(Rect2Di(contentRect.x + 1, nodeY, contentRect.width - 2, rowHeight), bgColor);
         }
 
         // Draw connecting lines
@@ -506,7 +505,7 @@ namespace UltraCanvas {
 
         // Draw right icon
         if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {
-            int rightIconX = GetX() + GetWidth() - node->data.rightIcon.width - textPadding;
+            int rightIconX = contentRect.Right() - node->data.rightIcon.width - textPadding;
             if (hasVerticalScrollbar) {
                 rightIconX -= scrollbarWidth;
             }
@@ -521,7 +520,7 @@ namespace UltraCanvas {
         // Render children if expanded
         if (node->IsExpanded()) {
             for (auto& child : node->children) {
-                RenderNode(ctx, child.get(), currentY, level + 1);
+                RenderNode(ctx, child.get(), currentY, level + 1, contentRect);
             }
         }
     }

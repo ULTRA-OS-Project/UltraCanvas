@@ -23,7 +23,7 @@ namespace UltraCanvas {
             title->SetFontWeight(FontWeight::Bold);
             title->SetTextColor(Color(50, 50, 150, 255));
             mainButtonsContainer->AddChild(title);
-/*
+
 
             auto subtitle = std::make_shared<UltraCanvasLabel>("ButtonSubtitle", 102, 20, 45, 800, 25);
             subtitle->SetText("Demonstrating all button styles, states, and the new split button feature");
@@ -531,7 +531,7 @@ namespace UltraCanvas {
                     })
                     .Build();
             mainButtonsContainer->AddChild(complexBuilderBtn);
-*/
+
             return mainButtonsContainer;
     }
 

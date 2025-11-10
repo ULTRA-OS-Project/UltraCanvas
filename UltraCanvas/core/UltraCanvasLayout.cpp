@@ -92,10 +92,19 @@ namespace UltraCanvas {
         container->SetLayout(this);
     }
 
-    void UltraCanvasLayout::Invalidate() {
-        layoutDirty = true;
+    void UltraCanvasLayout::SetParentContainer(UltraCanvasContainer *parent) {
+        parentContainer = parent;
+        parentContainer->InvalidateLayout();
+    }
+
+    void UltraCanvasLayout::SetSpacing(int space) {
+        spacing = space;
+        InvalidateContainerLayout();
+    }
+
+    void UltraCanvasLayout::InvalidateContainerLayout() {
         if (parentContainer) {
-            parentContainer->RequestRedraw();
+            parentContainer->InvalidateLayout();
         }
     }
 

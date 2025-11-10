@@ -138,7 +138,7 @@ namespace UltraCanvas {
 
 // ===== TRANSFORMATION =====
     void LinuxRenderContext::Translate(float x, float y) {
-        if (x != 0 && y != 0) {
+        if (x != 0 || y != 0) {
             cairo_translate(cairo, x, y);
             currentState.translation.x += x;
             currentState.translation.y += y;
@@ -177,18 +177,18 @@ namespace UltraCanvas {
 
 
 // ===== CLIPPING =====
-    void LinuxRenderContext::SetClipRect(float x, float y, float w, float h) {
-        std::cout << "LinuxRenderContext::SetClipRect - setting clip to "
-                  << x << "," << y << " " << w << "x" << h << std::endl;
-
-        // Clear any existing clip region first
-        cairo_reset_clip(cairo);
-
-        // Set new clip region
-        cairo_rectangle(cairo, x, y, w, h);
-        cairo_clip(cairo);
-        std::cout << "LinuxRenderContext::SetClipRect - clip region set successfully" << std::endl;
-    }
+//    void LinuxRenderContext::SetClipRect(float x, float y, float w, float h) {
+//        std::cout << "LinuxRenderContext::SetClipRect - setting clip to "
+//                  << x << "," << y << " " << w << "x" << h << std::endl;
+//
+//        // Clear any existing clip region first
+//        cairo_reset_clip(cairo);
+//
+//        // Set new clip region
+//        cairo_rectangle(cairo, x, y, w, h);
+//        cairo_clip(cairo);
+//        std::cout << "LinuxRenderContext::SetClipRect - clip region set successfully" << std::endl;
+//    }
 
     void LinuxRenderContext::ClearClipRect() {
         std::cout << "LinuxRenderContext::ClearClipRect - clearing clip region" << std::endl;
@@ -253,20 +253,37 @@ namespace UltraCanvas {
         cairo_new_path(cairo);
 
         // Top left corner
-        cairo_arc(cairo, x + topLeftRadius, y + topLeftRadius,
-                  topLeftRadius, M_PI, 3 * M_PI / 2);
+        if (topLeftRadius > 0) {
+            cairo_arc(cairo, x + topLeftRadius, y + topLeftRadius,
+                      topLeftRadius, M_PI, 3 * M_PI / 2);
+        } else {
+            cairo_move_to(cairo, x, y);
+            cairo_line_to(cairo, x + width - topRightRadius, y);
+        }
 
         // Top right corner
-        cairo_arc(cairo, x + width - topRightRadius, y + topRightRadius,
-                  topRightRadius, 3 * M_PI / 2, 0);
+        if (topRightRadius > 0) {
+            cairo_arc(cairo, x + width - topRightRadius, y + topRightRadius,
+                      topRightRadius, 3 * M_PI / 2, 0);
+        } else {
+            cairo_line_to(cairo, x + width, y + height - bottomRightRadius);
+        }
 
         // Bottom right corner
-        cairo_arc(cairo, x + width - bottomRightRadius, y + height - bottomRightRadius,
-                  bottomRightRadius, 0, M_PI / 2);
+        if (bottomRightRadius > 0) {
+            cairo_arc(cairo, x + width - bottomRightRadius, y + height - bottomRightRadius,
+                      bottomRightRadius, 0, M_PI / 2);
+        } else {
+            cairo_line_to(cairo, x + bottomLeftRadius, y + height);
+        }
 
         // Bottom left corner
-        cairo_arc(cairo, x + bottomLeftRadius, y + height - bottomLeftRadius,
-                  bottomLeftRadius, M_PI / 2, M_PI);
+        if (bottomLeftRadius > 0) {
+            cairo_arc(cairo, x + bottomLeftRadius, y + height - bottomLeftRadius,
+                      bottomLeftRadius, M_PI / 2, M_PI);
+        } else {
+            cairo_line_to(cairo, x, y + topLeftRadius);
+        }
 
         cairo_close_path(cairo);
 
@@ -989,136 +1006,147 @@ namespace UltraCanvas {
         bottomRightRadius *= scale;
         bottomLeftRadius *= scale;
 
-        cairo_save(cairo);
+        PushState();
 
         // Create the rounded rectangle path
-        cairo_new_path(cairo);
+        ClearPath();
 
         // Top left corner
-        cairo_arc(cairo, x + topLeftRadius, y + topLeftRadius,
-                  topLeftRadius, M_PI, 3 * M_PI / 2);
+        if (topLeftRadius > 0) {
+            Arc(x + topLeftRadius, y + topLeftRadius,
+                      topLeftRadius, M_PI, 3 * M_PI / 2);
+        } else {
+            MoveTo(x, y);
+            LineTo(x + width - topRightRadius, y);
+        }
 
         // Top right corner
-        cairo_arc(cairo, x + width - topRightRadius, y + topRightRadius,
-                  topRightRadius, 3 * M_PI / 2, 0);
+        if (topRightRadius > 0) {
+            Arc(x + width - topRightRadius, y + topRightRadius,
+                      topRightRadius, 3 * M_PI / 2, 0);
+        } else {
+            LineTo(x + width, y + height - bottomRightRadius);
+        }
 
         // Bottom right corner
-        cairo_arc(cairo, x + width - bottomRightRadius, y + height - bottomRightRadius,
-                  bottomRightRadius, 0, M_PI / 2);
+        if (bottomRightRadius > 0) {
+            Arc(x + width - bottomRightRadius, y + height - bottomRightRadius,
+                      bottomRightRadius, 0, M_PI / 2);
+        } else {
+            LineTo(x + bottomLeftRadius, y + height);
+        }
 
         // Bottom left corner
-        cairo_arc(cairo, x + bottomLeftRadius, y + height - bottomLeftRadius,
-                  bottomLeftRadius, M_PI / 2, M_PI);
+        if (bottomLeftRadius > 0) {
+            Arc(x + bottomLeftRadius, y + height - bottomLeftRadius,
+                      bottomLeftRadius, M_PI / 2, M_PI);
+        } else {
+            LineTo(x, y + topLeftRadius);
+        }
 
-        cairo_close_path(cairo);
+        ClosePath();
 
         // Fill background
         if (fill) {
             FillPathPreserve();
         }
+        ClipPath();
 
         // Clip to the rounded rectangle for borders
 //        cairo_clip_preserve(cr);
 //        cairo_new_path(cr);
 
-        // Helper lambda to draw a single border side
-        auto drawBorderSide = [&](float x1, float y1, float x2, float y2,
-                                  float width, const Color& color,
-                                  const UCDashPattern& pattern) {
-            if (width <= 0) return;
-
-            cairo_save(cairo);
-            cairo_set_line_width(cairo, width);
-            cairo_set_source_rgba(cairo, color.r, color.g, color.b, color.a);
-
-            if (!pattern.dashes.empty()) {
-                cairo_set_dash(cairo, pattern.dashes.data(),
-                               pattern.dashes.size(), pattern.offset);
-            }
-
-            cairo_move_to(cairo, x1, y1);
-            cairo_line_to(cairo, x2, y2);
-            cairo_stroke(cairo);
-            cairo_restore(cairo);
-        };
-
         // Draw borders (inset by half the border width for proper positioning)
         // Top border
         if (borderTopWidth > 0) {
+            SetStrokeWidth(borderTopWidth);
+            if (!borderRightPattern.dashes.empty()) {
+                SetLineDash(borderTopPattern);
+            } else {
+                SetStrokePaint(borderTopColor);
+            }
             float yPos = y + borderTopWidth / 2.0;
-            drawBorderSide(x + topLeftRadius, yPos,
-                           x + width - topRightRadius, yPos,
-                           borderTopWidth, borderTopColor, borderTopPattern);
+            DrawLine(x + topLeftRadius, yPos, x + width - topRightRadius, yPos);
+//            drawBorderSide(x + topLeftRadius, yPos,
+//                           x + width - topRightRadius, yPos,
+//                           borderTopWidth, borderTopColor, borderTopPattern);
         }
 
         // Right border
         if (borderRightWidth > 0) {
+            SetStrokeWidth(borderRightWidth);
+            if (!borderRightPattern.dashes.empty()) {
+                SetLineDash(borderRightPattern);
+            } else {
+                SetStrokePaint(borderRightColor);
+            }
             float xPos = x + width - borderRightWidth / 2.0;
-            drawBorderSide(xPos, y + topRightRadius,
-                           xPos, y + height - bottomRightRadius,
-                           borderRightWidth, borderRightColor, borderRightPattern);
+            DrawLine(xPos, y + topRightRadius,
+                     xPos, y + height - bottomRightRadius);
         }
 
         // Bottom border
         if (borderBottomWidth > 0) {
+            SetStrokeWidth(borderBottomWidth);
+            if (!borderBottomPattern.dashes.empty()) {
+                SetLineDash(borderBottomPattern);
+            } else {
+                SetStrokePaint(borderBottomColor);
+            }
             float yPos = y + height - borderBottomWidth / 2.0;
-            drawBorderSide(x + bottomLeftRadius, yPos,
-                           x + width - bottomRightRadius, yPos,
-                           borderBottomWidth, borderBottomColor, borderBottomPattern);
+            DrawLine(x + bottomLeftRadius, yPos,
+                     x + width - bottomRightRadius, yPos);
         }
 
         // Left border
         if (borderLeftWidth > 0) {
             float xPos = x + borderLeftWidth / 2.0;
-            drawBorderSide(xPos, y + topLeftRadius,
-                           xPos, y + height - bottomLeftRadius,
-                           borderLeftWidth, borderLeftColor, borderLeftPattern);
+            SetStrokeWidth(borderLeftWidth);
+            if (!borderLeftPattern.dashes.empty()) {
+                SetLineDash(borderLeftPattern);
+            } else {
+                SetStrokePaint(borderLeftColor);
+            }
+            DrawLine(xPos, y + topLeftRadius,
+                     xPos, y + height - bottomLeftRadius);
         }
 
         // Draw rounded corners with borders
-        auto drawCornerBorder = [&](float cx, float cy, float radius,
-                                    float startAngle, float endAngle,
-                                    float width1, float width2,
-                                    const Color& color1, const Color& color2) {
-            if (radius <= 0) return;
+        if (topLeftRadius > 0) {
+            const Color avgColor = borderLeftColor.Blend(borderTopColor, 0.5);
+            float avgWidth = (borderLeftWidth + borderTopWidth) / 2.0;
+            SetStrokeWidth(avgWidth);
+            SetStrokePaint(avgColor);
+            Arc(x + topLeftRadius, y + topLeftRadius, topLeftRadius,
+                M_PI, 3 * M_PI / 2);
+        }
+        if (topRightRadius > 0) {
+            const Color avgColor = borderTopColor.Blend(borderRightColor, 0.5);
+            float avgWidth = (borderTopWidth + borderRightWidth) / 2.0;
+            SetStrokeWidth(avgWidth);
+            SetStrokePaint(avgColor);
+            Arc(x + width - topRightRadius, y + topRightRadius, topRightRadius,
+                3 * M_PI / 2, 2 * M_PI);
+        }
 
-            // Use average width and color for corner
-            float avgWidth = (width1 + width2) / 2.0;
-            if (avgWidth <= 0) return;
+        if (bottomRightRadius > 0) {
+            const Color avgColor = borderBottomColor.Blend(borderRightColor, 0.5);
+            float avgWidth = (borderRightWidth +  borderBottomWidth) / 2.0;
+            SetStrokeWidth(avgWidth);
+            SetStrokePaint(avgColor);
+            Arc(x + width - bottomRightRadius, y + height - bottomRightRadius,
+                bottomRightRadius, 0, M_PI / 2);
+        }
 
-            Color avgColor(
-                    (color1.r + color2.r) / 2.0,
-                    (color1.g + color2.g) / 2.0,
-                    (color1.b + color2.b) / 2.0,
-                    (color1.a + color2.a) / 2.0
-            );
-
-            cairo_save(cairo);
-            cairo_set_line_width(cairo, avgWidth);
-            cairo_set_source_rgba(cairo, avgColor.r, avgColor.g, avgColor.b, avgColor.a);
-            cairo_arc(cairo, cx, cy, radius - avgWidth / 2.0, startAngle, endAngle);
-            cairo_stroke(cairo);
-            cairo_restore(cairo);
-        };
-
-        // Draw corner borders
-        drawCornerBorder(x + topLeftRadius, y + topLeftRadius, topLeftRadius,
-                         M_PI, 3 * M_PI / 2, borderLeftWidth, borderTopWidth,
-                         borderLeftColor, borderTopColor);
-
-        drawCornerBorder(x + width - topRightRadius, y + topRightRadius, topRightRadius,
-                         3 * M_PI / 2, 2 * M_PI, borderTopWidth, borderRightWidth,
-                         borderTopColor, borderRightColor);
-
-        drawCornerBorder(x + width - bottomRightRadius, y + height - bottomRightRadius,
-                         bottomRightRadius, 0, M_PI / 2, borderRightWidth, borderBottomWidth,
-                         borderRightColor, borderBottomColor);
-
-        drawCornerBorder(x + bottomLeftRadius, y + height - bottomLeftRadius, bottomLeftRadius,
-                         M_PI / 2, M_PI, borderBottomWidth, borderLeftWidth,
-                         borderBottomColor, borderLeftColor);
-
-        cairo_restore(cairo);
+        if (bottomLeftRadius > 0) {
+            const Color avgColor = borderBottomColor.Blend(borderLeftColor, 0.5);
+            float avgWidth = (borderBottomWidth + borderLeftWidth) / 2.0;
+            SetStrokeWidth(avgWidth);
+            SetStrokePaint(avgColor);
+            Arc(x + bottomLeftRadius, y + height - bottomLeftRadius, bottomLeftRadius,
+                M_PI / 2, M_PI);
+        }
+        PopState();
     }
 
     void LinuxRenderContext::Circle(float x, float y, float radius) {
@@ -1205,12 +1233,13 @@ namespace UltraCanvas {
 
     void LinuxRenderContext::ApplySource(const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern) {
         if (sourceColor.a > 0) {
-            if (currentState.currentSourceColor != sourceColor) {
-                currentState.currentSourceColor = sourceColor;
-                SetCairoColor(sourceColor);
-                currentState.currentSourcePattern = nullptr;
-            }
-        } else if (sourcePattern != nullptr && sourcePattern != currentState.currentSourcePattern) {
+//            if (currentState.currentSourceColor != sourceColor) {
+//                currentState.currentSourceColor = sourceColor;
+//                SetCairoColor(sourceColor);
+//                currentState.currentSourcePattern = nullptr;
+//            }
+            SetCairoColor(sourceColor);
+        } else if (sourcePattern != nullptr) {
             auto handle = static_cast<cairo_pattern_t*>(sourcePattern->GetHandle());
             if (handle) {
                 cairo_set_source(cairo, handle);
@@ -1222,8 +1251,8 @@ namespace UltraCanvas {
 //                    cairo_set_source(cairo, handle);
 //                }
             }
-            currentState.currentSourcePattern = sourcePattern;
-            currentState.currentSourceColor = Colors::Transparent;
+//            currentState.currentSourcePattern = sourcePattern;
+//            currentState.currentSourceColor = Colors::Transparent;
         }
     }
 
@@ -1449,7 +1478,6 @@ namespace UltraCanvas {
             cairo_set_source_surface(cairo, image->GetSurface(), 0, 0);
 
             // Create clipping rectangle for the destination area
-            cairo_reset_clip(cairo);
             cairo_rectangle(cairo,
                             srcRect.x, srcRect.y,
                             srcRect.width, srcRect.height);
@@ -2095,17 +2123,17 @@ namespace UltraCanvas {
         std::cout << "DisableDoubleBuffering: Double buffering disabled" << std::endl;
     }
 
-    void LinuxRenderContext::OnWindowResize(int newWidth, int newHeight) {
+    void LinuxRenderContext::ResizeSurface(int newWidth, int newHeight) {
         if (doubleBufferingEnabled) {
-            std::cout << "OnWindowResize: Resizing double buffer to " << newWidth << "x" << newHeight << std::endl;
+            std::cout << "ResizeSurface: Resizing double buffer to " << newWidth << "x" << newHeight << std::endl;
             // Resize the double buffer
             if (doubleBuffer.Resize(newWidth, newHeight)) {
                 // Switch to new staging surface
                 SwitchToStagingSurface();
-                std::cout << "OnWindowResize: Double buffer resized successfully" << std::endl;
+                std::cout << "ResizeSurface: Double buffer resized successfully" << std::endl;
             } else {
-                std::cerr << "OnWindowResize: Failed to resize double buffer" << std::endl;
-                throw std::runtime_error("OnWindowResize: Failed to resize double buffer");
+                std::cerr << "ResizeSurface: Failed to resize double buffer" << std::endl;
+                throw std::runtime_error("ResizeSurface: Failed to resize double buffer");
             }
         }
         ResetState();

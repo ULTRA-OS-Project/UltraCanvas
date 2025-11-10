@@ -86,7 +86,7 @@ namespace UltraCanvas {
 //    }
 
     void UltraCanvasImageElement::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
+        if (!IsVisible() || bounds.width == 0 || bounds.height == 0) return;
 
         ctx->PushState();
 

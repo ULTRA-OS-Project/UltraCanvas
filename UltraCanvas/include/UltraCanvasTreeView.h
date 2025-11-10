@@ -227,7 +227,7 @@ private:
     
     TreeNode* GetNodeAtY(int y);
     
-    void RenderNode(IRenderContext *ctx, TreeNode* node, int& currentY, int level);
+    void RenderNode(IRenderContext *ctx, TreeNode* node, int& currentY, int level, const Rect2Di& contentRect);
     void RenderVerticalScrollbar(IRenderContext* ctx);
     
     void ExpandNodeRecursive(TreeNode* node);

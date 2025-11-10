@@ -240,6 +240,9 @@ namespace UltraCanvas {
 
     void UltraCanvasUIElement::SetVisible(bool vis) {
         visible = vis;
+        if (parentContainer) {
+            parentContainer->InvalidateLayout();
+        }
         if (window) {
             SetFocus(false);
             window->RequestRedraw();
@@ -252,5 +255,15 @@ namespace UltraCanvas {
             RemoveThisPopupElementFromWindow();
         }
         window = win;
+    }
+
+    void UltraCanvasUIElement::SetOriginalSize(int w, int h) {
+        originalSize.width = w;
+        originalSize.height = h;
+        if (parentContainer) {
+            parentContainer->InvalidateLayout();
+        } else {
+            SetSize(w, h);
+        }
     }
 }

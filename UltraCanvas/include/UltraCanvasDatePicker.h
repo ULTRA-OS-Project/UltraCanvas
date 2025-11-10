@@ -679,12 +679,12 @@ private:
         // Clip text to available space
         int availableWidth = GetWidth() - padding * 2 - buttonWidth;
         Rect2D textRect(GetX() + padding, GetY(), availableWidth, GetHeight());
-        ctx->SetClipRect(textRect);
+        ctx->ClipRect(textRect);
         
         ctx->DrawText(dateText, textPos);
         
         // Reset clipping
-        ctx->SetClipRect(GetBounds());
+        ctx->ClipRect(GetBounds());
     }
     
     void DrawDropdownButton() {

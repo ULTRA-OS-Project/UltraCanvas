@@ -81,8 +81,8 @@ void UltraCanvasGridLayout::SetGridSize(int rows, int columns) {
     for (int i = 0; i < columns; ++i) {
         columnDefinitions.push_back(GridRowColumnDefinition::Auto());
     }
-    
-    Invalidate();
+
+    InvalidateContainerLayout();
 }
 
 // ===== ITEM MANAGEMENT =====
@@ -135,7 +135,6 @@ UltraCanvasLayoutItem* UltraCanvasGridLayout::InsertUIElement(std::shared_ptr<Ul
         parentContainer->AddChild(element);
     }
 
-    Invalidate();
     return itemPtr;
 }
 
@@ -154,14 +153,12 @@ void UltraCanvasGridLayout::RemoveUIElement(std::shared_ptr<UltraCanvasUIElement
         if (parentContainer) {
             parentContainer->RemoveChild(element);
         }
-
-        Invalidate();
     }
 }
 
 void UltraCanvasGridLayout::ClearItems() {
     items.clear();
-    Invalidate();
+    InvalidateContainerLayout();
 }
 
 // ===== GRID LAYOUT SPECIFIC =====
@@ -198,7 +195,7 @@ void UltraCanvasGridLayout::EnsureGridSize(int row, int column, int rowSpan, int
 void UltraCanvasGridLayout::PerformLayout() {
     if (items.empty() || rowDefinitions.empty() || columnDefinitions.empty() || !parentContainer) return;
     
-    Rect2Di contentRect = parentContainer->GetContentArea();
+    Rect2Di contentRect = parentContainer->GetContentRect();
     
     // Calculate row heights and column widths
     CalculateRowHeights(contentRect.height);
@@ -211,8 +208,6 @@ void UltraCanvasGridLayout::PerformLayout() {
     for (auto& item : items) {
         item->ApplyToElement();
     }
-
-    layoutDirty = false;
 }
 
 void UltraCanvasGridLayout::CalculateRowHeights(int availableHeight) {

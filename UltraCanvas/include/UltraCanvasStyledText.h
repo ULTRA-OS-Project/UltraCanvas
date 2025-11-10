@@ -514,7 +514,7 @@ namespace UltraCanvas {
 
             // Set clipping to content area
             PushRenderState();
-            ctx->SetClipRect(bounds);
+            ctx->ClipRect(bounds);
 
             // Apply scroll offset
             Translate(-scrollOffset.x, -scrollOffset.y);

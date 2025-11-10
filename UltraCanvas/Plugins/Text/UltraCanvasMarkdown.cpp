@@ -527,9 +527,9 @@ namespace UltraCanvas {
         // Draw background
         ctx->SetFillPaint(style.backgroundColor);
         ctx->FillRectangle(bounds);
-
+        ctx->PushState();
         // Set clipping region
-        ctx->SetClipRect(bounds);
+        ctx->ClipRect(bounds);
 
         // Render elements
         for (auto& element : elements) {
@@ -537,9 +537,7 @@ namespace UltraCanvas {
                 RenderElement(ctx, element);
             }
         }
-
-        // Clear clipping
-        ctx->ClearClipRect();
+        ctx->PopState();
 
         // Draw scrollbar if needed
         if (contentHeight > bounds.height) {

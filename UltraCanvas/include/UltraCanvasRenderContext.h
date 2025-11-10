@@ -134,11 +134,11 @@ namespace UltraCanvas {
         std::shared_ptr<IPaintPattern> fillSourcePattern = nullptr;
         std::shared_ptr<IPaintPattern> strokeSourcePattern = nullptr;
         std::shared_ptr<IPaintPattern> textSourcePattern = nullptr;
-        std::shared_ptr<IPaintPattern> currentSourcePattern = nullptr;
+//        std::shared_ptr<IPaintPattern> currentSourcePattern = nullptr;
         Color fillSourceColor = Colors::Transparent;
         Color strokeSourceColor = Colors::Transparent;
         Color textSourceColor = Colors::Transparent;
-        Color currentSourceColor = Colors::Transparent;
+//        Color currentSourceColor = Colors::Transparent;
     };
 
     class IPixelBuffer {
@@ -242,7 +242,7 @@ namespace UltraCanvas {
         virtual void ResetTransform() = 0;
 
         // ===== CLIPPING =====
-        virtual void SetClipRect(float x, float y, float w, float h) = 0;
+//        virtual void SetClipRect(float x, float y, float w, float h) = 0;
         virtual void ClearClipRect() = 0;
         virtual void ClipRect(float x, float y, float w, float h) = 0;
         virtual void ClipPath() = 0;
@@ -566,15 +566,15 @@ namespace UltraCanvas {
             DrawImage(image, position.x, position.y, position.width, position.height);;
         }
 
-        void SetClipRect(int x, int y, int w, int h) {
-            SetClipRect(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
-        }
-        void SetClipRect(const Rect2Df& rect) {
-            SetClipRect(rect.x, rect.y, rect.width, rect.height);
-        }
-        void SetClipRect(const Rect2Di& rect) {
-            SetClipRect(rect.x, rect.y, rect.width, rect.height);
-        }
+//        void SetClipRect(int x, int y, int w, int h) {
+//            SetClipRect(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
+//        }
+//        void SetClipRect(const Rect2Df& rect) {
+//            SetClipRect(rect.x, rect.y, rect.width, rect.height);
+//        }
+//        void SetClipRect(const Rect2Di& rect) {
+//            SetClipRect(rect.x, rect.y, rect.width, rect.height);
+//        }
 
         void ClipRect(int x, int y, int w, int h) {
             ClipRect(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));

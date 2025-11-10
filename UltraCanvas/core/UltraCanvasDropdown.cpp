@@ -421,9 +421,9 @@ namespace UltraCanvas {
 
         // Draw list background and border
         ctx->DrawFilledRectangle(listRect, style.listBackgroundColor, style.borderWidth, style.listBorderColor);
-
+        ctx->PushState();
         // Set clipping for items
-        ctx->SetClipRect(Rect2Di(listRect.x + 1, listRect.y + 1, listRect.width - 2, listRect.height - 2));
+        ctx->ClipRect(Rect2Di(listRect.x + 1, listRect.y + 1, listRect.width - 2, listRect.height - 2));
 
         // Render visible items
         int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
@@ -434,7 +434,7 @@ namespace UltraCanvas {
             RenderDropdownItem(i, listRect, i - startIndex, ctx);
         }
 
-        ctx->ClearClipRect();
+        ctx->PopState();
 
         // Draw scrollbar if needed
         if (needScrollbar) {

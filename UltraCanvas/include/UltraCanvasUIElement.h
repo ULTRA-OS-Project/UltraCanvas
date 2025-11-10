@@ -137,13 +137,15 @@ namespace UltraCanvas {
         Color backgroundColor = Colors::Transparent;
 
         Rect2Di bounds;
+        Size2Di originalSize;
 
     public:
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
         UltraCanvasUIElement(const std::string& idstr = "", long id = 0,
                              int x = 0, int y = 0, int w = 100, int h = 30)
                 : identifier(idstr),
-                  bounds(x, y, w, h) {
+                  bounds(x, y, w, h),
+                  originalSize(w, h) {
             stateFlags.Reset();
         }
 
@@ -166,6 +168,10 @@ namespace UltraCanvas {
 
         Size2Di GetSize() {
             return Size2Di(bounds.width, bounds.height);
+        }
+
+        Size2Di GetOriginalSize() {
+            return Size2Di(originalSize);
         }
 
         bool Contains(const Point2Di& point) {
@@ -194,13 +200,13 @@ namespace UltraCanvas {
 //        }
 
         int GetWidth() const { return bounds.width; }
-        virtual int GetPreferredWidth() const { return GetWidth(); }
+        virtual int GetPreferredWidth() const { return originalSize.width; }
         virtual int GetMinWidth() const { return 0; }
         virtual int GetMaxWidth() const { return 10000; }
         void SetWidth(int w) { SetBounds(bounds.x, bounds.y, w, bounds.height); }
 
         int GetHeight() const { return bounds.height; }
-        virtual int GetPreferredHeight() const { return GetHeight(); }
+        virtual int GetPreferredHeight() const { return originalSize.height; }
         virtual int GetMinHeight() const { return 0; }
         virtual int GetMaxHeight() const { return 10000; }
         void SetHeight(int h) { SetBounds(bounds.x, bounds.y, bounds.width, h); }
@@ -213,6 +219,7 @@ namespace UltraCanvas {
 //        void SetAbsolutePosition(int x, int y) { SetAbsoluteX(x); SetAbsoluteY(y); }
         void SetPosition(int x, int y) { bounds.x = x, bounds.y = y; }
         void SetSize(int w, int h) { SetBounds(bounds.x, bounds.y, w, h); }
+        virtual void SetOriginalSize(int w, int h);
         void SetBounds(int x, int y, int w, int h) {
             SetBounds(Rect2Di(x, y, w, h));
         }
@@ -256,12 +263,12 @@ namespace UltraCanvas {
             margin.left = margin.right = margin.top = margin.bottom = all;
         }
 
-        void SetMargin(int horizontal, int vertical) {
+        void SetMargin(int vertical, int horizontal) {
             margin.left = margin.right = horizontal;
             margin.top = margin.bottom = vertical;
         }
 
-        void SetMargin(int left, int top, int right, int bottom) {
+        void SetMargin(int top, int right, int bottom, int left) {
             margin.left = left;
             margin.top = top;
             margin.right = right;
@@ -273,12 +280,12 @@ namespace UltraCanvas {
             padding.left = padding.right = padding.top = padding.bottom = all;
         }
 
-        void SetPadding(int horizontal, int vertical) {
+        void SetPadding(int vertical, int horizontal) {
             padding.left = padding.right = horizontal;
             padding.top = padding.bottom = vertical;
         }
 
-        void SetPadding(int left, int top, int right, int bottom) {
+        void SetPadding(int top, int right, int bottom, int left) {
             padding.left = left;
             padding.top = top;
             padding.right = right;

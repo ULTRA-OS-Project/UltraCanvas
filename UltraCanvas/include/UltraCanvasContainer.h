@@ -97,7 +97,7 @@ namespace UltraCanvas {
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasContainer(const std::string& id, long uid, long x, long y, long w, long h)
                 : UltraCanvasUIElement(id, uid, x, y, w, h) {
-            UpdateLayout();
+//            UpdateLayout();
         }
 
         virtual ~UltraCanvasContainer() {
@@ -154,7 +154,6 @@ namespace UltraCanvas {
         bool IsChildVisible(UltraCanvasUIElement* child);
 
         void SetBounds(const Rect2Di& bounds) override;
-        Rect2Di GetContentRect() override;
         Rect2Di GetContentArea(); // zero based rectanble without container offset
 
         void SetContainerStyle(const ContainerStyle& newStyle);
@@ -174,8 +173,7 @@ namespace UltraCanvas {
         }
 
         // ===== LAYOUT MANAGEMENT =====
-        void UpdateLayout();
-        void MarkLayoutDirty() { layoutDirty = true; }
+        void InvalidateLayout() { layoutDirty = true; RequestRedraw(); }
         bool IsLayoutDirty() const { return layoutDirty; }
 
         // ===== OVERRIDDEN ELEMENT METHODS =====

@@ -114,10 +114,7 @@ protected:
 
     // Spacing between items
     int spacing = 0;
-    
-    // Layout state
-    bool layoutDirty = true;
-    
+
 public:
     UltraCanvasLayout() = delete;
     explicit UltraCanvasLayout(UltraCanvasContainer* container);
@@ -129,13 +126,10 @@ public:
     
     // ===== PARENT CONTAINER =====
     UltraCanvasContainer* GetParentContainer() const { return parentContainer; }
-    void SetParentContainer(UltraCanvasContainer* parent) { parentContainer = parent; Invalidate(); }
+    void SetParentContainer(UltraCanvasContainer* parent);
 
     // ===== SPACING =====
-    void SetSpacing(int space) { 
-        spacing = space;
-        Invalidate();
-    }
+    void SetSpacing(int space);
     int GetSpacing() const { return spacing; }
     
 //    // ===== PADDING =====
@@ -194,10 +188,6 @@ public:
 //    int GetTotalMarginHorizontal() const { return marginLeft + marginRight; }
 //    int GetTotalMarginVertical() const { return marginTop + marginBottom; }
     
-    // ===== LAYOUT STATE =====
-    void Invalidate();
-    bool IsLayoutDirty() const { return layoutDirty; }
-    
     // ===== PURE VIRTUAL INTERFACE =====
     // These MUST be implemented by derived classes
     
@@ -231,14 +221,8 @@ public:
     
     // Calculate the maximum size for this layout
     virtual Size2Di CalculateMaximumSize() const = 0;
-    
-    // Update layout if dirty
-    void Update() {
-        if (layoutDirty) {
-            PerformLayout();
-            layoutDirty = false;
-        }
-    }
+
+    void InvalidateContainerLayout();
 };
 
 } // namespace UltraCanvas

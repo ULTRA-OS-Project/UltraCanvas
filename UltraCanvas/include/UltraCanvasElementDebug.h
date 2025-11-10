@@ -103,7 +103,7 @@ namespace UltraCanvas {
         // Main debug rendering function for any UltraCanvasUIElement
         static std::string RenderDebugInfo(UltraCanvasUIElement* element,
                                            const DebugRenderSettings& settings = UltraCanvasDebugRenderer::GetGlobalSettings()) {
-            if (!element || !UltraCanvasDebugRenderer::IsDebugEnabled()) return "";
+            if (!element) return "";
             auto ctx = element->GetRenderContext();
             ctx->PushState();
 
@@ -217,7 +217,9 @@ namespace UltraCanvas {
                     else debugText << " | ";
                 }
             }
-
+            debugText << "Margin: " << element->GetMarginTop() << "," << element->GetMarginRight() << "," << element->GetMarginBottom() << "," << element->GetMarginLeft() << std::endl;
+            debugText << "Padding: " << element->GetPaddingTop() << "," << element->GetPaddingRight() << "," << element->GetPaddingBottom() << "," << element->GetPaddingLeft() << std::endl;
+            debugText << "Border: " << element->GetBorderTopWidth() << "," << element->GetBorderRightWidth() << "," << element->GetBorderBottomWidth() << "," << element->GetBorderLeftWidth() << std::endl;
             if (settings.showBounds) {
                 debugText << "Size: " << element->GetWidth() << "x" << element->GetHeight();
                 if (settings.multilineText) debugText << "\n";

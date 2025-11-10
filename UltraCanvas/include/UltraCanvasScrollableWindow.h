@@ -173,16 +173,16 @@ namespace UltraCanvas {
             DrawBackground();
 
             // Set clipping to content area
-            ctx->SetClipRect(contentArea);
+            ctx->ClipRect(contentArea);
 
             // Render children with scroll offset
             RenderChildren();
 
             // Clear clipping
-            ctx->ClearClipRect();
 
             // Render scrollbars
             RenderScrollbars();
+            ctx->PopState();
         }
 
         // ===== EVENT HANDLING =====

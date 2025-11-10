@@ -442,7 +442,7 @@ public:
         
         // Set clipping for content area
         Rect2D contentRect = GetContentRect();
-        ctx->SetClipRect(contentRect);
+        ctx->ClipRect(contentRect);
         
         // Render paragraphs
         RenderParagraphs();
@@ -458,7 +458,7 @@ public:
         }
         
         // Reset clipping
-        ctx->SetClipRect(GetBounds());
+        ctx->ClipRect(GetBounds());
         
         // Render scrollbar
         if (style.showScrollbars && maxScrollY > 0) {

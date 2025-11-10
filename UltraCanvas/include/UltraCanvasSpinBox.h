@@ -373,7 +373,7 @@ private:
         Rect2D textArea = GetTextAreaBounds();
         
         // Set clipping for text
-        ctx->SetClipRect(textArea);
+        ctx->ClipRect(textArea);
         
         // Draw text
         ctx->PaintWidthColor(IsEnabled() ? textColor : disabledTextColor);
