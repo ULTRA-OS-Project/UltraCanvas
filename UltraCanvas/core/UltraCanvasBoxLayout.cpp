@@ -85,7 +85,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             items.erase(it);
 
             // Remove from parent container if we have one
-            if (parentContainer) {
+            if (parentContainer && element->GetParentContainer() == parentContainer) {
                 parentContainer->RemoveChild(element);
             }
         }
@@ -120,7 +120,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             items.push_back(std::move(item));
         }
 
-        if (parentContainer && element->GetParentContainer() == nullptr) {
+        if (parentContainer) {
             parentContainer->AddChild(element);
         }
         return itemPtr;

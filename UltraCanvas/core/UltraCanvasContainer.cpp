@@ -455,12 +455,6 @@ namespace UltraCanvas {
 
         // Update layout and scrolling
 
-        if (layout) {
-            layout->InsertUIElement(child, -1);
-        }
-
-        InvalidateLayout();
-
         // Notify callbacks
         if (onChildAdded) {
             onChildAdded(child.get());

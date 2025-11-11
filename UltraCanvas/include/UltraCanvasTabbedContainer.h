@@ -80,6 +80,9 @@ namespace UltraCanvas {
         TabStyle tabStyle = TabStyle::Classic;
         TabCloseMode closeMode = TabCloseMode::NoClose;
 
+        bool tabbarLayoutDirty = true;
+
+
         // ===== OVERFLOW DROPDOWN SETTINGS =====
         OverflowDropdownPosition overflowDropdownPosition = OverflowDropdownPosition::Left;
         bool showOverflowDropdown = true;
@@ -147,6 +150,8 @@ namespace UltraCanvas {
         std::function<void()> onTabBarRightClick;
 
         UltraCanvasTabbedContainer(const std::string& elementId, long uniqueId, long posX, long posY, long w, long h);
+
+        void InvalidateTabbar() { tabbarLayoutDirty = true; RequestRedraw(); };
 
         void SetTabHeight(int th);
         int GetTabHeight() const { return tabHeight; }

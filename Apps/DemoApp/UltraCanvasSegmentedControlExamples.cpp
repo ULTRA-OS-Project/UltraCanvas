@@ -31,7 +31,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(subtitle);
 
         // Status label for feedback
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 5003, 600, 10, 380, 60);
+        auto statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 5003, 570, 10, 350, 60);
         statusLabel->SetText("Click any segment to see selection feedback");
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
@@ -132,7 +132,7 @@ namespace UltraCanvas {
         };
         mainContainer->AddChild(flatControl);
 
-        auto flatDesc = std::make_shared<UltraCanvasLabel>("FlatDesc", 5032, 490, yOffset, 480, 35);
+        auto flatDesc = std::make_shared<UltraCanvasLabel>("FlatDesc", 5032, 490, yOffset, 450, 35);
         flatDesc->SetText("• Modern minimal design\n• Individual rounded segments\n• 4px spacing between segments");
         flatDesc->SetFontSize(10);
         flatDesc->SetTextColor(Color(100, 100, 100, 255));
@@ -234,7 +234,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(textStyleControl);
         mainContainer->AddChild(textStyleControl2);
 
-        auto textStyleDesc = std::make_shared<UltraCanvasLabel>("TextStyleDesc", 5052, 340, yOffset, 660, 32);
+        auto textStyleDesc = std::make_shared<UltraCanvasLabel>("TextStyleDesc", 5052, 340, yOffset, 650, 32);
         textStyleDesc->SetText("• Text editor formatting toolbar\n• Click to enable, click again to disable\n• AllowNoSelection = true");
         textStyleDesc->SetFontSize(10);
         textStyleDesc->SetTextColor(Color(100, 100, 100, 255));
@@ -310,7 +310,7 @@ namespace UltraCanvas {
         };
         mainContainer->AddChild(disabledControl);
 
-        auto disabledDesc = std::make_shared<UltraCanvasLabel>("DisabledDesc", 5072, 660, yOffset, 450, 35);
+        auto disabledDesc = std::make_shared<UltraCanvasLabel>("DisabledDesc", 5072, 660, yOffset, 330, 55);
         disabledDesc->SetText("• Individual segments can be disabled\n• Disabled segments: grayed out, not clickable\n• Keyboard navigation skips disabled segments");
         disabledDesc->SetFontSize(10);
         disabledDesc->SetTextColor(Color(100, 100, 100, 255));
@@ -358,14 +358,14 @@ namespace UltraCanvas {
         // ========================================
         // KEYBOARD NAVIGATION INFO
         // ========================================
-        auto keyboardLabel = std::make_shared<UltraCanvasLabel>("KeyboardNav", 5090, 20, yOffset, 960, 25);
+        auto keyboardLabel = std::make_shared<UltraCanvasLabel>("KeyboardNav", 5090, 20, yOffset, 800, 25);
         keyboardLabel->SetText("⌨️ Keyboard Navigation");
         keyboardLabel->SetFontWeight(FontWeight::Bold);
         keyboardLabel->SetTextColor(Color(50, 100, 200, 255));
         mainContainer->AddChild(keyboardLabel);
         yOffset += 30;
 
-        auto keyboardDesc = std::make_shared<UltraCanvasLabel>("KeyboardDesc", 5091, 50, yOffset, 900, 70);
+        auto keyboardDesc = std::make_shared<UltraCanvasLabel>("KeyboardDesc", 5091, 50, yOffset, 800, 70);
         keyboardDesc->SetText(
                 "• Left/Right Arrow Keys: Navigate between segments\n"
                 "• Up/Down Arrow Keys: Also navigate (alternative)\n"

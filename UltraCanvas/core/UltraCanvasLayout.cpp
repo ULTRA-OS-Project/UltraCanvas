@@ -108,20 +108,4 @@ namespace UltraCanvas {
         }
     }
 
-//    Rect2Di UltraCanvasLayout::GetContentRect(const Rect2Di &containerBounds) const {
-//        auto result = Rect2Di(
-//                marginLeft + paddingLeft,
-//                marginTop + paddingTop,
-//                containerBounds.width - GetTotalMarginHorizontal() - GetTotalPaddingHorizontal(),
-//                containerBounds.height - GetTotalMarginVertical() - GetTotalPaddingVertical()
-//        );
-//        if (parentContainer) {
-//            auto style = parentContainer->GetContainerStyle();
-//            result.x += style.paddingLeft + style.borderWidth;
-//            result.y += style.paddingTop + style.borderWidth;
-//            result.width -= (style.paddingLeft + style.paddingRight + style.borderWidth * 2);
-//            result.height -= (style.paddingTop + style.paddingBottom + style.borderWidth * 2);
-//        }
-//        return result;
-//    }
 } // namespace UltraCanvas

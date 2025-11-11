@@ -84,10 +84,20 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasLabel(const std::string& identifier = "Label",
-                         long id = 0, long x = 0, long y = 0, long w = 100, long h = 25,
+        UltraCanvasLabel(const std::string& identifier,
+                         long id, long x, long y, long w, long h,
                          const std::string& labelText = "")
                 : UltraCanvasUIElement(identifier, id, x, y, w, h), text(labelText) {
+
+            // Initialize style
+            style = LabelStyle::DefaultStyle();
+            SetText(labelText);
+        }
+
+        explicit UltraCanvasLabel(const std::string& identifier = "Label",
+                         long w = 100, long h = 25,
+                         const std::string& labelText = "")
+                : UltraCanvasUIElement(identifier, w, h), text(labelText) {
 
             // Initialize style
             style = LabelStyle::DefaultStyle();

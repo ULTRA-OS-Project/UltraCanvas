@@ -17,34 +17,32 @@ namespace UltraCanvas {
                                                            long posY, long w, long h)
             : UltraCanvasContainer(elementId, uniqueId, posX, posY, w, h) {
         InitializeOverflowDropdown();
-        CalculateLayout();
     }
 
     void UltraCanvasTabbedContainer::SetTabHeight(int th) {
         tabHeight = th;
-        CalculateLayout();
+        InvalidateTabbar();
     }
 
     void UltraCanvasTabbedContainer::SetTabMinWidth(int w) {
         tabMinWidth = w;
-        CalculateLayout();
+        InvalidateTabbar();
     }
 
     void UltraCanvasTabbedContainer::SetTabMaxWidth(int w) {
         tabMaxWidth = w;
-        CalculateLayout();
+        InvalidateTabbar();
     }
 
     void UltraCanvasTabbedContainer::SetOverflowDropdownPosition(OverflowDropdownPosition position) {
         overflowDropdownPosition = position;
         showOverflowDropdown = (position != OverflowDropdownPosition::Off);
-        CalculateLayout();
-        UpdateOverflowDropdownVisibility();
+        InvalidateTabbar();
     }
 
     void UltraCanvasTabbedContainer::SetOverflowDropdownWidth(int width) {
         overflowDropdownWidth = std::max(16, width);
-        CalculateLayout();
+        InvalidateTabbar();
     }
 
     void UltraCanvasTabbedContainer::SetDropdownSearchEnabled(bool enabled) {
@@ -82,13 +80,12 @@ namespace UltraCanvas {
             activeTabIndex = newIndex;
         }
 
-        CalculateLayout();
-        UpdateOverflowDropdown();
-
         if (content) {
             PositionTabContent(newIndex);
             UpdateContentVisibility();
         }
+
+        InvalidateTabbar();
 
         return newIndex;
     }
@@ -124,9 +121,7 @@ namespace UltraCanvas {
 
         if (onTabCloseRequest) onTabCloseRequest(index);
 
-        CalculateLayout();
-        UpdateOverflowDropdown();
-        UpdateContentVisibility();
+        InvalidateTabbar();
     }
 
     void UltraCanvasTabbedContainer::SetActiveTab(int index) {
@@ -135,8 +130,11 @@ namespace UltraCanvas {
         int oldIndex = activeTabIndex;
         activeTabIndex = index;
 
-        EnsureTabVisible(index);
-        UpdateContentVisibility();
+        if (!tabbarLayoutDirty) {
+            EnsureTabVisible(index);
+            CalculateLayout();
+            UpdateContentVisibility();
+        }
 
         if (onTabChange) onTabChange(oldIndex, index);
         if (onTabSelect) onTabSelect(index);
@@ -238,18 +236,6 @@ namespace UltraCanvas {
         PositionOverflowDropdown();
     }
 
-    void UltraCanvasTabbedContainer::UpdateOverflowDropdownVisibility() {
-        if (!showOverflowDropdown) {
-            overflowDropdownVisible = false;
-            if (overflowDropdown) {
-                overflowDropdown->SetVisible(false);
-            }
-            return;
-        }
-
-        UpdateOverflowDropdown();
-    }
-
     bool UltraCanvasTabbedContainer::CheckIfOverflowDropdownNeeded() const {
         if (!showOverflowDropdown || overflowDropdownPosition == OverflowDropdownPosition::Off) {
             return false;
@@ -323,20 +309,29 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
 
+        if (tabbarLayoutDirty) {
+            CalculateLayout();
+            UpdateOverflowDropdown();
+            CalculateLayout();
+            EnsureTabVisible(activeTabIndex);
+            UpdateContentVisibility();
+            tabbarLayoutDirty = false;
+        }
+
         ctx->PushState();
         RenderTabBar(ctx);
-        if (showOverflowDropdown && overflowDropdown) {
-            ctx->PushState();
-            ctx->Translate(GetX(), GetY());
-            overflowDropdown->Render(ctx);
-            ctx->PopState();
-        }
+//        if (overflowDropdownVisible && overflowDropdown) {
+//            ctx->PushState();
+//            ctx->Translate(GetX(), GetY());
+//            overflowDropdown->Render(ctx);
+//            ctx->PopState();
+//        }
         RenderContentArea(ctx);
 
         // Render overflow dropdown (handled automatically by base class)
         // Note: Dropdown is now a child element, so base class will render it
-
         ctx->PopState();
+        UltraCanvasContainer::Render(ctx);
     }
 
     void UltraCanvasTabbedContainer::RenderTabBar(IRenderContext *ctx) {
@@ -910,7 +905,12 @@ namespace UltraCanvas {
                                                    tabScrollOffset + maxVisibleTabs < (int)tabs.size());
 
         // Update overflow dropdown
-        UpdateOverflowDropdownVisibility();
+        if (!showOverflowDropdown) {
+            overflowDropdownVisible = false;
+            if (overflowDropdown) {
+                overflowDropdown->SetVisible(false);
+            }
+        }
 
         // Position all tab content
         for (int i = 0; i < (int)tabs.size(); i++) {
@@ -927,6 +927,7 @@ namespace UltraCanvas {
 
         if (tabScrollOffset != oldOffset) {
             CalculateLayout();
+            RequestRedraw();
         }
     }
 
@@ -963,7 +964,6 @@ namespace UltraCanvas {
         }
 
         tabScrollOffset = std::max(0, std::min(tabScrollOffset, (int)tabs.size() - maxVisibleTabs));
-        CalculateLayout();
     }
 
     void UltraCanvasTabbedContainer::PositionTabContent(int index) {
@@ -989,8 +989,7 @@ namespace UltraCanvas {
         if (index >= 0 && index < (int)tabs.size()) {
             tabs[index]->title = title;
             if (onTabRename) onTabRename(index, title);
-            CalculateLayout();
-            UpdateOverflowDropdown();
+            InvalidateTabbar();
         }
     }
 
@@ -1013,13 +1012,13 @@ namespace UltraCanvas {
                     }
                 }
             }
-            UpdateOverflowDropdown();
+            InvalidateTabbar();
         }
     }
 
     void UltraCanvasTabbedContainer::SetTabPosition(TabPosition position) {
         tabPosition = position;
-        CalculateLayout();
+        InvalidateTabbar();
     }
 
     bool UltraCanvasTabbedContainer::IsTabEnabled(int index) const {
@@ -1031,6 +1030,6 @@ namespace UltraCanvas {
 
     void UltraCanvasTabbedContainer::SetCloseMode(TabCloseMode mode) {
         closeMode = mode;
-        CalculateLayout();
+        InvalidateTabbar();
     }
 }

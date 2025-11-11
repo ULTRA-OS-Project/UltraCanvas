@@ -141,10 +141,18 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
-        UltraCanvasUIElement(const std::string& idstr = "", long id = 0,
-                             int x = 0, int y = 0, int w = 100, int h = 30)
+        UltraCanvasUIElement(const std::string& idstr, long id,
+                             int x, int y, int w, int h)
                 : identifier(idstr),
                   bounds(x, y, w, h),
+                  originalSize(w, h) {
+            stateFlags.Reset();
+        }
+
+        explicit UltraCanvasUIElement(const std::string& idstr = "",
+                             int w = 0, int h = 0)
+                : identifier(idstr),
+                  bounds(0, 0, w, h),
                   originalSize(w, h) {
             stateFlags.Reset();
         }
