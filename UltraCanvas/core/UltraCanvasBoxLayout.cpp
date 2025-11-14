@@ -21,7 +21,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredWidth() const {
             return fixedWidth;
 
         case SizeMode::Auto:
-            return element->GetPreferredWidth();
+            return element->GetPreferredWidth() + element->GetTotalMarginHorizontal();
 
         case SizeMode::Fill:
             return 0; // Will be calculated by layout
@@ -40,7 +40,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             return fixedHeight;
 
         case SizeMode::Auto:
-            return element->GetPreferredHeight();
+            return element->GetPreferredHeight() + element->GetTotalMarginVertical();
 
         case SizeMode::Fill:
             return 0; // Will be calculated by layout
@@ -189,6 +189,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         for (size_t i = 0; i < items.size(); ++i) {
             auto& item = items[i];
             if (!item->IsVisible()) continue;
+            auto crossAxisAlignment = item->GetAlignment();
 
             // Calculate width
             int itemWidth = 0;
@@ -210,7 +211,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             if (item->GetHeightMode() == SizeMode::Fixed) {
                 itemHeight = item->GetFixedHeight();
             } else if (item->GetHeightMode() == SizeMode::Fill ||
-                       crossAxisAlignment == LayoutAlignment::Fill) {
+                       crossAxisAlignment == LayoutItemAlignment::Fill) {
                 itemHeight = availableHeight;
             } else {
                 itemHeight = item->GetPreferredHeight();
@@ -218,19 +219,22 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
 
             itemHeight = std::clamp(itemHeight, item->GetMinimumHeight(), item->GetMaximumHeight());
 
-            // Apply cross-axis alignment
-            ApplyCrossAxisAlignment(item.get(), itemY, availableHeight);
+            if (crossAxisAlignment == LayoutItemAlignment::Center) {
+                itemY += (availableHeight - itemHeight) / 2;
+            } else if (crossAxisAlignment == LayoutItemAlignment::End) {
+                itemY += availableHeight - itemHeight;
+            }
 
             // Set computed geometry
             item->SetComputedGeometry(
                 currentX + item->GetMarginLeft(),
                 itemY + item->GetMarginTop(),
-                itemWidth,
-                itemHeight
+                itemWidth - item->GetTotalMarginHorizontal(),
+                itemHeight - item->GetTotalMarginVertical()
             );
 
             // Move to next position
-            currentX += itemWidth + item->GetTotalMarginHorizontal();
+            currentX += itemWidth;
             if (i < items.size() - 1) {
                 currentX += spacing;
             }
@@ -273,6 +277,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
 
         for (size_t i = 0; i < items.size(); ++i) {
             auto& item = items[i];
+            auto crossAxisAlignment = item->GetAlignment();
             if (!item->IsVisible()) continue;
 
             // Calculate height
@@ -295,7 +300,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             if (item->GetWidthMode() == SizeMode::Fixed) {
                 itemWidth = item->GetFixedWidth();
             } else if (item->GetWidthMode() == SizeMode::Fill ||
-                       crossAxisAlignment == LayoutAlignment::Fill) {
+                       crossAxisAlignment == LayoutItemAlignment::Fill) {
                 itemWidth = availableWidth;
             } else {
                 itemWidth = item->GetPreferredWidth();
@@ -304,9 +309,9 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             itemWidth = std::clamp(itemWidth, item->GetMinimumWidth(), item->GetMaximumWidth());
 
             // Apply cross-axis alignment for width
-            if (crossAxisAlignment == LayoutAlignment::Center) {
+            if (crossAxisAlignment == LayoutItemAlignment::Center) {
                 itemX += (availableWidth - itemWidth) / 2;
-            } else if (crossAxisAlignment == LayoutAlignment::End) {
+            } else if (crossAxisAlignment == LayoutItemAlignment::End) {
                 itemX += availableWidth - itemWidth;
             }
 
@@ -314,12 +319,12 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             item->SetComputedGeometry(
                 itemX + item->GetMarginLeft(),
                 currentY + item->GetMarginTop(),
-                itemWidth,
-                itemHeight
+                itemWidth - item->GetTotalMarginHorizontal(),
+                itemHeight - item->GetTotalMarginVertical()
             );
 
             // Move to next position
-            currentY += itemHeight + item->GetTotalMarginVertical();
+            currentY += itemHeight;
             if (i < items.size() - 1) {
                 currentY += spacing;
             }
@@ -344,31 +349,6 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         }
     }
 
-    void UltraCanvasBoxLayout::ApplyCrossAxisAlignment(UltraCanvasBoxLayoutItem* item,
-                                                       int crossStart, int crossSize) {
-        if (!item) return;
-
-        int itemCrossSize = (direction == BoxLayoutDirection::Horizontal) ?
-                              item->GetComputedHeight() : item->GetComputedWidth();
-
-        int offset = 0;
-        if (crossAxisAlignment == LayoutAlignment::Center) {
-            offset = (crossSize - itemCrossSize) / 2;
-        } else if (crossAxisAlignment == LayoutAlignment::End) {
-            offset = crossSize - itemCrossSize;
-        }
-
-        if (direction == BoxLayoutDirection::Horizontal) {
-            int y = crossStart + offset;
-            item->SetComputedGeometry(item->GetComputedX(), y,
-                                     item->GetComputedWidth(), item->GetComputedHeight());
-        } else {
-            int x = crossStart + offset;
-            item->SetComputedGeometry(x, item->GetComputedY(),
-                                     item->GetComputedWidth(), item->GetComputedHeight());
-        }
-    }
-
     float UltraCanvasBoxLayout::CalculateTotalStretch() const {
         float total = 0;
         for (const auto& item : items) {
@@ -389,12 +369,10 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
                 if (item->GetWidthMode() == SizeMode::Fixed || item->GetStretch() == 0) {
                     total += item->GetPreferredWidth();
                 }
-                total += item->GetTotalMarginHorizontal();
             } else {
                 if (item->GetHeightMode() == SizeMode::Fixed || item->GetStretch() == 0) {
                     total += item->GetPreferredHeight();
                 }
-                total += item->GetTotalMarginVertical();
             }
         }
 
@@ -444,21 +422,18 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         if (direction == BoxLayoutDirection::Horizontal) {
             for (const auto& item : items) {
                 if (!item->IsVisible()) continue;
-                width += item->GetPreferredWidth() + item->GetTotalMarginHorizontal();
-                height = std::max(height, item->GetPreferredHeight() + item->GetTotalMarginVertical());
+                width += item->GetPreferredWidth();
+                height = std::max(height, item->GetPreferredHeight());
             }
             width += CalculateTotalSpacing();
         } else {
             for (const auto& item : items) {
                 if (!item->IsVisible()) continue;
-                height += item->GetPreferredHeight() + item->GetTotalMarginVertical();
-                width = std::max(width, item->GetPreferredWidth() + item->GetTotalMarginHorizontal());
+                height += item->GetPreferredHeight();
+                width = std::max(width, item->GetPreferredWidth());
             }
             height += CalculateTotalSpacing();
         }
-
-//        width += GetTotalPaddingHorizontal() + GetTotalMarginHorizontal();
-//        height += GetTotalPaddingVertical() + GetTotalMarginVertical();
 
         return Size2Di(width, height);
     }

@@ -27,7 +27,7 @@ int UltraCanvasFlexLayoutItem::GetPreferredWidth() const {
 
         case SizeMode::Auto:
             if (element) {
-                return element->GetWidth();
+                return element->GetWidth() + element->GetTotalMarginHorizontal();
             }
             return 0;
 
@@ -53,7 +53,7 @@ int UltraCanvasFlexLayoutItem::GetPreferredHeight() const {
 
         case SizeMode::Auto:
             if (element) {
-                return element->GetHeight();
+                return element->GetHeight() + element->GetTotalMarginVertical();
             }
             return 0;
 

@@ -90,10 +90,11 @@ namespace UltraCanvas {
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetText("Demo Title");
         titleLabel->SetAutoResize(true);
+        titleLabel->SetMargin(2,0,0,0);
         //AddChild(titleLabel);
 
         // Create documentation button (right side)
-        docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", id + 3, width - 90, 5, 21, 28);
+        docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", id + 3, width - 90, 5, 21, 21);
         docButton->LoadFromFile("assets/icons/text.png");
         docButton->SetVisible(false);  // Initially disabled
         docButton->SetClickable(true);
@@ -125,11 +126,11 @@ namespace UltraCanvas {
 
         auto headerLayout = CreateHBoxLayout(this);
         headerLayout->SetSpacing(10);
-        headerLayout->AddUIElement(titleLabel);
+        headerLayout->AddUIElement(titleLabel)->SetAlignment(LayoutItemAlignment::Center);
         headerLayout->AddStretch(1);
-        headerLayout->AddUIElement(docButton);
+        headerLayout->AddUIElement(docButton)->SetAlignment(LayoutItemAlignment::Center);
         headerLayout->AddSpacing(3);
-        headerLayout->AddUIElement(sourceButton);
+        headerLayout->AddUIElement(sourceButton)->SetAlignment(LayoutItemAlignment::Center);
         headerLayout->AddSpacing(7);
     }
 
@@ -571,23 +572,23 @@ namespace UltraCanvas {
                               "Docs/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "PNG/JPEG Display");
         bitmapBuilder.AddItem("gifimages", "GIF Images", "GIF Image display and manipulation",
-                              ImplementationStatus::NotImplemented,
+                              ImplementationStatus::PartiallyImplemented,
                               [this]() { return CreateBitmapNotImplementedExamples("GIF"); });
         bitmapBuilder.AddItem("avifimages", "AVIF Images", "AVIF Image display and manipulation",
-                              ImplementationStatus::NotImplemented,
+                              ImplementationStatus::PartiallyImplemented,
                               [this]() { return CreateBitmapNotImplementedExamples("AVIF"); });
         bitmapBuilder.AddItem("tiffimages", "TIFF Images", "TIFF Image display and manipulation",
-                              ImplementationStatus::NotImplemented,
+                              ImplementationStatus::PartiallyImplemented,
                               [this]() { return CreateBitmapNotImplementedExamples("TIFF"); });
         bitmapBuilder.AddItem("webpimages", "WEBP Images", "WEBP Image display and manipulation",
-                              ImplementationStatus::NotImplemented,
+                              ImplementationStatus::PartiallyImplemented,
                               [this]() { return CreateBitmapNotImplementedExamples("WEBP"); });
         bitmapBuilder.AddItem("qoiimages", "QOI Images", "QOI Image display and manipulation",
-                              ImplementationStatus::NotImplemented,
+                              ImplementationStatus::PartiallyImplemented,
                               [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
         bitmapBuilder.AddItem("rawimages", "RAW Images", "RAW Image display and manipulation",
-                              ImplementationStatus::NotImplemented,
-                              [this]() { return CreateBitmapNotImplementedExamples("TIFF"); });
+                              ImplementationStatus::PartiallyImplemented,
+                              [this]() { return CreateBitmapNotImplementedExamples("RAW"); });
 
         // ===== VECTOR ELEMENTS =====
         auto vectorBuilder = DemoCategoryBuilder(this, DemoCategory::VectorElements);
@@ -608,6 +609,92 @@ namespace UltraCanvas {
         vectorBuilder.AddItem("drawing", "Drawing Surface", "Vector drawing and primitives",
                               ImplementationStatus::NotImplemented,
                               [this]() { return CreateVectorExamples(); });
+
+        // ===== CHARTS =====
+        auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
+
+        chartBuilder.AddItem("linecharts", "Line Chart", "Line chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateLineChartsExamples(); },
+                             "Examples/UltraCanvasBasicChartsExamples.cpp",
+                             "Docs/UltraCanvasLineChartElement.md");
+
+        chartBuilder.AddItem("barcharts", "Bar Chart", "Bar chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateBarChartsExamples(); },
+                             "Examples/UltraCanvasBasicChartsExamples.cpp",
+                             "Docs/UltraCanvasBarChartElement.md");
+
+        chartBuilder.AddItem("scattercharts", "Scatter Plot Chart", "Scatter plot chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateScatterPlotChartsExamples(); },
+                             "Examples/UltraCanvasBasicChartsExamples.cpp",
+                             "Docs/UltraCanvasScatterPlotElement.md");
+
+        chartBuilder.AddItem("areacharts", "Area Chart", "Area chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateAreaChartsExamples(); },
+                             "Examples/UltraCanvasBasicChartsExamples.cpp",
+                             "Docs/UltraCanvasAreaChartElement.md");
+
+        chartBuilder.AddItem("financialcharts", "Financial Chart", "Stock market OHLC and candlestick charts",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateFinancialChartExamples(); },
+                             "Examples/UltraCanvasFinancialChartExamples.cpp",
+                             "Docs/UltraCanvasFinancialChart.md")
+                .AddVariant("financialcharts", "Candlestick Chart")
+                .AddVariant("financialcharts", "OHLC Bar Chart")
+                .AddVariant("financialcharts", "Heikin-Ashi Chart")
+                .AddVariant("financialcharts", "Volume Analysis")
+                .AddVariant("financialcharts", "Multi-Market View");
+
+        chartBuilder.AddItem("divergingcharts", "Diverging Bar Charts", "Likert scale and population pyramid charts",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateDivergingChartExamples(); },
+                             "Examples/UltraCanvasDivergingChartExamples.cpp",
+                             "Docs/UltraCanvasDivergingChartExamples.md")
+                .AddVariant("divergingcharts", "Likert Scale")
+                .AddVariant("divergingcharts", "Population Pyramid")
+                .AddVariant("divergingcharts", "Tornado Chart");
+
+        chartBuilder.AddItem("waterfallcharts", "Waterfall Charts", "Cumulative flow visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateWaterfallChartExamples(); },
+                             "Examples/UltraCanvasWatefallChartExamples.cpp",
+                             "Docs/UltraCanvasWatefallChartExamples.md")
+                .AddVariant("waterfallcharts", "Revenue Flow")
+                .AddVariant("waterfallcharts", "Cash Flow with Subtotals")
+                .AddVariant("waterfallcharts", "Performance Impact");
+
+        chartBuilder.AddItem("populationcharts", "Population Chart", "Population chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreatePopulationChartExamples(); },
+                             "Examples/UltraCanvasPopulationChartsExamples.cpp",
+                             "Docs/UltraCanvasPopulationChartElement.md");
+
+        chartBuilder.AddItem("sunburstcharts", "Sunburst Chart", "Sunburst Chart",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return nullptr; });
+
+        chartBuilder.AddItem("ganttcharts", "Gantt Chart", "Gantt Chart",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return nullptr; });
+
+        chartBuilder.AddItem("quadrantcharts", "Quadrant Chart", "Quadrant Chart",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return nullptr; });
+
+        chartBuilder.AddItem("circularcharts", "Circular Chart", "Circular Chart",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return nullptr; });
+
+        chartBuilder.AddItem("polarcharts", "Polar Chart", "Polar Chart",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return nullptr; });
+
+        chartBuilder.AddItem("flowchart", "Jitter plot", "Jitter plot",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return nullptr; });
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
@@ -650,92 +737,6 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return nullptr; });
 
-        // ===== CHARTS =====
-        auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
-
-        chartBuilder.AddItem("linecharts", "Line Chart", "Line chart data visualization",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateLineChartsExamples(); },
-                            "Examples/UltraCanvasBasicChartsExamples.cpp",
-                            "Docs/UltraCanvasLineChartElement.md");
-
-        chartBuilder.AddItem("barcharts", "Bar Chart", "Bar chart data visualization",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateBarChartsExamples(); },
-                             "Examples/UltraCanvasBasicChartsExamples.cpp",
-                             "Docs/UltraCanvasBarChartElement.md");
-
-        chartBuilder.AddItem("scattercharts", "Scatter Plot Chart", "Scatter plot chart data visualization",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateScatterPlotChartsExamples(); },
-                             "Examples/UltraCanvasBasicChartsExamples.cpp",
-                             "Docs/UltraCanvasScatterPlotElement.md");
-
-        chartBuilder.AddItem("areacharts", "Area Chart", "Area chart data visualization",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateAreaChartsExamples(); },
-                             "Examples/UltraCanvasBasicChartsExamples.cpp",
-                             "Docs/UltraCanvasAreaChartElement.md");
-
-        chartBuilder.AddItem("financialcharts", "Financial Chart", "Stock market OHLC and candlestick charts",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateFinancialChartExamples(); },
-                             "Examples/UltraCanvasFinancialChartExamples.cpp",
-                             "Docs/UltraCanvasFinancialChart.md")
-                .AddVariant("financialcharts", "Candlestick Chart")
-                .AddVariant("financialcharts", "OHLC Bar Chart")
-                .AddVariant("financialcharts", "Heikin-Ashi Chart")
-                .AddVariant("financialcharts", "Volume Analysis")
-                .AddVariant("financialcharts", "Multi-Market View");
-
-        chartBuilder.AddItem("divergingcharts", "Diverging Bar Charts", "Likert scale and population pyramid charts",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateDivergingChartExamples(); },
-                            "Examples/UltraCanvasDivergingChartExamples.cpp",
-                            "Docs/UltraCanvasDivergingChartExamples.md")
-                .AddVariant("divergingcharts", "Likert Scale")
-                .AddVariant("divergingcharts", "Population Pyramid")
-                .AddVariant("divergingcharts", "Tornado Chart");
-
-        chartBuilder.AddItem("waterfallcharts", "Waterfall Charts", "Cumulative flow visualization",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateWaterfallChartExamples(); },
-                            "Examples/UltraCanvasWatefallChartExamples.cpp",
-                            "Docs/UltraCanvasWatefallChartExamples.md")
-                .AddVariant("waterfallcharts", "Revenue Flow")
-                .AddVariant("waterfallcharts", "Cash Flow with Subtotals")
-                .AddVariant("waterfallcharts", "Performance Impact");
-
-        chartBuilder.AddItem("populationcharts", "Population Chart", "Population chart data visualization",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreatePopulationChartExamples(); },
-                             "Examples/UltraCanvasPopulationChartsExamples.cpp",
-                             "Docs/UltraCanvasPopulationChartElement.md");
-
-        chartBuilder.AddItem("sunburstcharts", "Sunburst Chart", "Sunburst Chart",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return nullptr; });
-
-        chartBuilder.AddItem("ganttcharts", "Gantt Chart", "Gantt Chart",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return nullptr; });
-
-        chartBuilder.AddItem("quadrantcharts", "Quadrant Chart", "Quadrant Chart",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return nullptr; });
-
-        chartBuilder.AddItem("circularcharts", "Circular Chart", "Circular Chart",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return nullptr; });
-
-        chartBuilder.AddItem("polarcharts", "Polar Chart", "Polar Chart",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return nullptr; });
-
-        chartBuilder.AddItem("flowchart", "Jitter plot", "Jitter plot",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return nullptr; });
-
         // ===== INFO GRAPHICS =====
         auto infoBuilder = DemoCategoryBuilder(this, DemoCategory::InfoGraphics);
 
@@ -746,7 +747,7 @@ namespace UltraCanvas {
                 .AddVariant("infographics", "Statistical Displays")
                 .AddVariant("infographics", "Interactive Maps");
 
-        infoBuilder.AddItem("infographics", "Heat map", "Heat map",
+        infoBuilder.AddItem("heatmap", "Heat map", "Heat map",
                             ImplementationStatus::NotImplemented,
                             [this]() { return CreateInfoGraphicsExamples(); });
 
@@ -803,20 +804,26 @@ namespace UltraCanvas {
 
         toolsBuilder.AddItem("qrcode", "QR code", "QR code scanner",
                              ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreateQRCodeExamples(); });
+                             [this]() { return CreatePartiallyImplementedExamples("## QR code"); });
 
+        toolsBuilder.AddItem("barcode", "Bar code", "Bar code",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("## Bar code"); });
 
-        toolsBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePixeLXExamples(); });
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
+        modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePixeLXExamples(); });
         modulesBuilder.AddItem("fileloader", "File Loader", "File Loader",
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreateFileLoaderExamples(); });
-        modulesBuilder.AddItem("qrcode", "GPIO support", "GPIO support",
+        modulesBuilder.AddItem("gpio", "GPIO support", "GPIO support",
                              ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreateGPIOExamples(); });
+                             [this]() { return CreatePartiallyImplementedExamples("## GPIO support"); });
+        modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateIODeviceManagerExamples(); });
 
         std::cout << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
@@ -829,13 +836,13 @@ namespace UltraCanvas {
         TreeNode* rootNode = categoryTreeView->SetRootNode(rootData);
 
         // Add category nodes
-        std::map<DemoCategory, std::string> categoryNames = {
+        std::vector<std::pair<DemoCategory, std::string>> categoryNames = {
                 {DemoCategory::BasicUI, "Basic UI Elements"},
                 {DemoCategory::ExtendedFunctionality, "Extended Functionality"},
                 {DemoCategory::BitmapElements, "Bitmap Elements"},
                 {DemoCategory::VectorElements, "Vector Graphics"},
-                {DemoCategory::Diagrams, "Diagrams"},
                 {DemoCategory::Charts, "Charts"},
+                {DemoCategory::Diagrams, "Diagrams"},
                 {DemoCategory::InfoGraphics, "Info Graphics"},
                 {DemoCategory::Graphics3D, "3D Graphics"},
                 {DemoCategory::VideoElements, "Video Elements"},
@@ -845,11 +852,13 @@ namespace UltraCanvas {
                 {DemoCategory::Modules, "Modules"}
         };
 
-        for (const auto& [category, items] : categoryItems) {
+
+        for (const auto& [category, catName] : categoryNames) {
             TreeNodeData categoryData(
                     "cat_" + std::to_string(static_cast<int>(category)),
-                    categoryNames[category]
+                    catName
             );
+            auto items = categoryItems[category];
             categoryData.leftIcon = TreeNodeIcon("assets/icons/folder.png", 16, 16);
             TreeNode* categoryNode = categoryTreeView->AddNode("root", categoryData);
 
@@ -866,6 +875,9 @@ namespace UltraCanvas {
         // Expand root node
         rootNode->Expand();
         rootNode->FirstChild()->Expand();
+        rootNode->FirstChild()->FirstChild()->Expand();
+        categoryTreeView->SelectNode(rootNode->FirstChild()->FirstChild());
+        OnTreeNodeSelected(rootNode->FirstChild()->FirstChild());
     }
 
 // ===== EVENT HANDLERS =====
@@ -914,6 +926,7 @@ namespace UltraCanvas {
             placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
             placeholder->SetBorders(2.0f);
             placeholder->SetBordersColor(Color(200, 200, 0, 255));
+            placeholder->SetPadding(10);
 
             displayContainer->AddChild(placeholder);
             currentDisplayElement = placeholder;

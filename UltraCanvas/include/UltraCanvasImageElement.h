@@ -169,6 +169,11 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateImageElement(
     return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, id, x, y, w, h);
 }
 
+inline std::shared_ptr<UltraCanvasImageElement> CreateImageElement(
+        const std::string& identifier, long w = 0, long h = 0) {
+    return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, 0, 0, 0, w, h);
+}
+
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromFile(
     const std::string& identifier, long id, long x, long y, long w, long h, const std::string& imagePath) {
     auto image = CreateImageElement(identifier, id, x, y, w, h);

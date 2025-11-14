@@ -229,6 +229,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTextDocumentExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateMarkdownExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateCodeEditorExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreatePartiallyImplementedExamples(const std::string& text);
 
         // Media Elements
         std::shared_ptr<UltraCanvasUIElement> CreateAudioExamples();
@@ -257,7 +258,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateQRCodeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGPIOExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateScannerSupportExamples();
-
+        std::shared_ptr<UltraCanvasUIElement> CreateIODeviceManagerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLayoutExamples();
 
         // ===== APPLICATION LIFECYCLE =====

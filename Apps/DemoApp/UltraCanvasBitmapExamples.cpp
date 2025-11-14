@@ -17,7 +17,7 @@ namespace UltraCanvas {
 
 // ===== HELPER FUNCTION FOR IMAGE INFO DISPLAY =====
     std::shared_ptr<UltraCanvasLabel> CreateImageInfoLabel(const std::string& id, int x, int y, const std::string& format, const std::string& details) {
-        auto label = std::make_shared<UltraCanvasLabel>(id, 0, x, y, 350, 110);
+        auto label = std::make_shared<UltraCanvasLabel>(id, 0, x, y, 0, 0);
         std::ostringstream info;
         info << "Format: " << format << "\n";
         info << details;
@@ -27,12 +27,13 @@ namespace UltraCanvas {
         label->SetBackgroundColor(Color(245, 245, 245, 255));
         label->SetBorders(1.0f);
         label->SetPadding(8.0f);
+        label->SetAutoResize(true);
         return label;
     }
 
 // ===== PNG DEMO PAGE =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePNGExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("PNGDemoPage", 1510, 0, 0, 950, 600);
+        auto container = std::make_shared<UltraCanvasContainer>("PNGDemoPage", 1510, 0, 0, 950, 800);
         container->SetBackgroundColor(Color(255, 255, 255, 255));
 
         // Page Title
@@ -84,38 +85,40 @@ namespace UltraCanvas {
         // Background Pattern for Transparency Demo
         auto bgPattern = std::make_shared<UltraCanvasContainer>("BGPattern", 1518, 10, 70, 300, 100);
         // Transparent PNG overlay
+        auto notransImage = std::make_shared<UltraCanvasImageElement>("NoTransPNG", 1519, 0, 0, 100, 100);
+        notransImage->LoadFromFile("assets/images/ship.jpg");
+        notransImage->SetScaleMode(ImageScaleMode::Stretch);
+
         auto transImage = std::make_shared<UltraCanvasImageElement>("TransPNG", 1519, 0, 0, 100, 100);
         transImage->LoadFromFile("assets/images/transparent_overlay.png");
+        bgPattern->AddChild(notransImage);
         bgPattern->AddChild(transImage);
 
-        auto notransImage = std::make_shared<UltraCanvasImageElement>("NoTransPNG", 1519, 120, 0, 100, 100);
-        notransImage->LoadFromFile("assets/images/ship.jpg");
-        bgPattern->AddChild(notransImage);
 
         propsPanel->AddChild(bgPattern);
 
         // Alpha Channel Control
-        auto alphaLabel = std::make_shared<UltraCanvasLabel>("AlphaLabel", 1520, 10, 180, 100, 20);
+        auto alphaLabel = std::make_shared<UltraCanvasLabel>("AlphaLabel", 1520, 25, 490, 100, 20);
         alphaLabel->SetText("Opacity:");
         alphaLabel->SetFontSize(12);
-        propsPanel->AddChild(alphaLabel);
+        container->AddChild(alphaLabel);
 
-        auto alphaSlider = std::make_shared<UltraCanvasSlider>("AlphaSlider", 1521, 80, 180, 200, 25);
+        auto alphaSlider = std::make_shared<UltraCanvasSlider>("AlphaSlider", 1521, 125, 490, 200, 25);
         alphaSlider->SetRange(0, 100);
         alphaSlider->SetValue(100);
         alphaSlider->onValueChanged = [pngImage, transImage](float value) {
             pngImage->SetOpacity(value / 100.0f);
             transImage->SetOpacity(value / 100.0f);
         };
-        propsPanel->AddChild(alphaSlider);
+        container->AddChild(alphaSlider);
 
         // Scale Mode Options
-        auto scaleModeLabel = std::make_shared<UltraCanvasLabel>("ScaleModeLabel", 1522, 10, 215, 100, 20);
+        auto scaleModeLabel = std::make_shared<UltraCanvasLabel>("ScaleModeLabel", 1522, 25, 525, 100, 20);
         scaleModeLabel->SetText("Scale Mode:");
         scaleModeLabel->SetFontSize(12);
-        propsPanel->AddChild(scaleModeLabel);
+        container->AddChild(scaleModeLabel);
 
-        auto scaleModeDropdown = std::make_shared<UltraCanvasDropdown>("ScaleModeDropdown", 1523, 110, 215, 150, 25);
+        auto scaleModeDropdown = std::make_shared<UltraCanvasDropdown>("ScaleModeDropdown", 1523, 125, 525, 150, 25);
         scaleModeDropdown->AddItem("No Scale");
         scaleModeDropdown->AddItem("Stretch");
         scaleModeDropdown->AddItem("Uniform");
@@ -125,10 +128,10 @@ namespace UltraCanvas {
         scaleModeDropdown->onSelectionChanged = [pngImage](int index, const DropdownItem& item) {
             pngImage->SetScaleMode(static_cast<ImageScaleMode>(index));
         };
-        propsPanel->AddChild(scaleModeDropdown);
+        container->AddChild(scaleModeDropdown);
 
         // PNG Format Info
-        auto formatInfo = CreateImageInfoLabel("PNGFormatInfo", 10, 250,
+        auto formatInfo = CreateImageInfoLabel("PNGFormatInfo", 10, 200,
                                                "PNG (Portable Network Graphics)",
                                                "• Lossless compression\n"
                                                "• Full alpha channel support\n"
@@ -141,27 +144,27 @@ namespace UltraCanvas {
         container->AddChild(propsPanel);
 
         // Load Different PNG Examples
-        auto examplesLabel = std::make_shared<UltraCanvasLabel>("ExamplesLabel", 1524, 10, 495, 200, 20);
+        auto examplesLabel = std::make_shared<UltraCanvasLabel>("ExamplesLabel", 1524, 10, 595, 200, 20);
         examplesLabel->SetText("PNG Examples:");
         examplesLabel->SetFontSize(12);
         examplesLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(examplesLabel);
 
-        auto btnIcon = std::make_shared<UltraCanvasButton>("BtnIcon", 1525, 10, 520, 100, 30);
+        auto btnIcon = std::make_shared<UltraCanvasButton>("BtnIcon", 1525, 10, 620, 100, 30);
         btnIcon->SetText("Load Icon");
         btnIcon->onClick = [pngImage]() {
             pngImage->LoadFromFile("assets/images/png_68.png");
         };
         container->AddChild(btnIcon);
 
-        auto btnLogo = std::make_shared<UltraCanvasButton>("BtnLogo", 1526, 120, 520, 100, 30);
+        auto btnLogo = std::make_shared<UltraCanvasButton>("BtnLogo", 1526, 120, 620, 100, 30);
         btnLogo->SetText("Load Logo");
         btnLogo->onClick = [pngImage]() {
             pngImage->LoadFromFile("assets/images/logo_transparent.png");
         };
         container->AddChild(btnLogo);
 
-        auto btnScreenshot = std::make_shared<UltraCanvasButton>("BtnScreenshot", 1527, 230, 520, 150, 30);
+        auto btnScreenshot = std::make_shared<UltraCanvasButton>("BtnScreenshot", 1527, 230, 620, 150, 30);
         btnScreenshot->SetText("Load Screenshot");
         btnScreenshot->onClick = [pngImage]() {
             pngImage->LoadFromFile("assets/images/screenshot.png");
@@ -173,11 +176,11 @@ namespace UltraCanvas {
 
 // ===== JPEG/JPG DEMO PAGE =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateJPEGExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("JPEGDemoPage", 1530, 0, 0, 950, 600);
-        container->SetBackgroundColor(Colors::LightGray);
+        auto container = std::make_shared<UltraCanvasContainer>("JPEGDemoPage", 1530, 0, 0, 950, 560);
+        //container->SetBackgroundColor(Colors::LightGray);
 
         // Page Title
-        auto title = std::make_shared<UltraCanvasLabel>("JPEGTitle", 1531, 10, 10, 400, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("JPEGTitle", 1531, 20, 10, 400, 35);
         title->SetText("JPEG/JPG Format Demonstration");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -185,7 +188,7 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // Format Description
-        auto description = std::make_shared<UltraCanvasLabel>("JPEGDesc", 1532, 10, 50, 930, 60);
+        auto description = std::make_shared<UltraCanvasLabel>("JPEGDesc", 1532, 20, 50, 920, 60);
         description->SetText("JPEG (Joint Photographic Experts Group) is a lossy compression format optimized for photographs. "
                              "It achieves small file sizes by selectively discarding image data that's less noticeable to the human eye. "
                              "JPEG is ideal for photos and complex images with gradients but not for images with sharp edges or text.");
@@ -195,12 +198,12 @@ namespace UltraCanvas {
         container->AddChild(description);
 
         // Image Display Area
-        auto imageContainer = std::make_shared<UltraCanvasContainer>("JPEGImageContainer", 1533, 10, 120, 450, 350);
-        container->SetBorders(2, Colors::LightGray);
-        container->SetBackgroundColor(Color(240, 240, 240, 255));
+        auto imageContainer = std::make_shared<UltraCanvasContainer>("JPEGImageContainer", 1533, 20, 120, 450, 350);
+//        container->SetBorders(2, Colors::LightGray);
+//        container->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // Main JPEG Image
-        auto jpegImage = std::make_shared<UltraCanvasImageElement>("JPEGMainImage", 1534, 25, 25, 400, 300);
+        auto jpegImage = std::make_shared<UltraCanvasImageElement>("JPEGMainImage", 1534, 0, 25, 420, 320);
         jpegImage->LoadFromFile("assets/images/sample_photo.jpg");
         jpegImage->SetScaleMode(ImageScaleMode::Uniform);
         imageContainer->AddChild(jpegImage);
@@ -208,7 +211,7 @@ namespace UltraCanvas {
         container->AddChild(imageContainer);
 
         // Image Properties Panel
-        auto propsPanel = std::make_shared<UltraCanvasContainer>("JPEGPropsPanel", 1535, 480, 120, 450, 350);
+        auto propsPanel = std::make_shared<UltraCanvasContainer>("JPEGPropsPanel", 1535, 480, 120, 450, 400);
 
         auto propsTitle = std::make_shared<UltraCanvasLabel>("JPEGPropsTitle", 1536, 10, 10, 250, 25);
         propsTitle->SetText("JPEG Properties & Features");
@@ -266,7 +269,7 @@ namespace UltraCanvas {
         propsPanel->AddChild(scaleSlider);
 
         // JPEG Format Info
-        auto formatInfo = CreateImageInfoLabel("JPEGFormatInfo", 10, 230,
+        auto formatInfo = CreateImageInfoLabel("JPEGFormatInfo", 10, 180,
                                                "JPEG/JPG (Joint Photographic Experts Group)",
                                                "• Lossy compression\n"
                                                "• No transparency support\n"
@@ -279,20 +282,20 @@ namespace UltraCanvas {
         container->AddChild(propsPanel);
 
         // Load Different JPEG Examples
-        auto examplesLabel = std::make_shared<UltraCanvasLabel>("JPEGExamplesLabel", 1550, 10, 480, 200, 20);
+        auto examplesLabel = std::make_shared<UltraCanvasLabel>("JPEGExamplesLabel", 1550, 20, 480, 200, 20);
         examplesLabel->SetText("JPEG Examples:");
         examplesLabel->SetFontSize(12);
         examplesLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(examplesLabel);
 
-        auto btnPhoto = std::make_shared<UltraCanvasButton>("BtnPhoto", 1551, 10, 505, 100, 30);
+        auto btnPhoto = std::make_shared<UltraCanvasButton>("BtnPhoto", 1551, 20, 505, 120, 30);
         btnPhoto->SetText("Load Photo");
         btnPhoto->onClick = [jpegImage]() {
             jpegImage->LoadFromFile("assets/images/landscape.jpg");
         };
         container->AddChild(btnPhoto);
 
-        auto btnPortrait = std::make_shared<UltraCanvasButton>("BtnPortrait", 1552, 120, 505, 100, 30);
+        auto btnPortrait = std::make_shared<UltraCanvasButton>("BtnPortrait", 1552, 160, 505, 120, 30);
         btnPortrait->SetText("Load Portrait");
         btnPortrait->onClick = [jpegImage]() {
             jpegImage->LoadFromFile("assets/images/portrait.jpg");

@@ -275,9 +275,9 @@ namespace UltraCanvas {
         // Handle mouse events on scrollbars
         if (event.type == UCEventType::MouseDown) {
             // Check vertical scrollbar
-            std::cout << " Vsb contains=" << verticalScrollbarRect.Contains(mousePos)
-                << "rect (" << verticalScrollbarRect.x << ", " << verticalScrollbarRect.y << " " << verticalScrollbarRect.width << "x" << verticalScrollbarRect.height << ")"
-                << " ev x=" << event.x << " y=" << event.y << std::endl;
+//            std::cout << " Vsb contains=" << verticalScrollbarRect.Contains(mousePos)
+//                << "rect (" << verticalScrollbarRect.x << ", " << verticalScrollbarRect.y << " " << verticalScrollbarRect.width << "x" << verticalScrollbarRect.height << ")"
+//                << " ev x=" << event.x << " y=" << event.y << std::endl;
             if (scrollState.showVerticalScrollbar && verticalScrollbarRect.Contains(mousePos)) {
                 if (verticalThumbRect.Contains(mousePos)) {
                     UltraCanvasApplication::GetInstance()->CaptureMouse(this);
@@ -288,7 +288,7 @@ namespace UltraCanvas {
                     return true;
                 } else {
                     // Clicked on track - page scroll
-                    int clickPosition = (mousePos.y - verticalScrollbarRect.y) / verticalScrollbarRect.height;
+                    float clickPosition = static_cast<float>(mousePos.y - verticalScrollbarRect.y) / verticalScrollbarRect.height;
                     int targetPosition = clickPosition * scrollState.maxVerticalScroll;
                     SetVerticalScrollPosition(targetPosition);
                     return true;
@@ -325,16 +325,16 @@ namespace UltraCanvas {
             // Handle scrollbar dragging
             if (scrollState.draggingVertical) {
                 int deltaY = event.y - scrollState.dragStartMouse.y;
-                //int scrollDelta = deltaY * scrollState.maxVerticalScroll / verticalScrollbarRect.height;
-                int scrollDelta = deltaY;
+                int scrollDelta = std::max(deltaY, deltaY * scrollState.maxVerticalScroll / verticalScrollbarRect.height);
+                //int scrollDelta = deltaY;
                 SetVerticalScrollPosition(scrollState.dragStartScroll + scrollDelta);
                 return true;
             }
 
             if (scrollState.draggingHorizontal) {
                 int deltaX = event.x - scrollState.dragStartMouse.x;
-                //int scrollDelta = (deltaX / horizontalScrollbarRect.width) * scrollState.maxHorizontalScroll;
-                int scrollDelta = deltaX;
+                int scrollDelta = std::max(deltaX, deltaX * scrollState.maxHorizontalScroll / horizontalScrollbarRect.width);
+                //int scrollDelta = deltaX;
                 SetHorizontalScrollPosition(scrollState.dragStartScroll + scrollDelta);
                 return true;
             }

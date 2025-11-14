@@ -24,10 +24,7 @@ enum class LayoutAlignment {
     Start = 0,        // Left/Top
     Center = 1,       // Center
     End = 2,          // Right/Bottom
-    Fill = 3,         // Fill available space
-    SpaceBetween = 4, // Space evenly between items
-    SpaceAround = 5,  // Space around items
-    SpaceEvenly = 6   // Equal space between and around
+    Fill = 3         // Fill available space
 };
 
 enum class LayoutItemAlignment {

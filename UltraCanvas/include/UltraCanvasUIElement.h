@@ -208,13 +208,13 @@ namespace UltraCanvas {
 //        }
 
         int GetWidth() const { return bounds.width; }
-        virtual int GetPreferredWidth() const { return originalSize.width; }
+        virtual int GetPreferredWidth() { return originalSize.width; }
         virtual int GetMinWidth() const { return 0; }
         virtual int GetMaxWidth() const { return 10000; }
         void SetWidth(int w) { SetBounds(bounds.x, bounds.y, w, bounds.height); }
 
         int GetHeight() const { return bounds.height; }
-        virtual int GetPreferredHeight() const { return originalSize.height; }
+        virtual int GetPreferredHeight() { return originalSize.height; }
         virtual int GetMinHeight() const { return 0; }
         virtual int GetMaxHeight() const { return 10000; }
         void SetHeight(int h) { SetBounds(bounds.x, bounds.y, bounds.width, h); }

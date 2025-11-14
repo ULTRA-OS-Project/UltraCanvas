@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasBoxLayout.h"
 #include <iostream>
 
 namespace UltraCanvas {
@@ -25,7 +26,7 @@ namespace UltraCanvas {
         WindowConfig config;
         config.title = "UltraCanvas Demo - Information";
         config.width = 630;
-        config.height = 440;
+        config.height = 480;
         config.resizable = false;
         config.type = WindowType::Dialog;
         config.modal = true;
@@ -44,69 +45,83 @@ namespace UltraCanvas {
 
     void InfoWindow::CreateInfoContent() {
         // Create title label
+        auto layout = CreateVBoxLayout(this);
+
         titleLabel = std::make_shared<UltraCanvasLabel>("InfoTitle", 1000, 50, 10, 500, 30);
         titleLabel->SetText("Welcome to UltraCanvas Demo Application");
         titleLabel->SetFontSize(18);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetAlignment(TextAlignment::Center);
         titleLabel->SetTextColor(Color(0, 60, 120, 255));
-        AddChild(titleLabel);
+        layout->AddUIElement(titleLabel)->SetAlignment(LayoutItemAlignment::Center);
 
         // Create divider line
-        auto divider = std::make_shared<UltraCanvasContainer>("Divider", 1001, 10, 50, 610, 2);
+        auto divider = std::make_shared<UltraCanvasUIElement>("Divider", 1001, 10, 50, 600, 2);
         divider->SetBackgroundColor(Color(200, 200, 200, 255));
-        AddChild(divider);
+        divider->SetMargin(10);
+        layout->AddUIElement(divider)->SetWidthMode(SizeMode::Fill);
 
-        infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1", 1002, 30, 60, 590, 120);
+        infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1", 1002, 30, 60, 590, 160);
         infoLabel1->SetText("UltraCanvas is a comprehensive, open source, one-stop, cross-plattform, multi-programming-language GUI for programmers. "
                             "UltraCanvas will be the main GUI for ULTRA OS.\n"
                             "UltraCanvas will be available for both desktop as also mobile platforms.\n"
-                            "URL https://www.ultraos.eu, Github: https://github.com/ULTRA-OS-Project/UltraCanvas\n"
+                            "URL https://www.ultraos.eu,\nGithub: https://github.com/ULTRA-OS-Project/UltraCanvas\n"
                             "Planned first release 12/2025");
-        infoLabel1->SetFontSize(10);
+        infoLabel1->SetFontSize(12);
         infoLabel1->SetAlignment(TextAlignment::Center);
         infoLabel1->SetTextColor(Color(60, 60, 60, 255));
-        AddChild(infoLabel1);
+        infoLabel1->SetMargin(10,20);
+        layout->AddUIElement(infoLabel1)->SetWidthMode(SizeMode::Fill)->SetHeightMode(SizeMode::Auto);
 
         // Create info text
         infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1", 1002, 20, 180, 610, 25);
         infoLabel1->SetText("On the right side of the title of each UC element you can find these icons:");
-        infoLabel1->SetFontSize(14);
+        infoLabel1->SetFontSize(12);
         infoLabel1->SetAlignment(TextAlignment::Center);
         infoLabel1->SetTextColor(Color(60, 60, 60, 255));
-        AddChild(infoLabel1);
+        infoLabel1->SetMargin(10,20);
+        infoLabel1->SetAutoResize(true);
+        layout->AddUIElement(infoLabel1);
 
         // Create icon descriptions with actual icons
-        int iconY = 220;
         int iconSize = 24;
-        int textOffset = 35;
 
         // Programmers guide icon and label
-        programmersGuideIcon = std::make_shared<UltraCanvasImageElement>("DocIcon", 1003, 20, iconY, iconSize, iconSize);
+        auto doccontainer = CreateContainer("doccont1", 0, 0, 0, 0, 25);
+        auto docContainerLayout = CreateHBoxLayout(doccontainer.get());
+        doccontainer->SetMargin(0,20,10,20);
+        layout->AddUIElement(doccontainer)->SetWidthMode(SizeMode::Fill);
+        programmersGuideIcon = CreateImageElement("DocIcon", iconSize, iconSize);
         programmersGuideIcon->LoadFromFile("assets/icons/component.png");
         programmersGuideIcon->SetScaleMode(ImageScaleMode::Uniform);
-        AddChild(programmersGuideIcon);
+        docContainerLayout->AddUIElement(programmersGuideIcon);
 
-        infoLabel2 = std::make_shared<UltraCanvasLabel>("DocText", 1004, 20 + textOffset, iconY, 400, 25);
-        infoLabel2->SetText("a) Programmer's Guide");
-        infoLabel2->SetFontSize(14);
+        infoLabel2 = CreateLabel("DocText", 0, 21, "a) Programmer's Guide");
+        infoLabel2->SetFontSize(12);
+        infoLabel2->SetFontWeight(FontWeight::Bold);
         infoLabel2->SetAlignment(TextAlignment::Left);
         infoLabel2->SetTextColor(Color(60, 60, 60, 255));
-        AddChild(infoLabel2);
+        infoLabel2->SetMargin(3,0,0,10);
+        docContainerLayout->AddUIElement(infoLabel2, 1)->SetAlignment(LayoutItemAlignment::Center);
 
         // Example code icon and label
-        iconY += 40;
-        exampleCodeIcon = std::make_shared<UltraCanvasImageElement>("CodeIcon", 1005, 20, iconY, iconSize, iconSize);
+        auto codeContainer = CreateContainer("codecont1", 0, 0, 0, 0, 25);
+        auto codeContainerLayout = CreateHBoxLayout(codeContainer.get());
+        codeContainer->SetMargin(0,20,10,20);
+        layout->AddUIElement(codeContainer)->SetWidthMode(SizeMode::Fill);
+
+        exampleCodeIcon = CreateImageElement("CodeIcon", iconSize, iconSize);
         exampleCodeIcon->LoadFromFile("assets/icons/c-plus-plus-icon.png");
         exampleCodeIcon->SetScaleMode(ImageScaleMode::Uniform);
-        AddChild(exampleCodeIcon);
+        codeContainerLayout->AddUIElement(exampleCodeIcon);
 
-        infoLabel3 = std::make_shared<UltraCanvasLabel>("CodeText", 1006, 20 + textOffset, iconY, 400, 25);
-        infoLabel3->SetText("b) Example Code");
-        infoLabel3->SetFontSize(14);
+        infoLabel3 = CreateLabel("CodeText", 0, 22, "b) Example Code");
+        infoLabel3->SetFontSize(12);
+        infoLabel3->SetFontWeight(FontWeight::Bold);
         infoLabel3->SetAlignment(TextAlignment::Left);
         infoLabel3->SetTextColor(Color(60, 60, 60, 255));
-        AddChild(infoLabel3);
+        infoLabel3->SetMargin(3,0,0,10);
+        codeContainerLayout->AddUIElement(infoLabel3, 1)->SetAlignment(LayoutItemAlignment::Center);;
 
         // Create additional info
         auto additionalInfo = std::make_shared<UltraCanvasLabel>("AdditionalInfo", 1007, 50, 310, 500, 40);
@@ -116,7 +131,8 @@ namespace UltraCanvas {
         additionalInfo->SetAlignment(TextAlignment::Center);
         additionalInfo->SetTextColor(Color(100, 100, 100, 255));
         additionalInfo->SetWordWrap(true);
-        AddChild(additionalInfo);
+        additionalInfo->SetMargin(10,20);
+        layout->AddUIElement(additionalInfo)->SetWidthMode(SizeMode::Fill);
 
         // Create OK button
         okButton = std::make_shared<UltraCanvasButton>("OkButton", 1008, 250, 370, 100, 35);
@@ -127,13 +143,14 @@ namespace UltraCanvas {
 //        okButton->SetHoverBackgroundColor(Color(0, 140, 220, 255));
 //        okButton->SetPressedBackgroundColor(Color(0, 100, 180, 255));
         okButton->SetCornerRadius(4);
+        okButton->SetMargin(10);
 
         // Set button click handler
         okButton->SetOnClick([this]() {
             OnOkButtonClick();
         });
 
-        AddChild(okButton);
+        layout->AddUIElement(okButton)->SetAlignment(LayoutItemAlignment::Center);
     }
 
     void InfoWindow::SetOkCallback(std::function<void()> callback) {

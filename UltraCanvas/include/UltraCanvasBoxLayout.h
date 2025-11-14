@@ -122,9 +122,6 @@ private:
     // Items in this layout
     std::vector<std::unique_ptr<UltraCanvasBoxLayoutItem>> items;
     
-    // Alignment of items along the cross axis
-    LayoutAlignment crossAxisAlignment = LayoutAlignment::Start;
-    
     // Alignment along main axis
     LayoutAlignment mainAxisAlignment = LayoutAlignment::Start;
     
@@ -141,11 +138,11 @@ public:
     BoxLayoutDirection GetDirection() const { return direction; }
     
     // ===== ALIGNMENT =====
-    void SetCrossAxisAlignment(LayoutAlignment align) {
-        crossAxisAlignment = align;
-        InvalidateContainerLayout();
-    }
-    LayoutAlignment GetCrossAxisAlignment() const { return crossAxisAlignment; }
+//    void SetCrossAxisAlignment(LayoutAlignment align) {
+//        crossAxisAlignment = align;
+//        InvalidateContainerLayout();
+//    }
+//    LayoutAlignment GetCrossAxisAlignment() const { return crossAxisAlignment; }
     
     void SetMainAxisAlignment(LayoutAlignment align) {
         mainAxisAlignment = align;
@@ -195,9 +192,6 @@ private:
     
     // Calculate total spacing
     int CalculateTotalSpacing() const;
-    
-    // Apply cross-axis alignment to item
-    void ApplyCrossAxisAlignment(UltraCanvasBoxLayoutItem* item, int crossStart, int crossSize);
 };
 
 // ===== CONVENIENCE FACTORY FUNCTIONS =====

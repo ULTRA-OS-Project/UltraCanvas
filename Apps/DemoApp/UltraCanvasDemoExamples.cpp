@@ -152,7 +152,7 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("BitmapPlaceholder", 1502, 20, 50, 800, 400);
-        placeholder->SetText(format + " Graphics - Not Implemented yet\n\nSupported Formats:\n• PNG - Full support with transparency\n• JPEG - Standard image display\n\nFeatures:\n• Image scaling and cropping\n• Rotation and transformation\n• Filter effects\n• Multi-frame animation\n• Memory-efficient loading");
+        placeholder->SetText(format + " Graphics - Partially Implemented yet\n\nSupported Formats:\n• PNG - Full support with transparency\n• JPEG - Standard image display\n\nFeatures:\n• Image scaling and cropping\n• Rotation and transformation\n• Filter effects\n• Multi-frame animation\n• Memory-efficient loading");
         placeholder->SetAlignment(TextAlignment::Left);
         placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
 //        placeholder->SetBorderStyle(BorderStyle::Dashed);
@@ -315,27 +315,6 @@ namespace UltraCanvas {
         return container;
     }
 
-//    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateChartExamples() {
-//        auto container = std::make_shared<UltraCanvasContainer>("ChartExamples", 2300, 0, 0, 1000, 600);
-//
-//        auto title = std::make_shared<UltraCanvasLabel>("chartTitle", 2301, 10, 10, 300, 30);
-//        title->SetText("Chart Examples");
-//        title->SetFontSize(16);
-//        title->SetFontWeight(FontWeight::Bold);
-//        container->AddChild(title);
-//
-//        auto placeholder = std::make_shared<UltraCanvasLabel>("ChartPlaceholder", 2302, 20, 50, 800, 400);
-//        placeholder->SetText("Charts Component - Not Implemented\n\nPlanned Chart Types:\n• Line charts with multiple series\n• Bar charts (vertical/horizontal)\n• Pie and donut charts\n• Scatter plots with trend lines\n• Area charts (stacked/overlapped)\n• Candlestick charts for financial data\n• Heatmaps and bubble charts\n• Real-time updating charts\n\nFeatures:\n• Interactive legends\n• Zooming and panning\n• Data point tooltips\n• Animation effects\n• Custom styling themes\n• Export capabilities\n• Data binding from multiple sources");
-//        placeholder->SetAlignment(TextAlignment::Left);
-//        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-////        placeholder->SetBorderStyle(BorderStyle::Dashed);
-//        placeholder->SetBorders(2.0f);
-//        placeholder->SetPadding(20.0f);
-//        container->AddChild(placeholder);
-//
-//        return container;
-//    }
-
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateInfoGraphicsExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("InfoGraphicsExamples", 2400, 0, 0, 1000, 600);
 
@@ -413,7 +392,30 @@ namespace UltraCanvas {
                               "-   **Frequency Domain** -- FFT transforms and frequency-based filtering\n"
                               "-   **Geometric Transforms** -- Resize, rotate, affine, and perspective corrections\n"
                               "-   **Drawing Operations** -- Shapes, lines, text, and flood fill with anti-aliasing\n"
-                              "-   **Statistical Analysis** -- Min/max detection, deviation, profiles, and measurements");
+                              "-   **Statistical Analysis** -- Min/max detection, deviation, profiles, and measurements\n"
+                              "----------------\n"
+                              "### Why PixelFX?\n"
+                              "\n"
+                              "**Powered by libvips** – Lightning-fast processing with minimal memory footprint. Where other libraries load entire images into RAM, PixelFX streams data intelligently, handling multi-gigabyte images on modest hardware.\n"
+                              "\n"
+                              "**Multi-Format Excellence** – Native support for PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, JPEG-XL, BMP, and more. Specialized formats like scientific FITS, medical DICOM, and RAW camera files are all handled seamlessly.\n"
+                              "\n"
+                              "**Cross-Platform Power** – Identical API across Windows, Linux, macOS, and mobile platforms. Write once, process anywhere.\n"
+                              "\n"
+                              "**Plugin Architecture** – Extend functionality without touching core code. Add custom filters, new formats, or specialized algorithms through clean plugin interfaces.\n"
+                              "\n"
+                              "**Performance That Scales**\n"
+                              "---------------------------\n"
+                              "\n"
+                              "*   **Multi-threaded by design** – Automatic CPU utilization across all cores\n"
+                              "    \n"
+                              "*   **Demand-driven processing** – Only compute what's needed, when it's needed\n"
+                              "    \n"
+                              "*   **Memory efficient** – Process 10GB images on machines with 2GB RAM\n"
+                              "    \n"
+                              "*   **Hardware accelerated** – Leverage SIMD instructions (SSE, AVX, NEON) automatically\n"
+                              "    \n"
+                              "*   **2-3× faster** than traditional libraries for typical operations");
         MarkdownStyle style = MarkdownStyle::Default();
         style.fontSize = 12;
         text->SetStyle(style);
@@ -427,6 +429,64 @@ namespace UltraCanvas {
 
         auto text = std::make_shared<UltraCanvasMarkdownDisplay>("GPIOExamplesText", 1201, 10, 10, 1000, 750);
         text->SetMarkdownText("**GPIO**");
+        MarkdownStyle style = MarkdownStyle::Default();
+        style.fontSize = 12;
+        text->SetStyle(style);
+        container->AddChild(text);
+
+        return container;
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePartiallyImplementedExamples(const std::string& descr) {
+        auto container = std::make_shared<UltraCanvasContainer>("PartiallyImplementedExamples", 1200, 0, 0, 1020, 780);
+
+        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("PartiallyImplementedExamplesText", 1201, 10, 10, 1000, 750);
+        text->SetMarkdownText(descr);
+        MarkdownStyle style = MarkdownStyle::Default();
+        style.fontSize = 12;
+        text->SetStyle(style);
+        container->AddChild(text);
+
+        return container;
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateIODeviceManagerExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("IODeviceManagerExamples", 1200, 0, 0, 1020, 780);
+
+        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("IODeviceManagerExamplesText", 1201, 10, 10, 1000, 750);
+        text->SetMarkdownText("## Complete Feature Set\n"
+                              "**Device Management**\n"
+                              "\n"
+                              "✅ Device enumeration by category\n"
+                              "✅ Device enumeration by protocol\n"
+                              "✅ Device registration and lifecycle\n"
+                              "✅ Device state tracking\n"
+                              "✅ Device capability querying\n"
+                              "✅ Device connection management\n"
+                              "\n"
+                              "**Scanner-Specific Features**\n"
+                              "\n"
+                              "✅ Resolution configuration (DPI)\n"
+                              "✅ Color mode selection (Grayscale, RGB, RGBA)\n"
+                              "✅ Scan area definition (x, y, width, height)\n"
+                              "✅ Output format selection (PNG, JPEG, TIFF, BMP, PDF)\n"
+                              "✅ Multi-page scanning support\n"
+                              "✅ ADF (Auto Document Feeder) support\n"
+                              "✅ Duplex scanning support\n"
+                              "✅ Brightness/contrast adjustment\n"
+                              "✅ Document size presets (A4, Letter, Legal, etc.)\n"
+                              "\n"
+                              "**SANE Implementation (Linux)**\n"
+                              "\n"
+                              "✅ SANE library initialization\n"
+                              "✅ Device discovery\n"
+                              "✅ Device opening/closing\n"
+                              "✅ Option enumeration and configuration\n"
+                              "✅ Image acquisition\n"
+                              "✅ Frame-by-frame reading\n"
+                              "✅ Multi-frame document handling\n"
+                              "✅ Error handling and reporting\n"
+                              "✅ Status code translation");
         MarkdownStyle style = MarkdownStyle::Default();
         style.fontSize = 12;
         text->SetStyle(style);

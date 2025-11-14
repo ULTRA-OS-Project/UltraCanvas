@@ -30,7 +30,7 @@ namespace UltraCanvas {
         // Scrolling behavior
         bool autoHideScrollbars = true;
         bool smoothScrolling = false;
-        int scrollSpeed = 2;
+        int scrollSpeed = 5;
         bool enableVerticalScrolling = true;
         bool enableHorizontalScrolling = true;
     };
@@ -215,6 +215,11 @@ namespace UltraCanvas {
     inline std::shared_ptr<UltraCanvasContainer> CreateContainer(
             const std::string& id, long uid, long x, long y, long w, long h) {
         return std::make_shared<UltraCanvasContainer>(id, uid, x, y, w, h);
+    }
+
+    inline std::shared_ptr<UltraCanvasContainer> CreateContainer(
+            const std::string& id, long x = 0, long y = 0, long w = 0, long h = 0) {
+        return std::make_shared<UltraCanvasContainer>(id, 0, x, y, w, h);
     }
 
     inline std::shared_ptr<UltraCanvasContainer> CreateScrollableContainer(

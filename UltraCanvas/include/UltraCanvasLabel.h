@@ -211,11 +211,11 @@ namespace UltraCanvas {
             SetSize(preferredSize.width, preferredSize.height);
         }
 
-        int GetPreferredWidth() const override {
+        int GetPreferredWidth() override {
             return preferredSize.width > 0 ? preferredSize.width : bounds.width;
         }
 
-        int GetPreferredHeight() const override {
+        int GetPreferredHeight() override {
             return preferredSize.height > 0 ? preferredSize.height : bounds.height;
         }
 
@@ -226,7 +226,7 @@ namespace UltraCanvas {
             ctx->SetFontStyle(style.fontStyle);
             Size2Di textDimensions;
             ctx->GetTextLineDimensions(text, textDimensions.width, textDimensions.height);
-            if (style.autoResize) {
+            if (style.autoResize || GetWidth() == 0) {
                 AutoResize(textDimensions);
             }
 
@@ -369,6 +369,22 @@ namespace UltraCanvas {
             const std::string& identifier, long id, long x, long y, long w, long h,
             const std::string& text = "") {
         return std::make_shared<UltraCanvasLabel>(identifier, id, x, y, w, h, text);
+    }
+
+    inline std::shared_ptr<UltraCanvasLabel> CreateLabel(
+            const std::string& identifier, long x, long y, long w, long h,
+            const std::string& text = "") {
+        return std::make_shared<UltraCanvasLabel>(identifier, 0, x, y, w, h, text);
+    }
+
+    inline std::shared_ptr<UltraCanvasLabel> CreateLabel(
+            const std::string& identifier, long w, long h,
+            const std::string& text = "") {
+        return std::make_shared<UltraCanvasLabel>(identifier, 0, 0, 0, w, h, text);
+    }
+
+    inline std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& text) {
+        return std::make_shared<UltraCanvasLabel>("", 0, 0, 0, 0, 0, text);
     }
 
     inline std::shared_ptr<UltraCanvasLabel> CreateAutoLabel(

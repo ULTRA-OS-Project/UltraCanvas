@@ -387,6 +387,7 @@ namespace UltraCanvas {
         }
 
         pango_layout_set_font_description(layout, desc);
+        pango_layout_set_line_spacing(layout, currentState.textStyle.lineHeight);
         if (w > 0 || h > 0) {
             if (w > 0) {
                 pango_layout_set_width(layout, w * PANGO_SCALE);
@@ -394,44 +395,41 @@ namespace UltraCanvas {
             if (h > 0) {
                 pango_layout_set_height(layout, h * PANGO_SCALE);
             }
+        }
+        PangoAlignment alignment = PANGO_ALIGN_LEFT;
 
-            PangoAlignment alignment = PANGO_ALIGN_LEFT;
+        switch (currentState.textStyle.alignment) {
+            case TextAlignment::Center:
+                pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+                break;
+            case TextAlignment::Right:
+                pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
+                break;
+            case TextAlignment::Justify:
+                pango_layout_set_justify(layout, true);
+                break;
+            default:
+                pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
+                break;
+        }
 
-            switch (currentState.textStyle.alignment) {
-                case TextAlignment::Center:
-                    pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
-                    break;
-                case TextAlignment::Right:
-                    pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
-                    break;
-                case TextAlignment::Justify:
-                    pango_layout_set_justify(layout, true);
-                    break;
-                default:
-                    pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
-                    break;
-            }
-
-            switch (currentState.textStyle.wrap) {
-                case TextWrap::WrapNone:
+        switch (currentState.textStyle.wrap) {
+            case TextWrap::WrapNone:
 //                    pango_layout_set_wrap(layout, PANGO_WRAP_NONE);
-                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_END);
-                    break;
-                case TextWrap::WrapWord:
-                    pango_layout_set_wrap(layout, PANGO_WRAP_WORD);
-                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
-                    break;
-                case TextWrap::WrapWordChar:
-                    pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
-                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
-                    break;
-                case TextWrap::WrapChar:
-                    pango_layout_set_wrap(layout, PANGO_WRAP_CHAR);
-                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
-                    break;
-            }
-
-            pango_layout_set_line_spacing(layout, currentState.textStyle.lineHeight);
+                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_END);
+                break;
+            case TextWrap::WrapWord:
+                pango_layout_set_wrap(layout, PANGO_WRAP_WORD);
+                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
+                break;
+            case TextWrap::WrapWordChar:
+                pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
+                break;
+            case TextWrap::WrapChar:
+                pango_layout_set_wrap(layout, PANGO_WRAP_CHAR);
+                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
+                break;
         }
 
         return layout;

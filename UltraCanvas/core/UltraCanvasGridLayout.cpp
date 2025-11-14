@@ -24,7 +24,7 @@ namespace UltraCanvas {
             case SizeMode::Auto:
             case SizeMode::Fill:
                 if (element) {
-                    return element->GetWidth();
+                    return element->GetPreferredWidth() + element->GetTotalMarginHorizontal();
                 }
                 return 0;
 
@@ -50,7 +50,7 @@ namespace UltraCanvas {
             case SizeMode::Auto:
             case SizeMode::Fill:
                 if (element) {
-                    return element->GetHeight();
+                    return element->GetPreferredHeight() + element->GetTotalMarginVertical();
                 }
                 return 0;
 
@@ -244,7 +244,7 @@ void UltraCanvasGridLayout::CalculateRowHeights(int availableHeight) {
             usedHeight += computedRowHeights[i];
         } else if (def.sizeMode == GridSizeMode::Auto) {
             // Use content size, with minimum of 20 if no content
-            computedRowHeights[i] = std::max(contentHeights[i], 20);
+            computedRowHeights[i] = std::max(contentHeights[i], 1);
             usedHeight += computedRowHeights[i];
             autoCount++;
         } else if (def.sizeMode == GridSizeMode::Star) {
@@ -304,7 +304,7 @@ void UltraCanvasGridLayout::CalculateColumnWidths(int availableWidth) {
             usedWidth += computedColumnWidths[i];
         } else if (def.sizeMode == GridSizeMode::Auto) {
             // Use content size, with minimum of 50 if no content
-            computedColumnWidths[i] = std::max(contentWidths[i], 50);
+            computedColumnWidths[i] = std::max(contentWidths[i], 5);
             usedWidth += computedColumnWidths[i];
             autoCount++;
         } else if (def.sizeMode == GridSizeMode::Star) {
@@ -313,6 +313,10 @@ void UltraCanvasGridLayout::CalculateColumnWidths(int availableWidth) {
 
         // Apply min/max constraints
         computedColumnWidths[i] = std::clamp(computedColumnWidths[i], def.minSize, def.maxSize);
+    }
+
+    if (columnCount > 0) {
+        usedWidth += (columnCount - 1) * spacing;
     }
 
     // Distribute remaining space to Star-sized columns
