@@ -223,6 +223,29 @@ struct Color {
         return std::string(hexColor);
     }
 
+    Color Darken(float factor) const {
+        factor = std::max(0.0f, std::min(1.0f, factor));
+        float multiplier = 1.0f - factor;
+
+        return Color(
+                static_cast<uint8_t>(r * multiplier),
+                static_cast<uint8_t>(g * multiplier),
+                static_cast<uint8_t>(b * multiplier),
+                a  // Preserve alpha
+        );
+    }
+
+    Color Lighten(float factor) const {
+        factor = std::max(0.0f, std::min(1.0f, factor));
+
+        return Color(
+                static_cast<uint8_t>(r + (255 - r) * factor),
+                static_cast<uint8_t>(g + (255 - g) * factor),
+                static_cast<uint8_t>(b + (255 - b) * factor),
+                a  // Preserve alpha
+        );
+    }
+
     // Operators
     bool operator==(const Color& other) const {
         return r == other.r && g == other.g && b == other.b && a == other.a;

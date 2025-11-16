@@ -143,6 +143,7 @@ namespace UltraCanvas {
         showRootLines = true;
         showExpandButtons = true;
         showFirstChildOnExpand = false;
+        autoExpandSelectedNode = false;
 
         // Color defaults
         selectionColor = Colors::Selection;       // Blue selection
@@ -597,6 +598,12 @@ namespace UltraCanvas {
             bool addToSelection = (event.ctrl && selectionMode == TreeSelectionMode::Multiple);
             SelectNode(clickedNode, addToSelection);
             focusedNode = clickedNode;
+            if (autoExpandSelectedNode && !focusedNode->children.empty() && !focusedNode->IsExpanded()) {
+                ExpandNode(focusedNode);
+                if (showFirstChildOnExpand) {
+                    ExpandFirstChildNode(focusedNode);
+                }
+            }
         } else {
             ClearSelection();
             focusedNode = nullptr;
@@ -740,6 +747,12 @@ namespace UltraCanvas {
             SelectNode(prevNode);
             focusedNode = prevNode;
             ScrollTo(focusedNode);
+            if (autoExpandSelectedNode && !focusedNode->children.empty() && !focusedNode->IsExpanded()) {
+                ExpandNode(focusedNode);
+                if (showFirstChildOnExpand) {
+                    ExpandFirstChildNode(focusedNode);
+                }
+            }
         }
     }
 
@@ -751,6 +764,12 @@ namespace UltraCanvas {
             SelectNode(nextNode);
             focusedNode = nextNode;
             ScrollTo(focusedNode);
+            if (autoExpandSelectedNode && !focusedNode->children.empty() && !focusedNode->IsExpanded()) {
+                ExpandNode(focusedNode);
+                if (showFirstChildOnExpand) {
+                    ExpandFirstChildNode(focusedNode);
+                }
+            }
         }
     }
 

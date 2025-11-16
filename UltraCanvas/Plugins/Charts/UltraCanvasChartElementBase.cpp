@@ -123,8 +123,10 @@ namespace UltraCanvas {
             RenderGrid(ctx);
         }
 
-        // Draw axes using existing functions
-        RenderAxes(ctx);
+        if (showAxes) {
+            // Draw axes using existing functions
+            RenderAxes(ctx);
+        }
 
         // Draw title using existing functions
         if (!chartTitle.empty()) {

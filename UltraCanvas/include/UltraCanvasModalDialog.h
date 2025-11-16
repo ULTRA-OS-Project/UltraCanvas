@@ -117,9 +117,9 @@ namespace UltraCanvas {
         DialogButton cancelButton = DialogButton::Cancel;
 
         // Appearance
-        Point2D size = Point2D(400, 200);
+        Point2Di size = Point2Di(400, 200);
         DialogPosition position = DialogPosition::Center;
-        Point2D customPosition = Point2D(0, 0);
+        Point2Di customPosition = Point2Di(0, 0);
         bool resizable = false;
         bool movable = true;
 
@@ -176,7 +176,7 @@ namespace UltraCanvas {
 
         InputDialogConfig() {
             buttons = DialogButtons::OKCancel;
-            size = Point2D(400, 150);
+            size = Point2Di(400, 150);
         }
     };
 
@@ -200,7 +200,7 @@ namespace UltraCanvas {
 
         FileDialogConfig() {
             buttons = DialogButtons::OKCancel;
-            size = Point2D(600, 400);
+            size = Point2Di(600, 400);
             resizable = true;
         }
     };
@@ -228,12 +228,12 @@ namespace UltraCanvas {
 
         // Animation
         std::chrono::steady_clock::time_point animationStartTime;
-        Point2D targetPosition;
-        Point2D startPosition;
+        Point2Di targetPosition;
+        Point2Di startPosition;
 
         // State
         bool isDragging;
-        Point2D dragOffset;
+        Point2Di dragOffset;
         UltraCanvasWindowBase* parentWindow;
         std::shared_ptr<UltraCanvasUIElement> backgroundOverlay;
 
@@ -271,7 +271,7 @@ namespace UltraCanvas {
 
         // ===== POSITIONING =====
         void SetPosition(DialogPosition position);
-        void SetCustomPosition(const Point2D& position);
+        void SetCustomPosition(const Point2Di& position);
         void CenterOnParent();
         void CenterOnScreen();
 
@@ -322,13 +322,13 @@ namespace UltraCanvas {
         void StartHideAnimation();
         void UpdateAnimation(float deltaTime);
         float CalculateAnimationAlpha() const;
-        Point2D CalculateAnimationPosition() const;
+        Point2Di CalculateAnimationPosition() const;
         float CalculateAnimationScale() const;
 
         // ===== EVENT HELPERS =====
         void OnButtonClick(DialogButton button);
-        void OnTitleBarMouseDown(const Point2D& position);
-        void OnTitleBarMouseMove(const Point2D& position);
+        void OnTitleBarMouseDown(const Point2Di& position);
+        void OnTitleBarMouseMove(const Point2Di& position);
         void OnTitleBarMouseUp();
         void OnOverlayClick();
 

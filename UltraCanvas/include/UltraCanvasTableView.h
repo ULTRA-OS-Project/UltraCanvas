@@ -84,8 +84,7 @@ struct SelectionInfo {
 // ===== MAIN TABLE VIEW COMPONENT =====
 class UltraCanvasTableView : public UltraCanvasUIElement {
 private:
-    StandardProperties properties;
-    
+
     // Data storage
     std::vector<TableColumn> columns;
     std::vector<std::vector<TableCell>> rows;
@@ -153,10 +152,7 @@ public:
     // ===== CONSTRUCTOR =====
     UltraCanvasTableView(const std::string& identifier = "TableView", long id = 0,
                         long x = 0, long y = 0, long w = 400, long h = 300)
-        : UltraCanvasUIElement(identifier, id, x, y, w, h), properties(identifier, id, x, y, w, h) {
-        
-        properties.MousePtr = MousePointer::Default;
-        properties.MouseCtrl = MouseControls::Object2D;
+        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         
         UpdateScrollBounds();
     }
@@ -557,24 +553,24 @@ public:
         }
         
         // Draw background
-        UltraCanvas::DrawFilledRect(GetBounds(), Colors::White, gridLineColor, 1.0f);
+        ctx->DrawFilledRectangle(GetBounds(), Colors::White, 1.0f, gridLineColor);
         
         // Set clipping to table bounds
         ctx->ClipRect(GetBounds());
-        
+
         // Draw header
         if (showHeader) {
-            DrawHeader();
+            DrawHeader(ctx);
         }
         
         // Draw rows
-        DrawRows();
+        DrawRows(ctx);
         
         // Draw selection
-        DrawSelection();
+        DrawSelection(ctx);
         
         // Draw resize indicator
-        DrawResizeIndicator();
+        DrawResizeIndicator(ctx);
     }
     
     // ===== EVENT HANDLING =====
@@ -744,7 +740,7 @@ private:
         }
     }
     
-    void DrawRows() {
+    void DrawRows(IRenderContext *ctx) {
         int startY = GetY() + (showHeader ? headerHeight : 0);
         int visibleHeight = GetHeight() - (showHeader ? headerHeight : 0);
         
@@ -781,7 +777,7 @@ private:
         }
     }
     
-    void DrawRowCells(int row, int y) {
+    void DrawRowCells(IRenderContext *ctx, int row, int y) {
         int x = GetX() - scrollOffsetX;
         
         for (int col = 0; col < static_cast<int>(columns.size()); col++) {
@@ -793,11 +789,11 @@ private:
             // Draw cell background
             if (cell.backgroundColor.a > 0) {
                 Rect2D cellRect(x, y, colWidth, rowHeight);
-                UltraCanvas::DrawFilledRect(cellRect, cell.backgroundColor);
+                ctx->DrawFilledRect(cellRect, cell.backgroundColor);
             }
             
             // Draw cell text
-            ctx->PaintWidthColorcell.textColor);
+            ctx->SetTextPaint(cell.textColor);
             
             Rect2D textRect(x + cellPadding, y, colWidth - cellPadding * 2, rowHeight);
             Point2D textPos(x + cellPadding, y + (rowHeight + 10) / 2);
@@ -817,7 +813,7 @@ private:
             
             // Draw vertical grid line
             if (showGridLines) {
-                ctx->PaintWidthColorgridLineColor);
+                ctx->SetTextPaint(gridLineColor);
                 ctx->DrawLine(Point2D(x + colWidth, y), Point2D(x + colWidth, y + rowHeight));
             }
             
@@ -825,7 +821,7 @@ private:
         }
     }
     
-    void DrawSelection() {
+    void DrawSelection(IRenderContext* ctx) {
         if (!selection.IsValid()) return;
         
         int startY = GetY() + (showHeader ? headerHeight : 0);
@@ -848,13 +844,13 @@ private:
                 if (cellRect.x + cellRect.width > GetX() && cellRect.x < GetX() + GetWidth() &&
                     cellRect.y + cellRect.height > startY && cellRect.y < GetY() + GetHeight()) {
                     
-                    UltraCanvas::DrawFilledRect(cellRect, selectedCellColor, focusColor, 2.0f);
+                    ctx->DrawFilledRectangle(cellRect, selectedCellColor, 2.0f, focusColor);
                 }
             }
         }
     }
     
-    void DrawSortIndicator(int x, int y, bool ascending) {
+    void DrawSortIndicator(IRenderContext* ctx, int x, int y, bool ascending) {
         ctx->PaintWidthColorheaderTextColor);
         ctx->SetStrokeWidth(1.0f);
         

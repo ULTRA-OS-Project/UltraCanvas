@@ -129,9 +129,7 @@ namespace UltraCanvas {
         headerLayout->AddUIElement(titleLabel)->SetAlignment(LayoutItemAlignment::Center);
         headerLayout->AddStretch(1);
         headerLayout->AddUIElement(docButton)->SetAlignment(LayoutItemAlignment::Center);
-        headerLayout->AddSpacing(3);
         headerLayout->AddUIElement(sourceButton)->SetAlignment(LayoutItemAlignment::Center);
-        headerLayout->AddSpacing(7);
     }
 
     void DemoHeaderContainer::SetDemoTitle(const std::string& title) {
@@ -307,6 +305,7 @@ namespace UltraCanvas {
         categoryTreeView->SetSelectionMode(TreeSelectionMode::Single);
         categoryTreeView->SetLineStyle(TreeLineStyle::Solid);
         categoryTreeView->SetShowFirstChildOnExpand(true);
+        categoryTreeView->SetAutoExpandSelectedNode(true);
         categoryTreeView->SetPadding(1,3,1,3);
 
         // Create legend container below tree view
@@ -545,6 +544,10 @@ namespace UltraCanvas {
                 .AddVariant("listview", "Icon List")
                 .AddVariant("listview", "Detail View");
 
+        extendedBuilder.AddItem("tabledemo", "Table demo", "Table demo",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateDomainTableDemo(); });
+
         extendedBuilder.AddItem("textarea", "Advanced Text Area", "Advanced text editing with syntax highlighting",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateTextAreaExamples(); },
@@ -603,11 +606,11 @@ namespace UltraCanvas {
                 .AddVariant("svg", "SVG Animations");
 
         vectorBuilder.AddItem("xarimages", "XAR Images", "XAR Image display and manipulation",
-                              ImplementationStatus::NotImplemented,
+                              ImplementationStatus::PartiallyImplemented,
                               [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
 
         vectorBuilder.AddItem("drawing", "Drawing Surface", "Vector drawing and primitives",
-                              ImplementationStatus::NotImplemented,
+                              ImplementationStatus::PartiallyImplemented,
                               [this]() { return CreateVectorExamples(); });
 
         // ===== CHARTS =====
@@ -751,6 +754,8 @@ namespace UltraCanvas {
                             ImplementationStatus::NotImplemented,
                             [this]() { return CreateInfoGraphicsExamples(); });
 
+
+
         // ===== 3D ELEMENTS =====
         auto graphics3DBuilder = DemoCategoryBuilder(this, DemoCategory::Graphics3D);
 
@@ -825,6 +830,14 @@ namespace UltraCanvas {
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateIODeviceManagerExamples(); });
 
+        auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
+        widgetsBuilder.AddItem("datepicker", "Date Picker", "Date Picker",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("## Date picker"); });
+        widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
+
         std::cout << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
     }
@@ -848,6 +861,7 @@ namespace UltraCanvas {
                 {DemoCategory::VideoElements, "Video Elements"},
                 {DemoCategory::TextDocuments, "Text Documents"},
                 {DemoCategory::AudioElements, "Audio Elements"},
+                {DemoCategory::Widgets, "Widgets"},
                 {DemoCategory::Tools, "Tools"},
                 {DemoCategory::Modules, "Modules"}
         };

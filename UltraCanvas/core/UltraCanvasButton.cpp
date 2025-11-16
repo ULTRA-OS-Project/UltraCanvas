@@ -138,12 +138,44 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasButton::SetColors(const Color& normal, const Color& hover) {
+        style.normalColor = normal;
+        style.hoverColor = hover;
+        style.pressedColor = normal.Darken(0.1);
+        style.disabledColor = normal.Lighten(0.3);
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetColors(const Color& normal) {
+        style.normalColor = normal;
+        style.hoverColor = normal.Darken(0.1);
+        style.pressedColor = normal.Darken(0.2);
+        style.disabledColor = normal.Lighten(0.3);
+        RequestRedraw();
+    }
+
     void UltraCanvasButton::SetTextColors(const Color& normal, const Color& hover,
                                           const Color& pressed, const Color& disabled) {
         style.normalTextColor = normal;
         style.hoverTextColor = hover;
         style.pressedTextColor = pressed;
         style.disabledTextColor = disabled;
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetTextColors(const Color& normal, const Color& hover) {
+        style.normalTextColor = normal;
+        style.hoverTextColor = hover;
+        style.pressedTextColor = normal.Darken(0.1);
+        style.disabledTextColor = normal.Lighten(0.3);
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetTextColors(const Color& normal) {
+        style.normalTextColor = normal;
+        style.hoverTextColor = normal.Darken(0.1);
+        style.pressedTextColor = normal.Darken(0.2);
+        style.disabledTextColor = normal.Lighten(0.3);
         RequestRedraw();
     }
 
@@ -166,6 +198,13 @@ namespace UltraCanvas {
         style.fontFamily = family;
         style.fontSize = size;
         style.fontWeight = weight;
+        layoutDirty = true;
+        AutoResize();
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetFontSize(float size) {
+        style.fontSize = size;
         layoutDirty = true;
         AutoResize();
         RequestRedraw();

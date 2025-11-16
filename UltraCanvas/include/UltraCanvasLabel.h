@@ -212,10 +212,16 @@ namespace UltraCanvas {
         }
 
         int GetPreferredWidth() override {
+            if (style.autoResize && layoutDirty) {
+                CalculateLayout(GetRenderContext());
+            }
             return preferredSize.width > 0 ? preferredSize.width : bounds.width;
         }
 
         int GetPreferredHeight() override {
+            if (style.autoResize && layoutDirty) {
+                CalculateLayout(GetRenderContext());
+            }
             return preferredSize.height > 0 ? preferredSize.height : bounds.height;
         }
 

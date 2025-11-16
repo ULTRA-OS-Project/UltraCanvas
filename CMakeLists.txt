@@ -202,6 +202,7 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
         Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
         Apps/DemoApp/UltraCanvasLayoutExamples.cpp
+        Apps/DemoApp/UltraCanvasDomainTableDemo.cpp
 )
 
 # ✅ ADDED: Check that source files exist

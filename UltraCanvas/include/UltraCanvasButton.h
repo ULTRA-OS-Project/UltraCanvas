@@ -188,13 +188,18 @@ namespace UltraCanvas {
         // ===== STYLING METHODS =====
         void SetColors(const Color& normal, const Color& hover,
                        const Color& pressed, const Color& disabled);
+        void SetColors(const Color& normal, const Color& hover);
+        void SetColors(const Color& normal);
         void SetTextColors(const Color& normal, const Color& hover,
                            const Color& pressed, const Color& disabled);
+        void SetTextColors(const Color& normal, const Color& hover);
+        void SetTextColors(const Color& normal);
         void SetIconColors(const Color& normal, const Color& hover,
                            const Color& pressed, const Color& disabled);
         void SetBorder(float width, const Color& color);
         void SetFont(const std::string& family, float size,
                      FontWeight weight = FontWeight::Normal);
+        void SetFontSize(float size);
         void SetTextAlign(TextAlignment align);
         void SetPadding(int left, int right, int top, int bottom);
         void SetIconSpacing(int spacing);

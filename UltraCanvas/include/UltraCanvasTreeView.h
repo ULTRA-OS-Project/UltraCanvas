@@ -125,6 +125,7 @@ private:
     bool showRootLines;            // Show lines for root level
     bool showExpandButtons;        // Show +/- buttons
     bool showFirstChildOnExpand;   // auto open first child on expand node
+    bool autoExpandSelectedNode;  // auto expand selected node
     
     // Colors
     Color backgroundColor;       // Tree background color
@@ -197,6 +198,11 @@ public:
 
     void SetShowFirstChildOnExpand(bool show) { showFirstChildOnExpand = show; }
     bool GetShowFirstChildOnExpand() const { return showFirstChildOnExpand; }
+
+    void SetAutoExpandSelectedNode(bool expand) {
+        autoExpandSelectedNode = expand;
+    }
+    bool GetAutoExpandSelectedNode() const { return autoExpandSelectedNode; }
 
     // ===== COLOR PROPERTIES =====
     void SetSelectionColor(const Color &color) { selectionColor = color; }

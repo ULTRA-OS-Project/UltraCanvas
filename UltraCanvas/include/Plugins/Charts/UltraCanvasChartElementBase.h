@@ -67,6 +67,7 @@ namespace UltraCanvas {
         Color backgroundColor = Color(255, 255, 255, 255);
         Color plotAreaColor = Color(250, 250, 250, 255);
         bool showGrid = true;
+        bool showAxes = true;
         Color gridColor = Color(220, 220, 220, 255);
 
         // X-axis label configuration
@@ -209,6 +210,11 @@ namespace UltraCanvas {
 
         void SetShowGrid(bool show) {
             showGrid = show;
+            RequestRedraw();
+        }
+
+        void SetShowAxes(bool show) {
+            showAxes = show;
             RequestRedraw();
         }
 
