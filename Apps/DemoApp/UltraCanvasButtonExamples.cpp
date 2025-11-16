@@ -136,6 +136,7 @@ namespace UltraCanvas {
             yOffset += 35;
 
             // Text Only
+            // Text Only
             auto textOnlyBtn = CreateButton("TextOnly", 131, 20, yOffset, 100, 35, "Text Only");
             textOnlyBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Text-only button clicked");
@@ -181,15 +182,16 @@ namespace UltraCanvas {
 
             // Icon Bottom
             auto iconBottomBtn = CreateButton("IconBottom", 136, 480, yOffset, 90, 62, "Download");
-            iconBottomBtn->SetIcon("assets/icons/download.png");
+            iconBottomBtn->SetIcon("assets/icons/download_34px.png");
             iconBottomBtn->SetIconPosition(ButtonIconPosition::Bottom);
+            iconBottomBtn->SetIconSize(41,34);
             iconBottomBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Download button clicked\nIcon positioned below text");
             };
             mainButtonsContainer->AddChild(iconBottomBtn);
 
             auto iconRightBtn2 = CreateButton("IconRight", 133, 580, yOffset, 250, 35, "Continue with UltraCanvas");
-            iconRightBtn2->SetIcon("assets/images/UltraCanvas-logo.png");
+            iconRightBtn2->SetIcon("assets/icons/ultracanvas_20px.png");
             iconRightBtn2->SetIconSize(20, 20);
             iconRightBtn2->SetIconPosition(ButtonIconPosition::Left);
             iconRightBtn2->SetColors(Colors::White, Color(240, 240, 240, 255), Colors::Gray, Colors::LightGray);

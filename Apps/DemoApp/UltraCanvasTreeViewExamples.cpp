@@ -5,7 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
-//#include "UltraCanvasButton3Sections.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasFormulaEditor.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include <sstream>
@@ -55,6 +55,27 @@ namespace UltraCanvas {
 
         root->Expand();
         container->AddChild(fileTree);
+
+// File Explorer Label
+        auto fileLabel = std::make_shared<UltraCanvasLabel>("FileTreeLabel", 605, 20, 460, 300, 20);
+        fileLabel->SetText("File Explorer Style TreeView");
+        fileLabel->SetFontSize(12);
+        container->AddChild(fileLabel);
+
+        // Options checkboxes for File Explorer Tree
+        auto autoExpandCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoExpandCheckbox", 606, 20, 490, 280, 24, "Auto expand selected node");
+        autoExpandCheckbox->SetChecked(false);
+        autoExpandCheckbox->onStateChanged = [fileTree](CheckboxState oldState, CheckboxState newState) {
+        fileTree->SetAutoExpandSelectedNode(newState == CheckboxState::Checked);
+        };
+        container->AddChild(autoExpandCheckbox);
+
+        auto autoSelectFirstChildCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoSelectFirstChildCheckbox", 607, 20, 520, 280, 24, "Auto select first child of expanded node");
+        autoSelectFirstChildCheckbox->SetChecked(false);
+        autoSelectFirstChildCheckbox->onStateChanged = [fileTree](CheckboxState oldState, CheckboxState newState) {
+        fileTree->SetShowFirstChildOnExpand(newState == CheckboxState::Checked);
+        };
+        container->AddChild(autoSelectFirstChildCheckbox);
 
         // Multi-Selection Tree
         auto multiTree = std::make_shared<UltraCanvasTreeView>("MultiTree", 603, 350, 50, 300, 200);
