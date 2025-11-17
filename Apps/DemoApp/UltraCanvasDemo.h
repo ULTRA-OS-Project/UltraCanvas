@@ -54,6 +54,10 @@ namespace UltraCanvas {
     private:
         std::shared_ptr<UltraCanvasLabel> titleLabel;
         std::shared_ptr<UltraCanvasLabel> infoLabel1;
+        std::shared_ptr<UltraCanvasLabel> infoLabel1_1;
+        std::shared_ptr<UltraCanvasLabel> infoLabel1_2;
+        std::shared_ptr<UltraCanvasLabel> infoLabel1_3;
+        std::shared_ptr<UltraCanvasLabel> infoLabel1_4;
         std::shared_ptr<UltraCanvasLabel> infoLabel2;
         std::shared_ptr<UltraCanvasLabel> infoLabel3;
         std::shared_ptr<UltraCanvasImageElement> programmersGuideIcon;

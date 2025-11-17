@@ -9,8 +9,11 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasBoxLayout.h"
 //#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasMenu.h"
+#include <stdlib.h>
 #include <memory>
 #include <vector>
 #include <string>
@@ -45,7 +48,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> visitorLabel;
         std::shared_ptr<UltraCanvasLabel> planLabel;
         std::shared_ptr<UltraCanvasButton> moreButton;
-
+        std::shared_ptr<UltraCanvasMenu> itemMenu;
         std::string domainUrl;
         bool isUSAIDDomain;
 
@@ -153,17 +156,47 @@ namespace UltraCanvas {
             moreButton->SetColors(Color(245, 245, 245, 255), Color(230, 230, 230, 255));
             moreButton->SetCornerRadius(3);
             AddChild(moreButton);
+
+            itemMenu = std::make_shared<UltraCanvasMenu>(
+                    "ItemMenu",
+                    130,
+                    0, 0, 150, 0
+            );
+            itemMenu->SetMenuType(MenuType::PopupMenu);
+
+            itemMenu->AddItem(MenuItemData::Action("Deactivate", []() {
+                std::cout << "Deactivate item " << std::endl;
+            }));
+
+            itemMenu->AddItem(MenuItemData::Action("Upgrade to Pro plan", []() {
+                std::cout << "Upgrade item " << std::endl;
+            }));
+
+            itemMenu->AddItem(MenuItemData::Action("Remove", []() {
+                std::cout << "Remove item " <<  std::endl;
+            }));
+
+            itemMenu->AddItem(MenuItemData::Action("Configure", []() {
+                std::cout << "Remove item " <<  std::endl;
+            }));
+        }
+
+        void ShowMenu() {
+            auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
+            this->GetWindow()->AddChild(itemMenu);
+            //Point2Di pos(itemLabel->GetXInWindow() + 50, itemLabel->GetYInWindow() + itemLabel->GetHeight());
+            itemMenu->ShowAt(ev.windowX, ev.windowY);
         }
 
         void SetupEventHandlers() {
             // Domain label click - open URL or show USAID info
             domainLabel->SetEventCallback([this](const UCEvent& event) {
                 if (event.type == UCEventType::MouseUp) {
-                    if (isUSAIDDomain && onUSAIDInfoClick) {
-                        onUSAIDInfoClick();
-                    } else if (onDomainClick) {
+//                    if (isUSAIDDomain && onUSAIDInfoClick) {
+//                        onUSAIDInfoClick();
+//                    } else if (onDomainClick) {
                         onDomainClick("https://" + domainUrl);
-                    }
+//                    }
                     return true;
                 } else if (event.type == UCEventType::MouseEnter) {
                     domainLabel->SetTextColor(Color(255, 69, 0, 255));  // Orange red on hover
@@ -181,9 +214,9 @@ namespace UltraCanvas {
             };
 
             // More button click
-            moreButton->onClick = [this]() {
-                std::cout << "More options for: " << domainUrl << std::endl;
-            };
+            moreButton->SetOnClick([this]() {
+                ShowMenu();
+            });
         }
     };
 
@@ -320,7 +353,7 @@ namespace UltraCanvas {
 
         // Description
         auto descLabel = std::make_shared<UltraCanvasLabel>("DomainTableDesc", 8002, 20, 60, 960, 35);
-        descLabel->SetText("Click on domain names to visit websites. The USAID.com domain shows special information about its closure.");
+        descLabel->SetText("Click on domain names to visit websites.");
         descLabel->SetFontSize(11);
 //        descLabel->SetTextColor(Color(80, 80, 80, 255));
         descLabel->SetAlignment(TextAlignment::Center);
@@ -331,26 +364,31 @@ namespace UltraCanvas {
         auto headerContainer = std::make_shared<UltraCanvasContainer>("HeaderContainer", 8003, 20, 105, 960, 35);
         headerContainer->SetBackgroundColor(Color(230, 230, 230, 255));
         headerContainer->SetBorders(1.0f);
+        headerContainer->SetPadding(0, 10);
+        auto headerContainerLayout = CreateHBoxLayout(headerContainer.get());
+        headerContainerLayout->SetSpacing(10);
 
         int headerX = 10;
         auto createHeader = [&](const std::string& text, int width, long id) {
-            auto header = std::make_shared<UltraCanvasLabel>("Header_" + text, id, headerX, 5, width, 25);
+            auto header = std::make_shared<UltraCanvasLabel>("Header_" + text, id, headerX, 7, width, 18);
             header->SetText(text);
             header->SetFontSize(10);
             header->SetFontWeight(FontWeight::Bold);
             header->SetTextColor(Color(40, 40, 40, 255));
             header->SetAlignment(width > 100 ? TextAlignment::Left : TextAlignment::Center);
-            headerContainer->AddChild(header);
+            headerContainerLayout->AddUIElement(header)->SetAlignment(LayoutItemAlignment::Center);
             headerX += width + 10;
         };
 
+
+        // Set right-click handler
         createHeader("Domain", 200, 8010);
-        createHeader("Status ⓘ", 100, 8011);
-        createHeader("Security insights ⓘ", 180, 8012);
-        createHeader("Unique visitors ⓘ", 180, 8013);
-        createHeader("", 1, 8014);  // Visitor count column
+        createHeader("Status", 100, 8011);
+        createHeader("Security insights", 180, 8012);
+        createHeader("Unique visitors", 180, 8013);
+        headerContainerLayout->AddSpacing(2);
         createHeader("Plan", 60, 8015);
-        createHeader("", 30, 8016);   // More button column
+        headerContainerLayout->AddSpacing(30);
 
         mainContainer->AddChild(headerContainer);
 
@@ -370,7 +408,9 @@ namespace UltraCanvas {
                             GenerateTrafficData(20, 45000, 5000), FormatVisitorCount(45000), "Free"),
                 DomainEntry("www.democracynow.com", "Active", "Enable",
                             GenerateTrafficData(20, 320000, 25000), FormatVisitorCount(320000), "Free"),
-                DomainEntry("www.usaid.com", "Active", "Enable",
+//                DomainEntry("www.usaid.com", "Active", "Enable",
+//                            GenerateTrafficData(20, 850000, 50000), FormatVisitorCount(850000), "Free", true),
+                DomainEntry("www.firefox.org", "Active", "Enable",
                             GenerateTrafficData(20, 850000, 50000), FormatVisitorCount(850000), "Free", true),
                 DomainEntry("www.350.org", "Active", "Enable",
                             GenerateTrafficData(20, 125000, 12000), FormatVisitorCount(125000), "Free"),
@@ -403,6 +443,7 @@ namespace UltraCanvas {
             // Set up event handlers for this row
             domainRow->onDomainClick = [](const std::string& url) {
                 std::cout << "Opening URL: " << url << std::endl;
+                system(std::string("xdg-open "+url).c_str());
                 // In a real implementation, this would open the URL in a browser
                 // For now, just log it
             };

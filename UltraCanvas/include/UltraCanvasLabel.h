@@ -31,6 +31,7 @@ namespace UltraCanvas {
         // Word wrapping
         bool wordWrap = false;
         bool autoResize = false;
+        bool isMarkup = false;
 
         static LabelStyle DefaultStyle() {
             return LabelStyle{};
@@ -191,6 +192,12 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
+        void SetTextIsMarkup(bool markup) {
+            style.isMarkup = markup;
+            layoutDirty = true;
+            RequestRedraw();
+        }
+
         // ===== SIZING =====
         void AutoResize(const Size2Di& textDimensions) {
             if (text.empty()) {
@@ -231,6 +238,7 @@ namespace UltraCanvas {
             ctx->PushState();
             ctx->SetFontStyle(style.fontStyle);
             Size2Di textDimensions;
+            ctx->SetTextIsMarkup(style.isMarkup);
             ctx->GetTextLineDimensions(text, textDimensions.width, textDimensions.height);
             if (style.autoResize || GetWidth() == 0) {
                 AutoResize(textDimensions);
@@ -294,6 +302,7 @@ namespace UltraCanvas {
 
             Rect2Di bounds = GetBounds();
             // Draw text
+            ctx->SetTextIsMarkup(style.isMarkup);
             if (!text.empty()) {
                 // Draw shadow if enabled
                 ctx->SetTextWrap(style.wordWrap ? TextWrap::WrapWordChar : TextWrap::WrapNone);

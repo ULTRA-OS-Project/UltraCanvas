@@ -47,41 +47,75 @@ namespace UltraCanvas {
         // Create title label
         auto layout = CreateVBoxLayout(this);
 
-        titleLabel = std::make_shared<UltraCanvasLabel>("InfoTitle", 1000, 50, 10, 500, 30);
+        titleLabel = std::make_shared<UltraCanvasLabel>("InfoTitle");
         titleLabel->SetText("Welcome to UltraCanvas Demo Application");
         titleLabel->SetFontSize(18);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetAlignment(TextAlignment::Center);
+        titleLabel->SetAutoResize(true);
         titleLabel->SetTextColor(Color(0, 60, 120, 255));
+        titleLabel->SetMargin(10);
         layout->AddUIElement(titleLabel)->SetAlignment(LayoutItemAlignment::Center);
 
         // Create divider line
         auto divider = std::make_shared<UltraCanvasUIElement>("Divider", 1001, 10, 50, 600, 2);
         divider->SetBackgroundColor(Color(200, 200, 200, 255));
-        divider->SetMargin(10);
+        divider->SetMargin(0,10,10,10);
         layout->AddUIElement(divider)->SetWidthMode(SizeMode::Fill);
 
-        infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1", 1002, 30, 60, 590, 160);
-        infoLabel1->SetText("UltraCanvas is a comprehensive, open source, one-stop, cross-plattform, multi-programming-language GUI for programmers. "
+        infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1");
+        infoLabel1->SetText("UltraCanvas is a comprehensive, open source, one-stop, cross-plattform,\n"
+                            "multi-programming-language GUI for programmers.\n"
                             "UltraCanvas will be the main GUI for ULTRA OS.\n"
-                            "UltraCanvas will be available for both desktop as also mobile platforms.\n"
-                            "URL https://www.ultraos.eu,\nGithub: https://github.com/ULTRA-OS-Project/UltraCanvas\n"
-                            "Planned first release 12/2025");
+                            "UltraCanvas will be available for both desktop as also mobile platforms.");
         infoLabel1->SetFontSize(12);
         infoLabel1->SetAlignment(TextAlignment::Center);
         infoLabel1->SetTextColor(Color(60, 60, 60, 255));
-        infoLabel1->SetMargin(10,20);
-        layout->AddUIElement(infoLabel1)->SetWidthMode(SizeMode::Fill)->SetHeightMode(SizeMode::Auto);
+        infoLabel1->SetAutoResize(true);
+        infoLabel1->SetMargin(2,20,0,20);
+        layout->AddUIElement(infoLabel1);
+
+        auto openUltraosCallback = []() {
+            system("xdg-open https://www.ultraos.eu");
+        };
+        infoLabel1_1 = std::make_shared<UltraCanvasLabel>();
+        infoLabel1_1->SetText("URL <span color=\"blue\">https://www.ultraos.eu</span>");
+        infoLabel1_1->SetFontSize(12);
+        infoLabel1_1->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel1_1->SetAutoResize(true);
+        infoLabel1_1->SetTextIsMarkup(true);
+        infoLabel1_1->SetMargin(2,20);
+        infoLabel1_1->onClick = openUltraosCallback;
+        layout->AddUIElement(infoLabel1_1);
 
         // Create info text
-        infoLabel1 = std::make_shared<UltraCanvasLabel>("InfoText1", 1002, 20, 180, 610, 25);
-        infoLabel1->SetText("On the right side of the title of each UC element you can find these icons:");
-        infoLabel1->SetFontSize(12);
-        infoLabel1->SetAlignment(TextAlignment::Center);
-        infoLabel1->SetTextColor(Color(60, 60, 60, 255));
-        infoLabel1->SetMargin(10,20);
-        infoLabel1->SetAutoResize(true);
-        layout->AddUIElement(infoLabel1);
+        auto openGitHubCallback = []() {
+            system("xdg-open https://github.com/ULTRA-OS-Project/UltraCanvas");
+        };
+        infoLabel1_2 = std::make_shared<UltraCanvasLabel>();
+        infoLabel1_2->SetText("Github: <span color=\"blue\">https://github.com/ULTRA-OS-Project/UltraCanvas</span>");
+        infoLabel1_2->SetFontSize(12);
+        infoLabel1_2->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel1_2->SetAutoResize(true);
+        infoLabel1_2->SetMargin(2,20);
+        infoLabel1_2->SetTextIsMarkup(true);
+        infoLabel1_2->onClick = openGitHubCallback;
+        layout->AddUIElement(infoLabel1_2);
+
+        infoLabel1_3 = std::make_shared<UltraCanvasLabel>();
+        infoLabel1_3->SetText("Planned first release 12/2025");
+        infoLabel1_3->SetFontSize(12);
+        infoLabel1_3->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel1_3->SetAutoResize(true);
+        infoLabel1_3->SetMargin(2,20);
+        layout->AddUIElement(infoLabel1_3);
+
+        infoLabel1_4 = CreateLabel("On the right side of the title of each UC element you can find these icons:");
+        infoLabel1_4->SetFontSize(12);
+        infoLabel1_4->SetTextColor(Color(60, 60, 60, 255));
+        infoLabel1_4->SetAutoResize(true);
+        infoLabel1_4->SetMargin(12,20,5,20);
+        layout->AddUIElement(infoLabel1_4);
 
         // Create icon descriptions with actual icons
         int iconSize = 24;
@@ -89,10 +123,10 @@ namespace UltraCanvas {
         // Programmers guide icon and label
         auto doccontainer = CreateContainer("doccont1", 0, 0, 0, 0, 25);
         auto docContainerLayout = CreateHBoxLayout(doccontainer.get());
-        doccontainer->SetMargin(0,20,10,20);
+        doccontainer->SetMargin(10,20,10,20);
         layout->AddUIElement(doccontainer)->SetWidthMode(SizeMode::Fill);
         programmersGuideIcon = CreateImageElement("DocIcon", iconSize, iconSize);
-        programmersGuideIcon->LoadFromFile("assets/icons/component.png");
+        programmersGuideIcon->LoadFromFile("assets/icons/text.png");
         programmersGuideIcon->SetScaleMode(ImageScaleMode::Uniform);
         docContainerLayout->AddUIElement(programmersGuideIcon);
 

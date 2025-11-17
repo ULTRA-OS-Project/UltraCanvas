@@ -676,28 +676,28 @@ namespace UltraCanvas {
                              "Docs/UltraCanvasPopulationChartElement.md");
 
         chartBuilder.AddItem("sunburstcharts", "Sunburst Chart", "Sunburst Chart",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return nullptr; });
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Sunburst Chart is not ready yet"); });
 
         chartBuilder.AddItem("ganttcharts", "Gantt Chart", "Gantt Chart",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return nullptr; });
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Gantt Chart is not ready yet"); });
 
         chartBuilder.AddItem("quadrantcharts", "Quadrant Chart", "Quadrant Chart",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return nullptr; });
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Quadrant Chart is not ready yet"); });
 
         chartBuilder.AddItem("circularcharts", "Circular Chart", "Circular Chart",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return nullptr; });
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Circular Chart is not ready yet"); });
 
         chartBuilder.AddItem("polarcharts", "Polar Chart", "Polar Chart",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return nullptr; });
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Polar Chart is not ready yet"); });
 
         chartBuilder.AddItem("flowchart", "Jitter plot", "Jitter plot",
-                             ImplementationStatus::NotImplemented,
-                             [this]() { return nullptr; });
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Jitter plot is not ready yet"); });
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
@@ -790,7 +790,23 @@ namespace UltraCanvas {
 //                .AddVariant("codeeditor", "Pascal Syntax")
 //                .AddVariant("codeeditor", "COBOL Syntax");
 
-        textDocBuilder.AddItem("textdocuments", "Text Documents", "ODT, RTF, TeX document support",
+        textDocBuilder.AddItem("textdocuments", "Text Documents", "Text document support",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreateTextDocumentExamples(); });
+
+        textDocBuilder.AddItem("textdocuments_latex", "LaTeX Documents", "LaTeX document support",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreateTextDocumentExamples(); });
+
+        textDocBuilder.AddItem("textdocuments_pdf", "PDF Documents", "PDF document support",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreateTextDocumentExamples(); });
+
+        textDocBuilder.AddItem("textdocuments_odf", "ODF Documents", "ODF document support",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreateTextDocumentExamples(); });
+
+        textDocBuilder.AddItem("textdocuments_odt", "ODT Documents", "ODT document support",
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreateTextDocumentExamples(); });
 
@@ -809,11 +825,13 @@ namespace UltraCanvas {
 
         toolsBuilder.AddItem("qrcode", "QR code", "QR code scanner",
                              ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("## QR code"); });
+                             [this]() { return CreatePartiallyImplementedExamples("## QR code\n"
+                                                                                  "Not ready yet"); });
 
         toolsBuilder.AddItem("barcode", "Bar code", "Bar code",
                                ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("## Bar code"); });
+                               [this]() { return CreatePartiallyImplementedExamples("## Bar code\n"
+                                                                                    "Not ready yet"); });
 
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);

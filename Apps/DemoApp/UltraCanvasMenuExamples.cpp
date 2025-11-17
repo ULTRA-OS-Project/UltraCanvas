@@ -254,14 +254,14 @@ namespace UltraCanvas {
         container->AddChild(infoLabel);
 
         // Popup menu example
-        auto popupLabel = std::make_shared<UltraCanvasLabel>("PopupLabel", 120, 20, 405, 200, 30);
+        auto popupLabel = std::make_shared<UltraCanvasLabel>("PopupLabel", 120, 20, 425, 200, 30);
         popupLabel->SetText("Popup Menu Example:");
         popupLabel->SetFontSize(14);
         popupLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(popupLabel);
 
         // Create a sample list for popup menu
-        auto listContainer = std::make_shared<UltraCanvasContainer>("ListContainer", 121, 20, 430, 300, 150);
+        auto listContainer = std::make_shared<UltraCanvasContainer>("ListContainer", 121, 20, 460, 300, 150);
         listContainer->SetBackgroundColor(Color(255, 255, 255, 255));
         listContainer->SetBorders(1, Color(200, 200, 200, 255));
         container->AddChild(listContainer);

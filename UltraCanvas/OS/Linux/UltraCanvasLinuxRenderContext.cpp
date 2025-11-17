@@ -199,8 +199,8 @@ namespace UltraCanvas {
     }
 
     void LinuxRenderContext::ClipRect(float x, float y, float w, float h) {
-        std::cout << "LinuxRenderContext::ClipRect - setting clip to "
-                  << x << "," << y << " " << w << "x" << h << std::endl;
+//        std::cout << "LinuxRenderContext::ClipRect - setting clip to "
+//                  << x << "," << y << " " << w << "x" << h << std::endl;
         cairo_rectangle(cairo, x, y, w, h);
         cairo_clip(cairo);
     }
@@ -615,7 +615,7 @@ namespace UltraCanvas {
     void LinuxRenderContext::Flush() {
         cairo_surface_flush(cairo_get_target(cairo));
         if (doubleBufferingEnabled && doubleBuffer.IsValid()) {
-            std::cout << "Flush: Swapping double buffer" << std::endl;
+//            std::cout << "Flush: Swapping double buffer" << std::endl;
             doubleBuffer.SwapBuffers();
         }
     }

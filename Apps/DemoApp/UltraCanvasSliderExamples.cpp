@@ -99,14 +99,14 @@ namespace UltraCanvas {
         };
 
         // Vertical Slider
-        auto vSlider = std::make_shared<UltraCanvasSlider>("VerticalSlider", 405, 500, 60, 20, 200);
+        auto vSlider = std::make_shared<UltraCanvasSlider>("VerticalSlider", 405, 500, 50, 20, 200);
         vSlider->SetOrientation(SliderOrientation::Vertical);
         vSlider->SetRange(0.0f, 10.0f);
         vSlider->SetValue(5.0f);
         vSlider->SetStep(0.5f);
         container->AddChild(vSlider);
 
-        auto vSliderLabel = std::make_shared<UltraCanvasLabel>("VSliderLabel", 406, 530, 60, 150, 20);
+        auto vSliderLabel = std::make_shared<UltraCanvasLabel>("VSliderLabel", 406, 530, 50, 150, 20);
         vSliderLabel->SetText("Vertical Slider");
         vSliderLabel->SetFontSize(12);
         container->AddChild(vSliderLabel);

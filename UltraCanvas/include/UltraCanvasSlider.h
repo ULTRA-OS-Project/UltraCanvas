@@ -395,10 +395,6 @@ namespace UltraCanvas {
                         RenderProgressSlider(bounds, ctx);
                         break;
 
-                    case SliderStyle::Rounded:
-                        RenderRoundedSlider(bounds, ctx);
-                        break;
-
                     default:
                         RenderLinearSlider(bounds, ctx);
                         break;
@@ -554,26 +550,6 @@ namespace UltraCanvas {
             RenderHandle(upperHandlePos, ctx, (activeHandle == RangeHandle::Upper) || (hoveredHandle == RangeHandle::Upper));
         }
 
-        void RenderRoundedSlider(const Rect2Di& bounds, IRenderContext* ctx) {
-            // Similar to linear but with rounded corners
-            bool isVertical = (orientation == SliderOrientation::Vertical);
-            Rect2Di trackRect = GetTrackRect(bounds, isVertical);
-
-            // Draw track with rounded corners
-            ctx->DrawFilledRectangle(trackRect, GetCurrentTrackColor(), 1.0, style.handleBorderColor, style.cornerRadius);
-
-            // Draw active track with rounded corners
-            Rect2Di activeRect = GetActiveTrackRect(trackRect, isVertical);
-            if ((isVertical && activeRect.height > 0) || (!isVertical && activeRect.width > 0)) {
-                ctx->SetFillPaint(style.activeTrackColor);
-                ctx->FillRoundedRectangle(activeRect, style.cornerRadius);
-            }
-
-            // Draw handle
-            Point2Di handlePos = GetHandlePosition(bounds, isVertical, currentValue);
-            RenderRoundedHandle(handlePos, ctx);
-        }
-
         void RenderCircularSlider(const Rect2Di& bounds, IRenderContext* ctx) {
             // Circular/knob style slider
             int centerX = bounds.x + bounds.width / 2;
@@ -637,25 +613,6 @@ namespace UltraCanvas {
 
             // Fill handle
             ctx->DrawFilledRectangle(handleRect, handleColor, style.borderWidth, style.handleBorderColor, handleRadius);
-        }
-
-        void RenderRoundedHandle(const Point2Di& position, IRenderContext* ctx) {
-            float handleRadius = style.handleSize / 2;
-            Rect2Di handleRect(
-                    position.x - handleRadius,
-                    position.y - handleRadius,
-                    style.handleSize,
-                    style.handleSize
-            );
-
-            // Fill handle
-            ctx->SetFillPaint(GetCurrentHandleColor());
-            ctx->FillRoundedRectangle(handleRect, handleRadius);
-
-            // Draw handle border
-            ctx->SetStrokePaint(style.handleBorderColor);
-            ctx->SetStrokeWidth(style.borderWidth);
-            ctx->DrawRoundedRectangle(handleRect, handleRadius);
         }
 
         void RenderValueDisplay(const Rect2Di& bounds, IRenderContext* ctx) {
