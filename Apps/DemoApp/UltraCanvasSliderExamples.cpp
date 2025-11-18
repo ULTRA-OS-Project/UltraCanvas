@@ -207,6 +207,7 @@ namespace UltraCanvas {
                                               0.0f, 100.0f, 30.0f, 70.0f);
         percentRange->SetValueDisplay(SliderValueDisplay::Percentage);
         percentRange->SetStep(5.0f);
+        percentRange->SetHandleShape(SliderHandleShape::Square);
 
         auto percentDisplay = std::make_shared<UltraCanvasLabel>("PercentDisplay", 5011, labelX, yPos, 300, 25);
         percentDisplay->SetText("Range: 30% - 70%");
@@ -267,6 +268,7 @@ namespace UltraCanvas {
                                            0.0f, 24.0f, 9.0f, 17.0f);
         timeRange->SetValueDisplay(SliderValueDisplay::NoDisplay);
         timeRange->SetStep(0.5f);  // 30-minute increments
+        timeRange->SetHandleShape(SliderHandleShape::Triangle);
 
         auto timeDisplay = std::make_shared<UltraCanvasLabel>("TimeDisplay", 5017, labelX, yPos, 300, 25);
         timeDisplay->SetText("Work Hours: 09:00 - 17:00");
@@ -356,14 +358,13 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 8: ROUNDED STYLE RANGE SLIDER =====
         auto roundedLabel = std::make_shared<UltraCanvasLabel>("RoundedLabel", 5024, 20, yPos, 300, 25);
-        roundedLabel->SetText("Rounded Style Range (Modern Design)");
+        roundedLabel->SetText("Diamond Style handle");
         roundedLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(roundedLabel);
         yPos += 35;
 
         auto roundedRange = CreateRangeSlider("roundedRange", 5025, 20, yPos, sliderWidth, 30,
                                               0.0f, 100.0f, 25.0f, 75.0f);
-        roundedRange->SetSliderStyle(SliderStyle::Rounded);
         roundedRange->SetValueDisplay(SliderValueDisplay::Number);
         roundedRange->SetStep(1.0f);
 
@@ -376,6 +377,8 @@ namespace UltraCanvas {
         roundedStyle.trackColor = Color(230, 230, 230);
         roundedStyle.handleColor = Color(255, 255, 255);
         roundedStyle.handleBorderColor = Color(120, 120, 255);
+        roundedStyle.handleShape = SliderHandleShape::Diamond;
+        roundedRange->SetStyle(roundedStyle);
 
         auto roundedDisplay = std::make_shared<UltraCanvasLabel>("RoundedDisplay", 5026, labelX, yPos, 300, 25);
         roundedDisplay->SetText("Range: 25 - 75");

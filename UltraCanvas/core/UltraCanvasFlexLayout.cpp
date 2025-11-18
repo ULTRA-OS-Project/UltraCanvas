@@ -493,15 +493,15 @@ void UltraCanvasFlexLayout::PositionCrossAxis(FlexLine& line, int containerCross
         int itemCrossSize = IsRowDirection() ? item->GetComputedHeight() : item->GetComputedWidth();
 
         // Apply align items or align self
-        LayoutItemAlignment alignment = (item->GetAlignSelf() != LayoutItemAlignment::Auto) ?
-                                        item->GetAlignSelf() : LayoutItemAlignment::Start;
+        LayoutAlignment alignment = (item->GetAlignSelf() != LayoutAlignment::Auto) ?
+                                        item->GetAlignSelf() : LayoutAlignment::Start;
 
         // Handle stretch alignment
-        if (alignItems == FlexAlignItems::Stretch && alignment == LayoutItemAlignment::Auto) {
+        if (alignItems == FlexAlignItems::Stretch && alignment == LayoutAlignment::Auto) {
             itemCrossSize = containerCrossSize;
-        } else if (alignItems == FlexAlignItems::Center || alignment == LayoutItemAlignment::Center) {
+        } else if (alignItems == FlexAlignItems::Center || alignment == LayoutAlignment::Center) {
             crossPosition += static_cast<float>(containerCrossSize - itemCrossSize) / 2;
-        } else if (alignItems == FlexAlignItems::End || alignment == LayoutItemAlignment::End) {
+        } else if (alignItems == FlexAlignItems::End || alignment == LayoutAlignment::End) {
             crossPosition += containerCrossSize - itemCrossSize;
         }
 

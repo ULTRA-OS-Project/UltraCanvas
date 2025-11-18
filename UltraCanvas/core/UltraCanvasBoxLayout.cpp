@@ -113,6 +113,8 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         }
 
         auto item = std::make_unique<UltraCanvasBoxLayoutItem>(element);
+        item->SetMainAlignment(defaultMainAxisAlignment);
+        item->SetCrossAlignment(defaultCrossAxisAlignment);
         auto itemPtr = item.get();
         if (index >= 0 && index <= static_cast<int>(items.size())) {
             items.insert(items.begin() + index, std::move(item));
@@ -189,7 +191,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         for (size_t i = 0; i < items.size(); ++i) {
             auto& item = items[i];
             if (!item->IsVisible()) continue;
-            auto crossAxisAlignment = item->GetAlignment();
+            auto crossAxisAlignment = item->GetCrossAlignment();
 
             // Calculate width
             int itemWidth = 0;
@@ -211,7 +213,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             if (item->GetHeightMode() == SizeMode::Fixed) {
                 itemHeight = item->GetFixedHeight();
             } else if (item->GetHeightMode() == SizeMode::Fill ||
-                       crossAxisAlignment == LayoutItemAlignment::Fill) {
+                       crossAxisAlignment == LayoutAlignment::Fill) {
                 itemHeight = availableHeight;
             } else {
                 itemHeight = item->GetPreferredHeight();
@@ -219,9 +221,9 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
 
             itemHeight = std::clamp(itemHeight, item->GetMinimumHeight(), item->GetMaximumHeight());
 
-            if (crossAxisAlignment == LayoutItemAlignment::Center) {
+            if (crossAxisAlignment == LayoutAlignment::Center) {
                 itemY += (availableHeight - itemHeight) / 2;
-            } else if (crossAxisAlignment == LayoutItemAlignment::End) {
+            } else if (crossAxisAlignment == LayoutAlignment::End) {
                 itemY += availableHeight - itemHeight;
             }
 
@@ -241,11 +243,11 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         }
 
         // Apply main axis alignment
-        if (mainAxisAlignment != LayoutAlignment::Start && remainingSpace > 0) {
+        if (defaultMainAxisAlignment != LayoutAlignment::Start && remainingSpace > 0) {
             int offset = 0;
-            if (mainAxisAlignment == LayoutAlignment::Center) {
+            if (defaultMainAxisAlignment == LayoutAlignment::Center) {
                 offset = remainingSpace / 2;
-            } else if (mainAxisAlignment == LayoutAlignment::End) {
+            } else if (defaultMainAxisAlignment == LayoutAlignment::End) {
                 offset = remainingSpace;
             }
 
@@ -277,7 +279,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
 
         for (size_t i = 0; i < items.size(); ++i) {
             auto& item = items[i];
-            auto crossAxisAlignment = item->GetAlignment();
+            auto crossAxisAlignment = item->GetCrossAlignment();
             if (!item->IsVisible()) continue;
 
             // Calculate height
@@ -300,7 +302,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             if (item->GetWidthMode() == SizeMode::Fixed) {
                 itemWidth = item->GetFixedWidth();
             } else if (item->GetWidthMode() == SizeMode::Fill ||
-                       crossAxisAlignment == LayoutItemAlignment::Fill) {
+                       crossAxisAlignment == LayoutAlignment::Fill) {
                 itemWidth = availableWidth;
             } else {
                 itemWidth = item->GetPreferredWidth();
@@ -309,9 +311,9 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             itemWidth = std::clamp(itemWidth, item->GetMinimumWidth(), item->GetMaximumWidth());
 
             // Apply cross-axis alignment for width
-            if (crossAxisAlignment == LayoutItemAlignment::Center) {
+            if (crossAxisAlignment == LayoutAlignment::Center) {
                 itemX += (availableWidth - itemWidth) / 2;
-            } else if (crossAxisAlignment == LayoutItemAlignment::End) {
+            } else if (crossAxisAlignment == LayoutAlignment::End) {
                 itemX += availableWidth - itemWidth;
             }
 
@@ -331,11 +333,11 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
         }
 
         // Apply main axis alignment
-        if (mainAxisAlignment != LayoutAlignment::Start && remainingSpace > 0) {
+        if (defaultMainAxisAlignment != LayoutAlignment::Start && remainingSpace > 0) {
             int offset = 0;
-            if (mainAxisAlignment == LayoutAlignment::Center) {
+            if (defaultMainAxisAlignment == LayoutAlignment::Center) {
                 offset = remainingSpace / 2;
-            } else if (mainAxisAlignment == LayoutAlignment::End) {
+            } else if (defaultMainAxisAlignment == LayoutAlignment::End) {
                 offset = remainingSpace;
             }
 

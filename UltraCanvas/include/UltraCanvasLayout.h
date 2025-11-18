@@ -24,13 +24,6 @@ enum class LayoutAlignment {
     Start = 0,        // Left/Top
     Center = 1,       // Center
     End = 2,          // Right/Bottom
-    Fill = 3         // Fill available space
-};
-
-enum class LayoutItemAlignment {
-    Start = 0,        // Left/Top
-    Center = 1,       // Center
-    End = 2,          // Right/Bottom
     Fill = 3,         // Fill available space
     Auto = 4         // Auto (Flex)
 };

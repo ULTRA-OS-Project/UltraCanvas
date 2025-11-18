@@ -8,6 +8,7 @@
 #ifndef ULTRACANVAS_TOOLBAR_H
 #define ULTRACANVAS_TOOLBAR_H
 
+#include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasDropdown.h"
@@ -80,7 +81,7 @@ namespace UltraCanvas {
     };
 
     enum class ToolbarOverflowMode {
-        None = 0,           // No overflow handling
+        OverflowNone = 0,           // No overflow handling
         Wrap = 1,           // Wrap items to new line
         Menu = 2,           // Move to overflow menu
         Scroll = 3,         // Allow scrolling
@@ -104,7 +105,7 @@ namespace UltraCanvas {
     };
 
     enum class ToolbarDragMode {
-        None = 0,
+        DragNone = 0,
         Movable = 1,
         ReorderItems = 2,
         Both = 3
@@ -303,6 +304,7 @@ namespace UltraCanvas {
 // ===== TOOLBAR ITEM BASE CLASS =====
 
     class UltraCanvasToolbarItem {
+    friend UltraCanvasToolbar;
     protected:
         ToolbarItemType itemType;
         std::string identifier;
@@ -471,12 +473,12 @@ namespace UltraCanvas {
         ToolbarPosition position = ToolbarPosition::Top;
         ToolbarStyle style = ToolbarStyle::Standard;
         ToolbarAppearance appearance;
-        ToolbarOverflowMode overflowMode = ToolbarOverflowMode::None;
+        ToolbarOverflowMode overflowMode = ToolbarOverflowMode::OverflowNone;
         ToolbarVisibility visibility = ToolbarVisibility::AlwaysVisible;
-        ToolbarDragMode dragMode = ToolbarDragMode::None;
+        ToolbarDragMode dragMode = ToolbarDragMode::DragNone;
 
         // Layout management
-        std::unique_ptr<UltraCanvasBoxLayout> boxLayout;
+        UltraCanvasBoxLayout* boxLayout = nullptr;
 
         // Items
         std::vector<std::shared_ptr<UltraCanvasToolbarItem>> items;
@@ -550,7 +552,6 @@ namespace UltraCanvas {
                           std::function<void(const std::string&)> onTextChange = nullptr);
 
         // ===== LAYOUT =====
-        void UpdateLayout();
         void HandleOverflow();
 
         // ===== RENDERING =====
@@ -595,13 +596,13 @@ namespace UltraCanvas {
 
     class UltraCanvasToolbarBuilder {
     private:
-        std::unique_ptr<UltraCanvasToolbar> toolbar;
+        std::shared_ptr<UltraCanvasToolbar> toolbar;
 
     public:
         UltraCanvasToolbarBuilder(const std::string& identifier, long id = 0);
 
         UltraCanvasToolbarBuilder& SetOrientation(ToolbarOrientation orient);
-        UltraCanvasToolbarBuilder& SetPosition(ToolbarPosition pos);
+        UltraCanvasToolbarBuilder& SetToolbarPosition(ToolbarPosition pos);
         UltraCanvasToolbarBuilder& SetStyle(ToolbarStyle style);
         UltraCanvasToolbarBuilder& SetAppearance(const ToolbarAppearance& app);
         UltraCanvasToolbarBuilder& SetOverflowMode(ToolbarOverflowMode mode);
@@ -621,34 +622,34 @@ namespace UltraCanvas {
         UltraCanvasToolbarBuilder& AddFlexSpacer(float stretch = 1.0f);
         UltraCanvasToolbarBuilder& AddLabel(const std::string& id, const std::string& text);
 
-        std::unique_ptr<UltraCanvasToolbar> Build();
+        std::shared_ptr<UltraCanvasToolbar> Build();
     };
 
 // ===== PRESET TOOLBAR FACTORIES =====
 
     namespace ToolbarPresets {
         // Standard horizontal toolbar
-        std::unique_ptr<UltraCanvasToolbar> CreateStandardToolbar(
+        std::shared_ptr<UltraCanvasToolbar> CreateStandardToolbar(
                 const std::string& identifier = "Toolbar"
         );
 
         // macOS-style dock
-        std::unique_ptr<UltraCanvasToolbar> CreateDockStyleToolbar(
+        std::shared_ptr<UltraCanvasToolbar> CreateDockStyleToolbar(
                 const std::string& identifier = "Dock"
         );
 
         // Ribbon-style toolbar with multiple rows
-        std::unique_ptr<UltraCanvasToolbar> CreateRibbonToolbar(
+        std::shared_ptr<UltraCanvasToolbar> CreateRibbonToolbar(
                 const std::string& identifier = "Ribbon"
         );
 
         // Vertical sidebar
-        std::unique_ptr<UltraCanvasToolbar> CreateSidebarToolbar(
+        std::shared_ptr<UltraCanvasToolbar> CreateSidebarToolbar(
                 const std::string& identifier = "Sidebar"
         );
 
         // Status bar
-        std::unique_ptr<UltraCanvasToolbar> CreateStatusBar(
+        std::shared_ptr<UltraCanvasToolbar> CreateStatusBar(
                 const std::string& identifier = "StatusBar"
         );
     }

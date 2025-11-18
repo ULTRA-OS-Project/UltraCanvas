@@ -126,10 +126,10 @@ namespace UltraCanvas {
 
         auto headerLayout = CreateHBoxLayout(this);
         headerLayout->SetSpacing(10);
-        headerLayout->AddUIElement(titleLabel)->SetAlignment(LayoutItemAlignment::Center);
+        headerLayout->AddUIElement(titleLabel)->SetCrossAlignment(LayoutAlignment::Center);
         headerLayout->AddStretch(1);
-        headerLayout->AddUIElement(docButton)->SetAlignment(LayoutItemAlignment::Center);
-        headerLayout->AddUIElement(sourceButton)->SetAlignment(LayoutItemAlignment::Center);
+        headerLayout->AddUIElement(docButton)->SetCrossAlignment(LayoutAlignment::Center);
+        headerLayout->AddUIElement(sourceButton)->SetCrossAlignment(LayoutAlignment::Center);
     }
 
     void DemoHeaderContainer::SetDemoTitle(const std::string& title) {

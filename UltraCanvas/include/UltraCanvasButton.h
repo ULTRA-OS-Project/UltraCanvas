@@ -132,6 +132,7 @@ namespace UltraCanvas {
         bool maintainIconAspectRatio = true;
 
         // State
+        bool canToggled = false;
         bool autoresize = false;
         bool isNeedAutoresize = false;
 
@@ -150,6 +151,9 @@ namespace UltraCanvas {
                           long x = 0, long y = 0, long w = 100, long h = 30,
                           const std::string& buttonText = "Button");
 
+        void SetCanToggled(bool tgl) {
+            canToggled = tgl;
+        }
         // ===== SPLIT BUTTON METHODS =====
         void SetSplitEnabled(bool enabled);
         void SetSplitRatio(float primaryRatio = 0.75f);
@@ -222,6 +226,7 @@ namespace UltraCanvas {
         std::function<void()> onClick;
         std::function<void()> onPress;      // When button is pressed down
         std::function<void()> onRelease;    // When button is released
+        std::function<void(bool isPressed)> onToggle;      // When button is pressed down
         std::function<void()> onSecondaryClick;  // For secondary section click
         std::function<void()> onHoverEnter;
         std::function<void()> onHoverLeave;

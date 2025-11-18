@@ -55,7 +55,7 @@ namespace UltraCanvas {
         titleLabel->SetAutoResize(true);
         titleLabel->SetTextColor(Color(0, 60, 120, 255));
         titleLabel->SetMargin(10);
-        layout->AddUIElement(titleLabel)->SetAlignment(LayoutItemAlignment::Center);
+        layout->AddUIElement(titleLabel)->SetCrossAlignment(LayoutAlignment::Center);
 
         // Create divider line
         auto divider = std::make_shared<UltraCanvasUIElement>("Divider", 1001, 10, 50, 600, 2);
@@ -136,7 +136,7 @@ namespace UltraCanvas {
         infoLabel2->SetAlignment(TextAlignment::Left);
         infoLabel2->SetTextColor(Color(60, 60, 60, 255));
         infoLabel2->SetMargin(3,0,0,10);
-        docContainerLayout->AddUIElement(infoLabel2, 1)->SetAlignment(LayoutItemAlignment::Center);
+        docContainerLayout->AddUIElement(infoLabel2, 1)->SetCrossAlignment(LayoutAlignment::Center);
 
         // Example code icon and label
         auto codeContainer = CreateContainer("codecont1", 0, 0, 0, 0, 25);
@@ -155,7 +155,7 @@ namespace UltraCanvas {
         infoLabel3->SetAlignment(TextAlignment::Left);
         infoLabel3->SetTextColor(Color(60, 60, 60, 255));
         infoLabel3->SetMargin(3,0,0,10);
-        codeContainerLayout->AddUIElement(infoLabel3, 1)->SetAlignment(LayoutItemAlignment::Center);;
+        codeContainerLayout->AddUIElement(infoLabel3, 1)->SetCrossAlignment(LayoutAlignment::Center);;
 
         // Create additional info
         auto additionalInfo = std::make_shared<UltraCanvasLabel>("AdditionalInfo", 1007, 50, 310, 500, 40);
@@ -184,7 +184,7 @@ namespace UltraCanvas {
             OnOkButtonClick();
         });
 
-        layout->AddUIElement(okButton)->SetAlignment(LayoutItemAlignment::Center);
+        layout->AddUIElement(okButton)->SetCrossAlignment(LayoutAlignment::Center);
     }
 
     void InfoWindow::SetOkCallback(std::function<void()> callback) {

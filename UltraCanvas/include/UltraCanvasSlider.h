@@ -23,7 +23,6 @@ namespace UltraCanvas {
         Circular,       // Circular/knob style
         Progress,       // Progress bar style
         Range,          // Range slider with two handles
-        Rounded         // Rounded corners
     };
 
     enum class SliderValueDisplay {
@@ -54,6 +53,13 @@ namespace UltraCanvas {
         Both            // Both handles (for special operations)
     };
 
+    enum SliderHandleShape {
+        Circle,
+        Square,
+        Triangle,
+        Diamond
+    };
+
 // ===== SLIDER VISUAL STYLE =====
     struct SliderVisualStyle {
         // Track colors
@@ -78,6 +84,7 @@ namespace UltraCanvas {
         float handleSize = 16.0f;
         float borderWidth = 1.0f;
         float cornerRadius = 3.0f;
+        SliderHandleShape handleShape = SliderHandleShape::Circle;
 
         // Font
         FontStyle fontStyle;
@@ -363,11 +370,18 @@ namespace UltraCanvas {
             style.handleSize = std::max(8.0f, size);
         }
 
+        void SetHandleShape(SliderHandleShape shape) {
+            style.handleShape = shape;
+        }
+
         void SetValueFormat(const std::string& format) { valueFormat = format; }
         void SetCustomText(const std::string& text) { customText = text; }
 
         SliderVisualStyle& GetStyle() { return style; }
         const SliderVisualStyle& GetStyle() const { return style; }
+        void SetStyle(const SliderVisualStyle& st) {
+            style = st;
+        }
 
         // ===== RENDERING (REQUIRED OVERRIDE) =====
         void Render(IRenderContext* ctx) override {
@@ -602,17 +616,80 @@ namespace UltraCanvas {
 
         void RenderHandle(const Point2Di& position, IRenderContext* ctx, bool highlighted = false) {
             float handleRadius = style.handleSize / 2;
-            Rect2Di handleRect(
-                    position.x - handleRadius,
-                    position.y - handleRadius,
-                    style.handleSize,
-                    style.handleSize
-            );
+//            Rect2Di handleRect(
+//                    position.x - handleRadius,
+//                    position.y - handleRadius,
+//                    style.handleSize,
+//                    style.handleSize
+//            );
 
             Color handleColor = highlighted ? style.handleHoverColor : GetCurrentHandleColor();
 
+            ctx->SetFillPaint(handleColor);
+            ctx->SetStrokePaint(style.handleBorderColor);
+            ctx->SetStrokeWidth(style.borderWidth);
+
             // Fill handle
-            ctx->DrawFilledRectangle(handleRect, handleColor, style.borderWidth, style.handleBorderColor, handleRadius);
+            switch (style.handleShape) {
+                case SliderHandleShape::Circle: {
+                    // Draw filled circle
+                    ctx->FillCircle(position.x, position.y, handleRadius);
+                    // Draw border
+                    ctx->DrawCircle(position.x, position.y, handleRadius);
+                    break;
+                }
+
+                case SliderHandleShape::Square: {
+                    // Calculate square bounds
+                    Rect2Di handleRect(
+                            position.x - handleRadius,
+                            position.y - handleRadius,
+                            style.handleSize,
+                            style.handleSize
+                    );
+                    // Draw filled square
+                    ctx->FillRectangle(handleRect);
+                    // Draw border
+                    ctx->DrawRectangle(handleRect);
+                    break;
+                }
+
+                case SliderHandleShape::Triangle: {
+                    // Create triangle points (pointing up)
+                    std::vector<Point2Df> triangle = {
+                            Point2Df(position.x, position.y - handleRadius),                    // Top
+                            Point2Df(position.x - handleRadius, position.y + handleRadius),    // Bottom left
+                            Point2Df(position.x + handleRadius, position.y + handleRadius)     // Bottom right
+                    };
+                    // Draw filled triangle
+                    ctx->FillLinePath(triangle);
+                    // Draw border
+                    ctx->DrawLinePath(triangle, true);
+                    break;
+                }
+
+                case SliderHandleShape::Diamond: {
+                    // Create diamond points
+                    std::vector<Point2Df> diamond = {
+                            Point2Df(position.x, position.y - handleRadius),                   // Top
+                            Point2Df(position.x + handleRadius, position.y),                   // Right
+                            Point2Df(position.x, position.y + handleRadius),                   // Bottom
+                            Point2Df(position.x - handleRadius, position.y)                    // Left
+                    };
+                    // Draw filled diamond
+                    ctx->FillLinePath(diamond);
+                    // Draw border
+                    ctx->DrawLinePath(diamond, true);
+                    break;
+                }
+
+                default:
+                    // Fallback to circle
+                    ctx->FillCircle(position.x, position.y, handleRadius);
+                    ctx->DrawCircle(position.x, position.y, handleRadius);
+                    break;
+            }
+            //ctx->DrawFilledRectangle(handleRect, handleColor, style.borderWidth, style.handleBorderColor, handleRadius);
         }
 
         void RenderValueDisplay(const Rect2Di& bounds, IRenderContext* ctx) {
@@ -1018,15 +1095,6 @@ namespace UltraCanvas {
             float min = 0.0f, float max = 100.0f) {
         auto slider = std::make_shared<UltraCanvasSlider>(identifier, id, x, y, size, size);
         slider->SetSliderStyle(SliderStyle::Circular);
-        slider->SetRange(min, max);
-        return slider;
-    }
-
-    inline std::shared_ptr<UltraCanvasSlider> CreateRoundedSlider(
-            const std::string& identifier, long id, long x, long y, long width, long height,
-            float min = 0.0f, float max = 100.0f) {
-        auto slider = std::make_shared<UltraCanvasSlider>(identifier, id, x, y, width, height);
-        slider->SetSliderStyle(SliderStyle::Rounded);
         slider->SetRange(min, max);
         return slider;
     }

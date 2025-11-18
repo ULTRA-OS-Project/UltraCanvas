@@ -56,28 +56,28 @@ namespace UltraCanvas {
 
 // ===== NOT IMPLEMENTED PLACEHOLDERS =====
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateToolbarExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("ToolbarExamples", 1000, 0, 0, 1000, 600);
-
-        // Title
-        auto title = std::make_shared<UltraCanvasLabel>("ToolbarTitle", 1001, 10, 10, 300, 30);
-        title->SetText("Toolbar Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        // Placeholder for toolbar implementation
-        auto placeholder = std::make_shared<UltraCanvasLabel>("ToolbarPlaceholder", 1002, 20, 50, 800, 400);
-        placeholder->SetText("Toolbar Component - Partially Implemented\n\nPlanned Features:\n• Horizontal and vertical toolbars\n• Icon buttons with tooltips\n• Separator elements\n• Dropdown menu buttons\n• Overflow handling\n• Customizable button groups\n• Ribbon-style layout\n• Drag and drop reordering");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
-    }
+//    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateToolbarExamples() {
+//        auto container = std::make_shared<UltraCanvasContainer>("ToolbarExamples", 1000, 0, 0, 1000, 600);
+//
+//        // Title
+//        auto title = std::make_shared<UltraCanvasLabel>("ToolbarTitle", 1001, 10, 10, 300, 30);
+//        title->SetText("Toolbar Examples");
+//        title->SetFontSize(16);
+//        title->SetFontWeight(FontWeight::Bold);
+//        container->AddChild(title);
+//
+//        // Placeholder for toolbar implementation
+//        auto placeholder = std::make_shared<UltraCanvasLabel>("ToolbarPlaceholder", 1002, 20, 50, 800, 400);
+//        placeholder->SetText("Toolbar Component - Partially Implemented\n\nPlanned Features:\n• Horizontal and vertical toolbars\n• Icon buttons with tooltips\n• Separator elements\n• Dropdown menu buttons\n• Overflow handling\n• Customizable button groups\n• Ribbon-style layout\n• Drag and drop reordering");
+//        placeholder->SetAlignment(TextAlignment::Left);
+//        placeholder->SetBackgroundColor(Color(255, 255, 200, 100));
+////        placeholder->SetBorderStyle(BorderStyle::Dashed);
+//        placeholder->SetBorders(2.0f);
+//        placeholder->SetPadding(20.0f);
+//        container->AddChild(placeholder);
+//
+//        return container;
+//    }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTableViewExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("TableViewExamples", 1100, 0, 0, 1000, 600);

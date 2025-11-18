@@ -381,28 +381,28 @@ void UltraCanvasGridLayout::PositionItems() {
         float itemY = cellBounds.y;
 
         // Apply horizontal alignment (only if not Fill)
-        LayoutItemAlignment hAlign = item->GetHorizontalAlignment();
-        if (hAlign == LayoutItemAlignment::Center) {
+        LayoutAlignment hAlign = item->GetHorizontalAlignment();
+        if (hAlign == LayoutAlignment::Center) {
             itemX += (cellBounds.width - itemWidth) / 2;
-        } else if (hAlign == LayoutItemAlignment::End) {
+        } else if (hAlign == LayoutAlignment::End) {
             itemX += cellBounds.width - itemWidth;
-        } else if (hAlign == LayoutItemAlignment::Fill) {
+        } else if (hAlign == LayoutAlignment::Fill) {
             // Override width to fill
             itemWidth = cellBounds.width;
         }
-        // LayoutItemAlignment::Start uses itemX as-is
+        // LayoutAlignment::Start uses itemX as-is
 
         // Apply vertical alignment (only if not Fill)
-        LayoutItemAlignment vAlign = item->GetVerticalAlignment();
-        if (vAlign == LayoutItemAlignment::Center) {
+        LayoutAlignment vAlign = item->GetVerticalAlignment();
+        if (vAlign == LayoutAlignment::Center) {
             itemY += (cellBounds.height - itemHeight) / 2;
-        } else if (vAlign == LayoutItemAlignment::End) {
+        } else if (vAlign == LayoutAlignment::End) {
             itemY += cellBounds.height - itemHeight;
-        } else if (vAlign == LayoutItemAlignment::Fill) {
+        } else if (vAlign == LayoutAlignment::Fill) {
             // Override height to fill
             itemHeight = cellBounds.height;
         }
-        // LayoutItemAlignment::Start uses itemY as-is
+        // LayoutAlignment::Start uses itemY as-is
 
         // Set computed geometry with margins
         item->SetComputedGeometry(

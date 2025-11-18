@@ -95,6 +95,23 @@ namespace UltraCanvas {
             }
         }
     }
+    void UltraCanvasToolbarButton::SetChecked(bool checked) {
+        if (widget) {
+            auto button = std::dynamic_pointer_cast<UltraCanvasButton>(widget);
+            if (button) {
+                button->SetPressed(checked);
+            }
+        }
+    }
+
+    void UltraCanvasToolbarButton::SetToggleMode(bool canToggled) {
+        if (widget) {
+            auto button = std::dynamic_pointer_cast<UltraCanvasButton>(widget);
+            if (button) {
+                button->SetCanToggled(canToggled);
+            }
+        }
+    }
 
     void UltraCanvasToolbarButton::SetOnClick(std::function<void()> callback) {
         onClickCallback = callback;
@@ -111,8 +128,8 @@ namespace UltraCanvas {
         if (widget && isToggle) {
             auto button = std::dynamic_pointer_cast<UltraCanvasButton>(widget);
             if (button) {
-                button->onClick = [this, callback]() {
-                    isChecked = !isChecked;
+                button->onToggle = [this, callback](bool isPressed) {
+                    isChecked = isPressed;
                     if (callback) {
                         callback(isChecked);
                     }
@@ -215,14 +232,14 @@ namespace UltraCanvas {
         if (widget) {
             auto dropdown = std::dynamic_pointer_cast<UltraCanvasDropdown>(widget);
             if (dropdown) {
-                dropdown->SetOnSelectionChanged([this, callback](int index) {
+                dropdown->onSelectionChanged = [this, callback](int index, const DropdownItem& ddItem) {
                     if (index >= 0 && index < static_cast<int>(items.size())) {
                         selectedIndex = index;
-                        if (callback) {
-                            callback(items[index]);
+                        if (this->onSelectCallback) {
+                            this->onSelectCallback(items[index]);
                         }
                     }
-                });
+                };
             }
         }
     }
@@ -257,7 +274,7 @@ namespace UltraCanvas {
                 "lbl_" + id, 0, 0, 0, 80, 24
         );
         label->SetText(text);
-        label->SetTextAlignment(alignment);
+        label->SetAlignment(alignment);
 
         widget = label;
     }
@@ -277,7 +294,7 @@ namespace UltraCanvas {
         if (widget) {
             auto label = std::dynamic_pointer_cast<UltraCanvasLabel>(widget);
             if (label) {
-                label->SetTextAlignment(alignment);
+                label->SetAlignment(alignment);
             }
         }
     }
@@ -346,22 +363,27 @@ namespace UltraCanvas {
 
     void UltraCanvasToolbar::CreateLayout() {
         // Create box layout based on orientation
-        BoxLayoutDirection dir = (orientation == ToolbarOrientation::Horizontal)
-                                 ? BoxLayoutDirection::Horizontal
-                                 : BoxLayoutDirection::Vertical;
-
-        boxLayout = std::make_unique<UltraCanvasBoxLayout>(this, dir);
+        if (orientation == ToolbarOrientation::Vertical) {
+            if (!boxLayout) {
+                boxLayout = CreateVBoxLayout(this);
+            } else {
+                boxLayout->SetDirection(BoxLayoutDirection::Vertical);
+            }
+        } else {
+            if (!boxLayout) {
+                boxLayout = CreateHBoxLayout(this);
+            } else {
+                boxLayout->SetDirection(BoxLayoutDirection::Horizontal);
+            }
+        }
         boxLayout->SetSpacing(static_cast<int>(appearance.itemSpacing));
-        boxLayout->SetCrossAxisAlignment(LayoutAlignment::Center);
-
-        SetLayout(boxLayout.get());
     }
 
     void UltraCanvasToolbar::SetOrientation(ToolbarOrientation orient) {
         if (orientation != orient) {
             orientation = orient;
             CreateLayout(); // Recreate layout with new orientation
-            UpdateLayout();
+            InvalidateLayout();
         }
     }
 
@@ -454,7 +476,7 @@ namespace UltraCanvas {
             onItemAdded(item->GetIdentifier());
         }
 
-        UpdateLayout();
+        InvalidateLayout();
     }
 
     void UltraCanvasToolbar::InsertItem(int index, const ToolbarItemDescriptor& descriptor) {
@@ -481,7 +503,7 @@ namespace UltraCanvas {
             onItemAdded(item->GetIdentifier());
         }
 
-        UpdateLayout();
+        InvalidateLayout();
     }
 
     void UltraCanvasToolbar::RemoveItem(const std::string& identifier) {
@@ -504,7 +526,7 @@ namespace UltraCanvas {
                 onItemRemoved(identifier);
             }
 
-            UpdateLayout();
+            InvalidateLayout();
         }
     }
 
@@ -523,7 +545,7 @@ namespace UltraCanvas {
             boxLayout->ClearItems();
         }
 
-        UpdateLayout();
+        InvalidateLayout();
     }
 
     std::shared_ptr<UltraCanvasToolbarItem> UltraCanvasToolbar::GetItem(const std::string& identifier) {
@@ -566,7 +588,7 @@ namespace UltraCanvas {
 
     void UltraCanvasToolbar::AddSpacer(int size) {
         // Use layout's AddSpacing directly instead of creating a widget
-        if (boxLayout) {
+        if ( boxLayout) {
             boxLayout->AddSpacing(size);
         }
     }
@@ -590,7 +612,7 @@ namespace UltraCanvas {
         searchBox->SetPlaceholder(placeholder);
 
         if (onTextChange) {
-            searchBox->SetOnTextChanged(onTextChange);
+            searchBox->onTextChanged = onTextChange;
         }
 
         auto item = std::make_shared<UltraCanvasToolbarButton>(id, "", "");
@@ -599,13 +621,6 @@ namespace UltraCanvas {
     }
 
 // ===== LAYOUT =====
-
-    void UltraCanvasToolbar::UpdateLayout() {
-        if (boxLayout) {
-            boxLayout->PerformLayout();
-        }
-        InvalidateContainerLayout();
-    }
 
     void UltraCanvasToolbar::HandleOverflow() {
         // TODO: Implement overflow handling based on overflowMode
@@ -622,7 +637,9 @@ namespace UltraCanvas {
         if (appearance.hasShadow) {
             RenderShadow(ctx);
         }
-
+        if (IsLayoutDirty()) {
+            for(auto item& : )
+        }
         // Use base class rendering for background and border
         UltraCanvasContainer::Render(ctx);
 
@@ -647,8 +664,8 @@ namespace UltraCanvas {
         }
 
         // Handle dragging
-        if (dragMode != ToolbarDragMode::None) {
-            if (event.type == UCEventType::MouseDown && event.mouseButton == UCMouseButton::Left) {
+        if (dragMode != ToolbarDragMode::DragNone) {
+            if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
                 BeginDrag(Point2Di(event.x, event.y));
                 return true;
             } else if (event.type == UCEventType::MouseMove && isDragging) {
@@ -697,7 +714,7 @@ namespace UltraCanvas {
         if (enable) {
             SetDragMode(ToolbarDragMode::ReorderItems);
         } else if (dragMode == ToolbarDragMode::ReorderItems) {
-            SetDragMode(ToolbarDragMode::None);
+            SetDragMode(ToolbarDragMode::DragNone);
         }
     }
 
@@ -748,7 +765,7 @@ namespace UltraCanvas {
         Rect2Di bounds = GetBounds();
 
         // Draw shadow
-        ctx->SetFillColor(appearance.shadowColor);
+        ctx->SetFillPaint(appearance.shadowColor);
         ctx->FillRoundedRectangle(
                 bounds.x + appearance.shadowOffset.x,
                 bounds.y + appearance.shadowOffset.y,
@@ -839,7 +856,7 @@ namespace UltraCanvas {
 // ===== TOOLBAR BUILDER IMPLEMENTATION =====
 
     UltraCanvasToolbarBuilder::UltraCanvasToolbarBuilder(const std::string& identifier, long id) {
-        toolbar = std::make_unique<UltraCanvasToolbar>(identifier, id, 0, 0, 800, 48);
+        toolbar = std::make_shared<UltraCanvasToolbar>(identifier, id, 0, 0, 800, 48);
     }
 
     UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::SetOrientation(ToolbarOrientation orient) {
@@ -847,8 +864,8 @@ namespace UltraCanvas {
         return *this;
     }
 
-    UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::SetPosition(ToolbarPosition pos) {
-        toolbar->SetPosition(pos);
+    UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::SetToolbarPosition(ToolbarPosition pos) {
+        toolbar->SetToolbarPosition(pos);
         return *this;
     }
 
@@ -917,15 +934,15 @@ namespace UltraCanvas {
         return *this;
     }
 
-    std::unique_ptr<UltraCanvasToolbar> UltraCanvasToolbarBuilder::Build() {
-        return std::move(toolbar);
+    std::shared_ptr<UltraCanvasToolbar> UltraCanvasToolbarBuilder::Build() {
+        return toolbar;
     }
 
 // ===== PRESET TOOLBAR FACTORIES =====
 
     namespace ToolbarPresets {
 
-        std::unique_ptr<UltraCanvasToolbar> CreateStandardToolbar(const std::string& identifier) {
+        std::shared_ptr<UltraCanvasToolbar> CreateStandardToolbar(const std::string& identifier) {
             return UltraCanvasToolbarBuilder(identifier)
                     .SetOrientation(ToolbarOrientation::Horizontal)
                     .SetStyle(ToolbarStyle::Standard)
@@ -933,7 +950,7 @@ namespace UltraCanvas {
                     .Build();
         }
 
-        std::unique_ptr<UltraCanvasToolbar> CreateDockStyleToolbar(const std::string& identifier) {
+        std::shared_ptr<UltraCanvasToolbar> CreateDockStyleToolbar(const std::string& identifier) {
             return UltraCanvasToolbarBuilder(identifier)
                     .SetOrientation(ToolbarOrientation::Horizontal)
                     .SetStyle(ToolbarStyle::Docked)
@@ -942,7 +959,7 @@ namespace UltraCanvas {
                     .Build();
         }
 
-        std::unique_ptr<UltraCanvasToolbar> CreateRibbonToolbar(const std::string& identifier) {
+        std::shared_ptr<UltraCanvasToolbar> CreateRibbonToolbar(const std::string& identifier) {
             return UltraCanvasToolbarBuilder(identifier)
                     .SetOrientation(ToolbarOrientation::Horizontal)
                     .SetStyle(ToolbarStyle::Ribbon)
@@ -951,7 +968,7 @@ namespace UltraCanvas {
                     .Build();
         }
 
-        std::unique_ptr<UltraCanvasToolbar> CreateSidebarToolbar(const std::string& identifier) {
+        std::shared_ptr<UltraCanvasToolbar> CreateSidebarToolbar(const std::string& identifier) {
             return UltraCanvasToolbarBuilder(identifier)
                     .SetOrientation(ToolbarOrientation::Vertical)
                     .SetStyle(ToolbarStyle::Sidebar)
@@ -959,11 +976,11 @@ namespace UltraCanvas {
                     .Build();
         }
 
-        std::unique_ptr<UltraCanvasToolbar> CreateStatusBar(const std::string& identifier) {
+        std::shared_ptr<UltraCanvasToolbar> CreateStatusBar(const std::string& identifier) {
             return UltraCanvasToolbarBuilder(identifier)
                     .SetOrientation(ToolbarOrientation::Horizontal)
                     .SetStyle(ToolbarStyle::StatusBar)
-                    .SetPosition(ToolbarPosition::Bottom)
+                    .SetToolbarPosition(ToolbarPosition::Bottom)
                     .SetDimensions(0, 0, 1024, 24)
                     .Build();
         }

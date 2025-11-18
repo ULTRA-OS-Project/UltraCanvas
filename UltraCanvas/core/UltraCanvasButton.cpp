@@ -908,22 +908,30 @@ namespace UltraCanvas {
         switch (event.type) {
             case UCEventType::MouseDown:
                 if (Contains(event.x, event.y)) {
-                    SetPressed(true);
-                    SetFocus();
-                    if (onPress) onPress();
+                    if (IsPressed() && canToggled) {
+                        SetPressed(false);
+                    } else {
+                        SetPressed(true);
+                        SetFocus();
+                        if (onPress) onPress();
+                    }
+                    if (canToggled && onToggle) {
+                        onToggle(IsPressed());
+                    }
                     RequestRedraw();
                     return true;
                 }
                 break;
 
             case UCEventType::MouseUp:
-                if (IsPressed()) {
+                if (IsPressed() && !canToggled) {
                     bool wasInside = Contains(event.x, event.y);
                     SetPressed(false);
                     if (onRelease) onRelease();
                     if (wasInside) {
                         Click(event);
                     }
+                    RequestRedraw();
                     return true;
                 }
                 break;

@@ -95,11 +95,11 @@ namespace UltraCanvas {
         vboxBtn2->SetOnClick([vboxStatus]() { vboxStatus->SetText("Button 2 clicked!"); });
         vboxBtn3->SetOnClick([vboxStatus]() { vboxStatus->SetText("Button 3 clicked!"); });
 
-        vboxLayout->AddUIElement(vboxBtn1, 0)->SetAlignment(LayoutItemAlignment::Center);
-        vboxLayout->AddUIElement(vboxBtn2, 0)->SetAlignment(LayoutItemAlignment::Center);
-        vboxLayout->AddUIElement(vboxBtn3, 0)->SetAlignment(LayoutItemAlignment::Center);
+        vboxLayout->AddUIElement(vboxBtn1, 0)->SetCrossAlignment(LayoutAlignment::Center);
+        vboxLayout->AddUIElement(vboxBtn2, 0)->SetCrossAlignment(LayoutAlignment::Center);
+        vboxLayout->AddUIElement(vboxBtn3, 0)->SetCrossAlignment(LayoutAlignment::Center);
         vboxLayout->AddStretch(1);
-        vboxLayout->AddUIElement(vboxStatus, 0)->SetAlignment(LayoutItemAlignment::Center);
+        vboxLayout->AddUIElement(vboxStatus, 0)->SetCrossAlignment(LayoutAlignment::Center);
 
 //        vboxDemo->SetLayout(std::move(vboxLayout));
         mainContainer->AddChild(vboxDemo);
@@ -140,13 +140,13 @@ namespace UltraCanvas {
         auto helpBtn = std::make_shared<UltraCanvasButton>("HelpBtn", 1027, 0, 0, 60, 30);
         helpBtn->SetText("Help");
 
-        hboxLayout->AddUIElement(newBtn, 0)->SetAlignment(LayoutItemAlignment::Center);
-        hboxLayout->AddUIElement(openBtn, 0)->SetAlignment(LayoutItemAlignment::Center);
-        hboxLayout->AddUIElement(saveBtn, 0)->SetAlignment(LayoutItemAlignment::Center);
+        hboxLayout->AddUIElement(newBtn, 0)->SetCrossAlignment(LayoutAlignment::Center);
+        hboxLayout->AddUIElement(openBtn, 0)->SetCrossAlignment(LayoutAlignment::Center);
+        hboxLayout->AddUIElement(saveBtn, 0)->SetCrossAlignment(LayoutAlignment::Center);
         hboxLayout->AddSpacing(15);      // Visual separator
         hboxLayout->AddStretch(1);       // Push remaining buttons right
-        hboxLayout->AddUIElement(settingsBtn, 0)->SetAlignment(LayoutItemAlignment::Center);
-        hboxLayout->AddUIElement(helpBtn, 0)->SetAlignment(LayoutItemAlignment::Center);
+        hboxLayout->AddUIElement(settingsBtn, 0)->SetCrossAlignment(LayoutAlignment::Center);
+        hboxLayout->AddUIElement(helpBtn, 0)->SetCrossAlignment(LayoutAlignment::Center);
 
 //        hboxDemo->SetLayout(std::move(hboxLayout));
         mainContainer->AddChild(hboxDemo);

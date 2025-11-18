@@ -74,8 +74,8 @@ private:
     int maxHeight = -1;
 
     // Alignment within cell
-    LayoutItemAlignment horizontalAlignment = LayoutItemAlignment::Fill;
-    LayoutItemAlignment verticalAlignment = LayoutItemAlignment::Fill;
+    LayoutAlignment horizontalAlignment = LayoutAlignment::Fill;
+    LayoutAlignment verticalAlignment = LayoutAlignment::Fill;
 
 public:
     UltraCanvasGridLayoutItem() = default;
@@ -162,15 +162,15 @@ public:
     int GetMaximumHeight() const override { return maxHeight != -1 ? maxHeight : UltraCanvasLayoutItem::GetMaximumHeight();  }
 
     // ===== ALIGNMENT =====
-    void SetHorizontalAlignment(LayoutItemAlignment align) { horizontalAlignment = align; }
-    void SetVerticalAlignment(LayoutItemAlignment align) { verticalAlignment = align; }
-    void SetAlignment(LayoutItemAlignment horizontal, LayoutItemAlignment vertical) {
+    void SetHorizontalAlignment(LayoutAlignment align) { horizontalAlignment = align; }
+    void SetVerticalAlignment(LayoutAlignment align) { verticalAlignment = align; }
+    void SetAlignment(LayoutAlignment horizontal, LayoutAlignment vertical) {
         horizontalAlignment = horizontal;
         verticalAlignment = vertical;
     }
 
-    LayoutItemAlignment GetHorizontalAlignment() const { return horizontalAlignment; }
-    LayoutItemAlignment GetVerticalAlignment() const { return verticalAlignment; }
+    LayoutAlignment GetHorizontalAlignment() const { return horizontalAlignment; }
+    LayoutAlignment GetVerticalAlignment() const { return verticalAlignment; }
 
     // ===== PREFERRED SIZE =====
     int GetPreferredWidth() const override;

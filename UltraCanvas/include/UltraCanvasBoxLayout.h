@@ -38,8 +38,8 @@ private:
     float stretch = 0;  // How much to stretch relative to other items (0 = no stretch)
 
     // Alignment within allocated space
-    LayoutItemAlignment alignment = LayoutItemAlignment::Start;
-
+    LayoutAlignment crossAlignment = LayoutAlignment::Start;
+    LayoutAlignment mainAlignment = LayoutAlignment::Start;
 public:
     UltraCanvasBoxLayoutItem() = default;
     explicit UltraCanvasBoxLayoutItem(std::shared_ptr<UltraCanvasUIElement> elem);
@@ -105,8 +105,11 @@ public:
     float GetStretch() const { return stretch; }
 
     // ===== ALIGNMENT =====
-    UltraCanvasBoxLayoutItem* SetAlignment(LayoutItemAlignment align) { alignment = align; return this; }
-    LayoutItemAlignment GetAlignment() const { return alignment; }
+    UltraCanvasBoxLayoutItem* SetCrossAlignment(LayoutAlignment align) { crossAlignment = align; return this; }
+    LayoutAlignment GetCrossAlignment() const { return crossAlignment; }
+
+    UltraCanvasBoxLayoutItem* SetMainAlignment(LayoutAlignment align) { mainAlignment = align; return this; }
+    LayoutAlignment GetMainAlignment() const { return mainAlignment; }
 
     // ===== PREFERRED SIZE =====
     int GetPreferredWidth() const override;
@@ -123,8 +126,9 @@ private:
     std::vector<std::unique_ptr<UltraCanvasBoxLayoutItem>> items;
     
     // Alignment along main axis
-    LayoutAlignment mainAxisAlignment = LayoutAlignment::Start;
-    
+    LayoutAlignment defaultMainAxisAlignment = LayoutAlignment::Start;
+    LayoutAlignment defaultCrossAxisAlignment = LayoutAlignment::Start;
+
 public:
     UltraCanvasBoxLayout() = delete;
     explicit UltraCanvasBoxLayout(UltraCanvasContainer* parent, BoxLayoutDirection dir = BoxLayoutDirection::Vertical);
@@ -144,12 +148,18 @@ public:
 //    }
 //    LayoutAlignment GetCrossAxisAlignment() const { return crossAxisAlignment; }
     
-    void SetMainAxisAlignment(LayoutAlignment align) {
-        mainAxisAlignment = align;
+    void SetDefaultMainAxisAlignment(LayoutAlignment align) {
+        defaultMainAxisAlignment = align;
         InvalidateContainerLayout();
     }
-    LayoutAlignment GetMainAxisAlignment() const { return mainAxisAlignment; }
-    
+    LayoutAlignment GetDefaultMainAxisAlignment() const { return defaultMainAxisAlignment; }
+
+    void SetDefaultCrossAxisAlignment(LayoutAlignment align) {
+        defaultCrossAxisAlignment = align;
+        InvalidateContainerLayout();
+    }
+    LayoutAlignment GetDefaultCrossAxisAlignment() const { return defaultCrossAxisAlignment; }
+
     // ===== ITEM MANAGEMENT =====
     UltraCanvasLayoutItem* InsertUIElement(std::shared_ptr<UltraCanvasUIElement> element, int index) override;
     void RemoveUIElement(std::shared_ptr<UltraCanvasUIElement> element) override;

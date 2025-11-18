@@ -100,11 +100,7 @@ namespace UltraCanvas {
 //            UpdateLayout();
         }
 
-        virtual ~UltraCanvasContainer() {
-            if (layout) {
-                delete layout;
-            }
-        };
+        virtual ~UltraCanvasContainer();
 
         // ===== ENHANCED CHILD MANAGEMENT =====
         void AddChild(std::shared_ptr<UltraCanvasUIElement> child);

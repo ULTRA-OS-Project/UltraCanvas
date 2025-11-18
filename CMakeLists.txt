@@ -128,7 +128,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasBoxLayout.cpp
         UltraCanvas/core/UltraCanvasGridLayout.cpp
         UltraCanvas/core/UltraCanvasFlexLayout.cpp
-        #UltraCanvas/core/UltraCanvasToolbar.cpp
+        UltraCanvas/core/UltraCanvasToolbar.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImage.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
@@ -178,9 +178,9 @@ set(APP_SOURCES
 
 set(MAIN_DEMOAPP_SOURCES
 #        Apps/UltraCanvasChartExample.cpp
+        Apps/DemoApp/main.cpp
         Apps/DemoApp/UltraCanvasDemo.cpp
         Apps/DemoApp/UltraCanvasDemoExamples.cpp
-        Apps/DemoApp/main.cpp
         Apps/DemoApp/UltraCanvasBitmapExamples.cpp
         Apps/DemoApp/UltraCanvasButtonExamples.cpp
         Apps/DemoApp/UltraCanvasDropDownExamples.cpp
@@ -203,6 +203,7 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
         Apps/DemoApp/UltraCanvasLayoutExamples.cpp
         Apps/DemoApp/UltraCanvasDomainTableDemo.cpp
+        Apps/DemoApp/UltraCanvasToolbarExamples.cpp
 )
 
 # ✅ ADDED: Check that source files exist

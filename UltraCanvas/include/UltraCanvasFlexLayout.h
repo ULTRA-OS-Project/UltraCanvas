@@ -78,7 +78,7 @@ private:
     int maxHeight = -1;
 
     // Alignment
-    LayoutItemAlignment alignSelf = LayoutItemAlignment::Auto;  // Override container alignment for this item
+    LayoutAlignment alignSelf = LayoutAlignment::Auto;  // Override container alignment for this item
 
 public:
     UltraCanvasFlexLayoutItem() = default;
@@ -156,8 +156,8 @@ public:
     int GetMaximumHeight() const override { return maxHeight != -1 ? maxHeight : UltraCanvasLayoutItem::GetMaximumHeight();  }
 
     // ===== ALIGNMENT =====
-    UltraCanvasFlexLayoutItem* SetAlignSelf(LayoutItemAlignment align) { alignSelf = align; return this; }
-    LayoutItemAlignment GetAlignSelf() const { return alignSelf; }
+    UltraCanvasFlexLayoutItem* SetAlignSelf(LayoutAlignment align) { alignSelf = align; return this; }
+    LayoutAlignment GetAlignSelf() const { return alignSelf; }
 
     // ===== PREFERRED SIZE =====
     int GetPreferredWidth() const override;

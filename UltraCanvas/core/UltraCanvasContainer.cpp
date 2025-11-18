@@ -14,6 +14,11 @@
 #include <cmath>
 
 namespace UltraCanvas {
+    UltraCanvasContainer::~UltraCanvasContainer() {
+        if (layout) {
+            delete layout;
+        }
+    }
 
 // ===== RENDERING IMPLEMENTATION =====
     void UltraCanvasContainer::SetWindow(UltraCanvasWindowBase *win) {

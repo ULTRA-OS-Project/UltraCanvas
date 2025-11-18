@@ -376,7 +376,7 @@ namespace UltraCanvas {
             header->SetFontWeight(FontWeight::Bold);
             header->SetTextColor(Color(40, 40, 40, 255));
             header->SetAlignment(width > 100 ? TextAlignment::Left : TextAlignment::Center);
-            headerContainerLayout->AddUIElement(header)->SetAlignment(LayoutItemAlignment::Center);
+            headerContainerLayout->AddUIElement(header)->SetCrossAlignment(LayoutAlignment::Center);
             headerX += width + 10;
         };
 
