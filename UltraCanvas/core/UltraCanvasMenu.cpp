@@ -607,7 +607,7 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::RenderIcon(const std::string &iconPath, const Point2Di &position, IRenderContext* ctx) {
         // Would implement icon rendering based on file type
-        ctx->DrawImage(iconPath, position.x, position.y, style.iconSize, style.iconSize);
+        ctx->DrawImageFit(iconPath, position.x, position.y, style.iconSize, style.iconSize, ImageFitMode::Contain);
     }
 
     void UltraCanvasMenu::RenderKeyboardHighlight(const Rect2Di &bounds, IRenderContext* ctx) {

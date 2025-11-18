@@ -219,18 +219,15 @@ namespace UltraCanvas {
             ctx->Translate(-center.x, -center.y);
         }
 
-        // Calculate display rectangle based on scale mode
-        Rect2Di displayRect = CalculateDisplayRect();
-
         // Draw the image using unified rendering
         if (loadedImage->IsValid()) {
             // Load from file path
-            ctx->DrawImage(loadedImage, displayRect);
+            ctx->DrawImageFit(loadedImage, GetBounds(), fitMode);
         } else {
             // For memory-loaded images, we'd need to save to a temporary file
             // or extend the rendering interface to support raw data
             // For now, draw a placeholder
-            DrawImagePlaceholder(displayRect, "IMG");
+            DrawImagePlaceholder(GetBounds(), "IMG");
         }
 
         if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
@@ -275,72 +272,72 @@ namespace UltraCanvas {
         ctx->DrawText(text, textPos);
     }
 
-    Rect2Di UltraCanvasImageElement::CalculateDisplayRect() {
-        Rect2Di bounds = GetBounds();
-
-        if (!loadedImage->IsValid()) {
-            return bounds;
-        }
-
-        float imageWidth = static_cast<float>(loadedImage->width);
-        float imageHeight = static_cast<float>(loadedImage->height);
-
-        switch (scaleMode) {
-            case ImageScaleMode::NoScale:
-                return Rect2Di(bounds.x, bounds.y, imageWidth, imageHeight);
-
-            case ImageScaleMode::Stretch:
-                return bounds;
-
-            case ImageScaleMode::Uniform: {
-                float scaleX = bounds.width / imageWidth;
-                float scaleY = bounds.height / imageHeight;
-                float uniformScale = std::min(scaleX, scaleY);
-
-                float scaledWidth = imageWidth * uniformScale;
-                float scaledHeight = imageHeight * uniformScale;
-
-                return Rect2Di(
-                        bounds.x + (bounds.width - scaledWidth) / 2,
-                        bounds.y + (bounds.height - scaledHeight) / 2,
-                        scaledWidth,
-                        scaledHeight
-                );
-            }
-
-            case ImageScaleMode::UniformToFill: {
-                float scaleX = bounds.width / imageWidth;
-                float scaleY = bounds.height / imageHeight;
-                float uniformScale = std::max(scaleX, scaleY);
-
-                float scaledWidth = imageWidth * uniformScale;
-                float scaledHeight = imageHeight * uniformScale;
-
-                return Rect2Di(
-                        bounds.x + (bounds.width - scaledWidth) / 2,
-                        bounds.y + (bounds.height - scaledHeight) / 2,
-                        scaledWidth,
-                        scaledHeight
-                );
-            }
-
-            case ImageScaleMode::Center:
-                return Rect2Di(
-                        bounds.x + (bounds.width - imageWidth) / 2,
-                        bounds.y + (bounds.height - imageHeight) / 2,
-                        imageWidth,
-                        imageHeight
-                );
-
-            case ImageScaleMode::Tile:
-                // For tiling, we'd need to draw multiple instances
-                // For now, just return the bounds
-                return bounds;
-
-            default:
-                return bounds;
-        }
-    }
+//    Rect2Di UltraCanvasImageElement::CalculateDisplayRect() {
+//        Rect2Di bounds = GetBounds();
+//
+//        if (!loadedImage->IsValid()) {
+//            return bounds;
+//        }
+//
+//        float imageWidth = static_cast<float>(loadedImage->width);
+//        float imageHeight = static_cast<float>(loadedImage->height);
+//
+//        switch (scaleMode) {
+//            case ImageScaleMode::NoScale:
+//                return Rect2Di(bounds.x, bounds.y, imageWidth, imageHeight);
+//
+//            case ImageScaleMode::Stretch:
+//                return bounds;
+//
+//            case ImageScaleMode::Uniform: {
+//                float scaleX = bounds.width / imageWidth;
+//                float scaleY = bounds.height / imageHeight;
+//                float uniformScale = std::min(scaleX, scaleY);
+//
+//                float scaledWidth = imageWidth * uniformScale;
+//                float scaledHeight = imageHeight * uniformScale;
+//
+//                return Rect2Di(
+//                        bounds.x + (bounds.width - scaledWidth) / 2,
+//                        bounds.y + (bounds.height - scaledHeight) / 2,
+//                        scaledWidth,
+//                        scaledHeight
+//                );
+//            }
+//
+//            case ImageScaleMode::UniformToFill: {
+//                float scaleX = bounds.width / imageWidth;
+//                float scaleY = bounds.height / imageHeight;
+//                float uniformScale = std::max(scaleX, scaleY);
+//
+//                float scaledWidth = imageWidth * uniformScale;
+//                float scaledHeight = imageHeight * uniformScale;
+//
+//                return Rect2Di(
+//                        bounds.x + (bounds.width - scaledWidth) / 2,
+//                        bounds.y + (bounds.height - scaledHeight) / 2,
+//                        scaledWidth,
+//                        scaledHeight
+//                );
+//            }
+//
+//            case ImageScaleMode::Center:
+//                return Rect2Di(
+//                        bounds.x + (bounds.width - imageWidth) / 2,
+//                        bounds.y + (bounds.height - imageHeight) / 2,
+//                        imageWidth,
+//                        imageHeight
+//                );
+//
+//            case ImageScaleMode::Tile:
+//                // For tiling, we'd need to draw multiple instances
+//                // For now, just return the bounds
+//                return bounds;
+//
+//            default:
+//                return bounds;
+//        }
+//    }
 
     void UltraCanvasImageElement::HandleMouseDown(const UCEvent &event) {
         if (!Contains(event.x, event.y)) return;

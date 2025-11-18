@@ -632,7 +632,7 @@ namespace UltraCanvas {
         }
 
         // Draw the icon
-        ctx->DrawImage(icon, iconRect);
+        ctx->DrawImageFit(icon, iconRect, ImageFitMode::Contain);
     }
 
     void UltraCanvasButton::DrawSecondaryIcon(IRenderContext* ctx) {
@@ -647,7 +647,7 @@ namespace UltraCanvas {
         }
 
         // Draw the secondary icon
-        ctx->DrawImage(style.splitStyle.secondaryIcon, secondaryIconRect);
+        ctx->DrawImageFit(style.splitStyle.secondaryIcon, secondaryIconRect, ImageFitMode::Contain);
     }
 
     void UltraCanvasButton::DrawText(IRenderContext* ctx) {

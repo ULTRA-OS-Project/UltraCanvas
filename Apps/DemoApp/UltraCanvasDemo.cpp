@@ -492,7 +492,7 @@ namespace UltraCanvas {
                 .AddVariant("menu", "Styled Menus");
 
         basicBuilder.AddItem("toolbar", "Toolbar", "Tool and action bars",
-                             ImplementationStatus::PartiallyImplemented,
+                             ImplementationStatus::FullyImplemented,
                              [this]() { return CreateToolbarExamples(); })
                 .AddVariant("toolbar", "Horizontal Toolbar")
                 .AddVariant("toolbar", "Vertical Toolbar")

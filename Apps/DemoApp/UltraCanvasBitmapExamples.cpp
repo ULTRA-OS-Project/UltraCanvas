@@ -62,7 +62,7 @@ namespace UltraCanvas {
         // Main PNG Image
         auto pngImage = std::make_shared<UltraCanvasImageElement>("PNGMainImage", 1514, 25, 25, 400, 300);
         pngImage->LoadFromFile("assets/images/transparent_overlay.png");
-        pngImage->SetScaleMode(ImageScaleMode::Uniform);
+        pngImage->SetFitMode(ImageFitMode::Contain);
         imageContainer->AddChild(pngImage);
 
         container->AddChild(imageContainer);
@@ -87,7 +87,7 @@ namespace UltraCanvas {
         // Transparent PNG overlay
         auto notransImage = std::make_shared<UltraCanvasImageElement>("NoTransPNG", 1519, 0, 0, 100, 100);
         notransImage->LoadFromFile("assets/images/ship.jpg");
-        notransImage->SetScaleMode(ImageScaleMode::Stretch);
+        notransImage->SetFitMode(ImageFitMode::Fill);
 
         auto transImage = std::make_shared<UltraCanvasImageElement>("TransPNG", 1519, 0, 0, 100, 100);
         transImage->LoadFromFile("assets/images/transparent_overlay.png");
@@ -114,19 +114,19 @@ namespace UltraCanvas {
 
         // Scale Mode Options
         auto scaleModeLabel = std::make_shared<UltraCanvasLabel>("ScaleModeLabel", 1522, 25, 525, 100, 20);
-        scaleModeLabel->SetText("Scale Mode:");
+        scaleModeLabel->SetText("Fit Mode:");
         scaleModeLabel->SetFontSize(12);
         container->AddChild(scaleModeLabel);
 
         auto scaleModeDropdown = std::make_shared<UltraCanvasDropdown>("ScaleModeDropdown", 1523, 125, 525, 150, 25);
         scaleModeDropdown->AddItem("No Scale");
-        scaleModeDropdown->AddItem("Stretch");
-        scaleModeDropdown->AddItem("Uniform");
-        scaleModeDropdown->AddItem("Uniform Fill");
-        scaleModeDropdown->AddItem("Center");
+        scaleModeDropdown->AddItem("Contain");
+        scaleModeDropdown->AddItem("Cover");
+        scaleModeDropdown->AddItem("Fill");
+        scaleModeDropdown->AddItem("Scale Down");
         scaleModeDropdown->SetSelectedIndex(2); // Default to Uniform
         scaleModeDropdown->onSelectionChanged = [pngImage](int index, const DropdownItem& item) {
-            pngImage->SetScaleMode(static_cast<ImageScaleMode>(index));
+            pngImage->SetFitMode(static_cast<ImageFitMode>(index));
         };
         container->AddChild(scaleModeDropdown);
 
@@ -205,7 +205,7 @@ namespace UltraCanvas {
         // Main JPEG Image
         auto jpegImage = std::make_shared<UltraCanvasImageElement>("JPEGMainImage", 1534, 0, 25, 420, 320);
         jpegImage->LoadFromFile("assets/images/sample_photo.jpg");
-        jpegImage->SetScaleMode(ImageScaleMode::Uniform);
+        jpegImage->SetFitMode(ImageFitMode::Contain);
         imageContainer->AddChild(jpegImage);
 
         container->AddChild(imageContainer);

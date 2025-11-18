@@ -380,6 +380,8 @@ namespace UltraCanvas {
         virtual void DrawImage(std::shared_ptr<UCImage> image, float x, float y) = 0;
         virtual void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h) = 0;
         virtual void DrawImage(std::shared_ptr<UCImage> image, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
+        virtual void DrawImageFit(std::shared_ptr<UCImage> image, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
+        virtual void DrawImageFit(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
 
 //        virtual bool IsImageFormatSupported(const std::string& filePath) = 0;
 //        virtual bool GetImageDimensions(const std::string& imagePath, int& w, int& h) = 0;
@@ -563,7 +565,15 @@ namespace UltraCanvas {
             DrawImage(image, position.x, position.y, position.width, position.height);
         }
         void DrawImage(std::shared_ptr<UCImage>& image, const Rect2Di& position) {
-            DrawImage(image, position.x, position.y, position.width, position.height);;
+            DrawImage(image, position.x, position.y, position.width, position.height);
+        }
+
+        void DrawImageFit(std::shared_ptr<UCImage> image, const Rect2Di& position, ImageFitMode fitMode) {
+            DrawImageFit(image, position.x, position.y, position.width, position.height, fitMode);
+        }
+
+        void DrawImageFit(std::shared_ptr<UCImage> image, const Rect2Df& position, ImageFitMode fitMode) {
+            DrawImageFit(image, position.x, position.y, position.width, position.height, fitMode);
         }
 
 //        void SetClipRect(int x, int y, int w, int h) {

@@ -55,7 +55,7 @@ namespace UltraCanvas {
 
         // Create button widget
         auto button = std::make_shared<UltraCanvasButton>(
-                "btn_" + id, 0, 0, 0, 80, 32
+                "btn_" + id, 0, 0, 0, 32, 32
         );
         button->SetText(text);
 
@@ -157,6 +157,7 @@ namespace UltraCanvas {
                 ButtonStyle style = button->GetStyle();
                 style.fontSize = appearance.iconSize == ToolbarIconSize::Small ? 10.0f : 12.0f;
                 button->SetStyle(style);
+                button->SetIconSize(20, 20);
             }
         }
     }
@@ -356,20 +357,20 @@ namespace UltraCanvas {
         // Set default background color and border
         SetBackgroundColor(appearance.backgroundColor);
         SetBorders(1, Color(180, 180, 180, 255));
-        SetPadding(6, 4);
-
         CreateLayout();
     }
 
     void UltraCanvasToolbar::CreateLayout() {
         // Create box layout based on orientation
         if (orientation == ToolbarOrientation::Vertical) {
+            SetPadding(5,3);
             if (!boxLayout) {
                 boxLayout = CreateVBoxLayout(this);
             } else {
                 boxLayout->SetDirection(BoxLayoutDirection::Vertical);
             }
         } else {
+            SetPadding(3,5);
             if (!boxLayout) {
                 boxLayout = CreateHBoxLayout(this);
             } else {
@@ -467,7 +468,7 @@ namespace UltraCanvas {
 
         // Add widget to layout
         if (item->GetWidget() && boxLayout) {
-            boxLayout->AddUIElement(item->GetWidget(), 0);
+            boxLayout->AddUIElement(item->GetWidget(), 0)->SetCrossAlignment(LayoutAlignment::Center);
         }
 
         item->UpdateAppearance(appearance);
@@ -494,7 +495,8 @@ namespace UltraCanvas {
 
         // Add widget to layout at specific index
         if (item->GetWidget() && boxLayout) {
-            boxLayout->InsertUIElement(item->GetWidget(), index);
+            auto elem = boxLayout->InsertUIElement(item->GetWidget(), index);
+            static_cast<UltraCanvasBoxLayoutItem*>(elem)->SetCrossAlignment(LayoutAlignment::Center);
         }
 
         item->UpdateAppearance(appearance);
@@ -636,9 +638,6 @@ namespace UltraCanvas {
         // Render shadow if enabled (for Docked style)
         if (appearance.hasShadow) {
             RenderShadow(ctx);
-        }
-        if (IsLayoutDirty()) {
-            for(auto item& : )
         }
         // Use base class rendering for background and border
         UltraCanvasContainer::Render(ctx);

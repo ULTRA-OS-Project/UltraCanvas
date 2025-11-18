@@ -127,7 +127,7 @@ namespace UltraCanvas {
         layout->AddUIElement(doccontainer)->SetWidthMode(SizeMode::Fill);
         programmersGuideIcon = CreateImageElement("DocIcon", iconSize, iconSize);
         programmersGuideIcon->LoadFromFile("assets/icons/text.png");
-        programmersGuideIcon->SetScaleMode(ImageScaleMode::Uniform);
+        programmersGuideIcon->SetFitMode(ImageFitMode::Contain);
         docContainerLayout->AddUIElement(programmersGuideIcon);
 
         infoLabel2 = CreateLabel("DocText", 0, 21, "a) Programmer's Guide");
@@ -146,7 +146,7 @@ namespace UltraCanvas {
 
         exampleCodeIcon = CreateImageElement("CodeIcon", iconSize, iconSize);
         exampleCodeIcon->LoadFromFile("assets/icons/c-plus-plus-icon.png");
-        exampleCodeIcon->SetScaleMode(ImageScaleMode::Uniform);
+        exampleCodeIcon->SetFitMode(ImageFitMode::Contain);
         codeContainerLayout->AddUIElement(exampleCodeIcon);
 
         infoLabel3 = CreateLabel("CodeText", 0, 22, "b) Example Code");

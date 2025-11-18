@@ -33,14 +33,14 @@ enum class ImageFormat {
 };
 
 // ===== IMAGE SCALING MODES =====
-enum class ImageScaleMode {
-    NoScale,           // No scaling - original size
-    Stretch,        // Stretch to fit bounds (may distort)
-    Uniform,        // Scale uniformly to fit (maintain aspect ratio)
-    UniformToFill,  // Scale uniformly to fill (may crop)
-    Center,         // Center image without scaling
-    Tile            // Tile image to fill bounds
-};
+//enum class ImageScaleMode {
+//    NoScale,           // No scaling - original size
+//    Stretch,        // Stretch to fit bounds (may distort)
+//    Uniform,        // Scale uniformly to fit (maintain aspect ratio)
+//    UniformToFill,  // Scale uniformly to fill (may crop)
+//    Center,         // Center image without scaling
+//    Tile            // Tile image to fill bounds
+//};
 
 // ===== IMAGE LOADING STATE =====
 enum class ImageLoadState {
@@ -59,7 +59,7 @@ private:
     ImageLoadState loadState = ImageLoadState::NotLoaded;
     
     // Display properties
-    ImageScaleMode scaleMode = ImageScaleMode::Uniform;
+    ImageFitMode fitMode = ImageFitMode::Contain;
     Color tintColor = Colors::White;
     float opacity = 1.0f;
     bool smoothScaling = true;
@@ -103,9 +103,9 @@ public:
     bool LoadFromMemory(const uint8_t* data, size_t size, ImageFormat format = ImageFormat::Unknown);
     
     // ===== IMAGE PROPERTIES =====
-    void SetScaleMode(ImageScaleMode mode) { scaleMode = mode; }
+    void SetFitMode(ImageFitMode mode) { fitMode = mode; }
     
-    ImageScaleMode GetScaleMode() const { return scaleMode; }
+    ImageFitMode GetFitMode() const { return fitMode; }
     void SetTintColor(const Color& color) { tintColor = color; }
     void SetOpacity(float alpha) { opacity = std::max(0.0f, std::min(1.0f, alpha)); RequestRedraw(); }
     float GetOpacity() const { return opacity; }
@@ -192,9 +192,9 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromMemory(
 // ===== CONVENIENCE FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasImageElement> CreateScaledImage(
     const std::string& identifier, long id, long x, long y, long w, long h,
-    const std::string& imagePath, ImageScaleMode scaleMode) {
+    const std::string& imagePath, ImageFitMode fitMode) {
     auto image = CreateImageFromFile(identifier, id, x, y, w, h, imagePath);
-    image->SetScaleMode(scaleMode);
+    image->SetFitMode(fitMode);
     return image;
 }
 

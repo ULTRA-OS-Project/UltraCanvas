@@ -69,23 +69,23 @@ namespace UltraCanvas {
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetStyle(ToolbarStyle::Standard)
                 .SetDimensions(20, currentY, 960, 48)
-                .AddButton("new", "New", "", []() {
+                .AddButton("new", "", "assets/icons/new-icon.png", []() {
                     std::cout << "New button clicked" << std::endl;
                 })
-                .AddButton("open", "Open", "", []() {
+                .AddButton("open", "", "assets/icons/open-icon.png", []() {
                     std::cout << "Open button clicked" << std::endl;
                 })
-                .AddButton("save", "Save", "", []() {
+                .AddButton("save", "", "assets/icons/save-icon.png", []() {
                     std::cout << "Save button clicked" << std::endl;
                 })
                 .AddSeparator()
-                .AddButton("cut", "Cut", "", []() {
+                .AddButton("cut", "", "assets/icons/cut-icon.png", []() {
                     std::cout << "Cut button clicked" << std::endl;
                 })
-                .AddButton("copy", "Copy", "", []() {
+                .AddButton("copy", "", "assets/icons/copy-icon.png", []() {
                     std::cout << "Copy button clicked" << std::endl;
                 })
-                .AddButton("paste", "Paste", "", []() {
+                .AddButton("paste", "", "assets/icons/paste-icon.png", []() {
                     std::cout << "Paste button clicked" << std::endl;
                 })
                 .AddSeparator()
@@ -122,10 +122,10 @@ namespace UltraCanvas {
         dropdownToolbar->SetStyle(ToolbarStyle::Standard);
 
         // Add buttons and dropdowns
-        dropdownToolbar->AddButton("undo", "Undo", "", []() {
+        dropdownToolbar->AddButton("undo", "", "assets/icons/undo-icon.png", []() {
             std::cout << "Undo clicked" << std::endl;
         });
-        dropdownToolbar->AddButton("redo", "Redo", "", []() {
+        dropdownToolbar->AddButton("redo", "", "assets/icons/redo-icon.png", []() {
             std::cout << "Redo clicked" << std::endl;
         });
         dropdownToolbar->AddSeparator();
@@ -183,20 +183,20 @@ namespace UltraCanvas {
                 .SetStyle(ToolbarStyle::Flat)
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(20, currentY, 960, 48)
-                .AddButton("home", "Home", "", []() {
+                .AddButton("home", "", "assets/icons/home-icon.png", []() {
                     std::cout << "Home clicked" << std::endl;
                 })
-                .AddButton("profile", "Profile", "", []() {
+                .AddButton("profile", "", "assets/icons/profile-icon.png", []() {
                     std::cout << "Profile clicked" << std::endl;
                 })
-                .AddButton("settings", "Settings", "", []() {
+                .AddButton("settings", "", "assets/icons/settings.png", []() {
                     std::cout << "Settings clicked" << std::endl;
                 })
                 .AddFlexSpacer(1.0f)
-                .AddButton("notifications", "🔔", "", []() {
+                .AddButton("notifications", "", "assets/icons/bell-icon.png", []() {
                     std::cout << "Notifications clicked" << std::endl;
                 })
-                .AddButton("messages", "✉", "", []() {
+                .AddButton("messages", "", "assets/icons/envelope-icon.png", []() {
                     std::cout << "Messages clicked" << std::endl;
                 })
                 .Build();
@@ -225,7 +225,7 @@ namespace UltraCanvas {
 
         // Container to demonstrate vertical toolbar
         auto sidebarContainer = std::make_shared<UltraCanvasContainer>(
-                "SidebarDemo", 814, 20, currentY, 960, 200
+                "SidebarDemo", 814, 20, currentY, 960, 240
         );
         sidebarContainer->SetBackgroundColor(Color(245, 245, 245, 255));
         sidebarContainer->SetBorders(1, Color(220, 220, 220, 255));
@@ -233,7 +233,7 @@ namespace UltraCanvas {
         auto verticalToolbar = UltraCanvasToolbarBuilder("VerticalToolbar", 815)
                 .SetOrientation(ToolbarOrientation::Vertical)
                 .SetStyle(ToolbarStyle::Sidebar)
-                .SetDimensions(10, 10, 60, 180)
+                .SetDimensions(10, 10, 50, 220)
                 .AddButton("dashboard", "📊", "", []() {
                     std::cout << "Dashboard clicked" << std::endl;
                 })
@@ -276,7 +276,7 @@ namespace UltraCanvas {
         sidebarContainer->AddChild(contentDesc);
 
         mainContainer->AddChild(sidebarContainer);
-        currentY += 215;
+        currentY += 255;
 
         // ===== EXAMPLE 5: RIBBON STYLE TOOLBAR =====
         auto section5Label = std::make_shared<UltraCanvasLabel>(
@@ -304,9 +304,9 @@ namespace UltraCanvas {
                 .SetDimensions(20, currentY, 960, 58)
                 .AddLabel("clipboard", "Clipboard")
                 .AddSpacer(5)
-                .AddButton("cut", "Cut", "", []() {})
-                .AddButton("copy", "Copy", "", []() {})
-                .AddButton("paste", "Paste", "", []() {})
+                .AddButton("cut", "", "assets/icons/cut-icon.png", []() {})
+                .AddButton("copy", "", "assets/icons/copy-icon.png", []() {})
+                .AddButton("paste", "", "assets/icons/paste-icon.png", []() {})
                 .AddSpacer(20)
                 .AddLabel("format", "Format")
                 .AddSpacer(5)
@@ -316,9 +316,9 @@ namespace UltraCanvas {
                 .AddSpacer(20)
                 .AddLabel("insert", "Insert")
                 .AddSpacer(5)
-                .AddButton("image", "Image", "", []() {})
-                .AddButton("table", "Table", "", []() {})
-                .AddButton("chart", "Chart", "", []() {})
+                .AddButton("image", "", "assets/icons/image-icon.png", []() {})
+                .AddButton("table", "", "assets/icons/table-icon.png", []() {})
+                .AddButton("chart", "", "assets/icons/chart-icon.png", []() {})
                 .Build();
 
         mainContainer->AddChild(ribbonToolbar);

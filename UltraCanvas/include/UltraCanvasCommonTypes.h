@@ -377,4 +377,12 @@ enum class SizeMode {
     Auto,       // Size based on content
     Fill        // Fill remaining space
 };
+
+enum class ImageFitMode {
+    NoScale,
+    Contain,
+    Cover,
+    Fill,
+    ScaleDown
+};
 } // namespace UltraCanvas

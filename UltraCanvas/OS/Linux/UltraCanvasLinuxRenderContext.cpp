@@ -1365,20 +1365,21 @@ namespace UltraCanvas {
             // Save current cairo state
             cairo_save(cairo);
 
-            // Calculate scaling factors
             float scaleX = w / static_cast<float>(image->width);
             float scaleY = h / static_cast<float>(image->height);
 
+            // Apply clipping to ensure we don't draw outside the destination rectangle
+            cairo_rectangle(cairo, 0, 0, w, h);
+            cairo_clip(cairo);
+
             // Apply transformations
             cairo_translate(cairo, x, y);
-            cairo_scale(cairo, scaleX, scaleY);
+            if (scaleX != 1.0 || scaleY != 1.0) {
+                cairo_scale(cairo, scaleX, scaleY);
+            }
 
             // Set the image as source and paint
             cairo_set_source_surface(cairo, image->GetSurface(), 0, 0);
-
-            // Apply clipping to ensure we don't draw outside the destination rectangle
-            cairo_rectangle(cairo, 0, 0, image->width, image->height);
-            cairo_clip(cairo);
 
             if (currentState.globalAlpha < 1.0f) {
                 cairo_paint_with_alpha(cairo, currentState.globalAlpha);
@@ -1390,6 +1391,104 @@ namespace UltraCanvas {
             cairo_restore(cairo);
         } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImage: Exception loading image: " << e.what() << std::endl;
+        }
+    }
+
+    void LinuxRenderContext::DrawImageFit(std::shared_ptr<UCImage> image, float x, float y, float w, float h, ImageFitMode fitMode) {
+        try {
+            // Load the image
+            if (!image->IsValid()) {
+                std::cerr << "LinuxRenderContext::DrawImageFit: Failed to load image '"
+                          << image->errorMessage << std::endl;
+                return;
+            }
+
+            // Save current cairo state
+            cairo_save(cairo);
+
+            float scaleX = 1;
+            float scaleY = 1;
+            float offsetX = 0;
+            float offsetY = 0;
+            // Calculate scaling factors
+            switch (fitMode) {
+                case ImageFitMode::Contain:
+                    scaleX = w / static_cast<float>(image->width);
+                    scaleY = h / static_cast<float>(image->height);
+
+                    if (scaleX < scaleY) {
+                        scaleY = scaleX;
+                        offsetY = (h - (image->height * scaleY)) / 2;
+                    } else {
+                        scaleX = scaleY;
+                        offsetX = (w - (image->width * scaleX)) / 2;
+                    }
+                    break;
+                case ImageFitMode::Cover:
+                    scaleX = w / static_cast<float>(image->width);
+                    scaleY = h / static_cast<float>(image->height);
+
+                    if (scaleX < scaleY) {
+                        scaleX = scaleY;
+                        offsetX = (w - (image->width * scaleX)) / 2;
+                    } else {
+                        scaleY = scaleX;
+                        offsetY = (h - (image->height * scaleY)) / 2;
+                    }
+                    break;
+                case ImageFitMode::NoScale:
+                    offsetX = (w - image->width) / 2;
+                    offsetY = (h - image->height) / 2;
+                    break;
+                case ImageFitMode::Fill:
+                    scaleX = w / static_cast<float>(image->width);
+                    scaleY = h / static_cast<float>(image->height);
+                    break;
+                case ImageFitMode::ScaleDown:
+                    scaleX = w / static_cast<float>(image->width);
+                    scaleY = h / static_cast<float>(image->height);
+                    if (scaleX < scaleY) {
+                        if (scaleX > 1) {
+                            scaleX = 1;
+                        }
+                        scaleY = scaleX;
+                    } else {
+                        if (scaleY > 1) {
+                            scaleY = 1;
+                        }
+                        scaleX = scaleY;
+                    }
+                    offsetY = (h - (image->height * scaleY)) / 2;
+                    offsetX = (w - (image->width * scaleX)) / 2;
+                    break;
+                default:
+                    break;
+            }
+
+            // Apply transformations
+            cairo_rectangle(cairo, x, y, w, h);
+            cairo_clip(cairo);
+
+            cairo_translate(cairo, x + offsetX, y + offsetY);
+            // Apply clipping to ensure we don't draw outside the destination rectangle
+
+            if (scaleX != 1.0 || scaleY != 1.0) {
+                cairo_scale(cairo, scaleX, scaleY);
+            }
+
+            // Set the image as source and paint
+            cairo_set_source_surface(cairo, image->GetSurface(), 0, 0);
+
+            if (currentState.globalAlpha < 1.0f) {
+                cairo_paint_with_alpha(cairo, currentState.globalAlpha);
+            } else {
+                cairo_paint(cairo);
+            }
+
+            // Restore cairo state
+            cairo_restore(cairo);
+        } catch (const std::exception &e) {
+            std::cerr << "LinuxRenderContext::DrawImageFit: Exception loading image: " << e.what() << std::endl;
         }
     }
 
@@ -1409,6 +1508,24 @@ namespace UltraCanvas {
         }
 
         DrawImage(image, x, y, w, h);
+    }
+
+    void LinuxRenderContext::DrawImageFit(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode) {
+        if (imagePath.empty()) {
+            std::cerr << "LinuxRenderContext::DrawImage: Invalid parameters" << std::endl;
+            return;
+        }
+
+        // Load the image
+        auto image = GetImageFromFile(imagePath);
+
+        if (!image->IsValid()) {
+            std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
+                      << imagePath << "': " << image->errorMessage << std::endl;
+            return;
+        }
+
+        DrawImageFit(image, x, y, w, h, fitMode);
     }
 
     void LinuxRenderContext::DrawImage(std::shared_ptr<UCImage> image, float x, float y) {
