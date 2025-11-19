@@ -13,7 +13,7 @@
 #include <map>
 
 namespace UltraCanvas {
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTabExamples() {
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTabExamples1() {
         auto container = std::make_shared<UltraCanvasContainer>("TabExamples", 700, 0, 0, 1000, 600);
 
         // Title
