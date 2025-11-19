@@ -298,7 +298,7 @@ namespace UltraCanvas {
         if (segment.HasIcon()) {
             int iconX = contentX;
             int iconY = contentY - style.iconSize / 2;
-            ctx->DrawImageFit(segment.iconPath, iconX, iconY, style.iconSize, style.iconSize, ImageFitMode::Contain);
+            ctx->DrawImage(segment.iconPath, iconX, iconY, style.iconSize, style.iconSize, ImageFitMode::Contain);
             contentX += style.iconSize + style.iconSpacing;
         }
 

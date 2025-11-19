@@ -1191,7 +1191,7 @@ namespace UltraCanvas {
         if (href) {
             // Load and render image
             // This would need actual image loading implementation
-            context->DrawImage(href, x, y, width, height);
+            context->DrawImage(href, x, y, width, height, ImageFitMode::Contain);
         }
     }
 

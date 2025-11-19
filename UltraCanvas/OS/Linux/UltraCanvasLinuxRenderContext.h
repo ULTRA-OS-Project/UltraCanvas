@@ -340,18 +340,18 @@ namespace UltraCanvas {
 
         // Image rendering
         void DrawImage(const std::string &imagePath, float x, float y) override;
-        void DrawImage(const std::string &imagePath, float x, float y, float w, float h) override;
-        void DrawImage(const std::string &imagePath, const Rect2Df &srcRect, const Rect2Df &destRect) override;
+//        void DrawImage(const std::string &imagePath, float x, float y, float w, float h) override;
+        void DrawPartOfImage(const std::string &imagePath, const Rect2Df &srcRect, const Rect2Df &destRect) override;
 
         void DrawImage(std::shared_ptr<UCImage> image, float x, float y) override;
-        void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h) override;
-        void DrawImage(std::shared_ptr<UCImage> image, const Rect2Df &srcRect, const Rect2Df &destRect) override;
-        void DrawImageFit(std::shared_ptr<UCImage> image, float x, float y, float w, float h, ImageFitMode fitMode) override;
-        void DrawImageFit(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode) override;
+//        void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h) override;
+        void DrawPartOfImage(std::shared_ptr<UCImage> image, const Rect2Df &srcRect, const Rect2Df &destRect) override;
+        void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h, ImageFitMode fitMode) override;
+        void DrawImage(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode) override;
 
         // ===== ENHANCED IMAGE RENDERING METHODS =====
-        void DrawImageWithFilter(const std::string &imagePath, float x, float y, float w, float h,
-                                 cairo_filter_t filter = CAIRO_FILTER_BILINEAR);
+//        void DrawImageWithFilter(const std::string &imagePath, float x, float y, float w, float h,
+//                                 cairo_filter_t filter = CAIRO_FILTER_BILINEAR);
 
         void DrawImageTiled(const std::string &imagePath, float x, float y, float w, float h);
 

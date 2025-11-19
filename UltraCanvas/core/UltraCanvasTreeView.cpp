@@ -494,7 +494,7 @@ namespace UltraCanvas {
 
         // Draw left icon
         if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty()) {
-            ctx->DrawImageFit(node->data.leftIcon.iconPath.c_str(),
+            ctx->DrawImage(node->data.leftIcon.iconPath.c_str(),
                            textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
                            node->data.leftIcon.width, node->data.leftIcon.height, ImageFitMode::Contain);
             textX += node->data.leftIcon.width + iconSpacing;
@@ -511,7 +511,7 @@ namespace UltraCanvas {
                 rightIconX -= scrollbarWidth;
             }
 
-            ctx->DrawImageFit(node->data.rightIcon.iconPath.c_str(),
+            ctx->DrawImage(node->data.rightIcon.iconPath.c_str(),
                            rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
                            node->data.rightIcon.width, node->data.rightIcon.height, ImageFitMode::Contain);
         }

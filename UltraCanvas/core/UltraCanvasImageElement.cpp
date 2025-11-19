@@ -222,7 +222,7 @@ namespace UltraCanvas {
         // Draw the image using unified rendering
         if (loadedImage->IsValid()) {
             // Load from file path
-            ctx->DrawImageFit(loadedImage, GetBounds(), fitMode);
+            ctx->DrawImage(loadedImage, GetBounds(), fitMode);
         } else {
             // For memory-loaded images, we'd need to save to a temporary file
             // or extend the rendering interface to support raw data

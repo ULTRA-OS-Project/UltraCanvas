@@ -375,13 +375,11 @@ namespace UltraCanvas {
 
         // ===== IMAGE RENDERING =====
         virtual void DrawImage(const std::string& imagePath, float x, float y) = 0;
-        virtual void DrawImage(const std::string& imagePath, float x, float y, float w, float h) = 0;
-        virtual void DrawImage(const std::string& imagePath, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
+        virtual void DrawImage(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
+        virtual void DrawPartOfImage(const std::string& imagePath, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
         virtual void DrawImage(std::shared_ptr<UCImage> image, float x, float y) = 0;
-        virtual void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h) = 0;
-        virtual void DrawImage(std::shared_ptr<UCImage> image, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
-        virtual void DrawImageFit(std::shared_ptr<UCImage> image, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
-        virtual void DrawImageFit(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
+        virtual void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
+        virtual void DrawPartOfImage(std::shared_ptr<UCImage> image, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
 
 //        virtual bool IsImageFormatSupported(const std::string& filePath) = 0;
 //        virtual bool GetImageDimensions(const std::string& imagePath, int& w, int& h) = 0;
@@ -528,52 +526,18 @@ namespace UltraCanvas {
             DrawText(text, position.x, position.y);
         }
 
-        void DrawImage(const std::string& imagePath, int x, int y) {
-            DrawImage(imagePath, static_cast<float>(x), static_cast<float>(y));
-        }
         void DrawImage(const std::string& imagePath, const Point2Df& position) {
             DrawImage(imagePath, position.x, position.y);
         }
         void DrawImage(const std::string& imagePath, const Point2Di& position) {
             DrawImage(imagePath, position.x, position.y);
         }
-
-        void DrawImage(const std::string& imagePath, int x, int y, int w, int h) {
-            DrawImage(imagePath, static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
-        }
-        void DrawImage(const std::string& imagePath, const Rect2Df& position) {
-            DrawImage(imagePath, position.x, position.y, position.width, position.height);
-        }
-        void DrawImage(const std::string& imagePath, const Rect2Di& position) {
-            DrawImage(imagePath, position.x, position.y, position.width, position.height);;
+        void DrawImage(std::shared_ptr<UCImage> image, const Rect2Di& rect, ImageFitMode fitMode) {
+            DrawImage(image, rect.x, rect.y, rect.width, rect.height, fitMode);
         }
 
-        void DrawImage(std::shared_ptr<UCImage>& image, int x, int y) {
-            DrawImage(image, static_cast<float>(x), static_cast<float>(y));
-        }
-        void DrawImage(std::shared_ptr<UCImage>& image, const Point2Df& position) {
-            DrawImage(image, position.x, position.y);
-        }
-        void DrawImage(std::shared_ptr<UCImage>& image, const Point2Di& position) {
-            DrawImage(image, position.x, position.y);
-        }
-
-        void DrawImage(std::shared_ptr<UCImage>& image, int x, int y, int w, int h) {
-            DrawImage(image, static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
-        }
-        void DrawImage(std::shared_ptr<UCImage>& image, const Rect2Df& position) {
-            DrawImage(image, position.x, position.y, position.width, position.height);
-        }
-        void DrawImage(std::shared_ptr<UCImage>& image, const Rect2Di& position) {
-            DrawImage(image, position.x, position.y, position.width, position.height);
-        }
-
-        void DrawImageFit(std::shared_ptr<UCImage> image, const Rect2Di& position, ImageFitMode fitMode) {
-            DrawImageFit(image, position.x, position.y, position.width, position.height, fitMode);
-        }
-
-        void DrawImageFit(std::shared_ptr<UCImage> image, const Rect2Df& position, ImageFitMode fitMode) {
-            DrawImageFit(image, position.x, position.y, position.width, position.height, fitMode);
+        void DrawImage(std::shared_ptr<UCImage> image, const Rect2Df& rect, ImageFitMode fitMode) {
+            DrawImage(image, rect.x, rect.y, rect.width, rect.height, fitMode);
         }
 
 //        void SetClipRect(int x, int y, int w, int h) {
