@@ -16,7 +16,7 @@
 
 
 namespace UltraCanvas {
-
+    extern const char* versionString;
     std::string ToLowerCase(const std::string &str);
     bool StartsWith(const std::string& str, const std::string& prefix);
     std::string Trim(const std::string& str);

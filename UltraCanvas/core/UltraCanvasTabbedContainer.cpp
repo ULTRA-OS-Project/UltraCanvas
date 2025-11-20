@@ -228,8 +228,8 @@ namespace UltraCanvas {
             int tabIndex = item.value.empty() ? selectedIndex : std::stoi(item.value);
             if (tabIndex >= 0 && tabIndex < (int)tabs.size()) {
                 SetActiveTab(tabIndex);
-                overflowDropdownVisible = false;
-                overflowDropdown->SetVisible(false);
+//                overflowDropdownVisible = false;
+//                overflowDropdown->SetVisible(false);
                 ClearDropdownSearch();
             }
         };

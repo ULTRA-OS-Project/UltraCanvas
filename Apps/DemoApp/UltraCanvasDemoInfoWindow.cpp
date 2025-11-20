@@ -185,6 +185,15 @@ namespace UltraCanvas {
         });
 
         layout->AddUIElement(okButton)->SetCrossAlignment(LayoutAlignment::Center);
+
+        auto verLabel = CreateLabel("VerText", 0, 22, std::string("UltraCanvas v. ")+versionString);
+        verLabel->SetFontSize(10);
+        verLabel->SetAlignment(TextAlignment::Center);
+        verLabel->SetTextColor(Color(60, 60, 60, 255));
+        verLabel->SetMargin(3);
+        //verLabel->SetBorders(1);
+        verLabel->SetAutoResize(true);
+        layout->AddUIElement(verLabel)->SetMainAlignment(LayoutAlignment::Center)->SetCrossAlignment(LayoutAlignment::Center);;
     }
 
     void InfoWindow::SetOkCallback(std::function<void()> callback) {
