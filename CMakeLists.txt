@@ -188,7 +188,7 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasMenuExamples.cpp
         Apps/DemoApp/UltraCanvasSliderExamples.cpp
         Apps/DemoApp/UltraCanvasSVGExamples.cpp
-        Apps/DemoApp/UltraCanvasTabExamples.cpp
+#        Apps/DemoApp/UltraCanvasTabExamples.cpp
         Apps/DemoApp/UltraCanvasTextAreaExamples.cpp
         Apps/DemoApp/UltraCanvasTextInputExamples.cpp
         Apps/DemoApp/UltraCanvasTreeViewExamples.cpp
@@ -204,6 +204,7 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasLayoutExamples.cpp
         Apps/DemoApp/UltraCanvasDomainTableDemo.cpp
         Apps/DemoApp/UltraCanvasToolbarExamples.cpp
+        Apps/DemoApp/UltracanvasTabDemo.cpp
 )
 
 # ✅ ADDED: Check that source files exist

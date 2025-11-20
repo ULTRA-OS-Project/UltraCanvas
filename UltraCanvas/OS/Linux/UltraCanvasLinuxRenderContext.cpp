@@ -1333,6 +1333,10 @@ namespace UltraCanvas {
         currentState.textStyle.alignment = align;
     }
 
+    void LinuxRenderContext::SetTextVerticalAlignment(TextVerticalAlignement align) {
+        currentState.textStyle.verticalAlignement = align;
+    }
+
     void LinuxRenderContext::SetTextIsMarkup(bool isMarkup) {
         currentState.textStyle.isMarkup = isMarkup;
     }

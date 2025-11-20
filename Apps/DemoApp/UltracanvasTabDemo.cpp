@@ -22,7 +22,7 @@ namespace UltraCanvas {
         content->SetBackgroundColor(bgColor);
         content->SetPadding(15);
 
-        auto label = std::make_shared<UltraCanvasLabel>(id + "_label", uid + 1, 10, 10, 730, 160);
+        auto label = std::make_shared<UltraCanvasLabel>(id + "_label", uid + 1, 0, 0, 730, 150);
         label->SetText(text);
         label->SetFontSize(12);
         //label->SetAlignment(TextAlignment::TopLeft);
@@ -35,9 +35,9 @@ namespace UltraCanvas {
 // ===== MAIN COMPREHENSIVE TAB DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTabExamples() {
         // Main container with scrolling
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("ComprehensiveTabDemo", 7000, 0, 0, 1000, 800);
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("ComprehensiveTabDemo", 7000, 0, 0, 1020, 3150);
         //mainContainer->EnableVerticalScrolling(true);
-        mainContainer->SetBackgroundColor(Color(245, 245, 245));
+//        mainContainer->SetBackgroundColor(Color(245, 245, 245));
 
         int yOffset = 10;
 
@@ -104,6 +104,7 @@ namespace UltraCanvas {
                                                                Color(250, 245, 255)));
 
         classicTabs->SetActiveTab(0);
+        classicTabs->SetCloseMode(TabCloseMode::NoClose);
         mainContainer->AddChild(classicTabs);
         yOffset += 230;
 
@@ -145,6 +146,7 @@ namespace UltraCanvas {
                                                                   Color(255, 250, 245)));
 
         modernTabs->SetActiveTab(0);
+        modernTabs->SetCloseMode(TabCloseMode::NoClose);
         mainContainer->AddChild(modernTabs);
         yOffset += 230;
 
@@ -180,6 +182,7 @@ namespace UltraCanvas {
                                                          Color(250, 245, 255)));
 
         flatTabs->SetActiveTab(0);
+        flatTabs->SetCloseMode(TabCloseMode::NoClose);
         mainContainer->AddChild(flatTabs);
         yOffset += 230;
 
@@ -254,15 +257,15 @@ namespace UltraCanvas {
                                                                                "✓ Hover effects on all interactive elements\n"
                                                                                "✓ Visual feedback for user actions",
                                                                                Color(250, 250, 250)));
-        featureTabs->SetTabIcon(tabIndex1, "assets/icons/message.png");
-        featureTabs->SetTabBadge(tabIndex1, 5, true);  // 5 unread messages
+        featureTabs->SetTabIcon(tabIndex1, "assets/icons/envelope-icon.png");
+        featureTabs->SetTabBadge(tabIndex1, "5", true);  // 5 unread messages
 
         int tabIndex2 = featureTabs->AddTab("Notifications", CreateSampleTabContent("Feature2", 7055,
                                                                                     "Notification center content.\n\n"
                                                                                     "Badge shows 12 new notifications.",
                                                                                     Color(245, 250, 255)));
-        featureTabs->SetTabIcon(tabIndex2, "assets/icons/bell.png");
-        featureTabs->SetTabBadge(tabIndex2, 12, true);  // 12 notifications
+        featureTabs->SetTabIcon(tabIndex2, "assets/icons/bell-icon.png");
+        featureTabs->SetTabBadge(tabIndex2, "999+", true);  // 12 notifications
 
         int tabIndex3 = featureTabs->AddTab("Settings", CreateSampleTabContent("Feature3", 7057,
                                                                                "Settings and preferences.\n\n"
@@ -354,7 +357,7 @@ namespace UltraCanvas {
         newTabATabs->SetNewTabButtonStyle(NewTabButtonStyle::PlusIcon);
         newTabATabs->SetNewTabButtonWidth(32);
 //        newTabATabs->SetNewTabButtonIcon("+");
-        newTabATabs->UseDefaultNewTabColors(true);  // Inherit tab colors
+        //newTabATabs->UseDefaultNewTabColors(true);  // Inherit tab colors
 
         // Set up new tab callback
         newTabATabs->onNewTabRequest = [newTabATabs]() {
@@ -425,18 +428,18 @@ namespace UltraCanvas {
         newTabBTabs->SetCloseMode(TabCloseMode::Closable);
 
         // Enable Style B - Icon Button
-        newTabBTabs->SetNewTabButtonStyle(NewTabButtonStyle::IconButton);
-        newTabBTabs->SetNewTabButtonSize(24);
-        newTabBTabs->SetNewTabButtonIcon("+");
-        newTabBTabs->SetNewTabIconSize(16.0f);
-        newTabBTabs->SetNewTabIconColors(
-                Color(100, 100, 100),  // Normal
-                Color(50, 50, 50)      // Hover
-        );
-        newTabBTabs->SetNewTabIconBackgroundColors(
-                Colors::Transparent,           // Normal
-                Color(220, 220, 220, 100)     // Hover
-        );
+        newTabBTabs->SetNewTabButtonStyle(NewTabButtonStyle::RoundedWithIcon);
+//        newTabBTabs->SetNewTabButtonSize(24,24);
+//        newTabBTabs->SetNewTabButtonIcon("+");
+//        newTabBTabs->SetNewTabIconSize(16.0f);
+//        newTabBTabs->SetNewTabIconColors(
+//                Color(100, 100, 100),  // Normal
+//                Color(50, 50, 50)      // Hover
+//        );
+//        newTabBTabs->SetNewTabIconBackgroundColors(
+//                Colors::Transparent,           // Normal
+//                Color(220, 220, 220, 100)     // Hover
+//        );
 
         // Set up new tab callback
         newTabBTabs->onNewTabRequest = [newTabBTabs]() {
@@ -480,6 +483,7 @@ namespace UltraCanvas {
                                                               Color(250, 250, 250)));
 
         newTabBTabs->SetActiveTab(0);
+        newTabBTabs->SetCloseMode(TabCloseMode::Closable);
         mainContainer->AddChild(newTabBTabs);
         yOffset += 230;
 
@@ -582,6 +586,7 @@ namespace UltraCanvas {
                                                                                       Color(240, 240, 255)));
         advancedTabs->SetTabBackgroundColor(blueTabIndex, Color(200, 220, 255));
         advancedTabs->SetTabTextColor(blueTabIndex, Color(0, 60, 150));
+        advancedTabs->SetCloseMode(TabCloseMode::Closable);
 
         // Set up callbacks
         advancedTabs->onTabChange = [](int oldIndex, int newIndex) {

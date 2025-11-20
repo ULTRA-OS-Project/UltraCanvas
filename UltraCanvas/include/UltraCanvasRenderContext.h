@@ -347,6 +347,7 @@ namespace UltraCanvas {
         virtual const TextStyle& GetTextStyle() const = 0;
         virtual void SetTextStyle(const TextStyle& style) = 0;
         virtual void SetTextAlignment(TextAlignment align) = 0;
+        virtual void SetTextVerticalAlignment(TextVerticalAlignement align) = 0;
         virtual void SetTextIsMarkup(bool isMarkup) = 0;
 
         virtual void FillText(const std::string& text, float x, float y) = 0;
@@ -618,7 +619,7 @@ namespace UltraCanvas {
 
         void DrawFilledCircle(const Point2Df& center, float radius, const Color& fillColor, const Color& borderColor = Colors::Transparent, float borderWidth = 1.0f) {
             PushState();
-
+            ClearPath();
             Circle(center.x, center.y, radius);
             if (fillColor.a > 0) {
                 SetFillPaint(fillColor);

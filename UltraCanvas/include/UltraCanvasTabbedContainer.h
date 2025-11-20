@@ -71,12 +71,14 @@ namespace UltraCanvas {
         std::string title;
         std::string tooltip;
         std::string iconPath;           // Path to tab icon (16x16 recommended)
+        std::string badgeText;
+        int badgeWidth = 0;
+        int badgeHeight = 0;
         bool enabled = true;
         bool visible = true;
         bool closable = true;
         bool hasIcon = false;
         bool hasBadge = false;
-        int badgeCount = 0;
         bool showBadge = false;
         Color textColor = Colors::Black;
         Color backgroundColor = Color(240, 240, 240);
@@ -98,7 +100,7 @@ namespace UltraCanvas {
         // ===== TAB BAR LAYOUT =====
         TabPosition tabPosition = TabPosition::Top;
         TabStyle tabStyle = TabStyle::Rounded;
-        TabCloseMode closeMode = TabCloseMode::Closable;
+        TabCloseMode closeMode = TabCloseMode::NoClose;
         int tabHeight = 32;
         int tabMinWidth = 80;
         int tabMaxWidth = 200;
@@ -112,9 +114,9 @@ namespace UltraCanvas {
         int fontSize = 11;
         int iconSize = 16;
         int iconPadding = 4;
-        int badgeSize = 16;
         int closeButtonSize = 16;
         int closeButtonMargin = 4;
+        bool showTabSeparators = false;
 
         // ===== COLORS =====
         Color tabBarColor = Color(230, 230, 230);
@@ -131,6 +133,7 @@ namespace UltraCanvas {
         Color contentAreaColor = Color(255, 255, 255);
         Color badgeBackgroundColor = Color(220, 50, 50);
         Color badgeTextColor = Colors::White;
+        Color tabSeparatorColor = Color(200, 200, 200);
 
         // ===== OVERFLOW DROPDOWN =====
         OverflowDropdownPosition overflowDropdownPosition = OverflowDropdownPosition::Off;
@@ -195,6 +198,7 @@ namespace UltraCanvas {
         float GetTabElevation() const { return tabElevation; }
         void SetIconSize(int size) { iconSize = size; InvalidateTabbar(); }
         int GetIconSize() const { return iconSize; }
+        bool CalcBadgeDimensions(TabData* tabData);
 
         void SetNewTabButtonWidth(int w) { newTabButtonWidth = w; }
         void SetInactiveTabBackgroundColor(const Color& c) {
@@ -234,16 +238,16 @@ namespace UltraCanvas {
         // ===== TAB ICON AND BADGE METHODS =====
         void SetTabIcon(int index, const std::string& iconPath);
         std::string GetTabIcon(int index) const;
-        void SetTabBadge(int index, int count, bool show);
+        void SetTabBadge(int index, const std::string & text, bool show);
         void ClearTabBadge(int index);
-        int GetTabBadgeCount(int index) const;
+        std::string GetTabBadgeText(int index);
         bool IsTabBadgeVisible(int index) const;
 
         // ===== OVERFLOW DROPDOWN METHODS =====
         void InitializeOverflowDropdown();
         void UpdateOverflowDropdown();
         void UpdateOverflowDropdownVisibility();
-        bool CheckIfOverflowDropdownNeeded() const;
+        bool CheckIfOverflowDropdownNeeded();
         void PositionOverflowDropdown();
 
         // ===== RENDERING =====
@@ -269,16 +273,16 @@ namespace UltraCanvas {
         std::vector<int> GetFilteredTabIndices() const;
 
         // ===== UTILITY METHODS =====
-        int CalculateTabWidth(int index) const;
+        int CalculateTabWidth(int index);
         std::string GetTruncatedTabText(IRenderContext* ctx, const std::string& text, int maxWidth) const;
         Rect2Di GetTabAreaBounds() const;
         Rect2Di GetTabBarBounds() const;
         Rect2Di GetContentAreaBounds() const;
-        Rect2Di GetTabBounds(int index) const;
-        Rect2Di GetCloseButtonBounds(int index) const;
-        Rect2Di GetNewTabButtonBounds() const;
-        int GetTabAtPosition(int x, int y) const;
-        bool ShouldShowCloseButton(const TabData* tab) const;
+        Rect2Di GetTabBounds(int index);
+        Rect2Di GetCloseButtonBounds(int index);
+        Rect2Di GetNewTabButtonBounds();
+        int GetTabAtPosition(int x, int y);
+        bool ShouldShowCloseButton(const TabData* tab);
         void CalculateLayout();
         void ScrollTabs(int direction);
         void ReorderTabs(int fromIndex, int toIndex);
@@ -304,6 +308,17 @@ namespace UltraCanvas {
 
         void SetCloseMode(TabCloseMode mode);
         TabCloseMode GetCloseMode() const { return closeMode; }
+
+        // ===== PER-TAB STYLING =====
+        void SetShowTabSeparators(bool show);
+        bool GetShowTabSeparators() const { return showTabSeparators; }
+        void SetTabSeparatorColor(const Color& color);
+        Color GetTabSeparatorColor() const { return tabSeparatorColor; }
+
+        void SetTabBackgroundColor(int index, const Color& color);
+        Color GetTabBackgroundColor(int index) const;
+        void SetTabTextColor(int index, const Color& color);
+        Color GetTabTextColor(int index) const;
     };
 
 // ===== FACTORY FUNCTIONS =====

@@ -100,17 +100,18 @@ void DrawTextInRect(const std::string& text, const Rect2Di& rect);
 
 // **Image Rendering**
 void DrawImage(const std::string &imagePath, float x, float y);
-void DrawImage(const std::string &imagePath, float x, float y, float w, float h);
-void DrawImage(const std::string &imagePath, const Rect2Df &srcRect, const Rect2Df &destRect);
 void DrawImage(const std::string& imagePath, int x, int y);
-void DrawImage(const std::string& imagePath, const Point2Df& position);
-void DrawImage(const std::string& imagePath, const Point2Di& position);
-void DrawImage(const std::string& imagePath, int x, int y, int w, int h);
-void DrawImage(const std::string& imagePath, const Rect2Df& position);
-void DrawImage(const std::string& imagePath, const Rect2Di& position);
+void DrawImage(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode);
+void DrawImage(const std::string& imagePath, int x, int y, int w, int h, ImageFitMode fitMode);
+void DrawImage(const std::string& imagePath, const Point2Df& position, ImageFitMode fitMode);
+void DrawImage(const std::string& imagePath, const Point2Di& position, ImageFitMode fitMode);
 void DrawImage(std::shared_ptr<UCImage> image, float x, float y) = 0;
-void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h) = 0;
-void DrawImage(std::shared_ptr<UCImage> image, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
+void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
+void DrawImage(std::shared_ptr<UCImage> image, int x, int y, int w, int h, ImageFitMode fitMode) = 0;
+void DrawImage(std::shared_ptr<UCImage> image, const Point2Di& position, ImageFitMode fitMode) = 0;
+void DrawImage(std::shared_ptr<UCImage> image, const Point2Df& position, ImageFitMode fitMode) = 0;
+void DrawPartOfImage(const std::string &imagePath, const Rect2Df &srcRect, const Rect2Df &destRect);
+void DrawPartOfImage(std::shared_ptr<UCImage> image, const Rect2Df &srcRect, const Rect2Df &destRect);
 
 
 // **Painting with colors/patterns/gradients functions**
