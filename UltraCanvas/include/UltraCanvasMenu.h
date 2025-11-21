@@ -108,7 +108,7 @@ namespace UltraCanvas {
 
         // Typography
         std::string fontFamily = "Arial";
-        float fontSize = 13.0f;
+        float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
 
         // Dimensions
@@ -480,7 +480,7 @@ namespace UltraCanvas {
         style.separatorHeight = 1;
         style.borderWidth = 1;
         style.borderRadius = 0;
-        style.fontSize = 14.0f;
+        style.fontSize = 12.0f;
 
         style.showShadow = false;
         style.enableAnimations = false;

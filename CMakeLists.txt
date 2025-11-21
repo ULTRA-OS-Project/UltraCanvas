@@ -204,7 +204,7 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasLayoutExamples.cpp
         Apps/DemoApp/UltraCanvasDomainTableDemo.cpp
         Apps/DemoApp/UltraCanvasToolbarExamples.cpp
-        Apps/DemoApp/UltracanvasTabDemo.cpp
+        Apps/DemoApp/UltraCanvasTabExamples.cpp
 )
 
 # ✅ ADDED: Check that source files exist

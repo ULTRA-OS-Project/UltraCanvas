@@ -1,7 +1,7 @@
-// UltraCanvasTabbedContainer.h
+// include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 1.7.0
-// Last Modified: 2025-11-19
+// Version: 1.8.0
+// Last Modified: 2025-11-21
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -51,14 +51,6 @@ namespace UltraCanvas {
         Right       // Dropdown at right side of tabs
     };
 
-// ===== NEW TAB BUTTON STYLE =====
-    enum class NewTabButtonStyle {
-        NoButton,              // No new tab button
-        PlusIcon,          // Simple "+" button (Style A)
-        RoundedWithIcon,   // Rounded button with "+" icon (Style B)
-        Custom             // User-defined button
-    };
-
 // ===== NEW TAB BUTTON POSITION =====
     enum class NewTabButtonPosition {
         AfterTabs,         // Right after the last tab
@@ -104,7 +96,7 @@ namespace UltraCanvas {
         int tabHeight = 32;
         int tabMinWidth = 80;
         int tabMaxWidth = 200;
-        int tabSpacing = 2;
+        int tabSpacing = 0;
         int tabPadding = 12;
         bool tabbarLayoutDirty = true;
 
@@ -119,12 +111,13 @@ namespace UltraCanvas {
         bool showTabSeparators = false;
 
         // ===== COLORS =====
-        Color tabBarColor = Color(230, 230, 230);
-        Color activeTabColor = Color(255, 255, 255);
-        Color inactiveTabColor = Color(240, 240, 240);
+        Color tabBarColor = Colors::Transparent;
+        Color activeTabColor = Color(240, 240, 255);
+        Color inactiveTabColor = Color(220, 220, 220);
         Color hoveredTabColor = Color(250, 250, 250);
         Color disabledTabColor = Color(200, 200, 200);
-        Color tabBorderColor = Color(180, 180, 180);
+        Color tabBorderColor = Colors::Gray;
+        Color tabContentBorderColor = Colors::Gray;
         Color activeTabTextColor = Colors::Black;
         Color inactiveTabTextColor = Color(80, 80, 80);
         Color disabledTabTextColor = Color(150, 150, 150);
@@ -149,14 +142,12 @@ namespace UltraCanvas {
         std::string dropdownSearchText = "";
 
         // ===== NEW TAB BUTTON =====
-        NewTabButtonStyle newTabButtonStyle = NewTabButtonStyle::NoButton;
         NewTabButtonPosition newTabButtonPosition = NewTabButtonPosition::AfterTabs;
         bool showNewTabButton = false;
         int newTabButtonWidth = 32;
-        int newTabButtonHeight = 28;
         bool hoveredNewTabButton = false;
         Color newTabButtonColor = Color(240, 240, 240);
-        Color newTabButtonHoverColor = Color(220, 220, 220);
+        Color newTabButtonHoverColor = Color(220, 220, 255);
         Color newTabButtonIconColor = Color(100, 100, 100);
         std::function<void()> onNewTabRequest = nullptr;
 
@@ -207,6 +198,9 @@ namespace UltraCanvas {
         void SetInactiveTabTextColor(const Color& c) {
             inactiveTabTextColor = c;
         }
+        void SetNewButtonColor(const Color& c) {
+            newTabButtonColor = c;
+        }
 
         // ===== OVERFLOW DROPDOWN CONFIGURATION =====
         void SetOverflowDropdownPosition(OverflowDropdownPosition position);
@@ -222,13 +216,10 @@ namespace UltraCanvas {
         std::string GetDropdownSearchText() const { return dropdownSearchText; }
 
         // ===== NEW TAB BUTTON CONFIGURATION =====
-        void SetNewTabButtonStyle(NewTabButtonStyle style);
-        NewTabButtonStyle GetNewTabButtonStyle() const { return newTabButtonStyle; }
         void SetNewTabButtonPosition(NewTabButtonPosition position);
         NewTabButtonPosition GetNewTabButtonPosition() const { return newTabButtonPosition; }
         void SetShowNewTabButton(bool show);
         bool GetShowNewTabButton() const { return showNewTabButton; }
-        void SetNewTabButtonSize(int width, int height);
 
         // ===== TAB MANAGEMENT =====
         int AddTab(const std::string& title, std::shared_ptr<UltraCanvasUIElement> content = nullptr);
@@ -257,7 +248,7 @@ namespace UltraCanvas {
         void RenderTabIcon(int index, IRenderContext* ctx);
         void RenderTabBadge(int index, IRenderContext* ctx);
         void RenderCloseButton(int index, IRenderContext* ctx);
-        void RenderScrollButtons(IRenderContext* ctx) const;
+        void RenderScrollButtons(IRenderContext* ctx);
         void RenderContentArea(IRenderContext* ctx);
         void RenderNewTabButton(IRenderContext* ctx);
 
@@ -274,10 +265,11 @@ namespace UltraCanvas {
 
         // ===== UTILITY METHODS =====
         int CalculateTabWidth(int index);
+        int CalculateMaxTabWidth();
         std::string GetTruncatedTabText(IRenderContext* ctx, const std::string& text, int maxWidth) const;
-        Rect2Di GetTabAreaBounds() const;
-        Rect2Di GetTabBarBounds() const;
-        Rect2Di GetContentAreaBounds() const;
+        Rect2Di GetTabAreaBounds();
+        Rect2Di GetTabBarBounds();
+        Rect2Di GetContentAreaBounds();
         Rect2Di GetTabBounds(int index);
         Rect2Di GetCloseButtonBounds(int index);
         Rect2Di GetNewTabButtonBounds();

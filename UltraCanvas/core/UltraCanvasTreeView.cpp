@@ -340,7 +340,7 @@ namespace UltraCanvas {
 
     void UltraCanvasTreeView::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
-
+        ctx->PushState();
         // Draw background / border
         UltraCanvasUIElement::Render(ctx);
         auto contentRect = GetContentRect();
@@ -353,6 +353,7 @@ namespace UltraCanvas {
         if (hasVerticalScrollbar) {
             RenderVerticalScrollbar(ctx);
         }
+        ctx->PopState();
     }
 
     void UltraCanvasTreeView::UpdateScrollbars() {
@@ -502,6 +503,7 @@ namespace UltraCanvas {
 
         // Draw text
         Color nodeTextColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
+        ctx->SetFontSize(12);
         ctx->DrawTextWithBackground(node->data.text.c_str(), Point2Df(textX, nodeY + 2), nodeTextColor);
 
         // Draw right icon

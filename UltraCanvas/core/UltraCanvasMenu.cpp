@@ -437,6 +437,8 @@ namespace UltraCanvas {
         }
 
         // Render text
+        ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
+        ctx->SetFontSize(style.fontSize);
         if (!item.label.empty()) {
             Color textColor = item.enabled ?
                               (index == hoveredIndex ? style.hoverTextColor : style.textColor) :
