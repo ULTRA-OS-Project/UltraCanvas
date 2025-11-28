@@ -10,6 +10,7 @@
 #include <iostream>
 #include <algorithm>
 #include <sys/select.h>
+#include <vips/vips8>
 #include <errno.h>
 
 namespace UltraCanvas {
@@ -51,6 +52,8 @@ namespace UltraCanvas {
         std::cout << "UltraCanvas: Initializing Linux Application..." << std::endl;
 
         try {
+            VIPS_INIT(appName.c_str());
+
             // STEP 1: Initialize X11 display connection
             if (!InitializeX11()) {
                 std::cerr << "UltraCanvas: Failed to initialize X11" << std::endl;
@@ -80,6 +83,10 @@ namespace UltraCanvas {
             CleanupX11();
             return false;
         }
+    }
+
+    bool UltraCanvasLinuxApplication::ShutdownNative() {
+        vips_shutdown();
     }
 
     bool UltraCanvasLinuxApplication::InitializeX11() {

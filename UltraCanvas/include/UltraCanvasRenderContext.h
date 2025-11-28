@@ -381,6 +381,7 @@ namespace UltraCanvas {
         virtual void DrawImage(std::shared_ptr<UCImage> image, float x, float y) = 0;
         virtual void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
         virtual void DrawPartOfImage(std::shared_ptr<UCImage> image, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
+        virtual void DrawPixmap(std::shared_ptr<UCPixmapCairo> pixmap, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
 
 //        virtual bool IsImageFormatSupported(const std::string& filePath) = 0;
 //        virtual bool GetImageDimensions(const std::string& imagePath, int& w, int& h) = 0;

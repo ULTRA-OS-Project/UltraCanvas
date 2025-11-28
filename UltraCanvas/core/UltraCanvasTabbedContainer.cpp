@@ -197,7 +197,7 @@ namespace UltraCanvas {
                 GetIdentifier() + "_overflow", 0, 0, 0, overflowDropdownWidth, tabHeight
         );
         DropdownStyle st;
-        st.hasShadow = false;
+//        st.hasShadow = false;
         st.borderWidth = 1;
         overflowDropdown->SetStyle(st);
         AddChild(overflowDropdown);

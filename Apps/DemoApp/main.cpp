@@ -64,7 +64,7 @@ void SignalHandler(int signal) {
 #endif
 
 // ===== SYSTEM INITIALIZATION =====
-bool InitializeSystem(UltraCanvasApplication& g_app) {
+bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
     std::cout << "=== UltraCanvas Framework Demonstration Program ===" << std::endl;
     std::cout << "Version: 1.0.0" << std::endl;
     std::cout << "Build Date: " << __DATE__ << " " << __TIME__ << std::endl;
@@ -103,7 +103,7 @@ bool InitializeSystem(UltraCanvasApplication& g_app) {
         // Initialize UltraCanvas framework
         std::cout << "Initializing UltraCanvas framework..." << std::endl;
 
-        if (!g_app.Initialize()) {
+        if (!g_app.Initialize(aName)) {
             HandleFatalError("Failed to initialize UltraCanvas application");
             return false;
         }
@@ -169,7 +169,7 @@ int main(int argc, char* argv[]) {
 
 
         // Initialize system
-        if (!InitializeSystem(g_app)) {
+        if (!InitializeSystem(g_app, argv[0])) {
             return EXIT_FAILURE;
         }
 

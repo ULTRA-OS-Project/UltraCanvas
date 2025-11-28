@@ -5,7 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImageElement.h"
-#include "UltraCanvasImageLoader.h"
+#include "UltraCanvasImage.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -23,7 +23,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasImageElement::LoadFromFile(const std::string &filePath) {
         imagePath = filePath;
-        loadedImage = GetImageFromFile(filePath);
+        loadedImage = UCImage::Get(filePath);
         if (loadedImage) {
             return true;
         }
@@ -92,8 +92,8 @@ namespace UltraCanvas {
 
         if (loadedImage->IsValid()) {
             DrawLoadedImage(ctx);
-        } else if (loadedImage->IsLoading()) {
-            DrawLoadingPlaceholder(ctx);
+//        } else if (loadedImage->IsLoading()) {
+//            DrawLoadingPlaceholder(ctx);
         } else if (!loadedImage->errorMessage.empty() && showErrorPlaceholder) {
             DrawErrorPlaceholder(ctx);
         }

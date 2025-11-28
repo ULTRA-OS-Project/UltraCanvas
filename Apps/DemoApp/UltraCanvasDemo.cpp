@@ -544,7 +544,7 @@ namespace UltraCanvas {
                 .AddVariant("listview", "Icon List")
                 .AddVariant("listview", "Detail View");
 
-        extendedBuilder.AddItem("tabledemo", "Table demo", "Table demo",
+        extendedBuilder.AddItem("tabledemo", "Templates demo", "Templates demo",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateDomainTableDemo(); });
 
@@ -695,9 +695,25 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Polar Chart is not ready yet"); });
 
-        chartBuilder.AddItem("flowchart", "Jitter plot", "Jitter plot",
+        chartBuilder.AddItem("heatmapchart", "Heat map", "Heat map",
                              ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Jitter plot is not ready yet"); });
+                             [this]() { return CreatePartiallyImplementedExamples("HeatMap Chart is not ready yet"); });
+
+        chartBuilder.AddItem("jitterchart", "Jitter chart", "Jitter chart",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Jitter Chart is not ready yet"); });
+
+        chartBuilder.AddItem("dumbbell", "Dumbbell chart", "Dumbbell chart",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Dumbbell Chart is not ready yet"); });
+
+        chartBuilder.AddItem("radarcharts", "Radar Chart", "Radar Chart",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Radar Chart is not ready yet"); });
+
+        chartBuilder.AddItem("bubblecharts", "Bubble Chart", "Bubble Chart",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Bubble Chart is not ready yet"); });
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
@@ -724,36 +740,65 @@ namespace UltraCanvas {
                 .AddVariant("plantuml", "Sequence Diagrams")
                 .AddVariant("plantuml", "Activity Diagrams");
 
-        diagramBuilder.AddItem("blockdiagram", "Block diagram", "Block diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return nullptr; });
-
         diagramBuilder.AddItem("nodediagram", "Node diagram", "Node diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return nullptr; });
 
+        diagramBuilder.AddItem("flowchart", "Flow chart", "Flow chart",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Flow chart is not ready yet"); });
+
         diagramBuilder.AddItem("venndiagram", "Venn diagram", "Venn diagram",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Venn is not ready yet"); });
+
+        diagramBuilder.AddItem("dendogram", "Dendogram", "Dendogram",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Dendogram is not ready yet"); });
+
+        diagramBuilder.AddItem("blockdiagram", "Block diagram", "Block diagram",
                                ImplementationStatus::NotImplemented,
                                [this]() { return nullptr; });
 
-        diagramBuilder.AddItem("flowchart", "Flow chart", "Flow chart",
+        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
                                ImplementationStatus::NotImplemented,
                                [this]() { return nullptr; });
+
+
 
         // ===== INFO GRAPHICS =====
         auto infoBuilder = DemoCategoryBuilder(this, DemoCategory::InfoGraphics);
 
-        infoBuilder.AddItem("infographics", "Info Graphics", "Complex data visualizations",
-                            ImplementationStatus::NotImplemented,
-                            [this]() { return CreateInfoGraphicsExamples(); })
-                .AddVariant("infographics", "Dashboard Widgets")
-                .AddVariant("infographics", "Statistical Displays")
-                .AddVariant("infographics", "Interactive Maps");
+//        infoBuilder.AddItem("infographics", "Info Graphics", "Complex data visualizations",
+//                            ImplementationStatus::NotImplemented,
+//                            [this]() { return CreateInfoGraphicsExamples(); })
+//                .AddVariant("infographics", "Dashboard Widgets")
+//                .AddVariant("infographics", "Statistical Displays")
+//                .AddVariant("infographics", "Interactive Maps");
 
         infoBuilder.AddItem("heatmap", "Heat map", "Heat map",
-                            ImplementationStatus::NotImplemented,
-                            [this]() { return CreateInfoGraphicsExamples(); });
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("HeatMap is not ready yet"); });
 
+        infoBuilder.AddItem("circularinfo", "Circular info graphic", "Circular info graphic",
+                            ImplementationStatus::PartiallyImplemented,
+                            [this]() { return CreatePartiallyImplementedExamples("Circular info graphic is not ready yet"); });
+
+        infoBuilder.AddItem("wavesinfo", "Waves info graphic", "Waves info graphic",
+                            ImplementationStatus::PartiallyImplemented,
+                            [this]() { return CreatePartiallyImplementedExamples("Waves info graphic is not ready yet"); });
+
+        infoBuilder.AddItem("treemap", "Treemap", "Treemap",
+                            ImplementationStatus::PartiallyImplemented,
+                            [this]() { return CreatePartiallyImplementedExamples("Treemap is not ready yet"); });
+
+        infoBuilder.AddItem("matrix", "Matrix", "Matrix",
+                            ImplementationStatus::PartiallyImplemented,
+                            [this]() { return CreatePartiallyImplementedExamples("Matrix is not ready yet"); });
+
+        infoBuilder.AddItem("performancematrix", "Performance Matrix", "Performance Matrix",
+                            ImplementationStatus::PartiallyImplemented,
+                            [this]() { return CreatePartiallyImplementedExamples("Performance Matrix is not ready yet"); });
 
 
         // ===== 3D ELEMENTS =====
@@ -833,6 +878,14 @@ namespace UltraCanvas {
                                [this]() { return CreatePartiallyImplementedExamples("## Bar code\n"
                                                                                     "Not ready yet"); });
 
+        toolsBuilder.AddItem("ocr", "OCR", "OCR",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples(""); });
+
+        toolsBuilder.AddItem("vectorizer", "Vectorizer", "Vectorizer",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples(""); });
+
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
@@ -855,6 +908,10 @@ namespace UltraCanvas {
         widgetsBuilder.AddItem("colorpicker", "Color Picker", "Color Picker",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("## Color picker"); });
+
+        widgetsBuilder.AddItem("photovideoviewer", "Photo/Video viewer", "Photo/Video viewer",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Photo/Video viewer"); });
 
         std::cout << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;

@@ -106,6 +106,7 @@ namespace UltraCanvas {
 
         // ===== INHERITED FROM BASE APPLICATION =====
         virtual bool InitializeNative() override;
+        virtual bool ShutdownNative() override;
         virtual void RunNative() override;
         virtual void Exit() override;
 

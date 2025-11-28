@@ -633,6 +633,7 @@ namespace UltraCanvas {
             RequestRedraw();
             return true;
         }
+        return false;
     }
 
     bool UltraCanvasTreeView::HandleMouseUp(const UCEvent &event) {

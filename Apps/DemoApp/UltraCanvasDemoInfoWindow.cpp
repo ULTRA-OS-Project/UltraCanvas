@@ -145,7 +145,7 @@ namespace UltraCanvas {
         layout->AddUIElement(codeContainer)->SetWidthMode(SizeMode::Fill);
 
         exampleCodeIcon = CreateImageElement("CodeIcon", iconSize, iconSize);
-        exampleCodeIcon->LoadFromFile("assets/icons/c-plus-plus-icon.png");
+        exampleCodeIcon->LoadFromFile("assets/icons/c-plus-plus-icon.svg");
         exampleCodeIcon->SetFitMode(ImageFitMode::Contain);
         codeContainerLayout->AddUIElement(exampleCodeIcon);
 

@@ -21,7 +21,7 @@ namespace UltraCanvas {
     protected:
         bool volatile running = false;
         bool volatile initialized = false;
-
+        std::string appName;
         std::queue<UCEvent> eventQueue;
         std::mutex eventQueueMutex;
         std::condition_variable eventCondition;
@@ -94,8 +94,10 @@ namespace UltraCanvas {
         void ReleaseMouse(UltraCanvasUIElement* element) { if (element && element == capturedElement) capturedElement = nullptr; }
 
         void Run();
-        bool Initialize();
+        bool Initialize(const std::string& app);
+        void Shutdown();
         virtual bool InitializeNative() = 0;
+        virtual bool ShutdownNative() = 0;
         virtual void RunNative() = 0;
         virtual void RunInEventLoop();
         virtual void Exit() = 0;

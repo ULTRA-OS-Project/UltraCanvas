@@ -168,7 +168,7 @@ namespace UltraCanvas {
         // Current display state
         std::string currentSelectedId;
         std::shared_ptr<UltraCanvasUIElement> currentDisplayElement;
-        bool infoWindowShown;
+        bool infoWindowShown = false;
 
     public:
         UltraCanvasDemoApplication();

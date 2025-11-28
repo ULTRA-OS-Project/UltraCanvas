@@ -10,23 +10,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # ✅ REQUIRED: Find platform packages
 find_package(PkgConfig REQUIRED)
 
-find_package(PNG REQUIRED)
-if(PNG_FOUND)
-    message(STATUS "Found PNG: ${PNG_VERSION_STRING}")
-    message(STATUS "PNG Include: ${PNG_INCLUDE_DIRS}")
-    message(STATUS "PNG Libraries: ${PNG_LIBRARIES}")
-else()
-    message(FATAL_ERROR "libpng is required for image support")
-endif()
+#find_package(PNG REQUIRED)
+#if(PNG_FOUND)
+#    message(STATUS "Found PNG: ${PNG_VERSION_STRING}")
+#    message(STATUS "PNG Include: ${PNG_INCLUDE_DIRS}")
+#    message(STATUS "PNG Libraries: ${PNG_LIBRARIES}")
+#else()
+#    message(FATAL_ERROR "libpng is required for image support")
+#endif()
 
-# Find JPEG library
-find_package(JPEG REQUIRED)
-if(JPEG_FOUND)
-    message(STATUS "Found JPEG library")
-    message(STATUS "JPEG Include: ${JPEG_INCLUDE_DIRS}")
-    message(STATUS "JPEG Libraries: ${JPEG_LIBRARIES}")
-else()
-    message(FATAL_ERROR "libjpeg is required for image support")
+pkg_check_modules(VIPS REQUIRED vips vips-cpp)
+if(NOT VIPS_FOUND)
+    message(FATAL_ERROR "libvips is required for image support.")
 endif()
 
 # ✅ REQUIRED: Check for required packages first
@@ -79,8 +74,7 @@ if(UNIX AND NOT APPLE)
         ${X11_INCLUDE_DIRS}
         ${CAIRO_INCLUDE_DIRS}
         ${PANGO_INCLUDE_DIRS}
-        ${PNG_INCLUDE_DIRS}
-        ${JPEG_INCLUDE_DIRS}
+        ${VIPS_INCLUDE_DIRS}
         ${PANGOCAIRO_INCLUDE_DIRS}
         ${FREETYPE_INCLUDE_DIRS}
         ${TINYXML2_INCLUDE_DIRS}
@@ -94,6 +88,7 @@ if(UNIX AND NOT APPLE)
         ${PANGOCAIRO_LIBRARY_DIRS}
         ${FREETYPE_LIBRARY_DIRS}
         ${TINYXML2_LIBRARY_DIRS}
+        ${VIPS_LIBRARY_DIRS}
     )
 endif()
 
@@ -114,6 +109,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasTextArea.cpp
         UltraCanvas/core/UltraCanvasDropdown.cpp
         UltraCanvas/core/UltraCanvasImageElement.cpp
+#        UltraCanvas/core/UltraCanvasImageLoader.cpp
         UltraCanvas/core/UltraCanvasTreeView.cpp
         UltraCanvas/core/UltraCanvasTabbedContainer.cpp
         UltraCanvas/core/UltraCanvasButton.cpp
@@ -123,20 +119,18 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasSegmentedControl.cpp
         UltraCanvas/core/UltraCanvasPasswordStrengthMeter.cpp
         UltraCanvas/core/UltraCanvasPasswordRuleLegend.cpp
-        UltraCanvas/core/UltraCanvasImageLoader.cpp
         UltraCanvas/core/UltraCanvasLayout.cpp
         UltraCanvas/core/UltraCanvasBoxLayout.cpp
         UltraCanvas/core/UltraCanvasGridLayout.cpp
         UltraCanvas/core/UltraCanvasFlexLayout.cpp
         UltraCanvas/core/UltraCanvasToolbar.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
-        UltraCanvas/OS/Linux/UltraCanvasLinuxImage.cpp
-        UltraCanvas/OS/Linux/UltraCanvasLinuxImageLoader.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxApplication.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxWindow.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxClipboard.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxDoubleBuffer.cpp
+        UltraCanvas/libspecific/ImageCairo.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasChartElementBase.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -202,7 +196,7 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
         Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
         Apps/DemoApp/UltraCanvasLayoutExamples.cpp
-        Apps/DemoApp/UltraCanvasDomainTableDemo.cpp
+        Apps/DemoApp/UltraCanvasTableDemo.cpp
         Apps/DemoApp/UltraCanvasToolbarExamples.cpp
         Apps/DemoApp/UltraCanvasTabExamples.cpp
 )
@@ -236,9 +230,8 @@ if(UNIX AND NOT APPLE)
         ${PANGO_LIBRARIES}
         ${PANGOCAIRO_LIBRARIES}  # ✅ FIXED: Added separate PangoCairo linking
         ${FREETYPE_LIBRARIES}
-        ${PNG_LIBRARIES}
-        ${JPEG_LIBRARIES}
         ${TINYXML2_LIBRARIES}
+        ${VIPS_LIBRARIES}
         pthread
     )
 
@@ -249,6 +242,7 @@ if(UNIX AND NOT APPLE)
         ${PANGO_CFLAGS_OTHER}
         ${PANGOCAIRO_CFLAGS_OTHER}  # ✅ ADDED: PangoCairo flags
         ${FREETYPE_CFLAGS_OTHER}
+        ${VIPS_CFLAGS_OTHER}
     )
     
     # ✅ ADDED: Define platform macro

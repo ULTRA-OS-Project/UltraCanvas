@@ -5,7 +5,6 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolbar.h"
-#include "UltraCanvasImageLoader.h"
 #include <algorithm>
 #include <cmath>
 

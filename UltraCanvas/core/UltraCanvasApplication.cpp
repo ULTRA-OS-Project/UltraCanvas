@@ -13,7 +13,8 @@
 
 
 namespace UltraCanvas {
-    bool UltraCanvasBaseApplication::Initialize() {
+    bool UltraCanvasBaseApplication::Initialize(const std::string& app) {
+        appName = app;
         if (InitializeNative()) {
             if (!InitializeClipboard()) {
                 std::cerr << "UltraCanvas: Failed to initialize clipboard" << std::endl;
@@ -25,9 +26,14 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasBaseApplication::Shutdown() {
+        ShutdownClipboard();
+        ShutdownNative();
+    }
+
     void UltraCanvasBaseApplication::Run() {
         RunNative();
-        ShutdownClipboard();
+        Shutdown();
     }
 
     void UltraCanvasBaseApplication::PushEvent(const UCEvent& event) {

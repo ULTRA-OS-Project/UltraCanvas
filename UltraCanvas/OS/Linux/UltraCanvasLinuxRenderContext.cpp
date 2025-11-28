@@ -4,7 +4,6 @@
 // Last Modified: 2025-07-14
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasImageLoader.h"
 #include "UltraCanvasLinuxRenderContext.h"
 #include <cstring>
 #include <cmath>
@@ -1398,78 +1397,76 @@ namespace UltraCanvas {
 //        }
 //    }
 
-    void LinuxRenderContext::DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h, ImageFitMode fitMode) {
+    void LinuxRenderContext::DrawPixmap(std::shared_ptr<UCPixmapCairo> pixmap, float x, float y, float w, float h, ImageFitMode fitMode) {
         try {
             // Load the image
-            if (!image->IsValid()) {
-                std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
-                          << image->errorMessage << std::endl;
-                return;
-            }
-
             // Save current cairo state
-            cairo_save(cairo);
+            float pixWidth = static_cast<float>(pixmap->GetWidth());
+            float pixHeight = static_cast<float>(pixmap->GetHeight());
 
             float scaleX = 1;
             float scaleY = 1;
             float offsetX = 0;
             float offsetY = 0;
             // Calculate scaling factors
-            switch (fitMode) {
-                case ImageFitMode::Contain:
-                    scaleX = w / static_cast<float>(image->width);
-                    scaleY = h / static_cast<float>(image->height);
+            if (pixHeight != h || pixWidth != w) {
+                switch (fitMode) {
+                    case ImageFitMode::Contain:
+                        scaleX = w / pixWidth;
+                        scaleY = h / pixHeight;
 
-                    if (scaleX < scaleY) {
-                        scaleY = scaleX;
-                        offsetY = (h - (image->height * scaleY)) / 2;
-                    } else {
-                        scaleX = scaleY;
-                        offsetX = (w - (image->width * scaleX)) / 2;
-                    }
-                    break;
-                case ImageFitMode::Cover:
-                    scaleX = w / static_cast<float>(image->width);
-                    scaleY = h / static_cast<float>(image->height);
+                        if (scaleX < scaleY) {
+                            scaleY = scaleX;
+                            offsetY = (h - (pixHeight * scaleY)) / 2;
+                        } else {
+                            scaleX = scaleY;
+                            offsetX = (w - (pixWidth * scaleX)) / 2;
+                        }
+                        break;
+                    case ImageFitMode::Cover:
+                        scaleX = w / pixWidth;
+                        scaleY = h / pixHeight;
 
-                    if (scaleX < scaleY) {
-                        scaleX = scaleY;
-                        offsetX = (w - (image->width * scaleX)) / 2;
-                    } else {
-                        scaleY = scaleX;
-                        offsetY = (h - (image->height * scaleY)) / 2;
-                    }
-                    break;
-                case ImageFitMode::NoScale:
-                    offsetX = (w - image->width) / 2;
-                    offsetY = (h - image->height) / 2;
-                    break;
-                case ImageFitMode::Fill:
-                    scaleX = w / static_cast<float>(image->width);
-                    scaleY = h / static_cast<float>(image->height);
-                    break;
-                case ImageFitMode::ScaleDown:
-                    scaleX = w / static_cast<float>(image->width);
-                    scaleY = h / static_cast<float>(image->height);
-                    if (scaleX < scaleY) {
-                        if (scaleX > 1) {
-                            scaleX = 1;
+                        if (scaleX < scaleY) {
+                            scaleX = scaleY;
+                            offsetX = (w - (pixWidth * scaleX)) / 2;
+                        } else {
+                            scaleY = scaleX;
+                            offsetY = (h - (pixHeight * scaleY)) / 2;
                         }
-                        scaleY = scaleX;
-                    } else {
-                        if (scaleY > 1) {
-                            scaleY = 1;
+                        break;
+                    case ImageFitMode::NoScale:
+                        offsetX = (w - pixWidth) / 2;
+                        offsetY = (h - pixHeight) / 2;
+                        break;
+                    case ImageFitMode::Fill:
+                        scaleX = w / pixWidth;
+                        scaleY = h / pixHeight;
+                        break;
+                    case ImageFitMode::ScaleDown:
+                        scaleX = w / pixWidth;
+                        scaleY = h / pixHeight;
+                        if (scaleX < scaleY) {
+                            if (scaleX > 1) {
+                                scaleX = 1;
+                            }
+                            scaleY = scaleX;
+                        } else {
+                            if (scaleY > 1) {
+                                scaleY = 1;
+                            }
+                            scaleX = scaleY;
                         }
-                        scaleX = scaleY;
-                    }
-                    offsetY = (h - (image->height * scaleY)) / 2;
-                    offsetX = (w - (image->width * scaleX)) / 2;
-                    break;
-                default:
-                    break;
+                        offsetY = (h - (pixHeight * scaleY)) / 2;
+                        offsetX = (w - (pixWidth * scaleX)) / 2;
+                        break;
+                    default:
+                        break;
+                }
             }
 
             // Apply transformations
+            cairo_save(cairo);
             cairo_rectangle(cairo, x, y, w, h);
             cairo_clip(cairo);
 
@@ -1481,7 +1478,7 @@ namespace UltraCanvas {
             }
 
             // Set the image as source and paint
-            cairo_set_source_surface(cairo, image->GetSurface(), 0, 0);
+            cairo_set_source_surface(cairo, pixmap->GetSurface(), 0, 0);
 
             if (currentState.globalAlpha < 1.0f) {
                 cairo_paint_with_alpha(cairo, currentState.globalAlpha);
@@ -1496,6 +1493,18 @@ namespace UltraCanvas {
         }
     }
 
+    void LinuxRenderContext::DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h, ImageFitMode fitMode) {
+        // Load the image
+        if (!image->IsValid()) {
+            std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
+                      << image->errorMessage << std::endl;
+            return;
+        }
+        auto pixmap = image->GetPixmap(w, h);
+
+        DrawPixmap(pixmap, x,y,w,h,fitMode);
+    }
+
     void LinuxRenderContext::DrawImage(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode) {
         if (imagePath.empty()) {
             std::cerr << "LinuxRenderContext::DrawImage: Invalid parameters" << std::endl;
@@ -1503,7 +1512,7 @@ namespace UltraCanvas {
         }
 
         // Load the image
-        auto image = GetImageFromFile(imagePath);
+        auto image = UCImage::Get(imagePath);
 
         if (!image->IsValid()) {
             std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
@@ -1516,21 +1525,24 @@ namespace UltraCanvas {
 
     void LinuxRenderContext::DrawImage(std::shared_ptr<UCImage> image, float x, float y) {
         try {
-            // Save current cairo state
-            cairo_save(cairo);
+            auto pixmap = image->GetPixmap();
+            if (pixmap) {
+                // Save current cairo state
+                cairo_save(cairo);
 
-            // Apply global alpha
-            if (currentState.globalAlpha < 1.0f) {
-                cairo_set_source_surface(cairo, image->GetSurface(), x, y);
-                cairo_paint_with_alpha(cairo, currentState.globalAlpha);
-            } else {
-                // Direct drawing for better performance when no transparency
-                cairo_set_source_surface(cairo, image->GetSurface(), x, y);
-                cairo_paint(cairo);
+                // Apply global alpha
+                if (currentState.globalAlpha < 1.0f) {
+                    cairo_set_source_surface(cairo, pixmap->GetSurface(), x, y);
+                    cairo_paint_with_alpha(cairo, currentState.globalAlpha);
+                } else {
+                    // Direct drawing for better performance when no transparency
+                    cairo_set_source_surface(cairo, pixmap->GetSurface(), x, y);
+                    cairo_paint(cairo);
+                }
+
+                // Restore cairo state
+                cairo_restore(cairo);
             }
-
-            // Restore cairo state
-            cairo_restore(cairo);
         } catch (const std::exception &e) {
             std::cerr << "LinuxRenderContext::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
@@ -1543,7 +1555,7 @@ namespace UltraCanvas {
         }
 
         // Load the image
-        auto image = GetImageFromFile(imagePath);
+        auto image = UCImage::Get(imagePath);
 
         if (!image->IsValid()) {
             std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
@@ -1562,7 +1574,10 @@ namespace UltraCanvas {
                 std::cerr << "LinuxRenderContext::DrawImage: Source rectangle out of bounds" << std::endl;
                 return;
             }
-
+            auto pixmap = image->GetPixmap();
+            if (!pixmap) {
+                return;
+            }
             // Save current cairo state
             cairo_save(cairo);
 
@@ -1576,7 +1591,7 @@ namespace UltraCanvas {
             cairo_translate(cairo, -srcRect.x, -srcRect.y);
 
             // Set the image as source
-            cairo_set_source_surface(cairo, image->GetSurface(), 0, 0);
+            cairo_set_source_surface(cairo, pixmap->GetSurface(), 0, 0);
 
             // Create clipping rectangle for the destination area
             cairo_rectangle(cairo,
@@ -1605,7 +1620,7 @@ namespace UltraCanvas {
         }
 
         // Load the image
-        auto image = GetImageFromFile(imagePath);
+        auto image = UCImage::Get(imagePath);
 
         if (!image->IsValid()) {
             std::cerr << "LinuxRenderContext::DrawImage: Failed to load image '"
@@ -1621,7 +1636,7 @@ namespace UltraCanvas {
 //        if (imagePath.empty()) return;
 //
 //        try {
-//            auto image = GetImageFromFile(imagePath);
+//            auto image = UCImage::Get(imagePath);
 //            if (!image->IsValid()) return;
 //
 //            cairo_save(cairo);
@@ -1657,17 +1672,16 @@ namespace UltraCanvas {
 //        }
 //    }
 
-    void LinuxRenderContext::DrawImageTiled(const std::string &imagePath, float x, float y, float w, float h) {
-        if (imagePath.empty()) return;
-
+    void LinuxRenderContext::DrawImageTiled(std::shared_ptr<UCImage> image, float x, float y, float w, float h) {
         try {
-            auto image = GetImageFromFile(imagePath);
             if (!image->IsValid()) return;
+            auto pixmap = image->GetPixmap();
+            if (!pixmap) return;
 
             cairo_save(cairo);
 
             // Create repeating pattern
-            cairo_pattern_t *pattern = cairo_pattern_create_for_surface(image->GetSurface());
+            cairo_pattern_t *pattern = cairo_pattern_create_for_surface(pixmap->GetSurface());
             cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
 
             // Set source and fill the rectangle

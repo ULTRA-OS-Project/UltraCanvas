@@ -6,7 +6,7 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
-#include "UltraCanvasImageLoader.h"
+#include "UltraCanvasImage.h"
 
 namespace UltraCanvas {
     const int scrollbarWidth = 12;
@@ -409,15 +409,19 @@ namespace UltraCanvas {
         Rect2Di listRect = CalculatePopupPosition();
 
         // Draw shadow
-        if (style.hasShadow) {
-            Rect2Di shadowRect(
-                    listRect.x + style.shadowOffset.x,
-                    listRect.y + style.shadowOffset.y,
-                    listRect.width,
-                    listRect.height
-            );
-            ctx->DrawFilledRectangle(shadowRect, style.shadowColor, 0.0f, Colors::Transparent);
-        }
+//        if (style.hasShadow) {
+//            Rect2Di shadowRect(
+//                    listRect.x + style.shadowOffset,
+//                    listRect.y + style.shadowOffset,
+//                    listRect.width - style.shadowOffset,
+//                    listRect.height - style.shadowOffset
+//            );
+//            ctx->SetStrokePaint(style.shadowColor);
+//            ctx->SetStrokeWidth(style.shadowOffset);
+//            ctx->DrawRectangle(shadowRect);
+//            listRect.width -= style.shadowOffset;
+//            listRect.height -= style.shadowOffset;
+//        }
 
         // Draw list background and border
         ctx->DrawFilledRectangle(listRect, style.listBackgroundColor, style.borderWidth, style.listBorderColor);
@@ -628,7 +632,7 @@ namespace UltraCanvas {
             return;
         }
 
-        auto icon = GetImageFromFile(iconPath);
+        auto icon = UCImage::Get(iconPath);
         if (icon && icon->IsValid()) {
             ctx->DrawImage(icon, iconRect, ImageFitMode::Contain);
         }

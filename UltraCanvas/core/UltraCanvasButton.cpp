@@ -5,7 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
-#include "UltraCanvasImageLoader.h"
+#include "UltraCanvasImage.h"
 #include <algorithm>
 
 namespace UltraCanvas {
@@ -45,7 +45,7 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::SetSplitSecondaryIcon(const std::string& iconPath,
                                                   ButtonSecondaryIconPosition position) {
-        style.splitStyle.secondaryIcon = GetImageFromFile(iconPath);
+        style.splitStyle.secondaryIcon = UCImage::Get(iconPath);
         style.splitStyle.secondaryIconPosition = position;
         layoutDirty = true;
         AutoResize();
@@ -108,7 +108,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasButton::SetIcon(const std::string& path) {
-        icon = GetImageFromFile(path);
+        icon = UCImage::Get(path);
         layoutDirty = true;
         AutoResize();
         RequestRedraw();

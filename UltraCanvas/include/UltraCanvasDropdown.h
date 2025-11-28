@@ -80,9 +80,9 @@ namespace UltraCanvas {
         float checkboxPadding = 6.0f;
 
         // Shadow
-        bool hasShadow = true;
-        Color shadowColor = Color(0, 0, 0, 80);
-        Point2Di shadowOffset = Point2Di(2, 2);
+//        bool hasShadow = true;
+//        Color shadowColor = Color(0, 0, 0, 80);
+//        float shadowOffset = 2;
 
         // Font
         std::string fontFamily = "Arial";
