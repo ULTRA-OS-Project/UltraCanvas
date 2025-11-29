@@ -125,12 +125,11 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasFlexLayout.cpp
         UltraCanvas/core/UltraCanvasToolbar.cpp
         #UltraCanvas/core/UltraCanvasScrollbar.cpp
-        UltraCanvas/OS/Linux/UltraCanvasLinuxRenderContext.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxApplication.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxWindow.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxClipboard.cpp
-        UltraCanvas/OS/Linux/UltraCanvasLinuxDoubleBuffer.cpp
-        UltraCanvas/libspecific/ImageCairo.cpp
+        UltraCanvas/libspecific/Cairo/ImageCairo.cpp
+        UltraCanvas/libspecific/Cairo/RenderContextCairo.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasChartElementBase.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasChartDataStructures.cpp

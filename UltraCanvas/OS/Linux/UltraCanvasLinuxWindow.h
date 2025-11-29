@@ -9,7 +9,7 @@
 #define ULTRACANVAS_X11_WINDOW_H
 
 // ===== CORE INCLUDES =====
-#include "UltraCanvasLinuxRenderContext.h"
+#include "../../libspecific/Cairo/RenderContextCairo.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
 #include <X11/Xlib.h>
@@ -40,10 +40,9 @@ namespace UltraCanvas {
     protected:
         Window xWindow;
         cairo_surface_t* cairoSurface;
-        cairo_t* cairoContext;
-        std::unique_ptr<LinuxRenderContext> renderContext;
+        std::unique_ptr<RenderContextCairo> renderContext;
 
-        bool CreateNative(const WindowConfig& config) override;
+        bool CreateNative() override;
         void DestroyNative() override;
         std::mutex cairoMutex;  // Add this
 
@@ -73,7 +72,6 @@ namespace UltraCanvas {
 
         // ===== LINUX-SPECIFIC METHODS =====
         Window GetXWindow() const { return xWindow; }
-        cairo_t* GetCairoContext() const { return cairoContext; }
         bool HandleXEvent(const XEvent& event);
 
     private:

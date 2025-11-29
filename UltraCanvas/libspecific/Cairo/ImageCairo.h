@@ -7,6 +7,7 @@
 #ifndef IMAGECAIRO_H
 #define IMAGECAIRO_H
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasImage.h"
 #include <string>
 #include <unordered_map>
 #include <vips/vips8>
@@ -17,25 +18,40 @@
 namespace UltraCanvas {
 // ===== CROSS-PLATFORM IMAGE CLASS =====
 
-class UCPixmapCairo {
-    cairo_surface_t * surface;
+class UCPixmapCairo : public IPixmap {
+    cairo_surface_t * surface = nullptr;
+    uint32_t* pixelsPtr = nullptr;
+    int width = 0;
+    int height = 0;
 public:
-    explicit UCPixmapCairo(cairo_surface_t * surf) : surface(surf) {};
+    UCPixmapCairo() = default;
+    explicit UCPixmapCairo(int w, int h);
+    explicit UCPixmapCairo(cairo_surface_t * surf);
     ~UCPixmapCairo();
 
-    [[nodiscard]] cairo_surface_t * GetSurface() const { return surface; };
-    int GetWidth();
-    int GetHeight();
+    bool Init(int w, int h) override;
+    cairo_surface_t * GetSurface() const { return surface; };
+    void SetPixel(int x, int y, uint32_t pixel) override;
+    uint32_t GetPixel(int x, int y) const override;
+    int GetWidth() const override { return width; };
+    int GetHeight() const override { return height; };
+    uint32_t* GetPixelData() override;
+    bool IsValid() const override { return pixelsPtr != nullptr; }
+    void Flush() override;
+    void MarkDirty() override;
+    void Clear() override;
     size_t GetDataSize();
 };
 
+
 class UCImageVips {
+private:
+    int width = 0;
+    int height = 0;
+
 public:
     std::string errorMessage;
     std::string fileName;
-
-    int width = 0;
-    int height = 0;
 
     // ===== CONSTRUCTORS =====
     UCImageVips() {};
@@ -54,6 +70,8 @@ public:
         if (height == 0) return 1.0f;
         return static_cast<float>(width) / static_cast<float>(height);
     }
+    int GetWidth() const { return width; }
+    int GetHeight() const { return height; }
 
     size_t GetDataSize() {
         return sizeof(UCImageVips) + 250;

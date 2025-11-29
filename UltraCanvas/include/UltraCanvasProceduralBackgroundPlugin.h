@@ -128,7 +128,7 @@ namespace UltraCanvas {
         virtual void SetResolution(int width, int height) = 0;
         virtual void SetMousePosition(float x, float y) = 0;
 
-        virtual bool RenderToBuffer(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) = 0;
+        virtual bool RenderToBuffer(UCPixmap& pixelBuffer, int width, int height) = 0;
         virtual std::string GetLastError() const = 0;
     };
 
@@ -201,7 +201,7 @@ namespace UltraCanvas {
             mouseY = y;
         }
 
-        bool RenderToBuffer(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) override {
+        bool RenderToBuffer(UCPixmap & pixelBuffer, int width, int height) override {
             if (!compiled || !pixelBuffer.IsValid()) return false;
 
             // Execute the "Dust" formula as an example
@@ -214,7 +214,7 @@ namespace UltraCanvas {
     private:
 
 
-        bool RenderWorkHoleFormula(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) {
+        bool RenderWorkHoleFormula(UCPixmap& pixelBuffer, int width, int height) {
             const float actualTime = currentTime;
             for (int y = 0; y < height; ++y) {
                 for (int x = 0; x < width; ++x) {
@@ -231,7 +231,7 @@ namespace UltraCanvas {
             return true;
         }
 
-        bool RenderGlassFormula(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) {
+        bool RenderGlassFormula(UCPixmap & pixelBuffer, int width, int height) {
             const float actualTime = currentTime;
             const float invAspect = static_cast<float>(height) / width;
 
@@ -261,7 +261,7 @@ namespace UltraCanvas {
             return true;
         }
 
-        bool RenderAxesFormula(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) {
+        bool RenderAxesFormula(UCPixmap & pixelBuffer, int width, int height) {
             // axes
 //            const float actualTime = t * speed;
             const float actualTime = currentTime;
@@ -346,7 +346,7 @@ namespace UltraCanvas {
             return true;
         }
 
-        bool RenderDustFormula(UltraCanvasPixelBuffer& pixelBuffer, int width, int height) {
+        bool RenderDustFormula(UCPixmap & pixelBuffer, int width, int height) {
             // Implement the "Dust" formula:
             // vec3 p;for(float i,z,d;i++<2e1;o+=(cos(p.y/(.1+.05*z)+vec4(6,5,4,0))+1.)*d/z/7.)
             // p=z*normalize(FC.rgb*2.-r.xyy),p.x-=t,p.xy*=.4,z+=d=(dot(cos(p/.6),sin(p+sin(p*7.)/4.
@@ -427,7 +427,7 @@ namespace UltraCanvas {
         ProceduralFormula currentFormula;
         std::unique_ptr<ProceduralFormulaInterpreter> interpreter;
 
-        UltraCanvasPixelBuffer pixelBuffer;
+        UCPixmap pixelBuffer;
         bool needsRegeneration = true;
         bool isAnimating = true;
 
@@ -445,7 +445,7 @@ namespace UltraCanvas {
 
         // Video recording (for animated backgrounds)
         bool isRecordingVideo = false;
-        std::vector<UltraCanvasPixelBuffer> cachedFrames;
+        std::vector<UCPixmap> cachedFrames;
         int currentFrame = 0;
         int maxCachedFrames = 300; // 10 seconds at 30fps
 
@@ -640,7 +640,7 @@ namespace UltraCanvas {
 
 //                ctx->PaintWithColor(Colors::Black);
 //                ctx->FillRectangle(Rect2Di(GetX(), GetY(), GetWidth(), GetHeight()));
-                ctx->PaintPixelBuffer(GetX(), GetY(), pixelBuffer);
+                ctx->DrawPixmap(pixelBuffer, GetX(), GetY());
             }
         }
 
@@ -756,7 +756,7 @@ namespace UltraCanvas {
         }
 
         void DrawGeneratedBackground(IRenderContext* ctx) {
-            ctx->PaintPixelBuffer(GetXInWindow(), GetYInWindow(), pixelBuffer);
+            ctx->DrawPixmap(pixelBuffer, GetXInWindow(), GetYInWindow());
         }
     };
 

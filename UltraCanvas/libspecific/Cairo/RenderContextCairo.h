@@ -8,8 +8,8 @@
 #pragma once
 
 // ===== CORE INCLUDES =====
-#include "../../include/UltraCanvasRenderContext.h"
-#include "../../include/UltraCanvasEvent.h"
+#include "UltraCanvasRenderContext.h"
+#include "UltraCanvasEvent.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
 #include <X11/Xlib.h>
@@ -34,15 +34,15 @@
 
 namespace UltraCanvas {
 
-    class LinuxPaintPattern : public IPaintPattern {
+    class PaintPatternCairo : public IPaintPattern {
     private:
         cairo_pattern_t *pattern = nullptr;
     public:
-        LinuxPaintPattern() = delete;
-        explicit LinuxPaintPattern(cairo_pattern_t *pat) {
+        PaintPatternCairo() = delete;
+        explicit PaintPatternCairo(cairo_pattern_t *pat) {
             pattern = pat;
         };
-        ~LinuxPaintPattern() override {
+        ~PaintPatternCairo() override {
             if (pattern) {
                 cairo_pattern_destroy(pattern);
             }
@@ -50,135 +50,23 @@ namespace UltraCanvas {
         void* GetHandle() override { return pattern; };
     };
 
-    class LinuxCairoDoubleBuffer : public IDoubleBuffer {
-        private:
-            mutable std::mutex bufferMutex;
 
-            // Window surface (target)
-            cairo_surface_t* windowSurface;
-            cairo_t* windowContext;
-
-            // Staging surface (back buffer)
-            cairo_surface_t* stagingSurface;
-            cairo_t* stagingContext;
-
-            int bufferWidth;
-            int bufferHeight;
-            bool isValid;
-
-        public:
-            LinuxCairoDoubleBuffer();
-            virtual ~LinuxCairoDoubleBuffer();
-
-            bool Initialize(int width, int height, void* windowSurface) override;
-            bool Resize(int newWidth, int newHeight) override;
-            void* GetStagingContext() override { return stagingContext; }
-            void* GetStagingSurface() override { return stagingSurface; }
-            void SwapBuffers() override;
-            void Cleanup() override;
-
-            int GetWidth() const override { return bufferWidth; }
-            int GetHeight() const override { return bufferHeight; }
-            bool IsValid() const override { return isValid; }
-
-        private:
-            bool CreateStagingSurface();
-            void DestroyStagingSurface();
-        };
-
-
-// ===== LINUX RENDER CONTEXT =====
-    struct XImageBuffer {
-        XImage* ximage;
-        uint32_t* pixels;  // Direct pointer to XImage data
-        int width;
-        int height;
-        size_t size_bytes;
-        Display* display;  // Keep display for cleanup
-
-        XImageBuffer() : ximage(nullptr), pixels(nullptr), width(0), height(0), size_bytes(0), display(nullptr) {}
-
-        ~XImageBuffer() {
-            if (ximage) {
-                XDestroyImage(ximage); // Automatically frees ximage->data
-                ximage = nullptr;
-                pixels = nullptr;
-            }
-        }
-
-        // Non-copyable but movable
-        XImageBuffer(const XImageBuffer&) = delete;
-        XImageBuffer& operator=(const XImageBuffer&) = delete;
-
-        XImageBuffer(XImageBuffer&& other) noexcept;
-
-        XImageBuffer& operator=(XImageBuffer&& other) noexcept;
-        bool IsValid() const { return ximage != nullptr && pixels != nullptr && width > 0 && height > 0; }
-    };
-
-    // ===== ENHANCED PIXEL BUFFER WITH XIMAGE SUPPORT =====
-    class X11PixelBuffer : public IPixelBuffer {
-    public:
-        std::vector<uint32_t> traditional_buffer;
-        std::unique_ptr<XImageBuffer> ximage_buffer;
-
-        int width;
-        int height;
-        bool is_ximage_backed;
-
-        X11PixelBuffer() : width(0), height(0), is_ximage_backed(false) {}
-
-        // Traditional buffer constructor
-        X11PixelBuffer(int w, int h, bool is_x11 = false) : width(w), height(h), is_ximage_backed(is_x11) {
-            traditional_buffer.resize(w * h);
-        }
-
-        // XImage buffer constructor (zero-copy)
-        X11PixelBuffer(std::unique_ptr<XImageBuffer> ximg)
-                : ximage_buffer(std::move(ximg)), is_ximage_backed(true) {
-            if (ximage_buffer && ximage_buffer->IsValid()) {
-                width = ximage_buffer->width;
-                height = ximage_buffer->height;
-            } else {
-                width = height = 0;
-                is_ximage_backed = false;
-            }
-        }
-        virtual ~X11PixelBuffer() { Clear(); }
-
-        bool IsValid() const  override;
-        size_t GetSizeInBytes() const override;
-        uint32_t* GetPixelData() override;
-        int GetWidth() const override { return width; }
-        int GetHeight() const override { return height; }
-        void Clear();
-
-        // Convert to traditional buffer if needed (for cross-platform compatibility)
-        std::vector<uint32_t> ToTraditionalBuffer();
-    };
-
-    class LinuxRenderContext : public IRenderContext {
+    class RenderContextCairo : public IRenderContext {
     private:
-        cairo_t *cairo;
         std::mutex cairoMutex;
+        cairo_t *targetContext;
+        cairo_surface_t* targetSurface;
+        cairo_t *cairo;
+        cairo_surface_t* stagingSurface;
+        int surfaceWidth;
+        int surfaceHeight;
+
         PangoContext *pangoContext;
-        PangoFontMap *fontMap;
 
         // State management
         std::vector<RenderState> stateStack;
         RenderState currentState;
 
-        // double-buffer
-        LinuxCairoDoubleBuffer doubleBuffer;
-        // Original window surface references
-        cairo_surface_t* originalWindowSurface;
-        cairo_t* originalWindowContext;
-
-        bool doubleBufferingEnabled = false;
-
-        // Internal helper methods
-//        void ApplyDrawingStyle(const DrawingStyle &style);
-//        void ApplyTextStyle(const TextStyle &style);
         void ApplySource(const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern = nullptr);
         void ApplyTextSource() {
             ApplySource(currentState.textSourceColor, currentState.textSourcePattern);
@@ -201,25 +89,17 @@ namespace UltraCanvas {
         // Add a flag to track if we're being destroyed
         bool destroying = false;
         bool enableDoubleBuffering = false;
-        bool SaveXlibSurface(cairo_surface_t *surface, const Rect2Di &region,
-                             X11PixelBuffer &buffer);
-
-        bool RestoreXlibSurface(cairo_surface_t *surface, const Rect2Di &region,
-                                X11PixelBuffer &buffer);
-
-        bool SaveImageSurface(cairo_surface_t *surface, const Rect2Di &region,
-                              X11PixelBuffer &buffer);
-
-        bool RestoreImageSurface(cairo_surface_t *surface, const Rect2Di &region,
-                                 X11PixelBuffer &buffer);
+        bool CreateStagingSurface();
+        void SwitchToSurface(cairo_surface_t* s);
 
     public:
-        LinuxRenderContext(cairo_t *cairoContext, cairo_surface_t *cairo_surface, int width, int height, bool enableDoubleBuffering);
+        RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering);
 
-        virtual ~LinuxRenderContext();
+        ~RenderContextCairo() override;
+
+        bool ResizeStagingSurface(int w, int h);
 
         // ===== INHERITED FROM IRenderContext =====
-
         // State management
         void PushState() override;
         void PopState() override;
@@ -340,16 +220,8 @@ namespace UltraCanvas {
         int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) override;
 
         // Image rendering
-        void DrawImage(const std::string &imagePath, float x, float y) override;
-//        void DrawImage(const std::string &imagePath, float x, float y, float w, float h) override;
-        void DrawPartOfImage(const std::string &imagePath, const Rect2Df &srcRect, const Rect2Df &destRect) override;
-
-        void DrawImage(UCImagePtr image, float x, float y) override;
-//        void DrawImage(UCImagePtr image, float x, float y, float w, float h) override;
-        void DrawPartOfImage(UCImagePtr image, const Rect2Df &srcRect, const Rect2Df &destRect) override;
-        void DrawPixmap(UCPixmapPtr pixmap, float x, float y, float w, float h, ImageFitMode fitMode) override;
-        void DrawImage(UCImagePtr image, float x, float y, float w, float h, ImageFitMode fitMode) override;
-        void DrawImage(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode) override;
+        void DrawPartOfImage(UCImage& image, const Rect2Df &srcRect, const Rect2Df &destRect) override;
+        void DrawPixmap(UCPixmap& pixmap, float x, float y, float w, float h, ImageFitMode fitMode) override;
 
         // ===== ENHANCED IMAGE RENDERING METHODS =====
 //        void DrawImageWithFilter(const std::string &imagePath, float x, float y, float w, float h,
@@ -361,13 +233,10 @@ namespace UltraCanvas {
         void UpdateContext(cairo_t *newCairoContext);
 
         // Pixel operations
-//        virtual void SetPixel(const Point2Di &point, const Color &color) override;
-//        virtual Color GetPixel(const Point2Di &point) override;
-
         void Clear(const Color &color) override;
 
         // Utility functions
-        void Flush() override;
+        void SwapBuffers();
 
         void *GetNativeContext() override;
 
@@ -381,28 +250,6 @@ namespace UltraCanvas {
         cairo_surface_t *GetCairoSurface() const {
             return cairo ? cairo_get_target(cairo) : nullptr;
         }
-
-        // ===== PIXEL OPERATIONS SUPPORT =====
-        bool PaintPixelBuffer(int x, int y, int width, int height, uint32_t* pixels) override;
-
-        IPixelBuffer *SavePixelRegion(const Rect2Di &region) override;
-
-        bool RestorePixelRegion(const Rect2Di &region, IPixelBuffer *buf) override;
-//        bool SaveRegionAsImage(const Rect2Di& region, const std::string& filename) override;
-
-
-        // ===== DOUBLE BUFFERING CONTROL =====
-    public:
-        // Enable double buffering for this render context
-        bool EnableDoubleBuffering(int width, int height);
-        void DisableDoubleBuffering();
-        // Handle window resize - automatically resizes buffer if enabled
-        void ResizeSurface(int newWidth, int newHeight);
-
-    private:
-        // Internal helper methods
-        void SwitchToStagingSurface();
-        void SwitchToWindowSurface();
     };
 
     // ===== CAIRO FILTER CONSTANTS =====

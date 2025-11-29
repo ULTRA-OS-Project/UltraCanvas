@@ -14,8 +14,7 @@ namespace UltraCanvas {
 // ===== CONSTRUCTOR & DESTRUCTOR =====
     UltraCanvasLinuxWindow::UltraCanvasLinuxWindow()
             : xWindow(0)
-            , cairoSurface(nullptr)
-            , cairoContext(nullptr) {
+            , cairoSurface(nullptr) {
 
         std::cout << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
     }
@@ -23,7 +22,6 @@ namespace UltraCanvas {
     UltraCanvasLinuxWindow::UltraCanvasLinuxWindow(const WindowConfig& config)
             : xWindow(0)
             , cairoSurface(nullptr)
-            , cairoContext(nullptr)
             {
         if (!Create(config)) {
             throw std::runtime_error("UltraCanvasWindow Create failed");
@@ -38,7 +36,7 @@ namespace UltraCanvas {
     }
 
 // ===== WINDOW CREATION =====
-    bool UltraCanvasLinuxWindow::CreateNative(const WindowConfig& config) {
+    bool UltraCanvasLinuxWindow::CreateNative() {
         if (_created) {
             std::cout << "UltraCanvas Linux: Window already created" << std::endl;
             return true;
@@ -64,7 +62,7 @@ namespace UltraCanvas {
         }
 
         try {
-            renderContext = std::make_unique<LinuxRenderContext>(cairoContext, cairoSurface, config_.width, config_.height, true);
+            renderContext = std::make_unique<RenderContextCairo>(cairoSurface, config_.width, config_.height, true);
             std::cout << "UltraCanvas Linux: Render context created successfully" << std::endl;
         } catch (const std::exception& e) {
             std::cerr << "UltraCanvas Linux: Failed to create render context: " << e.what() << std::endl;
@@ -187,36 +185,11 @@ namespace UltraCanvas {
             return false;
         }
 
-        cairoContext = cairo_create(cairoSurface);
-        if (!cairoContext) {
-            std::cerr << "UltraCanvas Linux: cairo_create failed" << std::endl;
-            cairo_surface_destroy(cairoSurface);
-            cairoSurface = nullptr;
-            return false;
-        }
-
-        status = cairo_status(cairoContext);
-        if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "UltraCanvas Linux: Cairo context creation failed: "
-                      << cairo_status_to_string(status) << std::endl;
-            cairo_destroy(cairoContext);
-            cairo_surface_destroy(cairoSurface);
-            cairoContext = nullptr;
-            cairoSurface = nullptr;
-            return false;
-        }
-
         std::cout << "UltraCanvas Linux: Cairo surface and context created successfully" << std::endl;
         return true;
     }
 
     void UltraCanvasLinuxWindow::DestroyCairoSurface() {
-        if (cairoContext) {
-            std::cout << "UltraCanvas Linux: Destroying Cairo context..." << std::endl;
-            cairo_destroy(cairoContext);
-            cairoContext = nullptr;
-        }
-
         if (cairoSurface) {
             std::cout << "UltraCanvas Linux: Destroying Cairo surface..." << std::endl;
             cairo_surface_destroy(cairoSurface);
@@ -503,7 +476,7 @@ namespace UltraCanvas {
         }
 
         if (renderContext) {
-            renderContext->ResizeSurface(w, h);
+            renderContext->ResizeStagingSurface(w,h);
         }
 
         std::cout << "UltraCanvas Linux: Cairo surface updated successfully" << std::endl;
@@ -519,7 +492,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::Flush() {
-        renderContext->Flush();
+        renderContext->SwapBuffers();
+        cairo_surface_flush(cairoSurface);
 //            XFlush(application->GetDisplay());
     }
 

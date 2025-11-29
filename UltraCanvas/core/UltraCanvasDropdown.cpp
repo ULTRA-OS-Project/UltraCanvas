@@ -634,7 +634,7 @@ namespace UltraCanvas {
 
         auto icon = UCImage::Get(iconPath);
         if (icon && icon->IsValid()) {
-            ctx->DrawImage(icon, iconRect, ImageFitMode::Contain);
+            ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
         }
     }
 

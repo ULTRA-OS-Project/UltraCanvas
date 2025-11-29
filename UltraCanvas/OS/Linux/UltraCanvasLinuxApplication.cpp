@@ -87,6 +87,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasLinuxApplication::ShutdownNative() {
         vips_shutdown();
+        return true;
     }
 
     bool UltraCanvasLinuxApplication::InitializeX11() {

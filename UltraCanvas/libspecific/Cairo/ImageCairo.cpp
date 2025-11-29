@@ -5,6 +5,8 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
+#include "ImageCairo.h"
+
 #include <algorithm>
 #include <fstream>
 #include <sstream>
@@ -88,23 +90,83 @@ namespace UltraCanvas {
     UCImagesCache g_ImagesCache(50 * 1024 * 1024);
 
 
+    UCPixmapCairo::UCPixmapCairo(cairo_surface_t *surf) {
+        surface = surf;
+        if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+            std::cerr << "UCPixmapCairo: Invalid surface" << std::endl;
+            return;
+        }
+        pixelsPtr = (uint32_t *)cairo_image_surface_get_data(surface);
+        width = cairo_image_surface_get_width(surf);
+        height = cairo_image_surface_get_height(surf);
+    }
+
+    UCPixmapCairo::UCPixmapCairo(int w, int h) {
+        Init(w, h);
+    }
+
     UCPixmapCairo::~UCPixmapCairo() {
         if (surface) {
             cairo_surface_destroy(surface);
         }
-        surface = nullptr;
     }
 
-    int UCPixmapCairo::GetWidth() {
-        return cairo_image_surface_get_width(surface);
+    bool UCPixmapCairo::Init(int w, int h) {
+        if (pixelsPtr && w == width && h == height) {
+            Clear();
+            return true;
+        }
+
+        width = w;
+        height = h;
+        if (surface) {
+            cairo_surface_destroy(surface);
+            surface = nullptr;
+        }
+        surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+        if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+            std::cerr << "UCPixmapCairo: Cant create surface" << std::endl;
+            return false;
+        }
+        pixelsPtr = (uint32_t *)cairo_image_surface_get_data(surface);
+        return true;
     }
 
-    int UCPixmapCairo::GetHeight() {
-        return cairo_image_surface_get_height(surface);
+    void UCPixmapCairo::SetPixel(int x, int y, uint32_t pixel) {
+        if (pixelsPtr && x >= 0 && x < width && y >= 0 && y < height) {
+            pixelsPtr[y * width + x] = pixel;
+        }
+    }
+
+    uint32_t UCPixmapCairo::GetPixel(int x, int y) const {
+        if (pixelsPtr && x >= 0 && x < width && y >= 0 && y < height) {
+            return pixelsPtr[y * width + x];
+        }
+        return 0;
+    }
+    void UCPixmapCairo::Clear() {
+        if (pixelsPtr) {
+            memset(pixelsPtr, 0, width * height * 4);
+            cairo_surface_mark_dirty(surface);
+        }
+    }
+
+    void UCPixmapCairo::Flush() {
+        cairo_surface_flush(surface);
+    }
+
+    void UCPixmapCairo::MarkDirty() {
+        if (pixelsPtr) {
+            cairo_surface_mark_dirty(surface);
+        }
+    }
+
+    uint32_t* UCPixmapCairo::GetPixelData() {
+        return pixelsPtr;
     }
 
     size_t UCPixmapCairo::GetDataSize() {
-        return cairo_image_surface_get_stride(surface) * cairo_image_surface_get_height(surface);
+        return width * height * 4;
     }
 
 
@@ -262,5 +324,4 @@ namespace UltraCanvas {
         }
         return nullptr;
     }
-
 }

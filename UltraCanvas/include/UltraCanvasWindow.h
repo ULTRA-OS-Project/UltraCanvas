@@ -96,7 +96,7 @@ namespace UltraCanvas {
         // Window lifecycle
         bool Create(const WindowConfig& config);
         void Destroy();
-        virtual bool CreateNative(const WindowConfig& config) = 0;
+        virtual bool CreateNative() = 0;
         virtual void DestroyNative() = 0;
         virtual void Show() = 0;
         virtual void Hide() = 0;

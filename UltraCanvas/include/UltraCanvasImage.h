@@ -6,8 +6,25 @@
 #pragma once
 #ifndef ULTRACANVASIMAGE_H
 #define ULTRACANVASIMAGE_H
+#include <cstdint>
 
-#include "../libspecific/ImageCairo.h"
+class IPixmap {
+public:
+    virtual ~IPixmap() = default;
+    virtual bool Init(int w, int h) = 0;
+    virtual void Clear() = 0;
+    virtual void Flush() = 0;
+    virtual bool IsValid() const = 0;
+    virtual uint32_t* GetPixelData() = 0;
+    virtual void SetPixel(int x, int y, uint32_t pixel) = 0;
+    virtual uint32_t GetPixel(int x, int y) const = 0;
+    virtual int GetWidth() const = 0;
+    virtual int GetHeight() const = 0;
+    virtual void MarkDirty() = 0;
+};
+
+
+#include "../libspecific/Cairo/ImageCairo.h"
 namespace UltraCanvas {
     using UCPixmap = UltraCanvas::UCPixmapCairo;
     using UCImage = UltraCanvas::UCImageVips;

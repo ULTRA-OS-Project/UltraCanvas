@@ -365,7 +365,7 @@ namespace UltraCanvas {
 
         auto application = UltraCanvasApplication::GetInstance();
         SetBounds(Rect2Di(0, 0, config_.width, config_.height));
-        if (CreateNative(config)) {
+        if (CreateNative()) {
             application->RegisterWindow(this);
             _created = true;
             return true;

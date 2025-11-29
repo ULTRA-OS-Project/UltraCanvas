@@ -141,87 +141,73 @@ namespace UltraCanvas {
 //        Color currentSourceColor = Colors::Transparent;
     };
 
-    class IPixelBuffer {
-    public:
-        virtual ~IPixelBuffer() = default;
-        virtual bool IsValid() const  = 0;
-        virtual size_t GetSizeInBytes() const  = 0;
-        virtual uint32_t* GetPixelData() = 0;
-        virtual int GetWidth() const = 0;
-        virtual int GetHeight() const = 0;
-    };
+//    class IPixelBuffer {
+//    public:
+//        virtual ~IPixelBuffer() = default;
+//        virtual bool IsValid() const  = 0;
+//        virtual uint32_t* GetPixelData() = 0;
+//        virtual int GetWidth() const = 0;
+//        virtual int GetHeight() const = 0;
+//    };
 
-    class UltraCanvasPixelBuffer : public IPixelBuffer {
-    private:
-        std::vector<uint32_t> pixels;
-        int width = 0, height = 0;
-    public:
-        UltraCanvasPixelBuffer() = default;
-        UltraCanvasPixelBuffer(int w, int h) { Init(w, h); };
-
-        void Init(int w, int h, bool clear = 0) {
-            pixels.resize(w * h);
-            width = w;
-            height = h;
-            if (clear) {
-                pixels.clear();
-            }
-        };
-
-        void Clear() {
-            pixels.clear();
-        };
-
-        bool IsValid() const override { return !pixels.empty() && width > 0 && height > 0; }
-
-        size_t GetSizeInBytes() const override { return pixels.size() * 4; }
-
-        uint32_t GetPixel(int x, int y) const {
-            if (x >= 0 && x < width && y >= 0 && y < height) {
-                return pixels[y * width + x];
-            }
-            return 0;
-        }
-
-        void SetPixel(int x, int y, uint32_t pixel) {
-            if (x >= 0 && x < width && y >= 0 && y < height) {
-                pixels[y * width + x] = pixel;
-            }
-        }
-
-        uint32_t *GetPixelData() override  { return pixels.data(); }
-        int GetWidth() const  override { return width; }
-        int GetHeight() const override  { return height; }
-    };
+//    class UltraCanvasPixelBuffer : public IPixelBuffer {
+//    private:
+//        std::vector<uint32_t> pixels;
+//        int width = 0, height = 0;
+//    public:
+//        UltraCanvasPixelBuffer() = default;
+//        UltraCanvasPixelBuffer(int w, int h) { Init(w, h); };
+//
+//        void Init(int w, int h, bool clear = 0) {
+//            pixels.resize(w * h);
+//            width = w;
+//            height = h;
+//            if (clear) {
+//                pixels.clear();
+//            }
+//        };
+//
+//        void Clear() {
+//            pixels.clear();
+//        };
+//
+//        bool IsValid() const override { return !pixels.empty() && width > 0 && height > 0; }
+//
+//        uint32_t GetPixel(int x, int y) const {
+//            if (x >= 0 && x < width && y >= 0 && y < height) {
+//                return pixels[y * width + x];
+//            }
+//            return 0;
+//        }
+//
+//        void SetPixel(int x, int y, uint32_t pixel) {
+//            if (x >= 0 && x < width && y >= 0 && y < height) {
+//                pixels[y * width + x] = pixel;
+//            }
+//        }
+//
+//        uint32_t *GetPixelData() override  { return pixels.data(); }
+//        int GetWidth() const  override { return width; }
+//        int GetHeight() const override  { return height; }
+//    };
 
     // ===== DOUBLE BUFFER INTERFACE =====
-    class IDoubleBuffer {
-    public:
-        virtual ~IDoubleBuffer() = default;
-
-        // Initialize double buffer with window surface
-        virtual bool Initialize(int width, int height, void* windowSurface) = 0;
-
-        // Resize buffer when window resizes
-        virtual bool Resize(int newWidth, int newHeight) = 0;
-
-        // Get staging surface for rendering
-        virtual void* GetStagingContext() = 0;
-        virtual void* GetStagingSurface() = 0;
-
-        // Copy staging surface to window surface
-        virtual void SwapBuffers() = 0;
-
-        // Clean up resources
-        virtual void Cleanup() = 0;
-
-        // Get buffer dimensions
-        virtual int GetWidth() const = 0;
-        virtual int GetHeight() const = 0;
-
-        // Check if buffer is valid
-        virtual bool IsValid() const = 0;
-    };
+//    class IDoubleBuffer {
+//    public:
+//        virtual ~IDoubleBuffer() = default;
+//
+//        // Initialize double buffer with window surface
+//        virtual bool Initialize(int width, int height, void* windowSurface) = 0;
+//
+//        // Resize buffer when window resizes
+//        virtual bool Resize(int newWidth, int newHeight) = 0;
+//
+//        // Copy staging surface to window surface
+//        virtual void SwapBuffers() = 0;
+//
+//        // Check if buffer is valid
+//        virtual bool IsValid() const = 0;
+//    };
 
 // ===== UNIFIED RENDERING INTERFACE =====
     class IRenderContext {
@@ -375,13 +361,8 @@ namespace UltraCanvas {
         virtual int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) = 0;
 
         // ===== IMAGE RENDERING =====
-        virtual void DrawImage(const std::string& imagePath, float x, float y) = 0;
-        virtual void DrawImage(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
-        virtual void DrawPartOfImage(const std::string& imagePath, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
-        virtual void DrawImage(std::shared_ptr<UCImage> image, float x, float y) = 0;
-        virtual void DrawImage(std::shared_ptr<UCImage> image, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
-        virtual void DrawPartOfImage(std::shared_ptr<UCImage> image, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
-        virtual void DrawPixmap(std::shared_ptr<UCPixmapCairo> pixmap, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
+        virtual void DrawPartOfImage(UCImage& image, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
+        virtual void DrawPixmap(UCPixmap& pixmap, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
 
 //        virtual bool IsImageFormatSupported(const std::string& filePath) = 0;
 //        virtual bool GetImageDimensions(const std::string& imagePath, int& w, int& h) = 0;
@@ -390,17 +371,16 @@ namespace UltraCanvas {
 //        virtual void SetPixel(const Point2Df& point, const Color& color) = 0;
 //        virtual Color GetPixel(const Point2Df& point) = 0;
         virtual void Clear(const Color& color) = 0;
-        virtual bool PaintPixelBuffer(int x, int y, int width, int height, uint32_t* pixels) = 0;
-        bool PaintPixelBuffer(int x, int y, IPixelBuffer& pxBuf) {
-            return PaintPixelBuffer(x, y, pxBuf.GetWidth(), pxBuf.GetHeight(), pxBuf.GetPixelData());
-        };
-        virtual IPixelBuffer* SavePixelRegion(const Rect2Di& region) = 0;
-        virtual bool RestorePixelRegion(const Rect2Di& region, IPixelBuffer* buf) = 0;
+//        virtual bool PaintPixelBuffer(int x, int y, int width, int height, uint32_t* pixels) = 0;
+//        bool PaintPixelBuffer(int x, int y, IPixelBuffer& pxBuf) {
+//            return PaintPixelBuffer(x, y, pxBuf.GetWidth(), pxBuf.GetHeight(), pxBuf.GetPixelData());
+//        };
+//        virtual IPixelBuffer* SavePixelRegion(const Rect2Di& region) = 0;
+//        virtual bool RestorePixelRegion(const Rect2Di& region, IPixelBuffer* buf) = 0;
 //        virtual bool SaveRegionAsImage(const Rect2Di& region, const std::string& filename) = 0;
 
 
         // ===== UTILITY FUNCTIONS =====
-        virtual void Flush() = 0;
         virtual void* GetNativeContext() = 0;
 
         void DrawLine(const Point2Df& start, const Point2Df& end) {
@@ -528,18 +508,46 @@ namespace UltraCanvas {
             DrawText(text, position.x, position.y);
         }
 
+
+        virtual void DrawPartOfImage(const std::string& imagePath, const Rect2Df& srcRect, const Rect2Df& destRect) {
+            auto img = UCImage::Get(imagePath);
+            DrawPartOfImage(*img.get(), srcRect, destRect);
+        }
+        void DrawPixmap(UCPixmap& pixmap, float x, float y) {
+            DrawPixmap(pixmap, x,y, pixmap.GetWidth(), pixmap.GetHeight(), ImageFitMode::NoScale);
+        };
+        void DrawImage(UCImage& image, float x, float y) {
+            auto pixmap = image.GetPixmap();
+            if (pixmap) {
+                DrawPixmap(*pixmap.get(), x,y);
+            }
+        };
+        void DrawImage(UCImage& image, float x, float y, float w, float h, ImageFitMode fitMode) {
+            auto pixmap = image.GetPixmap(w, h, fitMode);
+            if (pixmap) {
+                DrawPixmap(*pixmap.get(), x, y, w, h, fitMode);
+            }
+        }
+        void DrawImage(UCImage& image, const Rect2Di& rect, ImageFitMode fitMode) {
+            DrawImage(image, rect.x, rect.y, rect.width, rect.height, fitMode);
+        }
+        void DrawImage(UCImage& image, const Rect2Df& rect, ImageFitMode fitMode) {
+            DrawImage(image, rect.x, rect.y, rect.width, rect.height, fitMode);
+        }
+        void DrawImage(const std::string& imagePath, float x, float y) {
+            auto img = UCImage::Get(imagePath);
+            DrawImage(*img.get(), x, y);
+        }
+
+        void DrawImage(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode) {
+            auto img = UCImage::Get(imagePath);
+            DrawImage(*img.get(), x, y, w, h, fitMode);
+        };
         void DrawImage(const std::string& imagePath, const Point2Df& position) {
             DrawImage(imagePath, position.x, position.y);
         }
         void DrawImage(const std::string& imagePath, const Point2Di& position) {
             DrawImage(imagePath, position.x, position.y);
-        }
-        void DrawImage(std::shared_ptr<UCImage> image, const Rect2Di& rect, ImageFitMode fitMode) {
-            DrawImage(image, rect.x, rect.y, rect.width, rect.height, fitMode);
-        }
-
-        void DrawImage(std::shared_ptr<UCImage> image, const Rect2Df& rect, ImageFitMode fitMode) {
-            DrawImage(image, rect.x, rect.y, rect.width, rect.height, fitMode);
         }
 
 //        void SetClipRect(int x, int y, int w, int h) {
@@ -653,5 +661,6 @@ namespace UltraCanvas {
             DrawText(text, position);
             PopState();
         }
+
     };
 } // namespace UltraCanvas

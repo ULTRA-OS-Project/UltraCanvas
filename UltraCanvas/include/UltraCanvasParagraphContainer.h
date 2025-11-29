@@ -974,7 +974,7 @@ inline std::shared_ptr<UltraCanvasParagraphContainer> CreateRichTextViewer(
 
 ✅ **Linux Integration:**
 - Uses ctx->DrawRectangle(), DrawText(), ctx->PaintWidthColor) etc.
-- All calls go through LinuxRenderContext automatically
+- All calls go through RenderContextCairo automatically
 - No platform-specific code needed
 - Works with X11 event conversion
 

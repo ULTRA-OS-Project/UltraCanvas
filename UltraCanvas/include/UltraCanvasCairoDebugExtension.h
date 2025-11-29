@@ -86,10 +86,10 @@ namespace UltraCanvas {
         auto* renderContext = GetRenderContext();
         if (!renderContext) return nullptr;
 
-        // This is platform-specific - would need to cast to LinuxRenderContext
+        // This is platform-specific - would need to cast to RenderContextCairo
         // and access the cairo context member
         // For now, return nullptr as we need proper interface design
-        return ((LinuxRenderContext*)renderContext)->GetCairo();
+        return ((RenderContextCairo*)renderContext)->GetCairo();
     }
 
     CairoMatrixInfo UltraCanvasCairoDebugExtension::GetCurrentCairoMatrix() {
