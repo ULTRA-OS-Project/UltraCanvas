@@ -361,7 +361,7 @@ namespace UltraCanvas {
         virtual int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) = 0;
 
         // ===== IMAGE RENDERING =====
-        virtual void DrawPartOfImage(UCImage& image, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
+        virtual void DrawPartOfPixmap(UCPixmap& pixmap, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
         virtual void DrawPixmap(UCPixmap& pixmap, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
 
 //        virtual bool IsImageFormatSupported(const std::string& filePath) = 0;
@@ -509,10 +509,6 @@ namespace UltraCanvas {
         }
 
 
-        virtual void DrawPartOfImage(const std::string& imagePath, const Rect2Df& srcRect, const Rect2Df& destRect) {
-            auto img = UCImage::Get(imagePath);
-            DrawPartOfImage(*img.get(), srcRect, destRect);
-        }
         void DrawPixmap(UCPixmap& pixmap, float x, float y) {
             DrawPixmap(pixmap, x,y, pixmap.GetWidth(), pixmap.GetHeight(), ImageFitMode::NoScale);
         };
@@ -548,6 +544,14 @@ namespace UltraCanvas {
         }
         void DrawImage(const std::string& imagePath, const Point2Di& position) {
             DrawImage(imagePath, position.x, position.y);
+        }
+        void DrawPartOfImage(const std::string& imagePath, const Rect2Df& srcRect, const Rect2Df& destRect) {
+            auto img = UCImage::Get(imagePath);
+            DrawPartOfImage(*img.get(), srcRect, destRect);
+        }
+        void DrawPartOfImage(UCImage& img, const Rect2Df& srcRect, const Rect2Df& destRect) {
+            auto pixmap = img.GetPixmap();
+            DrawPartOfPixmap(*pixmap.get(), srcRect, destRect);
         }
 
 //        void SetClipRect(int x, int y, int w, int h) {

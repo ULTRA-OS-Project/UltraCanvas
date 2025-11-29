@@ -1,4 +1,4 @@
-// core/ImageCairo.cpp
+// libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
 // Version: 2.0.0
 // Last Modified: 2025-10-24
@@ -243,85 +243,78 @@ namespace UltraCanvas {
                     w = width;
                     break;
             }
-            auto vipsImage = vips::VImage::thumbnail(fileName.c_str(), w, options);
-
-            // Ensure 3-band RGB (handles grayscale)
-            if (vipsImage.bands() < 3) {
-                vipsImage = vipsImage.colourspace(VIPS_INTERPRETATION_sRGB);
-            }
-
-            // Add alpha channel if missing
-            if (!vipsImage.has_alpha()) {
-                vipsImage = vipsImage.bandjoin(255);
-            } else {
-                // 4. Premultiply alpha (SIMD optimized in libvips)
-                vipsImage = vipsImage.premultiply();
-            }
-
-            // Reorder RGBA -> BGRA for Cairo ARGB32 (little-endian)
-            // Single operation using band indexing
-            vipsImage = vips::VImage::bandjoin({vipsImage[2], vipsImage[1], vipsImage[0], vipsImage[3]});
-
-            // 6. Cast to uint8 (premultiply outputs float)
-            vipsImage = vipsImage.cast(VIPS_FORMAT_UCHAR);
-
-            int w = vipsImage.width();
-            int h = vipsImage.height();
-            int cairoStride = cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, width);
-            int vipsRowBytes = width * 4;
-
-            // Execute pipeline and write to memory (single pass)
-            size_t vipsSize;
-            size_t cairoSize = cairoStride * height;
-            void* vipsBuffer = vipsImage.write_to_memory(&vipsSize);
-            if (!vipsBuffer) {
-                errorMessage = "Failed to write image to buffer";
-                std::cerr << "UCImage::CreatePixmap: Failed to write image to buffer. " << fileName << std::endl;
-                return nullptr;
-            }
-            if (cairoSize != vipsSize) {
-                errorMessage = "Cairo surface buffer size != vips image buffer size";
-                std::cerr << "UCImage::CreatePixmap: Cairo buffer size != vips image size. " << fileName << std::endl;
-                g_free(vipsBuffer);
-                return nullptr;
-            }
-
-            unsigned char* pixelData = nullptr;
-            if (cairoStride == vipsRowBytes) {
-                // Strides match - use vips buffer directly
-                pixelData = static_cast<unsigned char*>(vipsBuffer);
-            } else {
-                // Stride mismatch - copy with padding
-                pixelData = static_cast<unsigned char*>(g_malloc(cairoStride * height));
-
-                for (int y = 0; y < height; ++y) {
-                    memcpy(
-                            pixelData + y * cairoStride,
-                            static_cast<char*>(vipsBuffer) + y * vipsRowBytes,
-                            vipsRowBytes
-                    );
-                }
-                g_free(vipsBuffer);
-            }
-
-            cairo_surface_t* surface = cairo_image_surface_create_for_data(
-                    pixelData,
-                    CAIRO_FORMAT_ARGB32,
-                    width,
-                    height,
-                    cairoStride
-            );
-            if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-                std::cerr << "UCImage::CreatePixmap: Failed to create Cairo surface. " << fileName << std::endl;
-                g_free(pixelData);
-                errorMessage = "Failed to create Cairo surface";
-                return nullptr;
-            }
-            return std::make_shared<UCPixmapCairo>(surface);
+            return CreatePixmapFromVImage(vips::VImage::thumbnail(fileName.c_str(), w, options));
         } catch (vips::VError& err) {
             std::cerr << "UCImage::CreatePixmap: Failed to make pixmap for " << fileName << " Err:" << err.what() << std::endl;
             errorMessage = std::string("Failed to make pixmap Err:") + err.what();
         }
         return nullptr;
     }
+
+    void rgba2bgra_premultiplied(uint32_t *src, uint32_t *dst, int n) {
+        for (int x = 0; x < n; x++) {
+            uint32_t rgba = GUINT32_FROM_BE(src[x]);
+            uint8_t a = rgba & 0xff;
+
+            uint32_t bgra;
+
+            if (a == 0)
+                bgra = 0;
+            else if (a == 255)
+                bgra = (rgba & 0x00ff00ff) |
+                       (rgba & 0x0000ff00) << 16 |
+                       (rgba & 0xff000000) >> 16;
+            else {
+                int r = (rgba >> 24) & 0xff;
+                int g = (rgba >> 16) & 0xff;
+                int b = (rgba >> 8) & 0xff;
+
+                r = ((r * a) + 128) >> 8;
+                g = ((g * a) + 128) >> 8;
+                b = ((b * a) + 128) >> 8;
+
+                bgra = (b << 24) | (g << 16) | (r << 8) | a;
+            }
+
+            dst[x] = GUINT32_TO_BE(bgra);
+        }
+    }
+
+    std::shared_ptr<UCPixmapCairo> CreatePixmapFromVImage(vips::VImage vipsImage) {
+        // Ensure 3-band RGB (handles grayscale)
+        if (vipsImage.bands() < 3) {
+            vipsImage = vipsImage.colourspace(VIPS_INTERPRETATION_sRGB);
+        }
+
+        vipsImage = vipsImage.cast(VIPS_FORMAT_UCHAR);
+
+        // Add alpha channel if missing
+        if (vipsImage.bands() == 3) {
+            vipsImage = vipsImage.bandjoin(255);
+        } else {
+            if (vipsImage.bands() > 4) {
+                vipsImage = vipsImage.extract_band(0, vips::VImage::option()->set("n", 4));
+            }
+        }
+
+        int w = vipsImage.width();
+        int h = vipsImage.height();
+
+        cairo_surface_t* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w,h);
+        if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+            throw UCImageError("Failed to create Cairo surface");
+        }
+        uint32_t *src = (uint32_t*)vipsImage.data();
+        uint32_t *dst = (uint32_t*)cairo_image_surface_get_data(surface);
+        if (!dst) {
+            throw UCImageError("Failed to get surface data");
+        }
+
+        rgba2bgra_premultiplied(src, dst, w * h);
+
+        cairo_surface_mark_dirty(surface);
+
+        return std::make_shared<UCPixmapCairo>(surface);
+    }
+
 }

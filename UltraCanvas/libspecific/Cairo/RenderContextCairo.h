@@ -1,5 +1,5 @@
-// OS/Linux/UltraCanvasX11RenderContext.h
-// Linux/X11 platform support implementation for UltraCanvas Framework
+// libspecific/Cairo/RenderContextCairo.h
+// Cairo support implementation for UltraCanvas Framework
 // Version: 1.0.2
 // Last Modified: 2025-01-07
 // Author: UltraCanvas Framework
@@ -220,7 +220,7 @@ namespace UltraCanvas {
         int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) override;
 
         // Image rendering
-        void DrawPartOfImage(UCImage& image, const Rect2Df &srcRect, const Rect2Df &destRect) override;
+        void DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Df &srcRect, const Rect2Df &destRect) override;
         void DrawPixmap(UCPixmap& pixmap, float x, float y, float w, float h, ImageFitMode fitMode) override;
 
         // ===== ENHANCED IMAGE RENDERING METHODS =====

@@ -1,5 +1,5 @@
-// OS/Linux/UltraCanvasRenderContextCairo.cpp
-// Linux platform implementation for UltraCanvas Framework using Cairo and X11
+// libspecific/Cairo/RenderContextCairo.cpp
+// Cairo support implementation for UltraCanvas Framework
 // Version: 1.0.2 - Fixed null pointer crashes and Pango initialization
 // Last Modified: 2025-07-14
 // Author: UltraCanvas Framework
@@ -1445,19 +1445,16 @@ namespace UltraCanvas {
         }
     }
 
-    void RenderContextCairo::DrawPartOfImage(UCImage& image, const Rect2Df &srcRect, const Rect2Df &destRect) {
+    void RenderContextCairo::DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Df &srcRect, const Rect2Df &destRect) {
         try {
             // Validate source rectangle bounds
             if (srcRect.x < 0 || srcRect.y < 0 ||
-                srcRect.x + srcRect.width > image.GetWidth() ||
-                srcRect.y + srcRect.height > image.GetHeight()) {
+                srcRect.x + srcRect.width > pixmap.GetWidth() ||
+                srcRect.y + srcRect.height > pixmap.GetHeight()) {
                 std::cerr << "RenderContextCairo::DrawImage: Source rectangle out of bounds" << std::endl;
                 return;
             }
-            auto pixmap = image.GetPixmap();
-            if (!pixmap) {
-                return;
-            }
+
             // Save current cairo state
             cairo_save(cairo);
 
@@ -1471,7 +1468,7 @@ namespace UltraCanvas {
             cairo_translate(cairo, -srcRect.x, -srcRect.y);
 
             // Set the image as source
-            cairo_set_source_surface(cairo, pixmap->GetSurface(), 0, 0);
+            cairo_set_source_surface(cairo, pixmap.GetSurface(), 0, 0);
 
             // Create clipping rectangle for the destination area
             cairo_rectangle(cairo,
