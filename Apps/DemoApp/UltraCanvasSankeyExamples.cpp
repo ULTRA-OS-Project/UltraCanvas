@@ -126,23 +126,35 @@ namespace UltraCanvas {
         sankey->SetLinkCurvature(0.5f);
         sankey->SetFontSize(13.0f);
         sankey->SetMaxLabelWidth(250.0f);
+        sankey->SetManualOrderMode(true);
 
         // ===== COLUMN 1: WORLD PRODUCTION (Source) =====
         // Total: 104.7 mb/day
-        sankey->AddNode("World Oil Production", "World\nOil Production\n(104.7 mb/d)", Color(147, 180, 220));
+        sankey->AddNode("World", "World\nOil Production\n(104.7 mb/d)", Color(147, 180, 220));
 
         // ===== COLUMN 2: REGIONAL DISTRIBUTION =====
         // Links from World Production to Regions (values from CSV)
-        sankey->AddLink("World Oil Production", "North America", 24.5f, Color(255, 182, 193));
-        sankey->AddLink("World Oil Production", "Central America & Caribbean", 1.1f, Color(255, 218, 185));
-        sankey->AddLink("World Oil Production", "South America", 6.0f, Color(255, 239, 186));
-        sankey->AddLink("World Oil Production", "Europe + CIS", 18.5f, Color(186, 225, 255));
-        sankey->AddLink("World Oil Production", "Middle East", 8.7f, Color(255, 204, 153));
-        sankey->AddLink("World Oil Production", "China", 16.4f, Color(255, 153, 153));
-        sankey->AddLink("World Oil Production", "India", 5.55f, Color(204, 229, 255));
-        sankey->AddLink("World Oil Production", "Rest of Asia", 10.5f, Color(229, 204, 255));
-        sankey->AddLink("World Oil Production", "Africa", 4.25f, Color(204, 255, 204));
-        sankey->AddLink("World Oil Production", "Oceania", 1.15f, Color(179, 229, 252));
+        sankey->AddLink("World", "North America", 24.5f, Color(255, 182, 193));
+        sankey->AddLink("World", "Central America & Caribbean", 1.1f, Color(255, 218, 185));
+        sankey->AddLink("World", "South America", 6.0f, Color(255, 239, 186));
+        sankey->AddLink("World", "Europe + CIS", 18.5f, Color(186, 225, 255));
+        sankey->AddLink("World", "Middle East", 8.7f, Color(255, 204, 153));
+        sankey->AddLink("World", "China", 16.4f, Color(255, 153, 153));
+        sankey->AddLink("World", "India", 5.55f, Color(204, 229, 255));
+        sankey->AddLink("World", "Rest of Asia", 10.5f, Color(229, 204, 255));
+        sankey->AddLink("World", "Africa", 4.25f, Color(204, 255, 204));
+        sankey->AddLink("World", "Oceania", 1.15f, Color(179, 229, 252));
+
+        sankey->SetNodeOrdering("North America", 10);
+        sankey->SetNodeOrdering("South America", 20);
+        sankey->SetNodeOrdering("Europe + CIS", 30);
+        sankey->SetNodeOrdering("Middle East", 40);
+        sankey->SetNodeOrdering("China", 50);
+        sankey->SetNodeOrdering("India", 60);
+        sankey->SetNodeOrdering("Rest of Asia", 70);
+        sankey->SetNodeOrdering("Africa", 80);
+        sankey->SetNodeOrdering("Central America & Caribbean", 90);
+        sankey->SetNodeOrdering("Oceania", 100);
 
         // ===== COLUMN 3: CONSUMPTION SECTORS =====
         // Calculate proportional distribution from each region to sectors
@@ -171,6 +183,18 @@ namespace UltraCanvas {
         sankey->AddLink("North America", "Power Generation", 0.82f, Color(255, 204, 204));
         sankey->AddLink("North America", "Agriculture", 0.59f, Color(204, 255, 179));
         sankey->AddLink("North America", "Non-energy/Other", 1.21f, Color(224, 224, 224));
+
+        sankey->SetNodeOrdering("Road Transport", 300);
+        sankey->SetNodeOrdering("Aviation", 210);
+        sankey->SetNodeOrdering("Maritime Shipping", 220);
+        sankey->SetNodeOrdering("Rail & Buses", 230);
+        sankey->SetNodeOrdering("Petrochemicals", 240);
+        sankey->SetNodeOrdering("Industry", 250);
+        sankey->SetNodeOrdering("Buildings/Residential", 260);
+        sankey->SetNodeOrdering("Power Generation", 270);
+        sankey->SetNodeOrdering("Agriculture", 280);
+        sankey->SetNodeOrdering("Non-energy/Other", 290);
+
 
         // Central America & Caribbean (1.1 mb/d) to sectors
         sankey->AddLink("Central America & Caribbean", "Road Transport", 0.48f);

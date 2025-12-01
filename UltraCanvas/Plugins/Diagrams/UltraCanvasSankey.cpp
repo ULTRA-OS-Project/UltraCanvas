@@ -224,13 +224,14 @@ namespace UltraCanvas {
         ComputeNodeBreadths();
         ComputeLinkBreadths();
 
-        // Iterative relaxation
-        for (int i = 0; i < iterations; ++i) {
-            RelaxRightToLeft();
-            RelaxLeftToRight();
-            ComputeLinkBreadths();  // Recompute after relaxation
+        if (!manualOrderMode) {
+            // Iterative relaxation
+            for (int i = 0; i < iterations; ++i) {
+                RelaxRightToLeft();
+                RelaxLeftToRight();
+                ComputeLinkBreadths();  // Recompute after relaxation
+            }
         }
-
         needsLayout = false;
     }
 
@@ -419,6 +420,15 @@ namespace UltraCanvas {
         std::map<int, std::vector<std::string>> nodesByDepth;
         for (const auto& [id, node] : nodes) {
             nodesByDepth[node.depth].push_back(id);
+        }
+
+        if (manualOrderMode) {
+            for (auto& [depth, nodeIds] : nodesByDepth) {
+                std::sort(nodeIds.begin(), nodeIds.end(),
+                          [this](const std::string& a, const std::string& b) {
+                              return nodes[a].ordering < nodes[b].ordering;
+                          });
+            }
         }
 
         // Calculate required padding for labels
@@ -934,5 +944,36 @@ namespace UltraCanvas {
                 // Keep default theme
                 break;
         }
+    }
+
+    void UltraCanvasSankeyDiagram::SetManualOrderMode(bool enabled) {
+        if (manualOrderMode != enabled) {
+            manualOrderMode = enabled;
+            needsLayout = true;
+            RequestRedraw();
+        }
+    }
+
+    bool UltraCanvasSankeyDiagram::GetManualOrderMode() const {
+        return manualOrderMode;
+    }
+
+    void UltraCanvasSankeyDiagram::SetNodeOrdering(const std::string& nodeId, int ordering) {
+        auto it = nodes.find(nodeId);
+        if (it != nodes.end()) {
+            it->second.ordering = ordering;
+            if (manualOrderMode) {
+                needsLayout = true;
+                RequestRedraw();
+            }
+        }
+    }
+
+    int UltraCanvasSankeyDiagram::GetNodeOrdering(const std::string& nodeId) const {
+        auto it = nodes.find(nodeId);
+        if (it != nodes.end()) {
+            return it->second.ordering;
+        }
+        return 0;
     }
 }

@@ -31,6 +31,7 @@ namespace UltraCanvas {
         float height = 0.0f;
         float value = 0.0f;
         int depth = 0;
+        int ordering = 0;
         Color color = Colors::Blue;
         bool isDragging = false;
         std::vector<std::string> sourceLinks;
@@ -107,6 +108,11 @@ namespace UltraCanvas {
         void SetMaxLabelWidth(float width);
         float GetMaxLabelWidth() const;
 
+        void SetManualOrderMode(bool enabled);
+        bool GetManualOrderMode() const;
+        void SetNodeOrdering(const std::string& nodeId, int ordering);
+        int GetNodeOrdering(const std::string& nodeId) const;
+
         // ===== CALLBACKS =====
         std::function<void(const std::string&)> onNodeClick;
         std::function<void(const std::string&, const std::string&)> onLinkClick;
@@ -126,6 +132,7 @@ namespace UltraCanvas {
         SankeyTheme theme;
         float maxLabelWidth;
 
+        bool manualOrderMode = false;
         bool needsLayout = true;
         bool enableAnimation;
         bool enableTooltips;
