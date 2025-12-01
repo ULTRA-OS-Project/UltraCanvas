@@ -17,7 +17,7 @@
 #include <random>
 
 namespace UltraCanvas {
-    void GenerateEnergySankeyData(UltraCanvasSankeyRenderer* renderer) {
+    void GenerateEnergySankeyData(UltraCanvasSankeyDiagram* renderer) {
         // Energy flow example
         renderer->AddLink("Coal", "Electricity", 35.0f);
         renderer->AddLink("Natural Gas", "Electricity", 35.0f);
@@ -36,7 +36,7 @@ namespace UltraCanvas {
         renderer->SetTheme(SankeyTheme::Energy);
     }
 
-    void GenerateFinanceSankeyData(UltraCanvasSankeyRenderer* renderer) {
+    void GenerateFinanceSankeyData(UltraCanvasSankeyDiagram* renderer) {
         // Financial flow example
         renderer->AddLink("Revenue", "Product Sales", 65.0f);
         renderer->AddLink("Revenue", "Services", 35.0f);
@@ -56,7 +56,7 @@ namespace UltraCanvas {
         renderer->SetTheme(SankeyTheme::Finance);
     }
 
-    void GenerateWebTrafficSankeyData(UltraCanvasSankeyRenderer* renderer) {
+    void GenerateWebTrafficSankeyData(UltraCanvasSankeyDiagram* renderer) {
         // Web traffic flow example
 
         // Clear existing data
@@ -81,46 +81,209 @@ namespace UltraCanvas {
         renderer->SetTheme(SankeyTheme::WebTraffic);
     }
 
+    void GenerateOilSales2024Sankey(UltraCanvasSankeyDiagram* sankey) {
+
+        // ===== MAIN CONTAINER (1920 x 1080) =====
+//        auto mainContainer = std::make_shared<UltraCanvasContainer>(
+//                "OilSales2024Container", 10000, 0, 0, 1920, 1080
+//        );
+//        mainContainer->SetBackgroundColor(Color(250, 250, 252));
+//
+//        // ===== TITLE LABEL =====
+//        auto titleLabel = std::make_shared<UltraCanvasLabel>(
+//                "OilSalesTitle", 10001, 40, 20, 1840, 45
+//        );
+//        titleLabel->SetText("Oil Sales 2024");
+//        titleLabel->SetFontSize(32);
+//        titleLabel->SetFontWeight(FontWeight::Bold);
+//        titleLabel->SetTextColor(Color(40, 60, 80));
+//        titleLabel->SetAlignment(TextAlignment::Center);
+//        mainContainer->AddChild(titleLabel);
+//
+//        // ===== SUBTITLE LABEL =====
+//        auto subtitleLabel = std::make_shared<UltraCanvasLabel>(
+//                "OilSalesSubtitle", 10002, 40, 70, 1840, 30
+//        );
+//        subtitleLabel->SetText("Worldwide application of oil regarding production, region and consumption sectors");
+//        subtitleLabel->SetFontSize(16);
+//        subtitleLabel->SetTextColor(Color(80, 100, 120));
+//        subtitleLabel->SetAlignment(TextAlignment::Center);
+//        mainContainer->AddChild(subtitleLabel);
+//
+//        // ===== SANKEY DIAGRAM =====
+//        // Position: below title/subtitle with margins
+//        // Size: 1920 - 80 (margins) = 1840 width, 1080 - 120 (header) - 40 (bottom margin) = 920 height
+//        auto sankey = std::make_shared<UltraCanvasSankeyRenderer>(
+//                "OilSalesSankey", 10010, 40, 115, 1840, 920
+//        );
+
+        // Configure Sankey appearance
+        sankey->ClearAll();
+        sankey->SetTheme(SankeyTheme::Custom);
+        sankey->SetAlignment(SankeyAlignment::Justify);
+        sankey->SetNodeWidth(20.0f);
+        sankey->SetNodePadding(12.0f);
+        sankey->SetLinkCurvature(0.5f);
+        sankey->SetFontSize(13.0f);
+        sankey->SetMaxLabelWidth(250.0f);
+
+        // ===== COLUMN 1: WORLD PRODUCTION (Source) =====
+        // Total: 104.7 mb/day
+        sankey->AddNode("World Oil Production", "World\nOil Production\n(104.7 mb/d)", Color(147, 180, 220));
+
+        // ===== COLUMN 2: REGIONAL DISTRIBUTION =====
+        // Links from World Production to Regions (values from CSV)
+        sankey->AddLink("World Oil Production", "North America", 24.5f, Color(255, 182, 193));
+        sankey->AddLink("World Oil Production", "Central America & Caribbean", 1.1f, Color(255, 218, 185));
+        sankey->AddLink("World Oil Production", "South America", 6.0f, Color(255, 239, 186));
+        sankey->AddLink("World Oil Production", "Europe + CIS", 18.5f, Color(186, 225, 255));
+        sankey->AddLink("World Oil Production", "Middle East", 8.7f, Color(255, 204, 153));
+        sankey->AddLink("World Oil Production", "China", 16.4f, Color(255, 153, 153));
+        sankey->AddLink("World Oil Production", "India", 5.55f, Color(204, 229, 255));
+        sankey->AddLink("World Oil Production", "Rest of Asia", 10.5f, Color(229, 204, 255));
+        sankey->AddLink("World Oil Production", "Africa", 4.25f, Color(204, 255, 204));
+        sankey->AddLink("World Oil Production", "Oceania", 1.15f, Color(179, 229, 252));
+
+        // ===== COLUMN 3: CONSUMPTION SECTORS =====
+        // Calculate proportional distribution from each region to sectors
+        // Based on global sector percentages applied proportionally
+
+        // Global sector percentages (from CSV total 104.7 mb/d):
+        // Road Transport: 45.5 / 104.7 = 43.46%
+        // Aviation: 7.5 / 104.7 = 7.16%
+        // Maritime: 7.5 / 104.7 = 7.16%
+        // Rail & Buses: 2.5 / 104.7 = 2.39%
+        // Petrochemicals: 16.0 / 104.7 = 15.28%
+        // Industry: 9.0 / 104.7 = 8.60%
+        // Buildings: 5.5 / 104.7 = 5.25%
+        // Power Generation: 3.5 / 104.7 = 3.34%
+        // Agriculture: 2.5 / 104.7 = 2.39%
+        // Non-energy/Other: 5.5 / 104.7 = 5.25%
+
+        // North America (24.5 mb/d) to sectors
+        sankey->AddLink("North America", "Road Transport", 10.65f, Color(255, 179, 186));
+        sankey->AddLink("North America", "Aviation", 1.75f, Color(186, 255, 201));
+        sankey->AddLink("North America", "Maritime Shipping", 1.75f, Color(186, 225, 255));
+        sankey->AddLink("North America", "Rail & Buses", 0.59f, Color(255, 223, 186));
+        sankey->AddLink("North America", "Petrochemicals", 3.74f, Color(219, 186, 255));
+        sankey->AddLink("North America", "Industry", 2.11f, Color(186, 255, 255));
+        sankey->AddLink("North America", "Buildings/Residential", 1.29f, Color(255, 255, 186));
+        sankey->AddLink("North America", "Power Generation", 0.82f, Color(255, 204, 204));
+        sankey->AddLink("North America", "Agriculture", 0.59f, Color(204, 255, 179));
+        sankey->AddLink("North America", "Non-energy/Other", 1.21f, Color(224, 224, 224));
+
+        // Central America & Caribbean (1.1 mb/d) to sectors
+        sankey->AddLink("Central America & Caribbean", "Road Transport", 0.48f);
+        sankey->AddLink("Central America & Caribbean", "Aviation", 0.08f);
+        sankey->AddLink("Central America & Caribbean", "Maritime Shipping", 0.08f);
+        sankey->AddLink("Central America & Caribbean", "Petrochemicals", 0.17f);
+        sankey->AddLink("Central America & Caribbean", "Industry", 0.09f);
+        sankey->AddLink("Central America & Caribbean", "Buildings/Residential", 0.06f);
+        sankey->AddLink("Central America & Caribbean", "Non-energy/Other", 0.14f);
+
+        // South America (6.0 mb/d) to sectors
+        sankey->AddLink("South America", "Road Transport", 2.61f);
+        sankey->AddLink("South America", "Aviation", 0.43f);
+        sankey->AddLink("South America", "Maritime Shipping", 0.43f);
+        sankey->AddLink("South America", "Rail & Buses", 0.14f);
+        sankey->AddLink("South America", "Petrochemicals", 0.92f);
+        sankey->AddLink("South America", "Industry", 0.52f);
+        sankey->AddLink("South America", "Buildings/Residential", 0.31f);
+        sankey->AddLink("South America", "Power Generation", 0.20f);
+        sankey->AddLink("South America", "Agriculture", 0.14f);
+        sankey->AddLink("South America", "Non-energy/Other", 0.30f);
+
+        // Europe + CIS (18.5 mb/d) to sectors
+        sankey->AddLink("Europe + CIS", "Road Transport", 8.04f);
+        sankey->AddLink("Europe + CIS", "Aviation", 1.32f);
+        sankey->AddLink("Europe + CIS", "Maritime Shipping", 1.32f);
+        sankey->AddLink("Europe + CIS", "Rail & Buses", 0.44f);
+        sankey->AddLink("Europe + CIS", "Petrochemicals", 2.83f);
+        sankey->AddLink("Europe + CIS", "Industry", 1.59f);
+        sankey->AddLink("Europe + CIS", "Buildings/Residential", 0.97f);
+        sankey->AddLink("Europe + CIS", "Power Generation", 0.62f);
+        sankey->AddLink("Europe + CIS", "Agriculture", 0.44f);
+        sankey->AddLink("Europe + CIS", "Non-energy/Other", 0.93f);
+
+        // Middle East (8.7 mb/d) to sectors
+        sankey->AddLink("Middle East", "Road Transport", 3.78f);
+        sankey->AddLink("Middle East", "Aviation", 0.62f);
+        sankey->AddLink("Middle East", "Maritime Shipping", 0.62f);
+        sankey->AddLink("Middle East", "Rail & Buses", 0.21f);
+        sankey->AddLink("Middle East", "Petrochemicals", 1.33f);
+        sankey->AddLink("Middle East", "Industry", 0.75f);
+        sankey->AddLink("Middle East", "Buildings/Residential", 0.46f);
+        sankey->AddLink("Middle East", "Power Generation", 0.29f);
+        sankey->AddLink("Middle East", "Agriculture", 0.21f);
+        sankey->AddLink("Middle East", "Non-energy/Other", 0.43f);
+
+        // China (16.4 mb/d) to sectors
+        sankey->AddLink("China", "Road Transport", 7.13f);
+        sankey->AddLink("China", "Aviation", 1.17f);
+        sankey->AddLink("China", "Maritime Shipping", 1.17f);
+        sankey->AddLink("China", "Rail & Buses", 0.39f);
+        sankey->AddLink("China", "Petrochemicals", 2.51f);
+        sankey->AddLink("China", "Industry", 1.41f);
+        sankey->AddLink("China", "Buildings/Residential", 0.86f);
+        sankey->AddLink("China", "Power Generation", 0.55f);
+        sankey->AddLink("China", "Agriculture", 0.39f);
+        sankey->AddLink("China", "Non-energy/Other", 0.82f);
+
+        // India (5.55 mb/d) to sectors
+        sankey->AddLink("India", "Road Transport", 2.41f);
+        sankey->AddLink("India", "Aviation", 0.40f);
+        sankey->AddLink("India", "Maritime Shipping", 0.40f);
+        sankey->AddLink("India", "Rail & Buses", 0.13f);
+        sankey->AddLink("India", "Petrochemicals", 0.85f);
+        sankey->AddLink("India", "Industry", 0.48f);
+        sankey->AddLink("India", "Buildings/Residential", 0.29f);
+        sankey->AddLink("India", "Power Generation", 0.19f);
+        sankey->AddLink("India", "Agriculture", 0.13f);
+        sankey->AddLink("India", "Non-energy/Other", 0.27f);
+
+        // Rest of Asia (10.5 mb/d) to sectors
+        sankey->AddLink("Rest of Asia", "Road Transport", 4.56f);
+        sankey->AddLink("Rest of Asia", "Aviation", 0.75f);
+        sankey->AddLink("Rest of Asia", "Maritime Shipping", 0.75f);
+        sankey->AddLink("Rest of Asia", "Rail & Buses", 0.25f);
+        sankey->AddLink("Rest of Asia", "Petrochemicals", 1.60f);
+        sankey->AddLink("Rest of Asia", "Industry", 0.90f);
+        sankey->AddLink("Rest of Asia", "Buildings/Residential", 0.55f);
+        sankey->AddLink("Rest of Asia", "Power Generation", 0.35f);
+        sankey->AddLink("Rest of Asia", "Agriculture", 0.25f);
+        sankey->AddLink("Rest of Asia", "Non-energy/Other", 0.54f);
+
+        // Africa (4.25 mb/d) to sectors
+        sankey->AddLink("Africa", "Road Transport", 1.85f);
+        sankey->AddLink("Africa", "Aviation", 0.30f);
+        sankey->AddLink("Africa", "Maritime Shipping", 0.30f);
+        sankey->AddLink("Africa", "Rail & Buses", 0.10f);
+        sankey->AddLink("Africa", "Petrochemicals", 0.65f);
+        sankey->AddLink("Africa", "Industry", 0.37f);
+        sankey->AddLink("Africa", "Buildings/Residential", 0.22f);
+        sankey->AddLink("Africa", "Power Generation", 0.14f);
+        sankey->AddLink("Africa", "Agriculture", 0.10f);
+        sankey->AddLink("Africa", "Non-energy/Other", 0.22f);
+
+        // Oceania (1.15 mb/d) to sectors
+        sankey->AddLink("Oceania", "Road Transport", 0.50f);
+        sankey->AddLink("Oceania", "Aviation", 0.08f);
+        sankey->AddLink("Oceania", "Maritime Shipping", 0.08f);
+        sankey->AddLink("Oceania", "Rail & Buses", 0.03f);
+        sankey->AddLink("Oceania", "Petrochemicals", 0.18f);
+        sankey->AddLink("Oceania", "Industry", 0.10f);
+        sankey->AddLink("Oceania", "Buildings/Residential", 0.06f);
+        sankey->AddLink("Oceania", "Power Generation", 0.04f);
+        sankey->AddLink("Oceania", "Agriculture", 0.03f);
+        sankey->AddLink("Oceania", "Non-energy/Other", 0.05f);
+}
+
 // ===== SANKEY DEMO IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSankeyExamples() {
         // Main container for all Sankey examples
         auto mainContainer = std::make_shared<UltraCanvasContainer>(
-                "SankeyExamples", 5000, 0, 0, 1000, 780
+                "SankeyExamples", 5000, 0, 0, 1030, 800
         );
-/*
-        auto financeContainer = std::make_shared<UltraCanvasContainer>(
-                "FinanceTab", 5200, 0, 0, 970, 640
-        );
-
-        // Description
-//        auto financeDesc = std::make_shared<UltraCanvasLabel>(
-//                "FinanceDesc", 5201, 10, 10, 950, 40
-//        );
-//        financeDesc->SetText(
-//                "Financial Flow Analysis: Track revenue streams from sources through various departments "
-//                "to final allocation including profits, dividends, and reinvestment."
-//        );
-//        financeDesc->SetFontSize(11);
-//        financeDesc->SetWordWrap(true);
-//        financeContainer->AddChild(financeDesc);
-
-        // Finance Sankey diagram
-        auto financeSankey = std::make_shared<UltraCanvasSankeyRenderer>(
-                "FinanceSankey", 5250, 10, 55, 950, 575
-        );
-
-        // Add financial flow data
-        GenerateFinanceSankeyData(financeSankey.get());
-
-//        financeSankey->onNodeClick = [statusLabel](const std::string& nodeId) {
-//            std::stringstream ss;
-//            ss << "Financial Entity: " << nodeId;
-//            statusLabel->SetText(ss.str());
-//        };
-        financeContainer->AddChild(financeSankey);
-        mainContainer->AddChild(financeContainer);
-        return mainContainer;
-*/
 
         // ===== PAGE HEADER =====
         auto title = std::make_shared<UltraCanvasLabel>(
@@ -154,10 +317,25 @@ namespace UltraCanvas {
 
         // ===== TABBED CONTAINER FOR DIFFERENT EXAMPLES =====
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
-                "SankeyTabs", 5004, 10, 85, 980, 685
+                "SankeyTabs", 5004, 10, 85, 1020, 710
         );
         tabbedContainer->SetTabPosition(TabPosition::Top);
         tabbedContainer->SetTabStyle(TabStyle::Modern);
+
+        auto oilContainer = std::make_shared<UltraCanvasContainer>(
+                "OilTab", 5200, 0, 0, 1020, 700
+        );
+
+        // Finance Sankey diagram
+        auto oilSankey = std::make_shared<UltraCanvasSankeyDiagram>(
+                "OilSankey", 5250, 5, 5, 1000, 650
+        );
+
+        // Add financial flow data
+        GenerateOilSales2024Sankey(oilSankey.get());
+
+        oilContainer->AddChild(oilSankey);
+
 
         // ========================================
         // TAB 1: ENERGY FLOW EXAMPLE
@@ -263,7 +441,7 @@ namespace UltraCanvas {
         energyContainer->AddChild(energyControls);
 
         // Create Energy Sankey diagram
-        auto energySankey = std::make_shared<UltraCanvasSankeyRenderer>(
+        auto energySankey = std::make_shared<UltraCanvasSankeyDiagram>(
                 "EnergySankey", 5150, 10, 110, 950, 520
         );
 
@@ -295,13 +473,6 @@ namespace UltraCanvas {
             curveValue->SetText(ss.str());
         };
 
-        exportSVG->onClick = [energySankey, statusLabel]() {
-            if (energySankey->SaveToSVG("energy_flow.svg")) {
-                statusLabel->SetText("Exported to energy_flow.svg");
-            } else {
-                statusLabel->SetText("Export failed!");
-            }
-        };
 
         loadCSV->onClick = [energySankey, statusLabel]() {
             // In real implementation, this would open a file dialog
@@ -317,20 +488,8 @@ namespace UltraCanvas {
                 "FinanceTab", 5200, 0, 0, 970, 640
         );
 
-        // Description
-//        auto financeDesc = std::make_shared<UltraCanvasLabel>(
-//                "FinanceDesc", 5201, 10, 10, 950, 40
-//        );
-//        financeDesc->SetText(
-//                "Financial Flow Analysis: Track revenue streams from sources through various departments "
-//                "to final allocation including profits, dividends, and reinvestment."
-//        );
-//        financeDesc->SetFontSize(11);
-//        financeDesc->SetWordWrap(true);
-//        financeContainer->AddChild(financeDesc);
-
         // Finance Sankey diagram
-        auto financeSankey = std::make_shared<UltraCanvasSankeyRenderer>(
+        auto financeSankey = std::make_shared<UltraCanvasSankeyDiagram>(
                 "FinanceSankey", 5250, 10, 55, 950, 575
         );
 
@@ -365,7 +524,7 @@ namespace UltraCanvas {
         webContainer->AddChild(webDesc);
 
         // Web traffic Sankey diagram
-        auto webSankey = std::make_shared<UltraCanvasSankeyRenderer>(
+        auto webSankey = std::make_shared<UltraCanvasSankeyDiagram>(
                 "WebSankey", 5350, 10, 55, 950, 575
         );
 
@@ -490,7 +649,7 @@ namespace UltraCanvas {
         customContainer->AddChild(customControls);
 
         // Custom Sankey diagram
-        auto customSankey = std::make_shared<UltraCanvasSankeyRenderer>(
+        auto customSankey = std::make_shared<UltraCanvasSankeyDiagram>(
                 "CustomSankey", 5450, 10, 130, 950, 500
         );
 
@@ -671,7 +830,7 @@ namespace UltraCanvas {
         perfContainer->AddChild(perfControls);
 
         // Performance Sankey diagram
-        auto perfSankey = std::make_shared<UltraCanvasSankeyRenderer>(
+        auto perfSankey = std::make_shared<UltraCanvasSankeyDiagram>(
                 "PerfSankey", 5550, 10, 110, 950, 520
         );
 
@@ -742,6 +901,7 @@ namespace UltraCanvas {
         // ========================================
         // ADD TABS TO CONTAINER
         // ========================================
+        tabbedContainer->AddTab("Worldwide Oil Flow", oilContainer);
         tabbedContainer->AddTab("Energy Flow", energyContainer);
         tabbedContainer->AddTab("Financial", financeContainer);
         tabbedContainer->AddTab("Web Traffic", webContainer);

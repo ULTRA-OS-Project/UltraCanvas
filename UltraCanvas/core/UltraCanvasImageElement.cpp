@@ -102,21 +102,21 @@ namespace UltraCanvas {
 
     bool UltraCanvasImageElement::OnEvent(const UCEvent &event) {
         if (IsDisabled() || !IsVisible()) return false;
+        if (!UltraCanvasUIElement::OnEvent(event)) {
+            switch (event.type) {
+                case UCEventType::MouseDown:
+                    HandleMouseDown(event);
+                    break;
 
-        switch (event.type) {
-            case UCEventType::MouseDown:
-                HandleMouseDown(event);
-                break;
+                case UCEventType::MouseMove:
+                    HandleMouseMove(event);
+                    break;
 
-            case UCEventType::MouseMove:
-                HandleMouseMove(event);
-                break;
-
-            case UCEventType::MouseUp:
-                HandleMouseUp(event);
-                break;
+                case UCEventType::MouseUp:
+                    HandleMouseUp(event);
+                    break;
+            }
         }
-        return false;
     }
 
 //    ImageFormat UltraCanvasImageElement::DetectFormatFromData(const std::vector<uint8_t> &data) {

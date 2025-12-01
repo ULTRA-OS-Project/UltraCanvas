@@ -67,18 +67,18 @@ namespace UltraCanvas {
     };
 
 // ===== SANKEY RENDERER CLASS =====
-    class UltraCanvasSankeyRenderer : public UltraCanvasUIElement {
+    class UltraCanvasSankeyDiagram : public UltraCanvasUIElement {
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasSankeyRenderer(const std::string& id, long uid, long x, long y, long w, long h);
+        UltraCanvasSankeyDiagram(const std::string& id, long uid, long x, long y, long w, long h);
         bool AcceptsFocus() const override { return true; }
 
         // ===== NODE MANAGEMENT =====
-        void AddNode(const std::string& id, const std::string& label = "");
+        void AddNode(const std::string& id, const std::string& label = "", const Color& tgtColor = Colors::Transparent);
         void RemoveNode(const std::string& id);
 
         // ===== LINK MANAGEMENT =====
-        void AddLink(const std::string& source, const std::string& target, float value);
+        void AddLink(const std::string& source, const std::string& target, float value, const Color& tgtColor = Colors::Transparent);
         void RemoveLink(const std::string& source, const std::string& target);
         void ClearAll();
 
@@ -177,9 +177,9 @@ namespace UltraCanvas {
     };
 
 //// ===== FACTORY FUNCTIONS =====
-    inline std::shared_ptr<UltraCanvasSankeyRenderer> CreateSankeyRenderer(
+    inline std::shared_ptr<UltraCanvasSankeyDiagram> CreateSankeyRenderer(
             const std::string& id, long uid, long x, long y, long w, long h
     ) {
-        return std::make_shared<UltraCanvasSankeyRenderer>(id, uid, x, y, w, h);
+        return std::make_shared<UltraCanvasSankeyDiagram>(id, uid, x, y, w, h);
     }
 } // namespace UltraCanvas

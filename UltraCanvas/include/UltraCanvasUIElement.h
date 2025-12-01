@@ -322,6 +322,7 @@ namespace UltraCanvas {
             if (borderBottom) {
                 borderBottom->color = color;
             }
+            RequestRedraw();
         }
 
         // ===== INDIVIDUAL BORDER SETTERS =====
@@ -549,9 +550,7 @@ namespace UltraCanvas {
 
         virtual bool OnEvent(const UCEvent& event) {
             if (eventCallback) {
-                if (eventCallback(event)) {
-                    return true;
-                }
+                return eventCallback(event);
             }
             return false;
         }

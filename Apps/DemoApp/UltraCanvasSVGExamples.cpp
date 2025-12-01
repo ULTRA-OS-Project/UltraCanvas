@@ -20,13 +20,12 @@ namespace UltraCanvas {
 // ===== SVG DEMO IMPLEMENTATION =====
     class SVGDemoHandler {
     private:
-        std::shared_ptr<UltraCanvasSVGElement> svgElement;
         std::shared_ptr<UltraCanvasWindow> fullscreenWindow;
         std::string svgFilePath;
 
     public:
-        SVGDemoHandler(std::shared_ptr<UltraCanvasSVGElement> element, const std::string& filePath)
-                : svgElement(element), svgFilePath(filePath) {}
+        SVGDemoHandler(const std::string& filePath)
+                : svgFilePath(filePath) {}
 
         void OnSVGClick() {
             if (!fullscreenWindow) {
@@ -54,7 +53,7 @@ namespace UltraCanvas {
             fullscreenWindow->SetBackgroundColor(Color(32, 32, 32, 255));
 
             // Create fullscreen SVG element
-            auto fullscreenSVG = std::make_shared<UltraCanvasSVGElement>(
+            auto fullscreenSVG = std::make_shared<UltraCanvasImageElement>(
                     "FullscreenSVG",
                     10001,
                     0, 0,
@@ -128,7 +127,7 @@ namespace UltraCanvas {
 
 
         // Create SVG Element (200x200 inside the container with padding)
-        auto svgElement = std::make_shared<UltraCanvasSVGElement>(
+        auto svgElement = std::make_shared<UltraCanvasImageElement>(
                 "DemoSVG",
                 904,
                 20, 20,  // 20px padding inside container
@@ -173,12 +172,12 @@ namespace UltraCanvas {
                                                                                                                                              </svg>
             )";
 
-            svgElement->LoadFromString(sampleSVG);
+            //svgElement->LoadFromString(sampleSVG);
             svgFilePath = ""; // Clear file path since we're using inline SVG
         }
 
         // Create demo handler for click interaction
-        auto demoHandler = std::make_shared<SVGDemoHandler>(svgElement, svgFilePath);
+        auto demoHandler = std::make_shared<SVGDemoHandler>(svgFilePath);
 
         // Set click handler on the SVG element
         svgElement->SetEventCallback([demoHandler, svgContainer](const UCEvent& event) {
@@ -204,7 +203,7 @@ namespace UltraCanvas {
         svgContainer2->SetBorders(2, Color(180, 180, 180, 255));
 
         // Create SVG Element (200x200 inside the container with padding)
-        auto svgElement2 = std::make_shared<UltraCanvasSVGElement>(
+        auto svgElement2 = std::make_shared<UltraCanvasImageElement>(
                 "DemoSVG2",
                 904,
                 20, 20,  // 20px padding inside container
@@ -214,7 +213,7 @@ namespace UltraCanvas {
         // Try to load from file, fallback to inline SVG if file not found
         svgElement2->LoadFromFile("assets/robot.svg");
         // Create demo handler for click interaction
-        auto demoHandler2 = std::make_shared<SVGDemoHandler>(svgElement2, "assets/robot.svg");
+        auto demoHandler2 = std::make_shared<SVGDemoHandler>("assets/robot.svg");
 
         // Set click handler on the SVG element
         svgElement2->SetEventCallback([demoHandler2, svgContainer2](const UCEvent& event) {
@@ -240,17 +239,17 @@ namespace UltraCanvas {
         svgContainer3->SetBorders(2, Color(180, 180, 180, 255));
 
         // Create SVG Element (200x200 inside the container with padding)
-        auto svgElement3 = std::make_shared<UltraCanvasSVGElement>(
+        auto svgElement3 = std::make_shared<UltraCanvasImageElement>(
                 "DemoSVG2",
                 904,
-                20, 20,  // 20px padding inside container
+                18, 18,  // 20px padding inside container
                 200, 200
         );
 
         // Try to load from file, fallback to inline SVG if file not found
         svgElement3->LoadFromFile("assets/astronaut.svg");
         // Create demo handler for click interaction
-        auto demoHandler3 = std::make_shared<SVGDemoHandler>(svgElement3, "assets/astronaut.svg");
+        auto demoHandler3 = std::make_shared<SVGDemoHandler>("assets/astronaut.svg");
 
         // Set click handler on the SVG element
         svgElement3->SetEventCallback([demoHandler3, svgContainer3](const UCEvent& event) {
@@ -276,7 +275,7 @@ namespace UltraCanvas {
         svgContainer4->SetBorders(2, Color(180, 180, 180, 255));
 
         // Create SVG Element (200x200 inside the container with padding)
-        auto svgElement4 = std::make_shared<UltraCanvasSVGElement>(
+        auto svgElement4 = std::make_shared<UltraCanvasImageElement>(
                 "DemoSVG2",
                 904,
                 20, 20,  // 20px padding inside container
@@ -286,7 +285,7 @@ namespace UltraCanvas {
         // Try to load from file, fallback to inline SVG if file not found
         svgElement4->LoadFromFile("assets/photo-camera.svg");
         // Create demo handler for click interaction
-        auto demoHandler4 = std::make_shared<SVGDemoHandler>(svgElement4, "assets/photo-camera.svg");
+        auto demoHandler4 = std::make_shared<SVGDemoHandler>("assets/photo-camera.svg");
 
         // Set click handler on the SVG element
         svgElement4->SetEventCallback([demoHandler4, svgContainer4](const UCEvent& event) {

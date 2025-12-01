@@ -7,8 +7,8 @@
 #include "UltraCanvasTooltipManager.h"
 
 namespace UltraCanvas {
-    UltraCanvasSankeyRenderer::UltraCanvasSankeyRenderer(const std::string &id, long uid, long x, long y,
-                                                                      long w, long h)
+    UltraCanvasSankeyDiagram::UltraCanvasSankeyDiagram(const std::string &id, long uid, long x, long y,
+                                                       long w, long h)
             : UltraCanvasUIElement(id, uid, x, y, w, h) {
         nodeWidth = 15.0f;  // Slightly thinner to give more space for labels
         nodePadding = 8.0f;
@@ -22,18 +22,22 @@ namespace UltraCanvas {
         ApplyTheme(theme);
     }
 
-    void UltraCanvasSankeyRenderer::AddNode(const std::string &id, const std::string &label) {
+    void UltraCanvasSankeyDiagram::AddNode(const std::string &id, const std::string &label, const Color& color) {
         if (nodes.find(id) == nodes.end()) {
             SankeyNode node;
             node.id = id;
             node.label = label.empty() ? id : label;
-            node.color = GetNodeColor(nodes.size());
+            if (color == Colors::Transparent) {
+                node.color = GetNodeColor(nodes.size());
+            } else {
+                node.color = color;
+            }
             nodes[id] = node;
             needsLayout = true;
         }
     }
 
-    void UltraCanvasSankeyRenderer::RemoveNode(const std::string &id) {
+    void UltraCanvasSankeyDiagram::RemoveNode(const std::string &id) {
         auto it = nodes.find(id);
         if (it != nodes.end()) {
             // Remove associated links
@@ -50,7 +54,7 @@ namespace UltraCanvas {
     }
 
     void
-    UltraCanvasSankeyRenderer::AddLink(const std::string &source, const std::string &target, float value) {
+    UltraCanvasSankeyDiagram::AddLink(const std::string &source, const std::string &target, float value, const Color& tgtColor) {
         // Auto-create nodes if they don't exist
         if (nodes.find(source) == nodes.end()) {
             AddNode(source);
@@ -69,11 +73,14 @@ namespace UltraCanvas {
         // Update node connections
         nodes[source].sourceLinks.push_back(target);
         nodes[target].targetLinks.push_back(source);
+        if (tgtColor != Colors::Transparent) {
+            nodes[target].color = tgtColor;
+        }
 
         needsLayout = true;
     }
 
-    void UltraCanvasSankeyRenderer::RemoveLink(const std::string &source, const std::string &target) {
+    void UltraCanvasSankeyDiagram::RemoveLink(const std::string &source, const std::string &target) {
         links.erase(
                 std::remove_if(links.begin(), links.end(),
                                [&source, &target](const SankeyLink &link) {
@@ -84,14 +91,14 @@ namespace UltraCanvas {
         needsLayout = true;
     }
 
-    void UltraCanvasSankeyRenderer::ClearAll() {
+    void UltraCanvasSankeyDiagram::ClearAll() {
         nodes.clear();
         links.clear();
         needsLayout = true;
         RequestRedraw();
     }
 
-    bool UltraCanvasSankeyRenderer::LoadFromCSV(const std::string &filePath) {
+    bool UltraCanvasSankeyDiagram::LoadFromCSV(const std::string &filePath) {
         std::ifstream file(filePath);
         if (!file.is_open()) return false;
 
@@ -126,7 +133,7 @@ namespace UltraCanvas {
         return true;
     }
 
-    bool UltraCanvasSankeyRenderer::SaveToSVG(const std::string &filePath) {
+    bool UltraCanvasSankeyDiagram::SaveToSVG(const std::string &filePath) {
         std::ofstream file(filePath);
         if (!file.is_open()) return false;
 
@@ -209,7 +216,7 @@ namespace UltraCanvas {
         return true;
     }
 
-    void UltraCanvasSankeyRenderer::PerformLayout() {
+    void UltraCanvasSankeyDiagram::PerformLayout() {
         if (nodes.empty() || links.empty()) return;
 
         ComputeNodeDepths();
@@ -227,7 +234,7 @@ namespace UltraCanvas {
         needsLayout = false;
     }
 
-    void UltraCanvasSankeyRenderer::Render(IRenderContext* ctx) {
+    void UltraCanvasSankeyDiagram::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
 
         auto bounds = GetBounds();
@@ -253,7 +260,7 @@ namespace UltraCanvas {
         }
     }
 
-    bool UltraCanvasSankeyRenderer::OnEvent(const UCEvent &event) {
+    bool UltraCanvasSankeyDiagram::OnEvent(const UCEvent &event) {
         switch (event.type) {
             case UCEventType::MouseMove:
                 return HandleMouseMove(event);
@@ -277,64 +284,64 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasSankeyRenderer::SetAlignment(SankeyAlignment align) {
+    void UltraCanvasSankeyDiagram::SetAlignment(SankeyAlignment align) {
         alignment = align;
         needsLayout = true;
         RequestRedraw();
     }
 
-    void UltraCanvasSankeyRenderer::SetTheme(SankeyTheme t) {
+    void UltraCanvasSankeyDiagram::SetTheme(SankeyTheme t) {
         theme = t;
         ApplyTheme(theme);
         RequestRedraw();
     }
 
-    void UltraCanvasSankeyRenderer::SetNodeWidth(float width) {
+    void UltraCanvasSankeyDiagram::SetNodeWidth(float width) {
         nodeWidth = std::max(1.0f, width);
         needsLayout = true;
         RequestRedraw();
     }
 
-    void UltraCanvasSankeyRenderer::SetNodePadding(float padding) {
+    void UltraCanvasSankeyDiagram::SetNodePadding(float padding) {
         nodePadding = std::max(0.0f, padding);
         needsLayout = true;
         RequestRedraw();
     }
 
-    void UltraCanvasSankeyRenderer::SetLinkCurvature(float curvature) {
+    void UltraCanvasSankeyDiagram::SetLinkCurvature(float curvature) {
         linkCurvature = std::clamp(curvature, 0.0f, 1.0f);
         RequestRedraw();
     }
 
-    void UltraCanvasSankeyRenderer::SetIterations(int iter) {
+    void UltraCanvasSankeyDiagram::SetIterations(int iter) {
         iterations = std::max(1, iter);
         needsLayout = true;
         RequestRedraw();
     }
 
-    void UltraCanvasSankeyRenderer::SetFontSize(float size) {
+    void UltraCanvasSankeyDiagram::SetFontSize(float size) {
         style.fontSize = size;
         needsLayout = true;  // Need to recalculate padding
         RequestRedraw();
     }
 
-    void UltraCanvasSankeyRenderer::SetFontFamily(const std::string &family) {
+    void UltraCanvasSankeyDiagram::SetFontFamily(const std::string &family) {
         style.fontFamily = family;
         needsLayout = true;  // Need to recalculate padding
         RequestRedraw();
     }
 
-    void UltraCanvasSankeyRenderer::SetMaxLabelWidth(float width) {
+    void UltraCanvasSankeyDiagram::SetMaxLabelWidth(float width) {
         maxLabelWidth = width;
         needsLayout = true;
         RequestRedraw();
     }
 
-    float UltraCanvasSankeyRenderer::GetMaxLabelWidth() const {
+    float UltraCanvasSankeyDiagram::GetMaxLabelWidth() const {
         return maxLabelWidth;
     }
 
-    void UltraCanvasSankeyRenderer::ComputeNodeDepths() {
+    void UltraCanvasSankeyDiagram::ComputeNodeDepths() {
         // Reset depths
         for (auto &[id, node]: nodes) {
             node.depth = -1;
@@ -363,7 +370,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasSankeyRenderer::AssignDepth(const std::string &nodeId, int depth) {
+    void UltraCanvasSankeyDiagram::AssignDepth(const std::string &nodeId, int depth) {
         auto it = nodes.find(nodeId);
         if (it == nodes.end()) return;
 
@@ -376,7 +383,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasSankeyRenderer::ComputeNodeValues() {
+    void UltraCanvasSankeyDiagram::ComputeNodeValues() {
         // Calculate node values based on incoming and outgoing flows
         for (auto& [id, node] : nodes) {
             float incomingValue = 0;
@@ -399,7 +406,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasSankeyRenderer::ComputeNodeBreadths() {
+    void UltraCanvasSankeyDiagram::ComputeNodeBreadths() {
         auto bounds = GetBounds();
 
         // Find max depth
@@ -512,7 +519,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasSankeyRenderer::ComputeLinkBreadths() {
+    void UltraCanvasSankeyDiagram::ComputeLinkBreadths() {
         // Group links by source and target nodes
         std::map<std::string, std::vector<SankeyLink*>> linksBySource;
         std::map<std::string, std::vector<SankeyLink*>> linksByTarget;
@@ -595,7 +602,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasSankeyRenderer::RelaxLeftToRight() {
+    void UltraCanvasSankeyDiagram::RelaxLeftToRight() {
         // Group nodes by depth
         std::map<int, std::vector<std::string>> nodesByDepth;
         for (const auto& [id, node] : nodes) {
@@ -634,7 +641,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasSankeyRenderer::RelaxRightToLeft() {
+    void UltraCanvasSankeyDiagram::RelaxRightToLeft() {
         // Group nodes by depth
         std::map<int, std::vector<std::string>> nodesByDepth;
         for (const auto& [id, node] : nodes) {
@@ -680,7 +687,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasSankeyRenderer::ResolveCollisions(const std::vector<std::string> &nodeIds) {
+    void UltraCanvasSankeyDiagram::ResolveCollisions(const std::vector<std::string> &nodeIds) {
         if (nodeIds.size() <= 1) return;
 
         // Sort nodes by Y position
@@ -714,7 +721,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasSankeyRenderer::DrawNode(IRenderContext *ctx, const SankeyNode &node) {
+    void UltraCanvasSankeyDiagram::DrawNode(IRenderContext *ctx, const SankeyNode &node) {
         // Draw node rectangle
         ctx->SetFillPaint(node.color);
         ctx->FillRectangle(node.x, node.y, nodeWidth, node.height);
@@ -768,7 +775,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasSankeyRenderer::DrawLink(IRenderContext *ctx, const SankeyLink &link) {
+    void UltraCanvasSankeyDiagram::DrawLink(IRenderContext *ctx, const SankeyLink &link) {
         auto sourceIt = nodes.find(link.source);
         auto targetIt = nodes.find(link.target);
 
@@ -784,8 +791,8 @@ namespace UltraCanvas {
                        link.color.WithAlpha(static_cast<uint8_t>(link.opacity * 255)));
     }
 
-    void UltraCanvasSankeyRenderer::DrawCurvedLink(IRenderContext *ctx, float x0, float y0, float x1, float y1,
-                                                   float sourceWidth, float targetWidth, const Color &color) {
+    void UltraCanvasSankeyDiagram::DrawCurvedLink(IRenderContext *ctx, float x0, float y0, float x1, float y1,
+                                                  float sourceWidth, float targetWidth, const Color &color) {
         ctx->SetFillPaint(color);
         ctx->ClearPath();
 
@@ -804,7 +811,7 @@ namespace UltraCanvas {
         ctx->Fill();
     }
 
-    bool UltraCanvasSankeyRenderer::HandleMouseMove(const UCEvent &event) {
+    bool UltraCanvasSankeyDiagram::HandleMouseMove(const UCEvent &event) {
         Point2D mousePos(event.x, event.y);
 
         // Check for dragging
@@ -830,7 +837,9 @@ namespace UltraCanvas {
                 newHoveredNodeId = id;
 
                 if (enableTooltips) {
-                    std::string tooltipText = node.label + "\nValue: " + std::to_string(static_cast<int>(node.value));
+                    char buf[1000];
+                    snprintf(buf, sizeof(buf), "%s\nValue: %.2f", node.label.c_str(), node.value);
+                    std::string tooltipText = buf;
                     auto mouseGlobalPos = ConvertContainerToWindowCoordinates(mousePos);
                     // Show tooltip using tooltip manager
 //                    UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, {event.windowX, event.windowY});
@@ -853,7 +862,7 @@ namespace UltraCanvas {
         return !hoveredNodeId.empty();
     }
 
-    bool UltraCanvasSankeyRenderer::HandleMouseDown(const UCEvent &event) {
+    bool UltraCanvasSankeyDiagram::HandleMouseDown(const UCEvent &event) {
         Point2D mousePos(event.x, event.y);
 
         // Check if clicking on a node
@@ -877,7 +886,7 @@ namespace UltraCanvas {
         return false;
     }
 
-    bool UltraCanvasSankeyRenderer::HandleMouseUp(const UCEvent &event) {
+    bool UltraCanvasSankeyDiagram::HandleMouseUp(const UCEvent &event) {
         if (!draggedNodeId.empty()) {
             draggedNodeId.clear();
             needsLayout = true; // Trigger full layout after drag
@@ -887,7 +896,7 @@ namespace UltraCanvas {
         return false;
     }
 
-    Color UltraCanvasSankeyRenderer::GetNodeColor(size_t index) {
+    Color UltraCanvasSankeyDiagram::GetNodeColor(size_t index) {
         static const std::vector<Color> palette = {
                 Color(141, 211, 199),  // Teal
                 Color(255, 255, 179),  // Light Yellow
@@ -904,7 +913,7 @@ namespace UltraCanvas {
         return palette[index % palette.size()];
     }
 
-    void UltraCanvasSankeyRenderer::ApplyTheme(SankeyTheme t) {
+    void UltraCanvasSankeyDiagram::ApplyTheme(SankeyTheme t) {
         switch (t) {
             case SankeyTheme::Energy:
                 style.backgroundColor = Color(240, 248, 255);

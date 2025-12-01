@@ -1451,7 +1451,7 @@ namespace UltraCanvas {
             if (srcRect.x < 0 || srcRect.y < 0 ||
                 srcRect.x + srcRect.width > pixmap.GetWidth() ||
                 srcRect.y + srcRect.height > pixmap.GetHeight()) {
-                std::cerr << "RenderContextCairo::DrawImage: Source rectangle out of bounds" << std::endl;
+                std::cerr << "RenderContextCairo::DrawPartOfPixmap: Source rectangle out of bounds" << std::endl;
                 return;
             }
 
