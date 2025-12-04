@@ -239,6 +239,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasUIElement::SetVisible(bool vis) {
+        if (visible == vis) {
+            return;
+        }
         visible = vis;
         if (parentContainer) {
             parentContainer->InvalidateLayout();

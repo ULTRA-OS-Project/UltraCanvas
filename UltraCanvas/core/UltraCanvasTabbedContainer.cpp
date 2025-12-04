@@ -521,8 +521,10 @@ namespace UltraCanvas {
         }
 
         ctx->ClipRect(contentBounds);
-        if (scrollState.horizontalPosition != 0 || scrollState.verticalPosition != 0) {
-            ctx->Translate(- scrollState.horizontalPosition, - scrollState.verticalPosition);
+        auto hScroll = GetHorizontalScrollPosition();
+        auto vScroll = GetVerticalScrollPosition();
+        if (hScroll != 0 || vScroll != 0) {
+            ctx->Translate(- hScroll, - vScroll);
         }
 
         if (activeTabIndex >= 0 && activeTabIndex < (int)tabs.size()) {

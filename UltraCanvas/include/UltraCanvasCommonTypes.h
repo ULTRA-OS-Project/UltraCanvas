@@ -133,6 +133,14 @@ struct Rect2D {
 
         return Rect2D(left, top, right - left, bottom - top);
     }
+
+    bool operator==(const Rect2D& other) const {
+        return x == other.x && y == other.y && width == other.width && height == other.height;
+    }
+
+    bool operator!=(const Rect2D& other) const {
+        return !(*this == other);
+    }
 };
 
 typedef struct Rect2D<float> Rect2Df;

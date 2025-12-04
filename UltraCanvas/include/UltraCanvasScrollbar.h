@@ -1,9 +1,8 @@
 // include/UltraCanvasScrollbar.h
-// Platform-independent scrollbar component for UltraCanvas windows
-// Version: 1.0.0
-// Last Modified: 2025-08-15
+// Standalone scrollbar UI control with full interaction support
+// Version: 2.0.0
+// Last Modified: 2025-11-24
 // Author: UltraCanvas Framework
-
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -12,6 +11,7 @@
 #include "UltraCanvasRenderContext.h"
 #include <functional>
 #include <algorithm>
+#include <cmath>
 
 namespace UltraCanvas {
 
@@ -21,496 +21,327 @@ namespace UltraCanvas {
         Horizontal
     };
 
-// ===== SCROLLBAR APPEARANCE SETTINGS =====
-    struct ScrollbarAppearance {
+// ===== SCROLLBAR STYLE CONFIGURATION =====
+    struct ScrollbarStyle {
         // Dimensions
-        float trackWidth = 16.0f;
-        float thumbMinSize = 20.0f;
-        float arrowButtonSize = 16.0f;
+        int trackSize = 16;
+        int thumbMinSize = 20;
+        int arrowButtonSize = 0;  // 0 = no arrow buttons
 
-        // Colors
+        // Track colors
         Color trackColor = Color(240, 240, 240, 255);
+        Color trackHoverColor = Color(235, 235, 235, 255);
+        Color trackBorderColor = Color(220, 220, 220, 255);
+
+        // Thumb colors
         Color thumbColor = Color(192, 192, 192, 255);
         Color thumbHoverColor = Color(160, 160, 160, 255);
         Color thumbPressedColor = Color(128, 128, 128, 255);
+        Color thumbBorderColor = Color(170, 170, 170, 255);
+
+        // Arrow button colors (if enabled)
         Color arrowColor = Color(96, 96, 96, 255);
         Color arrowHoverColor = Color(64, 64, 64, 255);
         Color arrowPressedColor = Color(32, 32, 32, 255);
-        Color borderColor = Color(200, 200, 200, 255);
+        Color arrowBackgroundColor = Color(240, 240, 240, 255);
+        Color arrowBackgroundHoverColor = Color(220, 220, 220, 255);
+
+        // Appearance options
+        int thumbCornerRadius = 0;
+        int trackCornerRadius = 0;
+        bool showTrackBorder = false;
+        bool showThumbBorder = false;
 
         // Behavior
-        bool showArrowButtons = true;
         bool autoHide = false;
-        float scrollSpeed = 20.0f;
-        bool smoothScrolling = true;
+        int scrollSpeed = 20;       // Pixels per scroll step
+        int pageScrollRatio = 90;   // Percentage of viewport for page scroll
+        bool smoothScrolling = false;
+        int smoothScrollDuration = 150;  // milliseconds
 
-        static ScrollbarAppearance Default();
-        static ScrollbarAppearance Modern();
-        static ScrollbarAppearance Minimal();
-    };
-
-// ===== SCROLLBAR STATE =====
-    struct ScrollbarState {
-        float position = 0.0f;           // Current scroll position (0.0 to maxPosition)
-        float maxPosition = 0.0f;        // Maximum scroll position
-        float viewportSize = 100.0f;     // Size of visible area
-        float contentSize = 100.0f;      // Total size of scrollable content
-
-        // Interactive state
-        bool isDragging = false;
-        bool isHovered = false;
-        bool thumbHovered = false;
-        bool thumbPressed = false;
-        bool upArrowHovered = false;
-        bool upArrowPressed = false;
-        bool downArrowHovered = false;
-        bool downArrowPressed = false;
-
-        // Drag tracking
-        float dragStartPosition = 0.0f;
-        float dragStartScrollPosition = 0.0f;
-
-        void UpdateMaxPosition() {
-            maxPosition = std::max(0.0f, contentSize - viewportSize);
-            position = std::min(position, maxPosition);
+        // ===== PRESET STYLES =====
+        static ScrollbarStyle Default() {
+            return ScrollbarStyle();
         }
 
+        static ScrollbarStyle Modern() {
+            ScrollbarStyle style;
+            style.trackSize = 12;
+            style.thumbMinSize = 30;
+            style.arrowButtonSize = 0;
+            style.trackColor = Color(245, 245, 245, 255);
+            style.thumbColor = Color(180, 180, 180, 255);
+            style.thumbHoverColor = Color(150, 150, 150, 255);
+            style.thumbPressedColor = Color(120, 120, 120, 255);
+            style.thumbCornerRadius = 6;
+            style.trackCornerRadius = 6;
+            style.autoHide = true;
+            return style;
+        }
+
+        static ScrollbarStyle Minimal() {
+            ScrollbarStyle style;
+            style.trackSize = 8;
+            style.thumbMinSize = 20;
+            style.arrowButtonSize = 0;
+            style.trackColor = Color(250, 250, 250, 200);
+            style.thumbColor = Color(160, 160, 160, 200);
+            style.thumbHoverColor = Color(130, 130, 130, 220);
+            style.thumbPressedColor = Color(100, 100, 100, 255);
+            style.thumbCornerRadius = 4;
+            style.trackCornerRadius = 4;
+            style.autoHide = true;
+            return style;
+        }
+
+        static ScrollbarStyle Classic() {
+            ScrollbarStyle style;
+            style.trackSize = 16;
+            style.thumbMinSize = 20;
+            style.arrowButtonSize = 17;
+            style.showTrackBorder = true;
+            style.showThumbBorder = true;
+            return style;
+        }
+
+        static ScrollbarStyle DropDown() {
+            ScrollbarStyle style;
+            style.trackSize = 12;
+            style.thumbMinSize = 20;
+            style.arrowButtonSize = 0;
+            style.trackColor = Color(250, 250, 250, 200);
+            style.thumbColor = Color(160, 160, 160, 200);
+            style.thumbHoverColor = Color(130, 130, 130, 220);
+            style.thumbPressedColor = Color(100, 100, 100, 255);
+            style.thumbCornerRadius = 4;
+            style.trackCornerRadius = 4;
+            style.autoHide = false;
+            return style;
+        }
+    };
+
+// ===== SCROLLBAR INTERACTION STATE =====
+    struct ScrollbarInteractionState {
+        // Hover states
+        bool trackHovered = false;
+        bool thumbHovered = false;
+        bool upArrowHovered = false;
+        bool downArrowHovered = false;
+
+        // Press states
+        bool thumbPressed = false;
+        bool upArrowPressed = false;
+        bool downArrowPressed = false;
+        bool trackPressed = false;
+
+        // Drag tracking
+        bool isDragging = false;
+        int dragStartMousePos = 0;
+        int dragStartScrollPos = 0;
+
+        // Animation state (for smooth scrolling)
+        bool isAnimating = false;
+        int animationTargetPos = 0;
+        int animationStartPos = 0;
+        float animationProgress = 0.0f;
+
+        void Reset() {
+            trackHovered = thumbHovered = upArrowHovered = downArrowHovered = false;
+            thumbPressed = upArrowPressed = downArrowPressed = trackPressed = false;
+            isDragging = false;
+        }
+    };
+
+// ===== SCROLLBAR SCROLL STATE =====
+    struct ScrollbarScrollState {
+        int position = 0;           // Current scroll position (0 to maxPosition)
+        int maxPosition = 0;        // Maximum scroll position
+        int viewportSize = 100;     // Size of visible area
+        int contentSize = 100;      // Total size of scrollable content
+
+        void UpdateMaxPosition();
+
         float GetThumbRatio() const {
-            if (contentSize <= 0.0f) return 1.0f;
-            return std::min(1.0f, viewportSize / contentSize);
+            if (contentSize <= 0) return 1.0f;
+            return std::min(1.0f, static_cast<float>(viewportSize) / static_cast<float>(contentSize));
         }
 
         float GetScrollRatio() const {
-            if (maxPosition <= 0.0f) return 0.0f;
-            return position / maxPosition;
+            if (maxPosition <= 0) return 0.0f;
+            return static_cast<float>(position) / static_cast<float>(maxPosition);
+        }
+
+        bool IsScrollable() const {
+            return maxPosition > 0;
         }
     };
 
 // ===== MAIN SCROLLBAR CLASS =====
     class UltraCanvasScrollbar : public UltraCanvasUIElement {
-    private:
-        // ===== SCROLLBAR CONFIGURATION =====
-        ScrollbarOrientation orientation;
-        ScrollbarAppearance appearance;
-        ScrollbarState state;
+    public:
+        // ===== CALLBACK =====
+        std::function<void(int)> onScrollChange;
 
-        // ===== CACHED RECTANGLES =====
-        Rect2D trackRect;
-        Rect2D thumbRect;
-        Rect2D upArrowRect;
-        Rect2D downArrowRect;
+    private:
+        // Configuration
+        ScrollbarOrientation orientation;
+        ScrollbarStyle style;
+
+        // State
+        ScrollbarScrollState scrollState;
+        ScrollbarInteractionState interactionState;
+
+        // Cached rectangles
+        Rect2Di trackRect;
+        Rect2Di thumbRect;
+        Rect2Di upArrowRect;
+        Rect2Di downArrowRect;
         bool layoutDirty = true;
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasScrollbar(const std::string& id, long uid, long x, long y, long w, long h,
-                             ScrollbarOrientation orient = ScrollbarOrientation::Vertical)
-                : UltraCanvasUIElement(id, uid, x, y, w, h),
-                  orientation(orient) {
+        UltraCanvasScrollbar(const std::string& id, long uid, int x, int y, int w, int h,
+                             ScrollbarOrientation orient = ScrollbarOrientation::Vertical);
 
-            UpdateLayout();
-        }
+        virtual ~UltraCanvasScrollbar() = default;
 
-        // ===== SCROLLBAR CONFIGURATION =====
-        void SetOrientation(ScrollbarOrientation orient) {
-            orientation = orient;
-            layoutDirty = true;
-            UpdateLayout();
-        }
+        // ===== ORIENTATION =====
+        void SetOrientation(ScrollbarOrientation orient);
 
         ScrollbarOrientation GetOrientation() const { return orientation; }
 
-        void SetAppearance(const ScrollbarAppearance& newAppearance) {
-            appearance = newAppearance;
-            layoutDirty = true;
-        }
+        bool IsVertical() const { return orientation == ScrollbarOrientation::Vertical; }
+        bool IsHorizontal() const { return orientation == ScrollbarOrientation::Horizontal; }
 
-        const ScrollbarAppearance& GetAppearance() const { return appearance; }
+        // ===== STYLE =====
+        void SetStyle(const ScrollbarStyle& newStyle);
 
-        // ===== SCROLL CONTROL =====
-        void SetScrollParameters(float viewportSize, float contentSize) {
-            state.viewportSize = viewportSize;
-            state.contentSize = contentSize;
-            state.UpdateMaxPosition();
-            layoutDirty = true;
-        }
+        const ScrollbarStyle& GetStyle() const { return style; }
+        ScrollbarStyle& GetStyleRef() { return style; }
 
-        void SetScrollPosition(float position) {
-            state.position = std::clamp(position, 0.0f, state.maxPosition);
-            if (onScrollChanged) {
-                onScrollChanged(state.position);
-            }
-        }
+        // ===== SCROLL PARAMETERS =====
+        void SetScrollDimensions(int viewportSize, int contentSize);
+        void SetViewportSize(int size);
+        void SetContentSize(int size);
 
-        float GetScrollPosition() const { return state.position; }
-        float GetMaxScrollPosition() const { return state.maxPosition; }
-        bool IsScrollable() const { return state.maxPosition > 0.0f; }
+        int GetViewportSize() const { return scrollState.viewportSize; }
+        int GetContentSize() const { return scrollState.contentSize; }
+
+        // ===== SCROLL POSITION =====
+        bool SetScrollPosition(int position);
+
+        int GetScrollPosition() const { return scrollState.position; }
+        // Scroll percentage (0.0 to 1.0)
+        int GetScrollPositionPercent() const { return scrollState.maxPosition > 0 ?
+                                                                         (float)scrollState.position / (float)scrollState.maxPosition : 0; }
+        int GetMaxScrollPosition() const { return scrollState.maxPosition; }
 
         // ===== SCROLL OPERATIONS =====
-        void ScrollBy(float delta) {
-            SetScrollPosition(state.position + delta);
+        bool ScrollBy(int delta) {
+            return SetScrollPosition(scrollState.position + delta);
         }
 
-        void ScrollToTop() {
-            SetScrollPosition(0.0f);
+        bool ScrollToTop() {
+            return SetScrollPosition(0);
         }
 
-        void ScrollToBottom() {
-            SetScrollPosition(state.maxPosition);
+        bool ScrollToBottom() {
+            return SetScrollPosition(scrollState.maxPosition);
         }
 
-        void ScrollPageUp() {
-            ScrollBy(-state.viewportSize * 0.9f);
+        bool ScrollToStart() {
+            return SetScrollPosition(0);
         }
 
-        void ScrollPageDown() {
-            ScrollBy(state.viewportSize * 0.9f);
+        bool ScrollToEnd() {
+            return SetScrollPosition(scrollState.maxPosition);
         }
 
-        void ScrollLineUp() {
-            ScrollBy(-appearance.scrollSpeed);
+        bool ScrollLineUp() {
+            return ScrollBy(-style.scrollSpeed);
         }
 
-        void ScrollLineDown() {
-            ScrollBy(appearance.scrollSpeed);
+        bool ScrollLineDown() {
+            return ScrollBy(style.scrollSpeed);
         }
 
-        // ===== VISIBILITY =====
+        bool ScrollPageUp() {
+            int pageAmount = (scrollState.viewportSize * style.pageScrollRatio) / 100;
+            return ScrollBy(-std::max(1, pageAmount));
+        }
+
+        bool ScrollPageDown() {
+            int pageAmount = (scrollState.viewportSize * style.pageScrollRatio) / 100;
+            return ScrollBy(std::max(1, pageAmount));
+        }
+
+        bool ScrollByWheel(int delta);
+
+        // ===== SCROLLABILITY =====
+        bool IsScrollable() const {
+            return scrollState.IsScrollable();
+        }
+
         bool ShouldBeVisible() const {
-            if (appearance.autoHide) {
-                return IsScrollable();
+            if (style.autoHide) {
+                return IsScrollable() && IsVisible();
             }
             return IsVisible();
         }
 
+        // ===== STATE ACCESS =====
+        const ScrollbarScrollState& GetScrollState() const { return scrollState; }
+        const ScrollbarInteractionState& GetInteractionState() const { return interactionState; }
+        bool IsDragging() const { return interactionState.isDragging; }
+
+        // ===== RECT ACCESS (for external positioning) =====
+        Rect2Di GetTrackRect() const { return trackRect; }
+        Rect2Di GetThumbRect() const { return thumbRect; }
+
+        void SetBounds(const Rect2Di& b) override;
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx) override {
-            ctx->PushState();
-
-            if (!ShouldBeVisible()) return;
-
-            UpdateLayout();
-            DrawTrack();
-            DrawThumb();
-            if (appearance.showArrowButtons) {
-                DrawArrowButtons();
-            }
-        }
+        void Render(IRenderContext* ctx) override;
 
         // ===== EVENT HANDLING =====
-        bool OnEvent(const UCEvent& event) override {
-            if (IsDisabled() || !ShouldBeVisible()) return false;
-
-            UpdateLayout();
-
-            switch (event.type) {
-                case UCEventType::MouseDown:
-                    return HandleMouseDown(event);
-                case UCEventType::MouseUp:
-                    return HandleMouseUp(event);
-                case UCEventType::MouseMove:
-                    return HandleMouseMove(event);
-                case UCEventType::MouseWheel:
-                    return HandleMouseWheel(event);
-                default:
-                    return false;
-            }
-        }
-
-        // ===== EVENT CALLBACKS =====
-        std::function<void(float)> onScrollChanged;
+        bool OnEvent(const UCEvent& event) override;
+        bool HandleMouseWheel(const UCEvent& event);
 
     private:
-        // ===== LAYOUT MANAGEMENT =====
-        void UpdateLayout() {
-            if (!layoutDirty) return;
-
-            Rect2D bounds = GetBounds();
-
-            if (orientation == ScrollbarOrientation::Vertical) {
-                if (appearance.showArrowButtons) {
-                    upArrowRect = Rect2D(bounds.x, bounds.y, bounds.width, appearance.arrowButtonSize);
-                    downArrowRect = Rect2D(bounds.x, bounds.y + bounds.height - appearance.arrowButtonSize,
-                                           bounds.width, appearance.arrowButtonSize);
-                    trackRect = Rect2D(bounds.x, bounds.y + appearance.arrowButtonSize,
-                                       bounds.width, bounds.height - 2 * appearance.arrowButtonSize);
-                } else {
-                    trackRect = bounds;
-                    upArrowRect = Rect2D(0, 0, 0, 0);
-                    downArrowRect = Rect2D(0, 0, 0, 0);
-                }
-            } else {
-                if (appearance.showArrowButtons) {
-                    upArrowRect = Rect2D(bounds.x, bounds.y, appearance.arrowButtonSize, bounds.height);
-                    downArrowRect = Rect2D(bounds.x + bounds.width - appearance.arrowButtonSize, bounds.y,
-                                           appearance.arrowButtonSize, bounds.height);
-                    trackRect = Rect2D(bounds.x + appearance.arrowButtonSize, bounds.y,
-                                       bounds.width - 2 * appearance.arrowButtonSize, bounds.height);
-                } else {
-                    trackRect = bounds;
-                    upArrowRect = Rect2D(0, 0, 0, 0);
-                    downArrowRect = Rect2D(0, 0, 0, 0);
-                }
-            }
-
-            UpdateThumbRect();
-            layoutDirty = false;
-        }
-
-        void UpdateThumbRect() {
-            if (state.maxPosition <= 0.0f) {
-                thumbRect = Rect2D(0, 0, 0, 0);
-                return;
-            }
-
-            float thumbRatio = state.GetThumbRatio();
-            float scrollRatio = state.GetScrollRatio();
-
-            if (orientation == ScrollbarOrientation::Vertical) {
-                float thumbHeight = std::max(appearance.thumbMinSize, trackRect.height * thumbRatio);
-                float thumbY = trackRect.y + (trackRect.height - thumbHeight) * scrollRatio;
-                thumbRect = Rect2D(trackRect.x, thumbY, trackRect.width, thumbHeight);
-            } else {
-                float thumbWidth = std::max(appearance.thumbMinSize, trackRect.width * thumbRatio);
-                float thumbX = trackRect.x + (trackRect.width - thumbWidth) * scrollRatio;
-                thumbRect = Rect2D(thumbX, trackRect.y, thumbWidth, trackRect.height);
-            }
-        }
+        // ===== LAYOUT =====
+        void UpdateLayout();
+        void UpdateVerticalLayout(const Rect2Di& bounds);
+        void UpdateHorizontalLayout(const Rect2Di& bounds);
+        void UpdateThumbRect();
 
         // ===== RENDERING HELPERS =====
-        void DrawTrack() {
-           ctx->PaintWidthColorappearance.trackColor);
-            DrawFilledRect(trackRect);
-
-            ctx->PaintWidthColorappearance.borderColor);
-            ctx->DrawRectangle(trackRect);
-        }
-
-        void DrawThumb() {
-            if (thumbRect.width <= 0 || thumbRect.height <= 0) return;
-
-            Color thumbColor = appearance.thumbColor;
-            if (state.thumbPressed) {
-                thumbColor = appearance.thumbPressedColor;
-            } else if (state.thumbHovered) {
-                thumbColor = appearance.thumbHoverColor;
-            }
-
-           ctx->PaintWidthColorthumbColor);
-            DrawFilledRect(thumbRect);
-
-            ctx->PaintWidthColorappearance.borderColor);
-            ctx->DrawRectangle(thumbRect);
-        }
-
-        void DrawArrowButtons() {
-            // Draw up/left arrow button
-            if (upArrowRect.width > 0 && upArrowRect.height > 0) {
-                Color arrowColor = appearance.arrowColor;
-                if (state.upArrowPressed) {
-                    arrowColor = appearance.arrowPressedColor;
-                } else if (state.upArrowHovered) {
-                    arrowColor = appearance.arrowHoverColor;
-                }
-
-               ctx->PaintWidthColorappearance.trackColor);
-                DrawFilledRect(upArrowRect);
-                ctx->PaintWidthColorappearance.borderColor);
-                ctx->DrawRectangle(upArrowRect);
-
-                DrawArrowSymbol(upArrowRect, orientation == ScrollbarOrientation::Vertical ? 0 : 3, arrowColor);
-            }
-
-            // Draw down/right arrow button
-            if (downArrowRect.width > 0 && downArrowRect.height > 0) {
-                Color arrowColor = appearance.arrowColor;
-                if (state.downArrowPressed) {
-                    arrowColor = appearance.arrowPressedColor;
-                } else if (state.downArrowHovered) {
-                    arrowColor = appearance.arrowHoverColor;
-                }
-
-               ctx->PaintWidthColorappearance.trackColor);
-                DrawFilledRect(downArrowRect);
-                ctx->PaintWidthColorappearance.borderColor);
-                ctx->DrawRectangle(downArrowRect);
-
-                DrawArrowSymbol(downArrowRect, orientation == ScrollbarOrientation::Vertical ? 2 : 1, arrowColor);
-            }
-        }
-
-        void DrawArrowSymbol(const Rect2D& rect, int direction, const Color& color) {
-            // direction: 0=up, 1=right, 2=down, 3=left
-            ctx->PaintWidthColorcolor);
-
-            float centerX = rect.x + rect.width / 2.0f;
-            float centerY = rect.y + rect.height / 2.0f;
-            float size = std::min(rect.width, rect.height) * 0.3f;
-
-            Point2D p1, p2, p3;
-
-            switch (direction) {
-                case 0: // Up arrow
-                    p1 = Point2D(centerX, centerY - size/2);
-                    p2 = Point2D(centerX - size/2, centerY + size/2);
-                    p3 = Point2D(centerX + size/2, centerY + size/2);
-                    break;
-                case 1: // Right arrow
-                    p1 = Point2D(centerX + size/2, centerY);
-                    p2 = Point2D(centerX - size/2, centerY - size/2);
-                    p3 = Point2D(centerX - size/2, centerY + size/2);
-                    break;
-                case 2: // Down arrow
-                    p1 = Point2D(centerX, centerY + size/2);
-                    p2 = Point2D(centerX - size/2, centerY - size/2);
-                    p3 = Point2D(centerX + size/2, centerY - size/2);
-                    break;
-                case 3: // Left arrow
-                    p1 = Point2D(centerX - size/2, centerY);
-                    p2 = Point2D(centerX + size/2, centerY - size/2);
-                    p3 = Point2D(centerX + size/2, centerY + size/2);
-                    break;
-            }
-
-            ctx->DrawLine(p1, p2);
-            ctx->DrawLine(p2, p3);
-            ctx->DrawLine(p3, p1);
-        }
+        void RenderTrack(IRenderContext* ctx);
+        void RenderThumb(IRenderContext* ctx);
+        void RenderArrowButton(IRenderContext* ctx, bool isUpOrLeft);
 
         // ===== EVENT HANDLERS =====
-        bool HandleMouseDown(const UCEvent& event) {
-            Point2D mousePos(event.x, event.y);
-
-            if (appearance.showArrowButtons && upArrowRect.Contains(mousePos)) {
-                state.upArrowPressed = true;
-                ScrollLineUp();
-                return true;
-            }
-
-            if (appearance.showArrowButtons && downArrowRect.Contains(mousePos)) {
-                state.downArrowPressed = true;
-                ScrollLineDown();
-                return true;
-            }
-
-            if (thumbRect.Contains(mousePos)) {
-                state.isDragging = true;
-                state.thumbPressed = true;
-                state.dragStartPosition = (orientation == ScrollbarOrientation::Vertical) ? event.y : event.x;
-                state.dragStartScrollPosition = state.position;
-                return true;
-            }
-
-            if (trackRect.Contains(mousePos)) {
-                // Click on track - jump to position
-                float clickRatio;
-                if (orientation == ScrollbarOrientation::Vertical) {
-                    clickRatio = (event.y - trackRect.y) / trackRect.height;
-                } else {
-                    clickRatio = (event.x - trackRect.x) / trackRect.width;
-                }
-
-                SetScrollPosition(clickRatio * state.maxPosition);
-                return true;
-            }
-
-            return false;
-        }
-
-        bool HandleMouseUp(const UCEvent& event) {
-            bool wasHandling = state.isDragging || state.upArrowPressed || state.downArrowPressed || state.thumbPressed;
-
-            state.isDragging = false;
-            state.thumbPressed = false;
-            state.upArrowPressed = false;
-            state.downArrowPressed = false;
-
-            return wasHandling;
-        }
-
-        bool HandleMouseMove(const UCEvent& event) {
-            Point2D mousePos(event.x, event.y);
-
-            // Update hover states
-            state.thumbHovered = thumbRect.Contains(mousePos);
-            state.upArrowHovered = upArrowRect.Contains(mousePos);
-            state.downArrowHovered = downArrowRect.Contains(mousePos);
-
-            // Handle dragging
-            if (state.isDragging) {
-                float currentPos = (orientation == ScrollbarOrientation::Vertical) ? event.y : event.x;
-                float delta = currentPos - state.dragStartPosition;
-
-                float trackSize = (orientation == ScrollbarOrientation::Vertical) ? trackRect.height : trackRect.width;
-                float thumbSize = (orientation == ScrollbarOrientation::Vertical) ? thumbRect.height : thumbRect.width;
-
-                if (trackSize > thumbSize) {
-                    float scrollDelta = (delta / (trackSize - thumbSize)) * state.maxPosition;
-                    SetScrollPosition(state.dragStartScrollPosition + scrollDelta);
-                }
-
-                return true;
-            }
-
-            return GetBounds().Contains(mousePos);
-        }
-
-        bool HandleMouseWheel(const UCEvent& event) {
-            if (GetBounds().Contains(Point2D(event.x, event.y))) {
-                float scrollAmount = event.wheelDelta * appearance.scrollSpeed;
-
-                if (orientation == ScrollbarOrientation::Vertical) {
-                    ScrollBy(-scrollAmount); // Invert for natural scrolling
-                } else {
-                    ScrollBy(scrollAmount);
-                }
-
-                return true;
-            }
-
-            return false;
-        }
+        bool HandleMouseDown(const UCEvent& event);
+        bool HandleMouseUp(const UCEvent& event);
+        bool HandleMouseMove(const UCEvent& event);
+        bool HandleMouseLeave(const UCEvent& event);
     };
 
-// ===== PREDEFINED APPEARANCES =====
-    inline ScrollbarAppearance ScrollbarAppearance::Default() {
-        return ScrollbarAppearance{};
-    }
-
-    inline ScrollbarAppearance ScrollbarAppearance::Modern() {
-        ScrollbarAppearance style;
-        style.trackWidth = 12.0f;
-        style.showArrowButtons = false;
-        style.trackColor = Color(248, 248, 248, 255);
-        style.thumbColor = Color(160, 160, 160, 255);
-        style.thumbHoverColor = Color(128, 128, 128, 255);
-        style.thumbPressedColor = Color(96, 96, 96, 255);
-        style.autoHide = true;
-        return style;
-    }
-
-    inline ScrollbarAppearance ScrollbarAppearance::Minimal() {
-        ScrollbarAppearance style;
-        style.trackWidth = 8.0f;
-        style.showArrowButtons = false;
-        style.trackColor = Color(250, 250, 250, 255);
-        style.thumbColor = Color(180, 180, 180, 255);
-        style.thumbHoverColor = Color(140, 140, 140, 255);
-        style.thumbPressedColor = Color(100, 100, 100, 255);
-        style.autoHide = true;
-        style.smoothScrolling = true;
-        return style;
-    }
-
 // ===== FACTORY FUNCTIONS =====
+    inline std::shared_ptr<UltraCanvasScrollbar> CreateScrollbar(
+            const std::string& id, long uid, int x, int y, int w, int h,
+            ScrollbarOrientation orientation = ScrollbarOrientation::Vertical) {
+        return std::make_shared<UltraCanvasScrollbar>(id, uid, x, y, w, h, orientation);
+    }
+
     inline std::shared_ptr<UltraCanvasScrollbar> CreateVerticalScrollbar(
-            const std::string& id, long uid, long x, long y, long w, long h) {
-        return std::make_shared<UltraCanvasScrollbar>(id, uid, x, y, w, h, ScrollbarOrientation::Vertical);
+            const std::string& id, long uid, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasScrollbar>(id, uid, x, y, width, height,
+                                                      ScrollbarOrientation::Vertical);
     }
 
     inline std::shared_ptr<UltraCanvasScrollbar> CreateHorizontalScrollbar(
-            const std::string& id, long uid, long x, long y, long w, long h) {
-        return std::make_shared<UltraCanvasScrollbar>(id, uid, x, y, w, h, ScrollbarOrientation::Horizontal);
+            const std::string& id, long uid, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasScrollbar>(id, uid, x, y, width, height,
+                                                      ScrollbarOrientation::Horizontal);
     }
 
 } // namespace UltraCanvas

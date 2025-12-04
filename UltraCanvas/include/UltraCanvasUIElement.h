@@ -405,8 +405,8 @@ namespace UltraCanvas {
         }
 
         // ===== CONTENT AREA CALCULATIONS =====
-        // Content area = bounds minus (border + padding)
-        virtual Rect2Di GetContentRect() {
+        // client area = bounds minus (border + padding)
+        virtual Rect2Di GetContentRect() const {
             return Rect2Di(
                     bounds.x + GetBorderLeftWidth() + padding.left,
                     bounds.y + GetBorderTopWidth() + padding.top,

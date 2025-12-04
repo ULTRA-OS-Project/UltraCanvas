@@ -116,8 +116,8 @@ namespace UltraCanvas {
 
         // Set container style
         ContainerStyle containerStyle;
-        containerStyle.enableHorizontalScrolling = false;
-        containerStyle.enableVerticalScrolling = false;
+        containerStyle.forceShowHorizontalScrollbar = false;
+        containerStyle.forceShowVerticalScrollbar = false;
         SetContainerStyle(containerStyle);
 
         SetBackgroundColor(Color(245, 245, 245, 255));

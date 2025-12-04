@@ -358,8 +358,8 @@ namespace UltraCanvas {
         _state = WindowState::Normal;
 
         ContainerStyle containerStyle;
-        containerStyle.enableVerticalScrolling = config.enableWindowScrolling;
-        containerStyle.enableHorizontalScrolling = config.enableWindowScrolling;
+        containerStyle.forceShowVerticalScrollbar = config.enableWindowScrolling;
+        containerStyle.forceShowHorizontalScrollbar = config.enableWindowScrolling;
         SetContainerStyle(containerStyle);
         SetBackgroundColor(config.backgroundColor);
 

@@ -42,14 +42,14 @@ namespace UltraCanvas {
                 layout->PerformLayout();
             }
             UpdateScrollability();
-            UpdateScrollbarPositions();
+            //UpdateScrollbarPositions();
             layoutDirty = false;
         }
 
         // Update scroll animation if active
-        if (scrollState.animatingScroll && style.smoothScrolling) {
-            UpdateScrollAnimation();
-        }
+//        if (scrollState.animatingScroll && style.smoothScrolling) {
+//            UpdateScrollAnimation();
+//        }
 
         ctx->PushState();
         //DrawElementDebug(this);
@@ -57,16 +57,8 @@ namespace UltraCanvas {
         auto contentRect = GetContentRect();
         ctx->ClipRect(contentRect);
 
-        ctx->Translate(contentRect.x - scrollState.horizontalPosition,
-                       contentRect.y - scrollState.verticalPosition);
-
-        //std::cout << "Container " << identifier << " content rect x=" << contentRect.x << " y=" << contentRect.y << " w=" << contentRect.width << " h=" << contentRect.height << std::endl;
-
-        // Set up clipping for content area
-        //        Rect2Di clipRect = contentArea;
-        //        ctx->ClipRect(scrollState.horizontalPosition, scrollState.verticalPosition,
-        //                            contentArea.width,
-        //                            contentArea.height);
+        ctx->Translate(contentRect.x - GetHorizontalScrollPosition(),
+                       contentRect.y - GetVerticalScrollPosition());
 
         // Render children with scroll offset
         for (const auto &child: children) {
@@ -78,17 +70,24 @@ namespace UltraCanvas {
         // Remove content clipping
         ctx->PopState();
 
-        if (scrollState.showVerticalScrollbar || scrollState.showHorizontalScrollbar) {
-            // Render scrollbars
-            if (scrollState.showVerticalScrollbar) {
-                RenderVerticalScrollbar(ctx);
-            }
+        RenderScrollbars(ctx);
 
-            if (scrollState.showHorizontalScrollbar) {
-                RenderHorizontalScrollbar(ctx);
-            }
-        }
         ctx->PopState();
+    }
+
+    void UltraCanvasContainer::RenderScrollbars(IRenderContext *ctx) {
+        if (verticalScrollbar->IsVisible()) {
+            verticalScrollbar->Render(ctx);
+        }
+
+        if (horizontalScrollbar->IsVisible()) {
+            horizontalScrollbar->Render(ctx);
+        }
+
+        // Render corner if both scrollbars visible
+        if (verticalScrollbar->IsVisible() && horizontalScrollbar->IsVisible()) {
+            RenderCorner(ctx);
+        }
     }
 
 // ===== EVENT HANDLING IMPLEMENTATION =====
@@ -99,13 +98,6 @@ namespace UltraCanvas {
         if (event.type == UCEventType::MouseMove || event.type == UCEventType::MouseEnter || event.type == UCEventType::MouseLeave) {
             return true;
         }
-
-        // Handle container-specific events first
-        if (HandleScrollWheel(event)) {
-            return true;
-        }
-        // Don't forward events to childs as event is forwared by UltraCanvasBaseApplication::DispatchEvent
-        // to element under cursor or to focused element
 
         // Handle base element events
         return UltraCanvasUIElement::OnEvent(event);
@@ -124,42 +116,53 @@ namespace UltraCanvas {
             maxRight = std::max(maxRight, childBounds.x + childBounds.width);
             maxBottom = std::max(maxBottom, childBounds.y + childBounds.height);
         }
+        verticalScrollbar->SetVisible(style.forceShowVerticalScrollbar);
+        horizontalScrollbar->SetVisible(style.forceShowHorizontalScrollbar);
 
-        scrollState.contentWidth = maxRight;
-        scrollState.contentHeight = maxBottom;
+        auto clientRect = GetContentArea();
+        horizontalScrollbar->SetScrollDimensions(clientRect.width, maxRight);
+        verticalScrollbar->SetScrollDimensions(clientRect.height, maxBottom);
 
-        // Calculate maximum scroll distances
-        auto contentRect = GetContentRect(); // content area without scrollbars
+        if (style.autoShowScrollbars) {
+            verticalScrollbar->SetVisible(verticalScrollbar->IsScrollable());
+            horizontalScrollbar->SetVisible(horizontalScrollbar->IsScrollable());
 
-        scrollState.maxVerticalScroll = std::max(0,
-                                                 scrollState.contentHeight - contentRect.height);
-        scrollState.maxHorizontalScroll = std::max(0,
-                                                   scrollState.contentWidth - contentRect.width);
+            auto newClientRect = GetContentArea();
+            if (newClientRect != clientRect) {
+                horizontalScrollbar->SetScrollDimensions(clientRect.width, maxRight);
+                verticalScrollbar->SetScrollDimensions(clientRect.height, maxBottom);
 
-        // Determine scrollbar visibility
-        bool needsVerticalScrollbar = style.enableVerticalScrolling &&
-                                      (scrollState.maxVerticalScroll > 0);
-        bool needsHorizontalScrollbar = style.enableHorizontalScrolling &&
-                                        (scrollState.maxHorizontalScroll > 0);
-
-        // Update scrollbar visibility
-        if (style.autoHideScrollbars) {
-            scrollState.showVerticalScrollbar = needsVerticalScrollbar;
-            scrollState.showHorizontalScrollbar = needsHorizontalScrollbar;
+                // Determine scrollbar visibility
+                verticalScrollbar->SetVisible(verticalScrollbar->IsScrollable());
+                horizontalScrollbar->SetVisible(horizontalScrollbar->IsScrollable());
+            }
         }
 
-        // Clamp current scroll positions
-        scrollState.verticalPosition = std::clamp(
-                scrollState.verticalPosition, 0, scrollState.maxVerticalScroll);
-        scrollState.horizontalPosition = std::clamp(
-                scrollState.horizontalPosition, 0, scrollState.maxHorizontalScroll);
+        auto rect = GetPaddingRect();
+        if (verticalScrollbar->IsVisible()) {
+            int sbX = rect.x + rect.width - style.scrollbarStyle.trackSize;
+            int sbY = rect.y;
+            int sbHeight = rect.height;
 
-        scrollState.targetVerticalPosition = scrollState.verticalPosition;
-        scrollState.targetHorizontalPosition = scrollState.horizontalPosition;
+            if (horizontalScrollbar->IsVisible()) {
+                sbHeight -= style.scrollbarStyle.trackSize;
+            }
 
+            verticalScrollbar->SetBounds(Rect2Di(sbX, sbY, style.scrollbarStyle.trackSize, sbHeight));
+        }
+        if (horizontalScrollbar->IsVisible()) {
+            int sbX = rect.x;
+            int sbY = rect.y + rect.height - style.scrollbarStyle.trackSize;
+            int sbWidth = rect.width;
 
-        // Vertical scrollbar
+            if (verticalScrollbar->IsVisible()) {
+                sbWidth -= style.scrollbarStyle.trackSize;
+            }
+
+            horizontalScrollbar->SetBounds(Rect2Di(sbX, sbY, sbWidth, style.scrollbarStyle.trackSize));
+        }
     }
+
 
     Rect2Di UltraCanvasContainer::GetContentArea() {
         auto rect = GetContentRect();
@@ -167,12 +170,12 @@ namespace UltraCanvas {
         rect.x = padding.left + GetBorderLeftWidth();
         rect.y = padding.top + GetBorderTopWidth();
 
-        if (scrollState.showVerticalScrollbar) {
-            rect.width -= style.scrollbarWidth;
+        if (verticalScrollbar->IsVisible()) {
+            rect.width -= style.scrollbarStyle.trackSize;
         }
 
-        if (scrollState.showHorizontalScrollbar) {
-            rect.height -= style.scrollbarWidth;
+        if (horizontalScrollbar->IsVisible()) {
+            rect.height -= style.scrollbarStyle.trackSize;
         }
 
         // Ensure minimum size
@@ -181,256 +184,59 @@ namespace UltraCanvas {
         return rect;
     }
 
-    void UltraCanvasContainer::UpdateScrollbarPositions() {
-        Rect2Di rect = GetPaddingRect();
-
-        // Vertical scrollbar
-        if (scrollState.showVerticalScrollbar) {
-            verticalScrollbarRect.x = rect.x + rect.width - style.scrollbarWidth;
-            verticalScrollbarRect.y = rect.y;
-            verticalScrollbarRect.width = style.scrollbarWidth;
-            verticalScrollbarRect.height = rect.height;
-
-            if (scrollState.showHorizontalScrollbar) {
-                verticalScrollbarRect.height -= style.scrollbarWidth;
-            }
-
-            // Calculate thumb rectangle
-            int thumbHeight = CalculateScrollbarThumbSize(true);
-            int thumbPosition = CalculateScrollbarThumbPosition(true);
-
-            verticalThumbRect.x = verticalScrollbarRect.x;
-            verticalThumbRect.y = verticalScrollbarRect.y + thumbPosition;
-            verticalThumbRect.width = style.scrollbarWidth;
-            verticalThumbRect.height = thumbHeight;
-        }
-
-        // Horizontal scrollbar
-        if (scrollState.showHorizontalScrollbar) {
-            horizontalScrollbarRect.x = rect.x;
-            horizontalScrollbarRect.y = rect.y + rect.height - style.scrollbarWidth;
-            horizontalScrollbarRect.width = rect.width;
-            horizontalScrollbarRect.height = style.scrollbarWidth;
-
-            if (scrollState.showVerticalScrollbar) {
-                horizontalScrollbarRect.width -= style.scrollbarWidth;
-            }
-
-            // Calculate thumb rectangle
-            int thumbWidth = CalculateScrollbarThumbSize(false);
-            int thumbPosition = CalculateScrollbarThumbPosition(false);
-
-            horizontalThumbRect.x = horizontalScrollbarRect.x + thumbPosition;
-            horizontalThumbRect.y = horizontalScrollbarRect.y;
-            horizontalThumbRect.width = thumbWidth;
-            horizontalThumbRect.height = style.scrollbarWidth;
-        }
-    }
-
-    void UltraCanvasContainer::UpdateScrollAnimation() {
-        if (!scrollState.animatingScroll) return;
-
-        bool verticalComplete = true;
-        bool horizontalComplete = true;
-
-        // Animate vertical scrolling
-        if (std::abs(scrollState.targetVerticalPosition - scrollState.verticalPosition) > 0.5f) {
-            int delta = scrollState.targetVerticalPosition - scrollState.verticalPosition;
-            scrollState.verticalPosition += delta * (scrollState.scrollAnimationSpeed * 0.016f); // Assume 60 FPS
-            verticalComplete = false;
-        } else {
-            scrollState.verticalPosition = scrollState.targetVerticalPosition;
-        }
-
-        // Animate horizontal scrolling
-        if (std::abs(scrollState.targetHorizontalPosition - scrollState.horizontalPosition) > 0.5f) {
-            int delta = scrollState.targetHorizontalPosition - scrollState.horizontalPosition;
-            scrollState.horizontalPosition += delta * (scrollState.scrollAnimationSpeed * 0.016f);
-            horizontalComplete = false;
-        } else {
-            scrollState.horizontalPosition = scrollState.targetHorizontalPosition;
-        }
-
-        // Check if animation is complete
-        if (verticalComplete && horizontalComplete) {
-            scrollState.animatingScroll = false;
-        }
-
-        OnScrollChanged();
-    }
-
     bool UltraCanvasContainer::HandleScrollWheel(const UCEvent& event) {
         if (event.type != UCEventType::MouseWheel) return false;
         if (!GetContentRect().Contains(Point2Di(event.x, event.y))) return false;
 
-        int scrollAmount = event.wheelDelta * style.scrollSpeed;
-
         // Scroll vertically by default, horizontally with Shift
-        if (event.shift && style.enableHorizontalScrolling) {
-            return ScrollHorizontal(-scrollAmount);
-        } else if (style.enableVerticalScrolling) {
-            return ScrollVertical(-scrollAmount); // Invert for natural scrolling
+        if (event.shift && style.forceShowHorizontalScrollbar) {
+            horizontalScrollbar->ScrollByWheel(event.wheelDelta);
+            return true;
+        } else if (style.forceShowVerticalScrollbar) {
+            verticalScrollbar->ScrollByWheel(event.wheelDelta);
+            return true;
         }
         return false;
     }
 
     bool UltraCanvasContainer::HandleScrollbarEvents(const UCEvent& event) {
-        Point2Di mousePos(event.x, event.y);
-
-        // Handle mouse events on scrollbars
-        if (event.type == UCEventType::MouseDown) {
-            // Check vertical scrollbar
-//            std::cout << " Vsb contains=" << verticalScrollbarRect.Contains(mousePos)
-//                << "rect (" << verticalScrollbarRect.x << ", " << verticalScrollbarRect.y << " " << verticalScrollbarRect.width << "x" << verticalScrollbarRect.height << ")"
-//                << " ev x=" << event.x << " y=" << event.y << std::endl;
-            if (scrollState.showVerticalScrollbar && verticalScrollbarRect.Contains(mousePos)) {
-                if (verticalThumbRect.Contains(mousePos)) {
-                    UltraCanvasApplication::GetInstance()->CaptureMouse(this);
-                    scrollState.draggingVertical = true;
-                    scrollState.dragStartPosition = event.y;
-                    scrollState.dragStartScroll = scrollState.verticalPosition;
-                    scrollState.dragStartMouse = mousePos;
-                    return true;
-                } else {
-                    // Clicked on track - page scroll
-                    float clickPosition = static_cast<float>(mousePos.y - verticalScrollbarRect.y) / verticalScrollbarRect.height;
-                    int targetPosition = clickPosition * scrollState.maxVerticalScroll;
-                    SetVerticalScrollPosition(targetPosition);
-                    return true;
-                }
-            }
-
-            // Check horizontal scrollbar
-            if (scrollState.showHorizontalScrollbar && horizontalScrollbarRect.Contains(mousePos)) {
-                if (horizontalThumbRect.Contains(mousePos)) {
-                    UltraCanvasApplication::GetInstance()->CaptureMouse(this);
-                    scrollState.draggingHorizontal = true;
-                    scrollState.dragStartPosition = event.x;
-                    scrollState.dragStartScroll = scrollState.horizontalPosition;
-                    scrollState.dragStartMouse = mousePos;
-                    return true;
-                } else {
-                    // Clicked on track - page scroll
-                    int clickPosition = (mousePos.x - horizontalScrollbarRect.x) / horizontalScrollbarRect.width;
-                    int targetPosition = clickPosition * scrollState.maxHorizontalScroll;
-                    SetHorizontalScrollPosition(targetPosition);
-                    return true;
-                }
-            }
-        }
-
-        if (event.type == UCEventType::MouseUp) {
-            scrollState.draggingVertical = false;
-            scrollState.draggingHorizontal = false;
-            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
+        if (!Contains(event.x, event.y)) {
             return false;
         }
+        bool handled = false;
 
-        if (event.type == UCEventType::MouseMove) {
-            // Handle scrollbar dragging
-            if (scrollState.draggingVertical) {
-                int deltaY = event.y - scrollState.dragStartMouse.y;
-                int scrollDelta = std::max(deltaY, deltaY * scrollState.maxVerticalScroll / verticalScrollbarRect.height);
-                //int scrollDelta = deltaY;
-                SetVerticalScrollPosition(scrollState.dragStartScroll + scrollDelta);
-                return true;
+        // Check vertical scrollbar
+        if (verticalScrollbar->IsVisible()) {
+            if (verticalScrollbar->Contains(event.x, event.y) ||
+                verticalScrollbar->IsDragging() ||
+                event.type == UCEventType::MouseWheel) {
+                if (verticalScrollbar->OnEvent(event)) {
+                    handled = true;
+                }
             }
-
-            if (scrollState.draggingHorizontal) {
-                int deltaX = event.x - scrollState.dragStartMouse.x;
-                int scrollDelta = std::max(deltaX, deltaX * scrollState.maxHorizontalScroll / horizontalScrollbarRect.width);
-                //int scrollDelta = deltaX;
-                SetHorizontalScrollPosition(scrollState.dragStartScroll + scrollDelta);
-                return true;
-            }
-
-            // Update hover states
-            UpdateScrollbarHoverStates(mousePos);
         }
 
-        return false;
+        // Check horizontal scrollbar
+        if (!handled && horizontalScrollbar->IsVisible()) {
+            if (horizontalScrollbar->Contains(event.x, event.y) ||
+                horizontalScrollbar->IsDragging() ||
+                event.type == UCEventType::MouseWheel) {
+                if (horizontalScrollbar->OnEvent(event)) {
+                    handled = true;
+                }
+            }
+        }
+
+        return handled;
     }
 
     void UltraCanvasContainer::OnScrollChanged() {
-        UpdateScrollbarPositions();
+//        UpdateScrollbarPositions();
         RequestRedraw();
 
         if (onScrollChanged) {
-            onScrollChanged(scrollState.horizontalPosition, scrollState.verticalPosition);
+            onScrollChanged(horizontalScrollbar->GetScrollPosition(), verticalScrollbar->GetScrollPosition());
         }
-    }
-
-    int UltraCanvasContainer::CalculateScrollbarThumbSize(bool vertical) {
-        auto contentArea = GetContentArea();
-        if (vertical) {
-            if (scrollState.maxVerticalScroll <= 0) return verticalScrollbarRect.height;
-            float ratio = (float)contentArea.height / (float)scrollState.contentHeight;
-            return std::max(20, (int)((float)verticalScrollbarRect.height * ratio));
-        } else {
-            if (scrollState.maxHorizontalScroll <= 0) return horizontalScrollbarRect.width;
-            float ratio = (float)contentArea.width / (float)scrollState.contentWidth;
-            return std::max(20, (int)((float)horizontalScrollbarRect.width * ratio));
-        }
-    }
-
-    int UltraCanvasContainer::CalculateScrollbarThumbPosition(bool vertical) {
-        if (vertical) {
-            if (scrollState.maxVerticalScroll <= 0) return 0;
-            float ratio = (float)scrollState.verticalPosition / (float)scrollState.maxVerticalScroll;
-            int availableSpace = verticalScrollbarRect.height - CalculateScrollbarThumbSize(true);
-            return (int)(ratio * (float)availableSpace);
-        } else {
-            if (scrollState.maxHorizontalScroll <= 0) return 0;
-            float ratio = (float)scrollState.horizontalPosition / (float)scrollState.maxHorizontalScroll;
-            int availableSpace = horizontalScrollbarRect.width - CalculateScrollbarThumbSize(false);
-            return (int)(ratio * (float)availableSpace);
-        }
-    }
-
-    void UltraCanvasContainer::RenderVerticalScrollbar(IRenderContext *ctx) {
-        // Render scrollbar track
-        ctx->DrawFilledRectangle(verticalScrollbarRect, style.scrollbarTrackColor);
-
-        // Render scrollbar thumb
-        Color thumbColor = style.scrollbarThumbColor;
-        if (scrollState.hoveringVerticalThumb) {
-            thumbColor = style.scrollbarThumbHoverColor;
-        }
-        if (scrollState.draggingVertical) {
-            thumbColor = style.scrollbarThumbPressedColor;
-        }
-
-        ctx->DrawFilledRectangle(verticalThumbRect, thumbColor);
-    }
-
-    void UltraCanvasContainer::RenderHorizontalScrollbar(IRenderContext *ctx) {
-        // Render scrollbar track
-        ctx->DrawFilledRectangle(horizontalScrollbarRect, style.scrollbarTrackColor);
-
-        // Render scrollbar thumb
-        Color thumbColor = style.scrollbarThumbColor;
-        if (scrollState.hoveringHorizontalThumb) {
-            thumbColor = style.scrollbarThumbHoverColor;
-        }
-        if (scrollState.draggingHorizontal) {
-            thumbColor = style.scrollbarThumbPressedColor;
-        }
-
-        ctx->DrawFilledRectangle(horizontalThumbRect, thumbColor);
-    }
-
-    void UltraCanvasContainer::UpdateScrollbarHoverStates(const Point2Di& mousePos) {
-        // Update vertical scrollbar hover states
-        scrollState.hoveringVerticalScrollbar = scrollState.showVerticalScrollbar &&
-                                                verticalScrollbarRect.Contains(mousePos);
-        scrollState.hoveringVerticalThumb = scrollState.hoveringVerticalScrollbar &&
-                                            verticalThumbRect.Contains(mousePos);
-
-        // Update horizontal scrollbar hover states
-        scrollState.hoveringHorizontalScrollbar = scrollState.showHorizontalScrollbar &&
-                                                  horizontalScrollbarRect.Contains(mousePos);
-        scrollState.hoveringHorizontalThumb = scrollState.hoveringHorizontalScrollbar &&
-                                              horizontalThumbRect.Contains(mousePos);
     }
 
     void UltraCanvasContainer::AddChild(std::shared_ptr<UltraCanvasUIElement> child) {
@@ -443,15 +249,6 @@ namespace UltraCanvas {
             }
         }
 
-        // Check if child implements popup interface
-//        if (auto* popup = dynamic_cast<IPopupElement*>(child.get())) {
-//            UltraCanvasPopupRegistry::RegisterPopupElement(child.get());
-//        }
-
-        // Auto-assign z-index if needed
-//        if (child && child->GetZIndex() == 0) {
-//            AutoAssignZIndex(child.get());
-//        }
         child->SetParentContainer(this);
         child->SetWindow(GetWindow());
 
@@ -498,12 +295,9 @@ namespace UltraCanvas {
             }
         }
         children.clear();
-
-        scrollState.verticalPosition = 0;
-        scrollState.horizontalPosition = 0;
-        scrollState.targetVerticalPosition = 0;
-        scrollState.targetHorizontalPosition = 0;
-
+        verticalScrollbar->SetScrollPosition(0);
+        horizontalScrollbar->SetScrollPosition(0);
+        horizontalScrollbar->SetScrollDimensions(0, 0);
         InvalidateLayout();
     }
 
@@ -523,66 +317,6 @@ namespace UltraCanvas {
         return nullptr;
     }
 
-//    UltraCanvasUIElement* UltraCanvasContainer::FindElementAtPoint(int x, int y) {
-//        // First check if point is within our bounds
-//        if (!Contains(x, y)) {
-//            return nullptr;
-//        }
-//
-//        // Check scrollbar areas first - these have priority over content
-//        if (scrollState.showVerticalScrollbar &&
-//            verticalScrollbarRect.Contains(x, y)) {
-//            return this; // Container handles scrollbar interactions
-//        }
-//
-//        if (scrollState.showHorizontalScrollbar &&
-//            horizontalScrollbarRect.Contains(x, y)) {
-//            return this; // Container handles scrollbar interactions
-//        }
-//
-//        // Check if point is within content area (not scrollbar area)
-//        if (!contentArea.Contains(x, y)) {
-//            return this; // Hit container but outside content area
-//        }
-//
-//        // Calculate content-relative coordinates accounting for scroll offset
-//        Point2Di mousePos(x, y);
-//        int contentX = x - contentArea.x + scrollState.horizontalPosition;
-//        int contentY = y - contentArea.y + scrollState.verticalPosition;
-//
-//        // Check children in reverse order (topmost first) with clipping awareness
-//        for (auto it = children.rbegin(); it != children.rend(); ++it) {
-//            if (!(*it) || !(*it)->IsVisible()) {
-//                continue;
-//            }
-//
-//            UltraCanvasUIElement* child = it->get();
-//
-//            // CRITICAL: Check if the child element intersects with visible content area
-//            Rect2Di childBounds = child->GetBounds();
-//            Rect2Di visibleChildBounds = GetVisibleChildBounds(childBounds);
-//
-//            // Skip child if it's completely clipped (not visible)
-//            if (visibleChildBounds.width <= 0 || visibleChildBounds.height <= 0) {
-//                continue;
-//            }
-//
-//            // Check if mouse is within the visible portion of the child
-//            if (visibleChildBounds.Contains(mousePos)) {
-//                // Recursively check child elements
-//                auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
-//                if (childContainer) {
-//                    UltraCanvasUIElement* hitElement = childContainer->FindElementAtPoint(contentX, contentY);
-//                    if (hitElement) {
-//                        return hitElement;
-//                    }
-//                }
-//                return child;
-//            }
-//        }
-//
-//        return this; // Hit container but no children
-//    }
 
     UltraCanvasUIElement* UltraCanvasContainer::FindElementAtPoint(int x, int y) {
         // First check if point is within our bounds
@@ -590,26 +324,12 @@ namespace UltraCanvas {
             return nullptr;
         }
 
-        // Check scrollbar areas first - these have priority over content
-        if (scrollState.showVerticalScrollbar &&
-            verticalScrollbarRect.Contains(x, y)) {
-            return this; // Container handles scrollbar interactions
-        }
+        auto contentRect = GetContentRect();
 
-        if (scrollState.showHorizontalScrollbar &&
-            horizontalScrollbarRect.Contains(x, y)) {
-            return this; // Container handles scrollbar interactions
-        }
-        auto contentArea = GetContentRect();
-        // Check if point is within content area (not scrollbar area)
-        if (!contentArea.Contains(x, y)) {
-            return this; // Hit container but outside content area
-        }
-
-        // CRITICAL FIX: Convert mouse coordinates to content coordinates
+        // Convert mouse coordinates to content coordinates
         // accounting for scroll offset AND content area position
-        int contentX = (x - contentArea.x) + scrollState.horizontalPosition;
-        int contentY = (y - contentArea.y) + scrollState.verticalPosition;
+        int contentX = (x - contentRect.x) + horizontalScrollbar->GetScrollPosition();
+        int contentY = (y - contentRect.y) + verticalScrollbar->GetScrollPosition();
 
         // Check children in reverse order (topmost first) with proper clipping
         for (auto it = children.rbegin(); it != children.rend(); ++it) {
@@ -644,7 +364,6 @@ namespace UltraCanvas {
         return this; // Hit container but no children
     }
 
-// ===== CRITICAL FIX: Enhanced coordinate conversion for scrollable containers =====
     void UltraCanvasContainer::ConvertWindowToContainerCoordinates(int &x, int &y) {
         // Get our position in window coordinates
         Point2Di elementPos = GetPositionInWindow();
@@ -657,8 +376,8 @@ namespace UltraCanvas {
         auto contentRect = GetContentRect();
         if (contentRect.Contains(x, y)) {
             // Convert to content-relative coordinates accounting for scroll
-            x = (x - contentRect.x) + scrollState.horizontalPosition;
-            y = (y - contentRect.y) + scrollState.verticalPosition;
+            x = (x - contentRect.x) + GetHorizontalScrollPosition();
+            y = (y - contentRect.y) + GetVerticalScrollPosition();
         }
     }
 
@@ -666,8 +385,8 @@ namespace UltraCanvas {
         // Calculate child bounds in container coordinates (accounting for scroll)
         auto contentRect = GetContentRect();
         Rect2Di adjustedChildBounds(
-                childBounds.x - scrollState.horizontalPosition + contentRect.x,
-                childBounds.y - scrollState.verticalPosition + contentRect.y,
+                childBounds.x - GetHorizontalScrollPosition() + contentRect.x,
+                childBounds.y - GetVerticalScrollPosition() + contentRect.y,
                 childBounds.width,
                 childBounds.height
         );
@@ -696,88 +415,37 @@ namespace UltraCanvas {
         return (visibleBounds.width > 0 && visibleBounds.height > 0);
     }
 
-//    void UltraCanvasContainer::UpdateLayout() {
-//        UpdateContentSize();
-//        UpdateScrollability();
-//        layoutDirty = false;
-//    }
-
     void UltraCanvasContainer::SetContainerStyle(const ContainerStyle &newStyle) {
         style = newStyle;
         InvalidateLayout();
     }
 
     void UltraCanvasContainer::SetShowHorizontalScrollbar(bool show) {
-        style.autoHideScrollbars = false;
-        scrollState.showHorizontalScrollbar = show;
+        style.autoShowScrollbars = false;
+        horizontalScrollbar->SetVisible(show);
         InvalidateLayout();
     }
 
     void UltraCanvasContainer::SetShowVerticalScrollbar(bool show) {
-        style.autoHideScrollbars = false;
-        scrollState.showVerticalScrollbar = show;
+        style.autoShowScrollbars = false;
+        verticalScrollbar->SetVisible(show);
         InvalidateLayout();
     }
 
-    bool UltraCanvasContainer::SetHorizontalScrollPosition(int position) {
-        int oldPosition = scrollState.horizontalPosition;
-        scrollState.horizontalPosition = std::clamp(position, 0, scrollState.maxHorizontalScroll);
-        scrollState.targetHorizontalPosition = scrollState.horizontalPosition;
-
-        if (oldPosition != scrollState.horizontalPosition) {
-            OnScrollChanged();
-            return true;
-        }
-        return false;
+    bool UltraCanvasContainer::ScrollToHorizontal(int position) {
+        return horizontalScrollbar->SetScrollPosition(position);
     }
 
-    bool UltraCanvasContainer::SetVerticalScrollPosition(int position) {
-        int oldPosition = scrollState.verticalPosition;
-        scrollState.verticalPosition = std::clamp(position, 0, scrollState.maxVerticalScroll);
-        scrollState.targetVerticalPosition = scrollState.verticalPosition;
-
-        if (oldPosition != scrollState.verticalPosition) {
-            OnScrollChanged();
-            return true;
-        }
-        return false;
+    bool UltraCanvasContainer::ScrollToVertical(int position) {
+        return verticalScrollbar->SetScrollPosition(position);
     }
 
-    bool UltraCanvasContainer::ScrollHorizontal(int delta) {
-        if (!style.enableHorizontalScrolling) return false;
-
-        if (style.smoothScrolling) {
-            scrollState.targetHorizontalPosition += delta;
-            scrollState.targetHorizontalPosition = std::clamp(
-                    scrollState.targetHorizontalPosition,
-                    0,
-                    scrollState.maxHorizontalScroll
-            );
-            scrollState.animatingScroll = true;
-            return true; // fix me! need to check is it will really scroll
-        } else {
-            int newPosition = scrollState.horizontalPosition + delta;
-            return SetHorizontalScrollPosition(newPosition);
-        }
+    bool UltraCanvasContainer::ScrollByHorizontal(int delta) {
+        return horizontalScrollbar->ScrollBy(delta);
     }
 
-    bool UltraCanvasContainer::ScrollVertical(int delta) {
-        if (!style.enableVerticalScrolling) return false;
-
-        if (style.smoothScrolling) {
-            scrollState.targetVerticalPosition += delta;
-            scrollState.targetVerticalPosition = std::clamp(
-                    scrollState.targetVerticalPosition,
-                    0,
-                    scrollState.maxVerticalScroll
-            );
-            scrollState.animatingScroll = true;
-            return true; // fix me! need to check is it will really scroll
-        } else {
-            int newPosition = scrollState.verticalPosition + delta;
-            return SetVerticalScrollPosition(newPosition);
-        }
-        return false;
+    bool UltraCanvasContainer::ScrollByVertical(int delta) {
+        return verticalScrollbar->ScrollBy(delta);
     }
 
     void UltraCanvasContainer::SetLayout(UltraCanvasLayout* newLayout) {
@@ -794,5 +462,40 @@ namespace UltraCanvas {
     void UltraCanvasContainer::SetBounds(const Rect2Di& bounds) {
         UltraCanvasUIElement::SetBounds(bounds);
         InvalidateLayout();
+    }
+
+    void UltraCanvasContainer::RenderCorner(IRenderContext *ctx) {
+//        if (scrollbarsCornerRect.width > 0 && scrollbarsCornerRect.height > 0) {
+//            ctx->DrawFilledRectangle(scrollbarsCornerRect, backgroundColor);
+//        }
+    }
+
+    void UltraCanvasContainer::CreateScrollbars() {
+        // Create vertical scrollbar
+        verticalScrollbar = std::make_unique<UltraCanvasScrollbar>(
+                GetIdentifier() + "_vscroll", 0, 0, 0, style.scrollbarStyle.trackSize, 100,
+                ScrollbarOrientation::Vertical);
+
+        verticalScrollbar->onScrollChange = [this](int pos) {
+            OnScrollChanged();
+        };
+        verticalScrollbar->SetVisible(false);
+
+        // Create horizontal scrollbar
+        horizontalScrollbar = std::make_unique<UltraCanvasScrollbar>(
+                GetIdentifier() + "_hscroll", 0, 0, 0, 100, style.scrollbarStyle.trackSize,
+                ScrollbarOrientation::Horizontal);
+
+        horizontalScrollbar->onScrollChange = [this](int pos) {
+            OnScrollChanged();
+        };
+        horizontalScrollbar->SetVisible(false);
+
+        ApplyStyleToScrollbars();
+    }
+
+    void UltraCanvasContainer::ApplyStyleToScrollbars() {
+        verticalScrollbar->SetStyle(style.scrollbarStyle);
+        horizontalScrollbar->SetStyle(style.scrollbarStyle);
     }
 } // namespace UltraCanvas

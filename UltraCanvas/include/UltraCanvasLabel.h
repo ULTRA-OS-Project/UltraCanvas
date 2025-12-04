@@ -367,7 +367,7 @@ namespace UltraCanvas {
         }
 
         // ===== SIZE CHANGES =====
-        void SetBounds(const Rect2Di& bounds) {
+        void SetBounds(const Rect2Di& bounds) override {
             UltraCanvasUIElement::SetBounds(bounds);
             layoutDirty = true;
         }

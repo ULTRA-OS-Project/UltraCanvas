@@ -9,6 +9,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasScrollbar.h"
 #include <vector>
 #include <string>
 #include <functional>
@@ -87,6 +88,9 @@ namespace UltraCanvas {
         // Font
         std::string fontFamily = "Arial";
         float fontSize = 12.0f;
+
+// Scrollbar style (NEW: configurable scrollbar)
+        ScrollbarStyle scrollbarStyle;
     };
 
 // ===== DROPDOWN COMPONENT =====
@@ -108,7 +112,6 @@ namespace UltraCanvas {
         int hoveredIndex = -1;
         bool dropdownOpen = false;
         bool buttonPressed = false;
-        int scrollOffset = 0;
 
         // NEW: Multi-selection support
         bool multiSelectEnabled = false;
@@ -120,6 +123,9 @@ namespace UltraCanvas {
         int maxDropdownHeight = 0;
         bool needScrollbar = false;
         bool needCalculateDimensions = false;
+
+        std::shared_ptr<UltraCanvasScrollbar> listScrollbar;
+        int scrollOffset = 0;
     public:
         UltraCanvasDropdown(const std::string& identifier, long id, long x, long y, long w, long h = 24);
 
@@ -182,15 +188,17 @@ namespace UltraCanvas {
         int GetItemCount() const { return (int)items.size(); }
         const DropdownItem* GetItem(int index) const;
 
+        void SetWindow(UltraCanvasWindowBase* win) override;
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override;
-
         void RenderPopupContent(IRenderContext* ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
 
     private:
+        void CreateScrollbar();
+        void ApplyStyleToScrollbar();
         void CalculateDropdownDimensions();
         Rect2Di CalculatePopupPosition();
 
@@ -202,10 +210,8 @@ namespace UltraCanvas {
 
         // NEW: Icon rendering
         void RenderItemIcon(const std::string& iconPath, const Rect2Di& iconRect, IRenderContext* ctx);
-
         // NEW: Checkbox rendering for multi-select
         void RenderCheckbox(bool checked, const Rect2Di& checkboxRect, IRenderContext* ctx);
-
         void RenderScrollbar(const Rect2Di& listRect, IRenderContext* ctx);
 
         std::string GetDisplayText() const;

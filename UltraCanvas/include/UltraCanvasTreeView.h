@@ -6,6 +6,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasScrollbar.h"
 #include <vector>
 #include <string>
 #include <memory>
@@ -133,17 +134,20 @@ private:
     Color hoverColor;           // Hovered row background
     Color lineColor;            // Connecting line color
     Color textColor;            // Default text color
-    
+
+    ScrollbarStyle scrollbarStyle;
+
+    // Scrolling (using unified scrollbar)
+    std::shared_ptr<UltraCanvasScrollbar> verticalScrollbar;
+
     // Scrolling
     int scrollOffsetY;             // Vertical scroll offset
     int maxScrollY;                // Maximum scroll value
-    bool hasVerticalScrollbar;     // Show vertical scrollbar
-    int scrollbarWidth;            // Width of scrollbar
-    
+
     // Interaction state
-    bool isDragging;               // Currently dragging scrollbar
-    TreeNode* draggedNode;         // Node being dragged (for drag & drop)
-    Point2Di lastMousePos;          // Last mouse position
+//    bool isDragging;               // Currently dragging scrollbar
+//    TreeNode* draggedNode;         // Node being dragged (for drag & drop)
+//    Point2Di lastMousePos;          // Last mouse position
     
 public:
     // ===== EVENTS AND CALLBACKS =====
@@ -219,10 +223,14 @@ public:
     
     // ===== RENDERING =====
     void Render(IRenderContext* ctx) override;
-    
+
+// ==== WINDOW PROPAGATION =====
+    void SetWindow(UltraCanvasWindowBase* win) override;
+
 private:
 
-    // ===== HELPER METHODS =====
+    // ===== SCROLLBAR MANAGEMENT =====
+    void CreateScrollbar();
     void UpdateScrollbars();
     
     void ClampScrollOffset();
@@ -234,8 +242,7 @@ private:
     TreeNode* GetNodeAtY(int y);
     
     void RenderNode(IRenderContext *ctx, TreeNode* node, int& currentY, int level, const Rect2Di& contentRect);
-    void RenderVerticalScrollbar(IRenderContext* ctx);
-    
+
     void ExpandNodeRecursive(TreeNode* node);
     void CollapseNodeRecursive(TreeNode* node);
     

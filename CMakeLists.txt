@@ -124,7 +124,7 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasGridLayout.cpp
         UltraCanvas/core/UltraCanvasFlexLayout.cpp
         UltraCanvas/core/UltraCanvasToolbar.cpp
-        #UltraCanvas/core/UltraCanvasScrollbar.cpp
+        UltraCanvas/core/UltraCanvasScrollbar.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxApplication.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxWindow.cpp
         UltraCanvas/OS/Linux/UltraCanvasLinuxClipboard.cpp
@@ -140,7 +140,8 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         UltraCanvas/Plugins/Diagrams/UltraCanvasSankey.cpp
         UltraCanvas/Plugins/Text/UltraCanvasMarkdown.cpp
-#        UltraCanvas/Plugins/Charts/UltraCanvasChartElement.cpp
+        UltraCanvas/PixelFX/PixelFX.cpp
+        #        UltraCanvas/Plugins/Charts/UltraCanvasChartElement.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
 #        UltraCanvas/Plugins/Charts/UltraCanvasChartRenderer.cpp
@@ -198,6 +199,7 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasTableDemo.cpp
         Apps/DemoApp/UltraCanvasToolbarExamples.cpp
         Apps/DemoApp/UltraCanvasTabExamples.cpp
+        1/treescr.h
 )
 
 # ✅ ADDED: Check that source files exist

@@ -15,6 +15,8 @@ namespace UltraCanvas {
                                              long w,
                                              long h)
             : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+        style.scrollbarStyle = ScrollbarStyle::DropDown();
+        CreateScrollbar();
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text) {
@@ -52,6 +54,9 @@ namespace UltraCanvas {
         scrollOffset = 0;
         selectedIndices.clear();
         needCalculateDimensions = true;
+        if (listScrollbar) {
+            listScrollbar->SetScrollPosition(0);
+        }
     }
 
     void UltraCanvasDropdown::RemoveItem(int index) {
@@ -306,6 +311,7 @@ namespace UltraCanvas {
 
     void UltraCanvasDropdown::SetStyle(const DropdownStyle &newStyle) {
         style = newStyle;
+        ApplyStyleToScrollbar();
         needCalculateDimensions = true;
         RequestRedraw();
     }
@@ -363,17 +369,32 @@ namespace UltraCanvas {
             maxTextWidth = std::max(maxTextWidth, textWidth);
         }
 
+        int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
+
         // Add padding
-        dropdownWidth = maxTextWidth + (int)(style.paddingLeft + style.paddingRight + scrollbarWidth);
+        dropdownWidth = maxTextWidth + static_cast<int>(style.paddingLeft + style.paddingRight);
+
+        // Add scrollbar width if needed
+        needScrollbar = static_cast<int>(items.size()) > style.maxVisibleItems;
+        if (needScrollbar) {
+            dropdownWidth += scrollbarWidth;
+        }
+
         dropdownWidth = std::max(dropdownWidth, GetBounds().width);
         dropdownWidth = std::min(dropdownWidth, style.maxItemWidth);
 
         // Calculate height
-        int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
-        maxDropdownHeight = (int)(visibleItems * style.itemHeight + 2);
-        dropdownHeight = (int)(std::min((int)items.size(), visibleItems) * style.itemHeight + 2);
+        int visibleItems = std::min(static_cast<int>(items.size()), style.maxVisibleItems);
+        maxDropdownHeight = static_cast<int>(visibleItems * style.itemHeight + 2);
+        dropdownHeight = maxDropdownHeight;
 
-        needScrollbar = (int)items.size() > style.maxVisibleItems;
+        // Update scrollbar parameters
+        if (listScrollbar && needScrollbar) {
+            int totalItems = static_cast<int>(items.size());
+            listScrollbar->SetViewportSize(style.maxVisibleItems);
+            listScrollbar->SetContentSize(totalItems);
+        }
+
         needCalculateDimensions = false;
     }
 
@@ -402,37 +423,29 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDropdown::RenderPopupContent(IRenderContext* ctx) {
-        if (!dropdownOpen || items.empty()) return;
+        if (!dropdownOpen || items.empty() || !ctx) return;
+
+        if (needCalculateDimensions) {
+            CalculateDropdownDimensions();
+        }
 
         ctx->PushState();
 
         Rect2Di listRect = CalculatePopupPosition();
 
-        // Draw shadow
-//        if (style.hasShadow) {
-//            Rect2Di shadowRect(
-//                    listRect.x + style.shadowOffset,
-//                    listRect.y + style.shadowOffset,
-//                    listRect.width - style.shadowOffset,
-//                    listRect.height - style.shadowOffset
-//            );
-//            ctx->SetStrokePaint(style.shadowColor);
-//            ctx->SetStrokeWidth(style.shadowOffset);
-//            ctx->DrawRectangle(shadowRect);
-//            listRect.width -= style.shadowOffset;
-//            listRect.height -= style.shadowOffset;
-//        }
-
         // Draw list background and border
         ctx->DrawFilledRectangle(listRect, style.listBackgroundColor, style.borderWidth, style.listBorderColor);
-        ctx->PushState();
+
         // Set clipping for items
-        ctx->ClipRect(Rect2Di(listRect.x + 1, listRect.y + 1, listRect.width - 2, listRect.height - 2));
+        ctx->PushState();
+        int scrollbarWidth = needScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
+        ctx->ClipRect(Rect2Di(listRect.x + 1, listRect.y + 1,
+                              listRect.width - 2 - scrollbarWidth, listRect.height - 2));
 
         // Render visible items
-        int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
+        int visibleItems = std::min(static_cast<int>(items.size()), style.maxVisibleItems);
         int startIndex = scrollOffset;
-        int endIndex = std::min(startIndex + visibleItems, (int)items.size());
+        int endIndex = std::min(startIndex + visibleItems, static_cast<int>(items.size()));
 
         for (int i = startIndex; i < endIndex; i++) {
             RenderDropdownItem(i, listRect, i - startIndex, ctx);
@@ -440,7 +453,7 @@ namespace UltraCanvas {
 
         ctx->PopState();
 
-        // Draw scrollbar if needed
+        // Render scrollbar if needed
         if (needScrollbar) {
             RenderScrollbar(listRect, ctx);
         }
@@ -672,58 +685,53 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDropdown::RenderScrollbar(const Rect2Di &listRect, IRenderContext *ctx) {
+        if (!listScrollbar || !needScrollbar) return;
+
+        int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
         int scrollbarX = listRect.x + listRect.width - scrollbarWidth - 1;
-        Rect2Di scrollbarRect(scrollbarX, listRect.y + 1, scrollbarWidth, listRect.height - 2);
+        int scrollbarY = listRect.y + 1;
+        int scrollbarHeight = listRect.height - 2;
 
-        // Draw scrollbar background
-        ctx->DrawFilledRectangle(scrollbarRect, Color(240, 240, 240, 255), 0.0f, Colors::Transparent);
+        listScrollbar->SetBounds(Rect2Di(scrollbarX, scrollbarY, scrollbarWidth, scrollbarHeight));
+        listScrollbar->SetScrollPosition(scrollOffset);
 
-        // Calculate thumb size and position
-        float thumbRatio = (float)style.maxVisibleItems / (float)items.size();
-        int thumbHeight = std::max(20, (int)(scrollbarRect.height * thumbRatio));
-
-        float scrollRatio = (float)scrollOffset / (float)(items.size() - style.maxVisibleItems);
-        int thumbY = scrollbarRect.y + (int)(scrollRatio * (scrollbarRect.height - thumbHeight));
-
-        Rect2Di thumbRect(scrollbarX + 2, thumbY, scrollbarWidth - 4, thumbHeight);
-
-        // Draw thumb
-        ctx->DrawFilledRectangle(thumbRect, Color(180, 180, 180, 255), 0.0f, Colors::Transparent);
+        listScrollbar->Render(ctx);
     }
 
     void UltraCanvasDropdown::EnsureItemVisible(int index) {
-        if (index < 0 || index >= (int)items.size()) return;
-
-        int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
-
         if (index < scrollOffset) {
             scrollOffset = index;
-        } else if (index >= scrollOffset + visibleItems) {
-            scrollOffset = index - visibleItems + 1;
+        } else if (index >= scrollOffset + style.maxVisibleItems) {
+            scrollOffset = index - style.maxVisibleItems + 1;
         }
+        scrollOffset = std::max(0, std::min(scrollOffset,
+                                            static_cast<int>(items.size()) - style.maxVisibleItems));
 
-        int maxScroll = std::max(0, (int)items.size() - visibleItems);
-        scrollOffset = std::max(0, std::min(scrollOffset, maxScroll));
-        RequestRedraw();
+        if (listScrollbar) {
+            listScrollbar->SetScrollPosition(scrollOffset);
+        }
     }
 
     int UltraCanvasDropdown::GetItemAtPosition(int x, int y) {
-        if (!dropdownOpen) return -1;
-
         Rect2Di listRect = CalculatePopupPosition();
 
-        // Check if point is within dropdown list bounds
-        if (x < listRect.x || x >= listRect.x + listRect.width ||
-            y < listRect.y || y >= listRect.y + listRect.height) {
+        if (!listRect.Contains(x, y)) {
             return -1;
         }
 
-        // Calculate which item was clicked
-        int relativeY = y - (int)listRect.y - 1;
-        int itemIndex = scrollOffset + relativeY / (int)style.itemHeight;
+        // Check if in scrollbar area
+        if (needScrollbar) {
+            int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
+            if (x > listRect.x + listRect.width - scrollbarWidth) {
+                return -1;
+            }
+        }
 
-        // Validate item index
-        if (itemIndex >= 0 && itemIndex < (int)items.size()) {
+        int relativeY = y - listRect.y - 1;
+        int visualIndex = relativeY / static_cast<int>(style.itemHeight);
+        int itemIndex = scrollOffset + visualIndex;
+
+        if (itemIndex >= 0 && itemIndex < static_cast<int>(items.size())) {
             return itemIndex;
         }
 
@@ -731,64 +739,71 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasDropdown::HandleMouseDown(const UCEvent &event) {
+        Point2Di mousePos(event.x, event.y);
         Rect2Di buttonRect = GetBounds();
 
-        if (buttonRect.Contains(event.x, event.y)) {
-            // Clicked on button
-            buttonPressed = true;
-            SetFocus(true);
+        if (dropdownOpen) {
+            // Check scrollbar first
+            if (needScrollbar && listScrollbar && listScrollbar->Contains(event.x, event.y)) {
+                return listScrollbar->OnEvent(event);
+            }
 
+            int itemIndex = GetItemAtPosition(event.x, event.y);
+            if (itemIndex >= 0 && items[itemIndex].enabled && !items[itemIndex].separator) {
+                if (multiSelectEnabled) {
+                    SetItemSelected(itemIndex, !IsItemSelected(itemIndex));
+                } else {
+                    SetSelectedIndex(itemIndex);
+                    CloseDropdown();
+                }
+                return true;
+            }
+
+            // Click outside - close dropdown
+            if (!GetActualBounds().Contains(mousePos)) {
+                CloseDropdown();
+                return false;
+            }
+        }
+
+        if (buttonRect.Contains(mousePos)) {
+            buttonPressed = true;
             if (dropdownOpen) {
                 CloseDropdown();
             } else {
                 OpenDropdown();
             }
             return true;
-        } else if (dropdownOpen) {
-            // Clicked somewhere else while dropdown is open
-            int itemIndex = GetItemAtPosition(event.windowX, event.windowY);
-
-            if (itemIndex >= 0 && items[itemIndex].enabled && !items[itemIndex].separator) {
-                if (multiSelectEnabled) {
-                    // Toggle selection in multi-select mode
-                    bool currentlySelected = IsItemSelected(itemIndex);
-                    SetItemSelected(itemIndex, !currentlySelected);
-                    // Don't close dropdown in multi-select mode
-                } else {
-                    // Single select - select and close
-                    SetSelectedIndex(itemIndex);
-                    CloseDropdown();
-                }
-                return true;
-            }
-            CloseDropdown();
         }
+
         return false;
     }
 
     bool UltraCanvasDropdown::HandleMouseUp(const UCEvent &event) {
         buttonPressed = false;
+        if (dropdownOpen && listScrollbar && listScrollbar->IsDragging()) {
+            return listScrollbar->OnEvent(event);
+        }
         return false;
     }
 
     bool UltraCanvasDropdown::HandleMouseMove(const UCEvent &event) {
-        if (!dropdownOpen) {
-            return false;
-        }
-
-        int newHoveredIndex = GetItemAtPosition(event.windowX, event.windowY);
-
-        if (newHoveredIndex != hoveredIndex) {
-            hoveredIndex = newHoveredIndex;
-
-            if (hoveredIndex >= 0 && onItemHovered) {
-                onItemHovered(hoveredIndex, items[hoveredIndex]);
+        if (dropdownOpen) {
+            // Handle scrollbar dragging
+            if (listScrollbar && listScrollbar->IsDragging()) {
+                return listScrollbar->OnEvent(event);
             }
 
-            RequestRedraw();
+            int itemIndex = GetItemAtPosition(event.x, event.y);
+            if (itemIndex != hoveredIndex) {
+                hoveredIndex = itemIndex;
+                if (hoveredIndex >= 0 && onItemHovered) {
+                    onItemHovered(hoveredIndex, items[hoveredIndex]);
+                }
+                RequestRedraw();
+            }
         }
-
-        return dropdownOpen;
+        return false;
     }
 
     void UltraCanvasDropdown::HandleMouseLeave(const UCEvent &event) {
@@ -883,16 +898,18 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasDropdown::HandleMouseWheel(const UCEvent &event) {
-        if (!dropdownOpen || !needScrollbar) {
-            return false;
-        }
+        if (!dropdownOpen || !needScrollbar) return false;
+
+        Rect2Di listRect = CalculatePopupPosition();
+        if (!listRect.Contains(event.x, event.y)) return false;
 
         int delta = event.wheelDelta > 0 ? -1 : 1;
-        scrollOffset += delta;
+        int maxScroll = std::max(0, static_cast<int>(items.size()) - style.maxVisibleItems);
+        scrollOffset = std::clamp(scrollOffset + delta, 0, maxScroll);
 
-        int visibleItems = std::min((int)items.size(), style.maxVisibleItems);
-        int maxScroll = std::max(0, (int)items.size() - visibleItems);
-        scrollOffset = std::max(0, std::min(scrollOffset, maxScroll));
+        if (listScrollbar) {
+            listScrollbar->SetScrollPosition(scrollOffset);
+        }
 
         RequestRedraw();
         return true;
@@ -934,4 +951,32 @@ namespace UltraCanvas {
                 return false;
         }
     }
+
+    void UltraCanvasDropdown::CreateScrollbar() {
+        listScrollbar = std::make_shared<UltraCanvasScrollbar>(
+                GetIdentifier() + "_scroll", 0, 0, 0, 12, 100,
+                ScrollbarOrientation::Vertical);
+
+        listScrollbar->onScrollChange = [this](int pos) {
+            int maxScroll = std::max(0, static_cast<int>(items.size()) - style.maxVisibleItems);
+            scrollOffset = std::clamp(pos, 0, maxScroll);
+            RequestRedraw();
+        };
+
+        ApplyStyleToScrollbar();
+    }
+
+    void UltraCanvasDropdown::ApplyStyleToScrollbar() {
+        if (listScrollbar) {
+            listScrollbar->SetStyle(style.scrollbarStyle);
+        }
+    }
+
+    void UltraCanvasDropdown::SetWindow(UltraCanvasWindowBase *win) {
+        UltraCanvasUIElement::SetWindow(win);
+        if (listScrollbar) {
+            listScrollbar->SetWindow(win);
+        }
+    }
+
 } // namespace UltraCanvas
