@@ -71,15 +71,11 @@ namespace UltraCanvas {
         bool eventThreadRunning;
         std::thread eventThread;
 
-        // ===== WINDOW MANAGEMENT =====
-        std::unordered_map<Window, UltraCanvasLinuxWindow*> windowMap;
-        UltraCanvasLinuxWindow* focusedWindow;
-
         // ===== TIMING AND FRAME RATE =====
-        std::chrono::steady_clock::time_point lastFrameTime;
-        double deltaTime;
-        int targetFPS;
-        bool vsyncEnabled;
+//        std::chrono::steady_clock::time_point lastFrameTime;
+//        double deltaTime;
+//        int targetFPS;
+//        bool vsyncEnabled;
 
         // ===== GLOBAL EVENT HANDLING =====
         std::function<bool(const UCEvent&)> globalEventHandler;
@@ -105,10 +101,10 @@ namespace UltraCanvas {
         };
 
         // ===== INHERITED FROM BASE APPLICATION =====
-        virtual bool InitializeNative() override;
-        virtual bool ShutdownNative() override;
-        virtual void RunNative() override;
-        virtual void Exit() override;
+        bool InitializeNative() override;
+        bool ShutdownNative() override;
+        void RunNative() override;
+        void Exit() override;
 
         // ===== LINUX-SPECIFIC METHODS =====
 
@@ -122,18 +118,16 @@ namespace UltraCanvas {
 
         // OpenGL context management
         bool IsGLXSupported() const { return glxSupported; }
-        bool CreateGLXContext();
-        void DestroyGLXContext();
 
         // Event processing
         void WaitForEvents(int timeoutMs = -1);
 
         // Frame rate and timing
-        void SetTargetFPS(int fps) { targetFPS = fps; }
-        int GetTargetFPS() const { return targetFPS; }
-        void SetVSyncEnabled(bool enabled) { vsyncEnabled = enabled; }
-        bool IsVSyncEnabled() const { return vsyncEnabled; }
-        double GetDeltaTime() const { return deltaTime; }
+//        void SetTargetFPS(int fps) { targetFPS = fps; }
+//        int GetTargetFPS() const { return targetFPS; }
+//        void SetVSyncEnabled(bool enabled) { vsyncEnabled = enabled; }
+//        bool IsVSyncEnabled() const { return vsyncEnabled; }
+//        double GetDeltaTime() const { return deltaTime; }
 
         // Platform utilities
         std::string GetClipboardText();
@@ -191,8 +185,8 @@ namespace UltraCanvas {
         void CleanupX11();
 
         // ===== FRAME RATE CONTROL =====
-        void UpdateDeltaTime();
-        void LimitFrameRate();
+//        void UpdateDeltaTime();
+//        void LimitFrameRate();
 
         // ===== ERROR HANDLING =====
         static int XErrorHandler(Display* display, XErrorEvent* event);

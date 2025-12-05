@@ -7,6 +7,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 #set(BUILD_SHARED_LIBS OFF)
 #set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 
+if(APPLE)
+    set(ULTRACANVAS_PLATFORM_MACOS TRUE)
+    message(STATUS "Building for macOS")
+elseif(UNIX)
+    set(ULTRACANVAS_PLATFORM_LINUX TRUE)
+    message(STATUS "Building for Linux")
+elseif(WIN32)
+    set(ULTRACANVAS_PLATFORM_WINDOWS TRUE)
+    message(STATUS "Building for Windows")
+endif()
+
 # ✅ REQUIRED: Find platform packages
 find_package(PkgConfig REQUIRED)
 
@@ -25,7 +36,7 @@ if(NOT VIPS_FOUND)
 endif()
 
 # ✅ REQUIRED: Check for required packages first
-if(UNIX AND NOT APPLE)
+if(ULTRACANVAS_PLATFORM_LINUX)
     # Check individual packages with better error messages
     pkg_check_modules(X11 REQUIRED x11)
     if(NOT X11_FOUND)
@@ -55,11 +66,80 @@ if(UNIX AND NOT APPLE)
     endif()
 
     # ✅ ADDED: Print found package info for debugging
-    message(STATUS "Found X11: ${X11_VERSION}")
-    message(STATUS "Found Cairo: ${CAIRO_VERSION}")
-    message(STATUS "Found Pango: ${PANGO_VERSION}")
-    message(STATUS "Found PangoCairo: ${PANGOCAIRO_VERSION}")
-    message(STATUS "Found FreeType: ${FREETYPE_VERSION}")
+
+elseif(ULTRACANVAS_PLATFORM_MACOS)
+    # ===== MACOS DEPENDENCIES =====
+    message(STATUS "Configuring macOS dependencies...")
+
+    # Detect Homebrew installation
+    if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "arm64")
+        # Apple Silicon (M1/M2/M3)
+        set(HOMEBREW_PREFIX "/opt/homebrew")
+        message(STATUS "Detected Apple Silicon Mac")
+    else()
+        # Intel Mac
+        set(HOMEBREW_PREFIX "/usr/local")
+        message(STATUS "Detected Intel Mac")
+    endif()
+
+    # Set PKG_CONFIG_PATH for Homebrew
+    set(ENV{PKG_CONFIG_PATH} "${HOMEBREW_PREFIX}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+
+    # Check for Cairo with Quartz backend
+    pkg_check_modules(CAIRO REQUIRED cairo)
+    if(NOT CAIRO_FOUND)
+        message(FATAL_ERROR "Cairo not found. Install with: brew install cairo")
+    endif()
+
+    # Check for Pango
+    pkg_check_modules(PANGO REQUIRED pango)
+    pkg_check_modules(PANGOCAIRO REQUIRED pangocairo)
+    if(NOT PANGO_FOUND OR NOT PANGOCAIRO_FOUND)
+        message(FATAL_ERROR "Pango not found. Install with: brew install pango")
+    endif()
+
+    # Check for FreeType
+    pkg_check_modules(FREETYPE REQUIRED freetype2)
+    if(NOT FREETYPE_FOUND)
+        message(FATAL_ERROR "FreeType not found. Install with: brew install freetype")
+    endif()
+
+    # Check for HarfBuzz (required by Pango)
+    pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
+    if(NOT HARFBUZZ_FOUND)
+        message(FATAL_ERROR "HarfBuzz not found. Install with: brew install harfbuzz")
+    endif()
+
+    # Check for GLib (required by Pango)
+    pkg_check_modules(GLIB REQUIRED glib-2.0)
+    if(NOT GLIB_FOUND)
+        message(FATAL_ERROR "GLib not found. Install with: brew install glib")
+    endif()
+
+    # TinyXML2
+    pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
+    if(NOT TINYXML2_FOUND)
+        message(FATAL_ERROR "TinyXML2 not found. Install with: brew install tinyxml2")
+    endif()
+
+    # Find macOS frameworks
+    find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
+    find_library(QUARTZ_CORE_FRAMEWORK QuartzCore REQUIRED)
+    find_library(CORE_GRAPHICS_FRAMEWORK CoreGraphics REQUIRED)
+
+    if(NOT COCOA_FRAMEWORK)
+        message(FATAL_ERROR "Cocoa framework not found")
+    endif()
+
+    # Enable Objective-C++ for .mm files
+    enable_language(OBJCXX)
+    set(CMAKE_OBJCXX_STANDARD 20)
+    set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+
+    # Set Objective-C++ flags
+    set(CMAKE_OBJCXX_FLAGS "${CMAKE_OBJCXX_FLAGS} -fobjc-arc -fno-objc-exceptions")
+
+    message(STATUS "Objective-C++ enabled with ARC")
 endif()
 
 # ✅ REQUIRED: Include directories - CORRECT ORDER
@@ -69,7 +149,7 @@ include_directories(
 )
 
 # ✅ FIXED: Add system include directories for packages
-if(UNIX AND NOT APPLE)
+if(ULTRACANVAS_PLATFORM_LINUX)
     include_directories(SYSTEM
         ${X11_INCLUDE_DIRS}
         ${CAIRO_INCLUDE_DIRS}
@@ -90,10 +170,40 @@ if(UNIX AND NOT APPLE)
         ${TINYXML2_LIBRARY_DIRS}
         ${VIPS_LIBRARY_DIRS}
     )
+elseif(ULTRACANVAS_PLATFORM_MACOS)
+    include_directories(SYSTEM
+            ${CAIRO_INCLUDE_DIRS}
+            ${PANGO_INCLUDE_DIRS}
+            ${PANGOCAIRO_INCLUDE_DIRS}
+            ${FREETYPE_INCLUDE_DIRS}
+            ${HARFBUZZ_INCLUDE_DIRS}
+            ${GLIB_INCLUDE_DIRS}
+            ${VIPS_INCLUDE_DIRS}
+            ${TINYXML2_INCLUDE_DIRS}
+            ${HOMEBREW_PREFIX}/include
+            ${HOMEBREW_PREFIX}/include/pango-1.0
+            ${HOMEBREW_PREFIX}/include/glib-2.0
+            ${HOMEBREW_PREFIX}/lib/glib-2.0/include
+            ${HOMEBREW_PREFIX}/include/harfbuzz
+            ${HOMEBREW_PREFIX}/include/cairo
+            ${HOMEBREW_PREFIX}/include/freetype2
+    )
+
+    link_directories(
+            ${CAIRO_LIBRARY_DIRS}
+            ${PANGO_LIBRARY_DIRS}
+            ${PANGOCAIRO_LIBRARY_DIRS}
+            ${FREETYPE_LIBRARY_DIRS}
+            ${HARFBUZZ_LIBRARY_DIRS}
+            ${GLIB_LIBRARY_DIRS}
+            ${VIPS_LIBRARY_DIRS}
+            ${TINYXML2_LIBRARY_DIRS}
+            ${HOMEBREW_PREFIX}/lib
+    )
 endif()
 
 # ✅ REQUIRED: Source files
-set(ULTRACANVAS_SOURCES
+set(ULTRACANVAS_CROSSPLATFORM_SOURCES
     # Platform-specific sources
         UltraCanvas/core/UltraCanvasUtils.cpp
         UltraCanvas/core/UltraCanvasApplication.cpp
@@ -125,11 +235,6 @@ set(ULTRACANVAS_SOURCES
         UltraCanvas/core/UltraCanvasFlexLayout.cpp
         UltraCanvas/core/UltraCanvasToolbar.cpp
         UltraCanvas/core/UltraCanvasScrollbar.cpp
-        UltraCanvas/OS/Linux/UltraCanvasLinuxApplication.cpp
-        UltraCanvas/OS/Linux/UltraCanvasLinuxWindow.cpp
-        UltraCanvas/OS/Linux/UltraCanvasLinuxClipboard.cpp
-        UltraCanvas/libspecific/Cairo/ImageCairo.cpp
-        UltraCanvas/libspecific/Cairo/RenderContextCairo.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasChartElementBase.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         UltraCanvas/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -150,6 +255,42 @@ set(ULTRACANVAS_SOURCES
 #        UltraCanvas/OS/MSWindows/UltraCanvasWindowsDoubleBuffer.cpp
 )
 
+set(ULTRACANVAS_LIBSPECIFIC_SOURCES
+        UltraCanvas/libspecific/Cairo/ImageCairo.cpp
+        UltraCanvas/libspecific/Cairo/RenderContextCairo.cpp
+)
+
+set(ULTRACANVAS_PLATFORM_SOURCES "")
+
+if(ULTRACANVAS_PLATFORM_LINUX)
+    set(ULTRACANVAS_PLATFORM_SOURCES
+            UltraCanvas/OS/Linux/UltraCanvasLinuxApplication.cpp
+            UltraCanvas/OS/Linux/UltraCanvasLinuxWindow.cpp
+            UltraCanvas/OS/Linux/UltraCanvasLinuxClipboard.cpp
+    )
+
+elseif(ULTRACANVAS_PLATFORM_MACOS)
+    set(ULTRACANVAS_PLATFORM_SOURCES
+            UltraCanvas/OS/MacOS/UltraCanvasMacOSApplication.mm
+            UltraCanvas/OS/MacOS/UltraCanvasMacOSWindow.mm
+            UltraCanvas/OS/MacOS/UltraCanvasSupport.cpp
+    )
+
+    # ✅ CRITICAL: Mark .mm files as OBJCXX language
+    set_source_files_properties(
+            UltraCanvas/OS/MacOS/UltraCanvasMacOSApplication.mm
+            UltraCanvas/OS/MacOS/UltraCanvasMacOSWindow.mm
+            PROPERTIES
+            LANGUAGE OBJCXX
+            COMPILE_FLAGS "-x objective-c++ -fobjc-arc"
+    )
+endif()
+
+set(ULTRACANVAS_SOURCES
+        ${ULTRACANVAS_CROSSPLATFORM_SOURCES}
+        ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
+        ${ULTRACANVAS_PLATFORM_SOURCES}
+)
 # ✅ FIXED: Corrected source file extension and added missing files
 set(APP_SOURCES
 #        clipboard app
@@ -199,7 +340,6 @@ set(MAIN_DEMOAPP_SOURCES
         Apps/DemoApp/UltraCanvasTableDemo.cpp
         Apps/DemoApp/UltraCanvasToolbarExamples.cpp
         Apps/DemoApp/UltraCanvasTabExamples.cpp
-        1/treescr.h
 )
 
 # ✅ ADDED: Check that source files exist
@@ -224,7 +364,7 @@ add_executable(${PROJECT_NAME}
 )
 
 # ✅ REQUIRED: Link libraries - Linux
-if(UNIX AND NOT APPLE)
+if(ULTRACANVAS_PLATFORM_LINUX)
     target_link_libraries(${PROJECT_NAME}
         ${X11_LIBRARIES}
         ${CAIRO_LIBRARIES}
@@ -250,7 +390,43 @@ if(UNIX AND NOT APPLE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
         ULTRACANVAS_PLATFORM_LINUX
     )
+elseif(ULTRACANVAS_PLATFORM_MACOS)
+    target_link_libraries(${PROJECT_NAME}
+            ${CAIRO_LIBRARIES}
+            ${PANGO_LIBRARIES}
+            ${PANGOCAIRO_LIBRARIES}
+            ${FREETYPE_LIBRARIES}
+            ${HARFBUZZ_LIBRARIES}
+            ${GLIB_LIBRARIES}
+            ${TINYXML2_LIBRARIES}
+            ${VIPS_LIBRARIES}
+            ${COCOA_FRAMEWORK}
+            ${QUARTZ_CORE_FRAMEWORK}
+            ${CORE_GRAPHICS_FRAMEWORK}
+            pthread
+    )
+
+    target_compile_options(${PROJECT_NAME} PRIVATE
+            ${CAIRO_CFLAGS_OTHER}
+            ${PANGO_CFLAGS_OTHER}
+            ${PANGOCAIRO_CFLAGS_OTHER}
+            ${FREETYPE_CFLAGS_OTHER}
+            ${HARFBUZZ_CFLAGS_OTHER}
+            ${GLIB_CFLAGS_OTHER}
+            ${VIPS_CFLAGS_OTHER}
+    )
+
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+            ULTRACANVAS_PLATFORM_MACOS
+    )
+
+    # ✅ CRITICAL: Set Objective-C++ specific flags for the target
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+            OBJCXX_STANDARD 20
+            OBJCXX_STANDARD_REQUIRED ON
+    )
 endif()
+
 
 # ✅ OPTIONAL: Compiler warnings
 target_compile_options(${PROJECT_NAME} PRIVATE
@@ -270,8 +446,3 @@ else()
     )
     message(STATUS "Release build configured")
 endif()
-
-# ✅ ADDED: Print build information
-message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
-message(STATUS "C++ standard: ${CMAKE_CXX_STANDARD}")
-message(STATUS "Project source dir: ${CMAKE_CURRENT_SOURCE_DIR}")

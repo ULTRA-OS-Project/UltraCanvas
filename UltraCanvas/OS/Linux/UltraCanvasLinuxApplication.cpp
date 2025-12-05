@@ -25,10 +25,10 @@ namespace UltraCanvas {
             , colormap(0)
             , depth(0)
             , glxSupported(false)
-            , focusedWindow(nullptr)
-            , deltaTime(1.0/60.0)
-            , targetFPS(60)
-            , vsyncEnabled(false)
+//            , focusedWindow(nullptr)
+//            , deltaTime(1.0/60.0)
+//            , targetFPS(60)
+//            , vsyncEnabled(false)
             , eventThreadRunning(false) {
         instance = this;
         std::cout << "UltraCanvas: Linux Application created" << std::endl;
@@ -69,7 +69,7 @@ namespace UltraCanvas {
             InitializeAtoms();
 
             // STEP 4: Set up timing
-            lastFrameTime = std::chrono::steady_clock::now();
+//            lastFrameTime = std::chrono::steady_clock::now();
 
             // STEP 5: Mark as initialized
             initialized = true;
@@ -167,7 +167,7 @@ namespace UltraCanvas {
         try {
             while (running && !windows.empty()) {
                 // Update timing
-                UpdateDeltaTime();
+                //UpdateDeltaTime();
                 if (XPending(display) > 0) {
                     while (XPending(display) > 0) {
                         XEvent xEvent;
@@ -650,32 +650,32 @@ namespace UltraCanvas {
     }
 
 // ===== TIMING AND FRAME RATE =====
-    void UltraCanvasLinuxApplication::UpdateDeltaTime() {
-        auto currentTime = std::chrono::steady_clock::now();
-
-        if (lastFrameTime.time_since_epoch().count() == 0) {
-            deltaTime = 1.0 / 60.0;
-        } else {
-            auto frameDuration = currentTime - lastFrameTime;
-            deltaTime = std::chrono::duration<double>(frameDuration).count();
-        }
-
-        deltaTime = std::min(deltaTime, 1.0 / 30.0);
-        lastFrameTime = currentTime;
-    }
-
-    void UltraCanvasLinuxApplication::LimitFrameRate() {
-        if (targetFPS <= 0) return;
-
-        auto targetFrameTime = std::chrono::microseconds(1000000 / targetFPS);
-        auto currentTime = std::chrono::steady_clock::now();
-        auto actualFrameTime = currentTime - lastFrameTime;
-
-        if (actualFrameTime < targetFrameTime) {
-            auto sleepTime = targetFrameTime - actualFrameTime;
-            std::this_thread::sleep_for(sleepTime);
-        }
-    }
+//    void UltraCanvasLinuxApplication::UpdateDeltaTime() {
+//        auto currentTime = std::chrono::steady_clock::now();
+//
+//        if (lastFrameTime.time_since_epoch().count() == 0) {
+//            deltaTime = 1.0 / 60.0;
+//        } else {
+//            auto frameDuration = currentTime - lastFrameTime;
+//            deltaTime = std::chrono::duration<double>(frameDuration).count();
+//        }
+//
+//        deltaTime = std::min(deltaTime, 1.0 / 30.0);
+//        lastFrameTime = currentTime;
+//    }
+//
+//    void UltraCanvasLinuxApplication::LimitFrameRate() {
+//        if (targetFPS <= 0) return;
+//
+//        auto targetFrameTime = std::chrono::microseconds(1000000 / targetFPS);
+//        auto currentTime = std::chrono::steady_clock::now();
+//        auto actualFrameTime = currentTime - lastFrameTime;
+//
+//        if (actualFrameTime < targetFrameTime) {
+//            auto sleepTime = targetFrameTime - actualFrameTime;
+//            std::this_thread::sleep_for(sleepTime);
+//        }
+//    }
 
 // ===== CLIPBOARD SUPPORT =====
     std::string UltraCanvasLinuxApplication::GetClipboardText() {

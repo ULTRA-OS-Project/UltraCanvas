@@ -15,6 +15,7 @@
 #include <functional>
 #include <iostream>
 #include <chrono>
+#include <queue>
 
 namespace UltraCanvas {
     class UltraCanvasBaseApplication {
@@ -112,36 +113,32 @@ namespace UltraCanvas {
     };
 }
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__unix__) || defined(__unix)
 #include "../OS/Linux/UltraCanvasLinuxApplication.h"
 namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasLinuxApplication; }
 #elif defined(_WIN32) || defined(_WIN64)
 #include "../OS/MSWindows/UltraCanvasWindowsApplication.h"
-    #define UltraCanvasNativeApplication UltraCanvasWindowsApplication
+namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWindowsApplication; }
 #elif defined(__APPLE__)
     #include <TargetConditionals.h>
     #if TARGET_OS_MAC && !TARGET_OS_IPHONE
         // macOS
         #include "../OS/MacOS/UltraCanvasMacOSApplication.h"
-        #define UltraCanvasNativeApplication UltraCanvasMacOSApplication
+        namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasMacOSApplication; }
     #elif TARGET_OS_IPHONE
         // iOS
         #include "../OS/iOS/UltraCanvasiOSApplication.h"
-        #define UltraCanvasNativeApplication UltraCanvasiOSApplication
+        namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasiOSApplication; }
     #else
         #error "Unsupported Apple platform"
     #endif
 #elif defined(__ANDROID__)
     #include "../OS/Android/UltraCanvasAndroidApplication.h"
-    #define UltraCanvasNativeApplication UltraCanvasAndroidApplication
+    namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasAndroidApplication; }
 #elif defined(__WASM__)
     // Web/WASM
     #include "../OS/Web/UltraCanvasWebApplication.h"
-    #define UltraCanvasNativeApplication UltraCanvasWebApplication
-#elif defined(__unix__) || defined(__unix)
-    // Generic Unix (FreeBSD, OpenBSD, etc.)
-    #include "../OS/Unix/UltraCanvasUnixApplication.h"
-    #define UltraCanvasNativeApplication UltraCanvasUnixApplication
+    namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWebApplication; }
 #else
     #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"
 #endif

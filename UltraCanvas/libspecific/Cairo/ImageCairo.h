@@ -10,10 +10,11 @@
 #include "UltraCanvasImage.h"
 #include <string>
 #include <unordered_map>
-#include <vips/vips8>
 #include <memory>
 #include <chrono>
 #include <cairo/cairo.h>
+#include <vips/vips8>
+#undef Rect
 
 namespace UltraCanvas {
 // ===== CROSS-PLATFORM IMAGE CLASS =====

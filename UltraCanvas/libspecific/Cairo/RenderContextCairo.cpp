@@ -15,25 +15,9 @@
 namespace UltraCanvas {
 
     RenderContextCairo::RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering)
-        : targetSurface(surf), surfaceWidth(width), surfaceHeight(height), stagingSurface(nullptr), pangoContext(nullptr), destroying(false) {
+        : targetSurface(nullptr), surfaceWidth(0), surfaceHeight(0), stagingSurface(nullptr), pangoContext(nullptr), cairo(nullptr), targetContext(nullptr), destroying(false) {
 
-        targetContext = cairo_create(surf);
-        cairo = cairo_create(surf);
-
-        // Check Cairo context status
-        cairo_status_t status = cairo_status(targetContext);
-        if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "ERROR: RenderContextCairo: Cairo target context is invalid: " << cairo_status_to_string(status)
-                      << std::endl;
-            throw std::runtime_error("RenderContextCairo: Invalid target Cairo context");
-        }
-
-        cairo_status_t status2 = cairo_status(cairo);
-        if (status2 != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "ERROR: RenderContextCairo: Cairo context is invalid: " << cairo_status_to_string(status2)
-                      << std::endl;
-            throw std::runtime_error("RenderContextCairo: Invalid Cairo context");
-        }
+        SetTargetSurface(surf, width, height);
 
         // Initialize Pango for text rendering with proper error checking
         try {
@@ -106,6 +90,43 @@ namespace UltraCanvas {
         cairo_destroy(cairo);
 
         std::cout << "RenderContextCairo: Destruction complete" << std::endl;
+    }
+
+    void RenderContextCairo::SetTargetSurface(cairo_surface_t* surf, int w, int h) {
+        cairo_status_t status = cairo_surface_status(surf);
+        if (status != CAIRO_STATUS_SUCCESS) {
+            std::cerr << "ERROR: RenderContextCairo: Cairo target surface is invalid: " << cairo_status_to_string(status)
+                      << std::endl;
+            throw std::runtime_error("RenderContextCairo: Invalid target Cairo surface");
+        }
+
+        if (targetContext) {
+            cairo_destroy(targetContext);
+        }
+        if (cairo) {
+            cairo_destroy(cairo);
+        }
+
+        surfaceWidth = w;
+        surfaceHeight = h;
+        targetSurface = surf;
+        targetContext = cairo_create(targetSurface);
+
+        // Check Cairo context status
+        status = cairo_status(targetContext);
+        if (status != CAIRO_STATUS_SUCCESS) {
+            std::cerr << "ERROR: RenderContextCairo: Cairo target context is invalid: " << cairo_status_to_string(status)
+                      << std::endl;
+            throw std::runtime_error("RenderContextCairo: Invalid target Cairo context");
+        }
+
+        cairo = cairo_create(targetSurface);
+        status = cairo_status(cairo);
+        if (status != CAIRO_STATUS_SUCCESS) {
+            std::cerr << "ERROR: RenderContextCairo: Cairo context is invalid: " << cairo_status_to_string(status)
+                      << std::endl;
+            throw std::runtime_error("RenderContextCairo: Invalid Cairo context");
+        }
     }
 
     bool RenderContextCairo::CreateStagingSurface() {

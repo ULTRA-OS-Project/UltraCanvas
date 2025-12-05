@@ -312,7 +312,7 @@ namespace UltraCanvas {
 
 } // namespace UltraCanvas
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__unix__) || defined(__unix)
 #include "../OS/Linux/UltraCanvasLinuxWindow.h"
 namespace UltraCanvas {
     using UltraCanvasWindow = UltraCanvasLinuxWindow;
@@ -320,7 +320,7 @@ namespace UltraCanvas {
 #elif defined(_WIN32) || defined(_WIN64)
 #include "../OS/MSWindows/UltraCanvasWindowsWindow.h"
     namespace UltraCanvas {
-        using UltraCanvasNativeWindow = UltraCanvasWindowsWindow;
+        using UltraCanvasWindow = UltraCanvasWindowsWindow;
     }
 #elif defined(__APPLE__)
     #include <TargetConditionals.h>
@@ -328,13 +328,13 @@ namespace UltraCanvas {
         // macOS
         #include "../OS/MacOS/UltraCanvasMacOSWindow.h"
         namespace UltraCanvas {
-            using UltraCanvasNativeWindow = UltraCanvasMacOSWindow;
+            using UltraCanvasWindow = UltraCanvasMacOSWindow;
         }
     #elif TARGET_OS_IPHONE
         // iOS
         #include "../OS/iOS/UltraCanvasiOSWindow.h"
         namespace UltraCanvas {
-            using UltraCanvasNativeWindow = UltraCanvasiOSWindow;
+            using UltraCanvasWindow = UltraCanvasiOSWindow;
         }
     #else
         #error "Unsupported Apple platform"
@@ -342,19 +342,13 @@ namespace UltraCanvas {
 #elif defined(__ANDROID__)
     #include "../OS/Android/UltraCanvasAndroidWindow.h"
     namespace UltraCanvas {
-        using UltraCanvasNativeWindow = UltraCanvasAndroidWindow;
+        using UltraCanvasWindow = UltraCanvasAndroidWindow;
     }
 #elif defined(__WASM__)
     // Web/WASM
     #include "../OS/Web/UltraCanvasWebWindow.h"
     namespace UltraCanvas {
-        using UltraCanvasNativeWindow = UltraCanvasWebWindow;
-    }
-#elif defined(__unix__) || defined(__unix)
-    // Generic Unix (FreeBSD, OpenBSD, etc.)
-    #include "../OS/Unix/UltraCanvasUnixWindow.h"
-    namespace UltraCanvas {
-        using UltraCanvasNativeWindow = UltraCanvasUnixWindow;
+        using UltraCanvasWindow = UltraCanvasWebWindow;
     }
 #else
 #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"

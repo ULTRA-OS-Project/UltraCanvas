@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.h
-// Complete macOS platform implementation for UltraCanvas Framework
-// Version: 1.0.0
-// Last Modified: 2024-12-19
+// Complete macOS platform implementation for UltraCanvas Framework using Cairo
+// Version: 2.0.0
+// Last Modified: 2025-01-18
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -10,24 +10,29 @@
 #define ULTRACANVAS_MACOS_APPLICATION_H
 
 // ===== CORE INCLUDES =====
+#include "../../include/UltraCanvasApplication.h"
 #include "../../include/UltraCanvasWindow.h"
 #include "../../include/UltraCanvasEvent.h"
 #include "../../include/UltraCanvasCommonTypes.h"
 
 // ===== MACOS PLATFORM INCLUDES =====
 #ifdef __OBJC__
-    #import <Cocoa/Cocoa.h>
-    #import <CoreGraphics/CoreGraphics.h>
+#import <Cocoa/Cocoa.h>
     #import <QuartzCore/QuartzCore.h>
 #else
-    // Forward declarations for C++ only files
-    typedef struct objc_object NSApplication;
-    typedef struct objc_object NSAutoreleasePool;
-    typedef struct objc_object NSRunLoop;
-    typedef struct objc_object NSEvent;
-    typedef struct objc_object NSWindow;
-    typedef struct CGContext* CGContextRef;
+// Forward declarations for C++ only files
+typedef struct objc_object NSApplication;
+typedef struct objc_object NSAutoreleasePool;
+typedef struct objc_object NSRunLoop;
+typedef struct objc_object NSEvent;
+typedef struct objc_object NSWindow;
+typedef struct objc_object NSMenu;
 #endif
+
+// ===== CAIRO INCLUDES =====
+#include <cairo/cairo.h>
+#include <cairo/cairo-quartz.h>
+#include <pango/pangocairo.h>
 
 // ===== STANDARD INCLUDES =====
 #include <memory>
@@ -43,140 +48,133 @@
 namespace UltraCanvas {
 
 // Forward declarations
-class UltraCanvasMacOSWindow;
+    class UltraCanvasMacOSWindow;
+
+    struct MouseClickInfo {
+        void* window = nullptr;  // NSWindow*
+        std::chrono::steady_clock::time_point lastClickTime;
+        int lastClickX = 0;
+        int lastClickY = 0;
+        unsigned int lastButton = 0;
+        int doubleClickTime = 250; // milliseconds
+        int doubleClickDistance = 5; // pixels
+    };
 
 // ===== MACOS APPLICATION CLASS =====
-class UltraCanvasMacOSApplication : public UltraCanvasBaseApplication {
-private:
-    // ===== COCOA APPLICATION SYSTEM =====
-    NSApplication* nsApplication;
-    NSAutoreleasePool* autoreleasePool;
-    NSRunLoop* mainRunLoop;
+    class UltraCanvasMacOSApplication : public UltraCanvasBaseApplication {
+    private:
+        static UltraCanvasMacOSApplication* instance;
 
-    // ===== GRAPHICS SYSTEM =====
-    bool coreGraphicsSupported;
-    bool quartzGLEnabled;
-    bool retinaSupported;
-    float displayScaleFactor;
+        // ===== COCOA APPLICATION SYSTEM =====
+        NSApplication* nsApplication;
+        NSAutoreleasePool* autoreleasePool;
+        NSRunLoop* mainRunLoop;
 
-    // ===== EVENT SYSTEM =====
-    std::queue<UCEvent> eventQueue;
-    std::mutex eventQueueMutex;
-    std::condition_variable eventCondition;
-    bool eventThreadRunning;
-    std::thread eventThread;
+        // ===== GRAPHICS SYSTEM =====
+        bool cairoSupported;
+        bool quartzGLEnabled;
+        bool retinaSupported;
+        float displayScaleFactor;
 
-    // ===== WINDOW MANAGEMENT =====
-    std::unordered_map<void*, UltraCanvasMacOSWindow*> windowMap;  // NSWindow* -> UltraCanvasWindow*
-    UltraCanvasMacOSWindow* focusedWindow;
+        // ===== EVENT SYSTEM =====
+        std::queue<UCEvent> eventQueue;
+        std::mutex eventQueueMutex;
+        std::condition_variable eventCondition;
+        bool eventThreadRunning;
+        std::thread eventThread;
 
-    // ===== TIMING AND FRAME RATE =====
-    std::chrono::steady_clock::time_point lastFrameTime;
-    double deltaTime;
-    int targetFPS;
-    bool vsyncEnabled;
+        // ===== WINDOW MANAGEMENT =====
+//        std::unordered_map<void*, UltraCanvasMacOSWindow*> windowMap;  // NSWindow* -> UltraCanvasWindow*
+//        UltraCanvasMacOSWindow* focusedWindow;
 
-    // ===== MENU SYSTEM =====
-    bool menuBarCreated;
-    void* mainMenu;  // NSMenu*
-    void* applicationMenu;  // NSMenu*
+        // ===== TIMING AND FRAME RATE =====
+//        std::chrono::steady_clock::time_point lastFrameTime;
+//        double deltaTime;
+//        int targetFPS;
+//        bool vsyncEnabled;
 
-    // ===== THREAD SAFETY =====
-    std::mutex cocoaMutex;
-    std::thread::id mainThreadId;
+        // ===== MENU SYSTEM =====
+        bool menuBarCreated;
+        void* mainMenu;  // NSMenu*
+        void* applicationMenu;  // NSMenu*
 
-public:
-    // ===== CONSTRUCTOR & DESTRUCTOR =====
-    UltraCanvasMacOSApplication();
-    virtual ~UltraCanvasMacOSApplication();
+        // ===== MOUSE TRACKING =====
+        MouseClickInfo mouseClickInfo;
 
-    // ===== INITIALIZATION =====
-    bool InitializeNative() override;
-    bool InitializeCocoa();
-    bool InitializeCoreGraphics();
-    bool InitializeMenuBar();
-    void InitializeDisplaySettings();
-    
-    // ===== APPLICATION LIFECYCLE =====
-    void Run() override;
-    void Exit() override;
-    void ProcessEvents() override;
-    void Update() override;
+        // ===== THREAD SAFETY =====
+        std::mutex cocoaMutex;
+        std::thread::id mainThreadId;
 
-    // ===== EVENT PROCESSING =====
-    void ProcessCocoaEvent(NSEvent* nsEvent);
-    UCEvent ConvertNSEventToUCEvent(const NSEvent* nsEvent);
-    void PushEvent(const UCEvent& event);
-    UCEvent PopEvent();
-    bool HasPendingEvents();
+    public:
+        // ===== CONSTRUCTOR & DESTRUCTOR =====
+        UltraCanvasMacOSApplication();
+        virtual ~UltraCanvasMacOSApplication();
 
-    // ===== WINDOW MANAGEMENT =====
-    void RegisterWindow(UltraCanvasMacOSWindow* window, NSWindow* nsWindow);
-    void UnregisterWindow(NSWindow* nsWindow);
-    UltraCanvasMacOSWindow* FindWindow(NSWindow* nsWindow);
-    void SetFocusedWindow(UltraCanvasMacOSWindow* window);
+        static UltraCanvasMacOSApplication* GetInstance() {
+            return instance;
+        }
 
-    // ===== DISPLAY MANAGEMENT =====
-    float GetDisplayScaleFactor() const { return displayScaleFactor; }
-    bool IsRetinaSupported() const { return retinaSupported; }
-    bool IsQuartzGLEnabled() const { return quartzGLEnabled; }
+        // ===== INHERITED FROM BASE APPLICATION =====
+        bool InitializeNative() override;
+        bool ShutdownNative() override;
+        void RunNative() override;
+        void Exit() override;
 
-    // ===== MENU MANAGEMENT =====
-    void CreateApplicationMenu();
-    void UpdateMenuBar();
+        // ===== MACOS-SPECIFIC METHODS =====
 
-    // ===== THREAD SAFETY =====
-    template<typename Func>
-    auto SafeExecuteOnMainThread(Func&& func) -> decltype(func());
-    bool IsMainThread() const;
+        // Application initialization
+        bool InitializeCocoa();
+        bool InitializeCairo();
+        bool InitializeMenuBar();
+        void InitializeDisplaySettings();
 
-    // ===== GETTERS =====
-    NSApplication* GetNSApplication() const { return nsApplication; }
-    NSRunLoop* GetMainRunLoop() const { return mainRunLoop; }
-    double GetDeltaTime() const { return deltaTime; }
-    bool IsVSyncEnabled() const { return vsyncEnabled; }
+        // Application information
+        NSApplication* GetNSApplication() const { return nsApplication; }
+        float GetDisplayScaleFactor() const { return displayScaleFactor; }
+        bool IsRetinaSupported() const { return retinaSupported; }
+        bool IsQuartzGLEnabled() const { return quartzGLEnabled; }
+        bool IsCairoSupported() const { return cairoSupported; }
 
-    // ===== ERROR HANDLING (LINUX COMPATIBILITY) =====
-    static int XErrorHandler(void* display, void* errorEvent);
-    static int XIOErrorHandler(void* display);
+        // Event processing
+        void ProcessEvents();
+        void ProcessCocoaEvent(NSEvent* nsEvent);
+        UCEvent ConvertNSEventToUCEvent(NSEvent* nsEvent);
+        void PushEvent(const UCEvent& event);
+        UCEvent PopEvent();
+        bool HasPendingEvents();
 
-private:
-    // ===== CLEANUP =====
-    void CleanupCocoa();
-    void StopEventThread();
+        // Window management
+//        void RegisterWindow(UltraCanvasMacOSWindow* window, NSWindow* nsWindow);
+//        void UnregisterWindow(NSWindow* nsWindow);
+//        UltraCanvasMacOSWindow* FindWindow(NSWindow* nsWindow);
+//        void SetFocusedWindow(UltraCanvasMacOSWindow* window);
+//        UltraCanvasMacOSWindow* GetFocusedWindow() const { return focusedWindow; }
 
-    // ===== HELPER METHODS =====
-    void UpdateFrameTime();
-    void LimitFrameRate();
-    void HandleApplicationEvent(NSEvent* nsEvent);
-    void HandleWindowEvent(NSEvent* nsEvent);
-    void HandleKeyboardEvent(NSEvent* nsEvent);
-    void HandleMouseEvent(NSEvent* nsEvent);
+        // Frame rate and timing
+//        void SetTargetFPS(int fps) { targetFPS = fps; }
+//        int GetTargetFPS() const { return targetFPS; }
+//        void SetVSync(bool enabled) { vsyncEnabled = enabled; }
+//        bool GetVSync() const { return vsyncEnabled; }
+//        double GetDeltaTime() const { return deltaTime; }
 
-    // ===== OBJECTIVE-C BRIDGE METHODS =====
-    void* CreateNSApplicationInstance();
-    void SetupApplicationDelegate();
-    void ConfigureApplicationProperties();
-};
+        // Mouse tracking for double-click detection
+        bool IsDoubleClick(NSWindow* window, int x, int y, unsigned int button);
+        void UpdateLastClick(NSWindow* window, int x, int y, unsigned int button);
 
-// ===== THREAD-SAFE EXECUTION TEMPLATE =====
-template<typename Func>
-auto UltraCanvasMacOSApplication::SafeExecuteOnMainThread(Func&& func) -> decltype(func()) {
-    if (IsMainThread()) {
-        return func();
-    } else {
-        // Dispatch to main thread using GCD
-        __block decltype(func()) result;
-        __block bool completed = false;
-        
-        dispatch_sync(dispatch_get_main_queue(), ^{
-            result = func();
-            completed = true;
-        });
-        
-        return result;
-    }
-}
+        // Thread safety
+        bool IsMainThread() const;
+        void ExecuteOnMainThread(std::function<void()> func);
+
+    private:
+        // Internal helper methods
+        void EventLoop();
+        void Update();
+        void CleanupCocoa();
+
+        // Key and button code conversion
+        UCKeys ConvertNSEventKeyCode(unsigned short keyCode);
+        UCMouseButton ConvertNSEventMouseButton(int buttonNumber);
+    };
 
 } // namespace UltraCanvas
 

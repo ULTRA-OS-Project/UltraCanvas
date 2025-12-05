@@ -167,8 +167,7 @@ emcmake cmake .. -DCMAKE_BUILD_TYPE=Release
 int main() {
     // Create application
     auto app = UltraCanvasApplication::Create();
-    app->SetTargetFPS(60);
-    
+   
     // Create window (maps to HTML canvas)
     auto window = app->CreateWindow("UltraCanvas WASM Demo", 800, 600);
     

@@ -89,6 +89,8 @@ namespace UltraCanvas {
         Color color = Color(0, 0, 0, 255);
         int radius = 0;
         UCDashPattern dashPattern;
+
+        ElementBorder(int w, const Color& c, int r, UCDashPattern p) : width(w), color(c), radius(r), dashPattern(p) {}
     };
 
     struct ElementStateFlags {

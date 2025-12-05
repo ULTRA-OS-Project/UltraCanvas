@@ -11,16 +11,9 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 
-// ===== LINUX PLATFORM INCLUDES =====
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-#include <X11/keysym.h>
-#include <X11/Xatom.h>
 #include <cairo/cairo.h>
-#include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>
 
-// ===== STANDARD INCLUDES =====
 #include <memory>
 #include <vector>
 #include <unordered_map>
@@ -97,6 +90,7 @@ namespace UltraCanvas {
 
         ~RenderContextCairo() override;
 
+        void SetTargetSurface(cairo_surface_t* surf, int w, int h);
         bool ResizeStagingSurface(int w, int h);
 
         // ===== INHERITED FROM IRenderContext =====
