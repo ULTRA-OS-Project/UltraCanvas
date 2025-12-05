@@ -106,9 +106,9 @@ namespace UltraCanvas {
         bool IsInitialized() const { return initialized; }
         bool IsRunning() const { return running; }
 
+        bool HandleFocusedWindowChange(UltraCanvasWindowBase* window);
     protected:
         bool IsDoubleClick(const UCEvent &event);
-        bool HandleWindowFocus(UltraCanvasWindowBase* window);
 
     };
 }

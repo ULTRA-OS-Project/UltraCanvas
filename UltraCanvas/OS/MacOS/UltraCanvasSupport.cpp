@@ -4,10 +4,8 @@
 // Last Modified: 2025-01-18
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasMacOSApplication.h"
-#include "UltraCanvasMacOSWindow.h"
-#include "../../include/UltraCanvasApplication.h"
-#include "../../include/UltraCanvasWindow.h"
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasWindow.h"
 
 #import <Cocoa/Cocoa.h>
 #import <Foundation/Foundation.h>

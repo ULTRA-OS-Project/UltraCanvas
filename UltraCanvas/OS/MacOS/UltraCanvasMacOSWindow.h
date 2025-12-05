@@ -10,8 +10,6 @@
 #define ULTRACANVAS_MACOS_WINDOW_H
 
 // ===== CORE INCLUDES =====
-#include "../../include/UltraCanvasWindow.h"
-#include "../../include/UltraCanvasEvent.h"
 #include "../../libspecific/Cairo/RenderContextCairo.h"
 
 // ===== MACOS PLATFORM INCLUDES =====

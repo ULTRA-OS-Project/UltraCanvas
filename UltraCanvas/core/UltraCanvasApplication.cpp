@@ -209,13 +209,13 @@ namespace UltraCanvas {
                 break;
             case UCEventType::WindowFocus:
                 if (targetWindow) {
-                    HandleWindowFocus(targetWindow);
+                    HandleFocusedWindowChange(targetWindow);
                     return;
                 }
                 break;
             case UCEventType::WindowBlur:
                 if (targetWindow == focusedWindow) {
-                    HandleWindowFocus(nullptr);
+                    HandleFocusedWindowChange(nullptr);
                     return;
                 }
                 break;
@@ -340,7 +340,7 @@ namespace UltraCanvas {
     }
 
 
-    bool UltraCanvasBaseApplication::HandleWindowFocus(UltraCanvasWindowBase* window) {
+    bool UltraCanvasBaseApplication::HandleFocusedWindowChange(UltraCanvasWindowBase* window) {
         if (focusedWindow != window) {
             UltraCanvasWindowBase* previousFocusedWindow = focusedWindow;
 

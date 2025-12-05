@@ -67,7 +67,6 @@ namespace UltraCanvas {
 
         // ===== COCOA APPLICATION SYSTEM =====
         NSApplication* nsApplication;
-        NSAutoreleasePool* autoreleasePool;
         NSRunLoop* mainRunLoop;
 
         // ===== GRAPHICS SYSTEM =====

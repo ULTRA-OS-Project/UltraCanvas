@@ -22,7 +22,6 @@ namespace UltraCanvas {
 // ===== CONSTRUCTOR & DESTRUCTOR =====
     UltraCanvasMacOSApplication::UltraCanvasMacOSApplication()
             : nsApplication(nullptr)
-            , autoreleasePool(nullptr)
             , mainRunLoop(nullptr)
             , cairoSupported(false)
             , retinaSupported(false)
@@ -86,8 +85,6 @@ namespace UltraCanvas {
 
         @autoreleasepool {
             // Create autorelease pool
-            autoreleasePool = [[NSAutoreleasePool alloc] init];
-
             // Get shared application instance
             nsApplication = [NSApplication sharedApplication];
             if (!nsApplication) {
@@ -199,11 +196,6 @@ namespace UltraCanvas {
 
     void UltraCanvasMacOSApplication::CleanupCocoa() {
         @autoreleasepool {
-            if (autoreleasePool) {
-                [autoreleasePool drain];
-                autoreleasePool = nullptr;
-            }
-
             nsApplication = nullptr;
             mainRunLoop = nullptr;
         }

@@ -1,13 +1,11 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.0.0
-// Last Modified: 2025-01-18
+// Version: 2.0.1
+// Last Modified: 2025-12-05
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasMacOSWindow.h"
-#include "UltraCanvasMacOSApplication.h"
-#include "../Linux/UltraCanvasLinuxRenderContext.h"
-#include "../../include/UltraCanvasApplication.h"
 
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
@@ -64,12 +62,12 @@
         cairo_surface_flush(cairoSurface);
 
         // Get the Cairo surface's CGImage
-        CGImageRef cgImage = cairo_quartz_surface_get_image(cairoSurface);
-        if (cgImage) {
-            // Draw the image
-            CGRect bounds = NSRectToCGRect([self bounds]);
-            CGContextDrawImage(cgContext, bounds, cgImage);
-        }
+//        CGImageRef cgImage = cairo_quartz_surface_get_image(cairoSurface);
+//        if (cgImage) {
+//            // Draw the image
+//            CGRect bounds = NSRectToCGRect([self bounds]);
+//            CGContextDrawImage(cgContext, bounds, cgImage);
+//        }
     }
 }
 
@@ -85,7 +83,6 @@
     ultraCanvasWindow = nullptr;
     cairoSurface = nullptr;
     cairoContext = nullptr;
-    [super dealloc];
 }
 
 @end
@@ -172,7 +169,6 @@
 
 - (void)dealloc {
     ultraCanvasWindow = nullptr;
-    [super dealloc];
 }
 
 @end
@@ -182,7 +178,6 @@ namespace UltraCanvas {
 // ===== CONSTRUCTOR & DESTRUCTOR =====
     UltraCanvasMacOSWindow::UltraCanvasMacOSWindow()
             :  nsWindow(nullptr)
-            , cairoSurface(nullptr)
             , contentView(nullptr)
             , windowDelegate(nullptr)
             , cairoSurface(nullptr)
@@ -194,7 +189,6 @@ namespace UltraCanvas {
 
     UltraCanvasMacOSWindow::UltraCanvasMacOSWindow(const WindowConfig& config)
     : nsWindow(nullptr)
-    , cairoSurface(nullptr)
     , contentView(nullptr)
     , windowDelegate(nullptr)
     , cairoSurface(nullptr)
@@ -221,23 +215,15 @@ UltraCanvasMacOSWindow::~UltraCanvasMacOSWindow() {
             // Destroy Cairo surface
             DestroyCairoSurface();
 
-            // Unregister from application
-            auto application = UltraCanvasApplication::GetInstance();
-            if (application) {
-                auto macOSApp = static_cast<UltraCanvasMacOSApplication*>(application);
-                macOSApp->UnregisterWindow(nsWindow);
-            }
-
             // Release delegate
             if (windowDelegate) {
-                [(UltraCanvasWindowDelegate*)windowDelegate release];
+                (void)CFBridgingRelease(windowDelegate);
                 windowDelegate = nullptr;
             }
 
             // Close and release window
             if (nsWindow) {
                 [nsWindow close];
-                [nsWindow release];
                 nsWindow = nullptr;
             }
 
@@ -249,7 +235,7 @@ UltraCanvasMacOSWindow::~UltraCanvasMacOSWindow() {
 }
 
 // ===== WINDOW CREATION =====
-bool UltraCanvasMacOSWindow::CreateNative(const WindowConfig& config) {
+bool UltraCanvasMacOSWindow::CreateNative() {
     if (_created) {
         std::cout << "UltraCanvas macOS: Window already created" << std::endl;
         return true;
@@ -271,28 +257,21 @@ bool UltraCanvasMacOSWindow::CreateNative(const WindowConfig& config) {
 
         if (!CreateCairoSurface()) {
             std::cerr << "UltraCanvas macOS: Failed to create Cairo surface" << std::endl;
-            [nsWindow release];
             nsWindow = nullptr;
             return false;
         }
 
         try {
-            renderContext = std::make_unique<LinuxRenderContext>(
-                cairoContext, cairoSurface, config_.width, config_.height, true);
+            renderContext = std::make_unique<RenderContextCairo>(
+                cairoSurface, config_.width, config_.height, true);
             std::cout << "UltraCanvas macOS: Render context created successfully" << std::endl;
         } catch (const std::exception& e) {
             std::cerr << "UltraCanvas macOS: Failed to create render context: " << e.what() << std::endl;
             DestroyCairoSurface();
-            [nsWindow release];
             nsWindow = nullptr;
             return false;
         }
 
-        // Register with application
-        auto macOSApp = static_cast<UltraCanvasMacOSApplication*>(application);
-        macOSApp->RegisterWindow(this, nsWindow);
-
-        _created = true;
         std::cout << "UltraCanvas macOS: Window created successfully!" << std::endl;
         return true;
     }
@@ -339,8 +318,9 @@ bool UltraCanvasMacOSWindow::CreateNSWindow() {
         [nsWindow setContentView:contentView];
 
         // Create and set delegate
-        windowDelegate = [[UltraCanvasWindowDelegate alloc] initWithWindow:this];
-        [nsWindow setDelegate:(UltraCanvasWindowDelegate*)windowDelegate];
+        UltraCanvasWindowDelegate* delegate = [[UltraCanvasWindowDelegate alloc] initWithWindow:this];
+        windowDelegate = (__bridge_retained void*)delegate;
+        [nsWindow setDelegate:delegate];
 
         std::cout << "UltraCanvas macOS: NSWindow created successfully" << std::endl;
         return true;
@@ -511,7 +491,7 @@ void UltraCanvasMacOSWindow::Focus() {
 }
 
 // ===== WINDOW PROPERTIES =====
-void UltraCanvasMacOSWindow::SetTitle(const std::string& title) {
+void UltraCanvasMacOSWindow::SetWindowTitle(const std::string& title) {
     config_.title = title;
 
     if (_created) {
@@ -590,12 +570,8 @@ void UltraCanvasMacOSWindow::Flush() {
     Invalidate();
 }
 
-IRenderContext* UltraCanvasMacOSWindow::GetRenderContext() const {
-    return renderContext.get();
-}
-
-unsigned long UltraCanvasLinuxWindow::GetNativeHandle() const {
-    return nsWindow;
+unsigned long UltraCanvasMacOSWindow::GetNativeHandle() const {
+    return (unsigned long)(__bridge_retained void*)nsWindow;
 }
 
 // ===== WINDOW DELEGATE CALLBACKS =====
@@ -645,18 +621,14 @@ void UltraCanvasMacOSWindow::OnWindowDidMove() {
 void UltraCanvasMacOSWindow::OnWindowDidBecomeKey() {
     auto application = UltraCanvasApplication::GetInstance();
     if (application) {
-        auto macOSApp = static_cast<UltraCanvasMacOSApplication*>(application);
-        macOSApp->SetFocusedWindow(this);
-    }
-
-    if (onWindowFocus) {
-        onWindowFocus();
+        application->HandleFocusedWindowChange(this);
     }
 }
 
 void UltraCanvasMacOSWindow::OnWindowDidResignKey() {
-    if (onWindowBlur) {
-        onWindowBlur();
+    auto application = UltraCanvasApplication::GetInstance();
+    if (application && application->GetFocusedWindow() == this) {
+        application->HandleFocusedWindowChange(nullptr);
     }
 }
 

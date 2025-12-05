@@ -274,7 +274,7 @@ elseif(ULTRACANVAS_PLATFORM_MACOS)
             UltraCanvas/OS/MacOS/UltraCanvasMacOSClipboard.mm
             UltraCanvas/OS/MacOS/UltraCanvasMacOSApplication.mm
             UltraCanvas/OS/MacOS/UltraCanvasMacOSWindow.mm
-            UltraCanvas/OS/MacOS/UltraCanvasSupport.cpp
+#            UltraCanvas/OS/MacOS/UltraCanvasSupport.cpp
     )
 
     # ✅ CRITICAL: Mark .mm files as OBJCXX language
