@@ -271,6 +271,7 @@ if(ULTRACANVAS_PLATFORM_LINUX)
 
 elseif(ULTRACANVAS_PLATFORM_MACOS)
     set(ULTRACANVAS_PLATFORM_SOURCES
+            UltraCanvas/OS/MacOS/UltraCanvasMacOSClipboard.mm
             UltraCanvas/OS/MacOS/UltraCanvasMacOSApplication.mm
             UltraCanvas/OS/MacOS/UltraCanvasMacOSWindow.mm
             UltraCanvas/OS/MacOS/UltraCanvasSupport.cpp
@@ -280,6 +281,7 @@ elseif(ULTRACANVAS_PLATFORM_MACOS)
     set_source_files_properties(
             UltraCanvas/OS/MacOS/UltraCanvasMacOSApplication.mm
             UltraCanvas/OS/MacOS/UltraCanvasMacOSWindow.mm
+            UltraCanvas/OS/MacOS/UltraCanvasMacOSClipboard.mm
             PROPERTIES
             LANGUAGE OBJCXX
             COMPILE_FLAGS "-x objective-c++ -fobjc-arc"

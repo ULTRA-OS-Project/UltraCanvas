@@ -71,8 +71,9 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
-        explicit UltraCanvasMacOSWindow(const WindowConfig& config);
-        virtual ~UltraCanvasMacOSWindow() override;
+        UltraCanvasMacOSWindow();
+        UltraCanvasMacOSWindow(const WindowConfig& config);
+        ~UltraCanvasMacOSWindow() override;
 
         // ===== WINDOW CREATION =====
 

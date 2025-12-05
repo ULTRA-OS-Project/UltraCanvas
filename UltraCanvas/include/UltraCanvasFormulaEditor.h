@@ -22,7 +22,11 @@
 #include <memory>
 #include <regex>
 #include <fstream>
-#include <jsoncpp/json/json.h>
+#if defined(__APPLE__)
+    #include <json/json.h>
+#else
+    #include <jsoncpp/json/json.h>
+#endif
 
 namespace UltraCanvas {
 

@@ -125,7 +125,7 @@ namespace UltraCanvas {
         // Application initialization
         bool InitializeCocoa();
         bool InitializeCairo();
-        bool InitializeMenuBar();
+        void InitializeMenuBar();
         void InitializeDisplaySettings();
 
         // Application information

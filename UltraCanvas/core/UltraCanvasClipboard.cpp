@@ -16,7 +16,7 @@
 #elif _WIN32
 #include "../OS/Win32/UltraCanvasWindowsClipboard.h"
 #elif __APPLE__
-#include "../OS/Apple/UltraCanvasMacClipboard.h"
+#include "../OS/MacOS/UltraCanvasMacOSClipboard.h"
 #endif
 
 namespace UltraCanvas {
@@ -90,7 +90,7 @@ bool UltraCanvasClipboard::Initialize() {
 #elif _WIN32
     backend = std::make_unique<UltraCanvasWindowsClipboard>();
 #elif __APPLE__
-    backend = std::make_unique<UltraCanvasMacClipboard>();
+    backend = std::make_unique<UltraCanvasMacOSClipboard>();
 #else
     std::cerr << "UltraCanvas: Clipboard not supported on this platform" << std::endl;
     return false;
