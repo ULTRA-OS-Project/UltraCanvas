@@ -135,11 +135,8 @@ namespace UltraCanvas {
         bool IsCairoSupported() const { return cairoSupported; }
 
         // Event processing
-        void ProcessEvents();
         void ProcessCocoaEvent(NSEvent* nsEvent);
         UCEvent ConvertNSEventToUCEvent(NSEvent* nsEvent);
-        void PushEvent(const UCEvent& event);
-        UCEvent PopEvent();
         bool HasPendingEvents();
 
         // Window management

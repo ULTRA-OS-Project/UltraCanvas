@@ -5,7 +5,6 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSApplication.h"
-#include "UltraCanvasMacOSWindow.h"
 
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
