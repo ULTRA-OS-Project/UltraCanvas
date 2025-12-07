@@ -79,7 +79,7 @@ namespace UltraCanvas {
     // ===== WINDOW MANAGEMENT =====
     void UltraCanvasBaseApplication::RegisterWindow(UltraCanvasWindowBase *window) {
         if (window && window->GetNativeHandle() != 0) {
-            std::cout << "UltraCanvas: Linux window created successfully" << std::endl;
+            std::cout << "UltraCanvas: Native window created successfully" << std::endl;
             windows.push_back(window);
             std::cout << "UltraCanvas: Window registered with Native ID: " << window->GetNativeHandle() << std::endl;
         }
