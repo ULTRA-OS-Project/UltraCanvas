@@ -41,6 +41,7 @@ namespace UltraCanvas {
 
 // ===== MACOS WINDOW CLASS =====
     class UltraCanvasMacOSWindow : public UltraCanvasWindowBase {
+    friend UltraCanvasMacOSApplication;
     private:
         // ===== COCOA WINDOW SYSTEM =====
         NSWindow* nsWindow;
@@ -50,6 +51,8 @@ namespace UltraCanvas {
         // ===== CAIRO RENDERING =====
         cairo_surface_t* cairoSurface;
         CGContextRef cgContext;  // Quartz context for Cairo surface
+
+        bool pendingShow = false;
 
         // ===== RENDER CONTEXT =====
         std::unique_ptr<RenderContextCairo> renderContext;

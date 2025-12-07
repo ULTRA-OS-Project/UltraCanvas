@@ -150,7 +150,7 @@ struct AudioControlsStyle {
     Color textColor = Color(220, 220, 220);
     Color titleColor = Color(255, 255, 255);
     
-    std::string fontFamily = "Arial";
+    std::string fontFamily = "Sans";
     float fontSize = 11.0f;
     float titleFontSize = 13.0f;
     

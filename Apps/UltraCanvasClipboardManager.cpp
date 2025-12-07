@@ -135,7 +135,7 @@ namespace UltraCanvas {
             typeInfo += " (" + FormatBytes(entry.dataSize) + ")";
         }
         ctx->PaintWidthColorColors::Gray);
-        ctx->SetFont("Arial", 9.0f);
+        ctx->SetFont("Sans", 9.0f);
         ctx->DrawText(typeInfo, Point2D(contentRect.x, yPos));
 
         // Preview content
@@ -147,7 +147,7 @@ namespace UltraCanvas {
         // Timestamp
         yPos += 15;
         ctx->PaintWidthColorColors::Gray);
-        ctx->SetFont("Arial", 8.0f);
+        ctx->SetFont("Sans", 8.0f);
         ctx->DrawText(entry.GetFormattedTime(), Point2D(contentRect.x, yPos));
     }
 

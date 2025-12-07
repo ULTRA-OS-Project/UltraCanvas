@@ -106,7 +106,7 @@ struct ChipStyle {
     Color removeIconHoverColor = Color(200, 50, 50);
     
     // Typography
-    std::string fontFamily = "Arial";
+    std::string fontFamily = "Sans";
     float fontSize = 13.0f;
     FontWeight fontWeight = FontWeight::Medium;
     

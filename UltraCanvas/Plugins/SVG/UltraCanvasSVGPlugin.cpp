@@ -1162,7 +1162,7 @@ namespace UltraCanvas {
         if (fontWeight && strcmp(fontWeight, "bold") == 0) {
             fw = FontWeight::Bold;
         }
-        context->SetFontFace(fontFamily ? fontFamily : "Arial", fw, FontSlant::Normal);
+        context->SetFontFace(fontFamily ? fontFamily : "Sans", fw, FontSlant::Normal);
         context->SetFontSize(fontSize);
 
         // Apply fill for text

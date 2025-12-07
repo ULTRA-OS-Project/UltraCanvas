@@ -54,7 +54,7 @@ namespace UltraCanvas {
         Color iconColor = Colors::White;
 
         // Typography
-        std::string fontFamily = "Arial";
+        std::string fontFamily = "Sans";
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
 

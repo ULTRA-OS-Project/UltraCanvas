@@ -130,7 +130,7 @@ public:
             ctx->DrawRectangle(GetX() + 5, GetY() + 20, GetWidth() - 10, GetHeight() - 40);
             
             SetColor(Colors::Gray);
-            ctx->SetFont("Arial", 8.0f);
+            ctx->SetFont("Sans", 8.0f);
             Point2D loadingPos(GetX() + GetWidth()/2 - 20, GetY() + GetHeight()/2);
             DrawText("Loading...", loadingPos);
         }
@@ -442,7 +442,7 @@ public:
         // Draw status text
         if (isDocumentLoaded) {
             SetColor(Colors::Black);
-            SetFont("Arial", 10.0f);
+            SetFont("Sans", 10.0f);
             
             std::string statusText = "Page " + std::to_string(currentPage) + 
                                    " of " + std::to_string(documentInfo.pageCount) + 

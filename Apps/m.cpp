@@ -282,12 +282,12 @@ public:
 
         // Draw subtitle
         SetTextColor(Color(0.3f, 0.4f, 0.6f, 1.0f));
-        SetFont("Arial", 14);
+        SetFont("Sans", 14);
         DrawText("100% Cross-Platform Implementation", Point2D(50, 75));
 
         // Draw instructions
         SetTextColor(Color(0.2f, 0.3f, 0.5f, 1.0f));
-        SetFont("Arial", 12);
+        SetFont("Sans", 12);
         DrawText("This demo uses ONLY cross-platform UltraCanvas APIs.", Point2D(50, 280));
         DrawText("No platform-specific code anywhere in the application!", Point2D(50, 300));
         DrawText("Same code works on Linux, Windows, macOS, and more.", Point2D(50, 320));
@@ -344,8 +344,8 @@ public:
                   << " A=" << (int)currentTextStyle.textColor.a << std::endl;
 
         // Set font and verify
-        std::cout << "DEBUG: Setting font to Arial, 24..." << std::endl;
-        SetFont("Arial", 24);
+        std::cout << "DEBUG: Setting font to Sans, 24..." << std::endl;
+        SetFont("Sans", 24);
 
         // Verify font was set
         const TextStyle& fontStyle = ctx->GetTextStyle();
@@ -374,7 +374,7 @@ public:
 
         // Set up text style manually
         TextStyle directStyle;
-        directStyle.fontFamily = "Arial";
+        directStyle.fontFamily = "Sans";
         directStyle.fontSize = 16;
         directStyle.textColor = Color(255, 0, 0, 255); // Red text
         ctx->SetTextStyle(directStyle);
@@ -391,7 +391,7 @@ public:
 
         // Test with solid colors (no float multiplication)
         SetTextColor(Color(255, 0, 0, 255)); // Solid red
-        SetFont("Arial", 14);
+        SetFont("Sans", 14);
         std::cout << "DEBUG: About to draw RED text" << std::endl;
         DrawText("RED TEXT TEST", Point2D(50, 130));
 
@@ -442,7 +442,7 @@ public:
             // Draw text with debugging
             std::cout << "DEBUG: Drawing text with explicit scope..." << std::endl;
             SetTextColor(Color(0, 0, 0, 255)); // Black text
-            SetFont("Arial", 24);
+            SetFont("Sans", 24);
 
             const TextStyle& style = ctx->GetTextStyle();
             std::cout << "DEBUG: Final text style before drawing:" << std::endl;

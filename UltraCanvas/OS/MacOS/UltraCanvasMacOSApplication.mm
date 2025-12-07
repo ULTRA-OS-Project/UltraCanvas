@@ -72,7 +72,6 @@ namespace UltraCanvas {
             //StartEventThread();
 
             initialized = true;
-            running = true;
 
             std::cout << "UltraCanvas: macOS Application initialized successfully" << std::endl;
             return true;
@@ -206,7 +205,20 @@ namespace UltraCanvas {
 
         @autoreleasepool {
             // Activate the application
+            [nsApplication setActivationPolicy:NSApplicationActivationPolicyRegular];
+            [nsApplication finishLaunching];
             [nsApplication activateIgnoringOtherApps:YES];
+
+            running = true;
+
+            dispatch_async(dispatch_get_main_queue(), ^{
+                std::cout << "UltraCanvas: Showing pending windows from dispatch..." << std::endl;
+                for (auto& window : windows) {
+                    if (window && ((UltraCanvasMacOSWindow*)window)->pendingShow) {
+                        ((UltraCanvasMacOSWindow*)window)->Show();
+                    }
+                }
+            });
 
             // Main event loop
             while (running) {
@@ -229,7 +241,7 @@ namespace UltraCanvas {
 // Check for visible windows
                     bool hasVisibleWindows = false;
                     for (auto& window : windows) {
-                        if (window && window->IsVisible()) {
+                        if (window && (window->IsVisible() || ((UltraCanvasMacOSWindow*)window)->pendingShow)) {
                             hasVisibleWindows = true;
                             break;
                         }

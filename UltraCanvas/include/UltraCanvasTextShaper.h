@@ -127,7 +127,7 @@ public:
             defaultFontPath = defaultFont;
         } else {
             // Try to find system default fonts
-            defaultFontPath = FindSystemFont("Arial");
+            defaultFontPath = FindSystemFont("Sans");
             if (defaultFontPath.empty()) {
                 defaultFontPath = FindSystemFont("DejaVu Sans");
             }

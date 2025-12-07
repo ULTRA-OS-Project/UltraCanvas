@@ -22,7 +22,7 @@ namespace UltraCanvas {
 // ===== PARAGRAPH RUN STRUCTURE =====
 struct ParagraphRun {
     std::string text;
-    std::string fontFamily = "Arial";
+    std::string fontFamily = "Sans";
     float fontSize = 12.0f;
     FontWeight fontWeight = FontWeight::Normal;
     FontStyle fontStyle = FontStyle::Normal;

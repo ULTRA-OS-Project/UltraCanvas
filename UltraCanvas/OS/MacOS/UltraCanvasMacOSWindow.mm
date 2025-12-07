@@ -272,7 +272,7 @@ bool UltraCanvasMacOSWindow::CreateNative() {
             return false;
         }
 
-        std::cout << "UltraCanvas macOS: Window created successfully!" << std::endl;
+        std::cout << "UltraCanvas macOS: CreateNative Native Window created successfully!" << std::endl;
         return true;
     }
 }
@@ -328,7 +328,7 @@ bool UltraCanvasMacOSWindow::CreateNSWindow() {
 }
 
 bool UltraCanvasMacOSWindow::CreateCairoSurface() {
-    std::lock_guard<std::mutex> lock(cairoMutex);
+    //std::lock_guard<std::mutex> lock(cairoMutex);
 
     std::cout << "UltraCanvas macOS: Creating Cairo surface..." << std::endl;
 
@@ -416,9 +416,24 @@ void UltraCanvasMacOSWindow::Show() {
     if (!_created || _visible) return;
 
     std::cout << "UltraCanvas macOS: Showing window..." << std::endl;
+    if (!UltraCanvasApplication::GetInstance()->IsRunning()) {
+        std::cout << "UltraCanvas Application is not running yet, delaying window show..." << std::endl;
+        pendingShow = true;
+        return;
+    }
 
+    pendingShow = false;
     @autoreleasepool {
         [nsWindow makeKeyAndOrderFront:nil];
+
+//        [nsWindow makeKey];
+
+        [[nsWindow contentView] setNeedsDisplay:YES];
+
+        // Ensure the window is not miniaturized
+        if ([nsWindow isMiniaturized]) {
+            [nsWindow deminiaturize:nil];
+        }
         _visible = true;
     }
 
@@ -641,3 +656,4 @@ void UltraCanvasMacOSWindow::OnWindowDidDeminiaturize() {
 }
 
 } // namespace UltraCanvas
+

@@ -289,11 +289,12 @@ namespace UltraCanvas {
         config.type = WindowType::Standard;
 
         mainWindow = std::make_shared<UltraCanvasWindow>();
+        std::cout << "Creating Main window.." << std::endl;
         if (!mainWindow->Create(config)) {
             std::cerr << "Failed to create main window" << std::endl;
             return false;
         }
-
+        std::cout << "Main window created" << std::endl;
         // Calculate positions for adjusted layout
         const int treeViewHeight = 740;  // Reduced from 840 to make room for legend
         const int legendHeight = 95;     // Height for legend container
@@ -307,6 +308,8 @@ namespace UltraCanvas {
         categoryTreeView->SetShowFirstChildOnExpand(true);
         categoryTreeView->SetAutoExpandSelectedNode(true);
         categoryTreeView->SetPadding(1,3,1,3);
+
+        std::cout << "categoryTreeView created" << std::endl;
 
         // Create legend container below tree view
         legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 6, 0, 0, 100, legendHeight);

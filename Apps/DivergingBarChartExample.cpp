@@ -143,7 +143,7 @@ public:
         button->SetText(text);
         button->SetColors(Color(70, 130, 180, 255), Color(90, 150, 200, 255), Color(50, 100, 160, 255), Color(150, 200, 240, 255));
         button->SetTextColors(Color(255, 255, 255, 255), Color(255, 255, 255, 255), Color(255, 255, 255, 255), Color(255, 255, 255, 255));
-        button->SetFont("Arial", 11);
+        button->SetFont("Sans", 11);
         button->SetCornerRadius(5);
 
         window->AddOrMoveChild(button);

@@ -32,7 +32,7 @@ namespace UltraCanvas {
         Color textBackgroundColor = Color(0, 0, 0, 200);  // Semi-transparent black
         float borderWidth = 2.0f;
         FontStyle fontStyle = {
-            .fontFamily = "Arial",
+            .fontFamily = "Sans",
             .fontSize = 12.0f
         };
 

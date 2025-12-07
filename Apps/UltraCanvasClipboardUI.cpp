@@ -137,7 +137,7 @@ namespace UltraCanvas {
         DrawText(displayText, Point2D(contentRect.x, contentRect.y + 15));
 
         // Draw details in smaller font
-        ctx->SetFont("Arial", 9.0f);
+        ctx->SetFont("Sans", 9.0f);
         ctx->PaintWidthColorColor(100, 100, 100, 255));
         DrawText(details, Point2D(contentRect.x, contentRect.y + 35));
 

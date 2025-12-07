@@ -155,7 +155,7 @@ public:
                 "instructions", 2000, 1070, 50, 400, 330, instructions
         );
 
-        instructionLabel->SetFont("Arial", 12.0f, FontWeight::Normal);
+        instructionLabel->SetFont("Sans", 12.0f, FontWeight::Normal);
         instructionLabel->SetTextColor(Color(60, 60, 60, 255));
         instructionLabel->SetAlignment(LabelAlignment::Left, LabelVerticalAlignment::Top);
         instructionLabel->SetBackgroundColor(Color(250, 250, 250, 200));

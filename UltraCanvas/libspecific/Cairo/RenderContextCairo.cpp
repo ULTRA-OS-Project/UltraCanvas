@@ -465,7 +465,6 @@ namespace UltraCanvas {
         }
 
         pango_layout_set_font_description(layout, desc);
-        pango_layout_set_line_spacing(layout, currentState.textStyle.lineHeight);
         if (w > 0 || h > 0) {
             if (w > 0) {
                 pango_layout_set_width(layout, w * PANGO_SCALE);
@@ -473,43 +472,44 @@ namespace UltraCanvas {
             if (h > 0) {
                 pango_layout_set_height(layout, h * PANGO_SCALE);
             }
-        }
-        PangoAlignment alignment = PANGO_ALIGN_LEFT;
+            pango_layout_set_line_spacing(layout, currentState.textStyle.lineHeight);
 
-        switch (currentState.textStyle.alignment) {
-            case TextAlignment::Center:
-                pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
-                break;
-            case TextAlignment::Right:
-                pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
-                break;
-            case TextAlignment::Justify:
-                pango_layout_set_justify(layout, true);
-                break;
-            default:
-                pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
-                break;
-        }
+            PangoAlignment alignment = PANGO_ALIGN_LEFT;
 
-        switch (currentState.textStyle.wrap) {
-            case TextWrap::WrapNone:
+            switch (currentState.textStyle.alignment) {
+                case TextAlignment::Center:
+                    pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+                    break;
+                case TextAlignment::Right:
+                    pango_layout_set_alignment(layout, PANGO_ALIGN_RIGHT);
+                    break;
+                case TextAlignment::Justify:
+                    pango_layout_set_justify(layout, true);
+                    break;
+                default:
+                    pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
+                    break;
+            }
+
+            switch (currentState.textStyle.wrap) {
+                case TextWrap::WrapNone:
 //                    pango_layout_set_wrap(layout, PANGO_WRAP_NONE);
-                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_END);
-                break;
-            case TextWrap::WrapWord:
-                pango_layout_set_wrap(layout, PANGO_WRAP_WORD);
-                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
-                break;
-            case TextWrap::WrapWordChar:
-                pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
-                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
-                break;
-            case TextWrap::WrapChar:
-                pango_layout_set_wrap(layout, PANGO_WRAP_CHAR);
-                pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
-                break;
+                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_END);
+                    break;
+                case TextWrap::WrapWord:
+                    pango_layout_set_wrap(layout, PANGO_WRAP_WORD);
+                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
+                    break;
+                case TextWrap::WrapWordChar:
+                    pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
+                    break;
+                case TextWrap::WrapChar:
+                    pango_layout_set_wrap(layout, PANGO_WRAP_CHAR);
+                    pango_layout_set_ellipsize(layout, PangoEllipsizeMode::PANGO_ELLIPSIZE_NONE);
+                    break;
+            }
         }
-
         return layout;
     }
 
@@ -521,7 +521,7 @@ namespace UltraCanvas {
         }
 
         try {
-            //std::cout << "DrawText: Rendering '" << text << "' at (" << position.x << "," << position.y << ")" << std::endl;
+            std::cout << "DrawText: Rendering '" << text << "' at (" << x << "," << y << ")" << std::endl;
             PangoFontDescription *desc = CreatePangoFont(currentState.fontStyle);
             if (!desc) {
                 std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
@@ -724,6 +724,7 @@ namespace UltraCanvas {
     }
 
     PangoFontDescription *RenderContextCairo::CreatePangoFont(const FontStyle &style) {
+        std::cout << "RenderContextCairo::CreatePangoFont" << std::endl;
         try {
             PangoFontDescription *desc = pango_font_description_new();
             if (!desc) {
@@ -732,7 +733,7 @@ namespace UltraCanvas {
             }
 
             // Use default font if family is empty
-            const char *fontFamily = style.fontFamily.empty() ? "Arial" : style.fontFamily.c_str();
+            const char *fontFamily = style.fontFamily.empty() ? "Sans" : style.fontFamily.c_str();
             pango_font_description_set_family(desc, fontFamily);
 
             // Ensure reasonable font size

@@ -286,7 +286,7 @@ std::unique_ptr<UltraCanvasTemplate> CreateRibbonToolbar() {
     ribbon->AddElement(TemplateElementDescriptor::Label("lbl_format", "Format"));
     ribbon->AddElement(TemplateElementDescriptor::Button("format_bold", "Bold", "icons/bold.png"));
     ribbon->AddElement(TemplateElementDescriptor::Button("format_italic", "Italic", "icons/italic.png"));
-    ribbon->AddElement(TemplateElementDescriptor::DropDown("format_font", {"Arial", "Times", "Helvetica", "Courier"}));
+    ribbon->AddElement(TemplateElementDescriptor::DropDown("format_font", {"Sans", "Times", "Sans", "Courier"}));
     ribbon->AddElement(TemplateElementDescriptor::DropDown("format_size", {"8", "10", "12", "14", "16", "18", "24"}));
     
     return ribbon;

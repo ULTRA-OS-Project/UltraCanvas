@@ -78,7 +78,7 @@ public:
     
     // ===== TEXT PROPERTIES =====
     std::string customText;
-    std::string fontFamily = "Arial";
+    std::string fontFamily = "Sans";
     int fontSize = 11;
     bool boldText = false;
     

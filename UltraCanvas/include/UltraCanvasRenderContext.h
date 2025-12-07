@@ -101,7 +101,7 @@ namespace UltraCanvas {
     };
 
     struct FontStyle {
-        std::string fontFamily = "Arial";
+        std::string fontFamily = "Sans";
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
         FontSlant fontSlant = FontSlant::Normal;

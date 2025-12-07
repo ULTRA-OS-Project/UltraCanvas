@@ -86,7 +86,7 @@ namespace UltraCanvas {
 //        float shadowOffset = 2;
 
         // Font
-        std::string fontFamily = "Arial";
+        std::string fontFamily = "Sans";
         float fontSize = 12.0f;
 
 // Scrollbar style (NEW: configurable scrollbar)

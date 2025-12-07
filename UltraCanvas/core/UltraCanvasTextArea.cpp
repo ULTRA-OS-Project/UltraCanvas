@@ -1282,7 +1282,7 @@ namespace UltraCanvas {
         ApplyDefaultStyle();
         SetHighlightSyntax(false);
         style.showLineNumbers = false;
-        style.fontStyle.fontFamily = "Arial";
+        style.fontStyle.fontFamily = "Sans";
         highlightCurrentLine = false;
 
         isNeedRecalculateVisibleArea = true;

@@ -662,8 +662,8 @@ namespace UltraCanvas {
 
         // Get text dimensions
         int textWidth, textHeight;
-        ctx->GetTextLineDimensions(text, textWidth, textHeight);
 
+        ctx->GetTextLineDimensions(text, textWidth, textHeight);
         Point2Df textPos;
         if (style.textAlign == TextAlignment::Center) {
             textPos.x = textRect.x + (textRect.width - textWidth) / 2;
@@ -674,6 +674,7 @@ namespace UltraCanvas {
         }
         textPos.y = textRect.y + (textRect.height - textHeight) / 2;
 
+        ctx->DrawRectangle((int)textPos.x, (int)textPos.y, textWidth, textHeight);
         ctx->DrawText(text, textPos);
     }
 

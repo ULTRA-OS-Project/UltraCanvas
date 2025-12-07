@@ -25,7 +25,7 @@ namespace UltraCanvas {
         Color shadowColor = Color(0, 0, 0, 64);
 
         // Typography
-        std::string fontFamily = "Arial";
+        std::string fontFamily = "Sans";
         float fontSize = 11.0f;
         FontWeight fontWeight = FontWeight::Normal;
         FontSlant fontStyle = FontSlant::Normal;

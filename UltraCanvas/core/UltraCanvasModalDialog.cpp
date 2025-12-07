@@ -396,7 +396,7 @@ namespace UltraCanvas {
 
         // Draw icon symbol
         ctx->PaintWidthColorColors::White);
-        ctx->SetFont("Arial", 20.0f, FontWeight::Bold);
+        ctx->SetFont("Sans", 20.0f, FontWeight::Bold);
         std::string iconText = GetTypeIcon();
         Point2D iconTextPos(iconRect.x + 10, iconRect.y + 22);
         ctx->DrawText(iconText, iconTextPos);
@@ -444,7 +444,7 @@ namespace UltraCanvas {
         if (config.details.empty()) return;
 
         ctx->PaintWidthColorColor(100, 100, 100, 255));
-        ctx->SetFont("Arial", 9.0f);
+        ctx->SetFont("Sans", 9.0f);
         Point2D detailsPos(detailsRect.x, detailsRect.y + 12);
         DrawText(config.details, detailsPos);
     }

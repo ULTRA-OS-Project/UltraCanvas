@@ -896,10 +896,10 @@ private:
         svg << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
         svg << "<svg width=\"400\" height=\"300\" xmlns=\"http://www.w3.org/2000/svg\">\n";
         svg << "  <rect x=\"10\" y=\"10\" width=\"380\" height=\"280\" fill=\"#f0f0f0\" stroke=\"#ccc\" stroke-width=\"2\"/>\n";
-        svg << "  <text x=\"200\" y=\"150\" text-anchor=\"middle\" font-family=\"Arial\" font-size=\"16\" fill=\"#666\">\n";
+        svg << "  <text x=\"200\" y=\"150\" text-anchor=\"middle\" font-family=\"Helvetica\" font-size=\"16\" fill=\"#666\">\n";
         svg << "    " << DiagramMetadata().GetFormatString() << " Diagram\n";
         svg << "  </text>\n";
-        svg << "  <text x=\"200\" y=\"180\" text-anchor=\"middle\" font-family=\"Arial\" font-size=\"12\" fill=\"#999\">\n";
+        svg << "  <text x=\"200\" y=\"180\" text-anchor=\"middle\" font-family=\"Helvetica\" font-size=\"12\" fill=\"#999\">\n";
         svg << "    (Placeholder - Actual rendering not implemented)\n";
         svg << "  </text>\n";
         svg << "</svg>\n";

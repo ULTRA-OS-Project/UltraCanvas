@@ -36,7 +36,7 @@ struct AdvancedControlStyle {
     Color disabledBackgroundColor = Color(250, 250, 250);
     
     // Typography
-    std::string fontFamily = "Arial";
+    std::string fontFamily = "Sans";
     float fontSize = 13.0f;
     FontWeight fontWeight = FontWeight::Normal;
     
@@ -1153,7 +1153,7 @@ public:
         // Render group label if present
         if (!groupLabel.empty()) {
             SetColor(Colors::Black);
-            SetFont("Arial", 14.0f);
+            SetFont("Sans", 14.0f);
             DrawText(groupLabel, Point2D(GetX(), GetY() + 15));
         }
         

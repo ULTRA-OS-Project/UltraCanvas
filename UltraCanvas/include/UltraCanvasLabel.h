@@ -239,7 +239,7 @@ namespace UltraCanvas {
             ctx->SetFontStyle(style.fontStyle);
             Size2Di textDimensions;
             ctx->SetTextIsMarkup(style.isMarkup);
-            ctx->GetTextLineDimensions(text, textDimensions.width, textDimensions.height);
+            ctx->GetTextDimensions(text, 99999, 0, textDimensions.width, textDimensions.height);
             if (style.autoResize || GetWidth() == 0) {
                 AutoResize(textDimensions);
             }

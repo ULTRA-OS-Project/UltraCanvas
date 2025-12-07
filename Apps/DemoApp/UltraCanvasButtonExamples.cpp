@@ -400,7 +400,7 @@ namespace UltraCanvas {
 
             // Large Button
             auto largeBtn = CreateButton("LargeButton", 155, 500, yOffset, 150, 50, "Large");
-            largeBtn->SetFont("Arial", 16, FontWeight::Bold);
+            largeBtn->SetFont("Sans", 16, FontWeight::Bold);
             largeBtn->SetPadding(20, 20, 10, 10);
             largeBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Large button clicked\nCustom size and padding");
@@ -523,7 +523,7 @@ namespace UltraCanvas {
                             Color(75, 0, 130, 255), Colors::White,      // Indigo primary
                             Color(255, 69, 0, 255), Colors::White       // OrangeRed secondary
                     )
-                    .SetFont("Arial", 14, FontWeight::Bold)
+                    .SetFont("Sans", 14, FontWeight::Bold)
                     .SetShadow(true)
                     .OnClick([statusLabel]() {
                         statusLabel->SetText("Complex builder button clicked\nPrimary action with custom styling");

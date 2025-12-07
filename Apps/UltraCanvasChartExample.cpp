@@ -133,7 +133,7 @@ public:
                 "instruction_1",
                 2000, 50, 720, 400, 20 * 6, instructions
         );
-        instructionLabel->SetFont("Arial", 13.0f, FontWeight::Normal);
+        instructionLabel->SetFont("Sans", 13.0f, FontWeight::Normal);
         instructionLabel->SetTextColor(Color(40, 40, 40, 255));
 
         instructionLabel->SetAlignment(TextAlignment::Left, TextVerticalAlignment::Middle);

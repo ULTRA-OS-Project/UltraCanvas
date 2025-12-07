@@ -38,7 +38,7 @@ public:
     Color disabledTextColor = Color(128, 128, 128);
     
     // ===== FONT PROPERTIES =====
-    std::string fontFamily = "Arial";
+    std::string fontFamily = "Sans";
     int fontSize = 12;
     
     // ===== LAYOUT =====

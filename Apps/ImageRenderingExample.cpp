@@ -202,10 +202,10 @@ public:
         // Draw demo title
         std::cout << "Drawing demo title..." << std::endl;
         context->PaintWidthColorColors::White);
-        context->SetFont("Arial", 24.0f);
+        context->SetFont("Sans", 24.0f);
         context->DrawText("UltraCanvas Linux Image Rendering Demo", Point2D(20, 60));
 
-        context->SetFont("Arial", 14.0f);
+        context->SetFont("Sans", 14.0f);
         context->DrawText("Use dropdown or menu to select images", Point2D(20, 90));
 
         // Render current image with different modes
@@ -239,7 +239,7 @@ public:
             context->ctx->DrawRectangle(Rect2D(50, 380, 900, 100));
 
             context->PaintWidthColorColors::White);
-            context->SetFont("Arial", 12.0f);
+            context->SetFont("Sans", 12.0f);
             context->DrawText("Image Information:", Point2D(60, 400));
 
             if (currentImageIndex >= 0 && currentImageIndex < (int)imagePaths.size()) {

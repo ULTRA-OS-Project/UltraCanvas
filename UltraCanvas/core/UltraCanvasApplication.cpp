@@ -32,6 +32,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasBaseApplication::Run() {
+        std::cout << "UltraCanvasBaseApplication::Run Starting app" << std::endl;
         RunNative();
         Shutdown();
     }

@@ -57,7 +57,7 @@ namespace UltraCanvas {
 
         static ExtendedTextStyle Default() {
             ExtendedTextStyle style;
-            style.fontFamily = "Arial";
+            style.fontFamily = "Sans";
             style.fontSize = 12.0f;
             style.fontWeight = FontWeight::Normal;
             style.fontStyle = FontStyle::Normal;
@@ -67,7 +67,7 @@ namespace UltraCanvas {
 
         static ExtendedTextStyle Header() {
             ExtendedTextStyle style;
-            style.fontFamily = "Arial";
+            style.fontFamily = "Sans";
             style.fontSize = 18.0f;
             style.fontWeight = FontWeight::Bold;
             style.marginBottom = 10.0f;

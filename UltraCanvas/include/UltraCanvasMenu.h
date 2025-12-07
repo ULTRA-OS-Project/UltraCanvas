@@ -107,7 +107,7 @@ namespace UltraCanvas {
         Color disabledTextColor = Color(150, 150, 150);
 
         // Typography
-        std::string fontFamily = "Arial";
+        std::string fontFamily = "Sans";
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
 

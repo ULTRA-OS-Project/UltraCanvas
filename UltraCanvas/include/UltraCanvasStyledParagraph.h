@@ -70,7 +70,7 @@ enum class LineSpacingType {
 class ParagraphRun {
 public:
     std::string text;
-    std::string fontFamily = "Arial";
+    std::string fontFamily = "";
     int fontSize = 12;
     ParagraphTextStyle styleFlags = ParagraphTextStyle::Normal;
     Color textColor = Colors::Black;
@@ -205,7 +205,7 @@ public:
         if (onTextChanged) onTextChanged();
     }
     
-    void AddText(const std::string& text, const std::string& font = "Arial", int size = 12, const Color& color = Colors::Black) {
+    void AddText(const std::string& text, const std::string& font = "Sans", int size = 12, const Color& color = Colors::Black) {
         auto run = std::make_unique<ParagraphRun>(text, font, size, color);
         AddRun(std::move(run));
     }
@@ -552,11 +552,11 @@ private:
         // Render list prefix
         if (!listPrefix.empty()) {
             ctx->PaintWidthColorColors::Black);
-            SetTextFont("Arial", 12);
+            SetTextFont("Sans", 12);
             ctx->DrawText(listPrefix, Point2D(currentX, currentY + 12));
             
             // Measure prefix width using UltraCanvas functions
-            Point2D prefixSize = GetTextExtents(listPrefix.c_str(), "Arial", 12);
+            Point2D prefixSize = GetTextExtents(listPrefix.c_str(), "Sans", 12);
             currentX += prefixSize.x;
         }
         
@@ -697,7 +697,7 @@ inline std::string GetParagraphText(const UltraCanvasStyledParagraph* paragraph)
 // ===== LEGACY COMPATIBILITY (FIXED) =====
 struct LegacyParagraphRun {
     std::string text;
-    std::string font = "Arial";           // FIXED: Added missing field
+    std::string font = "Sans";           // FIXED: Added missing field
     int fontSize = 12;
     uint32_t styleFlags = 0;              // FIXED: Added missing field
     uint32_t color = 0xFF000000;          // FIXED: Added missing field (black)
@@ -800,9 +800,9 @@ auto paragraph = UltraCanvas::CreateStyledParagraph("para1", 1001, 10, 10, 400, 
 
 // Add different styled text runs
 paragraph->AddText("This is normal text. ");
-paragraph->AddFormattedText("This is bold text. ", "Arial", 12, 
+paragraph->AddFormattedText("This is bold text. ", "Sans", 12,
     UltraCanvas::ParagraphTextStyle::Bold);
-paragraph->AddFormattedText("This is italic text. ", "Arial", 12, 
+paragraph->AddFormattedText("This is italic text. ", "Sans", 12,
     UltraCanvas::ParagraphTextStyle::Italic, UltraCanvas::Colors::Blue);
 
 // Configure paragraph formatting
@@ -815,7 +815,7 @@ paragraph->SetIndentation(30);
 UltraCanvas::StyledParagraph legacyPara;
 UltraCanvas::LegacyParagraphRun legacyRun;
 legacyRun.text = "Legacy paragraph text";
-legacyRun.font = "Arial";
+legacyRun.font = "Sans";
 legacyRun.fontSize = 14;
 legacyRun.styleFlags = 1 | 2; // Bold | Italic
 legacyRun.color = 0xFF0000FF; // Red

@@ -45,7 +45,7 @@ namespace UltraCanvas {
 // ===== MARKDOWN STYLING =====
     struct MarkdownStyle {
         // Base text style
-        std::string fontFamily = "Arial";
+        std::string fontFamily = "Sans";
         float fontSize = 10.0f;
         Color textColor = Color(50, 50, 50);
         Color backgroundColor = Colors::White;
