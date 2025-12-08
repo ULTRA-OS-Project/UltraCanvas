@@ -310,7 +310,7 @@ namespace UltraCanvas {
         } else {
             // No target window found - this might be normal for some system events
             std::cout << "UltraCanvas: Warning - Event type " << static_cast<int>(event.type)
-                      << " has no target window (X11 Window: " << std::hex << event.nativeWindowHandle << std::dec << ")" << std::endl;
+                      << " has no target window (Native Window: " << std::hex << event.nativeWindowHandle << std::dec << ")" << std::endl;
         }
     }
 

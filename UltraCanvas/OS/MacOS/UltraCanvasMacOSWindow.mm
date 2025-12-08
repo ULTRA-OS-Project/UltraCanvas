@@ -13,21 +13,13 @@
 #include <iostream>
 #include <cstring>
 
-// ===== CUSTOM NSVIEW FOR CAIRO RENDERING =====
 @interface UltraCanvasView : NSView {
     UltraCanvas::UltraCanvasMacOSWindow* ultraCanvasWindow;
     cairo_surface_t* cairoSurface;
-    cairo_t* cairoContext;
 }
 
 @property (nonatomic, assign) UltraCanvas::UltraCanvasMacOSWindow* ultraCanvasWindow;
 @property (nonatomic, assign) cairo_surface_t* cairoSurface;
-@property (nonatomic, assign) cairo_t* cairoContext;
-
-- (instancetype)initWithFrame:(NSRect)frameRect window:(UltraCanvas::UltraCanvasMacOSWindow*)window;
-- (void)drawRect:(NSRect)dirtyRect;
-- (BOOL)acceptsFirstResponder;
-- (BOOL)isFlipped;
 
 @end
 
@@ -35,57 +27,54 @@
 
 @synthesize ultraCanvasWindow;
 @synthesize cairoSurface;
-@synthesize cairoContext;
 
 - (instancetype)initWithFrame:(NSRect)frameRect window:(UltraCanvas::UltraCanvasMacOSWindow*)window {
     self = [super initWithFrame:frameRect];
     if (self) {
         ultraCanvasWindow = window;
         cairoSurface = nullptr;
-        cairoContext = nullptr;
-        
-        // Enable layer backing for better performance
         [self setWantsLayer:YES];
     }
     return self;
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
-    if (!ultraCanvasWindow || !cairoSurface) return;
+    if (!cairoSurface) return;
 
-    @autoreleasepool {
-        // Get the current CGContext
-        CGContextRef cgContext = [[NSGraphicsContext currentContext] CGContext];
-        if (!cgContext) return;
+    // Get view's CGContext
+    CGContextRef viewCtx = [[NSGraphicsContext currentContext] CGContext];
+    if (!viewCtx) return;
 
-        // Flush Cairo surface
-        cairo_surface_flush(cairoSurface);
+    // Flush pending Cairo operations
+    cairo_surface_flush(cairoSurface);
 
-        // Get the Cairo surface's CGImage
-//        CGImageRef cgImage = cairo_quartz_surface_get_image(cairoSurface);
-//        if (cgImage) {
-//            // Draw the image
-//            CGRect bounds = NSRectToCGRect([self bounds]);
-//            CGContextDrawImage(cgContext, bounds, cgImage);
-//        }
-    }
+    // Create a temporary Cairo surface wrapping the VIEW's context
+    NSRect bounds = [self bounds];
+    int w = (int)bounds.size.width;
+    int h = (int)bounds.size.height;
+
+    // Wrap the view's CGContext in a Cairo surface
+    cairo_surface_t* viewSurface = cairo_quartz_surface_create_for_cg_context(viewCtx, w, h);
+    cairo_t* cr = cairo_create(viewSurface);
+
+    // Handle coordinate flip (NSView with isFlipped:YES)
+    // Cairo and Quartz both use bottom-left origin, but isFlipped changes this
+//    cairo_translate(cr, 0, h);
+//    cairo_scale(cr, 1.0, -1.0);
+
+    // Single operation: paint source surface to view
+    cairo_set_source_surface(cr, cairoSurface, 0, 0);
+    cairo_paint(cr);
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(viewSurface);
 }
 
-- (BOOL)acceptsFirstResponder {
-    return YES;
-}
-
-- (BOOL)isFlipped {
-    return YES;  // Use top-left origin like other platforms
-}
-
-- (void)dealloc {
-    ultraCanvasWindow = nullptr;
-    cairoSurface = nullptr;
-    cairoContext = nullptr;
-}
+- (BOOL)acceptsFirstResponder { return YES; }
+- (BOOL)isFlipped { return YES; }
 
 @end
+
 
 // ===== WINDOW DELEGATE =====
 @interface UltraCanvasWindowDelegate : NSObject <NSWindowDelegate> {
@@ -263,7 +252,7 @@ bool UltraCanvasMacOSWindow::CreateNative() {
 
         try {
             renderContext = std::make_unique<RenderContextCairo>(
-                cairoSurface, config_.width, config_.height, true);
+                cairoSurface, config_.width, config_.height, false);
             std::cout << "UltraCanvas macOS: Render context created successfully" << std::endl;
         } catch (const std::exception& e) {
             std::cerr << "UltraCanvas macOS: Failed to create render context: " << e.what() << std::endl;
@@ -573,13 +562,13 @@ void UltraCanvasMacOSWindow::Invalidate() {
 void UltraCanvasMacOSWindow::Flush() {
     if (!_created || !renderContext) return;
 
-    std::lock_guard<std::mutex> lock(cairoMutex);
-    renderContext->SwapBuffers();
+//    std::lock_guard<std::mutex> lock(cairoMutex);
+//    renderContext->SwapBuffers();
 
     // Flush Cairo surface
-    if (cairoSurface) {
-        cairo_surface_flush(cairoSurface);
-    }
+//    if (cairoSurface) {
+//        cairo_surface_flush(cairoSurface);
+//    }
 
     // Trigger redraw
     Invalidate();

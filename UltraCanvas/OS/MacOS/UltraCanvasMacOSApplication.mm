@@ -48,6 +48,7 @@ namespace UltraCanvas {
         }
 
         std::cout << "UltraCanvas: Initializing macOS Application..." << std::endl;
+        VIPS_INIT(appName.c_str());
 
         @autoreleasepool {
             // STEP 1: Initialize Cocoa
@@ -293,12 +294,12 @@ namespace UltraCanvas {
     UCEvent UltraCanvasMacOSApplication::ConvertNSEventToUCEvent(NSEvent* nsEvent) {
         UCEvent event;
         event.timestamp = std::chrono::steady_clock::now();
-
         NSEventType eventType = [nsEvent type];
 
         // Find target window
         NSWindow* nsWindow = [nsEvent window];
         UltraCanvasMacOSWindow* targetWindow = nullptr;
+        event.nativeWindowHandle = (unsigned long)nsWindow;
 
         if (nsWindow) {
             targetWindow = static_cast<UltraCanvasMacOSWindow*>(FindWindow((unsigned long)nsWindow));

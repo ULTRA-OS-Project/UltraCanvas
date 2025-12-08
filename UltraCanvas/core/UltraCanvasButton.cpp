@@ -674,7 +674,7 @@ namespace UltraCanvas {
         }
         textPos.y = textRect.y + (textRect.height - textHeight) / 2;
 
-        ctx->DrawRectangle((int)textPos.x, (int)textPos.y, textWidth, textHeight);
+        //ctx->DrawRectangle((int)textPos.x, (int)textPos.y, textWidth, textHeight);
         ctx->DrawText(text, textPos);
     }
 
