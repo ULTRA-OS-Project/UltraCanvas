@@ -44,7 +44,9 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
          ├── OS/Linux/         # Linux-specific code (X11/Wayland, Cairo)
          ├── OS/MSWindows/     # Windows-specific code (Win32, Direct2D)
          ├── OS/MacOS/         # macOS-specific code (Cocoa, Core Graphics)
-         └── OS/UltraOS/       # UltraOS-specific code
+         ├── OS/WASM/          # WASM-specific code (WebAssemby)
+         ├── OS/UltraOS/       # UltraOS-specific code
+         └── driver/SmartHome  # device drivers for Matter, Thread and Zigbee protocols
 ```
 
 ----------
