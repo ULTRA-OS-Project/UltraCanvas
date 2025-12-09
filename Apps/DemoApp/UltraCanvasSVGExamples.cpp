@@ -49,7 +49,7 @@ namespace UltraCanvas {
             config.resizable = false;
 
             // Create the fullscreen window
-            fullscreenWindow = std::make_shared<UltraCanvasWindow>(config);
+            fullscreenWindow = CreateWindow(config);
             fullscreenWindow->SetBackgroundColor(Color(32, 32, 32, 255));
 
             // Create fullscreen SVG element
@@ -83,8 +83,11 @@ namespace UltraCanvas {
 
             // Setup keyboard event handler for ESC key
             fullscreenWindow->SetEventCallback([this](const UCEvent& event) {
-                if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                    CloseFullscreenWindow();
+                if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClose)  {
+                    if (fullscreenWindow) {
+                        fullscreenWindow->RequestDelete();
+                        fullscreenWindow.reset();
+                    }
                     return true;
                 }
                 return false;
@@ -92,13 +95,6 @@ namespace UltraCanvas {
 
             // Show the window
             fullscreenWindow->Show();
-        }
-
-        void CloseFullscreenWindow() {
-            if (fullscreenWindow) {
-                fullscreenWindow->Close();
-                fullscreenWindow.reset();
-            }
         }
     };
 

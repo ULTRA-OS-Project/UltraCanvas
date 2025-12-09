@@ -32,7 +32,8 @@ namespace UltraCanvas {
         config.modal = true;
         //config.centerOnScreen = true;
 
-        if (!Create(config)) {
+        Create(config);
+        if (!_created) {
             std::cerr << "Failed to create info window" << std::endl;
             return false;
         }
@@ -229,6 +230,10 @@ namespace UltraCanvas {
             return;
         }
 
+        infoWindow->SetWindowCloseCallback([this]() {
+            CloseInfoWindow();
+        });
+
         // Set callback to handle OK button
         infoWindow->SetOkCallback([this]() {
             CloseInfoWindow();
@@ -244,6 +249,7 @@ namespace UltraCanvas {
         std::cout << "Closing info window..." << std::endl;
 
         if (infoWindow) {
+            infoWindow->RequestDelete();
             infoWindow.reset();
         }
 

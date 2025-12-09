@@ -233,7 +233,7 @@ public:
                     std::cout << "Window closing..." << std::endl;
                     isRunning = false;
                     if (application) {
-                        application->Exit();
+                        application->RequestExit();
                     }
                     return true;
                 };

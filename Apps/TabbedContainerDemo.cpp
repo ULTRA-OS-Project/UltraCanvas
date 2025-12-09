@@ -438,7 +438,7 @@ private:
         if (event.type == UCEventType::KeyDown && event.virtualKey == UCKeys::Escape) {
             auto app = UltraCanvasApplication::GetInstance();
             if (app) {
-                app->Exit();
+                app->RequestExit();
             }
             return true;
         }

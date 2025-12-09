@@ -25,19 +25,10 @@ namespace UltraCanvas {
             , cairoSupported(false)
             , retinaSupported(false)
             , displayScaleFactor(1.0f)
-            , eventThreadRunning(false)
             , mainThreadId(std::this_thread::get_id())
     {
         instance = this;
         std::cout << "UltraCanvas: macOS Application created" << std::endl;
-    }
-
-    UltraCanvasMacOSApplication::~UltraCanvasMacOSApplication() {
-        std::cout << "UltraCanvas: macOS Application destructor called" << std::endl;
-
-        if (initialized) {
-            Exit();
-        }
     }
 
 // ===== INITIALIZATION =====
@@ -179,13 +170,16 @@ namespace UltraCanvas {
         }
     }
 
-    bool UltraCanvasMacOSApplication::ShutdownNative() {
+    void UltraCanvasMacOSApplication::ShutdownNative() {
         std::cout << "UltraCanvas: Shutting down macOS Application..." << std::endl;
 
         vips_shutdown();
 
         //StopEventThread();
-        CleanupCocoa();
+        @autoreleasepool {
+            nsApplication = nullptr;
+            mainRunLoop = nullptr;
+        }
 
         running = false;
 
@@ -193,90 +187,42 @@ namespace UltraCanvas {
         return true;
     }
 
-    void UltraCanvasMacOSApplication::CleanupCocoa() {
+
+// ===== MAIN LOOP =====
+    void UltraCanvasMacOSApplication::CollectAndProcessNativeEvents() {
         @autoreleasepool {
-            nsApplication = nullptr;
-            mainRunLoop = nullptr;
+            // Process Cocoa events
+            NSEvent *event = [nsApplication nextEventMatchingMask:NSEventMaskAny
+                                                        untilDate:[NSDate distantPast]
+                                                           inMode:NSDefaultRunLoopMode
+                                                          dequeue:YES];
+
+            if (event) {
+                ProcessCocoaEvent(event);
+
+                [nsApplication sendEvent:event];
+                [nsApplication updateWindows];
+            }
         }
     }
 
-// ===== MAIN LOOP =====
-    void UltraCanvasMacOSApplication::RunNative() {
-        std::cout << "UltraCanvas: Starting macOS main loop..." << std::endl;
-
+    void UltraCanvasMacOSApplication::RunBeforeMainLoop() {
         @autoreleasepool {
             // Activate the application
             [nsApplication setActivationPolicy:NSApplicationActivationPolicyRegular];
             [nsApplication finishLaunching];
             [nsApplication activateIgnoringOtherApps:YES];
 
-            running = true;
-
             dispatch_async(dispatch_get_main_queue(), ^{
                 std::cout << "UltraCanvas: Showing pending windows from dispatch..." << std::endl;
-                for (auto& window : windows) {
-                    if (window && ((UltraCanvasMacOSWindow*)window)->pendingShow) {
-                        ((UltraCanvasMacOSWindow*)window)->Show();
+                for (auto &window: windows) {
+                    auto win = ((UltraCanvasMacOSWindow *) window.get());
+                    if (win->pendingShow) {
+                        win->Show();
                     }
                 }
             });
-
-            // Main event loop
-            while (running) {
-                @autoreleasepool {
-                    // Process Cocoa events
-                    NSEvent* event = [nsApplication nextEventMatchingMask:NSEventMaskAny
-                                                                untilDate:[NSDate distantPast]
-                                                                   inMode:NSDefaultRunLoopMode
-                                                                  dequeue:YES];
-
-                    if (event) {
-                        ProcessCocoaEvent(event);
-                        [nsApplication sendEvent:event];
-                        [nsApplication updateWindows];
-                    }
-
-                    // Process UltraCanvas events
-                    ProcessEvents();
-
-// Check for visible windows
-                    bool hasVisibleWindows = false;
-                    for (auto& window : windows) {
-                        if (window && (window->IsVisible() || ((UltraCanvasMacOSWindow*)window)->pendingShow)) {
-                            hasVisibleWindows = true;
-                            break;
-                        }
-                    }
-
-                    if (!hasVisibleWindows) {
-                        std::cout << "UltraCanvas: No visible windows, exiting..." << std::endl;
-                        break;
-                    }
-
-                    // Update and render all windows
-                    for (auto& window : windows) {
-                        if (window && window->IsVisible() && window->IsNeedsRedraw()) {
-                            auto ctx = window->GetRenderContext();
-                            if (ctx) {
-                                window->Render(ctx);
-                                window->Flush();
-                                window->ClearRequestRedraw();
-                            }
-                        }
-                    }
-                    // Frame rate control
-                    //LimitFrameRate();
-                    RunInEventLoop();
-                }
-            }
         }
-
-        std::cout << "UltraCanvas: macOS main loop completed" << std::endl;
-    }
-
-    void UltraCanvasMacOSApplication::Exit() {
-        std::cout << "UltraCanvas: macOS application exit requested" << std::endl;
-        running = false;
     }
 
 // ===== EVENT PROCESSING =====
@@ -307,6 +253,13 @@ namespace UltraCanvas {
 
         event.targetWindow = targetWindow;
 
+        // Get window content height for Y-coordinate flipping
+        // macOS uses bottom-left origin, UltraCanvas uses top-left origin
+        CGFloat windowHeight = 0;
+        if (nsWindow) {
+            windowHeight = [[nsWindow contentView] bounds].size.height;
+        }
+
         // Convert event based on type
         switch (eventType) {
             case NSEventTypeLeftMouseDown:
@@ -315,7 +268,7 @@ namespace UltraCanvas {
                 event.type = UCEventType::MouseDown;
                 event.button = ConvertNSEventMouseButton([nsEvent buttonNumber]);
                 event.x = [nsEvent locationInWindow].x;
-                event.y = [nsEvent locationInWindow].y;
+                event.y = windowHeight - [nsEvent locationInWindow].y;
                 break;
 
             case NSEventTypeLeftMouseUp:
@@ -324,7 +277,7 @@ namespace UltraCanvas {
                 event.type = UCEventType::MouseUp;
                 event.button = ConvertNSEventMouseButton([nsEvent buttonNumber]);
                 event.x = [nsEvent locationInWindow].x;
-                event.y = [nsEvent locationInWindow].y;
+                event.y = windowHeight - [nsEvent locationInWindow].y;
                 break;
 
             case NSEventTypeMouseMoved:
@@ -333,14 +286,14 @@ namespace UltraCanvas {
             case NSEventTypeOtherMouseDragged:
                 event.type = UCEventType::MouseMove;
                 event.x = [nsEvent locationInWindow].x;
-                event.y = [nsEvent locationInWindow].y;
+                event.y = windowHeight - [nsEvent locationInWindow].y;
                 break;
 
             case NSEventTypeScrollWheel:
                 event.type = UCEventType::MouseWheel;
                 event.wheelDelta = [nsEvent scrollingDeltaY];
                 event.x = [nsEvent locationInWindow].x;
-                event.y = [nsEvent locationInWindow].y;
+                event.y = windowHeight - [nsEvent locationInWindow].y;
                 break;
 
             case NSEventTypeKeyDown:
@@ -460,100 +413,6 @@ namespace UltraCanvas {
             default: return UCMouseButton::Unknown;
         }
     }
-
-// ===== WINDOW MANAGEMENT =====
-//    void UltraCanvasMacOSApplication::RegisterWindow(void* nsWindow, UltraCanvasMacOSWindow* window) {
-//        std::lock_guard<std::mutex> lock(windowMapMutex);
-//        windowMap[nsWindow] = window;
-//        std::cout << "UltraCanvas: Window registered" << std::endl;
-//    }
-//
-//    void UltraCanvasMacOSApplication::UnregisterWindow(void* nsWindow) {
-//        std::lock_guard<std::mutex> lock(windowMapMutex);
-//        windowMap.erase(nsWindow);
-//        std::cout << "UltraCanvas: Window unregistered" << std::endl;
-//    }
-//
-//    UltraCanvasMacOSWindow* UltraCanvasMacOSApplication::FindWindow(void* nsWindow) {
-//        std::lock_guard<std::mutex> lock(windowMapMutex);
-//        auto it = windowMap.find(nsWindow);
-//        if (it != windowMap.end()) {
-//            return it->second;
-//        }
-//        return nullptr;
-//    }
-
-// ===== EVENT THREAD =====
-//    void UltraCanvasMacOSApplication::StartEventThread() {
-//        if (eventThreadRunning) {
-//            return;
-//        }
-//
-//        std::cout << "UltraCanvas: Starting event thread..." << std::endl;
-//
-//        eventThreadRunning = true;
-//        eventThread = std::thread([this]() {
-//            EventThreadFunction();
-//        });
-//
-//        std::cout << "UltraCanvas: Event thread started" << std::endl;
-//    }
-//
-//    void UltraCanvasMacOSApplication::StopEventThread() {
-//        if (!eventThreadRunning) {
-//            return;
-//        }
-//
-//        std::cout << "UltraCanvas: Stopping event thread..." << std::endl;
-//
-//        eventThreadRunning = false;
-//
-//        if (eventThread.joinable()) {
-//            eventThread.join();
-//        }
-//
-//        std::cout << "UltraCanvas: Event thread stopped" << std::endl;
-//    }
-
-//    void UltraCanvasMacOSApplication::EventThreadFunction() {
-//        std::cout << "UltraCanvas: Event thread running..." << std::endl;
-//
-//        while (eventThreadRunning) {
-//            // Background event processing if needed
-//            std::this_thread::sleep_for(std::chrono::milliseconds(16));
-//        }
-//
-//        std::cout << "UltraCanvas: Event thread ended" << std::endl;
-//    }
-
-// ===== TIMING =====
-//    void UltraCanvasMacOSApplication::UpdateDeltaTime() {
-//        auto currentTime = std::chrono::steady_clock::now();
-//
-//        if (lastFrameTime.time_since_epoch().count() == 0) {
-//            deltaTime = 1.0 / 60.0;
-//        } else {
-//            auto frameDuration = currentTime - lastFrameTime;
-//            deltaTime = std::chrono::duration<double>(frameDuration).count();
-//        }
-//
-//        // Clamp to reasonable values
-//        deltaTime = std::min(deltaTime, 1.0 / 30.0);
-//        lastFrameTime = currentTime;
-//    }
-
-//    void UltraCanvasMacOSApplication::LimitFrameRate() {
-//        if (targetFPS <= 0) return;
-//
-//        auto targetFrameTime = std::chrono::microseconds(1000000 / targetFPS);
-//        auto currentTime = std::chrono::steady_clock::now();
-//        auto actualFrameTime = currentTime - lastFrameTime;
-//
-//        if (actualFrameTime < targetFrameTime) {
-//            auto sleepTime = targetFrameTime - actualFrameTime;
-//            std::this_thread::sleep_for(sleepTime);
-//        }
-//    }
 
 // ===== THREAD SAFETY =====
     bool UltraCanvasMacOSApplication::IsMainThread() const {

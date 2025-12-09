@@ -11,6 +11,7 @@
 
 // ===== CORE INCLUDES =====
 #include "../../libspecific/Cairo/RenderContextCairo.h"
+#include "../../include/UltraCanvasWindow.h"
 
 // ===== MACOS PLATFORM INCLUDES =====
 #ifdef __OBJC__
@@ -36,7 +37,6 @@ typedef struct CGContext* CGContextRef;
 namespace UltraCanvas {
 
 // Forward declarations
-    class LinuxRenderContext;  // Reuse Linux/Cairo render context
     class UltraCanvasMacOSApplication;
 
 // ===== MACOS WINDOW CLASS =====
@@ -50,7 +50,6 @@ namespace UltraCanvas {
 
         // ===== CAIRO RENDERING =====
         cairo_surface_t* cairoSurface;
-        CGContextRef cgContext;  // Quartz context for Cairo surface
 
         bool pendingShow = false;
 
@@ -73,16 +72,10 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasMacOSWindow();
-        UltraCanvasMacOSWindow(const WindowConfig& config);
-        ~UltraCanvasMacOSWindow() override;
 
-        // ===== WINDOW CREATION =====
-
-        // ===== WINDOW MANAGEMENT =====
         // ===== INHERITED FROM BASE WINDOW =====
         void Show() override;
         void Hide() override;
-        void Close() override;
         void SetWindowTitle(const std::string& title) override;
         void SetWindowSize(int width, int height) override;
         void SetWindowPosition(int x, int y) override;

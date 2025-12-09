@@ -94,7 +94,6 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasLinuxApplication();
-        virtual ~UltraCanvasLinuxApplication();
 
         static UltraCanvasLinuxApplication* GetInstance() {
             return UltraCanvasLinuxApplication::instance;
@@ -102,9 +101,7 @@ namespace UltraCanvas {
 
         // ===== INHERITED FROM BASE APPLICATION =====
         bool InitializeNative() override;
-        bool ShutdownNative() override;
-        void RunNative() override;
-        void Exit() override;
+        void ShutdownNative() override;
 
         // ===== LINUX-SPECIFIC METHODS =====
 
@@ -162,6 +159,9 @@ namespace UltraCanvas {
             mouseClickInfo.doubleClickDistance = pixels;
         }
 
+    protected:
+        void CollectAndProcessNativeEvents() override;
+
     private:
         // ===== INTERNAL INITIALIZATION =====
         bool InitializeX11();
@@ -180,9 +180,6 @@ namespace UltraCanvas {
         // ===== KEYBOARD AND MOUSE CONVERSION =====
         UCMouseButton ConvertXButtonToUCButton(unsigned int button);
         UCKeys ConvertXKeyToUCKey(KeySym keysym);
-
-        // ===== CLEANUP =====
-        void CleanupX11();
 
         // ===== FRAME RATE CONTROL =====
 //        void UpdateDeltaTime();

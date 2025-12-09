@@ -19,10 +19,16 @@ namespace UltraCanvas {
     UltraCanvasWindowBase::UltraCanvasWindowBase()
             : UltraCanvasContainer("Window", 0, 0, 0, 0, 0) {
         // Configure container for window behavior
+        visible = false;
         SetWindow(this);
     }
 
-// ===== FOCUS MANAGEMENT IMPLEMENTATION =====
+//    UltraCanvasWindowBase::~UltraCanvasWindowBase() {
+//        UnregisterWindow();
+//        std::cout << "UltraCanvas: Window deleted" << std::endl;
+//    }
+
+    // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
 
     void UltraCanvasWindowBase::SetFocusedElement(UltraCanvasUIElement* element) {
         // Don't do anything if already focused
@@ -204,8 +210,8 @@ namespace UltraCanvas {
 
     bool UltraCanvasWindowBase::HandleWindowEvent(const UCEvent &event) {
         switch (event.type) {
-            case UCEventType::WindowClose:
-                HandleCloseEvent();
+            case UCEventType::WindowCloseRequest:
+                Close();
                 return true;
 
             case UCEventType::WindowResize:
@@ -229,11 +235,11 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasWindowBase::HandleCloseEvent() {
-        Close();
-//        _state = WindowState::Closing;
-//        if (onWindowClose) onWindowClose();
-    }
+//    void UltraCanvasWindowBase::HandleCloseEvent() {
+//        Close();
+////        _state = WindowState::Closing;
+////        if (onWindowClose) onWindowClose();
+//    }
 
     void UltraCanvasWindowBase::HandleResizeEvent(int width, int height) {
         config_.width = width;
@@ -266,7 +272,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWindowBase::Render(IRenderContext* ctx) {
-        if (!_visible || !_created) return;
+        if (!visible || !_created) return;
 //        if (useSelectiveRendering && selectiveRenderer) {
 //            // Use simple selective rendering
 //            selectiveRenderer->RenderFrame();
@@ -353,7 +359,7 @@ namespace UltraCanvas {
 //        return selectiveRenderer && selectiveRenderer->IsRenderingActive();
 //    }
 
-    bool UltraCanvasWindowBase::Create(const WindowConfig& config) {
+    void UltraCanvasWindowBase::Create(const WindowConfig& config) {
         config_ = config;
         _state = WindowState::Normal;
 
@@ -365,21 +371,51 @@ namespace UltraCanvas {
 
         auto application = UltraCanvasApplication::GetInstance();
         SetBounds(Rect2Di(0, 0, config_.width, config_.height));
+
         if (CreateNative()) {
-            application->RegisterWindow(this);
+            UltraCanvasApplication::GetInstance()->RegisterWindow(shared_from_this());
             _created = true;
-            return true;
+        } else {
+            _created = false;
         }
-        return false;
     }
 
     void UltraCanvasWindowBase::Destroy() {
-        if (!_created) {
+        if (!_created || _state == WindowState::Deleted) {
             return;
         }
-        UltraCanvasApplication::GetInstance()->UnregisterWindow(this);
+        DestroyNative();
         _created = false;
+        _state = WindowState::Deleted;
     }
+
+    void UltraCanvasWindowBase::RequestDelete() {
+        _state = WindowState::DeleteRequested;
+    }
+
+    void UltraCanvasWindowBase::Close() {
+        if (!_created || _state == WindowState::Closing) {
+            return;
+        }
+
+        _state = WindowState::Closing;
+
+        std::cout << "UltraCanvas: Window close requested" << std::endl;
+
+        if (onWindowClose) {
+            onWindowClose();
+        } else {
+            UCEvent ev;
+            ev.type = UCEventType::WindowClose;
+            ev.targetWindow = this;
+            UltraCanvasApplication::GetInstance()->PushEvent(ev);
+        }
+
+        if (config_.deleteOnClose) {
+            RequestDelete();
+        }
+    }
+
 
 //    void UpdateZOrderSort() {
 //        sortedElements = elements;
@@ -395,4 +431,16 @@ namespace UltraCanvas {
 //            }
 //        }
 //    }
+
+    std::shared_ptr<UltraCanvasWindow> CreateWindow() {
+        auto win = std::make_shared<UltraCanvasWindow>();
+        return win;
+    }
+
+    std::shared_ptr<UltraCanvasWindow> CreateWindow(const WindowConfig& config) {
+        auto win = std::make_shared<UltraCanvasWindow>();
+        win->Create(config);
+        return win;
+    }
+
 } // namespace UltraCanvas

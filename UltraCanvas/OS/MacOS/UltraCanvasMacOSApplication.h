@@ -76,11 +76,11 @@ namespace UltraCanvas {
         float displayScaleFactor;
 
         // ===== EVENT SYSTEM =====
-        std::queue<UCEvent> eventQueue;
-        std::mutex eventQueueMutex;
-        std::condition_variable eventCondition;
-        bool eventThreadRunning;
-        std::thread eventThread;
+//        std::queue<UCEvent> eventQueue;
+//        std::mutex eventQueueMutex;
+//        std::condition_variable eventCondition;
+//        bool eventThreadRunning;
+//        std::thread eventThread;
 
         // ===== WINDOW MANAGEMENT =====
 //        std::unordered_map<void*, UltraCanvasMacOSWindow*> windowMap;  // NSWindow* -> UltraCanvasWindow*
@@ -107,7 +107,6 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasMacOSApplication();
-        virtual ~UltraCanvasMacOSApplication();
 
         static UltraCanvasMacOSApplication* GetInstance() {
             return instance;
@@ -115,17 +114,10 @@ namespace UltraCanvas {
 
         // ===== INHERITED FROM BASE APPLICATION =====
         bool InitializeNative() override;
-        bool ShutdownNative() override;
-        void RunNative() override;
-        void Exit() override;
+        void ShutdownNative() override;
+        void RunBeforeMainLoop() override;
 
         // ===== MACOS-SPECIFIC METHODS =====
-
-        // Application initialization
-        bool InitializeCocoa();
-        bool InitializeCairo();
-        void InitializeMenuBar();
-        void InitializeDisplaySettings();
 
         // Application information
         NSApplication* GetNSApplication() const { return nsApplication; }
@@ -138,13 +130,6 @@ namespace UltraCanvas {
         void ProcessCocoaEvent(NSEvent* nsEvent);
         UCEvent ConvertNSEventToUCEvent(NSEvent* nsEvent);
         bool HasPendingEvents();
-
-        // Window management
-//        void RegisterWindow(UltraCanvasMacOSWindow* window, NSWindow* nsWindow);
-//        void UnregisterWindow(NSWindow* nsWindow);
-//        UltraCanvasMacOSWindow* FindWindow(NSWindow* nsWindow);
-//        void SetFocusedWindow(UltraCanvasMacOSWindow* window);
-//        UltraCanvasMacOSWindow* GetFocusedWindow() const { return focusedWindow; }
 
         // Frame rate and timing
 //        void SetTargetFPS(int fps) { targetFPS = fps; }
@@ -159,13 +144,17 @@ namespace UltraCanvas {
 
         // Thread safety
         bool IsMainThread() const;
-        void ExecuteOnMainThread(std::function<void()> func);
+
+    protected:
+        void CollectAndProcessNativeEvents() override;
 
     private:
         // Internal helper methods
-        void EventLoop();
-        void Update();
-        void CleanupCocoa();
+        // Application initialization
+        bool InitializeCocoa();
+        bool InitializeCairo();
+        void InitializeMenuBar();
+        void InitializeDisplaySettings();
 
         // Key and button code conversion
         UCKeys ConvertNSEventKeyCode(unsigned short keyCode);

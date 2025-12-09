@@ -27,10 +27,9 @@ namespace UltraCanvas {
         std::mutex eventQueueMutex;
         std::condition_variable eventCondition;
 
-        std::unordered_map<unsigned long, UltraCanvasWindowBase*> windowMap;
-        std::vector<UltraCanvasWindowBase*> windows;
+        std::vector<std::shared_ptr<UltraCanvasWindowBase>> windows;
 
-        UltraCanvasWindowBase* focusedWindow = nullptr;
+        UltraCanvasWindow* focusedWindow = nullptr;
         UltraCanvasUIElement* hoveredElement = nullptr;
         UltraCanvasUIElement* capturedElement = nullptr;
         UltraCanvasUIElement* draggedElement = nullptr;
@@ -53,10 +52,8 @@ namespace UltraCanvas {
 
     public:
         UltraCanvasBaseApplication() = default;
-        virtual ~UltraCanvasBaseApplication() {};
 
-        void RegisterWindow(UltraCanvasWindowBase* window);
-        void UnregisterWindow(UltraCanvasWindowBase* window);
+        void RegisterWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
 
         void ProcessEvents();
         bool PopEvent(UCEvent& event);
@@ -78,12 +75,12 @@ namespace UltraCanvas {
         bool IsAltHeld() { return altHeld; }
         bool IsMetaHeld() { return metaHeld; }
 
-        UltraCanvasWindowBase* GetFocusedWindow() { return focusedWindow; }
+        UltraCanvasWindow* GetFocusedWindow() { return focusedWindow; }
         UltraCanvasUIElement* GetFocusedElement();
         UltraCanvasUIElement* GetHoveredElement() { return hoveredElement; }
         UltraCanvasUIElement* GetCapturedElement() { return capturedElement; }
 
-        UltraCanvasWindowBase* FindWindow(unsigned long nativeHandle);
+        UltraCanvasWindow* FindWindow(unsigned long nativeHandle);
 
         const UCEvent& GetCurrentEvent() { return currentEvent; }
 
@@ -97,19 +94,21 @@ namespace UltraCanvas {
         void Run();
         bool Initialize(const std::string& app);
         void Shutdown();
+        void RequestExit();
         virtual bool InitializeNative() = 0;
-        virtual bool ShutdownNative() = 0;
-        virtual void RunNative() = 0;
-        virtual void RunInEventLoop();
-        virtual void Exit() = 0;
+        virtual void ShutdownNative() = 0;
+        virtual void RunInEventLoop() {};
+        virtual void RunBeforeMainLoop() {};
 
         bool IsInitialized() const { return initialized; }
         bool IsRunning() const { return running; }
 
-        bool HandleFocusedWindowChange(UltraCanvasWindowBase* window);
+        bool HandleFocusedWindowChange(UltraCanvasWindow* window);
+
     protected:
         bool IsDoubleClick(const UCEvent &event);
-
+        void CleanupWindowReferences(UltraCanvasWindowBase* window);
+        virtual void CollectAndProcessNativeEvents() = 0;
     };
 }
 

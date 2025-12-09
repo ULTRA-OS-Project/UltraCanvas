@@ -36,6 +36,7 @@ namespace UltraCanvas {
         WindowResize,
         WindowMove,
         WindowClose,
+        WindowCloseRequest,
         WindowMinimize,
         WindowFocus,
         WindowBlur,

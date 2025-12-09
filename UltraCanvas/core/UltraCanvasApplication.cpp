@@ -27,14 +27,101 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasBaseApplication::Shutdown() {
-        ShutdownClipboard();
-        ShutdownNative();
     }
 
     void UltraCanvasBaseApplication::Run() {
         std::cout << "UltraCanvasBaseApplication::Run Starting app" << std::endl;
-        RunNative();
-        Shutdown();
+        if (!initialized) {
+            std::cerr << "UltraCanvas: Cannot run - application not initialized" << std::endl;
+            return;
+        }
+
+        running = true;
+
+        // Start the event processing thread
+        RunBeforeMainLoop();
+
+        auto clipbrd = GetClipboard();
+
+        std::cout << "UltraCanvas: Starting main loop..." << std::endl;
+        try {
+            while (running && !windows.empty()) {
+                CollectAndProcessNativeEvents();
+
+                // Process all pending events
+                ProcessEvents();
+
+                // Check for visible windows, delete/cleanup windows
+rescan_windows:
+                for (auto it = windows.begin(); it != windows.end(); it++) {
+                    auto window = it->get();
+                    if (window->GetState() == WindowState::DeleteRequested) {
+                        window->Destroy();
+                    }
+                    if (window->GetState() == WindowState::Deleted) {
+                        CleanupWindowReferences(window);
+                        windows.erase(it);
+                        goto rescan_windows;
+                    }
+
+                    if (window->IsVisible()) {
+                        if (window->IsNeedsRedraw()) {
+                            auto ctx = window->GetRenderContext();
+                            if (ctx) {
+                                window->Render(ctx);
+                                window->Flush();
+                                window->ClearRequestRedraw();
+                            }
+                        }
+                    }
+
+                }
+
+                if (windows.empty()) {
+                    std::cout << "UltraCanvas: No windows, exiting..." << std::endl;
+                    break;
+                }
+
+                // Update and render all windows
+                if (clipbrd) {
+                    clipbrd->Update();
+                }
+                if (eventLoopCallback) {
+                    eventLoopCallback();
+                }
+                UltraCanvasTooltipManager::Update();
+
+                RunInEventLoop();
+            }
+
+        } catch (const std::exception& e) {
+            std::cerr << "UltraCanvas: Exception in main loop: " << e.what() << std::endl;
+        }
+
+        // Clean shutdown
+        std::cout << "UltraCanvas: Main loop ended, performing cleanup..." << std::endl;
+        //StopEventThread();
+
+        std::cout << "UltraCanvas: Destroying all windows..." << std::endl;
+        while (!windows.empty()) {
+            try {
+                auto window = windows.back();
+                window->Destroy();
+                windows.pop_back();
+            } catch (const std::exception& e) {
+                std::cerr << "UltraCanvas: Exception destroying window: " << e.what() << std::endl;
+            }
+        }
+
+        initialized = false;
+        std::cout << "UltraCanvas: main loop completed, shutting down.." << std::endl;
+        ShutdownClipboard();
+        ShutdownNative();
+    }
+
+    void UltraCanvasBaseApplication::RequestExit() {
+        std::cout << "UltraCanvas: Linux application exit requested" << std::endl;
+        running = false;
     }
 
     void UltraCanvasBaseApplication::PushEvent(const UCEvent& event) {
@@ -78,48 +165,40 @@ namespace UltraCanvas {
     }
 
     // ===== WINDOW MANAGEMENT =====
-    void UltraCanvasBaseApplication::RegisterWindow(UltraCanvasWindowBase *window) {
+    void UltraCanvasBaseApplication::RegisterWindow(const std::shared_ptr<UltraCanvasWindowBase>& window) {
         if (window && window->GetNativeHandle() != 0) {
-            std::cout << "UltraCanvas: Native window created successfully" << std::endl;
             windows.push_back(window);
             std::cout << "UltraCanvas: Window registered with Native ID: " << window->GetNativeHandle() << std::endl;
         }
     }
 
-    void UltraCanvasBaseApplication::UnregisterWindow(UltraCanvasWindowBase *window) {
-        if (window) {
-            auto it = std::find_if(windows.begin(), windows.end(),
-                                   [window](const UltraCanvasWindowBase* ptr) {
-                                       return ptr == window;
-                                   });
-
-            if (it != windows.end()) {
-                if (focusedWindow == window) {
-                    focusedWindow = nullptr;
-                }
-                if (capturedElement && capturedElement->GetWindow() == window) {
-                    capturedElement = nullptr;
-                }
-                if (hoveredElement && hoveredElement->GetWindow() == window) {
-                    hoveredElement = nullptr;
-                }
-                if (draggedElement && draggedElement->GetWindow() == window) {
-                    draggedElement = nullptr;
-                }
-
-                windows.erase(it);
-                std::cout << "UltraCanvas: Linux window destroyed successfully" << std::endl;
-            }
-            std::cout << "UltraCanvas: Window unregistered" << std::endl;
+    void UltraCanvasBaseApplication::CleanupWindowReferences(UltraCanvasWindowBase* win) {
+        if (focusedWindow == win) {
+            focusedWindow = nullptr;
         }
+        if (capturedElement && capturedElement->GetWindow() == win) {
+            capturedElement = nullptr;
+        }
+        if (hoveredElement && hoveredElement->GetWindow() == win) {
+            hoveredElement = nullptr;
+        }
+        if (draggedElement && draggedElement->GetWindow() == win) {
+            draggedElement = nullptr;
+        }
+        std::cout << "UltraCanvas: window found and unregistered successfully" << std::endl;
     }
 
-    UltraCanvasWindowBase* UltraCanvasBaseApplication::FindWindow(unsigned long nativeHandle) {
+    UltraCanvasWindow* UltraCanvasBaseApplication::FindWindow(unsigned long nativeHandle) {
         auto it = std::find_if(windows.begin(), windows.end(),
-                               [nativeHandle](const UltraCanvasWindowBase* ptr) {
+                               [nativeHandle](const std::shared_ptr<UltraCanvasWindowBase>& ptr) {
                                    return ptr->GetNativeHandle() == nativeHandle;
                                });
-        return (it != windows.end()) ? *it : nullptr;
+
+        if (it != windows.end()) {
+           return (UltraCanvasWindow*)(it->get());
+        } else {
+            return nullptr;
+        }
     }
 
     UltraCanvasUIElement* UltraCanvasBaseApplication::GetFocusedElement() {
@@ -167,11 +246,11 @@ namespace UltraCanvas {
         }
 
         // ===== NEW: IMPROVED TARGET WINDOW DETECTION =====
-        UltraCanvasWindowBase* targetWindow = nullptr;
+        UltraCanvasWindow* targetWindow = nullptr;
 
         // First priority: Use the window information stored in the event
         if (event.targetWindow != nullptr) {
-            targetWindow = static_cast<UltraCanvasWindowBase*>(event.targetWindow);
+            targetWindow = static_cast<UltraCanvasWindow*>(event.targetWindow);
         }
             // Fallback: Try to find window by native handle
         else if (event.nativeWindowHandle != 0) {
@@ -341,9 +420,9 @@ namespace UltraCanvas {
     }
 
 
-    bool UltraCanvasBaseApplication::HandleFocusedWindowChange(UltraCanvasWindowBase* window) {
+    bool UltraCanvasBaseApplication::HandleFocusedWindowChange(UltraCanvasWindow* window) {
         if (focusedWindow != window) {
-            UltraCanvasWindowBase* previousFocusedWindow = focusedWindow;
+            UltraCanvasWindow* previousFocusedWindow = focusedWindow;
 
             // Update focused window first
             focusedWindow = window;
@@ -399,16 +478,5 @@ namespace UltraCanvas {
     bool UltraCanvasBaseApplication::DispatchEventToElement(UltraCanvasUIElement *elem, const UCEvent &event) {
         currentEvent = event;
         return elem->OnEvent(event);
-    }
-
-    void UltraCanvasBaseApplication::RunInEventLoop() {
-        auto clipbrd = GetClipboard();
-        if (clipbrd) {
-            clipbrd->Update();
-        }
-        if (eventLoopCallback) {
-            eventLoopCallback();
-        }
-        UltraCanvasTooltipManager::Update();
     }
 }

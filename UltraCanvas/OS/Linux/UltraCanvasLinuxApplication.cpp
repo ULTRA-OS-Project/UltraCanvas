@@ -34,14 +34,6 @@ namespace UltraCanvas {
         std::cout << "UltraCanvas: Linux Application created" << std::endl;
     }
 
-    UltraCanvasLinuxApplication::~UltraCanvasLinuxApplication() {
-        std::cout << "UltraCanvas: Linux Application destructor called" << std::endl;
-
-        if (initialized) {
-            Exit();
-        }
-    }
-
 // ===== INITIALIZATION =====
     bool UltraCanvasLinuxApplication::InitializeNative() {
         if (initialized) {
@@ -80,14 +72,18 @@ namespace UltraCanvas {
 
         } catch (const std::exception& e) {
             std::cerr << "UltraCanvas: Exception during initialization: " << e.what() << std::endl;
-            CleanupX11();
+            ShutdownNative();
             return false;
         }
     }
 
-    bool UltraCanvasLinuxApplication::ShutdownNative() {
+    void UltraCanvasLinuxApplication::ShutdownNative() {
         vips_shutdown();
-        return true;
+        if (display) {
+            std::cout << "UltraCanvas: Closing X11 display..." << std::endl;
+            XCloseDisplay(display);
+            display = nullptr;
+        }
     }
 
     bool UltraCanvasLinuxApplication::InitializeX11() {
@@ -152,113 +148,33 @@ namespace UltraCanvas {
     }
 
 // ===== MAIN LOOP =====
-    void UltraCanvasLinuxApplication::RunNative() {
-        if (!initialized) {
-            std::cerr << "UltraCanvas: Cannot run - application not initialized" << std::endl;
-            return;
-        }
 
-        running = true;
-        std::cout << "UltraCanvas: Starting Linux main loop..." << std::endl;
+    void UltraCanvasLinuxApplication::CollectAndProcessNativeEvents() {
+        if (XPending(display) > 0) {
+            while (XPending(display) > 0) {
+                XEvent xEvent;
+                XNextEvent(display, &xEvent);
 
-        // Start the event processing thread
-        //StartEventThread();
-
-        try {
-            while (running && !windows.empty()) {
-                // Update timing
-                //UpdateDeltaTime();
-                if (XPending(display) > 0) {
-                    while (XPending(display) > 0) {
-                        XEvent xEvent;
-                        XNextEvent(display, &xEvent);
-
-                        ProcessXEvent(xEvent);
-                    }
-                } else {
-                    // Wait for events with timeout
-                    struct timeval timeout;
-                    timeout.tv_sec = 0;
-                    timeout.tv_usec = 16666; // ~60 FPS
-
-                    fd_set readfds;
-                    FD_ZERO(&readfds);
-                    FD_SET(ConnectionNumber(display), &readfds);
-
-                    int result = select(ConnectionNumber(display) + 1, &readfds, nullptr, nullptr, &timeout);
-
-                    if (result < 0 && errno != EINTR) {
-                        std::cerr << "UltraCanvas: select() error in event thread" << std::endl;
-                        break;
-                    }
-                }
-
-                // Process all pending events
-                ProcessEvents();
-//                if (!running || !initialized) {
-//                    break;
-//                }
-
-                // Check for visible windows
-                bool hasVisibleWindows = false;
-                for (auto& window : windows) {
-                    if (window && window->IsVisible()) {
-                        hasVisibleWindows = true;
-                        break;
-                    }
-                }
-
-                if (!hasVisibleWindows) {
-                    std::cout << "UltraCanvas: No visible windows, exiting..." << std::endl;
-                    break;
-                }
-
-                // Update and render all windows
-                for (auto& window : windows) {
-                    if (window && window->IsVisible() && window->IsNeedsRedraw()) {
-                        auto ctx = window->GetRenderContext();
-                        if (ctx) {
-                            window->Render(ctx);
-                            window->Flush();
-                            window->ClearRequestRedraw();
-                        }
-                    }
-                }
-                // Frame rate control
-                //LimitFrameRate();
-                RunInEventLoop();
+                ProcessXEvent(xEvent);
             }
+        } else {
+            // Wait for events with timeout
+            struct timeval timeout;
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 16666; // ~60 FPS
 
-        } catch (const std::exception& e) {
-            std::cerr << "UltraCanvas: Exception in main loop: " << e.what() << std::endl;
-        }
+            fd_set readfds;
+            FD_ZERO(&readfds);
+            FD_SET(ConnectionNumber(display), &readfds);
 
-        // Clean shutdown
-        std::cout << "UltraCanvas: Main loop ended, performing cleanup..." << std::endl;
-        //StopEventThread();
+            int result = select(ConnectionNumber(display) + 1, &readfds, nullptr, nullptr, &timeout);
 
-        std::cout << "UltraCanvas: Destroying all windows..." << std::endl;
-        while (!windows.empty()) {
-            try {
-                auto window = windows.back();
-                windows.pop_back();
-                window->Destroy();
-            } catch (const std::exception& e) {
-                std::cerr << "UltraCanvas: Exception destroying window: " << e.what() << std::endl;
+            if (result < 0 && errno != EINTR) {
+                std::cerr << "CollectAndProcessNativeEvents: select() error" << std::endl;
             }
         }
-
-        // Cleanup X11 resources
-        CleanupX11();
-        initialized = false;
-
-        std::cout << "UltraCanvas: Linux main loop completed" << std::endl;
     }
 
-    void UltraCanvasLinuxApplication::Exit() {
-        std::cout << "UltraCanvas: Linux application exit requested" << std::endl;
-        running = false;
-    }
 
 // ===== EVENT PROCESSING =====
 
@@ -284,13 +200,6 @@ namespace UltraCanvas {
             }
         }
     }
-
-//    bool UltraCanvasLinuxApplication::IsEventForWindow(const UCEvent& event, UltraCanvasLinuxWindow* window) {
-//        if (!window) return false;
-//
-//        UltraCanvasLinuxWindow* eventWindow = GetWindowForEvent(event);
-//        return eventWindow == window;
-//    }
 
     UCEvent UltraCanvasLinuxApplication::ConvertXEventToUCEvent(const XEvent& xEvent) {
         UCEvent event;
@@ -447,7 +356,7 @@ namespace UltraCanvas {
 
             case ClientMessage: {
                 if (xEvent.xclient.data.l[0] == static_cast<long>(wmDeleteWindow)) {
-                    event.type = UCEventType::WindowClose;
+                    event.type = UCEventType::WindowCloseRequest;
                 } else {
                     event.type = UCEventType::Unknown;
                 }
@@ -704,15 +613,6 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxApplication::LogXError(const std::string& context, int errorCode) {
         std::cerr << "UltraCanvas X11 Error in " << context << ": code " << errorCode << std::endl;
-    }
-
-// ===== CLEANUP =====
-    void UltraCanvasLinuxApplication::CleanupX11() {
-        if (display) {
-            std::cout << "UltraCanvas: Closing X11 display..." << std::endl;
-            XCloseDisplay(display);
-            display = nullptr;
-        }
     }
 
 } // namespace UltraCanvas

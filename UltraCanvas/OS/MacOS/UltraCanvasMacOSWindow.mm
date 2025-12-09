@@ -169,34 +169,17 @@ namespace UltraCanvas {
             :  nsWindow(nullptr)
             , contentView(nullptr)
             , windowDelegate(nullptr)
-            , cairoSurface(nullptr)
-            , cgContext(nullptr) {
+            , cairoSurface(nullptr) {
 
         std::cout << "UltraCanvas macOS: Window constructor started" << std::endl;
 
     }
 
-    UltraCanvasMacOSWindow::UltraCanvasMacOSWindow(const WindowConfig& config)
-    : nsWindow(nullptr)
-    , contentView(nullptr)
-    , windowDelegate(nullptr)
-    , cairoSurface(nullptr)
-    , cgContext(nullptr) {
 
-    std::cout << "UltraCanvas macOS: Window constructor started" << std::endl;
-
-    if (!CreateNative()) {
-        std::cerr << "UltraCanvas macOS: Failed to create native window" << std::endl;
-        throw std::runtime_error("Failed to create macOS window");
-    }
-
-    std::cout << "UltraCanvas macOS: Window constructor completed successfully" << std::endl;
-}
-
-UltraCanvasMacOSWindow::~UltraCanvasMacOSWindow() {
-    std::cout << "UltraCanvas macOS: Window destructor called" << std::endl;
-
-    if (_created) {
+    void UltraCanvasMacOSWindow::DestroyNative() {
+        if (!_created) {
+            return;
+        }
         @autoreleasepool {
             // Cleanup render context
             renderContext.reset();
@@ -215,434 +198,398 @@ UltraCanvasMacOSWindow::~UltraCanvasMacOSWindow() {
                 [nsWindow close];
                 nsWindow = nullptr;
             }
-
-            _created = false;
+            std::cout << "UltraCanvas macOS: Native Window destroyed" << std::endl;
         }
     }
 
-    std::cout << "UltraCanvas macOS: Window destroyed" << std::endl;
-}
+    // ===== WINDOW CREATION =====
+    bool UltraCanvasMacOSWindow::CreateNative() {
+        if (_created) {
+            std::cout << "UltraCanvas macOS: Window already created" << std::endl;
+            return true;
+        }
 
-// ===== WINDOW CREATION =====
-bool UltraCanvasMacOSWindow::CreateNative() {
-    if (_created) {
-        std::cout << "UltraCanvas macOS: Window already created" << std::endl;
+        auto application = UltraCanvasApplication::GetInstance();
+        if (!application || !application->IsInitialized()) {
+            std::cerr << "UltraCanvas macOS: Cannot create window - application not ready" << std::endl;
+            return false;
+        }
+
+        std::cout << "UltraCanvas macOS: Creating NSWindow..." << std::endl;
+
+        @autoreleasepool {
+            if (!CreateNSWindow()) {
+                std::cerr << "UltraCanvas macOS: Failed to create NSWindow" << std::endl;
+                return false;
+            }
+
+            if (!CreateCairoSurface()) {
+                std::cerr << "UltraCanvas macOS: Failed to create Cairo surface" << std::endl;
+                nsWindow = nullptr;
+                return false;
+            }
+
+            try {
+                renderContext = std::make_unique<RenderContextCairo>(
+                    cairoSurface, config_.width, config_.height, false);
+                std::cout << "UltraCanvas macOS: Render context created successfully" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "UltraCanvas macOS: Failed to create render context: " << e.what() << std::endl;
+                DestroyCairoSurface();
+                nsWindow = nullptr;
+                return false;
+            }
+
+            std::cout << "UltraCanvas macOS: CreateNative Native Window created successfully!" << std::endl;
+            return true;
+        }
+    }
+
+    bool UltraCanvasMacOSWindow::CreateNSWindow() {
+        @autoreleasepool {
+            // Calculate window frame
+            NSRect windowFrame = NSMakeRect(
+                config_.x >= 0 ? config_.x : 100,
+                config_.y >= 0 ? config_.y : 100,
+                config_.width > 0 ? config_.width : 800,
+                config_.height > 0 ? config_.height : 600
+            );
+
+            // Window style mask
+            NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
+                                          NSWindowStyleMaskClosable |
+                                          NSWindowStyleMaskMiniaturizable;
+
+            if (config_.resizable) {
+                styleMask |= NSWindowStyleMaskResizable;
+            }
+
+            // Create window
+            nsWindow = [[NSWindow alloc] initWithContentRect:windowFrame
+                                                   styleMask:styleMask
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+
+            if (!nsWindow) {
+                std::cerr << "UltraCanvas macOS: Failed to create NSWindow" << std::endl;
+                return false;
+            }
+
+            // Set window properties
+            [nsWindow setTitle:[NSString stringWithUTF8String:config_.title.c_str()]];
+            [nsWindow setReleasedWhenClosed:NO];
+            [nsWindow setAcceptsMouseMovedEvents:YES];
+
+            // Create custom view for Cairo rendering
+            NSRect contentFrame = [[nsWindow contentView] frame];
+            contentView = [[UltraCanvasView alloc] initWithFrame:contentFrame window:this];
+            [nsWindow setContentView:contentView];
+
+            // Create and set delegate
+            UltraCanvasWindowDelegate* delegate = [[UltraCanvasWindowDelegate alloc] initWithWindow:this];
+            windowDelegate = (__bridge_retained void*)delegate;
+            [nsWindow setDelegate:delegate];
+
+            std::cout << "UltraCanvas macOS: NSWindow created successfully" << std::endl;
+            return true;
+        }
+    }
+
+    bool UltraCanvasMacOSWindow::CreateCairoSurface() {
+        //std::lock_guard<std::mutex> lock(cairoMutex);
+
+        std::cout << "UltraCanvas macOS: Creating Cairo surface..." << std::endl;
+
+        // Get window dimensions
+        int width = config_.width;
+        int height = config_.height;
+
+        if (width <= 0 || height <= 0) {
+            std::cerr << "UltraCanvas macOS: Invalid surface dimensions" << std::endl;
+            return false;
+        }
+
+        // Create Quartz surface for Cairo
+        cairoSurface = cairo_quartz_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+
+        if (!cairoSurface) {
+            std::cerr << "UltraCanvas macOS: Failed to create Cairo Quartz surface" << std::endl;
+            return false;
+        }
+
+        cairo_status_t status = cairo_surface_status(cairoSurface);
+        if (status != CAIRO_STATUS_SUCCESS) {
+            std::cerr << "UltraCanvas macOS: Cairo surface error: "
+                      << cairo_status_to_string(status) << std::endl;
+            cairo_surface_destroy(cairoSurface);
+            cairoSurface = nullptr;
+            return false;
+        }
+
+        // Get CGContext from Cairo surface
+        //cgContext = cairo_quartz_surface_get_cg_context(cairoSurface);
+
+        // Update custom view
+        if (contentView) {
+            [(UltraCanvasView*)contentView setCairoSurface:cairoSurface];
+        }
+
+        std::cout << "UltraCanvas macOS: Cairo surface created successfully" << std::endl;
         return true;
     }
 
-    auto application = UltraCanvasApplication::GetInstance();
-    if (!application || !application->IsInitialized()) {
-        std::cerr << "UltraCanvas macOS: Cannot create window - application not ready" << std::endl;
-        return false;
+    void UltraCanvasMacOSWindow::DestroyCairoSurface() {
+        std::lock_guard<std::mutex> lock(cairoMutex);
+
+        if (cairoSurface) {
+            std::cout << "UltraCanvas macOS: Destroying Cairo surface..." << std::endl;
+            cairo_surface_destroy(cairoSurface);
+            cairoSurface = nullptr;
+        }
+
+        //cgContext = nullptr;
     }
 
-    std::cout << "UltraCanvas macOS: Creating NSWindow..." << std::endl;
+    void UltraCanvasMacOSWindow::ResizeCairoSurface(int width, int height) {
+        std::lock_guard<std::mutex> lock(cairoMutex);
 
-    @autoreleasepool {
-        if (!CreateNSWindow()) {
-            std::cerr << "UltraCanvas macOS: Failed to create NSWindow" << std::endl;
-            return false;
-        }
+        std::cout << "UltraCanvas macOS: Resizing Cairo surface to " << width << "x" << height << std::endl;
+
+        auto oldCairoSurface = cairoSurface;
 
         if (!CreateCairoSurface()) {
-            std::cerr << "UltraCanvas macOS: Failed to create Cairo surface" << std::endl;
-            nsWindow = nullptr;
-            return false;
+            return;
         }
 
-        try {
-            renderContext = std::make_unique<RenderContextCairo>(
-                cairoSurface, config_.width, config_.height, false);
-            std::cout << "UltraCanvas macOS: Render context created successfully" << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "UltraCanvas macOS: Failed to create render context: " << e.what() << std::endl;
-            DestroyCairoSurface();
-            nsWindow = nullptr;
-            return false;
+        // Destroy old surface
+        if (oldCairoSurface) {
+            cairo_surface_destroy(oldCairoSurface);
         }
 
-        std::cout << "UltraCanvas macOS: CreateNative Native Window created successfully!" << std::endl;
-        return true;
-    }
-}
-
-bool UltraCanvasMacOSWindow::CreateNSWindow() {
-    @autoreleasepool {
-        // Calculate window frame
-        NSRect windowFrame = NSMakeRect(
-            config_.x >= 0 ? config_.x : 100,
-            config_.y >= 0 ? config_.y : 100,
-            config_.width > 0 ? config_.width : 800,
-            config_.height > 0 ? config_.height : 600
-        );
-
-        // Window style mask
-        NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
-                                      NSWindowStyleMaskClosable |
-                                      NSWindowStyleMaskMiniaturizable;
-
-        if (config_.resizable) {
-            styleMask |= NSWindowStyleMaskResizable;
-        }
-
-        // Create window
-        nsWindow = [[NSWindow alloc] initWithContentRect:windowFrame
-                                               styleMask:styleMask
-                                                 backing:NSBackingStoreBuffered
-                                                   defer:NO];
-
-        if (!nsWindow) {
-            std::cerr << "UltraCanvas macOS: Failed to create NSWindow" << std::endl;
-            return false;
-        }
-
-        // Set window properties
-        [nsWindow setTitle:[NSString stringWithUTF8String:config_.title.c_str()]];
-        [nsWindow setReleasedWhenClosed:NO];
-        [nsWindow setAcceptsMouseMovedEvents:YES];
-
-        // Create custom view for Cairo rendering
-        NSRect contentFrame = [[nsWindow contentView] frame];
-        contentView = [[UltraCanvasView alloc] initWithFrame:contentFrame window:this];
-        [nsWindow setContentView:contentView];
-
-        // Create and set delegate
-        UltraCanvasWindowDelegate* delegate = [[UltraCanvasWindowDelegate alloc] initWithWindow:this];
-        windowDelegate = (__bridge_retained void*)delegate;
-        [nsWindow setDelegate:delegate];
-
-        std::cout << "UltraCanvas macOS: NSWindow created successfully" << std::endl;
-        return true;
-    }
-}
-
-bool UltraCanvasMacOSWindow::CreateCairoSurface() {
-    //std::lock_guard<std::mutex> lock(cairoMutex);
-
-    std::cout << "UltraCanvas macOS: Creating Cairo surface..." << std::endl;
-
-    // Get window dimensions
-    int width = config_.width;
-    int height = config_.height;
-
-    if (width <= 0 || height <= 0) {
-        std::cerr << "UltraCanvas macOS: Invalid surface dimensions" << std::endl;
-        return false;
-    }
-
-    // Create Quartz surface for Cairo
-    cairoSurface = cairo_quartz_surface_create(CAIRO_FORMAT_ARGB32, width, height);
-
-    if (!cairoSurface) {
-        std::cerr << "UltraCanvas macOS: Failed to create Cairo Quartz surface" << std::endl;
-        return false;
-    }
-
-    cairo_status_t status = cairo_surface_status(cairoSurface);
-    if (status != CAIRO_STATUS_SUCCESS) {
-        std::cerr << "UltraCanvas macOS: Cairo surface error: " 
-                  << cairo_status_to_string(status) << std::endl;
-        cairo_surface_destroy(cairoSurface);
-        cairoSurface = nullptr;
-        return false;
-    }
-
-    // Get CGContext from Cairo surface
-    cgContext = cairo_quartz_surface_get_cg_context(cairoSurface);
-
-    // Update custom view
-    if (contentView) {
-        [(UltraCanvasView*)contentView setCairoSurface:cairoSurface];
-    }
-
-    std::cout << "UltraCanvas macOS: Cairo surface created successfully" << std::endl;
-    return true;
-}
-
-void UltraCanvasMacOSWindow::DestroyCairoSurface() {
-    std::lock_guard<std::mutex> lock(cairoMutex);
-
-    if (cairoSurface) {
-        std::cout << "UltraCanvas macOS: Destroying Cairo surface..." << std::endl;
-        cairo_surface_destroy(cairoSurface);
-        cairoSurface = nullptr;
-    }
-
-    cgContext = nullptr;
-}
-
-void UltraCanvasMacOSWindow::ResizeCairoSurface(int width, int height) {
-    std::lock_guard<std::mutex> lock(cairoMutex);
-
-    std::cout << "UltraCanvas macOS: Resizing Cairo surface to " << width << "x" << height << std::endl;
-
-    auto oldCairoSurface = cairoSurface;
-
-    if (!CreateCairoSurface()) {
-        return;
-    }
-
-    // Destroy old surface
-    if (oldCairoSurface) {
-        cairo_surface_destroy(oldCairoSurface);
-    }
-
-        // Update render context
-    if (renderContext) {
-        renderContext->SetTargetSurface(cairoSurface, width, height);
-        renderContext->ResizeStagingSurface(width, height);
-    }
-}
-
-void UltraCanvasMacOSWindow::DestroyNative() {
-    std::cout << "UltraCanvas MacOS: Destroying window..." << std::endl;
-    renderContext.reset();
-    DestroyCairoSurface();
-}
-
-// ===== WINDOW MANAGEMENT =====
-void UltraCanvasMacOSWindow::Show() {
-    if (!_created || _visible) return;
-
-    std::cout << "UltraCanvas macOS: Showing window..." << std::endl;
-    if (!UltraCanvasApplication::GetInstance()->IsRunning()) {
-        std::cout << "UltraCanvas Application is not running yet, delaying window show..." << std::endl;
-        pendingShow = true;
-        return;
-    }
-
-    pendingShow = false;
-    @autoreleasepool {
-        [nsWindow makeKeyAndOrderFront:nil];
-
-//        [nsWindow makeKey];
-
-        [[nsWindow contentView] setNeedsDisplay:YES];
-
-        // Ensure the window is not miniaturized
-        if ([nsWindow isMiniaturized]) {
-            [nsWindow deminiaturize:nil];
-        }
-        _visible = true;
-    }
-
-    if (onWindowShow) {
-        onWindowShow();
-    }
-}
-
-void UltraCanvasMacOSWindow::Hide() {
-    if (!_created || !_visible) return;
-
-    std::cout << "UltraCanvas macOS: Hiding window..." << std::endl;
-
-    @autoreleasepool {
-        [nsWindow orderOut:nil];
-        _visible = false;
-    }
-
-    if (onWindowHide) {
-        onWindowHide();
-    }
-}
-
-void UltraCanvasMacOSWindow::Close() {
-    if (!_created) return;
-
-    std::cout << "UltraCanvas macOS: Closing window..." << std::endl;
-
-    if (onWindowClose) {
-        onWindowClose();
-    }
-
-    @autoreleasepool {
-        [nsWindow close];
-    }
-}
-
-void UltraCanvasMacOSWindow::Minimize() {
-    if (!_created) return;
-
-    @autoreleasepool {
-        [nsWindow miniaturize:nil];
-    }
-}
-
-void UltraCanvasMacOSWindow::Maximize() {
-    if (!_created) return;
-
-    @autoreleasepool {
-        [nsWindow zoom:nil];
-    }
-}
-
-void UltraCanvasMacOSWindow::Restore() {
-    if (!_created) return;
-
-    @autoreleasepool {
-        if ([nsWindow isMiniaturized]) {
-            [nsWindow deminiaturize:nil];
+            // Update render context
+        if (renderContext) {
+            renderContext->SetTargetSurface(cairoSurface, width, height);
         }
     }
-}
 
-void UltraCanvasMacOSWindow::Focus() {
-    if (!_created) return;
+    // ===== WINDOW MANAGEMENT =====
+    void UltraCanvasMacOSWindow::Show() {
+        if (!_created || visible) return;
 
-    @autoreleasepool {
-        [nsWindow makeKeyAndOrderFront:nil];
-    }
-}
+        std::cout << "UltraCanvas macOS: Showing window..." << std::endl;
+        if (!UltraCanvasApplication::GetInstance()->IsRunning()) {
+            std::cout << "UltraCanvas Application is not running yet, delaying window show..." << std::endl;
+            pendingShow = true;
+            return;
+        }
 
-// ===== WINDOW PROPERTIES =====
-void UltraCanvasMacOSWindow::SetWindowTitle(const std::string& title) {
-    config_.title = title;
-
-    if (_created) {
+        pendingShow = false;
         @autoreleasepool {
-            [nsWindow setTitle:[NSString stringWithUTF8String:title.c_str()]];
+            [nsWindow makeKeyAndOrderFront:nil];
+
+    //        [nsWindow makeKey];
+
+            [[nsWindow contentView] setNeedsDisplay:YES];
+
+            // Ensure the window is not miniaturized
+            if ([nsWindow isMiniaturized]) {
+                [nsWindow deminiaturize:nil];
+            }
+            visible = true;
+        }
+
+        if (onWindowShow) {
+            onWindowShow();
         }
     }
-}
 
-void UltraCanvasMacOSWindow::SetWindowPosition(int x, int y) {
-    config_.x = x;
-    config_.y = y;
+    void UltraCanvasMacOSWindow::Hide() {
+        if (!_created || !visible) return;
 
-    if (_created) {
+        std::cout << "UltraCanvas macOS: Hiding window..." << std::endl;
+
         @autoreleasepool {
-            NSPoint origin = NSMakePoint(x, y);
-            [nsWindow setFrameOrigin:origin];
+            [nsWindow orderOut:nil];
+            visible = false;
+        }
+
+        if (onWindowHide) {
+            onWindowHide();
         }
     }
-}
 
-void UltraCanvasMacOSWindow::SetResizable(bool resizable) {
+    void UltraCanvasMacOSWindow::Minimize() {
+        if (!_created) return;
 
-}
-
-void UltraCanvasMacOSWindow::SetWindowSize(int width, int height) {
-    config_.width = width;
-    config_.height = height;
-
-    if (_created) {
         @autoreleasepool {
-            NSSize size = NSMakeSize(width, height);
-            [nsWindow setContentSize:size];
-            ResizeCairoSurface(width, height);
+            [nsWindow miniaturize:nil];
         }
     }
 
-    UltraCanvasWindowBase::SetSize(width, height);
-}
+    void UltraCanvasMacOSWindow::Maximize() {
+        if (!_created) return;
 
-void UltraCanvasMacOSWindow::SetFullscreen(bool fullscreen) {
-    if (!_created) return;
-
-    @autoreleasepool {
-        BOOL isFullscreen = ([nsWindow styleMask] & NSWindowStyleMaskFullScreen) != 0;
-
-        if (fullscreen && !isFullscreen) {
-            [nsWindow toggleFullScreen:nil];
-        } else if (!fullscreen && isFullscreen) {
-            [nsWindow toggleFullScreen:nil];
+        @autoreleasepool {
+            [nsWindow zoom:nil];
         }
     }
-}
 
-// ===== RENDERING =====
-void UltraCanvasMacOSWindow::Invalidate() {
-    if (!_created || !contentView) return;
+    void UltraCanvasMacOSWindow::Restore() {
+        if (!_created) return;
 
-    @autoreleasepool {
-        [(NSView*)contentView setNeedsDisplay:YES];
-    }
-}
-
-void UltraCanvasMacOSWindow::Flush() {
-    if (!_created || !renderContext) return;
-
-//    std::lock_guard<std::mutex> lock(cairoMutex);
-//    renderContext->SwapBuffers();
-
-    // Flush Cairo surface
-//    if (cairoSurface) {
-//        cairo_surface_flush(cairoSurface);
-//    }
-
-    // Trigger redraw
-    Invalidate();
-}
-
-unsigned long UltraCanvasMacOSWindow::GetNativeHandle() const {
-    return (unsigned long)(__bridge_retained void*)nsWindow;
-}
-
-// ===== WINDOW DELEGATE CALLBACKS =====
-void UltraCanvasMacOSWindow::OnWindowWillClose() {
-    std::cout << "UltraCanvas macOS: Window will close callback" << std::endl;
-
-    if (onWindowClose) {
-        onWindowClose();
-    }
-}
-
-void UltraCanvasMacOSWindow::OnWindowDidResize() {
-    if (!_created) return;
-
-    @autoreleasepool {
-        NSSize size = [[nsWindow contentView] frame].size;
-        int newWidth = static_cast<int>(size.width);
-        int newHeight = static_cast<int>(size.height);
-
-        if (newWidth != config_.width || newHeight != config_.height) {
-            config_.width = newWidth;
-            config_.height = newHeight;
-
-            ResizeCairoSurface(newWidth, newHeight);
-
-            if (onWindowResize) {
-                onWindowResize(newWidth, newHeight);
+        @autoreleasepool {
+            if ([nsWindow isMiniaturized]) {
+                [nsWindow deminiaturize:nil];
             }
         }
     }
-}
 
-void UltraCanvasMacOSWindow::OnWindowDidMove() {
-    if (!_created) return;
+    void UltraCanvasMacOSWindow::Focus() {
+        if (!_created) return;
 
-    @autoreleasepool {
-        NSPoint origin = [nsWindow frame].origin;
-        config_.x = static_cast<int>(origin.x);
-        config_.y = static_cast<int>(origin.y);
-
-        if (onWindowMove) {
-            onWindowMove(config_.x, config_.y);
+        @autoreleasepool {
+            [nsWindow makeKeyAndOrderFront:nil];
         }
     }
-}
 
-void UltraCanvasMacOSWindow::OnWindowDidBecomeKey() {
-    auto application = UltraCanvasApplication::GetInstance();
-    if (application) {
-        application->HandleFocusedWindowChange(this);
+    // ===== WINDOW PROPERTIES =====
+    void UltraCanvasMacOSWindow::SetWindowTitle(const std::string& title) {
+        config_.title = title;
+
+        if (_created) {
+            @autoreleasepool {
+                [nsWindow setTitle:[NSString stringWithUTF8String:title.c_str()]];
+            }
+        }
     }
-}
 
-void UltraCanvasMacOSWindow::OnWindowDidResignKey() {
-    auto application = UltraCanvasApplication::GetInstance();
-    if (application && application->GetFocusedWindow() == this) {
-        application->HandleFocusedWindowChange(nullptr);
+    void UltraCanvasMacOSWindow::SetWindowPosition(int x, int y) {
+        config_.x = x;
+        config_.y = y;
+
+        if (_created) {
+            @autoreleasepool {
+                NSPoint origin = NSMakePoint(x, y);
+                [nsWindow setFrameOrigin:origin];
+            }
+        }
     }
-}
 
-void UltraCanvasMacOSWindow::OnWindowDidMiniaturize() {
-    std::cout << "UltraCanvas macOS: Window minimized" << std::endl;
-}
+    void UltraCanvasMacOSWindow::SetResizable(bool resizable) {
 
-void UltraCanvasMacOSWindow::OnWindowDidDeminiaturize() {
-    std::cout << "UltraCanvas macOS: Window restored from minimized" << std::endl;
-}
+    }
+
+    void UltraCanvasMacOSWindow::SetWindowSize(int width, int height) {
+        config_.width = width;
+        config_.height = height;
+
+        if (_created) {
+            @autoreleasepool {
+                NSSize size = NSMakeSize(width, height);
+                [nsWindow setContentSize:size];
+                ResizeCairoSurface(width, height);
+            }
+        }
+
+        UltraCanvasWindowBase::SetSize(width, height);
+    }
+
+    void UltraCanvasMacOSWindow::SetFullscreen(bool fullscreen) {
+        if (!_created) return;
+
+        @autoreleasepool {
+            BOOL isFullscreen = ([nsWindow styleMask] & NSWindowStyleMaskFullScreen) != 0;
+
+            if (fullscreen && !isFullscreen) {
+                [nsWindow toggleFullScreen:nil];
+            } else if (!fullscreen && isFullscreen) {
+                [nsWindow toggleFullScreen:nil];
+            }
+        }
+    }
+
+    // ===== RENDERING =====
+    void UltraCanvasMacOSWindow::Invalidate() {
+        if (!_created || !contentView) return;
+
+        @autoreleasepool {
+            [(NSView*)contentView setNeedsDisplay:YES];
+        }
+    }
+
+    void UltraCanvasMacOSWindow::Flush() {
+        if (!_created || !renderContext) return;
+
+        // Trigger redraw
+        Invalidate();
+    }
+
+    unsigned long UltraCanvasMacOSWindow::GetNativeHandle() const  {
+        return (unsigned long)(__bridge_retained void*)nsWindow;
+    };
+
+    // ===== WINDOW DELEGATE CALLBACKS =====
+    void UltraCanvasMacOSWindow::OnWindowWillClose() {
+        std::cout << "UltraCanvas macOS: Window will close callback" << std::endl;
+        Close();
+    }
+
+    void UltraCanvasMacOSWindow::OnWindowDidResize() {
+        if (!_created) return;
+
+        @autoreleasepool {
+            NSSize size = [[nsWindow contentView] frame].size;
+            int newWidth = static_cast<int>(size.width);
+            int newHeight = static_cast<int>(size.height);
+
+            if (newWidth != config_.width || newHeight != config_.height) {
+                config_.width = newWidth;
+                config_.height = newHeight;
+
+                ResizeCairoSurface(newWidth, newHeight);
+
+                if (onWindowResize) {
+                    onWindowResize(newWidth, newHeight);
+                }
+            }
+        }
+    }
+
+    void UltraCanvasMacOSWindow::OnWindowDidMove() {
+        if (!_created) return;
+
+        @autoreleasepool {
+            NSPoint origin = [nsWindow frame].origin;
+            config_.x = static_cast<int>(origin.x);
+            config_.y = static_cast<int>(origin.y);
+
+            if (onWindowMove) {
+                onWindowMove(config_.x, config_.y);
+            }
+        }
+    }
+
+    void UltraCanvasMacOSWindow::OnWindowDidBecomeKey() {
+        auto application = UltraCanvasApplication::GetInstance();
+        if (application) {
+            application->HandleFocusedWindowChange(this);
+        }
+    }
+
+    void UltraCanvasMacOSWindow::OnWindowDidResignKey() {
+        auto application = UltraCanvasApplication::GetInstance();
+        if (application && application->GetFocusedWindow() == this) {
+            application->HandleFocusedWindowChange(nullptr);
+        }
+    }
+
+    void UltraCanvasMacOSWindow::OnWindowDidMiniaturize() {
+        std::cout << "UltraCanvas macOS: Window minimized" << std::endl;
+    }
+
+    void UltraCanvasMacOSWindow::OnWindowDidDeminiaturize() {
+        std::cout << "UltraCanvas macOS: Window restored from minimized" << std::endl;
+    }
 
 } // namespace UltraCanvas
 

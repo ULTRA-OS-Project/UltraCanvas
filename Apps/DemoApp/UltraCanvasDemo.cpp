@@ -200,8 +200,8 @@ namespace UltraCanvas {
         config.resizable = true;
         config.type = WindowType::Standard;
 
-        sourceWindow = std::make_shared<UltraCanvasWindow>();
-        if (!sourceWindow->Create(config)) {
+        sourceWindow = CreateWindow(config);
+        if (!sourceWindow->IsCreated()) {
             std::cerr << "Failed to create source window" << std::endl;
             return;
         }
@@ -223,7 +223,7 @@ namespace UltraCanvas {
         textArea->SetFontSize(10);
 
         sourceWindow->SetEventCallback([this](const UCEvent& event) {
-            if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
+            if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClose) {
                 sourceWindow->Close();
                 sourceWindow.reset();
                 return true;
@@ -244,8 +244,8 @@ namespace UltraCanvas {
         config.resizable = true;
         config.type = WindowType::Standard;
 
-        docWindow = std::make_shared<UltraCanvasWindow>();
-        if (!docWindow->Create(config)) {
+        docWindow = CreateWindow(config);
+        if (!docWindow->IsCreated()) {
             std::cerr << "Failed to create documentation window" << std::endl;
             return;
         }
@@ -254,8 +254,8 @@ namespace UltraCanvas {
         markDownTextArea->SetMarkdownText(content);
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
-            if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-                docWindow->Close();
+            if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClose) {
+                ((UltraCanvasWindow *)event.targetWindow)->RequestDelete();
                 docWindow.reset();
                 return true;
             }
@@ -287,10 +287,11 @@ namespace UltraCanvas {
         config.height = 880;
         config.resizable = true;
         config.type = WindowType::Standard;
+        config.deleteOnClose = true;
 
-        mainWindow = std::make_shared<UltraCanvasWindow>();
+        mainWindow = CreateWindow(config);
         std::cout << "Creating Main window.." << std::endl;
-        if (!mainWindow->Create(config)) {
+        if (!mainWindow->IsCreated()) {
             std::cerr << "Failed to create main window" << std::endl;
             return false;
         }

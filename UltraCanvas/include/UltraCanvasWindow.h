@@ -25,7 +25,7 @@ namespace UltraCanvas {
     };
 
     enum class WindowState {
-        Normal, Minimized, Maximized, Fullscreen, Hidden, Closing
+        Normal, Minimized, Maximized, Fullscreen, Hidden, Closing, DeleteRequested, Deleted
     };
 
     struct WindowConfig {
@@ -40,6 +40,7 @@ namespace UltraCanvas {
         bool minimizable = true;
         bool maximizable = true;
         bool closable = true;
+        bool deleteOnClose = false;
         bool alwaysOnTop = false;
 
         Color backgroundColor = Colors::WindowBackground;
@@ -58,7 +59,7 @@ namespace UltraCanvas {
     };
 
 // ===== ENHANCED BASE WINDOW (INHERITS FROM CONTAINER) =====
-    class UltraCanvasWindowBase : public UltraCanvasContainer {
+    class UltraCanvasWindowBase : public UltraCanvasContainer, public std::enable_shared_from_this<UltraCanvasWindowBase> {
     protected:
 //        std::unique_ptr<UltraCanvasSelectiveRenderer> selectiveRenderer = nullptr;
 //        bool useSelectiveRendering = false;
@@ -66,9 +67,11 @@ namespace UltraCanvas {
         WindowConfig config_;
         WindowState _state = WindowState::Normal;
         bool _created = false;
-        bool _visible = false;
         bool _focused = false;
         bool _needsRedraw = true;
+
+        virtual bool CreateNative() = 0;
+        virtual void DestroyNative() = 0;
 
         std::vector<UltraCanvasUIElement *> activePopups;
         std::unordered_set<UltraCanvasUIElement *> popupsToRemove;
@@ -90,18 +93,15 @@ namespace UltraCanvas {
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowBase();
 
-        virtual ~UltraCanvasWindowBase() { Destroy(); };
-
         // ===== PURE VIRTUAL INTERFACE =====
         // Window lifecycle
-        bool Create(const WindowConfig& config);
+        void Create(const WindowConfig& config);
+        void Close();
         void Destroy();
-        virtual bool CreateNative() = 0;
-        virtual void DestroyNative() = 0;
+        void RequestDelete();
+
         virtual void Show() = 0;
         virtual void Hide() = 0;
-        virtual void Close() = 0;
-
         // Window state
         virtual void SetWindowTitle(const std::string& title) = 0;
         virtual void SetWindowPosition(int x, int y) = 0;
@@ -146,18 +146,6 @@ namespace UltraCanvas {
         std::vector<UltraCanvasUIElement *>& GetActivePopups() { return activePopups; }
         bool HasActivePopups() { return !activePopups.empty(); }
 
-//        void SetActivePopupElement(UltraCanvasUIElement* element) {
-//            if (!element) return;
-//            activePopupElement = element;
-//        }
-//
-//        void ClearActivePopupElement(UltraCanvasUIElement* element) {
-//            if (!element) return;
-//            if (activePopupElement == element) {
-//                activePopupElement = nullptr;
-//            }
-//        }
-
         // ===== ENHANCED WINDOW PROPERTIES =====
         std::string GetWindowTitle() const { return config_.title; }
 
@@ -171,10 +159,11 @@ namespace UltraCanvas {
             h = config_.height;
         }
 
-        bool IsVisible() const { return _visible; }
+        bool IsCreated() const { return _created; }
         bool IsMinimized() const { return _state == WindowState::Minimized; }
         bool IsMaximized() const { return _state == WindowState::Maximized; }
         bool IsFullscreen() const { return _state == WindowState::Fullscreen; }
+
         WindowState GetState() const { return _state; }
 
         const WindowConfig& GetConfig() const { return config_; }
@@ -229,58 +218,12 @@ namespace UltraCanvas {
 
     protected:
         virtual bool HandleWindowEvent(const UCEvent &event);
-        virtual void HandleCloseEvent();
+//        virtual void HandleCloseEvent();
         virtual void HandleResizeEvent(int width, int height);
         virtual void HandleMoveEvent(int x, int y);
         virtual void HandleFocusEvent(bool focused);
 
         // ===== PROTECTED HELPER METHODS =====
-//        void UpdateWindowSize(int width, int height) {
-//            config_.width = width;
-//            config_.height = height;
-//            SetSize(width, height); // Update container size
-//
-//            if (onWindowResize) {
-//                onWindowResize(width, height);
-//            }
-//
-//            _needsRedraw = true;
-//        }
-//
-//        void UpdateWindowPosition(int x, int y) {
-//            config_.x = x;
-//            config_.y = y;
-//            SetPosition(x, y);
-//
-//            if (onWindowMove) {
-//                onWindowMove(x, y);
-//            }
-//        }
-
-//        void SetWindowState(WindowState newState) {
-//            if (_state != newState) {
-//                WindowState oldState = _state;
-//                _state = newState;
-//
-//                // Trigger appropriate callbacks
-//                switch (newState) {
-//                    case WindowState::Minimized:
-//                        if (onWindowMinimize) onWindowMinimize();
-//                        break;
-//                    case WindowState::Maximized:
-//                        if (onWindowMaximize) onWindowMaximize();
-//                        break;
-//                    case WindowState::Normal:
-//                        if (oldState == WindowState::Minimized || oldState == WindowState::Maximized) {
-//                            if (onWindowRestore) onWindowRestore();
-//                        }
-//                        break;
-//                    default:
-//                        break;
-//                }
-//            }
-//        }
-
         virtual void RenderWindowBackground(IRenderContext* ctx) {
             // Default implementation - clear to background color
             // OS-specific implementations can override
@@ -353,3 +296,8 @@ namespace UltraCanvas {
 #else
 #error "No supported platform defined. Supported platforms: Linux, Windows, macOS, iOS, Android, Web/WASM, Unix"
 #endif
+
+namespace UltraCanvas {
+    std::shared_ptr<UltraCanvasWindow> CreateWindow(const WindowConfig& config);
+    std::shared_ptr<UltraCanvasWindow> CreateWindow();
+}

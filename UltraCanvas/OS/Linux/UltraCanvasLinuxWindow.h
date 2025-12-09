@@ -48,13 +48,10 @@ namespace UltraCanvas {
 
     public:
         UltraCanvasLinuxWindow();
-        UltraCanvasLinuxWindow(const WindowConfig& config);
-        ~UltraCanvasLinuxWindow() override;
 
         // ===== INHERITED FROM BASE WINDOW =====
         virtual void Show() override;
         virtual void Hide() override;
-        virtual void Close() override;
         virtual void SetWindowTitle(const std::string& title) override;
         virtual void SetWindowSize(int width, int height) override;
         virtual void SetWindowPosition(int x, int y) override;

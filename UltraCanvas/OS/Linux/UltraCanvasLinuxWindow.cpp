@@ -19,22 +19,6 @@ namespace UltraCanvas {
         std::cout << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
     }
 
-    UltraCanvasLinuxWindow::UltraCanvasLinuxWindow(const WindowConfig& config)
-            : xWindow(0)
-            , cairoSurface(nullptr)
-            {
-        if (!Create(config)) {
-            throw std::runtime_error("UltraCanvasWindow Create failed");
-        }
-        std::cout << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
-    }
-
-    UltraCanvasLinuxWindow::~UltraCanvasLinuxWindow() {
-        if (_created) {
-            DestroyNative();
-        }
-    }
-
 // ===== WINDOW CREATION =====
     bool UltraCanvasLinuxWindow::CreateNative() {
         if (_created) {
@@ -292,7 +276,7 @@ namespace UltraCanvas {
 
     // ===== WINDOW STATE MANAGEMENT =====
     void UltraCanvasLinuxWindow::Show() {
-        if (!_created || _visible) {
+        if (!_created || visible) {
             return;
         }
 
@@ -306,7 +290,7 @@ namespace UltraCanvas {
             SetFullscreen(true);
         }
 
-        _visible = true;
+        visible = true;
 
         if (onWindowShow) {
             onWindowShow();
@@ -314,7 +298,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxWindow::Hide() {
-        if (!_created || !_visible) {
+        if (!_created || !visible) {
             return;
         }
 
@@ -323,29 +307,11 @@ namespace UltraCanvas {
         XUnmapWindow(application->GetDisplay(), xWindow);
         XFlush(application->GetDisplay());
 
-        _visible = false;
+        visible = false;
 
         if (onWindowHide) {
             onWindowHide();
         }
-    }
-
-    void UltraCanvasLinuxWindow::Close() {
-        if (!_created || _state == WindowState::Closing) {
-            return;
-        }
-
-        _state = WindowState::Closing;
-
-        if (onWindowClose) {
-            onWindowClose();
-        }
-
-        Hide();
-
-        DestroyNative();
-        Destroy();
-        std::cout << "UltraCanvas: Window close completed" << std::endl;
     }
 
     void UltraCanvasLinuxWindow::Minimize() {
