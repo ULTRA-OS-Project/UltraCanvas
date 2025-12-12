@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
+#include "UltraCanvasUtils.h"
 #include "ImageCairo.h"
 
 #include <algorithm>
@@ -16,73 +17,6 @@
 #include <unordered_map>
 
 namespace UltraCanvas {
-    template <class ET> class UCCache {
-    private:
-        struct UCCacheEntry {
-            std::shared_ptr<ET> payload = nullptr;
-            std::chrono::steady_clock::time_point lastAccess;
-        };
-
-        std::unordered_map<std::string, UCCacheEntry> cache;
-        std::mutex cacheMutex;
-        size_t maxCacheSize = 50 * 1024 * 1024;
-        size_t currentCacheSize = 0;
-
-        void RemoveOldestCacheEntry() {
-            // Find oldest entry (no lock needed, called from locked context)
-            auto oldest = cache.begin();
-            for (auto it = cache.begin(); it != cache.end(); ++it) {
-                if (it->second.lastAccess < oldest->second.lastAccess) {
-                    oldest = it;
-                }
-            }
-
-            if (oldest != cache.end()) {
-                currentCacheSize -= oldest->second.payload->GetDataSize();
-                cache.erase(oldest);
-            }
-        }
-    public:
-        UCCache(size_t maxCSize) : maxCacheSize(maxCSize) {}
-
-        void AddToCache(const std::string& key, std::shared_ptr<ET> p) {
-            if (!p) return;
-
-            std::lock_guard<std::mutex> lock(cacheMutex);
-            size_t dataSize = p->GetDataSize();
-
-            // Check if we need to make room
-            while (currentCacheSize + dataSize > maxCacheSize && !cache.empty()) {
-                RemoveOldestCacheEntry();
-            }
-
-            UCCacheEntry entry;
-            entry.lastAccess = std::chrono::steady_clock::now();
-            entry.payload = p;
-            cache[key] = std::move(entry);
-            currentCacheSize += dataSize;
-        }
-
-        std::shared_ptr<ET> GetFromCache(const std::string& key) {
-            std::lock_guard<std::mutex> lock(cacheMutex);
-
-            auto it = cache.find(key);
-            if (it != cache.end()) {
-                it->second.lastAccess = std::chrono::steady_clock::now();
-                return it->second.payload;
-            }
-
-            return nullptr;
-        }
-
-        void ClearCache() {
-            std::lock_guard<std::mutex> lock(cacheMutex);
-            cache.clear();
-            currentCacheSize = 0;
-        }
-
-        void SetMaxCacheSize(size_t size) { maxCacheSize = size; }
-    };
     typedef UCCache<UCPixmapCairo> UCPixmapsCache;
     UCPixmapsCache g_PixmapsCache(50 * 1024 * 1024);
 

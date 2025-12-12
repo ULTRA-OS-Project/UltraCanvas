@@ -51,7 +51,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(section1Label);
         yOffset += 35;
 
-        auto basicControl = SegmentedControlBuilder("basic", 5011, 50, yOffset, 410, 35)
+        auto basicControl = SegmentedControlBuilder("basic", 5011, 50, yOffset, 420, 35)
                 .AddSegment("All")
                 .AddSegment("Active")
                 .AddSegment("Completed")

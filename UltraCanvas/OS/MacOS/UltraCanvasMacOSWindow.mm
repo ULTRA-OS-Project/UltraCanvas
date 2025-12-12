@@ -6,6 +6,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasMacOSWindow.h"
+#include "UltraCanvasUtils.h"
 
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
@@ -38,6 +39,18 @@
     return self;
 }
 
+void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* cairoSurface) {
+    cairo_surface_t* viewSurface = cairo_quartz_surface_create_for_cg_context(viewCtx, w, h);
+    cairo_t* cr = cairo_create(viewSurface);
+
+    // Single operation: paint source surface to view
+    cairo_set_source_surface(cr, cairoSurface, 0, 0);
+    cairo_paint(cr);
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(viewSurface);
+}
+
 - (void)drawRect:(NSRect)dirtyRect {
     if (!cairoSurface) return;
 
@@ -54,6 +67,9 @@
     int h = (int)bounds.size.height;
 
     // Wrap the view's CGContext in a Cairo surface
+//    measureExecutionTime("dirtyRect", _drawScreen, w, h, viewCtx, cairoSurface);
+//    return;
+
     cairo_surface_t* viewSurface = cairo_quartz_surface_create_for_cg_context(viewCtx, w, h);
     cairo_t* cr = cairo_create(viewSurface);
 
@@ -170,9 +186,7 @@ namespace UltraCanvas {
             , contentView(nullptr)
             , windowDelegate(nullptr)
             , cairoSurface(nullptr) {
-
         std::cout << "UltraCanvas macOS: Window constructor started" << std::endl;
-
     }
 
 
@@ -590,6 +604,5 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::OnWindowDidDeminiaturize() {
         std::cout << "UltraCanvas macOS: Window restored from minimized" << std::endl;
     }
-
 } // namespace UltraCanvas
 

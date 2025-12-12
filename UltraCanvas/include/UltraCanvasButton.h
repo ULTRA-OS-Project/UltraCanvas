@@ -410,7 +410,7 @@ namespace UltraCanvas {
             style.normalTextColor = Colors::White;
             style.hoverTextColor = Colors::White;
             style.pressedTextColor = Colors::White;
-            style.fontWeight = FontWeight::Bold;
+            style.fontWeight = FontWeight::Normal;
             return style;
         }
 

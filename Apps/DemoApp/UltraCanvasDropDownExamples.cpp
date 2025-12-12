@@ -67,7 +67,7 @@ namespace UltraCanvas {
         simpleDropdown->AddItem("Very Long Option Text That Extends");
         simpleDropdown->SetSelectedIndex(0);
 
-        auto simpleLabel = std::make_shared<UltraCanvasLabel>("SimpleLabel", 312, 270, currentY + 5, 200, 20);
+        auto simpleLabel = std::make_shared<UltraCanvasLabel>("SimpleLabel", 312, 270, currentY + 5, 300, 20);
         simpleLabel->SetText("Simple dropdown with text items");
         simpleLabel->SetFontSize(12);
 
@@ -87,7 +87,7 @@ namespace UltraCanvas {
         separatorDropdown->AddItem("Paste", "paste");
         separatorDropdown->SetSelectedIndex(1);
 
-        auto separatorLabel = std::make_shared<UltraCanvasLabel>("SeparatorLabel", 314, 270, currentY + 5, 200, 20);
+        auto separatorLabel = std::make_shared<UltraCanvasLabel>("SeparatorLabel", 314, 270, currentY + 5, 300, 20);
         separatorLabel->SetText("Dropdown with separators");
         separatorLabel->SetFontSize(12);
 

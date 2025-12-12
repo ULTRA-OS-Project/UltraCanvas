@@ -404,10 +404,10 @@ namespace UltraCanvas {
         // Set text style
         TextStyle textStyle;
         ctx->SetFontStyle(style.fontStyle);
-        textStyle.textColor = color;
         textStyle.alignment = style.textAlignment;
         textStyle.verticalAlignement = TextVerticalAlignement::Middle;
         ctx->SetTextStyle(textStyle);
+        ctx->SetTextPaint(color);
 
         if (inputType == TextInputType::Multiline) {
             // Start at baseline position
@@ -426,16 +426,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::RenderPlaceholder(const Rect2Df &area, IRenderContext* ctx) {
-        TextStyle placeholderStyle;
-        placeholderStyle.textColor = style.placeholderColor;
-        placeholderStyle.alignment = style.textAlignment;
-        if (inputType == TextInputType::Multiline) {
-            placeholderStyle.verticalAlignement = TextVerticalAlignement::Top;
-        } else {
-            placeholderStyle.verticalAlignement = TextVerticalAlignement::Middle;
-        }
+        ctx->SetTextAlignment(style.textAlignment);
+        ctx->SetTextVerticalAlignment((inputType == TextInputType::Multiline) ?
+            TextVerticalAlignement::Top : TextVerticalAlignement::Middle);
         ctx->SetFontStyle(style.fontStyle);
-        ctx->SetTextStyle(placeholderStyle);
+        ctx->SetTextPaint(style.placeholderColor);
 
         ctx->DrawTextInRect(placeholderText, area);
     }

@@ -224,7 +224,7 @@ namespace UltraCanvas {
 
         sourceWindow->SetEventCallback([this](const UCEvent& event) {
             if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClose) {
-                sourceWindow->Close();
+                sourceWindow->RequestDelete();
                 sourceWindow.reset();
                 return true;
             }

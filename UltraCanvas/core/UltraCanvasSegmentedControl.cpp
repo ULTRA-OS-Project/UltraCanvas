@@ -308,6 +308,7 @@ namespace UltraCanvas {
             ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
             ctx->SetFontSize(style.fontSize);
             ctx->SetTextAlignment(segment.alignment);
+            ctx->SetTextWrap(TextWrap::WrapNone);
             ctx->SetTextIsMarkup(true);
             int textWidth = 0, textHeight = 0;
             ctx->GetTextLineDimensions(segment.text, textWidth, textHeight);

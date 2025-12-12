@@ -17,7 +17,7 @@ namespace UltraCanvas {
             auto mainButtonsContainer = std::make_shared<UltraCanvasContainer>("ButtonExamples", 100, 0, 0, 1000, 800);
 
             // ===== PAGE TITLE =====
-            auto title = std::make_shared<UltraCanvasLabel>("ButtonTitle", 101, 20, 10, 500, 35);
+            auto title = std::make_shared<UltraCanvasLabel>("ButtonTitle", 101, 20, 10, 760, 35);
             title->SetText("UltraCanvas Button Component Showcase");
             title->SetFontSize(18);
             title->SetFontWeight(FontWeight::Bold);

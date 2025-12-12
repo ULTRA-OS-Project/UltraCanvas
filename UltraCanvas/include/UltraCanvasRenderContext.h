@@ -110,11 +110,10 @@ namespace UltraCanvas {
     struct TextStyle {
         TextAlignment alignment = TextAlignment::Left;
         TextVerticalAlignement verticalAlignement = TextVerticalAlignement::Baseline;
-        Color textColor = Colors::Black;
         float lineHeight = 1.2f;
         float letterSpacing = 0.0f;
         float wordSpacing = 0.0f;
-
+        int indent = 0;
         // Text effects
         TextWrap wrap = TextWrap::WrapWordChar;
         bool isMarkup = false;

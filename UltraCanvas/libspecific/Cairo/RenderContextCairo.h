@@ -43,6 +43,32 @@ namespace UltraCanvas {
         void* GetHandle() override { return pattern; };
     };
 
+    struct TextSurfaceEntry {
+        cairo_surface_t* surface;
+        int width = 0;
+        int height = 0;
+
+        TextSurfaceEntry(cairo_surface_t* surf, int w, int h) : surface(surf), width(w), height(h) {};
+
+        size_t GetDataSize() {
+            return width*height*4+sizeof(TextSurfaceEntry);
+        }
+
+        ~TextSurfaceEntry() {
+            cairo_surface_destroy(surface);
+        }
+    };
+
+    struct TextDimensionsEntry {
+        int width = 0;
+        int height = 0;
+
+        TextDimensionsEntry(int w, int h) : width(w), height(h) {};
+
+        size_t GetDataSize() {
+            return sizeof(TextDimensionsEntry);
+        }
+    };
 
     class RenderContextCairo : public IRenderContext {
     private:
@@ -84,6 +110,11 @@ namespace UltraCanvas {
         bool enableDoubleBuffering = false;
         bool CreateStagingSurface();
         void SwitchToSurface(cairo_surface_t* s);
+
+        std::string GenerateTextCacheKey(const std::string& text, int rectWidth, int rectHeight);
+        std::shared_ptr<TextSurfaceEntry> MakeTextSurface(const std::string& text, int rectWidth, int rectHeight);
+        std::shared_ptr<TextSurfaceEntry> GetTextSurface(const std::string& text, int rectWidth, int rectHeight);
+        std::shared_ptr<TextDimensionsEntry> MeasureTextDimensions(const std::string& text, int rectWidth, int rectHeight);
 
     public:
         RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering);
