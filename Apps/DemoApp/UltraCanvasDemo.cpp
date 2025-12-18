@@ -95,7 +95,7 @@ namespace UltraCanvas {
 
         // Create documentation button (right side)
         docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", id + 3, width - 90, 5, 21, 21);
-        docButton->LoadFromFile("assets/icons/text.png");
+        docButton->LoadFromFile("media/icons/text.png");
         docButton->SetVisible(false);  // Initially disabled
         docButton->SetClickable(true);
         docButton->onClick = [this]() { ShowDocumentationWindow(); };
@@ -103,7 +103,7 @@ namespace UltraCanvas {
 
         // Create source button (right side)
         sourceButton = std::make_shared<UltraCanvasImageElement>("SourceBtn", id + 2, width - 40, 5, 21, 28);
-        sourceButton->LoadFromFile("assets/icons/c-plus-plus-icon.png");
+        sourceButton->LoadFromFile("media/icons/c-plus-plus-icon.png");
         sourceButton->SetVisible(false);  // Initially disabled
         sourceButton->SetClickable(true);
         sourceButton->onClick = [this]() { ShowSourceWindow(); };
@@ -578,24 +578,85 @@ namespace UltraCanvas {
                               "Examples/UltraCanvasBitmapExamples.cpp",
                               "Docs/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "PNG/JPEG Display");
-        bitmapBuilder.AddItem("gifimages", "GIF Images", "GIF Image display and manipulation",
-                              ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateBitmapNotImplementedExamples("GIF"); });
-        bitmapBuilder.AddItem("avifimages", "AVIF Images", "AVIF Image display and manipulation",
-                              ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateBitmapNotImplementedExamples("AVIF"); });
-        bitmapBuilder.AddItem("tiffimages", "TIFF Images", "TIFF Image display and manipulation",
-                              ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateBitmapNotImplementedExamples("TIFF"); });
-        bitmapBuilder.AddItem("webpimages", "WEBP Images", "WEBP Image display and manipulation",
-                              ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateBitmapNotImplementedExamples("WEBP"); });
-        bitmapBuilder.AddItem("qoiimages", "QOI Images", "QOI Image display and manipulation",
+
+// AVIF Images
+        bitmapBuilder.AddItem("avifimages", "AVIF Images",
+                              "AVIF next-gen format with superior compression and HDR support",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateAVIFExamples(); },
+                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              "Docs/UltraCanvasBitmapExamples.md")
+                .AddVariant("images", "Modern Formats");
+
+        // WEBP Images
+        bitmapBuilder.AddItem("webpimages", "WEBP Images",
+                              "Google WebP format with excellent compression and web optimization",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateWEBPExamples(); },
+                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              "Docs/UltraCanvasBitmapExamples.md")
+                .AddVariant("images", "Modern Formats");
+
+        // HEIF Images
+        bitmapBuilder.AddItem("heifimages", "HEIF/HEIC Images",
+                              "HEIF high efficiency format with HEVC compression",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateHEIFExamples(); },
+                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              "Docs/UltraCanvasBitmapExamples.md")
+                .AddVariant("images", "Modern Formats");
+
+        // GIF Images
+        bitmapBuilder.AddItem("gifimages", "GIF Images",
+                              "GIF animated format with 256 color palette",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateGIFExamples(); },
+                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              "Docs/UltraCanvasBitmapExamples.md")
+                .AddVariant("images", "Animation Support");
+
+        // TIFF Images
+        bitmapBuilder.AddItem("tiffimages", "TIFF Images",
+                              "TIFF professional format for archival and print",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateTIFFExamples(); },
+                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              "Docs/UltraCanvasBitmapExamples.md")
+                .AddVariant("images", "Professional Formats");
+
+        // BMP Images
+        bitmapBuilder.AddItem("bmpimages", "BMP Images",
+                              "BMP Windows native bitmap format",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateBMPExamples(); },
+                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              "Docs/UltraCanvasBitmapExamples.md")
+                .AddVariant("images", "Legacy Formats");
+
+        // QOI Images (kept as partially implemented if it exists)
+        bitmapBuilder.AddItem("qoiimages", "QOI Images",
+                              "QOI Image display and manipulation",
                               ImplementationStatus::PartiallyImplemented,
                               [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
-        bitmapBuilder.AddItem("rawimages", "RAW Images", "RAW Image display and manipulation",
-                              ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateBitmapNotImplementedExamples("RAW"); });
+
+//        bitmapBuilder.AddItem("gifimages", "GIF Images", "GIF Image display and manipulation",
+//                              ImplementationStatus::PartiallyImplemented,
+//                              [this]() { return CreateBitmapNotImplementedExamples("GIF"); });
+//        bitmapBuilder.AddItem("avifimages", "AVIF Images", "AVIF Image display and manipulation",
+//                              ImplementationStatus::PartiallyImplemented,
+//                              [this]() { return CreateBitmapNotImplementedExamples("AVIF"); });
+//        bitmapBuilder.AddItem("tiffimages", "TIFF Images", "TIFF Image display and manipulation",
+//                              ImplementationStatus::PartiallyImplemented,
+//                              [this]() { return CreateBitmapNotImplementedExamples("TIFF"); });
+//        bitmapBuilder.AddItem("webpimages", "WEBP Images", "WEBP Image display and manipulation",
+//                              ImplementationStatus::PartiallyImplemented,
+//                              [this]() { return CreateBitmapNotImplementedExamples("WEBP"); });
+//        bitmapBuilder.AddItem("qoiimages", "QOI Images", "QOI Image display and manipulation",
+//                              ImplementationStatus::PartiallyImplemented,
+//                              [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
+//        bitmapBuilder.AddItem("rawimages", "RAW Images", "RAW Image display and manipulation",
+//                              ImplementationStatus::PartiallyImplemented,
+//                              [this]() { return CreateBitmapNotImplementedExamples("RAW"); });
 
         // ===== VECTOR ELEMENTS =====
         auto vectorBuilder = DemoCategoryBuilder(this, DemoCategory::VectorElements);
@@ -608,6 +669,9 @@ namespace UltraCanvas {
                 .AddVariant("svg", "SVG File Display")
                 .AddVariant("svg", "Interactive SVG")
                 .AddVariant("svg", "SVG Animations");
+        vectorBuilder.AddItem("cdrimages", "CDR Images", "CDR (CorelDraw) images display and manipulation",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateCDRVectorExamples(); });
 
         vectorBuilder.AddItem("xarimages", "XAR Images", "XAR Image display and manipulation",
                               ImplementationStatus::PartiallyImplemented,
@@ -904,6 +968,9 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateIODeviceManagerExamples(); });
+        modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateSmartHomeExamples(); });
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
         widgetsBuilder.AddItem("datepicker", "Date Picker", "Date Picker",
@@ -924,7 +991,7 @@ namespace UltraCanvas {
     void UltraCanvasDemoApplication::SetupTreeView() {
         // Setup root node
         TreeNodeData rootData("root", "UltraCanvas Components");
-        rootData.leftIcon = TreeNodeIcon("assets/icons/ultracanvas.png", 16, 16);
+        rootData.leftIcon = TreeNodeIcon("media/icons/ultracanvas.png", 16, 16);
         TreeNode* rootNode = categoryTreeView->SetRootNode(rootData);
 
         // Add category nodes
@@ -952,14 +1019,14 @@ namespace UltraCanvas {
                     catName
             );
             auto items = categoryItems[category];
-            categoryData.leftIcon = TreeNodeIcon("assets/icons/folder.png", 16, 16);
+            categoryData.leftIcon = TreeNodeIcon("media/icons/folder.png", 16, 16);
             TreeNode* categoryNode = categoryTreeView->AddNode("root", categoryData);
 
             // Add items for this category
             for (const std::string& itemId : items) {
                 const auto& demoItem = demoItems[itemId];
                 TreeNodeData itemData(itemId, demoItem->displayName);
-                itemData.leftIcon = TreeNodeIcon("assets/icons/component.png", 16, 16);
+                itemData.leftIcon = TreeNodeIcon("media/icons/component.png", 16, 16);
                 itemData.rightIcon = TreeNodeIcon(GetStatusIcon(demoItem->status), 12, 12);
                 categoryTreeView->AddNode(categoryData.nodeId, itemData);
             }
@@ -1084,11 +1151,11 @@ namespace UltraCanvas {
 // ===== UTILITY METHODS =====
     std::string UltraCanvasDemoApplication::GetStatusIcon(ImplementationStatus status) const {
         switch (status) {
-            case ImplementationStatus::FullyImplemented: return "assets/icons/check.png";
-            case ImplementationStatus::PartiallyImplemented: return "assets/icons/warning-blue.png";
-            case ImplementationStatus::NotImplemented: return "assets/icons/x.png";
-            case ImplementationStatus::Planned: return "assets/icons/info.png";
-            default: return "assets/icons/unknown.png";
+            case ImplementationStatus::FullyImplemented: return "media/icons/check.png";
+            case ImplementationStatus::PartiallyImplemented: return "media/icons/warning-blue.png";
+            case ImplementationStatus::NotImplemented: return "media/icons/x.png";
+            case ImplementationStatus::Planned: return "media/icons/info.png";
+            default: return "media/icons/unknown.png";
         }
     }
 

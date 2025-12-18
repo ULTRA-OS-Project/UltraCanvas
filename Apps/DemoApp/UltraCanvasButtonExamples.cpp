@@ -145,7 +145,7 @@ namespace UltraCanvas {
 
             // Icon Left
             auto iconLeftBtn = CreateButton("IconLeft", 132, 130, yOffset, 120, 35, "Save");
-            iconLeftBtn->SetIcon("assets/icons/save.png");
+            iconLeftBtn->SetIcon("media/icons/save.png");
             iconLeftBtn->SetIconPosition(ButtonIconPosition::Left);
             iconLeftBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Save button clicked\nIcon positioned on the left");
@@ -154,7 +154,7 @@ namespace UltraCanvas {
 
             // Icon Right
             auto iconRightBtn = CreateButton("IconRight", 133, 260, yOffset, 120, 35, "Next");
-            iconRightBtn->SetIcon("assets/icons/arrow-right.png");
+            iconRightBtn->SetIcon("media/icons/arrow-right.png");
             iconRightBtn->SetIconPosition(ButtonIconPosition::Right);
             iconRightBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Next button clicked\nIcon positioned on the right");
@@ -163,7 +163,7 @@ namespace UltraCanvas {
 
             // Icon Only
 //            auto iconOnlyBtn = CreateButton("IconOnly", 134, 390, yOffset, 40, 35, "");
-//            iconOnlyBtn->SetIcon("assets/icons/settings.png");
+//            iconOnlyBtn->SetIcon("media/icons/settings.png");
 //            iconOnlyBtn->SetStyle(ButtonStyles::IconOnlyStyle());
 ////            iconOnlyBtn->SetTooltip("Settings");
 //            iconOnlyBtn->onClick = [statusLabel]() {
@@ -173,7 +173,7 @@ namespace UltraCanvas {
 
             // Icon Top
             auto iconTopBtn = CreateButton("IconTop", 135, 390, yOffset, 80, 62, "Upload");
-            iconTopBtn->SetIcon("assets/icons/upload.png");
+            iconTopBtn->SetIcon("media/icons/upload.png");
             iconTopBtn->SetIconPosition(ButtonIconPosition::Top);
             iconTopBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Upload button clicked\nIcon positioned above text");
@@ -182,7 +182,7 @@ namespace UltraCanvas {
 
             // Icon Bottom
             auto iconBottomBtn = CreateButton("IconBottom", 136, 480, yOffset, 90, 62, "Download");
-            iconBottomBtn->SetIcon("assets/icons/download_34px.png");
+            iconBottomBtn->SetIcon("media/icons/download_34px.png");
             iconBottomBtn->SetIconPosition(ButtonIconPosition::Bottom);
             iconBottomBtn->SetIconSize(41,34);
             iconBottomBtn->onClick = [statusLabel]() {
@@ -191,7 +191,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(iconBottomBtn);
 
             auto iconRightBtn2 = CreateButton("IconRight", 133, 580, yOffset, 250, 35, "Continue with UltraCanvas");
-            iconRightBtn2->SetIcon("assets/icons/ultracanvas_20px.png");
+            iconRightBtn2->SetIcon("media/icons/ultracanvas_20px.png");
             iconRightBtn2->SetIconSize(20, 20);
             iconRightBtn2->SetIconPosition(ButtonIconPosition::Left);
             iconRightBtn2->SetColors(Colors::White, Color(240, 240, 240, 255), Colors::Gray, Colors::LightGray);
@@ -242,7 +242,7 @@ namespace UltraCanvas {
             // Badge Style (Patreon)
             auto patreonBtn = CreateButton("PatreonButton", 143, 310, yOffset, 140, 35, "Patreon");
             patreonBtn->SetSplitEnabled(true);
-            patreonBtn->SetIcon("assets/icons/patreon.png");
+            patreonBtn->SetIcon("media/icons/patreon.png");
             patreonBtn->SetIconPosition(ButtonIconPosition::Left);
             patreonBtn->SetIconSize(20,20);
             patreonBtn->SetIconSpacing(7);
@@ -276,7 +276,7 @@ namespace UltraCanvas {
             // PayPal Style
             auto paypalBtn = CreateButton("PaypalButton", 145, 610, yOffset, 140, 35, "Paypal");
             paypalBtn->SetSplitEnabled(true);
-            paypalBtn->SetIcon("assets/icons/paypal.png");
+            paypalBtn->SetIcon("media/icons/paypal.png");
             paypalBtn->SetIconPosition(ButtonIconPosition::Left);
             paypalBtn->SetIconSize(20,20);
             paypalBtn->SetIconSpacing(7);
@@ -465,8 +465,8 @@ namespace UltraCanvas {
             multiBtn->SetSplitEnabled(true);
             multiBtn->SetSplitRatio(0);
 //            multiBtn->SetSplitSecondaryText("");
-            multiBtn->SetIcon("assets/icons/save.png");
-            multiBtn->SetSplitSecondaryIcon("assets/icons/settings.png");
+            multiBtn->SetIcon("media/icons/save.png");
+            multiBtn->SetSplitSecondaryIcon("media/icons/settings.png");
             multiBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Quick save executed\nFile saved with default settings");
             };
@@ -493,10 +493,10 @@ namespace UltraCanvas {
                     .SetPosition(20, yOffset)
                     .SetSize(240, 40)
                     .SetText("Built with Builder")
-                    .SetIcon("assets/icons/build.png")
+                    .SetIcon("media/icons/build.png")
                     .SetIconSpacing(6)
                     .SetSplitEnabled(true)
-                    .SetSplitSecondaryIcon("assets/icons/arrow-right.png")
+                    .SetSplitSecondaryIcon("media/icons/arrow-right.png")
                     .SetSplitIconSize(24,24)
 //                    .SetSplitSecondaryText("→")
                     .SetSplitRatio(0.8)

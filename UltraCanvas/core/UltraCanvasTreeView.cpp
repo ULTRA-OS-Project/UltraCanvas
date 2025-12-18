@@ -871,4 +871,12 @@ namespace UltraCanvas {
         verticalScrollbar->SetStyle(scrollbarStyle);
         verticalScrollbar->SetVisible(false);
     }
+
+    void UltraCanvasTreeView::SetBounds(const Rect2Di &bounds) {
+        if (bounds != GetBounds()) {
+            UltraCanvasUIElement::SetBounds(bounds);
+            UpdateScrollbars();
+            RequestRedraw();
+        }
+    }
 }

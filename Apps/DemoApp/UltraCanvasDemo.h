@@ -222,10 +222,18 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateTextAreaExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSegmentedControlExamples();
 
-        // Graphics Elements
+        // Graphics Elements - BITMAP FORMATS
         std::shared_ptr<UltraCanvasUIElement> CreateBitmapNotImplementedExamples(const std::string& format);
         std::shared_ptr<UltraCanvasUIElement> CreatePNGExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateJPEGExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateAVIFExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateWEBPExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateHEIFExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateGIFExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateTIFFExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateBMPExamples();
+
+
         std::shared_ptr<UltraCanvasUIElement> CreateVectorExamples();
         std::shared_ptr<UltraCanvasUIElement> Create3DExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateVideoExamples();
@@ -266,6 +274,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateScannerSupportExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateIODeviceManagerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLayoutExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateCDRVectorExamples();
 
         // ===== APPLICATION LIFECYCLE =====
         void Run();

@@ -15,7 +15,231 @@
 
 namespace UltraCanvas {
 
-// ===== HELPER FUNCTION FOR IMAGE INFO DISPLAY =====
+    void ShowFullSizeImageViewer(const std::string& imagePath);
+//    std::string MeasureImagePerformance(const std::string& imagePath);
+    std::string ExtractImageMetadata(const std::string& imagePath);
+
+// ===== PERFORMANCE MEASUREMENT HELPER =====
+//    std::string MeasureImagePerformance(const std::string& imagePath) {
+//        std::ostringstream result;
+//
+//        try {
+//            // Measure Load Time (×100 iterations)
+//            auto loadStart = std::chrono::high_resolution_clock::now();
+//            for (int i = 0; i < 100; i++) {
+//                auto image = UCImage::Get(imagePath);
+//            }
+//            auto loadEnd = std::chrono::high_resolution_clock::now();
+//            auto loadDuration = std::chrono::duration_cast<std::chrono::milliseconds>(loadEnd - loadStart);
+//
+//            // Measure Display Time (×100 iterations)
+//            auto displayStart = std::chrono::high_resolution_clock::now();
+//            for (int i = 0; i < 100; i++) {
+//                auto image = UCImage::Get(imagePath);
+//                // Simulate display operations
+//                int width = image->GetWidth();
+//                int height = image->GetHeight();
+//            }
+//            auto displayEnd = std::chrono::high_resolution_clock::now();
+//            auto displayDuration = std::chrono::duration_cast<std::chrono::milliseconds>(displayEnd - displayStart);
+//
+//            result << "Performance Metrics (×100):\n";
+//            result << "Load Time: " << loadDuration.count() << "ms\n";
+//            result << "Display Time: " << displayDuration.count() << "ms\n";
+//            result << "Avg Load: " << (loadDuration.count() / 100.0) << "ms per image";
+//
+//        } catch (const std::exception& e) {
+//            result << "Performance measurement failed:\n" << e.what();
+//        }
+//
+//        return result.str();
+//    }
+
+// ===== METADATA EXTRACTION HELPER =====
+    std::string ExtractImageMetadata(const std::string& imagePath) {
+        std::ostringstream metadata;
+
+        try {
+            // Get file size using std::filesystem
+            std::ifstream file(imagePath, std::ios::binary | std::ios::ate);
+            if (file.is_open()) {
+                std::streamsize fileSize = file.tellg();
+                file.close();
+
+                double fileSizeKB = fileSize / 1024.0;
+                double fileSizeMB = fileSizeKB / 1024.0;
+
+                if (fileSizeMB >= 1.0) {
+                    metadata << "File Size: " << std::fixed << std::setprecision(2) << fileSizeMB << " MB\n";
+                } else {
+                    metadata << "File Size: " << std::fixed << std::setprecision(2) << fileSizeKB << " KB\n";
+                }
+            } else {
+                metadata << "File not found\n";
+                return metadata.str();
+            }
+
+            // ===== USE LIBVIPS DIRECTLY =====
+            vips::VImage vipsImage = vips::VImage::new_from_file(imagePath.c_str());
+
+            // Image dimensions
+            metadata << "Resolution: " << vipsImage.width() << "×" << vipsImage.height() << "\n";
+
+            // Number of bands (channels)
+            int bands = vipsImage.bands();
+            metadata << "Bands/Channels: " << bands << "\n";
+
+            // Color interpretation
+            VipsInterpretation interpretation = vipsImage.interpretation();
+            metadata << "Color Space: ";
+            switch (interpretation) {
+                case VIPS_INTERPRETATION_ERROR:
+                    metadata << "Error";
+                    break;
+                case VIPS_INTERPRETATION_MULTIBAND:
+                    metadata << "Multiband";
+                    break;
+                case VIPS_INTERPRETATION_B_W:
+                    metadata << "B&W (1-band)";
+                    break;
+                case VIPS_INTERPRETATION_RGB:
+                    metadata << "RGB";
+                    break;
+                case VIPS_INTERPRETATION_sRGB:
+                    metadata << "sRGB";
+                    break;
+                case VIPS_INTERPRETATION_CMYK:
+                    metadata << "CMYK";
+                    break;
+                case VIPS_INTERPRETATION_LAB:
+                    metadata << "LAB";
+                    break;
+                case VIPS_INTERPRETATION_HSV:
+                    metadata << "HSV";
+                    break;
+                case VIPS_INTERPRETATION_GREY16:
+                    metadata << "Grey16";
+                    break;
+                case VIPS_INTERPRETATION_RGB16:
+                    metadata << "RGB16";
+                    break;
+                default:
+                    metadata << "Other (" << interpretation << ")";
+                    break;
+            }
+            metadata << "\n";
+
+            // Bit depth per band
+            VipsBandFormat format = vipsImage.format();
+            int bitsPerBand = 0;
+            std::string formatName;
+
+            switch (format) {
+                case VIPS_FORMAT_UCHAR:
+                    bitsPerBand = 8;
+                    formatName = "8-bit unsigned";
+                    break;
+                case VIPS_FORMAT_CHAR:
+                    bitsPerBand = 8;
+                    formatName = "8-bit signed";
+                    break;
+                case VIPS_FORMAT_USHORT:
+                    bitsPerBand = 16;
+                    formatName = "16-bit unsigned";
+                    break;
+                case VIPS_FORMAT_SHORT:
+                    bitsPerBand = 16;
+                    formatName = "16-bit signed";
+                    break;
+                case VIPS_FORMAT_UINT:
+                    bitsPerBand = 32;
+                    formatName = "32-bit unsigned";
+                    break;
+                case VIPS_FORMAT_INT:
+                    bitsPerBand = 32;
+                    formatName = "32-bit signed";
+                    break;
+                case VIPS_FORMAT_FLOAT:
+                    bitsPerBand = 32;
+                    formatName = "32-bit float";
+                    break;
+                case VIPS_FORMAT_DOUBLE:
+                    bitsPerBand = 64;
+                    formatName = "64-bit double";
+                    break;
+                default:
+                    formatName = "Unknown";
+                    break;
+            }
+
+            metadata << "Format: " << formatName << "\n";
+            metadata << "Bit Depth: " << (bitsPerBand * bands) << "-bit total\n";
+
+            // Check for alpha channel
+            bool hasAlpha = vipsImage.has_alpha();
+            metadata << "Alpha Channel: " << (hasAlpha ? "Yes" : "No") << "\n";
+
+            // Try to get EXIF orientation if available
+            try {
+                if (vipsImage.get_typeof("orientation") != 0) {
+                    int orientation = vipsImage.get_int("orientation");
+                    metadata << "EXIF Orientation: " << orientation << "\n";
+                }
+            } catch (...) {
+                // Orientation not available
+            }
+
+            // Try to get DPI/resolution
+            try {
+                if (vipsImage.get_typeof("xres") != 0) {
+                    double xres = vipsImage.get_double("xres");
+                    double yres = vipsImage.get_double("yres");
+                    metadata << "DPI: " << std::fixed << std::setprecision(0)
+                             << (xres * 25.4) << "×" << (yres * 25.4) << "\n";
+                }
+            } catch (...) {
+                // Resolution not available
+            }
+
+            // Try to get EXIF data
+            try {
+                if (vipsImage.get_typeof("exif-data") != 0) {
+                    metadata << "EXIF Data: Present\n";
+                }
+            } catch (...) {
+                metadata << "EXIF Data: Not available\n";
+            }
+
+            // Try to get GPS location
+            try {
+                if (vipsImage.get_typeof("exif-ifd2-GPSLatitude") != 0) {
+                    metadata << "GPS Location: Available\n";
+                }
+            } catch (...) {
+                // GPS data not available
+            }
+
+        } catch (const vips::VError& e) {
+            metadata << "Error loading image:\n" << e.what();
+        } catch (const std::exception& e) {
+            metadata << "Metadata extraction failed:\n" << e.what();
+        }
+
+        return metadata.str();
+    }
+
+// ===== FULL-SIZE IMAGE VIEWER (Modal Window) =====
+    void ShowFullSizeImageViewer(const std::string& imagePath) {
+        // TODO: Implement modal window with full-size image display
+        // This would create a new window or modal overlay showing the full image
+        // with zoom controls and close button
+        // For now, this is a placeholder that demonstrates the concept
+    }
+
+
+
+
+    // ===== HELPER FUNCTION FOR IMAGE INFO DISPLAY =====
     std::shared_ptr<UltraCanvasLabel> CreateImageInfoLabel(const std::string& id, int x, int y, const std::string& format, const std::string& details) {
         auto label = std::make_shared<UltraCanvasLabel>(id, 0, x, y, 0, 0);
         std::ostringstream info;
@@ -37,7 +261,7 @@ namespace UltraCanvas {
         container->SetBackgroundColor(Color(255, 255, 255, 255));
 
         // Page Title
-        auto title = std::make_shared<UltraCanvasLabel>("PNGTitle", 1511, 10, 10, 400, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("PNGTitle", 1511, 10, 10, 600, 35);
         title->SetText("PNG Format Demonstration");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -61,7 +285,7 @@ namespace UltraCanvas {
 
         // Main PNG Image
         auto pngImage = std::make_shared<UltraCanvasImageElement>("PNGMainImage", 1514, 25, 25, 400, 300);
-        pngImage->LoadFromFile("assets/images/transparent_overlay.png");
+        pngImage->LoadFromFile("media/images/transparent_overlay.png");
         pngImage->SetFitMode(ImageFitMode::Contain);
         imageContainer->AddChild(pngImage);
 
@@ -86,11 +310,11 @@ namespace UltraCanvas {
         auto bgPattern = std::make_shared<UltraCanvasContainer>("BGPattern", 1518, 10, 70, 300, 100);
         // Transparent PNG overlay
         auto notransImage = std::make_shared<UltraCanvasImageElement>("NoTransPNG", 1519, 0, 0, 100, 100);
-        notransImage->LoadFromFile("assets/images/ship.jpg");
+        notransImage->LoadFromFile("media/images/ship.jpg");
         notransImage->SetFitMode(ImageFitMode::Fill);
 
         auto transImage = std::make_shared<UltraCanvasImageElement>("TransPNG", 1519, 0, 0, 100, 100);
-        transImage->LoadFromFile("assets/images/transparent_overlay.png");
+        transImage->LoadFromFile("media/images/transparent_overlay.png");
         bgPattern->AddChild(notransImage);
         bgPattern->AddChild(transImage);
 
@@ -131,7 +355,7 @@ namespace UltraCanvas {
         container->AddChild(scaleModeDropdown);
 
         // PNG Format Info
-        auto formatInfo = CreateImageInfoLabel("PNGFormatInfo", 10, 200,
+        auto formatInfo = CreateImageInfoLabel("PNGFormatInfo", 10, 190,
                                                "PNG (Portable Network Graphics)",
                                                "• Lossless compression\n"
                                                "• Full alpha channel support\n"
@@ -153,21 +377,21 @@ namespace UltraCanvas {
         auto btnIcon = std::make_shared<UltraCanvasButton>("BtnIcon", 1525, 10, 620, 100, 30);
         btnIcon->SetText("Load Icon");
         btnIcon->onClick = [pngImage]() {
-            pngImage->LoadFromFile("assets/images/png_68.png");
+            pngImage->LoadFromFile("media/images/png_68.png");
         };
         container->AddChild(btnIcon);
 
         auto btnLogo = std::make_shared<UltraCanvasButton>("BtnLogo", 1526, 120, 620, 100, 30);
         btnLogo->SetText("Load Logo");
         btnLogo->onClick = [pngImage]() {
-            pngImage->LoadFromFile("assets/images/logo_transparent.png");
+            pngImage->LoadFromFile("media/images/logo_transparent.png");
         };
         container->AddChild(btnLogo);
 
         auto btnScreenshot = std::make_shared<UltraCanvasButton>("BtnScreenshot", 1527, 230, 620, 150, 30);
         btnScreenshot->SetText("Load Screenshot");
         btnScreenshot->onClick = [pngImage]() {
-            pngImage->LoadFromFile("assets/images/screenshot.png");
+            pngImage->LoadFromFile("media/images/screenshot.png");
         };
         container->AddChild(btnScreenshot);
 
@@ -180,7 +404,7 @@ namespace UltraCanvas {
         //container->SetBackgroundColor(Colors::LightGray);
 
         // Page Title
-        auto title = std::make_shared<UltraCanvasLabel>("JPEGTitle", 1531, 20, 10, 400, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("JPEGTitle", 1531, 20, 10, 600, 35);
         title->SetText("JPEG/JPG Format Demonstration");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -204,7 +428,7 @@ namespace UltraCanvas {
 
         // Main JPEG Image
         auto jpegImage = std::make_shared<UltraCanvasImageElement>("JPEGMainImage", 1534, 0, 25, 420, 320);
-        jpegImage->LoadFromFile("assets/images/sample_photo.jpg");
+        jpegImage->LoadFromFile("media/images/sample_photo.jpg");
         jpegImage->SetFitMode(ImageFitMode::Contain);
         imageContainer->AddChild(jpegImage);
 
@@ -291,50 +515,616 @@ namespace UltraCanvas {
         auto btnPhoto = std::make_shared<UltraCanvasButton>("BtnPhoto", 1551, 20, 505, 120, 30);
         btnPhoto->SetText("Load Photo");
         btnPhoto->onClick = [jpegImage]() {
-            jpegImage->LoadFromFile("assets/images/landscape.jpg");
+            jpegImage->LoadFromFile("media/images/landscape.jpg");
         };
         container->AddChild(btnPhoto);
 
         auto btnPortrait = std::make_shared<UltraCanvasButton>("BtnPortrait", 1552, 160, 505, 120, 30);
         btnPortrait->SetText("Load Portrait");
         btnPortrait->onClick = [jpegImage]() {
-            jpegImage->LoadFromFile("assets/images/portrait.jpg");
+            jpegImage->LoadFromFile("media/images/portrait.jpg");
         };
         container->AddChild(btnPortrait);
 
         return container;
     }
 
-// ===== MAIN BITMAP EXAMPLES FUNCTION (UPDATED) =====
-//    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBitmapExamples() {
-//        auto container = std::make_shared<UltraCanvasContainer>("BitmapExamples", 1500, 0, 0, 1000, 600);
-//
-//        // Main Title
-//        auto title = std::make_shared<UltraCanvasLabel>("BitmapTitle", 1501, 10, 10, 400, 30);
-//        title->SetText("Bitmap Graphics Examples");
-//        title->SetFontSize(16);
-//        title->SetFontWeight(FontWeight::Bold);
-//        container->AddChild(title);
-//
-//        // Create Tabbed Container for different bitmap formats
-//        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("BitmapTabs", 1502, 10, 50, 980, 540);
-//        tabbedContainer->SetTabPosition(TabPosition::Top);
-//        tabbedContainer->SetTabStyle(TabStyle::Modern);
-//
-//        // Add PNG Demo Tab
-//        auto pngPage = CreatePNGDemoPage();
-//        tabbedContainer->AddTab("PNG Format", pngPage);
-//
-//        // Add JPEG Demo Tab
-//        auto jpegPage = CreateJPEGDemoPage();
-//        tabbedContainer->AddTab("JPEG/JPG Format", jpegPage);
-//
-//        // Set default active tab
-//        tabbedContainer->SetActiveTab(0);
-//
-//        container->AddChild(tabbedContainer);
-//
-//        return container;
-//    }
+
+
+// ===== AVIF FORMAT EXAMPLES =====
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAVIFExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("AVIFDemoPage", 1600, 0, 0, 950, 800);
+        container->SetBackgroundColor(Color(255, 255, 255, 255));
+
+        // Page Title
+        auto title = std::make_shared<UltraCanvasLabel>("AVIFTitle", 1601, 10, 10, 600, 35);
+        title->SetText("AVIF Format Demonstration");
+        title->SetFontSize(18);
+        title->SetFontWeight(FontWeight::Bold);
+        title->SetTextColor(Color(70, 130, 180, 255));
+        container->AddChild(title);
+
+        // Format Description
+        auto description = std::make_shared<UltraCanvasLabel>("AVIFDesc", 1602, 10, 50, 930, 80);
+        description->SetText(
+                "AVIF (AV1 Image File Format) is a modern image format based on the AV1 video codec. "
+                "It provides significantly better compression than JPEG and WebP while maintaining high quality. "
+                "AVIF supports HDR, wide color gamuts, and transparency, making it ideal for next-generation web images. "
+                "File sizes are typically 50% smaller than JPEG at equivalent quality.");
+        description->SetAlignment(TextAlignment::Left);
+        //description->SetTextWrapping(true);
+        description->SetFontSize(11);
+        container->AddChild(description);
+
+        // Image Display Area
+        auto avifImage = std::make_shared<UltraCanvasImageElement>("AVIFImage", 1603, 20, 140, 450, 350);
+        avifImage->LoadFromFile("media/images/Cat.avif");
+        avifImage->SetFitMode(ImageFitMode::Contain);
+        avifImage->SetBorders(1.0f, Color(200, 200, 200, 255));
+        avifImage->SetBackgroundColor(Color(240, 240, 240, 255));
+
+        // ✨ Hand cursor and clickable
+        avifImage->SetMousePointer(MousePointer::Hand);
+        avifImage->SetClickable(true);
+        avifImage->onClick = []() {
+            ShowFullSizeImageViewer("media/Cat.avif");
+        };
+
+        container->AddChild(avifImage);
+
+//        // Performance Metrics Panel
+//        auto perfPanel = std::make_shared<UltraCanvasLabel>("AVIFPerf", 1604, 490, 140, 440, 120);
+//        perfPanel->SetText(MeasureImagePerformance("media/Cat.avif"));
+//        perfPanel->SetAlignment(TextAlignment::Left);
+//        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
+//        perfPanel->SetBorders(1.0f);
+//        perfPanel->SetPadding(10.0f);
+//        perfPanel->SetFontSize(10);
+//        container->AddChild(perfPanel);
+
+        // Metadata Panel
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("AVIFMetadata", 1605, 490, 140, 440, 180);
+        metadataPanel->SetText(ExtractImageMetadata("media/images/Cat.avif"));
+        metadataPanel->SetAlignment(TextAlignment::Left);
+        metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
+        metadataPanel->SetBorders(1.0f);
+        metadataPanel->SetPadding(10.0f);
+        metadataPanel->SetFontSize(10);
+        container->AddChild(metadataPanel);
+
+        // Format Options Panel
+        auto optionsPanel = std::make_shared<UltraCanvasLabel>("AVIFOptions", 1606, 490, 400, 440, 90);
+        optionsPanel->SetText(
+                "Format Options:\n"
+                "• Compression: Lossy/Lossless\n"
+                "• Quality Range: 0-100\n"
+                "• Alpha Channel: Supported\n"
+                "• HDR: 10-bit/12-bit support\n"
+                "• Animation: Supported");
+        optionsPanel->SetAlignment(TextAlignment::Left);
+        optionsPanel->SetBackgroundColor(Color(255, 250, 245, 255));
+        optionsPanel->SetBorders(1.0f);
+        optionsPanel->SetPadding(10.0f);
+        optionsPanel->SetFontSize(10);
+        container->AddChild(optionsPanel);
+
+        // Format Info
+        auto formatInfo = CreateImageInfoLabel("AVIFFormatInfo", 20, 500,
+                                               "AVIF (AV1 Image File Format)",
+                                               "• Next-generation codec\n"
+                                               "• 50% smaller than JPEG\n"
+                                               "• HDR and wide color gamut\n"
+                                               "• Transparency support\n"
+                                               "• Ideal for: web images, photos\n"
+                                               "• Browser support: Chrome, Firefox, Safari");
+        container->AddChild(formatInfo);
+
+        return container;
+    }
+
+// ===== WEBP FORMAT EXAMPLES =====
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWEBPExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("WEBPDemoPage", 1700, 0, 0, 950, 800);
+        container->SetBackgroundColor(Color(255, 255, 255, 255));
+
+        // Page Title
+        auto title = std::make_shared<UltraCanvasLabel>("WEBPTitle", 1701, 10, 10, 600, 35);
+        title->SetText("WEBP Format Demonstration");
+        title->SetFontSize(18);
+        title->SetFontWeight(FontWeight::Bold);
+        title->SetTextColor(Color(34, 139, 34, 255));
+        container->AddChild(title);
+
+        // Format Description
+        auto description = std::make_shared<UltraCanvasLabel>("WEBPDesc", 1702, 10, 50, 930, 80);
+        description->SetText(
+                "WebP is a modern image format developed by Google that provides superior compression for images on the web. "
+                "It supports both lossy and lossless compression, as well as transparency and animation. "
+                "WebP files are typically 25-35% smaller than JPEG and PNG while maintaining comparable quality. "
+                "Ideal for web applications where bandwidth and loading speed are critical.");
+        description->SetAlignment(TextAlignment::Left);
+        //description->SetTextWrapping(true);
+        description->SetFontSize(11);
+        container->AddChild(description);
+
+        // Image Display Area
+        auto webpImage = std::make_shared<UltraCanvasImageElement>("WEBPImage", 1703, 20, 140, 450, 350);
+        webpImage->LoadFromFile("media/images/Kindigs-1953-Corvette-TwelveAir.webp");
+        webpImage->SetFitMode(ImageFitMode::Contain);
+        webpImage->SetBorders(1.0f, Color(200, 200, 200, 255));
+        webpImage->SetBackgroundColor(Color(240, 240, 240, 255));
+
+        // ✨ Hand cursor and clickable
+        webpImage->SetMousePointer(MousePointer::Hand);
+        webpImage->SetClickable(true);
+        webpImage->onClick = []() {
+            ShowFullSizeImageViewer("media/images/Kindigs-1953-Corvette-TwelveAir.webp");
+        };
+
+        container->AddChild(webpImage);
+
+        // Performance Metrics Panel
+//        auto perfPanel = std::make_shared<UltraCanvasLabel>("WEBPPerf", 1704, 490, 140, 440, 120);
+//        perfPanel->SetText(MeasureImagePerformance("media/Kindigs-1953-Corvette-TwelveAir.webp"));
+//        perfPanel->SetAlignment(TextAlignment::Left);
+//        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
+//        perfPanel->SetBorders(1.0f);
+//        perfPanel->SetPadding(10.0f);
+//        perfPanel->SetFontSize(10);
+//        container->AddChild(perfPanel);
+
+        // Metadata Panel
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("WEBPMetadata", 1705, 490, 140, 440, 180);
+        metadataPanel->SetText(ExtractImageMetadata("media/images/Kindigs-1953-Corvette-TwelveAir.webp"));
+        metadataPanel->SetAlignment(TextAlignment::Left);
+        metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
+        metadataPanel->SetBorders(1.0f);
+        metadataPanel->SetPadding(10.0f);
+        metadataPanel->SetFontSize(10);
+        container->AddChild(metadataPanel);
+
+        // Format Options Panel
+        auto optionsPanel = std::make_shared<UltraCanvasLabel>("WEBPOptions", 1706, 490, 400, 440, 90);
+        optionsPanel->SetText(
+                "Format Options:\n"
+                "• Compression: Lossy/Lossless\n"
+                "• Quality Range: 0-100\n"
+                "• Alpha Channel: Supported\n"
+                "• Animation: Supported\n"
+                "• Metadata: EXIF, XMP, ICC");
+        optionsPanel->SetAlignment(TextAlignment::Left);
+        optionsPanel->SetBackgroundColor(Color(255, 250, 245, 255));
+        optionsPanel->SetBorders(1.0f);
+        optionsPanel->SetPadding(10.0f);
+        optionsPanel->SetFontSize(10);
+        container->AddChild(optionsPanel);
+
+        // Format Info
+        auto formatInfo = CreateImageInfoLabel("WEBPFormatInfo", 20, 500,
+                                               "WEBP (Web Picture Format)",
+                                               "• Google's modern format\n"
+                                               "• 25-35% smaller than JPEG/PNG\n"
+                                               "• Lossy and lossless modes\n"
+                                               "• Transparency and animation\n"
+                                               "• Ideal for: web images, responsive design\n"
+                                               "• Wide browser support");
+        container->AddChild(formatInfo);
+
+        return container;
+    }
+
+// ===== HEIF FORMAT EXAMPLES =====
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateHEIFExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("HEIFDemoPage", 1800, 0, 0, 950, 800);
+        container->SetBackgroundColor(Color(255, 255, 255, 255));
+
+        // Page Title
+        auto title = std::make_shared<UltraCanvasLabel>("HEIFTitle", 1801, 10, 10, 400, 35);
+        title->SetText("HEIF/HEIC Format Demonstration");
+        title->SetFontSize(18);
+        title->SetFontWeight(FontWeight::Bold);
+        title->SetTextColor(Color(255, 140, 0, 255));
+        title->SetAutoResize(true);
+        container->AddChild(title);
+
+        // Format Description
+        auto description = std::make_shared<UltraCanvasLabel>("HEIFDesc", 1802, 10, 50, 930, 80);
+        description->SetText(
+                "HEIF/HEIC (High Efficiency Image Format) is an image container format based on HEVC (H.265) video compression. "
+                "It provides superior compression efficiency compared to JPEG while maintaining high image quality. "
+                "HEIF supports features like image sequences, transparency, depth maps, and HDR. "
+                "This format is used by default on Apple devices since iOS 11 and macOS High Sierra.");
+        description->SetAlignment(TextAlignment::Left);
+        //description->SetTextWrapping(true);
+        description->SetFontSize(11);
+        container->AddChild(description);
+
+        // Image Display Area
+        auto heifImage = std::make_shared<UltraCanvasImageElement>("HEIFImage", 1803, 20, 140, 450, 350);
+        heifImage->LoadFromFile("media/images/fantasycutemonster.heif");
+        heifImage->SetFitMode(ImageFitMode::Contain);
+        heifImage->SetBorders(1.0f, Color(200, 200, 200, 255));
+        heifImage->SetBackgroundColor(Color(240, 240, 240, 255));
+
+        // ✨ Hand cursor and clickable
+        heifImage->SetMousePointer(MousePointer::Hand);
+        heifImage->SetClickable(true);
+        heifImage->onClick = []() {
+            ShowFullSizeImageViewer("media/images/fantasycutemonster.heif");
+        };
+
+        container->AddChild(heifImage);
+
+        // Performance Metrics Panel
+//        auto perfPanel = std::make_shared<UltraCanvasLabel>("HEIFPerf", 1804, 490, 140, 440, 120);
+//        perfPanel->SetText(MeasureImagePerformance("media/fantasycutemonster.heif"));
+//        perfPanel->SetAlignment(TextAlignment::Left);
+//        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
+//        perfPanel->SetBorders(1.0f);
+//        perfPanel->SetPadding(10.0f);
+//        perfPanel->SetFontSize(10);
+//        container->AddChild(perfPanel);
+
+        // Metadata Panel
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("HEIFMetadata", 1805, 490, 140, 440, 180);
+        metadataPanel->SetText(ExtractImageMetadata("media/images/fantasycutemonster.heif"));
+        metadataPanel->SetAlignment(TextAlignment::Left);
+        metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
+        metadataPanel->SetBorders(1.0f);
+        metadataPanel->SetPadding(10.0f);
+        metadataPanel->SetFontSize(10);
+        container->AddChild(metadataPanel);
+
+        // Format Options Panel
+        auto optionsPanel = std::make_shared<UltraCanvasLabel>("HEIFOptions", 1806, 490, 400, 440, 90);
+        optionsPanel->SetText(
+                "Format Options:\n"
+                "• Compression: HEVC-based\n"
+                "• Quality: High efficiency\n"
+                "• Alpha Channel: Supported\n"
+                "• Image Sequences: Supported\n"
+                "• Depth Maps: Supported\n"
+                "• HDR: 10-bit support");
+        optionsPanel->SetAlignment(TextAlignment::Left);
+        optionsPanel->SetBackgroundColor(Color(255, 250, 245, 255));
+        optionsPanel->SetBorders(1.0f);
+        optionsPanel->SetPadding(10.0f);
+        optionsPanel->SetFontSize(10);
+        container->AddChild(optionsPanel);
+
+        // Format Info
+        auto formatInfo = CreateImageInfoLabel("HEIFFormatInfo", 20, 500,
+                                               "HEIF (High Efficiency Image Format)",
+                                               "• HEVC-based compression\n"
+                                               "• 50% smaller than JPEG\n"
+                                               "• HDR and depth map support\n"
+                                               "• Image sequences\n"
+                                               "• Ideal for: mobile photography\n"
+                                               "• Default on Apple devices");
+        container->AddChild(formatInfo);
+
+        return container;
+    }
+
+// ===== GIF FORMAT EXAMPLES =====
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGIFExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("GIFDemoPage", 2000, 0, 0, 950, 800);
+        container->SetBackgroundColor(Color(255, 255, 255, 255));
+
+        // Page Title
+        auto title = std::make_shared<UltraCanvasLabel>("GIFTitle", 2001, 10, 10, 400, 35);
+        title->SetText("GIF Format Demonstration");
+        title->SetFontSize(18);
+        title->SetFontWeight(FontWeight::Bold);
+        title->SetTextColor(Color(138, 43, 226, 255));
+        title->SetAutoResize(true);
+        container->AddChild(title);
+
+        // Format Description
+        auto description = std::make_shared<UltraCanvasLabel>("GIFDesc", 2002, 10, 50, 930, 80);
+        description->SetText(
+                "GIF (Graphics Interchange Format) is one of the oldest image formats, introduced in 1987. "
+                "It supports animation and transparency through 8-bit indexed color (256 colors max). "
+                "While limited in color depth, GIF remains popular for simple animations, logos, and icons. "
+                "Modern formats like AVIF and WebP offer better quality and smaller file sizes for animations, "
+                "but GIF maintains universal compatibility across all platforms and browsers.");
+        description->SetAlignment(TextAlignment::Left);
+        //description->SetTextWrapping(true);
+        description->SetFontSize(11);
+        container->AddChild(description);
+
+        // Image Display Area (animated GIF generated from fordGT.jpg)
+        auto gifImage = std::make_shared<UltraCanvasImageElement>("GIFImage", 2003, 20, 140, 450, 350);
+        // Note: In real implementation, would generate animated GIF from fordGT.jpg
+        gifImage->LoadFromFile("media/images/images/fordGT_animated.gif");
+        gifImage->SetFitMode(ImageFitMode::Contain);
+        gifImage->SetBorders(1.0f, Color(200, 200, 200, 255));
+        gifImage->SetBackgroundColor(Color(240, 240, 240, 255));
+
+        // ✨ Hand cursor and clickable
+        gifImage->SetMousePointer(MousePointer::Hand);
+        gifImage->SetClickable(true);
+        gifImage->onClick = []() {
+            ShowFullSizeImageViewer("media/images/fordGT_animated.gif");
+        };
+
+        container->AddChild(gifImage);
+
+        // Performance Metrics Panel
+//        auto perfPanel = std::make_shared<UltraCanvasLabel>("GIFPerf", 2004, 490, 140, 440, 120);
+//        perfPanel->SetText(
+//                "Performance Metrics (×100):\n"
+//                "Load Time: ~150ms\n"
+//                "Display Time: ~80ms\n"
+//                "Animation: 24 FPS\n"
+//                "Note: Generated from fordGT.jpg");
+//        perfPanel->SetAlignment(TextAlignment::Left);
+//        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
+//        perfPanel->SetBorders(1.0f);
+//        perfPanel->SetPadding(10.0f);
+//        perfPanel->SetFontSize(10);
+//        container->AddChild(perfPanel);
+
+        // Metadata Panel
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("GIFMetadata", 2005, 490, 140, 440, 180);
+        metadataPanel->SetText(
+                "Format Metadata:\n"
+                "File Size: Variable (animation-dependent)\n"
+                "Color Depth: 8-bit (256 colors)\n"
+                "Frames: Multiple (animation)\n"
+                "Transparency: 1-bit (on/off)\n"
+                "Loop: Infinite support");
+        metadataPanel->SetAlignment(TextAlignment::Left);
+        metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
+        metadataPanel->SetBorders(1.0f);
+        metadataPanel->SetPadding(10.0f);
+        metadataPanel->SetFontSize(10);
+        container->AddChild(metadataPanel);
+
+        // Format Options Panel
+        auto optionsPanel = std::make_shared<UltraCanvasLabel>("GIFOptions", 2006, 490, 400, 440, 90);
+        optionsPanel->SetText(
+                "Format Options:\n"
+                "• Compression: LZW (lossless)\n"
+                "• Color Palette: 256 colors max\n"
+                "• Transparency: 1-bit alpha\n"
+                "• Animation: Multi-frame support\n"
+                "• Interlacing: Progressive display\n"
+                "• Loop Count: Configurable");
+        optionsPanel->SetAlignment(TextAlignment::Left);
+        optionsPanel->SetBackgroundColor(Color(255, 250, 245, 255));
+        optionsPanel->SetBorders(1.0f);
+        optionsPanel->SetPadding(10.0f);
+        optionsPanel->SetFontSize(10);
+        container->AddChild(optionsPanel);
+
+        // Format Info
+        auto formatInfo = CreateImageInfoLabel("GIFFormatInfo", 20, 500,
+                                               "GIF (Graphics Interchange Format)",
+                                               "• Introduced in 1987\n"
+                                               "• 256 color limitation\n"
+                                               "• Animation support\n"
+                                               "• 1-bit transparency\n"
+                                               "• Ideal for: simple animations, icons\n"
+                                               "• Universal compatibility");
+        container->AddChild(formatInfo);
+
+        return container;
+    }
+
+// ===== TIFF FORMAT EXAMPLES =====
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTIFFExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("TIFFDemoPage", 2100, 0, 0, 950, 800);
+        container->SetBackgroundColor(Color(255, 255, 255, 255));
+
+        // Page Title
+        auto title = std::make_shared<UltraCanvasLabel>("TIFFTitle", 2101, 10, 10, 400, 35);
+        title->SetText("TIFF Format Demonstration");
+        title->SetFontSize(18);
+        title->SetFontWeight(FontWeight::Bold);
+        title->SetTextColor(Color(184, 134, 11, 255));
+        title->SetAutoResize(true);
+        container->AddChild(title);
+
+        // Format Description
+        auto description = std::make_shared<UltraCanvasLabel>("TIFFDesc", 2102, 10, 50, 930, 80);
+        description->SetText(
+                "TIFF (Tagged Image File Format) is a flexible, adaptable file format for handling images and data. "
+                "It's widely used in professional photography, desktop publishing, and archival applications. "
+                "TIFF supports multiple compression schemes (including none), various color depths, and metadata. "
+                "While file sizes are typically large, TIFF preserves maximum image quality and detail, "
+                "making it ideal for professional workflows and archival purposes.");
+        description->SetAlignment(TextAlignment::Left);
+        //description->SetTextWrapping(true);
+        description->SetFontSize(11);
+        container->AddChild(description);
+
+        // Image Display Area (converted from artist.jpg)
+        auto tiffImage = std::make_shared<UltraCanvasImageElement>("TIFFImage", 2103, 20, 140, 450, 350);
+        // Note: In real implementation, would convert artist.jpg to TIFF
+        tiffImage->LoadFromFile("media/images/artist_converted.tiff");
+        tiffImage->SetFitMode(ImageFitMode::Contain);
+        tiffImage->SetBorders(1.0f, Color(200, 200, 200, 255));
+        tiffImage->SetBackgroundColor(Color(240, 240, 240, 255));
+
+        // ✨ Hand cursor and clickable
+        tiffImage->SetMousePointer(MousePointer::Hand);
+        tiffImage->SetClickable(true);
+        tiffImage->onClick = []() {
+            ShowFullSizeImageViewer("media/images/artist_converted.tiff");
+        };
+
+        container->AddChild(tiffImage);
+
+        // Performance Metrics Panel
+//        auto perfPanel = std::make_shared<UltraCanvasLabel>("TIFFPerf", 2104, 490, 140, 440, 120);
+//        perfPanel->SetText(
+//                "Performance Metrics (×100):\n"
+//                "Load Time: ~200ms (uncompressed)\n"
+//                "Display Time: ~90ms\n"
+//                "Save Time: ~250ms\n"
+//                "Note: Converted from artist.jpg\n"
+//                "Compression: LZW");
+//        perfPanel->SetAlignment(TextAlignment::Left);
+//        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
+//        perfPanel->SetBorders(1.0f);
+//        perfPanel->SetPadding(10.0f);
+//        perfPanel->SetFontSize(10);
+//        container->AddChild(perfPanel);
+
+        // Metadata Panel
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("TIFFMetadata", 2105, 490, 140, 440, 180);
+        metadataPanel->SetText(
+                "Format Metadata:\n"
+                "File Size: Large (uncompressed)\n"
+                "Color Depth: Up to 32-bit\n"
+                "Resolution: DPI metadata\n"
+                "Layers: Multi-page support\n"
+                "EXIF: Full metadata support\n"
+                "ICC Profiles: Color management");
+        metadataPanel->SetAlignment(TextAlignment::Left);
+        metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
+        metadataPanel->SetBorders(1.0f);
+        metadataPanel->SetPadding(10.0f);
+        metadataPanel->SetFontSize(10);
+        container->AddChild(metadataPanel);
+
+        // Format Options Panel
+        auto optionsPanel = std::make_shared<UltraCanvasLabel>("TIFFOptions", 2106, 490, 400, 440, 90);
+        optionsPanel->SetText(
+                "Format Options:\n"
+                "• Compression: None, LZW, ZIP, JPEG\n"
+                "• Color Depth: 8/16/32-bit\n"
+                "• Alpha Channel: Supported\n"
+                "• Multi-page: Multiple images\n"
+                "• Metadata: Extensive EXIF/IPTC\n"
+                "• Color Profiles: ICC support");
+        optionsPanel->SetAlignment(TextAlignment::Left);
+        optionsPanel->SetBackgroundColor(Color(255, 250, 245, 255));
+        optionsPanel->SetBorders(1.0f);
+        optionsPanel->SetPadding(10.0f);
+        optionsPanel->SetFontSize(10);
+        container->AddChild(optionsPanel);
+
+        // Format Info
+        auto formatInfo = CreateImageInfoLabel("TIFFFormatInfo", 20, 500,
+                                               "TIFF (Tagged Image File Format)",
+                                               "• Professional standard\n"
+                                               "• Lossless quality preservation\n"
+                                               "• Extensive metadata support\n"
+                                               "• Multi-page capability\n"
+                                               "• Ideal for: archival, professional photo\n"
+                                               "• Large file sizes");
+        container->AddChild(formatInfo);
+
+        return container;
+    }
+
+// ===== BMP FORMAT EXAMPLES =====
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBMPExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("BMPDemoPage", 2200, 0, 0, 950, 800);
+        container->SetBackgroundColor(Color(255, 255, 255, 255));
+
+        // Page Title
+        auto title = std::make_shared<UltraCanvasLabel>("BMPTitle", 2201, 10, 10, 400, 35);
+        title->SetText("BMP Format Demonstration");
+        title->SetFontSize(18);
+        title->SetFontWeight(FontWeight::Bold);
+        title->SetTextColor(Color(0, 128, 128, 255));
+        container->AddChild(title);
+
+        // Format Description
+        auto description = std::make_shared<UltraCanvasLabel>("BMPDesc", 2202, 10, 50, 930, 80);
+        description->SetText(
+                "BMP (Bitmap) is Microsoft's native image format for Windows. "
+                "It's one of the simplest image formats, typically storing uncompressed pixel data. "
+                "BMP files are large but offer maximum compatibility with Windows applications and fast loading. "
+                "While rarely used for web or mobile applications due to large file sizes, "
+                "BMP remains useful for Windows-specific applications and as an intermediate format.");
+        description->SetAlignment(TextAlignment::Left);
+        //description->SetTextWrapping(true);
+        description->SetFontSize(11);
+        container->AddChild(description);
+
+        // Image Display Area (converted from fantasy.jpg)
+        auto bmpImage = std::make_shared<UltraCanvasImageElement>("BMPImage", 2203, 20, 140, 450, 350);
+        // Note: In real implementation, would convert fantasy.jpg to BMP
+        bmpImage->LoadFromFile("media/images/fantasy_converted.bmp");
+        bmpImage->SetFitMode(ImageFitMode::Contain);
+        bmpImage->SetBorders(1.0f, Color(200, 200, 200, 255));
+        bmpImage->SetBackgroundColor(Color(240, 240, 240, 255));
+
+        // ✨ Hand cursor and clickable
+        bmpImage->SetMousePointer(MousePointer::Hand);
+        bmpImage->SetClickable(true);
+        bmpImage->onClick = []() {
+            ShowFullSizeImageViewer("media/images/fantasy_converted.bmp");
+        };
+
+        container->AddChild(bmpImage);
+
+        // Performance Metrics Panel
+//        auto perfPanel = std::make_shared<UltraCanvasLabel>("BMPPerf", 2204, 490, 140, 440, 120);
+//        perfPanel->SetText(
+//                "Performance Metrics (×100):\n"
+//                "Load Time: ~50ms (very fast)\n"
+//                "Display Time: ~40ms\n"
+//                "Save Time: ~60ms\n"
+//                "Note: Converted from fantasy.jpg\n"
+//                "Fastest format for read/write");
+//        perfPanel->SetAlignment(TextAlignment::Left);
+//        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
+//        perfPanel->SetBorders(1.0f);
+//        perfPanel->SetPadding(10.0f);
+//        perfPanel->SetFontSize(10);
+//        container->AddChild(perfPanel);
+
+        // Metadata Panel
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("BMPMetadata", 2205, 490, 140, 440, 180);
+        metadataPanel->SetText(
+                "Format Metadata:\n"
+                "File Size: Very large (uncompressed)\n"
+                "Color Depth: Up to 32-bit\n"
+                "Channels: RGB/RGBA\n"
+                "Compression: Usually none\n"
+                "Metadata: Minimal\n"
+                "Resolution: DPI info available");
+        metadataPanel->SetAlignment(TextAlignment::Left);
+        metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
+        metadataPanel->SetBorders(1.0f);
+        metadataPanel->SetPadding(10.0f);
+        metadataPanel->SetFontSize(10);
+        container->AddChild(metadataPanel);
+
+        // Format Options Panel
+        auto optionsPanel = std::make_shared<UltraCanvasLabel>("BMPOptions", 2206, 490, 400, 440, 90);
+        optionsPanel->SetText(
+                "Format Options:\n"
+                "• Compression: None (typical), RLE\n"
+                "• Color Depth: 1/4/8/16/24/32-bit\n"
+                "• Alpha Channel: Optional (32-bit)\n"
+                "• Color Profiles: Limited support\n"
+                "• Metadata: Very minimal\n"
+                "• Compatibility: Maximum on Windows");
+        optionsPanel->SetAlignment(TextAlignment::Left);
+        optionsPanel->SetBackgroundColor(Color(255, 250, 245, 255));
+        optionsPanel->SetBorders(1.0f);
+        optionsPanel->SetPadding(10.0f);
+        optionsPanel->SetFontSize(10);
+        container->AddChild(optionsPanel);
+
+        // Format Info
+        auto formatInfo = CreateImageInfoLabel("BMPFormatInfo", 20, 500,
+                                               "BMP (Bitmap)",
+                                               "• Windows native format\n"
+                                               "• Typically uncompressed\n"
+                                               "• Very large file sizes\n"
+                                               "• Fast read/write operations\n"
+                                               "• Ideal for: Windows apps, temp files\n"
+                                               "• Maximum Windows compatibility");
+        container->AddChild(formatInfo);
+
+        return container;
+    }
 
 } // namespace UltraCanvas

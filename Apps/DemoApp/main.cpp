@@ -14,6 +14,7 @@
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
+//#include "UltraCanvasCDRPlugin.h"
 
 // OS-specific initialization if needed
 #ifdef _WIN32
@@ -107,7 +108,7 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
             HandleFatalError("Failed to initialize UltraCanvas application");
             return false;
         }
-
+//        RegisterCDRPlugin();
         std::cout << "✓ UltraCanvas framework initialized successfully" << std::endl;
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Framework initialization failed: ") + e.what());

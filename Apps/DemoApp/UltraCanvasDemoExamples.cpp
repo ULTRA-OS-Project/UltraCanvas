@@ -149,6 +149,7 @@ namespace UltraCanvas {
         title->SetText("Bitmap Graphics Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
+        title->SetAutoResize(true);
         container->AddChild(title);
 
         auto placeholder = std::make_shared<UltraCanvasLabel>("BitmapPlaceholder", 1502, 20, 50, 800, 400);
@@ -230,7 +231,7 @@ namespace UltraCanvas {
 //        auto container = std::make_shared<UltraCanvasContainer>("MarkdownExamples", 1900, 0, 0, 1020, 780);
 
         auto text = std::make_shared<UltraCanvasMarkdownDisplay>("MarkDownText", 1201, 0, 0, 1026, 785);
-        text->SetMarkdownText(LoadFile("assets/MarkdownExample.md"));
+        text->SetMarkdownText(LoadFile("media/MarkdownExample.md"));
         MarkdownStyle style = MarkdownStyle::Default();
         style.fontSize = 12;
         text->SetStyle(style);
@@ -487,6 +488,86 @@ namespace UltraCanvas {
                               "✅ Multi-frame document handling\n"
                               "✅ Error handling and reporting\n"
                               "✅ Status code translation");
+        MarkdownStyle style = MarkdownStyle::Default();
+        style.fontSize = 12;
+        text->SetStyle(style);
+        container->AddChild(text);
+
+        return container;
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSmartHomeExamples() {
+        auto container = std::make_shared<UltraCanvasContainer>("smarthome", 1200, 0, 0, 1020, 1280);
+
+        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("smarthomeText", 1201, 10, 10, 1000, 1250);
+        text->SetMarkdownText("## UltraCanvas Smart Home Module - Feature Overview\n"
+                              "\n"
+                              "### Dashboard Panel (`SmartHomePanel`)\n"
+                              "\n"
+                              "-   **Device Organization** - Automatic grouping by room with collapsible sections\n"
+                              "-   **Scene Cards** - Quick-activate preset configurations (e.g., \"Movie Night\", \"Good Morning\")\n"
+                              "-   **Filtering & Search** - Filter by room, device category, or search by name\n"
+                              "-   **Multiple Layouts** - Grid, list, compact, or detailed view modes\n"
+                              "-   **Real-time Status** - Online/offline indicators, battery levels, last-seen timestamps\n"
+                              "\n"
+                              "### Device Cards (`SmartHomeDeviceCard`)\n"
+                              "\n"
+                              "-   Visual cards showing device name, room, status, and quick toggle switch\n"
+                              "-   Color-coded icons by category (lights=amber, locks=green, sensors=blue, etc.)\n"
+                              "-   Long-press for device settings, tap for quick control\n"
+                              "-   Battery indicator for wireless devices\n"
+                              "\n"
+                              "### Device-Specific Controls\n"
+                              "\n"
+                              "Widget\n"
+                              "\n"
+                              "Features\n"
+                              "\n"
+                              "**Light Control**\n"
+                              "\n"
+                              "On/off, brightness slider, color temperature (2700K-6500K), RGB color wheel, preset colors\n"
+                              "\n"
+                              "**Thermostat Control**\n"
+                              "\n"
+                              "Circular temperature dial, current/target temps, Heat/Cool/Auto/Eco modes, fan control, humidity display\n"
+                              "\n"
+                              "**Lock Control**\n"
+                              "\n"
+                              "Lock/unlock with animated icon, access log history, battery status, confirmation option\n"
+                              "\n"
+                              "**Blind Control**\n"
+                              "\n"
+                              "Position slider (0-100%), tilt angle, visual preview, Open/Stop/Close buttons\n"
+                              "\n"
+                              "**Sensor Display**\n"
+                              "\n"
+                              "Large value readout, unit display, 24h history graph, min/max tracking, threshold alerts\n"
+                              "\n"
+                              "### Dialogs & Wizards\n"
+                              "\n"
+                              "Dialog\n"
+                              "\n"
+                              "Purpose\n"
+                              "\n"
+                              "**Device Dialog**\n"
+                              "\n"
+                              "View/edit device name, room assignment, category; shows protocol, manufacturer, model\n"
+                              "\n"
+                              "**Pairing Wizard**\n"
+                              "\n"
+                              "Step-by-step: Select protocol → Search → Configure → Complete; supports Matter, Thread, Zigbee, Z-Wave, WiFi, Bluetooth\n"
+                              "\n"
+                              "**Scene Editor**\n"
+                              "\n"
+                              "Create/edit scenes with device selection and state configuration\n"
+                              "\n"
+                              "**Automation Editor**\n"
+                              "\n"
+                              "Build rules with triggers (time, device state, sunrise/sunset), conditions, and actions\n"
+                              "\n"
+                              "### Protocol Support\n"
+                              "\n"
+                              "Ready for integration with: **Matter**, **Thread**, **Zigbee**, **Z-Wave**, **WiFi**, **Bluetooth**");
         MarkdownStyle style = MarkdownStyle::Default();
         style.fontSize = 12;
         text->SetStyle(style);

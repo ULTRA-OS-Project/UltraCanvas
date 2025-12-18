@@ -228,7 +228,7 @@ namespace UltraCanvas {
             std::cout << "Desktop view" << std::endl;
         }));
 
-        flatMenu->AddItem(MenuItemData::Action("Tablet View", "assets/icons/tablet48px.png", []() {
+        flatMenu->AddItem(MenuItemData::Action("Tablet View", "media/icons/tablet48px.png", []() {
             std::cout << "Tablet view" << std::endl;
         }));
 

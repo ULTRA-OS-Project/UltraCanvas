@@ -131,7 +131,7 @@ namespace UltraCanvas {
         );
 
         // Path to SVG file (adjust this path to your actual SVG file location)
-        std::string svgFilePath = "assets/demo.svg";
+        std::string svgFilePath = "media/demo.svg";
 
         // Try to load from file, fallback to inline SVG if file not found
         if (!svgElement->LoadFromFile(svgFilePath)) {
@@ -207,9 +207,9 @@ namespace UltraCanvas {
         );
 
         // Try to load from file, fallback to inline SVG if file not found
-        svgElement2->LoadFromFile("assets/robot.svg");
+        svgElement2->LoadFromFile("media/robot.svg");
         // Create demo handler for click interaction
-        auto demoHandler2 = std::make_shared<SVGDemoHandler>("assets/robot.svg");
+        auto demoHandler2 = std::make_shared<SVGDemoHandler>("media/robot.svg");
 
         // Set click handler on the SVG element
         svgElement2->SetEventCallback([demoHandler2, svgContainer2](const UCEvent& event) {
@@ -243,9 +243,9 @@ namespace UltraCanvas {
         );
 
         // Try to load from file, fallback to inline SVG if file not found
-        svgElement3->LoadFromFile("assets/astronaut.svg");
+        svgElement3->LoadFromFile("media/astronaut.svg");
         // Create demo handler for click interaction
-        auto demoHandler3 = std::make_shared<SVGDemoHandler>("assets/astronaut.svg");
+        auto demoHandler3 = std::make_shared<SVGDemoHandler>("media/astronaut.svg");
 
         // Set click handler on the SVG element
         svgElement3->SetEventCallback([demoHandler3, svgContainer3](const UCEvent& event) {
@@ -279,9 +279,9 @@ namespace UltraCanvas {
         );
 
         // Try to load from file, fallback to inline SVG if file not found
-        svgElement4->LoadFromFile("assets/photo-camera.svg");
+        svgElement4->LoadFromFile("media/photo-camera.svg");
         // Create demo handler for click interaction
-        auto demoHandler4 = std::make_shared<SVGDemoHandler>("assets/photo-camera.svg");
+        auto demoHandler4 = std::make_shared<SVGDemoHandler>("media/photo-camera.svg");
 
         // Set click handler on the SVG element
         svgElement4->SetEventCallback([demoHandler4, svgContainer4](const UCEvent& event) {

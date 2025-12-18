@@ -69,23 +69,23 @@ namespace UltraCanvas {
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetStyle(ToolbarStyle::Standard)
                 .SetDimensions(20, currentY, 960, 48)
-                .AddButton("new", "", "assets/icons/new-icon.png", []() {
+                .AddButton("new", "", "media/icons/new-icon.png", []() {
                     std::cout << "New button clicked" << std::endl;
                 })
-                .AddButton("open", "", "assets/icons/open-icon.png", []() {
+                .AddButton("open", "", "media/icons/open-icon.png", []() {
                     std::cout << "Open button clicked" << std::endl;
                 })
-                .AddButton("save", "", "assets/icons/save-icon.png", []() {
+                .AddButton("save", "", "media/icons/save-icon.png", []() {
                     std::cout << "Save button clicked" << std::endl;
                 })
                 .AddSeparator()
-                .AddButton("cut", "", "assets/icons/cut-icon.png", []() {
+                .AddButton("cut", "", "media/icons/cut-icon.png", []() {
                     std::cout << "Cut button clicked" << std::endl;
                 })
-                .AddButton("copy", "", "assets/icons/copy-icon.png", []() {
+                .AddButton("copy", "", "media/icons/copy-icon.png", []() {
                     std::cout << "Copy button clicked" << std::endl;
                 })
-                .AddButton("paste", "", "assets/icons/paste-icon.png", []() {
+                .AddButton("paste", "", "media/icons/paste-icon.png", []() {
                     std::cout << "Paste button clicked" << std::endl;
                 })
                 .AddSeparator()
@@ -122,10 +122,10 @@ namespace UltraCanvas {
         dropdownToolbar->SetStyle(ToolbarStyle::Standard);
 
         // Add buttons and dropdowns
-        dropdownToolbar->AddButton("undo", "", "assets/icons/undo-icon.png", []() {
+        dropdownToolbar->AddButton("undo", "", "media/icons/undo-icon.png", []() {
             std::cout << "Undo clicked" << std::endl;
         });
-        dropdownToolbar->AddButton("redo", "", "assets/icons/redo-icon.png", []() {
+        dropdownToolbar->AddButton("redo", "", "media/icons/redo-icon.png", []() {
             std::cout << "Redo clicked" << std::endl;
         });
         dropdownToolbar->AddSeparator();
@@ -183,20 +183,20 @@ namespace UltraCanvas {
                 .SetStyle(ToolbarStyle::Flat)
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(20, currentY, 960, 48)
-                .AddButton("home", "", "assets/icons/home-icon.png", []() {
+                .AddButton("home", "", "media/icons/home-icon.png", []() {
                     std::cout << "Home clicked" << std::endl;
                 })
-                .AddButton("profile", "", "assets/icons/profile-icon.png", []() {
+                .AddButton("profile", "", "media/icons/profile-icon.png", []() {
                     std::cout << "Profile clicked" << std::endl;
                 })
-                .AddButton("settings", "", "assets/icons/settings.png", []() {
+                .AddButton("settings", "", "media/icons/settings.png", []() {
                     std::cout << "Settings clicked" << std::endl;
                 })
                 .AddFlexSpacer(1.0f)
-                .AddButton("notifications", "", "assets/icons/bell-icon.png", []() {
+                .AddButton("notifications", "", "media/icons/bell-icon.png", []() {
                     std::cout << "Notifications clicked" << std::endl;
                 })
-                .AddButton("messages", "", "assets/icons/envelope-icon.png", []() {
+                .AddButton("messages", "", "media/icons/envelope-icon.png", []() {
                     std::cout << "Messages clicked" << std::endl;
                 })
                 .Build();
@@ -304,9 +304,9 @@ namespace UltraCanvas {
                 .SetDimensions(20, currentY, 960, 58)
                 .AddLabel("clipboard", "Clipboard")
                 .AddSpacer(5)
-                .AddButton("cut", "", "assets/icons/cut-icon.png", []() {})
-                .AddButton("copy", "", "assets/icons/copy-icon.png", []() {})
-                .AddButton("paste", "", "assets/icons/paste-icon.png", []() {})
+                .AddButton("cut", "", "media/icons/cut-icon.png", []() {})
+                .AddButton("copy", "", "media/icons/copy-icon.png", []() {})
+                .AddButton("paste", "", "media/icons/paste-icon.png", []() {})
                 .AddSpacer(20)
                 .AddLabel("format", "Format")
                 .AddSpacer(5)
@@ -316,9 +316,9 @@ namespace UltraCanvas {
                 .AddSpacer(20)
                 .AddLabel("insert", "Insert")
                 .AddSpacer(5)
-                .AddButton("image", "", "assets/icons/image-icon.png", []() {})
-                .AddButton("table", "", "assets/icons/table-icon.png", []() {})
-                .AddButton("chart", "", "assets/icons/chart-icon.png", []() {})
+                .AddButton("image", "", "media/icons/image-icon.png", []() {})
+                .AddButton("table", "", "media/icons/table-icon.png", []() {})
+                .AddButton("chart", "", "media/icons/chart-icon.png", []() {})
                 .Build();
 
         mainContainer->AddChild(ribbonToolbar);

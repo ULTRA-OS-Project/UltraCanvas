@@ -510,7 +510,7 @@ namespace UltraCanvas {
         }
 
         void EnableUltraOSLogo(OverlayPosition position = OverlayPosition::BottomRight) {
-            overlayGraphic.imagePath = "assets/ultraos_logo.png";
+            overlayGraphic.imagePath = "media/ultraos_logo.png";
             overlayGraphic.position = position;
             overlayGraphic.opacity = 0.8f;
             overlayGraphic.scale = 1.0f;

@@ -201,7 +201,7 @@ namespace UltraCanvas {
         Grave = 0x0060,          // `
         LeftBracket = 0x005B,    // [
         Backslash = 0x005C,      // \
-    RightBracket = 0x005D,   // ]
+        RightBracket = 0x005D,   // ]
         Quote = 0x0027,          // '
 
         // Additional symbols

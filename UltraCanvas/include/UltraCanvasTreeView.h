@@ -224,6 +224,8 @@ public:
     // ===== RENDERING =====
     void Render(IRenderContext* ctx) override;
 
+    void SetBounds(const Rect2Di& bounds) override;
+
 // ==== WINDOW PROPAGATION =====
     void SetWindow(UltraCanvasWindowBase* win) override;
 
