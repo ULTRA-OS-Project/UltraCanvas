@@ -89,7 +89,7 @@ namespace UltraCanvas {
                     std::cout << "Paste button clicked" << std::endl;
                 })
                 .AddSeparator()
-                .AddFlexSpacer(1.0f)
+                .AddStretch(1.0f)
                 .AddLabel("status", "Ready")
                 .Build();
 
@@ -192,7 +192,7 @@ namespace UltraCanvas {
                 .AddButton("settings", "", "media/icons/settings.png", []() {
                     std::cout << "Settings clicked" << std::endl;
                 })
-                .AddFlexSpacer(1.0f)
+                .AddStretch(1.0f)
                 .AddButton("notifications", "", "media/icons/bell-icon.png", []() {
                     std::cout << "Notifications clicked" << std::endl;
                 })

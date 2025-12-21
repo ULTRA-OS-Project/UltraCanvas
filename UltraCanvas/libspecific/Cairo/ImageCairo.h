@@ -53,10 +53,11 @@ namespace UltraCanvas {
     private:
         int width = 0;
         int height = 0;
+        vips::VImage vImage;
+        std::string fileName;
 
     public:
         std::string errorMessage;
-        std::string fileName;
 
         // ===== CONSTRUCTORS =====
         UCImageVips() {};
@@ -64,6 +65,12 @@ namespace UltraCanvas {
 
         static std::shared_ptr<UCImageVips> Get(const std::string &path);
         static std::shared_ptr<UCImageVips> Load(const std::string &path);
+        static std::shared_ptr<UCImageVips> LoadFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint = "");
+        static std::shared_ptr<UCImageVips> LoadFromMemory(const std::vector<uint8_t>& data, const std::string& formatHint = "") {
+            return LoadFromMemory(data.data(), data.size(), formatHint);
+        };
+        static std::shared_ptr<UCImageVips> GetFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint = "");
+
         bool Save(const std::string &path) { return false; };
 
         std::shared_ptr<UCPixmapCairo> GetPixmap(int width = 0, int height = 0, ImageFitMode fitMode = ImageFitMode::Contain);

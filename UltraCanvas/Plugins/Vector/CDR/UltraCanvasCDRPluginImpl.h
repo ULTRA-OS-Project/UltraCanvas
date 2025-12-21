@@ -140,6 +140,10 @@ namespace UltraCanvas {
         void ApplyStyleToContext(IRenderContext* ctx, const CDRStyleState& style);
         void FillAndStroke(IRenderContext* ctx, const CDRStyleState& style);
 
+        std::string ParseGradientStyle(const librevenge::RVNGPropertyList& propList, const char* prefix);
+        std::shared_ptr<IPaintPattern> CreateGradientPattern(IRenderContext* ctx,
+                                                             const std::string& gradientId,
+                                                             const Rect2Df& bounds);
         // Style lookup helpers
         CDRParagraphStyle* GetParagraphStyle(const std::string& name);
         CDRCharacterStyle* GetCharacterStyle(const std::string& name);

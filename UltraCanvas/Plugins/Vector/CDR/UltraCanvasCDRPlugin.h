@@ -22,7 +22,34 @@
 
 namespace UltraCanvas {
 // ===== ULTRACANVAS CDR ELEMENT =====
+
     enum class CDRFitMode { FitNone, FitWidth, FitHeight, FitPage };
+
+    enum class CDRGradientType {
+        Linear,
+        Radial,
+        Conical
+    };
+
+    struct CDRGradient {
+        CDRGradientType type = CDRGradientType::Linear;
+        std::vector<GradientStop> stops;
+
+        // Linear gradient coordinates (normalized 0-1 or absolute)
+        float x1 = 0.0f, y1 = 0.0f;
+        float x2 = 1.0f, y2 = 0.0f;
+
+        // Radial gradient coordinates
+        float cx = 0.5f, cy = 0.5f;  // Center
+        float fx = 0.5f, fy = 0.5f;  // Focal point
+        float radius = 0.5f;
+
+        // Angle for linear/conical gradients (in degrees)
+        float angle = 0.0f;
+
+        // Coordinate space: true = objectBoundingBox, false = userSpaceOnUse
+        bool useObjectBounds = true;
+    };
 
 // ===== CDR DOCUMENT PAGE =====
     struct CDRPage {
@@ -35,7 +62,7 @@ namespace UltraCanvas {
     class CDRDocument {
     public:
         std::vector<CDRPage> pages;
-        std::map<std::string, std::vector<GradientStop>> gradients;
+        std::map<std::string, CDRGradient> gradients;
         std::map<std::string, std::vector<uint8_t>> images;
 
         float documentWidth = 0;
@@ -46,7 +73,6 @@ namespace UltraCanvas {
         bool IsValid() const { return !pages.empty(); }
         int GetPageCount() const { return static_cast<int>(pages.size()); }
     };
-
 // ===== CDR PARAGRAPH STYLE =====
     struct CDRParagraphStyle {
         std::string name;

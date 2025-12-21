@@ -163,6 +163,7 @@ namespace UltraCanvas {
         auto title = std::make_shared<UltraCanvasLabel>("CDRTitle", 5001, 10, 10, 600, 30);
         title->SetText("CorelDRAW CDR Graphics Demo - Click to View Fullscreen");
         title->SetFontSize(16);
+        title->SetAutoResize(true);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
@@ -221,7 +222,7 @@ namespace UltraCanvas {
 
         cdrContainer1->AddChild(cdrElement1);
         container->AddChild(cdrContainer1);
-
+/*
         // ===== CDR FILE 2 =====
         auto cdrContainer2 = std::make_shared<UltraCanvasContainer>("CDRContainer2", 5020, 340, 100, 300, 280);
         cdrContainer2->SetBackgroundColor(Colors::White);
@@ -259,7 +260,7 @@ namespace UltraCanvas {
 
         cdrContainer2->AddChild(cdrElement2);
         container->AddChild(cdrContainer2);
-
+*/
         // ===== CDR FILE 3 (CMX format) =====
 //        auto cdrContainer3 = std::make_shared<UltraCanvasContainer>("CDRContainer3", 5030, 660, 100, 300, 280);
 //        cdrContainer3->SetBackgroundColor(Colors::White);
@@ -299,7 +300,7 @@ namespace UltraCanvas {
 //        container->AddChild(cdrContainer3);
 
         // ===== SECOND ROW =====
-/*
+
         // ===== CDR FILE 4 =====
         auto cdrContainer4 = std::make_shared<UltraCanvasContainer>("CDRContainer4", 5040, 20, 400, 300, 280);
         cdrContainer4->SetBackgroundColor(Colors::White);
@@ -308,7 +309,7 @@ namespace UltraCanvas {
         auto cdrElement4 = std::make_shared<UltraCanvasCDRElement>("CDR4", 5041, 10, 10, 280, 220);
         cdrElement4->SetFitMode(CDRFitMode::FitPage);
 
-        std::string cdrFile4 = "media/cdr/brochure.cdr";
+        std::string cdrFile4 = "media/cdr/logo.cdr";
         cdrElement4->LoadFromFile(cdrFile4);
 
         // Page navigation for multi-page document
@@ -364,7 +365,7 @@ namespace UltraCanvas {
 
         cdrContainer4->AddChild(cdrElement4);
         container->AddChild(cdrContainer4);
-
+/*
         // ===== ZOOM DEMO (CDR FILE 5) =====
         auto cdrContainer5 = std::make_shared<UltraCanvasContainer>("CDRContainer5", 5050, 340, 400, 300, 280);
         cdrContainer5->SetBackgroundColor(Colors::White);

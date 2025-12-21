@@ -921,7 +921,7 @@ namespace UltraCanvas {
         return *this;
     }
 
-    UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::AddFlexSpacer(float stretch) {
+    UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::AddStretch(float stretch) {
         toolbar->AddStretch(stretch);
         return *this;
     }

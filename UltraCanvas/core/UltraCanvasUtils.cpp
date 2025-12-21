@@ -369,5 +369,52 @@ namespace UltraCanvas {
         return buffer.str();
     }
 
+// ===== BASE64 DECODING HELPER =====
+    std::vector<uint8_t> Base64Decode(const std::string& input) {
+        static const std::string base64Chars =
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+        std::vector<uint8_t> result;
+
+        if (input.empty()) {
+            return result;
+        }
+
+        // Build decode table
+        std::vector<int> decodeTable(256, -1);
+        for (size_t i = 0; i < base64Chars.size(); ++i) {
+            decodeTable[static_cast<unsigned char>(base64Chars[i])] = static_cast<int>(i);
+        }
+
+        // Calculate output size (approximate)
+        size_t inputLen = input.length();
+        size_t padding = 0;
+        if (inputLen >= 2) {
+            if (input[inputLen - 1] == '=') padding++;
+            if (input[inputLen - 2] == '=') padding++;
+        }
+        size_t outputLen = (inputLen / 4) * 3 - padding;
+        result.reserve(outputLen);
+
+        uint32_t buffer = 0;
+        int bitsCollected = 0;
+
+        for (char c : input) {
+            if (c == '=') break; // End of data
+            if (c == '\n' || c == '\r' || c == ' ' || c == '\t') continue; // Skip whitespace
+
+            int value = decodeTable[static_cast<unsigned char>(c)];
+            if (value < 0) continue; // Invalid character, skip
+
+            buffer = (buffer << 6) | static_cast<uint32_t>(value);
+            bitsCollected += 6;
+
+            if (bitsCollected >= 8) {
+                bitsCollected -= 8;
+                result.push_back(static_cast<uint8_t>((buffer >> bitsCollected) & 0xFF));
+            }
+        }
+
+        return result;
+    }
 }

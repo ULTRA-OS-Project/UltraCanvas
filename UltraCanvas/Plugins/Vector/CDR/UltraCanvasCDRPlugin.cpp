@@ -6,6 +6,7 @@
 
 #include "UltraCanvasCDRPlugin.h"
 #include "UltraCanvasCDRPluginImpl.h"
+#include "UltraCanvasUtils.h"
 #include <iostream>
 #include <fstream>
 #include <cmath>
@@ -96,8 +97,8 @@ namespace UltraCanvas {
                                             const char* prefix) {
         Color color = Colors::Black;
 
-        std::string colorKey = std::string(prefix) + ":color";
-        std::string opacityKey = std::string(prefix) + ":opacity";
+        std::string colorKey = std::string(prefix) + "-color";
+        std::string opacityKey = std::string(prefix) + "-opacity";
 
         const librevenge::RVNGProperty* colorProp = propList[colorKey.c_str()];
         if (colorProp) {
@@ -122,18 +123,22 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasCDRPainterImpl::ApplyStyleToContext(IRenderContext* ctx, const CDRStyleState& style) {
-        // Apply fill
-        if (style.hasFill) {
+        // Apply fill - handled in FillAndStroke with bounds
+        if (style.hasFill && style.fillGradientId.empty()) {
             Color fillColor = style.fillColor;
             fillColor.a = static_cast<uint8_t>(fillColor.a * style.fillOpacity * style.opacity);
             ctx->SetFillPaint(fillColor);
         }
 
-        // Apply stroke
-        if (style.hasStroke) {
+        // Apply stroke - handled in FillAndStroke with bounds for gradients
+        if (style.hasStroke && style.strokeGradientId.empty()) {
             Color strokeColor = style.strokeColor;
             strokeColor.a = static_cast<uint8_t>(strokeColor.a * style.strokeOpacity * style.opacity);
             ctx->SetStrokePaint(strokeColor);
+        }
+
+        // Apply stroke properties
+        if (style.hasStroke) {
             ctx->SetStrokeWidth(style.strokeWidth);
             ctx->SetLineCap(style.lineCap);
             ctx->SetLineJoin(style.lineJoin);
@@ -149,13 +154,99 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasCDRPainterImpl::FillAndStroke(IRenderContext* ctx, const CDRStyleState& style) {
+        // Get path bounds for gradient calculation
+        float bx = 0, by = 0, bw = 0, bh = 0;
+        ctx->GetPathExtents(bx, by, bw, bh);
+        Rect2Df bounds(bx, by, bw, bh);
+
         if (style.hasFill) {
+            if (!style.fillGradientId.empty()) {
+                // Apply gradient fill
+                auto gradientPattern = CreateGradientPattern(ctx, style.fillGradientId, bounds);
+                if (gradientPattern) {
+                    ctx->SetFillPaint(gradientPattern);
+                }
+            }
             ctx->FillPathPreserve();
         }
+
         if (style.hasStroke) {
+            if (!style.strokeGradientId.empty()) {
+                // Apply gradient stroke
+                auto gradientPattern = CreateGradientPattern(ctx, style.strokeGradientId, bounds);
+                if (gradientPattern) {
+                    ctx->SetStrokePaint(gradientPattern);
+                }
+            }
             ctx->StrokePathPreserve();
         }
+
         ctx->ClearPath();
+    }
+
+
+    std::shared_ptr<IPaintPattern> UltraCanvasCDRPainterImpl::CreateGradientPattern(
+            IRenderContext* ctx,
+            const std::string& gradientId,
+            const Rect2Df& bounds) {
+
+        auto it = document->gradients.find(gradientId);
+        if (it == document->gradients.end() || it->second.stops.empty()) {
+            return nullptr;
+        }
+
+        const CDRGradient& gradient = it->second;
+
+        if (gradient.type == CDRGradientType::Linear) {
+            float x1, y1, x2, y2;
+
+            if (gradient.useObjectBounds) {
+                // Transform normalized coordinates to object bounds
+                x1 = bounds.x + gradient.x1 * bounds.width;
+                y1 = bounds.y + gradient.y1 * bounds.height;
+                x2 = bounds.x + gradient.x2 * bounds.width;
+                y2 = bounds.y + gradient.y2 * bounds.height;
+            } else {
+                x1 = gradient.x1;
+                y1 = gradient.y1;
+                x2 = gradient.x2;
+                y2 = gradient.y2;
+            }
+
+            return ctx->CreateLinearGradientPattern(x1, y1, x2, y2, gradient.stops);
+
+        } else if (gradient.type == CDRGradientType::Radial) {
+            float cx, cy, r;
+            float fx, fy;
+
+            if (gradient.useObjectBounds) {
+                cx = bounds.x + gradient.cx * bounds.width;
+                cy = bounds.y + gradient.cy * bounds.height;
+                fx = bounds.x + gradient.fx * bounds.width;
+                fy = bounds.y + gradient.fy * bounds.height;
+                r = gradient.radius * std::max(bounds.width, bounds.height);
+            } else {
+                cx = gradient.cx;
+                cy = gradient.cy;
+                fx = gradient.fx;
+                fy = gradient.fy;
+                r = gradient.radius;
+            }
+
+            // CreateRadialGradientPattern(fx, fy, r1, cx, cy, r2, stops)
+            // Inner circle at focal point with radius 0, outer at center with full radius
+            return ctx->CreateRadialGradientPattern(fx, fy, 0.0f, cx, cy, r, gradient.stops);
+
+        } else if (gradient.type == CDRGradientType::Conical) {
+            // Conical gradients are not directly supported - approximate with radial
+            float cx = bounds.x + gradient.cx * bounds.width;
+            float cy = bounds.y + gradient.cy * bounds.height;
+            float r = gradient.radius * std::max(bounds.width, bounds.height);
+
+            return ctx->CreateRadialGradientPattern(cx, cy, 0.0f, cx, cy, r, gradient.stops);
+        }
+
+        return nullptr;
     }
 
 // ===== STYLE LOOKUP HELPERS =====
@@ -452,6 +543,8 @@ namespace UltraCanvas {
 
 // ===== STYLE INTERFACE =====
 
+// ===== STYLE INTERFACE =====
+
     void UltraCanvasCDRPainterImpl::setStyle(const librevenge::RVNGPropertyList& propList) {
         CDRStyleState style = styleStack.top();
 
@@ -461,12 +554,14 @@ namespace UltraCanvas {
             std::string fillType = fillProp->getStr().cstr();
             if (fillType == "none") {
                 style.hasFill = false;
+                style.fillGradientId.clear();
             } else if (fillType == "solid") {
                 style.hasFill = true;
                 style.fillColor = ParseColor(propList, "draw:fill");
+                style.fillGradientId.clear();
             } else if (fillType == "gradient") {
                 style.hasFill = true;
-                // TODO: Parse gradient - store gradient ID
+                style.fillGradientId = ParseGradientStyle(propList, "draw:fill");
             }
         }
 
@@ -476,9 +571,14 @@ namespace UltraCanvas {
             std::string strokeType = strokeProp->getStr().cstr();
             if (strokeType == "none") {
                 style.hasStroke = false;
+                style.strokeGradientId.clear();
             } else if (strokeType == "solid" || strokeType == "dash") {
                 style.hasStroke = true;
                 style.strokeColor = ParseColor(propList, "svg:stroke");
+                style.strokeGradientId.clear();
+            } else if (strokeType == "gradient") {
+                style.hasStroke = true;
+                style.strokeGradientId = ParseGradientStyle(propList, "svg:stroke");
             }
         }
 
@@ -551,6 +651,154 @@ namespace UltraCanvas {
         styleStack.push(style);
     }
 
+
+    std::string UltraCanvasCDRPainterImpl::ParseGradientStyle(const librevenge::RVNGPropertyList& propList,
+                                                              const char* prefix) {
+        CDRGradient gradient;
+
+        // Parse gradient type
+        std::string gradientTypeKey = std::string(prefix) + "-gradient-type";
+        const librevenge::RVNGProperty* typeProp = propList["draw:fill-gradient-name"];
+        if (!typeProp) {
+            typeProp = propList["draw:gradient-style"];
+        }
+
+        if (typeProp) {
+            std::string typeStr = typeProp->getStr().cstr();
+            if (typeStr == "linear") {
+                gradient.type = CDRGradientType::Linear;
+            } else if (typeStr == "radial" || typeStr == "ellipsoid") {
+                gradient.type = CDRGradientType::Radial;
+            } else if (typeStr == "axial") {
+                gradient.type = CDRGradientType::Linear;
+            } else if (typeStr == "square" || typeStr == "rectangular") {
+                gradient.type = CDRGradientType::Radial;
+            } else if (typeStr == "conical") {
+                gradient.type = CDRGradientType::Conical;
+            }
+        }
+
+        // Parse gradient angle
+        const librevenge::RVNGProperty* angleProp = propList["draw:gradient-angle"];
+        if (!angleProp) angleProp = propList["draw:angle"];
+        if (angleProp) {
+            gradient.angle = static_cast<float>(angleProp->getDouble());
+        }
+
+        // Parse gradient center for radial gradients
+        const librevenge::RVNGProperty* cxProp = propList["draw:gradient-cx"];
+        const librevenge::RVNGProperty* cyProp = propList["draw:gradient-cy"];
+        if (cxProp) {
+            gradient.cx = static_cast<float>(cxProp->getDouble());
+            if (gradient.cx > 1.0f) gradient.cx /= 100.0f; // Convert percentage
+        }
+        if (cyProp) {
+            gradient.cy = static_cast<float>(cyProp->getDouble());
+            if (gradient.cy > 1.0f) gradient.cy /= 100.0f;
+        }
+        gradient.fx = gradient.cx;
+        gradient.fy = gradient.cy;
+
+        // Parse gradient border/radius
+        const librevenge::RVNGProperty* borderProp = propList["draw:gradient-border"];
+        if (borderProp) {
+            float border = static_cast<float>(borderProp->getDouble());
+            if (border > 1.0f) border /= 100.0f;
+            gradient.radius = 0.5f * (1.0f - border);
+        }
+
+        // Calculate linear gradient coordinates from angle
+        if (gradient.type == CDRGradientType::Linear) {
+            float radians = gradient.angle * static_cast<float>(M_PI) / 180.0f;
+            gradient.x1 = 0.5f - 0.5f * std::cos(radians);
+            gradient.y1 = 0.5f - 0.5f * std::sin(radians);
+            gradient.x2 = 0.5f + 0.5f * std::cos(radians);
+            gradient.y2 = 0.5f + 0.5f * std::sin(radians);
+        }
+
+        // Parse gradient stops from start/end colors
+        const librevenge::RVNGProperty* startColorProp = propList["draw:gradient-start-color"];
+        const librevenge::RVNGProperty* endColorProp = propList["draw:gradient-end-color"];
+        const librevenge::RVNGProperty* startIntensityProp = propList["draw:gradient-start-intensity"];
+        const librevenge::RVNGProperty* endIntensityProp = propList["draw:gradient-end-intensity"];
+
+        Color startColor = Colors::White;
+        Color endColor = Colors::Black;
+        float startIntensity = 1.0f;
+        float endIntensity = 1.0f;
+
+        if (startColorProp) {
+            startColor = ParseColorValue(startColorProp->getStr().cstr());
+        }
+        if (endColorProp) {
+            endColor = ParseColorValue(endColorProp->getStr().cstr());
+        }
+        if (startIntensityProp) {
+            startIntensity = static_cast<float>(startIntensityProp->getDouble());
+            if (startIntensity > 1.0f) startIntensity /= 100.0f;
+        }
+        if (endIntensityProp) {
+            endIntensity = static_cast<float>(endIntensityProp->getDouble());
+            if (endIntensity > 1.0f) endIntensity /= 100.0f;
+        }
+
+        // Apply intensity to colors
+        startColor.r = static_cast<uint8_t>(startColor.r * startIntensity);
+        startColor.g = static_cast<uint8_t>(startColor.g * startIntensity);
+        startColor.b = static_cast<uint8_t>(startColor.b * startIntensity);
+
+        endColor.r = static_cast<uint8_t>(endColor.r * endIntensity);
+        endColor.g = static_cast<uint8_t>(endColor.g * endIntensity);
+        endColor.b = static_cast<uint8_t>(endColor.b * endIntensity);
+
+        gradient.stops.push_back(GradientStop(0.0f, startColor));
+        gradient.stops.push_back(GradientStop(1.0f, endColor));
+
+        // Parse additional gradient stops if available (svg:stop elements)
+        const librevenge::RVNGPropertyListVector* stopsList = propList.child("svg:linearGradient");
+        if (!stopsList) {
+            stopsList = propList.child("svg:radialGradient");
+        }
+        if (stopsList && stopsList->count() > 0) {
+            gradient.stops.clear();
+            for (unsigned long i = 0; i < stopsList->count(); ++i) {
+                const librevenge::RVNGPropertyList& stop = (*stopsList)[i];
+                float offset = 0.0f;
+                Color stopColor = Colors::Black;
+
+                const librevenge::RVNGProperty* offsetProp = stop["svg:offset"];
+                if (offsetProp) {
+                    offset = static_cast<float>(offsetProp->getDouble());
+                    if (offset > 1.0f) offset /= 100.0f;
+                }
+
+                const librevenge::RVNGProperty* stopColorProp = stop["svg:stop-color"];
+                if (stopColorProp) {
+                    stopColor = ParseColorValue(stopColorProp->getStr().cstr());
+                }
+
+                const librevenge::RVNGProperty* stopOpacityProp = stop["svg:stop-opacity"];
+                if (stopOpacityProp) {
+                    stopColor.a = static_cast<uint8_t>(255.0f * stopOpacityProp->getDouble());
+                }
+
+                gradient.stops.push_back(GradientStop(offset, stopColor));
+            }
+        }
+
+        // Sort stops by position
+        std::sort(gradient.stops.begin(), gradient.stops.end(),
+                  [](const GradientStop& a, const GradientStop& b) {
+                      return a.position < b.position;
+                  });
+
+        // Generate unique gradient ID and store
+        std::string gradientId = "gradient_" + std::to_string(document->gradients.size());
+        document->gradients[gradientId] = gradient;
+
+        return gradientId;
+    }
+
 // ===== DRAWING INTERFACE =====
 
     void UltraCanvasCDRPainterImpl::drawRectangle(const librevenge::RVNGPropertyList& propList) {
@@ -613,7 +861,7 @@ namespace UltraCanvas {
 
         CDRStyleState style = styleStack.top();
 
-        AddDrawCommand([=](IRenderContext* ctx) {
+        AddDrawCommand([=, this](IRenderContext* ctx) {
             ctx->PushState();
             ApplyStyleToContext(ctx, style);
 
@@ -648,7 +896,7 @@ namespace UltraCanvas {
 
         CDRStyleState style = styleStack.top();
 
-        AddDrawCommand([=](IRenderContext* ctx) {
+        AddDrawCommand([=, this](IRenderContext* ctx) {
             ctx->PushState();
             ApplyStyleToContext(ctx, style);
 
@@ -750,7 +998,7 @@ namespace UltraCanvas {
 
         CDRStyleState style = styleStack.top();
 
-        AddDrawCommand([=](IRenderContext* ctx) {
+        AddDrawCommand([=, this](IRenderContext* ctx) {
             ctx->PushState();
             ApplyStyleToContext(ctx, style);
 
@@ -944,35 +1192,143 @@ namespace UltraCanvas {
         float width = ParseUnit(propList["svg:width"]);
         float height = ParseUnit(propList["svg:height"]);
 
-        // Get image data
+        // Get image data (base64 encoded)
         std::string base64Data = dataProp->getStr().cstr();
 
-        AddDrawCommand([=](IRenderContext* ctx) {
-            // TODO: Decode base64 and render image
-            // For now, draw placeholder rectangle
+        // Get MIME type if available
+        std::string mimeType = "image/png"; // Default
+        const librevenge::RVNGProperty* mimeProp = propList["librevenge:mime-type"];
+        if (mimeProp) {
+            mimeType = mimeProp->getStr().cstr();
+        }
+
+        // Parse transform properties
+        bool mirrorHorizontal = false;
+        bool mirrorVertical = false;
+        float rotation = 0.0f;
+
+        const librevenge::RVNGProperty* mirrorHProp = propList["draw:mirror-horizontal"];
+        if (mirrorHProp) {
+            std::string val = mirrorHProp->getStr().cstr();
+            mirrorHorizontal = (val == "true" || val == "1");
+        }
+
+        const librevenge::RVNGProperty* mirrorVProp = propList["draw:mirror-vertical"];
+        if (mirrorVProp) {
+            std::string val = mirrorVProp->getStr().cstr();
+            mirrorVertical = (val == "true" || val == "1");
+        }
+
+        const librevenge::RVNGProperty* rotateProp = propList["librevenge:rotate"];
+        if (rotateProp) {
+            rotation = static_cast<float>(rotateProp->getDouble());
+        }
+
+        // Decode base64 data
+        std::vector<uint8_t> imageData = Base64Decode(base64Data);
+
+        if (imageData.empty()) {
+            // Fallback to placeholder if decode fails
+            AddDrawCommand([=](IRenderContext* ctx) {
+                ctx->PushState();
+                ctx->SetFillPaint(Color(200, 200, 200, 255));
+                ctx->SetStrokePaint(Color(100, 100, 100, 255));
+                ctx->SetStrokeWidth(1.0f);
+                ctx->ClearPath();
+                ctx->Rect(x, y, width, height);
+                ctx->FillPathPreserve();
+                ctx->StrokePathPreserve();
+                ctx->ClearPath();
+                ctx->SetTextPaint(Colors::Black);
+                ctx->SetFontFace("Sans", FontWeight::Normal, FontSlant::Normal);
+                ctx->SetFontSize(10.0f);
+                ctx->DrawText("IMG?", Point2Di(static_cast<int>(x + width / 2 - 12),
+                                               static_cast<int>(y + height / 2 + 4)));
+                ctx->PopState();
+            });
+            return;
+        }
+
+        // Store image data in document for later rendering
+        std::string imageId = "embedded_img_" + std::to_string(document->images.size());
+        document->images[imageId] = imageData;
+
+        // Capture parameters for draw command
+        float imgX = x;
+        float imgY = y;
+        float imgW = width;
+        float imgH = height;
+        std::vector<uint8_t> capturedImageData = imageData;
+        bool capturedMirrorH = mirrorHorizontal;
+        bool capturedMirrorV = mirrorVertical;
+        float capturedRotation = rotation;
+
+        AddDrawCommand([=, this](IRenderContext* ctx) {
             ctx->PushState();
-            ctx->SetFillPaint(Color(200, 200, 200, 255));
-            ctx->SetStrokePaint(Color(100, 100, 100, 255));
-            ctx->SetStrokeWidth(1.0f);
 
-            ctx->ClearPath();
-            ctx->Rect(x, y, width, height);
-            ctx->FillPathPreserve();
-            ctx->StrokePathPreserve();
-            ctx->ClearPath();
+            // Calculate center point for transforms
+            float centerX = imgX + imgW / 2.0f;
+            float centerY = imgY + imgH / 2.0f;
 
-            // Draw "IMG" text in center
-            ctx->SetTextPaint(Colors::Black);
-            ctx->SetFontFace("Sans", FontWeight::Normal, FontSlant::Normal);
-            ctx->SetFontSize(12.0f);
-            ctx->DrawText("IMG", Point2Di(static_cast<int>(x + width/2 - 10),
-                                          static_cast<int>(y + height/2 + 4)));
+            // Apply transforms around center point
+            bool hasTransform = (capturedRotation != 0.0f || capturedMirrorH || capturedMirrorV);
+
+            if (hasTransform) {
+                // Translate to center
+                ctx->Translate(centerX, centerY);
+
+                // Apply rotation (convert degrees to radians)
+                if (capturedRotation != 0.0f) {
+                    float radians = capturedRotation * static_cast<float>(M_PI) / 180.0f;
+                    ctx->Rotate(radians);
+                }
+
+                // Apply mirroring via scale
+                float scaleX = capturedMirrorH ? -1.0f : 1.0f;
+                float scaleY = capturedMirrorV ? -1.0f : 1.0f;
+                if (capturedMirrorH || capturedMirrorV) {
+                    ctx->Scale(scaleX, scaleY);
+                }
+
+                // Translate back (draw centered at origin)
+                ctx->Translate(-imgW / 2.0f, -imgH / 2.0f);
+            }
+
+            // Load image from memory and draw it
+            auto image = UCImage::GetFromMemory(capturedImageData.data(),
+                                                capturedImageData.size());
+            if (image && image->IsValid()) {
+                if (hasTransform) {
+                    // Draw at origin since we translated
+                    ctx->DrawImage(*image, 0, 0, imgW, imgH, ImageFitMode::Fill);
+                } else {
+                    ctx->DrawImage(*image, imgX, imgY, imgW, imgH, ImageFitMode::Fill);
+                }
+            } else {
+                // Fallback placeholder if image loading fails
+                float drawX = hasTransform ? 0 : imgX;
+                float drawY = hasTransform ? 0 : imgY;
+
+                ctx->SetFillPaint(Color(220, 220, 220, 255));
+                ctx->SetStrokePaint(Color(150, 150, 150, 255));
+                ctx->SetStrokeWidth(1.0f);
+                ctx->ClearPath();
+                ctx->Rect(drawX, drawY, imgW, imgH);
+                ctx->FillPathPreserve();
+                ctx->StrokePathPreserve();
+                ctx->ClearPath();
+
+                // Draw X pattern to indicate broken image
+                ctx->SetStrokePaint(Color(180, 180, 180, 255));
+                ctx->DrawLine(drawX, drawY, drawX + imgW, drawY + imgH);
+                ctx->DrawLine(drawX + imgW, drawY, drawX, drawY + imgH);
+            }
 
             ctx->PopState();
         });
     }
 
-// ===== GROUP INTERFACE =====
+    // ===== GROUP INTERFACE =====
 
     void UltraCanvasCDRPainterImpl::openGroup(const librevenge::RVNGPropertyList& propList) {
         // Push style state

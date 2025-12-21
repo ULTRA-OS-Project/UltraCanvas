@@ -619,7 +619,7 @@ namespace UltraCanvas {
                                                      std::function<void(const std::string&)> onSelect = nullptr);
         UltraCanvasToolbarBuilder& AddSeparator(const std::string& id = "");
         UltraCanvasToolbarBuilder& AddSpacer(int size = 8);
-        UltraCanvasToolbarBuilder& AddFlexSpacer(float stretch = 1.0f);
+        UltraCanvasToolbarBuilder& AddStretch(float stretch = 1.0f);
         UltraCanvasToolbarBuilder& AddLabel(const std::string& id, const std::string& text);
 
         std::shared_ptr<UltraCanvasToolbar> Build();

@@ -115,6 +115,19 @@ namespace UltraCanvas {
         return im;
     }
 
+    std::shared_ptr<UCImageVips> UCImageVips::GetFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint) {
+        char filename[200];
+        snprintf(filename, sizeof(filename), ":mem:%p:%d", data, dataSize);
+        std::shared_ptr<UCImageVips> im = g_ImagesCache.GetFromCache(filename);
+        if (!im) {
+            im = UCImageVips::LoadFromMemory(data, dataSize, formatHint);
+            if (im->IsValid()) {
+                g_ImagesCache.AddToCache(filename, im);
+            }
+        }
+        return im;
+    }
+
     std::shared_ptr<UCImageVips> UCImageVips::Load(const std::string &imagePath) {
         auto result = std::make_shared<UCImageVips>(imagePath);
         try {
@@ -124,6 +137,39 @@ namespace UltraCanvas {
         } catch (vips::VError& err) {
             std::cerr << "UCImage::Load: Failed Failed to load image for " << imagePath << " Err:" << err.what() << std::endl;
             result->errorMessage = std::string("Failed to load image ") + imagePath + " Err:" + err.what();
+        }
+
+        return result;
+    }
+
+// With these two functions:
+    std::shared_ptr<UCImageVips> UCImageVips::LoadFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint) {
+        char filename[200];
+        snprintf(filename, sizeof(filename), ":mem:%p:%d", data, dataSize);
+        auto result = std::make_shared<UCImageVips>(filename);
+
+        if (!data || dataSize == 0) {
+            result->errorMessage = "Invalid data: null pointer or zero size";
+            return result;
+        }
+
+        try {
+            // Create VImage from memory buffer
+            // formatHint can be empty for auto-detection, or specify format like "png", "jpeg", etc.
+            vips::VImage vipsImage;
+            if (formatHint.empty()) {
+                vipsImage = vips::VImage::new_from_buffer(data, dataSize, "");
+            } else {
+                vipsImage = vips::VImage::new_from_buffer(data, dataSize, "",
+                                                          vips::VImage::option()->set("loader", formatHint.c_str()));
+            }
+
+            result->width = vipsImage.width();
+            result->height = vipsImage.height();
+            result->vImage = vipsImage;
+        } catch (vips::VError& err) {
+            std::cerr << "UCImageVips::LoadFromMemory: Failed to load image from buffer. Err:" << err.what() << std::endl;
+            result->errorMessage = std::string("Failed to load image from memory buffer. Err:") + err.what();
         }
 
         return result;
@@ -159,6 +205,10 @@ namespace UltraCanvas {
             return nullptr;
         }
         try {
+            if (vImage.get_image()) {
+                return CreatePixmapFromVImage(vImage);
+            }
+
             auto options = vips::VImage::option();
             switch (fitMode) {
                 case ImageFitMode::Fill:
