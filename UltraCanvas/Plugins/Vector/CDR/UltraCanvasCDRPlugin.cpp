@@ -840,7 +840,7 @@ namespace UltraCanvas {
             ApplyStyleToContext(ctx, style);
 
             ctx->ClearPath();
-            ctx->Ellipse(cx, cy, rx, ry, 0, 0, 2 * M_PI);
+            ctx->Ellipse(cx, cy, rx, ry, 0);
 
             FillAndStroke(ctx, style);
             ctx->PopState();

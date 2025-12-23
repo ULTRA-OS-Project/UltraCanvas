@@ -279,7 +279,7 @@ namespace UltraCanvas {
         virtual void Arc(float cx, float cy, float radius, float startAngle, float endAngle) = 0;
         virtual void ArcTo(float x1, float y1, float x2, float y2, float radius) = 0;
         virtual void Circle(float x, float y, float radius) = 0;
-        virtual void Ellipse(float cx, float cy, float rx, float ry, float rotation, float startAngle, float endAngle) = 0;
+        virtual void Ellipse(float cx, float cy, float rx, float ry, float rotation) = 0;
         virtual void Rect(float x, float y, float width, float height) = 0;
         virtual void RoundedRect(float x, float y, float width, float height, float radius) = 0;
 

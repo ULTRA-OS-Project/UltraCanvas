@@ -225,10 +225,6 @@ std::shared_ptr<VectorElement> VectorRect::Clone() const {
     return clone;
 }
 
-void VectorRect::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
-
 // VectorCircle
 Rect2Df VectorCircle::GetBoundingBox() const {
     Rect2Df bbox{
@@ -247,10 +243,6 @@ std::shared_ptr<VectorElement> VectorCircle::Clone() const {
     auto clone = std::make_shared<VectorCircle>(*this);
     clone->Parent.reset();
     return clone;
-}
-
-void VectorCircle::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
 }
 
 // VectorEllipse
@@ -273,10 +265,6 @@ std::shared_ptr<VectorElement> VectorEllipse::Clone() const {
     return clone;
 }
 
-void VectorEllipse::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
-
 // VectorLine
 Rect2Df VectorLine::GetBoundingBox() const {
     float minX = std::min(Start.x, End.x);
@@ -295,10 +283,6 @@ std::shared_ptr<VectorElement> VectorLine::Clone() const {
     auto clone = std::make_shared<VectorLine>(*this);
     clone->Parent.reset();
     return clone;
-}
-
-void VectorLine::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
 }
 
 // VectorPolyline
@@ -330,10 +314,6 @@ std::shared_ptr<VectorElement> VectorPolyline::Clone() const {
     return clone;
 }
 
-void VectorPolyline::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
-
 // VectorPolygon
 Rect2Df VectorPolygon::GetBoundingBox() const {
     if (Points.empty()) {
@@ -363,10 +343,6 @@ std::shared_ptr<VectorElement> VectorPolygon::Clone() const {
     return clone;
 }
 
-void VectorPolygon::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
-
 // ===== VECTOR PATH IMPLEMENTATION =====
 
 Rect2Df VectorPath::GetBoundingBox() const {
@@ -385,10 +361,6 @@ std::shared_ptr<VectorElement> VectorPath::Clone() const {
     auto clone = std::make_shared<VectorPath>(*this);
     clone->Parent.reset();
     return clone;
-}
-
-void VectorPath::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
 }
 
 void VectorPath::AddCommand(const PathCommand& cmd) {
@@ -686,10 +658,6 @@ std::shared_ptr<VectorElement> VectorText::Clone() const {
     return clone;
 }
 
-void VectorText::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
-
 void VectorText::SetText(const std::string& text) {
     Spans.clear();
     TextSpanData span;
@@ -723,9 +691,6 @@ std::shared_ptr<VectorElement> VectorTextPath::Clone() const {
     return clone;
 }
 
-void VectorTextPath::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
 
 // ===== CONTAINER ELEMENTS IMPLEMENTATION =====
 
@@ -768,9 +733,6 @@ std::shared_ptr<VectorElement> VectorGroup::Clone() const {
     return clone;
 }
 
-void VectorGroup::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
 
 void VectorGroup::AddChild(std::shared_ptr<VectorElement> child) {
     if (child) {
@@ -824,9 +786,6 @@ std::shared_ptr<VectorElement> VectorSymbol::Clone() const {
     return clone;
 }
 
-void VectorSymbol::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
 
 // VectorUse
 Rect2Df VectorUse::GetBoundingBox() const {
@@ -843,9 +802,6 @@ std::shared_ptr<VectorElement> VectorUse::Clone() const {
     return clone;
 }
 
-void VectorUse::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
 
 // ===== SPECIAL ELEMENTS IMPLEMENTATION =====
 
@@ -864,10 +820,6 @@ std::shared_ptr<VectorElement> VectorImage::Clone() const {
     return clone;
 }
 
-void VectorImage::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
-
 // ===== DEFINITION ELEMENTS IMPLEMENTATION =====
 
 // VectorGradient
@@ -877,9 +829,6 @@ std::shared_ptr<VectorElement> VectorGradient::Clone() const {
     return clone;
 }
 
-void VectorGradient::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
 
 // VectorPattern
 std::shared_ptr<VectorElement> VectorPattern::Clone() const {
@@ -894,9 +843,6 @@ std::shared_ptr<VectorElement> VectorPattern::Clone() const {
     return clone;
 }
 
-void VectorPattern::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
 
 // VectorFilter
 std::shared_ptr<VectorElement> VectorFilter::Clone() const {
@@ -905,9 +851,6 @@ std::shared_ptr<VectorElement> VectorFilter::Clone() const {
     return clone;
 }
 
-void VectorFilter::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
 
 // VectorClipPath
 Rect2Df VectorClipPath::GetBoundingBox() const {
@@ -944,9 +887,6 @@ std::shared_ptr<VectorElement> VectorClipPath::Clone() const {
     return clone;
 }
 
-void VectorClipPath::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
 
 // VectorMask
 std::shared_ptr<VectorElement> VectorMask::Clone() const {
@@ -962,9 +902,6 @@ std::shared_ptr<VectorElement> VectorMask::Clone() const {
     return clone;
 }
 
-void VectorMask::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
 
 // VectorMarker
 std::shared_ptr<VectorElement> VectorMarker::Clone() const {
@@ -979,9 +916,6 @@ std::shared_ptr<VectorElement> VectorMarker::Clone() const {
     return clone;
 }
 
-void VectorMarker::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
 
 // VectorLayer
 std::shared_ptr<VectorElement> VectorLayer::Clone() const {
@@ -998,9 +932,6 @@ std::shared_ptr<VectorElement> VectorLayer::Clone() const {
     return clone;
 }
 
-void VectorLayer::Accept(IVectorVisitor* visitor) {
-    visitor->Visit(this);
-}
 
 // ===== VECTOR DOCUMENT IMPLEMENTATION =====
 
@@ -1483,7 +1414,7 @@ Rect2Df CalculateTextBounds(const std::vector<TextSpanData>& spans, const TextSt
     return Rect2Df{0, 0, totalWidth, maxHeight};
 }
 
-std::vector<Point2Df> PathToPolygon(const PathData& path, float tolerance) {
+std::vector<Point2Df> PathToPolygon(const PathData& path, float tolerance = 0.0) {
     VectorPath tempPath;
     tempPath.Path = path;
     return tempPath.Flatten(tolerance);

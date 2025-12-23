@@ -224,7 +224,7 @@ namespace UltraCanvas {
         void RelBezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y) override;
         void Arc(float cx, float cy, float radius, float startAngle, float endAngle) override;
         void ArcTo(float x1, float y1, float x2, float y2, float radius) override;
-        void Ellipse(float cx, float cy, float rx, float ry, float rotation, float startAngle, float endAngle) override;
+        void Ellipse(float cx, float cy, float rx, float ry, float rotation) override;
         void Rect(float x, float y, float width, float height) override;
         void RoundedRect(float x, float y, float width, float height, float radius) override;
         void Circle(float x, float y, float radius) override;

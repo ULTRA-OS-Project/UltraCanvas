@@ -1277,13 +1277,12 @@ namespace UltraCanvas {
         cairo_line_to(cairo, x2, y2);
     }
 
-    void RenderContextCairo::Ellipse(float cx, float cy, float rx, float ry, float rotation,
-                 float startAngle, float endAngle) {
+    void RenderContextCairo::Ellipse(float cx, float cy, float rx, float ry, float rotation) {
         cairo_save(cairo);
         cairo_translate(cairo, cx, cy);
         cairo_rotate(cairo, rotation);
         cairo_scale(cairo, rx, ry);
-        cairo_arc(cairo, 0, 0, 1, startAngle, endAngle);
+        cairo_arc(cairo, 0, 0, 1, 0, 2 * M_PI);
         cairo_restore(cairo);
     }
 
