@@ -674,8 +674,8 @@ namespace UltraCanvas {
                               [this]() { return CreateCDRVectorExamples(); });
 
         vectorBuilder.AddItem("xarimages", "XAR Images", "XAR Image display and manipulation",
-                              ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateXARVectorExamples(); });
 
         vectorBuilder.AddItem("drawing", "Drawing Surface", "Vector drawing and primitives",
                               ImplementationStatus::PartiallyImplemented,

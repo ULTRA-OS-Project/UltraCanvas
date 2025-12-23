@@ -836,7 +836,7 @@ namespace UltraCanvas {
         // Image Display Area (animated GIF generated from fordGT.jpg)
         auto gifImage = std::make_shared<UltraCanvasImageElement>("GIFImage", 2003, 20, 140, 450, 350);
         // Note: In real implementation, would generate animated GIF from fordGT.jpg
-        gifImage->LoadFromFile("media/images/images/fordGT_animated.gif");
+        gifImage->LoadFromFile("media/images/Cat.gif");
         gifImage->SetFitMode(ImageFitMode::Contain);
         gifImage->SetBorders(1.0f, Color(200, 200, 200, 255));
         gifImage->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -845,7 +845,7 @@ namespace UltraCanvas {
         gifImage->SetMousePointer(MousePointer::Hand);
         gifImage->SetClickable(true);
         gifImage->onClick = []() {
-            ShowFullSizeImageViewer("media/images/fordGT_animated.gif");
+            ShowFullSizeImageViewer("media/images/Cat.gif");
         };
 
         container->AddChild(gifImage);
@@ -867,13 +867,7 @@ namespace UltraCanvas {
 
         // Metadata Panel
         auto metadataPanel = std::make_shared<UltraCanvasLabel>("GIFMetadata", 2005, 490, 140, 440, 180);
-        metadataPanel->SetText(
-                "Format Metadata:\n"
-                "File Size: Variable (animation-dependent)\n"
-                "Color Depth: 8-bit (256 colors)\n"
-                "Frames: Multiple (animation)\n"
-                "Transparency: 1-bit (on/off)\n"
-                "Loop: Infinite support");
+        metadataPanel->SetText(ExtractImageMetadata("media/images/Cat.gif"));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
         metadataPanel->SetBorders(1.0f);
@@ -942,7 +936,7 @@ namespace UltraCanvas {
         // Image Display Area (converted from artist.jpg)
         auto tiffImage = std::make_shared<UltraCanvasImageElement>("TIFFImage", 2103, 20, 140, 450, 350);
         // Note: In real implementation, would convert artist.jpg to TIFF
-        tiffImage->LoadFromFile("media/images/artist_converted.tiff");
+        tiffImage->LoadFromFile("media/images/Cat.tiff");
         tiffImage->SetFitMode(ImageFitMode::Contain);
         tiffImage->SetBorders(1.0f, Color(200, 200, 200, 255));
         tiffImage->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -973,15 +967,8 @@ namespace UltraCanvas {
 //        container->AddChild(perfPanel);
 
         // Metadata Panel
-        auto metadataPanel = std::make_shared<UltraCanvasLabel>("TIFFMetadata", 2105, 490, 140, 440, 180);
-        metadataPanel->SetText(
-                "Format Metadata:\n"
-                "File Size: Large (uncompressed)\n"
-                "Color Depth: Up to 32-bit\n"
-                "Resolution: DPI metadata\n"
-                "Layers: Multi-page support\n"
-                "EXIF: Full metadata support\n"
-                "ICC Profiles: Color management");
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("TIFFMetadata", 2005, 490, 140, 440, 180);
+        metadataPanel->SetText(ExtractImageMetadata("media/images/Cat.tiff"));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
         metadataPanel->SetBorders(1.0f);
@@ -1049,7 +1036,7 @@ namespace UltraCanvas {
         // Image Display Area (converted from fantasy.jpg)
         auto bmpImage = std::make_shared<UltraCanvasImageElement>("BMPImage", 2203, 20, 140, 450, 350);
         // Note: In real implementation, would convert fantasy.jpg to BMP
-        bmpImage->LoadFromFile("media/images/fantasy_converted.bmp");
+        bmpImage->LoadFromFile("media/images/Cat.bmp");
         bmpImage->SetFitMode(ImageFitMode::Contain);
         bmpImage->SetBorders(1.0f, Color(200, 200, 200, 255));
         bmpImage->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -1081,14 +1068,7 @@ namespace UltraCanvas {
 
         // Metadata Panel
         auto metadataPanel = std::make_shared<UltraCanvasLabel>("BMPMetadata", 2205, 490, 140, 440, 180);
-        metadataPanel->SetText(
-                "Format Metadata:\n"
-                "File Size: Very large (uncompressed)\n"
-                "Color Depth: Up to 32-bit\n"
-                "Channels: RGB/RGBA\n"
-                "Compression: Usually none\n"
-                "Metadata: Minimal\n"
-                "Resolution: DPI info available");
+        metadataPanel->SetText(ExtractImageMetadata("media/images/Cat.bmp"));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
         metadataPanel->SetBorders(1.0f);

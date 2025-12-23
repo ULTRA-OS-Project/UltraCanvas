@@ -811,7 +811,7 @@ namespace UltraCanvas {
 
         CDRStyleState style = styleStack.top();
 
-        AddDrawCommand([=](IRenderContext* ctx) {
+        AddDrawCommand([=,this](IRenderContext* ctx) {
             ctx->PushState();
             ApplyStyleToContext(ctx, style);
 
@@ -835,7 +835,7 @@ namespace UltraCanvas {
 
         CDRStyleState style = styleStack.top();
 
-        AddDrawCommand([=](IRenderContext* ctx) {
+        AddDrawCommand([=,this](IRenderContext* ctx) {
             ctx->PushState();
             ApplyStyleToContext(ctx, style);
 
@@ -1679,7 +1679,7 @@ namespace UltraCanvas {
 
             case CDRFitMode::FitNone:
             default:
-                scaleX = scaleY = zoomLevel;
+                scaleX = scaleY = scaleLevel;
                 break;
         }
 
@@ -1707,8 +1707,8 @@ namespace UltraCanvas {
         fitMode = mode;
     }
 
-    void UltraCanvasCDRRenderer::SetZoom(float zoom) {
-        zoomLevel = std::clamp(zoom, 0.1f, 10.0f);
+    void UltraCanvasCDRRenderer::SetScale(float s) {
+        scaleLevel = std::clamp(s, 0.1f, 10.0f);
     }
 
     void UltraCanvasCDRRenderer::RenderPage(IRenderContext* ctx, int pageIndex) {
@@ -1782,7 +1782,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasCDRElement::SetZoom(float zoom) {
-        cdrRenderer.SetZoom(zoom);
+        cdrRenderer.SetScale(zoom);
         RequestRedraw();
     }
 

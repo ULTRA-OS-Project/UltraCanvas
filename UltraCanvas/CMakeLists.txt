@@ -18,6 +18,8 @@ message(STATUS "========================================")
 # ===== OPTIONS =====
 option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
+option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" ON)
+option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" OFF)
 option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
 
@@ -172,6 +174,9 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
     ${ULTRACANVAS_TEXT_SOURCES}
     ${ULTRACANVAS_CHARTS_SOURCES}
+        Plugins/Vector/UltraCanvasXARConverter.h
+        Plugins/Vector/UltraCanvasVectorElement.h
+        Plugins/Vector/UltraCanvasVectorElement.cpp
 )
 
 # ===== BUILD CORE LIBRARY =====
@@ -288,6 +293,28 @@ if(ULTRACANVAS_PLUGIN_CDR)
     endif()
 else()
     message(STATUS "  [−] CDR Plugin - SKIPPED (disabled by option)")
+endif()
+
+if(ULTRACANVAS_PLUGIN_XAR)
+    add_subdirectory(Plugins/Vector/XAR)
+    if(ULTRACANVAS_XAR_PLUGIN_FOUND)
+        list(APPEND ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_XAR_PLUGIN_TARGET})
+        list(APPEND ULTRACANVAS_PLUGIN_INCLUDE_DIRS ${ULTRACANVAS_XAR_PLUGIN_INCLUDE_DIR})
+        message(STATUS "  [✓] XAR Plugin - ENABLED")
+    endif()
+else()
+    message(STATUS "  [−] XAR Plugin - SKIPPED (disabled by option)")
+endif()
+
+if(ULTRACANVAS_PLUGIN_VECTOR)
+    add_subdirectory(Plugins/Vector)
+    if(ULTRACANVAS_VECTOR_PLUGIN_FOUND)
+        list(APPEND ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_VECTOR_PLUGIN_TARGET})
+        list(APPEND ULTRACANVAS_PLUGIN_INCLUDE_DIRS ${ULTRACANVAS_VECTOR_PLUGIN_INCLUDE_DIR})
+        message(STATUS "  [✓] VECTOR Plugin - ENABLED")
+    endif()
+else()
+    message(STATUS "  [−] VECTOR Plugin - SKIPPED (disabled by option)")
 endif()
 
 # PDF Plugin

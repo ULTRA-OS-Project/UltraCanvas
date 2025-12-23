@@ -163,8 +163,8 @@ namespace UltraCanvas {
         bool IsLoaded() const { return document && document->IsValid(); }
         int GetPageCount() const { return document ? document->GetPageCount() : 0; }
         void SetViewport(float w, float h);
-        void SetZoom(float zoom);
-        float GetZoom() const { return zoomLevel; }
+        void SetScale(float scale);
+        float GetScale() const { return scaleLevel; }
         void SetOffset(float x, float y);
         Point2Df GetOffset() const { return offset; }
 
@@ -173,7 +173,7 @@ namespace UltraCanvas {
         std::shared_ptr<CDRDocument> document;
         float viewWidth = 0;
         float viewHeight = 0;
-        float zoomLevel = 1.0f;
+        float scaleLevel = 1.0f;
         Point2Df offset = {0, 0};
         CDRFitMode fitMode = CDRFitMode::FitPage;
 
@@ -202,7 +202,7 @@ namespace UltraCanvas {
         int GetCurrentPage() const { return currentPageIndex; }
         void SetCurrentPage(int page);
         void SetZoom(float zoom);
-        float GetZoom() const { return cdrRenderer.GetZoom(); }
+        float GetZoom() const { return cdrRenderer.GetScale(); }
         void SetOffset(float x, float y);
         Point2Df GetOffset() const { return cdrRenderer.GetOffset(); }
         void SetFitMode(CDRFitMode mode);

@@ -276,6 +276,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateLayoutExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateCDRVectorExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateXARVectorExamples();
 
         // ===== APPLICATION LIFECYCLE =====
         void Run();

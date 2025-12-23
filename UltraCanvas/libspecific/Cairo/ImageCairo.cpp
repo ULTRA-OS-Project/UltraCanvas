@@ -16,10 +16,14 @@
 #include <iostream>
 #include <unordered_map>
 
+#define HAS_PIXMAPS_CACHE 0
 namespace UltraCanvas {
     typedef UCCache<UCPixmapCairo> UCPixmapsCache;
+#if HAS_PIXMAPS_CACHE
     UCPixmapsCache g_PixmapsCache(50 * 1024 * 1024);
-
+#else
+    UCPixmapsCache g_PixmapsCache(0);
+#endif
     typedef UCCache<UCImageVips> UCImagesCache;
     UCImagesCache g_ImagesCache(50 * 1024 * 1024);
 
@@ -117,7 +121,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UCImageVips> UCImageVips::GetFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint) {
         char filename[200];
-        snprintf(filename, sizeof(filename), ":mem:%p:%d", data, dataSize);
+        snprintf(filename, sizeof(filename), ":mem:%p:%ld", data, dataSize);
         std::shared_ptr<UCImageVips> im = g_ImagesCache.GetFromCache(filename);
         if (!im) {
             im = UCImageVips::LoadFromMemory(data, dataSize, formatHint);
@@ -145,7 +149,7 @@ namespace UltraCanvas {
 // With these two functions:
     std::shared_ptr<UCImageVips> UCImageVips::LoadFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint) {
         char filename[200];
-        snprintf(filename, sizeof(filename), ":mem:%p:%d", data, dataSize);
+        snprintf(filename, sizeof(filename), ":mem:%p:%ld", data, dataSize);
         auto result = std::make_shared<UCImageVips>(filename);
 
         if (!data || dataSize == 0) {
@@ -189,6 +193,7 @@ namespace UltraCanvas {
             w = width;
             h = height;
         }
+#if HAS_PIXMAPS_CACHE
         std::string key = MakePixmapCacheKey(w, h, fitMode);
         std::shared_ptr<UCPixmapCairo> pm = g_PixmapsCache.GetFromCache(key);
         if (!pm) {
@@ -197,6 +202,9 @@ namespace UltraCanvas {
                 g_PixmapsCache.AddToCache(key, pm);
             }
         }
+#else
+        std::shared_ptr<UCPixmapCairo> pm = CreatePixmap(width, height, fitMode);
+#endif
         return pm;
     }
 
