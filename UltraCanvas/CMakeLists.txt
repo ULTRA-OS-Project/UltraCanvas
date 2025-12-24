@@ -16,12 +16,15 @@ message(STATUS "Configuring ${ULTRACANVAS_LIB_NAME} v${ULTRACANVAS_VERSION}")
 message(STATUS "========================================")
 
 # ===== OPTIONS =====
-option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
-option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
-option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" ON)
-option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" OFF)
-option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
-option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
+if (BUILD_DEMO_APP)
+else()
+    option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
+    option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
+    option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" OFF)
+    option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
+    option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
+    option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
+endif ()
 
 # ===== DETECT PLATFORM =====
 if(WIN32)
@@ -174,9 +177,6 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
     ${ULTRACANVAS_TEXT_SOURCES}
     ${ULTRACANVAS_CHARTS_SOURCES}
-        Plugins/Vector/UltraCanvasXARConverter.h
-        Plugins/Vector/UltraCanvasVectorElement.h
-        Plugins/Vector/UltraCanvasVectorElement.cpp
 )
 
 # ===== BUILD CORE LIBRARY =====

@@ -39,7 +39,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
-option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" ON)
+option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
+option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires poppler)" OFF)
 
 # ===== FIND REQUIRED PACKAGES =====
@@ -92,6 +93,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasCDRExamples.cpp
             Apps/DemoApp/UltraCanvasXARExamples.cpp
+            Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
     )
 
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")

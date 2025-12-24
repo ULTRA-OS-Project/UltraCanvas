@@ -346,13 +346,37 @@ std::shared_ptr<VectorElement> VectorPolygon::Clone() const {
 // ===== VECTOR PATH IMPLEMENTATION =====
 
 Rect2Df VectorPath::GetBoundingBox() const {
-    if (!Path.BoundingBox.has_value()) {
-        Path.BoundingBox = CalculatePathBounds(Path);
+    if (!Path.cachedBounds) {
+        if (Path.commands.empty()) return {0, 0, 0, 0};
+        float minX = 1e9f, minY = 1e9f, maxX = -1e9f, maxY = -1e9f;
+        Point2Df cur{0, 0};
+        for (const auto &c: Path.commands) {
+            if ((c.Type == PathCommandType::MoveTo || c.Type == PathCommandType::LineTo) &&
+                c.Parameters.size() >= 2) {
+                float x = c.Relative ? cur.x + c.Parameters[0] : c.Parameters[0];
+                float y = c.Relative ? cur.y + c.Parameters[1] : c.Parameters[1];
+                minX = std::min(minX, x);
+                minY = std::min(minY, y);
+                maxX = std::max(maxX, x);
+                maxY = std::max(maxY, y);
+                cur = {x, y};
+            } else if (c.Type == PathCommandType::CurveTo && c.Parameters.size() >= 6) {
+                for (int i = 0; i < 6; i += 2) {
+                    float x = c.Parameters[i], y = c.Parameters[i + 1];
+                    minX = std::min(minX, x);
+                    minY = std::min(minY, y);
+                    maxX = std::max(maxX, x);
+                    maxY = std::max(maxY, y);
+                }
+                cur = {c.Parameters[4], c.Parameters[5]};
+            }
+        }
+        if (minX > maxX) return {0, 0, 0, 0};
+        Path.cachedBounds = Rect2Df{minX, minY, maxX - minX, maxY - minY};
     }
-    
-    Rect2Df bbox = Path.BoundingBox.value();
+
     if (Transform.has_value()) {
-        bbox = Transform->Transform(bbox);
+        bbox = Transform->Transform(Path.cachedBounds);
     }
     return bbox;
 }
@@ -364,10 +388,10 @@ std::shared_ptr<VectorElement> VectorPath::Clone() const {
 }
 
 void VectorPath::AddCommand(const PathCommand& cmd) {
-    Path.Commands.push_back(cmd);
-    Path.BoundingBox.reset();  // Invalidate cached bbox
-    Path.Length.reset();
-    Path.FlattenedPoints.reset();
+    Path.commands.push_back(cmd);
+    Path.cachedBounds.reset();  // Invalidate cached bbox
+    Path.length.reset();
+    Path.flattenedPoints.reset();
 }
 
 void VectorPath::MoveTo(float x, float y, bool relative) {
@@ -420,17 +444,17 @@ void VectorPath::ClosePath() {
 }
 
 float VectorPath::GetLength() const {
-    if (!Path.Length.has_value()) {
-        auto points = Flatten();
+    if (!Path.length.has_value()) {
+        auto points = Flatten(0);
         float length = 0;
         for (size_t i = 1; i < points.size(); i++) {
             float dx = points[i].x - points[i-1].x;
             float dy = points[i].y - points[i-1].y;
             length += std::sqrt(dx * dx + dy * dy);
         }
-        Path.Length = length;
+        Path.length = length;
     }
-    return Path.Length.value();
+    return Path.length.value();
 }
 
 Point2Df VectorPath::GetPointAtLength(float length) const {
@@ -479,12 +503,12 @@ float VectorPath::GetAngleAtLength(float length) const {
 }
 
 std::vector<Point2Df> VectorPath::Flatten(float tolerance) const {
-    if (!Path.FlattenedPoints.has_value()) {
+    if (!Path.flattenedPoints.has_value()) {
         std::vector<Point2Df> result;
         Point2Df currentPoint{0, 0};
         Point2Df startPoint{0, 0};
         
-        for (const auto& cmd : Path.Commands) {
+        for (const auto& cmd : Path.commands) {
             switch (cmd.Type) {
                 case PathCommandType::MoveTo: {
                     if (cmd.Relative && !result.empty()) {
@@ -625,10 +649,10 @@ std::vector<Point2Df> VectorPath::Flatten(float tolerance) const {
             }
         }
         
-        Path.FlattenedPoints = result;
+        Path.flattenedPoints = result;
     }
     
-    return Path.FlattenedPoints.value();
+    return Path.flattenedPoints.value();
 }
 
 // ===== TEXT ELEMENTS IMPLEMENTATION =====
@@ -1365,33 +1389,6 @@ std::string SerializeTransform(const Matrix3x3& transform) {
            std::to_string(transform.m[1][1]) + "," +
            std::to_string(transform.m[0][2]) + "," +
            std::to_string(transform.m[1][2]) + ")";
-}
-
-Rect2Df CalculatePathBounds(const PathData& path) {
-    if (path.Commands.empty()) {
-        return Rect2Df{0, 0, 0, 0};
-    }
-    
-    // Create temporary path to flatten
-    VectorPath tempPath;
-    tempPath.Path = path;
-    auto points = tempPath.Flatten();
-    
-    if (points.empty()) {
-        return Rect2Df{0, 0, 0, 0};
-    }
-    
-    float minX = points[0].x, maxX = points[0].x;
-    float minY = points[0].y, maxY = points[0].y;
-    
-    for (const auto& point : points) {
-        minX = std::min(minX, point.x);
-        maxX = std::max(maxX, point.x);
-        minY = std::min(minY, point.y);
-        maxY = std::max(maxY, point.y);
-    }
-    
-    return Rect2Df{minX, minY, maxX - minX, maxY - minY};
 }
 
 Rect2Df CalculateTextBounds(const std::vector<TextSpanData>& spans, const TextStyle& style) {

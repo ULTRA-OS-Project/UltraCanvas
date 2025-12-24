@@ -236,7 +236,7 @@ namespace UltraCanvas {
     }
 
     void VectorRenderer::RenderPath(const VectorPath &path) {
-        if (path.Path.Commands.empty()) return;
+        if (path.Path.commands.empty()) return;
         bool hasFill = path.Style.Fill.has_value() && !std::holds_alternative<std::monostate>(path.Style.Fill.value());
         bool hasStroke = path.Style.Stroke.has_value();
         BuildPath(path.Path);

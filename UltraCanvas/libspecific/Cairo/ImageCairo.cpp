@@ -16,7 +16,8 @@
 #include <iostream>
 #include <unordered_map>
 
-#define HAS_PIXMAPS_CACHE 0
+#define HAS_PIXMAPS_CACHE 1
+
 namespace UltraCanvas {
     typedef UCCache<UCPixmapCairo> UCPixmapsCache;
 #if HAS_PIXMAPS_CACHE
@@ -107,11 +108,21 @@ namespace UltraCanvas {
         return width * height * 4;
     }
 
-
+    UCImageVips::~UCImageVips() {
+        if (imgDataPtr) {
+            free(imgDataPtr);
+            imgDataPtr = nullptr;
+            imgDataSize = 0;
+        }
+    }
     std::shared_ptr<UCImageVips> UCImageVips::Get(const std::string &imagePath) {
         std::shared_ptr<UCImageVips> im = g_ImagesCache.GetFromCache(imagePath);
         if (!im) {
+#if HAS_PIXMAPS_CACHE
             im = UCImageVips::Load(imagePath);
+#else
+            im = UCImageVips::Load(imagePath, false);
+#endif
             if (im->IsValid()) {
                 g_ImagesCache.AddToCache(imagePath, im);
             }
@@ -132,12 +143,21 @@ namespace UltraCanvas {
         return im;
     }
 
-    std::shared_ptr<UCImageVips> UCImageVips::Load(const std::string &imagePath) {
+    std::shared_ptr<UCImageVips> UCImageVips::Load(const std::string &imagePath, bool loadOnlyHeader) {
         auto result = std::make_shared<UCImageVips>(imagePath);
         try {
             vips::VImage vipsImage = vips::VImage::new_from_file(imagePath.c_str());
             result->width = vipsImage.width();
             result->height = vipsImage.height();
+            if (!loadOnlyHeader) {
+                std::ifstream file(imagePath, std::ios::binary | std::ios::ate);
+                std::streamsize fileSize = file.tellg();
+                file.seekg(0);
+                result->imgDataPtr = (uint8_t *)malloc(fileSize);
+                file.read((char*)result->imgDataPtr, fileSize);
+                result->imgDataSize = fileSize;
+                file.close();
+            }
         } catch (vips::VError& err) {
             std::cerr << "UCImage::Load: Failed Failed to load image for " << imagePath << " Err:" << err.what() << std::endl;
             result->errorMessage = std::string("Failed to load image ") + imagePath + " Err:" + err.what();
@@ -160,17 +180,20 @@ namespace UltraCanvas {
         try {
             // Create VImage from memory buffer
             // formatHint can be empty for auto-detection, or specify format like "png", "jpeg", etc.
+            result->imgDataPtr = (uint8_t *)malloc(dataSize);
+            result->imgDataSize = dataSize;
+            memcpy(result->imgDataPtr, data, dataSize);
+            result->formatHint = formatHint;
             vips::VImage vipsImage;
             if (formatHint.empty()) {
-                vipsImage = vips::VImage::new_from_buffer(data, dataSize, "");
+                vipsImage = vips::VImage::new_from_buffer(result->imgDataPtr, dataSize, "");
             } else {
-                vipsImage = vips::VImage::new_from_buffer(data, dataSize, "",
+                vipsImage = vips::VImage::new_from_buffer(result->imgDataPtr, dataSize, "",
                                                           vips::VImage::option()->set("loader", formatHint.c_str()));
             }
 
             result->width = vipsImage.width();
             result->height = vipsImage.height();
-            result->vImage = vipsImage;
         } catch (vips::VError& err) {
             std::cerr << "UCImageVips::LoadFromMemory: Failed to load image from buffer. Err:" << err.what() << std::endl;
             result->errorMessage = std::string("Failed to load image from memory buffer. Err:") + err.what();
@@ -209,14 +232,14 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UCPixmapCairo> UCImageVips::CreatePixmap(int w, int h, ImageFitMode fitMode) {
-        if (!errorMessage.empty() || fileName.empty()) {
-            return nullptr;
-        }
         try {
-            if (vImage.get_image()) {
-                return CreatePixmapFromVImage(vImage);
+            if (imgDataPtr) {
+                if (!formatHint.empty()) {
+                    return CreatePixmapFromVImage(vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "", vips::VImage::option()->set("loader", formatHint.c_str())));
+                } else {
+                    return CreatePixmapFromVImage(vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "", nullptr));
+                }
             }
-
             auto options = vips::VImage::option();
             switch (fitMode) {
                 case ImageFitMode::Fill:

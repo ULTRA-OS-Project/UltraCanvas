@@ -639,6 +639,16 @@ namespace UltraCanvas {
                               ImplementationStatus::PartiallyImplemented,
                               [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
 
+        bitmapBuilder.AddItem("imageperformance", "Image Performance Test",
+                              "Benchmark image loading, decompression, and rendering speed",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateImagePerformanceTest(); },
+                              "Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp",
+                              "Docs/UltraCanvasImagePerformanceTest.md")
+                .AddVariant("imageperformance", "Full Pipeline Test")
+                .AddVariant("imageperformance", "Decompress + Draw Test")
+                .AddVariant("imageperformance", "Draw Only Test");
+
 //        bitmapBuilder.AddItem("gifimages", "GIF Images", "GIF Image display and manipulation",
 //                              ImplementationStatus::PartiallyImplemented,
 //                              [this]() { return CreateBitmapNotImplementedExamples("GIF"); });

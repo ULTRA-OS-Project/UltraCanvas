@@ -154,6 +154,8 @@ namespace UltraCanvas {
             std::vector<PathCommand> commands;
             bool Closed = false;
             mutable std::optional<Rect2Df> cachedBounds;
+            mutable std::optional<float> length;
+            mutable std::optional<Point2Df> flattenedPoints;
 
             Rect2Df GetBounds() const {
                 if (cachedBounds) return *cachedBounds;
@@ -335,13 +337,14 @@ namespace UltraCanvas {
 
         class VectorElement {
         public:
+            std::weak_ptr<VectorGroup> Parent;
             VectorElementType Type = VectorElementType::NoneType;
             std::string Id;
             std::vector<std::string> Classes;
             VectorStyle Style;
             std::optional<Matrix3x3> Transform;
 
-            virtual ~VectorElement() = default;
+            virtual ~VectorElement() { Parent.reset(); };
 
             virtual Rect2Df GetBoundingBox() const { return {0, 0, 0, 0}; }
             virtual std::shared_ptr<VectorElement> Clone() const = 0;
@@ -480,7 +483,7 @@ namespace UltraCanvas {
 
 // ===== CONTAINERS =====
 
-        class VectorGroup : public VectorElement {
+        class VectorGroup : public VectorElement, public std::enable_shared_from_this<VectorGroup> {
         public:
             std::vector<std::shared_ptr<VectorElement>> Children;
 
@@ -493,7 +496,7 @@ namespace UltraCanvas {
             void AddChild(std::shared_ptr<VectorElement> c);
 
             void RemoveChild(const std::string &id);
-
+            void ClearChildren();
             std::shared_ptr<VectorElement> FindChild(const std::string &id) const;
         };
 

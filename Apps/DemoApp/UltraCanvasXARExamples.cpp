@@ -9,7 +9,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasWindow.h"
-#include "../Plugins/Vector/UltraCanvasVectorElement.h"
+#include "../Plugins/Vector/XAR/UltraCanvasXARPlugin.h"
 #include <iostream>
 #include <memory>
 
@@ -47,9 +47,9 @@ namespace UltraCanvas {
             fullscreenWindow->SetBackgroundColor(Color(32, 32, 32, 255));
 
             // Create fullscreen XAR element
-            auto fullscreenXAR = std::make_shared<UltraCanvasVectorElement>(
+            auto fullscreenXAR = std::make_shared<UltraCanvasXARElement>(
                     "FullscreenXAR", 20001, 0, 50, screenWidth, screenHeight - 100);
-            fullscreenXAR->CenterDocument();
+            //fullscreenXAR->CenterDocument();
 
             if (!cdrFilePath.empty()) {
                 fullscreenXAR->LoadFromFile(cdrFilePath);

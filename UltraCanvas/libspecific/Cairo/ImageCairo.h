@@ -53,8 +53,10 @@ namespace UltraCanvas {
     private:
         int width = 0;
         int height = 0;
-        vips::VImage vImage;
+        uint8_t *imgDataPtr = nullptr;
+        size_t imgDataSize = 0;
         std::string fileName;
+        std::string formatHint;
 
     public:
         std::string errorMessage;
@@ -62,9 +64,10 @@ namespace UltraCanvas {
         // ===== CONSTRUCTORS =====
         UCImageVips() {};
         UCImageVips(const std::string& fn) : fileName(fn) {};
+        ~UCImageVips();
 
         static std::shared_ptr<UCImageVips> Get(const std::string &path);
-        static std::shared_ptr<UCImageVips> Load(const std::string &path);
+        static std::shared_ptr<UCImageVips> Load(const std::string &path, bool loadOnlyHeader = true);
         static std::shared_ptr<UCImageVips> LoadFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint = "");
         static std::shared_ptr<UCImageVips> LoadFromMemory(const std::vector<uint8_t>& data, const std::string& formatHint = "") {
             return LoadFromMemory(data.data(), data.size(), formatHint);
@@ -86,7 +89,7 @@ namespace UltraCanvas {
         int GetHeight() const { return height; }
 
         size_t GetDataSize() {
-            return sizeof(UCImageVips) + 250;
+            return sizeof(UCImageVips) + 250 + imgDataSize;
         }
         bool IsValid() { return !fileName.empty() && errorMessage.empty() && width > 0;};
     };
