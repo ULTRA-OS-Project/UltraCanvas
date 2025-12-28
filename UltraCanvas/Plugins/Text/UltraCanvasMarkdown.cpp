@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasApplication.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -923,8 +924,9 @@ namespace UltraCanvas {
             // Check if clicking on thumb
             if (scrollbarThumbRect.Contains(mousePos)) {
                 isDraggingThumb = true;
-                dragStartY = event.y;
+                dragStartY = event.globalY;
                 dragStartScrollOffset = verticalScrollOffset;
+                UltraCanvasApplication::GetInstance()->CaptureMouse(this);
                 return true;
             }
 
@@ -958,7 +960,7 @@ namespace UltraCanvas {
 
         // Handle thumb dragging
         if (isDraggingThumb) {
-            int deltaY = event.y - dragStartY;
+            int deltaY = event.globalY - dragStartY;
 
             // Calculate scroll offset based on drag distance
             int maxScroll = std::max(0, contentHeight - GetHeight());
@@ -996,6 +998,7 @@ namespace UltraCanvas {
         if (isDraggingThumb) {
             isDraggingThumb = false;
             wasHandled = true;
+            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
         }
 
         // Handle link clicks

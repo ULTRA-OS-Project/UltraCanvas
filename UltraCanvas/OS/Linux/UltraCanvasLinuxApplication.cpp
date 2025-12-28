@@ -176,6 +176,54 @@ namespace UltraCanvas {
     }
 
 
+    // ===== MOUSE CAPTURE SUPPORT =====
+    void UltraCanvasLinuxApplication::CaptureMouseNative() {
+        if (!display || !focusedWindow) {
+            std::cerr << "UltraCanvas: Cannot capture mouse - no display or focused window" << std::endl;
+            return;
+        }
+
+        auto* linuxWindow = dynamic_cast<UltraCanvasLinuxWindow*>(focusedWindow);
+        if (!linuxWindow) {
+            std::cerr << "UltraCanvas: Cannot capture mouse - invalid window type" << std::endl;
+            return;
+        }
+
+        Window xWindow = linuxWindow->GetNativeHandle();
+        if (xWindow == 0) {
+            std::cerr << "UltraCanvas: Cannot capture mouse - invalid X11 window handle" << std::endl;
+            return;
+        }
+
+        int grabResult = XGrabPointer(
+                display,
+                xWindow,
+                True,                                    // owner_events
+                ButtonPressMask | ButtonReleaseMask | PointerMotionMask | EnterWindowMask | LeaveWindowMask,
+                GrabModeAsync,                           // pointer_mode
+                GrabModeAsync,                           // keyboard_mode
+                None,                                    // confine_to (no confinement)
+                None,                                    // cursor (use current)
+                CurrentTime
+        );
+
+        if (grabResult != GrabSuccess) {
+            std::cerr << "UltraCanvas: XGrabPointer failed with code: " << grabResult << std::endl;
+        } else {
+            std::cout << "UltraCanvas: Mouse captured successfully" << std::endl;
+        }
+    }
+
+    void UltraCanvasLinuxApplication::ReleaseMouseNative() {
+        if (!display) {
+            return;
+        }
+
+        XUngrabPointer(display, CurrentTime);
+        XFlush(display);
+        std::cout << "UltraCanvas: Mouse released" << std::endl;
+    }
+
 // ===== EVENT PROCESSING =====
 
     void UltraCanvasLinuxApplication::ProcessXEvent(XEvent& xEvent) {

@@ -555,7 +555,7 @@ namespace UltraCanvas {
         avifImage->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // ✨ Hand cursor and clickable
-        avifImage->SetMousePointer(MousePointer::Hand);
+        avifImage->SetMouseCursor(UCMouseCursor::Hand);
         avifImage->SetClickable(true);
         avifImage->onClick = []() {
             ShowFullSizeImageViewer("media/Cat.avif");
@@ -646,7 +646,7 @@ namespace UltraCanvas {
         webpImage->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // ✨ Hand cursor and clickable
-        webpImage->SetMousePointer(MousePointer::Hand);
+        webpImage->SetMouseCursor(UCMouseCursor::Hand);
         webpImage->SetClickable(true);
         webpImage->onClick = []() {
             ShowFullSizeImageViewer("media/images/Kindigs-1953-Corvette-TwelveAir.webp");
@@ -833,7 +833,7 @@ namespace UltraCanvas {
         gifImage->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // ✨ Hand cursor and clickable
-        gifImage->SetMousePointer(MousePointer::Hand);
+        gifImage->SetMouseCursor(UCMouseCursor::Hand);
         gifImage->SetClickable(true);
         gifImage->onClick = []() {
             ShowFullSizeImageViewer("media/images/Cat.gif");
@@ -933,7 +933,7 @@ namespace UltraCanvas {
         tiffImage->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // ✨ Hand cursor and clickable
-        tiffImage->SetMousePointer(MousePointer::Hand);
+        tiffImage->SetMouseCursor(UCMouseCursor::Hand);
         tiffImage->SetClickable(true);
         tiffImage->onClick = []() {
             ShowFullSizeImageViewer("media/images/artist_converted.tiff");
@@ -1033,7 +1033,7 @@ namespace UltraCanvas {
         bmpImage->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // ✨ Hand cursor and clickable
-        bmpImage->SetMousePointer(MousePointer::Hand);
+        bmpImage->SetMouseCursor(UCMouseCursor::Hand);
         bmpImage->SetClickable(true);
         bmpImage->onClick = []() {
             ShowFullSizeImageViewer("media/images/fantasy_converted.bmp");

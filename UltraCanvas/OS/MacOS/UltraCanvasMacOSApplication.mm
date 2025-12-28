@@ -414,6 +414,33 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== MOUSE CAPTURE SUPPORT =====
+    void UltraCanvasMacOSApplication::CaptureMouseNative() {
+        // macOS doesn't require explicit pointer grabbing like X11
+        // Mouse events are automatically routed to the key window during mouse drag operations
+        // The Cocoa event system handles this automatically via NSTrackingArea and event routing
+
+        // However, we can ensure the window becomes key and main to receive all events
+        @autoreleasepool {
+            if (focusedWindow) {
+                auto* macWindow = dynamic_cast<UltraCanvasMacOSWindow*>(focusedWindow);
+                if (macWindow && macWindow->GetNSWindow()) {
+                    NSWindow* nsWin = macWindow->GetNSWindow();
+                    if (![nsWin isKeyWindow]) {
+                        [nsWin makeKeyAndOrderFront:nil];
+                    }
+                }
+            }
+            std::cout << "UltraCanvas macOS: Mouse capture activated" << std::endl;
+        }
+    }
+
+    void UltraCanvasMacOSApplication::ReleaseMouseNative() {
+        // macOS automatically releases mouse tracking when mouse button is released
+        // No explicit ungrab operation is needed
+        std::cout << "UltraCanvas macOS: Mouse capture released" << std::endl;
+    }
+
 // ===== THREAD SAFETY =====
     bool UltraCanvasMacOSApplication::IsMainThread() const {
         return std::this_thread::get_id() == mainThreadId;

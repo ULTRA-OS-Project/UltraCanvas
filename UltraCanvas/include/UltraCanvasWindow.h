@@ -77,6 +77,8 @@ namespace UltraCanvas {
         std::unordered_set<UltraCanvasUIElement *> popupsToRemove;
         UltraCanvasUIElement* _focusedElement = nullptr;  // Current focused element in this window
 
+        UCMouseCursor currentMouseCursor = UCMouseCursor::Default;
+
         // Window-specific callbacks
         std::function<void()> onWindowClose;
         std::function<void(int, int)> onWindowResize;
@@ -99,6 +101,10 @@ namespace UltraCanvas {
         void Close();
         void Destroy();
         void RequestDelete();
+
+        UCMouseCursor GetCurrentMouseCursor() { return currentMouseCursor; };
+        void SelectMouseCursor(UCMouseCursor ptr);
+        virtual void SelectMouseCursorNative(UCMouseCursor ptr) = 0;
 
         virtual void Show() = 0;
         virtual void Hide() = 0;

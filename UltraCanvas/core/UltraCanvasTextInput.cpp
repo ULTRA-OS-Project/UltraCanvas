@@ -44,6 +44,7 @@ namespace UltraCanvas {
             , showAutoComplete(false) {
         textWidthCache.clear();
         lastMeasuredFont.clear();
+        SetMouseCursor(UCMouseCursor::Text);
     }
 
     void UltraCanvasTextInput::SetText(const std::string &newText) {

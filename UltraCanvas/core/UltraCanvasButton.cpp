@@ -15,6 +15,7 @@ namespace UltraCanvas {
                                          long x, long y, long w, long h,
                                          const std::string& buttonText)
             : UltraCanvasUIElement(identifier, id, x, y, w, h), text(buttonText) {
+        SetMouseCursor(UCMouseCursor::Hand);
     }
 
 // ===== SPLIT BUTTON METHODS =====

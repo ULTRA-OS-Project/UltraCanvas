@@ -113,8 +113,6 @@ namespace UltraCanvas {
         }
 
         // ===== INHERITED FROM BASE APPLICATION =====
-        bool InitializeNative() override;
-        void ShutdownNative() override;
         void RunBeforeMainLoop() override;
 
         // ===== MACOS-SPECIFIC METHODS =====
@@ -146,6 +144,11 @@ namespace UltraCanvas {
         bool IsMainThread() const;
 
     protected:
+        bool InitializeNative() override;
+        void ShutdownNative() override;
+        void CaptureMouseNative() override;
+        void ReleaseMouseNative() override;
+
         void CollectAndProcessNativeEvents() override;
 
     private:

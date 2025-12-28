@@ -133,7 +133,7 @@ public:
     // ===== INTERACTION =====
     void SetClickable(bool enable) {
         clickable = enable;
-        SetMousePointer(enable ? MousePointer::Hand : MousePointer::Default);
+        SetMouseCursor(enable ? UCMouseCursor::Hand : UCMouseCursor::Default);
     }
     
     void SetDraggable(bool enable) { draggable = enable; }

@@ -522,6 +522,106 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== MOUSE POINTER CONTROL =====
+    void UltraCanvasMacOSWindow::SelectMouseCursorNative(UCMouseCursor cur) {
+        if (!_created) {
+            return;
+        }
+
+        @autoreleasepool {
+            NSCursor* cursor = nil;
+
+            // Map MousePointer enum to NSCursor
+            switch (cur) {
+                case UCMouseCursor::Default:
+                    cursor = [NSCursor arrowCursor];
+                    break;
+
+                case UCMouseCursor::NoCursor:
+                    // Hide cursor - use an invisible cursor
+                    // Note: NSCursor doesn't have a built-in invisible cursor
+                    // We use hideCursor but need to be careful with show/hide balance
+                    [NSCursor hide];
+                    currentMousePointer = ptr;
+                    return;
+
+                case UCMouseCursor::Hand:
+                    cursor = [NSCursor pointingHandCursor];
+                    break;
+
+                case UCMouseCursor::Text:
+                    cursor = [NSCursor IBeamCursor];
+                    break;
+
+                case UCMouseCursor::Wait:
+                    // macOS doesn't have a standard wait cursor
+                    // Use the spinning beach ball effect is system-managed
+                    // Fall back to arrow cursor
+                    cursor = [NSCursor arrowCursor];
+                    break;
+
+                case UCMouseCursor::Cross:
+                    cursor = [NSCursor crosshairCursor];
+                    break;
+
+                case UCMouseCursor::Help:
+                    // macOS 10.15+ has contextualMenuCursor but no help cursor
+                    // Fall back to arrow cursor
+                    cursor = [NSCursor arrowCursor];
+                    break;
+
+                case UCMouseCursor::NotAllowed:
+                    cursor = [NSCursor operationNotAllowedCursor];
+                    break;
+
+                case UCMouseCursor::SizeAll:
+                    // macOS doesn't have a size-all cursor
+                    // Use openHandCursor as closest equivalent
+                    cursor = [NSCursor openHandCursor];
+                    break;
+
+                case UCMouseCursor::SizeNS:
+                    cursor = [NSCursor resizeUpDownCursor];
+                    break;
+
+                case UCMouseCursor::SizeWE:
+                    cursor = [NSCursor resizeLeftRightCursor];
+                    break;
+
+                case UCMouseCursor::SizeNWSE:
+                    // macOS doesn't have diagonal resize cursors by default
+                    // Use a generic resize cursor if available, otherwise arrow
+                    // On macOS 11+, we could use _windowResizeNorthWestSouthEastCursor
+                    // but it's private API. Fall back to arrow.
+                    cursor = [NSCursor arrowCursor];
+                    break;
+
+                case UCMouseCursor::SizeNESW:
+                    // Same as above - no diagonal resize cursor available
+                    cursor = [NSCursor arrowCursor];
+                    break;
+
+                case UCMouseCursor::Custom:
+                    // Custom cursor not implemented - use arrow
+                    cursor = [NSCursor arrowCursor];
+                    break;
+
+                default:
+                    cursor = [NSCursor arrowCursor];
+                    break;
+            }
+
+            // If transitioning from NoCursor, ensure cursor is visible
+            if (currentMousePointer == UCMouseCursor::NoCursor) {
+                [NSCursor unhide];
+            }
+
+            if (cursor) {
+                [cursor set];
+            }
+        }
+    }
+
     // ===== RENDERING =====
     void UltraCanvasMacOSWindow::Invalidate() {
         if (!_created || !contentView) return;

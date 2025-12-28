@@ -119,7 +119,7 @@ namespace UltraCanvas {
         bool visible = true;
 
         // Mouse interaction
-        MousePointer mousePtr = MousePointer::Default;
+        UCMouseCursor mouseCursor = UCMouseCursor::Default;
 
         // Hierarchy
 //        long ParentObject = 0;
@@ -474,8 +474,8 @@ namespace UltraCanvas {
         Point2Di ConvertContainerToWindowCoordinates(const Point2Di &globalPos);
         virtual void ConvertContainerToWindowCoordinates(int &x, int &y);
 
-        MousePointer GetMousePointer() const { return mousePtr; }
-        void SetMousePointer(MousePointer pointer) { mousePtr = pointer; }
+        UCMouseCursor GetMouseCursor() const { return mouseCursor; }
+        void SetMouseCursor(UCMouseCursor cur) { mouseCursor = cur; }
 
         int GetZIndex() const { return zIndex; }
         void SetZIndex(int index) { zIndex = index; }

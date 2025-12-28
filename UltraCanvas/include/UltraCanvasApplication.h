@@ -95,12 +95,6 @@ namespace UltraCanvas {
         bool Initialize(const std::string& app);
         void Shutdown();
         void RequestExit();
-        virtual bool InitializeNative() = 0;
-        virtual void ShutdownNative() = 0;
-        virtual void RunInEventLoop() {};
-        virtual void RunBeforeMainLoop() {};
-        virtual void CaptureMouseNative() = 0;
-        virtual void ReleaseMouseNative() = 0;
 
         bool IsInitialized() const { return initialized; }
         bool IsRunning() const { return running; }
@@ -108,6 +102,13 @@ namespace UltraCanvas {
         bool HandleFocusedWindowChange(UltraCanvasWindow* window);
 
     protected:
+        virtual bool InitializeNative() = 0;
+        virtual void ShutdownNative() = 0;
+        virtual void RunInEventLoop() {};
+        virtual void RunBeforeMainLoop() {};
+        virtual void CaptureMouseNative() = 0;
+        virtual void ReleaseMouseNative() = 0;
+
         bool IsDoubleClick(const UCEvent &event);
         void CleanupWindowReferences(UltraCanvasWindowBase* window);
         virtual void CollectAndProcessNativeEvents() = 0;

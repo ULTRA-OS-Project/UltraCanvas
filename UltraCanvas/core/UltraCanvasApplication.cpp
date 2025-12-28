@@ -340,6 +340,18 @@ rescan_windows:
             }
             if (event.IsMouseEvent()) {
                 auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
+
+                if (elem) {
+                    if (targetWindow->GetCurrentMouseCursor() != elem->GetMouseCursor()) {
+                        targetWindow->SelectMouseCursor(elem->GetMouseCursor());
+                    }
+                } else {
+                    // if no element pointed then select window's cursor
+                    if (targetWindow->GetCurrentMouseCursor() != targetWindow->GetMouseCursor()) {
+                        targetWindow->SelectMouseCursor(targetWindow->GetMouseCursor());
+                    }
+                }
+
                 if (hoveredElement && hoveredElement != elem) {
                     UCEvent leaveEvent = event;
                     leaveEvent.type = UCEventType::MouseLeave;
@@ -481,13 +493,14 @@ rescan_windows:
     }
 
     void UltraCanvasBaseApplication::CaptureMouse(UltraCanvasUIElement *element) {
+        CaptureMouseNative();
         capturedElement = element;
-
     }
 
     void UltraCanvasBaseApplication::ReleaseMouse(UltraCanvasUIElement *element) {
         if (element && element == capturedElement) {
             capturedElement = nullptr;
         }
+        ReleaseMouseNative();
     }
 }

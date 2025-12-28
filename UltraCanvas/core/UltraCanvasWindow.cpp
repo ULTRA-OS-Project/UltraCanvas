@@ -416,6 +416,13 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasWindowBase::SelectMouseCursor(UCMouseCursor ptr) {
+        if (currentMouseCursor != ptr) {
+            SelectMouseCursorNative(ptr);
+            currentMouseCursor = ptr;
+        }
+    }
+
 
 //    void UpdateZOrderSort() {
 //        sortedElements = elements;

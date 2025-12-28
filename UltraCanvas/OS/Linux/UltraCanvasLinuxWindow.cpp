@@ -6,6 +6,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLinuxWindow.h"
+#include <X11/cursorfont.h>
 #include <iostream>
 #include <cstring>
 
@@ -473,4 +474,104 @@ namespace UltraCanvas {
         return xWindow;
     }
 
+// ===== MOUSE POINTER CONTROL =====
+    void UltraCanvasLinuxWindow::SelectMouseCursorNative(UCMouseCursor cur) {
+        if (!_created || xWindow == 0) {
+            return;
+        }
+
+        auto application = UltraCanvasApplication::GetInstance();
+        if (!application || !application->GetDisplay()) {
+            return;
+        }
+
+        Display* display = application->GetDisplay();
+        Cursor newCursor = None;
+
+        // Map MousePointer enum to X11 cursor font shapes
+        switch (cur) {
+            case UCMouseCursor::Default:
+                newCursor = XCreateFontCursor(display, XC_left_ptr);
+                break;
+
+            case UCMouseCursor::NoCursor:
+                // Create invisible cursor using blank pixmap
+            {
+                Pixmap cursorPixmap = XCreatePixmap(display, xWindow, 1, 1, 1);
+                XColor black;
+                black.red = black.green = black.blue = 0;
+                black.pixel = BlackPixel(display, application->GetScreen());
+                newCursor = XCreatePixmapCursor(display, cursorPixmap, cursorPixmap,
+                                                &black, &black, 0, 0);
+                XFreePixmap(display, cursorPixmap);
+            }
+                break;
+
+            case UCMouseCursor::Hand:
+                newCursor = XCreateFontCursor(display, XC_hand2);
+                break;
+
+            case UCMouseCursor::Text:
+                newCursor = XCreateFontCursor(display, XC_xterm);
+                break;
+
+            case UCMouseCursor::Wait:
+                newCursor = XCreateFontCursor(display, XC_watch);
+                break;
+
+            case UCMouseCursor::Cross:
+                newCursor = XCreateFontCursor(display, XC_crosshair);
+                break;
+
+            case UCMouseCursor::Help:
+                newCursor = XCreateFontCursor(display, XC_question_arrow);
+                break;
+
+            case UCMouseCursor::NotAllowed:
+                newCursor = XCreateFontCursor(display, XC_X_cursor);
+                break;
+
+            case UCMouseCursor::SizeAll:
+                newCursor = XCreateFontCursor(display, XC_fleur);
+                break;
+
+            case UCMouseCursor::SizeNS:
+                newCursor = XCreateFontCursor(display, XC_sb_v_double_arrow);
+                break;
+
+            case UCMouseCursor::SizeWE:
+                newCursor = XCreateFontCursor(display, XC_sb_h_double_arrow);
+                break;
+
+            case UCMouseCursor::SizeNWSE:
+                newCursor = XCreateFontCursor(display, XC_sizing);
+                break;
+
+            case UCMouseCursor::SizeNESW:
+                newCursor = XCreateFontCursor(display, XC_sizing);
+                break;
+
+            case UCMouseCursor::Custom:
+                // Custom cursor not implemented - fall through to default
+                newCursor = XCreateFontCursor(display, XC_left_ptr);
+                break;
+
+            default:
+                newCursor = XCreateFontCursor(display, XC_left_ptr);
+                break;
+        }
+
+        // Apply the cursor to the window
+        if (newCursor != None) {
+
+            XDefineCursor(display, xWindow, newCursor);
+            XFlush(display);
+
+            if (currentXCursor != None) {
+                XFreeCursor(display, currentXCursor);
+            }
+
+            currentXCursor = newCursor;
+        }
+    }
 } // namespace UltraCanvas

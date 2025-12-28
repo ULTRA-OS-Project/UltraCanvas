@@ -966,7 +966,7 @@ namespace UltraCanvas {
         auto image = std::make_shared<UltraCanvasImageElement>("Image", id++, 4, 4, 222, 162);
         image->LoadFromFile(sampleImagePath);
         image->SetFitMode(ImageFitMode::Contain);
-        image->SetMousePointer(MousePointer::Hand);
+        image->SetMouseCursor(UCMouseCursor::Hand);
         image->SetClickable(true);
         image->onClick = [sampleImagePath]() {
             ShowFullSizeImageViewer(sampleImagePath);

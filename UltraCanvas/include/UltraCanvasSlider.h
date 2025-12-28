@@ -131,7 +131,7 @@ namespace UltraCanvas {
                 : UltraCanvasUIElement(identifier, id, x, y, w, h) {
 
             // Initialize standard properties
-            mousePtr = MousePointer::Hand;
+            mouseCursor = UCMouseCursor::Hand;
 
             // Initialize range values
             lowerValue = minValue;

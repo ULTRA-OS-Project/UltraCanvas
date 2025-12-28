@@ -157,7 +157,7 @@ namespace UltraCanvas {
                                     long id = 0, long x = 0, long y = 0, long w = 300, long h = 32)
                 : UltraCanvasUIElement(identifier, id, x, y, w, h) {
 
-            mousePtr = MousePointer::Hand;
+            mouseCursor = UCMouseCursor::Hand;
         }
 
         bool AcceptsFocus() const override { return true; }

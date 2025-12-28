@@ -341,8 +341,9 @@ struct UCDashPattern {
 };
 
 // ===== MOUSE POINTER TYPES =====
-enum class MousePointer {
+enum class UCMouseCursor {
     Default = 0,        // Standard arrow
+    Arrow = 0,
     NoCursor = 1,          // No cursor (hidden)
     Hand = 2,          // Hand/pointing finger
     Text = 3,          // Text I-beam

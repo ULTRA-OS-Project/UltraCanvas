@@ -99,9 +99,6 @@ namespace UltraCanvas {
             return UltraCanvasLinuxApplication::instance;
         };
 
-        // ===== INHERITED FROM BASE APPLICATION =====
-        bool InitializeNative() override;
-        void ShutdownNative() override;
 
         // ===== LINUX-SPECIFIC METHODS =====
 
@@ -160,6 +157,11 @@ namespace UltraCanvas {
         }
 
     protected:
+        // ===== INHERITED FROM BASE APPLICATION =====
+        bool InitializeNative() override;
+        void ShutdownNative() override;
+        void CaptureMouseNative() override;
+        void ReleaseMouseNative() override;
         void CollectAndProcessNativeEvents() override;
 
     private:

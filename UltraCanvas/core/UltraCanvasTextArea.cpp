@@ -534,7 +534,7 @@ namespace UltraCanvas {
         if (IsNeedVerticalScrollbar() && verticalScrollThumb.Contains(event.x, event.y)) {
             isDraggingVerticalThumb = true;
             // Store the offset from the thumb top to where the mouse clicked
-            dragStartOffset.y = event.y - verticalScrollThumb.y;
+            dragStartOffset.y = event.globalY - verticalScrollThumb.y;
             UltraCanvasApplication::GetInstance()->CaptureMouse(this);
             return true;
         }
@@ -542,7 +542,7 @@ namespace UltraCanvas {
         if (IsNeedHorizontalScrollbar() && horizontalScrollThumb.Contains(event.x, event.y)) {
             isDraggingHorizontalThumb = true;
             // Store the offset from the thumb left to where the mouse clicked
-            dragStartOffset.x = event.x - horizontalScrollThumb.x;
+            dragStartOffset.x = event.globalX - horizontalScrollThumb.x;
             UltraCanvasApplication::GetInstance()->CaptureMouse(this);
             return true;
         }
@@ -609,7 +609,7 @@ namespace UltraCanvas {
             int maxThumbY = bounds.height - thumbHeight;
 
             // Calculate new thumb position
-            int newThumbY = event.y - bounds.y - dragStartOffset.y;
+            int newThumbY = event.globalY - bounds.y - dragStartOffset.y;
             newThumbY = std::max(0, std::min(newThumbY, maxThumbY));
 
             // Convert thumb position to firstVisibleLine
@@ -640,7 +640,7 @@ namespace UltraCanvas {
             int maxThumbX = bounds.width - thumbWidth - static_cast<int>(lineNumberWidth) - (IsNeedVerticalScrollbar() ? 15 : 0);
 
             // Calculate new thumb position
-            int newThumbX = event.x - bounds.x - static_cast<int>(lineNumberWidth) - dragStartOffset.x;
+            int newThumbX = event.globalX - bounds.x - static_cast<int>(lineNumberWidth) - dragStartOffset.x;
             newThumbX = std::max(0, std::min(newThumbX, maxThumbX));
 
             // Convert thumb position to scroll offset
