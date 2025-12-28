@@ -26,6 +26,7 @@ namespace UltraCanvas {
     Color ParseColor(const std::string& colorStr);
     std::string GetFileExtension(const std::string& filePath);
     std::string LoadFile(const std::string& filePath);
+    std::string FormatFileSize(size_t bytes);
 
     std::vector<uint8_t> Base64Decode(const std::string& input);
 

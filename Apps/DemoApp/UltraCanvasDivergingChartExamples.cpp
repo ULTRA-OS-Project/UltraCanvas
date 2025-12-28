@@ -16,6 +16,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDivergingChartExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("DivergingChartExamples", 2500, 0, 0, 1000, 600);
+        container->SetPadding(0,0,10,0);
 
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("DivergingChartTitle", 2501, 10, 10, 350, 30);

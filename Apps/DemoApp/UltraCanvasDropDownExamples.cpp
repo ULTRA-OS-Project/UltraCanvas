@@ -34,6 +34,7 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDropdownExamples() {
         auto mainContainer = std::make_shared<UltraCanvasContainer>("DropdownExamples", 300, 0, 0, 1020, 1000);
         mainContainer->SetBackgroundColor(Colors::White);
+        mainContainer->SetPadding(0,0,10,0);
 
         long currentY = 10;
 

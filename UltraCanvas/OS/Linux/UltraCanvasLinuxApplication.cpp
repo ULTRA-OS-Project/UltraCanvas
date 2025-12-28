@@ -10,7 +10,7 @@
 #include <iostream>
 #include <algorithm>
 #include <sys/select.h>
-#include <vips/vips8>
+#include <PixelFX/PixelFX.h>
 #include <errno.h>
 
 namespace UltraCanvas {
@@ -44,7 +44,7 @@ namespace UltraCanvas {
         std::cout << "UltraCanvas: Initializing Linux Application..." << std::endl;
 
         try {
-            VIPS_INIT(appName.c_str());
+            PixelFX::Initialize(appName.c_str());
 
             // STEP 1: Initialize X11 display connection
             if (!InitializeX11()) {
@@ -78,7 +78,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxApplication::ShutdownNative() {
-        vips_shutdown();
+        PixelFX::Shutdown();
         if (display) {
             std::cout << "UltraCanvas: Closing X11 display..." << std::endl;
             XCloseDisplay(display);

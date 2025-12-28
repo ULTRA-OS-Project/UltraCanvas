@@ -15,6 +15,7 @@
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLabelExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("LabelExamples", 500, 0, 0, 1000, 600);
+        container->SetPadding(0,0,10,0);
 
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("LabelTitle", 501, 10, 10, 300, 30);

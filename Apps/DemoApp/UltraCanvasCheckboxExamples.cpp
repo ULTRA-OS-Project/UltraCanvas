@@ -35,6 +35,7 @@ namespace UltraCanvas {
         // Main container for all checkbox examples
         auto mainContainer = std::make_shared<UltraCanvasContainer>("CheckboxMainContainer", 3000, 0, 0, 1020, 1300);
         mainContainer->SetBackgroundColor(Colors::White);
+        mainContainer->SetPadding(0,0,10,0);
 
         // Title
         auto mainTitle = std::make_shared<UltraCanvasLabel>("CheckboxMainTitle", 3001, 20, 10, 900, 30);

@@ -88,8 +88,8 @@ namespace UltraCanvas {
         virtual void FocusPreviousElement();
 
         // ===== MOUSE CAPTURE =====
-        void CaptureMouse(UltraCanvasUIElement* element) { capturedElement = element; }
-        void ReleaseMouse(UltraCanvasUIElement* element) { if (element && element == capturedElement) capturedElement = nullptr; }
+        void CaptureMouse(UltraCanvasUIElement* element);
+        void ReleaseMouse(UltraCanvasUIElement* element);
 
         void Run();
         bool Initialize(const std::string& app);
@@ -99,6 +99,8 @@ namespace UltraCanvas {
         virtual void ShutdownNative() = 0;
         virtual void RunInEventLoop() {};
         virtual void RunBeforeMainLoop() {};
+        virtual void CaptureMouseNative() = 0;
+        virtual void ReleaseMouseNative() = 0;
 
         bool IsInitialized() const { return initialized; }
         bool IsRunning() const { return running; }

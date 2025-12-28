@@ -65,14 +65,14 @@ namespace UltraCanvas {
         controlsLayout->AddUIElement(imageLabel);
 
         auto imageDropdown = std::make_shared<UltraCanvasDropdown>("ImageDropdown", 9012, 65, 10, 240, 30);
-        imageDropdown->AddItem("PNG sample (161Kb)", "media/images/alphachannel.png");
-        imageDropdown->AddItem("JPEG sample (36Kb)", "media/images/alphachannel.jpg");
-        imageDropdown->AddItem("WEBP sample (41Kb)", "media/images/alphachannel.webp");
-        imageDropdown->AddItem("BMP sample (523Kb)", "media/images/alphachannel.bmp");
+        imageDropdown->AddItem("PNG sample (350Kb)", "media/images/dice.png");
+        imageDropdown->AddItem("JPEG sample (74Kb)", "media/images/dice.jpg");
+        imageDropdown->AddItem("WEBP sample (62KB)", "media/images/dice.webp");
+        imageDropdown->AddItem("TIFF sample (1920KB)", "media/images/dice.tiff");
         imageDropdown->AddItem("Icon, small PNG (633b)", "media/images/test_small.png");
         imageDropdown->AddItem("Icon, small JPG (1197b)", "media/images/test_small.jpg");
         imageDropdown->AddItem("Icon, small WEBP (410b)", "media/images/test_small.webp");
-        imageDropdown->AddItem("Icon, small BMP (2690b)", "media/images/test_small.bmp");
+        imageDropdown->AddItem("Icon, small TIFF (2817b)", "media/images/test_small.tiff");
         imageDropdown->SetSelectedIndex(0);
         controlsLayout->AddUIElement(imageDropdown);
         controlsLayout->AddSpacing(5);
@@ -113,7 +113,7 @@ namespace UltraCanvas {
 
         auto imageElement = std::make_shared<UltraCanvasImageElement>("PerfTestImage", 9021, 10, 10, 480, 380);
         imageElement->SetFitMode(ImageFitMode::ScaleDown);
-        imageElement->LoadFromFile("media/images/alphachannel.png");
+        imageElement->LoadFromFile("media/images/dice.png");
         imageContainer->AddChild(imageElement);
 
         mainContainer->AddChild(imageContainer);
@@ -235,7 +235,7 @@ namespace UltraCanvas {
             iterationLabel->SetText("Iterations: 0");
             detailsLabel->SetText("Test in progress...\n\nPlease wait...");
 
-            // Pre-load image for "Draw Only" mode
+            // Pre-load image, all image data loaded to memory
             std::shared_ptr<UCImage> img = UCImage::Load(imagePath, false);
 
             // Start timing
@@ -259,15 +259,14 @@ namespace UltraCanvas {
                 std::shared_ptr<UCPixmap> pixmap;
                 if (testMode == "full") {
                     // Full pipeline: Load from file (bypasses cache), decompress, prepare for render
-                    //UCImage::ClearCache();  // Force reload from disk
-                    img = UCImage::Load(imagePath, false);
+                    img = UCImage::Load(imagePath, false); // Force reload from disk
                     pixmap = img->CreatePixmap(img->GetWidth(), img->GetHeight(), ImageFitMode::NoScale);
                 } else if (testMode == "decompress_draw") {
-                    // Decompress and draw: Use cached file, decompress fresh
+                    // Decompress and draw: Use loaded image data from memory, decompress fresh
                     pixmap = img->CreatePixmap(img->GetWidth(), img->GetHeight(), ImageFitMode::NoScale);
                 } else if (testMode == "draw_only") {
-                    // Draw only: Use pre-loaded and decompressed image
-                    pixmap = img->GetPixmap(img->GetWidth(), img->GetHeight(), ImageFitMode::NoScale);
+                    // Draw only: Use cached image header only and create pixmap 1 time and cache, use cached copy
+                    pixmap = UCImage::Get(imagePath)->GetPixmap(img->GetWidth(), img->GetHeight(), ImageFitMode::NoScale);
                 }
 
                 ctx->DrawPixmap(*pixmap.get(), imageElement->GetXInWindow(), imageElement->GetYInWindow());

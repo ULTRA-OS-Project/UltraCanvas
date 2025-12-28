@@ -278,6 +278,11 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateCDRVectorExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateXARVectorExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateImagePerformanceTest();
+        std::shared_ptr<UltraCanvasContainer> CreateBitmapFormatDemoPage(
+                const std::string& format,
+                const std::string& sampleImagePath,
+                int baseId = 1800
+        );
 
         // ===== APPLICATION LIFECYCLE =====
         void Run();
@@ -305,5 +310,8 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     std::unique_ptr<UltraCanvasDemoApplication> CreateDemoApplication();
+
+// ===== FULL-SIZE IMAGE VIEWER (Modal Window) =====
+    void ShowFullSizeImageViewer(const std::string& imagePath);
 
 } // namespace UltraCanvas

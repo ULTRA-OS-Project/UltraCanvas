@@ -376,6 +376,8 @@ namespace UltraCanvas {
         mainContainerLayout->AddUIElement(headerContainer)->SetWidthMode(SizeMode::Fill)->SetFixedHeight(40);
         mainContainerLayout->AddUIElement(displayContainer, 1)->SetWidthMode(SizeMode::Fill);
 
+        auto displayContainerLayout = CreateVBoxLayout(displayContainer.get());
+
         auto mainLayout = CreateGridLayout(mainWindow.get(), 2, 2);
         mainLayout->SetColumnDefinition(0, GridRowColumnDefinition::Fixed(350));
         mainLayout->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));
@@ -568,14 +570,14 @@ namespace UltraCanvas {
 
         bitmapBuilder.AddItem("pngimages", "PNG Images", "PNG Image display and manipulation",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreatePNGExamples(); },
-                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              [this]() { return CreateBitmapFormatDemoPage("PNG", "media/images/dice.png"); },
+                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "PNG/JPEG Display");
         bitmapBuilder.AddItem("jpegimages", "JPEG Images", "JPEG Image display and manipulation",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateJPEGExamples(); },
-                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              [this]() { return CreateBitmapFormatDemoPage("JPG", "media/images/dice.jpg"); },
+                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "PNG/JPEG Display");
 
@@ -583,8 +585,8 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("avifimages", "AVIF Images",
                               "AVIF next-gen format with superior compression and HDR support",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateAVIFExamples(); },
-                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              [this]() { return CreateBitmapFormatDemoPage("AVIF", "media/images/dice.avif"); },
+                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Modern Formats");
 
@@ -592,8 +594,8 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("webpimages", "WEBP Images",
                               "Google WebP format with excellent compression and web optimization",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateWEBPExamples(); },
-                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              [this]() { return CreateBitmapFormatDemoPage("WEBP", "media/images/dice.webp"); },
+                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Modern Formats");
 
@@ -601,8 +603,8 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("heifimages", "HEIF/HEIC Images",
                               "HEIF high efficiency format with HEVC compression",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateHEIFExamples(); },
-                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              [this]() { return CreateBitmapFormatDemoPage("HEIC", "media/images/dice.heic"); },
+                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Modern Formats");
 
@@ -610,8 +612,8 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("gifimages", "GIF Images",
                               "GIF animated format with 256 color palette",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateGIFExamples(); },
-                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              [this]() { return CreateBitmapFormatDemoPage("GIF", "media/images/dice.gif"); },
+                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Animation Support");
 
@@ -619,8 +621,8 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("tiffimages", "TIFF Images",
                               "TIFF professional format for archival and print",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateTIFFExamples(); },
-                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              [this]() { return CreateBitmapFormatDemoPage("TIFF", "media/images/dice.tiff"); },
+                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Professional Formats");
 
@@ -628,16 +630,18 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("bmpimages", "BMP Images",
                               "BMP Windows native bitmap format",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBMPExamples(); },
-                              "Examples/UltraCanvasBitmapExamples.cpp",
+                              [this]() { return CreateBitmapFormatDemoPage("BMP", "media/images/dice.bmp"); },
+                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Legacy Formats");
 
         // QOI Images (kept as partially implemented if it exists)
         bitmapBuilder.AddItem("qoiimages", "QOI Images",
                               "QOI Image display and manipulation",
-                              ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateBitmapFormatDemoPage("QOI", "media/images/dice.qoi"); },
+                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvasBitmapExamples.md");
 
         bitmapBuilder.AddItem("imageperformance", "Image Performance Test",
                               "Benchmark image loading, decompression, and rendering speed",
@@ -1081,10 +1085,12 @@ namespace UltraCanvas {
         if (item->createExample && item->status != ImplementationStatus::NotImplemented) {
             try {
                 currentDisplayElement = item->createExample();
-                if (currentDisplayElement) {
+                if (currentDisplayElement && displayContainer->GetLayout()) {
+                    ((UltraCanvasBoxLayout*)displayContainer->GetLayout())->AddUIElement(currentDisplayElement)->SetWidthMode(SizeMode::Fill)->SetStretch(1);
+                } else {
                     displayContainer->AddChild(currentDisplayElement);
-                    currentSelectedId = itemId;
                 }
+                currentSelectedId = itemId;
             } catch (const std::exception& e) {
                 std::cerr << "Error creating example for " << itemId << ": " << e.what() << std::endl;
             }
@@ -1097,7 +1103,6 @@ namespace UltraCanvas {
             placeholder->SetBorders(2.0f);
             placeholder->SetBordersColor(Color(200, 200, 0, 255));
             placeholder->SetPadding(10);
-
             displayContainer->AddChild(placeholder);
             currentDisplayElement = placeholder;
             currentSelectedId = itemId;

@@ -20,6 +20,7 @@ namespace UltraCanvas {
         // Create container for menu examples
         auto container = std::make_shared<UltraCanvasContainer>("MenuContainer", 100, 0, 0, 1000, 630);
         container->SetBackgroundColor(Color(252, 252, 252, 255));
+        container->SetPadding(0,0,10,0);
 
         // Section label for Context Menus
         auto contextLabel = std::make_shared<UltraCanvasLabel>("ContextLabel", 101, 20, 10, 300, 30);

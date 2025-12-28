@@ -292,7 +292,7 @@ namespace UltraCanvas {
         if (thumbRect.Contains(mousePos)) {
             interactionState.thumbPressed = true;
             interactionState.isDragging = true;
-            interactionState.dragStartMousePos = IsVertical() ? event.y : event.x;
+            interactionState.dragStartMousePos = IsVertical() ? event.windowY : event.windowX;
             interactionState.dragStartScrollPos = scrollState.position;
 
             // Capture mouse
@@ -376,7 +376,7 @@ namespace UltraCanvas {
 
         // Handle dragging
         if (interactionState.isDragging) {
-            int currentPos = IsVertical() ? event.y : event.x;
+            int currentPos = IsVertical() ? event.windowY : event.windowX;
             int delta = currentPos - interactionState.dragStartMousePos;
 
             // Convert pixel delta to scroll delta

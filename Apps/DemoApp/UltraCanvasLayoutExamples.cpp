@@ -40,6 +40,7 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLayoutExamples() {
         auto mainContainer = std::make_shared<UltraCanvasContainer>("LayoutExamples", 1000, 0, 0, 1020, 1670);
         mainContainer->SetBackgroundColor(Colors::White);
+        mainContainer->SetPadding(0,0,10,0);
 
         long currentY = 10;
 

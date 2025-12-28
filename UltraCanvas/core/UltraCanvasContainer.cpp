@@ -209,7 +209,7 @@ namespace UltraCanvas {
         if (verticalScrollbar->IsVisible()) {
             if (verticalScrollbar->Contains(event.x, event.y) ||
                 verticalScrollbar->IsDragging() ||
-                event.type == UCEventType::MouseWheel) {
+                event.type == UCEventType::MouseWheel || event.type == UCEventType::MouseLeave) {
                 if (verticalScrollbar->OnEvent(event)) {
                     handled = true;
                 }
@@ -220,7 +220,7 @@ namespace UltraCanvas {
         if (!handled && horizontalScrollbar->IsVisible()) {
             if (horizontalScrollbar->Contains(event.x, event.y) ||
                 horizontalScrollbar->IsDragging() ||
-                event.type == UCEventType::MouseWheel) {
+                event.type == UCEventType::MouseWheel || event.type == UCEventType::MouseLeave) {
                 if (horizontalScrollbar->OnEvent(event)) {
                     handled = true;
                 }
@@ -480,6 +480,7 @@ namespace UltraCanvas {
             OnScrollChanged();
         };
         verticalScrollbar->SetVisible(false);
+        verticalScrollbar->SetParentContainer(this);
 
         // Create horizontal scrollbar
         horizontalScrollbar = std::make_unique<UltraCanvasScrollbar>(
@@ -490,6 +491,7 @@ namespace UltraCanvas {
             OnScrollChanged();
         };
         horizontalScrollbar->SetVisible(false);
+        horizontalScrollbar->SetParentContainer(this);
 
         ApplyStyleToScrollbars();
     }

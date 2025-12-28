@@ -479,4 +479,15 @@ rescan_windows:
         currentEvent = event;
         return elem->OnEvent(event);
     }
+
+    void UltraCanvasBaseApplication::CaptureMouse(UltraCanvasUIElement *element) {
+        capturedElement = element;
+
+    }
+
+    void UltraCanvasBaseApplication::ReleaseMouse(UltraCanvasUIElement *element) {
+        if (element && element == capturedElement) {
+            capturedElement = nullptr;
+        }
+    }
 }

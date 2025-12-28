@@ -27,7 +27,7 @@ public:
 #include "../libspecific/Cairo/ImageCairo.h"
 namespace UltraCanvas {
     using UCPixmap = UltraCanvas::UCPixmapCairo;
-    using UCImage = UltraCanvas::UCImageVips;
+    using UCImage = UltraCanvas::UCImageRaster;
 
     typedef std::shared_ptr<UCImage> UCImagePtr;
     typedef std::shared_ptr<UCPixmap> UCPixmapPtr;

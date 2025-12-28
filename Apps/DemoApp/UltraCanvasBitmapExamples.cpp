@@ -228,15 +228,6 @@ namespace UltraCanvas {
         return metadata.str();
     }
 
-// ===== FULL-SIZE IMAGE VIEWER (Modal Window) =====
-    void ShowFullSizeImageViewer(const std::string& imagePath) {
-        // TODO: Implement modal window with full-size image display
-        // This would create a new window or modal overlay showing the full image
-        // with zoom controls and close button
-        // For now, this is a placeholder that demonstrates the concept
-    }
-
-
 
 
     // ===== HELPER FUNCTION FOR IMAGE INFO DISPLAY =====
@@ -714,97 +705,97 @@ namespace UltraCanvas {
     }
 
 // ===== HEIF FORMAT EXAMPLES =====
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateHEIFExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("HEIFDemoPage", 1800, 0, 0, 950, 800);
-        container->SetBackgroundColor(Color(255, 255, 255, 255));
-
-        // Page Title
-        auto title = std::make_shared<UltraCanvasLabel>("HEIFTitle", 1801, 10, 10, 400, 35);
-        title->SetText("HEIF/HEIC Format Demonstration");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(255, 140, 0, 255));
-        title->SetAutoResize(true);
-        container->AddChild(title);
-
-        // Format Description
-        auto description = std::make_shared<UltraCanvasLabel>("HEIFDesc", 1802, 10, 50, 930, 80);
-        description->SetText(
-                "HEIF/HEIC (High Efficiency Image Format) is an image container format based on HEVC (H.265) video compression. "
-                "It provides superior compression efficiency compared to JPEG while maintaining high image quality. "
-                "HEIF supports features like image sequences, transparency, depth maps, and HDR. "
-                "This format is used by default on Apple devices since iOS 11 and macOS High Sierra.");
-        description->SetAlignment(TextAlignment::Left);
-        //description->SetTextWrapping(true);
-        description->SetFontSize(11);
-        container->AddChild(description);
-
-        // Image Display Area
-        auto heifImage = std::make_shared<UltraCanvasImageElement>("HEIFImage", 1803, 20, 140, 450, 350);
-        heifImage->LoadFromFile("media/images/fantasycutemonster.heif");
-        heifImage->SetFitMode(ImageFitMode::Contain);
-        heifImage->SetBorders(1.0f, Color(200, 200, 200, 255));
-        heifImage->SetBackgroundColor(Color(240, 240, 240, 255));
-
-        // ✨ Hand cursor and clickable
-        heifImage->SetMousePointer(MousePointer::Hand);
-        heifImage->SetClickable(true);
-        heifImage->onClick = []() {
-            ShowFullSizeImageViewer("media/images/fantasycutemonster.heif");
-        };
-
-        container->AddChild(heifImage);
-
-        // Performance Metrics Panel
-//        auto perfPanel = std::make_shared<UltraCanvasLabel>("HEIFPerf", 1804, 490, 140, 440, 120);
-//        perfPanel->SetText(MeasureImagePerformance("media/fantasycutemonster.heif"));
-//        perfPanel->SetAlignment(TextAlignment::Left);
-//        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
-//        perfPanel->SetBorders(1.0f);
-//        perfPanel->SetPadding(10.0f);
-//        perfPanel->SetFontSize(10);
-//        container->AddChild(perfPanel);
-
-        // Metadata Panel
-        auto metadataPanel = std::make_shared<UltraCanvasLabel>("HEIFMetadata", 1805, 490, 140, 440, 180);
-        metadataPanel->SetText(ExtractImageMetadata("media/images/fantasycutemonster.heif"));
-        metadataPanel->SetAlignment(TextAlignment::Left);
-        metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
-        metadataPanel->SetBorders(1.0f);
-        metadataPanel->SetPadding(10.0f);
-        metadataPanel->SetFontSize(10);
-        container->AddChild(metadataPanel);
-
-        // Format Options Panel
-        auto optionsPanel = std::make_shared<UltraCanvasLabel>("HEIFOptions", 1806, 490, 400, 440, 90);
-        optionsPanel->SetText(
-                "Format Options:\n"
-                "• Compression: HEVC-based\n"
-                "• Quality: High efficiency\n"
-                "• Alpha Channel: Supported\n"
-                "• Image Sequences: Supported\n"
-                "• Depth Maps: Supported\n"
-                "• HDR: 10-bit support");
-        optionsPanel->SetAlignment(TextAlignment::Left);
-        optionsPanel->SetBackgroundColor(Color(255, 250, 245, 255));
-        optionsPanel->SetBorders(1.0f);
-        optionsPanel->SetPadding(10.0f);
-        optionsPanel->SetFontSize(10);
-        container->AddChild(optionsPanel);
-
-        // Format Info
-        auto formatInfo = CreateImageInfoLabel("HEIFFormatInfo", 20, 500,
-                                               "HEIF (High Efficiency Image Format)",
-                                               "• HEVC-based compression\n"
-                                               "• 50% smaller than JPEG\n"
-                                               "• HDR and depth map support\n"
-                                               "• Image sequences\n"
-                                               "• Ideal for: mobile photography\n"
-                                               "• Default on Apple devices");
-        container->AddChild(formatInfo);
-
-        return container;
-    }
+//    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateHEIFExamples() {
+//        auto container = std::make_shared<UltraCanvasContainer>("HEIFDemoPage", 1800, 0, 0, 950, 800);
+//        container->SetBackgroundColor(Color(255, 255, 255, 255));
+//
+//        // Page Title
+//        auto title = std::make_shared<UltraCanvasLabel>("HEIFTitle", 1801, 10, 10, 400, 35);
+//        title->SetText("HEIF/HEIC Format Demonstration");
+//        title->SetFontSize(18);
+//        title->SetFontWeight(FontWeight::Bold);
+//        title->SetTextColor(Color(255, 140, 0, 255));
+//        title->SetAutoResize(true);
+//        container->AddChild(title);
+//
+//        // Format Description
+//        auto description = std::make_shared<UltraCanvasLabel>("HEIFDesc", 1802, 10, 50, 930, 80);
+//        description->SetText(
+//                "HEIF/HEIC (High Efficiency Image Format) is an image container format based on HEVC (H.265) video compression. "
+//                "It provides superior compression efficiency compared to JPEG while maintaining high image quality. "
+//                "HEIF supports features like image sequences, transparency, depth maps, and HDR. "
+//                "This format is used by default on Apple devices since iOS 11 and macOS High Sierra.");
+//        description->SetAlignment(TextAlignment::Left);
+//        //description->SetTextWrapping(true);
+//        description->SetFontSize(11);
+//        container->AddChild(description);
+//
+//        // Image Display Area
+//        auto heifImage = std::make_shared<UltraCanvasImageElement>("HEIFImage", 1803, 20, 140, 450, 350);
+//        heifImage->LoadFromFile("media/images/fantasycutemonster.heif");
+//        heifImage->SetFitMode(ImageFitMode::Contain);
+//        heifImage->SetBorders(1.0f, Color(200, 200, 200, 255));
+//        heifImage->SetBackgroundColor(Color(240, 240, 240, 255));
+//
+//        // ✨ Hand cursor and clickable
+//        heifImage->SetMousePointer(MousePointer::Hand);
+//        heifImage->SetClickable(true);
+//        heifImage->onClick = []() {
+//            ShowFullSizeImageViewer("media/images/fantasycutemonster.heif");
+//        };
+//
+//        container->AddChild(heifImage);
+//
+//        // Performance Metrics Panel
+////        auto perfPanel = std::make_shared<UltraCanvasLabel>("HEIFPerf", 1804, 490, 140, 440, 120);
+////        perfPanel->SetText(MeasureImagePerformance("media/fantasycutemonster.heif"));
+////        perfPanel->SetAlignment(TextAlignment::Left);
+////        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
+////        perfPanel->SetBorders(1.0f);
+////        perfPanel->SetPadding(10.0f);
+////        perfPanel->SetFontSize(10);
+////        container->AddChild(perfPanel);
+//
+//        // Metadata Panel
+//        auto metadataPanel = std::make_shared<UltraCanvasLabel>("HEIFMetadata", 1805, 490, 140, 440, 180);
+//        metadataPanel->SetText(ExtractImageMetadata("media/images/fantasycutemonster.heif"));
+//        metadataPanel->SetAlignment(TextAlignment::Left);
+//        metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
+//        metadataPanel->SetBorders(1.0f);
+//        metadataPanel->SetPadding(10.0f);
+//        metadataPanel->SetFontSize(10);
+//        container->AddChild(metadataPanel);
+//
+//        // Format Options Panel
+//        auto optionsPanel = std::make_shared<UltraCanvasLabel>("HEIFOptions", 1806, 490, 400, 440, 90);
+//        optionsPanel->SetText(
+//                "Format Options:\n"
+//                "• Compression: HEVC-based\n"
+//                "• Quality: High efficiency\n"
+//                "• Alpha Channel: Supported\n"
+//                "• Image Sequences: Supported\n"
+//                "• Depth Maps: Supported\n"
+//                "• HDR: 10-bit support");
+//        optionsPanel->SetAlignment(TextAlignment::Left);
+//        optionsPanel->SetBackgroundColor(Color(255, 250, 245, 255));
+//        optionsPanel->SetBorders(1.0f);
+//        optionsPanel->SetPadding(10.0f);
+//        optionsPanel->SetFontSize(10);
+//        container->AddChild(optionsPanel);
+//
+//        // Format Info
+//        auto formatInfo = CreateImageInfoLabel("HEIFFormatInfo", 20, 500,
+//                                               "HEIF (High Efficiency Image Format)",
+//                                               "• HEVC-based compression\n"
+//                                               "• 50% smaller than JPEG\n"
+//                                               "• HDR and depth map support\n"
+//                                               "• Image sequences\n"
+//                                               "• Ideal for: mobile photography\n"
+//                                               "• Default on Apple devices");
+//        container->AddChild(formatInfo);
+//
+//        return container;
+//    }
 
 // ===== GIF FORMAT EXAMPLES =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGIFExamples() {

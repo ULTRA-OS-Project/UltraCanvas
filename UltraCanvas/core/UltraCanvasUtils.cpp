@@ -8,6 +8,7 @@
 #include <sstream>
 #include <fstream>
 #include <iostream>
+#include <iomanip>
 #include <string>
 
 namespace UltraCanvas {
@@ -416,5 +417,19 @@ namespace UltraCanvas {
         }
 
         return result;
+    }
+
+    std::string FormatFileSize(size_t bytes) {
+        std::ostringstream oss;
+        if (bytes >= 1024 * 1024 * 1024) {
+            oss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0 * 1024.0)) << " GB";
+        } else if (bytes >= 1024 * 1024) {
+            oss << std::fixed << std::setprecision(2) << (bytes / (1024.0 * 1024.0)) << " MB";
+        } else if (bytes >= 1024) {
+            oss << std::fixed << std::setprecision(2) << (bytes / 1024.0) << " KB";
+        } else {
+            oss << bytes << " bytes";
+        }
+        return oss.str();
     }
 }

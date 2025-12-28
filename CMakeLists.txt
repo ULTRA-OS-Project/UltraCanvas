@@ -49,6 +49,7 @@ find_package(PkgConfig REQUIRED)
 # ===== BUILD ULTRACANVAS CORE LIBRARY =====
 message(STATUS "")
 message(STATUS "── Building UltraCanvas Core Library ──")
+add_subdirectory(UltraCanvas/3rdparty/fmt)
 add_subdirectory(UltraCanvas)
 
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
@@ -94,6 +95,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasCDRExamples.cpp
             Apps/DemoApp/UltraCanvasXARExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
+            Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
     )
 
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
@@ -158,13 +160,15 @@ if(BUILD_DEMO_APP)
     target_include_directories(UltraCanvasDemo PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}/Apps/DemoApp
+#        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/3rdparty/fmt/include
     )
     
     # Link against UltraCanvas core library
     target_link_libraries(UltraCanvasDemo PRIVATE
         ${ULTRACANVAS_LIBRARY}
     )
-    
+    target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
+
     # Link against all plugin libraries
     if(ULTRACANVAS_PLUGIN_TARGETS)
         target_link_libraries(UltraCanvasDemo PRIVATE

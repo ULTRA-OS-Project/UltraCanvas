@@ -48,6 +48,7 @@ namespace UltraCanvas {
 // ===== FINANCIAL CHART EXAMPLES =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFinancialChartExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("FinancialChartContainer", 1000, 0, 0, 1000, 780);
+        container->SetPadding(0,0,10,0);
 
         // Create title label
         auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 1001, 20, 10, 960, 30);

@@ -8,6 +8,7 @@
 #define IMAGECAIRO_H
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasImage.h"
+#include "PixelFX/PixelFX.h"
 #include <string>
 #include <unordered_map>
 #include <memory>
@@ -49,32 +50,35 @@ namespace UltraCanvas {
     };
 
 
-    class UCImageVips {
+    class UCImageRaster {
     private:
         int width = 0;
         int height = 0;
         uint8_t *imgDataPtr = nullptr;
         size_t imgDataSize = 0;
+        bool ownData = false;
         std::string fileName;
         std::string formatHint;
+
+        bool LoadFileToMemory(const std::string &imagePath);
 
     public:
         std::string errorMessage;
 
         // ===== CONSTRUCTORS =====
-        UCImageVips() {};
-        UCImageVips(const std::string& fn) : fileName(fn) {};
-        ~UCImageVips();
+        UCImageRaster() {};
+        UCImageRaster(const std::string& fn) : fileName(fn) {};
+        ~UCImageRaster();
 
-        static std::shared_ptr<UCImageVips> Get(const std::string &path);
-        static std::shared_ptr<UCImageVips> Load(const std::string &path, bool loadOnlyHeader = true);
-        static std::shared_ptr<UCImageVips> LoadFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint = "");
-        static std::shared_ptr<UCImageVips> LoadFromMemory(const std::vector<uint8_t>& data, const std::string& formatHint = "") {
+        static std::shared_ptr<UCImageRaster> Get(const std::string &path);
+        static std::shared_ptr<UCImageRaster> Load(const std::string &path, bool loadOnlyHeader = true);
+        static std::shared_ptr<UCImageRaster> LoadFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint = "");
+        static std::shared_ptr<UCImageRaster> LoadFromMemory(const std::vector<uint8_t>& data, const std::string& formatHint = "") {
             return LoadFromMemory(data.data(), data.size(), formatHint);
         };
-        static std::shared_ptr<UCImageVips> GetFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint = "");
+        static std::shared_ptr<UCImageRaster> GetFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint = "");
 
-        bool Save(const std::string &path) { return false; };
+        std::string Save(const std::string &imagePath, const std::string &format, vips::VOption *options = nullptr);
 
         std::shared_ptr<UCPixmapCairo> GetPixmap(int width = 0, int height = 0, ImageFitMode fitMode = ImageFitMode::Contain);
         std::shared_ptr<UCPixmapCairo> CreatePixmap(int width, int height, ImageFitMode fitMode = ImageFitMode::Contain);
@@ -89,7 +93,7 @@ namespace UltraCanvas {
         int GetHeight() const { return height; }
 
         size_t GetDataSize() {
-            return sizeof(UCImageVips) + 250 + imgDataSize;
+            return sizeof(UCImageRaster) + 250 + imgDataSize;
         }
         bool IsValid() { return !fileName.empty() && errorMessage.empty() && width > 0;};
     };

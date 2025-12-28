@@ -18,7 +18,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextInputExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("TextInputExamples", 200, 0, 0, 900, 1000);
-
+        container->SetPadding(0,0,10,0);
         // Title
         auto title = std::make_shared<UltraCanvasLabel>("TextInputTitle", 201, 10, 10, 300, 30);
         title->SetText("Text Input Examples");

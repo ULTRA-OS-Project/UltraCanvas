@@ -7,6 +7,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 #include "ImageCairo.h"
+#include "Plugins/QOI/QUI.h"
 
 #include <algorithm>
 #include <fstream>
@@ -25,7 +26,7 @@ namespace UltraCanvas {
 #else
     UCPixmapsCache g_PixmapsCache(0);
 #endif
-    typedef UCCache<UCImageVips> UCImagesCache;
+    typedef UCCache<UCImageRaster> UCImagesCache;
     UCImagesCache g_ImagesCache(50 * 1024 * 1024);
 
 
@@ -108,18 +109,18 @@ namespace UltraCanvas {
         return width * height * 4;
     }
 
-    UCImageVips::~UCImageVips() {
-        if (imgDataPtr) {
+    UCImageRaster::~UCImageRaster() {
+        if (ownData && imgDataPtr) {
             free(imgDataPtr);
             imgDataPtr = nullptr;
             imgDataSize = 0;
         }
     }
-    std::shared_ptr<UCImageVips> UCImageVips::Get(const std::string &imagePath) {
-        std::shared_ptr<UCImageVips> im = g_ImagesCache.GetFromCache(imagePath);
+    std::shared_ptr<UCImageRaster> UCImageRaster::Get(const std::string &imagePath) {
+        std::shared_ptr<UCImageRaster> im = g_ImagesCache.GetFromCache(imagePath);
         if (!im) {
 #if HAS_PIXMAPS_CACHE
-            im = UCImageVips::Load(imagePath);
+            im = UCImageRaster::Load(imagePath);
 #else
             im = UCImageVips::Load(imagePath, false);
 #endif
@@ -130,12 +131,12 @@ namespace UltraCanvas {
         return im;
     }
 
-    std::shared_ptr<UCImageVips> UCImageVips::GetFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint) {
+    std::shared_ptr<UCImageRaster> UCImageRaster::GetFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint) {
         char filename[200];
         snprintf(filename, sizeof(filename), ":mem:%p:%ld", data, dataSize);
-        std::shared_ptr<UCImageVips> im = g_ImagesCache.GetFromCache(filename);
+        std::shared_ptr<UCImageRaster> im = g_ImagesCache.GetFromCache(filename);
         if (!im) {
-            im = UCImageVips::LoadFromMemory(data, dataSize, formatHint);
+            im = UCImageRaster::LoadFromMemory(data, dataSize, formatHint);
             if (im->IsValid()) {
                 g_ImagesCache.AddToCache(filename, im);
             }
@@ -143,20 +144,45 @@ namespace UltraCanvas {
         return im;
     }
 
-    std::shared_ptr<UCImageVips> UCImageVips::Load(const std::string &imagePath, bool loadOnlyHeader) {
-        auto result = std::make_shared<UCImageVips>(imagePath);
+    bool UCImageRaster::LoadFileToMemory(const std::string &imagePath) {
+        if (imgDataPtr && ownData) {
+            free(imgDataPtr);
+            imgDataPtr = nullptr;
+            ownData = false;
+        }
+        try {
+            std::ifstream file(imagePath, std::ios::binary | std::ios::ate);
+            std::streamsize fileSize = file.tellg();
+            file.seekg(0);
+            imgDataPtr = (uint8_t *)malloc(fileSize);
+            if (imgDataPtr) {
+                file.read((char*)imgDataPtr, fileSize);
+                imgDataSize = fileSize;
+                ownData = true;
+            } else {
+                throw std::runtime_error("Not enough memory");
+            }
+            file.close();
+        } catch (std::exception& err) {
+            if (imgDataPtr) {
+                free(imgDataPtr);
+                imgDataPtr = nullptr;
+            }
+            std::cerr << "UCImage::Load: Failed Failed to load image to memory " << imagePath << " Err:" << err.what() << std::endl;
+            errorMessage = std::string("Failed to load image ") + imagePath + " Err:" + err.what();
+        }
+        return imgDataPtr != nullptr;
+    }
+
+    std::shared_ptr<UCImageRaster> UCImageRaster::Load(const std::string &imagePath, bool loadOnlyHeader) {
+        auto result = std::make_shared<UCImageRaster>(imagePath);
+        auto ext = GetFileExtension(imagePath);
         try {
             vips::VImage vipsImage = vips::VImage::new_from_file(imagePath.c_str());
             result->width = vipsImage.width();
             result->height = vipsImage.height();
             if (!loadOnlyHeader) {
-                std::ifstream file(imagePath, std::ios::binary | std::ios::ate);
-                std::streamsize fileSize = file.tellg();
-                file.seekg(0);
-                result->imgDataPtr = (uint8_t *)malloc(fileSize);
-                file.read((char*)result->imgDataPtr, fileSize);
-                result->imgDataSize = fileSize;
-                file.close();
+                result->LoadFileToMemory(imagePath);
             }
         } catch (vips::VError& err) {
             std::cerr << "UCImage::Load: Failed Failed to load image for " << imagePath << " Err:" << err.what() << std::endl;
@@ -167,10 +193,10 @@ namespace UltraCanvas {
     }
 
 // With these two functions:
-    std::shared_ptr<UCImageVips> UCImageVips::LoadFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint) {
+    std::shared_ptr<UCImageRaster> UCImageRaster::LoadFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint) {
         char filename[200];
         snprintf(filename, sizeof(filename), ":mem:%p:%ld", data, dataSize);
-        auto result = std::make_shared<UCImageVips>(filename);
+        auto result = std::make_shared<UCImageRaster>(filename);
 
         if (!data || dataSize == 0) {
             result->errorMessage = "Invalid data: null pointer or zero size";
@@ -180,9 +206,8 @@ namespace UltraCanvas {
         try {
             // Create VImage from memory buffer
             // formatHint can be empty for auto-detection, or specify format like "png", "jpeg", etc.
-            result->imgDataPtr = (uint8_t *)malloc(dataSize);
+            result->imgDataPtr = (uint8_t *)data;
             result->imgDataSize = dataSize;
-            memcpy(result->imgDataPtr, data, dataSize);
             result->formatHint = formatHint;
             vips::VImage vipsImage;
             if (formatHint.empty()) {
@@ -202,13 +227,13 @@ namespace UltraCanvas {
         return result;
     }
 
-    std::string UCImageVips::MakePixmapCacheKey(int w, int h, ImageFitMode fitMode) {
+    std::string UCImageRaster::MakePixmapCacheKey(int w, int h, ImageFitMode fitMode) {
         char key[300];
         snprintf(key, sizeof(key) - 1, "%s?w:%dh:%dc:%d", fileName.c_str(), w, h, static_cast<int>(fitMode));
         return std::string(key);
     }
 
-    std::shared_ptr<UCPixmapCairo> UCImageVips::GetPixmap(int w, int h, ImageFitMode fitMode) {
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::GetPixmap(int w, int h, ImageFitMode fitMode) {
         if (!errorMessage.empty() || fileName.empty()) {
             return nullptr;
         }
@@ -231,7 +256,7 @@ namespace UltraCanvas {
         return pm;
     }
 
-    std::shared_ptr<UCPixmapCairo> UCImageVips::CreatePixmap(int w, int h, ImageFitMode fitMode) {
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode) {
         try {
             if (imgDataPtr) {
                 if (!formatHint.empty()) {
@@ -264,6 +289,54 @@ namespace UltraCanvas {
             errorMessage = std::string("Failed to make pixmap Err:") + err.what();
         }
         return nullptr;
+    }
+
+    std::string UCImageRaster::Save(const std::string &imagePath, const std::string &format, vips::VOption *options) {
+        auto saveFormat = ToLowerCase(format);
+        vips::VImage vImg;
+        try {
+            if (imgDataPtr) {
+                if (formatHint.empty()) {
+                    vImg = vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "", nullptr);
+                } else {
+                    vImg = vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "",
+                                                         vips::VImage::option()->set("loader", formatHint.c_str()));
+                }
+            }  else {
+                vImg = vips::VImage::new_from_file(fileName.c_str());
+            }
+        } catch (vips::VError& err) {
+            std::cerr << "UCImageVips::Save: Failed to load image. Err:" << err.what() << std::endl;
+            return err.what();
+        }
+        try {
+            if (saveFormat == "gif") {
+                vImg.gifsave(imagePath.c_str(), options);
+            } else if (saveFormat == "heif") {
+                vImg.heifsave(imagePath.c_str(), options);
+            } else if (saveFormat == "jp2k") {
+                vImg.jp2ksave(imagePath.c_str(), options);
+            } else if (saveFormat == "jpeg") {
+                vImg.jpegsave(imagePath.c_str(), options);
+            } else if (saveFormat == "jx") {
+                vImg.jxlsave(imagePath.c_str(), options);
+            } else if (saveFormat == "png") {
+                vImg.pngsave(imagePath.c_str(), options);
+            } else if (saveFormat == "ppm") {
+                vImg.ppmsave(imagePath.c_str(), options);
+            } else if (saveFormat == "tiff") {
+                vImg.tiffsave(imagePath.c_str(), options);
+            } else if (saveFormat == "webp") {
+                vImg.webpsave(imagePath.c_str(), options);
+            } else {
+                std::cerr << "UCImageVips::Save: Failed save image: " << imagePath << " Err: Unsupported format (" << format << ")" << std::endl;
+                return "Unsupported format (" + format +")";
+            }
+        } catch (vips::VError& err) {
+            std::cerr << "UCImageVips::Save: Failed save image: " << imagePath << " Err:" << err.what() << std::endl;
+            return err.what();
+        }
+        return "";
     }
 
     void rgba2bgra_premultiplied(uint32_t *src, uint32_t *dst, int n) {
@@ -331,5 +404,4 @@ namespace UltraCanvas {
 
         return std::make_shared<UCPixmapCairo>(surface);
     }
-
 }

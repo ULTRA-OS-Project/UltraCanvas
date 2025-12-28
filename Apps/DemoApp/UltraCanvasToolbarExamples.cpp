@@ -22,6 +22,7 @@ namespace UltraCanvas {
                 "ToolbarExamples", 800, 0, 0, 1000, 1000
         );
         mainContainer->SetBackgroundColor(Color(252, 252, 252, 255));
+        mainContainer->SetPadding(0,0,10,0);
 
         int currentY = 10;
 
