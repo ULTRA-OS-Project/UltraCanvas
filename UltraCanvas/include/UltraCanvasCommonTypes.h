@@ -351,12 +351,15 @@ enum class UCMouseCursor {
     Cross = 5,         // Crosshair
     Help = 6,          // Help/question mark
     NotAllowed = 7,    // Not allowed/prohibited
-    SizeAll = 8,       // Four-directional resize
-    SizeNS = 9,        // North-South resize
-    SizeWE = 10,       // West-East resize
-    SizeNWSE = 11,     // Northwest-Southeast resize
-    SizeNESW = 12,     // Northeast-Southwest resize
-    Custom = 99        // Custom cursor
+    LookingGlass = 8,         // Search/Zoom looking glass
+    SizeAll = 9,       // Four-directional resize
+    SizeNS = 10,        // North-South resize
+    SizeWE = 11,       // West-East resize
+    SizeNWSE = 12,     // Northwest-Southeast resize
+    SizeNESW = 13,     // Northeast-Southwest resize
+    Custom1 = 101,        // Custom cursor
+    Custom2 = 102,        // Custom cursor
+    Custom3 = 103        // Custom cursor
 };
 
 // ===== COMMON ENUMS =====

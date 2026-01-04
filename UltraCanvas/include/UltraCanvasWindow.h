@@ -103,8 +103,8 @@ namespace UltraCanvas {
         void RequestDelete();
 
         UCMouseCursor GetCurrentMouseCursor() { return currentMouseCursor; };
-        void SelectMouseCursor(UCMouseCursor ptr);
-        virtual void SelectMouseCursorNative(UCMouseCursor ptr) = 0;
+        bool SelectMouseCursor(UCMouseCursor ptr);
+        bool SelectMouseCursor(UCMouseCursor ptr, const char* filename, int hotspotX, int hotspotY);
 
         virtual void Show() = 0;
         virtual void Hide() = 0;

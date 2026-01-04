@@ -63,6 +63,8 @@ namespace UltraCanvas {
         Colormap colormap;
         int depth;
 
+        std::unordered_map<UCMouseCursor, Cursor> cursors;
+
         // ===== OPENGL CONTEXT =====
         bool glxSupported;
 
@@ -155,6 +157,8 @@ namespace UltraCanvas {
         void SetDoubleClickDistance(int pixels) {
             mouseClickInfo.doubleClickDistance = pixels;
         }
+        bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor cur) override;
+        bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor cur, const char* filename, int hotspotX, int hotspotY) override;
 
     protected:
         // ===== INHERITED FROM BASE APPLICATION =====
@@ -163,6 +167,8 @@ namespace UltraCanvas {
         void CaptureMouseNative() override;
         void ReleaseMouseNative() override;
         void CollectAndProcessNativeEvents() override;
+
+        Cursor LoadCursorFromImage(const char* filename, int hotspotX, int hotspotY);
 
     private:
         // ===== INTERNAL INITIALIZATION =====

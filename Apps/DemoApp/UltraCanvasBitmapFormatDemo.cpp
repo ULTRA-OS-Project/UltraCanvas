@@ -966,8 +966,8 @@ namespace UltraCanvas {
         auto image = std::make_shared<UltraCanvasImageElement>("Image", id++, 4, 4, 222, 162);
         image->LoadFromFile(sampleImagePath);
         image->SetFitMode(ImageFitMode::Contain);
-        image->SetMouseCursor(UCMouseCursor::Hand);
         image->SetClickable(true);
+        image->SetMouseCursor(UCMouseCursor::LookingGlass);
         image->onClick = [sampleImagePath]() {
             ShowFullSizeImageViewer(sampleImagePath);
         };
@@ -993,6 +993,7 @@ namespace UltraCanvas {
         viewBtn->SetColors(info.accentColor, info.accentColor);
         viewBtn->SetTextColors(Color(255, 255, 255, 255));
         viewBtn->SetCornerRadius(6);
+        viewBtn->SetMouseCursor(UCMouseCursor::LookingGlass);
         viewBtn->onClick = [sampleImagePath]() {
             ShowFullSizeImageViewer(sampleImagePath);
         };

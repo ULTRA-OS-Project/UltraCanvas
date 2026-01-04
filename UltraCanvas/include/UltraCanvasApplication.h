@@ -100,6 +100,8 @@ namespace UltraCanvas {
         bool IsRunning() const { return running; }
 
         bool HandleFocusedWindowChange(UltraCanvasWindow* window);
+        virtual bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor ptr) = 0;
+        virtual bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor ptr, const char* filename, int hotspotX, int hotspotY) = 0;
 
     protected:
         virtual bool InitializeNative() = 0;
@@ -109,9 +111,11 @@ namespace UltraCanvas {
         virtual void CaptureMouseNative() = 0;
         virtual void ReleaseMouseNative() = 0;
 
+
         bool IsDoubleClick(const UCEvent &event);
         void CleanupWindowReferences(UltraCanvasWindowBase* window);
         virtual void CollectAndProcessNativeEvents() = 0;
+
     };
 }
 

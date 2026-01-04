@@ -68,7 +68,6 @@ namespace UltraCanvas {
     protected:
         bool CreateNative() override;
         void DestroyNative() override;
-        void SelectMouseCursorNative(UCMouseCursor ptr) override;
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====

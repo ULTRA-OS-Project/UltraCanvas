@@ -184,7 +184,6 @@ namespace UltraCanvas {
         running = false;
 
         std::cout << "UltraCanvas: macOS Application shut down" << std::endl;
-        return true;
     }
 
 

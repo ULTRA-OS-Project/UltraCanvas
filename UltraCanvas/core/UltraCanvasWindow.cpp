@@ -416,11 +416,24 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasWindowBase::SelectMouseCursor(UCMouseCursor ptr) {
+    bool UltraCanvasWindowBase::SelectMouseCursor(UCMouseCursor ptr) {
         if (currentMouseCursor != ptr) {
-            SelectMouseCursorNative(ptr);
-            currentMouseCursor = ptr;
+            if (UltraCanvasApplication::GetInstance()->SelectMouseCursorNative(this, ptr)) {
+                currentMouseCursor = ptr;
+                return true;
+            }
         }
+        return false;
+    }
+
+    bool UltraCanvasWindowBase::SelectMouseCursor(UCMouseCursor ptr, const char* filename, int hotspotX, int hotspotY) {
+        if (currentMouseCursor != ptr) {
+            if (UltraCanvasApplication::GetInstance()->SelectMouseCursorNative(this, ptr, filename, hotspotX, hotspotY)) {
+                currentMouseCursor = ptr;
+                return true;
+            }
+        }
+        return false;
     }
 
 

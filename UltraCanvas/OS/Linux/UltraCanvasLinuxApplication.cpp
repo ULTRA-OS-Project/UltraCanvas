@@ -79,6 +79,11 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxApplication::ShutdownNative() {
         PixelFX::Shutdown();
+
+        for (auto cursor : cursors) {
+            XFreeCursor(display, cursor.second);
+        }
+
         if (display) {
             std::cout << "UltraCanvas: Closing X11 display..." << std::endl;
             XCloseDisplay(display);

@@ -39,7 +39,6 @@ namespace UltraCanvas {
     class UltraCanvasLinuxWindow : public UltraCanvasWindowBase {
     protected:
         Window xWindow;
-        Cursor currentXCursor;
 
         cairo_surface_t* cairoSurface;
         std::unique_ptr<RenderContextCairo> renderContext;
@@ -95,8 +94,6 @@ namespace UltraCanvas {
 //        void RestoreWindowGeometry();
     protected:
         void HandleResizeEvent(int w, int h) override;
-
-        void SelectMouseCursorNative(UCMouseCursor cur) override;
     };
 
 } // namespace UltraCanvas

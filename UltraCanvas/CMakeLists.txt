@@ -60,7 +60,7 @@ find_package(Freetype REQUIRED)
 
 # Platform-specific dependencies
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
-    pkg_check_modules(X11 REQUIRED x11)
+    pkg_check_modules(X11 REQUIRED x11 xcursor)
     find_package(OpenGL REQUIRED)
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     # Windows SDK provides most dependencies
@@ -180,6 +180,8 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
     ${ULTRACANVAS_TEXT_SOURCES}
     ${ULTRACANVAS_CHARTS_SOURCES}
+#        dialogs/PixelFXExportDialog.cpp
+#        dialogs/PixelFXExportDialog.h
 )
 
 # ===== BUILD CORE LIBRARY =====
