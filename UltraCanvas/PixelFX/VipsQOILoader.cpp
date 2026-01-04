@@ -288,6 +288,15 @@ vips_foreign_load_qoi_buffer_build(VipsObject *object)
     return VIPS_OBJECT_CLASS(vips_foreign_load_qoi_buffer_parent_class)->build(object);
 }
 
+static gboolean
+vips_foreign_load_qoi_buffer_is_a(const void *data, size_t size)
+{
+    if (size < 4)
+        return FALSE;
+
+    return vips_isprefix("qoif", (const char *) data);
+}
+
 static void
 vips_foreign_load_qoi_buffer_init(
         VipsForeignLoadQoiBuffer *buffer)
@@ -297,9 +306,20 @@ vips_foreign_load_qoi_buffer_init(
 static void
 vips_foreign_load_qoi_buffer_class_init(VipsForeignLoadQoiBufferClass *klass)
 {
+    GObjectClass *gobject_class = G_OBJECT_CLASS(klass);
     VipsObjectClass *object_class = VIPS_OBJECT_CLASS(klass);
+    VipsForeignClass *foreign_class = (VipsForeignClass *) klass;
+    VipsForeignLoadClass *load_class = (VipsForeignLoadClass *) klass;
+
+    gobject_class->set_property = vips_object_set_property;
+    gobject_class->get_property = vips_object_get_property;
+
+    object_class->nickname = "qoiload_buffer";
+    object_class->description = "load QOI from buffer";
 
     object_class->build = vips_foreign_load_qoi_buffer_build;
+
+    load_class->is_a_buffer = vips_foreign_load_qoi_buffer_is_a;
 
     VIPS_ARG_BOXED(klass, "buffer", 1,
                    "Buffer",

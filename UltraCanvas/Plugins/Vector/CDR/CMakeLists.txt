@@ -31,6 +31,20 @@ if(NOT LIBREVENGE_FOUND)
     message(FATAL_ERROR "librevenge not found. Install with: sudo apt install librevenge-dev")
 endif()
 
+if(APPLE)
+    # ICU is keg-only on Homebrew, find it explicitly
+    execute_process(
+            COMMAND brew --prefix icu4c
+            OUTPUT_VARIABLE ICU_HOMEBREW_PREFIX
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+    )
+    if(ICU_HOMEBREW_PREFIX)
+        set(ENV{PKG_CONFIG_PATH} "${ICU_HOMEBREW_PREFIX}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+        link_directories(${ICU_HOMEBREW_PREFIX}/lib)
+    endif()
+endif()
+
 # Optional dependencies
 pkg_check_modules(LCMS2 lcms2)
 pkg_check_modules(ICU icu-uc)

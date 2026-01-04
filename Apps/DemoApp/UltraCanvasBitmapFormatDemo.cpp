@@ -1031,7 +1031,7 @@ namespace UltraCanvas {
                 {"LOADER", imgInfo.loader},
                 {"BITS PER CHANNEL", fmt::format("{}", imgInfo.bitsPerChannel)},
                 {"ALPHA CHANNEL", imgInfo.hasAlpha ? "Yes" : "No"},
-                {"DPI", fmt::format("{}×{}", round(imgInfo.dpiX), round(imgInfo.dpiY))}
+                {"DPI", fmt::format("{}", round(imgInfo.dpiX))}
         };
 
         int propY = 56;
