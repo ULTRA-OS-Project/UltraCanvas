@@ -39,7 +39,6 @@ namespace UltraCanvas {
         }
 
         std::cout << "UltraCanvas: Initializing macOS Application..." << std::endl;
-        VIPS_INIT(appName.c_str());
 
         @autoreleasepool {
             // STEP 1: Initialize Cocoa

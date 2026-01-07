@@ -361,13 +361,17 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowBase::Create(const WindowConfig& config) {
         config_ = config;
+        Create();
+    }
+
+    void UltraCanvasWindowBase::Create() {
         _state = WindowState::Normal;
 
         ContainerStyle containerStyle;
-        containerStyle.forceShowVerticalScrollbar = config.enableWindowScrolling;
-        containerStyle.forceShowHorizontalScrollbar = config.enableWindowScrolling;
+        containerStyle.forceShowVerticalScrollbar = config_.enableWindowScrolling;
+        containerStyle.forceShowHorizontalScrollbar = config_.enableWindowScrolling;
         SetContainerStyle(containerStyle);
-        SetBackgroundColor(config.backgroundColor);
+        SetBackgroundColor(config_.backgroundColor);
 
         auto application = UltraCanvasApplication::GetInstance();
         SetBounds(Rect2Di(0, 0, config_.width, config_.height));

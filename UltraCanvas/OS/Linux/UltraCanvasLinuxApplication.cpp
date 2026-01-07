@@ -44,8 +44,6 @@ namespace UltraCanvas {
         std::cout << "UltraCanvas: Initializing Linux Application..." << std::endl;
 
         try {
-            PixelFX::Initialize(appName.c_str());
-
             // STEP 1: Initialize X11 display connection
             if (!InitializeX11()) {
                 std::cerr << "UltraCanvas: Failed to initialize X11" << std::endl;
@@ -78,8 +76,6 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxApplication::ShutdownNative() {
-        PixelFX::Shutdown();
-
         for (auto cursor : cursors) {
             XFreeCursor(display, cursor.second);
         }

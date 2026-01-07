@@ -58,7 +58,6 @@ namespace UltraCanvas {
         size_t imgDataSize = 0;
         bool ownData = false;
         std::string fileName;
-        std::string formatHint;
 
         bool LoadFileToMemory(const std::string &imagePath);
 
@@ -72,13 +71,13 @@ namespace UltraCanvas {
 
         static std::shared_ptr<UCImageRaster> Get(const std::string &path);
         static std::shared_ptr<UCImageRaster> Load(const std::string &path, bool loadOnlyHeader = true);
-        static std::shared_ptr<UCImageRaster> LoadFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint = "");
-        static std::shared_ptr<UCImageRaster> LoadFromMemory(const std::vector<uint8_t>& data, const std::string& formatHint = "") {
-            return LoadFromMemory(data.data(), data.size(), formatHint);
+        static std::shared_ptr<UCImageRaster> LoadFromMemory(const uint8_t* data, size_t dataSize);
+        static std::shared_ptr<UCImageRaster> LoadFromMemory(const std::vector<uint8_t>& data) {
+            return LoadFromMemory(data.data(), data.size());
         };
-        static std::shared_ptr<UCImageRaster> GetFromMemory(const uint8_t* data, size_t dataSize, const std::string& formatHint = "");
+        static std::shared_ptr<UCImageRaster> GetFromMemory(const uint8_t* data, size_t dataSize);
 
-        std::string Save(const std::string &imagePath, const std::string &format, vips::VOption *options = nullptr);
+        std::string Save(const std::string &imagePath, const UCImageSave::ImageExportOptions& options);
 
         std::shared_ptr<UCPixmapCairo> GetPixmap(int width = 0, int height = 0, ImageFitMode fitMode = ImageFitMode::Contain);
         std::shared_ptr<UCPixmapCairo> CreatePixmap(int width, int height, ImageFitMode fitMode = ImageFitMode::Contain);
@@ -92,12 +91,19 @@ namespace UltraCanvas {
         int GetWidth() const { return width; }
         int GetHeight() const { return height; }
 
+        vips::VImage GetVImage();
+
         size_t GetDataSize() {
             return sizeof(UCImageRaster) + 250 + imgDataSize;
         }
         bool IsValid() { return !fileName.empty() && errorMessage.empty() && width > 0;};
+
+
+        static bool InitializeImageSubsysterm(const char* programName);
+        static void ShutdownImageSubsysterm();
     };
 
     std::shared_ptr<UCPixmapCairo> CreatePixmapFromVImage(vips::VImage vipsImage);
+    std::string ExportVImage(vips::VImage vImg, const std::string &imagePath, const UCImageSave::ImageExportOptions& opts);
 }
 #endif

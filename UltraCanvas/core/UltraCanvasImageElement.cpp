@@ -22,8 +22,15 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasImageElement::LoadFromFile(const std::string &filePath) {
-        imagePath = filePath;
         loadedImage = UCImage::Get(filePath);
+        if (loadedImage) {
+            return true;
+        }
+        return false;
+    }
+
+    bool UltraCanvasImageElement::LoadFromImage(std::shared_ptr<UCImage> img) {
+        loadedImage = img;
         if (loadedImage) {
             return true;
         }

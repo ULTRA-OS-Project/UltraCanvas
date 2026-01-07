@@ -17,21 +17,6 @@
 
 namespace UltraCanvas {
 
-// ===== IMAGE FORMATS =====
-enum class ImageFormat {
-    Unknown,
-    PNG,
-    JPEG,
-    JPG,
-    BMP,
-    GIF,
-    TIFF,
-    WEBP,
-    SVG,
-    ICO,
-    AVIF
-};
-
 // ===== IMAGE SCALING MODES =====
 //enum class ImageScaleMode {
 //    NoScale,           // No scaling - original size
@@ -54,7 +39,6 @@ enum class ImageLoadState {
 class UltraCanvasImageElement : public UltraCanvasUIElement {
 private:
     // Image source
-    std::string imagePath;
     std::shared_ptr<UCImage> loadedImage;
     ImageLoadState loadState = ImageLoadState::NotLoaded;
     
@@ -97,11 +81,8 @@ public:
 
     // ===== IMAGE LOADING =====
     bool LoadFromFile(const std::string& filePath);
-    
-    bool LoadFromMemory(const std::vector<uint8_t>& data, ImageFormat format = ImageFormat::Unknown);
-    
-    bool LoadFromMemory(const uint8_t* data, size_t size, ImageFormat format = ImageFormat::Unknown);
-    
+    bool LoadFromImage(std::shared_ptr<UCImage> img);
+
     // ===== IMAGE PROPERTIES =====
     void SetFitMode(ImageFitMode mode) { fitMode = mode; }
     
@@ -128,7 +109,7 @@ public:
     }
     
 //    ImageFormat GetImageFormat() const { return loadedImage.format; }
-    const std::string& GetImagePath() const { return imagePath; }
+    //const std::string& GetImagePath() const { return loadedImage.imagePath; }
     
     // ===== INTERACTION =====
     void SetClickable(bool enable) {
@@ -145,19 +126,13 @@ public:
     bool OnEvent(const UCEvent& event) override;
     
 private:
-    ImageFormat DetectFormatFromPath(const std::string& path);
-    ImageFormat DetectFormatFromData(const std::vector<uint8_t>& data);
-
-    bool ProcessImageData(ImageFormat format);
     void SetError(const std::string& message);
 
     void DrawLoadedImage(IRenderContext* ctx);
     void DrawErrorPlaceholder(IRenderContext* ctx);
     void DrawLoadingPlaceholder(IRenderContext* ctx);
     void DrawImagePlaceholder(const Rect2Di& rect, const std::string& text, const Color& bgColor = Color(240, 240, 240));
-    
-    Rect2Di CalculateDisplayRect();
-    
+
     void HandleMouseDown(const UCEvent& event);
     void HandleMouseMove(const UCEvent& event);
     void HandleMouseUp(const UCEvent& event);
@@ -183,9 +158,10 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromFile(
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromMemory(
     const std::string& identifier, long id, long x, long y, long w, long h, 
-    const std::vector<uint8_t>& imageData, ImageFormat format = ImageFormat::Unknown) {
+    const std::vector<uint8_t>& imageData, UCImageLoadFormat format = UCImageLoadFormat::Autodetect) {
     auto image = CreateImageElement(identifier, id, x, y, w, h);
-    image->LoadFromMemory(imageData, format);
+    auto img = UCImageRaster::LoadFromMemory(imageData);
+    image->LoadFromImage(img);
     return image;
 }
 
@@ -206,76 +182,5 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateClickableImage(
     image->onClick = clickCallback;
     return image;
 }
-
-//// ===== LEGACY C-STYLE INTERFACE =====
-//extern "C" {
-//    static UltraCanvasImageElement* g_currentImageElement = nullptr;
-//
-//    void* LoadImageFromFile(const char* imagePath) {
-//        if (!imagePath) return nullptr;
-//
-//        g_currentImageElement = new UltraCanvasImageElement("legacy_image", 9996, 0, 0, 100, 100);
-//
-//        if (g_currentImageElement->LoadFromFile(imagePath)) {
-//            return g_currentImageElement;
-//        } else {
-//            delete g_currentImageElement;
-//            g_currentImageElement = nullptr;
-//            return nullptr;
-//        }
-//    }
-//
-//    void* LoadImageFromMemory(const unsigned char* data, int size, int format) {
-//        if (!data || size <= 0) return nullptr;
-//
-//        g_currentImageElement = new UltraCanvasImageElement("legacy_image", 9996, 0, 0, 100, 100);
-//
-//        ImageFormat imgFormat = static_cast<ImageFormat>(format);
-//        if (g_currentImageElement->LoadFromMemory(data, size, imgFormat)) {
-//            return g_currentImageElement;
-//        } else {
-//            delete g_currentImageElement;
-//            g_currentImageElement = nullptr;
-//            return nullptr;
-//        }
-//    }
-//
-//    void SetImagePosition(void* imageHandle, int x, int y) {
-//        if (imageHandle) {
-//            auto* image = static_cast<UltraCanvasImageElement*>(imageHandle);
-//            image->SetX(x);
-//            image->SetY(y);
-//        }
-//    }
-//
-//    void SetImageSize(void* imageHandle, int width, int height) {
-//        if (imageHandle) {
-//            auto* image = static_cast<UltraCanvasImageElement*>(imageHandle);
-//            image->SetWidth(width);
-//            image->SetHeight(height);
-//        }
-//    }
-//
-//    void SetImageScaleMode(void* imageHandle, int mode) {
-//        if (imageHandle) {
-//            auto* image = static_cast<UltraCanvasImageElement*>(imageHandle);
-//            image->SetScaleMode(static_cast<ImageScaleMode>(mode));
-//        }
-//    }
-//
-//    int IsImageLoaded(void* imageHandle) {
-//        if (imageHandle) {
-//            auto* image = static_cast<UltraCanvasImageElement*>(imageHandle);
-//            return image->IsLoaded() ? 1 : 0;
-//        }
-//        return 0;
-//    }
-//
-//    void DestroyImage(void* imageHandle) {
-//        if (imageHandle) {
-//            delete static_cast<UltraCanvasImageElement*>(imageHandle);
-//        }
-//    }
-//}
 
 } // namespace UltraCanvas

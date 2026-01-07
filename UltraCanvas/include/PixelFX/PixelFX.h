@@ -189,9 +189,9 @@ namespace PixelFX {
     };
 
 // ===== INITIALIZATION =====
-    bool Initialize(const char* programName = nullptr);
-    void Shutdown();
-    bool IsInitialized();
+//    bool Initialize(const char* programName = nullptr);
+//    void Shutdown();
+//    bool IsInitialized();
 
 // ============================================================================
 // FILE I/O NAMESPACE

@@ -49,7 +49,6 @@ find_package(PkgConfig REQUIRED)
 # ===== BUILD ULTRACANVAS CORE LIBRARY =====
 message(STATUS "")
 message(STATUS "── Building UltraCanvas Core Library ──")
-add_subdirectory(UltraCanvas/3rdparty/fmt)
 add_subdirectory(UltraCanvas)
 
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:

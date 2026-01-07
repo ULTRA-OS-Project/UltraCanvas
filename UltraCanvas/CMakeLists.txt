@@ -40,6 +40,9 @@ else()
     message(FATAL_ERROR "Unsupported platform")
 endif()
 
+
+add_subdirectory(3rdparty/fmt)
+
 message(STATUS "Target Platform: ${ULTRACANVAS_PLATFORM}")
 
 # ===== FIND CORE DEPENDENCIES =====
@@ -122,8 +125,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSankey.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/UltraCanvasMarkdown.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/VipsQOILoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasImageExportDialog.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElement.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
@@ -171,6 +174,7 @@ file(GLOB ULTRACANVAS_CHARTS_SOURCES
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
 )
 
 # Combine all core sources
@@ -206,6 +210,7 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Plugins>
         $<INSTALL_INTERFACE:include/ultracanvas>
     PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/fmt/include
         ${CMAKE_CURRENT_SOURCE_DIR}/core
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}
         ${CAIRO_INCLUDE_DIRS}

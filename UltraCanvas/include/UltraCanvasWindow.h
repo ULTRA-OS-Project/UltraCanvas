@@ -95,9 +95,9 @@ namespace UltraCanvas {
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowBase();
 
-        // ===== PURE VIRTUAL INTERFACE =====
         // Window lifecycle
         void Create(const WindowConfig& config);
+        void Create();
         void Close();
         void Destroy();
         void RequestDelete();

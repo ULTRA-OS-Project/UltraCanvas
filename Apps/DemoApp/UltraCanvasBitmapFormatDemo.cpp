@@ -12,6 +12,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasTextArea.h"
+#include "../dialogs/UltraCanvasImageExportDialog.h"
 #include "PixelFX/PixelFX.h"
 
 #include <string>
@@ -1005,6 +1006,12 @@ namespace UltraCanvas {
         exportBtn->SetColors(Color(241, 245, 249, 255), Color(226, 232, 240, 255));
         exportBtn->SetTextColors(Color(71, 85, 105, 255));
         exportBtn->SetCornerRadius(6);
+        exportBtn->onClick = [sampleImagePath]() {
+            auto vimg = vips::VImage::new_from_file(sampleImagePath.c_str());
+            auto win = CreateImageExportDialog(vimg);
+            win->Create();
+            win->Show();
+        };
         imageCard->AddChild(exportBtn);
 
         // ===== ROW 1 RIGHT: IMAGE PROPERTIES (populated from actual image) =====
