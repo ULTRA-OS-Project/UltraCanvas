@@ -1,5 +1,14 @@
 CMakeFiles/
+.claude/
 .idea/
 .vscode/
 /cmake-build-debug/
+/build/
 /1icons/
+
+# Generated binaries
+/UltraCanvasDemo
+*.dylib
+*.a
+*.so
+*.o
