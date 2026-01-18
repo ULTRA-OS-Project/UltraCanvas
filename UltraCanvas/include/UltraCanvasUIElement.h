@@ -107,7 +107,7 @@ namespace UltraCanvas {
     };
 
 // ===== LEAF UI ELEMENT CLASS (NO CHILDREN) =====
-    class UltraCanvasUIElement {
+    class UltraCanvasUIElement : public std::enable_shared_from_this<UltraCanvasUIElement>  {
     private:
         // Event handling
         std::function<bool(const UCEvent&)> eventCallback;

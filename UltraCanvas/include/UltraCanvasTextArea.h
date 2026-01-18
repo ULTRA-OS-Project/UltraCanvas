@@ -204,6 +204,8 @@ namespace UltraCanvas {
         void SetTabSize(int size) { tabSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         int GetTabSize() const { return tabSize; }
 
+        std::pair<int, int> GetLineColumnFromPosition(int position) const;
+
         // Style access
         void SetStyle(const TextAreaStyle& newStyle) { style = newStyle; }
         TextAreaStyle& GetStyle() { return style; }
@@ -301,7 +303,6 @@ namespace UltraCanvas {
 
         int MeasureTextWidth(const std::string& txt) const;
         // Helper methods
-        std::pair<int, int> GetLineColumnFromPosition(int position) const;
         int GetPositionFromLineColumn(int line, int column) const;
         std::pair<int, int> GetLineColumnFromPoint(int x, int y) const;
         void CalculateVisibleArea();

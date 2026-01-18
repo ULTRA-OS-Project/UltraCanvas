@@ -939,7 +939,7 @@ namespace UltraCanvas {
         const int leftColX = 20;
         const int rightColX = 310;
         const int leftColWidth = 270;
-        const int rightColWidth = 620;
+        const int rightColWidth = 640;
         const int row1Y = 20;
         const int row2Y = 340;
         const int row3Y = 580;

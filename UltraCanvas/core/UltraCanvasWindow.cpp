@@ -377,7 +377,7 @@ namespace UltraCanvas {
         SetBounds(Rect2Di(0, 0, config_.width, config_.height));
 
         if (CreateNative()) {
-            UltraCanvasApplication::GetInstance()->RegisterWindow(shared_from_this());
+            UltraCanvasApplication::GetInstance()->RegisterWindow(std::dynamic_pointer_cast<UltraCanvasWindowBase>(shared_from_this()));
             _created = true;
         } else {
             _created = false;

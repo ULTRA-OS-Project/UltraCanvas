@@ -59,7 +59,7 @@ namespace UltraCanvas {
     };
 
 // ===== ENHANCED BASE WINDOW (INHERITS FROM CONTAINER) =====
-    class UltraCanvasWindowBase : public UltraCanvasContainer, public std::enable_shared_from_this<UltraCanvasWindowBase> {
+    class UltraCanvasWindowBase : public UltraCanvasContainer {
     protected:
 //        std::unique_ptr<UltraCanvasSelectiveRenderer> selectiveRenderer = nullptr;
 //        bool useSelectiveRendering = false;

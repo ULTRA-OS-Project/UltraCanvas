@@ -144,7 +144,7 @@ namespace UltraCanvas {
     };
 
 // ===== MAIN MENU CLASS =====
-    class UltraCanvasMenu : public UltraCanvasUIElement, public std::enable_shared_from_this<UltraCanvasMenu> {
+    class UltraCanvasMenu : public UltraCanvasUIElement {
     private:
         // Menu properties
         MenuType menuType = MenuType::PopupMenu;

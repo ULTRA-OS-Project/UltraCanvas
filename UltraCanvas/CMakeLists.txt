@@ -113,6 +113,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextEditor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextEditorHelpers.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -184,7 +188,7 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
     ${ULTRACANVAS_TEXT_SOURCES}
     ${ULTRACANVAS_CHARTS_SOURCES}
-#        dialogs/PixelFXExportDialog.cpp
+        #        dialogs/PixelFXExportDialog.cpp
 #        dialogs/PixelFXExportDialog.h
 )
 

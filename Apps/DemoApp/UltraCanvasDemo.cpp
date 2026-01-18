@@ -565,6 +565,10 @@ namespace UltraCanvas {
                 .AddVariant("textarea", "Line Numbers Display")
                 .AddVariant("textarea", "Theme Support");
 
+        extendedBuilder.AddItem("texteditordemo", "Text editor", "Text editor demo",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateTextEditorDemo(); });
+
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
 

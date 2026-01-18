@@ -95,6 +95,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasXARExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
+            Apps/DemoApp/UltraCanvasTextEditorExample.cpp
     )
 
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
