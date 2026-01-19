@@ -1,0 +1,24 @@
+@PACKAGE_INIT@
+
+# UltraCanvas CMake Package Configuration
+# This file helps other projects find and use UltraCanvas
+
+set(ULTRACANVAS_VERSION @PROJECT_VERSION@)
+
+# Compute paths
+get_filename_component(ULTRACANVAS_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+get_filename_component(ULTRACANVAS_INSTALL_PREFIX "${ULTRACANVAS_CMAKE_DIR}/../../../" ABSOLUTE)
+
+# Include directory
+set(ULTRACANVAS_INCLUDE_DIRS "${ULTRACANVAS_INSTALL_PREFIX}/include")
+
+# Library targets
+if(NOT TARGET UltraCanvas::UltraCanvas)
+    include("${ULTRACANVAS_CMAKE_DIR}/UltraCanvasTargets.cmake")
+endif()
+
+# Set libraries variable
+set(ULTRACANVAS_LIBRARIES UltraCanvas::UltraCanvas)
+
+# Check required components
+check_required_components(UltraCanvas)
