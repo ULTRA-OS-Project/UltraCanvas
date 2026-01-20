@@ -57,6 +57,7 @@ pkg_check_modules(PANGO REQUIRED pango pangocairo)
 pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
+pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 
 # FreeType - Font Rendering
 find_package(Freetype REQUIRED)
@@ -213,6 +214,9 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Plugins>
         $<INSTALL_INTERFACE:include/ultracanvas>
+        ${LIBVIPS_INCLUDE_DIRS}
+        ${GLIB_INCLUDE_DIRS}
+        ${TINYXML2_INCLUDE_DIRS}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/fmt/include
         ${CMAKE_CURRENT_SOURCE_DIR}/core
@@ -220,8 +224,7 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
         ${CAIRO_INCLUDE_DIRS}
         ${PANGO_INCLUDE_DIRS}
         ${FREETYPE_INCLUDE_DIRS}
-        ${LIBVIPS_INCLUDE_DIRS}
-        ${GLIB_INCLUDE_DIRS}
+        ${HARFBUZZ_INCLUDE_DIRS}
 )
 
 # Platform-specific includes
@@ -240,6 +243,7 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${FREETYPE_LIBRARIES}
         ${LIBVIPS_LIBRARIES}
         ${GLIB_LIBRARIES}
+        ${TINYXML2_LIBRARIES}
 )
 
 # Platform-specific libraries

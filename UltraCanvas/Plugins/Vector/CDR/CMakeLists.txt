@@ -47,7 +47,7 @@ endif()
 
 # Optional dependencies
 pkg_check_modules(LCMS2 lcms2)
-pkg_check_modules(ICU icu-uc)
+pkg_check_modules(ICU icu-uc icu-i18n)
 
 # ===== SOURCE FILES =====
 set(CDR_PLUGIN_SOURCES
@@ -113,7 +113,8 @@ if(LCMS2_FOUND)
 endif()
 
 if(ICU_FOUND)
-    target_link_libraries(${PLUGIN_NAME} PRIVATE ${ICU_LIBRARIES})
+    target_link_directories(${PLUGIN_NAME} PUBLIC ${ICU_LIBRARY_DIRS})
+    target_link_libraries(${PLUGIN_NAME} PUBLIC ${ICU_LIBRARIES})
 endif()
 
 # ===== COMPILER SETTINGS =====

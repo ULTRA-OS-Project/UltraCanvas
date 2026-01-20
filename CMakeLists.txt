@@ -61,7 +61,10 @@ add_subdirectory(UltraCanvas)
 if(BUILD_DEMO_APP)
     message(STATUS "")
     message(STATUS "── Building Demo Application ──")
-    
+
+    # Find jsoncpp for demo app
+    pkg_check_modules(JSONCPP REQUIRED jsoncpp)
+
     # Demo app source files
     set(DEMO_SOURCES
             Apps/DemoApp/main.cpp
@@ -74,7 +77,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasMenuExamples.cpp
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
             Apps/DemoApp/UltraCanvasSVGExamples.cpp
-            #        Apps/DemoApp/UltraCanvasTabExamples.cpp
+            Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasTextAreaExamples.cpp
             Apps/DemoApp/UltraCanvasTextInputExamples.cpp
             Apps/DemoApp/UltraCanvasTreeViewExamples.cpp
@@ -88,15 +91,23 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
             Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
             Apps/DemoApp/UltraCanvasLayoutExamples.cpp
-            Apps/DemoApp/UltraCanvasTableDemo.cpp
             Apps/DemoApp/UltraCanvasToolbarExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
-            Apps/DemoApp/UltraCanvasCDRExamples.cpp
-            Apps/DemoApp/UltraCanvasXARExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
             Apps/DemoApp/UltraCanvasTextEditorExample.cpp
     )
+
+    # Only include plugin examples if the plugins are actually built
+    foreach(PLUGIN_TARGET ${ULTRACANVAS_PLUGIN_TARGETS})
+        if(PLUGIN_TARGET MATCHES "CDR")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasCDRExamples.cpp)
+        endif()
+
+        if(PLUGIN_TARGET MATCHES "XAR")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasXARExamples.cpp)
+        endif()
+    endforeach()
 
     if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
         include_directories(
@@ -120,6 +131,12 @@ if(BUILD_DEMO_APP)
                 ${VIPS_LIBRARY_DIRS}
         )
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        # Set Homebrew prefix
+        execute_process(
+            COMMAND brew --prefix
+            OUTPUT_VARIABLE HOMEBREW_PREFIX
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
         include_directories(
                 ${CAIRO_INCLUDE_DIRS}
                 ${PANGO_INCLUDE_DIRS}
@@ -129,6 +146,7 @@ if(BUILD_DEMO_APP)
                 ${GLIB_INCLUDE_DIRS}
                 ${VIPS_INCLUDE_DIRS}
                 ${TINYXML2_INCLUDE_DIRS}
+                ${JSONCPP_INCLUDE_DIRS}
                 ${HOMEBREW_PREFIX}/include
                 ${HOMEBREW_PREFIX}/include/pango-1.0
                 ${HOMEBREW_PREFIX}/include/glib-2.0
@@ -145,9 +163,10 @@ if(BUILD_DEMO_APP)
                 ${FREETYPE_LIBRARY_DIRS}
                 ${HARFBUZZ_LIBRARY_DIRS}
                 ${GLIB_LIBRARY_DIRS}
-                ${VIPS_LIBRARY_DIRS}
                 ${TINYXML2_LIBRARY_DIRS}
+                ${JSONCPP_LIBRARY_DIRS}
                 ${HOMEBREW_PREFIX}/lib
+                ${HOMEBREW_PREFIX}/opt/vips/lib
         )
     endif()
 
@@ -166,6 +185,7 @@ if(BUILD_DEMO_APP)
     # Link against UltraCanvas core library
     target_link_libraries(UltraCanvasDemo PRIVATE
         ${ULTRACANVAS_LIBRARY}
+        ${JSONCPP_LIBRARIES}
     )
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 

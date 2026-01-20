@@ -550,10 +550,6 @@ namespace UltraCanvas {
                 .AddVariant("listview", "Icon List")
                 .AddVariant("listview", "Detail View");
 
-        extendedBuilder.AddItem("tabledemo", "Templates demo", "Templates demo",
-                                ImplementationStatus::FullyImplemented,
-                                [this]() { return CreateDomainTableDemo(); });
-
         extendedBuilder.AddItem("textarea", "Advanced Text Area", "Advanced text editing with syntax highlighting",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateTextAreaExamples(); },
@@ -687,13 +683,16 @@ namespace UltraCanvas {
                 .AddVariant("svg", "SVG File Display")
                 .AddVariant("svg", "Interactive SVG")
                 .AddVariant("svg", "SVG Animations");
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         vectorBuilder.AddItem("cdrimages", "CDR Images", "CDR (CorelDraw) images display and manipulation",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateCDRVectorExamples(); });
-
+#endif
+#ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         vectorBuilder.AddItem("xarimages", "XAR Images", "XAR Image display and manipulation",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateXARVectorExamples(); });
+#endif
 
         vectorBuilder.AddItem("drawing", "Drawing Surface", "Vector drawing and primitives",
                               ImplementationStatus::PartiallyImplemented,

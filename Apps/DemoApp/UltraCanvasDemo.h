@@ -275,8 +275,12 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateIODeviceManagerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLayoutExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeExamples();
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateCDRVectorExamples();
+#endif
+#ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateXARVectorExamples();
+#endif
         std::shared_ptr<UltraCanvasUIElement> CreateImagePerformanceTest();
         std::shared_ptr<UltraCanvasContainer> CreateTextEditorDemo();
         std::shared_ptr<UltraCanvasContainer> CreateBitmapFormatDemoPage(
