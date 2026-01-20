@@ -466,6 +466,15 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasMacOSWindow::RaiseAndFocus() {
+        if (!_created) return;
+
+        @autoreleasepool {
+            [nsWindow makeKeyAndOrderFront:nil];
+            [NSApp activateIgnoringOtherApps:YES];
+        }
+    }
+
     // ===== WINDOW PROPERTIES =====
     void UltraCanvasMacOSWindow::SetWindowTitle(const std::string& title) {
         config_.title = title;
@@ -584,17 +593,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidBecomeKey() {
-        auto application = UltraCanvasApplication::GetInstance();
-        if (application) {
-            application->HandleFocusedWindowChange(this);
-        }
+        // Focus handling is done via WindowFocus events dispatched through the event system
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidResignKey() {
-        auto application = UltraCanvasApplication::GetInstance();
-        if (application && application->GetFocusedWindow() == this) {
-            application->HandleFocusedWindowChange(nullptr);
-        }
+        // Focus handling is done via WindowBlur events dispatched through the event system
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidMiniaturize() {

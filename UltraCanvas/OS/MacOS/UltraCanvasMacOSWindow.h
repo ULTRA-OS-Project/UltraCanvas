@@ -87,6 +87,7 @@ namespace UltraCanvas {
         void Flush() override;
         unsigned long GetNativeHandle() const override;
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }
+        void RaiseAndFocus() override;
 
         void Focus();  // Not virtual in base class
 
