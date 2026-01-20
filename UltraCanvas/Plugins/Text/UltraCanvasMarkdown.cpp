@@ -1041,9 +1041,9 @@ namespace UltraCanvas {
                     return true;
                 }
                 break;
-            default:
-                return false;
         }
+
+        return false;
     }
 
     std::shared_ptr<MarkdownElement> UltraCanvasMarkdownDisplay::FindElementAtPosition(int x, int y) {

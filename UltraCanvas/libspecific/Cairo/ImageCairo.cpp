@@ -114,6 +114,7 @@ namespace UltraCanvas {
     bool UCImageRaster::InitializeImageSubsysterm(const char *programName) {
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
+        return true;
     }
 
     void UCImageRaster::ShutdownImageSubsysterm() {

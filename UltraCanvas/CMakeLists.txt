@@ -286,6 +286,7 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
 # Warning flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(${ULTRACANVAS_LIB_NAME} PRIVATE
+        -Werror=return-type
 #        -Wall -Wextra -Wpedantic -Wno-unused-parameter
     )
 endif()

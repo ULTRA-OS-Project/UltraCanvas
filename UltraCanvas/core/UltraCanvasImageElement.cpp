@@ -124,6 +124,7 @@ namespace UltraCanvas {
                     break;
             }
         }
+        return true;
     }
 
 //    ImageFormat UltraCanvasImageElement::DetectFormatFromData(const std::vector<uint8_t> &data) {
