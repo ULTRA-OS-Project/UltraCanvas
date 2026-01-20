@@ -1,0 +1,61 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+        build_type: [Release]
+        include:
+          - os: macos-latest
+            install_deps: |
+              brew install cmake pkg-config
+              brew install cairo pango harfbuzz vips glib freetype tinyxml2
+              brew install jsoncpp
+              brew install libcdr librevenge
+              brew install icu4c
+          - os: ubuntu-latest
+            install_deps: |
+              sudo apt-get update
+              sudo apt-get install -y cmake pkg-config build-essential
+              sudo apt-get install -y libcairo2-dev libpango1.0-dev libharfbuzz-dev
+              sudo apt-get install -y libvips-dev libglib2.0-dev libfreetype6-dev
+              sudo apt-get install -y libtinyxml2-dev libjsoncpp-dev
+              sudo apt-get install -y libx11-dev libxcursor-dev libgl1-mesa-dev
+              sudo apt-get install -y libcdr-dev librevenge-dev zlib1g-dev
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: ${{ matrix.install_deps }}
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DBUILD_DEMO_APP=ON \
+            -DULTRACANVAS_PLUGIN_CDR=ON \
+            -DULTRACANVAS_PLUGIN_XAR=ON
+
+      - name: Build
+        run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ultracanvas-${{ matrix.os }}-${{ matrix.build_type }}
+          path: |
+            build/bin/
+            build/lib/
+          retention-days: 7
