@@ -53,6 +53,7 @@ namespace UltraCanvas {
         // ===== INHERITED FROM BASE WINDOW =====
         virtual void Show() override;
         virtual void Hide() override;
+        virtual void RaiseAndFocus() override;
         virtual void SetWindowTitle(const std::string& title) override;
         virtual void SetWindowSize(int width, int height) override;
         virtual void SetWindowPosition(int x, int y) override;

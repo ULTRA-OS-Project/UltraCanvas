@@ -1,14 +1,15 @@
 // include/UltraCanvasModalDialog.h
-// Cross-platform modal dialog system with complete type definitions
-// Version: 2.3.0
-// Last Modified: 2025-01-17
+// Cross-platform modal dialog system - Window-based implementation
+// Version: 3.1.0
+// Last Modified: 2025-01-19
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
-#include "UltraCanvasUIElement.h"
+#include "UltraCanvasWindow.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasLabel.h"
 #include "UltraCanvasEvent.h"
 #include <string>
 #include <vector>
@@ -159,53 +160,49 @@ namespace UltraCanvas {
     };
 
 // ===== DIALOG CONFIGURATION =====
-    struct DialogConfig {
-        // Basic properties
-        std::string title = "Dialog";
+// DialogConfig extends WindowConfig with dialog-specific properties
+    struct DialogConfig : public WindowConfig {
+        // Dialog content
         std::string message;
         std::string details;
-        DialogType type = DialogType::Information;
+        DialogType dialogType = DialogType::Information;
 
         // Buttons
         DialogButtons buttons = DialogButtons::OK;
         DialogButton defaultButton = DialogButton::OK;
         DialogButton cancelButton = DialogButton::Cancel;
 
-        // Appearance
-        Point2Di size = Point2Di(400, 200);
-        DialogPosition position = DialogPosition::Center;
-        Point2Di customPosition = Point2Di(0, 0);
-        bool resizable = false;
-        bool movable = true;
+        // Dialog-specific positioning
+        DialogPosition position = DialogPosition::CenterParent;
 
-        // Behavior
-        bool modal = true;
-        bool topMost = true;
-        bool showInTaskbar = false;
+        // Dialog behavior
         bool closeOnEscape = true;
-        bool closeOnClickOutside = false;
+//        bool closeOnClickOutside = false;
         float autoCloseTime = 0.0f; // 0 = no auto close
-
-        // Animation
-        DialogAnimation showAnimation = DialogAnimation::Fade;
-        DialogAnimation hideAnimation = DialogAnimation::Fade;
-        float animationDuration = 0.3f;
-
-        // Icon and styling
-        std::string iconPath;
-        Color backgroundColor = Colors::White;
-        Color titleBarColor = Colors::LightGray;
-        Color borderColor = Colors::Gray;
-        float borderWidth = 1.0f;
-        float cornerRadius = 4.0f;
 
         // Callbacks
         std::function<void(DialogResult)> onResult;
-        std::function<void()> onShow;
-        std::function<void()> onHide;
-        std::function<bool()> onClosing; // Return false to prevent closing
+        std::function<bool(DialogResult)> onClosing; // Return false to prevent closing
 
-        DialogConfig() = default;
+        DialogConfig() {
+            // Set window defaults for dialogs
+            title = "Dialog";
+            width = 400;
+            height = 200;
+            type = WindowType::Dialog;
+            resizable = false;
+            minimizable = false;
+            maximizable = false;
+            closable = true;
+            alwaysOnTop = true;
+            modal = true;
+            deleteOnClose = true;
+            backgroundColor = Colors::White;
+        }
+
+        // Helper to access size as Point2Di (for compatibility)
+        Point2Di GetSize() const { return Point2Di(width, height); }
+        void SetSize(const Point2Di& size) { width = size.x; height = size.y; }
     };
 
 // ===== INPUT DIALOG CONFIGURATION =====
@@ -229,9 +226,10 @@ namespace UltraCanvas {
         std::function<bool(const std::string&)> validator;
         std::function<void(const std::string&)> onInputChanged;
 
-        InputDialogConfig() {
+        InputDialogConfig() : DialogConfig() {
             buttons = DialogButtons::OKCancel;
-            size = Point2Di(400, 150);
+            width = 400;
+            height = 150;
         }
     };
 
@@ -248,9 +246,10 @@ namespace UltraCanvas {
         bool validateNames = true;
         bool addToRecent = true;
 
-        FileDialogConfig() {
+        FileDialogConfig() : DialogConfig() {
             buttons = DialogButtons::OKCancel;
-            size = Point2Di(600, 450);
+            width = 600;
+            height = 450;
             resizable = true;
             // Default filters
             filters = {
@@ -321,153 +320,111 @@ namespace UltraCanvas {
     };
 
 // ===== MODAL DIALOG CLASS =====
-    class UltraCanvasModalDialog : public UltraCanvasUIElement {
+// UltraCanvasModalDialog is a top-level window with dialog behavior.
+// It inherits from UltraCanvasWindow to get full window functionality
+// including proper event handling, coordinate conversion, focus management,
+// mouse capture, and platform-native window creation.
+//
+// Modal behavior is implemented at the application level by blocking
+// input events to non-modal windows when a modal dialog is active.
+    class UltraCanvasModalDialog : public UltraCanvasWindow {
+    friend class UltraCanvasDialogManager;
     protected:
-        DialogConfig config;
-        DialogResult result;
-        bool isVisible;
-        bool isAnimating;
-        bool isClosing;
-        float animationProgress;
+        DialogConfig dialogConfig;
+        DialogResult result = DialogResult::NoResult;
 
-        // Child elements
-        std::vector<std::shared_ptr<UltraCanvasUIElement>> childElements;
-        std::vector<std::shared_ptr<UltraCanvasButton>> buttons;
+        // Dialog-specific UI elements
+        std::vector<std::shared_ptr<UltraCanvasButton>> dialogButtons;
+        std::shared_ptr<UltraCanvasLabel> titleLabel;
+        std::shared_ptr<UltraCanvasLabel> messageLabel;
+        std::shared_ptr<UltraCanvasLabel> detailsLabel;
 
-        // Layout areas
-        Rect2Di titleBarRect;
+        // Layout areas (relative to window content)
         Rect2Di contentRect;
         Rect2Di buttonAreaRect;
         Rect2Di messageRect;
         Rect2Di detailsRect;
         Rect2Di iconRect;
-        Rect2Di overlayRect;
-        Rect2Di closeButtonRect;
-
-        // Animation
-        std::chrono::steady_clock::time_point animationStartTime;
-        Point2Di targetPosition;
-        Point2Di startPosition;
-
-        // State
-        bool isDragging;
-        Point2Di dragOffset;
-        Point2Di dragStartPos;
-        Point2Di windowStartPos;
-        UltraCanvasWindowBase* parentWindow;
-        std::shared_ptr<UltraCanvasUIElement> backgroundOverlay;
-
-        // Callbacks
-        std::function<void(DialogResult)> onResultCallback;
-        std::function<bool(DialogResult)> onClosingCallback;
 
     public:
-        // ===== CONSTRUCTION =====
-        UltraCanvasModalDialog(const DialogConfig& dialogConfig = DialogConfig());
-        virtual ~UltraCanvasModalDialog();
-
         // ===== DIALOG OPERATIONS =====
-        DialogResult ShowModal(UltraCanvasWindowBase* parent = nullptr);
-        void Show(UltraCanvasWindowBase* parent = nullptr);
-        void Hide();
-        void Close(DialogResult result = DialogResult::Cancel);
+        // ShowModal shows the dialog and returns immediately (non-blocking).
+        void ShowModal(UltraCanvasWindowBase* parent = nullptr);
+        // Close the dialog with specified result
+        void CloseDialog(DialogResult result = DialogResult::Cancel);
+        // Create dialog and window with config
+        void CreateDialog(const DialogConfig& config = DialogConfig());
 
         // ===== PROPERTIES =====
-        void SetTitle(const std::string& title);
+        void SetDialogTitle(const std::string& title);
         void SetMessage(const std::string& message);
         void SetDetails(const std::string& details);
-        void SetType(DialogType type);
-        void SetButtons(DialogButtons buttons);
+        void SetDialogType(DialogType type);
+        void SetDialogButtons(DialogButtons buttons);
         void SetDefaultButton(DialogButton button);
 
-        std::string GetTitle() const;
+        std::string GetDialogTitle() const;
         std::string GetMessage() const;
         std::string GetDetails() const;
-        DialogType GetType() const;
-        DialogButtons GetButtons() const;
+        DialogType GetDialogType() const;
+        DialogButtons GetDialogButtons() const;
         DialogButton GetDefaultButton() const;
 
         // ===== STATE QUERIES =====
-        bool IsVisible() const;
-        bool IsModal() const;
+        bool IsModalDialog() const;
         DialogResult GetResult() const;
-        bool IsAnimating() const;
 
-        // ===== POSITIONING =====
-        void SetDialogPosition(DialogPosition position);
-        void SetCustomPosition(const Point2Di& position);
-        void CenterOnParent();
-        void CenterOnScreen();
-
-        // ===== ANIMATION =====
-        void SetShowAnimation(DialogAnimation animation, float duration = 0.3f);
-        void SetHideAnimation(DialogAnimation animation, float duration = 0.3f);
-        void Update(float deltaTime);
-
-        // ===== RENDERING =====
-        void Render(IRenderContext* ctx) override;
-
-        // ===== EVENT HANDLING =====
-        bool OnEvent(const UCEvent& event) override;
+        // ===== CALLBACKS =====
+        void SetResultCallback(std::function<void(DialogResult)> callback) {
+            dialogConfig.onResult = callback;
+        }
 
         // ===== BUTTON MANAGEMENT =====
         void AddCustomButton(const std::string& text, DialogResult result, std::function<void()> callback = nullptr);
-        void RemoveButton(DialogButton button);
-        void SetButtonEnabled(DialogButton button, bool enabled);
+        void SetButtonDisabled(DialogButton button, bool disabled);
         void SetButtonVisible(DialogButton button, bool visible);
 
         // ===== CONTENT MANAGEMENT =====
-        void AddElement(std::shared_ptr<UltraCanvasUIElement> element);
-        void RemoveElement(std::shared_ptr<UltraCanvasUIElement> element);
-        void ClearElements();
+        // Add custom UI elements to the dialog's content area
+        void AddDialogElement(std::shared_ptr<UltraCanvasUIElement> element);
+        void RemoveDialogElement(std::shared_ptr<UltraCanvasUIElement> element);
+        void ClearDialogElements();
+
+        void RequestClose() override;
+
+        void Close() override;
+        // ===== RENDERING OVERRIDE =====
+        void RenderCustomContent(IRenderContext* ctx) override;
+
+        bool OnEvent(const UCEvent& event) override;
 
     protected:
         // ===== LAYOUT =====
-        void CalculateLayout();
-        void CalculateTitleBarRect();
-        void CalculateContentRect();
-        void CalculateButtonAreaRect();
-        void CalculateMessageRect();
-        void CalculateDetailsRect();
-        void CalculateIconRect();
-        void PositionButtons();
+        void CalculateDialogLayout();
+        void CreateDialogButtons();
+        void PositionDialogButtons();
 
         // ===== RENDERING HELPERS =====
-        void RenderBackground();
-        void RenderTitleBar();
-        void RenderIcon();
-        void RenderMessage();
-        void RenderDetails();
-        void RenderBorder();
-        void RenderOverlay();
-        void RenderDialogButtons();
-        void RenderChildElements();
-
-        // ===== ANIMATION HELPERS =====
-        void StartShowAnimation();
-        void StartHideAnimation();
-        void UpdateAnimation(float deltaTime);
-        float CalculateAnimationAlpha() const;
-        Point2Di CalculateAnimationPosition() const;
-        float CalculateAnimationScale() const;
+        //void RenderDialogBackground(IRenderContext* ctx);
+        void RenderDialogIcon(IRenderContext* ctx);
+        void RenderDialogMessage(IRenderContext* ctx);
+        void RenderDialogDetails(IRenderContext* ctx);
 
         // ===== EVENT HELPERS =====
-        void OnButtonClick(DialogButton button);
-        void OnTitleBarMouseDown(const Point2Di& position);
-        void OnTitleBarMouseMove(const Point2Di& position);
-        void OnTitleBarMouseUp();
-        void OnOverlayClick();
+        void OnDialogButtonClick(DialogButton button);
 
         // ===== UTILITY =====
         std::string GetButtonText(DialogButton button) const;
         Color GetTypeColor() const;
         std::string GetTypeIcon() const;
-        void CreateDefaultButtons();
         void ApplyTypeDefaults();
     };
 
 // ===== DIALOG MANAGER =====
+    class UltraCanvasInputDialog;
+    class UltraCanvasFileDialog;
     class UltraCanvasDialogManager {
+    friend class UltraCanvasModalDialog;
     private:
         // Static member declarations only - definitions in .cpp
         static std::vector<std::shared_ptr<UltraCanvasModalDialog>> activeDialogs;
@@ -478,52 +435,95 @@ namespace UltraCanvas {
         static FileDialogConfig defaultFileConfig;
 
     public:
-        // ===== SIMPLE MESSAGE DIALOGS =====
-        static DialogResult ShowMessage(const std::string& message, const std::string& title = "Information",
-                                        DialogType type = DialogType::Information, DialogButtons buttons = DialogButtons::OK);
+        // ===== MODAL EVENT BLOCKING =====
+        // Call this from UltraCanvasBaseApplication::DispatchEvent BEFORE routing events.
+        // Returns true if the event should be blocked (a modal is active and event
+        // targets a different window).
+        static bool HandleModalEvents(const UCEvent& event, UltraCanvasWindow* targetWindow);
+        
+        // Check if there is an active modal window
+        static bool HasActiveModal();
+        
+        // Get the current modal window (for event routing)
+        static UltraCanvasWindowBase* GetModalWindow();
 
-        static DialogResult ShowInformation(const std::string& message, const std::string& title = "Information");
-        static DialogResult ShowQuestion(const std::string& message, const std::string& title = "Question");
-        static DialogResult ShowWarning(const std::string& message, const std::string& title = "Warning");
-        static DialogResult ShowError(const std::string& message, const std::string& title = "Error");
+        // ===== ASYNC CALLBACK-BASED DIALOGS (RECOMMENDED) =====
+        // These methods show dialogs non-blocking and deliver results via callbacks.
 
-        // ===== CONFIRMATION DIALOGS =====
-        static bool ShowConfirmation(const std::string& message, const std::string& title = "Confirm");
-        static DialogResult ShowYesNoCancel(const std::string& message, const std::string& title = "Choose");
+        static void ShowMessage(const std::string& message, const std::string& title,
+                                     DialogType type, DialogButtons buttons,
+                                     std::function<void(DialogResult)> onResult,
+                                     UltraCanvasWindowBase* parent = nullptr);
 
-        // ===== INPUT DIALOGS =====
-        static std::string ShowInputDialog(const std::string& prompt, const std::string& title = "Input",
-                                           const std::string& defaultValue = "", InputType type = InputType::Text);
+        static void ShowInformation(const std::string& message, const std::string& title,
+                                         std::function<void(DialogResult)> onResult,
+                                         UltraCanvasWindowBase* parent = nullptr);
 
-        static std::string ShowPasswordDialog(const std::string& prompt, const std::string& title = "Password");
-        static std::string ShowMultilineInputDialog(const std::string& prompt, const std::string& title = "Input",
-                                                    const std::string& defaultValue = "", int maxLines = 10);
+        static void ShowQuestion(const std::string& message, const std::string& title,
+                                      std::function<void(DialogResult)> onResult,
+                                      UltraCanvasWindowBase* parent = nullptr);
 
-        // ===== FILE DIALOGS =====
-        static std::string ShowOpenFileDialog(const std::string& title = "Open File",
-                                              const std::vector<FileFilter>& filters = {},
-                                              const std::string& initialDir = "");
+        static void ShowWarning(const std::string& message, const std::string& title,
+                                     std::function<void(DialogResult)> onResult,
+                                     UltraCanvasWindowBase* parent = nullptr);
 
-        static std::string ShowSaveFileDialog(const std::string& title = "Save File",
-                                              const std::vector<FileFilter>& filters = {},
-                                              const std::string& initialDir = "",
-                                              const std::string& defaultName = "");
+        static void ShowError(const std::string& message, const std::string& title,
+                                   std::function<void(DialogResult)> onResult,
+                                   UltraCanvasWindowBase* parent = nullptr);
 
-        static std::vector<std::string> ShowOpenMultipleFilesDialog(const std::string& title = "Open Files",
-                                                                    const std::vector<FileFilter>& filters = {},
-                                                                    const std::string& initialDir = "");
+        static void ShowConfirmation(const std::string& message, const std::string& title,
+                                          std::function<void(bool confirmed)> onResult,
+                                          UltraCanvasWindowBase* parent = nullptr);
 
-        static std::string ShowSelectFolderDialog(const std::string& title = "Select Folder",
-                                                  const std::string& initialDir = "");
+        static void ShowInputDialog(const std::string& prompt, const std::string& title,
+                                         const std::string& defaultValue, InputType type,
+                                         std::function<void(DialogResult, const std::string&)> onResult,
+                                         UltraCanvasWindowBase* parent = nullptr);
+
+        static void ShowOpenFileDialog(const std::string& title,
+                                            const std::vector<FileFilter>& filters,
+                                            const std::string& initialDir,
+                                            std::function<void(DialogResult, const std::string&)> onResult,
+                                            UltraCanvasWindowBase* parent = nullptr);
+
+        static void ShowSaveFileDialog(const std::string& title,
+                                            const std::vector<FileFilter>& filters,
+                                            const std::string& initialDir,
+                                            const std::string& defaultName,
+                                            std::function<void(DialogResult, const std::string&)> onResult,
+                                            UltraCanvasWindowBase* parent = nullptr);
+
+        static void ShowSelectFolderDialog(const std::string& title,
+                                                const std::string& initialDir,
+                                                std::function<void(DialogResult, const std::string&)> onResult,
+                                                UltraCanvasWindowBase* parent = nullptr);
+
+        // ===== LEGACY METHODS (return immediately, use callbacks for results) =====
+//        static void ShowMessage(const std::string& message, const std::string& title = "Information",
+//                                DialogType type = DialogType::Information, DialogButtons buttons = DialogButtons::OK,
+//                                std::function<void(DialogResult)> onResult = nullptr);
+//
+//        static void ShowInformation(const std::string& message, const std::string& title = "Information",
+//                                    std::function<void(DialogResult)> onResult = nullptr);
+//        static void ShowQuestion(const std::string& message, const std::string& title = "Question",
+//                                 std::function<void(DialogResult)> onResult = nullptr);
+//        static void ShowWarning(const std::string& message, const std::string& title = "Warning",
+//                                std::function<void(DialogResult)> onResult = nullptr);
+//        static void ShowError(const std::string& message, const std::string& title = "Error",
+//                              std::function<void(DialogResult)> onResult = nullptr);
+//
+//        static void ShowConfirmation(const std::string& message, const std::string& title = "Confirm",
+//                                     std::function<void(bool)> onResult = nullptr);
 
         // ===== CUSTOM DIALOGS =====
-        static std::shared_ptr<UltraCanvasModalDialog> CreateCustomDialog(const DialogConfig& config);
-        static DialogResult ShowCustomDialog(std::shared_ptr<UltraCanvasModalDialog> dialog, UltraCanvasWindowBase* parent = nullptr);
+        static std::shared_ptr<UltraCanvasModalDialog> CreateDialog(const DialogConfig& config);
+        static void ShowDialog(std::shared_ptr<UltraCanvasModalDialog> dialog,
+                               std::function<void(DialogResult)> onResult = nullptr,
+                               UltraCanvasWindowBase* parent = nullptr);
 
         // ===== DIALOG MANAGEMENT =====
         static void CloseAllDialogs();
-        static void CloseDialog(std::shared_ptr<UltraCanvasModalDialog> dialog);
-        static std::shared_ptr<UltraCanvasModalDialog> GetCurrentModal();
+        static std::shared_ptr<UltraCanvasModalDialog> GetCurrentModalDialog();
         static std::vector<std::shared_ptr<UltraCanvasModalDialog>> GetActiveDialogs();
         static int GetActiveDialogCount();
 
@@ -536,12 +536,12 @@ namespace UltraCanvas {
         static FileDialogConfig GetDefaultFileConfig();
 
         // ===== ENABLE/DISABLE =====
-        static void SetEnabled(bool enabled);
+        static void SetEnabled(bool enable);
         static bool IsEnabled();
 
-        // ===== UPDATE AND RENDERING =====
+        // ===== UPDATE =====
+        // Call from application main loop to update dialog state
         static void Update(float deltaTime);
-        static void Render();
 
         // ===== UTILITY FUNCTIONS =====
         static std::string DialogResultToString(DialogResult result);
@@ -556,8 +556,8 @@ namespace UltraCanvas {
         static void SetCurrentModal(std::shared_ptr<UltraCanvasModalDialog> dialog);
         static std::shared_ptr<UltraCanvasModalDialog> CreateMessageDialog(const std::string& message, const std::string& title,
                                                                            DialogType type, DialogButtons buttons);
-        static std::shared_ptr<UltraCanvasModalDialog> CreateInputDialog(const InputDialogConfig& config);
-        static std::shared_ptr<UltraCanvasModalDialog> CreateFileDialog(const FileDialogConfig& config);
+        static std::shared_ptr<UltraCanvasInputDialog> CreateInputDialog(const InputDialogConfig& config);
+        static std::shared_ptr<UltraCanvasFileDialog> CreateFileDialog(const FileDialogConfig& config);
     };
 
 // ===== INPUT DIALOG CLASS =====
@@ -569,8 +569,8 @@ namespace UltraCanvas {
         bool isValid;
 
     public:
-        UltraCanvasInputDialog(const InputDialogConfig& config);
-        virtual ~UltraCanvasInputDialog();
+        // Create dialog and window with config
+        void CreateInputDialog(const InputDialogConfig& config);
 
         // Input-specific methods
         std::string GetInputValue() const;
@@ -630,11 +630,11 @@ namespace UltraCanvas {
         // Callbacks
         std::function<void(const std::string&)> onFileSelected;
         std::function<void(const std::vector<std::string>&)> onFilesSelected;
-        std::function<void()> onCancelled;
         std::function<void(const std::string&)> onDirectoryChanged;
 
-        UltraCanvasFileDialog(const FileDialogConfig& config);
-        virtual ~UltraCanvasFileDialog();
+
+        // Create dialog and window with config
+        void CreateFileDialog(const FileDialogConfig& config);
 
         // File-specific methods
         std::vector<std::string> GetSelectedFiles() const;
@@ -663,7 +663,7 @@ namespace UltraCanvas {
         std::vector<std::string> GetSelectedFilePaths() const;
 
         // Rendering override
-        void Render(IRenderContext* ctx) override;
+        void RenderCustomContent(IRenderContext* ctx) override;
 
         // Event handling override
         bool OnEvent(const UCEvent& event) override;
@@ -710,83 +710,4 @@ namespace UltraCanvas {
         std::string GetFileExtension(const std::string& fileName) const;
         std::string CombinePath(const std::string& dir, const std::string& file) const;
     };
-
-// ===== CONVENIENCE FUNCTIONS =====
-
-// Quick message dialogs
-    inline DialogResult ShowInfo(const std::string& message, const std::string& title = "Information") {
-        return UltraCanvasDialogManager::ShowInformation(message, title);
-    }
-
-    inline DialogResult ShowWarning(const std::string& message, const std::string& title = "Warning") {
-        return UltraCanvasDialogManager::ShowWarning(message, title);
-    }
-
-    inline DialogResult ShowError(const std::string& message, const std::string& title = "Error") {
-        return UltraCanvasDialogManager::ShowError(message, title);
-    }
-
-    inline bool ShowConfirm(const std::string& message, const std::string& title = "Confirm") {
-        return UltraCanvasDialogManager::ShowConfirmation(message, title);
-    }
-
-// Quick input dialogs
-    inline std::string ShowInput(const std::string& prompt, const std::string& title = "Input", const std::string& defaultValue = "") {
-        return UltraCanvasDialogManager::ShowInputDialog(prompt, title, defaultValue);
-    }
-
-    inline std::string ShowPassword(const std::string& prompt, const std::string& title = "Password") {
-        return UltraCanvasDialogManager::ShowPasswordDialog(prompt, title);
-    }
-
-// Quick file dialogs
-    inline std::string OpenFile(const std::vector<FileFilter>& filters = {}, const std::string& title = "Open File") {
-        return UltraCanvasDialogManager::ShowOpenFileDialog(title, filters);
-    }
-
-    inline std::string SaveFile(const std::vector<FileFilter>& filters = {}, const std::string& title = "Save File", const std::string& defaultName = "") {
-        return UltraCanvasDialogManager::ShowSaveFileDialog(title, filters, "", defaultName);
-    }
-
-    inline std::string SelectFolder(const std::string& title = "Select Folder") {
-        return UltraCanvasDialogManager::ShowSelectFolderDialog(title);
-    }
-
-    inline std::vector<std::string> OpenMultipleFiles(const std::vector<FileFilter>& filters = {}, const std::string& title = "Open Files") {
-        return UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(title, filters);
-    }
-
-// ===== FACTORY FUNCTIONS FOR FILE FILTERS =====
-    inline FileFilter CreateAllFilesFilter() {
-        return FileFilter("All Files", "*");
-    }
-
-    inline FileFilter CreateTextFilesFilter() {
-        return FileFilter("Text Files", {"txt", "log", "md", "csv"});
-    }
-
-    inline FileFilter CreateImageFilesFilter() {
-        return FileFilter("Image Files", {"png", "jpg", "jpeg", "gif", "bmp", "svg", "webp"});
-    }
-
-    inline FileFilter CreateDocumentFilesFilter() {
-        return FileFilter("Document Files", {"pdf", "doc", "docx", "odt", "rtf"});
-    }
-
-    inline FileFilter CreateAudioFilesFilter() {
-        return FileFilter("Audio Files", {"mp3", "wav", "flac", "ogg", "aac", "m4a"});
-    }
-
-    inline FileFilter CreateVideoFilesFilter() {
-        return FileFilter("Video Files", {"mp4", "avi", "mkv", "mov", "webm", "wmv"});
-    }
-
-    inline FileFilter CreateCodeFilesFilter() {
-        return FileFilter("Code Files", {"cpp", "h", "hpp", "c", "py", "js", "ts", "java", "rs"});
-    }
-
-    inline FileFilter CreateArchiveFilesFilter() {
-        return FileFilter("Archive Files", {"zip", "tar", "gz", "7z", "rar"});
-    }
-
 } // namespace UltraCanvas

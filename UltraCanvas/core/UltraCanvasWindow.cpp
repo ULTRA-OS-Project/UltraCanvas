@@ -211,7 +211,7 @@ namespace UltraCanvas {
     bool UltraCanvasWindowBase::HandleWindowEvent(const UCEvent &event) {
         switch (event.type) {
             case UCEventType::WindowCloseRequest:
-                Close();
+                RequestClose();
                 return true;
 
             case UCEventType::WindowResize:
@@ -287,7 +287,7 @@ namespace UltraCanvas {
             RenderActivePopups(ctx);
 
             // Render window-specific overlays
-            RenderWindowChrome(ctx);
+            RenderCustomContent(ctx);
 
 //            useSelectiveRendering = true;
 //        }
@@ -395,6 +395,10 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowBase::RequestDelete() {
         _state = WindowState::DeleteRequested;
+    }
+
+    void UltraCanvasWindowBase::RequestClose() {
+        Close();
     }
 
     void UltraCanvasWindowBase::Close() {

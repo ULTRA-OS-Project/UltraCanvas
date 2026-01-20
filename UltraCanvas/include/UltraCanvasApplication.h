@@ -99,7 +99,7 @@ namespace UltraCanvas {
         bool IsInitialized() const { return initialized; }
         bool IsRunning() const { return running; }
 
-        bool HandleFocusedWindowChange(UltraCanvasWindow* window);
+//        bool HandleFocusedWindowChange(UltraCanvasWindow* window);
         virtual bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor ptr) = 0;
         virtual bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor ptr, const char* filename, int hotspotX, int hotspotY) = 0;
 

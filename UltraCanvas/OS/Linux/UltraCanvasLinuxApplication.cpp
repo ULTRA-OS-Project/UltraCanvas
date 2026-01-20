@@ -140,12 +140,12 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxApplication::InitializeAtoms() {
         wmDeleteWindow = XInternAtom(display, "WM_DELETE_WINDOW", False);
-        wmProtocols = XInternAtom(display, "WM_PROTOCOLS", False);
-        wmState = XInternAtom(display, "_NET_WM_STATE", False);
-        wmStateFullscreen = XInternAtom(display, "_NET_WM_STATE_FULLSCREEN", False);
-        wmStateMaximizedHorz = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-        wmStateMaximizedVert = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
-        wmStateMinimized = XInternAtom(display, "_NET_WM_STATE_HIDDEN", False);
+//        wmProtocols = XInternAtom(display, "WM_PROTOCOLS", False);
+//        wmState = XInternAtom(display, "_NET_WM_STATE", False);
+//        wmStateFullscreen = XInternAtom(display, "_NET_WM_STATE_FULLSCREEN", False);
+//        wmStateMaximizedHorz = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+//        wmStateMaximizedVert = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+//        wmStateMinimized = XInternAtom(display, "_NET_WM_STATE_HIDDEN", False);
     }
 
 // ===== MAIN LOOP =====
@@ -418,11 +418,13 @@ namespace UltraCanvas {
             }
 
             case FocusIn: {
+                std::cout << "focus xwindow=" << xEvent.xany.window << std::endl;
                 event.type = UCEventType::WindowFocus;
                 break;
             }
 
             case FocusOut: {
+                std::cout << "blur xwindow=" << xEvent.xany.window << std::endl;
                 event.type = UCEventType::WindowBlur;
                 break;
             }

@@ -434,6 +434,40 @@ namespace UltraCanvas {
         XSetWMNormalHints(display, xWindow, &hints);
     }
 
+    void UltraCanvasLinuxWindow::RaiseAndFocus() {
+        auto application = UltraCanvasApplication::GetInstance();
+        Display* display = application->GetDisplay();
+        if (xWindow == 0 || !display) {
+            return;
+        }
+
+        Atom net_active = XInternAtom(display, "_NET_ACTIVE_WINDOW", False);
+
+        XEvent event;
+        std::memset(&event, 0, sizeof(event));
+
+        event.xclient.type = ClientMessage;
+        event.xclient.message_type = net_active;
+        event.xclient.display = display;
+        event.xclient.window = xWindow;
+        event.xclient.format = 32;
+        event.xclient.data.l[0] = 1; // source indication: application
+        event.xclient.data.l[1] = CurrentTime;
+
+        Window root = DefaultRootWindow(display);
+
+        XSendEvent(
+                display,
+                root,
+                False,
+                SubstructureRedirectMask | SubstructureNotifyMask,
+                &event
+        );
+
+        XFlush(display);
+//        XSetInputFocus(display, xWindow, RevertToParent, CurrentTime);
+    }
+
     void UltraCanvasLinuxWindow::UpdateCairoSurface(int w, int h) {
         std::lock_guard<std::mutex> lock(cairoMutex);  // Add this
 

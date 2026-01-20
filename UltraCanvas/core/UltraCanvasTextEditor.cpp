@@ -1,7 +1,7 @@
 // core/UltraCanvasTextEditor.cpp
 // Complete text editor application implementation
-// Version: 1.0.0
-// Last Modified: 2025-12-20
+// Version: 1.1.0
+// Last Modified: 2026-01-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -126,16 +126,16 @@ namespace UltraCanvas {
                 .SetStyle(ToolbarStyle::Standard)
                 .SetDimensions(0, toolbarY, GetWidth(), 36)
 
-                .AddButton("new", "New", "", [this]() { OnFileNew(); })
-                .AddButton("open", "Open", "", [this]() { OnFileOpen(); })
-                .AddButton("save", "Save", "", [this]() { OnFileSave(); })
+                .AddButton("new", "", "media/icons/new-icon.png", [this]() { OnFileNew(); })
+                .AddButton("open", "", "media/icons/open-icon.png", [this]() { OnFileOpen(); })
+                .AddButton("save", "", "media/icons/save-icon.png", [this]() { OnFileSave(); })
                 .AddSeparator()
-                .AddButton("cut", "Cut", "", [this]() { OnEditCut(); })
-                .AddButton("copy", "Copy", "", [this]() { OnEditCopy(); })
-                .AddButton("paste", "Paste", "", [this]() { OnEditPasteAll(); })
+                .AddButton("cut", "", "media/icons/cut-icon.png", [this]() { OnEditCut(); })
+                .AddButton("copy", "", "media/icons/copy-icon.png", [this]() { OnEditCopy(); })
+                .AddButton("paste", "", "media/icons/paste-icon.png", [this]() { OnEditPasteAll(); })
                 .AddSeparator()
-                .AddButton("search", "Search", "", [this]() { OnEditSearch(); })
-                .AddButton("replace", "Replace", "", [this]() { OnEditReplace(); })
+                .AddButton("search", "🔍", "", [this]() { OnEditSearch(); })
+                .AddButton("replace", "🔄", "", [this]() { OnEditReplace(); })
 
                 .Build();
 
@@ -269,16 +269,24 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextEditor::NewFile() {
-        if (isModified && !ConfirmSaveChanges()) {
-            return;
-        }
+        auto createNewFile = [this]() {
+            textArea->SetText("");
+            currentFilePath = "";
+            SetLanguage("Plain Text");
+//          textEditor->SetCharsetEncoding("UTF-8");
+            SetModified(false);
+            UpdateTitle();
+        };
 
-        textArea->SetText("");
-        currentFilePath = "";
-        SetLanguage("Plain Text");
-//        textEditor->SetCharsetEncoding("UTF-8");
-        SetModified(false);
-        UpdateTitle();
+        if (isModified) {
+            ConfirmSaveChanges([createNewFile](bool shouldContinue) {
+                if (shouldContinue) {
+                    createNewFile();
+                }
+            });
+        } else {
+            createNewFile();
+        }
     }
 
     std::string UltraCanvasTextEditor::GetText() const {
@@ -336,19 +344,30 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextEditor::OnFileOpen() {
-        if (isModified && !ConfirmSaveChanges()) {
-            return;
-        }
+        // First check for unsaved changes with async callback
+        auto openFileAction = [this]() {
+            // Show file dialog with async callback
+            UltraCanvasDialogManager::ShowOpenFileDialog(
+                    "Open File",
+                    config.fileFilters,
+                    "",
+                    [this](DialogResult result, const std::string& filePath) {
+                        if (result == DialogResult::OK && !filePath.empty()) {
+                            LoadFile(filePath);
+                        }
+                    },
+                    nullptr  // parent window
+            );
+        };
 
-        // Show file dialog
-        std::string filePath = UltraCanvasDialogManager::ShowOpenFileDialog(
-                "Open File",
-                {{"All Files (*.*)", "*"}, {"Text Files (*.txt)", "txt"}, {"Source Code (*.cpp;*.h;*.py)", {"cpp", "h", "py"}}},
-                ""
-        );
-
-        if (!filePath.empty()) {
-            LoadFile(filePath);
+        if (isModified) {
+            ConfirmSaveChanges([openFileAction](bool shouldContinue) {
+                if (shouldContinue) {
+                    openFileAction();
+                }
+            });
+        } else {
+            openFileAction();
         }
     }
 
@@ -363,60 +382,81 @@ namespace UltraCanvas {
     void UltraCanvasTextEditor::OnFileSaveAs() {
         std::string defaultName = currentFilePath.empty() ? "untitled.txt" : currentFilePath;
 
-        std::string filePath = UltraCanvasDialogManager::ShowSaveFileDialog(
+        UltraCanvasDialogManager::ShowSaveFileDialog(
                 "Save File As",
-                {{"All Files", "*"},{"Text Files", "txt"}},
+                config.fileFilters,
                 "",
-                defaultName
+                defaultName,
+                [this](DialogResult result, const std::string& filePath) {
+                    if (result == DialogResult::OK && !filePath.empty()) {
+                        SaveFileAs(filePath);
+                    }
+                },
+                nullptr  // parent window
         );
-
-        if (!filePath.empty()) {
-            SaveFileAs(filePath);
-        }
     }
 
     void UltraCanvasTextEditor::OnFileQuit() {
-        if (isModified && !ConfirmSaveChanges()) {
-            return;
-        }
+        auto quitAction = [this]() {
+            if (onQuitRequest) {
+                onQuitRequest();
+            }
+        };
 
-        if (onQuitRequest) {
-            onQuitRequest();
+        if (isModified) {
+            ConfirmSaveChanges([quitAction](bool shouldContinue) {
+                if (shouldContinue) {
+                    quitAction();
+                }
+            });
+        } else {
+            quitAction();
         }
     }
 
     void UltraCanvasTextEditor::OnEditSearch() {
-        // Show search dialog
-        std::string searchText = UltraCanvasDialogManager::ShowInputDialog(
-                "Search",
+        // Show search dialog with async callback
+        UltraCanvasDialogManager::ShowInputDialog(
                 "Enter text to search:",
-                ""
+                "Search",
+                "",
+                InputType::Text,
+                [this](DialogResult result, const std::string& searchText) {
+                    if (result == DialogResult::OK && !searchText.empty() && textArea) {
+                        textArea->FindText(searchText, false);
+                    }
+                },
+                nullptr  // parent window
         );
-
-        if (!searchText.empty() && textArea) {
-            textArea->FindText(searchText, false);
-        }
     }
 
     void UltraCanvasTextEditor::OnEditReplace() {
-        // Show replace dialog - simplified version
-        std::string searchText = UltraCanvasDialogManager::ShowInputDialog(
-                "Replace",
+        // Show replace dialog - chained async dialogs
+        // First dialog: Get search text
+        UltraCanvasDialogManager::ShowInputDialog(
                 "Enter text to find:",
-                ""
+                "Replace",
+                "",
+                InputType::Text,
+                [this](DialogResult result, const std::string& searchText) {
+                    if (result == DialogResult::OK && !searchText.empty()) {
+                        // Second dialog: Get replacement text
+                        UltraCanvasDialogManager::ShowInputDialog(
+                                "Replace with:",
+                                "Replace",
+                                "",
+                                InputType::Text,
+                                [this, searchText](DialogResult replaceResult, const std::string& replaceText) {
+                                    if (replaceResult == DialogResult::OK && textArea) {
+                                        textArea->ReplaceText(searchText, replaceText, false);
+                                    }
+                                },
+                                nullptr  // parent window
+                        );
+                    }
+                },
+                nullptr  // parent window
         );
-
-        if (!searchText.empty()) {
-            std::string replaceText = UltraCanvasDialogManager::ShowInputDialog(
-                    "Replace",
-                    "Replace with:",
-                    ""
-            );
-
-            if (textArea) {
-                textArea->ReplaceText(searchText, replaceText, false);
-            }
-        }
     }
 
     void UltraCanvasTextEditor::OnEditCopy() {
@@ -462,7 +502,8 @@ namespace UltraCanvas {
                     "• Ctrl+X - Cut\n"
                     "• Ctrl+V - Paste\n"
                     "• F1 - Help",
-                    "Help"
+                    "Help",
+                    nullptr  // onResult callback - not needed for info dialog
             );
         }
     }
@@ -473,7 +514,7 @@ namespace UltraCanvas {
         } else {
             UltraCanvasDialogManager::ShowInformation(
                     "Ultra Text Editor\n\n"
-                    "Version: 1.0.0\n"
+                    "Version: 1.1.0\n"
                     "A powerful, cross-platform text editor\n"
                     "built with UltraCanvas Framework.\n\n"
                     "Features:\n"
@@ -483,7 +524,8 @@ namespace UltraCanvas {
                     "• Multiple encodings support\n"
                     "• Dark and light themes\n\n"
                     "© 2025 UltraCanvas Framework",
-                    "About Ultra Text Editor"
+                    "About Ultra Text Editor",
+                    nullptr  // onResult callback - not needed for info dialog
             );
         }
     }
@@ -586,19 +628,68 @@ namespace UltraCanvas {
         return (it != extToLang.end()) ? it->second : "Plain Text";
     }
 
-    bool UltraCanvasTextEditor::ConfirmSaveChanges() {
-        DialogResult result = UltraCanvasDialogManager::ShowQuestion(
-                "The document has unsaved changes.\n"
-                "Do you want to save before continuing?",
-                "Save Changes?"
-        );
-
-        if (result == DialogResult::Yes) {
-            OnFileSave();
-            return !isModified; // Return true if save was successful
+    void UltraCanvasTextEditor::ConfirmSaveChanges(std::function<void(bool)> onComplete) {
+        // If no unsaved changes, continue immediately
+        if (!isModified) {
+            if (onComplete) {
+                onComplete(true);
+            }
+            return;
         }
 
-        return (result == DialogResult::No); // Return true if user chose No
+        // Show confirmation dialog with async callback
+        UltraCanvasDialogManager::ShowMessage(
+                "The document has unsaved changes.\n"
+                "Do you want to save before continuing?",
+                "Save Changes?",
+                DialogType::Question,
+                DialogButtons::YesNoCancel,
+                [this, onComplete](DialogResult result) {
+                    if (result == DialogResult::Yes) {
+                        // User wants to save first
+                        if (currentFilePath.empty()) {
+                            // No file path - need Save As dialog
+                            UltraCanvasDialogManager::ShowSaveFileDialog(
+                                    "Save File",
+                                    config.fileFilters,
+                                    "",
+                                    "untitled.txt",
+                                    [this, onComplete](DialogResult saveResult, const std::string& filePath) {
+                                        if (saveResult == DialogResult::OK && !filePath.empty()) {
+                                            bool saved = SaveFileAs(filePath);
+                                            if (onComplete) {
+                                                onComplete(saved);  // Continue if save was successful
+                                            }
+                                        } else {
+                                            // User cancelled Save As dialog
+                                            if (onComplete) {
+                                                onComplete(false);
+                                            }
+                                        }
+                                    },
+                                    nullptr
+                            );
+                        } else {
+                            // Save to existing file
+                            bool saved = SaveFile();
+                            if (onComplete) {
+                                onComplete(saved);  // Continue if save was successful
+                            }
+                        }
+                    } else if (result == DialogResult::No) {
+                        // User doesn't want to save - continue without saving
+                        if (onComplete) {
+                            onComplete(true);
+                        }
+                    } else {
+                        // User cancelled - abort operation
+                        if (onComplete) {
+                            onComplete(false);
+                        }
+                    }
+                },
+                nullptr  // parent window
+        );
     }
 
 // ===== FACTORY FUNCTIONS =====

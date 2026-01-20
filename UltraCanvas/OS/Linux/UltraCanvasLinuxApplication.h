@@ -86,12 +86,12 @@ namespace UltraCanvas {
 
         // ===== SYSTEM ATOMS =====
         Atom wmDeleteWindow;
-        Atom wmProtocols;
-        Atom wmState;
-        Atom wmStateFullscreen;
-        Atom wmStateMaximizedHorz;
-        Atom wmStateMaximizedVert;
-        Atom wmStateMinimized;
+//        Atom wmProtocols;
+//        Atom wmState;
+//        Atom wmStateFullscreen;
+//        Atom wmStateMaximizedHorz;
+//        Atom wmStateMaximizedVert;
+//        Atom wmStateMinimized;
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
@@ -131,12 +131,12 @@ namespace UltraCanvas {
 
         // Atom access
         Atom GetWMDeleteWindow() const { return wmDeleteWindow; }
-        Atom GetWMProtocols() const { return wmProtocols; }
-        Atom GetWMState() const { return wmState; }
-        Atom GetWMStateFullscreen() const { return wmStateFullscreen; }
-        Atom GetWMStateMaximizedHorz() const { return wmStateMaximizedHorz; }
-        Atom GetWMStateMaximizedVert() const { return wmStateMaximizedVert; }
-        Atom GetWMStateMinimized() const { return wmStateMinimized; }
+//        Atom GetWMProtocols() const { return wmProtocols; }
+//        Atom GetWMState() const { return wmState; }
+//        Atom GetWMStateFullscreen() const { return wmStateFullscreen; }
+//        Atom GetWMStateMaximizedHorz() const { return wmStateMaximizedHorz; }
+//        Atom GetWMStateMaximizedVert() const { return wmStateMaximizedVert; }
+//        Atom GetWMStateMinimized() const { return wmStateMinimized; }
 
         void ProcessXEvent(XEvent& xEvent);
 

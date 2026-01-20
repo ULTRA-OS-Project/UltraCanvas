@@ -1,7 +1,7 @@
 // include/UltraCanvasTextEditor.h
 // Complete text editor application with menu bar, toolbar, editor, and status bar
-// Version: 1.0.0
-// Last Modified: 2025-12-20
+// Version: 1.1.0
+// Last Modified: 2026-01-19
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -209,7 +209,17 @@ namespace UltraCanvas {
         void UpdateTitle();
         void SetModified(bool modified);
         std::string DetectLanguageFromExtension(const std::string& filePath);
-        bool ConfirmSaveChanges();
+
+        /**
+         * @brief Async confirmation dialog for unsaved changes
+         * @param onComplete Callback receives true if operation should continue, false if cancelled
+         *
+         * Shows dialog if document has unsaved changes, otherwise calls onComplete(true) immediately.
+         * On "Yes" - saves and calls onComplete(true) if successful
+         * On "No" - calls onComplete(true) to continue without saving
+         * On "Cancel" - calls onComplete(false) to abort operation
+         */
+        void ConfirmSaveChanges(std::function<void(bool continueOperation)> onComplete);
 
     private:
         // Configuration

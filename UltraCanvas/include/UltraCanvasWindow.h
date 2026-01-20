@@ -97,10 +97,11 @@ namespace UltraCanvas {
 
         // Window lifecycle
         void Create(const WindowConfig& config);
-        void Create();
-        void Close();
-        void Destroy();
+        virtual void Create();
+        virtual void RequestClose();
+        virtual void Close();
         void RequestDelete();
+        void Destroy();
 
         UCMouseCursor GetCurrentMouseCursor() { return currentMouseCursor; };
         bool SelectMouseCursor(UCMouseCursor ptr);
@@ -109,6 +110,7 @@ namespace UltraCanvas {
         virtual void Show() = 0;
         virtual void Hide() = 0;
         // Window state
+        virtual void RaiseAndFocus() = 0;
         virtual void SetWindowTitle(const std::string& title) = 0;
         virtual void SetWindowPosition(int x, int y) = 0;
         virtual void SetWindowSize(int width, int height) = 0;
@@ -177,7 +179,7 @@ namespace UltraCanvas {
         // ===== ENHANCED RENDERING AND EVENTS =====
         virtual void Render(IRenderContext* ctx) override;
         virtual bool OnEvent(const UCEvent& event) override;
-        virtual void RenderCustomContent() {}
+        virtual void RenderCustomContent(IRenderContext* ctx) {}
 
         bool IsNeedsRedraw() const { return _needsRedraw; }
         void RequestRedraw() { _needsRedraw = true; }
@@ -235,10 +237,6 @@ namespace UltraCanvas {
             // OS-specific implementations can override
         }
 
-        virtual void RenderWindowChrome(IRenderContext* ctx) {
-            // Default implementation - no chrome
-            // OS-specific implementations can add title bars, etc.
-        }
         void RenderActivePopups(IRenderContext* ctx);
 
         // ===== FOCUS UTILITY METHODS =====

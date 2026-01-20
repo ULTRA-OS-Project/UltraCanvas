@@ -1,15 +1,14 @@
 // core/UltraCanvasModalDialog.cpp
-// Implementation of cross-platform modal dialog system
-// Version: 2.3.0
-// Last Modified: 2025-01-17
+// Implementation of cross-platform modal dialog system - Window-based
+// Version: 3.1.0
+// Last Modified: 2025-01-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
-#include "UltraCanvasWindow.h"
+#include "UltraCanvasApplication.h"
+#include <fmt/os.h>
 #include <iostream>
 #include <algorithm>
-#include <thread>
-#include <chrono>
 
 namespace UltraCanvas {
 
@@ -23,439 +22,297 @@ namespace UltraCanvas {
 
 // ===== MODAL DIALOG IMPLEMENTATION =====
 
-    UltraCanvasModalDialog::UltraCanvasModalDialog(const DialogConfig& dialogConfig)
-            : UltraCanvasUIElement("modal_dialog", 0, dialogConfig.customPosition.x,
-                                   dialogConfig.customPosition.y,
-                                   dialogConfig.size.x, dialogConfig.size.y),
-              config(dialogConfig),
-              result(DialogResult::NoResult),
-              isVisible(false),
-              isAnimating(false),
-              isClosing(false),
-              animationProgress(0.0f),
-              isDragging(false),
-              parentWindow(nullptr) {
-
+    void UltraCanvasModalDialog::CreateDialog(const DialogConfig& config) {
+        dialogConfig = config;
+        UltraCanvasWindow::Create(dialogConfig);
         ApplyTypeDefaults();
-        CreateDefaultButtons();
-        CalculateLayout();
+        CreateDialogButtons();
+        CalculateDialogLayout();
     }
 
-    UltraCanvasModalDialog::~UltraCanvasModalDialog() {
-        if (isVisible) {
-            Close(DialogResult::Cancel);
-        }
+    void UltraCanvasModalDialog::SetDialogTitle(const std::string& title) {
+        dialogConfig.title = title;
+        SetWindowTitle(title);
     }
 
     void UltraCanvasModalDialog::SetMessage(const std::string& message) {
-        config.message = message;
-        CalculateLayout();
-    }
-
-    void UltraCanvasModalDialog::SetTitle(const std::string& title) {
-        config.title = title;
+        dialogConfig.message = message;
+        if (messageLabel) {
+            messageLabel->SetText(message);
+        }
+        CalculateDialogLayout();
     }
 
     void UltraCanvasModalDialog::SetDetails(const std::string& details) {
-        config.details = details;
-        CalculateLayout();
+        dialogConfig.details = details;
+        if (detailsLabel) {
+            detailsLabel->SetText(details);
+        }
+        CalculateDialogLayout();
     }
 
-    void UltraCanvasModalDialog::SetType(DialogType type) {
-        config.type = type;
+    void UltraCanvasModalDialog::SetDialogType(DialogType type) {
+        dialogConfig.dialogType = type;
         ApplyTypeDefaults();
     }
 
-    void UltraCanvasModalDialog::SetButtons(DialogButtons buttonsConfig) {
-        config.buttons = buttonsConfig;
-        CreateDefaultButtons();
-        CalculateLayout();
+    void UltraCanvasModalDialog::SetDialogButtons(DialogButtons buttons) {
+        dialogConfig.buttons = buttons;
+        CreateDialogButtons();
+        CalculateDialogLayout();
     }
 
     void UltraCanvasModalDialog::SetDefaultButton(DialogButton button) {
-        config.defaultButton = button;
+        dialogConfig.defaultButton = button;
     }
 
-    std::string UltraCanvasModalDialog::GetTitle() const {
-        return config.title;
+    std::string UltraCanvasModalDialog::GetDialogTitle() const {
+        return dialogConfig.title;
     }
 
     std::string UltraCanvasModalDialog::GetMessage() const {
-        return config.message;
+        return dialogConfig.message;
     }
 
     std::string UltraCanvasModalDialog::GetDetails() const {
-        return config.details;
+        return dialogConfig.details;
     }
 
-    DialogType UltraCanvasModalDialog::GetType() const {
-        return config.type;
+    DialogType UltraCanvasModalDialog::GetDialogType() const {
+        return dialogConfig.dialogType;
     }
 
-    DialogButtons UltraCanvasModalDialog::GetButtons() const {
-        return config.buttons;
+    DialogButtons UltraCanvasModalDialog::GetDialogButtons() const {
+        return dialogConfig.buttons;
     }
 
     DialogButton UltraCanvasModalDialog::GetDefaultButton() const {
-        return config.defaultButton;
+        return dialogConfig.defaultButton;
     }
 
-    void UltraCanvasModalDialog::AddElement(std::shared_ptr<UltraCanvasUIElement> element) {
-        if (element) {
-            childElements.push_back(element);
-            CalculateLayout();
-        }
-    }
+    void UltraCanvasModalDialog::ShowModal(UltraCanvasWindowBase* parent) {
+        // Center on parent if specified
+        if (parent && dialogConfig.position == DialogPosition::CenterParent) {
+            int parentX, parentY, parentW, parentH;
+            parent->GetWindowPosition(parentX, parentY);
+            parent->GetWindowSize(parentW, parentH);
 
-    void UltraCanvasModalDialog::RemoveElement(std::shared_ptr<UltraCanvasUIElement> element) {
-        auto it = std::find(childElements.begin(), childElements.end(), element);
-        if (it != childElements.end()) {
-            childElements.erase(it);
-            CalculateLayout();
-        }
-    }
-
-    void UltraCanvasModalDialog::ClearElements() {
-        childElements.clear();
-        CalculateLayout();
-    }
-
-    DialogResult UltraCanvasModalDialog::ShowModal(UltraCanvasWindowBase* parent) {
-        if (isVisible) return result;
-
-        parentWindow = parent;
-
-        // Position dialog centered on parent if available
-        if (parent && config.position == DialogPosition::CenterParent) {
-            Point2Di parentPos = parent->GetPosition();
-            Size2Di parentSize = parent->GetSize();
-
-            int dialogX = parentPos.x + (parentSize.width - config.size.x) / 2;
-            int dialogY = parentPos.y + (parentSize.height - config.size.y) / 2;
-            SetPosition(dialogX, dialogY);
+            int dialogX = parentX + (parentW - dialogConfig.width) / 2;
+            int dialogY = parentY + (parentH - dialogConfig.height) / 2;
+            SetWindowPosition(dialogX, dialogY);
         }
 
-        // Show dialog
-        Show(parent);
+        // Register with dialog manager
+        UltraCanvasDialogManager::RegisterDialog(
+                std::dynamic_pointer_cast<UltraCanvasModalDialog>(shared_from_this()));
 
-        if (config.modal) {
-            // Modal dialog - block until closed
-            while (isVisible && !isClosing) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 FPS
-            }
-        }
-
-        return result;
+        // Show the window
+        Show();
+        //Focus();
     }
 
-    void UltraCanvasModalDialog::Show(UltraCanvasWindowBase* parent) {
-        if (isVisible) return;
-
-        parentWindow = parent;
-        isVisible = true;
-        isClosing = false;
-        result = DialogResult::NoResult;
-
-        CalculateLayout();
-        UltraCanvasUIElement::SetVisible(true);
-
-        if (config.onShow) {
-            config.onShow();
-        }
-    }
-
-    void UltraCanvasModalDialog::Hide() {
-        if (!isVisible) return;
-
-        UltraCanvasUIElement::SetVisible(false);
-        isVisible = false;
-
-        if (config.onHide) {
-            config.onHide();
-        }
-    }
-
-    void UltraCanvasModalDialog::Close(DialogResult dialogResult) {
-        if (!isVisible || isClosing) return;
-
-        if (onClosingCallback && !onClosingCallback(dialogResult)) {
+    void UltraCanvasModalDialog::RequestClose() {
+        if (!_created || _state == WindowState::Closing) {
             return;
         }
 
-        isClosing = true;
+        if (!dialogConfig.onClosing || dialogConfig.onClosing(result)) {
+            Close();
+        }
+    }
+
+    void UltraCanvasModalDialog::Close() {
+        UltraCanvasWindow::Close();
+
+        if (dialogConfig.onResult) {
+            dialogConfig.onResult(result);
+        }
+        // Unregister from dialog manager
+        UltraCanvasDialogManager::UnregisterDialog(
+                std::dynamic_pointer_cast<UltraCanvasModalDialog>(shared_from_this()));
+    }
+
+    void UltraCanvasModalDialog::CloseDialog(DialogResult dialogResult) {
         result = dialogResult;
+        // Hide and close the window
+        RequestClose();
+    }
 
-        if (onResultCallback) {
-            onResultCallback(result);
+    bool UltraCanvasModalDialog::OnEvent(const UCEvent& event) {
+        if (dialogConfig.closeOnEscape && event.type == UCEventType::KeyDown && event.virtualKey == UCKeys::Escape) {
+            CloseDialog(DialogResult::Cancel);
+            return true;
         }
-
-        if (config.onResult) {
-            config.onResult(result);
-        }
-
-        Hide();
+        return UltraCanvasWindow::OnEvent(event);
     }
 
-    bool UltraCanvasModalDialog::IsModal() const {
-        return config.modal;
-    }
-
-    bool UltraCanvasModalDialog::IsVisible() const {
-        return isVisible && UltraCanvasUIElement::IsVisible();
-    }
-
-    bool UltraCanvasModalDialog::IsAnimating() const {
-        return isAnimating;
+    bool UltraCanvasModalDialog::IsModalDialog() const {
+        return dialogConfig.modal;
     }
 
     DialogResult UltraCanvasModalDialog::GetResult() const {
         return result;
     }
 
-    void UltraCanvasModalDialog::SetDialogPosition(DialogPosition position) {
-        config.position = position;
-        CalculateLayout();
-    }
-
-    void UltraCanvasModalDialog::SetCustomPosition(const Point2Di& position) {
-        config.customPosition = position;
-        config.position = DialogPosition::Custom;
-        SetPosition(position.x, position.y);
-        CalculateLayout();
-    }
-
-    void UltraCanvasModalDialog::CenterOnParent() {
-        if (parentWindow) {
-            Point2Di parentPos = parentWindow->GetPosition();
-            Size2Di parentSize = parentWindow->GetSize();
-
-            int dialogX = parentPos.x + (parentSize.width - GetWidth()) / 2;
-            int dialogY = parentPos.y + (parentSize.height - GetHeight()) / 2;
-            SetPosition(dialogX, dialogY);
-            CalculateLayout();
+    void UltraCanvasModalDialog::AddDialogElement(std::shared_ptr<UltraCanvasUIElement> element) {
+        if (element) {
+            AddChild(element);
+            CalculateDialogLayout();
         }
     }
 
-    void UltraCanvasModalDialog::CenterOnScreen() {
-        SetPosition(100, 100);
-        CalculateLayout();
-    }
-
-    void UltraCanvasModalDialog::SetShowAnimation(DialogAnimation animation, float duration) {
-        config.showAnimation = animation;
-        config.animationDuration = duration;
-    }
-
-    void UltraCanvasModalDialog::SetHideAnimation(DialogAnimation animation, float duration) {
-        config.hideAnimation = animation;
-        config.animationDuration = duration;
-    }
-
-    void UltraCanvasModalDialog::Update(float deltaTime) {
-        if (isAnimating) {
-            UpdateAnimation(deltaTime);
+    void UltraCanvasModalDialog::RemoveDialogElement(std::shared_ptr<UltraCanvasUIElement> element) {
+        if (element) {
+            RemoveChild(element);
+            CalculateDialogLayout();
         }
     }
 
-    bool UltraCanvasModalDialog::OnEvent(const UCEvent& event) {
-        if (!isVisible) return false;
+    void UltraCanvasModalDialog::ClearDialogElements() {
+        ClearChildren();
+        // Re-add dialog-specific elements
+        CreateDialogButtons();
+        CalculateDialogLayout();
+    }
 
-        Point2Di eventPos(event.x, event.y);
+    void UltraCanvasModalDialog::RenderCustomContent(IRenderContext* ctx) {
+        if (!ctx) return;
 
-        switch (event.type) {
-            case UCEventType::MouseDown:
-                if (event.button == UCMouseButton::Left) {
-                    if (titleBarRect.Contains(eventPos)) {
-                        if (closeButtonRect.Contains(eventPos)) {
-                            Close(DialogResult::Cancel);
-                            return true;
-                        }
-                        OnTitleBarMouseDown(eventPos);
-                        return true;
-                    }
-                    else if (!GetBounds().Contains(eventPos)) {
-                        OnOverlayClick();
-                        return true;
-                    }
-                    else {
-                        for (size_t i = 0; i < buttons.size(); ++i) {
-                            if (buttons[i] && buttons[i]->Contains(event.x, event.y)) {
-                                buttons[i]->OnEvent(event);
-                                return true;
-                            }
-                        }
-                    }
-                }
-                break;
+        // Render dialog-specific content
+        RenderDialogIcon(ctx);
+        RenderDialogMessage(ctx);
+        RenderDialogDetails(ctx);
+    }
 
-            case UCEventType::MouseMove:
-                if (isDragging) {
-                    OnTitleBarMouseMove(eventPos);
-                    return true;
-                }
-                break;
+    void UltraCanvasModalDialog::CalculateDialogLayout() {
+        int width = config_.width;
+        int height = config_.height;
+        int padding = 16;
+        int titleBarHeight = 32;
+        int buttonAreaHeight = 50;
 
-            case UCEventType::MouseUp:
-                if (event.button == UCMouseButton::Left && isDragging) {
-                    OnTitleBarMouseUp();
-                    return true;
-                }
-                break;
+        // Title bar
+        // Content area
+        contentRect = Rect2Di(padding, padding,
+                              width - 2 * padding,
+                              height - titleBarHeight - buttonAreaHeight - 2 * padding);
 
-            case UCEventType::KeyDown:
-                if (event.virtualKey == UCKeys::Escape && config.closeOnEscape) {
-                    Close(DialogResult::Cancel);
-                    return true;
-                }
-                else if (event.virtualKey == UCKeys::Return) {
-                    OnButtonClick(config.defaultButton);
-                    return true;
-                }
-                break;
+        // Button area
+        buttonAreaRect = Rect2Di(padding, height - buttonAreaHeight,
+                                 width - 2 * padding, buttonAreaHeight - padding);
 
-            default:
-                break;
-        }
+        // Icon (if dialog type has one)
+        int iconSize = 48;
+        iconRect = Rect2Di(padding, padding, iconSize, iconSize);
 
-        for (auto& element : childElements) {
-            if (element && element->IsVisible()) {
-                if (element->OnEvent(event)) {
-                    return true;
-                }
+        // Message area
+        int messageX = padding + (dialogConfig.dialogType != DialogType::Custom ? iconSize + padding : 0);
+        messageRect = Rect2Di(messageX, padding,
+                              width - messageX - padding, 60);
+
+        // Details area
+        detailsRect = Rect2Di(messageX, messageRect.y + messageRect.height + 8,
+                              width - messageX - padding,
+                              contentRect.height - messageRect.height - 16);
+
+        PositionDialogButtons();
+    }
+
+    void UltraCanvasModalDialog::CreateDialogButtons() {
+        // Clear existing buttons
+        for (auto& btn : dialogButtons) {
+            if (btn) {
+                RemoveChild(btn);
             }
         }
+        dialogButtons.clear();
 
-        return false;
-    }
+        int buttonMask = static_cast<int>(dialogConfig.buttons);
 
-    void UltraCanvasModalDialog::Render(IRenderContext* ctx) {
-        if (!isVisible || !ctx) return;
+        auto addButton = [this](DialogButton btn, const std::string& text) {
+            auto button = std::make_shared<UltraCanvasButton>(
+                    fmt::format("DialogBtn_{}", (int)btn), 0, 0, 80, 28);
+            button->SetText(text);
+            button->onClick = [this, btn]() {
+                OnDialogButtonClick(btn);
+            };
+            dialogButtons.push_back(button);
+            AddChild(button);
+        };
 
-        ctx->PushState();
-
-        if (config.modal) {
-            RenderOverlay();
+        if (buttonMask & static_cast<int>(DialogButton::OK)) {
+            addButton(DialogButton::OK, "OK");
         }
-
-        RenderBackground();
-        RenderTitleBar();
-        RenderIcon();
-        RenderMessage();
-        RenderDetails();
-        RenderDialogButtons();
-        RenderChildElements();
-        RenderBorder();
-
-        ctx->PopState();
-    }
-
-    void UltraCanvasModalDialog::CalculateLayout() {
-        Rect2Di bounds = GetBounds();
-
-        titleBarRect = Rect2Di(bounds.x, bounds.y, bounds.width, 30);
-        closeButtonRect = Rect2Di(bounds.x + bounds.width - 25, bounds.y + 5, 20, 20);
-        iconRect = Rect2Di(bounds.x + 10, titleBarRect.y + titleBarRect.height + 10, 32, 32);
-
-        int messageX = bounds.x + 10;
-        if (config.type != DialogType::Custom) {
-            messageX += 42;
+        if (buttonMask & static_cast<int>(DialogButton::Cancel)) {
+            addButton(DialogButton::Cancel, "Cancel");
         }
-
-        messageRect = Rect2Di(messageX, titleBarRect.y + titleBarRect.height + 10,
-                              bounds.width - (messageX - bounds.x) - 10, 60);
-
-        detailsRect = Rect2Di(messageX, messageRect.y + messageRect.height + 5,
-                              messageRect.width, 40);
-
-        buttonAreaRect = Rect2Di(bounds.x + 10, bounds.y + bounds.height - 50,
-                                 bounds.width - 20, 40);
-
-        contentRect = Rect2Di(bounds.x + 10, detailsRect.y + detailsRect.height + 10,
-                              bounds.width - 20,
-                              buttonAreaRect.y - (detailsRect.y + detailsRect.height) - 20);
-
-        overlayRect = Rect2Di(0, 0, 1920, 1080);
-
-        PositionButtons();
+        if (buttonMask & static_cast<int>(DialogButton::Yes)) {
+            addButton(DialogButton::Yes, "Yes");
+        }
+        if (buttonMask & static_cast<int>(DialogButton::No)) {
+            addButton(DialogButton::No, "No");
+        }
+        if (buttonMask & static_cast<int>(DialogButton::Retry)) {
+            addButton(DialogButton::Retry, "Retry");
+        }
+        if (buttonMask & static_cast<int>(DialogButton::Abort)) {
+            addButton(DialogButton::Abort, "Abort");
+        }
+        if (buttonMask & static_cast<int>(DialogButton::Ignore)) {
+            addButton(DialogButton::Ignore, "Ignore");
+        }
     }
 
-    void UltraCanvasModalDialog::PositionButtons() {
-        if (buttons.empty()) return;
+    void UltraCanvasModalDialog::PositionDialogButtons() {
+        if (dialogButtons.empty()) return;
 
         int buttonWidth = 80;
-        int buttonHeight = 30;
+        int buttonHeight = 28;
         int buttonSpacing = 10;
-        int totalWidth = static_cast<int>(buttons.size()) * buttonWidth +
-                         (static_cast<int>(buttons.size()) - 1) * buttonSpacing;
+        int totalWidth = static_cast<int>(dialogButtons.size()) * buttonWidth +
+                         (static_cast<int>(dialogButtons.size()) - 1) * buttonSpacing;
 
-        int startX = buttonAreaRect.x + buttonAreaRect.width - totalWidth;
-        int buttonY = buttonAreaRect.y + (buttonAreaRect.height - buttonHeight) / 2;
+        int startX = buttonAreaRect.x + (buttonAreaRect.width - totalWidth) / 2;
+        int y = buttonAreaRect.y + (buttonAreaRect.height - buttonHeight) / 2;
 
-        for (size_t i = 0; i < buttons.size(); ++i) {
-            int buttonX = startX + static_cast<int>(i) * (buttonWidth + buttonSpacing);
-            buttons[i]->SetPosition(buttonX, buttonY);
-            buttons[i]->SetSize(buttonWidth, buttonHeight);
+        for (size_t i = 0; i < dialogButtons.size(); ++i) {
+            int x = startX + static_cast<int>(i) * (buttonWidth + buttonSpacing);
+            dialogButtons[i]->SetPosition(x, y);
+            dialogButtons[i]->SetSize(buttonWidth, buttonHeight);
         }
     }
 
-    void UltraCanvasModalDialog::RenderOverlay() {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return;
+    void UltraCanvasModalDialog::OnDialogButtonClick(DialogButton button) {
+        DialogResult dialogResult = DialogResult::NoResult;
 
-        Color overlayColor(0, 0, 0, 128);
-        ctx->DrawFilledRectangle(overlayRect, overlayColor);
+        switch (button) {
+            case DialogButton::OK:     dialogResult = DialogResult::OK; break;
+            case DialogButton::Cancel: dialogResult = DialogResult::Cancel; break;
+            case DialogButton::Yes:    dialogResult = DialogResult::Yes; break;
+            case DialogButton::No:     dialogResult = DialogResult::No; break;
+            case DialogButton::Retry:  dialogResult = DialogResult::Retry; break;
+            case DialogButton::Abort:  dialogResult = DialogResult::Abort; break;
+            case DialogButton::Ignore: dialogResult = DialogResult::Ignore; break;
+            case DialogButton::Apply:  dialogResult = DialogResult::Apply; break;
+            case DialogButton::Close:  dialogResult = DialogResult::Close; break;
+            case DialogButton::Help:   dialogResult = DialogResult::Help; break;
+            default: break;
+        }
+
+        CloseDialog(dialogResult);
     }
 
-    void UltraCanvasModalDialog::RenderBackground() {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return;
-
-        Rect2Di bounds = GetBounds();
-        ctx->DrawFilledRectangle(bounds, config.backgroundColor);
-    }
-
-    void UltraCanvasModalDialog::RenderBorder() {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return;
-
-        Rect2Di bounds = GetBounds();
-        ctx->SetStrokePaint(config.borderColor);
-        ctx->SetStrokeWidth(config.borderWidth);
-        ctx->DrawRectangle(bounds);
-    }
-
-    void UltraCanvasModalDialog::RenderTitleBar() {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return;
-
-        Color titleBg(240, 240, 240, 255);
-        ctx->DrawFilledRectangle(titleBarRect, titleBg);
-
-        ctx->SetStrokePaint(Color(200, 200, 200, 255));
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(titleBarRect);
-
-        ctx->SetTextPaint(Colors::Black);
-        ctx->SetFontSize(12.0f);
-        Point2Di titlePos(titleBarRect.x + 10, titleBarRect.y + 20);
-        ctx->DrawText(config.title, titlePos);
-
-        ctx->SetFillPaint(Color(220, 220, 220, 255));
-        ctx->FillRectangle(closeButtonRect);
-        ctx->SetTextPaint(Colors::Black);
-        ctx->SetFontSize(10.0f);
-        ctx->DrawText("×", Point2Di(closeButtonRect.x + 6, closeButtonRect.y + 14));
-    }
-
-    void UltraCanvasModalDialog::RenderIcon() {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return;
-
-        if (config.type == DialogType::Custom) return;
+    void UltraCanvasModalDialog::RenderDialogIcon(IRenderContext* ctx) {
+        if (dialogConfig.dialogType == DialogType::Custom) return;
 
         Color iconColor = GetTypeColor();
         ctx->SetFillPaint(iconColor);
-        ctx->FillRectangle(iconRect);
+
+        int centerX = iconRect.x + iconRect.width / 2;
+        int centerY = iconRect.y + iconRect.height / 2;
+        int radius = iconRect.width / 2 - 4;
+
+        ctx->FillCircle(centerX, centerY, radius);
 
         ctx->SetTextPaint(Colors::White);
         ctx->SetFontSize(20.0f);
@@ -464,184 +321,18 @@ namespace UltraCanvas {
         ctx->DrawText(iconText, iconTextPos);
     }
 
-    void UltraCanvasModalDialog::RenderMessage() {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return;
+    void UltraCanvasModalDialog::RenderDialogMessage(IRenderContext* ctx) {
+        if (dialogConfig.message.empty()) return;
 
-        if (config.message.empty()) return;
-
-        ctx->SetTextPaint(Colors::Black);
-        ctx->SetFontSize(11.0f);
-
-        std::vector<std::string> lines;
-        std::string currentLine;
-        std::stringstream ss(config.message);
-        std::string word;
-
-        while (ss >> word) {
-            if (currentLine.empty()) {
-                currentLine = word;
-            } else {
-                std::string testLine = currentLine + " " + word;
-                if (static_cast<int>(testLine.length()) * 7 < messageRect.width) {
-                    currentLine = testLine;
-                } else {
-                    lines.push_back(currentLine);
-                    currentLine = word;
-                }
-            }
-        }
-        if (!currentLine.empty()) {
-            lines.push_back(currentLine);
-        }
-
-        float lineHeight = 16.0f;
-        for (size_t i = 0; i < lines.size() && i < 3; ++i) {
-            Point2Di linePos(messageRect.x, messageRect.y + static_cast<int>((i + 1) * lineHeight));
-            ctx->DrawText(lines[i], linePos);
-        }
+        ctx->SetFillPaint(Colors::Black);
+        ctx->DrawText(dialogConfig.message, messageRect.x, messageRect.y);
     }
 
-    void UltraCanvasModalDialog::RenderDetails() {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return;
+    void UltraCanvasModalDialog::RenderDialogDetails(IRenderContext* ctx) {
+        if (dialogConfig.details.empty()) return;
 
-        if (config.details.empty()) return;
-
-        ctx->SetTextPaint(Color(100, 100, 100, 255));
-        ctx->SetFontSize(9.0f);
-        Point2Di detailsPos(detailsRect.x, detailsRect.y + 12);
-        ctx->DrawText(config.details, detailsPos);
-    }
-
-    void UltraCanvasModalDialog::RenderDialogButtons() {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return;
-
-        for (auto& button : buttons) {
-            if (button && button->IsVisible()) {
-                button->Render(ctx);
-            }
-        }
-    }
-
-    void UltraCanvasModalDialog::RenderChildElements() {
-        IRenderContext* ctx = GetRenderContext();
-        if (!ctx) return;
-
-        for (auto& element : childElements) {
-            if (element && element->IsVisible()) {
-                element->Render(ctx);
-            }
-        }
-    }
-
-    void UltraCanvasModalDialog::OnButtonClick(DialogButton button) {
-        DialogResult buttonResult = DialogResult::NoResult;
-
-        switch (button) {
-            case DialogButton::OK:     buttonResult = DialogResult::OK; break;
-            case DialogButton::Cancel: buttonResult = DialogResult::Cancel; break;
-            case DialogButton::Yes:    buttonResult = DialogResult::Yes; break;
-            case DialogButton::No:     buttonResult = DialogResult::No; break;
-            case DialogButton::Apply:  buttonResult = DialogResult::Apply; break;
-            case DialogButton::Close:  buttonResult = DialogResult::Close; break;
-            case DialogButton::Help:   buttonResult = DialogResult::Help; break;
-            case DialogButton::Retry:  buttonResult = DialogResult::Retry; break;
-            case DialogButton::Ignore: buttonResult = DialogResult::Ignore; break;
-            case DialogButton::Abort:  buttonResult = DialogResult::Abort; break;
-            default: buttonResult = DialogResult::Cancel; break;
-        }
-
-        Close(buttonResult);
-    }
-
-    void UltraCanvasModalDialog::OnTitleBarMouseDown(const Point2Di& position) {
-        if (!config.movable) return;
-
-        isDragging = true;
-        dragStartPos = position;
-        windowStartPos = Point2Di(GetX(), GetY());
-    }
-
-    void UltraCanvasModalDialog::OnTitleBarMouseMove(const Point2Di& position) {
-        if (!isDragging) return;
-
-        Point2Di delta(position.x - dragStartPos.x, position.y - dragStartPos.y);
-        Point2Di newPos(windowStartPos.x + delta.x, windowStartPos.y + delta.y);
-        SetPosition(newPos.x, newPos.y);
-        CalculateLayout();
-    }
-
-    void UltraCanvasModalDialog::OnTitleBarMouseUp() {
-        isDragging = false;
-    }
-
-    void UltraCanvasModalDialog::OnOverlayClick() {
-        if (config.modal && config.closeOnClickOutside) {
-            Close(DialogResult::Cancel);
-        }
-    }
-
-    void UltraCanvasModalDialog::StartShowAnimation() {
-        isAnimating = true;
-        animationProgress = 0.0f;
-        animationStartTime = std::chrono::steady_clock::now();
-    }
-
-    void UltraCanvasModalDialog::StartHideAnimation() {
-        isAnimating = true;
-        animationProgress = 1.0f;
-        animationStartTime = std::chrono::steady_clock::now();
-    }
-
-    void UltraCanvasModalDialog::UpdateAnimation(float deltaTime) {
-        if (!isAnimating) return;
-
-        animationProgress += deltaTime / config.animationDuration;
-
-        if (animationProgress >= 1.0f) {
-            animationProgress = 1.0f;
-            isAnimating = false;
-        }
-    }
-
-    float UltraCanvasModalDialog::CalculateAnimationAlpha() const {
-        return animationProgress;
-    }
-
-    Point2Di UltraCanvasModalDialog::CalculateAnimationPosition() const {
-        return Point2Di(GetX(), GetY());
-    }
-
-    float UltraCanvasModalDialog::CalculateAnimationScale() const {
-        return animationProgress;
-    }
-
-    void UltraCanvasModalDialog::AddCustomButton(const std::string& text, DialogResult buttonResult,
-                                                 std::function<void()> callback) {
-        auto button = std::make_shared<UltraCanvasButton>("custom_btn_" + text,
-                                                          static_cast<long>(buttons.size() + 2000),
-                                                          0, 0, 80, 30);
-        button->SetText(text);
-        button->onClick = [this, buttonResult, callback]() {
-            if (callback) callback();
-            Close(buttonResult);
-        };
-        buttons.push_back(button);
-        PositionButtons();
-    }
-
-    void UltraCanvasModalDialog::RemoveButton(DialogButton button) {
-        // Implementation placeholder
-    }
-
-    void UltraCanvasModalDialog::SetButtonEnabled(DialogButton button, bool enabled) {
-        // Implementation placeholder
-    }
-
-    void UltraCanvasModalDialog::SetButtonVisible(DialogButton button, bool visible) {
-        // Implementation placeholder
+        ctx->SetFillPaint(Colors::DarkGray);
+        ctx->DrawText(dialogConfig.details, detailsRect.x, detailsRect.y);
     }
 
     std::string UltraCanvasModalDialog::GetButtonText(DialogButton button) const {
@@ -656,23 +347,76 @@ namespace UltraCanvas {
             case DialogButton::Retry:  return "Retry";
             case DialogButton::Ignore: return "Ignore";
             case DialogButton::Abort:  return "Abort";
-            default: return "Button";
+            default:                   return "";
         }
     }
 
     Color UltraCanvasModalDialog::GetTypeColor() const {
-        switch (config.type) {
-            case DialogType::Information: return Color(52, 144, 220, 255);
-            case DialogType::Question:    return Color(92, 184, 92, 255);
-            case DialogType::Warning:     return Color(240, 173, 78, 255);
-            case DialogType::Error:       return Color(217, 83, 79, 255);
-            case DialogType::Custom:
-            default:                      return Color(128, 128, 128, 255);
+        switch (dialogConfig.dialogType) {
+            case DialogType::Information: return Color(70, 130, 180);   // Steel Blue
+            case DialogType::Question:    return Color(70, 130, 180);   // Steel Blue
+            case DialogType::Warning:     return Color(255, 193, 7);    // Amber
+            case DialogType::Error:       return Color(220, 53, 69);    // Red
+            default:                      return Colors::Gray;
+        }
+    }
+
+    void UltraCanvasModalDialog::ApplyTypeDefaults() {
+        // Set default icon/title based on type
+        switch (dialogConfig.dialogType) {
+            case DialogType::Information:
+                if (dialogConfig.title == "Dialog") dialogConfig.title = "Information";
+                break;
+            case DialogType::Question:
+                if (dialogConfig.title == "Dialog") dialogConfig.title = "Question";
+                break;
+            case DialogType::Warning:
+                if (dialogConfig.title == "Dialog") dialogConfig.title = "Warning";
+                break;
+            case DialogType::Error:
+                if (dialogConfig.title == "Dialog") dialogConfig.title = "Error";
+                break;
+            default:
+                break;
+        }
+    }
+
+    void UltraCanvasModalDialog::AddCustomButton(const std::string& text, DialogResult buttonResult,
+                                                 std::function<void()> callback) {
+        auto button = std::make_shared<UltraCanvasButton>(
+                "DialogBtn_Custom_" + text, 1000 + static_cast<long>(dialogButtons.size()), 0, 0, 80, 28);
+        button->SetText(text);
+        button->onClick = [this, buttonResult, callback]() {
+            if (callback) callback();
+            CloseDialog(buttonResult);
+        };
+        dialogButtons.push_back(button);
+        AddChild(button);
+        PositionDialogButtons();
+    }
+
+    void UltraCanvasModalDialog::SetButtonDisabled(DialogButton button, bool disabled) {
+        auto btnId = fmt::format("DialogBtn_{}", static_cast<int>(button));
+        for (auto& btn : dialogButtons) {
+            if (btn && btn->GetIdentifier() == btnId) {
+                btn->SetDisabled(disabled);
+                break;
+            }
+        }
+    }
+
+    void UltraCanvasModalDialog::SetButtonVisible(DialogButton button, bool buttonVisible) {
+        auto btnId = fmt::format("DialogBtn_{}", static_cast<int>(button));
+        for (auto& btn : dialogButtons) {
+            if (btn && btn->GetIdentifier() == btnId) {
+                btn->SetVisible(buttonVisible);
+                break;
+            }
         }
     }
 
     std::string UltraCanvasModalDialog::GetTypeIcon() const {
-        switch (config.type) {
+        switch (dialogConfig.dialogType) {
             case DialogType::Information: return "i";
             case DialogType::Question:    return "?";
             case DialogType::Warning:     return "!";
@@ -682,99 +426,15 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasModalDialog::CreateDefaultButtons() {
-        buttons.clear();
-
-        int buttonFlags = static_cast<int>(config.buttons);
-
-        auto createButton = [this](const std::string& id, long uid, const std::string& text,
-                                   DialogButton btnType) {
-            auto button = std::make_shared<UltraCanvasButton>(id, uid, 0, 0, 80, 30);
-            button->SetText(text);
-            button->onClick = [this, btnType]() {
-                OnButtonClick(btnType);
-            };
-            return button;
-        };
-
-        if (buttonFlags & static_cast<int>(DialogButton::OK)) {
-            buttons.push_back(createButton("ok_btn", 1001, "OK", DialogButton::OK));
-        }
-        if (buttonFlags & static_cast<int>(DialogButton::Cancel)) {
-            buttons.push_back(createButton("cancel_btn", 1002, "Cancel", DialogButton::Cancel));
-        }
-        if (buttonFlags & static_cast<int>(DialogButton::Yes)) {
-            buttons.push_back(createButton("yes_btn", 1003, "Yes", DialogButton::Yes));
-        }
-        if (buttonFlags & static_cast<int>(DialogButton::No)) {
-            buttons.push_back(createButton("no_btn", 1004, "No", DialogButton::No));
-        }
-        if (buttonFlags & static_cast<int>(DialogButton::Apply)) {
-            buttons.push_back(createButton("apply_btn", 1005, "Apply", DialogButton::Apply));
-        }
-        if (buttonFlags & static_cast<int>(DialogButton::Close)) {
-            buttons.push_back(createButton("close_btn", 1006, "Close", DialogButton::Close));
-        }
-        if (buttonFlags & static_cast<int>(DialogButton::Help)) {
-            buttons.push_back(createButton("help_btn", 1007, "Help", DialogButton::Help));
-        }
-        if (buttonFlags & static_cast<int>(DialogButton::Retry)) {
-            buttons.push_back(createButton("retry_btn", 1008, "Retry", DialogButton::Retry));
-        }
-        if (buttonFlags & static_cast<int>(DialogButton::Ignore)) {
-            buttons.push_back(createButton("ignore_btn", 1009, "Ignore", DialogButton::Ignore));
-        }
-        if (buttonFlags & static_cast<int>(DialogButton::Abort)) {
-            buttons.push_back(createButton("abort_btn", 1010, "Abort", DialogButton::Abort));
-        }
-    }
-
-    void UltraCanvasModalDialog::ApplyTypeDefaults() {
-        switch (config.type) {
-            case DialogType::Information:
-                if (config.buttons == DialogButtons::OK) {
-                    config.defaultButton = DialogButton::OK;
-                    config.cancelButton = DialogButton::OK;
-                }
-                break;
-            case DialogType::Question:
-                if (config.buttons == DialogButtons::YesNo) {
-                    config.defaultButton = DialogButton::Yes;
-                    config.cancelButton = DialogButton::No;
-                }
-                break;
-            case DialogType::Warning:
-                if (config.buttons == DialogButtons::OKCancel) {
-                    config.defaultButton = DialogButton::OK;
-                    config.cancelButton = DialogButton::Cancel;
-                }
-                break;
-            case DialogType::Error:
-                if (config.buttons == DialogButtons::OK) {
-                    config.defaultButton = DialogButton::OK;
-                    config.cancelButton = DialogButton::OK;
-                }
-                break;
-            default:
-                break;
-        }
-    }
-
 // ===== INPUT DIALOG IMPLEMENTATION =====
+    void UltraCanvasInputDialog::CreateInputDialog(const InputDialogConfig &config) {
+        inputConfig = config;
+        CreateDialog(config);
 
-    UltraCanvasInputDialog::UltraCanvasInputDialog(const InputDialogConfig& inputCfg)
-            : UltraCanvasModalDialog(inputCfg),
-              inputConfig(inputCfg),
-              isValid(true) {
-
-        SetTitle(inputCfg.title);
-        SetMessage(inputCfg.inputLabel);
-        SetButtons(DialogButtons::OKCancel);
+        SetMessage(inputConfig.inputLabel);
+        SetDialogButtons(DialogButtons::OKCancel);
 
         SetupInputField();
-    }
-
-    UltraCanvasInputDialog::~UltraCanvasInputDialog() {
     }
 
     std::string UltraCanvasInputDialog::GetInputValue() const {
@@ -843,7 +503,7 @@ namespace UltraCanvas {
                 break;
         }
 
-        AddElement(textInput);
+        AddChild(textInput);
         ValidateInput();
     }
 
@@ -860,15 +520,14 @@ namespace UltraCanvas {
     }
 
 // ===== FILE DIALOG IMPLEMENTATION =====
+    void UltraCanvasFileDialog::CreateFileDialog(const FileDialogConfig &config) {
+        fileConfig = config;
+        UltraCanvasModalDialog::CreateDialog(config);
 
-    UltraCanvasFileDialog::UltraCanvasFileDialog(const FileDialogConfig& fileCfg)
-            : UltraCanvasModalDialog(fileCfg),
-              fileConfig(fileCfg),
-              currentDirectory(fileCfg.initialDirectory),
-              showHiddenFiles(fileCfg.showHiddenFiles) {
+        currentDirectory = fileConfig.initialDirectory;
+        showHiddenFiles = fileConfig.showHiddenFiles;
 
-        SetTitle(fileCfg.title);
-        SetButtons(DialogButtons::OKCancel);
+        SetDialogButtons(DialogButtons::OKCancel);
 
         if (currentDirectory.empty()) {
             try {
@@ -878,13 +537,11 @@ namespace UltraCanvas {
             }
         }
 
-        fileNameText = fileCfg.defaultFileName;
+        fileNameText = fileConfig.defaultFileName;
 
         SetupFileInterface();
         CalculateFileDialogLayout();
-    }
 
-    UltraCanvasFileDialog::~UltraCanvasFileDialog() {
     }
 
     std::vector<std::string> UltraCanvasFileDialog::GetSelectedFiles() const {
@@ -1036,11 +693,10 @@ namespace UltraCanvas {
 
     void UltraCanvasFileDialog::CalculateFileDialogLayout() {
         Rect2Di bounds = GetBounds();
-        int titleBarHeight = 30;
 
-        pathBarRect = Rect2Di(bounds.x + 10, bounds.y + titleBarHeight + 10, bounds.width - 20, pathBarHeight);
+        pathBarRect = Rect2Di(bounds.x + 10, bounds.y + 10, bounds.width - 20, pathBarHeight);
 
-        int topOffset = titleBarHeight + pathBarHeight + 20;
+        int topOffset = pathBarHeight + 20;
         int bottomOffset = buttonHeight + filterHeight + 70;
         fileListRect = Rect2Di(bounds.x + 10, bounds.y + topOffset,
                                bounds.width - 20, bounds.height - topOffset - bottomOffset);
@@ -1070,18 +726,18 @@ namespace UltraCanvas {
         return filterSelectorRect;
     }
 
-    void UltraCanvasFileDialog::Render(IRenderContext* ctx) {
-        if (!isVisible || !ctx) return;
+    void UltraCanvasFileDialog::RenderCustomContent(UltraCanvas::IRenderContext *ctx) {
+        if (!IsVisible() || !ctx) return;
 
         ctx->PushState();
 
-        if (config.modal) {
-            RenderOverlay();
-        }
+//        if (config_.modal) {
+//            RenderOverlay();
+//        }
 
-        RenderBackground();
-        RenderTitleBar();
-        RenderBorder();
+//        RenderBackground();
+//        RenderTitleBar();
+//        RenderBorder();
 
         RenderPathBar(ctx);
         RenderFileList(ctx);
@@ -1091,7 +747,7 @@ namespace UltraCanvas {
         }
 
         RenderFilterSelector(ctx);
-        RenderDialogButtons();
+//        RenderDialogButtons();
 
         ctx->PopState();
     }
@@ -1227,22 +883,10 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasFileDialog::OnEvent(const UCEvent& event) {
-        if (!isVisible) return false;
-
         switch (event.type) {
             case UCEventType::MouseDown:
                 if (event.button == UCMouseButton::Left) {
                     Point2Di eventPos(event.x, event.y);
-
-                    if (titleBarRect.Contains(eventPos)) {
-                        if (closeButtonRect.Contains(eventPos)) {
-                            HandleCancelButton();
-                            Close(DialogResult::Cancel);
-                            return true;
-                        }
-                        OnTitleBarMouseDown(eventPos);
-                        return true;
-                    }
 
                     if (fileListRect.Contains(eventPos)) {
                         HandleFileListClick(event);
@@ -1252,13 +896,6 @@ namespace UltraCanvas {
                     if (filterSelectorRect.Contains(eventPos)) {
                         HandleFilterDropdownClick();
                         return true;
-                    }
-
-                    for (auto& button : buttons) {
-                        if (button && button->Contains(event.x, event.y)) {
-                            button->OnEvent(event);
-                            return true;
-                        }
                     }
                 }
                 break;
@@ -1271,10 +908,6 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::MouseMove:
-                if (isDragging) {
-                    OnTitleBarMouseMove(Point2Di(event.x, event.y));
-                    return true;
-                }
                 if (fileListRect.Contains(Point2Di(event.x, event.y))) {
                     int newHoverIndex = scrollOffset + (event.y - fileListRect.y) / itemHeight;
                     int totalItems = static_cast<int>(directoryList.size() + fileList.size());
@@ -1285,10 +918,6 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::MouseUp:
-                if (isDragging) {
-                    OnTitleBarMouseUp();
-                    return true;
-                }
                 break;
 
             case UCEventType::KeyDown:
@@ -1306,8 +935,7 @@ namespace UltraCanvas {
             default:
                 break;
         }
-
-        return false;
+        return UltraCanvasModalDialog::OnEvent(event);
     }
 
     void UltraCanvasFileDialog::HandleFileListClick(const UCEvent& event) {
@@ -1356,11 +984,6 @@ namespace UltraCanvas {
         switch (event.virtualKey) {
             case UCKeys::Return:
                 HandleOkButton();
-                break;
-
-            case UCKeys::Escape:
-                HandleCancelButton();
-                Close(DialogResult::Cancel);
                 break;
 
             case UCKeys::Up:
@@ -1436,13 +1059,7 @@ namespace UltraCanvas {
             }
         }
 
-        Close(DialogResult::OK);
-    }
-
-    void UltraCanvasFileDialog::HandleCancelButton() {
-        if (onCancelled) {
-            onCancelled();
-        }
+        CloseDialog(DialogResult::OK);
     }
 
     void UltraCanvasFileDialog::NavigateToDirectory(const std::string& dirName) {
@@ -1518,42 +1135,159 @@ namespace UltraCanvas {
 
 // ===== DIALOG MANAGER IMPLEMENTATION =====
 
-    DialogResult UltraCanvasDialogManager::ShowMessage(const std::string& message, const std::string& title,
-                                                       DialogType type, DialogButtons buttons) {
-        if (!enabled) return DialogResult::Cancel;
+// ===== MODAL EVENT BLOCKING =====
+    bool UltraCanvasDialogManager::HandleModalEvents(const UCEvent& event, UltraCanvasWindow* targetWindow) {
+        if (!enabled || !currentModal) return false;
+
+        // Get the modal window
+        UltraCanvasWindowBase* modalWindow = currentModal.get();
+        if (!modalWindow || !modalWindow->IsVisible()) return false;
+
+
+        // Block input events going to other windows when modal is active
+        switch (event.type) {
+            case UCEventType::MouseDown:
+            case UCEventType::MouseUp:
+            case UCEventType::MouseMove:
+            case UCEventType::MouseWheel:
+            case UCEventType::MouseDoubleClick:
+            case UCEventType::MouseEnter:
+            case UCEventType::MouseLeave:
+            case UCEventType::KeyDown:
+            case UCEventType::KeyUp:
+            case UCEventType::TextInput:
+            case UCEventType::Shortcut:
+                // Block these events from reaching non-modal windows
+                if (targetWindow != modalWindow) return true;
+                break;
+
+            case UCEventType::WindowFocus:
+                if (targetWindow && targetWindow != modalWindow) {
+                    modalWindow->RaiseAndFocus();
+                    return true;
+                }
+                break;
+//            case UCEventType::WindowBlur:
+            default:
+                return false;
+        }
+        return false;
+    }
+
+    bool UltraCanvasDialogManager::HasActiveModal() {
+        return enabled && currentModal && currentModal->IsVisible();
+    }
+
+    UltraCanvasWindowBase* UltraCanvasDialogManager::GetModalWindow() {
+        if (HasActiveModal()) {
+            return currentModal.get();
+        }
+        return nullptr;
+    }
+
+// ===== ASYNC CALLBACK-BASED DIALOGS =====
+    void UltraCanvasDialogManager::ShowMessage(const std::string& message, const std::string& title,
+                                                    DialogType type, DialogButtons buttons,
+                                                    std::function<void(DialogResult)> onResult,
+                                                    UltraCanvasWindowBase* parent) {
+        if (!enabled) {
+            if (onResult) onResult(DialogResult::Cancel);
+            return;
+        }
 
         auto dialog = CreateMessageDialog(message, title, type, buttons);
-        return ShowCustomDialog(dialog);
+        ShowDialog(dialog, onResult, parent);
     }
 
-    DialogResult UltraCanvasDialogManager::ShowInformation(const std::string& message, const std::string& title) {
-        return ShowMessage(message, title, DialogType::Information, DialogButtons::OK);
+    void UltraCanvasDialogManager::ShowInformation(const std::string& message, const std::string& title,
+                                                        std::function<void(DialogResult)> onResult,
+                                                        UltraCanvasWindowBase* parent) {
+        ShowMessage(message, title, DialogType::Information, DialogButtons::OK, onResult, parent);
     }
 
-    DialogResult UltraCanvasDialogManager::ShowQuestion(const std::string& message, const std::string& title) {
-        return ShowMessage(message, title, DialogType::Question, DialogButtons::YesNo);
+    void UltraCanvasDialogManager::ShowQuestion(const std::string& message, const std::string& title,
+                                                     std::function<void(DialogResult)> onResult,
+                                                     UltraCanvasWindowBase* parent) {
+        ShowMessage(message, title, DialogType::Question, DialogButtons::YesNo, onResult, parent);
     }
 
-    DialogResult UltraCanvasDialogManager::ShowWarning(const std::string& message, const std::string& title) {
-        return ShowMessage(message, title, DialogType::Warning, DialogButtons::OKCancel);
+    void UltraCanvasDialogManager::ShowWarning(const std::string& message, const std::string& title,
+                                                    std::function<void(DialogResult)> onResult,
+                                                    UltraCanvasWindowBase* parent) {
+        ShowMessage(message, title, DialogType::Warning, DialogButtons::OKCancel, onResult, parent);
     }
 
-    DialogResult UltraCanvasDialogManager::ShowError(const std::string& message, const std::string& title) {
-        return ShowMessage(message, title, DialogType::Error, DialogButtons::OK);
+    void UltraCanvasDialogManager::ShowError(const std::string& message, const std::string& title,
+                                                  std::function<void(DialogResult)> onResult,
+                                                  UltraCanvasWindowBase* parent) {
+        ShowMessage(message, title, DialogType::Error, DialogButtons::OK, onResult, parent);
     }
 
-    bool UltraCanvasDialogManager::ShowConfirmation(const std::string& message, const std::string& title) {
-        DialogResult result = ShowMessage(message, title, DialogType::Question, DialogButtons::YesNo);
-        return result == DialogResult::Yes;
+    void UltraCanvasDialogManager::ShowConfirmation(const std::string& message, const std::string& title,
+                                                         std::function<void(bool confirmed)> onResult,
+                                                         UltraCanvasWindowBase* parent) {
+        ShowMessage(message, title, DialogType::Question, DialogButtons::YesNo,
+                         [onResult](DialogResult r) {
+                             if (onResult) onResult(r == DialogResult::Yes);
+                         }, parent);
     }
 
-    DialogResult UltraCanvasDialogManager::ShowYesNoCancel(const std::string& message, const std::string& title) {
-        return ShowMessage(message, title, DialogType::Question, DialogButtons::YesNoCancel);
+// ===== LEGACY METHODS (now async with optional callbacks) =====
+//    void UltraCanvasDialogManager::ShowMessage(const std::string& message, const std::string& title,
+//                                               DialogType type, DialogButtons buttons,
+//                                               std::function<void(DialogResult)> onResult) {
+//        ShowMessage(message, title, type, buttons, onResult, nullptr);
+//    }
+//
+//    void UltraCanvasDialogManager::ShowInformation(const std::string& message, const std::string& title,
+//                                                   std::function<void(DialogResult)> onResult) {
+//        ShowMessage(message, title, DialogType::Information, DialogButtons::OK, onResult, nullptr);
+//    }
+//
+//    void UltraCanvasDialogManager::ShowQuestion(const std::string& message, const std::string& title,
+//                                                std::function<void(DialogResult)> onResult) {
+//        ShowMessage(message, title, DialogType::Question, DialogButtons::YesNo, onResult, nullptr);
+//    }
+//
+//    void UltraCanvasDialogManager::ShowWarning(const std::string& message, const std::string& title,
+//                                               std::function<void(DialogResult)> onResult) {
+//        ShowMessage(message, title, DialogType::Warning, DialogButtons::OKCancel, onResult, nullptr);
+//    }
+//
+//    void UltraCanvasDialogManager::ShowError(const std::string& message, const std::string& title,
+//                                             std::function<void(DialogResult)> onResult) {
+//        ShowMessage(message, title, DialogType::Error, DialogButtons::OK, onResult, nullptr);
+//    }
+//
+//    void UltraCanvasDialogManager::ShowConfirmation(const std::string& message, const std::string& title,
+//                                                    std::function<void(bool)> onResult) {
+//        ShowConfirmation(message, title, onResult, nullptr);
+//    }
+// ===== CUSTOM DIALOGS =====
+    std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::CreateDialog(const DialogConfig& config) {
+        auto dialog = std::make_shared<UltraCanvasModalDialog>();
+        dialog->CreateDialog(config);
+        return dialog;
     }
 
-    std::string UltraCanvasDialogManager::ShowInputDialog(const std::string& prompt, const std::string& title,
-                                                          const std::string& defaultValue, InputType type) {
-        if (!enabled) return "";
+    void UltraCanvasDialogManager::ShowDialog(std::shared_ptr<UltraCanvasModalDialog> dialog,
+                                              std::function<void(DialogResult)> onResult,
+                                              UltraCanvasWindowBase* parent) {
+        if (!enabled || !dialog) {
+            if (onResult) onResult(DialogResult::Cancel);
+            return;
+        }
+
+        if (onResult) {
+            dialog->SetResultCallback(onResult);
+        }
+        dialog->ShowModal(parent);
+    }
+
+    void UltraCanvasDialogManager::ShowInputDialog(const std::string& prompt, const std::string& title,
+                                                          const std::string& defaultValue, InputType type,
+                                                          std::function<void(DialogResult, const std::string&)> onResult, UltraCanvasWindowBase* parent) {
+        if (!enabled) return;
 
         InputDialogConfig config;
         config.title = title;
@@ -1562,46 +1296,19 @@ namespace UltraCanvas {
         config.inputType = type;
 
         auto dialog = CreateInputDialog(config);
-        DialogResult result = ShowCustomDialog(dialog);
-
-        if (result == DialogResult::OK) {
-            auto inputDialog = std::dynamic_pointer_cast<UltraCanvasInputDialog>(dialog);
-            return inputDialog ? inputDialog->GetInputValue() : "";
-        }
-
-        return "";
+        ShowDialog(dialog, [onResult, dialog](DialogResult result) {
+            if (onResult) {
+                onResult(result, dialog->GetInputValue());
+            }
+        }, parent);
     }
 
-    std::string UltraCanvasDialogManager::ShowPasswordDialog(const std::string& prompt, const std::string& title) {
-        return ShowInputDialog(prompt, title, "", InputType::Password);
-    }
-
-    std::string UltraCanvasDialogManager::ShowMultilineInputDialog(const std::string& prompt, const std::string& title,
-                                                                   const std::string& defaultValue, int maxLines) {
-        if (!enabled) return "";
-
-        InputDialogConfig config;
-        config.title = title;
-        config.inputLabel = prompt;
-        config.defaultValue = defaultValue;
-        config.inputType = InputType::MultilineText;
-        config.maxLines = maxLines;
-
-        auto dialog = CreateInputDialog(config);
-        DialogResult result = ShowCustomDialog(dialog);
-
-        if (result == DialogResult::OK) {
-            auto inputDialog = std::dynamic_pointer_cast<UltraCanvasInputDialog>(dialog);
-            return inputDialog ? inputDialog->GetInputValue() : "";
-        }
-
-        return "";
-    }
-
-    std::string UltraCanvasDialogManager::ShowOpenFileDialog(const std::string& title,
+    void UltraCanvasDialogManager::ShowOpenFileDialog(const std::string& title,
                                                              const std::vector<FileFilter>& filters,
-                                                             const std::string& initialDir) {
-        if (!enabled) return "";
+                                                             const std::string& initialDir,
+                                                             std::function<void(DialogResult, const std::string&)> onResult,
+                                                             UltraCanvasWindowBase* parent) {
+        if (!enabled) return;
 
         FileDialogConfig config;
         config.title = title.empty() ? "Open File" : title;
@@ -1612,21 +1319,20 @@ namespace UltraCanvas {
         }
 
         auto dialog = CreateFileDialog(config);
-        DialogResult result = ShowCustomDialog(dialog);
-
-        if (result == DialogResult::OK) {
-            auto fileDialog = std::dynamic_pointer_cast<UltraCanvasFileDialog>(dialog);
-            return fileDialog ? fileDialog->GetSelectedFilePath() : "";
-        }
-
-        return "";
+        ShowDialog(dialog, [onResult, dialog](DialogResult result) {
+            if (onResult) {
+                onResult(result, dialog->GetSelectedFilePath());
+            }
+        }, parent);
     }
 
-    std::string UltraCanvasDialogManager::ShowSaveFileDialog(const std::string& title,
+    void UltraCanvasDialogManager::ShowSaveFileDialog(const std::string& title,
                                                              const std::vector<FileFilter>& filters,
                                                              const std::string& initialDir,
-                                                             const std::string& defaultName) {
-        if (!enabled) return "";
+                                                             const std::string& defaultName,
+                                                             std::function<void(DialogResult, const std::string&)> onResult,
+                                                             UltraCanvasWindowBase* parent) {
+        if (!enabled) return;
 
         FileDialogConfig config;
         config.title = title.empty() ? "Save File" : title;
@@ -1638,44 +1344,43 @@ namespace UltraCanvas {
         }
 
         auto dialog = CreateFileDialog(config);
-        DialogResult result = ShowCustomDialog(dialog);
-
-        if (result == DialogResult::OK) {
-            auto fileDialog = std::dynamic_pointer_cast<UltraCanvasFileDialog>(dialog);
-            return fileDialog ? fileDialog->GetSelectedFilePath() : "";
-        }
-
-        return "";
+        ShowDialog(dialog, [onResult, dialog](DialogResult result) {
+            if (onResult) {
+                onResult(result, dialog->GetSelectedFilePath());
+            }
+        }, parent);
     }
 
-    std::vector<std::string> UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(const std::string& title,
-                                                                                   const std::vector<FileFilter>& filters,
-                                                                                   const std::string& initialDir) {
-        if (!enabled) return {};
+//    std::vector<std::string> UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(const std::string& title,
+//                                                                                   const std::vector<FileFilter>& filters,
+//                                                                                   const std::string& initialDir) {
+//        if (!enabled) return {};
+//
+//        FileDialogConfig config;
+//        config.title = title.empty() ? "Open Files" : title;
+//        config.dialogType = FileDialogType::OpenMultiple;
+//        config.allowMultipleSelection = true;
+//        config.initialDirectory = initialDir;
+//        if (!filters.empty()) {
+//            config.filters = filters;
+//        }
+//
+//        auto dialog = CreateFileDialog(config);
+//        DialogResult result = ShowCustomDialog(dialog);
+//
+//        if (result == DialogResult::OK) {
+//            auto fileDialog = std::dynamic_pointer_cast<UltraCanvasFileDialog>(dialog);
+//            return fileDialog ? fileDialog->GetSelectedFilePaths() : std::vector<std::string>();
+//        }
+//
+//        return {};
+//    }
 
-        FileDialogConfig config;
-        config.title = title.empty() ? "Open Files" : title;
-        config.dialogType = FileDialogType::OpenMultiple;
-        config.allowMultipleSelection = true;
-        config.initialDirectory = initialDir;
-        if (!filters.empty()) {
-            config.filters = filters;
-        }
-
-        auto dialog = CreateFileDialog(config);
-        DialogResult result = ShowCustomDialog(dialog);
-
-        if (result == DialogResult::OK) {
-            auto fileDialog = std::dynamic_pointer_cast<UltraCanvasFileDialog>(dialog);
-            return fileDialog ? fileDialog->GetSelectedFilePaths() : std::vector<std::string>();
-        }
-
-        return {};
-    }
-
-    std::string UltraCanvasDialogManager::ShowSelectFolderDialog(const std::string& title,
-                                                                 const std::string& initialDir) {
-        if (!enabled) return "";
+    void UltraCanvasDialogManager::ShowSelectFolderDialog(const std::string& title,
+                                                                 const std::string& initialDir,
+                                                                 std::function<void(DialogResult, const std::string&)> onResult,
+                                                                 UltraCanvasWindowBase* parent) {
+        if (!enabled) return;
 
         FileDialogConfig config;
         config.title = title.empty() ? "Select Folder" : title;
@@ -1683,49 +1388,24 @@ namespace UltraCanvas {
         config.initialDirectory = initialDir;
 
         auto dialog = CreateFileDialog(config);
-        DialogResult result = ShowCustomDialog(dialog);
-
-        if (result == DialogResult::OK) {
-            auto fileDialog = std::dynamic_pointer_cast<UltraCanvasFileDialog>(dialog);
-            return fileDialog ? fileDialog->GetCurrentDirectory() : "";
-        }
-
-        return "";
-    }
-
-    std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::CreateCustomDialog(const DialogConfig& config) {
-        return std::make_shared<UltraCanvasModalDialog>(config);
-    }
-
-    DialogResult UltraCanvasDialogManager::ShowCustomDialog(std::shared_ptr<UltraCanvasModalDialog> dialog,
-                                                            UltraCanvasWindowBase* parent) {
-        if (!enabled || !dialog) return DialogResult::Cancel;
-
-        RegisterDialog(dialog);
-        DialogResult result = dialog->ShowModal(parent);
-        UnregisterDialog(dialog);
-
-        return result;
+        ShowDialog(dialog, [onResult, dialog](DialogResult result) {
+            if (onResult) {
+                onResult(result, dialog->GetCurrentDirectory());
+            }
+        }, parent);
     }
 
     void UltraCanvasDialogManager::CloseAllDialogs() {
         for (auto& dialog : activeDialogs) {
             if (dialog) {
-                dialog->Close(DialogResult::Cancel);
+                dialog->CloseDialog(DialogResult::Cancel);
             }
         }
         activeDialogs.clear();
         currentModal.reset();
     }
 
-    void UltraCanvasDialogManager::CloseDialog(std::shared_ptr<UltraCanvasModalDialog> dialog) {
-        if (dialog) {
-            dialog->Close(DialogResult::Cancel);
-            UnregisterDialog(dialog);
-        }
-    }
-
-    std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::GetCurrentModal() {
+    std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::GetCurrentModalDialog() {
         return currentModal;
     }
 
@@ -1775,12 +1455,7 @@ namespace UltraCanvas {
     void UltraCanvasDialogManager::Update(float deltaTime) {
         if (!enabled) return;
 
-        for (auto& dialog : activeDialogs) {
-            if (dialog) {
-                dialog->Update(deltaTime);
-            }
-        }
-
+        // Clean up closed dialogs
         activeDialogs.erase(
                 std::remove_if(activeDialogs.begin(), activeDialogs.end(),
                                [](const std::shared_ptr<UltraCanvasModalDialog>& dialog) {
@@ -1788,18 +1463,10 @@ namespace UltraCanvas {
                                }),
                 activeDialogs.end()
         );
-    }
 
-    void UltraCanvasDialogManager::Render() {
-        if (!enabled) return;
-
-        for (auto& dialog : activeDialogs) {
-            if (dialog && dialog->IsVisible()) {
-                IRenderContext* ctx = dialog->GetRenderContext();
-                if (ctx) {
-                    dialog->Render(ctx);
-                }
-            }
+        // Update current modal reference
+        if (currentModal && !currentModal->IsVisible()) {
+            currentModal.reset();
         }
     }
 
@@ -1868,7 +1535,7 @@ namespace UltraCanvas {
     void UltraCanvasDialogManager::RegisterDialog(std::shared_ptr<UltraCanvasModalDialog> dialog) {
         if (dialog) {
             activeDialogs.push_back(dialog);
-            if (dialog->IsModal()) {
+            if (dialog->IsModalDialog()) {
                 SetCurrentModal(dialog);
             }
         }
@@ -1896,20 +1563,24 @@ namespace UltraCanvas {
         DialogConfig config = defaultConfig;
         config.message = message;
         config.title = title;
-        config.type = type;
+        config.dialogType = type;
         config.buttons = buttons;
 
-        return CreateCustomDialog(config);
+        return CreateDialog(config);
     }
 
-    std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::CreateInputDialog(
+    std::shared_ptr<UltraCanvasInputDialog> UltraCanvasDialogManager::CreateInputDialog(
             const InputDialogConfig& config) {
-        return std::make_shared<UltraCanvasInputDialog>(config);
+        auto dialog = std::make_shared<UltraCanvasInputDialog>();
+        dialog->CreateInputDialog(config);
+        return dialog;
     }
 
-    std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::CreateFileDialog(
+    std::shared_ptr<UltraCanvasFileDialog> UltraCanvasDialogManager::CreateFileDialog(
             const FileDialogConfig& config) {
-        return std::make_shared<UltraCanvasFileDialog>(config);
+        auto dialog =  std::make_shared<UltraCanvasFileDialog>();
+        dialog->CreateFileDialog(config);
+        return dialog;
     }
 
 } // namespace UltraCanvas

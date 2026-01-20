@@ -10,6 +10,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasTooltipManager.h"
+#include "UltraCanvasModalDialog.h"
 
 
 namespace UltraCanvas {
@@ -269,6 +270,10 @@ rescan_windows:
                 targetWindow = focusedWindow;
             }
         }
+        // block some events if modal window active
+        if (UltraCanvasDialogManager::HandleModalEvents(event, targetWindow)) {
+            return;
+        }
 
         // Handle different event types
         bool handled = false;
@@ -293,19 +298,38 @@ rescan_windows:
                 break;
             case UCEventType::WindowFocus:
                 if (targetWindow) {
-                    HandleFocusedWindowChange(targetWindow);
-                    return;
+                    // Update focused window
+                    DispatchEventToElement(targetWindow, event);
+                    focusedWindow = targetWindow;
+                    std::cout << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << (int)focusedWindow->GetNativeHandle() << ") gained focus" << std::endl;
                 }
-                break;
+                return;
             case UCEventType::WindowBlur:
-                if (targetWindow == focusedWindow) {
-                    HandleFocusedWindowChange(nullptr);
-                    return;
+                if (targetWindow && targetWindow == focusedWindow) {
+                    std::cout << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << (int)focusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
+                    DispatchEventToElement(targetWindow, event);
+                    focusedWindow = nullptr;
                 }
-                break;
+                return;
         }
         // Dispatch other events to focused element
         if (targetWindow) {
+            UltraCanvasUIElement* pointerElem = nullptr;
+            if (event.IsMouseEvent()) { // change mouse cursort first
+                pointerElem = targetWindow->FindElementAtPoint(event.x, event.y);
+
+                if (pointerElem) {
+                    if (targetWindow->GetCurrentMouseCursor() != pointerElem->GetMouseCursor()) {
+                        targetWindow->SelectMouseCursor(pointerElem->GetMouseCursor());
+                    }
+                } else {
+                    // if no element pointed then select window's cursor
+                    if (targetWindow->GetCurrentMouseCursor() != targetWindow->GetMouseCursor()) {
+                        targetWindow->SelectMouseCursor(targetWindow->GetMouseCursor());
+                    }
+                }
+            }
+
             if ((event.IsMouseEvent() || event.IsKeyboardEvent()) && targetWindow->HasActivePopups()) {
                 std::vector<UltraCanvasUIElement*> activePopupsCopy = targetWindow->GetActivePopups();
                 if (event.IsMouseEvent()) {
@@ -343,20 +367,7 @@ rescan_windows:
 
             }
             if (event.IsMouseEvent()) {
-                auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
-
-                if (elem) {
-                    if (targetWindow->GetCurrentMouseCursor() != elem->GetMouseCursor()) {
-                        targetWindow->SelectMouseCursor(elem->GetMouseCursor());
-                    }
-                } else {
-                    // if no element pointed then select window's cursor
-                    if (targetWindow->GetCurrentMouseCursor() != targetWindow->GetMouseCursor()) {
-                        targetWindow->SelectMouseCursor(targetWindow->GetMouseCursor());
-                    }
-                }
-
-                if (hoveredElement && hoveredElement != elem) {
+                if (hoveredElement && hoveredElement != pointerElem) {
                     UCEvent leaveEvent = event;
                     leaveEvent.type = UCEventType::MouseLeave;
                     leaveEvent.x = -1;
@@ -365,24 +376,24 @@ rescan_windows:
                     DispatchEventToElement(hoveredElement, leaveEvent);
                     hoveredElement = nullptr;
                 }
-                if (elem) {
+                if (pointerElem) {
                     int localX = event.x;
                     int localY = event.y;
-                    elem->ConvertWindowToParentContainerCoordinates(localX, localY);
-                    if (hoveredElement != elem) {
+                    pointerElem->ConvertWindowToParentContainerCoordinates(localX, localY);
+                    if (hoveredElement != pointerElem) {
                         UCEvent enterEvent = event;
-                        enterEvent.targetElement = elem;
+                        enterEvent.targetElement = pointerElem;
                         enterEvent.type = UCEventType::MouseEnter;
                         enterEvent.x = localX;
                         enterEvent.y = localY;
-                        DispatchEventToElement(elem, enterEvent);
-                        hoveredElement = elem;
+                        DispatchEventToElement(pointerElem, enterEvent);
+                        hoveredElement = pointerElem;
                     }
                     auto newEvent = event;
-                    newEvent.targetElement = elem;
+                    newEvent.targetElement = pointerElem;
                     newEvent.x = localX;
                     newEvent.y = localY;
-                    if (DispatchEventToElement(elem, newEvent)) {
+                    if (DispatchEventToElement(pointerElem, newEvent)) {
                         goto finish;
                     }
                 }
@@ -436,40 +447,40 @@ rescan_windows:
     }
 
 
-    bool UltraCanvasBaseApplication::HandleFocusedWindowChange(UltraCanvasWindow* window) {
-        if (focusedWindow != window) {
-            UltraCanvasWindow* previousFocusedWindow = focusedWindow;
-
-            // Update focused window first
-            focusedWindow = window;
-
-            // Notify old window it lost focus
-            if (previousFocusedWindow) {
-                UCEvent blurEvent;
-                blurEvent.type = UCEventType::WindowBlur;
-                blurEvent.timestamp = std::chrono::steady_clock::now();
-                blurEvent.targetWindow = static_cast<void*>(previousFocusedWindow);
-                //blurEvent.nativeWindowHandle = previousFocusedWindow->GetXWindow();
-                DispatchEventToElement(previousFocusedWindow, blurEvent);
-
-                std::cout << "UltraCanvasBaseApplication: Window " << previousFocusedWindow << " lost focus" << std::endl;
-            }
-
-            // Notify new window it gained focus
-            if (focusedWindow) {
-                UCEvent focusEvent;
-                focusEvent.type = UCEventType::WindowFocus;
-                focusEvent.timestamp = std::chrono::steady_clock::now();
-                focusEvent.targetWindow = static_cast<void*>(focusedWindow);
-                //focusEvent.nativeWindowHandle = focusedWindow->GetXWindow();
-                DispatchEventToElement(focusedWindow, focusEvent);
-
-                std::cout << "UltraCanvasBaseApplication: Window " << focusedWindow << " gained focus" << std::endl;
-            }
-            return true;
-        }
-        return false;
-    }
+//    bool UltraCanvasBaseApplication::HandleFocusedWindowChange(UltraCanvasWindow* window) {
+//        if (focusedWindow != window) {
+//            UltraCanvasWindow* previousFocusedWindow = focusedWindow;
+//
+//            // Update focused window first
+//            focusedWindow = window;
+//
+//            // Notify old window it lost focus
+//            if (previousFocusedWindow) {
+//                UCEvent blurEvent;
+//                blurEvent.type = UCEventType::WindowBlur;
+//                blurEvent.timestamp = std::chrono::steady_clock::now();
+//                blurEvent.targetWindow = static_cast<void*>(previousFocusedWindow);
+//                //blurEvent.nativeWindowHandle = previousFocusedWindow->GetXWindow();
+//                DispatchEventToElement(previousFocusedWindow, blurEvent);
+//
+//                std::cout << "UltraCanvasBaseApplication: Window " << previousFocusedWindow  << " (native=" << (int)previousFocusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
+//            }
+//
+//            // Notify new window it gained focus
+//            if (focusedWindow) {
+//                UCEvent focusEvent;
+//                focusEvent.type = UCEventType::WindowFocus;
+//                focusEvent.timestamp = std::chrono::steady_clock::now();
+//                focusEvent.targetWindow = static_cast<void*>(focusedWindow);
+//                //focusEvent.nativeWindowHandle = focusedWindow->GetXWindow();
+//                DispatchEventToElement(focusedWindow, focusEvent);
+//
+//                std::cout << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << (int)focusedWindow->GetNativeHandle() << ") gained focus" << std::endl;
+//            }
+//            return true;
+//        }
+//        return false;
+//    }
 
     void UltraCanvasBaseApplication::RegisterGlobalEventHandler(std::function<bool(const UCEvent &)> handler) {
         globalEventHandlers.push_back(handler);
