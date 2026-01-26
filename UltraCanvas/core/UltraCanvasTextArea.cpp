@@ -508,8 +508,8 @@ namespace UltraCanvas {
                 return HandleMouseMove(event);
 //            case UCEventType::MouseDrag:
 //                return HandleMouseDrag(event);
-            case UCEventType::KeyUp:
-                return HandleKeyPress(event);
+            case UCEventType::KeyDown:
+                return HandleKeyDown(event);
 //            case UCEventType::TextInput:
 //                return HandleTextInput(event);
             case UCEventType::MouseWheel:
@@ -756,7 +756,7 @@ namespace UltraCanvas {
     }
 
 // Handle key press
-    bool UltraCanvasTextArea::HandleKeyPress(const UCEvent& event) {
+    bool UltraCanvasTextArea::HandleKeyDown(const UCEvent& event) {
         if (!IsFocused() || isReadOnly) return false;
 
         bool handled = false;
@@ -786,12 +786,28 @@ namespace UltraCanvas {
                 MoveCursorDown(event.shift);
                 handled = true;
                 break;
+            case UCKeys::PageUp:
+                MoveCursorPageUp(event.shift);
+                handled = true;
+                break;
+            case UCKeys::PageDown:
+                MoveCursorPageDown(event.shift);
+                handled = true;
+                break;
             case UCKeys::Home:
-                MoveCursorToLineStart(event.shift);
+                if (event.ctrl && !event.alt) {
+                    MoveCursorToStart(event.shift);
+                } else {
+                    MoveCursorToLineStart(event.shift);
+                }
                 handled = true;
                 break;
             case UCKeys::End:
-                MoveCursorToLineEnd(event.shift);
+                if (event.ctrl && !event.alt) {
+                    MoveCursorToEnd(event.shift);
+                } else {
+                    MoveCursorToLineEnd(event.shift);
+                }
                 handled = true;
                 break;
             case UCKeys::Enter:
@@ -1099,6 +1115,52 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasTextArea::MoveCursorPageUp(bool selecting) {
+        auto [line, col] = GetLineColumnFromPosition(cursorPosition);
+
+        if (line > 0) {
+            line = std::max(0, line - maxVisibleLines);
+            col = std::min(col, static_cast<int>(lines[line].length()));
+            cursorPosition = GetPositionFromLineColumn(line, col);
+            currentLineIndex = line;
+
+            if (selecting) {
+                if (selectionStart < 0) selectionStart = GetPositionFromLineColumn(line + 1, col);
+                selectionEnd = cursorPosition;
+            } else {
+                selectionStart = -1;
+                selectionEnd = -1;
+            }
+            RequestRedraw();
+            if (onCursorPositionChanged) {
+                onCursorPositionChanged(line, col);
+            }
+        }
+    }
+
+    void UltraCanvasTextArea::MoveCursorPageDown(bool selecting) {
+        auto [line, col] = GetLineColumnFromPosition(cursorPosition);
+
+        if (line < static_cast<int>(lines.size() - 1)) {
+            line = std::max(0, std::min(static_cast<int>(lines.size() - 1), line + maxVisibleLines));
+            col = std::min(col, static_cast<int>(lines[line].length()));
+            cursorPosition = GetPositionFromLineColumn(line, col);
+            currentLineIndex = line;
+
+            if (selecting) {
+                if (selectionStart < 0) selectionStart = GetPositionFromLineColumn(line + 1, col);
+                selectionEnd = cursorPosition;
+            } else {
+                selectionStart = -1;
+                selectionEnd = -1;
+            }
+            RequestRedraw();
+            if (onCursorPositionChanged) {
+                onCursorPositionChanged(line, col);
+            }
+        }
+    }
+
     void UltraCanvasTextArea::MoveCursorToLineStart(bool selecting) {
         auto [line, col] = GetLineColumnFromPosition(cursorPosition);
 
@@ -1136,6 +1198,47 @@ namespace UltraCanvas {
             if (onCursorPositionChanged) {
                 onCursorPositionChanged(line, lineLength);
             }
+        }
+    }
+
+    void UltraCanvasTextArea::MoveCursorToStart(bool selecting) {
+        auto [line, col] = GetLineColumnFromPosition(cursorPosition);
+
+
+        if (selecting) {
+            if (selectionStart < 0) selectionStart = cursorPosition;
+            cursorPosition = GetPositionFromLineColumn(0, 0);
+            selectionEnd = cursorPosition;
+        } else {
+            cursorPosition = GetPositionFromLineColumn(0, 0);
+            selectionStart = -1;
+            selectionEnd = -1;
+        }
+        currentLineIndex = 0;
+        RequestRedraw();
+        if (onCursorPositionChanged) {
+            onCursorPositionChanged(0, 0);
+        }
+    }
+
+    void UltraCanvasTextArea::MoveCursorToEnd(bool selecting) {
+        auto [line, col] = GetLineColumnFromPosition(cursorPosition);
+
+        int toLine = std::max((int)lines.size() - 1, 0);
+        int lineLength = lines[toLine].length();
+        if (selecting) {
+            if (selectionStart < 0) selectionStart = cursorPosition;
+            cursorPosition = GetPositionFromLineColumn(toLine, lineLength);
+            selectionEnd = cursorPosition;
+        } else {
+            cursorPosition = GetPositionFromLineColumn(toLine, lineLength);
+            selectionStart = -1;
+            selectionEnd = -1;
+        }
+        currentLineIndex = 0;
+        RequestRedraw();
+        if (onCursorPositionChanged) {
+            onCursorPositionChanged(0, 0);
         }
     }
 

@@ -359,12 +359,12 @@ namespace UltraCanvas {
 //        return selectiveRenderer && selectiveRenderer->IsRenderingActive();
 //    }
 
-    void UltraCanvasWindowBase::Create(const WindowConfig& config) {
+    bool UltraCanvasWindowBase::Create(const WindowConfig& config) {
         config_ = config;
-        Create();
+        return Create();
     }
 
-    void UltraCanvasWindowBase::Create() {
+    bool UltraCanvasWindowBase::Create() {
         _state = WindowState::Normal;
 
         ContainerStyle containerStyle;
@@ -382,6 +382,7 @@ namespace UltraCanvas {
         } else {
             _created = false;
         }
+        return _created;
     }
 
     void UltraCanvasWindowBase::Destroy() {

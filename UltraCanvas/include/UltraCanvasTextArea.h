@@ -126,6 +126,8 @@ namespace UltraCanvas {
         void MoveCursorToLineEnd(bool selecting = false);
         void MoveCursorToStart(bool selecting = false);
         void MoveCursorToEnd(bool selecting = false);
+        void MoveCursorPageDown(bool selecting = false);
+        void MoveCursorPageUp(bool selecting = false);
         void SetCursorPosition(int position);
         int GetCursorPosition() const { return cursorPosition; }
 
@@ -299,7 +301,7 @@ namespace UltraCanvas {
         bool HandleMouseUp(const UCEvent &event);
         bool HandleMouseDrag(const UCEvent& event);
         bool HandleMouseWheel(const UCEvent& event);
-        bool HandleKeyPress(const UCEvent& event);
+        bool HandleKeyDown(const UCEvent& event);
 
         int MeasureTextWidth(const std::string& txt) const;
         // Helper methods

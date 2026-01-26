@@ -290,7 +290,7 @@ namespace UltraCanvas {
             padding.left = padding.right = padding.top = padding.bottom = all;
         }
 
-        void SetPadding(int vertical, int horizontal) {
+        void SetPadding(int horizontal, int vertical) {
             padding.left = padding.right = horizontal;
             padding.top = padding.bottom = vertical;
         }

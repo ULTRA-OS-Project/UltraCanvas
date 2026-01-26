@@ -1,10 +1,12 @@
 // core/UltraCanvasModalDialog.cpp
 // Implementation of cross-platform modal dialog system - Window-based
-// Version: 3.1.0
-// Last Modified: 2025-01-19
+// Supports switching between native OS dialogs and internal UltraCanvas dialogs
+// Version: 3.3.0
+// Last Modified: 2026-01-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasApplication.h"
 #include <fmt/os.h>
 #include <iostream>
@@ -16,6 +18,7 @@ namespace UltraCanvas {
     std::vector<std::shared_ptr<UltraCanvasModalDialog>> UltraCanvasDialogManager::activeDialogs;
     std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::currentModal = nullptr;
     bool UltraCanvasDialogManager::enabled = true;
+    bool UltraCanvasDialogManager::useNativeDialogs = false;  // Default to internal dialogs
     DialogConfig UltraCanvasDialogManager::defaultConfig;
     InputDialogConfig UltraCanvasDialogManager::defaultInputConfig;
     FileDialogConfig UltraCanvasDialogManager::defaultFileConfig;
@@ -26,8 +29,181 @@ namespace UltraCanvas {
         dialogConfig = config;
         UltraCanvasWindow::Create(dialogConfig);
         ApplyTypeDefaults();
+
+        // Build layout-based UI structure
+        BuildDialogLayout();
+    }
+
+    void UltraCanvasModalDialog::BuildDialogLayout() {
+        // Create main vertical layout for the window
+        auto mainLayout = CreateVBoxLayout(this);
+        mainLayout->SetSpacing(0);
+
+        // Create the two main sections
+        CreateContentSection();
+        CreateFooterSection();
+
+        // Add sections to main layout
+        mainLayout->AddUIElement(contentSection, 1)->SetWidthMode(SizeMode::Fill);  // stretch=1
+        mainLayout->AddUIElement(footerSection)->SetWidthMode(SizeMode::Fill);
+
+        // Wire up button callbacks
+        WireButtonCallbacks();
+    }
+
+    void UltraCanvasModalDialog::CreateContentSection() {
+        // Create content container
+        contentSection = std::make_shared<UltraCanvasContainer>(
+                "ContentSection", 100, 0, 0, 0, 0);
+        contentSection->SetBackgroundColor(dialogConfig.backgroundColor);
+        contentSection->SetPadding(static_cast<int>(style.padding));
+
+        // Create horizontal layout for icon + message area
+        auto contentLayout = CreateHBoxLayout(contentSection.get());
+        contentLayout->SetSpacing(static_cast<int>(style.iconMessageSpacing));
+
+        // ===== ICON CONTAINER =====
+        if (dialogConfig.dialogType != DialogType::Custom) {
+            iconContainer = std::make_shared<UltraCanvasContainer>(
+                    "IconContainer", 110, 0, 0,
+                    static_cast<long>(style.iconSize), static_cast<long>(style.iconSize));
+            iconContainer->SetBackgroundColor(GetTypeColor());
+
+            // Create icon layout to center the label
+            auto iconLayout = CreateVBoxLayout(iconContainer.get());
+
+            // Icon label
+            iconLabel = std::make_shared<UltraCanvasLabel>("IconLabel", 111);
+            iconLabel->SetText(GetTypeIcon());
+            iconLabel->SetFontSize(style.iconFontSize);
+            iconLabel->SetFontWeight(FontWeight::Bold);
+            iconLabel->SetTextColor(Colors::White);
+            iconLabel->SetAlignment(TextAlignment::Center);
+            iconLabel->SetAutoResize(false);
+            iconLabel->SetSize(static_cast<long>(style.iconSize), static_cast<long>(style.iconSize));
+
+            iconLayout->AddStretch(1);
+            iconLayout->AddUIElement(iconLabel)->SetMainAlignment(LayoutAlignment::Center)->SetCrossAlignment(LayoutAlignment::Center);
+            iconLayout->AddStretch(1);
+
+            contentLayout->AddUIElement(iconContainer)->SetCrossAlignment(LayoutAlignment::Start);
+        }
+
+        // ===== MESSAGE CONTAINER =====
+        messageContainer = std::make_shared<UltraCanvasContainer>(
+                "MessageContainer", 120, 0, 0, 0, 0);
+
+        auto messageLayout = CreateVBoxLayout(messageContainer.get());
+        messageLayout->SetSpacing(static_cast<int>(style.sectionSpacing / 2));
+
+        // Message label - uses the component to render itself
+        messageLabel = std::make_shared<UltraCanvasLabel>("MessageLabel", 121);
+        messageLabel->SetText(dialogConfig.message);
+        messageLabel->SetFontSize(style.messageFontSize);
+        messageLabel->SetTextColor(style.messageTextColor);
+        messageLabel->SetWordWrap(true);
+        messageLabel->SetAutoResize(true);
+
+        messageLayout->AddUIElement(messageLabel)->SetWidthMode(SizeMode::Fill);
+
+        // Details label - uses the component to render itself
+        detailsLabel = std::make_shared<UltraCanvasLabel>("DetailsLabel", 122);
+        detailsLabel->SetText(dialogConfig.details);
+        detailsLabel->SetFontSize(style.detailsFontSize);
+        detailsLabel->SetTextColor(style.detailsTextColor);
+        detailsLabel->SetWordWrap(true);
+        detailsLabel->SetAutoResize(true);
+        detailsLabel->SetVisible(!dialogConfig.details.empty());
+
+        messageLayout->AddUIElement(detailsLabel)->SetWidthMode(SizeMode::Fill);
+
+        // Add stretch to push content to top
+        messageLayout->AddStretch(1);
+
+        contentLayout->AddUIElement(messageContainer, 1)->SetCrossAlignment(LayoutAlignment::Fill);
+
+        AddChild(contentSection);
+    }
+
+    void UltraCanvasModalDialog::CreateFooterSection() {
+        // Create footer container with fixed height for buttons
+        footerSection = std::make_shared<UltraCanvasContainer>(
+                "FooterSection", 200, 0, 0, 0, static_cast<long>(style.buttonAreaHeight));
+        footerSection->SetBackgroundColor(dialogConfig.backgroundColor);
+        footerSection->SetPadding(static_cast<int>(style.padding), static_cast<int>(style.padding / 2));
+
+        // Create horizontal layout for buttons
+        auto footerLayout = CreateHBoxLayout(footerSection.get());
+        footerLayout->SetSpacing(static_cast<int>(style.buttonSpacing));
+        footerLayout->SetDefaultMainAxisAlignment(LayoutAlignment::Center);
+
+        // Add stretch to push buttons to the right (per guidelines 15.9)
+
+        // Create dialog buttons
         CreateDialogButtons();
-        CalculateDialogLayout();
+
+        // Add buttons to footer layout
+        for (auto& button : dialogButtons) {
+            footerLayout->AddUIElement(button)->SetCrossAlignment(LayoutAlignment::Center);
+        }
+        AddChild(footerSection);
+    }
+
+    void UltraCanvasModalDialog::CreateDialogButtons() {
+        // Clear existing buttons
+        dialogButtons.clear();
+
+        int buttonMask = static_cast<int>(dialogConfig.buttons);
+
+        auto addButton = [this](DialogButton btn, const std::string& text) {
+            auto button = std::make_shared<UltraCanvasButton>(
+                    fmt::format("DialogBtn_{}", static_cast<int>(btn)), 0, 0, 0,
+                    static_cast<long>(style.buttonWidth), static_cast<long>(style.buttonHeight));
+            button->SetText(text);
+            dialogButtons.push_back(button);
+        };
+
+        if (buttonMask & static_cast<int>(DialogButton::OK)) {
+            addButton(DialogButton::OK, "OK");
+        }
+        if (buttonMask & static_cast<int>(DialogButton::Cancel)) {
+            addButton(DialogButton::Cancel, "Cancel");
+        }
+        if (buttonMask & static_cast<int>(DialogButton::Yes)) {
+            addButton(DialogButton::Yes, "Yes");
+        }
+        if (buttonMask & static_cast<int>(DialogButton::No)) {
+            addButton(DialogButton::No, "No");
+        }
+        if (buttonMask & static_cast<int>(DialogButton::Retry)) {
+            addButton(DialogButton::Retry, "Retry");
+        }
+        if (buttonMask & static_cast<int>(DialogButton::Abort)) {
+            addButton(DialogButton::Abort, "Abort");
+        }
+        if (buttonMask & static_cast<int>(DialogButton::Ignore)) {
+            addButton(DialogButton::Ignore, "Ignore");
+        }
+    }
+
+    void UltraCanvasModalDialog::WireButtonCallbacks() {
+        for (auto& button : dialogButtons) {
+            // Extract button type from identifier
+            std::string btnId = button->GetIdentifier();
+            DialogButton btnType = DialogButton::NoneButton;
+
+            if (btnId.find("_1") != std::string::npos) btnType = DialogButton::OK;
+            else if (btnId.find("_2") != std::string::npos) btnType = DialogButton::Cancel;
+            else if (btnId.find("_4") != std::string::npos) btnType = DialogButton::Yes;
+            else if (btnId.find("_8") != std::string::npos) btnType = DialogButton::No;
+            else if (btnId.find("_128") != std::string::npos) btnType = DialogButton::Retry;
+            else if (btnId.find("_512") != std::string::npos) btnType = DialogButton::Abort;
+            else if (btnId.find("_256") != std::string::npos) btnType = DialogButton::Ignore;
+
+            button->onClick = [this, btnType]() {
+                OnDialogButtonClick(btnType);
+            };
+        }
     }
 
     void UltraCanvasModalDialog::SetDialogTitle(const std::string& title) {
@@ -40,30 +216,67 @@ namespace UltraCanvas {
         if (messageLabel) {
             messageLabel->SetText(message);
         }
-        CalculateDialogLayout();
     }
 
     void UltraCanvasModalDialog::SetDetails(const std::string& details) {
         dialogConfig.details = details;
         if (detailsLabel) {
             detailsLabel->SetText(details);
+            detailsLabel->SetVisible(!details.empty());
         }
-        CalculateDialogLayout();
     }
 
     void UltraCanvasModalDialog::SetDialogType(DialogType type) {
         dialogConfig.dialogType = type;
+        UpdateIconAppearance();
         ApplyTypeDefaults();
     }
 
     void UltraCanvasModalDialog::SetDialogButtons(DialogButtons buttons) {
         dialogConfig.buttons = buttons;
+
+        // Remove old buttons from footer
+        if (footerSection) {
+            for (auto& btn : dialogButtons) {
+                footerSection->RemoveChild(btn);
+            }
+        }
+
+        // Recreate buttons
         CreateDialogButtons();
-        CalculateDialogLayout();
+
+        // Re-add to footer layout
+        if (footerSection) {
+            auto footerLayout = CreateHBoxLayout(footerSection.get());
+            footerLayout->SetSpacing(static_cast<int>(style.buttonSpacing));
+            footerLayout->AddStretch(1);
+
+            for (auto& button : dialogButtons) {
+                footerLayout->AddUIElement(button)->SetCrossAlignment(LayoutAlignment::Center);
+            }
+        }
+
+        WireButtonCallbacks();
     }
 
     void UltraCanvasModalDialog::SetDefaultButton(DialogButton button) {
         dialogConfig.defaultButton = button;
+    }
+
+    void UltraCanvasModalDialog::SetStyle(const ModalDialogStyle& dialogStyle) {
+        style = dialogStyle;
+
+        // Apply style to components
+        if (messageLabel) {
+            messageLabel->SetFontSize(style.messageFontSize);
+            messageLabel->SetTextColor(style.messageTextColor);
+        }
+        if (detailsLabel) {
+            detailsLabel->SetFontSize(style.detailsFontSize);
+            detailsLabel->SetTextColor(style.detailsTextColor);
+        }
+
+        UpdateIconAppearance();
     }
 
     std::string UltraCanvasModalDialog::GetDialogTitle() const {
@@ -90,6 +303,10 @@ namespace UltraCanvas {
         return dialogConfig.defaultButton;
     }
 
+    ModalDialogStyle UltraCanvasModalDialog::GetStyle() const {
+        return style;
+    }
+
     void UltraCanvasModalDialog::ShowModal(UltraCanvasWindowBase* parent) {
         // Center on parent if specified
         if (parent && dialogConfig.position == DialogPosition::CenterParent) {
@@ -108,7 +325,6 @@ namespace UltraCanvas {
 
         // Show the window
         Show();
-        //Focus();
     }
 
     void UltraCanvasModalDialog::RequestClose() {
@@ -134,7 +350,6 @@ namespace UltraCanvas {
 
     void UltraCanvasModalDialog::CloseDialog(DialogResult dialogResult) {
         result = dialogResult;
-        // Hide and close the window
         RequestClose();
     }
 
@@ -155,131 +370,34 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasModalDialog::AddDialogElement(std::shared_ptr<UltraCanvasUIElement> element) {
-        if (element) {
-            AddChild(element);
-            CalculateDialogLayout();
+        if (element && messageContainer) {
+            messageContainer->AddChild(element);
         }
     }
 
     void UltraCanvasModalDialog::RemoveDialogElement(std::shared_ptr<UltraCanvasUIElement> element) {
-        if (element) {
-            RemoveChild(element);
-            CalculateDialogLayout();
+        if (element && messageContainer) {
+            messageContainer->RemoveChild(element);
         }
     }
 
     void UltraCanvasModalDialog::ClearDialogElements() {
-        ClearChildren();
-        // Re-add dialog-specific elements
-        CreateDialogButtons();
-        CalculateDialogLayout();
+        if (messageContainer) {
+            messageContainer->ClearChildren();
+
+            // Re-add the standard message and details labels
+            auto messageLayout = CreateVBoxLayout(messageContainer.get());
+            messageLayout->SetSpacing(static_cast<int>(style.sectionSpacing / 2));
+            messageLayout->AddUIElement(messageLabel)->SetWidthMode(SizeMode::Fill);
+            messageLayout->AddUIElement(detailsLabel)->SetWidthMode(SizeMode::Fill);
+            messageLayout->AddStretch(1);
+        }
     }
 
     void UltraCanvasModalDialog::RenderCustomContent(IRenderContext* ctx) {
-        if (!ctx) return;
-
-        // Render dialog-specific content
-        RenderDialogIcon(ctx);
-        RenderDialogMessage(ctx);
-        RenderDialogDetails(ctx);
-    }
-
-    void UltraCanvasModalDialog::CalculateDialogLayout() {
-        int width = config_.width;
-        int height = config_.height;
-        int padding = 16;
-        int titleBarHeight = 32;
-        int buttonAreaHeight = 50;
-
-        // Title bar
-        // Content area
-        contentRect = Rect2Di(padding, padding,
-                              width - 2 * padding,
-                              height - titleBarHeight - buttonAreaHeight - 2 * padding);
-
-        // Button area
-        buttonAreaRect = Rect2Di(padding, height - buttonAreaHeight,
-                                 width - 2 * padding, buttonAreaHeight - padding);
-
-        // Icon (if dialog type has one)
-        int iconSize = 48;
-        iconRect = Rect2Di(padding, padding, iconSize, iconSize);
-
-        // Message area
-        int messageX = padding + (dialogConfig.dialogType != DialogType::Custom ? iconSize + padding : 0);
-        messageRect = Rect2Di(messageX, padding,
-                              width - messageX - padding, 60);
-
-        // Details area
-        detailsRect = Rect2Di(messageX, messageRect.y + messageRect.height + 8,
-                              width - messageX - padding,
-                              contentRect.height - messageRect.height - 16);
-
-        PositionDialogButtons();
-    }
-
-    void UltraCanvasModalDialog::CreateDialogButtons() {
-        // Clear existing buttons
-        for (auto& btn : dialogButtons) {
-            if (btn) {
-                RemoveChild(btn);
-            }
-        }
-        dialogButtons.clear();
-
-        int buttonMask = static_cast<int>(dialogConfig.buttons);
-
-        auto addButton = [this](DialogButton btn, const std::string& text) {
-            auto button = std::make_shared<UltraCanvasButton>(
-                    fmt::format("DialogBtn_{}", (int)btn), 0, 0, 80, 28);
-            button->SetText(text);
-            button->onClick = [this, btn]() {
-                OnDialogButtonClick(btn);
-            };
-            dialogButtons.push_back(button);
-            AddChild(button);
-        };
-
-        if (buttonMask & static_cast<int>(DialogButton::OK)) {
-            addButton(DialogButton::OK, "OK");
-        }
-        if (buttonMask & static_cast<int>(DialogButton::Cancel)) {
-            addButton(DialogButton::Cancel, "Cancel");
-        }
-        if (buttonMask & static_cast<int>(DialogButton::Yes)) {
-            addButton(DialogButton::Yes, "Yes");
-        }
-        if (buttonMask & static_cast<int>(DialogButton::No)) {
-            addButton(DialogButton::No, "No");
-        }
-        if (buttonMask & static_cast<int>(DialogButton::Retry)) {
-            addButton(DialogButton::Retry, "Retry");
-        }
-        if (buttonMask & static_cast<int>(DialogButton::Abort)) {
-            addButton(DialogButton::Abort, "Abort");
-        }
-        if (buttonMask & static_cast<int>(DialogButton::Ignore)) {
-            addButton(DialogButton::Ignore, "Ignore");
-        }
-    }
-
-    void UltraCanvasModalDialog::PositionDialogButtons() {
-        if (dialogButtons.empty()) return;
-
-        int buttonWidth = 80;
-        int buttonHeight = 28;
-        int buttonSpacing = 10;
-        int totalWidth = static_cast<int>(dialogButtons.size()) * buttonWidth +
-                         (static_cast<int>(dialogButtons.size()) - 1) * buttonSpacing;
-
-        int startX = buttonAreaRect.x + (buttonAreaRect.width - totalWidth) / 2;
-        int y = buttonAreaRect.y + (buttonAreaRect.height - buttonHeight) / 2;
-
-        for (size_t i = 0; i < dialogButtons.size(); ++i) {
-            int x = startX + static_cast<int>(i) * (buttonWidth + buttonSpacing);
-            dialogButtons[i]->SetPosition(x, y);
-            dialogButtons[i]->SetSize(buttonWidth, buttonHeight);
-        }
+        // With layout-based architecture, child components render themselves
+        // via the container's Render() call. No manual drawing needed here.
+        // The contentSection and footerSection are already children of the window.
     }
 
     void UltraCanvasModalDialog::OnDialogButtonClick(DialogButton button) {
@@ -302,37 +420,24 @@ namespace UltraCanvas {
         CloseDialog(dialogResult);
     }
 
-    void UltraCanvasModalDialog::RenderDialogIcon(IRenderContext* ctx) {
-        if (dialogConfig.dialogType == DialogType::Custom) return;
-
-        Color iconColor = GetTypeColor();
-        ctx->SetFillPaint(iconColor);
-
-        int centerX = iconRect.x + iconRect.width / 2;
-        int centerY = iconRect.y + iconRect.height / 2;
-        int radius = iconRect.width / 2 - 4;
-
-        ctx->FillCircle(centerX, centerY, radius);
-
-        ctx->SetTextPaint(Colors::White);
-        ctx->SetFontSize(20.0f);
-        std::string iconText = GetTypeIcon();
-        Point2Di iconTextPos(iconRect.x + 10, iconRect.y + 22);
-        ctx->DrawText(iconText, iconTextPos);
+    void UltraCanvasModalDialog::UpdateIconAppearance() {
+        if (iconContainer) {
+            iconContainer->SetBackgroundColor(GetTypeColor());
+            iconContainer->SetVisible(dialogConfig.dialogType != DialogType::Custom);
+        }
+        if (iconLabel) {
+            iconLabel->SetText(GetTypeIcon());
+        }
     }
 
-    void UltraCanvasModalDialog::RenderDialogMessage(IRenderContext* ctx) {
-        if (dialogConfig.message.empty()) return;
-
-        ctx->SetFillPaint(Colors::Black);
-        ctx->DrawText(dialogConfig.message, messageRect.x, messageRect.y);
-    }
-
-    void UltraCanvasModalDialog::RenderDialogDetails(IRenderContext* ctx) {
-        if (dialogConfig.details.empty()) return;
-
-        ctx->SetFillPaint(Colors::DarkGray);
-        ctx->DrawText(dialogConfig.details, detailsRect.x, detailsRect.y);
+    void UltraCanvasModalDialog::UpdateMessageContent() {
+        if (messageLabel) {
+            messageLabel->SetText(dialogConfig.message);
+        }
+        if (detailsLabel) {
+            detailsLabel->SetText(dialogConfig.details);
+            detailsLabel->SetVisible(!dialogConfig.details.empty());
+        }
     }
 
     std::string UltraCanvasModalDialog::GetButtonText(DialogButton button) const {
@@ -361,8 +466,18 @@ namespace UltraCanvas {
         }
     }
 
+    std::string UltraCanvasModalDialog::GetTypeIcon() const {
+        switch (dialogConfig.dialogType) {
+            case DialogType::Information: return "i";
+            case DialogType::Question:    return "?";
+            case DialogType::Warning:     return "!";
+            case DialogType::Error:       return "X";
+            case DialogType::Custom:
+            default:                      return "*";
+        }
+    }
+
     void UltraCanvasModalDialog::ApplyTypeDefaults() {
-        // Set default icon/title based on type
         switch (dialogConfig.dialogType) {
             case DialogType::Information:
                 if (dialogConfig.title == "Dialog") dialogConfig.title = "Information";
@@ -384,15 +499,20 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::AddCustomButton(const std::string& text, DialogResult buttonResult,
                                                  std::function<void()> callback) {
         auto button = std::make_shared<UltraCanvasButton>(
-                "DialogBtn_Custom_" + text, 1000 + static_cast<long>(dialogButtons.size()), 0, 0, 80, 28);
+                "DialogBtn_Custom_" + text, 1000 + static_cast<long>(dialogButtons.size()), 0, 0,
+                static_cast<long>(style.buttonWidth), static_cast<long>(style.buttonHeight));
         button->SetText(text);
         button->onClick = [this, buttonResult, callback]() {
             if (callback) callback();
             CloseDialog(buttonResult);
         };
         dialogButtons.push_back(button);
-        AddChild(button);
-        PositionDialogButtons();
+
+        // Add to footer via layout
+        if (footerSection) {
+            auto footerLayout = CreateHBoxLayout(footerSection.get());
+            footerLayout->AddUIElement(button)->SetCrossAlignment(LayoutAlignment::Center);
+        }
     }
 
     void UltraCanvasModalDialog::SetButtonDisabled(DialogButton button, bool disabled) {
@@ -414,19 +534,6 @@ namespace UltraCanvas {
             }
         }
     }
-
-    std::string UltraCanvasModalDialog::GetTypeIcon() const {
-        switch (dialogConfig.dialogType) {
-            case DialogType::Information: return "i";
-            case DialogType::Question:    return "?";
-            case DialogType::Warning:     return "!";
-            case DialogType::Error:       return "X";
-            case DialogType::Custom:
-            default:                      return "*";
-        }
-    }
-
-// ===== INPUT DIALOG IMPLEMENTATION =====
     void UltraCanvasInputDialog::CreateInputDialog(const InputDialogConfig &config) {
         inputConfig = config;
         CreateDialog(config);
@@ -466,20 +573,15 @@ namespace UltraCanvas {
         }
     }
 
-    bool UltraCanvasInputDialog::OnEvent(const UCEvent& event) {
-        if (textInput) {
-            if (textInput->OnEvent(event)) {
-                inputValue = textInput->GetText();
-                ValidateInput();
-                return true;
-            }
-        }
-
-        return UltraCanvasModalDialog::OnEvent(event);
-    }
-
     void UltraCanvasInputDialog::SetupInputField() {
-        textInput = std::make_shared<UltraCanvasTextInput>("input_field", 2001, 0, 0, 300, 25);
+        // Create input label
+        inputLabel = std::make_shared<UltraCanvasLabel>("InputLabel", 2000);
+        inputLabel->SetText(inputConfig.inputLabel);
+        inputLabel->SetFontSize(style.messageFontSize);
+        inputLabel->SetAutoResize(true);
+
+        // Create text input
+        textInput = std::make_shared<UltraCanvasTextInput>("InputField", 2001, 0, 0, 300, 25);
         textInput->SetText(inputConfig.defaultValue);
         textInput->SetPlaceholder(inputConfig.inputPlaceholder);
         inputValue = inputConfig.defaultValue;
@@ -503,7 +605,14 @@ namespace UltraCanvas {
                 break;
         }
 
-        AddChild(textInput);
+        textInput->onTextChanged = [this](const std::string& newText) {
+            OnInputChanged(newText);
+        };
+
+        // Add to content via layout
+        AddDialogElement(inputLabel);
+        AddDialogElement(textInput);
+
         ValidateInput();
     }
 
@@ -1187,49 +1296,93 @@ namespace UltraCanvas {
 
 // ===== ASYNC CALLBACK-BASED DIALOGS =====
     void UltraCanvasDialogManager::ShowMessage(const std::string& message, const std::string& title,
-                                                    DialogType type, DialogButtons buttons,
-                                                    std::function<void(DialogResult)> onResult,
-                                                    UltraCanvasWindowBase* parent) {
+                                               DialogType type, DialogButtons buttons,
+                                               std::function<void(DialogResult)> onResult,
+                                               UltraCanvasWindowBase* parent) {
         if (!enabled) {
             if (onResult) onResult(DialogResult::Cancel);
             return;
         }
 
+        // If native dialogs are enabled, use them (blocking call)
+        if (useNativeDialogs) {
+            // Get native window handle from parent if available
+            NativeWindowHandle parentHandle = nullptr;
+            if (parent != nullptr) {
+                parentHandle = reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle());
+            }
+
+            DialogResult result = UltraCanvasNativeDialogs::ShowMessage(message, title, type, buttons, parentHandle);
+            if (onResult) onResult(result);
+            return;
+        }
+
+        // Otherwise, use internal UltraCanvas dialogs (non-blocking)
         auto dialog = CreateMessageDialog(message, title, type, buttons);
         ShowDialog(dialog, onResult, parent);
     }
 
     void UltraCanvasDialogManager::ShowInformation(const std::string& message, const std::string& title,
-                                                        std::function<void(DialogResult)> onResult,
-                                                        UltraCanvasWindowBase* parent) {
+                                                   std::function<void(DialogResult)> onResult,
+                                                   UltraCanvasWindowBase* parent) {
+        if (useNativeDialogs && enabled) {
+            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
+            DialogResult result = UltraCanvasNativeDialogs::ShowInfo(message, title, parentHandle);
+            if (onResult) onResult(result);
+            return;
+        }
         ShowMessage(message, title, DialogType::Information, DialogButtons::OK, onResult, parent);
     }
 
     void UltraCanvasDialogManager::ShowQuestion(const std::string& message, const std::string& title,
-                                                     std::function<void(DialogResult)> onResult,
-                                                     UltraCanvasWindowBase* parent) {
+                                                std::function<void(DialogResult)> onResult,
+                                                UltraCanvasWindowBase* parent) {
+        if (useNativeDialogs && enabled) {
+            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
+            DialogResult result = UltraCanvasNativeDialogs::ShowQuestion(message, title, DialogButtons::YesNo, parentHandle);
+            if (onResult) onResult(result);
+            return;
+        }
         ShowMessage(message, title, DialogType::Question, DialogButtons::YesNo, onResult, parent);
     }
 
     void UltraCanvasDialogManager::ShowWarning(const std::string& message, const std::string& title,
-                                                    std::function<void(DialogResult)> onResult,
-                                                    UltraCanvasWindowBase* parent) {
+                                               std::function<void(DialogResult)> onResult,
+                                               UltraCanvasWindowBase* parent) {
+        if (useNativeDialogs && enabled) {
+            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
+            DialogResult result = UltraCanvasNativeDialogs::ShowWarning(message, title, parentHandle);
+            if (onResult) onResult(result);
+            return;
+        }
         ShowMessage(message, title, DialogType::Warning, DialogButtons::OKCancel, onResult, parent);
     }
 
     void UltraCanvasDialogManager::ShowError(const std::string& message, const std::string& title,
-                                                  std::function<void(DialogResult)> onResult,
-                                                  UltraCanvasWindowBase* parent) {
+                                             std::function<void(DialogResult)> onResult,
+                                             UltraCanvasWindowBase* parent) {
+        if (useNativeDialogs && enabled) {
+            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
+            DialogResult result = UltraCanvasNativeDialogs::ShowError(message, title, parentHandle);
+            if (onResult) onResult(result);
+            return;
+        }
         ShowMessage(message, title, DialogType::Error, DialogButtons::OK, onResult, parent);
     }
 
     void UltraCanvasDialogManager::ShowConfirmation(const std::string& message, const std::string& title,
-                                                         std::function<void(bool confirmed)> onResult,
-                                                         UltraCanvasWindowBase* parent) {
+                                                    std::function<void(bool confirmed)> onResult,
+                                                    UltraCanvasWindowBase* parent) {
+        if (useNativeDialogs && enabled) {
+            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
+            bool confirmed = UltraCanvasNativeDialogs::ConfirmYesNo(message, title, parentHandle);
+            if (onResult) onResult(confirmed);
+            return;
+        }
         ShowMessage(message, title, DialogType::Question, DialogButtons::YesNo,
-                         [onResult](DialogResult r) {
-                             if (onResult) onResult(r == DialogResult::Yes);
-                         }, parent);
+                    [onResult](DialogResult r) {
+                        if (onResult) onResult(r == DialogResult::Yes);
+                    }, parent);
     }
 
 // ===== LEGACY METHODS (now async with optional callbacks) =====
@@ -1285,10 +1438,27 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDialogManager::ShowInputDialog(const std::string& prompt, const std::string& title,
-                                                          const std::string& defaultValue, InputType type,
-                                                          std::function<void(DialogResult, const std::string&)> onResult, UltraCanvasWindowBase* parent) {
-        if (!enabled) return;
+                                                   const std::string& defaultValue, InputType type,
+                                                   std::function<void(DialogResult, const std::string&)> onResult, UltraCanvasWindowBase* parent) {
+        if (!enabled) {
+            if (onResult) onResult(DialogResult::Cancel, "");
+            return;
+        }
 
+        // If native dialogs are enabled, use them (blocking call)
+        if (useNativeDialogs) {
+            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
+            NativeInputResult result;
+            if (type == InputType::Password) {
+                result = UltraCanvasNativeDialogs::InputPassword(prompt, title, parentHandle);
+            } else {
+                result = UltraCanvasNativeDialogs::InputText(prompt, title, defaultValue, parentHandle);
+            }
+            if (onResult) onResult(result.result, result.value);
+            return;
+        }
+
+        // Otherwise, use internal UltraCanvas dialogs (non-blocking)
         InputDialogConfig config;
         config.title = title;
         config.inputLabel = prompt;
@@ -1304,51 +1474,45 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDialogManager::ShowOpenFileDialog(const std::string& title,
-                                                             const std::vector<FileFilter>& filters,
-                                                             const std::string& initialDir,
-                                                             std::function<void(DialogResult, const std::string&)> onResult,
-                                                             UltraCanvasWindowBase* parent) {
-        if (!enabled) return;
-
-        FileDialogConfig config;
-        config.title = title.empty() ? "Open File" : title;
-        config.dialogType = FileDialogType::Open;
-        config.initialDirectory = initialDir;
-        if (!filters.empty()) {
-            config.filters = filters;
+                                                      const std::vector<FileFilter>& filters,
+                                                      const std::string& initialDir,
+                                                      std::function<void(DialogResult, const std::string&)> onResult,
+                                                      UltraCanvasWindowBase* parent) {
+        if (!enabled) {
+            if (onResult) onResult(DialogResult::Cancel, "");
+            return;
         }
 
-        auto dialog = CreateFileDialog(config);
-        ShowDialog(dialog, [onResult, dialog](DialogResult result) {
-            if (onResult) {
-                onResult(result, dialog->GetSelectedFilePath());
-            }
-        }, parent);
+        // File dialogs always use native dialogs for best user experience
+        // (native file browser is always better than custom implementation)
+        NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
+        std::string result = UltraCanvasNativeDialogs::OpenFile(
+                title.empty() ? "Open File" : title, filters, initialDir, parentHandle);
+
+        if (onResult) {
+            onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
+        }
     }
 
     void UltraCanvasDialogManager::ShowSaveFileDialog(const std::string& title,
-                                                             const std::vector<FileFilter>& filters,
-                                                             const std::string& initialDir,
-                                                             const std::string& defaultName,
-                                                             std::function<void(DialogResult, const std::string&)> onResult,
-                                                             UltraCanvasWindowBase* parent) {
-        if (!enabled) return;
-
-        FileDialogConfig config;
-        config.title = title.empty() ? "Save File" : title;
-        config.dialogType = FileDialogType::Save;
-        config.initialDirectory = initialDir;
-        config.defaultFileName = defaultName;
-        if (!filters.empty()) {
-            config.filters = filters;
+                                                      const std::vector<FileFilter>& filters,
+                                                      const std::string& initialDir,
+                                                      const std::string& defaultName,
+                                                      std::function<void(DialogResult, const std::string&)> onResult,
+                                                      UltraCanvasWindowBase* parent) {
+        if (!enabled) {
+            if (onResult) onResult(DialogResult::Cancel, "");
+            return;
         }
 
-        auto dialog = CreateFileDialog(config);
-        ShowDialog(dialog, [onResult, dialog](DialogResult result) {
-            if (onResult) {
-                onResult(result, dialog->GetSelectedFilePath());
-            }
-        }, parent);
+        // File dialogs always use native dialogs for best user experience
+        NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
+        std::string result = UltraCanvasNativeDialogs::SaveFile(
+                title.empty() ? "Save File" : title, filters, initialDir, defaultName, parentHandle);
+
+        if (onResult) {
+            onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
+        }
     }
 
 //    std::vector<std::string> UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(const std::string& title,
@@ -1377,22 +1541,22 @@ namespace UltraCanvas {
 //    }
 
     void UltraCanvasDialogManager::ShowSelectFolderDialog(const std::string& title,
-                                                                 const std::string& initialDir,
-                                                                 std::function<void(DialogResult, const std::string&)> onResult,
-                                                                 UltraCanvasWindowBase* parent) {
-        if (!enabled) return;
+                                                          const std::string& initialDir,
+                                                          std::function<void(DialogResult, const std::string&)> onResult,
+                                                          UltraCanvasWindowBase* parent) {
+        if (!enabled) {
+            if (onResult) onResult(DialogResult::Cancel, "");
+            return;
+        }
 
-        FileDialogConfig config;
-        config.title = title.empty() ? "Select Folder" : title;
-        config.dialogType = FileDialogType::SelectFolder;
-        config.initialDirectory = initialDir;
+        // Folder dialogs always use native dialogs for best user experience
+        NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
+        std::string result = UltraCanvasNativeDialogs::SelectFolder(
+                title.empty() ? "Select Folder" : title, initialDir, parentHandle);
 
-        auto dialog = CreateFileDialog(config);
-        ShowDialog(dialog, [onResult, dialog](DialogResult result) {
-            if (onResult) {
-                onResult(result, dialog->GetCurrentDirectory());
-            }
-        }, parent);
+        if (onResult) {
+            onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
+        }
     }
 
     void UltraCanvasDialogManager::CloseAllDialogs() {
@@ -1450,6 +1614,14 @@ namespace UltraCanvas {
 
     bool UltraCanvasDialogManager::IsEnabled() {
         return enabled;
+    }
+
+    void UltraCanvasDialogManager::SetUseNativeDialogs(bool useNative) {
+        useNativeDialogs = useNative;
+    }
+
+    bool UltraCanvasDialogManager::GetUseNativeDialogs() {
+        return useNativeDialogs;
     }
 
     void UltraCanvasDialogManager::Update(float deltaTime) {

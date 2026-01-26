@@ -36,6 +36,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # ===== BUILD OPTIONS =====
+option(BUILD_TEXTER_APP "Build the texted application" ON)
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
@@ -95,7 +96,6 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
-            Apps/DemoApp/UltraCanvasTextEditorExample.cpp
     )
 
     # Only include plugin examples if the plugins are actually built
@@ -261,6 +261,49 @@ endif()
 #    endif()
 #endif()
 
+if (BUILD_TEXTER_APP)
+    # Create executable
+    add_executable(UltraCanvasTexter
+            Apps/Texter/UltraCanvasTextEditor.cpp
+            Apps/Texter/UltraCanvasTextEditorHelpers.cpp
+            Apps/Texter/main.cpp
+    )
+
+    # Include directories
+    target_include_directories(UltraCanvasTexter PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIRS}
+            #        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/3rdparty/fmt/include
+    )
+
+    # Link against UltraCanvas core library
+    target_link_libraries(UltraCanvasTexter PRIVATE
+            ${ULTRACANVAS_LIBRARY}
+            ${JSONCPP_LIBRARIES}
+    )
+    target_link_libraries(UltraCanvasTexter PRIVATE fmt::fmt)
+
+    # Compile features
+    target_compile_features(UltraCanvasTexter PRIVATE cxx_std_20)
+
+    # Compile definitions
+    target_compile_definitions(UltraCanvasTexter PRIVATE
+            ULTRACANVAS_DEMO_VERSION="${PROJECT_VERSION}"
+            $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
+    )
+
+    # Compiler warnings
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(UltraCanvasTexter PRIVATE
+                #            -Wall -Wextra
+        )
+    endif()
+
+    # Set executable properties
+    set_target_properties(UltraCanvasTexter PROPERTIES
+            OUTPUT_NAME "UltraCanvasTexter"
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
+    )
+endif ()
 # ===== PACKAGE CONFIGURATION =====
 include(CMakePackageConfigHelpers)
 

@@ -66,6 +66,7 @@ find_package(Freetype REQUIRED)
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     pkg_check_modules(X11 REQUIRED x11 xcursor)
     find_package(OpenGL REQUIRED)
+    pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     # Windows SDK provides most dependencies
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
@@ -116,8 +117,6 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextEditor.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextEditorHelpers.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -232,6 +231,30 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
         ${X11_INCLUDE_DIRS}
         ${OPENGL_INCLUDE_DIRS}
+        ${GTK3_INCLUDE_DIRS}
+    )
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${X11_LIBRARIES}
+            ${GTK3_LIBRARIES}
+            #        ${OPENGL_LIBRARIES}
+            pthread
+            dl
+    )
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            d2d1
+            dwrite
+            windowscodecs
+            gdi32
+            user32
+            ole32
+            uuid
+    )
+elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${COCOA_FRAMEWORK}
+            ${QUARTZ_FRAMEWORK}
+            #        ${OPENGL_FRAMEWORK}
     )
 endif()
 
@@ -245,32 +268,6 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
 )
-
-# Platform-specific libraries
-if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
-    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
-        ${X11_LIBRARIES}
-#        ${OPENGL_LIBRARIES}
-        pthread
-        dl
-    )
-elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
-    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
-        d2d1
-        dwrite
-        windowscodecs
-        gdi32
-        user32
-        ole32
-        uuid
-    )
-elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
-    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
-        ${COCOA_FRAMEWORK}
-        ${QUARTZ_FRAMEWORK}
-#        ${OPENGL_FRAMEWORK}
-    )
-endif()
 
 # ===== COMPILER SETTINGS =====
 target_compile_features(${ULTRACANVAS_LIB_NAME} PUBLIC cxx_std_20)

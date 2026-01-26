@@ -96,8 +96,8 @@ namespace UltraCanvas {
         UltraCanvasWindowBase();
 
         // Window lifecycle
-        void Create(const WindowConfig& config);
-        virtual void Create();
+        bool Create(const WindowConfig& config);
+        virtual bool Create();
         virtual void RequestClose();
         virtual void Close();
         void RequestDelete();

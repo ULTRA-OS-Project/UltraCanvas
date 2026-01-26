@@ -136,7 +136,6 @@ namespace UltraCanvas {
                 .AddSeparator()
                 .AddButton("search", "🔍", "", [this]() { OnEditSearch(); })
                 .AddButton("replace", "🔄", "", [this]() { OnEditReplace(); })
-
                 .Build();
 
         AddChild(toolbar);

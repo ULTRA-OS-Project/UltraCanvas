@@ -282,7 +282,6 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateXARVectorExamples();
 #endif
         std::shared_ptr<UltraCanvasUIElement> CreateImagePerformanceTest();
-        std::shared_ptr<UltraCanvasContainer> CreateTextEditorDemo();
         std::shared_ptr<UltraCanvasContainer> CreateBitmapFormatDemoPage(
                 const std::string& format,
                 const std::string& sampleImagePath,
