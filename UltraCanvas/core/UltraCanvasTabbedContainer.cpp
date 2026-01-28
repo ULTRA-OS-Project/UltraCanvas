@@ -164,7 +164,14 @@ namespace UltraCanvas {
         if (index >= 0 && index < (int)tabs.size()) {
             tabs[index]->badgeText = text;
             tabs[index]->showBadge = show && (!text.empty());
-            tabs[index]->hasBadge = tabs[index]->showBadge;
+            InvalidateTabbar();
+        }
+    }
+
+    void UltraCanvasTabbedContainer::SetTabBadgeColor(int index, const Color &color)
+    {
+        if (index >= 0 && index < (int)tabs.size()) {
+            tabs[index]->badgeBackgroundColor = color;
             InvalidateTabbar();
         }
     }
@@ -173,7 +180,6 @@ namespace UltraCanvas {
         if (index >= 0 && index < (int)tabs.size()) {
             tabs[index]->badgeText = "";
             tabs[index]->showBadge = false;
-            tabs[index]->hasBadge = false;
             InvalidateTabbar();
         }
     }
@@ -418,7 +424,7 @@ namespace UltraCanvas {
         if (index < 0 || index >= (int)tabs.size()) return;
 
         TabData* tab = tabs[index].get();
-        if (!tab->hasBadge || !tab->showBadge || tab->badgeText.empty()) return;
+        if (!tab->showBadge || tab->badgeText.empty()) return;
         Rect2Di tabBounds = GetTabBounds(index);
 
         int badgeX = tabBounds.x + tabBounds.width - tabPadding - closeButtonSize - closeButtonMargin - tab->badgeWidth;
@@ -427,7 +433,7 @@ namespace UltraCanvas {
         }
         int badgeY = tabBounds.y + (tabBounds.height - tab->badgeHeight) / 2;
 
-        ctx->DrawFilledRectangle(Rect2Di(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight), badgeBackgroundColor, 0, Colors::Transparent, std::min(tab->badgeHeight, tab->badgeWidth)/2);
+        ctx->DrawFilledRectangle(Rect2Di(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight), tab->badgeBackgroundColor, 0, Colors::Transparent, std::min(tab->badgeHeight, tab->badgeWidth)/2);
 
 //        std::string badgeText = (tab->badgeCount > 99) ? "99+" : std::to_string(tab->badgeCount);
         ctx->PushState();
@@ -825,7 +831,7 @@ namespace UltraCanvas {
             width += (int)tab->title.length() * 8;
         }
 
-        if (tab->hasBadge && tab->showBadge) {
+        if (tab->showBadge) {
             CalcBadgeDimensions(tab);
             width += tab->badgeWidth + iconPadding;
         }
@@ -1634,7 +1640,7 @@ namespace UltraCanvas {
             contentArea.width -= (closeButtonSize + closeButtonMargin);
         }
 
-        if (tab->hasBadge && tab->showBadge) {
+        if (tab->showBadge) {
             contentArea.width -= (tab->badgeWidth + iconPadding);
         }
 
@@ -1651,7 +1657,7 @@ namespace UltraCanvas {
             xOffset += txtW + iconPadding;
         }
 
-        if (tab->hasBadge && tab->showBadge) {
+        if (tab->showBadge) {
             RenderTabBadge(index, ctx);
         }
 

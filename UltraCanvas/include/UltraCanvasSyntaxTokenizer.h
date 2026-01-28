@@ -116,6 +116,7 @@ namespace UltraCanvas {
         bool SetLanguageByExtension(const std::string &fileExtension);
 
         std::vector<std::string> GetSupportedLanguages() const;
+        std::string GetCurrentProgrammingLanguage() const;
 
         // Style management
 //        void SetTokenStyle(TokenType type, const TokenStyle& style);
@@ -317,6 +318,10 @@ namespace UltraCanvas {
             result.push_back(name);
         }
         return result;
+    }
+
+    inline std::string SyntaxTokenizer::GetCurrentProgrammingLanguage() const {
+        return (currentRules) ? currentRules->name : "Plain Text";
     }
 
 //    inline void SyntaxTokenizer::LoadDefaultStyles() {

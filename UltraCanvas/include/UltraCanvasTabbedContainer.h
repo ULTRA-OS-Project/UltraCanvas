@@ -70,10 +70,10 @@ namespace UltraCanvas {
         bool visible = true;
         bool closable = true;
         bool hasIcon = false;
-        bool hasBadge = false;
         bool showBadge = false;
         Color textColor = Colors::Black;
         Color backgroundColor = Color(240, 240, 240);
+        Color badgeBackgroundColor = Color(220, 50, 50);
         std::shared_ptr<UltraCanvasUIElement> content = nullptr;
         void* userData = nullptr;
 
@@ -124,7 +124,6 @@ namespace UltraCanvas {
         Color closeButtonColor = Color(120, 120, 120);
         Color closeButtonHoverColor = Color(200, 50, 50);
         Color contentAreaColor = Color(255, 255, 255);
-        Color badgeBackgroundColor = Color(220, 50, 50);
         Color badgeTextColor = Colors::White;
         Color tabSeparatorColor = Color(200, 200, 200);
 
@@ -229,7 +228,8 @@ namespace UltraCanvas {
         // ===== TAB ICON AND BADGE METHODS =====
         void SetTabIcon(int index, const std::string& iconPath);
         std::string GetTabIcon(int index) const;
-        void SetTabBadge(int index, const std::string & text, bool show);
+        void SetTabBadge(int index, const std::string & text, bool show = true);
+        void SetTabBadgeColor(int index, const Color& color);
         void ClearTabBadge(int index);
         std::string GetTabBadgeText(int index);
         bool IsTabBadgeVisible(int index) const;

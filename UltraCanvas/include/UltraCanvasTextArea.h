@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting
-// Version: 2.0.0
-// Last Modified: 2024-12-20
+// Version: 2.1.0
+// Last Modified: 2026-01-27
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -149,7 +149,9 @@ namespace UltraCanvas {
         void SetHighlightSyntax(bool);
         bool GetHighlightSyntax() const { return style.highlightSyntax; }
         void SetProgrammingLanguage(const std::string& language);
-        void SetProgrammingLanguageByExtension(const std::string& extension);
+        bool SetProgrammingLanguageByExtension(const std::string& extension);
+        const std::string GetCurrentProgrammingLanguage();
+        
         void SetSyntaxTheme(const std::string& theme);
         void UpdateSyntaxHighlighting();
 
@@ -280,6 +282,11 @@ namespace UltraCanvas {
         void AddWarningMarker(int lineIndex, const std::string& message);
         void ClearMarkers();
 
+        // Callbacks
+        TextChangedCallback onTextChanged;
+        CursorPositionChangedCallback onCursorPositionChanged;
+        SelectionChangedCallback onSelectionChanged;
+
     protected:
         // Drawing methods
         void DrawBackground(IRenderContext* context);
@@ -289,6 +296,7 @@ namespace UltraCanvas {
         void DrawPlainText(IRenderContext* context);
         void DrawHighlightedText(IRenderContext* context);
         void DrawSelection(IRenderContext* context);
+        void DrawSearchHighlights(IRenderContext* context);
         void DrawCursor(IRenderContext* context);
         void DrawScrollbars(IRenderContext* context);
         void DrawAutoComplete(IRenderContext* context);
@@ -313,15 +321,14 @@ namespace UltraCanvas {
         int GetVisibleCharactersPerLine() const;
         const TokenStyle& GetStyleForTokenType(TokenType type) const;
 
-        // Clipboard helpers
-        void SetClipboardText(const std::string& text);
-        std::string GetClipboardText() const;
-
         // Initialization
         void ApplyDefaultStyle();
         bool IsNeedVerticalScrollbar();
         bool IsNeedHorizontalScrollbar();
         int GetMaxLineWidth();
+        
+        // State management
+        void SaveState();
 
     private:
         // Text data
@@ -369,6 +376,9 @@ namespace UltraCanvas {
         std::string lastSearchText;
         int lastSearchPosition;
         bool lastSearchCaseSensitive;
+        
+        // Search highlights (start, end positions)
+        std::vector<std::pair<int, int>> searchHighlights;
 
         // Undo/Redo stacks
         struct TextState {
@@ -392,11 +402,6 @@ namespace UltraCanvas {
             std::string message;
         };
         std::vector<Marker> markers;
-
-        // Callbacks
-        TextChangedCallback onTextChanged;
-        CursorPositionChangedCallback onCursorPositionChanged;
-        SelectionChangedCallback onSelectionChanged;
     };
 
 // Factory functions for quick creation

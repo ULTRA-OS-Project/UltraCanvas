@@ -1,12 +1,13 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting
-// Version: 2.0.0
-// Last Modified: 2024-12-20
+// Version: 2.1.0
+// Last Modified: 2026-01-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasClipboard.h"
 #include "UltraCanvasUtils.h"
 #include <algorithm>
 #include <sstream>
@@ -108,6 +109,11 @@ namespace UltraCanvas {
         // Draw selection
         if (HasSelection()) {
             DrawSelection(ctx);
+        }
+        
+        // Draw search highlights
+        if (!searchHighlights.empty()) {
+            DrawSearchHighlights(ctx);
         }
 
         // Draw cursor
@@ -838,6 +844,18 @@ namespace UltraCanvas {
                     handled = true;
                 }
                 break;
+            case UCKeys::Z:
+                if (event.ctrl) {
+                    Undo();
+                    handled = true;
+                }
+                break;
+            case UCKeys::Y:
+                if (event.ctrl) {
+                    Redo();
+                    handled = true;
+                }
+                break;
         }
 
         if (!handled && event.character && !event.ctrl && !event.alt && !event.meta) {
@@ -893,6 +911,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::InsertText(const std::string& textToInsert) {
         if (isReadOnly) return;
 
+        SaveState();
         if (HasSelection()) {
             DeleteSelection();
         }
@@ -934,6 +953,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::InsertCharacter(char ch) {
         if (isReadOnly) return;
 
+        SaveState();
         auto [line, col] = GetLineColumnFromPosition(cursorPosition);
         if (lines.empty()) {
             lines.push_back("");
@@ -958,6 +978,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::DeleteCharacterBackward() {
         if (isReadOnly || cursorPosition == 0) return;
 
+        SaveState();
         auto [line, col] = GetLineColumnFromPosition(cursorPosition);
 
         if (col > 0) {
@@ -981,6 +1002,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::DeleteCharacterForward() {
         if (isReadOnly) return;
 
+        SaveState();
         auto [line, col] = GetLineColumnFromPosition(cursorPosition);
 
         if (line < static_cast<int>(lines.size())) {
@@ -1002,6 +1024,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::DeleteSelection() {
         if (!HasSelection() || isReadOnly) return;
 
+        SaveState();
         int startPos = std::min(selectionStart, selectionEnd);
         int endPos = std::max(selectionStart, selectionEnd);
 
@@ -1269,6 +1292,15 @@ namespace UltraCanvas {
     bool UltraCanvasTextArea::HasSelection() const {
         return selectionStart >= 0 && selectionEnd >= 0 && selectionStart != selectionEnd;
     }
+    
+    std::string UltraCanvasTextArea::GetSelectedText() const {
+        if (!HasSelection()) return "";
+        
+        int startPos = std::min(selectionStart, selectionEnd);
+        int endPos = std::max(selectionStart, selectionEnd);
+        
+        return text.substr(startPos, endPos - startPos);
+    }
 
 // Clipboard operations
     void UltraCanvasTextArea::CopySelection() {
@@ -1278,7 +1310,7 @@ namespace UltraCanvas {
         int endPos = std::max(selectionStart, selectionEnd);
 
         std::string selectedText = text.substr(startPos, endPos - startPos);
-//        SetClipboardText(selectedText);
+        SetClipboardText(selectedText);
     }
 
     void UltraCanvasTextArea::CutSelection() {
@@ -1291,9 +1323,10 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::PasteClipboard() {
         if (isReadOnly) return;
 
-//        std::string clipboardText = GetClipboardText();
-        std::string clipboardText = "Clipboard content";
-        if (!clipboardText.empty()) {
+        std::string clipboardText;
+        auto result = GetClipboardText(clipboardText);
+//        std::string clipboardText = "Clipboard content";
+        if (result && !clipboardText.empty()) {
             InsertText(clipboardText);
         }
     }
@@ -1318,14 +1351,22 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTextArea::SetProgrammingLanguageByExtension(const std::string& extension) {
+    bool UltraCanvasTextArea::SetProgrammingLanguageByExtension(const std::string& extension) {
+        if (!syntaxTokenizer) {
+            syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
+        }
+        auto result = syntaxTokenizer->SetLanguageByExtension(extension);
         if (style.highlightSyntax) {
-            if (!syntaxTokenizer) {
-                syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
-            }
-            syntaxTokenizer->SetLanguageByExtension(extension);
             RequestRedraw();
         }
+        return result;
+    }
+
+    const std::string UltraCanvasTextArea::GetCurrentProgrammingLanguage() {
+        if (!syntaxTokenizer) {
+            return "Plain textr";
+        }
+        return syntaxTokenizer->GetCurrentProgrammingLanguage();
     }
 
 // Theme application methods
@@ -1409,26 +1450,58 @@ namespace UltraCanvas {
         return currentLineIndex + 1;
     }
 
+    int UltraCanvasTextArea::GetCurrentColumn() const {
+        auto [line, col] = GetLineColumnFromPosition(cursorPosition);
+        return col + 1;  // 1-based column
+    }
+
     int UltraCanvasTextArea::GetLineCount() const {
         return lines.size();
+    }
+
+    std::string UltraCanvasTextArea::GetLine(int lineIndex) const {
+        if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
+            return lines[lineIndex];
+        }
+        return "";
+    }
+
+    void UltraCanvasTextArea::SetLine(int lineIndex, const std::string& newText) {
+        if (isReadOnly) return;
+        
+        if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
+            SaveState();
+            lines[lineIndex] = newText;
+            RebuildText();
+            
+            if (onTextChanged) {
+                onTextChanged(text);
+            }
+        }
     }
 
 // Search and replace
     void UltraCanvasTextArea::FindText(const std::string& searchText, bool caseSensitive) {
         if (searchText.empty()) return;
 
+        // Store search parameters for FindNext/FindPrevious
+        lastSearchText = searchText;
+        lastSearchCaseSensitive = caseSensitive;
+
         std::string haystack = caseSensitive ? text : ToLowerCase(text);
         std::string needle = caseSensitive ? searchText : ToLowerCase(searchText);
 
         size_t pos = haystack.find(needle, cursorPosition);
         if (pos != std::string::npos) {
-            selectionStart = pos;
-            selectionEnd = pos + needle.length();
+            selectionStart = static_cast<int>(pos);
+            selectionEnd = static_cast<int>(pos + needle.length());
             cursorPosition = selectionEnd;
+            lastSearchPosition = static_cast<int>(pos);
 
             auto [line, col] = GetLineColumnFromPosition(cursorPosition);
             currentLineIndex = line;
             EnsureCursorVisible();
+            RequestRedraw();
         }
     }
 
@@ -1453,6 +1526,301 @@ namespace UltraCanvas {
                     SetText(text);
                     cursorPosition = startPos + replaceText.length();
                 }
+            }
+        }
+    }
+
+    void UltraCanvasTextArea::FindNext() {
+        if (lastSearchText.empty()) return;
+
+        std::string haystack = lastSearchCaseSensitive ? text : ToLowerCase(text);
+        std::string needle = lastSearchCaseSensitive ? lastSearchText : ToLowerCase(lastSearchText);
+
+        // Search from current cursor position
+        size_t searchStart = static_cast<size_t>(cursorPosition);
+        size_t pos = haystack.find(needle, searchStart);
+        
+        // Wrap around if not found
+        if (pos == std::string::npos && searchStart > 0) {
+            pos = haystack.find(needle, 0);
+        }
+
+        if (pos != std::string::npos) {
+            selectionStart = static_cast<int>(pos);
+            selectionEnd = static_cast<int>(pos + needle.length());
+            cursorPosition = selectionEnd;
+            lastSearchPosition = static_cast<int>(pos);
+
+            auto [line, col] = GetLineColumnFromPosition(cursorPosition);
+            currentLineIndex = line;
+            EnsureCursorVisible();
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasTextArea::FindPrevious() {
+        if (lastSearchText.empty()) return;
+
+        std::string haystack = lastSearchCaseSensitive ? text : ToLowerCase(text);
+        std::string needle = lastSearchCaseSensitive ? lastSearchText : ToLowerCase(lastSearchText);
+
+        // Search backwards from current cursor position
+        size_t searchEnd = (cursorPosition > 0) ? static_cast<size_t>(cursorPosition - 1) : 0;
+        size_t pos = haystack.rfind(needle, searchEnd);
+        
+        // Wrap around if not found
+        if (pos == std::string::npos && searchEnd < text.length()) {
+            pos = haystack.rfind(needle);
+        }
+
+        if (pos != std::string::npos) {
+            selectionStart = static_cast<int>(pos);
+            selectionEnd = static_cast<int>(pos + needle.length());
+            cursorPosition = selectionStart;
+            lastSearchPosition = static_cast<int>(pos);
+
+            auto [line, col] = GetLineColumnFromPosition(cursorPosition);
+            currentLineIndex = line;
+            EnsureCursorVisible();
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasTextArea::HighlightMatches(const std::string& searchText) {
+        searchHighlights.clear();
+        
+        if (searchText.empty()) {
+            RequestRedraw();
+            return;
+        }
+
+        lastSearchText = searchText;
+        std::string haystack = ToLowerCase(text);
+        std::string needle = ToLowerCase(searchText);
+
+        size_t pos = 0;
+        while ((pos = haystack.find(needle, pos)) != std::string::npos) {
+            searchHighlights.emplace_back(static_cast<int>(pos), static_cast<int>(pos + needle.length()));
+            pos += needle.length();
+        }
+
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextArea::ClearHighlights() {
+        searchHighlights.clear();
+        RequestRedraw();
+    }
+
+// Undo/Redo implementation
+    void UltraCanvasTextArea::SaveState() {
+        TextState state;
+        state.text = text;
+        state.cursorPosition = cursorPosition;
+        state.selectionStart = selectionStart;
+        state.selectionEnd = selectionEnd;
+        
+        undoStack.push_back(state);
+        
+        // Limit undo stack size
+        if (undoStack.size() > maxUndoStackSize) {
+            undoStack.erase(undoStack.begin());
+        }
+        
+        // Clear redo stack when new state is saved
+        redoStack.clear();
+    }
+
+    void UltraCanvasTextArea::Undo() {
+        if (undoStack.empty()) return;
+
+        // Save current state to redo stack
+        TextState currentState;
+        currentState.text = text;
+        currentState.cursorPosition = cursorPosition;
+        currentState.selectionStart = selectionStart;
+        currentState.selectionEnd = selectionEnd;
+        redoStack.push_back(currentState);
+
+        // Restore previous state
+        const TextState& state = undoStack.back();
+        text = state.text;
+        cursorPosition = state.cursorPosition;
+        selectionStart = state.selectionStart;
+        selectionEnd = state.selectionEnd;
+
+        undoStack.pop_back();
+
+        // Rebuild lines from text
+        lines.clear();
+        std::stringstream ss(text);
+        std::string line;
+        while (std::getline(ss, line)) {
+            lines.push_back(line);
+        }
+        if (lines.empty()) {
+            lines.push_back("");
+        }
+
+        auto [lineIdx, col] = GetLineColumnFromPosition(cursorPosition);
+        currentLineIndex = lineIdx;
+
+        isNeedRecalculateVisibleArea = true;
+        EnsureCursorVisible();
+        RequestRedraw();
+
+        if (onTextChanged) {
+            onTextChanged(text);
+        }
+    }
+
+    void UltraCanvasTextArea::Redo() {
+        if (redoStack.empty()) return;
+
+        // Save current state to undo stack
+        TextState currentState;
+        currentState.text = text;
+        currentState.cursorPosition = cursorPosition;
+        currentState.selectionStart = selectionStart;
+        currentState.selectionEnd = selectionEnd;
+        undoStack.push_back(currentState);
+
+        // Restore next state
+        const TextState& state = redoStack.back();
+        text = state.text;
+        cursorPosition = state.cursorPosition;
+        selectionStart = state.selectionStart;
+        selectionEnd = state.selectionEnd;
+
+        redoStack.pop_back();
+
+        // Rebuild lines from text
+        lines.clear();
+        std::stringstream ss(text);
+        std::string line;
+        while (std::getline(ss, line)) {
+            lines.push_back(line);
+        }
+        if (lines.empty()) {
+            lines.push_back("");
+        }
+
+        auto [lineIdx, col] = GetLineColumnFromPosition(cursorPosition);
+        currentLineIndex = lineIdx;
+
+        isNeedRecalculateVisibleArea = true;
+        EnsureCursorVisible();
+        RequestRedraw();
+
+        if (onTextChanged) {
+            onTextChanged(text);
+        }
+    }
+
+    bool UltraCanvasTextArea::CanUndo() const {
+        return !undoStack.empty();
+    }
+
+    bool UltraCanvasTextArea::CanRedo() const {
+        return !redoStack.empty();
+    }
+
+// Scroll methods
+    void UltraCanvasTextArea::ScrollTo(int line) {
+        int totalLines = static_cast<int>(lines.size());
+        int targetLine = std::max(0, std::min(line, totalLines - 1));
+        
+        // Center the target line in the visible area if possible
+        int halfVisible = maxVisibleLines / 2;
+        int newFirstVisible = std::max(0, targetLine - halfVisible);
+        newFirstVisible = std::min(newFirstVisible, std::max(0, totalLines - maxVisibleLines));
+        
+        firstVisibleLine = newFirstVisible;
+        verticalScrollOffset = firstVisibleLine;
+        
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextArea::ScrollUp(int lineCount) {
+        if (firstVisibleLine > 0) {
+            firstVisibleLine = std::max(0, firstVisibleLine - lineCount);
+            verticalScrollOffset = firstVisibleLine;
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasTextArea::ScrollDown(int lineCount) {
+        int totalLines = static_cast<int>(lines.size());
+        int maxFirstVisible = std::max(0, totalLines - maxVisibleLines);
+        
+        if (firstVisibleLine < maxFirstVisible) {
+            firstVisibleLine = std::min(maxFirstVisible, firstVisibleLine + lineCount);
+            verticalScrollOffset = firstVisibleLine;
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasTextArea::ScrollLeft(int chars) {
+        if (horizontalScrollOffset > 0) {
+            // Estimate character width
+            int charWidth = MeasureTextWidth("m");
+            horizontalScrollOffset = std::max(0, horizontalScrollOffset - (chars * charWidth));
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasTextArea::ScrollRight(int chars) {
+        int maxHorizontalScroll = std::max(0, maxLineWidth - visibleTextArea.width);
+        
+        if (horizontalScrollOffset < maxHorizontalScroll) {
+            // Estimate character width
+            int charWidth = MeasureTextWidth("m");
+            horizontalScrollOffset = std::min(maxHorizontalScroll, horizontalScrollOffset + (chars * charWidth));
+            RequestRedraw();
+        }
+    }
+
+// Draw search highlights
+    void UltraCanvasTextArea::DrawSearchHighlights(IRenderContext* context) {
+        if (searchHighlights.empty()) return;
+
+        // Use a yellow highlight color for search matches
+        Color highlightColor(255, 255, 0, 80);
+
+        int textX = visibleTextArea.x;
+
+        // Include partially visible lines
+        int visibleStartLine = std::max(0, firstVisibleLine - 1);
+        int visibleEndLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
+
+        for (const auto& [startPos, endPos] : searchHighlights) {
+            auto [startLine, startCol] = GetLineColumnFromPosition(startPos);
+            auto [endLine, endCol] = GetLineColumnFromPosition(endPos);
+
+            for (int line = startLine; line <= endLine; line++) {
+                // Skip lines outside visible range
+                if (line < visibleStartLine || line >= visibleEndLine) continue;
+                if (line >= static_cast<int>(lines.size())) break;
+
+                int lineY = visibleTextArea.y + (line - firstVisibleLine) * computedLineHeight;
+
+                int hlStart = (line == startLine) ? startCol : 0;
+                int hlEnd = (line == endLine) ? endCol : static_cast<int>(lines[line].length());
+
+                int hlX = textX - horizontalScrollOffset;
+                if (hlStart > 0) {
+                    std::string textBeforeHighlight = lines[line].substr(0, hlStart);
+                    hlX += MeasureTextWidth(textBeforeHighlight);
+                }
+
+                int hlWidth = 0;
+                if (hlEnd > hlStart) {
+                    std::string highlightedText = lines[line].substr(hlStart, hlEnd - hlStart);
+                    hlWidth = MeasureTextWidth(highlightedText);
+                }
+
+                context->SetFillPaint(highlightColor);
+                context->FillRectangle(hlX, lineY, hlWidth, computedLineHeight);
             }
         }
     }

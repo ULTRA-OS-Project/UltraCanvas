@@ -53,6 +53,7 @@ namespace UltraCanvas {
 
 // Button combinations
     enum class DialogButtons {
+        NoButtons = 0,
         OK = static_cast<int>(DialogButton::OK),
         OKCancel = static_cast<int>(DialogButton::OK) | static_cast<int>(DialogButton::Cancel),
         YesNo = static_cast<int>(DialogButton::Yes) | static_cast<int>(DialogButton::No),

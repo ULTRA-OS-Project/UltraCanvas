@@ -808,7 +808,7 @@ namespace UltraCanvas {
                     if (hasSelection) DeleteSelection();
                     InsertText("\n");
                 } else {
-                    if (onEnterPressed) onEnterPressed();
+                    if (onEnterPressed) onEnterPressed(text);
                 }
                 break;
 

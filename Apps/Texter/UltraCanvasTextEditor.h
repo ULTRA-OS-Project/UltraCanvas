@@ -1,21 +1,26 @@
-// include/UltraCanvasTextEditor.h
-// Complete text editor application with menu bar, toolbar, editor, and status bar
-// Version: 1.1.0
-// Last Modified: 2026-01-19
+// Apps/Texter/UltraCanvasTextEditor.h
+// Complete text editor application with multi-file tabs, autosave, and enhanced features
+// Version: 2.0.0
+// Last Modified: 2026-01-26
 // Author: UltraCanvas Framework
 
 #pragma once
 
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextEditorHelpers.h"
+#include "UltraCanvasTextEditorDialogs.h"
 #include <memory>
 #include <string>
+#include <vector>
 #include <functional>
+#include <chrono>
+#include <map>
 
 namespace UltraCanvas {
 
@@ -36,11 +41,17 @@ namespace UltraCanvas {
         bool showToolbar = true;
         bool showStatusBar = true;
         bool showLineNumbers = true;
+        bool enableAutosave = true;
 
         // Editor settings
         std::string defaultLanguage = "Plain Text";
         bool darkTheme = false;
         std::string defaultEncoding = "UTF-8";
+        int defaultFontSize = 12;
+
+        // Autosave settings
+        int autosaveIntervalSeconds = 60;  // Autosave every 60 seconds
+        std::string autosaveDirectory = "";  // Empty = use system temp directory
 
         // File filters for Open/Save dialogs
         std::vector<FileFilter> fileFilters = {
@@ -53,86 +64,299 @@ namespace UltraCanvas {
     };
 
 /**
- * @brief Complete text editor application component
+ * @brief Data structure for each open file/document
+ */
+    struct DocumentTab {
+        std::string filePath;              // Full file path (empty for new/unsaved files)
+        std::string fileName;              // Display name
+        std::shared_ptr<UltraCanvasTextArea> textArea;  // Text editor component
+        std::string language;              // Syntax highlighting language
+        bool isModified;                   // Has unsaved changes
+        bool isNewFile;                    // Never been saved
+        std::string autosaveBackupPath;    // Path to autosave backup
+        std::chrono::steady_clock::time_point lastSaveTime;  // Last save timestamp
+        std::chrono::steady_clock::time_point lastModifiedTime;  // Last edit timestamp
+
+        DocumentTab()
+                : isModified(false)
+                , isNewFile(true)
+                , lastSaveTime(std::chrono::steady_clock::now())
+                , lastModifiedTime(std::chrono::steady_clock::now())
+        {}
+    };
+
+/**
+ * @brief Autosave manager for crash recovery
+ */
+    class AutosaveManager {
+    private:
+        std::string autosaveDirectory;
+        bool enabled;
+        int intervalSeconds;
+        std::chrono::steady_clock::time_point lastAutosaveTime;
+
+    public:
+        AutosaveManager()
+                : enabled(true)
+                , intervalSeconds(60)
+                , lastAutosaveTime(std::chrono::steady_clock::now())
+        {}
+
+        void SetEnabled(bool enable) { enabled = enable; }
+        bool IsEnabled() const { return enabled; }
+
+        void SetInterval(int seconds) { intervalSeconds = seconds; }
+        int GetInterval() const { return intervalSeconds; }
+
+        void SetDirectory(const std::string& dir) { autosaveDirectory = dir; }
+        std::string GetDirectory() const;
+
+        bool ShouldAutosave() const;
+        std::string CreateBackupPath(const std::string& originalPath, int tabIndex);
+        bool SaveBackup(const std::string& backupPath, const std::string& content);
+        bool LoadBackup(const std::string& backupPath, std::string& content);
+        void DeleteBackup(const std::string& backupPath);
+        std::vector<std::string> FindExistingBackups();
+        void CleanupOldBackups(int maxAgeHours = 24);
+    };
+
+/**
+ * @brief Complete multi-file text editor application component
  *
  * This component provides a full-featured text editor with:
- * - Menu bar (File, Edit, Info)
+ * - Multi-file tabs with "+" button for new files
+ * - Tab badges showing modified state
+ * - Menu bar (File, Edit, View, Info)
  * - Optional toolbar
  * - Syntax-highlighted text area
- * - Status bar (position, encoding, syntax, selection)
+ * - Status bar (line:col, encoding, syntax, selection)
+ * - Full undo/redo support
+ * - Autosave and crash recovery
+ * - Theme switching (dark/light)
+ * - Font size adjustment
  *
  * @example
  * auto editor = CreateTextEditor("MyEditor", 1, 0, 0, 1024, 768);
- * editor->LoadFile("/path/to/file.cpp");
+ * editor->OpenFile("/path/to/file.cpp");
  * window->AddChild(editor);
  */
     class UltraCanvasTextEditor : public UltraCanvasContainer {
+    private:
+        // ===== CONFIGURATION =====
+        TextEditorConfig config;
+        bool isDarkTheme;
+        int currentFontSize;
+
+        // ===== UI COMPONENTS =====
+        std::shared_ptr<UltraCanvasMenu> menuBar;
+        std::shared_ptr<UltraCanvasToolbar> toolbar;
+        std::shared_ptr<UltraCanvasTabbedContainer> tabContainer;
+        std::shared_ptr<UltraCanvasLabel> statusLabel;
+
+        // ===== DIALOGS =====
+        std::shared_ptr<UltraCanvasFindDialog> findDialog;
+        std::shared_ptr<UltraCanvasReplaceDialog> replaceDialog;
+        std::shared_ptr<UltraCanvasGoToLineDialog> goToLineDialog;
+
+        // ===== DOCUMENT MANAGEMENT =====
+        std::vector<std::shared_ptr<DocumentTab>> documents;
+        int activeDocumentIndex;
+
+        // ===== AUTOSAVE SYSTEM =====
+        AutosaveManager autosaveManager;
+        bool hasCheckedForBackups;
+
+        // ===== LAYOUT =====
+        int menuBarHeight;
+        int toolbarHeight;
+        int statusBarHeight;
+        int tabBarHeight;
+
+        // ===== SETUP METHODS =====
+        void SetupMenuBar();
+        void SetupToolbar();
+        void SetupTabContainer();
+        void SetupStatusBar();
+        void SetupLayout();
+
+        // ===== DOCUMENT MANAGEMENT =====
+        int CreateNewDocument(const std::string& fileName = "");
+        int OpenDocumentFromPath(const std::string& filePath);
+        void CloseDocument(int index);
+        void SwitchToDocument(int index);
+        DocumentTab* GetActiveDocument();
+        const DocumentTab* GetActiveDocument() const;
+        void SetDocumentModified(int index, bool modified);
+        void UpdateTabTitle(int index);
+        void UpdateTabBadge(int index);
+
+        // ===== FILE OPERATIONS =====
+        bool LoadFileIntoDocument(int docIndex, const std::string& filePath);
+        bool SaveDocument(int docIndex);
+        bool SaveDocumentAs(int docIndex, const std::string& filePath);
+
+        // ===== AUTOSAVE =====
+        void PerformAutosave();
+        void AutosaveDocument(int docIndex);
+        void CheckForCrashRecovery();
+        void OfferRecoveryForBackup(const std::string& backupPath);
+
+        // ===== MENU HANDLERS =====
+        void OnFileNew();
+        void OnFileOpen();
+        void OnFileSave();
+        void OnFileSaveAs();
+        void OnFileSaveAll();
+        void OnFileClose();
+        void OnFileCloseAll();
+        void OnFileQuit();
+
+        void OnEditUndo();
+        void OnEditRedo();
+        void OnEditCut();
+        void OnEditCopy();
+        void OnEditPaste();
+        void OnEditSelectAll();
+        void OnEditSearch();
+        void OnEditReplace();
+        void OnEditGoToLine();
+
+        void OnViewIncreaseFontSize();
+        void OnViewDecreaseFontSize();
+        void OnViewResetFontSize();
+        void OnViewToggleTheme();
+        void OnViewToggleLineNumbers();
+        void OnViewToggleWordWrap();
+
+        void OnInfoAbout();
+
+        // ===== UI UPDATES =====
+        void UpdateStatusBar();
+        void UpdateMenuStates();
+        void UpdateTitle();
+
+        // ===== THEME =====
+        void ApplyThemeToDocument(int docIndex);
+        void ApplyThemeToAllDocuments();
+
+        // ===== CALLBACKS =====
+        void SetupDocumentCallbacks(int docIndex);
+        void ConfirmSaveChanges(int docIndex, std::function<void(bool)> onComplete);
+        void ConfirmCloseWithUnsavedChanges(std::function<void(bool)> onComplete);
+
     public:
-        // Constructor
+        // ===== CONSTRUCTOR =====
         UltraCanvasTextEditor(const std::string& identifier, long id,
                               int x, int y, int width, int height,
                               const TextEditorConfig& config = TextEditorConfig());
 
         virtual ~UltraCanvasTextEditor() = default;
 
-        // ===== FILE OPERATIONS =====
+        // ===== RENDERING =====
+        virtual void Render(IRenderContext* ctx) override;
+
+        // ===== EVENT HANDLING =====
+        virtual bool OnEvent(const UCEvent& event) override;
+
+        // ===== FILE OPERATIONS (PUBLIC API) =====
 
         /**
-         * @brief Load a file into the editor
-         * @param filePath Path to the file to load
-         * @return true if file was loaded successfully
+         * @brief Open a file in a new tab
+         * @param filePath Path to the file to open
+         * @return Tab index, or -1 on failure
          */
-        bool LoadFile(const std::string& filePath);
-
-        /**
-         * @brief Save the current content to the current file
-         * @return true if file was saved successfully
-         */
-        bool SaveFile();
-
-        /**
-         * @brief Save the current content to a new file
-         * @param filePath Path to save the file to
-         * @return true if file was saved successfully
-         */
-        bool SaveFileAs(const std::string& filePath);
+        int OpenFile(const std::string& filePath);
 
         /**
          * @brief Create a new empty document
+         * @return Tab index of the new document
          */
-        void NewFile();
+        int NewFile();
 
         /**
-         * @brief Get the current file path
-         * @return Current file path, empty if no file is open
+         * @brief Save the active document
+         * @return true if save was successful
          */
-        std::string GetCurrentFilePath() const { return currentFilePath; }
+        bool SaveActiveFile();
 
         /**
-         * @brief Check if the document has unsaved changes
+         * @brief Save the active document with a new path
+         * @param filePath Path to save to
+         * @return true if save was successful
+         */
+        bool SaveActiveFileAs(const std::string& filePath);
+
+        /**
+         * @brief Save all open documents
+         * @return true if all saves were successful
+         */
+        bool SaveAllFiles();
+
+        /**
+         * @brief Close the active tab
+         */
+        void CloseActiveTab();
+
+        /**
+         * @brief Close all tabs
+         */
+        void CloseAllTabs();
+
+        /**
+         * @brief Get the current file path of active document
+         * @return Current file path, empty if new/unsaved
+         */
+        std::string GetActiveFilePath() const;
+
+        /**
+         * @brief Check if active document has unsaved changes
          * @return true if there are unsaved changes
          */
-        bool HasUnsavedChanges() const { return isModified; }
-
-        // ===== EDITOR ACCESS =====
+        bool HasUnsavedChanges() const;
 
         /**
-         * @brief Get the text editor component
-         * @return Shared pointer to the text area
+         * @brief Check if any document has unsaved changes
+         * @return true if any document is modified
          */
-        std::shared_ptr<UltraCanvasTextArea> GetEditor() { return textArea; }
+        bool HasAnyUnsavedChanges() const;
+
+        // ===== TEXT OPERATIONS =====
 
         /**
-         * @brief Get the current text content
-         * @return Text content of the editor
+         * @brief Get the text content of active document
+         * @return Text content
          */
         std::string GetText() const;
 
         /**
-         * @brief Set the text content
+         * @brief Set the text content of active document
          * @param text New text content
          */
         void SetText(const std::string& text);
+
+        // ===== UNDO/REDO =====
+
+        /**
+         * @brief Undo last action in active document
+         */
+        void Undo();
+
+        /**
+         * @brief Redo last undone action in active document
+         */
+        void Redo();
+
+        /**
+         * @brief Check if undo is available
+         * @return true if can undo
+         */
+        bool CanUndo() const;
+
+        /**
+         * @brief Check if redo is available
+         * @return true if can redo
+         */
+        bool CanRedo() const;
 
         // ===== SYNTAX HIGHLIGHTING =====
 
@@ -143,132 +367,148 @@ namespace UltraCanvas {
         void SetLanguage(const std::string& language);
 
         /**
-         * @brief Get the current language
+         * @brief Get the current language of active document
          * @return Current language name
          */
-        std::string GetLanguage() const { return currentLanguage; }
+        std::string GetLanguage() const;
 
         // ===== THEME =====
 
         /**
-         * @brief Apply dark theme to the editor
+         * @brief Apply dark theme
          */
         void ApplyDarkTheme();
 
         /**
-         * @brief Apply light theme to the editor
+         * @brief Apply light theme
          */
         void ApplyLightTheme();
 
-        // ===== CALLBACKS =====
-
-        /// Called when a file is loaded
-        std::function<void(const std::string&)> onFileLoaded;
-
-        /// Called when a file is saved
-        std::function<void(const std::string&)> onFileSaved;
-
-        /// Called when the document is modified
-        std::function<void(bool)> onModifiedChange;
-
-        /// Called when the user requests to quit
-        std::function<void()> onQuitRequest;
-
-        /// Called when Help is requested
-        std::function<void()> onHelpRequest;
-
-        /// Called when About is requested
-        std::function<void()> onAboutRequest;
-
-    protected:
-        // Setup methods
-        void SetupMenuBar();
-        void SetupToolbar();
-        void SetupEditor();
-        void SetupStatusBar();
-        void SetupLayout();
-
-        // Menu action handlers
-        void OnFileNew();
-        void OnFileOpen();
-        void OnFileSave();
-        void OnFileSaveAs();
-        void OnFileQuit();
-
-        void OnEditSearch();
-        void OnEditReplace();
-        void OnEditCopy();
-        void OnEditCut();
-        void OnEditPasteAll();
-        void OnEditPasteText();
-
-        void OnInfoHelp();
-        void OnInfoAbout();
-
-        // Helper methods
-        void UpdateTitle();
-        void SetModified(bool modified);
-        std::string DetectLanguageFromExtension(const std::string& filePath);
+        /**
+         * @brief Toggle between dark and light theme
+         */
+        void ToggleTheme();
 
         /**
-         * @brief Async confirmation dialog for unsaved changes
-         * @param onComplete Callback receives true if operation should continue, false if cancelled
-         *
-         * Shows dialog if document has unsaved changes, otherwise calls onComplete(true) immediately.
-         * On "Yes" - saves and calls onComplete(true) if successful
-         * On "No" - calls onComplete(true) to continue without saving
-         * On "Cancel" - calls onComplete(false) to abort operation
+         * @brief Check if dark theme is active
+         * @return true if dark theme
          */
-        void ConfirmSaveChanges(std::function<void(bool continueOperation)> onComplete);
+        bool IsDarkTheme() const { return isDarkTheme; }
 
-    private:
-        // Configuration
-        TextEditorConfig config;
+        // ===== FONT SIZE =====
 
-        // Components
-        std::shared_ptr<UltraCanvasMenu> menuBar;
-        std::shared_ptr<UltraCanvasToolbar> toolbar;
-        std::shared_ptr<UltraCanvasTextArea> textArea;
-        std::shared_ptr<UltraCanvasToolbar> statusBar;
+        /**
+         * @brief Set font size for all documents
+         * @param size Font size in points
+         */
+        void SetFontSize(int size);
 
-        // State
-        std::string currentFilePath;
-        std::string currentLanguage;
-        bool isModified = false;
-        bool isDarkTheme = false;
+        /**
+         * @brief Get current font size
+         * @return Font size in points
+         */
+        int GetFontSize() const { return currentFontSize; }
+
+        /**
+         * @brief Increase font size
+         */
+        void IncreaseFontSize();
+
+        /**
+         * @brief Decrease font size
+         */
+        void DecreaseFontSize();
+
+        /**
+         * @brief Reset font size to default
+         */
+        void ResetFontSize();
+
+        // ===== AUTOSAVE =====
+
+        /**
+         * @brief Enable or disable autosave
+         * @param enable true to enable autosave
+         */
+        void SetAutosaveEnabled(bool enable);
+
+        /**
+         * @brief Check if autosave is enabled
+         * @return true if autosave is enabled
+         */
+        bool IsAutosaveEnabled() const;
+
+        /**
+         * @brief Set autosave interval
+         * @param seconds Interval in seconds
+         */
+        void SetAutosaveInterval(int seconds);
+
+        /**
+         * @brief Perform autosave now (if needed)
+         */
+        void AutosaveNow();
+
+        // ===== CALLBACKS =====
+
+        /**
+         * @brief Callback when quit is requested
+         */
+        std::function<void()> onQuitRequest;
+
+        /**
+         * @brief Callback when file is loaded
+         * @param filePath Path of loaded file
+         * @param tabIndex Tab index where file was loaded
+         */
+        std::function<void(const std::string& filePath, int tabIndex)> onFileLoaded;
+
+        /**
+         * @brief Callback when file is saved
+         * @param filePath Path where file was saved
+         * @param tabIndex Tab index of saved file
+         */
+        std::function<void(const std::string& filePath, int tabIndex)> onFileSaved;
+
+        /**
+         * @brief Callback when document modified state changes
+         * @param modified true if document has unsaved changes
+         * @param tabIndex Tab index of modified document
+         */
+        std::function<void(bool modified, int tabIndex)> onModifiedChange;
+
+        /**
+         * @brief Callback when active tab changes
+         * @param tabIndex New active tab index
+         */
+        std::function<void(int tabIndex)> onTabChanged;
+
+        /**
+         * @brief Callback when tab is closed
+         * @param tabIndex Tab index that was closed
+         */
+        std::function<void(int tabIndex)> onTabClosed;
     };
 
 // ===== FACTORY FUNCTIONS =====
 
-/**
- * @brief Create a text editor application with default settings
- */
     std::shared_ptr<UltraCanvasTextEditor> CreateTextEditor(
             const std::string& identifier,
             long id,
             int x, int y,
-            int width, int height
-    );
+            int width, int height);
 
-/**
- * @brief Create a text editor application with custom configuration
- */
     std::shared_ptr<UltraCanvasTextEditor> CreateTextEditor(
             const std::string& identifier,
             long id,
             int x, int y,
             int width, int height,
-            const TextEditorConfig& config
-    );
+            const TextEditorConfig& config);
 
-/**
- * @brief Create a dark-themed text editor application
- */
     std::shared_ptr<UltraCanvasTextEditor> CreateDarkTextEditor(
             const std::string& identifier,
             long id,
             int x, int y,
-            int width, int height
-    );
+            int width, int height);
 
 } // namespace UltraCanvas

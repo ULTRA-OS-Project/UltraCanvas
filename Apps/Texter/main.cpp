@@ -259,21 +259,21 @@ int main(int argc, char* argv[]) {
             }
         };
 
-        g_textEditor->onFileLoaded = [](const std::string& path) {
+        g_textEditor->onFileLoaded = [](const std::string& path, int tabIndex) {
             std::cout << "File loaded: " << path << std::endl;
             if (g_window) {
                 g_window->SetWindowTitle("UltraTexter - " + path);
             }
         };
 
-        g_textEditor->onFileSaved = [](const std::string& path) {
+        g_textEditor->onFileSaved = [](const std::string& path, int tabIndex) {
             std::cout << "File saved: " << path << std::endl;
         };
 
-        g_textEditor->onModifiedChange = [](bool modified) {
+        g_textEditor->onModifiedChange = [](bool modified, int tabIndex) {
             if (g_window && g_textEditor) {
                 std::string title = "UltraTexter";
-                std::string filePath = g_textEditor->GetCurrentFilePath();
+                std::string filePath = g_textEditor->GetActiveFilePath();
                 if (!filePath.empty()) {
                     title += " - " + filePath;
                 }
@@ -291,7 +291,7 @@ int main(int argc, char* argv[]) {
         // Load file if specified on command line
         if (!fileToOpen.empty()) {
             std::cout << "Opening file: " << fileToOpen << std::endl;
-            if (g_textEditor->LoadFile(fileToOpen)) {
+            if (g_textEditor->OpenFile(fileToOpen)) {
                 std::cout << "✓ File loaded successfully" << std::endl;
             } else {
                 std::cerr << "Warning: Failed to load file: " << fileToOpen << std::endl;

@@ -266,6 +266,7 @@ if (BUILD_TEXTER_APP)
     add_executable(UltraCanvasTexter
             Apps/Texter/UltraCanvasTextEditor.cpp
             Apps/Texter/UltraCanvasTextEditorHelpers.cpp
+            Apps/Texter/UltraCanvasTextEditorDialogs.cpp
             Apps/Texter/main.cpp
     )
 
