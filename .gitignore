@@ -9,6 +9,7 @@ Apps/Texter/build/
 
 # Generated binaries
 /UltraCanvasDemo
+/UltraCanvasTexter
 *.dylib
 *.a
 *.so
