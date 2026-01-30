@@ -769,11 +769,19 @@ namespace UltraCanvas {
 
         switch (event.virtualKey) {
             case UCKeys::Backspace:
-                DeleteCharacterBackward();
+                if (HasSelection()) {
+                    DeleteSelection();
+                } else {
+                    DeleteCharacterBackward();
+                }
                 handled = true;
                 break;
             case UCKeys::Delete:
-                DeleteCharacterForward();
+                if (HasSelection()) {
+                    DeleteSelection();
+                } else {
+                    DeleteCharacterForward();
+                }
                 handled = true;
                 break;
             case UCKeys::Left:
@@ -817,6 +825,9 @@ namespace UltraCanvas {
                 handled = true;
                 break;
             case UCKeys::Enter:
+                if (HasSelection()) {
+                    DeleteSelection();
+                }
                 InsertCharacter('\n');
                 handled = true;
                 break;
@@ -858,12 +869,12 @@ namespace UltraCanvas {
                 break;
         }
 
-        if (!handled && event.character && !event.ctrl && !event.alt && !event.meta) {
+        if (!handled && !event.text.empty()) {
             if (HasSelection()) {
                 DeleteSelection();
             }
 
-            InsertCharacter(event.character);
+            InsertText(event.text);
             handled = true;
         }
 

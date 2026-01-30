@@ -38,6 +38,8 @@ namespace UltraCanvas {
             return false;
         }
 
+        CreateXIC();
+
         if (!CreateCairoSurface()) {
             std::cerr << "UltraCanvas Linux: Failed to create Cairo surface" << std::endl;
             XDestroyWindow(application->GetDisplay(), xWindow);
@@ -172,6 +174,75 @@ namespace UltraCanvas {
         std::cout << "UltraCanvas Linux: Cairo surface and context created successfully" << std::endl;
         return true;
     }
+    bool UltraCanvasLinuxWindow::CreateXIC() {        
+        xic = nullptr;
+        auto application = dynamic_cast<UltraCanvasLinuxApplication*>(UltraCanvasApplication::GetInstance());
+        auto xim = application->GetXIM();
+        if (!xim) {
+            std::cerr << "UltraCanvas: Cannot create XIC - XIM not initialized" << std::endl;
+            return false;
+        }
+
+        // Query supported input styles
+        XIMStyles* styles = nullptr;
+        if (XGetIMValues(xim, XNQueryInputStyle, &styles, nullptr) != nullptr || !styles) {
+            std::cerr << "UltraCanvas: Failed to query XIM input styles" << std::endl;
+            return false;
+        }
+
+        // Find a suitable input style
+        // Prefer: XIMPreeditNothing | XIMStatusNothing (simple, no on-the-spot editing)
+        XIMStyle bestStyle = 0;
+        XIMStyle preferredStyles[] = {
+            XIMPreeditNothing | XIMStatusNothing,
+            XIMPreeditNone | XIMStatusNone,
+            0
+        };
+
+        for (int p = 0; preferredStyles[p] != 0; p++) {
+            for (unsigned short i = 0; i < styles->count_styles; i++) {
+                if (styles->supported_styles[i] == preferredStyles[p]) {
+                    bestStyle = preferredStyles[p];
+                    break;
+                }
+            }
+            if (bestStyle != 0) break;
+        }
+
+        // Fallback: use the first available style
+        if (bestStyle == 0 && styles->count_styles > 0) {
+            bestStyle = styles->supported_styles[0];
+        }
+
+        XFree(styles);
+
+        if (bestStyle == 0) {
+            std::cerr << "UltraCanvas: No suitable XIM input style found" << std::endl;
+            return false;
+        }
+
+        // Create the Input Context
+        xic = XCreateIC(xim,
+                           XNInputStyle, bestStyle,
+                           XNClientWindow, xWindow,
+                           XNFocusWindow, xWindow,
+                           nullptr);
+
+        if (!xic) {
+            std::cerr << "UltraCanvas: XCreateIC() failed" << std::endl;
+            return false;
+        }
+
+        std::cout << "UltraCanvas: XIC created for window " << xWindow << std::endl;
+        return true;
+    }
+
+    void UltraCanvasLinuxWindow::DestroyXIC() {
+        if (xic) {
+            XDestroyIC(xic);
+            xic = nullptr;
+        }
+    }
 
     void UltraCanvasLinuxWindow::DestroyCairoSurface() {
         if (cairoSurface) {
@@ -187,13 +258,13 @@ namespace UltraCanvas {
         renderContext.reset();
         DestroyCairoSurface();
         auto application = UltraCanvasApplication::GetInstance();
-        if (xWindow && application && application->GetDisplay()) {
+        if (xWindow && application && application->GetDisplay()) {        
+            DestroyXIC();
             std::cout << "UltraCanvas Linux: Destroying X11 window..." << std::endl;
             XDestroyWindow(application->GetDisplay(), xWindow);
             XSync(application->GetDisplay(), False);
             xWindow = 0;
         }
-
         std::cout << "UltraCanvas Linux: Window destroyed successfully" << std::endl;
     }
 

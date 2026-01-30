@@ -16,6 +16,7 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/Xatom.h>
+#include <X11/Xlocale.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>
@@ -39,6 +40,7 @@ namespace UltraCanvas {
     class UltraCanvasLinuxWindow : public UltraCanvasWindowBase {
     protected:
         Window xWindow;
+        XIC xic;                    // X Input Context for this window
 
         cairo_surface_t* cairoSurface;
         std::unique_ptr<RenderContextCairo> renderContext;
@@ -70,6 +72,9 @@ namespace UltraCanvas {
 
         // ===== LINUX-SPECIFIC METHODS =====
         Window GetXWindow() const { return xWindow; }
+        XIC GetXIC() const { return xic; }
+
+
         bool HandleXEvent(const XEvent& event);
 
     private:
@@ -82,6 +87,8 @@ namespace UltraCanvas {
 
         // ===== INTERNAL SETUP =====
         bool CreateXWindow();
+        bool CreateXIC();
+        void DestroyXIC();
         bool CreateCairoSurface();
         void DestroyCairoSurface();
         void UpdateCairoSurface(int w, int h);

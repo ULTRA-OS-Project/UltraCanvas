@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
-// Version: 1.3.0 - Complete implementation
-// Last Modified: 2025-07-16
+// Version: 1.4.0 - Added XIM support for UTF-8/international character input
+// Last Modified: 2025-01-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -12,6 +12,7 @@
 #include <sys/select.h>
 #include <PixelFX/PixelFX.h>
 #include <errno.h>
+#include <clocale>  // For setlocale
 
 namespace UltraCanvas {
     UltraCanvasLinuxApplication* UltraCanvasLinuxApplication::instance = nullptr;
@@ -25,10 +26,7 @@ namespace UltraCanvas {
             , colormap(0)
             , depth(0)
             , glxSupported(false)
-//            , focusedWindow(nullptr)
-//            , deltaTime(1.0/60.0)
-//            , targetFPS(60)
-//            , vsyncEnabled(false)
+            , xim(nullptr)           // XIM initialization
             , eventThreadRunning(false) {
         instance = this;
         std::cout << "UltraCanvas: Linux Application created" << std::endl;
@@ -58,8 +56,10 @@ namespace UltraCanvas {
             // STEP 3: Initialize window manager atoms
             InitializeAtoms();
 
-            // STEP 4: Set up timing
-//            lastFrameTime = std::chrono::steady_clock::now();
+            // STEP 4: Initialize X Input Method (XIM) for UTF-8 support
+            if (!InitializeXIM()) {
+                std::cerr << "UltraCanvas: Failed to initialize XIM (non-critical, falling back to basic input)" << std::endl;
+            }
 
             // STEP 5: Mark as initialized
             initialized = true;
@@ -76,6 +76,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxApplication::ShutdownNative() {
+        // Clean up XIM
+        ShutdownXIM();
+
         for (auto cursor : cursors) {
             XFreeCursor(display, cursor.second);
         }
@@ -92,6 +95,22 @@ namespace UltraCanvas {
         if (!XInitThreads()) {
             std::cerr << "UltraCanvas: XInitThreads() failed" << std::endl;
             return false;
+        }
+
+        // CRITICAL: Set locale for proper UTF-8 handling BEFORE opening display
+        // This is essential for XIM to work correctly with international characters
+        if (setlocale(LC_ALL, "") == nullptr) {
+            std::cerr << "UltraCanvas: Warning - setlocale() failed, UTF-8 input may not work" << std::endl;
+        }
+
+        // Check if X supports the current locale
+        if (!XSupportsLocale()) {
+            std::cerr << "UltraCanvas: Warning - X does not support current locale" << std::endl;
+        }
+
+        // Set X locale modifiers (required for XIM)
+        if (XSetLocaleModifiers("") == nullptr) {
+            std::cerr << "UltraCanvas: Warning - XSetLocaleModifiers() failed" << std::endl;
         }
 
         // Connect to X server
@@ -140,12 +159,43 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxApplication::InitializeAtoms() {
         wmDeleteWindow = XInternAtom(display, "WM_DELETE_WINDOW", False);
-//        wmProtocols = XInternAtom(display, "WM_PROTOCOLS", False);
-//        wmState = XInternAtom(display, "_NET_WM_STATE", False);
-//        wmStateFullscreen = XInternAtom(display, "_NET_WM_STATE_FULLSCREEN", False);
-//        wmStateMaximizedHorz = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
-//        wmStateMaximizedVert = XInternAtom(display, "_NET_WM_STATE_MAXIMIZED_VERT", False);
-//        wmStateMinimized = XInternAtom(display, "_NET_WM_STATE_HIDDEN", False);
+    }
+
+// ===== XIM (X INPUT METHOD) SUPPORT FOR UTF-8 =====
+    bool UltraCanvasLinuxApplication::InitializeXIM() {
+        if (!display) {
+            std::cerr << "UltraCanvas: Cannot initialize XIM - no display" << std::endl;
+            return false;
+        }
+
+        // Open the X Input Method
+        xim = XOpenIM(display, nullptr, nullptr, nullptr);
+        if (!xim) {
+            std::cerr << "UltraCanvas: XOpenIM() failed - trying with @im=none" << std::endl;
+            
+            // Try with explicit fallback
+            XSetLocaleModifiers("@im=none");
+            xim = XOpenIM(display, nullptr, nullptr, nullptr);
+            
+            if (!xim) {
+                std::cerr << "UltraCanvas: XOpenIM() failed completely" << std::endl;
+                return false;
+            }
+        }
+
+        std::cout << "UltraCanvas: XIM initialized successfully" << std::endl;
+        return true;
+    }
+
+    void UltraCanvasLinuxApplication::ShutdownXIM() {
+        // Note: XIC contexts should be destroyed by their respective windows
+        // before XIM is closed
+
+        if (xim) {
+            XCloseIM(xim);
+            xim = nullptr;
+            std::cout << "UltraCanvas: XIM closed" << std::endl;
+        }
     }
 
 // ===== MAIN LOOP =====
@@ -155,6 +205,11 @@ namespace UltraCanvas {
             while (XPending(display) > 0) {
                 XEvent xEvent;
                 XNextEvent(display, &xEvent);
+
+                // Let XIM filter events first (for input method processing)
+                if (xim && XFilterEvent(&xEvent, None)) {
+                    continue;  // Event was consumed by input method
+                }
 
                 ProcessXEvent(xEvent);
             }
@@ -253,9 +308,7 @@ namespace UltraCanvas {
     UCEvent UltraCanvasLinuxApplication::ConvertXEventToUCEvent(const XEvent& xEvent) {
         UCEvent event;
         event.timestamp = std::chrono::steady_clock::now();
-        //event.nativeEvent = reinterpret_cast<unsigned long>(&xEvent);
 
-        // ===== NEW: SET TARGET WINDOW INFORMATION =====
         // Store the X11 window handle that generated this event
         event.nativeWindowHandle = xEvent.xany.window;
 
@@ -271,13 +324,62 @@ namespace UltraCanvas {
                 event.nativeKeyCode = xEvent.xkey.keycode;
                 event.virtualKey = ConvertXKeyToUCKey(XLookupKeysym(const_cast<XKeyEvent*>(&xEvent.xkey), 0));
 
-                // Get character representation
-                char buffer[32] = {0};
+                // Get character representation with proper UTF-8 support
+                char buffer[64] = {0};
                 KeySym keysym;
-                int len = XLookupString(const_cast<XKeyEvent*>(&xEvent.xkey), buffer, sizeof(buffer), &keysym, nullptr);
+                Status status;
+                int len = 0;
+
+                // Get the XIC from the target window for proper UTF-8 lookup
+                XIC xic = nullptr;
+                if (targetWindow) {
+                    xic = targetWindow->GetXIC();
+                }
+
+                if (xic && xEvent.type == KeyPress) {
+                    // Use Xutf8LookupString for proper UTF-8/international character support
+                    len = Xutf8LookupString(xic, 
+                                            const_cast<XKeyEvent*>(&xEvent.xkey),
+                                            buffer, sizeof(buffer) - 1,
+                                            &keysym, &status);
+                    
+                    if (status == XBufferOverflow) {
+                        // Buffer too small - rare for single characters, but handle it
+                        std::cerr << "UltraCanvas: Xutf8LookupString buffer overflow" << std::endl;
+                        len = 0;
+                    } else if (status == XLookupNone) {
+                        len = 0;
+                    } else if (status == XLookupKeySym) {
+                        // Only keysym returned, no character
+                        len = 0;
+                    }
+                    // XLookupChars or XLookupBoth - we have characters
+                }
+
+                // Fallback to XLookupString if XIM is not available or for KeyRelease
+                if (len == 0 && xEvent.type == KeyPress) {
+                    len = XLookupString(const_cast<XKeyEvent*>(&xEvent.xkey), 
+                                       buffer, sizeof(buffer) - 1, 
+                                       &keysym, nullptr);
+                }
+
                 if (len > 0) {
-                    event.character = buffer[0];
+                    buffer[len] = '\0';  // Ensure null termination
+                    
+                    // For single-byte ASCII, set character field
+                    if (len == 1 && (unsigned char)buffer[0] < 128) {
+                        event.character = buffer[0];
+                    } else {
+                        // For multi-byte UTF-8, character field is less meaningful
+                        // but we can set it to the first byte or 0
+                        event.character = 0;  // Indicate multi-byte sequence
+                    }
+                    
+                    // Always set the full UTF-8 text
                     event.text = std::string(buffer, len);
+                } else {
+                    event.character = 0;
+                    event.text.clear();
                 }
 
                 // Modifier keys
@@ -420,12 +522,28 @@ namespace UltraCanvas {
             case FocusIn: {
                 std::cout << "focus xwindow=" << xEvent.xany.window << std::endl;
                 event.type = UCEventType::WindowFocus;
+                
+                // Set XIC focus when window gains focus
+                if (targetWindow) {
+                    XIC xic = targetWindow->GetXIC();
+                    if (xic) {
+                        XSetICFocus(xic);
+                    }
+                }
                 break;
             }
 
             case FocusOut: {
                 std::cout << "blur xwindow=" << xEvent.xany.window << std::endl;
                 event.type = UCEventType::WindowBlur;
+                
+                // Unset XIC focus when window loses focus
+                if (targetWindow) {
+                    XIC xic = targetWindow->GetXIC();
+                    if (xic) {
+                        XUnsetICFocus(xic);
+                    }
+                }
                 break;
             }
 
@@ -582,6 +700,12 @@ namespace UltraCanvas {
                 if (XPending(display) > 0) {
                     XEvent xEvent;
                     XNextEvent(display, &xEvent);
+                    
+                    // Let XIM filter events first
+                    if (xim && XFilterEvent(&xEvent, None)) {
+                        continue;
+                    }
+                    
                     ProcessXEvent(xEvent);
                 } else {
                     // Wait for events with timeout
@@ -608,34 +732,6 @@ namespace UltraCanvas {
 
         std::cout << "UltraCanvas: Event thread ended" << std::endl;
     }
-
-// ===== TIMING AND FRAME RATE =====
-//    void UltraCanvasLinuxApplication::UpdateDeltaTime() {
-//        auto currentTime = std::chrono::steady_clock::now();
-//
-//        if (lastFrameTime.time_since_epoch().count() == 0) {
-//            deltaTime = 1.0 / 60.0;
-//        } else {
-//            auto frameDuration = currentTime - lastFrameTime;
-//            deltaTime = std::chrono::duration<double>(frameDuration).count();
-//        }
-//
-//        deltaTime = std::min(deltaTime, 1.0 / 30.0);
-//        lastFrameTime = currentTime;
-//    }
-//
-//    void UltraCanvasLinuxApplication::LimitFrameRate() {
-//        if (targetFPS <= 0) return;
-//
-//        auto targetFrameTime = std::chrono::microseconds(1000000 / targetFPS);
-//        auto currentTime = std::chrono::steady_clock::now();
-//        auto actualFrameTime = currentTime - lastFrameTime;
-//
-//        if (actualFrameTime < targetFrameTime) {
-//            auto sleepTime = targetFrameTime - actualFrameTime;
-//            std::this_thread::sleep_for(sleepTime);
-//        }
-//    }
 
 // ===== CLIPBOARD SUPPORT =====
     std::string UltraCanvasLinuxApplication::GetClipboardText() {

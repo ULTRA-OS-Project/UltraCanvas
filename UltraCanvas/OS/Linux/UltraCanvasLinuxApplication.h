@@ -19,6 +19,7 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/Xatom.h>
+#include <X11/Xlocale.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>
@@ -72,6 +73,9 @@ namespace UltraCanvas {
 
         bool eventThreadRunning;
         std::thread eventThread;
+ 
+        // ===== X INPUT METHOD (XIM) FOR UTF-8 SUPPORT =====
+        XIM xim;                    // X Input Method handle
 
         // ===== TIMING AND FRAME RATE =====
 //        std::chrono::steady_clock::time_point lastFrameTime;
@@ -160,6 +164,8 @@ namespace UltraCanvas {
         bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor cur) override;
         bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor cur, const char* filename, int hotspotX, int hotspotY) override;
 
+        XIM GetXIM() const { return xim; }
+
     protected:
         // ===== INHERITED FROM BASE APPLICATION =====
         bool InitializeNative() override;
@@ -175,6 +181,8 @@ namespace UltraCanvas {
         bool InitializeX11();
         bool InitializeGLX();
         void InitializeAtoms();
+        bool InitializeXIM();
+        void ShutdownXIM();
 
         // ===== EVENT PROCESSING INTERNALS =====
         void EventThreadFunction();
