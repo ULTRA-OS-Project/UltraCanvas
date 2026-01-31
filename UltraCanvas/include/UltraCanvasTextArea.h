@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
-// Advanced text area component with syntax highlighting
-// Version: 2.1.0
-// Last Modified: 2026-01-27
+// Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.0.0
+// Last Modified: 2026-01-30
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -10,6 +10,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasString.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -89,7 +90,7 @@ namespace UltraCanvas {
         } tokenStyles;
     };
 
-// Text area control with integrated syntax highlighting
+// Text area control with integrated syntax highlighting and full UTF-8 support
     class UltraCanvasTextArea : public UltraCanvasUIElement {
     public:
         // Constructor and destructor
@@ -105,19 +106,25 @@ namespace UltraCanvas {
 
         void Invalidate();
 
-        // Text manipulation
-        void SetText(const std::string& text);
+        // Text manipulation - now UTF-8 aware
+        //void SetText(const std::string& text);
+        void SetText(const UCString& text);
         std::string GetText() const;
+        UCString GetTextUC() const;
         void InsertText(const std::string& text);
-        void InsertCharacter(char ch);
+        void InsertText(const UCString& text);
+        void InsertCodepoint(char32_t codepoint);
         void InsertNewLine();
         void InsertTab();
-        void DeleteCharacterBackward();
-        void DeleteCharacterForward();
+        void DeleteCharacterBackward();  // Delete one grapheme cluster backward
+        void DeleteCharacterForward();   // Delete one grapheme cluster forward
         void DeleteSelection();
         void Clear() { SetText(""); }
 
-        // Cursor movement
+        // Legacy single-byte insert (for ASCII only)
+        void InsertCharacter(char ch);
+
+        // Cursor movement - now grapheme-aware
         void MoveCursorLeft(bool selecting = false);
         void MoveCursorRight(bool selecting = false);
         void MoveCursorUp(bool selecting = false);
@@ -128,17 +135,18 @@ namespace UltraCanvas {
         void MoveCursorToEnd(bool selecting = false);
         void MoveCursorPageDown(bool selecting = false);
         void MoveCursorPageUp(bool selecting = false);
-        void SetCursorPosition(int position);
-        int GetCursorPosition() const { return cursorPosition; }
+        void SetCursorPosition(int graphemePosition);
+        int GetCursorPosition() const { return cursorGraphemePosition; }
 
-        // Selection
+        // Selection - grapheme-based positions
         void SelectAll();
         void SelectLine(int lineIndex);
         void SelectWord();
-        void SetSelection(int start, int end);
+        void SetSelection(int startGrapheme, int endGrapheme);
         void ClearSelection();
         bool HasSelection() const;
         std::string GetSelectedText() const;
+        UCString GetSelectedTextUC() const;
 
         // Clipboard operations
         void CopySelection();
@@ -157,26 +165,22 @@ namespace UltraCanvas {
 
         // Theme application
         void ApplyDarkTheme();
-//        void ApplyLightTheme();
-//        void ApplySolarizedTheme();
-//        void ApplyMonokaiTheme();
         void ApplyCustomTheme(const TextAreaStyle& customStyle);
 
         // Quick style applications
         void ApplyCodeStyle(const std::string& language);
         void ApplyDarkCodeStyle(const std::string& language);
         void ApplyPlainTextStyle();
-//        void ApplyMarkdownStyle();
-//        void ApplyJSONStyle();
-//        void ApplyXMLStyle();
 
-        // Line operations
+        // Line operations - line indices remain integer-based
         void GoToLine(int lineNumber);
         int GetCurrentLine() const;
-        int GetCurrentColumn() const;
+        int GetCurrentColumn() const;  // Returns grapheme column
         int GetLineCount() const;
         std::string GetLine(int lineIndex) const;
+        UCString GetLineUC(int lineIndex) const;
         void SetLine(int lineIndex, const std::string& text);
+        void SetLine(int lineIndex, const UCString& text);
 
         // Search and replace
         void FindText(const std::string& searchText, bool caseSensitive = false);
@@ -208,7 +212,7 @@ namespace UltraCanvas {
         void SetTabSize(int size) { tabSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         int GetTabSize() const { return tabSize; }
 
-        std::pair<int, int> GetLineColumnFromPosition(int position) const;
+        std::pair<int, int> GetLineColumnFromPosition(int graphemePosition) const;
 
         // Style access
         void SetStyle(const TextAreaStyle& newStyle) { style = newStyle; }
@@ -250,13 +254,6 @@ namespace UltraCanvas {
         void ShowAutoComplete(const std::vector<std::string>& suggestions);
         void HideAutoComplete();
         void AcceptAutoComplete();
-
-//        // Code folding support
-//        void FoldLine(int lineIndex);
-//        void UnfoldLine(int lineIndex);
-//        void FoldAll();
-//        void UnfoldAll();
-//        bool IsLineFolded(int lineIndex) const;
 
         // Bracket matching
         void HighlightMatchingBrackets();
@@ -312,14 +309,21 @@ namespace UltraCanvas {
         bool HandleKeyDown(const UCEvent& event);
 
         int MeasureTextWidth(const std::string& txt) const;
-        // Helper methods
-        int GetPositionFromLineColumn(int line, int column) const;
+        int MeasureTextWidth(const UCString& txt) const;
+        
+        // Helper methods - updated for UTF-8 support
+        int GetPositionFromLineColumn(int line, int graphemeColumn) const;
         std::pair<int, int> GetLineColumnFromPoint(int x, int y) const;
         void CalculateVisibleArea();
         void RebuildText();
         int GetMaxLineLength() const;
         int GetVisibleCharactersPerLine() const;
         const TokenStyle& GetStyleForTokenType(TokenType type) const;
+
+        // UTF-8 conversion helpers
+        size_t GraphemeToByteOffset(int lineIndex, int graphemeColumn) const;
+        int ByteToGraphemeColumn(int lineIndex, size_t byteOffset) const;
+        int GetLineGraphemeCount(int lineIndex) const;
 
         // Initialization
         void ApplyDefaultStyle();
@@ -331,14 +335,14 @@ namespace UltraCanvas {
         void SaveState();
 
     private:
-        // Text data
-        std::string text;
-        std::vector<std::string> lines;
+        // Text data - using UCString for proper UTF-8 handling
+        UCString textContent;                  // Full text content as UCString
+        std::vector<UCString> lines;           // Lines as UCString for grapheme-aware operations
 
-        // Cursor and selection
-        int cursorPosition;
-        int selectionStart;
-        int selectionEnd;
+        // Cursor and selection - grapheme-based positions
+        int cursorGraphemePosition;            // Cursor position in graphemes from start
+        int selectionStartGrapheme;            // Selection start in graphemes (-1 if no selection)
+        int selectionEndGrapheme;              // Selection end in graphemes (-1 if no selection)
         int computedLineHeight = 12;
 
         // Scrolling
@@ -377,15 +381,15 @@ namespace UltraCanvas {
         int lastSearchPosition;
         bool lastSearchCaseSensitive;
         
-        // Search highlights (start, end positions)
+        // Search highlights (grapheme positions: start, end)
         std::vector<std::pair<int, int>> searchHighlights;
 
         // Undo/Redo stacks
         struct TextState {
-            std::string text;
-            int cursorPosition;
-            int selectionStart;
-            int selectionEnd;
+            UCString text;
+            int cursorGraphemePosition;
+            int selectionStartGrapheme;
+            int selectionEndGrapheme;
         };
         std::vector<TextState> undoStack;
         std::vector<TextState> redoStack;
@@ -402,6 +406,11 @@ namespace UltraCanvas {
             std::string message;
         };
         std::vector<Marker> markers;
+        
+        // Cache for total grapheme count
+        mutable int cachedTotalGraphemes = -1;
+        void InvalidateGraphemeCache() { cachedTotalGraphemes = -1; }
+        int GetTotalGraphemeCount() const;
     };
 
 // Factory functions for quick creation
