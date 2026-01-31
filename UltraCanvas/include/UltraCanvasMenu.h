@@ -304,7 +304,7 @@ namespace UltraCanvas {
 
     private:
         // ===== CALCULATION METHODS =====
-        void CalculateAndUpdateSize();
+        void CalculateAndUpdateSize(IRenderContext* ctx);
 
         Rect2Di GetItemBounds(int index) const;
 

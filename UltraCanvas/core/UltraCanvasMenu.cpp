@@ -71,7 +71,7 @@ namespace UltraCanvas {
         if (!IsVisible()) return;
         if (menuType == MenuType::Menubar) {
             if (needCalculateSize) {
-                CalculateAndUpdateSize();
+                CalculateAndUpdateSize(ctx);
             }
 
             // Render background
@@ -98,7 +98,7 @@ namespace UltraCanvas {
         if (!IsVisible() || currentState == MenuState::Hidden) return;
 
         if (needCalculateSize) {
-            CalculateAndUpdateSize();
+            CalculateAndUpdateSize(ctx);
         }
 
         // Apply animation if active
@@ -354,7 +354,10 @@ namespace UltraCanvas {
                y >= GetY() && y < GetY() + GetHeight();
     }
 
-    void UltraCanvasMenu::CalculateAndUpdateSize() {
+    void UltraCanvasMenu::CalculateAndUpdateSize(IRenderContext* ctx) {
+        ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
+        ctx->SetFontSize(style.fontSize);
+
         needCalculateSize = false;
         if (items.empty()) {
             SetWidth(100);
@@ -363,33 +366,71 @@ namespace UltraCanvas {
         }
 
         if (orientation == MenuOrientation::Horizontal) {
-            // FIXED: Horizontal layout calculation
+            // Horizontal layout calculation (unchanged)
             int totalWidth = 0;
             int maxHeight = style.itemHeight;
 
             for (const auto& item : items) {
                 if (!item.visible) continue;
                 totalWidth += CalculateItemWidth(item) + style.paddingLeft + style.paddingRight;
-//                if (item.type != MenuItemType::Separator) {
-//                    totalWidth += style.iconSpacing; // Add spacing between items
-//                }
             }
 
-            // Set dimensions for horizontal menu
             SetWidth(totalWidth);
             SetHeight(maxHeight);
 
         } else {
-            // Vertical layout calculation
-            int maxWidth = 0;
+            // ============================================================
+            // VERTICAL LAYOUT - Column-based width calculation
+            // ============================================================
+            // Menu item layout (left to right):
+            // | paddingLeft | [checkbox] | [icon] | label | gap | [shortcut] | [arrow] | paddingRight |
+            // ============================================================
+            
+            auto ctx = GetRenderContext();
+            
+            // Column width accumulators - find MAX for each column across ALL items
+            bool hasAnyCheckboxOrRadio = false;
+            bool hasAnyIcon = false;
+            bool hasAnyShortcut = false;
+            bool hasAnySubmenu = false;
+            
+            int maxLabelWidth = 0;
+            int maxShortcutWidth = 0;
             int totalHeight = 0;
 
+            // First pass: scan all items to determine column requirements
             for (const auto& item : items) {
                 if (!item.visible) continue;
 
-                int itemWidth = CalculateItemWidth(item);
-                maxWidth = std::max(maxWidth, itemWidth);
+                // Check for checkbox/radio column
+                if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
+                    hasAnyCheckboxOrRadio = true;
+                }
 
+                // Check for icon column
+                if (!item.iconPath.empty()) {
+                    hasAnyIcon = true;
+                }
+
+                // Find maximum label width
+                if (!item.label.empty()) {
+                    int labelWidth = ctx->GetTextLineWidth(item.label.c_str());
+                    maxLabelWidth = std::max(maxLabelWidth, labelWidth);
+                }
+
+                // Find maximum shortcut width
+                if (!item.shortcut.empty()) {
+                    hasAnyShortcut = true;
+                    int shortcutWidth = ctx->GetTextLineWidth(item.shortcut.c_str());
+                    maxShortcutWidth = std::max(maxShortcutWidth, shortcutWidth);
+                }
+
+                // Check for submenu arrow column
+                if (!item.subItems.empty()) {
+                    hasAnySubmenu = true;
+                }
+
+                // Calculate height
                 if (item.type == MenuItemType::Separator) {
                     totalHeight += style.separatorHeight;
                 } else {
@@ -397,7 +438,45 @@ namespace UltraCanvas {
                 }
             }
 
-            SetWidth(maxWidth + style.paddingLeft + style.paddingRight);
+            // ============================================================
+            // Calculate total width from columns
+            // ============================================================
+            int totalWidth = 0;
+            
+            // Left padding
+            totalWidth += style.paddingLeft;
+            
+            // Checkbox/Radio column (reserve space if ANY item has it)
+            if (hasAnyCheckboxOrRadio) {
+                totalWidth += style.iconSize + style.iconSpacing;
+            }
+            
+            // Icon column (reserve space if ANY item has icon)
+            if (hasAnyIcon) {
+                totalWidth += style.iconSize + style.iconSpacing;
+            }
+            
+            // Label column (maximum label width)
+            totalWidth += maxLabelWidth;
+            
+            // Gap + Shortcut column (only if ANY item has shortcut)
+            if (hasAnyShortcut) {
+                // Calculate 3-character minimum gap using 'M' width (widest character)
+                int threeCharGap = ctx->GetTextLineWidth("MMM");
+                int effectiveGap = std::max(style.shortcutSpacing, threeCharGap);
+                
+                totalWidth += effectiveGap + maxShortcutWidth;
+            }
+            
+            // Submenu arrow column (reserve space if ANY item has submenu)
+            if (hasAnySubmenu) {
+                totalWidth += 20;  // Arrow space
+            }
+            
+            // Right padding
+            totalWidth += style.paddingRight;
+
+            SetWidth(totalWidth);
             SetHeight(totalHeight);
         }
     }
@@ -418,6 +497,9 @@ namespace UltraCanvas {
             return;
         }
 
+        ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
+        ctx->SetFontSize(style.fontSize);
+
         Point2Di textSize = ctx->GetTextDimension(item.label);
         int fontHeight = textSize.y;
         int currentX = itemBounds.x + style.paddingLeft;
@@ -437,8 +519,6 @@ namespace UltraCanvas {
         }
 
         // Render text
-        ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-        ctx->SetFontSize(style.fontSize);
         if (!item.label.empty()) {
             Color textColor = item.enabled ?
                               (index == hoveredIndex ? style.hoverTextColor : style.textColor) :
