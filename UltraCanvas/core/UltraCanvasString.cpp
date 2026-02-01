@@ -1,346 +1,290 @@
 // UltraCanvasString.cpp
 // UTF-8 aware string class implementation
-// Version: 1.0.0
-// Last Modified: 2026-01-30
+// Powered by libgrapheme for full Unicode 17.0 compliance
+// Version: 2.0.0
+// Last Modified: 2026-02-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasString.h"
 #include <algorithm>
 #include <cctype>
 #include <stdexcept>
+#include <cstring>
+
+extern "C" {
+    #include <grapheme.h>
+}
 
 namespace UltraCanvas {
 
+// ===== UNICODE CHARACTER CLASSIFICATION =====
+// Compact range tables for codepoint classification
+// libgrapheme handles segmentation/case; these cover General Category queries
+
+namespace Unicode {
+
+    bool IsAlphabetic(uint32_t cp) {
+        // ASCII fast path
+        if (cp < 0x80) {
+            return (cp >= 'A' && cp <= 'Z') || (cp >= 'a' && cp <= 'z');
+        }
+        // Latin Extended
+        if ((cp >= 0x00C0 && cp <= 0x00D6) || (cp >= 0x00D8 && cp <= 0x00F6) ||
+            (cp >= 0x00F8 && cp <= 0x02FF)) return true;
+        // Latin Extended Additional / IPA / Spacing Modifiers
+        if (cp >= 0x0370 && cp <= 0x0373) return true;
+        if (cp >= 0x0376 && cp <= 0x0377) return true;
+        // Greek and Coptic
+        if ((cp >= 0x0388 && cp <= 0x038A) || cp == 0x038C ||
+            (cp >= 0x038E && cp <= 0x03A1) || (cp >= 0x03A3 && cp <= 0x03FF)) return true;
+        // Cyrillic
+        if (cp >= 0x0400 && cp <= 0x04FF) return true;
+        if (cp >= 0x0500 && cp <= 0x052F) return true;  // Cyrillic Supplement
+        // Armenian
+        if ((cp >= 0x0531 && cp <= 0x0556) || (cp >= 0x0561 && cp <= 0x0587)) return true;
+        // Hebrew letters
+        if (cp >= 0x05D0 && cp <= 0x05EA) return true;
+        if (cp >= 0x05F0 && cp <= 0x05F2) return true;
+        // Arabic letters
+        if ((cp >= 0x0620 && cp <= 0x064A) || (cp >= 0x066E && cp <= 0x066F) ||
+            (cp >= 0x0671 && cp <= 0x06D3) || cp == 0x06D5 ||
+            (cp >= 0x06E5 && cp <= 0x06E6) || (cp >= 0x06EE && cp <= 0x06EF) ||
+            (cp >= 0x06FA && cp <= 0x06FC) || cp == 0x06FF) return true;
+        // Devanagari
+        if ((cp >= 0x0904 && cp <= 0x0939) || cp == 0x093D ||
+            (cp >= 0x0958 && cp <= 0x0961) || (cp >= 0x0972 && cp <= 0x097F)) return true;
+        // Bengali
+        if ((cp >= 0x0985 && cp <= 0x098C) || (cp >= 0x098F && cp <= 0x0990) ||
+            (cp >= 0x0993 && cp <= 0x09A8) || (cp >= 0x09AA && cp <= 0x09B0) ||
+            cp == 0x09B2 || (cp >= 0x09B6 && cp <= 0x09B9)) return true;
+        // Thai
+        if (cp >= 0x0E01 && cp <= 0x0E3A) return true;
+        if (cp >= 0x0E40 && cp <= 0x0E4E) return true;
+        // Georgian
+        if ((cp >= 0x10A0 && cp <= 0x10C5) || cp == 0x10C7 || cp == 0x10CD ||
+            (cp >= 0x10D0 && cp <= 0x10FA) || (cp >= 0x10FC && cp <= 0x10FF)) return true;
+        // Hangul Jamo
+        if (cp >= 0x1100 && cp <= 0x11FF) return true;
+        // Latin Extended Additional
+        if (cp >= 0x1E00 && cp <= 0x1EFF) return true;
+        // Greek Extended
+        if (cp >= 0x1F00 && cp <= 0x1FFF) return true;
+        // Letterlike Symbols
+        if (cp >= 0x2100 && cp <= 0x214F) return true;
+        // CJK Unified Ideographs
+        if (cp >= 0x4E00 && cp <= 0x9FFF) return true;
+        // Hangul Syllables
+        if (cp >= 0xAC00 && cp <= 0xD7A3) return true;
+        // CJK Compatibility Ideographs
+        if (cp >= 0xF900 && cp <= 0xFAFF) return true;
+        // Hiragana
+        if (cp >= 0x3040 && cp <= 0x309F) return true;
+        // Katakana
+        if (cp >= 0x30A0 && cp <= 0x30FF) return true;
+        // Bopomofo
+        if (cp >= 0x3100 && cp <= 0x312F) return true;
+        // CJK Extension A
+        if (cp >= 0x3400 && cp <= 0x4DBF) return true;
+        // CJK Extension B
+        if (cp >= 0x20000 && cp <= 0x2A6DF) return true;
+
+        return false;
+    }
+
+    bool IsNumeric(uint32_t cp) {
+        // ASCII fast path
+        if (cp >= '0' && cp <= '9') return true;
+        // Arabic-Indic digits
+        if (cp >= 0x0660 && cp <= 0x0669) return true;
+        // Extended Arabic-Indic digits
+        if (cp >= 0x06F0 && cp <= 0x06F9) return true;
+        // Devanagari digits
+        if (cp >= 0x0966 && cp <= 0x096F) return true;
+        // Bengali digits
+        if (cp >= 0x09E6 && cp <= 0x09EF) return true;
+        // Gurmukhi digits
+        if (cp >= 0x0A66 && cp <= 0x0A6F) return true;
+        // Gujarati digits
+        if (cp >= 0x0AE6 && cp <= 0x0AEF) return true;
+        // Oriya digits
+        if (cp >= 0x0B66 && cp <= 0x0B6F) return true;
+        // Tamil digits
+        if (cp >= 0x0BE6 && cp <= 0x0BEF) return true;
+        // Telugu digits
+        if (cp >= 0x0C66 && cp <= 0x0C6F) return true;
+        // Kannada digits
+        if (cp >= 0x0CE6 && cp <= 0x0CEF) return true;
+        // Malayalam digits
+        if (cp >= 0x0D66 && cp <= 0x0D6F) return true;
+        // Thai digits
+        if (cp >= 0x0E50 && cp <= 0x0E59) return true;
+        // Lao digits
+        if (cp >= 0x0ED0 && cp <= 0x0ED9) return true;
+        // Tibetan digits
+        if (cp >= 0x0F20 && cp <= 0x0F29) return true;
+        // Fullwidth digits
+        if (cp >= 0xFF10 && cp <= 0xFF19) return true;
+
+        return false;
+    }
+
+    bool IsAlphanumeric(uint32_t cp) {
+        return IsAlphabetic(cp) || IsNumeric(cp);
+    }
+
+    bool IsWhitespace(uint32_t cp) {
+        // ASCII whitespace
+        if (cp == ' ' || cp == '\t' || cp == '\n' || cp == '\r' ||
+            cp == '\f' || cp == '\v') return true;
+        // Unicode whitespace
+        if (cp == 0x00A0) return true;   // NBSP
+        if (cp >= 0x2000 && cp <= 0x200A) return true;  // En/Em spaces
+        if (cp == 0x200B) return true;   // ZWSP
+        if (cp == 0x2028) return true;   // Line Separator
+        if (cp == 0x2029) return true;   // Paragraph Separator
+        if (cp == 0x202F) return true;   // Narrow NBSP
+        if (cp == 0x205F) return true;   // Medium Mathematical Space
+        if (cp == 0x3000) return true;   // Ideographic Space
+        if (cp == 0xFEFF) return true;   // BOM / ZWNBSP
+        return false;
+    }
+
+    bool IsPunctuation(uint32_t cp) {
+        // ASCII punctuation
+        if ((cp >= 0x21 && cp <= 0x2F) || (cp >= 0x3A && cp <= 0x40) ||
+            (cp >= 0x5B && cp <= 0x60) || (cp >= 0x7B && cp <= 0x7E)) return true;
+        // Latin-1 Supplement punctuation
+        if (cp == 0x00A1 || cp == 0x00A7 || cp == 0x00AB || cp == 0x00B6 ||
+            cp == 0x00B7 || cp == 0x00BB || cp == 0x00BF) return true;
+        // General Punctuation
+        if (cp >= 0x2010 && cp <= 0x2027) return true;
+        if (cp >= 0x2030 && cp <= 0x205E) return true;
+        // CJK punctuation
+        if (cp >= 0x3001 && cp <= 0x3003) return true;
+        if (cp >= 0x3008 && cp <= 0x3011) return true;
+        if (cp >= 0x3014 && cp <= 0x301F) return true;
+        if (cp == 0x3030) return true;
+        // Fullwidth punctuation
+        if (cp >= 0xFF01 && cp <= 0xFF0F) return true;
+        if (cp >= 0xFF1A && cp <= 0xFF20) return true;
+        if (cp >= 0xFF3B && cp <= 0xFF40) return true;
+        if (cp >= 0xFF5B && cp <= 0xFF65) return true;
+        // Supplemental punctuation
+        if (cp >= 0x2E00 && cp <= 0x2E4F) return true;
+
+        return false;
+    }
+
+    bool IsUppercase(uint32_t cp) {
+        // ASCII fast path
+        if (cp >= 'A' && cp <= 'Z') return true;
+        // Latin Extended uppercase ranges
+        if ((cp >= 0x00C0 && cp <= 0x00D6) || (cp >= 0x00D8 && cp <= 0x00DE)) return true;
+        // Latin Extended-A (even codepoints are often uppercase)
+        if (cp >= 0x0100 && cp <= 0x012E && (cp % 2 == 0)) return true;
+        if (cp >= 0x0130 && cp <= 0x0136 && (cp % 2 == 0)) return true;
+        if (cp >= 0x0139 && cp <= 0x0147 && (cp % 2 == 1)) return true;
+        if (cp >= 0x014A && cp <= 0x0176 && (cp % 2 == 0)) return true;
+        if (cp == 0x0178 || cp == 0x0179 || cp == 0x017B || cp == 0x017D) return true;
+        // Greek uppercase
+        if ((cp >= 0x0388 && cp <= 0x038A) || cp == 0x038C ||
+            (cp >= 0x038E && cp <= 0x038F) || (cp >= 0x0391 && cp <= 0x03A1) ||
+            (cp >= 0x03A3 && cp <= 0x03AB)) return true;
+        // Cyrillic uppercase
+        if (cp >= 0x0410 && cp <= 0x042F) return true;
+        if (cp >= 0x0400 && cp <= 0x040F) return true;  // Cyrillic supplement uppercase
+        // Armenian uppercase
+        if (cp >= 0x0531 && cp <= 0x0556) return true;
+        // Georgian Mkhedruli uppercase (Mtavruli)
+        if (cp >= 0x1C90 && cp <= 0x1CBA) return true;
+        // Latin Extended Additional uppercase
+        if (cp >= 0x1E00 && cp <= 0x1EFF && (cp % 2 == 0)) return true;
+        // Greek Extended uppercase
+        if ((cp >= 0x1F08 && cp <= 0x1F0F) || (cp >= 0x1F18 && cp <= 0x1F1D) ||
+            (cp >= 0x1F28 && cp <= 0x1F2F) || (cp >= 0x1F38 && cp <= 0x1F3F) ||
+            (cp >= 0x1F48 && cp <= 0x1F4D) || (cp >= 0x1F59 && cp <= 0x1F5F) ||
+            (cp >= 0x1F68 && cp <= 0x1F6F) || (cp >= 0x1FB8 && cp <= 0x1FBB) ||
+            (cp >= 0x1FC8 && cp <= 0x1FCB) || (cp >= 0x1FD8 && cp <= 0x1FDB) ||
+            (cp >= 0x1FE8 && cp <= 0x1FEC) || (cp >= 0x1FF8 && cp <= 0x1FFB)) return true;
+        // Fullwidth Latin uppercase
+        if (cp >= 0xFF21 && cp <= 0xFF3A) return true;
+
+        return false;
+    }
+
+    bool IsLowercase(uint32_t cp) {
+        // ASCII fast path
+        if (cp >= 'a' && cp <= 'z') return true;
+        // Latin-1 Supplement lowercase
+        if ((cp >= 0x00DF && cp <= 0x00F6) || (cp >= 0x00F8 && cp <= 0x00FF)) return true;
+        // Latin Extended-A (odd codepoints are often lowercase)
+        if (cp >= 0x0101 && cp <= 0x012F && (cp % 2 == 1)) return true;
+        if (cp >= 0x0131 && cp <= 0x0137 && (cp % 2 == 1)) return true;
+        if (cp >= 0x013A && cp <= 0x0148 && (cp % 2 == 0)) return true;
+        if (cp >= 0x014B && cp <= 0x0177 && (cp % 2 == 1)) return true;
+        if (cp == 0x017A || cp == 0x017C || cp == 0x017E) return true;
+        // Greek lowercase
+        if ((cp >= 0x03AC && cp <= 0x03CE) || (cp >= 0x03D0 && cp <= 0x03D7) ||
+            (cp >= 0x03D9 && cp <= 0x03EF && (cp % 2 == 1))) return true;
+        // Cyrillic lowercase
+        if (cp >= 0x0430 && cp <= 0x044F) return true;
+        if (cp >= 0x0450 && cp <= 0x045F) return true;  // Cyrillic supplement lowercase
+        // Armenian lowercase
+        if (cp >= 0x0561 && cp <= 0x0587) return true;
+        // Georgian lowercase (Mkhedruli)
+        if (cp >= 0x10D0 && cp <= 0x10FA) return true;
+        // Latin Extended Additional lowercase
+        if (cp >= 0x1E01 && cp <= 0x1EFF && (cp % 2 == 1)) return true;
+        // Fullwidth Latin lowercase
+        if (cp >= 0xFF41 && cp <= 0xFF5A) return true;
+
+        return false;
+    }
+
+} // namespace Unicode
+
 // ===== GRAPHEME CLUSTER IMPLEMENTATION =====
-// Simplified UAX #29 implementation for grapheme cluster boundaries
+// Full Unicode compliance via libgrapheme
 
 namespace Grapheme {
 
-    // Codepoint ranges for break properties (simplified)
-    BreakProperty GetBreakProperty(uint32_t cp) {
-        // CR/LF
-        if (cp == 0x000D) return BreakProperty::CR;
-        if (cp == 0x000A) return BreakProperty::LF;
-
-        // Control characters
-        if (cp <= 0x001F || (cp >= 0x007F && cp <= 0x009F)) return BreakProperty::Control;
-        if (cp == 0x200B || cp == 0x200C) return BreakProperty::Control; // ZWSP, ZWNJ
-
-        // ZWJ (Zero Width Joiner) - critical for emoji sequences
-        if (cp == 0x200D) return BreakProperty::ZWJ;
-
-        // Regional Indicators (flags)
-        if (cp >= 0x1F1E6 && cp <= 0x1F1FF) return BreakProperty::Regional_Indicator;
-
-        // Extend characters (combining marks, variation selectors, etc.)
-        // General Category: Mn, Mc, Me
-        if ((cp >= 0x0300 && cp <= 0x036F) ||   // Combining Diacritical Marks
-            (cp >= 0x0483 && cp <= 0x0489) ||   // Cyrillic combining marks
-            (cp >= 0x0591 && cp <= 0x05BD) ||   // Hebrew combining marks
-            (cp >= 0x05BF && cp <= 0x05BF) ||
-            (cp >= 0x05C1 && cp <= 0x05C2) ||
-            (cp >= 0x05C4 && cp <= 0x05C5) ||
-            (cp >= 0x05C7 && cp <= 0x05C7) ||
-            (cp >= 0x0610 && cp <= 0x061A) ||   // Arabic combining marks
-            (cp >= 0x064B && cp <= 0x065F) ||
-            (cp >= 0x0670 && cp <= 0x0670) ||
-            (cp >= 0x06D6 && cp <= 0x06DC) ||
-            (cp >= 0x06DF && cp <= 0x06E4) ||
-            (cp >= 0x06E7 && cp <= 0x06E8) ||
-            (cp >= 0x06EA && cp <= 0x06ED) ||
-            (cp >= 0x0711 && cp <= 0x0711) ||
-            (cp >= 0x0730 && cp <= 0x074A) ||
-            (cp >= 0x07A6 && cp <= 0x07B0) ||
-            (cp >= 0x07EB && cp <= 0x07F3) ||
-            (cp >= 0x0816 && cp <= 0x0819) ||
-            (cp >= 0x081B && cp <= 0x0823) ||
-            (cp >= 0x0825 && cp <= 0x0827) ||
-            (cp >= 0x0829 && cp <= 0x082D) ||
-            (cp >= 0x0859 && cp <= 0x085B) ||
-            (cp >= 0x08D4 && cp <= 0x08E1) ||
-            (cp >= 0x08E3 && cp <= 0x0903) ||   // Devanagari combining marks
-            (cp >= 0x093A && cp <= 0x093C) ||
-            (cp >= 0x093E && cp <= 0x094F) ||
-            (cp >= 0x0951 && cp <= 0x0957) ||
-            (cp >= 0x0962 && cp <= 0x0963) ||
-            (cp >= 0x0981 && cp <= 0x0983) ||   // Bengali
-            (cp >= 0x09BC && cp <= 0x09BC) ||
-            (cp >= 0x09BE && cp <= 0x09C4) ||
-            (cp >= 0x09C7 && cp <= 0x09C8) ||
-            (cp >= 0x09CB && cp <= 0x09CD) ||
-            (cp >= 0x09D7 && cp <= 0x09D7) ||
-            (cp >= 0x09E2 && cp <= 0x09E3) ||
-            (cp >= 0x0A01 && cp <= 0x0A03) ||   // Gurmukhi
-            (cp >= 0x0A3C && cp <= 0x0A3C) ||
-            (cp >= 0x0A3E && cp <= 0x0A42) ||
-            (cp >= 0x0A47 && cp <= 0x0A48) ||
-            (cp >= 0x0A4B && cp <= 0x0A4D) ||
-            (cp >= 0x0A51 && cp <= 0x0A51) ||
-            (cp >= 0x0A70 && cp <= 0x0A71) ||
-            (cp >= 0x0A75 && cp <= 0x0A75) ||
-            (cp >= 0x1AB0 && cp <= 0x1AFF) ||   // Combining Diacritical Marks Extended
-            (cp >= 0x1DC0 && cp <= 0x1DFF) ||   // Combining Diacritical Marks Supplement
-            (cp >= 0x20D0 && cp <= 0x20FF) ||   // Combining Diacritical Marks for Symbols
-            (cp >= 0xFE00 && cp <= 0xFE0F) ||   // Variation Selectors
-            (cp >= 0xFE20 && cp <= 0xFE2F) ||   // Combining Half Marks
-            (cp >= 0x101FD && cp <= 0x101FD) ||
-            (cp >= 0x102E0 && cp <= 0x102E0) ||
-            (cp >= 0x10376 && cp <= 0x1037A) ||
-            (cp >= 0x10A01 && cp <= 0x10A03) ||
-            (cp >= 0x10A05 && cp <= 0x10A06) ||
-            (cp >= 0x10A0C && cp <= 0x10A0F) ||
-            (cp >= 0x10A38 && cp <= 0x10A3A) ||
-            (cp >= 0x10A3F && cp <= 0x10A3F) ||
-            (cp >= 0x10AE5 && cp <= 0x10AE6) ||
-            (cp >= 0x11000 && cp <= 0x11002) ||
-            (cp >= 0x11038 && cp <= 0x11046) ||
-            (cp >= 0xE0100 && cp <= 0xE01EF))   // Variation Selectors Supplement
-        {
-            return BreakProperty::Extend;
-        }
-
-        // Spacing marks (some common ones)
-        if ((cp >= 0x0903 && cp <= 0x0903) ||
-            (cp >= 0x093B && cp <= 0x093B) ||
-            (cp >= 0x093E && cp <= 0x0940) ||
-            (cp >= 0x0949 && cp <= 0x094C) ||
-            (cp >= 0x094E && cp <= 0x094F) ||
-            (cp >= 0x0982 && cp <= 0x0983) ||
-            (cp >= 0x09BE && cp <= 0x09C0) ||
-            (cp >= 0x09C7 && cp <= 0x09C8) ||
-            (cp >= 0x09CB && cp <= 0x09CC) ||
-            (cp >= 0x09D7 && cp <= 0x09D7))
-        {
-            return BreakProperty::SpacingMark;
-        }
-
-        // Hangul syllables (simplified)
-        if (cp >= 0x1100 && cp <= 0x115F) return BreakProperty::L;  // Leading consonants
-        if (cp >= 0x1160 && cp <= 0x11A7) return BreakProperty::V;  // Vowels
-        if (cp >= 0x11A8 && cp <= 0x11FF) return BreakProperty::T;  // Trailing consonants
-        if (cp >= 0xAC00 && cp <= 0xD7A3) {
-            // Precomposed syllables
-            int syllableIndex = cp - 0xAC00;
-            int trailing = syllableIndex % 28;
-            if (trailing == 0) return BreakProperty::LV;
-            return BreakProperty::LVT;
-        }
-
-        // Prepend characters (rare, simplified)
-        if (cp == 0x0600 || cp == 0x0601 || cp == 0x0602 || cp == 0x0603 ||
-            cp == 0x0604 || cp == 0x0605 || cp == 0x06DD || cp == 0x070F ||
-            cp == 0x0890 || cp == 0x0891 || cp == 0x08E2 || cp == 0x110BD ||
-            cp == 0x110CD)
-        {
-            return BreakProperty::Prepend;
-        }
-
-        return BreakProperty::Other;
-    }
-
-    bool IsGraphemeBoundary(uint32_t cp1, uint32_t cp2, bool& inExtendSequence, bool& inRISequence, int& riCount) {
-        BreakProperty prop1 = GetBreakProperty(cp1);
-        BreakProperty prop2 = GetBreakProperty(cp2);
-
-        // GB3: Do not break between CR and LF
-        if (prop1 == BreakProperty::CR && prop2 == BreakProperty::LF)
-            return false;
-
-        // GB4: Break after controls (including CR/LF)
-        if (prop1 == BreakProperty::Control || prop1 == BreakProperty::CR || prop1 == BreakProperty::LF)
-            return true;
-
-        // GB5: Break before controls
-        if (prop2 == BreakProperty::Control || prop2 == BreakProperty::CR || prop2 == BreakProperty::LF)
-            return true;
-
-        // GB6-8: Hangul syllable sequences
-        if (prop1 == BreakProperty::L && 
-            (prop2 == BreakProperty::L || prop2 == BreakProperty::V || 
-             prop2 == BreakProperty::LV || prop2 == BreakProperty::LVT))
-            return false;
-
-        if ((prop1 == BreakProperty::LV || prop1 == BreakProperty::V) &&
-            (prop2 == BreakProperty::V || prop2 == BreakProperty::T))
-            return false;
-
-        if ((prop1 == BreakProperty::LVT || prop1 == BreakProperty::T) && prop2 == BreakProperty::T)
-            return false;
-
-        // GB9: Do not break before Extend or ZWJ
-        if (prop2 == BreakProperty::Extend || prop2 == BreakProperty::ZWJ)
-            return false;
-
-        // GB9a: Do not break before SpacingMarks
-        if (prop2 == BreakProperty::SpacingMark)
-            return false;
-
-        // GB9b: Do not break after Prepend
-        if (prop1 == BreakProperty::Prepend)
-            return false;
-
-        // GB11: Do not break within emoji modifier sequences or emoji ZWJ sequences
-        // \p{Extended_Pictographic} Extend* ZWJ × \p{Extended_Pictographic}
-        if (prop1 == BreakProperty::ZWJ) {
-            // Check if cp2 is Extended_Pictographic (emoji)
-            // Simplified check for common emoji ranges
-            if ((cp2 >= 0x1F300 && cp2 <= 0x1F9FF) ||  // Miscellaneous Symbols and Pictographs, Emoticons, etc.
-                (cp2 >= 0x2600 && cp2 <= 0x26FF) ||     // Miscellaneous Symbols
-                (cp2 >= 0x2700 && cp2 <= 0x27BF) ||     // Dingbats
-                (cp2 >= 0x1FA00 && cp2 <= 0x1FAFF) ||   // Chess, Symbols, etc.
-                (cp2 >= 0x231A && cp2 <= 0x231B) ||     // Watch, Hourglass
-                (cp2 >= 0x23E9 && cp2 <= 0x23F3) ||     // Various symbols
-                (cp2 >= 0x23F8 && cp2 <= 0x23FA) ||
-                (cp2 >= 0x25AA && cp2 <= 0x25AB) ||
-                (cp2 >= 0x25B6 && cp2 <= 0x25C0) ||
-                (cp2 >= 0x25FB && cp2 <= 0x25FE) ||
-                (cp2 >= 0x2614 && cp2 <= 0x2615) ||
-                (cp2 >= 0x2648 && cp2 <= 0x2653) ||
-                (cp2 >= 0x267F && cp2 <= 0x267F) ||
-                (cp2 >= 0x2693 && cp2 <= 0x2693) ||
-                (cp2 >= 0x26A1 && cp2 <= 0x26A1) ||
-                (cp2 >= 0x26AA && cp2 <= 0x26AB) ||
-                (cp2 >= 0x26BD && cp2 <= 0x26BE) ||
-                (cp2 >= 0x26C4 && cp2 <= 0x26C5) ||
-                (cp2 >= 0x26CE && cp2 <= 0x26CE) ||
-                (cp2 >= 0x26D4 && cp2 <= 0x26D4) ||
-                (cp2 >= 0x26EA && cp2 <= 0x26EA) ||
-                (cp2 >= 0x26F2 && cp2 <= 0x26F3) ||
-                (cp2 >= 0x26F5 && cp2 <= 0x26F5) ||
-                (cp2 >= 0x26FA && cp2 <= 0x26FA) ||
-                (cp2 >= 0x26FD && cp2 <= 0x26FD) ||
-                (cp2 >= 0x2702 && cp2 <= 0x2702) ||
-                (cp2 >= 0x2705 && cp2 <= 0x2705) ||
-                (cp2 >= 0x2708 && cp2 <= 0x270D) ||
-                (cp2 >= 0x270F && cp2 <= 0x270F))
-            {
-                return false;
-            }
-        }
-
-        // GB12/13: Regional Indicator sequences (flags)
-        if (prop1 == BreakProperty::Regional_Indicator && prop2 == BreakProperty::Regional_Indicator) {
-            // Track RI count for proper pairing
-            if (!inRISequence) {
-                inRISequence = true;
-                riCount = 1;
-                return false;  // Don't break - first pair
-            } else {
-                riCount++;
-                if (riCount % 2 == 0) {
-                    // Even count - end of pair, should break
-                    return true;
-                }
-                return false;
-            }
-        } else {
-            inRISequence = false;
-            riCount = 0;
-        }
-
-        // GB999: Otherwise, break everywhere
-        return true;
-    }
-
     size_t NextGraphemeBoundary(const std::string& str, size_t bytePos) {
         if (bytePos >= str.size()) return str.size();
-
-        // Start from current position
-        auto it = str.begin() + bytePos;
-        auto end = str.end();
-
-        // Get first codepoint
-        auto tempIt = it;
-        uint32_t prevCp = UTF8::DecodeCodepoint(tempIt, end);
-        if (tempIt == end) return str.size();
-
-        bool inExtendSeq = false;
-        bool inRISeq = false;
-        int riCount = 0;
-
-        // Look for next boundary
-        while (tempIt != end) {
-            auto nextIt = tempIt;
-            uint32_t currCp = UTF8::DecodeCodepoint(nextIt, end);
-
-            if (IsGraphemeBoundary(prevCp, currCp, inExtendSeq, inRISeq, riCount)) {
-                return tempIt - str.begin();
-            }
-
-            prevCp = currCp;
-            tempIt = nextIt;
-        }
-
-        return str.size();
+        size_t bytesInCluster = grapheme_next_character_break_utf8(
+            str.c_str() + bytePos, str.size() - bytePos);
+        return bytePos + bytesInCluster;
     }
 
     size_t PrevGraphemeBoundary(const std::string& str, size_t bytePos) {
         if (bytePos == 0 || str.empty()) return 0;
         if (bytePos > str.size()) bytePos = str.size();
 
-        // Move back to start of current character
-        size_t pos = bytePos;
-        while (pos > 0 && UTF8::IsContinuation(static_cast<uint8_t>(str[pos - 1]))) {
-            --pos;
+        // Scan forward from start, tracking grapheme boundaries
+        size_t prevBoundary = 0;
+        size_t pos = 0;
+        while (pos < bytePos) {
+            size_t next = pos + grapheme_next_character_break_utf8(
+                str.c_str() + pos, str.size() - pos);
+            if (next >= bytePos) break;
+            prevBoundary = next;
+            pos = next;
         }
-        if (pos > 0) --pos;
-
-        // Now find the start of the grapheme cluster containing this position
-        // by scanning forward from the beginning
-        size_t graphemeStart = 0;
-        size_t currentPos = 0;
-
-        bool inExtendSeq = false;
-        bool inRISeq = false;
-        int riCount = 0;
-
-        auto it = str.begin();
-        auto end = str.end();
-        uint32_t prevCp = 0;
-        bool first = true;
-
-        while (it != end && static_cast<size_t>(it - str.begin()) <= pos) {
-            size_t currBytePos = it - str.begin();
-            auto tempIt = it;
-            uint32_t currCp = UTF8::DecodeCodepoint(tempIt, end);
-
-            if (!first && IsGraphemeBoundary(prevCp, currCp, inExtendSeq, inRISeq, riCount)) {
-                if (currBytePos <= pos) {
-                    graphemeStart = currBytePos;
-                }
-            }
-
-            prevCp = currCp;
-            it = tempIt;
-            first = false;
-        }
-
-        return graphemeStart;
+        // If bytePos is at or past the last boundary we found, return it
+        // If pos < bytePos, then prevBoundary is the start of the current cluster
+        if (pos == 0 && bytePos > 0) return 0;
+        return (pos < bytePos) ? pos : prevBoundary;
     }
 
     size_t CountGraphemes(const std::string& str) {
         if (str.empty()) return 0;
 
-        size_t count = 1;  // At least one grapheme if non-empty
-        bool inExtendSeq = false;
-        bool inRISeq = false;
-        int riCount = 0;
-
-        auto it = str.begin();
-        auto end = str.end();
-
-        uint32_t prevCp = UTF8::DecodeCodepoint(it, end);
-
-        while (it != end) {
-            uint32_t currCp = UTF8::DecodeCodepoint(it, end);
-
-            if (IsGraphemeBoundary(prevCp, currCp, inExtendSeq, inRISeq, riCount)) {
-                count++;
-            }
-
-            prevCp = currCp;
+        size_t count = 0;
+        size_t pos = 0;
+        while (pos < str.size()) {
+            pos += grapheme_next_character_break_utf8(
+                str.c_str() + pos, str.size() - pos);
+            count++;
         }
-
         return count;
     }
 
@@ -348,42 +292,101 @@ namespace Grapheme {
         if (str.empty()) return {0, 0};
 
         size_t currentGrapheme = 0;
-        size_t graphemeStart = 0;
-        bool inExtendSeq = false;
-        bool inRISeq = false;
-        int riCount = 0;
+        size_t pos = 0;
 
-        auto it = str.begin();
-        auto end = str.end();
+        while (pos < str.size()) {
+            size_t clusterLen = grapheme_next_character_break_utf8(
+                str.c_str() + pos, str.size() - pos);
 
-        uint32_t prevCp = 0;
-        bool first = true;
-
-        while (it != end) {
-            size_t bytePos = it - str.begin();
-            auto tempIt = it;
-            uint32_t currCp = UTF8::DecodeCodepoint(tempIt, end);
-
-            if (!first && IsGraphemeBoundary(prevCp, currCp, inExtendSeq, inRISeq, riCount)) {
-                if (currentGrapheme == graphemeIndex) {
-                    return {graphemeStart, bytePos};
-                }
-                currentGrapheme++;
-                graphemeStart = bytePos;
+            if (currentGrapheme == graphemeIndex) {
+                return {pos, pos + clusterLen};
             }
 
-            prevCp = currCp;
-            it = tempIt;
-            first = false;
-        }
-
-        // Last grapheme
-        if (currentGrapheme == graphemeIndex) {
-            return {graphemeStart, str.size()};
+            pos += clusterLen;
+            currentGrapheme++;
         }
 
         // Index out of bounds
         return {str.size(), str.size()};
+    }
+
+    // ===== WORD BOUNDARY NAVIGATION =====
+
+    size_t NextWordBoundary(const std::string& str, size_t bytePos) {
+        if (bytePos >= str.size()) return str.size();
+        size_t bytesInWord = grapheme_next_word_break_utf8(
+            str.c_str() + bytePos, str.size() - bytePos);
+        return bytePos + bytesInWord;
+    }
+
+    size_t PrevWordBoundary(const std::string& str, size_t bytePos) {
+        if (bytePos == 0 || str.empty()) return 0;
+        if (bytePos > str.size()) bytePos = str.size();
+
+        // Scan forward from start, tracking word boundaries
+        size_t prevBoundary = 0;
+        size_t pos = 0;
+        while (pos < bytePos) {
+            size_t next = pos + grapheme_next_word_break_utf8(
+                str.c_str() + pos, str.size() - pos);
+            if (next >= bytePos) break;
+            prevBoundary = next;
+            pos = next;
+        }
+        if (pos == 0 && bytePos > 0) return 0;
+        return (pos < bytePos) ? pos : prevBoundary;
+    }
+
+    // ===== SENTENCE BOUNDARY NAVIGATION =====
+
+    size_t NextSentenceBoundary(const std::string& str, size_t bytePos) {
+        if (bytePos >= str.size()) return str.size();
+        size_t bytesInSentence = grapheme_next_sentence_break_utf8(
+            str.c_str() + bytePos, str.size() - bytePos);
+        return bytePos + bytesInSentence;
+    }
+
+    size_t PrevSentenceBoundary(const std::string& str, size_t bytePos) {
+        if (bytePos == 0 || str.empty()) return 0;
+        if (bytePos > str.size()) bytePos = str.size();
+
+        size_t prevBoundary = 0;
+        size_t pos = 0;
+        while (pos < bytePos) {
+            size_t next = pos + grapheme_next_sentence_break_utf8(
+                str.c_str() + pos, str.size() - pos);
+            if (next >= bytePos) break;
+            prevBoundary = next;
+            pos = next;
+        }
+        if (pos == 0 && bytePos > 0) return 0;
+        return (pos < bytePos) ? pos : prevBoundary;
+    }
+
+    // ===== LINE BREAK NAVIGATION =====
+
+    size_t NextLineBreak(const std::string& str, size_t bytePos) {
+        if (bytePos >= str.size()) return str.size();
+        size_t bytesInSegment = grapheme_next_line_break_utf8(
+            str.c_str() + bytePos, str.size() - bytePos);
+        return bytePos + bytesInSegment;
+    }
+
+    size_t PrevLineBreak(const std::string& str, size_t bytePos) {
+        if (bytePos == 0 || str.empty()) return 0;
+        if (bytePos > str.size()) bytePos = str.size();
+
+        size_t prevBoundary = 0;
+        size_t pos = 0;
+        while (pos < bytePos) {
+            size_t next = pos + grapheme_next_line_break_utf8(
+                str.c_str() + pos, str.size() - pos);
+            if (next >= bytePos) break;
+            prevBoundary = next;
+            pos = next;
+        }
+        if (pos == 0 && bytePos > 0) return 0;
+        return (pos < bytePos) ? pos : prevBoundary;
     }
 
 } // namespace Grapheme
@@ -407,6 +410,14 @@ uint32_t GraphemeRef::ToCodepoint() const {
     auto endIt = owner->data.begin() + end;
     return UTF8::DecodeCodepoint(it, endIt);
 }
+
+bool GraphemeRef::IsAlpha() const { return Unicode::IsAlphabetic(ToCodepoint()); }
+bool GraphemeRef::IsDigit() const { return Unicode::IsNumeric(ToCodepoint()); }
+bool GraphemeRef::IsAlnum() const { return Unicode::IsAlphanumeric(ToCodepoint()); }
+bool GraphemeRef::IsSpace() const { return Unicode::IsWhitespace(ToCodepoint()); }
+bool GraphemeRef::IsPunct() const { return Unicode::IsPunctuation(ToCodepoint()); }
+bool GraphemeRef::IsUpper() const { return Unicode::IsUppercase(ToCodepoint()); }
+bool GraphemeRef::IsLower() const { return Unicode::IsLowercase(ToCodepoint()); }
 
 bool GraphemeRef::operator==(const GraphemeRef& other) const {
     return ToString() == other.ToString();
@@ -459,6 +470,14 @@ uint32_t ConstGraphemeRef::ToCodepoint() const {
     auto endIt = owner->data.begin() + end;
     return UTF8::DecodeCodepoint(it, endIt);
 }
+
+bool ConstGraphemeRef::IsAlpha() const { return Unicode::IsAlphabetic(ToCodepoint()); }
+bool ConstGraphemeRef::IsDigit() const { return Unicode::IsNumeric(ToCodepoint()); }
+bool ConstGraphemeRef::IsAlnum() const { return Unicode::IsAlphanumeric(ToCodepoint()); }
+bool ConstGraphemeRef::IsSpace() const { return Unicode::IsWhitespace(ToCodepoint()); }
+bool ConstGraphemeRef::IsPunct() const { return Unicode::IsPunctuation(ToCodepoint()); }
+bool ConstGraphemeRef::IsUpper() const { return Unicode::IsUppercase(ToCodepoint()); }
+bool ConstGraphemeRef::IsLower() const { return Unicode::IsLowercase(ToCodepoint()); }
 
 bool ConstGraphemeRef::operator==(const ConstGraphemeRef& other) const {
     return ToString() == other.ToString();
@@ -1021,24 +1040,14 @@ UCString UCString::Join(const std::vector<UCString>& parts, const UCString& sepa
     return result;
 }
 
-// Trim helpers
-static bool IsWhitespaceCodepoint(uint32_t cp) {
-    return cp == ' ' || cp == '\t' || cp == '\n' || cp == '\r' ||
-           cp == 0x00A0 ||  // NBSP
-           cp == 0x2000 || cp == 0x2001 || cp == 0x2002 || cp == 0x2003 ||
-           cp == 0x2004 || cp == 0x2005 || cp == 0x2006 || cp == 0x2007 ||
-           cp == 0x2008 || cp == 0x2009 || cp == 0x200A || cp == 0x200B ||
-           cp == 0x2028 || cp == 0x2029 || cp == 0x202F || cp == 0x205F ||
-           cp == 0x3000 || cp == 0xFEFF;
-}
-
+// Trim helpers — uses Unicode::IsWhitespace for full Unicode support
 UCString& UCString::TrimLeft() {
     size_t pos = 0;
     auto it = data.begin();
     while (it != data.end()) {
         auto tempIt = it;
         uint32_t cp = UTF8::DecodeCodepoint(tempIt, data.end());
-        if (!IsWhitespaceCodepoint(cp)) break;
+        if (!Unicode::IsWhitespace(cp)) break;
         pos = tempIt - data.begin();
         it = tempIt;
     }
@@ -1054,7 +1063,7 @@ UCString& UCString::TrimRight() {
         size_t lastBoundary = Grapheme::PrevGraphemeBoundary(data, data.size());
         auto it = data.begin() + lastBoundary;
         uint32_t cp = UTF8::DecodeCodepoint(it, data.end());
-        if (!IsWhitespaceCodepoint(cp)) break;
+        if (!Unicode::IsWhitespace(cp)) break;
         data.erase(lastBoundary);
         InvalidateCache();
     }
@@ -1085,41 +1094,58 @@ UCString UCString::TrimmedRight() const {
     return result;
 }
 
-// Case conversion (ASCII only for now)
+// ===== CASE CONVERSION (Full Unicode via libgrapheme) =====
+
 UCString UCString::ToLower() const {
-    UCString result;
-    result.data.reserve(data.size());
-    
-    auto it = data.begin();
-    while (it != data.end()) {
-        auto startIt = it;
-        uint32_t cp = UTF8::DecodeCodepoint(it, data.end());
-        
-        if (cp >= 'A' && cp <= 'Z') {
-            result.data += UTF8::EncodeCodepoint(cp + 32);
-        } else {
-            result.data.append(startIt, it);
-        }
-    }
-    return result;
+    if (data.empty()) return UCString();
+
+    // grapheme_to_lowercase_utf8 returns the number of bytes written,
+    // even if dest is NULL (to query required size)
+    size_t needed = grapheme_to_lowercase_utf8(data.c_str(), data.size(), nullptr, 0);
+
+    std::string result(needed, '\0');
+    grapheme_to_lowercase_utf8(data.c_str(), data.size(), result.data(), needed);
+
+    return UCString(std::move(result));
 }
 
 UCString UCString::ToUpper() const {
-    UCString result;
-    result.data.reserve(data.size());
-    
-    auto it = data.begin();
-    while (it != data.end()) {
-        auto startIt = it;
-        uint32_t cp = UTF8::DecodeCodepoint(it, data.end());
-        
-        if (cp >= 'a' && cp <= 'z') {
-            result.data += UTF8::EncodeCodepoint(cp - 32);
-        } else {
-            result.data.append(startIt, it);
-        }
-    }
-    return result;
+    if (data.empty()) return UCString();
+
+    size_t needed = grapheme_to_uppercase_utf8(data.c_str(), data.size(), nullptr, 0);
+
+    std::string result(needed, '\0');
+    grapheme_to_uppercase_utf8(data.c_str(), data.size(), result.data(), needed);
+
+    return UCString(std::move(result));
+}
+
+UCString UCString::ToTitleCase() const {
+    if (data.empty()) return UCString();
+
+    size_t needed = grapheme_to_titlecase_utf8(data.c_str(), data.size(), nullptr, 0);
+
+    std::string result(needed, '\0');
+    grapheme_to_titlecase_utf8(data.c_str(), data.size(), result.data(), needed);
+
+    return UCString(std::move(result));
+}
+
+// ===== CASE DETECTION (Full Unicode via libgrapheme) =====
+
+bool UCString::IsLowerCase() const {
+    if (data.empty()) return false;
+    return grapheme_is_lowercase_utf8(data.c_str(), data.size(), nullptr);
+}
+
+bool UCString::IsUpperCase() const {
+    if (data.empty()) return false;
+    return grapheme_is_uppercase_utf8(data.c_str(), data.size(), nullptr);
+}
+
+bool UCString::IsTitleCase() const {
+    if (data.empty()) return false;
+    return grapheme_is_titlecase_utf8(data.c_str(), data.size(), nullptr);
 }
 
 // Reverse (grapheme-aware)

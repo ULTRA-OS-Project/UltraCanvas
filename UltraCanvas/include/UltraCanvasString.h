@@ -1,7 +1,8 @@
 // UltraCanvasString.h
 // UTF-8 aware string class with grapheme cluster support for proper text handling
-// Version: 1.0.0
-// Last Modified: 2026-01-30
+// Powered by libgrapheme for full Unicode 17.0 compliance
+// Version: 2.0.0
+// Last Modified: 2026-02-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -22,7 +23,7 @@ class UCString;
 class UCStringIterator;
 class UCStringConstIterator;
 
-// ===== UTF-8 UTILITIES (INTERNAL) =====
+// ===== UTF-8 UTILITIES =====
 namespace UTF8 {
     // Byte sequence length from leading byte
     inline size_t SequenceLength(uint8_t leadByte) {
@@ -146,29 +147,28 @@ namespace UTF8 {
     }
 }
 
+// ===== UNICODE CHARACTER CLASSIFICATION =====
+// Provides codepoint-level classification (IsAlpha, IsDigit, etc.)
+// libgrapheme handles segmentation and case; these cover General Category queries
+namespace Unicode {
+
+    // Character classification functions
+    bool IsAlphabetic(uint32_t codepoint);
+    bool IsNumeric(uint32_t codepoint);
+    bool IsAlphanumeric(uint32_t codepoint);
+    bool IsWhitespace(uint32_t codepoint);
+    bool IsPunctuation(uint32_t codepoint);
+    bool IsUppercase(uint32_t codepoint);
+    bool IsLowercase(uint32_t codepoint);
+
+} // namespace Unicode
+
 // ===== GRAPHEME CLUSTER UTILITIES =====
+// Wraps libgrapheme for full Unicode 17.0 compliant segmentation
 namespace Grapheme {
-    // Grapheme cluster break property (simplified UAX #29)
-    enum class BreakProperty {
-        Other,
-        CR,
-        LF,
-        Control,
-        Extend,
-        ZWJ,
-        Regional_Indicator,
-        Prepend,
-        SpacingMark,
-        L, V, T, LV, LVT  // Hangul
-    };
-
-    // Get break property for codepoint (simplified implementation)
-    BreakProperty GetBreakProperty(uint32_t codepoint);
-
-    // Check if there's a grapheme boundary between two codepoints
-    bool IsGraphemeBoundary(uint32_t cp1, uint32_t cp2, bool& inExtendSequence, bool& inRISequence, int& riCount);
 
     // Find next grapheme cluster boundary (returns byte offset)
+    // Delegates to grapheme_next_character_break_utf8()
     size_t NextGraphemeBoundary(const std::string& str, size_t bytePos);
 
     // Find previous grapheme cluster boundary (returns byte offset)
@@ -177,8 +177,35 @@ namespace Grapheme {
     // Count grapheme clusters in string
     size_t CountGraphemes(const std::string& str);
 
-    // Get grapheme cluster at position (returns byte range)
+    // Get grapheme cluster at position (returns byte range: start, end)
     std::pair<size_t, size_t> GetGraphemeAt(const std::string& str, size_t graphemeIndex);
+
+    // ===== WORD BOUNDARY NAVIGATION =====
+    // UAX #29 compliant word segmentation via libgrapheme
+
+    // Find next word boundary (returns byte offset)
+    size_t NextWordBoundary(const std::string& str, size_t bytePos);
+
+    // Find previous word boundary (returns byte offset)
+    size_t PrevWordBoundary(const std::string& str, size_t bytePos);
+
+    // ===== SENTENCE BOUNDARY NAVIGATION =====
+    // UAX #29 compliant sentence segmentation via libgrapheme
+
+    // Find next sentence boundary (returns byte offset)
+    size_t NextSentenceBoundary(const std::string& str, size_t bytePos);
+
+    // Find previous sentence boundary (returns byte offset)
+    size_t PrevSentenceBoundary(const std::string& str, size_t bytePos);
+
+    // ===== LINE BREAK NAVIGATION =====
+    // UAX #14 compliant line break opportunity detection via libgrapheme
+
+    // Find next permissible line break (returns byte offset)
+    size_t NextLineBreak(const std::string& str, size_t bytePos);
+
+    // Find previous permissible line break (returns byte offset)
+    size_t PrevLineBreak(const std::string& str, size_t bytePos);
 }
 
 // ===== GRAPHEME REFERENCE (for operator[]) =====
@@ -197,7 +224,17 @@ public:
     // Get first codepoint
     uint32_t ToCodepoint() const;
 
-    // Comparison
+    // ===== CHARACTER CLASSIFICATION =====
+    // Classification based on first codepoint of the grapheme cluster
+    bool IsAlpha() const;
+    bool IsDigit() const;
+    bool IsAlnum() const;
+    bool IsSpace() const;
+    bool IsPunct() const;
+    bool IsUpper() const;
+    bool IsLower() const;
+
+    // ===== COMPARISON =====
     bool operator==(const GraphemeRef& other) const;
     bool operator==(const std::string& other) const;
     bool operator==(const char* other) const;
@@ -227,6 +264,16 @@ public:
     operator std::string() const { return ToString(); }
     uint32_t ToCodepoint() const;
 
+    // ===== CHARACTER CLASSIFICATION =====
+    bool IsAlpha() const;
+    bool IsDigit() const;
+    bool IsAlnum() const;
+    bool IsSpace() const;
+    bool IsPunct() const;
+    bool IsUpper() const;
+    bool IsLower() const;
+
+    // ===== COMPARISON =====
     bool operator==(const ConstGraphemeRef& other) const;
     bool operator==(const std::string& other) const;
     bool operator==(const char* other) const;
@@ -455,14 +502,36 @@ public:
 
     // ===== CURSOR NAVIGATION (For text editors) =====
 
-    // Get byte position of next grapheme cluster
+    // Get byte position of next/previous grapheme cluster
     size_t NextGraphemePosition(size_t bytePos) const {
         return Grapheme::NextGraphemeBoundary(data, bytePos);
     }
-
-    // Get byte position of previous grapheme cluster
     size_t PrevGraphemePosition(size_t bytePos) const {
         return Grapheme::PrevGraphemeBoundary(data, bytePos);
+    }
+
+    // Get byte position of next/previous word boundary (UAX #29)
+    size_t NextWordPosition(size_t bytePos) const {
+        return Grapheme::NextWordBoundary(data, bytePos);
+    }
+    size_t PrevWordPosition(size_t bytePos) const {
+        return Grapheme::PrevWordBoundary(data, bytePos);
+    }
+
+    // Get byte position of next/previous sentence boundary (UAX #29)
+    size_t NextSentencePosition(size_t bytePos) const {
+        return Grapheme::NextSentenceBoundary(data, bytePos);
+    }
+    size_t PrevSentencePosition(size_t bytePos) const {
+        return Grapheme::PrevSentenceBoundary(data, bytePos);
+    }
+
+    // Get byte position of next/previous line break opportunity (UAX #14)
+    size_t NextLineBreakPosition(size_t bytePos) const {
+        return Grapheme::NextLineBreak(data, bytePos);
+    }
+    size_t PrevLineBreakPosition(size_t bytePos) const {
+        return Grapheme::PrevLineBreak(data, bytePos);
     }
 
     // ===== MODIFICATION =====
@@ -580,9 +649,15 @@ public:
     UCString TrimmedLeft() const;
     UCString TrimmedRight() const;
 
-    // Case conversion (ASCII only for now, TODO: full Unicode)
+    // ===== CASE CONVERSION (Full Unicode via libgrapheme) =====
     UCString ToLower() const;
     UCString ToUpper() const;
+    UCString ToTitleCase() const;
+
+    // ===== CASE DETECTION (Full Unicode via libgrapheme) =====
+    bool IsLowerCase() const;
+    bool IsUpperCase() const;
+    bool IsTitleCase() const;
 
     // Reverse (grapheme-aware)
     UCString Reversed() const;

@@ -1,7 +1,7 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.2.0
-# Last Modified: 2025-12-14
+# Version: 1.3.0
+# Last Modified: 2026-02-01
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
@@ -42,6 +42,54 @@ endif()
 
 
 add_subdirectory(3rdparty/fmt)
+
+# ===== LIBGRAPHEME - Unicode string library (bundled) =====
+# Built from source in 3rdparty/libgrapheme-3.0.0
+# Provides: grapheme cluster/word/sentence/line segmentation, case conversion
+# License: ISC | Unicode 17.0.0 compliant
+enable_language(C)
+set(LIBGRAPHEME_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/libgrapheme-3.0.0)
+
+add_library(grapheme STATIC
+    ${LIBGRAPHEME_DIR}/src/bidirectional.c
+    ${LIBGRAPHEME_DIR}/src/case.c
+    ${LIBGRAPHEME_DIR}/src/character.c
+    ${LIBGRAPHEME_DIR}/src/line.c
+    ${LIBGRAPHEME_DIR}/src/sentence.c
+    ${LIBGRAPHEME_DIR}/src/utf8.c
+    ${LIBGRAPHEME_DIR}/src/util.c
+    ${LIBGRAPHEME_DIR}/src/word.c
+)
+
+target_include_directories(grapheme
+    PUBLIC
+        $<BUILD_INTERFACE:${LIBGRAPHEME_DIR}>            # grapheme.h at build time
+        $<INSTALL_INTERFACE:include/ultracanvas/grapheme> # grapheme.h after install
+    PRIVATE
+        ${LIBGRAPHEME_DIR}/gen   # gen/*.h pre-generated Unicode tables
+        ${LIBGRAPHEME_DIR}/src   # src/util.h internal header
+)
+
+target_compile_definitions(grapheme PRIVATE
+    _ISOC99_SOURCE
+)
+
+# Use C99 as required by libgrapheme, with freestanding + PIC for static linking
+set_target_properties(grapheme PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED ON
+    POSITION_INDEPENDENT_CODE ON
+)
+
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(grapheme PRIVATE
+        -ffreestanding
+        -Wall -Wextra -Wpedantic
+        -Wno-overlength-strings
+    )
+endif()
+
+message(STATUS "  libgrapheme: Bundled (Unicode 17.0.0)")
 
 message(STATUS "Target Platform: ${ULTRACANVAS_PLATFORM}")
 
@@ -219,6 +267,7 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
         ${TINYXML2_INCLUDE_DIRS}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/fmt/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/libgrapheme-3.0.0
         ${CMAKE_CURRENT_SOURCE_DIR}/core
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}
         ${CAIRO_INCLUDE_DIRS}
@@ -268,6 +317,8 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${LIBVIPS_LIBRARIES}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
+    PRIVATE
+        grapheme
 )
 
 # ===== COMPILER SETTINGS =====
@@ -367,7 +418,7 @@ set(ULTRACANVAS_INCLUDE_DIRS
 )
 
 # ===== INSTALLATION =====
-install(TARGETS ${ULTRACANVAS_LIB_NAME}
+install(TARGETS ${ULTRACANVAS_LIB_NAME} grapheme
     EXPORT UltraCanvasTargets
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
@@ -377,6 +428,11 @@ install(TARGETS ${ULTRACANVAS_LIB_NAME}
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
     DESTINATION include/ultracanvas
     FILES_MATCHING PATTERN "*.h"
+)
+
+# Install bundled libgrapheme header
+install(FILES ${LIBGRAPHEME_DIR}/grapheme.h
+    DESTINATION include/ultracanvas/grapheme
 )
 
 # Export CMake config for find_package support
@@ -404,6 +460,7 @@ endif()
 if(LIBVIPS_FOUND)
     message(STATUS "  libvips: ${LIBVIPS_VERSION}")
 endif()
+message(STATUS "  libgrapheme: 3.0.0 (bundled, Unicode 17.0.0)")
 message(STATUS "  Plugins: ${ULTRACANVAS_PLUGIN_TARGETS}")
 message(STATUS "========================================")
 message(STATUS "")
