@@ -500,6 +500,130 @@ namespace UltraCanvas {
         }
     }
 
+     void UltraCanvasTextArea::MoveCursorWordLeft(bool selecting) {
+        auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
+
+        if (line >= static_cast<int>(lines.size())) return;
+
+        // If at the beginning of a line, move to end of previous line
+        if (col == 0) {
+            if (line > 0) {
+                line--;
+                col = static_cast<int>(lines[line].Length());
+                cursorGraphemePosition = GetPositionFromLineColumn(line, col);
+                currentLineIndex = line;
+            } else {
+                // Already at the very start of the text
+                if (selecting) {
+                    if (selectionStartGrapheme < 0) selectionStartGrapheme = cursorGraphemePosition;
+                    selectionEndGrapheme = cursorGraphemePosition;
+                } else {
+                    selectionStartGrapheme = -1;
+                    selectionEndGrapheme = -1;
+                }
+                return;
+            }
+        }
+
+        const UCString& currentLine = lines[line];
+        int lineLen = static_cast<int>(currentLine.Length());
+
+        // Skip whitespace/non-word characters going left
+        while (col > 0) {
+            uint32_t cp = currentLine.GetCodepoint(col - 1);
+            if (Unicode::IsAlphanumeric(cp) || cp == '_') break;
+            col--;
+        }
+
+        // Skip word characters going left to find word start
+        while (col > 0) {
+            uint32_t cp = currentLine.GetCodepoint(col - 1);
+            if (!Unicode::IsAlphanumeric(cp) && cp != '_') break;
+            col--;
+        }
+
+        int oldPosition = cursorGraphemePosition;
+        cursorGraphemePosition = GetPositionFromLineColumn(line, col);
+        currentLineIndex = line;
+
+        if (selecting) {
+            if (selectionStartGrapheme < 0) selectionStartGrapheme = oldPosition;
+            selectionEndGrapheme = cursorGraphemePosition;
+        } else {
+            selectionStartGrapheme = -1;
+            selectionEndGrapheme = -1;
+        }
+
+        RequestRedraw();
+        if (onCursorPositionChanged) {
+            onCursorPositionChanged(line, col);
+        }
+    }
+
+    void UltraCanvasTextArea::MoveCursorWordRight(bool selecting) {
+        auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
+
+        if (line >= static_cast<int>(lines.size())) return;
+
+        const UCString& currentLine = lines[line];
+        int lineLen = static_cast<int>(currentLine.Length());
+
+        // If at the end of a line, move to start of next line
+        if (col >= lineLen) {
+            if (line < static_cast<int>(lines.size()) - 1) {
+                line++;
+                col = 0;
+                cursorGraphemePosition = GetPositionFromLineColumn(line, col);
+                currentLineIndex = line;
+            } else {
+                // Already at the very end of the text
+                if (selecting) {
+                    if (selectionStartGrapheme < 0) selectionStartGrapheme = cursorGraphemePosition;
+                    selectionEndGrapheme = cursorGraphemePosition;
+                } else {
+                    selectionStartGrapheme = -1;
+                    selectionEndGrapheme = -1;
+                }
+                return;
+            }
+        }
+
+        // Re-read after potential line change
+        const UCString& activeLine = lines[line];
+        int activeLineLen = static_cast<int>(activeLine.Length());
+
+        // Skip whitespace/non-word characters going right
+        while (col < activeLineLen) {
+            uint32_t cp = activeLine.GetCodepoint(col);
+            if (Unicode::IsAlphanumeric(cp) || cp == '_') break;
+            col++;
+        }
+
+        // Skip word characters going right to find word end
+        while (col < activeLineLen) {
+            uint32_t cp = activeLine.GetCodepoint(col);
+            if (!Unicode::IsAlphanumeric(cp) && cp != '_') break;
+            col++;
+        }
+
+        int oldPosition = cursorGraphemePosition;
+        cursorGraphemePosition = GetPositionFromLineColumn(line, col);
+        currentLineIndex = line;
+
+        if (selecting) {
+            if (selectionStartGrapheme < 0) selectionStartGrapheme = oldPosition;
+            selectionEndGrapheme = cursorGraphemePosition;
+        } else {
+            selectionStartGrapheme = -1;
+            selectionEndGrapheme = -1;
+        }
+
+        RequestRedraw();
+        if (onCursorPositionChanged) {
+            onCursorPositionChanged(line, col);
+        }
+    }
+
     void UltraCanvasTextArea::MoveCursorPageUp(bool selecting) {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
@@ -663,7 +787,7 @@ namespace UltraCanvas {
         int wordStart = col;
         while (wordStart > 0) {
             uint32_t cp = currentLine.GetCodepoint(wordStart - 1);
-            if (!std::isalnum(cp) && cp != '_') break;
+            if (!Unicode::IsAlphanumeric(cp)  && cp != '_') break;
             wordStart--;
         }
 
@@ -671,7 +795,7 @@ namespace UltraCanvas {
         int wordEnd = col;
         while (wordEnd < lineLen) {
             uint32_t cp = currentLine.GetCodepoint(wordEnd);
-            if (!std::isalnum(cp) && cp != '_') break;
+            if (!Unicode::IsAlphanumeric(cp) && cp != '_') break;
             wordEnd++;
         }
 
@@ -1279,19 +1403,35 @@ namespace UltraCanvas {
 
         switch (event.virtualKey) {
             case UCKeys::Left:
-                MoveCursorLeft(event.shift);
+                if (event.ctrl && !event.alt) {
+                    MoveCursorWordLeft(event.shift);
+                } else {
+                    MoveCursorLeft(event.shift);
+                }
                 EnsureCursorVisible();
                 break;
             case UCKeys::Right:
-                MoveCursorRight(event.shift);
+                if (event.ctrl && !event.alt) {
+                    MoveCursorWordRight(event.shift);
+                } else {
+                    MoveCursorRight(event.shift);
+                }
                 EnsureCursorVisible();
                 break;
             case UCKeys::Up:
-                MoveCursorUp(event.shift);
+                if (event.ctrl && !event.alt) {
+                    ScrollUp(1);
+                } else {
+                    MoveCursorUp(event.shift);
+                }
                 EnsureCursorVisible();
                 break;
             case UCKeys::Down:
-                MoveCursorDown(event.shift);
+                if (event.ctrl && !event.alt) {
+                    ScrollDown(1);
+                } else {
+                    MoveCursorDown(event.shift);
+                }
                 EnsureCursorVisible();
                 break;
             case UCKeys::Home:
@@ -1324,8 +1464,13 @@ namespace UltraCanvas {
                 EnsureCursorVisible();
                 break;
             case UCKeys::Delete:
-                if (HasSelection()) DeleteSelection();
-                else DeleteCharacterForward();
+                if (!event.shift && event.ctrl && !event.alt) {
+                    CutSelection();
+                } else if (HasSelection()) {
+                    DeleteSelection();
+                } else {
+                    DeleteCharacterForward();
+                }
                 EnsureCursorVisible();
                 break;
             case UCKeys::Enter:
@@ -1339,20 +1484,42 @@ namespace UltraCanvas {
                 EnsureCursorVisible();
                 break;
             case UCKeys::A:
-                if (event.ctrl) SelectAll();
-                else handled = false;
+                if (!event.shift && event.ctrl && !event.alt) {
+                    SelectAll();
+                } else {
+                    handled = false;
+                }
                 break;
             case UCKeys::C:
-                if (event.ctrl) CopySelection();
-                else handled = false;
+                if (!event.shift && event.ctrl && !event.alt) {
+                    CopySelection();
+                } else {
+                    handled = false;
+                }
                 break;
             case UCKeys::X:
-                if (event.ctrl) CutSelection();
-                else handled = false;
+                if (!event.shift && event.ctrl && !event.alt) {
+                    CutSelection();
+                } else {
+                    handled = false;
+                }
                 break;
             case UCKeys::V:
-                if (event.ctrl) { PasteClipboard(); EnsureCursorVisible(); }
-                else handled = false;
+                if (!event.shift && event.ctrl && !event.alt) { 
+                    PasteClipboard(); 
+                    EnsureCursorVisible(); 
+                } else {
+                    handled = false;
+                }
+                break;
+            case UCKeys::Insert:
+                if (event.shift && !event.ctrl && !event.alt) { 
+                    PasteClipboard(); EnsureCursorVisible(); 
+                } else if (!event.shift && event.ctrl && !event.alt) {
+                    CopySelection();
+                } else {
+                    handled = false;
+                }
                 break;
             case UCKeys::Z:
                 if (event.ctrl) {
@@ -1552,7 +1719,7 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasTextArea::ScrollDown(int lineCount) {
+void UltraCanvasTextArea::ScrollDown(int lineCount) {
         int maxFirstLine = std::max(0, static_cast<int>(lines.size()) - maxVisibleLines);
         firstVisibleLine = std::min(maxFirstLine, firstVisibleLine + lineCount);
         RequestRedraw();

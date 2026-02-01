@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.0.0
-// Last Modified: 2026-01-26
+// Version: 2.0.1
+// Last Modified: 2026-02-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -206,6 +206,8 @@ namespace UltraCanvas {
             : UltraCanvasContainer(identifier, id, x, y, width, height)
             , config(cfg)
             , isDarkTheme(cfg.darkTheme)
+            , isDocumentClosing(false)
+            , nextDocumentId(0)
             , currentFontSize(cfg.defaultFontSize)
             , activeDocumentIndex(-1)
             , hasCheckedForBackups(false)
@@ -411,12 +413,12 @@ namespace UltraCanvas {
             SwitchToDocument(newIndex);
         };
 
-        tabContainer->onTabClose = [this](int index) {
-            return true; // Allow close (we'll handle confirmation in CloseDocument)
-        };
-
-        tabContainer->onTabCloseRequest = [this](int index) {
+        tabContainer->onTabClose = [this](int index) {            
+            if (isDocumentClosing) {
+                return true;
+            }
             CloseDocument(index);
+            return false;
         };
 
         tabContainer->onNewTabRequest = [this]() {
@@ -454,6 +456,7 @@ namespace UltraCanvas {
     int UltraCanvasTextEditor::CreateNewDocument(const std::string& fileName) {
         // Create new document tab
         auto doc = std::make_shared<DocumentTab>();
+        doc->documentId = nextDocumentId++;
         doc->fileName = fileName.empty() ? ("Untitled" + std::to_string(documents.size() + 1)) : fileName;
         doc->filePath = "";
         doc->language = config.defaultLanguage;
@@ -533,10 +536,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextEditor::CloseDocument(int index) {
-        if (index < 0 || index >= static_cast<int>(documents.size())) {
+        if (isDocumentClosing || index < 0 || index >= static_cast<int>(documents.size())) {
             return;
         }
-
+        isDocumentClosing = true;
         auto doc = documents[index];
 
         // Check for unsaved changes
@@ -569,6 +572,7 @@ namespace UltraCanvas {
 
                     UpdateStatusBar();
                 }
+                isDocumentClosing = false;
             });
         } else {
             // No unsaved changes - close directly
@@ -591,6 +595,7 @@ namespace UltraCanvas {
 
             UpdateStatusBar();
         }
+        isDocumentClosing = false;
     }
 
 void UltraCanvasTextEditor::SwitchToDocument(int index) {
@@ -1299,6 +1304,15 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
 
 // ===== CALLBACKS =====
 
+    int UltraCanvasTextEditor::FindDocumentIndexById(int documentId) const {
+        for (int i = 0; i < static_cast<int>(documents.size()); i++) {
+            if (documents[i]->documentId == documentId) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     void UltraCanvasTextEditor::SetupDocumentCallbacks(int docIndex) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
             return;
@@ -1307,9 +1321,16 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         auto doc = documents[docIndex];
         if (!doc->textArea) return;
 
+        // Capture stable documentId instead of index, because indices
+        // shift when earlier tabs are closed (stale-index bug fix).
+        int docId = doc->documentId;
+
         // Text changed callback
-        doc->textArea->onTextChanged = [this, docIndex](const std::string& text) {
-            SetDocumentModified(docIndex, true);
+        doc->textArea->onTextChanged = [this, docId](const std::string& text) {
+            int currentIndex = FindDocumentIndexById(docId);
+            if (currentIndex >= 0) {
+                SetDocumentModified(currentIndex, true);
+            }
             UpdateStatusBar();
         };
 

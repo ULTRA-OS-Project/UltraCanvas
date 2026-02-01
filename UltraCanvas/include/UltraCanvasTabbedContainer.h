@@ -166,7 +166,6 @@ namespace UltraCanvas {
         // ===== CALLBACKS (USING CORRECT BASE VERB FORMS) =====
         std::function<void(int, int)> onTabChange;           // (oldIndex, newIndex)
         std::function<void(int)> onTabSelect;                // (tabIndex)
-        std::function<void(int)> onTabCloseRequest;          // (tabIndex)
         std::function<bool(int)> onTabClose;                 // (tabIndex) - return false to prevent
         std::function<void(int, int)> onTabReorder;          // (fromIndex, toIndex)
         std::function<void(int, const std::string&)> onTabRename; // (tabIndex, newTitle)

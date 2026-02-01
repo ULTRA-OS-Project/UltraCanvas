@@ -333,11 +333,12 @@ private:
             statusLabel->SetTextColor(Color(0, 100, 0));
         };
 
-        mainTabbedContainer->onTabCloseRequest = [this](int index) {
+        mainTabbedContainer->onTabClose = [this](int index) {
             std::ostringstream status;
             status << "Tab \"" << mainTabbedContainer->GetTabTitle(index) << "\" closed (index " << index << ")";
             statusLabel->SetText(status.str());
             statusLabel->SetTextColor(Color(150, 100, 0));
+            return true;
         };
 
         mainTabbedContainer->onTabReorder = [this](int fromIndex, int toIndex) {

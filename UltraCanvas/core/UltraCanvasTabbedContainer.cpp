@@ -98,10 +98,6 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::RemoveTab(int index) {
         if (index < 0 || index >= (int)tabs.size()) return;
 
-        if (onTabCloseRequest) {
-            onTabCloseRequest(index);
-        }
-
         if (onTabClose && !onTabClose(index)) {
             return;
         }

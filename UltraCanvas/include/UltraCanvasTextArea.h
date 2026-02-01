@@ -127,8 +127,10 @@ namespace UltraCanvas {
         // Cursor movement - now grapheme-aware
         void MoveCursorLeft(bool selecting = false);
         void MoveCursorRight(bool selecting = false);
+        void MoveCursorWordLeft(bool selecting = false);
+        void MoveCursorWordRight(bool selecting = false);
         void MoveCursorUp(bool selecting = false);
-        void MoveCursorDown(bool selecting = false);
+        void MoveCursorDown(bool selecting = false);        
         void MoveCursorToLineStart(bool selecting = false);
         void MoveCursorToLineEnd(bool selecting = false);
         void MoveCursorToStart(bool selecting = false);

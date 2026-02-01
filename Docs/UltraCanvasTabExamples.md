@@ -188,7 +188,6 @@ std::function<void(int index)> onTabSelect;
 
 // Tab closure events
 std::function<bool(int index)> onTabClose;      // Return false to cancel
-std::function<void(int index)> onTabCloseRequest;
 
 // Tab modification events
 std::function<void(int fromIndex, int toIndex)> onTabReorder;
@@ -347,7 +346,6 @@ mainTabs->AddTab("Advanced", nestedTabs);
 1. User clicks close button or presses Ctrl+W
 2. `onTabClose` callback fired (can return false to cancel)
 3. If not cancelled, tab removed
-4. `onTabCloseRequest` callback fired
 5. Active tab updated if necessary
 
 ### Dropdown Search

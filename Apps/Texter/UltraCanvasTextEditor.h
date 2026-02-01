@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
-// Version: 2.0.0
-// Last Modified: 2026-01-26
+// Version: 2.0.1
+// Last Modified: 2026-02-01
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -67,6 +67,7 @@ namespace UltraCanvas {
  * @brief Data structure for each open file/document
  */
     struct DocumentTab {
+        int documentId;                    // Stable unique ID (survives index shifts)
         std::string filePath;              // Full file path (empty for new/unsaved files)
         std::string fileName;              // Display name
         std::shared_ptr<UltraCanvasTextArea> textArea;  // Text editor component
@@ -78,7 +79,8 @@ namespace UltraCanvas {
         std::chrono::steady_clock::time_point lastModifiedTime;  // Last edit timestamp
 
         DocumentTab()
-                : isModified(false)
+                : documentId(-1)
+                , isModified(false)
                 , isNewFile(true)
                 , lastSaveTime(std::chrono::steady_clock::now())
                 , lastModifiedTime(std::chrono::steady_clock::now())
@@ -161,6 +163,8 @@ namespace UltraCanvas {
         // ===== DOCUMENT MANAGEMENT =====
         std::vector<std::shared_ptr<DocumentTab>> documents;
         int activeDocumentIndex;
+        int nextDocumentId;             // Auto-incremented stable ID counter
+        bool isDocumentClosing;
 
         // ===== AUTOSAVE SYSTEM =====
         AutosaveManager autosaveManager;
@@ -186,6 +190,7 @@ namespace UltraCanvas {
         void SwitchToDocument(int index);
         DocumentTab* GetActiveDocument();
         const DocumentTab* GetActiveDocument() const;
+        int FindDocumentIndexById(int documentId) const;
         void SetDocumentModified(int index, bool modified);
         void UpdateTabTitle(int index);
         void UpdateTabBadge(int index);
