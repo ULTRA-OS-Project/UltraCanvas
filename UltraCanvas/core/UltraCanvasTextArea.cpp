@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.0.0
-// Last Modified: 2026-01-30
+// Version: 3.1.0
+// Last Modified: 2026-02-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -163,6 +163,35 @@ namespace UltraCanvas {
         }
 
         return position;
+    }
+
+// ===== MOUSE-TO-TEXT POSITION HELPER =====
+
+    // Convert mouse coordinates to grapheme position, line, and column
+    int UltraCanvasTextArea::GetGraphemePositionFromPoint(int mouseX, int mouseY, int& outLine, int& outCol) const {
+        int relativeX = mouseX - visibleTextArea.x + horizontalScrollOffset;
+        int relativeY = mouseY - visibleTextArea.y;
+
+        outLine = firstVisibleLine + (relativeY / computedLineHeight);
+        outLine = std::max(0, std::min(outLine, static_cast<int>(lines.size()) - 1));
+
+        outCol = 0;
+        if (outLine < static_cast<int>(lines.size()) && relativeX > 0) {
+            auto context = GetRenderContext();
+            if (context) {
+                context->PushState();
+                context->SetFontStyle(style.fontStyle);
+                context->SetFontWeight(FontWeight::Normal);
+
+                const std::string& lineStr = lines[outLine].Data();
+                int byteIndex = std::max(0, context->GetTextIndexForXY(lineStr, relativeX, 0));
+                outCol = ByteToGraphemeColumn(outLine, byteIndex);
+
+                context->PopState();
+            }
+        }
+
+        return GetPositionFromLineColumn(outLine, outCol);
     }
 
 // ===== TEXT MANIPULATION METHODS =====
@@ -1248,6 +1277,8 @@ namespace UltraCanvas {
                 return HandleMouseUp(event);
             case UCEventType::MouseMove:
                 return HandleMouseMove(event);
+            case UCEventType::MouseDoubleClick:
+                return HandleMouseDoubleClick(event);
             case UCEventType::KeyDown:
                 return HandleKeyDown(event);
             case UCEventType::MouseWheel:
@@ -1267,6 +1298,7 @@ namespace UltraCanvas {
     bool UltraCanvasTextArea::HandleMouseDown(const UCEvent& event) {
         if (!Contains(event.x, event.y)) return false;
 
+        // Scrollbar thumb dragging takes priority
         if (IsNeedVerticalScrollbar() && verticalScrollThumb.Contains(event.x, event.y)) {
             isDraggingVerticalThumb = true;
             dragStartOffset.y = event.globalY - verticalScrollThumb.y;
@@ -1283,37 +1315,66 @@ namespace UltraCanvas {
 
         SetFocus(true);
 
-        int relativeX = event.x - visibleTextArea.x + horizontalScrollOffset;
-        int relativeY = event.y - visibleTextArea.y;
+        // --- Click counting for single / double / triple click ---
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastClickTime).count();
+        int dx = std::abs(event.x - lastClickX);
+        int dy = std::abs(event.y - lastClickY);
 
-        int clickedLine = firstVisibleLine + (relativeY / computedLineHeight);
-        clickedLine = std::max(0, std::min(clickedLine, static_cast<int>(lines.size()) - 1));
-
-        int clickedCol = 0;
-        if (clickedLine < static_cast<int>(lines.size()) && relativeX > 0) {
-            auto context = GetRenderContext();
-            if (context) {
-                context->PushState();
-                context->SetFontStyle(style.fontStyle);
-                context->SetFontWeight(FontWeight::Normal);
-
-                const std::string& lineStr = lines[clickedLine].Data();
-                int byteIndex = std::max(0, context->GetTextIndexForXY(lineStr, relativeX, 0));
-                clickedCol = ByteToGraphemeColumn(clickedLine, byteIndex);
-                
-                context->PopState();
-            }
+        if (elapsed <= MultiClickTimeThresholdMs &&
+            dx <= MultiClickDistanceThreshold &&
+            dy <= MultiClickDistanceThreshold) {
+            clickCount++;
+        } else {
+            clickCount = 1;
         }
 
-        cursorGraphemePosition = GetPositionFromLineColumn(clickedLine, clickedCol);
+        lastClickTime = now;
+        lastClickX = event.x;
+        lastClickY = event.y;
+
+        // --- Compute clicked text position ---
+        int clickedLine = 0;
+        int clickedCol = 0;
+        int clickedGraphemePos = GetGraphemePositionFromPoint(event.x, event.y, clickedLine, clickedCol);
+
+        // --- Act on click count ---
+        if (clickCount >= 3) {
+            // Triple click: select entire line
+            clickCount = 3; // Cap to prevent quad-click escalation
+            HandleMouseTripleClick(event);
+            return true;
+        }
+
+        if (clickCount == 2) {
+            // Double click: select word (position cursor first so SelectWord works)
+            cursorGraphemePosition = clickedGraphemePos;
+            currentLineIndex = clickedLine;
+            SelectWord();
+            // Set anchor to selection start for potential drag-extend
+            selectionAnchorGrapheme = selectionStartGrapheme;
+            isSelectingText = true;
+            UltraCanvasApplication::GetInstance()->CaptureMouse(this);
+            return true;
+        }
+
+        // --- Single click ---
+        cursorGraphemePosition = clickedGraphemePos;
         currentLineIndex = clickedLine;
 
         if (event.shift && selectionStartGrapheme >= 0) {
+            // Shift-click: extend existing selection
             selectionEndGrapheme = cursorGraphemePosition;
         } else {
+            // Plain click: clear selection, start new potential drag selection
             selectionStartGrapheme = -1;
             selectionEndGrapheme = -1;
+            selectionAnchorGrapheme = cursorGraphemePosition;
         }
+
+        // Begin text drag selection tracking
+        isSelectingText = true;
+        UltraCanvasApplication::GetInstance()->CaptureMouse(this);
 
         RequestRedraw();
         return true;
@@ -1321,11 +1382,42 @@ namespace UltraCanvas {
 
     bool UltraCanvasTextArea::HandleMouseDoubleClick(const UCEvent& event) {
         if (!Contains(event.x, event.y)) return false;
+
+        // Position cursor at click point, then select word
+        int clickedLine = 0;
+        int clickedCol = 0;
+        cursorGraphemePosition = GetGraphemePositionFromPoint(event.x, event.y, clickedLine, clickedCol);
+        currentLineIndex = clickedLine;
+
         SelectWord();
+
+        // Prepare for potential drag-extend after double-click
+        selectionAnchorGrapheme = selectionStartGrapheme;
+        isSelectingText = true;
+        clickCount = 2;
+        UltraCanvasApplication::GetInstance()->CaptureMouse(this);
+        return true;
+    }
+
+    bool UltraCanvasTextArea::HandleMouseTripleClick(const UCEvent& event) {
+        if (!Contains(event.x, event.y)) return false;
+
+        // Position cursor at click point, then select entire line
+        int clickedLine = 0;
+        int clickedCol = 0;
+        GetGraphemePositionFromPoint(event.x, event.y, clickedLine, clickedCol);
+
+        SelectLine(clickedLine);
+
+        // Prepare for potential drag-extend after triple-click
+        selectionAnchorGrapheme = selectionStartGrapheme;
+        isSelectingText = true;
+        UltraCanvasApplication::GetInstance()->CaptureMouse(this);
         return true;
     }
 
     bool UltraCanvasTextArea::HandleMouseMove(const UCEvent& event) {
+        // Scrollbar thumb dragging
         if (isDraggingVerticalThumb) {
             auto bounds = GetBounds();
             int scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
@@ -1365,17 +1457,74 @@ namespace UltraCanvas {
             return true;
         }
 
+        // --- Text drag selection ---
+        if (isSelectingText && selectionAnchorGrapheme >= 0) {
+            int dragLine = 0;
+            int dragCol = 0;
+            int dragGraphemePos = GetGraphemePositionFromPoint(event.x, event.y, dragLine, dragCol);
+
+            // Update selection from anchor to current drag position
+            selectionStartGrapheme = selectionAnchorGrapheme;
+            selectionEndGrapheme = dragGraphemePos;
+            cursorGraphemePosition = dragGraphemePos;
+            currentLineIndex = dragLine;
+
+            // Auto-scroll when dragging near edges
+            if (event.y < visibleTextArea.y) {
+                // Mouse above visible area — scroll up
+                ScrollUp(1);
+            } else if (event.y > visibleTextArea.y + visibleTextArea.height) {
+                // Mouse below visible area — scroll down
+                ScrollDown(1);
+            }
+
+            if (event.x < visibleTextArea.x) {
+                // Mouse left of visible area — scroll left
+                ScrollLeft(1);
+            } else if (event.x > visibleTextArea.x + visibleTextArea.width) {
+                // Mouse right of visible area — scroll right
+                ScrollRight(1);
+            }
+
+            RequestRedraw();
+
+            if (onSelectionChanged) {
+                onSelectionChanged(selectionStartGrapheme, selectionEndGrapheme);
+            }
+            return true;
+        }
+
         return false;
     }
 
     bool UltraCanvasTextArea::HandleMouseUp(const UCEvent& event) {
+        bool wasHandled = false;
+
+        // Finalize scrollbar dragging
         if (isDraggingVerticalThumb || isDraggingHorizontalThumb) {
             isDraggingVerticalThumb = false;
             isDraggingHorizontalThumb = false;
             UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
             return true;
         }
-        return false;
+
+        // Finalize text selection dragging
+        if (isSelectingText) {
+            isSelectingText = false;
+            selectionAnchorGrapheme = -1;
+            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
+
+            // If start equals end, there's no real selection — clear it
+            if (selectionStartGrapheme >= 0 && selectionStartGrapheme == selectionEndGrapheme) {
+                selectionStartGrapheme = -1;
+                selectionEndGrapheme = -1;
+            }
+
+            RequestRedraw();
+            wasHandled = true;
+        }
+
+        return wasHandled;
     }
 
     bool UltraCanvasTextArea::HandleMouseDrag(const UCEvent& event) {

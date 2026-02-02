@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.0.1
-// Last Modified: 2026-02-01
+// Version: 2.0.2
+// Last Modified: 2026-02-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -345,7 +345,8 @@ namespace UltraCanvas {
                             config.showLineNumbers = checked;
                             OnViewToggleLineNumbers();
                         }),
-                        MenuItemData::Checkbox("Word Wrap", false, [this](bool checked) {
+                        MenuItemData::Checkbox("Word Wrap", config.wordWrap, [this](bool checked) {
+                            config.wordWrap = checked;
                             OnViewToggleWordWrap();
                         })
                 })
@@ -488,8 +489,10 @@ namespace UltraCanvas {
             doc->textArea->ApplyDarkTheme();
         }
 
-        // Set font size
-        // Note: SetFontSize method would need to be added to TextArea
+        // Apply current View settings to new document
+        doc->textArea->SetFontSize(static_cast<float>(currentFontSize));
+        doc->textArea->SetShowLineNumbers(config.showLineNumbers);
+        doc->textArea->SetWordWrap(config.wordWrap);
 
         // Add document to list
         documents.push_back(doc);
@@ -1162,18 +1165,20 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
     }
 
     void UltraCanvasTextEditor::OnViewToggleLineNumbers() {
-        // Apply to all documents
+        // Apply to all open document TextAreas
         for (auto& doc : documents) {
-            // Note: SetShowLineNumbers would need to be added to TextArea
-            // For now, this is a placeholder
+            if (doc->textArea) {
+                doc->textArea->SetShowLineNumbers(config.showLineNumbers);
+            }
         }
     }
 
     void UltraCanvasTextEditor::OnViewToggleWordWrap() {
-        auto doc = GetActiveDocument();
-        if (doc && doc->textArea) {
-            bool currentWrap = doc->textArea->GetWordWrap();
-            doc->textArea->SetWordWrap(!currentWrap);
+        // Apply to all open document TextAreas
+        for (auto& doc : documents) {
+            if (doc->textArea) {
+                doc->textArea->SetWordWrap(config.wordWrap);
+            }
         }
     }
 
@@ -1268,6 +1273,11 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         if (doc->textArea->GetHighlightSyntax()) {
             doc->textArea->SetProgrammingLanguage(doc->language);
         }
+
+        // Reapply current View settings (theme methods may reset these)
+        doc->textArea->SetFontSize(static_cast<float>(currentFontSize));
+        doc->textArea->SetShowLineNumbers(config.showLineNumbers);
+        doc->textArea->SetWordWrap(config.wordWrap);
     }
 
     void UltraCanvasTextEditor::ApplyThemeToAllDocuments() {
@@ -1624,6 +1634,15 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
 
     void UltraCanvasTextEditor::SetFontSize(int size) {
         currentFontSize = std::max(6, std::min(72, size));
+
+        // Apply to all open document TextAreas
+        for (auto& doc : documents) {
+            if (doc->textArea) {
+                doc->textArea->SetFontSize(static_cast<float>(currentFontSize));
+            }
+        }
+
+        UpdateStatusBar();
     }
 
     void UltraCanvasTextEditor::IncreaseFontSize() {

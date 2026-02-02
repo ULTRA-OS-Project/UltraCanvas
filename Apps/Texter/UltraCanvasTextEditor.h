@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
-// Version: 2.0.1
-// Last Modified: 2026-02-01
+// Version: 2.0.2
+// Last Modified: 2026-02-02
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -46,6 +46,7 @@ namespace UltraCanvas {
         // Editor settings
         std::string defaultLanguage = "Plain Text";
         bool darkTheme = false;
+        bool wordWrap = false;
         std::string defaultEncoding = "UTF-8";
         int defaultFontSize = 12;
 

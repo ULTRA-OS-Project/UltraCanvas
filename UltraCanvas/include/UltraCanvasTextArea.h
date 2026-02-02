@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.0.0
-// Last Modified: 2026-01-30
+// Version: 3.1.0
+// Last Modified: 2026-02-02
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -16,6 +16,7 @@
 #include <functional>
 #include <memory>
 #include <utility>
+#include <chrono>
 
 namespace UltraCanvas {
 
@@ -304,6 +305,7 @@ namespace UltraCanvas {
         // Event handlers
         bool HandleMouseDown(const UCEvent& event);
         bool HandleMouseDoubleClick(const UCEvent& event);
+        bool HandleMouseTripleClick(const UCEvent& event);
         bool HandleMouseMove(const UCEvent& event);
         bool HandleMouseUp(const UCEvent &event);
         bool HandleMouseDrag(const UCEvent& event);
@@ -326,6 +328,9 @@ namespace UltraCanvas {
         size_t GraphemeToByteOffset(int lineIndex, int graphemeColumn) const;
         int ByteToGraphemeColumn(int lineIndex, size_t byteOffset) const;
         int GetLineGraphemeCount(int lineIndex) const;
+
+        // Mouse-to-text position helper
+        int GetGraphemePositionFromPoint(int mouseX, int mouseY, int& outLine, int& outCol) const;
 
         // Initialization
         void ApplyDefaultStyle();
@@ -359,6 +364,18 @@ namespace UltraCanvas {
         Point2Di dragStartOffset;
         bool isDraggingHorizontalThumb = false;
         bool isDraggingVerticalThumb = false;
+
+        // Mouse text selection state
+        bool isSelectingText = false;
+        int selectionAnchorGrapheme = -1;
+
+        // Click counting for double/triple click detection
+        int clickCount = 0;
+        std::chrono::steady_clock::time_point lastClickTime;
+        int lastClickX = 0;
+        int lastClickY = 0;
+        static constexpr int MultiClickDistanceThreshold = 5;
+        static constexpr int MultiClickTimeThresholdMs = 400;
 
         // Cursor animation
         double cursorBlinkTime;
