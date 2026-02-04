@@ -186,7 +186,7 @@ namespace UltraCanvas {
         void SetLine(int lineIndex, const UCString& text);
 
         // Search and replace
-        void FindText(const std::string& searchText, bool caseSensitive = false);
+        void SetTextToFind(const std::string& searchText, bool caseSensitive = false);
         void FindNext();
         void FindPrevious();
         void ReplaceText(const std::string& findText, const std::string& replaceText, bool all = false);

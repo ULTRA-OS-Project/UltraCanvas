@@ -1052,7 +1052,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             findDialog->onFindNext = [this](const std::string& searchText, bool caseSensitive, bool wholeWord) {
                 auto doc = GetActiveDocument();
                 if (doc && doc->textArea) {
-                    doc->textArea->FindText(searchText, caseSensitive);
+                    doc->textArea->SetTextToFind(searchText, caseSensitive);
                     doc->textArea->FindNext();
                 }
             };
@@ -1060,12 +1060,12 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             findDialog->onFindPrevious = [this](const std::string& searchText, bool caseSensitive, bool wholeWord) {
                 auto doc = GetActiveDocument();
                 if (doc && doc->textArea) {
-                    doc->textArea->FindText(searchText, caseSensitive);
+                    doc->textArea->SetTextToFind(searchText, caseSensitive);
                     doc->textArea->FindPrevious();
                 }
             };
 
-            findDialog->onClose = [this]() {
+            findDialog->onResult = [this](DialogResult res) {
                 findDialog.reset();
             };
         }
@@ -1086,7 +1086,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             replaceDialog->onFindNext = [this](const std::string& findText, bool caseSensitive, bool wholeWord) {
                 auto doc = GetActiveDocument();
                 if (doc && doc->textArea) {
-                    doc->textArea->FindText(findText, caseSensitive);
+                    doc->textArea->SetTextToFind(findText, caseSensitive);
                     doc->textArea->FindNext();
                 }
             };
@@ -1096,7 +1096,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 auto doc = GetActiveDocument();
                 if (doc && doc->textArea) {
                     // Find current occurrence
-                    doc->textArea->FindText(findText, caseSensitive);
+                    doc->textArea->SetTextToFind(findText, caseSensitive);
                     // Replace single occurrence
                     doc->textArea->ReplaceText(findText, replaceText, false);
                 }
@@ -1111,7 +1111,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 }
             };
 
-            replaceDialog->onClose = [this]() {
+            replaceDialog->onResult = [this](DialogResult res) {
                 replaceDialog.reset();
             };
         }
@@ -1505,6 +1505,18 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             }
             if (event.ctrl && event.virtualKey == UCKeys::T) {
                 OnViewToggleTheme();
+                return true;
+            }
+            if (event.ctrl && event.virtualKey == UCKeys::F) {
+                OnEditSearch();
+                return true;
+            }
+            if (event.ctrl && event.virtualKey == UCKeys::H) {
+                OnEditReplace();
+                return true;
+            }
+            if (event.ctrl && event.virtualKey == UCKeys::G) {
+                OnEditGoToLine();
                 return true;
             }
         }

@@ -332,7 +332,7 @@ namespace UltraCanvas {
             return;
         }
 
-        if (!dialogConfig.onClosing || dialogConfig.onClosing(result)) {
+        if (!onClosing || onClosing(result)) {
             Close();
         }
     }
@@ -340,8 +340,8 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::Close() {
         UltraCanvasWindow::Close();
 
-        if (dialogConfig.onResult) {
-            dialogConfig.onResult(result);
+        if (onResult) {
+            onResult(result);
         }
         // Unregister from dialog manager
         UltraCanvasDialogManager::UnregisterDialog(
@@ -1432,7 +1432,7 @@ namespace UltraCanvas {
         }
 
         if (onResult) {
-            dialog->SetResultCallback(onResult);
+            dialog->onResult = onResult;
         }
         dialog->ShowModal(parent);
     }

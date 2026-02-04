@@ -212,10 +212,6 @@ namespace UltraCanvas {
 //        bool closeOnClickOutside = false;
         float autoCloseTime = 0.0f; // 0 = no auto close
 
-        // Callbacks
-        std::function<void(DialogResult)> onResult;
-        std::function<bool(DialogResult)> onClosing; // Return false to prevent closing
-
         DialogConfig() {
             // Set window defaults for dialogs
             title = "Dialog";
@@ -386,7 +382,7 @@ namespace UltraCanvas {
     public:
         // ===== DIALOG OPERATIONS =====
         // ShowModal shows the dialog and returns immediately (non-blocking).
-        void ShowModal(UltraCanvasWindowBase* parent = nullptr);
+        virtual void ShowModal(UltraCanvasWindowBase* parent = nullptr);
         // Close the dialog with specified result
         void CloseDialog(DialogResult result = DialogResult::Cancel);
         // Create dialog and window with config
@@ -413,11 +409,6 @@ namespace UltraCanvas {
         bool IsModalDialog() const;
         DialogResult GetResult() const;
 
-        // ===== CALLBACKS =====
-        void SetResultCallback(std::function<void(DialogResult)> callback) {
-            dialogConfig.onResult = callback;
-        }
-
         // ===== BUTTON MANAGEMENT =====
         void AddCustomButton(const std::string& text, DialogResult result, std::function<void()> callback = nullptr);
         void SetButtonDisabled(DialogButton button, bool disabled);
@@ -440,7 +431,11 @@ namespace UltraCanvas {
 
         bool OnEvent(const UCEvent& event) override;
 
-    protected:
+        // Callbacks
+        std::function<void(DialogResult)> onResult;
+        std::function<bool(DialogResult)> onClosing; // Return false to prevent closing
+
+        protected:
         // ===== LAYOUT BUILDING =====
         void BuildDialogLayout();
         void CreateContentSection();

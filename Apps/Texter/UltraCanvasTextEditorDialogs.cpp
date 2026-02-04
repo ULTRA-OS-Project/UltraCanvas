@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditorDialogs.cpp
 // Implementation of custom dialogs for Find and Replace
-// Version: 1.0.0
-// Last Modified: 2026-01-26
+// Version: 1.1.0
+// Last Modified: 2026-02-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditorDialogs.h"
@@ -140,9 +140,6 @@ namespace UltraCanvas {
 
         // Close button
         closeButton->onClick = [this]() {
-            if (onClose) {
-                onClose();
-            }
             CloseDialog(DialogResult::Cancel);
         };
 
@@ -176,6 +173,16 @@ namespace UltraCanvas {
         wholeWord = whole;
         if (wholeWordCheck) {
             wholeWordCheck->SetCheckState(whole ? CheckboxState::Checked : CheckboxState::Unchecked);
+        }
+    }
+
+    void UltraCanvasFindDialog::ShowModal(UltraCanvasWindowBase* parent) {
+        // Call base class implementation
+        UltraCanvasModalDialog::ShowModal(parent);
+        
+        // Set focus on search input after dialog is shown
+        if (searchInput) {
+            searchInput->SetFocus(true);
         }
     }
 
@@ -343,9 +350,6 @@ namespace UltraCanvas {
 
         // Close button
         closeButton->onClick = [this]() {
-            if (onClose) {
-                onClose();
-            }
             CloseDialog(DialogResult::Cancel);
         };
 
@@ -380,6 +384,16 @@ namespace UltraCanvas {
         wholeWord = whole;
         if (wholeWordCheck) {
             wholeWordCheck->SetCheckState(whole ? CheckboxState::Checked : CheckboxState::Unchecked);
+        }
+    }
+
+    void UltraCanvasReplaceDialog::ShowModal(UltraCanvasWindowBase* parent) {
+        // Call base class implementation
+        UltraCanvasModalDialog::ShowModal(parent);
+        
+        // Set focus on find input after dialog is shown
+        if (findInput) {
+            findInput->SetFocus(true);
         }
     }
 
@@ -500,6 +514,17 @@ namespace UltraCanvas {
         lineNumber = std::max(1, std::min(line, maxLine));
         if (lineInput) {
             lineInput->SetText(std::to_string(lineNumber));
+        }
+    }
+
+    void UltraCanvasGoToLineDialog::ShowModal(UltraCanvasWindowBase* parent) {
+        // Call base class implementation
+        UltraCanvasModalDialog::ShowModal(parent);
+        
+        // Set focus on line input and select all text for easy replacement
+        if (lineInput) {
+            lineInput->SetFocus(true);
+            lineInput->SelectAll();
         }
     }
 

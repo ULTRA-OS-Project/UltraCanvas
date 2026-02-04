@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.1.0
-// Last Modified: 2026-02-02
+// Version: 3.1.2
+// Last Modified: 2026-02-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -176,7 +176,7 @@ namespace UltraCanvas {
         outLine = std::max(0, std::min(outLine, static_cast<int>(lines.size()) - 1));
 
         outCol = 0;
-        if (outLine < static_cast<int>(lines.size()) && relativeX > 0) {
+        if (outLine < static_cast<int>(lines.size())) {
             auto context = GetRenderContext();
             if (context) {
                 context->PushState();
@@ -184,10 +184,31 @@ namespace UltraCanvas {
                 context->SetFontWeight(FontWeight::Normal);
 
                 const std::string& lineStr = lines[outLine].Data();
-                int byteIndex = std::max(0, context->GetTextIndexForXY(lineStr, relativeX, 0));
-                outCol = ByteToGraphemeColumn(outLine, byteIndex);
+                
+                // Handle click positioning based on X coordinate
+                if (relativeX <= 0) {
+                    // Click before or at line start - position at column 0
+                    outCol = 0;
+                } else {
+                    // Get the total width of the line text
+                    int lineWidth = context->GetTextLineWidth(lineStr);
+                    
+                    if (relativeX >= lineWidth) {
+                        // Click at or beyond end of line - position at end of line
+                        outCol = static_cast<int>(lines[outLine].Length());
+                    } else {
+                        // Click within line text - use GetTextIndexForXY
+                        int byteIndex = std::max(0, context->GetTextIndexForXY(lineStr, relativeX, 0));
+                        outCol = ByteToGraphemeColumn(outLine, byteIndex);
+                    }
+                }
 
                 context->PopState();
+            } else {
+                // No render context - fallback to end of line for any positive X
+                if (relativeX > 0) {
+                    outCol = static_cast<int>(lines[outLine].Length());
+                }
             }
         }
 
@@ -931,7 +952,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::GoToLine(int lineNumber) {
-        int lineIndex = std::max(0, std::min(lineNumber - 1, static_cast<int>(lines.size()) - 1));
+        int lineIndex = std::max(0, std::min(lineNumber, static_cast<int>(lines.size()) - 1));
         cursorGraphemePosition = GetPositionFromLineColumn(lineIndex, 0);
         currentLineIndex = lineIndex;
         EnsureCursorVisible();
@@ -1681,6 +1702,8 @@ namespace UltraCanvas {
                 if (event.ctrl) { Redo(); EnsureCursorVisible(); }
                 else handled = false;
                 break;
+            case UCKeys::Escape:
+                break;
             default:
                 handled = false;
                 break;
@@ -2051,11 +2074,11 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
 
 // ===== SEARCH =====
 
-    void UltraCanvasTextArea::FindText(const std::string& searchText, bool caseSensitive) {
+    void UltraCanvasTextArea::SetTextToFind(const std::string& searchText, bool caseSensitive) {
         lastSearchText = searchText;
         lastSearchCaseSensitive = caseSensitive;
         lastSearchPosition = cursorGraphemePosition;
-        FindNext();
+        // FindNext();
     }
 
     void UltraCanvasTextArea::FindNext() {
@@ -2077,6 +2100,7 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
             auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
             currentLineIndex = line;
             EnsureCursorVisible();
+            RequestRedraw();
         }
     }
 
@@ -2084,22 +2108,37 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
         if (lastSearchText.empty()) return;
 
         UCString searchUC(lastSearchText);
-        size_t searchFrom = lastSearchPosition > 0 ? lastSearchPosition - 1 : textContent.Length();
-        size_t foundPos = textContent.RFind(searchUC, searchFrom);
+        size_t foundPos = UCString::npos;
         
-        if (foundPos == UCString::npos && lastSearchPosition < static_cast<int>(textContent.Length())) {
+        // Search backwards from position BEFORE the current match start
+        // lastSearchPosition points to the START of the current match
+        if (lastSearchPosition > 0) {
+            // RFind searches for matches that START at or before the given position
+            // To find the PREVIOUS match, we need to search from before the current match
+            foundPos = textContent.RFind(searchUC, static_cast<size_t>(lastSearchPosition - 1));
+        }
+        
+        // Wrap around to end of document if nothing found before current position
+        if (foundPos == UCString::npos) {
+            // Search from the very end
             foundPos = textContent.RFind(searchUC);
+            
+            // Don't accept if it's the same position we started from (no other match exists)
+            if (foundPos != UCString::npos && static_cast<int>(foundPos) == lastSearchPosition) {
+                return; // Only one match in document, already selected
+            }
         }
 
         if (foundPos != UCString::npos) {
             selectionStartGrapheme = static_cast<int>(foundPos);
             selectionEndGrapheme = static_cast<int>(foundPos + searchUC.Length());
-            cursorGraphemePosition = selectionEndGrapheme;
+            cursorGraphemePosition = selectionStartGrapheme;
             lastSearchPosition = static_cast<int>(foundPos);
             
             auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
             currentLineIndex = line;
             EnsureCursorVisible();
+            RequestRedraw();
         }
     }
 

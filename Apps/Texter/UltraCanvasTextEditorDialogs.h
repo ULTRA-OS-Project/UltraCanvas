@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditorDialogs.h
 // Custom dialogs for Find and Replace functionality
-// Version: 1.0.0
-// Last Modified: 2026-01-26
+// Version: 1.1.0
+// Last Modified: 2026-02-04
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -58,6 +58,9 @@ namespace UltraCanvas {
 
         // Setup
         void Initialize();
+        
+        // Override ShowModal to set focus on search input
+        void ShowModal(UltraCanvasWindowBase* parent = nullptr) override;
 
         // Getters
         std::string GetSearchText() const { return searchText; }
@@ -72,7 +75,6 @@ namespace UltraCanvas {
         // Callbacks
         std::function<void(const std::string&, bool, bool)> onFindNext;
         std::function<void(const std::string&, bool, bool)> onFindPrevious;
-        std::function<void()> onClose;
     };
 
 // ===== REPLACE DIALOG =====
@@ -123,6 +125,9 @@ namespace UltraCanvas {
 
         // Setup
         void Initialize();
+        
+        // Override ShowModal to set focus on find input
+        void ShowModal(UltraCanvasWindowBase* parent = nullptr) override;
 
         // Getters
         std::string GetFindText() const { return findText; }
@@ -140,7 +145,6 @@ namespace UltraCanvas {
         std::function<void(const std::string&, bool, bool)> onFindNext;
         std::function<void(const std::string&, const std::string&, bool, bool)> onReplace;
         std::function<void(const std::string&, const std::string&, bool, bool)> onReplaceAll;
-        std::function<void()> onClose;
     };
 
 // ===== GO TO LINE DIALOG =====
@@ -178,6 +182,9 @@ namespace UltraCanvas {
 
         // Setup
         void Initialize(int currentLine, int totalLines);
+        
+        // Override ShowModal to set focus on line input
+        void ShowModal(UltraCanvasWindowBase* parent = nullptr) override;
 
         // Getters
         int GetLineNumber() const { return lineNumber; }
