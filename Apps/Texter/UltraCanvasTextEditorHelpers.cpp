@@ -1,7 +1,7 @@
 // core/UltraCanvasTextEditorHelpers.cpp
 // Helper utilities for text editor components with status bar integration
-// Version: 1.0.0
-// Last Modified: 2025-12-20
+// Version: 1.1.0
+// Last Modified: 2026-02-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditorHelpers.h"
@@ -10,8 +10,102 @@
 #include "UltraCanvasTextArea.h"
 #include <memory>
 #include <string>
+#include <sstream>
 
 namespace UltraCanvas {
+
+// ===== INTERNAL COUNTING HELPERS =====
+
+    /**
+     * @brief Counts words in a text string
+     *
+     * A word is defined as a contiguous sequence of non-whitespace characters
+     * separated by whitespace (spaces, tabs, newlines).
+     *
+     * @param text The text to count words in
+     * @return Number of words
+     */
+    static int CountWords(const std::string& text) {
+        if (text.empty()) return 0;
+
+        int count = 0;
+        bool inWord = false;
+
+        for (char ch : text) {
+            if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
+                inWord = false;
+            } else {
+                if (!inWord) {
+                    count++;
+                    inWord = true;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    /**
+     * @brief Counts letters (non-whitespace characters) in a text string
+     *
+     * Counts all characters that are not spaces, tabs, newlines, or
+     * carriage returns.
+     *
+     * @param text The text to count letters in
+     * @return Number of non-whitespace characters
+     */
+    static int CountLetters(const std::string& text) {
+        if (text.empty()) return 0;
+
+        int count = 0;
+        for (char ch : text) {
+            if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r') {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    /**
+     * @brief Updates word count and letter count labels in the status bar
+     *
+     * Internal helper used by the onTextChanged callback to update
+     * both count labels in a single pass.
+     *
+     * @param statusBar Weak pointer to the status bar toolbar
+     * @param text The current editor text content
+     */
+    static void UpdateTextCounts(const std::weak_ptr<UltraCanvasToolbar>& weakStatusBar,
+                                 const std::string& text) {
+        auto sb = weakStatusBar.lock();
+        if (!sb) return;
+
+        int words = CountWords(text);
+        int letters = CountLetters(text);
+
+        // Update word count label
+        auto wordItem = sb->GetItem("wordcount");
+        if (wordItem) {
+            auto widget = wordItem->GetWidget();
+            auto wordLabel = std::dynamic_pointer_cast<UltraCanvasLabel>(widget);
+            if (wordLabel) {
+                wordLabel->SetText("Words: " + std::to_string(words));
+            }
+        }
+
+        // Update letter count label
+        auto letterItem = sb->GetItem("lettercount");
+        if (letterItem) {
+            auto widget = letterItem->GetWidget();
+            auto letterLabel = std::dynamic_pointer_cast<UltraCanvasLabel>(widget);
+            if (letterLabel) {
+                letterLabel->SetText("Chars: " + std::to_string(letters));
+            }
+        }
+    }
+
+// ===== STATUS BAR FACTORY =====
 
     std::shared_ptr<UltraCanvasToolbar> CreateTextEditorStatusBar(
             const std::string& identifier,
@@ -19,6 +113,7 @@ namespace UltraCanvas {
             std::shared_ptr<UltraCanvasTextArea> editor
     ) {
         // Create status bar using builder pattern with ID
+        // Layout: [position | encoding | syntax | <<<stretch>>> | words | chars | selection]
         auto statusBar = UltraCanvasToolbarBuilder(identifier, id)
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::StatusBar())
@@ -30,6 +125,10 @@ namespace UltraCanvas {
                 .AddSeparator("sep2")
                 .AddLabel("syntax", "Plain Text")
                 .AddStretch(1.0f)
+                .AddLabel("wordcount", "Words: 0")
+                .AddSeparator("sep3")
+                .AddLabel("lettercount", "Chars: 0")
+                .AddSeparator("sep4")
                 .AddLabel("selection", "")
                 .Build();
 
@@ -39,7 +138,6 @@ namespace UltraCanvas {
             std::weak_ptr<UltraCanvasToolbar> weakStatusBar = statusBar;
 
             // Update position on cursor move
-            // Note: SelectionChangedCallback signature is (int start, int end)
             editor->SetOnCursorPositionChanged([weakStatusBar](int line, int col) {
                 auto sb = weakStatusBar.lock();
                 if (!sb) return;
@@ -71,7 +169,6 @@ namespace UltraCanvas {
 //            });
 
             // Update selection count
-            // Note: SelectionChangedCallback signature is (int start, int end)
             std::weak_ptr<UltraCanvasTextArea> weakEditor = editor;
             editor->SetOnSelectionChanged([weakStatusBar, weakEditor](int start, int end) {
                 auto sb = weakStatusBar.lock();
@@ -85,7 +182,7 @@ namespace UltraCanvas {
                     if (selLabel) {
                         if (start != end && start >= 0 && end >= 0) {
                             int charCount = std::abs(end - start);
-                            selLabel->SetText(std::to_string(charCount) + " chars");
+                            selLabel->SetText(std::to_string(charCount) + " sel");
                         } else {
                             selLabel->SetText("");
                         }
@@ -114,10 +211,15 @@ namespace UltraCanvas {
 //                    encLabel->SetText(editor->GetCharsetEncoding());
 //                }
 //            }
+
+            // Set initial word/letter counts from current text
+            UpdateTextCounts(weakStatusBar, editor->GetText());
         }
 
         return statusBar;
     }
+
+// ===== PUBLIC UPDATE HELPERS =====
 
     void UpdateStatusBarSyntaxMode(
             std::shared_ptr<UltraCanvasToolbar> statusBar,
@@ -163,6 +265,38 @@ namespace UltraCanvas {
             auto encLabel = std::dynamic_pointer_cast<UltraCanvasLabel>(widget);
             if (encLabel) {
                 encLabel->SetText(encoding);
+            }
+        }
+    }
+
+    void UpdateStatusBarWordCount(
+            std::shared_ptr<UltraCanvasToolbar> statusBar,
+            int wordCount
+    ) {
+        if (!statusBar) return;
+
+        auto item = statusBar->GetItem("wordcount");
+        if (item) {
+            auto widget = item->GetWidget();
+            auto wordLabel = std::dynamic_pointer_cast<UltraCanvasLabel>(widget);
+            if (wordLabel) {
+                wordLabel->SetText("Words: " + std::to_string(wordCount));
+            }
+        }
+    }
+
+    void UpdateStatusBarLetterCount(
+            std::shared_ptr<UltraCanvasToolbar> statusBar,
+            int letterCount
+    ) {
+        if (!statusBar) return;
+
+        auto item = statusBar->GetItem("lettercount");
+        if (item) {
+            auto widget = item->GetWidget();
+            auto letterLabel = std::dynamic_pointer_cast<UltraCanvasLabel>(widget);
+            if (letterLabel) {
+                letterLabel->SetText("Chars: " + std::to_string(letterCount));
             }
         }
     }

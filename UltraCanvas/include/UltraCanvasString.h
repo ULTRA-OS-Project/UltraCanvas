@@ -206,6 +206,8 @@ namespace Grapheme {
 
     // Find previous permissible line break (returns byte offset)
     size_t PrevLineBreak(const std::string& str, size_t bytePos);
+
+    int CountWords(const std::string& text);
 }
 
 // ===== GRAPHEME REFERENCE (for operator[]) =====

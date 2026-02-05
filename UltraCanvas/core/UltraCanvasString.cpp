@@ -287,6 +287,55 @@ namespace Grapheme {
         }
         return count;
     }
+    
+    int CountWords(const std::string& text) {
+        if (text.empty()) return 0;
+
+        int wordCount = 0;
+        size_t pos = 0;
+        size_t textLen = text.size();
+
+        while (pos < textLen) {
+            // Find next word boundary
+            size_t nextBoundary = Grapheme::NextWordBoundary(text, pos);
+            if (nextBoundary == pos || nextBoundary > textLen) {
+                break;
+            }
+
+            // Extract the segment between boundaries
+            std::string segment = text.substr(pos, nextBoundary - pos);
+
+            // Check if this segment contains any non-whitespace graphemes
+            // (word boundaries include whitespace segments)
+            bool hasContent = false;
+            size_t segPos = 0;
+            while (segPos < segment.size()) {
+                size_t nextGrapheme = Grapheme::NextGraphemeBoundary(segment, segPos);
+                if (nextGrapheme == segPos) {
+                    nextGrapheme = segPos + 1; // Fallback for malformed
+                }
+
+                // Get the first codepoint of this grapheme to check if whitespace
+                auto it = segment.begin() + segPos;
+                uint32_t codepoint = UTF8::DecodeCodepoint(it, segment.end());
+
+                if (!Unicode::IsWhitespace(codepoint)) {
+                    hasContent = true;
+                    break;
+                }
+
+                segPos = nextGrapheme;
+            }
+
+            if (hasContent) {
+                wordCount++;
+            }
+
+            pos = nextBoundary;
+        }
+
+        return wordCount;
+    }
 
     std::pair<size_t, size_t> GetGraphemeAt(const std::string& str, size_t graphemeIndex) {
         if (str.empty()) return {0, 0};

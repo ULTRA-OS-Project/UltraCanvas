@@ -1,7 +1,7 @@
 // include/UltraCanvasTextEditorHelpers.h
 // Helper utilities for text editor components with status bar integration
-// Version: 1.0.0
-// Last Modified: 2025-12-20
+// Version: 1.1.0
+// Last Modified: 2026-02-05
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -22,6 +22,8 @@ namespace UltraCanvas {
  * - Character encoding (UTF-8, ASCII, etc.)
  * - Syntax highlighting mode
  * - Selection character count
+ * - Letter count (total characters excluding whitespace)
+ * - Word count
  *
  * The status bar automatically binds to the editor's events and updates
  * information in real-time.
@@ -80,6 +82,34 @@ namespace UltraCanvas {
     void UpdateStatusBarEncoding(
             std::shared_ptr<UltraCanvasToolbar> statusBar,
             const std::string& encoding
+    );
+
+/**
+ * @brief Updates the word count label in a text editor status bar
+ *
+ * Helper function to manually update the word count display.
+ * Normally updated automatically via the onTextChanged callback.
+ *
+ * @param statusBar The status bar to update
+ * @param wordCount The word count to display
+ */
+    void UpdateStatusBarWordCount(
+            std::shared_ptr<UltraCanvasToolbar> statusBar,
+            int wordCount
+    );
+
+/**
+ * @brief Updates the letter count label in a text editor status bar
+ *
+ * Helper function to manually update the letter/character count display.
+ * Normally updated automatically via the onTextChanged callback.
+ *
+ * @param statusBar The status bar to update
+ * @param letterCount The letter/character count to display
+ */
+    void UpdateStatusBarLetterCount(
+            std::shared_ptr<UltraCanvasToolbar> statusBar,
+            int letterCount
     );
 
 } // namespace UltraCanvas
