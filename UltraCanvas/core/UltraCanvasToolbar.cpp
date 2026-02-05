@@ -60,6 +60,7 @@ namespace UltraCanvas {
 
         if (!iconPath.empty()) {
             button->SetIcon(iconPath);
+            button->SetIconSize(24, 24);
         }
 
         widget = button;
@@ -155,6 +156,7 @@ namespace UltraCanvas {
                 // Update button appearance based on toolbar appearance
                 ButtonStyle style = button->GetStyle();
                 style.fontSize = appearance.iconSize == ToolbarIconSize::Small ? 10.0f : 12.0f;
+                style.borderWidth = appearance.style == ToolbarStyle::Flat ? 0 : 1;
                 button->SetStyle(style);
                 button->SetIconSize(20, 20);
             }
@@ -394,25 +396,6 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasToolbar::SetStyle(ToolbarStyle st) {
-        style = st;
-
-        // Update appearance based on style
-        switch (style) {
-            case ToolbarStyle::Flat:
-                SetAppearance(ToolbarAppearance::Flat());
-                break;
-            case ToolbarStyle::Docked:
-                SetAppearance(ToolbarAppearance::MacOSDock());
-                break;
-            case ToolbarStyle::Ribbon:
-                SetAppearance(ToolbarAppearance::Ribbon());
-                break;
-            default:
-                break;
-        }
-    }
-
     void UltraCanvasToolbar::SetAppearance(const ToolbarAppearance& app) {
         appearance = app;
 
@@ -420,9 +403,9 @@ namespace UltraCanvas {
         SetBackgroundColor(appearance.backgroundColor);
 
         // Update border based on appearance
-        if (style == ToolbarStyle::Flat) {
+        if (appearance.style == ToolbarStyle::Flat) {
             SetBorders(0, Colors::Transparent);
-        } else if (style == ToolbarStyle::Docked) {
+        } else if (appearance.style == ToolbarStyle::Docked) {
             SetBorders(1, Color(180, 180, 180, 180), 12);
         } else {
             SetBorders(1, Color(180, 180, 180, 255));
@@ -867,11 +850,6 @@ namespace UltraCanvas {
         return *this;
     }
 
-    UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::SetStyle(ToolbarStyle style) {
-        toolbar->SetStyle(style);
-        return *this;
-    }
-
     UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::SetAppearance(const ToolbarAppearance& app) {
         toolbar->SetAppearance(app);
         return *this;
@@ -943,7 +921,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasToolbar> CreateStandardToolbar(const std::string& identifier) {
             return UltraCanvasToolbarBuilder(identifier)
                     .SetOrientation(ToolbarOrientation::Horizontal)
-                    .SetStyle(ToolbarStyle::Standard)
+                    .SetAppearance(ToolbarAppearance::Default())
                     .SetDimensions(0, 0, 800, 36)
                     .Build();
         }
@@ -951,7 +929,6 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasToolbar> CreateDockStyleToolbar(const std::string& identifier) {
             return UltraCanvasToolbarBuilder(identifier)
                     .SetOrientation(ToolbarOrientation::Horizontal)
-                    .SetStyle(ToolbarStyle::Docked)
                     .SetAppearance(ToolbarAppearance::MacOSDock())
                     .SetDimensions(0, 0, 600, 64)
                     .Build();
@@ -960,7 +937,6 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasToolbar> CreateRibbonToolbar(const std::string& identifier) {
             return UltraCanvasToolbarBuilder(identifier)
                     .SetOrientation(ToolbarOrientation::Horizontal)
-                    .SetStyle(ToolbarStyle::Ribbon)
                     .SetAppearance(ToolbarAppearance::Ribbon())
                     .SetDimensions(0, 0, 1024, 100)
                     .Build();
@@ -969,7 +945,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasToolbar> CreateSidebarToolbar(const std::string& identifier) {
             return UltraCanvasToolbarBuilder(identifier)
                     .SetOrientation(ToolbarOrientation::Vertical)
-                    .SetStyle(ToolbarStyle::Sidebar)
+                    .SetAppearance(ToolbarAppearance::Sidebar())
                     .SetDimensions(0, 0, 48, 600)
                     .Build();
         }
@@ -977,7 +953,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasToolbar> CreateStatusBar(const std::string& identifier) {
             return UltraCanvasToolbarBuilder(identifier)
                     .SetOrientation(ToolbarOrientation::Horizontal)
-                    .SetStyle(ToolbarStyle::StatusBar)
+                    .SetAppearance(ToolbarAppearance::StatusBar())
                     .SetToolbarPosition(ToolbarPosition::Bottom)
                     .SetDimensions(0, 0, 1024, 24)
                     .Build();

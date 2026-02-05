@@ -115,7 +115,7 @@ namespace UltraCanvas {
         int itemHeight = 28;
         int iconSize = 16;
         int paddingLeft = 4;
-        int paddingRight = 8;
+        int paddingRight = 4;
         int paddingTop = 4;
         int paddingBottom = 4;
         int iconSpacing = 6;

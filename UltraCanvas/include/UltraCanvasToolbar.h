@@ -115,6 +115,8 @@ namespace UltraCanvas {
 
     struct ToolbarAppearance {
         // Colors
+        ToolbarStyle style = ToolbarStyle::Standard;
+
         Color backgroundColor = Color(245, 245, 245, 255);
         Color separatorColor = Color(200, 200, 200, 255);
         Color hoverColor = Color(225, 235, 255, 255);
@@ -153,6 +155,7 @@ namespace UltraCanvas {
 
         static ToolbarAppearance Flat() {
             ToolbarAppearance app;
+            app.style = ToolbarStyle::Flat;
             app.hasShadow = false;
             app.backgroundColor = Color(250, 250, 250, 255);
             return app;
@@ -160,6 +163,7 @@ namespace UltraCanvas {
 
         static ToolbarAppearance MacOSDock() {
             ToolbarAppearance app;
+            app.style = ToolbarStyle::Docked;
             app.backgroundColor = Color(255, 255, 255, 200);
             app.hasShadow = true;
             app.shadowColor = Color(0, 0, 0, 100);
@@ -175,8 +179,21 @@ namespace UltraCanvas {
 
         static ToolbarAppearance Ribbon() {
             ToolbarAppearance app;
+            app.style = ToolbarStyle::Ribbon;
             app.backgroundColor = Color(248, 248, 248, 255);
             app.groupSpacing = 16.0f;
+            return app;
+        }
+
+        static ToolbarAppearance StatusBar() {
+            ToolbarAppearance app;
+            app.style = ToolbarStyle::StatusBar;
+            return app;
+        }
+
+        static ToolbarAppearance Sidebar() {
+            ToolbarAppearance app;
+            app.style = ToolbarStyle::Sidebar;
             return app;
         }
     };
@@ -471,7 +488,6 @@ namespace UltraCanvas {
         // Configuration
         ToolbarOrientation orientation = ToolbarOrientation::Horizontal;
         ToolbarPosition position = ToolbarPosition::Top;
-        ToolbarStyle style = ToolbarStyle::Standard;
         ToolbarAppearance appearance;
         ToolbarOverflowMode overflowMode = ToolbarOverflowMode::OverflowNone;
         ToolbarVisibility visibility = ToolbarVisibility::AlwaysVisible;
@@ -511,7 +527,6 @@ namespace UltraCanvas {
         // ===== CONFIGURATION =====
         void SetOrientation(ToolbarOrientation orient);
         void SetToolbarPosition(ToolbarPosition pos);
-        void SetStyle(ToolbarStyle st);
         void SetAppearance(const ToolbarAppearance& app);
         void SetOverflowMode(ToolbarOverflowMode mode);
         void SetVisibility(ToolbarVisibility vis);
@@ -519,7 +534,6 @@ namespace UltraCanvas {
 
         ToolbarOrientation GetOrientation() const { return orientation; }
         ToolbarPosition GetPosition() const { return position; }
-        ToolbarStyle GetStyle() const { return style; }
         const ToolbarAppearance& GetAppearance() const { return appearance; }
 
         // ===== ITEM MANAGEMENT =====
@@ -603,7 +617,6 @@ namespace UltraCanvas {
 
         UltraCanvasToolbarBuilder& SetOrientation(ToolbarOrientation orient);
         UltraCanvasToolbarBuilder& SetToolbarPosition(ToolbarPosition pos);
-        UltraCanvasToolbarBuilder& SetStyle(ToolbarStyle style);
         UltraCanvasToolbarBuilder& SetAppearance(const ToolbarAppearance& app);
         UltraCanvasToolbarBuilder& SetOverflowMode(ToolbarOverflowMode mode);
         UltraCanvasToolbarBuilder& SetDimensions(int x, int y, int width, int height);

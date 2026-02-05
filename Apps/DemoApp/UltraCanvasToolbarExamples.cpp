@@ -68,7 +68,7 @@ namespace UltraCanvas {
         // Create standard toolbar using builder
         auto standardToolbar = UltraCanvasToolbarBuilder("StandardToolbar", 805)
                 .SetOrientation(ToolbarOrientation::Horizontal)
-                .SetStyle(ToolbarStyle::Standard)
+                .SetAppearance(ToolbarAppearance::Default())
                 .SetDimensions(20, currentY, 960, 48)
                 .AddButton("new", "", "media/icons/new-icon.png", []() {
                     std::cout << "New button clicked" << std::endl;
@@ -120,7 +120,7 @@ namespace UltraCanvas {
                 "DropdownToolbar", 808, 20, currentY, 960, 48
         );
         dropdownToolbar->SetOrientation(ToolbarOrientation::Horizontal);
-        dropdownToolbar->SetStyle(ToolbarStyle::Standard);
+        dropdownToolbar->SetAppearance(ToolbarAppearance::Default());
 
         // Add buttons and dropdowns
         dropdownToolbar->AddButton("undo", "", "media/icons/undo-icon.png", []() {
@@ -181,7 +181,7 @@ namespace UltraCanvas {
 
         auto flatToolbar = UltraCanvasToolbarBuilder("FlatToolbar", 811)
                 .SetOrientation(ToolbarOrientation::Horizontal)
-                .SetStyle(ToolbarStyle::Flat)
+                .SetAppearance(ToolbarAppearance::Flat())
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(20, currentY, 960, 48)
                 .AddButton("home", "", "media/icons/home-icon.png", []() {
@@ -233,7 +233,7 @@ namespace UltraCanvas {
 
         auto verticalToolbar = UltraCanvasToolbarBuilder("VerticalToolbar", 815)
                 .SetOrientation(ToolbarOrientation::Vertical)
-                .SetStyle(ToolbarStyle::Sidebar)
+                .SetAppearance(ToolbarAppearance::Sidebar())
                 .SetDimensions(10, 10, 50, 220)
                 .AddButton("dashboard", "📊", "", []() {
                     std::cout << "Dashboard clicked" << std::endl;
@@ -300,7 +300,6 @@ namespace UltraCanvas {
 
         auto ribbonToolbar = UltraCanvasToolbarBuilder("RibbonToolbar", 820)
                 .SetOrientation(ToolbarOrientation::Horizontal)
-                .SetStyle(ToolbarStyle::Ribbon)
                 .SetAppearance(ToolbarAppearance::Ribbon())
                 .SetDimensions(20, currentY, 960, 58)
                 .AddLabel("clipboard", "Clipboard")

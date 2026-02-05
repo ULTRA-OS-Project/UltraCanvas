@@ -1,7 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
-// Version: 1.2.5
-// Last Modified: 2025-01-08
+// Version: 1.2.6
+// Last Modified: 2026-02-05
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -192,6 +192,8 @@ namespace UltraCanvas {
             case MenuType::Menubar:
                 orientation = MenuOrientation::Horizontal;
                 style.itemHeight = 32.0f;
+                style.paddingLeft = 10.0f;
+                style.paddingRight = 10.0f;
                 break;
             case MenuType::PopupMenu:
                 orientation = MenuOrientation::Vertical;
@@ -312,13 +314,12 @@ namespace UltraCanvas {
             return 0.0f;
         }
 
-        // FIXED: Calculate proper X position for horizontal items
         int x = style.paddingLeft;
 
         for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
             if (!items[i].visible) continue;
-            x += CalculateItemWidth(items[i]) + style.paddingLeft + style.paddingRight;
-            if (items[i].type != MenuItemType::Separator) {
+            x += CalculateItemWidth(items[i]) + style.paddingRight + style.paddingLeft;
+            if (items[i].type == MenuItemType::Checkbox || items[i].type == MenuItemType::Radio || !items[i].iconPath.empty()) {
                 x += style.iconSpacing; // Add spacing between items
             }
         }
@@ -374,8 +375,9 @@ namespace UltraCanvas {
                 if (!item.visible) continue;
                 totalWidth += CalculateItemWidth(item) + style.paddingLeft + style.paddingRight;
             }
-
-            SetWidth(totalWidth);
+            if (GetWidth() <= 0) {
+                SetWidth(totalWidth);
+            }
             SetHeight(maxHeight);
 
         } else {
@@ -449,10 +451,7 @@ namespace UltraCanvas {
             // Checkbox/Radio column (reserve space if ANY item has it)
             if (hasAnyCheckboxOrRadio) {
                 totalWidth += style.iconSize + style.iconSpacing;
-            }
-            
-            // Icon column (reserve space if ANY item has icon)
-            if (hasAnyIcon) {
+            } else if (hasAnyIcon) {
                 totalWidth += style.iconSize + style.iconSpacing;
             }
             
@@ -587,24 +586,28 @@ namespace UltraCanvas {
             width += style.iconSize + style.iconSpacing;
         }
 
-        // Text width - FIX: Convert std::string to const char*
+        // Text width
         if (!item.label.empty()) {
             width += ctx->GetTextLineWidth(item.label.c_str());
         }
 
-        // Shortcut width - FIX: Convert std::string to const char*
-        if (!item.shortcut.empty()) {
-            width += style.shortcutSpacing + ctx->GetTextLineWidth(item.shortcut.c_str());
-        }
+        // The following elements are only rendered in vertical menus
+        // (dropdowns/popups/submenus), never in the horizontal menubar
+        if (orientation == MenuOrientation::Vertical) {
+            // Shortcut width
+            if (!item.shortcut.empty()) {
+                width += style.shortcutSpacing + ctx->GetTextLineWidth(item.shortcut.c_str());
+            }
 
-        // Submenu arrow
-        if (!item.subItems.empty()) {
-            width += 20;  // Arrow space
-        }
+            // Submenu arrow
+            if (!item.subItems.empty()) {
+                width += 20;  // Arrow space
+            }
 
-        // Checkbox/radio space
-        if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
-            width += style.iconSize + style.iconSpacing;
+            // Checkbox/radio space
+            if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
+                width += style.iconSize + style.iconSpacing;
+            }
         }
 
         return width;
@@ -719,7 +722,7 @@ namespace UltraCanvas {
                 if (!items[i].visible) continue;
 
                 int itemWidth = CalculateItemWidth(items[i]) + style.paddingLeft + style.paddingRight;
-                if (items[i].type != MenuItemType::Separator) {
+                if (items[i].type == MenuItemType::Checkbox || items[i].type == MenuItemType::Radio || !items[i].iconPath.empty()) {
                     itemWidth += style.iconSpacing;
                 }
 

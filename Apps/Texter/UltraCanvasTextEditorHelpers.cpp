@@ -21,7 +21,7 @@ namespace UltraCanvas {
         // Create status bar using builder pattern with ID
         auto statusBar = UltraCanvasToolbarBuilder(identifier, id)
                 .SetOrientation(ToolbarOrientation::Horizontal)
-                .SetStyle(ToolbarStyle::StatusBar)
+                .SetAppearance(ToolbarAppearance::StatusBar())
                 .SetToolbarPosition(ToolbarPosition::Bottom)
                 .SetDimensions(0, 0, 800, 24)
                 .AddLabel("position", "Ln 1, Col 1")
