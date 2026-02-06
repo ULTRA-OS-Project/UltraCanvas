@@ -974,7 +974,9 @@ namespace UltraCanvas {
             DrawLineNumbers(ctx);
         }
 
-        if (style.highlightSyntax && syntaxTokenizer) {
+        if (markdownHybridMode) {
+            DrawMarkdownHybridText(ctx);
+        } else if (style.highlightSyntax && syntaxTokenizer) {
             DrawHighlightedText(ctx);
         } else {
             DrawPlainText(ctx);
@@ -2330,7 +2332,37 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
         // Implementation placeholder
     }
 
+
+
+    void UltraCanvasTextArea::SetMarkdownHybridMode(bool enable) {
+        markdownHybridMode = enable;
+        
+        if (enable) {
+            // Ensure syntax highlighting is enabled for raw markdown on current line
+            SetHighlightSyntax(true);
+            if (syntaxTokenizer) {
+                syntaxTokenizer->SetLanguage("Markdown");
+            }
+        }
+        
+        RequestRedraw();
+    }
+
 // ===== FACTORY FUNCTIONS =====
+    std::shared_ptr<UltraCanvasTextArea> CreateMarkdownEditor(
+            const std::string& name, int id, int x, int y, int width, int height) {
+        
+        auto editor = std::make_shared<UltraCanvasTextArea>(name, id, x, y, width, height);
+        
+        // Enable hybrid markdown mode
+        editor->SetMarkdownHybridMode(true);
+        
+        // Apply markdown-friendly styling
+        editor->ApplyPlainTextStyle();
+        editor->SetWordWrap(true);
+        
+        return editor;
+    }
 
     std::shared_ptr<UltraCanvasTextArea> CreateCodeEditor(const std::string& name, int id,
                                                           int x, int y, int width, int height,
@@ -2355,12 +2387,12 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
         return editor;
     }
 
-    std::shared_ptr<UltraCanvasTextArea> CreateMarkdownEditor(const std::string& name, int id,
-                                                               int x, int y, int width, int height) {
-        auto editor = std::make_shared<UltraCanvasTextArea>(name, id, x, y, width, height);
-        editor->ApplyCodeStyle("Markdown");
-        return editor;
-    }
+    // std::shared_ptr<UltraCanvasTextArea> CreateMarkdownEditor(const std::string& name, int id,
+    //                                                            int x, int y, int width, int height) {
+    //     auto editor = std::make_shared<UltraCanvasTextArea>(name, id, x, y, width, height);
+    //     editor->ApplyCodeStyle("Markdown");
+    //     return editor;
+    // }
 
     std::shared_ptr<UltraCanvasTextArea> CreateJSONEditor(const std::string& name, int id,
                                                            int x, int y, int width, int height) {

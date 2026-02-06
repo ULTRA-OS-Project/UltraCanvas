@@ -682,12 +682,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         auto doc = documents[index];
 
         // Show "●" badge for modified documents
-        if (doc->isModified) {
-            tabContainer->SetTabBadge(index, "●");
-            tabContainer->SetTabBadgeColor(index, Color(220, 50, 50, 255)); // Red badge
-        } else {
-            tabContainer->SetTabBadge(index, "");
-        }
+        tabContainer->SetTabModified(index, doc->isModified);
     }
 
 // ===== FILE OPERATIONS =====
@@ -725,7 +720,9 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 ext = ext.substr(1);
             }
 
-            if (doc->textArea->SetProgrammingLanguageByExtension(ext)) {
+            if (ext == "md") {
+                doc->textArea->SetMarkdownHybridMode(true);
+            } else if (doc->textArea->SetProgrammingLanguageByExtension(ext)) {
                 doc->textArea->SetHighlightSyntax(true);
             } else {
                 doc->textArea->SetHighlightSyntax(false);

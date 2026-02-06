@@ -318,6 +318,7 @@ namespace UltraCanvas {
 
         // === Text Methods ===
         virtual void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) = 0;
+        virtual void SetFontFamily(const std::string& family) = 0;
         virtual void SetFontSize(float size) = 0;
         virtual void SetFontWeight(FontWeight fw) = 0;
         virtual void SetFontSlant(FontSlant fs) = 0;

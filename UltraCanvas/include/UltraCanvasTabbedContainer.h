@@ -1,7 +1,7 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 1.8.0
-// Last Modified: 2025-11-21
+// Version: 1.9.0
+// Last Modified: 2026-02-07
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -71,6 +71,7 @@ namespace UltraCanvas {
         bool closable = true;
         bool hasIcon = false;
         bool showBadge = false;
+        bool modified = false;              // Tab has unsaved changes
         Color textColor = Colors::Black;
         Color backgroundColor = Color(240, 240, 240);
         Color badgeBackgroundColor = Color(220, 50, 50);
@@ -126,6 +127,9 @@ namespace UltraCanvas {
         Color contentAreaColor = Color(255, 255, 255);
         Color badgeTextColor = Colors::White;
         Color tabSeparatorColor = Color(200, 200, 200);
+        
+        Color modifiedMarkerColor = Color(195, 30, 3);    // #C31E03
+        int modifiedMarkerRadius = 4;
 
         // ===== OVERFLOW DROPDOWN =====
         OverflowDropdownPosition overflowDropdownPosition = OverflowDropdownPosition::Off;
@@ -233,6 +237,14 @@ namespace UltraCanvas {
         std::string GetTabBadgeText(int index);
         bool IsTabBadgeVisible(int index) const;
 
+        // ===== TAB MODIFIED MARKER =====
+        void SetTabModified(int index, bool modified);
+        bool IsTabModified(int index) const;
+        void SetModifiedMarkerColor(const Color& color) { modifiedMarkerColor = color; InvalidateTabbar(); }
+        Color GetModifiedMarkerColor() const { return modifiedMarkerColor; }
+        void SetModifiedMarkerRadius(int radius) { modifiedMarkerRadius = radius; InvalidateTabbar(); }
+        int GetModifiedMarkerRadius() const { return modifiedMarkerRadius; }
+
         // ===== OVERFLOW DROPDOWN METHODS =====
         void InitializeOverflowDropdown();
         void UpdateOverflowDropdown();
@@ -247,6 +259,7 @@ namespace UltraCanvas {
         void RenderTabIcon(int index, IRenderContext* ctx);
         void RenderTabBadge(int index, IRenderContext* ctx);
         void RenderCloseButton(int index, IRenderContext* ctx);
+        void RenderModifiedMarker(int index, IRenderContext* ctx);
         void RenderScrollButtons(IRenderContext* ctx);
         void RenderContentArea(IRenderContext* ctx);
         void RenderNewTabButton(IRenderContext* ctx);

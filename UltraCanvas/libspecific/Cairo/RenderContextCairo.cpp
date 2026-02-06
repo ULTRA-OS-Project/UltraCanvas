@@ -1634,6 +1634,9 @@ namespace UltraCanvas {
         currentState.fontStyle.fontWeight = fw;
         currentState.fontStyle.fontSlant = fs;
     }
+    void RenderContextCairo::SetFontFamily(const std::string& family) {
+        SetFontFace(family, currentState.fontStyle.fontWeight, currentState.fontStyle.fontSlant);
+    }
 
     void RenderContextCairo::SetFontSize(float size) {
         cairo_set_font_size(cairo, size);

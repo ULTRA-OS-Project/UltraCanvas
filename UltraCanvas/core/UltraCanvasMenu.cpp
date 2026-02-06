@@ -319,9 +319,6 @@ namespace UltraCanvas {
         for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
             if (!items[i].visible) continue;
             x += CalculateItemWidth(items[i]) + style.paddingRight + style.paddingLeft;
-            if (items[i].type == MenuItemType::Checkbox || items[i].type == MenuItemType::Radio || !items[i].iconPath.empty()) {
-                x += style.iconSpacing; // Add spacing between items
-            }
         }
 
         return x;

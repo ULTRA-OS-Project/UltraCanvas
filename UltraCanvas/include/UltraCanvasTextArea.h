@@ -430,6 +430,52 @@ namespace UltraCanvas {
         mutable int cachedTotalGraphemes = -1;
         void InvalidateGraphemeCache() { cachedTotalGraphemes = -1; }
         int GetTotalGraphemeCount() const;
+
+    public:
+        /**
+         * @brief Enable hybrid markdown rendering mode
+         * 
+         * When enabled:
+         * - Current line (with cursor) shows raw markdown with syntax highlighting
+         * - All other lines show formatted markdown (bold, italic, headers, etc.)
+         * 
+         * @param enable true to enable hybrid markdown mode
+         */
+        void SetMarkdownHybridMode(bool enable);
+        
+        /**
+         * @brief Check if hybrid markdown mode is enabled
+         * @return true if hybrid markdown mode is active
+         */
+        bool IsMarkdownHybridMode() const { return markdownHybridMode; }
+
+    protected:
+        /**
+         * @brief Draw text with hybrid markdown rendering
+         * 
+         * Renders current line as syntax-highlighted raw text,
+         * and all other lines as formatted markdown.
+         */
+        void DrawMarkdownHybridText(IRenderContext* context);
+        
+        /**
+         * @brief Check if a line is a markdown list item
+         * @param line Line to check
+         * @return true if line starts with list marker
+         */
+        bool IsMarkdownListItem(const std::string& line) const;
+        
+        /**
+         * @brief Trim whitespace from string
+         * @param str String to trim
+         * @return Trimmed string
+         */
+        std::string TrimWhitespace(const std::string& str) const;
+
+    private:
+        // Markdown hybrid rendering mode
+        bool markdownHybridMode = false;
+
     };
 
 // Factory functions for quick creation

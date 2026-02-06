@@ -228,7 +228,9 @@ namespace UltraCanvas {
 
     SyntaxTokenizationRules CreateZ80AssemblyRules();
 
-// ===== IMPLEMENTATION =====
+    SyntaxTokenizationRules CreateMarkdownRules();
+
+    // ===== IMPLEMENTATION =====
 
     inline SyntaxTokenizer::SyntaxTokenizer() {
         // Register all supported languagesRules
@@ -259,6 +261,8 @@ namespace UltraCanvas {
         RegisterLanguage(CreateCssRules());
         RegisterLanguage(CreateSqlRules());
         RegisterLanguage(CreatePhpRules());
+        
+        RegisterLanguage(CreateMarkdownRules());
 
         // Additional languagesRules from the top 20 list
 //        RegisterLanguage(CreateRRules());
@@ -2019,5 +2023,73 @@ namespace UltraCanvas {
 
         return rules;
     }
+    
+    // ===== MARKDOWN LANGUAGE RULES =====
+    inline SyntaxTokenizationRules CreateMarkdownRules()
+    {
+            SyntaxTokenizationRules rules;
+            rules.name = "Markdown";
+            rules.fileExtensions = {"md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "mdtxt", "mdtext"};
+            rules.isCaseSensitive = true;
 
+            // Headings and structural keywords (mapped as keywords for highlighting)
+            rules.keywords = {
+                "#", "##", "###", "####", "#####", "######",
+                "---", "***", "___",
+                ">", ">>", ">>>",
+                "-", "+", "*",
+                "[ ]", "[x]", "[X]"};
+
+            // Built-in syntax markers (inline formatting, links, images, references)
+            rules.builtins = {
+                "![", "](", "[", "]", "(", ")",
+                "**", "__", "*", "_", "~~", "==",
+                "`", "```",
+                "|", ":-", ":-:", "-:",
+                "<br>", "<hr>",
+                "[^", "^]"};
+
+            // HTML tags commonly used within Markdown
+            rules.types = {};
+
+            // Constants (common metadata values in YAML front matter)
+            rules.constants = {
+                "true", "false", "null", "yes", "no",
+                "draft", "published"};
+
+            // Operators (Markdown structural and formatting characters)
+            rules.operators = {
+                "#", "##", "###", "####", "#####", "######",
+                ">", ">>",
+                "-", "+", "*",
+                "~", "~~",
+                "|",
+                "=", "==",
+                "!", "^",
+                ":", "::",
+                "[", "]", "(", ")",
+                "<", ">",
+                "---", "***", "___",
+                "```"};
+
+            // Comment patterns (HTML comments used in Markdown)
+            rules.multiLineComments = {{"<!--", "-->"}};
+
+            // String delimiters (for inline code and fenced code blocks)
+            rules.stringDelimiters = {'`'};
+
+            // Markdown-specific settings
+            rules.hasPreprocessor = false;
+            rules.hasHexNumbers = false;
+            rules.hasBinaryNumbers = false;
+            rules.hasOctalNumbers = false;
+            rules.hasFloatNumbers = true;
+            rules.hasEscapeSequences = true;
+            rules.escapeCharacter = '\\';
+            rules.hasRawStrings = false;
+            rules.hasAttributes = false;
+            rules.hasStringInterpolation = false;
+
+            return rules;
+    }
 } // namespace UltraCanvas

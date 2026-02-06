@@ -708,6 +708,19 @@ namespace UltraCanvas {
                 needsRedraw = true;
             }
 
+            // Track close button hover (also used for modified marker → close button swap)
+            int newHoveredClose = -1;
+            if (newHoveredTab >= 0 && ShouldShowCloseButton(tabs[newHoveredTab].get())) {
+                Rect2Di closeBounds = GetCloseButtonBounds(newHoveredTab);
+                if (closeBounds.width > 0 && closeBounds.Contains(x, y)) {
+                    newHoveredClose = newHoveredTab;
+                }
+            }
+            if (newHoveredClose != hoveredCloseButtonIndex) {
+                hoveredCloseButtonIndex = newHoveredClose;
+                needsRedraw = true;
+            }
+
             if (showNewTabButton) {
                 Rect2Di newTabBounds = GetNewTabButtonBounds();
                 bool wasHovered = hoveredNewTabButton;
@@ -1657,7 +1670,14 @@ namespace UltraCanvas {
             RenderTabBadge(index, ctx);
         }
 
-        if (ShouldShowCloseButton(tab)) {
+        if (tab->modified && ShouldShowCloseButton(tab)) {
+            // Modified tab: show close button on hover, otherwise show dot marker
+            if (index == hoveredCloseButtonIndex) {
+                RenderCloseButton(index, ctx);
+            } else {
+                RenderModifiedMarker(index, ctx);
+            }
+        } else if (ShouldShowCloseButton(tab)) {
             RenderCloseButton(index, ctx);
         }
 
@@ -1668,5 +1688,48 @@ namespace UltraCanvas {
                           Point2Di(tabBounds.x + tabBounds.width - 1, tabBounds.y + tabBounds.height - 4));
         }
         ctx->PopState();
+    }
+
+     void UltraCanvasTabbedContainer::SetTabModified(int index, bool modified) {
+        if (index >= 0 && index < (int)tabs.size()) {
+            if (tabs[index]->modified != modified) {
+                tabs[index]->modified = modified;
+                InvalidateTabbar();
+            }
+        }
+    }
+
+    bool UltraCanvasTabbedContainer::IsTabModified(int index) const {
+        if (index >= 0 && index < (int)tabs.size()) {
+            return tabs[index]->modified;
+        }
+        return false;
+    }
+
+    void UltraCanvasTabbedContainer::RenderModifiedMarker(int index, IRenderContext* ctx) {
+        if (index < 0 || index >= (int)tabs.size()) return;
+
+        TabData* tab = tabs[index].get();
+        if (!tab->modified) return;
+
+        // Position: replace the close button with the modified dot
+        int dotX = 0;
+        int dotY = 0;
+
+        if (ShouldShowCloseButton(tab)) {
+            Rect2Di closeBounds = GetCloseButtonBounds(index);
+            dotX = closeBounds.x + closeBounds.width / 2;
+            dotY = closeBounds.y + closeBounds.height / 2;
+        } else {
+            Rect2Di tabBounds = GetTabBounds(index);
+            dotX = tabBounds.x + tabBounds.width - tabPadding - modifiedMarkerRadius;
+            dotY = tabBounds.y + tabBounds.height / 2;
+        }
+
+        ctx->DrawFilledCircle(
+            Point2Di(dotX, dotY),
+            static_cast<float>(modifiedMarkerRadius),
+            modifiedMarkerColor
+        );
     }
 } // namespace UltraCanvas

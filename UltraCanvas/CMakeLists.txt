@@ -146,6 +146,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasContainer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Markdown.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDropdown.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
