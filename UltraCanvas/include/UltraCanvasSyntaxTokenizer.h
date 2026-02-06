@@ -22,7 +22,7 @@ namespace UltraCanvas {
         Keyword,           // int, class, public, etc.
         Type,              // int, float, string, custom types
         Function,          // function calls
-//        Variable,          // variable names
+        Variable,          // variable names
         Number,            // 123, 3.14f, 0xFF
         String,            // "hello", 'c'
         Character,         // 'a', '\n'
@@ -32,12 +32,7 @@ namespace UltraCanvas {
         Preprocessor,      // #include, #define
         Constant,          // true, false, NULL
         Identifier,        // user-defined names
-//        StringInterpolation, // ${variable} in template strings
-//        Attribute,         // @annotation, [[attribute]]
-//        Label,             // goto labels
-//        NamespaceScope,    // :: in C++, . in others
         Builtin,           // Built-in functions and types
-//        Decorator,         // Python decorators, C# attributes
         Assembly,          // Assembly instructions
         Register,           // CPU registers in assembly
         Unknown,           // unrecognized tokens
@@ -94,10 +89,7 @@ namespace UltraCanvas {
         struct Token {
             TokenType type;
             std::string text;
-//            size_t start;
             size_t length;
-//            int line;
-//            int column;
         };
 
     private:
