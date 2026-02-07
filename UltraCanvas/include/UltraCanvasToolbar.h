@@ -157,7 +157,8 @@ namespace UltraCanvas {
             ToolbarAppearance app;
             app.style = ToolbarStyle::Flat;
             app.hasShadow = false;
-            app.backgroundColor = Color(250, 250, 250, 255);
+            app.backgroundColor = Color(240, 240, 240, 255);
+            app.hoverColor = Color(220, 220, 255);
             return app;
         }
 

@@ -157,6 +157,10 @@ namespace UltraCanvas {
                 ButtonStyle style = button->GetStyle();
                 style.fontSize = appearance.iconSize == ToolbarIconSize::Small ? 10.0f : 12.0f;
                 style.borderWidth = appearance.style == ToolbarStyle::Flat ? 0 : 1;
+                if (appearance.style == ToolbarStyle::Flat) {
+                    style.normalColor = Colors::Transparent;
+                    style.hoverColor = appearance.hoverColor;
+                }
                 button->SetStyle(style);
                 button->SetIconSize(20, 20);
             }

@@ -297,6 +297,10 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Warning: Failed to load file: " << fileToOpen << std::endl;
             }
         }
+        
+        g_window->SetWindowResizeCallback([](int width, int height) {
+            g_textEditor->SetSize(width, height);
+        });
 
         // Show window
         g_window->Show();

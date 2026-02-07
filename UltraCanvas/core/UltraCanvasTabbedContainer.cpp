@@ -1,7 +1,7 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 1.8.0
-// Last Modified: 2025-11-21
+// Version: 1.9.1
+// Last Modified: 2026-02-07
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include <string>
@@ -18,6 +18,11 @@ namespace UltraCanvas {
                                                            long posY, long w, long h)
             : UltraCanvasContainer(elementId, uniqueId, posX, posY, w, h) {
         InitializeOverflowDropdown();
+    }
+
+    void UltraCanvasTabbedContainer::SetBounds(const Rect2Di& b) {
+        UltraCanvasContainer::SetBounds(b);
+        InvalidateTabbar();
     }
 
     void UltraCanvasTabbedContainer::SetTabHeight(int th) {

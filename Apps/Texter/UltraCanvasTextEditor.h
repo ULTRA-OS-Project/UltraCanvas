@@ -250,6 +250,9 @@ namespace UltraCanvas {
         void ConfirmSaveChanges(int docIndex, std::function<void(bool)> onComplete);
         void ConfirmCloseWithUnsavedChanges(std::function<void(bool)> onComplete);
 
+        // Layout
+        void UpdateChildLayout();
+
     public:
         // ===== CONSTRUCTOR =====
         UltraCanvasTextEditor(const std::string& identifier, long id,
@@ -259,11 +262,11 @@ namespace UltraCanvas {
         virtual ~UltraCanvasTextEditor() = default;
 
         // ===== RENDERING =====
-        virtual void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx) override;
 
         // ===== EVENT HANDLING =====
-        virtual bool OnEvent(const UCEvent& event) override;
-
+        bool OnEvent(const UCEvent& event) override;
+        void SetBounds(const Rect2Di& b) override;
         // ===== FILE OPERATIONS (PUBLIC API) =====
 
         /**

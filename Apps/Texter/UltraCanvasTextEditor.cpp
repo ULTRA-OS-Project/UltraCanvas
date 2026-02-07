@@ -405,12 +405,13 @@ namespace UltraCanvas {
         );
 
         // Configure tab container
-        tabContainer->SetTabStyle(TabStyle::Rounded);
+        tabContainer->SetTabStyle(TabStyle::Flat);
         tabContainer->SetTabPosition(TabPosition::Top);
         tabContainer->SetCloseMode(TabCloseMode::Closable);
         tabContainer->SetShowNewTabButton(true);
         tabContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
         tabContainer->SetTabHeight(tabBarHeight);
+        tabContainer->SetActiveTabBackgroundColor(Colors::White);
 
         // Setup callbacks
         tabContainer->onTabChange = [this](int oldIndex, int newIndex) {
@@ -453,6 +454,41 @@ namespace UltraCanvas {
     void UltraCanvasTextEditor::SetupLayout() {
         // Layout is managed by fixed positioning
         // Components are positioned in their setup methods
+    }
+    void UltraCanvasTextEditor::SetBounds(const Rect2Di& b) {
+        UltraCanvasContainer::SetBounds(b);
+        UpdateChildLayout();
+    }
+
+    void UltraCanvasTextEditor::UpdateChildLayout() {
+        int w = GetWidth();
+        int h = GetHeight();
+        int yPos = 0;
+
+        // ===== Menu bar =====
+        if (menuBar && config.showMenuBar) {
+            menuBar->SetBounds(Rect2Di(0, yPos, w, menuBarHeight));
+            yPos += menuBarHeight;
+        }
+
+        // ===== Toolbar =====
+        if (toolbar && config.showToolbar) {
+            toolbar->SetBounds(Rect2Di(0, yPos, w, toolbarHeight));
+            yPos += toolbarHeight;
+        }
+
+        // ===== Tab container (fills remaining space minus status bar) =====
+        if (tabContainer) {
+            int tabAreaHeight = h - yPos - (config.showStatusBar ? statusBarHeight : 0);
+            if (tabAreaHeight < 0) tabAreaHeight = 0;
+            tabContainer->SetBounds(Rect2Di(0, yPos, w, tabAreaHeight));
+        }
+
+        // ===== Status bar =====
+        if (statusLabel && config.showStatusBar) {
+            int statusY = h - statusBarHeight;
+            statusLabel->SetBounds(Rect2Di(4, statusY + 4, w - 8, statusBarHeight - 8));
+        }
     }
 
 // ===== DOCUMENT MANAGEMENT =====

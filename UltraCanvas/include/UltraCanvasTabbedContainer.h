@@ -1,6 +1,6 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 1.9.0
+// Version: 1.9.1
 // Last Modified: 2026-02-07
 // Author: UltraCanvas Framework
 #pragma once
@@ -113,9 +113,9 @@ namespace UltraCanvas {
 
         // ===== COLORS =====
         Color tabBarColor = Colors::Transparent;
-        Color activeTabColor = Color(240, 240, 255);
-        Color inactiveTabColor = Color(220, 220, 220);
-        Color hoveredTabColor = Color(250, 250, 250);
+        Color activeTabColor = Color(255, 255, 255);
+        Color inactiveTabColor = Color(236, 236, 236);
+        Color hoveredTabColor = Color(220, 220, 255);
         Color disabledTabColor = Color(200, 200, 200);
         Color tabBorderColor = Colors::Gray;
         Color tabContentBorderColor = Colors::Gray;
@@ -197,6 +197,9 @@ namespace UltraCanvas {
         void SetInactiveTabBackgroundColor(const Color& c) {
             inactiveTabColor = c;
         }
+        void SetActiveTabBackgroundColor(const Color& c) {
+            activeTabColor = c;
+        }
         void SetInactiveTabTextColor(const Color& c) {
             inactiveTabTextColor = c;
         }
@@ -251,6 +254,9 @@ namespace UltraCanvas {
         void UpdateOverflowDropdownVisibility();
         bool CheckIfOverflowDropdownNeeded();
         void PositionOverflowDropdown();
+
+        // ===== LAYOUT =====
+        void SetBounds(const Rect2Di& b) override;
 
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override;
