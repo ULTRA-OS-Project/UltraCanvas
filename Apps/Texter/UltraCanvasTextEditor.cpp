@@ -1008,6 +1008,9 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
     void UltraCanvasTextEditor::OnFileCloseAll() {
         ConfirmCloseWithUnsavedChanges([this](bool shouldContinue) {
             if (shouldContinue) {
+                // Prevent onTabClose callback from intercepting RemoveTab
+                isDocumentClosing = true;
+
                 // Close all tabs
                 while (!documents.empty()) {
                     // Remove autosave backups
@@ -1016,10 +1019,18 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                     }
                     documents.erase(documents.begin());
                     tabContainer->RemoveTab(0);
+
+                    if (onTabClosed) {
+                        onTabClosed(0);
+                    }
                 }
+
+                activeDocumentIndex = -1;
+                isDocumentClosing = false;
 
                 // Create new empty document
                 CreateNewDocument();
+                UpdateStatusBar();
             }
         });
     }
