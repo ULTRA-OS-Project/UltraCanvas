@@ -103,9 +103,15 @@ pkg_check_modules(CAIRO REQUIRED cairo)
 pkg_check_modules(PANGO REQUIRED pango pangocairo)
 
 pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
-pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
+
+# libvips - Image processing (not available on Windows via vcpkg)
+if(NOT WIN32)
+    pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
+else()
+    set(LIBVIPS_FOUND FALSE)
+endif()
 
 # FreeType - Font Rendering
 find_package(Freetype REQUIRED)
@@ -178,9 +184,6 @@ set(ULTRACANVAS_CORE_SOURCES
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSankey.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/UltraCanvasMarkdown.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasImageExportDialog.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElement.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
@@ -190,6 +193,15 @@ set(ULTRACANVAS_CORE_SOURCES
         #        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsDoubleBuffer.cpp
 )
 
+# libvips-dependent sources (not available on Windows)
+if(NOT WIN32)
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasImageExportDialog.cpp
+    )
+endif()
+
 # Include headers (for IDE support)
 file(GLOB ULTRACANVAS_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/include/*.h
@@ -197,9 +209,17 @@ file(GLOB ULTRACANVAS_HEADERS
 )
 
 # Platform-specific sources
-file(GLOB ULTRACANVAS_PLATFORM_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.cpp
-)
+if(NOT WIN32)
+    file(GLOB ULTRACANVAS_PLATFORM_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.cpp
+    )
+else()
+    # Windows: only include working platform files (Window/Application headers are inline stubs)
+    set(ULTRACANVAS_PLATFORM_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/UltraCanvasWindowsNativeDialogs.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/UltraCanvasWindowsWindowImpl.cpp
+    )
+endif()
 
 # macOS needs Objective-C++ files
 if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
@@ -228,8 +248,12 @@ file(GLOB ULTRACANVAS_CHARTS_SOURCES
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
 )
+if(NOT WIN32)
+    list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
+    )
+endif()
 
 # Combine all core sources
 set(ULTRACANVAS_ALL_SOURCES
@@ -329,6 +353,8 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
     PUBLIC
         ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
         ULTRACANVAS_PLATFORM_${ULTRACANVAS_PLATFORM}=1
+        $<$<CXX_COMPILER_ID:MSVC>:_USE_MATH_DEFINES>
+        $<$<CXX_COMPILER_ID:MSVC>:NOMINMAX>
     PRIVATE
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
 )
@@ -339,6 +365,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Werror=return-type
 #        -Wall -Wextra -Wpedantic -Wno-unused-parameter
     )
+elseif(MSVC)
+    target_compile_options(${ULTRACANVAS_LIB_NAME} PUBLIC /utf-8)
 endif()
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
@@ -347,8 +375,15 @@ set(ULTRACANVAS_PLUGIN_INCLUDE_DIRS "")
 
 # CDR Plugin
 if(ULTRACANVAS_PLUGIN_CDR)
-    pkg_check_modules(LIBCDR libcdr-0.1)
-    pkg_check_modules(LIBREVENGE librevenge-0.0)
+    if(NOT WIN32)
+        pkg_check_modules(LIBCDR libcdr-0.1)
+        pkg_check_modules(LIBREVENGE librevenge-0.0)
+    else()
+        # On Windows, these would need to be found differently
+        # For now, mark as not found
+        set(LIBCDR_FOUND FALSE)
+        set(LIBREVENGE_FOUND FALSE)
+    endif()
 
     if(LIBCDR_FOUND AND LIBREVENGE_FOUND)
         add_subdirectory(Plugins/Vector/CDR)
@@ -388,7 +423,17 @@ endif()
 
 # PDF Plugin
 if(ULTRACANVAS_PLUGIN_PDF)
-    pkg_check_modules(POPPLER poppler-cpp)
+    if(NOT WIN32)
+        pkg_check_modules(POPPLER poppler-cpp)
+    else()
+        # On Windows, try find_package instead
+        find_package(poppler CONFIG)
+        if(poppler_FOUND)
+            set(POPPLER_FOUND TRUE)
+        else()
+            set(POPPLER_FOUND FALSE)
+        endif()
+    endif()
     if(POPPLER_FOUND)
         if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/PDF/CMakeLists.txt)
             add_subdirectory(Plugins/Documents/PDF)

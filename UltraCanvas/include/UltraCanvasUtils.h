@@ -16,6 +16,7 @@
 #include <cctype>
 #include <chrono>
 #include <iostream>
+#include <mutex>
 
 namespace UltraCanvas {
     extern const char* versionString;

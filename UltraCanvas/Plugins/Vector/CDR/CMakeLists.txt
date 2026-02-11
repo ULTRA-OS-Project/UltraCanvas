@@ -13,7 +13,10 @@ set(PLUGIN_VERSION "1.0.0")
 message(STATUS "Configuring ${PLUGIN_NAME} v${PLUGIN_VERSION}")
 
 # ===== FIND DEPENDENCIES =====
-find_package(PkgConfig REQUIRED)
+# Only use PkgConfig on non-Windows platforms
+if(NOT WIN32)
+    find_package(PkgConfig REQUIRED)
+endif()
 
 # libcdr - CorelDRAW file format parser
 pkg_check_modules(LIBCDR REQUIRED libcdr-0.1)

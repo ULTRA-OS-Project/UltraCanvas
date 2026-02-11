@@ -14,7 +14,7 @@
 #ifdef __linux__
 #include "../OS/Linux/UltraCanvasLinuxClipboard.h"
 #elif _WIN32
-#include "../OS/Win32/UltraCanvasWindowsClipboard.h"
+#include "../OS/MSWindows/UltraCanvasWindowsClipboard.h"
 #elif __APPLE__
 #include "../OS/MacOS/UltraCanvasMacOSClipboard.h"
 #endif

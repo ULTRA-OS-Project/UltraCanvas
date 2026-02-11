@@ -10,7 +10,12 @@ Apps/Texter/build/
 # Generated binaries
 /UltraCanvasDemo
 /UltraCanvasTexter
+UltraCanvasDemo.exe
+UltraCanvasTexter.exe
 *.dylib
 *.a
 *.so
 *.o
+*.dll
+*.ilk
+*.pdb

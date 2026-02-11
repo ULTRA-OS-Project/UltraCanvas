@@ -282,11 +282,13 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateXARVectorExamples();
 #endif
         std::shared_ptr<UltraCanvasUIElement> CreateImagePerformanceTest();
+#ifndef _WIN32
         std::shared_ptr<UltraCanvasContainer> CreateBitmapFormatDemoPage(
                 const std::string& format,
                 const std::string& sampleImagePath,
                 int baseId = 1800
         );
+#endif
 
         // ===== APPLICATION LIFECYCLE =====
         void Run();

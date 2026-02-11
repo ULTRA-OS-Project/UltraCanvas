@@ -22,7 +22,7 @@
 #include <memory>
 #include <regex>
 #include <fstream>
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(_WIN32)
     #include <json/json.h>
 #else
     #include <jsoncpp/json/json.h>

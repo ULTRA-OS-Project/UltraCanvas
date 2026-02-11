@@ -639,7 +639,8 @@ std::vector<BYTE> CreateInputDialogTemplate() {
 NativeInputResult UltraCanvasNativeDialogs::InputText(
     const std::string& prompt,
     const std::string& title,
-    const std::string& defaultValue) {
+    const std::string& defaultValue,
+    NativeWindowHandle) {
 
     NativeInputDialogOptions options;
     options.prompt = prompt;
@@ -675,7 +676,8 @@ NativeInputResult UltraCanvasNativeDialogs::InputText(const NativeInputDialogOpt
 
 NativeInputResult UltraCanvasNativeDialogs::InputPassword(
     const std::string& prompt,
-    const std::string& title) {
+    const std::string& title,
+    NativeWindowHandle) {
 
     NativeInputDialogOptions options;
     options.prompt = prompt;
@@ -689,9 +691,19 @@ NativeInputResult UltraCanvasNativeDialogs::InputPassword(
 std::string UltraCanvasNativeDialogs::GetInput(
     const std::string& prompt,
     const std::string& title,
-    const std::string& defaultValue) {
+    const std::string& defaultValue,
+    NativeWindowHandle) {
 
     NativeInputResult result = InputText(prompt, title, defaultValue);
+    return result.IsOK() ? result.value : "";
+}
+
+std::string UltraCanvasNativeDialogs::GetPassword(
+    const std::string& prompt,
+    const std::string& title,
+    NativeWindowHandle) {
+
+    NativeInputResult result = InputPassword(prompt, title);
     return result.IsOK() ? result.value : "";
 }
 

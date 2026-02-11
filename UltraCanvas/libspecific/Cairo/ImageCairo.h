@@ -8,13 +8,17 @@
 #define IMAGECAIRO_H
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasImage.h"
+#ifndef _WIN32
 #include "PixelFX/PixelFX.h"
+#endif
 #include <string>
 #include <unordered_map>
 #include <memory>
 #include <chrono>
 #include <cairo/cairo.h>
+#ifndef _WIN32
 #include <vips/vips8>
+#endif
 #undef Rect
 
 namespace UltraCanvas {
@@ -91,7 +95,9 @@ namespace UltraCanvas {
         int GetWidth() const { return width; }
         int GetHeight() const { return height; }
 
+#ifndef _WIN32
         vips::VImage GetVImage();
+#endif
 
         size_t GetDataSize() {
             return sizeof(UCImageRaster) + 250 + imgDataSize;
@@ -103,7 +109,9 @@ namespace UltraCanvas {
         static void ShutdownImageSubsysterm();
     };
 
+#ifndef _WIN32
     std::shared_ptr<UCPixmapCairo> CreatePixmapFromVImage(vips::VImage vipsImage);
     std::string ExportVImage(vips::VImage vImg, const std::string &imagePath, const UCImageSave::ImageExportOptions& opts);
+#endif
 }
 #endif

@@ -45,6 +45,20 @@ option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires poppler)" OFF)
 
 # ===== FIND REQUIRED PACKAGES =====
+# On Windows with vcpkg, auto-detect pkgconf for pkg_check_modules support
+if(WIN32 AND DEFINED CMAKE_TOOLCHAIN_FILE)
+    find_program(PKG_CONFIG_EXECUTABLE
+        NAMES pkgconf pkg-config
+        PATHS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/pkgconf"
+              "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/pkgconf"
+        NO_DEFAULT_PATH
+    )
+    if(PKG_CONFIG_EXECUTABLE)
+        # Ensure pkgconf can find vcpkg's .pc files
+        set(ENV{PKG_CONFIG_PATH} "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib/pkgconfig")
+        message(STATUS "Using vcpkg pkgconf: ${PKG_CONFIG_EXECUTABLE}")
+    endif()
+endif()
 find_package(PkgConfig REQUIRED)
 
 # ===== BUILD ULTRACANVAS CORE LIBRARY =====
@@ -71,7 +85,6 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/main.cpp
             Apps/DemoApp/UltraCanvasDemo.cpp
             Apps/DemoApp/UltraCanvasDemoExamples.cpp
-            Apps/DemoApp/UltraCanvasBitmapExamples.cpp
             Apps/DemoApp/UltraCanvasButtonExamples.cpp
             Apps/DemoApp/UltraCanvasDropDownExamples.cpp
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
@@ -95,8 +108,15 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasToolbarExamples.cpp
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
-            Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
     )
+
+    # These files depend on libvips (non-trivial effort)
+    if(NOT WIN32)
+        list(APPEND DEMO_SOURCES
+            Apps/DemoApp/UltraCanvasBitmapExamples.cpp
+            Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
+        )
+    endif()
 
     # Only include plugin examples if the plugins are actually built
     foreach(PLUGIN_TARGET ${ULTRACANVAS_PLUGIN_TARGETS})
@@ -167,6 +187,16 @@ if(BUILD_DEMO_APP)
                 ${JSONCPP_LIBRARY_DIRS}
                 ${HOMEBREW_PREFIX}/lib
                 ${HOMEBREW_PREFIX}/opt/vips/lib
+        )
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+        link_directories(
+                ${JSONCPP_LIBRARY_DIRS}
+                ${CAIRO_LIBRARY_DIRS}
+                ${PANGO_LIBRARY_DIRS}
+                ${HARFBUZZ_LIBRARY_DIRS}
+                ${GLIB_LIBRARY_DIRS}
+                ${TINYXML2_LIBRARY_DIRS}
+                ${FREETYPE_LIBRARY_DIRS}
         )
     endif()
 

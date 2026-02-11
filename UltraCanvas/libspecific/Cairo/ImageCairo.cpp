@@ -7,7 +7,9 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 #include "ImageCairo.h"
+#ifndef _WIN32
 #include "VipsQoiLoader.h"
+#endif
 
 #include <algorithm>
 #include <fstream>
@@ -111,6 +113,7 @@ namespace UltraCanvas {
     }
 
 
+#ifndef _WIN32
     bool UCImageRaster::InitializeImageSubsysterm(const char *programName) {
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
@@ -120,6 +123,10 @@ namespace UltraCanvas {
     void UCImageRaster::ShutdownImageSubsysterm() {
         vips_shutdown();
     }
+#else
+    bool UCImageRaster::InitializeImageSubsysterm(const char *) { return true; }
+    void UCImageRaster::ShutdownImageSubsysterm() {}
+#endif
 
     UCImageRaster::~UCImageRaster() {
         if (ownData && imgDataPtr) {
@@ -186,6 +193,7 @@ namespace UltraCanvas {
         return imgDataPtr != nullptr;
     }
 
+#ifndef _WIN32
     std::shared_ptr<UCImageRaster> UCImageRaster::Load(const std::string &imagePath, bool loadOnlyHeader) {
         auto result = std::make_shared<UCImageRaster>(imagePath);
         try {
@@ -237,6 +245,30 @@ namespace UltraCanvas {
 
         return result;
     }
+#else
+    std::shared_ptr<UCImageRaster> UCImageRaster::Load(const std::string &imagePath, bool loadOnlyHeader) {
+        auto result = std::make_shared<UCImageRaster>(imagePath);
+        // TODO: Windows image loading (WIC)
+        result->LoadFileToMemory(imagePath);
+        result->errorMessage = "Image loading not yet implemented on Windows";
+        return result;
+    }
+
+    std::shared_ptr<UCImageRaster> UCImageRaster::LoadFromMemory(const uint8_t* data, size_t dataSize) {
+        char filename[200];
+        snprintf(filename, sizeof(filename), ":mem:%p:%zu", data, dataSize);
+        auto result = std::make_shared<UCImageRaster>(filename);
+        if (!data || dataSize == 0) {
+            result->errorMessage = "Invalid data: null pointer or zero size";
+            return result;
+        }
+        result->imgDataPtr = (uint8_t *)data;
+        result->imgDataSize = dataSize;
+        // TODO: Windows image loading (WIC)
+        result->errorMessage = "Image loading not yet implemented on Windows";
+        return result;
+    }
+#endif
 
     std::string UCImageRaster::MakePixmapCacheKey(int w, int h, ImageFitMode fitMode) {
         char key[300];
@@ -267,6 +299,7 @@ namespace UltraCanvas {
         return pm;
     }
 
+#ifndef _WIN32
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode) {
         try {
             auto options = vips::VImage::option();
@@ -367,6 +400,12 @@ namespace UltraCanvas {
 
         return std::make_shared<UCPixmapCairo>(surface);
     }
+#else
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int, int, ImageFitMode) {
+        // TODO: Windows image pixmap creation (WIC/Direct2D)
+        return nullptr;
+    }
+#endif
 
 
     int ColorDepthToBitDepth(UltraCanvas::UCImageSave::ColorDepth depth) {
@@ -407,6 +446,7 @@ namespace UltraCanvas {
         }
     }
 
+#ifndef _WIN32
     std::string UCImageRaster::Save(const std::string &imagePath, const UCImageSave::ImageExportOptions& opts) {
         vips::VImage vImg;
         try {
@@ -577,4 +617,10 @@ namespace UltraCanvas {
         }
         return "";
     }
+#else
+    std::string UCImageRaster::Save(const std::string &, const UCImageSave::ImageExportOptions&) {
+        // TODO: Windows image export (WIC)
+        return "Image export not yet implemented on Windows";
+    }
+#endif
 }

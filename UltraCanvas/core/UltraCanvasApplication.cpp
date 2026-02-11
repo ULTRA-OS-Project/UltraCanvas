@@ -4,7 +4,6 @@
 // Last Modified: 2025-01-07
 // Author: UltraCanvas Framework
 
-#include <sys/select.h>
 #include <algorithm>
 #include <iostream>
 #include "UltraCanvasApplication.h"

@@ -242,14 +242,14 @@ struct TextInputStyle {
     TextAlignment textAlignment = TextAlignment::Left;
     
     // Caret
-    int caretWidth = 1.0f;
-    int caretBlinkRate = 1.0f;  // Blinks per second
+    int caretWidth = 1;
+    int caretBlinkRate = 1;  // Blinks per second
     
     // Effects
     bool showShadow = false;
     Color shadowColor = Color(0, 0, 0, 50);
     Point2Di shadowOffset = Point2Di(1, 1);
-    int shadowBlur = 2.0f;
+    int shadowBlur = 2;
     
     // Animations
     bool enableFocusAnimation = false;

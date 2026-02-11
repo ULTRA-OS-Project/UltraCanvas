@@ -564,6 +564,7 @@ namespace UltraCanvas {
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
 
+#ifndef _WIN32
         bitmapBuilder.AddItem("pngimages", "PNG Images", "PNG Image display and manipulation",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateBitmapFormatDemoPage("PNG", "media/images/dice.png"); },
@@ -638,6 +639,7 @@ namespace UltraCanvas {
                               [this]() { return CreateBitmapFormatDemoPage("QOI", "media/images/dice.qoi"); },
                               "Examples/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvasBitmapExamples.md");
+#endif
 
         bitmapBuilder.AddItem("imageperformance", "Image Performance Test",
                               "Benchmark image loading, decompression, and rendering speed",
