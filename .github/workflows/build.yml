@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
         build_type: [Release]
         include:
           - os: macos-latest
@@ -36,11 +36,41 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      - name: Install dependencies
+      # ===== Windows: vcpkg-based dependency management =====
+      - name: Setup vcpkg (Windows)
+        if: runner.os == 'Windows'
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '01f602195983451bc83e72f4214af2cbc495aa94'
+
+      - name: Install vcpkg packages (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          vcpkg install
+          cairo pango harfbuzz glib freetype tinyxml2 jsoncpp zlib pkgconf
+          --triplet x64-windows
+
+      # ===== macOS / Linux: system package manager =====
+      - name: Install dependencies (macOS/Linux)
+        if: runner.os != 'Windows'
         run: ${{ matrix.install_deps }}
 
-      - name: Configure CMake
+      # ===== Configure & Build =====
+      - name: Configure CMake (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DBUILD_DEMO_APP=ON
+          -DULTRACANVAS_PLUGIN_CDR=OFF
+          -DULTRACANVAS_PLUGIN_XAR=ON
+
+      - name: Configure CMake (macOS/Linux)
+        if: runner.os != 'Windows'
         run: |
           cmake -B build \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
