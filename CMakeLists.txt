@@ -36,7 +36,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # ===== BUILD OPTIONS =====
-option(BUILD_TEXTER_APP "Build the texted application" ON)
+option(BUILD_TEXTER_APP "Build the texter application" ON)
+option(BUILD_FILEMANAGER_APP "Build the file manager application" ON) 
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
@@ -335,6 +336,63 @@ if (BUILD_TEXTER_APP)
             RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
     )
 endif ()
+
+if (BUILD_FILEMANAGER_APP)
+    set(UCFILEMANAGER_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/ListView/main.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/ListView/DemoListViewFileManager.cpp
+    )
+
+    # Create executable
+    add_executable(UCFileManager
+            ${UCFILEMANAGER_SOURCES}
+    )
+
+    # Include directories
+    target_include_directories(UCFileManager PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIRS}
+            ${ULTRACANVAS_ROOT}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+
+    # Link against UltraCanvas core library
+    target_link_libraries(UCFileManager PRIVATE
+            ${ULTRACANVAS_LIBRARY}
+    )
+
+    # Link fmt library
+    target_link_libraries(UCFileManager PRIVATE fmt::fmt)
+
+    # Link against plugin libraries if available
+    if(ULTRACANVAS_PLUGIN_TARGETS)
+        target_link_libraries(UCFileManager PRIVATE
+                ${ULTRACANVAS_PLUGIN_TARGETS}
+        )
+    endif()
+
+    # Compile features
+    target_compile_features(UCFileManager PRIVATE cxx_std_20)
+
+    # Compile definitions
+    target_compile_definitions(UCFileManager PRIVATE
+            UCFILEMANAGER_VERSION="${PROJECT_VERSION}"
+            $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
+    )
+
+    # Compiler warnings
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(UCFileManager PRIVATE
+                -Wall -Wextra
+        )
+    endif()
+
+    # Set executable properties
+    set_target_properties(UCFileManager PROPERTIES
+            OUTPUT_NAME "UCFileManager"
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+endif()
+
 # ===== PACKAGE CONFIGURATION =====
 include(CMakePackageConfigHelpers)
 
