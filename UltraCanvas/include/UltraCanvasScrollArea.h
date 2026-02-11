@@ -35,23 +35,14 @@ namespace UltraCanvas {
         // Scrollbar style
         ScrollbarStyle scrollbarStyle = ScrollbarStyle::Default();
 
-        // Scrollbar placement
-        bool verticalScrollbarOnRight = true;   // false = left side
-        bool horizontalScrollbarOnBottom = true; // false = top side
-
         // Scrolling behavior
         int wheelScrollSpeed = 40;
         bool invertWheelDirection = false;
         bool enableSmoothScrolling = false;
 
-        // Auto-hide scrollbars when content fits
-//        bool autoHideScrollbars = true;
-
-        // Content padding (inside scroll area)
-//        int contentPaddingLeft = 0;
-//        int contentPaddingTop = 0;
-//        int contentPaddingRight = 0;
-//        int contentPaddingBottom = 0;
+        // Scrollbar placement
+        bool verticalScrollbarOnRight = true;
+        bool horizontalScrollbarOnBottom = true;
 
         // Corner rectangle (where both scrollbars meet)
         Color cornerColor = Color(240, 240, 240, 255);
@@ -72,10 +63,6 @@ namespace UltraCanvas {
         int contentWidth = 0;
         int contentHeight = 0;
 
-        // Viewport dimensions (visible area)
-        int viewportWidth = 0;
-        int viewportHeight = 0;
-
         // Scrollbar visibility
         bool showVerticalScrollbar = false;
         bool showHorizontalScrollbar = false;
@@ -85,9 +72,9 @@ namespace UltraCanvas {
         int targetScrollX = 0;
         int targetScrollY = 0;
 
-        void UpdateMaxScroll() {
-            maxScrollX = std::max(0, contentWidth - viewportWidth);
-            maxScrollY = std::max(0, contentHeight - viewportHeight);
+        void UpdateMaxScroll(int vpWidth, int vpHeight) {
+            maxScrollX = std::max(0, contentWidth - vpWidth);
+            maxScrollY = std::max(0, contentHeight - vpHeight);
             scrollX = std::clamp(scrollX, 0, maxScrollX);
             scrollY = std::clamp(scrollY, 0, maxScrollY);
         }
@@ -114,7 +101,6 @@ namespace UltraCanvas {
 
         // Cached rectangles
         Rect2Di viewportRect;      // Visible content area
-        Rect2Di contentRect;       // Full content area (may be larger than viewport)
         Rect2Di cornerRect;        // Corner where scrollbars meet
         bool layoutDirty = true;
 
@@ -227,15 +213,15 @@ namespace UltraCanvas {
             // Horizontal adjustment
             if (rect.x < scrollState.scrollX) {
                 targetX = rect.x;
-            } else if (rect.x + rect.width > scrollState.scrollX + scrollState.viewportWidth) {
-                targetX = rect.x + rect.width - scrollState.viewportWidth;
+            } else if (rect.x + rect.width > scrollState.scrollX + viewportRect.width) {
+                targetX = rect.x + rect.width - viewportRect.width;
             }
 
             // Vertical adjustment
             if (rect.y < scrollState.scrollY) {
                 targetY = rect.y;
-            } else if (rect.y + rect.height > scrollState.scrollY + scrollState.viewportHeight) {
-                targetY = rect.y + rect.height - scrollState.viewportHeight;
+            } else if (rect.y + rect.height > scrollState.scrollY + viewportRect.height) {
+                targetY = rect.y + rect.height - viewportRect.height;
             }
 
             SetScrollPosition(targetX, targetY);
@@ -251,7 +237,8 @@ namespace UltraCanvas {
             if (width != scrollState.contentWidth || height != scrollState.contentHeight) {
                 scrollState.contentWidth = std::max(0, width);
                 scrollState.contentHeight = std::max(0, height);
-                UpdateScrollState();
+                layoutDirty = true;
+                RequestRedraw();
 
                 if (onContentSizeChange) {
                     onContentSizeChange();
@@ -264,8 +251,8 @@ namespace UltraCanvas {
 
         // ===== VIEWPORT =====
         Rect2Di GetViewportRect() const { return viewportRect; }
-        int GetViewportWidth() const { return scrollState.viewportWidth; }
-        int GetViewportHeight() const { return scrollState.viewportHeight; }
+        int GetViewportWidth() const { return viewportRect.width; }
+        int GetViewportHeight() const { return viewportRect.height; }
 
         // ===== SCROLLBAR VISIBILITY =====
         bool IsVerticalScrollbarVisible() const { return scrollState.showVerticalScrollbar; }
@@ -299,14 +286,14 @@ namespace UltraCanvas {
         // Check if a content rectangle is visible in viewport
         bool IsRectVisible(const Rect2Di& contentRect) const {
             Rect2Di visibleContent(scrollState.scrollX, scrollState.scrollY,
-                                   scrollState.viewportWidth, scrollState.viewportHeight);
+                                   viewportRect.width, viewportRect.height);
             return visibleContent.Intersects(contentRect);
         }
 
         // Get the visible portion of the content
         Rect2Di GetVisibleContentRect() const {
             return Rect2Di(scrollState.scrollX, scrollState.scrollY,
-                           scrollState.viewportWidth, scrollState.viewportHeight);
+                           viewportRect.width, viewportRect.height);
         }
 
         // ===== STATE ACCESS =====
@@ -420,125 +407,104 @@ namespace UltraCanvas {
         }
 
         // Called to calculate content size (override in derived classes)
-        virtual void CalculateContentSize() {
+        virtual Size2Di CalculateContentSize(const Size2Di& viewportSize) {
             // Default: content size equals viewport size (no scrolling)
-            scrollState.contentWidth = scrollState.viewportWidth;
-            scrollState.contentHeight = scrollState.viewportHeight;
+            return viewportSize;
         }
 
         // ===== LAYOUT MANAGEMENT =====
         void UpdateLayout() {
             Rect2Di bounds = GetBounds();
+            int sbSize = config.scrollbarStyle.trackSize;
 
-            // Calculate viewport size (accounting for scrollbars)
-            CalculateViewportRect(bounds);
+            bool needsVertical = false;
+            bool needsHorizontal = false;
 
-            // Update viewport dimensions in state
-            scrollState.viewportWidth = viewportRect.width;
-            scrollState.viewportHeight = viewportRect.height;
-
-            // Let derived class calculate content size
-            CalculateContentSize();
-
-            // Update scroll state and scrollbar visibility
-            UpdateScrollState();
-
-            // Position scrollbars
-            PositionScrollbars(bounds);
-
-            layoutDirty = false;
-        }
-
-        void CalculateViewportRect(const Rect2Di& bounds) {
-            auto clientRect = UltraCanvasUIElement::GetClientRect();
-
-            // Determine if scrollbars will be needed
-            if (!config.enableVerticalScrollbar);
-            auto clientRect = UltraCanvasUIElement::GetClientRect();
-            if (config.autoHideScrollbars) {
-                return scrollState.contentHeight > clientRect.height;
-            }
-            return true;
-
-            bool needsVertical = config.enableVerticalScrollbar && WillNeedVerticalScrollbar();
-            bool needsHorizontal = config.enableHorizontalScrollbar && WillNeedHorizontalScrollbar();
-
-            // Iterative calculation (scrollbars may affect each other)
-            for (int i = 0; i < 2; ++i) {
-                int sbWidth = config.scrollbarStyle.trackWidth;
-
-                int viewportWidth = clientRect.width;
-                int viewportHeight = clientRect.height;
+            // Iterative layout: viewport size <-> content size <-> scrollbar visibility
+            // Max 3 iterations — typically converges in 1-2
+            for (int iteration = 0; iteration < 3; ++iteration) {
+                // Calculate viewport rect given current scrollbar needs
+                int left = bounds.x;
+                int top = bounds.y;
+                int vpWidth = bounds.width;
+                int vpHeight = bounds.height;
 
                 if (needsVertical) {
-                    viewportWidth -= sbWidth;
+                    if (config.verticalScrollbarOnRight) {
+                        vpWidth -= sbSize;
+                    } else {
+                        left += sbSize;
+                        vpWidth -= sbSize;
+                    }
                 }
                 if (needsHorizontal) {
-                    viewportHeight -= sbWidth;
+                    if (config.horizontalScrollbarOnBottom) {
+                        vpHeight -= sbSize;
+                    } else {
+                        top += sbSize;
+                        vpHeight -= sbSize;
+                    }
                 }
 
-                // Re-check if scrollbars are needed with adjusted viewport
-                if (config.enableVerticalScrollbar) {
-                    needsVertical = scrollState.contentHeight > viewportHeight;
+                viewportRect = Rect2Di(left, top, std::max(0, vpWidth), std::max(0, vpHeight));
+
+                // Calculate content size for current viewport
+                auto contentSize = CalculateContentSize(Size2Di(viewportRect.width, viewportRect.height));
+                scrollState.contentWidth = contentSize.width;
+                scrollState.contentHeight = contentSize.height;
+
+                // Determine scrollbar needs from actual content vs viewport
+                bool newNeedsVertical = config.enableVerticalScrollbar &&
+                                        (scrollState.contentHeight > viewportRect.height);
+                bool newNeedsHorizontal = config.enableHorizontalScrollbar &&
+                                          (scrollState.contentWidth > viewportRect.width);
+
+                // Converged — no change in scrollbar visibility
+                if (newNeedsVertical == needsVertical && newNeedsHorizontal == needsHorizontal) {
+                    break;
                 }
-                if (config.enableHorizontalScrollbar) {
-                    needsHorizontal = scrollState.contentWidth > viewportWidth;
-                }
+
+                needsVertical = newNeedsVertical;
+                needsHorizontal = newNeedsHorizontal;
             }
 
-            // Calculate final viewport
-            int viewportWidth = clientRect.width;
-            int viewportHeight = clientRect.height;
-            int sbWidth = config.scrollbarStyle.trackWidth;
-
-            if (needsVertical) {
-                if (config.verticalScrollbarOnRight) {
-                    viewportWidth -= sbWidth;
-                } else {
-                    left += sbWidth;
-                    viewportWidth -= sbWidth;
-                }
-            }
-
-            if (needsHorizontal) {
-                if (config.horizontalScrollbarOnBottom) {
-                    viewportHeight -= sbWidth;
-                } else {
-                    top += sbWidth;
-                    viewportHeight -= sbWidth;
-                }
-            }
-
-            viewportRect = Rect2Di(left, top,
-                                   std::max(0, viewportWidth),
-                                   std::max(0, viewportHeight));
-
-            // Update scrollbar visibility
+            // Finalize scroll state
             scrollState.showVerticalScrollbar = needsVertical;
             scrollState.showHorizontalScrollbar = needsHorizontal;
-        }
+            scrollState.UpdateMaxScroll(viewportRect.width, viewportRect.height);
 
-        bool WillNeedVerticalScrollbar() const {
-            if (!config.enableVerticalScrollbar) return false;
-            auto clientRect = UltraCanvasUIElement::GetClientRect();
-            if (config.autoHideScrollbars) {
-                return scrollState.contentHeight > clientRect.height;
-            }
-            return true;
-        }
-
-        bool WillNeedHorizontalScrollbar() const {
-            if (!config.enableHorizontalScrollbar) return false;
-            if (config.autoHideScrollbars) {
-                return scrollState.contentWidth > (GetWidth() - config.contentPaddingLeft - config.contentPaddingRight);
-            }
-            return true;
-        }
-
-        void UpdateScrollState() {
-            scrollState.UpdateMaxScroll();
+            // Update scrollbar widgets
             UpdateScrollbarVisibility();
             SyncScrollbarsFromState();
+
+            // Position scrollbars
+            if (verticalScrollbar && needsVertical) {
+                int sbX = config.verticalScrollbarOnRight ?
+                          (bounds.x + bounds.width - sbSize) : bounds.x;
+                verticalScrollbar->SetPosition(sbX, bounds.y);
+                verticalScrollbar->SetSize(sbSize, viewportRect.height);
+                verticalScrollbar->SetScrollDimensions(viewportRect.height, scrollState.contentHeight);
+            }
+            if (horizontalScrollbar && needsHorizontal) {
+                int sbY = config.horizontalScrollbarOnBottom ?
+                          (bounds.y + bounds.height - sbSize) : bounds.y;
+                horizontalScrollbar->SetPosition(bounds.x, sbY);
+                horizontalScrollbar->SetSize(viewportRect.width, sbSize);
+                horizontalScrollbar->SetScrollDimensions(viewportRect.width, scrollState.contentWidth);
+            }
+
+            // Corner rect
+            if (needsVertical && needsHorizontal) {
+                int cornerX = config.verticalScrollbarOnRight ?
+                              (bounds.x + bounds.width - sbSize) : bounds.x;
+                int cornerY = config.horizontalScrollbarOnBottom ?
+                              (bounds.y + bounds.height - sbSize) : bounds.y;
+                cornerRect = Rect2Di(cornerX, cornerY, sbSize, sbSize);
+            } else {
+                cornerRect = Rect2Di(0, 0, 0, 0);
+            }
+
+            layoutDirty = false;
         }
 
         void UpdateScrollbarVisibility() {
@@ -547,50 +513,6 @@ namespace UltraCanvas {
             }
             if (horizontalScrollbar) {
                 horizontalScrollbar->SetVisible(scrollState.showHorizontalScrollbar);
-            }
-        }
-
-        void PositionScrollbars(const Rect2Di& bounds) {
-            int sbWidth = config.scrollbarStyle.trackWidth;
-
-            // Position vertical scrollbar
-            if (verticalScrollbar && scrollState.showVerticalScrollbar) {
-                int sbX = config.verticalScrollbarOnRight ?
-                          (bounds.x + bounds.width - sbWidth - config.contentPaddingRight) :
-                          (bounds.x + config.contentPaddingLeft);
-                int sbY = bounds.y + config.contentPaddingTop;
-                int sbHeight = viewportRect.height;
-
-                verticalScrollbar->SetPosition(sbX, sbY);
-                verticalScrollbar->SetSize(sbWidth, sbHeight);
-                verticalScrollbar->SetScrollParameters(scrollState.viewportHeight, scrollState.contentHeight);
-            }
-
-            // Position horizontal scrollbar
-            if (horizontalScrollbar && scrollState.showHorizontalScrollbar) {
-                int sbX = bounds.x + config.contentPaddingLeft;
-                int sbY = config.horizontalScrollbarOnBottom ?
-                          (bounds.y + bounds.height - sbWidth - config.contentPaddingBottom) :
-                          (bounds.y + config.contentPaddingTop);
-                int sbWidth_h = viewportRect.width;
-
-                horizontalScrollbar->SetPosition(sbX, sbY);
-                horizontalScrollbar->SetSize(sbWidth_h, sbWidth);
-                horizontalScrollbar->SetScrollParameters(scrollState.viewportWidth, scrollState.contentWidth);
-            }
-
-            // Calculate corner rect
-            if (scrollState.showVerticalScrollbar && scrollState.showHorizontalScrollbar) {
-                int cornerX = config.verticalScrollbarOnRight ?
-                              (bounds.x + bounds.width - sbWidth - config.contentPaddingRight) :
-                              (bounds.x + config.contentPaddingLeft);
-                int cornerY = config.horizontalScrollbarOnBottom ?
-                              (bounds.y + bounds.height - sbWidth - config.contentPaddingBottom) :
-                              (bounds.y + config.contentPaddingTop);
-
-                cornerRect = Rect2Di(cornerX, cornerY, sbWidth, sbWidth);
-            } else {
-                cornerRect = Rect2Di(0, 0, 0, 0);
             }
         }
 

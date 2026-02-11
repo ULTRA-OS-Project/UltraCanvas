@@ -96,7 +96,7 @@ namespace UltraCanvas {
 
 // ===== TEMPLATE APPEARANCE =====
     struct TemplateAppearance {
-        Color backgroundColor = Color::Transparent;
+        Color backgroundColor = Colors::Transparent;
         Color borderColor = Color(128, 128, 128);
         float borderWidth = 0.0f;
         float cornerRadius = 0.0f;

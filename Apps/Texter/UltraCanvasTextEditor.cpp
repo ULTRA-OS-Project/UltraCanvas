@@ -1263,9 +1263,9 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             statusLabel->SetText("Ready");
             return;
         }
-        const auto& text = doc->textArea->GetText();
-        int graphemesCount = Grapheme::CountGraphemes(text);
-        int wordCount = Grapheme::CountWords(text);
+        // const auto& text = doc->textArea->GetText();
+        // int graphemesCount = Grapheme::CountGraphemes(text);
+        // int wordCount = Grapheme::CountWords(text);
 
         // Get cursor position
         int line = doc->textArea->GetCurrentLine();
@@ -1276,13 +1276,13 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         status << "Line: " << (line + 1) << ", Col: " << (col + 1);
         status << " | " << config.defaultEncoding;
         status << " | " << doc->language;
-        status << " | Words: " << wordCount << " | Chars: " << graphemesCount;
+        // status << " | Words: " << wordCount << " | Chars: " << graphemesCount;
 
         // Add selection info if exists
-        if (doc->textArea->HasSelection()) {
-            std::string selectedText = doc->textArea->GetSelectedText();
-            status << " | Selected: " << Grapheme::CountGraphemes(selectedText) << " chars";
-        }
+        // if (doc->textArea->HasSelection()) {
+        //     std::string selectedText = doc->textArea->GetSelectedText();
+        //     status << " | Selected: " << Grapheme::CountGraphemes(selectedText) << " chars";
+        // }
 
         // Add modified indicator
         if (doc->isModified) {
