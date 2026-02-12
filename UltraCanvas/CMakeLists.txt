@@ -288,19 +288,24 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Plugins>
         $<INSTALL_INTERFACE:include/ultracanvas>
-        ${LIBVIPS_INCLUDE_DIRS}
-        ${GLIB_INCLUDE_DIRS}
-        ${TINYXML2_INCLUDE_DIRS}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/fmt/include
         ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/libgrapheme-3.0.0
         ${CMAKE_CURRENT_SOURCE_DIR}/core
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}
-        ${CAIRO_INCLUDE_DIRS}
-        ${PANGO_INCLUDE_DIRS}
         ${FREETYPE_INCLUDE_DIRS}
         ${HARFBUZZ_INCLUDE_DIRS}
 )
+# Public headers reference cairo, glib, tinyxml2 — consumers need these include paths.
+# Wrap in BUILD_INTERFACE to avoid CMake errors when paths are inside the source tree (vcpkg on CI).
+foreach(_inc_dir ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS} ${TINYXML2_INCLUDE_DIRS})
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
+endforeach()
+if(LIBVIPS_FOUND)
+    foreach(_inc_dir ${LIBVIPS_INCLUDE_DIRS})
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
+    endforeach()
+endif()
 
 # Platform-specific includes
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
