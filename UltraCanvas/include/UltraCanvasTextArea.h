@@ -10,7 +10,6 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
-#include "UltraCanvasString.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -108,12 +107,9 @@ namespace UltraCanvas {
         void Invalidate();
 
         // Text manipulation - now UTF-8 aware
-        //void SetText(const std::string& text);
-        void SetText(const UCString& text);
+        void SetText(const std::string& text);
         std::string GetText() const;
-        UCString GetTextUC() const;
         void InsertText(const std::string& text);
-        void InsertText(const UCString& text);
         void InsertCodepoint(char32_t codepoint);
         void InsertNewLine();
         void InsertTab();
@@ -149,7 +145,6 @@ namespace UltraCanvas {
         void ClearSelection();
         bool HasSelection() const;
         std::string GetSelectedText() const;
-        UCString GetSelectedTextUC() const;
 
         // Clipboard operations
         void CopySelection();
@@ -181,9 +176,7 @@ namespace UltraCanvas {
         int GetCurrentColumn() const;  // Returns grapheme column
         int GetLineCount() const;
         std::string GetLine(int lineIndex) const;
-        UCString GetLineUC(int lineIndex) const;
         void SetLine(int lineIndex, const std::string& text);
-        void SetLine(int lineIndex, const UCString& text);
 
         // Search and replace
         void SetTextToFind(const std::string& searchText, bool caseSensitive = false);
@@ -313,7 +306,6 @@ namespace UltraCanvas {
         bool HandleKeyDown(const UCEvent& event);
 
         int MeasureTextWidth(const std::string& txt) const;
-        int MeasureTextWidth(const UCString& txt) const;
         
         // Helper methods - updated for UTF-8 support
         int GetPositionFromLineColumn(int line, int graphemeColumn) const;
@@ -342,9 +334,9 @@ namespace UltraCanvas {
         void SaveState();
 
     private:
-        // Text data - using UCString for proper UTF-8 handling
-        UCString textContent;                  // Full text content as UCString
-        std::vector<UCString> lines;           // Lines as UCString for grapheme-aware operations
+        // Text data - std::string with GLib g_utf8_* for UTF-8 handling
+        std::string textContent;
+        std::vector<std::string> lines;
 
         // Cursor and selection - grapheme-based positions
         int cursorGraphemePosition;            // Cursor position in graphemes from start
@@ -405,7 +397,7 @@ namespace UltraCanvas {
 
         // Undo/Redo stacks
         struct TextState {
-            UCString text;
+            std::string text;
             int cursorGraphemePosition;
             int selectionStartGrapheme;
             int selectionEndGrapheme;

@@ -12,6 +12,129 @@
 #include <algorithm>
 #include <sstream>
 #include <cmath>
+#include <cstring>
+#include <glib.h>
+
+// ===== GLib UTF-8 Helper Functions =====
+namespace {
+
+// Codepoint count
+inline int utf8_length(const std::string& s) {
+    if (s.empty()) return 0;
+    return static_cast<int>(g_utf8_strlen(s.c_str(), static_cast<gssize>(s.size())));
+}
+
+// Codepoint index -> byte offset
+inline size_t utf8_cp_to_byte(const std::string& s, int cpIndex) {
+    if (cpIndex <= 0 || s.empty()) return 0;
+    const char* p = g_utf8_offset_to_pointer(s.c_str(), cpIndex);
+    return static_cast<size_t>(p - s.c_str());
+}
+
+// Byte offset -> codepoint index
+inline int utf8_byte_to_cp(const std::string& s, size_t byteOff) {
+    if (byteOff == 0 || s.empty()) return 0;
+    return static_cast<int>(g_utf8_pointer_to_offset(s.c_str(), s.c_str() + byteOff));
+}
+
+// Get codepoint at codepoint index
+inline gunichar utf8_get_cp(const std::string& s, int idx) {
+    return g_utf8_get_char(g_utf8_offset_to_pointer(s.c_str(), idx));
+}
+
+// Substring by codepoint position/count (-1 count = to end)
+inline std::string utf8_substr(const std::string& s, int pos, int count = -1) {
+    const char* start = g_utf8_offset_to_pointer(s.c_str(), pos);
+    if (count < 0) return std::string(start);
+    const char* end = g_utf8_offset_to_pointer(start, count);
+    return std::string(start, static_cast<size_t>(end - start));
+}
+
+// Insert string at codepoint position (in-place)
+inline void utf8_insert(std::string& s, int cpPos, const std::string& ins) {
+    s.insert(utf8_cp_to_byte(s, cpPos), ins);
+}
+
+// Erase codepoints at position (in-place)
+inline void utf8_erase(std::string& s, int cpPos, int cpCount = 1) {
+    size_t bStart = utf8_cp_to_byte(s, cpPos);
+    size_t bEnd = utf8_cp_to_byte(s, cpPos + cpCount);
+    s.erase(bStart, bEnd - bStart);
+}
+
+// Replace codepoints at position (in-place)
+inline void utf8_replace(std::string& s, int cpPos, int cpCount, const std::string& rep) {
+    size_t bStart = utf8_cp_to_byte(s, cpPos);
+    size_t bEnd = utf8_cp_to_byte(s, cpPos + cpCount);
+    s.replace(bStart, bEnd - bStart, rep);
+}
+
+// Get single codepoint as UTF-8 string
+inline std::string utf8_char_at(const std::string& s, int idx) {
+    return utf8_substr(s, idx, 1);
+}
+
+// Encode a codepoint to UTF-8
+inline std::string utf8_encode(gunichar cp) {
+    char buf[6];
+    int len = g_unichar_to_utf8(cp, buf);
+    return std::string(buf, static_cast<size_t>(len));
+}
+
+// Forward find. Returns codepoint position, or -1 if not found.
+// Case-insensitive mode uses g_utf8_strdown (preserves codepoint count).
+inline int utf8_find(const std::string& haystack, const std::string& needle,
+                     int startCp = 0, bool caseSensitive = true) {
+    if (needle.empty()) return -1;
+    if (caseSensitive) {
+        const char* base = haystack.c_str();
+        const char* from = g_utf8_offset_to_pointer(base, startCp);
+        const char* found = std::strstr(from, needle.c_str());
+        if (!found) return -1;
+        return static_cast<int>(g_utf8_pointer_to_offset(base, found));
+    }
+    gchar* lH = g_utf8_strdown(haystack.c_str(), -1);
+    gchar* lN = g_utf8_strdown(needle.c_str(), -1);
+    const char* from = g_utf8_offset_to_pointer(lH, startCp);
+    const char* found = std::strstr(from, lN);
+    int result = found ? static_cast<int>(g_utf8_pointer_to_offset(lH, found)) : -1;
+    g_free(lH);
+    g_free(lN);
+    return result;
+}
+
+// Reverse find. Returns codepoint position, or -1.
+inline int utf8_rfind(const std::string& haystack, const std::string& needle,
+                      int maxCp = -1, bool caseSensitive = true) {
+    if (needle.empty()) return -1;
+    std::string h, n;
+    if (caseSensitive) {
+        h = haystack; n = needle;
+    } else {
+        gchar* lH = g_utf8_strdown(haystack.c_str(), -1);
+        gchar* lN = g_utf8_strdown(needle.c_str(), -1);
+        h = lH; n = lN;
+        g_free(lH); g_free(lN);
+    }
+    size_t maxByte = (maxCp < 0) ? std::string::npos : utf8_cp_to_byte(h, maxCp);
+    size_t bp = h.rfind(n, maxByte);
+    if (bp == std::string::npos) return -1;
+    return static_cast<int>(g_utf8_pointer_to_offset(h.c_str(), h.c_str() + bp));
+}
+
+// Split by single-byte delimiter (e.g. '\n')
+inline std::vector<std::string> utf8_split(const std::string& s, char delim) {
+    std::vector<std::string> result;
+    size_t start = 0, pos;
+    while ((pos = s.find(delim, start)) != std::string::npos) {
+        result.push_back(s.substr(start, pos - start));
+        start = pos + 1;
+    }
+    result.push_back(s.substr(start));
+    return result;
+}
+
+} // anonymous namespace
 
 namespace UltraCanvas {
 
@@ -35,7 +158,7 @@ namespace UltraCanvas {
               currentLineIndex(0) {
 
         // Initialize with empty line
-        lines.push_back(UCString(""));
+        lines.push_back(std::string());
 
         // Initialize style with defaults
         ApplyDefaultStyle();
@@ -92,7 +215,7 @@ namespace UltraCanvas {
         if (lineIndex < 0 || lineIndex >= static_cast<int>(lines.size())) {
             return 0;
         }
-        return lines[lineIndex].GraphemeToByteOffset(graphemeColumn);
+        return utf8_cp_to_byte(lines[lineIndex], graphemeColumn);
     }
 
     // Convert byte offset to grapheme column within a line
@@ -100,7 +223,7 @@ namespace UltraCanvas {
         if (lineIndex < 0 || lineIndex >= static_cast<int>(lines.size())) {
             return 0;
         }
-        return static_cast<int>(lines[lineIndex].ByteToGraphemeIndex(byteOffset));
+        return static_cast<int>(utf8_byte_to_cp(lines[lineIndex], byteOffset));
     }
 
     // Get grapheme count for a line
@@ -108,7 +231,7 @@ namespace UltraCanvas {
         if (lineIndex < 0 || lineIndex >= static_cast<int>(lines.size())) {
             return 0;
         }
-        return static_cast<int>(lines[lineIndex].Length());
+        return static_cast<int>(utf8_length(lines[lineIndex]));
     }
 
     // Get total grapheme count (cached)
@@ -119,7 +242,7 @@ namespace UltraCanvas {
         
         int total = 0;
         for (size_t i = 0; i < lines.size(); i++) {
-            total += static_cast<int>(lines[i].Length());
+            total += static_cast<int>(utf8_length(lines[i]));
             if (i < lines.size() - 1) {
                 total++; // Count newline as one grapheme
             }
@@ -137,7 +260,7 @@ namespace UltraCanvas {
         int currentPos = 0;
 
         for (size_t i = 0; i < lines.size(); i++) {
-            int lineLength = static_cast<int>(lines[i].Length());
+            int lineLength = static_cast<int>(utf8_length(lines[i]));
             if (currentPos + lineLength >= graphemePosition) {
                 line = static_cast<int>(i);
                 col = graphemePosition - currentPos;
@@ -155,11 +278,11 @@ namespace UltraCanvas {
         int position = 0;
 
         for (int i = 0; i < line && i < static_cast<int>(lines.size()); i++) {
-            position += static_cast<int>(lines[i].Length()) + 1; // +1 for newline
+            position += static_cast<int>(utf8_length(lines[i])) + 1; // +1 for newline
         }
 
         if (line < static_cast<int>(lines.size())) {
-            position += std::min(graphemeColumn, static_cast<int>(lines[line].Length()));
+            position += std::min(graphemeColumn, static_cast<int>(utf8_length(lines[line])));
         }
 
         return position;
@@ -183,7 +306,7 @@ namespace UltraCanvas {
                 context->SetFontStyle(style.fontStyle);
                 context->SetFontWeight(FontWeight::Normal);
 
-                const std::string& lineStr = lines[outLine].Data();
+                const std::string& lineStr = lines[outLine];
                 
                 // Handle click positioning based on X coordinate
                 if (relativeX <= 0) {
@@ -195,7 +318,7 @@ namespace UltraCanvas {
                     
                     if (relativeX >= lineWidth) {
                         // Click at or beyond end of line - position at end of line
-                        outCol = static_cast<int>(lines[outLine].Length());
+                        outCol = static_cast<int>(utf8_length(lines[outLine]));
                     } else {
                         // Click within line text - use GetTextIndexForXY
                         int byteIndex = std::max(0, context->GetTextIndexForXY(lineStr, relativeX, 0));
@@ -207,7 +330,7 @@ namespace UltraCanvas {
             } else {
                 // No render context - fallback to end of line for any positive X
                 if (relativeX > 0) {
-                    outCol = static_cast<int>(lines[outLine].Length());
+                    outCol = static_cast<int>(utf8_length(lines[outLine]));
                 }
             }
         }
@@ -217,51 +340,29 @@ namespace UltraCanvas {
 
 // ===== TEXT MANIPULATION METHODS =====
 
-    // void UltraCanvasTextArea::SetText(const std::string& text) {
-    //     SetText(UCString(text));
-    // }
-
-    void UltraCanvasTextArea::SetText(const UCString& newText) {
+    void UltraCanvasTextArea::SetText(const std::string& newText) {
         textContent = newText;
         InvalidateGraphemeCache();
-
-        // Split into lines using newline character
-        lines.clear();
-        lines = textContent.Split(U'\n');
-
-        // Ensure at least one line
+        lines = utf8_split(textContent, '\n');
         if (lines.empty()) {
-            lines.push_back(UCString(""));
+            lines.push_back(std::string());
         }
-
-        // Reset cursor and selection
         cursorGraphemePosition = 0;
         currentLineIndex = 0;
         selectionStartGrapheme = -1;
         selectionEndGrapheme = -1;
-
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
-
-        // Trigger text changed callback
         if (onTextChanged) {
-            onTextChanged(textContent.Data());
+            onTextChanged(textContent);
         }
     }
 
     std::string UltraCanvasTextArea::GetText() const {
-        return textContent.Data();
-    }
-
-    UCString UltraCanvasTextArea::GetTextUC() const {
         return textContent;
     }
 
     void UltraCanvasTextArea::InsertText(const std::string& textToInsert) {
-        InsertText(UCString(textToInsert));
-    }
-
-    void UltraCanvasTextArea::InsertText(const UCString& textToInsert) {
         if (isReadOnly) return;
 
         SaveState();
@@ -272,50 +373,41 @@ namespace UltraCanvas {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
         if (lines.empty()) {
-            lines.push_back(UCString(""));
+            lines.push_back(std::string());
         }
 
-        // Insert text at cursor position (grapheme-aware)
-        size_t graphemeIndex = 0;
-        size_t textLen = textToInsert.Length();
-        
-        while (graphemeIndex < textLen) {
-            std::string grapheme = textToInsert.GetGrapheme(graphemeIndex);
-            
-            if (grapheme == "\n") {
-                // Split line at cursor
-                UCString currentLine = lines[line];
-                lines[line] = currentLine.Substr(0, col);
-                lines.insert(lines.begin() + line + 1, currentLine.Substr(col));
+        const char* p = textToInsert.c_str();
+        const char* end = p + textToInsert.size();
+        while (p < end) {
+            const char* next = g_utf8_next_char(p);
+            std::string ch(p, static_cast<size_t>(next - p));
+            if (ch == "\n") {
+                std::string currentLine = lines[line];
+                lines[line] = utf8_substr(currentLine, 0, col);
+                lines.insert(lines.begin() + line + 1, utf8_substr(currentLine, col));
                 line++;
                 col = 0;
             } else {
-                // Insert grapheme into current line
-                lines[line].Insert(col, grapheme);
+                utf8_insert(lines[line], col, ch);
                 col++;
             }
-            graphemeIndex++;
+            p = next;
         }
 
-        // Update cursor position
         cursorGraphemePosition = GetPositionFromLineColumn(line, col);
         currentLineIndex = line;
         InvalidateGraphemeCache();
 
-        // Rebuild full text
         RebuildText();
-
-        // Trigger callback
         if (onTextChanged) {
-            onTextChanged(textContent.Data());
+            onTextChanged(textContent);
         }
     }
 
     void UltraCanvasTextArea::InsertCodepoint(char32_t codepoint) {
         if (isReadOnly) return;
-        
-        UCString cpStr(codepoint);
-        InsertText(cpStr);
+
+        InsertText(utf8_encode(codepoint));
     }
 
     void UltraCanvasTextArea::InsertCharacter(char ch) {
@@ -324,20 +416,20 @@ namespace UltraCanvas {
         SaveState();
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
         if (lines.empty()) {
-            lines.push_back(UCString(""));
+            lines.push_back(std::string());
         }
         if (line < static_cast<int>(lines.size())) {
             if (ch == '\n') {
                 // Split line at cursor
-                UCString currentLine = lines[line];
-                lines[line] = currentLine.Substr(0, col);
-                lines.insert(lines.begin() + line + 1, currentLine.Substr(col));
+                std::string currentLine = lines[line];
+                lines[line] = utf8_substr(currentLine, 0, col);
+                lines.insert(lines.begin() + line + 1, utf8_substr(currentLine, col));
                 currentLineIndex = line + 1;
                 cursorGraphemePosition++;
             } else {
                 // Insert character (single byte, treated as 1 grapheme for ASCII)
                 std::string charStr(1, ch);
-                lines[line].Insert(col, charStr);
+                utf8_insert(lines[line], col, charStr);
                 cursorGraphemePosition++;
             }
             InvalidateGraphemeCache();
@@ -352,13 +444,13 @@ namespace UltraCanvas {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
         if (lines.empty()) {
-            lines.push_back(UCString(""));
+            lines.push_back(std::string());
         }
 
         // Split current line at cursor position
-        UCString currentLine = lines[line];
-        lines[line] = currentLine.Substr(0, col);
-        lines.insert(lines.begin() + line + 1, currentLine.Substr(col));
+        std::string currentLine = lines[line];
+        lines[line] = utf8_substr(currentLine, 0, col);
+        lines.insert(lines.begin() + line + 1, utf8_substr(currentLine, col));
 
         // Move cursor to beginning of new line
         cursorGraphemePosition = GetPositionFromLineColumn(line + 1, 0);
@@ -385,12 +477,12 @@ namespace UltraCanvas {
 
         if (col > 0) {
             // Delete one grapheme from current line
-            lines[line].Erase(col - 1, 1);
+            utf8_erase(lines[line], col - 1, 1);
             cursorGraphemePosition--;
         } else if (line > 0) {
             // Merge with previous line
-            int prevLineLength = static_cast<int>(lines[line - 1].Length());
-            lines[line - 1].Append(lines[line]);
+            int prevLineLength = static_cast<int>(utf8_length(lines[line - 1]));
+            lines[line - 1].append(lines[line]);
             lines.erase(lines.begin() + line);
             currentLineIndex = line - 1;
             cursorGraphemePosition = GetPositionFromLineColumn(currentLineIndex, prevLineLength);
@@ -399,7 +491,7 @@ namespace UltraCanvas {
         InvalidateGraphemeCache();
         RebuildText();
         if (onTextChanged) {
-            onTextChanged(textContent.Data());
+            onTextChanged(textContent);
         }
     }
 
@@ -411,20 +503,20 @@ namespace UltraCanvas {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
         if (line < static_cast<int>(lines.size())) {
-            int lineLen = static_cast<int>(lines[line].Length());
+            int lineLen = static_cast<int>(utf8_length(lines[line]));
             if (col < lineLen) {
                 // Delete one grapheme from current line
-                lines[line].Erase(col, 1);
+                utf8_erase(lines[line], col, 1);
             } else if (line < static_cast<int>(lines.size()) - 1) {
                 // Merge with next line
-                lines[line].Append(lines[line + 1]);
+                lines[line].append(lines[line + 1]);
                 lines.erase(lines.begin() + line + 1);
             }
 
             InvalidateGraphemeCache();
             RebuildText();
             if (onTextChanged) {
-                onTextChanged(textContent.Data());
+                onTextChanged(textContent);
             }
         }
     }
@@ -441,11 +533,11 @@ namespace UltraCanvas {
 
         if (startLine == endLine) {
             // Delete within same line (grapheme-based)
-            lines[startLine].Erase(startCol, endCol - startCol);
+            utf8_erase(lines[startLine], startCol, endCol - startCol);
         } else {
             // Delete across multiple lines
-            UCString newLine = lines[startLine].Substr(0, startCol);
-            newLine.Append(lines[endLine].Substr(endCol));
+            std::string newLine = utf8_substr(lines[startLine], 0, startCol);
+            newLine.append(utf8_substr(lines[endLine], endCol));
             lines[startLine] = newLine;
             lines.erase(lines.begin() + startLine + 1, lines.begin() + endLine + 1);
         }
@@ -458,7 +550,7 @@ namespace UltraCanvas {
 
         RebuildText();
         if (onTextChanged) {
-            onTextChanged(textContent.Data());
+            onTextChanged(textContent);
         }
     }
 // ===== CURSOR MOVEMENT METHODS (Grapheme-aware) =====
@@ -509,7 +601,7 @@ namespace UltraCanvas {
 
         if (line > 0) {
             line--;
-            col = std::min(col, static_cast<int>(lines[line].Length()));
+            col = std::min(col, utf8_length(lines[line]));
             cursorGraphemePosition = GetPositionFromLineColumn(line, col);
             currentLineIndex = line;
 
@@ -532,7 +624,7 @@ namespace UltraCanvas {
 
         if (line < static_cast<int>(lines.size()) - 1) {
             line++;
-            col = std::min(col, static_cast<int>(lines[line].Length()));
+            col = std::min(col, utf8_length(lines[line]));
             cursorGraphemePosition = GetPositionFromLineColumn(line, col);
             currentLineIndex = line;
 
@@ -559,7 +651,7 @@ namespace UltraCanvas {
         if (col == 0) {
             if (line > 0) {
                 line--;
-                col = static_cast<int>(lines[line].Length());
+                col = utf8_length(lines[line]);
                 cursorGraphemePosition = GetPositionFromLineColumn(line, col);
                 currentLineIndex = line;
             } else {
@@ -575,20 +667,20 @@ namespace UltraCanvas {
             }
         }
 
-        const UCString& currentLine = lines[line];
-        int lineLen = static_cast<int>(currentLine.Length());
+        const std::string& currentLine = lines[line];
+        int lineLen = utf8_length(currentLine);
 
         // Skip whitespace/non-word characters going left
         while (col > 0) {
-            uint32_t cp = currentLine.GetCodepoint(col - 1);
-            if (Unicode::IsAlphanumeric(cp) || cp == '_') break;
+            gunichar cp = utf8_get_cp(currentLine, col - 1);
+            if (g_unichar_isalnum(cp) || cp == '_') break;
             col--;
         }
 
         // Skip word characters going left to find word start
         while (col > 0) {
-            uint32_t cp = currentLine.GetCodepoint(col - 1);
-            if (!Unicode::IsAlphanumeric(cp) && cp != '_') break;
+            gunichar cp = utf8_get_cp(currentLine, col - 1);
+            if (!g_unichar_isalnum(cp) && cp != '_') break;
             col--;
         }
 
@@ -615,8 +707,8 @@ namespace UltraCanvas {
 
         if (line >= static_cast<int>(lines.size())) return;
 
-        const UCString& currentLine = lines[line];
-        int lineLen = static_cast<int>(currentLine.Length());
+        const std::string& currentLine = lines[line];
+        int lineLen = utf8_length(currentLine);
 
         // If at the end of a line, move to start of next line
         if (col >= lineLen) {
@@ -639,20 +731,20 @@ namespace UltraCanvas {
         }
 
         // Re-read after potential line change
-        const UCString& activeLine = lines[line];
-        int activeLineLen = static_cast<int>(activeLine.Length());
+        const std::string& activeLine = lines[line];
+        int activeLineLen = utf8_length(activeLine);
 
         // Skip whitespace/non-word characters going right
         while (col < activeLineLen) {
-            uint32_t cp = activeLine.GetCodepoint(col);
-            if (Unicode::IsAlphanumeric(cp) || cp == '_') break;
+            gunichar cp = utf8_get_cp(activeLine, col);
+            if (g_unichar_isalnum(cp) || cp == '_') break;
             col++;
         }
 
         // Skip word characters going right to find word end
         while (col < activeLineLen) {
-            uint32_t cp = activeLine.GetCodepoint(col);
-            if (!Unicode::IsAlphanumeric(cp) && cp != '_') break;
+            gunichar cp = utf8_get_cp(activeLine, col);
+            if (!g_unichar_isalnum(cp) && cp != '_') break;
             col++;
         }
 
@@ -679,7 +771,7 @@ namespace UltraCanvas {
 
         if (line > 0) {
             line = std::max(0, line - maxVisibleLines);
-            col = std::min(col, static_cast<int>(lines[line].Length()));
+            col = std::min(col, utf8_length(lines[line]));
             cursorGraphemePosition = GetPositionFromLineColumn(line, col);
             currentLineIndex = line;
 
@@ -702,7 +794,7 @@ namespace UltraCanvas {
 
         if (line < static_cast<int>(lines.size() - 1)) {
             line = std::min(static_cast<int>(lines.size() - 1), line + maxVisibleLines);
-            col = std::min(col, static_cast<int>(lines[line].Length()));
+            col = std::min(col, utf8_length(lines[line]));
             cursorGraphemePosition = GetPositionFromLineColumn(line, col);
             currentLineIndex = line;
 
@@ -742,7 +834,7 @@ namespace UltraCanvas {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
         if (line < static_cast<int>(lines.size())) {
-            int lineLength = static_cast<int>(lines[line].Length());
+            int lineLength = utf8_length(lines[line]);
 
             if (selecting) {
                 if (selectionStartGrapheme < 0) selectionStartGrapheme = cursorGraphemePosition;
@@ -779,7 +871,7 @@ namespace UltraCanvas {
 
     void UltraCanvasTextArea::MoveCursorToEnd(bool selecting) {
         int toLine = std::max(static_cast<int>(lines.size()) - 1, 0);
-        int lineLength = static_cast<int>(lines[toLine].Length());
+        int lineLength = utf8_length(lines[toLine]);
         
         if (selecting) {
             if (selectionStartGrapheme < 0) selectionStartGrapheme = cursorGraphemePosition;
@@ -816,7 +908,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::SelectLine(int lineIndex) {
         if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
             selectionStartGrapheme = GetPositionFromLineColumn(lineIndex, 0);
-            selectionEndGrapheme = GetPositionFromLineColumn(lineIndex, static_cast<int>(lines[lineIndex].Length()));
+            selectionEndGrapheme = GetPositionFromLineColumn(lineIndex, utf8_length(lines[lineIndex]));
             cursorGraphemePosition = selectionEndGrapheme;
             currentLineIndex = lineIndex;
             RequestRedraw();
@@ -828,24 +920,24 @@ namespace UltraCanvas {
         
         if (line >= static_cast<int>(lines.size())) return;
         
-        const UCString& currentLine = lines[line];
-        int lineLen = static_cast<int>(currentLine.Length());
-        
+        const std::string& currentLine = lines[line];
+        int lineLen = utf8_length(currentLine);
+
         if (lineLen == 0) return;
 
         // Find word start
         int wordStart = col;
         while (wordStart > 0) {
-            uint32_t cp = currentLine.GetCodepoint(wordStart - 1);
-            if (!Unicode::IsAlphanumeric(cp)  && cp != '_') break;
+            gunichar cp = utf8_get_cp(currentLine, wordStart - 1);
+            if (!g_unichar_isalnum(cp)  && cp != '_') break;
             wordStart--;
         }
 
         // Find word end
         int wordEnd = col;
         while (wordEnd < lineLen) {
-            uint32_t cp = currentLine.GetCodepoint(wordEnd);
-            if (!Unicode::IsAlphanumeric(cp) && cp != '_') break;
+            gunichar cp = utf8_get_cp(currentLine, wordEnd);
+            if (!g_unichar_isalnum(cp) && cp != '_') break;
             wordEnd++;
         }
 
@@ -875,16 +967,10 @@ namespace UltraCanvas {
     }
     
     std::string UltraCanvasTextArea::GetSelectedText() const {
-        return GetSelectedTextUC().Data();
-    }
-
-    UCString UltraCanvasTextArea::GetSelectedTextUC() const {
-        if (!HasSelection()) return UCString("");
-        
+        if (!HasSelection()) return std::string();
         int startPos = std::min(selectionStartGrapheme, selectionEndGrapheme);
         int endPos = std::max(selectionStartGrapheme, selectionEndGrapheme);
-        
-        return textContent.Substr(startPos, endPos - startPos);
+        return utf8_substr(textContent, startPos, endPos - startPos);
     }
 
 // ===== CLIPBOARD OPERATIONS =====
@@ -929,21 +1015,13 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasTextArea::GetLine(int lineIndex) const {
-        return GetLineUC(lineIndex).Data();
-    }
-
-    UCString UltraCanvasTextArea::GetLineUC(int lineIndex) const {
         if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
             return lines[lineIndex];
         }
-        return UCString("");
+        return std::string();
     }
 
     void UltraCanvasTextArea::SetLine(int lineIndex, const std::string& text) {
-        SetLine(lineIndex, UCString(text));
-    }
-
-    void UltraCanvasTextArea::SetLine(int lineIndex, const UCString& text) {
         if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
             lines[lineIndex] = text;
             InvalidateGraphemeCache();
@@ -1017,15 +1095,14 @@ namespace UltraCanvas {
         int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
 
         for (int i = startLine; i < endLine; i++) {
-            const UCString& line = lines[i];
-            if (!line.Empty()) {
+            const std::string& line = lines[i];
+            if (!line.empty()) {
                 int y = baseY + (i - startLine) * computedLineHeight;
-                const std::string& lineStr = line.Data();
-                
+
                 if (horizontalScrollOffset > 0) {
-                    context->DrawText(lineStr, visibleTextArea.x - horizontalScrollOffset, y);
+                    context->DrawText(line, visibleTextArea.x - horizontalScrollOffset, y);
                 } else {
-                    context->DrawText(lineStr, visibleTextArea.x, y);
+                    context->DrawText(line, visibleTextArea.x, y);
                 }
             }
         }
@@ -1043,12 +1120,11 @@ namespace UltraCanvas {
         int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
 
         for (int i = startLine; i < endLine; i++) {
-            const UCString& line = lines[i];
+            const std::string& line = lines[i];
             int textY = baseY + (i - startLine) * computedLineHeight;
 
-            if (!line.Empty()) {
-                const std::string& lineStr = line.Data();
-                auto tokens = syntaxTokenizer->TokenizeLine(lineStr);
+            if (!line.empty()) {
+                auto tokens = syntaxTokenizer->TokenizeLine(line);
                 int x = visibleTextArea.x - horizontalScrollOffset;
 
                 for (const auto& token : tokens) {
@@ -1124,17 +1200,17 @@ namespace UltraCanvas {
             int lineY = visibleTextArea.y + (line - firstVisibleLine) * computedLineHeight;
 
             int selStart = (line == startLine) ? startCol : 0;
-            int selEnd = (line == endLine) ? endCol : static_cast<int>(lines[line].Length());
+            int selEnd = (line == endLine) ? endCol : utf8_length(lines[line]);
 
             int selX = textX - horizontalScrollOffset;
             if (selStart > 0) {
-                UCString textBeforeSelection = lines[line].Substr(0, selStart);
+                std::string textBeforeSelection = utf8_substr(lines[line], 0, selStart);
                 selX += MeasureTextWidth(textBeforeSelection);
             }
 
             int selWidth = 0;
             if (selEnd > selStart) {
-                UCString selectedText = lines[line].Substr(selStart, selEnd - selStart);
+                std::string selectedText = utf8_substr(lines[line], selStart, selEnd - selStart);
                 selWidth = MeasureTextWidth(selectedText);
             }
 
@@ -1177,7 +1253,7 @@ namespace UltraCanvas {
 
         int cursorX = visibleTextArea.x - horizontalScrollOffset;
         if (col > 0 && line < static_cast<int>(lines.size())) {
-            UCString textBeforeCursor = lines[line].Substr(0, col);
+            std::string textBeforeCursor = utf8_substr(lines[line], 0, col);
             cursorX += MeasureTextWidth(textBeforeCursor);
         }
         if (cursorX > visibleTextArea.x + visibleTextArea.width) return;
@@ -1261,17 +1337,17 @@ namespace UltraCanvas {
                 int lineY = visibleTextArea.y + (line - firstVisibleLine) * computedLineHeight;
 
                 int hlStart = (line == startLine) ? startCol : 0;
-                int hlEnd = (line == endLine) ? endCol : static_cast<int>(lines[line].Length());
+                int hlEnd = (line == endLine) ? endCol : utf8_length(lines[line]);
 
                 int hlX = visibleTextArea.x - horizontalScrollOffset;
                 if (hlStart > 0) {
-                    UCString textBeforeHighlight = lines[line].Substr(0, hlStart);
+                    std::string textBeforeHighlight = utf8_substr(lines[line], 0, hlStart);
                     hlX += MeasureTextWidth(textBeforeHighlight);
                 }
 
                 int hlWidth = 0;
                 if (hlEnd > hlStart) {
-                    UCString highlightedText = lines[line].Substr(hlStart, hlEnd - hlStart);
+                    std::string highlightedText = utf8_substr(lines[line], hlStart, hlEnd - hlStart);
                     hlWidth = MeasureTextWidth(highlightedText);
                 }
 
@@ -1745,7 +1821,7 @@ namespace UltraCanvas {
         }
         
         if (col > 0 && line < static_cast<int>(lines.size())) {
-            UCString textToCursor = lines[line].Substr(0, col);
+            std::string textToCursor = utf8_substr(lines[line], 0, col);
             int cursorX = MeasureTextWidth(textToCursor);
             int visibleWidth = visibleTextArea.width;
 
@@ -1784,7 +1860,7 @@ namespace UltraCanvas {
         computedLineHeight = static_cast<int>(static_cast<float>(ctx->GetTextLineHeight("M")) * style.lineHeight);
         maxLineWidth = 0;
         for (const auto& line : lines) {
-            maxLineWidth = std::max(maxLineWidth, ctx->GetTextLineWidth(line.Data()));
+            maxLineWidth = std::max(maxLineWidth, ctx->GetTextLineWidth(line));
         }
         ctx->PopState();
 
@@ -1808,11 +1884,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::RebuildText() {
-        textContent.Clear();
+        textContent.clear();
         for (size_t i = 0; i < lines.size(); i++) {
-            textContent.Append(lines[i]);
+            textContent.append(lines[i]);
             if (i < lines.size() - 1) {
-                textContent.Append(U'\n');
+                textContent.push_back('\n');
             }
         }
         InvalidateGraphemeCache();
@@ -1820,7 +1896,7 @@ namespace UltraCanvas {
         RequestRedraw();
 
         if (onTextChanged) {
-            onTextChanged(textContent.Data());
+            onTextChanged(textContent);
         }
     }
 
@@ -1836,9 +1912,7 @@ namespace UltraCanvas {
         return width;
     }
 
-    int UltraCanvasTextArea::MeasureTextWidth(const UCString& txt) const {
-        return MeasureTextWidth(txt.Data());
-    }
+
 
     bool UltraCanvasTextArea::IsNeedVerticalScrollbar() {
         return lines.size() > static_cast<size_t>(maxVisibleLines);
@@ -2086,19 +2160,19 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
     void UltraCanvasTextArea::FindNext() {
         if (lastSearchText.empty()) return;
 
-        UCString searchUC(lastSearchText);
-        size_t foundPos = textContent.Find(searchUC, lastSearchPosition + 1);
-        
-        if (foundPos == UCString::npos && lastSearchPosition > 0) {
-            foundPos = textContent.Find(searchUC, 0);
+        int foundPos = utf8_find(textContent, lastSearchText, lastSearchPosition + 1, lastSearchCaseSensitive);
+
+        if (foundPos < 0 && lastSearchPosition > 0) {
+            foundPos = utf8_find(textContent, lastSearchText, 0, lastSearchCaseSensitive);
         }
 
-        if (foundPos != UCString::npos) {
-            selectionStartGrapheme = static_cast<int>(foundPos);
-            selectionEndGrapheme = static_cast<int>(foundPos + searchUC.Length());
+        if (foundPos >= 0) {
+            int searchLen = utf8_length(lastSearchText);
+            selectionStartGrapheme = foundPos;
+            selectionEndGrapheme = foundPos + searchLen;
             cursorGraphemePosition = selectionEndGrapheme;
-            lastSearchPosition = static_cast<int>(foundPos);
-            
+            lastSearchPosition = foundPos;
+
             auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
             currentLineIndex = line;
             EnsureCursorVisible();
@@ -2109,34 +2183,30 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
     void UltraCanvasTextArea::FindPrevious() {
         if (lastSearchText.empty()) return;
 
-        UCString searchUC(lastSearchText);
-        size_t foundPos = UCString::npos;
-        
+        int foundPos = -1;
+
         // Search backwards from position BEFORE the current match start
-        // lastSearchPosition points to the START of the current match
         if (lastSearchPosition > 0) {
-            // RFind searches for matches that START at or before the given position
-            // To find the PREVIOUS match, we need to search from before the current match
-            foundPos = textContent.RFind(searchUC, static_cast<size_t>(lastSearchPosition - 1));
+            foundPos = utf8_rfind(textContent, lastSearchText, lastSearchPosition - 1, lastSearchCaseSensitive);
         }
-        
+
         // Wrap around to end of document if nothing found before current position
-        if (foundPos == UCString::npos) {
-            // Search from the very end
-            foundPos = textContent.RFind(searchUC);
-            
+        if (foundPos < 0) {
+            foundPos = utf8_rfind(textContent, lastSearchText, -1, lastSearchCaseSensitive);
+
             // Don't accept if it's the same position we started from (no other match exists)
-            if (foundPos != UCString::npos && static_cast<int>(foundPos) == lastSearchPosition) {
+            if (foundPos >= 0 && foundPos == lastSearchPosition) {
                 return; // Only one match in document, already selected
             }
         }
 
-        if (foundPos != UCString::npos) {
-            selectionStartGrapheme = static_cast<int>(foundPos);
-            selectionEndGrapheme = static_cast<int>(foundPos + searchUC.Length());
+        if (foundPos >= 0) {
+            int searchLen = utf8_length(lastSearchText);
+            selectionStartGrapheme = foundPos;
+            selectionEndGrapheme = foundPos + searchLen;
             cursorGraphemePosition = selectionStartGrapheme;
-            lastSearchPosition = static_cast<int>(foundPos);
-            
+            lastSearchPosition = foundPos;
+
             auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
             currentLineIndex = line;
             EnsureCursorVisible();
@@ -2148,22 +2218,33 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
         if (findText.empty()) return;
 
         SaveState();
-        UCString findUC(findText);
-        UCString replaceUC(replaceText);
+        int findLen = utf8_length(findText);
+        int replaceLen = utf8_length(replaceText);
 
         if (all) {
-            size_t pos = 0;
-            while ((pos = textContent.Find(findUC, pos)) != UCString::npos) {
-                textContent.Replace(pos, findUC.Length(), replaceUC);
-                pos += replaceUC.Length();
+            int pos = 0;
+            while ((pos = utf8_find(textContent, findText, pos, lastSearchCaseSensitive)) >= 0) {
+                utf8_replace(textContent, pos, findLen, replaceText);
+                pos += replaceLen;
             }
             SetText(textContent);
         } else {
             if (HasSelection()) {
-                UCString selected = GetSelectedTextUC();
-                if (selected == findUC) {
+                std::string selected = GetSelectedText();
+                // Case-insensitive comparison for single replace
+                bool match;
+                if (lastSearchCaseSensitive) {
+                    match = (selected == findText);
+                } else {
+                    gchar* lSel = g_utf8_strdown(selected.c_str(), -1);
+                    gchar* lFind = g_utf8_strdown(findText.c_str(), -1);
+                    match = (strcmp(lSel, lFind) == 0);
+                    g_free(lSel);
+                    g_free(lFind);
+                }
+                if (match) {
                     DeleteSelection();
-                    InsertText(replaceUC);
+                    InsertText(replaceText);
                 }
             }
             FindNext();
@@ -2177,11 +2258,11 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
             return;
         }
 
-        UCString searchUC(searchText);
-        size_t pos = 0;
-        while ((pos = textContent.Find(searchUC, pos)) != UCString::npos) {
-            searchHighlights.push_back({static_cast<int>(pos), static_cast<int>(pos + searchUC.Length())});
-            pos += searchUC.Length();
+        int searchLen = utf8_length(searchText);
+        int pos = 0;
+        while ((pos = utf8_find(textContent, searchText, pos, lastSearchCaseSensitive)) >= 0) {
+            searchHighlights.push_back({pos, pos + searchLen});
+            pos += searchLen;
         }
         RequestRedraw();
     }
@@ -2284,7 +2365,7 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
         std::string indent(tabSize, ' ');
         
         for (int i = startLine; i <= endLine; i++) {
-            lines[i].Insert(0, indent);
+            lines[i].insert(0, indent);
         }
         
         InvalidateGraphemeCache();
@@ -2301,16 +2382,17 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
         
         for (int i = startLine; i <= endLine; i++) {
             int spacesToRemove = 0;
-            for (int j = 0; j < tabSize && j < static_cast<int>(lines[i].Length()); j++) {
-                std::string grapheme = lines[i].GetGrapheme(j);
-                if (grapheme == " " || grapheme == "\t") {
+            for (int j = 0; j < tabSize && j < utf8_length(lines[i]); j++) {
+                std::string ch = utf8_char_at(lines[i], j);
+                if (ch == " " || ch == "\t") {
                     spacesToRemove++;
                 } else {
                     break;
                 }
             }
             if (spacesToRemove > 0) {
-                lines[i].Erase(0, spacesToRemove);
+                // Leading whitespace is ASCII, so byte erase at 0 is safe
+                lines[i].erase(0, spacesToRemove);
             }
         }
         
