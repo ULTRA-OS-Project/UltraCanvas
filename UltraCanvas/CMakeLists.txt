@@ -143,6 +143,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # Platform-specific sources
         #${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasString.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtils.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtilsUtf8.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasApplication.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRenderInterface.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTooltipManager.cpp

@@ -12,7 +12,9 @@
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasTextEditorHelpers.h"
 #include "UltraCanvasTextEditorDialogs.h"
 #include <memory>
@@ -48,7 +50,7 @@ namespace UltraCanvas {
         bool darkTheme = false;
         bool wordWrap = false;
         std::string defaultEncoding = "UTF-8";
-        int defaultFontSize = 12;
+        float defaultFontSize = 10.0;
 
         // Autosave settings
         int autosaveIntervalSeconds = 60;  // Autosave every 60 seconds
@@ -145,21 +147,25 @@ namespace UltraCanvas {
  */
     class UltraCanvasTextEditor : public UltraCanvasContainer {
     private:
+        std::string version = "1.0.2";
         // ===== CONFIGURATION =====
         TextEditorConfig config;
         bool isDarkTheme;
-        int currentFontSize;
+        const std::vector<int> fontZoomLevels;
+        int fontZoomLevelIdx;
 
         // ===== UI COMPONENTS =====
         std::shared_ptr<UltraCanvasMenu> menuBar;
         std::shared_ptr<UltraCanvasToolbar> toolbar;
         std::shared_ptr<UltraCanvasTabbedContainer> tabContainer;
         std::shared_ptr<UltraCanvasLabel> statusLabel;
+        std::shared_ptr<UltraCanvasDropdown> zoomDropdown;
 
         // ===== DIALOGS =====
         std::shared_ptr<UltraCanvasFindDialog> findDialog;
         std::shared_ptr<UltraCanvasReplaceDialog> replaceDialog;
         std::shared_ptr<UltraCanvasGoToLineDialog> goToLineDialog;
+        std::shared_ptr<UltraCanvasModalDialog> aboutDialog;
 
         // ===== DOCUMENT MANAGEMENT =====
         std::vector<std::shared_ptr<DocumentTab>> documents;
@@ -238,6 +244,7 @@ namespace UltraCanvas {
 
         // ===== UI UPDATES =====
         void UpdateStatusBar();
+        void UpdateZoomDropdownSelection();
         void UpdateMenuStates();
         void UpdateTitle();
 
@@ -410,28 +417,30 @@ namespace UltraCanvas {
          * @brief Set font size for all documents
          * @param size Font size in points
          */
-        void SetFontSize(int size);
+        void SetDefaultFontSize(float fontSize);
+        void SetFontZoomLevel(int level);
 
         /**
          * @brief Get current font size
          * @return Font size in points
          */
-        int GetFontSize() const { return currentFontSize; }
+        float GetFontSize() const { return config.defaultFontSize * fontZoomLevels[fontZoomLevelIdx] / 100.0; }
+        float GetFontZoomLevel() const { return fontZoomLevelIdx; }
 
         /**
          * @brief Increase font size
          */
-        void IncreaseFontSize();
+        void IncreaseFontZoomLevel();
 
         /**
          * @brief Decrease font size
          */
-        void DecreaseFontSize();
+        void DecreaseFontZoomLevel();
 
         /**
          * @brief Reset font size to default
          */
-        void ResetFontSize();
+        void ResetFontZoomLevel();
 
         // ===== AUTOSAVE =====
 

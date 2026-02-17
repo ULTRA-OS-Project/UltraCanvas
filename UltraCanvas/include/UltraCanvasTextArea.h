@@ -19,9 +19,18 @@
 
 namespace UltraCanvas {
 
-// Forward declarations
+    // Forward declarations
     class SyntaxTokenizer;
     enum class TokenType;
+
+    // ===== HIT RECT FOR CLICKABLE ELEMENTS =====
+    // Tracks clickable regions for links and images
+    struct MarkdownHitRect {
+        Rect2Di bounds;
+        std::string url;
+        std::string altText;
+        bool isImage = false;
+    };
 
 // Syntax highlighting mode
     struct TokenStyle {
@@ -275,6 +284,7 @@ namespace UltraCanvas {
         void AddWarningMarker(int lineIndex, const std::string& message);
         void ClearMarkers();
 
+
         // Callbacks
         TextChangedCallback onTextChanged;
         CursorPositionChangedCallback onCursorPositionChanged;
@@ -424,6 +434,11 @@ namespace UltraCanvas {
         int GetTotalGraphemeCount() const;
 
     public:
+        // Markdown interaction callbacks
+        using MarkdownLinkClickCallback = std::function<void(const std::string& url)>;
+        using MarkdownImageClickCallback = std::function<void(const std::string& imagePath, const std::string& altText)>;
+        MarkdownLinkClickCallback onMarkdownLinkClick;
+        MarkdownImageClickCallback onMarkdownImageClick;
         /**
          * @brief Enable hybrid markdown rendering mode
          * 
@@ -440,6 +455,21 @@ namespace UltraCanvas {
          * @return true if hybrid markdown mode is active
          */
         bool IsMarkdownHybridMode() const { return markdownHybridMode; }
+        /**
+         * @brief Handle click on markdown link or image
+         * @param mouseX Mouse X coordinate
+         * @param mouseY Mouse Y coordinate
+         * @return true if a clickable markdown element was hit
+         */
+        bool HandleMarkdownClick(int mouseX, int mouseY);
+
+        /**
+         * @brief Handle hover over markdown elements (updates cursor)
+         * @param mouseX Mouse X coordinate
+         * @param mouseY Mouse Y coordinate
+         * @return true if hovering over a clickable element
+         */
+        bool HandleMarkdownHover(int mouseX, int mouseY);        
 
     protected:
         /**
@@ -467,6 +497,8 @@ namespace UltraCanvas {
     private:
         // Markdown hybrid rendering mode
         bool markdownHybridMode = false;
+        // Markdown clickable hit regions (rebuilt each render frame)
+        std::vector<MarkdownHitRect> markdownHitRects;
 
     };
 

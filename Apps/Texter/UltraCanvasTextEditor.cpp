@@ -9,6 +9,7 @@
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextEditorHelpers.h"
 #include "UltraCanvasTextEditorDialogs.h"
@@ -19,6 +20,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <ctime>
+#include <fmt/os.h>
 
 namespace UltraCanvas {
 
@@ -198,7 +200,6 @@ namespace UltraCanvas {
     }
 
 // ===== CONSTRUCTOR =====
-
     UltraCanvasTextEditor::UltraCanvasTextEditor(
             const std::string& identifier, long id,
             int x, int y, int width, int height,
@@ -208,14 +209,21 @@ namespace UltraCanvas {
             , isDarkTheme(cfg.darkTheme)
             , isDocumentClosing(false)
             , nextDocumentId(0)
-            , currentFontSize(cfg.defaultFontSize)
             , activeDocumentIndex(-1)
             , hasCheckedForBackups(false)
             , menuBarHeight(28)
-            , toolbarHeight(cfg.showToolbar ? 42 : 0)
+            , toolbarHeight(cfg.showToolbar ? 44 : 0)
             , statusBarHeight(24)
             , tabBarHeight(32)
-    {
+            , fontZoomLevels({50,65,80,90,100,110,125,150,175,200})
+    {        
+        for(int i = 0; i < fontZoomLevels.size(); i++) {
+            if (fontZoomLevels[i] == 100) {
+                fontZoomLevelIdx = i;
+                break;
+            }
+        }
+
         SetBackgroundColor(Color(240, 240, 240, 255));
 
         // Configure autosave
@@ -279,31 +287,33 @@ namespace UltraCanvas {
                             OnFileSaveAll();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("❌ Close Tab", "Ctrl+W", [this]() {
+                        MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", "media/icons/new/menu/close_tab.svg", [this]() {
                             OnFileClose();
                         }),
-                        MenuItemData::Action("❌ Close All", [this]() {
+                        MenuItemData::Action("Close All", "media/icons/new/menu/close_tab.svg", [this]() {
                             OnFileCloseAll();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("🚪 Quit", "Alt+F4", [this]() {
+                        MenuItemData::ActionWithShortcut("Quit", "Alt+F4", "media/icons/new/menu/exit.svg", [this]() {
                             OnFileQuit();
                         })
                 })
 
                         // ===== EDIT MENU =====
                 .AddSubmenu("Edit", {
-                        MenuItemData::ActionWithShortcut("↶ Undo", "Ctrl+Z", [this]() {
+                        // "↶ Undo"
+                        MenuItemData::ActionWithShortcut("Undo", "Ctrl+Z", "media/icons/new/menu/arrow_left.svg", [this]() {
                             OnEditUndo();
                         }),
-                        MenuItemData::ActionWithShortcut("↷ Redo", "Ctrl+Y", [this]() {
+                        // "↷ Redo"
+                        MenuItemData::ActionWithShortcut("Redo", "Ctrl+Y", "media/icons/new/menu/arrow_right.svg", [this]() {
                             OnEditRedo();
                         }),
                         MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("✂ Cut", "Ctrl+X", [this]() {
                             OnEditCut();
                         }),
-                        MenuItemData::ActionWithShortcut("📋 Copy", "Ctrl+C", [this]() {
+                        MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", "media/icons/new/menu/copy.svg", [this]() {
                             OnEditCopy();
                         }),
                         MenuItemData::ActionWithShortcut("📋 Paste", "Ctrl+V", [this]() {
@@ -337,7 +347,7 @@ namespace UltraCanvas {
                             OnViewResetFontSize();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("🌓 Toggle Theme", "Ctrl+T", [this]() {
+                        MenuItemData::ActionWithShortcut("Toggle Theme", "Ctrl+T", "media/icons/new/menu/theme_mode.svg", [this]() {
                             OnViewToggleTheme();
                         }),
                         MenuItemData::Separator(),
@@ -353,7 +363,7 @@ namespace UltraCanvas {
 
                         // ===== INFO MENU =====
                 .AddSubmenu("Info", {
-                        MenuItemData::Action("ℹ About UltraTexter", [this]() {
+                        MenuItemData::Action("About UltraTexter", [this]() {
                             OnInfoAbout();
                         })
                 })
@@ -437,11 +447,12 @@ namespace UltraCanvas {
         if (!config.showStatusBar) return;
 
         int yPos = GetHeight() - statusBarHeight;
+        int zoomDropdownWidth = 80;
 
         statusLabel = std::make_shared<UltraCanvasLabel>(
                 "StatusBar", 300,
                 4, yPos + 4,
-                GetWidth() - 8, statusBarHeight - 8
+                GetWidth() - zoomDropdownWidth - 12, statusBarHeight - 8
         );
         statusLabel->SetText("Ready");
         statusLabel->SetFontSize(10);
@@ -449,6 +460,35 @@ namespace UltraCanvas {
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
 
         AddChild(statusLabel);
+
+        // Create zoom dropdown on the right side of the status bar
+        zoomDropdown = std::make_shared<UltraCanvasDropdown>(
+                "ZoomDropdown", 301,
+                GetWidth() - zoomDropdownWidth - 4, yPos + 2,
+                zoomDropdownWidth, statusBarHeight - 4
+        );
+        fontZoomLevelIdx = 4;
+        for(int i = 0; i < fontZoomLevels.size(); i++) {
+            auto zoomLabel = fmt::format("{}%", fontZoomLevels[i]);
+            auto zoomValue = fmt::format("{}", i);
+            zoomDropdown->AddItem(zoomLabel, zoomValue);
+            if (fontZoomLevels[i] == 100) {
+                fontZoomLevelIdx = i; 
+            }
+        }
+
+        zoomDropdown->SetSelectedIndex(fontZoomLevelIdx); // 100%
+
+        DropdownStyle zoomStyle = zoomDropdown->GetStyle();
+        zoomStyle.fontSize = 10;
+        zoomDropdown->SetStyle(zoomStyle);
+
+        zoomDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
+            int levelIdx = std::stoi(item.value);
+            SetFontZoomLevel(levelIdx);
+        };
+
+        AddChild(zoomDropdown);
     }
 
     void UltraCanvasTextEditor::SetupLayout() {
@@ -485,9 +525,15 @@ namespace UltraCanvas {
         }
 
         // ===== Status bar =====
-        if (statusLabel && config.showStatusBar) {
+        if (config.showStatusBar) {
             int statusY = h - statusBarHeight;
-            statusLabel->SetBounds(Rect2Di(4, statusY + 4, w - 8, statusBarHeight - 8));
+            int zoomDropdownWidth = 80;
+            if (statusLabel) {
+                statusLabel->SetBounds(Rect2Di(4, statusY + 4, w - zoomDropdownWidth - 12, statusBarHeight - 8));
+            }
+            if (zoomDropdown) {
+                zoomDropdown->SetBounds(Rect2Di(w - zoomDropdownWidth - 4, statusY + 2, zoomDropdownWidth, statusBarHeight - 4));
+            }
         }
     }
 
@@ -529,7 +575,7 @@ namespace UltraCanvas {
         }
 
         // Apply current View settings to new document
-        doc->textArea->SetFontSize(static_cast<float>(currentFontSize));
+        doc->textArea->SetFontSize(GetFontSize());
         doc->textArea->SetShowLineNumbers(config.showLineNumbers);
         doc->textArea->SetWordWrap(config.wordWrap);
 
@@ -1196,15 +1242,15 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
     }
 
     void UltraCanvasTextEditor::OnViewIncreaseFontSize() {
-        IncreaseFontSize();
+        IncreaseFontZoomLevel();
     }
 
     void UltraCanvasTextEditor::OnViewDecreaseFontSize() {
-        DecreaseFontSize();
+        DecreaseFontZoomLevel();
     }
 
     void UltraCanvasTextEditor::OnViewResetFontSize() {
-        ResetFontSize();
+        ResetFontZoomLevel();
     }
 
     void UltraCanvasTextEditor::OnViewToggleTheme() {
@@ -1230,26 +1276,100 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
     }
 
     void UltraCanvasTextEditor::OnInfoAbout() {
-        std::string aboutText =
-                "UltraTexter\n"
-                "Version 2.0.0\n\n"
-                "A full-featured text editor built with UltraCanvas Framework\n\n"
-                "Features:\n"
-                "• Multi-file editing with tabs\n"
-                "• Syntax highlighting\n"
-                "• Autosave and crash recovery\n"
-                "• Dark/Light themes\n"
-                "• Full undo/redo support\n\n"
-                "© 2026 UltraCanvas Framework";
+        if (aboutDialog) return;
 
-        UltraCanvasDialogManager::ShowMessage(
-                aboutText,
-                "About UltraTexter",
-                DialogType::Information,
-                DialogButtons::OK,
-                nullptr,
-                nullptr
-        );
+        DialogConfig config;
+        config.title = "About UltraTexter";
+        config.dialogType = DialogType::Custom;
+        config.buttons = DialogButtons::NoButtons;
+        config.width = 430;
+        config.height = 500;
+
+        aboutDialog = UltraCanvasDialogManager::CreateDialog(config);
+
+        // Replace default layout with custom vertical layout
+        auto mainLayout = CreateVBoxLayout(aboutDialog.get());
+        mainLayout->SetSpacing(4);
+        aboutDialog->SetPadding(20);
+
+        // Logo image
+        auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo", 0, 0, 0, 80, 80);
+        logo->LoadFromFile("media/Logo_Texter.svg");
+        logo->SetFitMode(ImageFitMode::Contain);
+        logo->SetMargin(0, 0, 8, 0);
+        mainLayout->AddUIElement(logo)->SetCrossAlignment(LayoutAlignment::Center);
+
+        // Title
+        auto titleLabel = std::make_shared<UltraCanvasLabel>("AboutTitle", 300, 25, "UltraTexter");
+        titleLabel->SetFontSize(20);
+        titleLabel->SetFontWeight(FontWeight::Bold);
+        titleLabel->SetAlignment(TextAlignment::Center);
+        titleLabel->SetMargin(0, 0, 4, 0);
+        mainLayout->AddUIElement(titleLabel)->SetWidthMode(SizeMode::Fill);
+
+        // Version
+        auto versionLabel = std::make_shared<UltraCanvasLabel>("AboutVersion", 300, 20, "Version " + version);
+        versionLabel->SetFontSize(11);
+        versionLabel->SetTextColor(Color(100, 100, 100));
+        versionLabel->SetAlignment(TextAlignment::Center);
+        versionLabel->SetMargin(0, 0, 10, 0);
+        mainLayout->AddUIElement(versionLabel)->SetWidthMode(SizeMode::Fill);
+
+        // Description
+        auto descLabel = std::make_shared<UltraCanvasLabel>("AboutDesc", 350, 120,
+                "A full-featured text editor built with UltraCanvas\nFramework\n\n"
+                "Features:\n"
+                "\u2022 Multi-file editing with tabs\n"
+                "\u2022 Syntax highlighting\n"
+                "\u2022 Autosave and crash recovery\n"
+                "\u2022 Dark/Light themes\n"
+                "\u2022 Full Markdown text editing");
+        descLabel->SetFontSize(11);
+        descLabel->SetTextColor(Color(60, 60, 60));
+        descLabel->SetAlignment(TextAlignment::Left);
+        descLabel->SetWordWrap(true);
+        descLabel->SetAutoResize(true);
+        descLabel->SetMargin(0, 20, 8, 20);
+        mainLayout->AddUIElement(descLabel)->SetWidthMode(SizeMode::Fill);
+
+        // Clickable URL label
+        auto urlLabel = std::make_shared<UltraCanvasLabel>("AboutURL", 300, 20);
+        urlLabel->SetText("<span color=\"blue\">http://www.ultraos.eu/</span>");
+        urlLabel->SetTextIsMarkup(true);
+        urlLabel->SetFontSize(11);
+        urlLabel->SetAlignment(TextAlignment::Center);
+        urlLabel->SetAutoResize(true);
+        urlLabel->SetMouseCursor(UCMouseCursor::Hand);
+        urlLabel->onClick = []() {
+            system("xdg-open http://www.ultraos.eu/");
+        };
+        urlLabel->SetMargin(0, 0, 10, 20);
+        mainLayout->AddUIElement(urlLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center);
+
+        // Copyright
+        auto copyrightLabel = std::make_shared<UltraCanvasLabel>("AboutCopyright", 350, 20,
+                "\u00A9 2026 UltraCanvas GUI API of ULTRA OS");
+        copyrightLabel->SetFontSize(10);
+        copyrightLabel->SetTextColor(Color(120, 120, 120));
+        copyrightLabel->SetAlignment(TextAlignment::Center);
+        mainLayout->AddUIElement(copyrightLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center)->SetMainAlignment(LayoutAlignment::Center);;
+
+        // Push OK button to the bottom
+        mainLayout->AddStretch(1);
+
+        // OK button
+        auto okButton = std::make_shared<UltraCanvasButton>("AboutOK", 0, 0, 0, 80, 28);
+        okButton->SetText("OK");
+        okButton->onClick = [this]() {
+            aboutDialog->CloseDialog(DialogResult::OK);
+        };
+        mainLayout->AddUIElement(okButton)->SetCrossAlignment(LayoutAlignment::Center);
+
+        aboutDialog->onResult = [this](DialogResult) {
+            aboutDialog.reset();
+        };
+
+        UltraCanvasDialogManager::ShowDialog(aboutDialog, nullptr);
     }
 
 
@@ -1292,6 +1412,12 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         statusLabel->SetText(status.str());
     }
 
+    void UltraCanvasTextEditor::UpdateZoomDropdownSelection() {
+        if (!zoomDropdown) return;
+
+        zoomDropdown->SetSelectedIndex(fontZoomLevelIdx);
+    }
+
     void UltraCanvasTextEditor::UpdateMenuStates() {
         // Update menu item enabled states based on current state
         // Note: This would require access to individual menu items
@@ -1326,7 +1452,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         }
 
         // Reapply current View settings (theme methods may reset these)
-        doc->textArea->SetFontSize(static_cast<float>(currentFontSize));
+        doc->textArea->SetFontSize(GetFontSize());
         doc->textArea->SetShowLineNumbers(config.showLineNumbers);
         doc->textArea->SetWordWrap(config.wordWrap);
     }
@@ -1343,6 +1469,18 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 statusLabel->SetBackgroundColor(Color(40, 40, 40, 255));
                 statusLabel->SetTextColor(Color(200, 200, 200, 255));
             }
+            if (zoomDropdown) {
+                DropdownStyle zStyle = zoomDropdown->GetStyle();
+                zStyle.normalColor = Color(40, 40, 40, 255);
+                zStyle.hoverColor = Color(55, 55, 55, 255);
+                zStyle.normalTextColor = Color(200, 200, 200, 255);
+                zStyle.borderColor = Color(60, 60, 60, 255);
+                zStyle.listBackgroundColor = Color(45, 45, 45, 255);
+                zStyle.listBorderColor = Color(60, 60, 60, 255);
+                zStyle.itemHoverColor = Color(65, 65, 65, 255);
+                zStyle.itemSelectedColor = Color(55, 55, 55, 255);
+                zoomDropdown->SetStyle(zStyle);
+            }
             if (tabContainer) {
                 tabContainer->tabBarColor = Color(40, 40, 40, 255);
                 tabContainer->activeTabColor = Color(60, 60, 60, 255);
@@ -1353,6 +1491,18 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             if (statusLabel) {
                 statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
                 statusLabel->SetTextColor(Color(80, 80, 80, 255));
+            }
+            if (zoomDropdown) {
+                DropdownStyle zStyle = zoomDropdown->GetStyle();
+                zStyle.normalColor = Color(240, 240, 240, 255);
+                zStyle.hoverColor = Color(225, 225, 225, 255);
+                zStyle.normalTextColor = Color(80, 80, 80, 255);
+                zStyle.borderColor = Color(200, 200, 200, 255);
+                zStyle.listBackgroundColor = Color(255, 255, 255, 255);
+                zStyle.listBorderColor = Color(200, 200, 200, 255);
+                zStyle.itemHoverColor = Color(230, 230, 230, 255);
+                zStyle.itemSelectedColor = Color(220, 220, 220, 255);
+                zoomDropdown->SetStyle(zStyle);
             }
             if (tabContainer) {
                 tabContainer->tabBarColor = Color(240, 240, 240, 255);
@@ -1570,6 +1720,14 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 OnEditGoToLine();
                 return true;
             }
+            if (event.ctrl && (event.virtualKey == UCKeys::Plus || event.virtualKey == UCKeys::NumPadPlus)) {
+                OnViewIncreaseFontSize();
+                return true;
+            }
+            if (event.ctrl && (event.virtualKey == UCKeys::Minus || event.virtualKey == UCKeys::NumPadMinus)) {
+                OnViewDecreaseFontSize();
+                return true;
+            }
         }
 
         return UltraCanvasContainer::OnEvent(event);
@@ -1695,29 +1853,45 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         ApplyThemeToAllDocuments();
     }
 
-    void UltraCanvasTextEditor::SetFontSize(int size) {
-        currentFontSize = std::max(6, std::min(72, size));
+    void UltraCanvasTextEditor::SetDefaultFontSize(float size) {
+        config.defaultFontSize = std::max(4.0f, std::min(72.0f, size));
+        SetFontZoomLevel(fontZoomLevelIdx);
+    }
+
+    void UltraCanvasTextEditor::SetFontZoomLevel(int lvl) {
+        if (lvl < 0 || lvl >= fontZoomLevels.size()) {
+            return;
+        }
+        fontZoomLevelIdx = lvl;
+        float fontSize = config.defaultFontSize * fontZoomLevels[fontZoomLevelIdx] / 100.0;
+        fontSize = std::max(4.0f, std::min(72.0f, fontSize));
 
         // Apply to all open document TextAreas
         for (auto& doc : documents) {
             if (doc->textArea) {
-                doc->textArea->SetFontSize(static_cast<float>(currentFontSize));
+                doc->textArea->SetFontSize(fontSize);
             }
         }
 
+        UpdateZoomDropdownSelection();
         UpdateStatusBar();
     }
 
-    void UltraCanvasTextEditor::IncreaseFontSize() {
-        SetFontSize(currentFontSize + 2);
+    void UltraCanvasTextEditor::IncreaseFontZoomLevel() {
+        SetFontZoomLevel(fontZoomLevelIdx + 1);
     }
 
-    void UltraCanvasTextEditor::DecreaseFontSize() {
-        SetFontSize(currentFontSize - 2);
+    void UltraCanvasTextEditor::DecreaseFontZoomLevel() {
+        SetFontZoomLevel(fontZoomLevelIdx - 1);
     }
 
-    void UltraCanvasTextEditor::ResetFontSize() {
-        SetFontSize(config.defaultFontSize);
+    void UltraCanvasTextEditor::ResetFontZoomLevel() {
+        for(int i = 0; i < fontZoomLevels.size(); i++) {
+            if (fontZoomLevels[i] == 100) {
+                SetFontZoomLevel(i);
+                break;
+            }
+        }
     }
 
     void UltraCanvasTextEditor::SetAutosaveEnabled(bool enable) {

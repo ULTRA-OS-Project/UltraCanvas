@@ -115,7 +115,7 @@ namespace UltraCanvas {
         Color tabBarColor = Colors::Transparent;
         Color activeTabColor = Color(255, 255, 255);
         Color inactiveTabColor = Color(236, 236, 236);
-        Color hoveredTabColor = Color(220, 220, 255);
+        Color hoveredTabColor = Color(240, 240, 255);
         Color disabledTabColor = Color(200, 200, 200);
         Color tabBorderColor = Colors::Gray;
         Color tabContentBorderColor = Colors::Gray;

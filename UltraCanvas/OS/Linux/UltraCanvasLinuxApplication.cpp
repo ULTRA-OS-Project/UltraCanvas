@@ -623,6 +623,14 @@ namespace UltraCanvas {
 
                 // Number pad
             case XK_Num_Lock: return UCKeys::NumLock;
+            case XK_KP_Home: return UCKeys::NumPadHome;
+            case XK_KP_Up: return UCKeys::NumPadUp;
+            case XK_KP_Page_Up: return UCKeys::NumPadPageUp;
+            case XK_KP_Left: return UCKeys::NumPadLeft;
+            case XK_KP_Right: return UCKeys::NumPadRight;
+            case XK_KP_End: return UCKeys::NumPadEnd;
+            case XK_KP_Down: return UCKeys::NumPadDown;
+            case XK_KP_Page_Down: return UCKeys::NumPadPageDown;
             case XK_KP_0: return UCKeys::NumPad0;
             case XK_KP_1: return UCKeys::NumPad1;
             case XK_KP_2: return UCKeys::NumPad2;
@@ -633,6 +641,14 @@ namespace UltraCanvas {
             case XK_KP_7: return UCKeys::NumPad7;
             case XK_KP_8: return UCKeys::NumPad8;
             case XK_KP_9: return UCKeys::NumPad9;
+            case XK_KP_Add: return UCKeys::NumPadPlus;
+            case XK_KP_Subtract: return UCKeys::NumPadMinus;
+            case XK_KP_Divide: return UCKeys::NumPadDivide;
+            case XK_KP_Enter: return UCKeys::NumPadEnter;
+            case XK_KP_Multiply: return UCKeys::NumPadMultiply;
+            case XK_KP_Decimal: return UCKeys::NumPadDecimal;
+            case XK_KP_Insert: return UCKeys::NumPadInsert;
+            case XK_KP_Delete: return UCKeys::NumPadDelete;
 
                 // ASCII characters
             default:

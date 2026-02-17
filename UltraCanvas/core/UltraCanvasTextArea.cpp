@@ -9,132 +9,11 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include <algorithm>
 #include <sstream>
 #include <cmath>
 #include <cstring>
-#include <glib.h>
-
-// ===== GLib UTF-8 Helper Functions =====
-namespace {
-
-// Codepoint count
-inline int utf8_length(const std::string& s) {
-    if (s.empty()) return 0;
-    return static_cast<int>(g_utf8_strlen(s.c_str(), static_cast<gssize>(s.size())));
-}
-
-// Codepoint index -> byte offset
-inline size_t utf8_cp_to_byte(const std::string& s, int cpIndex) {
-    if (cpIndex <= 0 || s.empty()) return 0;
-    const char* p = g_utf8_offset_to_pointer(s.c_str(), cpIndex);
-    return static_cast<size_t>(p - s.c_str());
-}
-
-// Byte offset -> codepoint index
-inline int utf8_byte_to_cp(const std::string& s, size_t byteOff) {
-    if (byteOff == 0 || s.empty()) return 0;
-    return static_cast<int>(g_utf8_pointer_to_offset(s.c_str(), s.c_str() + byteOff));
-}
-
-// Get codepoint at codepoint index
-inline gunichar utf8_get_cp(const std::string& s, int idx) {
-    return g_utf8_get_char(g_utf8_offset_to_pointer(s.c_str(), idx));
-}
-
-// Substring by codepoint position/count (-1 count = to end)
-inline std::string utf8_substr(const std::string& s, int pos, int count = -1) {
-    const char* start = g_utf8_offset_to_pointer(s.c_str(), pos);
-    if (count < 0) return std::string(start);
-    const char* end = g_utf8_offset_to_pointer(start, count);
-    return std::string(start, static_cast<size_t>(end - start));
-}
-
-// Insert string at codepoint position (in-place)
-inline void utf8_insert(std::string& s, int cpPos, const std::string& ins) {
-    s.insert(utf8_cp_to_byte(s, cpPos), ins);
-}
-
-// Erase codepoints at position (in-place)
-inline void utf8_erase(std::string& s, int cpPos, int cpCount = 1) {
-    size_t bStart = utf8_cp_to_byte(s, cpPos);
-    size_t bEnd = utf8_cp_to_byte(s, cpPos + cpCount);
-    s.erase(bStart, bEnd - bStart);
-}
-
-// Replace codepoints at position (in-place)
-inline void utf8_replace(std::string& s, int cpPos, int cpCount, const std::string& rep) {
-    size_t bStart = utf8_cp_to_byte(s, cpPos);
-    size_t bEnd = utf8_cp_to_byte(s, cpPos + cpCount);
-    s.replace(bStart, bEnd - bStart, rep);
-}
-
-// Get single codepoint as UTF-8 string
-inline std::string utf8_char_at(const std::string& s, int idx) {
-    return utf8_substr(s, idx, 1);
-}
-
-// Encode a codepoint to UTF-8
-inline std::string utf8_encode(gunichar cp) {
-    char buf[6];
-    int len = g_unichar_to_utf8(cp, buf);
-    return std::string(buf, static_cast<size_t>(len));
-}
-
-// Forward find. Returns codepoint position, or -1 if not found.
-// Case-insensitive mode uses g_utf8_strdown (preserves codepoint count).
-inline int utf8_find(const std::string& haystack, const std::string& needle,
-                     int startCp = 0, bool caseSensitive = true) {
-    if (needle.empty()) return -1;
-    if (caseSensitive) {
-        const char* base = haystack.c_str();
-        const char* from = g_utf8_offset_to_pointer(base, startCp);
-        const char* found = std::strstr(from, needle.c_str());
-        if (!found) return -1;
-        return static_cast<int>(g_utf8_pointer_to_offset(base, found));
-    }
-    gchar* lH = g_utf8_strdown(haystack.c_str(), -1);
-    gchar* lN = g_utf8_strdown(needle.c_str(), -1);
-    const char* from = g_utf8_offset_to_pointer(lH, startCp);
-    const char* found = std::strstr(from, lN);
-    int result = found ? static_cast<int>(g_utf8_pointer_to_offset(lH, found)) : -1;
-    g_free(lH);
-    g_free(lN);
-    return result;
-}
-
-// Reverse find. Returns codepoint position, or -1.
-inline int utf8_rfind(const std::string& haystack, const std::string& needle,
-                      int maxCp = -1, bool caseSensitive = true) {
-    if (needle.empty()) return -1;
-    std::string h, n;
-    if (caseSensitive) {
-        h = haystack; n = needle;
-    } else {
-        gchar* lH = g_utf8_strdown(haystack.c_str(), -1);
-        gchar* lN = g_utf8_strdown(needle.c_str(), -1);
-        h = lH; n = lN;
-        g_free(lH); g_free(lN);
-    }
-    size_t maxByte = (maxCp < 0) ? std::string::npos : utf8_cp_to_byte(h, maxCp);
-    size_t bp = h.rfind(n, maxByte);
-    if (bp == std::string::npos) return -1;
-    return static_cast<int>(g_utf8_pointer_to_offset(h.c_str(), h.c_str() + bp));
-}
-
-// Split by single-byte delimiter (e.g. '\n')
-inline std::vector<std::string> utf8_split(const std::string& s, char delim) {
-    std::vector<std::string> result;
-    size_t start = 0, pos;
-    while ((pos = s.find(delim, start)) != std::string::npos) {
-        result.push_back(s.substr(start, pos - start));
-        start = pos + 1;
-    }
-    result.push_back(s.substr(start));
-    return result;
-}
-
-} // anonymous namespace
 
 namespace UltraCanvas {
 
@@ -175,7 +54,7 @@ namespace UltraCanvas {
 // Initialize default style
     void UltraCanvasTextArea::ApplyDefaultStyle() {
         style.fontStyle.fontFamily = "DejaVu Sans Mono";
-        style.fontStyle.fontSize = 14;
+        style.fontStyle.fontSize = 11;
         style.fontColor = {0, 0, 0, 255};
         style.lineHeight = 1.1;
         style.backgroundColor = {255, 255, 255, 255};
@@ -399,9 +278,6 @@ namespace UltraCanvas {
         InvalidateGraphemeCache();
 
         RebuildText();
-        if (onTextChanged) {
-            onTextChanged(textContent);
-        }
     }
 
     void UltraCanvasTextArea::InsertCodepoint(char32_t codepoint) {
@@ -490,9 +366,6 @@ namespace UltraCanvas {
 
         InvalidateGraphemeCache();
         RebuildText();
-        if (onTextChanged) {
-            onTextChanged(textContent);
-        }
     }
 
     // Delete one grapheme cluster forward (delete key)
@@ -515,9 +388,6 @@ namespace UltraCanvas {
 
             InvalidateGraphemeCache();
             RebuildText();
-            if (onTextChanged) {
-                onTextChanged(textContent);
-            }
         }
     }
 
@@ -549,9 +419,6 @@ namespace UltraCanvas {
         InvalidateGraphemeCache();
 
         RebuildText();
-        if (onTextChanged) {
-            onTextChanged(textContent);
-        }
     }
 // ===== CURSOR MOVEMENT METHODS (Grapheme-aware) =====
 
@@ -2418,7 +2285,7 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
 
     void UltraCanvasTextArea::SetMarkdownHybridMode(bool enable) {
         markdownHybridMode = enable;
-        
+        markdownHitRects.clear();
         if (enable) {
             // Ensure syntax highlighting is enabled for raw markdown on current line
             SetHighlightSyntax(true);

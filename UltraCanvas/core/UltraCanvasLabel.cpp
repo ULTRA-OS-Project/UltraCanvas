@@ -300,6 +300,7 @@ namespace UltraCanvas {
             // Draw main text
             ctx->SetTextPaint(style.textColor);
             ctx->SetFontStyle(style.fontStyle);
+            ctx->SetTextAlignment(style.horizontalAlign);
             ctx->DrawTextInRect(text, textArea);
         }
 

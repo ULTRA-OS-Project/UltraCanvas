@@ -220,11 +220,11 @@ namespace UltraCanvas {
                         return true;
                     }
                     // Zoom shortcuts
-                    if (event.virtualKey == UCKeys::Plus || event.virtualKey == UCKeys::NumPadAdd) {
+                    if (event.virtualKey == UCKeys::Plus || event.virtualKey == UCKeys::NumPadPlus) {
                         AdjustZoom(0.1f);
                         return true;
                     }
-                    if (event.virtualKey == UCKeys::Minus || event.virtualKey == UCKeys::NumPadSubtract) {
+                    if (event.virtualKey == UCKeys::Minus || event.virtualKey == UCKeys::NumPadMinus) {
                         AdjustZoom(-0.1f);
                         return true;
                     }
