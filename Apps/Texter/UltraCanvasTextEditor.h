@@ -17,12 +17,14 @@
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasTextEditorHelpers.h"
 #include "UltraCanvasTextEditorDialogs.h"
+#include "UltraCanvasEncoding.h"
 #include <memory>
 #include <string>
 #include <vector>
 #include <functional>
 #include <chrono>
 #include <map>
+#include <cstdint>
 
 namespace UltraCanvas {
 
@@ -81,10 +83,16 @@ namespace UltraCanvas {
         std::chrono::steady_clock::time_point lastSaveTime;  // Last save timestamp
         std::chrono::steady_clock::time_point lastModifiedTime;  // Last edit timestamp
 
+        std::string encoding;                  // iconv encoding name (e.g. "UTF-8", "CP1251")
+        std::vector<uint8_t> originalRawBytes; // Raw file bytes for re-encoding on manual change
+        bool hasBOM;                           // Whether the file had a BOM
+
         DocumentTab()
                 : documentId(-1)
                 , isModified(false)
                 , isNewFile(true)
+                , encoding("UTF-8")
+                , hasBOM(false)
                 , lastSaveTime(std::chrono::steady_clock::now())
                 , lastModifiedTime(std::chrono::steady_clock::now())
         {}
@@ -159,6 +167,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasToolbar> toolbar;
         std::shared_ptr<UltraCanvasTabbedContainer> tabContainer;
         std::shared_ptr<UltraCanvasLabel> statusLabel;
+        std::shared_ptr<UltraCanvasDropdown> encodingDropdown;
         std::shared_ptr<UltraCanvasDropdown> zoomDropdown;
 
         // ===== DIALOGS =====
@@ -245,6 +254,8 @@ namespace UltraCanvas {
         // ===== UI UPDATES =====
         void UpdateStatusBar();
         void UpdateZoomDropdownSelection();
+        void UpdateEncodingDropdown();
+        void OnEncodingChanged(int index, const DropdownItem& item);
         void UpdateMenuStates();
         void UpdateTitle();
 

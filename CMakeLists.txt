@@ -298,6 +298,7 @@ if (BUILD_TEXTER_APP)
             Apps/Texter/UltraCanvasTextEditor.cpp
             Apps/Texter/UltraCanvasTextEditorHelpers.cpp
             Apps/Texter/UltraCanvasTextEditorDialogs.cpp
+            Apps/Texter/UltraCanvasEncoding.cpp
             Apps/Texter/main.cpp
     )
 

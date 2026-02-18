@@ -90,11 +90,11 @@ namespace UltraCanvas {
 
         findPreviousButton = std::make_shared<UltraCanvasButton>("FindPrevious", 3011, 0, 0, 110, 28);
         findPreviousButton->SetText("Previous");
-        findPreviousButton->SetIcon("media/icons/new/menu/arrow_left.svg");
+        findPreviousButton->SetIcon("media/icons/texter/arrow_left.svg");
 
         findNextButton = std::make_shared<UltraCanvasButton>("FindNext", 3012, 0, 0, 110, 28);
         findNextButton->SetText("Next");
-        findNextButton->SetIcon("media/icons/new/menu/arrow_right.svg");
+        findNextButton->SetIcon("media/icons/texter/arrow_right.svg");
         findNextButton->SetIconPosition(ButtonIconPosition::Right);
 
         closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 3013, 0, 0, 80, 28);

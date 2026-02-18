@@ -219,7 +219,7 @@ namespace UltraCanvas {
 
 // ===== TEXT MANIPULATION METHODS =====
 
-    void UltraCanvasTextArea::SetText(const std::string& newText) {
+    void UltraCanvasTextArea::SetText(const std::string& newText, bool runNotifications) {
         textContent = newText;
         InvalidateGraphemeCache();
         lines = utf8_split(textContent, '\n');
@@ -232,7 +232,7 @@ namespace UltraCanvas {
         selectionEndGrapheme = -1;
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
-        if (onTextChanged) {
+        if (runNotifications && onTextChanged) {
             onTextChanged(textContent);
         }
     }

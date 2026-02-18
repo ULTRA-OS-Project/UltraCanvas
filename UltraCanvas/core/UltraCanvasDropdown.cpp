@@ -87,7 +87,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasDropdown::SetSelectedIndex(int index) {
+    void UltraCanvasDropdown::SetSelectedIndex(int index, bool runNotifications) {
         if (multiSelectEnabled) {
             // In multi-select mode, use SetItemSelected instead
             return;
@@ -98,8 +98,8 @@ namespace UltraCanvas {
                 selectedIndex = index;
 
                 if (index >= 0) {
-                    EnsureItemVisible(index);
-                    if (onSelectionChanged) {
+                    EnsureItemVisible(index);                    
+                    if (runNotifications && onSelectionChanged) {
                         onSelectionChanged(index, items[index]);
                     }
                     UCEvent ev;

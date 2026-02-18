@@ -143,7 +143,7 @@ namespace UltraCanvas {
         void RemoveItem(int index);
 
         // ===== SELECTION MANAGEMENT =====
-        void SetSelectedIndex(int index);
+        void SetSelectedIndex(int index, bool runNotifications = true);
 
         int GetSelectedIndex() const {
             return selectedIndex;

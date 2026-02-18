@@ -116,7 +116,7 @@ namespace UltraCanvas {
         void Invalidate();
 
         // Text manipulation - now UTF-8 aware
-        void SetText(const std::string& text);
+        void SetText(const std::string& text, bool runNotifications = true);
         std::string GetText() const;
         void InsertText(const std::string& text);
         void InsertCodepoint(char32_t codepoint);

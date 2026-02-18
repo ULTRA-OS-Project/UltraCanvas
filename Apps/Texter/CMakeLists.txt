@@ -152,7 +152,7 @@ set(ULTRATEXTER_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasTextEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasTextEditorHelpers.cpp
-
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasEncoding.cpp
 )
 
 # Create executable
@@ -174,6 +174,11 @@ target_link_libraries(UltraTexter PRIVATE
 
 # Link fmt library
 target_link_libraries(UltraTexter PRIVATE fmt::fmt)
+
+# iconv - on Linux it's part of glibc, on macOS it needs explicit linking
+if(APPLE)
+    target_link_libraries(UltraTexter PRIVATE iconv)
+endif()
 
 # Link against plugin libraries if available
 if(ULTRACANVAS_PLUGIN_TARGETS)

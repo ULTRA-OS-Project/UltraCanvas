@@ -13,6 +13,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextEditorHelpers.h"
 #include "UltraCanvasTextEditorDialogs.h"
+#include "UltraCanvasEncoding.h"
 //#include "UltraCanvasDialogManager.h"
 #include <fstream>
 #include <sstream>
@@ -270,31 +271,31 @@ namespace UltraCanvas {
 
                         // ===== FILE MENU =====
                 .AddSubmenu("File", {
-                        MenuItemData::ActionWithShortcut("📄 New", "Ctrl+N", [this]() {
+                        MenuItemData::ActionWithShortcut("New", "Ctrl+N", "media/icons/texter/add-document.svg", [this]() {
                             OnFileNew();
                         }),
-                        MenuItemData::ActionWithShortcut("📂 Open...", "Ctrl+O", [this]() {
+                        MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", "media/icons/texter/folder-open.svg", [this]() {
                             OnFileOpen();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("💾 Save", "Ctrl+S", [this]() {
+                        MenuItemData::ActionWithShortcut("Save", "Ctrl+S", "media/icons/texter/save.svg", [this]() {
                             OnFileSave();
                         }),
-                        MenuItemData::ActionWithShortcut("💾 Save As...", "Ctrl+Shift+S", [this]() {
+                        MenuItemData::ActionWithShortcut("Save As...", "Ctrl+Shift+S", "media/icons/texter/save.svg", [this]() {
                             OnFileSaveAs();
                         }),
-                        MenuItemData::Action("💾 Save All", [this]() {
+                        MenuItemData::Action("Save All", "media/icons/texter/save.svg", [this]() {
                             OnFileSaveAll();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", "media/icons/new/menu/close_tab.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", "media/icons/texter/close_tab.svg", [this]() {
                             OnFileClose();
                         }),
-                        MenuItemData::Action("Close All", "media/icons/new/menu/close_tab.svg", [this]() {
+                        MenuItemData::Action("Close All", "media/icons/texter/close_tab.svg", [this]() {
                             OnFileCloseAll();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Quit", "Alt+F4", "media/icons/new/menu/exit.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Quit", "Alt+F4", "media/icons/texter/exit.svg", [this]() {
                             OnFileQuit();
                         })
                 })
@@ -302,52 +303,52 @@ namespace UltraCanvas {
                         // ===== EDIT MENU =====
                 .AddSubmenu("Edit", {
                         // "↶ Undo"
-                        MenuItemData::ActionWithShortcut("Undo", "Ctrl+Z", "media/icons/new/menu/arrow_left.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Undo", "Ctrl+Z", "media/icons/texter/undo.svg", [this]() {
                             OnEditUndo();
                         }),
                         // "↷ Redo"
-                        MenuItemData::ActionWithShortcut("Redo", "Ctrl+Y", "media/icons/new/menu/arrow_right.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Redo", "Ctrl+Y", "media/icons/texter/redo.svg", [this]() {
                             OnEditRedo();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("✂ Cut", "Ctrl+X", [this]() {
+                        MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", "media/icons/texter/scissors.svg", [this]() {
                             OnEditCut();
                         }),
-                        MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", "media/icons/new/menu/copy.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", "media/icons/texter/copy.svg", [this]() {
                             OnEditCopy();
                         }),
-                        MenuItemData::ActionWithShortcut("📋 Paste", "Ctrl+V", [this]() {
+                        MenuItemData::ActionWithShortcut("Paste", "Ctrl+V", "media/icons/texter/paste.svg", [this]() {
                             OnEditPaste();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("🔍 Find...", "Ctrl+F", [this]() {
+                        MenuItemData::ActionWithShortcut("Find...", "Ctrl+F", "media/icons/texter/search.svg", [this]() {
                             OnEditSearch();
                         }),
-                        MenuItemData::ActionWithShortcut("🔄 Replace...", "Ctrl+H", [this]() {
+                        MenuItemData::ActionWithShortcut("Replace...", "Ctrl+H",  "media/icons/texter/replace.svg", [this]() {
                             OnEditReplace();
                         }),
-                        MenuItemData::ActionWithShortcut("🎯 Go to Line...", "Ctrl+G", [this]() {
+                        MenuItemData::ActionWithShortcut("Go to Line...", "Ctrl+G", "media/icons/texter/gotoline.svg", [this]() {
                             OnEditGoToLine();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("✅ Select All", "Ctrl+A", [this]() {
+                        MenuItemData::ActionWithShortcut("Select All", "Ctrl+A", [this]() {
                             OnEditSelectAll();
                         })
                 })
 
                         // ===== VIEW MENU =====
                 .AddSubmenu("View", {
-                        MenuItemData::ActionWithShortcut("🔍 Increase Font Size", "Ctrl++", [this]() {
+                        MenuItemData::ActionWithShortcut("Increase Font Size", "Ctrl++", "media/icons/texter/zoom-in.svg", [this]() {
                             OnViewIncreaseFontSize();
                         }),
-                        MenuItemData::ActionWithShortcut("🔍 Decrease Font Size", "Ctrl+-", [this]() {
+                        MenuItemData::ActionWithShortcut("Decrease Font Size", "Ctrl+-", "media/icons/texter/zoom-out.svg", [this]() {
                             OnViewDecreaseFontSize();
                         }),
-                        MenuItemData::ActionWithShortcut("🔍 Reset Font Size", "Ctrl+0", [this]() {
+                        MenuItemData::ActionWithShortcut("Reset Font Size", "Ctrl+0", [this]() {
                             OnViewResetFontSize();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Toggle Theme", "Ctrl+T", "media/icons/new/menu/theme_mode.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Toggle Theme", "Ctrl+T", "media/icons/texter/theme_mode.svg", [this]() {
                             OnViewToggleTheme();
                         }),
                         MenuItemData::Separator(),
@@ -380,19 +381,19 @@ namespace UltraCanvas {
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(0, toolbarY, GetWidth(), toolbarHeight)
-                .AddButton("new", "", "media/icons/new/new-thin.png", [this]() { OnFileNew(); })
-                .AddButton("open", "", "media/icons/new/open-thin.png", [this]() { OnFileOpen(); })
-                .AddButton("save", "", "media/icons/new/save-thin.png", [this]() { OnFileSave(); })
+                .AddButton("new", "", "media/icons/texter/add-document.svg", [this]() { OnFileNew(); })
+                .AddButton("open", "", "media/icons/texter/folder-open.svg", [this]() { OnFileOpen(); })
+                .AddButton("save", "", "media/icons/texter/save.svg", [this]() { OnFileSave(); })
                 .AddSeparator()
-                .AddButton("cut", "", "media/icons/new/cut-thin.png", [this]() { OnEditCut(); })
-                .AddButton("copy", "", "media/icons/new/copy-thin.png", [this]() { OnEditCopy(); })
-                .AddButton("paste", "", "media/icons/new/paste-thin.png", [this]() { OnEditPaste(); })
+                .AddButton("cut", "", "media/icons/texter/cut-thin.png", [this]() { OnEditCut(); })
+                .AddButton("copy", "", "media/icons/texter/copy.svg", [this]() { OnEditCopy(); })
+                .AddButton("paste", "", "media/icons/texter/paste.svg", [this]() { OnEditPaste(); })
                 .AddSeparator()
-                .AddButton("search", "", "media/icons/new/search-thin.png", [this]() { OnEditSearch(); })
-                .AddButton("replace", "", "media/icons/new/replace-thin.png", [this]() { OnEditReplace(); })
+                .AddButton("search", "", "media/icons/texter/search.svg", [this]() { OnEditSearch(); })
+                .AddButton("replace", "", "media/icons/texter/replace.svg", [this]() { OnEditReplace(); })
                 .AddSeparator()
-                .AddButton("zoom-in", "", "media/icons/new/zoom-in-thin.png", [this]() { OnViewIncreaseFontSize(); })
-                .AddButton("zoom-out", "", "media/icons/new/zoom-out-thin.png", [this]() { OnViewDecreaseFontSize(); }) // TODO: Add zoom outIncreaseFontSize(); })
+                .AddButton("zoom-in", "", "media/icons/texter/zoom-in.svg", [this]() { OnViewIncreaseFontSize(); })
+                .AddButton("zoom-out", "", "media/icons/texter/zoom-out.svg", [this]() { OnViewDecreaseFontSize(); }) // TODO: Add zoom outIncreaseFontSize(); })
 
                 .Build();
 
@@ -448,11 +449,14 @@ namespace UltraCanvas {
 
         int yPos = GetHeight() - statusBarHeight;
         int zoomDropdownWidth = 80;
+        int encodingDropdownWidth = 160;
+        int gap = 8;
+        int rightWidgetsWidth = zoomDropdownWidth + gap + encodingDropdownWidth + gap;
 
         statusLabel = std::make_shared<UltraCanvasLabel>(
                 "StatusBar", 300,
                 4, yPos + 4,
-                GetWidth() - zoomDropdownWidth - 12, statusBarHeight - 8
+                GetWidth() - rightWidgetsWidth - 12, statusBarHeight - 8
         );
         statusLabel->SetText("Ready");
         statusLabel->SetFontSize(10);
@@ -461,19 +465,42 @@ namespace UltraCanvas {
 
         AddChild(statusLabel);
 
+        // Create encoding dropdown (between status label and zoom dropdown)
+        encodingDropdown = std::make_shared<UltraCanvasDropdown>(
+                "EncodingDropdown", 302,
+                GetWidth() - rightWidgetsWidth, yPos + 2,
+                encodingDropdownWidth, statusBarHeight - 4
+        );
+
+        auto encodings = GetSupportedEncodings();
+        for (size_t i = 0; i < encodings.size(); i++) {
+            encodingDropdown->AddItem(encodings[i].displayName, encodings[i].iconvName);
+        }
+        encodingDropdown->SetSelectedIndex(0); // Default: UTF-8
+
+        DropdownStyle encStyle = encodingDropdown->GetStyle();
+        encStyle.fontSize = 10;
+        encodingDropdown->SetStyle(encStyle);
+
+        encodingDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
+            OnEncodingChanged(index, item);
+        };
+
+        AddChild(encodingDropdown);
+
         // Create zoom dropdown on the right side of the status bar
         zoomDropdown = std::make_shared<UltraCanvasDropdown>(
                 "ZoomDropdown", 301,
-                GetWidth() - zoomDropdownWidth - 4, yPos + 2,
+                GetWidth() - zoomDropdownWidth - gap, yPos + 2,
                 zoomDropdownWidth, statusBarHeight - 4
         );
         fontZoomLevelIdx = 4;
-        for(int i = 0; i < fontZoomLevels.size(); i++) {
+        for(size_t i = 0; i < fontZoomLevels.size(); i++) {
             auto zoomLabel = fmt::format("{}%", fontZoomLevels[i]);
             auto zoomValue = fmt::format("{}", i);
             zoomDropdown->AddItem(zoomLabel, zoomValue);
             if (fontZoomLevels[i] == 100) {
-                fontZoomLevelIdx = i; 
+                fontZoomLevelIdx = static_cast<int>(i);
             }
         }
 
@@ -528,11 +555,32 @@ namespace UltraCanvas {
         if (config.showStatusBar) {
             int statusY = h - statusBarHeight;
             int zoomDropdownWidth = 80;
-            if (statusLabel) {
-                statusLabel->SetBounds(Rect2Di(4, statusY + 4, w - zoomDropdownWidth - 12, statusBarHeight - 8));
+            int encodingDropdownWidth = 120;
+            int gap = 4;
+
+            // Encoding dropdown: positioned to the left of zoom dropdown
+            int encodingX = w - zoomDropdownWidth - gap - encodingDropdownWidth - gap;
+            if (encodingDropdown) {
+                encodingDropdown->SetBounds(Rect2Di(
+                    encodingX, statusY + 2,
+                    encodingDropdownWidth, statusBarHeight - 4
+                ));
             }
+
+            // Zoom dropdown: rightmost
             if (zoomDropdown) {
-                zoomDropdown->SetBounds(Rect2Di(w - zoomDropdownWidth - 4, statusY + 2, zoomDropdownWidth, statusBarHeight - 4));
+                zoomDropdown->SetBounds(Rect2Di(
+                    w - zoomDropdownWidth - gap, statusY + 2,
+                    zoomDropdownWidth, statusBarHeight - 4
+                ));
+            }
+
+            // Status label: fills remaining space up to encoding dropdown
+            if (statusLabel) {
+                statusLabel->SetBounds(Rect2Di(
+                    4, statusY + 4,
+                    encodingX - 8, statusBarHeight - 8
+                ));
             }
         }
     }
@@ -702,8 +750,9 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             tabContainer->SetActiveTab(index);
         }
 
-        // Update status bar
+        // Update status bar and encoding dropdown
         UpdateStatusBar();
+        UpdateEncodingDropdown();
 
         // Notify callback
         if (onTabChanged) {
@@ -775,18 +824,61 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         }
 
         try {
-            std::ifstream file(filePath);
+            // Read raw bytes from file in binary mode
+            std::ifstream file(filePath, std::ios::binary | std::ios::ate);
             if (!file.is_open()) {
                 std::cerr << "Failed to open file: " << filePath << std::endl;
                 return false;
             }
 
-            std::stringstream buffer;
-            buffer << file.rdbuf();
+            std::streamsize fileSize = file.tellg();
+            file.seekg(0, std::ios::beg);
+
+            std::vector<uint8_t> rawBytes(static_cast<size_t>(fileSize));
+            if (fileSize > 0) {
+                file.read(reinterpret_cast<char*>(rawBytes.data()), fileSize);
+            }
             file.close();
 
             auto doc = documents[docIndex];
-            doc->textArea->SetText(buffer.str());
+
+            // Detect encoding
+            DetectionResult detection = DetectEncoding(rawBytes);
+            doc->encoding = detection.encoding;
+
+            // Handle BOM
+            size_t bomLength = 0;
+            std::string bomEncoding = DetectBOM(rawBytes, bomLength);
+            doc->hasBOM = !bomEncoding.empty();
+
+            // Store raw bytes for potential re-encoding (if not too large)
+            if (rawBytes.size() <= MAX_RAW_BYTES_CACHE) {
+                doc->originalRawBytes = rawBytes;
+            } else {
+                doc->originalRawBytes.clear();
+            }
+
+            // Prepare content bytes (strip BOM if present)
+            std::vector<uint8_t> contentBytes;
+            if (bomLength > 0 && bomLength < rawBytes.size()) {
+                contentBytes.assign(rawBytes.begin() + bomLength, rawBytes.end());
+            } else if (bomLength == 0) {
+                contentBytes = std::move(rawBytes);
+            }
+            // else: file is only BOM bytes, contentBytes stays empty
+
+            // Convert to UTF-8
+            std::string utf8Text;
+            if (!ConvertToUtf8(contentBytes, doc->encoding, utf8Text)) {
+                // Conversion failed; fallback to ISO-8859-1 (always succeeds)
+                std::cerr << "Encoding conversion failed for " << doc->encoding
+                          << ", falling back to ISO-8859-1" << std::endl;
+                doc->encoding = "ISO-8859-1";
+                ConvertToUtf8(contentBytes, "ISO-8859-1", utf8Text);
+            }
+
+            // Set text in editor
+            doc->textArea->SetText(utf8Text, false);
             doc->filePath = filePath;
             doc->isNewFile = false;
             doc->isModified = false;
@@ -814,6 +906,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             UpdateTabTitle(docIndex);
             UpdateTabBadge(docIndex);
             UpdateTitle();
+            UpdateEncodingDropdown();
 
             if (onFileLoaded) {
                 onFileLoaded(filePath, docIndex);
@@ -847,14 +940,47 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         }
 
         try {
-            std::ofstream file(filePath);
+            auto doc = documents[docIndex];
+            std::string utf8Text = doc->textArea->GetText();
+
+            // Convert from UTF-8 to document encoding
+            std::vector<uint8_t> outputBytes;
+
+            if (doc->encoding == "UTF-8") {
+                outputBytes.assign(utf8Text.begin(), utf8Text.end());
+            } else {
+                if (!ConvertFromUtf8(utf8Text, doc->encoding, outputBytes)) {
+                    std::cerr << "Failed to convert to encoding " << doc->encoding
+                              << " while saving " << filePath
+                              << ", falling back to UTF-8" << std::endl;
+                    outputBytes.assign(utf8Text.begin(), utf8Text.end());
+                    doc->encoding = "UTF-8";
+                    UpdateEncodingDropdown();
+                }
+            }
+
+            std::ofstream file(filePath, std::ios::binary);
             if (!file.is_open()) {
                 std::cerr << "Failed to save file: " << filePath << std::endl;
                 return false;
             }
 
-            auto doc = documents[docIndex];
-            file << doc->textArea->GetText();
+            // Write BOM if the original file had one
+            if (doc->hasBOM) {
+                if (doc->encoding == "UTF-8") {
+                    const uint8_t bom[] = {0xEF, 0xBB, 0xBF};
+                    file.write(reinterpret_cast<const char*>(bom), 3);
+                } else if (doc->encoding == "UTF-16LE") {
+                    const uint8_t bom[] = {0xFF, 0xFE};
+                    file.write(reinterpret_cast<const char*>(bom), 2);
+                } else if (doc->encoding == "UTF-16BE") {
+                    const uint8_t bom[] = {0xFE, 0xFF};
+                    file.write(reinterpret_cast<const char*>(bom), 2);
+                }
+            }
+
+            file.write(reinterpret_cast<const char*>(outputBytes.data()),
+                       static_cast<std::streamsize>(outputBytes.size()));
             file.close();
 
             doc->filePath = filePath;
@@ -864,6 +990,9 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             // Update filename
             std::filesystem::path p(filePath);
             doc->fileName = p.filename().string();
+
+            // Clear raw bytes cache since we just saved a fresh version
+            doc->originalRawBytes.clear();
 
             SetDocumentModified(docIndex, false);
 
@@ -975,7 +1104,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         // Create new document with recovered content
         int docIndex = CreateNewDocument("Recovered");
         auto doc = documents[docIndex];
-        doc->textArea->SetText(content);
+        doc->textArea->SetText(content, false);
         doc->isModified = true;
         doc->autosaveBackupPath = backupPath; // Keep backup until saved
 
@@ -1394,7 +1523,6 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         // Build status text
         std::stringstream status;
         status << "Line: " << (line + 1) << ", Col: " << (col + 1);
-        status << " | " << config.defaultEncoding;
         status << " | " << doc->language;
         // status << " | Words: " << wordCount << " | Chars: " << graphemesCount;
 
@@ -1415,7 +1543,64 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
     void UltraCanvasTextEditor::UpdateZoomDropdownSelection() {
         if (!zoomDropdown) return;
 
-        zoomDropdown->SetSelectedIndex(fontZoomLevelIdx);
+        zoomDropdown->SetSelectedIndex(fontZoomLevelIdx, false);
+    }
+
+    void UltraCanvasTextEditor::UpdateEncodingDropdown() {
+        if (!encodingDropdown) return;
+
+        auto doc = GetActiveDocument();
+        if (!doc) return;
+
+        int idx = FindEncodingIndex(doc->encoding);
+        if (idx >= 0) {
+            encodingDropdown->SetSelectedIndex(idx, false);
+        }
+    }
+
+    void UltraCanvasTextEditor::OnEncodingChanged(int /*index*/, const DropdownItem& item) {
+        auto doc = GetActiveDocument();
+        if (!doc) return;
+
+        std::string newEncoding = item.value;
+        if (newEncoding == doc->encoding) return;
+
+        // Case 1: Document has unmodified raw bytes — re-interpret
+        if (!doc->originalRawBytes.empty()) {
+            std::string utf8Text;
+
+            // Strip BOM if present
+            size_t bomLength = 0;
+            DetectBOM(doc->originalRawBytes, bomLength);
+
+            std::vector<uint8_t> contentBytes;
+            if (bomLength > 0 && bomLength < doc->originalRawBytes.size()) {
+                contentBytes.assign(doc->originalRawBytes.begin() + bomLength,
+                                    doc->originalRawBytes.end());
+            } else {
+                contentBytes = doc->originalRawBytes;
+            }
+
+            if (ConvertToUtf8(contentBytes, newEncoding, utf8Text)) {
+                doc->encoding = newEncoding;
+                doc->textArea->SetText(utf8Text, false);
+                doc->isModified = false;
+                UpdateTabBadge(activeDocumentIndex);
+            } else {
+                // Conversion failed: revert dropdown selection
+                std::cerr << "Failed to re-interpret file as " << newEncoding << std::endl;
+                UpdateEncodingDropdown();
+                return;
+            }
+        }
+        // Case 2: Document has been modified or raw bytes not available
+        //         Just change the save encoding (no re-interpretation)
+        else {
+            doc->encoding = newEncoding;
+            SetDocumentModified(activeDocumentIndex, true);
+        }
+
+        UpdateStatusBar();
     }
 
     void UltraCanvasTextEditor::UpdateMenuStates() {
@@ -1481,6 +1666,18 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 zStyle.itemSelectedColor = Color(55, 55, 55, 255);
                 zoomDropdown->SetStyle(zStyle);
             }
+            if (encodingDropdown) {
+                DropdownStyle eStyle = encodingDropdown->GetStyle();
+                eStyle.normalColor = Color(40, 40, 40, 255);
+                eStyle.hoverColor = Color(55, 55, 55, 255);
+                eStyle.normalTextColor = Color(200, 200, 200, 255);
+                eStyle.borderColor = Color(60, 60, 60, 255);
+                eStyle.listBackgroundColor = Color(45, 45, 45, 255);
+                eStyle.listBorderColor = Color(60, 60, 60, 255);
+                eStyle.itemHoverColor = Color(65, 65, 65, 255);
+                eStyle.itemSelectedColor = Color(55, 55, 55, 255);
+                encodingDropdown->SetStyle(eStyle);
+            }
             if (tabContainer) {
                 tabContainer->tabBarColor = Color(40, 40, 40, 255);
                 tabContainer->activeTabColor = Color(60, 60, 60, 255);
@@ -1503,6 +1700,18 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 zStyle.itemHoverColor = Color(230, 230, 230, 255);
                 zStyle.itemSelectedColor = Color(220, 220, 220, 255);
                 zoomDropdown->SetStyle(zStyle);
+            }
+            if (encodingDropdown) {
+                DropdownStyle eStyle = encodingDropdown->GetStyle();
+                eStyle.normalColor = Color(240, 240, 240, 255);
+                eStyle.hoverColor = Color(225, 225, 225, 255);
+                eStyle.normalTextColor = Color(80, 80, 80, 255);
+                eStyle.borderColor = Color(200, 200, 200, 255);
+                eStyle.listBackgroundColor = Color(255, 255, 255, 255);
+                eStyle.listBorderColor = Color(200, 200, 200, 255);
+                eStyle.itemHoverColor = Color(230, 230, 230, 255);
+                eStyle.itemSelectedColor = Color(220, 220, 220, 255);
+                encodingDropdown->SetStyle(eStyle);
             }
             if (tabContainer) {
                 tabContainer->tabBarColor = Color(240, 240, 240, 255);
@@ -1540,6 +1749,11 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         doc->textArea->onTextChanged = [this, docId](const std::string& text) {
             int currentIndex = FindDocumentIndexById(docId);
             if (currentIndex >= 0) {
+                // // Clear raw bytes on first edit (no longer useful for re-interpretation)
+                // if (!documents[currentIndex]->originalRawBytes.empty()) {
+                //     documents[currentIndex]->originalRawBytes.clear();
+                //     documents[currentIndex]->originalRawBytes.shrink_to_fit();
+                // }
                 SetDocumentModified(currentIndex, true);
             }
             UpdateStatusBar();
