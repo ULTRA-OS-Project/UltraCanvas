@@ -166,7 +166,8 @@ namespace UltraCanvas {
         void SetProgrammingLanguage(const std::string& language);
         bool SetProgrammingLanguageByExtension(const std::string& extension);
         const std::string GetCurrentProgrammingLanguage();
-        
+        std::vector<std::string> GetSupportedLanguages();
+
         void SetSyntaxTheme(const std::string& theme);
         void UpdateSyntaxHighlighting();
 

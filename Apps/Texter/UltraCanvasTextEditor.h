@@ -18,6 +18,7 @@
 #include "UltraCanvasTextEditorHelpers.h"
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasEncoding.h"
+#include "UltraCanvasBoxLayout.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -164,9 +165,12 @@ namespace UltraCanvas {
 
         // ===== UI COMPONENTS =====
         std::shared_ptr<UltraCanvasMenu> menuBar;
+        std::shared_ptr<UltraCanvasContainer> toolbarContainer;  // HBox wrapper for both toolbars
         std::shared_ptr<UltraCanvasToolbar> toolbar;
+        std::shared_ptr<UltraCanvasToolbar> markdownToolbar;
         std::shared_ptr<UltraCanvasTabbedContainer> tabContainer;
         std::shared_ptr<UltraCanvasLabel> statusLabel;
+        std::shared_ptr<UltraCanvasDropdown> languageDropdown;
         std::shared_ptr<UltraCanvasDropdown> encodingDropdown;
         std::shared_ptr<UltraCanvasDropdown> zoomDropdown;
 
@@ -195,9 +199,16 @@ namespace UltraCanvas {
         // ===== SETUP METHODS =====
         void SetupMenuBar();
         void SetupToolbar();
+        void SetupMarkdownToolbar();
         void SetupTabContainer();
         void SetupStatusBar();
         void SetupLayout();
+
+        // ===== MARKDOWN TOOLBAR =====
+        void UpdateMarkdownToolbarVisibility();
+        void InsertMarkdownSnippet(const std::string& prefix, const std::string& suffix,
+                                   const std::string& sampleText);
+        bool IsMarkdownMode() const;
 
         // ===== DOCUMENT MANAGEMENT =====
         int CreateNewDocument(const std::string& fileName = "");
@@ -254,6 +265,8 @@ namespace UltraCanvas {
         // ===== UI UPDATES =====
         void UpdateStatusBar();
         void UpdateZoomDropdownSelection();
+        void UpdateLanguageDropdown();
+        void OnLanguageChanged(int index, const DropdownItem& item);
         void UpdateEncodingDropdown();
         void OnEncodingChanged(int index, const DropdownItem& item);
         void UpdateMenuStates();

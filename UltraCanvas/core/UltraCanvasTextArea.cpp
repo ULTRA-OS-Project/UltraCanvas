@@ -1956,6 +1956,13 @@ void UltraCanvasTextArea::ScrollDown(int lineCount) {
         return syntaxTokenizer->GetCurrentProgrammingLanguage();
     }
 
+    std::vector<std::string> UltraCanvasTextArea::GetSupportedLanguages() {
+        if (!syntaxTokenizer) {
+            syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
+        }
+        return syntaxTokenizer->GetSupportedLanguages();
+    }
+
     void UltraCanvasTextArea::SetSyntaxTheme(const std::string& theme) {
         // Theme application would go here
         RequestRedraw();

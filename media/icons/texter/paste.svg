@@ -1,0 +1,11 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!--Generator: Xara Designer (www.xara.com), SVG filter version: 6.7.0.0-->
+<svg fill="none" fill-rule="evenodd" stroke="black" stroke-width="0.501" stroke-linejoin="bevel" stroke-miterlimit="10" font-family="Times New Roman" font-size="16" style="font-variant-ligatures:none" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" version="1.1" overflow="visible" width="25.058pt" height="30.069pt" viewBox="169.785 -416.343 25.058 30.069">
+ <defs>
+	</defs>
+ <g id="Layer 1" transform="scale(1 -1)">
+  <path d="M 192.457,409.591 L 188.091,413.958 C 186.552,415.496 184.508,416.343 182.333,416.343 L 175.423,416.343 C 172.315,416.343 169.785,413.813 169.785,410.705 L 169.785,391.912 C 169.785,388.803 172.315,386.274 175.423,386.274 L 189.205,386.274 C 192.313,386.274 194.843,388.803 194.843,391.912 L 194.843,403.833 C 194.843,406.008 193.996,408.054 192.457,409.591 Z M 191.571,408.705 C 192.26,408.016 192.773,407.202 193.114,406.32 L 186.698,406.32 C 185.662,406.32 184.818,407.163 184.818,408.199 L 184.818,414.615 C 185.7,414.273 186.515,413.761 187.204,413.073 L 191.57,408.707 Z M 193.59,391.912 C 193.59,389.494 191.623,387.527 189.205,387.527 L 175.423,387.527 C 173.005,387.527 171.038,389.494 171.038,391.912 L 171.038,410.705 C 171.038,413.123 173.005,415.09 175.423,415.09 L 182.333,415.09 C 182.752,415.09 183.163,415.043 183.567,414.97 L 183.567,408.199 C 183.567,406.473 184.972,405.067 186.699,405.067 L 193.47,405.067 C 193.542,404.662 193.59,404.251 193.59,403.833 L 193.59,391.912 Z" stroke="none" fill="#000000" stroke-width="1.253" fill-rule="nonzero" stroke-linejoin="miter" marker-start="none" marker-end="none"/>
+  <path d="M 182.314,404.315 L 182.314,401.308 L 182.314,398.301 L 179.307,398.301 L 182.314,392.287 L 185.321,398.301 L 182.314,398.301 L 182.314,404.315 Z" stroke-width="1.149" stroke-linejoin="miter" fill="#000000" marker-start="none" marker-end="none"/>
+ </g>
+</svg>

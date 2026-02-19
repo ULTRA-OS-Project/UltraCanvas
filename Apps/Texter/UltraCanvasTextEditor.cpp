@@ -380,7 +380,7 @@ namespace UltraCanvas {
         toolbar = UltraCanvasToolbarBuilder("EditorToolbar", 200)
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Flat())
-                .SetDimensions(0, toolbarY, GetWidth(), toolbarHeight)
+                .SetDimensions(0, 0, GetWidth(), toolbarHeight)
                 .AddButton("new", "", "media/icons/texter/add-document.svg", [this]() { OnFileNew(); })
                 .AddButton("open", "", "media/icons/texter/folder-open.svg", [this]() { OnFileOpen(); })
                 .AddButton("save", "", "media/icons/texter/save.svg", [this]() { OnFileSave(); })
@@ -389,17 +389,69 @@ namespace UltraCanvas {
                 .AddButton("copy", "", "media/icons/texter/copy.svg", [this]() { OnEditCopy(); })
                 .AddButton("paste", "", "media/icons/texter/paste.svg", [this]() { OnEditPaste(); })
                 .AddSeparator()
+                .AddButton("undo", "", "media/icons/texter/undo.svg", [this]() { OnEditUndo(); })
+                .AddButton("redo", "", "media/icons/texter/redo.svg", [this]() { OnEditRedo(); })
+                .AddSeparator()
                 .AddButton("search", "", "media/icons/texter/search.svg", [this]() { OnEditSearch(); })
                 .AddButton("replace", "", "media/icons/texter/replace.svg", [this]() { OnEditReplace(); })
                 .AddSeparator()
                 .AddButton("zoom-in", "", "media/icons/texter/zoom-in.svg", [this]() { OnViewIncreaseFontSize(); })
-                .AddButton("zoom-out", "", "media/icons/texter/zoom-out.svg", [this]() { OnViewDecreaseFontSize(); }) // TODO: Add zoom outIncreaseFontSize(); })
-
+                .AddButton("zoom-out", "", "media/icons/texter/zoom-out.svg", [this]() { OnViewDecreaseFontSize(); })
                 .Build();
 
-        AddChild(toolbar);
+        // Wrap toolbar(s) in an HBox container
+        toolbarContainer = std::make_shared<UltraCanvasContainer>(
+                "ToolbarContainer", 201, 0, toolbarY, GetWidth(), toolbarHeight);
+        auto* hbox = CreateHBoxLayout(toolbarContainer.get());
+        hbox->SetSpacing(0);
+        hbox->AddUIElement(toolbar)->SetStretch(1)->SetHeightMode(SizeMode::Fill);
+
+        // Build and add the markdown toolbar (initially hidden)
+        SetupMarkdownToolbar();
+
+        AddChild(toolbarContainer);
     }
 
+    void UltraCanvasTextEditor::SetupMarkdownToolbar() {
+        markdownToolbar = UltraCanvasToolbarBuilder("MarkdownToolbar", 202)
+                .SetOrientation(ToolbarOrientation::Horizontal)
+                .SetAppearance(ToolbarAppearance::Flat())
+                .SetDimensions(0, 0, 400, toolbarHeight)
+                .AddButton("md-bold", "", "media/icons/texter/md-bold.svg",
+                    [this]() { InsertMarkdownSnippet("**", "**", "bold text"); })
+                .AddButton("md-italic", "", "media/icons/texter/md-italic.svg",
+                    [this]() { InsertMarkdownSnippet("*", "*", "emphasized text"); })
+                .AddSeparator()
+                .AddButton("md-heading", "", "media/icons/texter/md-heading.svg",
+                    [this]() { InsertMarkdownSnippet("## ", "", "Heading"); })
+                .AddSeparator()
+                .AddButton("md-ul", "", "media/icons/texter/md-list-unordered.svg",
+                    [this]() { InsertMarkdownSnippet("- ", "", "list item"); })
+                .AddButton("md-ol", "", "media/icons/texter/md-list-ordered.svg",
+                    [this]() { InsertMarkdownSnippet("1. ", "", "list item"); })
+                .AddButton("md-checklist", "", "media/icons/texter/md-checklist.svg",
+                    [this]() { InsertMarkdownSnippet("- [ ] ", "", "list item"); })
+                .AddSeparator()
+                .AddButton("md-quote", "", "media/icons/texter/md-quote.svg",
+                    [this]() { InsertMarkdownSnippet("> ", "", "quote"); })
+                .AddButton("md-code", "", "media/icons/texter/md-code.svg",
+                    [this]() { InsertMarkdownSnippet("```\n", "\n```", "code"); })
+                .AddButton("md-table", "", "media/icons/texter/md-table.svg",
+                    [this]() {
+                        InsertMarkdownSnippet(
+                            "| ", " | Column 2 |\n|----------|----------|\n|          |          |",
+                            "Column 1");
+                    })
+                .Build();
+
+        markdownToolbar->SetVisible(false);
+
+        // Add to the toolbar container's HBoxLayout
+        auto* hbox = dynamic_cast<UltraCanvasBoxLayout*>(toolbarContainer->GetLayout());
+        if (hbox) {
+            hbox->AddUIElement(markdownToolbar)->SetHeightMode(SizeMode::Fill);
+        }
+    }
 
     void UltraCanvasTextEditor::SetupTabContainer() {
         int yPos = 0;
@@ -448,27 +500,46 @@ namespace UltraCanvas {
         if (!config.showStatusBar) return;
 
         int yPos = GetHeight() - statusBarHeight;
-        int zoomDropdownWidth = 80;
+        int languageDropdownWidth = 140;
         int encodingDropdownWidth = 160;
-        int gap = 8;
-        int rightWidgetsWidth = zoomDropdownWidth + gap + encodingDropdownWidth + gap;
+        int zoomDropdownWidth = 80;
+        int gap = 4;
+        int xPos = gap;
 
-        statusLabel = std::make_shared<UltraCanvasLabel>(
-                "StatusBar", 300,
-                4, yPos + 4,
-                GetWidth() - rightWidgetsWidth - 12, statusBarHeight - 8
+        // Create language dropdown (leftmost)
+        languageDropdown = std::make_shared<UltraCanvasDropdown>(
+                "LanguageDropdown", 303,
+                xPos, yPos + 2,
+                languageDropdownWidth, statusBarHeight - 4
         );
-        statusLabel->SetText("Ready");
-        statusLabel->SetFontSize(10);
-        statusLabel->SetTextColor(Color(80, 80, 80, 255));
-        statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
 
-        AddChild(statusLabel);
+        languageDropdown->AddItem("Plain Text", "Plain Text");
+        {
+            // Get supported languages and sort them
+            UltraCanvasTextArea tempArea("_tmp", 0, 0, 0, 0, 0);
+            auto languages = tempArea.GetSupportedLanguages();
+            std::sort(languages.begin(), languages.end());
+            for (const auto& lang : languages) {
+                languageDropdown->AddItem(lang, lang);
+            }
+        }
+        languageDropdown->SetSelectedIndex(0); // Plain Text
 
-        // Create encoding dropdown (between status label and zoom dropdown)
+        DropdownStyle langStyle = languageDropdown->GetStyle();
+        langStyle.fontSize = 10;
+        languageDropdown->SetStyle(langStyle);
+
+        languageDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
+            OnLanguageChanged(index, item);
+        };
+
+        AddChild(languageDropdown);
+        xPos += languageDropdownWidth + gap;
+
+        // Create encoding dropdown
         encodingDropdown = std::make_shared<UltraCanvasDropdown>(
                 "EncodingDropdown", 302,
-                GetWidth() - rightWidgetsWidth, yPos + 2,
+                xPos, yPos + 2,
                 encodingDropdownWidth, statusBarHeight - 4
         );
 
@@ -487,11 +558,12 @@ namespace UltraCanvas {
         };
 
         AddChild(encodingDropdown);
+        xPos += encodingDropdownWidth + gap;
 
-        // Create zoom dropdown on the right side of the status bar
+        // Create zoom dropdown
         zoomDropdown = std::make_shared<UltraCanvasDropdown>(
                 "ZoomDropdown", 301,
-                GetWidth() - zoomDropdownWidth - gap, yPos + 2,
+                xPos, yPos + 2,
                 zoomDropdownWidth, statusBarHeight - 4
         );
         fontZoomLevelIdx = 4;
@@ -516,6 +588,20 @@ namespace UltraCanvas {
         };
 
         AddChild(zoomDropdown);
+        xPos += zoomDropdownWidth + gap;
+
+        // Status label fills remaining space to the right
+        statusLabel = std::make_shared<UltraCanvasLabel>(
+                "StatusBar", 300,
+                xPos, yPos + 4,
+                GetWidth() - xPos - 4, statusBarHeight - 8
+        );
+        statusLabel->SetText("Ready");
+        statusLabel->SetFontSize(10);
+        statusLabel->SetTextColor(Color(80, 80, 80, 255));
+        statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
+
+        AddChild(statusLabel);
     }
 
     void UltraCanvasTextEditor::SetupLayout() {
@@ -539,8 +625,8 @@ namespace UltraCanvas {
         }
 
         // ===== Toolbar =====
-        if (toolbar && config.showToolbar) {
-            toolbar->SetBounds(Rect2Di(0, yPos, w, toolbarHeight));
+        if (toolbarContainer && config.showToolbar) {
+            toolbarContainer->SetBounds(Rect2Di(0, yPos, w, toolbarHeight));
             yPos += toolbarHeight;
         }
 
@@ -554,32 +640,39 @@ namespace UltraCanvas {
         // ===== Status bar =====
         if (config.showStatusBar) {
             int statusY = h - statusBarHeight;
-            int zoomDropdownWidth = 80;
-            int encodingDropdownWidth = 120;
+            int langW = 140, encW = 160, zoomW = 80;
             int gap = 4;
+            int xPos = gap;
 
-            // Encoding dropdown: positioned to the left of zoom dropdown
-            int encodingX = w - zoomDropdownWidth - gap - encodingDropdownWidth - gap;
+            // Language dropdown: leftmost
+            if (languageDropdown) {
+                languageDropdown->SetBounds(Rect2Di(
+                    xPos, statusY + 2, langW, statusBarHeight - 4
+                ));
+                xPos += langW + gap;
+            }
+
+            // Encoding dropdown
             if (encodingDropdown) {
                 encodingDropdown->SetBounds(Rect2Di(
-                    encodingX, statusY + 2,
-                    encodingDropdownWidth, statusBarHeight - 4
+                    xPos, statusY + 2, encW, statusBarHeight - 4
                 ));
+                xPos += encW + gap;
             }
 
-            // Zoom dropdown: rightmost
+            // Zoom dropdown
             if (zoomDropdown) {
                 zoomDropdown->SetBounds(Rect2Di(
-                    w - zoomDropdownWidth - gap, statusY + 2,
-                    zoomDropdownWidth, statusBarHeight - 4
+                    xPos, statusY + 2, zoomW, statusBarHeight - 4
                 ));
+                xPos += zoomW + gap;
             }
 
-            // Status label: fills remaining space up to encoding dropdown
+            // Status label: fills remaining space to the right
             if (statusLabel) {
                 statusLabel->SetBounds(Rect2Di(
-                    4, statusY + 4,
-                    encodingX - 8, statusBarHeight - 8
+                    xPos, statusY + 4,
+                    w - xPos - 4, statusBarHeight - 8
                 ));
             }
         }
@@ -643,6 +736,7 @@ namespace UltraCanvas {
 
         UpdateTabTitle(docIndex);
         UpdateStatusBar();
+        UpdateMarkdownToolbarVisibility();
 
         return docIndex;
     }
@@ -750,9 +844,11 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             tabContainer->SetActiveTab(index);
         }
 
-        // Update status bar and encoding dropdown
+        // Update status bar and dropdowns
         UpdateStatusBar();
         UpdateEncodingDropdown();
+        UpdateLanguageDropdown();
+        UpdateMarkdownToolbarVisibility();
 
         // Notify callback
         if (onTabChanged) {
@@ -907,6 +1003,8 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             UpdateTabBadge(docIndex);
             UpdateTitle();
             UpdateEncodingDropdown();
+            UpdateLanguageDropdown();
+            UpdateMarkdownToolbarVisibility();
 
             if (onFileLoaded) {
                 onFileLoaded(filePath, docIndex);
@@ -984,12 +1082,32 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             file.close();
 
             doc->filePath = filePath;
+            bool wasNewFile = doc->isNewFile;
             doc->isNewFile = false;
             doc->lastSaveTime = std::chrono::steady_clock::now();
 
             // Update filename
             std::filesystem::path p(filePath);
             doc->fileName = p.filename().string();
+
+            // Detect language from file extension on first save
+            if (wasNewFile) {
+                std::string ext = p.extension().string();
+                if (!ext.empty() && ext[0] == '.') {
+                    ext = ext.substr(1);
+                }
+
+                if (ext == "md") {
+                    doc->textArea->SetMarkdownHybridMode(true);
+                } else if (doc->textArea->SetProgrammingLanguageByExtension(ext)) {
+                    doc->textArea->SetHighlightSyntax(true);
+                } else {
+                    doc->textArea->SetHighlightSyntax(false);
+                }
+                doc->language = doc->textArea->GetCurrentProgrammingLanguage();
+                UpdateLanguageDropdown();
+                UpdateMarkdownToolbarVisibility();
+            }
 
             // Clear raw bytes cache since we just saved a fresh version
             doc->originalRawBytes.clear();
@@ -1004,6 +1122,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
 
             UpdateTabTitle(docIndex);
             UpdateTitle();
+            UpdateStatusBar();
 
             if (onFileSaved) {
                 onFileSaved(filePath, docIndex);
@@ -1110,6 +1229,47 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
 
         UpdateTabTitle(docIndex);
         UpdateTabBadge(docIndex);
+    }
+
+// ===== MARKDOWN TOOLBAR =====
+
+    bool UltraCanvasTextEditor::IsMarkdownMode() const {
+        auto doc = GetActiveDocument();
+        return doc && doc->language == "Markdown";
+    }
+
+    void UltraCanvasTextEditor::UpdateMarkdownToolbarVisibility() {
+        if (!markdownToolbar) return;
+        bool show = IsMarkdownMode();
+        if (markdownToolbar->IsVisible() != show) {
+            markdownToolbar->SetVisible(show);
+            if (toolbarContainer && toolbarContainer->GetLayout()) {
+                toolbarContainer->GetLayout()->PerformLayout();
+            }
+        }
+    }
+
+    void UltraCanvasTextEditor::InsertMarkdownSnippet(
+            const std::string& prefix, const std::string& suffix,
+            const std::string& sampleText) {
+        auto doc = GetActiveDocument();
+        if (!doc || !doc->textArea) return;
+
+        if (doc->textArea->HasSelection()) {
+            // Wrap selected text with markdown syntax
+            std::string selectedText = doc->textArea->GetSelectedText();
+            doc->textArea->DeleteSelection();
+            doc->textArea->InsertText(prefix + selectedText + suffix);
+        } else {
+            // Insert snippet with sample text, then select the sample
+            int cursorPos = doc->textArea->GetCursorPosition();
+            doc->textArea->InsertText(prefix + sampleText + suffix);
+
+            // Select just the sample text so user can type to replace it
+            int selStart = cursorPos + static_cast<int>(prefix.size());
+            int selEnd = selStart + static_cast<int>(sampleText.size());
+            doc->textArea->SetSelection(selStart, selEnd);
+        }
     }
 
 // ===== MENU HANDLERS =====
@@ -1412,7 +1572,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         config.dialogType = DialogType::Custom;
         config.buttons = DialogButtons::NoButtons;
         config.width = 430;
-        config.height = 500;
+        config.height = 520;
 
         aboutDialog = UltraCanvasDialogManager::CreateDialog(config);
 
@@ -1422,8 +1582,8 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         aboutDialog->SetPadding(20);
 
         // Logo image
-        auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo", 0, 0, 0, 80, 80);
-        logo->LoadFromFile("media/Logo_Texter.svg");
+        auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo", 0, 0, 0, 74, 74);
+        logo->LoadFromFile("media/Logo_Texter.png");
         logo->SetFitMode(ImageFitMode::Contain);
         logo->SetMargin(0, 0, 8, 0);
         mainLayout->AddUIElement(logo)->SetCrossAlignment(LayoutAlignment::Center);
@@ -1460,20 +1620,8 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         descLabel->SetAutoResize(true);
         descLabel->SetMargin(0, 20, 8, 20);
         mainLayout->AddUIElement(descLabel)->SetWidthMode(SizeMode::Fill);
-
-        // Clickable URL label
-        auto urlLabel = std::make_shared<UltraCanvasLabel>("AboutURL", 300, 20);
-        urlLabel->SetText("<span color=\"blue\">http://www.ultraos.eu/</span>");
-        urlLabel->SetTextIsMarkup(true);
-        urlLabel->SetFontSize(11);
-        urlLabel->SetAlignment(TextAlignment::Center);
-        urlLabel->SetAutoResize(true);
-        urlLabel->SetMouseCursor(UCMouseCursor::Hand);
-        urlLabel->onClick = []() {
-            system("xdg-open http://www.ultraos.eu/");
-        };
-        urlLabel->SetMargin(0, 0, 10, 20);
-        mainLayout->AddUIElement(urlLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center);
+        
+        mainLayout->AddSpacing(10);
 
         // Copyright
         auto copyrightLabel = std::make_shared<UltraCanvasLabel>("AboutCopyright", 350, 20,
@@ -1482,6 +1630,19 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         copyrightLabel->SetTextColor(Color(120, 120, 120));
         copyrightLabel->SetAlignment(TextAlignment::Center);
         mainLayout->AddUIElement(copyrightLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center)->SetMainAlignment(LayoutAlignment::Center);;
+
+        // Clickable URL label
+        auto urlLabel = std::make_shared<UltraCanvasLabel>("AboutURL", 300, 20);
+        urlLabel->SetText("<span color=\"blue\">http://www.ultraos.eu/</span>");
+        urlLabel->SetTextIsMarkup(true);
+        urlLabel->SetFontSize(11);
+        urlLabel->SetAlignment(TextAlignment::Center);
+        urlLabel->SetMouseCursor(UCMouseCursor::Hand);
+        urlLabel->onClick = []() {
+            system("xdg-open http://www.ultraos.eu/");
+        };
+        urlLabel->SetMargin(0, 0, 10, 20);
+        mainLayout->AddUIElement(urlLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center);
 
         // Push OK button to the bottom
         mainLayout->AddStretch(1);
@@ -1523,7 +1684,6 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         // Build status text
         std::stringstream status;
         status << "Line: " << (line + 1) << ", Col: " << (col + 1);
-        status << " | " << doc->language;
         // status << " | Words: " << wordCount << " | Chars: " << graphemesCount;
 
         // Add selection info if exists
@@ -1544,6 +1704,45 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         if (!zoomDropdown) return;
 
         zoomDropdown->SetSelectedIndex(fontZoomLevelIdx, false);
+    }
+
+    void UltraCanvasTextEditor::UpdateLanguageDropdown() {
+        if (!languageDropdown) return;
+
+        auto doc = GetActiveDocument();
+        if (!doc) return;
+
+        const auto& items = languageDropdown->GetItems();
+        for (int i = 0; i < static_cast<int>(items.size()); i++) {
+            if (items[i].value == doc->language) {
+                languageDropdown->SetSelectedIndex(i, false);
+                return;
+            }
+        }
+        // Fallback to "Plain Text" (index 0)
+        languageDropdown->SetSelectedIndex(0, false);
+    }
+
+    void UltraCanvasTextEditor::OnLanguageChanged(int /*index*/, const DropdownItem& item) {
+        auto doc = GetActiveDocument();
+        if (!doc || !doc->textArea) return;
+
+        std::string lang = item.value;
+        if (lang == doc->language) return;
+
+        if (lang == "Plain Text") {
+            doc->textArea->SetHighlightSyntax(false);
+            doc->textArea->SetMarkdownHybridMode(false);
+        } else if (lang == "Markdown") {
+            doc->textArea->SetMarkdownHybridMode(true);
+        } else {
+            doc->textArea->SetMarkdownHybridMode(false);
+            doc->textArea->SetHighlightSyntax(true);
+            doc->textArea->SetProgrammingLanguage(lang);
+        }
+        doc->language = lang;
+        UpdateStatusBar();
+        UpdateMarkdownToolbarVisibility();
     }
 
     void UltraCanvasTextEditor::UpdateEncodingDropdown() {
@@ -1678,6 +1877,21 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 eStyle.itemSelectedColor = Color(55, 55, 55, 255);
                 encodingDropdown->SetStyle(eStyle);
             }
+            if (languageDropdown) {
+                DropdownStyle lStyle = languageDropdown->GetStyle();
+                lStyle.normalColor = Color(40, 40, 40, 255);
+                lStyle.hoverColor = Color(55, 55, 55, 255);
+                lStyle.normalTextColor = Color(200, 200, 200, 255);
+                lStyle.borderColor = Color(60, 60, 60, 255);
+                lStyle.listBackgroundColor = Color(45, 45, 45, 255);
+                lStyle.listBorderColor = Color(60, 60, 60, 255);
+                lStyle.itemHoverColor = Color(65, 65, 65, 255);
+                lStyle.itemSelectedColor = Color(55, 55, 55, 255);
+                languageDropdown->SetStyle(lStyle);
+            }
+            if (toolbarContainer) {
+                toolbarContainer->SetBackgroundColor(Color(40, 40, 40, 255));
+            }
             if (tabContainer) {
                 tabContainer->tabBarColor = Color(40, 40, 40, 255);
                 tabContainer->activeTabColor = Color(60, 60, 60, 255);
@@ -1713,6 +1927,21 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 eStyle.itemSelectedColor = Color(220, 220, 220, 255);
                 encodingDropdown->SetStyle(eStyle);
             }
+            if (languageDropdown) {
+                DropdownStyle lStyle = languageDropdown->GetStyle();
+                lStyle.normalColor = Color(240, 240, 240, 255);
+                lStyle.hoverColor = Color(225, 225, 225, 255);
+                lStyle.normalTextColor = Color(80, 80, 80, 255);
+                lStyle.borderColor = Color(200, 200, 200, 255);
+                lStyle.listBackgroundColor = Color(255, 255, 255, 255);
+                lStyle.listBorderColor = Color(200, 200, 200, 255);
+                lStyle.itemHoverColor = Color(230, 230, 230, 255);
+                lStyle.itemSelectedColor = Color(220, 220, 220, 255);
+                languageDropdown->SetStyle(lStyle);
+            }
+            if (toolbarContainer) {
+                toolbarContainer->SetBackgroundColor(Color(240, 240, 240, 255));
+            }
             if (tabContainer) {
                 tabContainer->tabBarColor = Color(240, 240, 240, 255);
                 tabContainer->activeTabColor = Color(255, 255, 255, 255);
@@ -1747,7 +1976,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
 
         // Text changed callback
         doc->textArea->onTextChanged = [this, docId](const std::string& text) {
-            int currentIndex = FindDocumentIndexById(docId);
+             int currentIndex = FindDocumentIndexById(docId);
             if (currentIndex >= 0) {
                 // // Clear raw bytes on first edit (no longer useful for re-interpretation)
                 // if (!documents[currentIndex]->originalRawBytes.empty()) {
