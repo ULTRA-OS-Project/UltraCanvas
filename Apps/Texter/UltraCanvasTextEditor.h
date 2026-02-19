@@ -193,6 +193,7 @@ namespace UltraCanvas {
         // ===== LAYOUT =====
         int menuBarHeight;
         int toolbarHeight;
+        int markdownToolbarWidth;
         int statusBarHeight;
         int tabBarHeight;
 

@@ -214,6 +214,7 @@ namespace UltraCanvas {
             , hasCheckedForBackups(false)
             , menuBarHeight(28)
             , toolbarHeight(cfg.showToolbar ? 44 : 0)
+            , markdownToolbarWidth(44)
             , statusBarHeight(24)
             , tabBarHeight(32)
             , fontZoomLevels({50,65,80,90,100,110,125,150,175,200})
@@ -385,7 +386,7 @@ namespace UltraCanvas {
                 .AddButton("open", "", "media/icons/texter/folder-open.svg", [this]() { OnFileOpen(); })
                 .AddButton("save", "", "media/icons/texter/save.svg", [this]() { OnFileSave(); })
                 .AddSeparator()
-                .AddButton("cut", "", "media/icons/texter/cut-thin.png", [this]() { OnEditCut(); })
+                .AddButton("cut", "", "media/icons/texter/scissors.svg", [this]() { OnEditCut(); })
                 .AddButton("copy", "", "media/icons/texter/copy.svg", [this]() { OnEditCopy(); })
                 .AddButton("paste", "", "media/icons/texter/paste.svg", [this]() { OnEditPaste(); })
                 .AddSeparator()
@@ -398,6 +399,15 @@ namespace UltraCanvas {
                 .AddButton("zoom-in", "", "media/icons/texter/zoom-in.svg", [this]() { OnViewIncreaseFontSize(); })
                 .AddButton("zoom-out", "", "media/icons/texter/zoom-out.svg", [this]() { OnViewDecreaseFontSize(); })
                 .Build();
+
+        // Disable focus on toolbar buttons so they don't steal focus from the text area
+        for (int i = 0; i < toolbar->GetItemCount(); i++) {
+            auto item = toolbar->GetItemAt(i);
+            if (item) {
+                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
+                if (btn) btn->SetAcceptsFocus(false);
+            }
+        }
 
         // Wrap toolbar(s) in an HBox container
         toolbarContainer = std::make_shared<UltraCanvasContainer>(
@@ -414,9 +424,9 @@ namespace UltraCanvas {
 
     void UltraCanvasTextEditor::SetupMarkdownToolbar() {
         markdownToolbar = UltraCanvasToolbarBuilder("MarkdownToolbar", 202)
-                .SetOrientation(ToolbarOrientation::Horizontal)
+                .SetOrientation(ToolbarOrientation::Vertical)
                 .SetAppearance(ToolbarAppearance::Flat())
-                .SetDimensions(0, 0, 400, toolbarHeight)
+                .SetDimensions(0, 0, markdownToolbarWidth, 400)
                 .AddButton("md-bold", "", "media/icons/texter/md-bold.svg",
                     [this]() { InsertMarkdownSnippet("**", "**", "bold text"); })
                 .AddButton("md-italic", "", "media/icons/texter/md-italic.svg",
@@ -444,13 +454,18 @@ namespace UltraCanvas {
                     })
                 .Build();
 
+        // Disable focus on markdown toolbar buttons
+        for (int i = 0; i < markdownToolbar->GetItemCount(); i++) {
+            auto item = markdownToolbar->GetItemAt(i);
+            if (item) {
+                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
+                if (btn) btn->SetAcceptsFocus(false);
+            }
+        }
+
         markdownToolbar->SetVisible(false);
 
-        // Add to the toolbar container's HBoxLayout
-        auto* hbox = dynamic_cast<UltraCanvasBoxLayout*>(toolbarContainer->GetLayout());
-        if (hbox) {
-            hbox->AddUIElement(markdownToolbar)->SetHeightMode(SizeMode::Fill);
-        }
+        AddChild(markdownToolbar);
     }
 
     void UltraCanvasTextEditor::SetupTabContainer() {
@@ -630,11 +645,20 @@ namespace UltraCanvas {
             yPos += toolbarHeight;
         }
 
+        // ===== Markdown toolbar (vertical, left side) =====
+        int mdToolbarW = 0;
+        if (markdownToolbar && markdownToolbar->IsVisible()) {
+            int contentH = h - yPos - (config.showStatusBar ? statusBarHeight : 0);
+            if (contentH < 0) contentH = 0;
+            markdownToolbar->SetBounds(Rect2Di(0, yPos, markdownToolbarWidth, contentH));
+            mdToolbarW = markdownToolbarWidth;
+        }
+
         // ===== Tab container (fills remaining space minus status bar) =====
         if (tabContainer) {
             int tabAreaHeight = h - yPos - (config.showStatusBar ? statusBarHeight : 0);
             if (tabAreaHeight < 0) tabAreaHeight = 0;
-            tabContainer->SetBounds(Rect2Di(0, yPos, w, tabAreaHeight));
+            tabContainer->SetBounds(Rect2Di(mdToolbarW, yPos, w - mdToolbarW, tabAreaHeight));
         }
 
         // ===== Status bar =====
@@ -1243,9 +1267,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         bool show = IsMarkdownMode();
         if (markdownToolbar->IsVisible() != show) {
             markdownToolbar->SetVisible(show);
-            if (toolbarContainer && toolbarContainer->GetLayout()) {
-                toolbarContainer->GetLayout()->PerformLayout();
-            }
+            UpdateChildLayout();
         }
     }
 

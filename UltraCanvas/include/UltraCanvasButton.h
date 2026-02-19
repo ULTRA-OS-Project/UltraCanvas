@@ -133,6 +133,7 @@ namespace UltraCanvas {
 
         // State
         bool canToggled = false;
+        bool canAcceptFocus = true;
         bool autoresize = false;
         bool isNeedAutoresize = false;
 
@@ -234,7 +235,8 @@ namespace UltraCanvas {
         // ===== OVERRIDES =====
         void Render(IRenderContext* ctx) override;
         bool OnEvent(const UCEvent& event) override;
-        bool AcceptsFocus() const override { return true; }
+        bool AcceptsFocus() const override { return canAcceptFocus; }
+        void SetAcceptsFocus(bool accept) { canAcceptFocus = accept; }
 
     protected:
         // ===== LAYOUT HELPERS =====
