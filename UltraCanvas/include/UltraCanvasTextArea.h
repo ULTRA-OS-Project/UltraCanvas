@@ -206,7 +206,7 @@ namespace UltraCanvas {
         void SetReadOnly(bool readOnly) { isReadOnly = readOnly; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool IsReadOnly() const { return isReadOnly; }
 
-        void SetWordWrap(bool wrap) { wordWrap = wrap; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
+        void SetWordWrap(bool wrap);
         bool GetWordWrap() const { return wordWrap; }
 
         void SetHighlightCurrentLine(bool highlight) { highlightCurrentLine = highlight; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
@@ -322,6 +322,9 @@ namespace UltraCanvas {
         int GetPositionFromLineColumn(int line, int graphemeColumn) const;
         std::pair<int, int> GetLineColumnFromPoint(int x, int y) const;
         void CalculateVisibleArea();
+        void RecalculateDisplayLines();
+        int GetDisplayLineForCursor(int logicalLine, int graphemeCol) const;
+        int GetDisplayLineCount() const;
         void RebuildText();
         int GetMaxLineLength() const;
         int GetVisibleCharactersPerLine() const;
@@ -348,6 +351,14 @@ namespace UltraCanvas {
         // Text data - std::string with GLib g_utf8_* for UTF-8 handling
         std::string textContent;
         std::vector<std::string> lines;
+
+        // Word wrap display line mapping
+        struct DisplayLine {
+            int logicalLine;    // index into lines[]
+            int startGrapheme;  // start grapheme offset within logical line
+            int endGrapheme;    // end grapheme offset (exclusive)
+        };
+        std::vector<DisplayLine> displayLines;
 
         // Cursor and selection - grapheme-based positions
         int cursorGraphemePosition;            // Cursor position in graphemes from start
@@ -389,6 +400,7 @@ namespace UltraCanvas {
         bool isReadOnly;
         bool wordWrap;
         bool highlightCurrentLine;
+        bool needFirstVisibleLineFixup = false; // Set after SetWordWrap toggle
         int currentLineIndex;
         int tabSize = 4;
 

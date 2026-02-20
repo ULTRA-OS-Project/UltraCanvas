@@ -127,8 +127,13 @@ namespace UltraCanvas {
 
         bool ShouldAutosave() const;
         std::string CreateBackupPath(const std::string& originalPath, int tabIndex);
-        bool SaveBackup(const std::string& backupPath, const std::string& content);
-        bool LoadBackup(const std::string& backupPath, std::string& content);
+        bool SaveBackup(const std::string& backupPath, const std::string& content,
+                        const std::string& originalPath = "",
+                        const std::string& encoding = "",
+                        const std::string& language = "");
+        bool LoadBackup(const std::string& backupPath, std::string& content,
+                        std::string& originalPath, std::string& encoding,
+                        std::string& language);
         void DeleteBackup(const std::string& backupPath);
         std::vector<std::string> FindExistingBackups();
         void CleanupOldBackups(int maxAgeHours = 24);
@@ -258,8 +263,8 @@ namespace UltraCanvas {
         void OnViewDecreaseFontSize();
         void OnViewResetFontSize();
         void OnViewToggleTheme();
-        void OnViewToggleLineNumbers();
-        void OnViewToggleWordWrap();
+        void OnViewToggleLineNumbers(bool checked);
+        void OnViewToggleWordWrap(bool checked);
 
         void OnInfoAbout();
 

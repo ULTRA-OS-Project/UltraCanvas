@@ -80,7 +80,10 @@ namespace UltraCanvas {
         return dir + filename;
     }
 
-    bool AutosaveManager::SaveBackup(const std::string& backupPath, const std::string& content) {
+    bool AutosaveManager::SaveBackup(const std::string& backupPath, const std::string& content,
+                                      const std::string& originalPath,
+                                      const std::string& encoding,
+                                      const std::string& language) {
         try {
             std::ofstream file(backupPath, std::ios::binary);
             if (!file.is_open()) {
@@ -90,6 +93,15 @@ namespace UltraCanvas {
             // Write metadata header
             file << "ULTRATEXTER_AUTOSAVE_V1\n";
             file << "TIMESTAMP=" << std::time(nullptr) << "\n";
+            if (!originalPath.empty()) {
+                file << "ORIGINAL_PATH=" << originalPath << "\n";
+            }
+            if (!encoding.empty()) {
+                file << "ENCODING=" << encoding << "\n";
+            }
+            if (!language.empty()) {
+                file << "LANGUAGE=" << language << "\n";
+            }
             file << "---CONTENT---\n";
             file << content;
             file.close();
@@ -101,7 +113,9 @@ namespace UltraCanvas {
         }
     }
 
-    bool AutosaveManager::LoadBackup(const std::string& backupPath, std::string& content) {
+    bool AutosaveManager::LoadBackup(const std::string& backupPath, std::string& content,
+                                      std::string& originalPath, std::string& encoding,
+                                      std::string& language) {
         try {
             std::ifstream file(backupPath, std::ios::binary);
             if (!file.is_open()) {
@@ -115,10 +129,20 @@ namespace UltraCanvas {
                 return false;
             }
 
-            // Skip metadata
+            // Parse metadata
+            originalPath.clear();
+            encoding.clear();
+            language.clear();
             while (std::getline(file, line)) {
                 if (line == "---CONTENT---") {
                     break;
+                }
+                if (line.rfind("ORIGINAL_PATH=", 0) == 0) {
+                    originalPath = line.substr(14);
+                } else if (line.rfind("ENCODING=", 0) == 0) {
+                    encoding = line.substr(9);
+                } else if (line.rfind("LANGUAGE=", 0) == 0) {
+                    language = line.substr(9);
                 }
             }
 
@@ -354,12 +378,10 @@ namespace UltraCanvas {
                         }),
                         MenuItemData::Separator(),
                         MenuItemData::Checkbox("Line Numbers", config.showLineNumbers, [this](bool checked) {
-                            config.showLineNumbers = checked;
-                            OnViewToggleLineNumbers();
+                            OnViewToggleLineNumbers(checked);
                         }),
                         MenuItemData::Checkbox("Word Wrap", config.wordWrap, [this](bool checked) {
-                            config.wordWrap = checked;
-                            OnViewToggleWordWrap();
+                            OnViewToggleWordWrap(checked);
                         })
                 })
 
@@ -431,6 +453,10 @@ namespace UltraCanvas {
                     [this]() { InsertMarkdownSnippet("**", "**", "bold text"); })
                 .AddButton("md-italic", "", "media/icons/texter/md-italic.svg",
                     [this]() { InsertMarkdownSnippet("*", "*", "emphasized text"); })
+                .AddButton("md-superscript", "", "media/icons/texter/md-superscript.svg",
+                    [this]() { InsertMarkdownSnippet("^", "^", "sup"); })
+                .AddButton("md-code", "", "media/icons/texter/md-subscript.svg",
+                    [this]() { InsertMarkdownSnippet("~", "~", "sub"); })
                 .AddSeparator()
                 .AddButton("md-heading", "", "media/icons/texter/md-heading.svg",
                     [this]() { InsertMarkdownSnippet("## ", "", "Heading"); })
@@ -439,7 +465,7 @@ namespace UltraCanvas {
                     [this]() { InsertMarkdownSnippet("- ", "", "list item"); })
                 .AddButton("md-ol", "", "media/icons/texter/md-list-ordered.svg",
                     [this]() { InsertMarkdownSnippet("1. ", "", "list item"); })
-                .AddButton("md-checklist", "", "media/icons/texter/md-checklist.svg",
+                .AddButton("md-checklist", "", "media/icons/texter/md-list-check.svg",
                     [this]() { InsertMarkdownSnippet("- [ ] ", "", "list item"); })
                 .AddSeparator()
                 .AddButton("md-quote", "", "media/icons/texter/md-quote.svg",
@@ -1192,7 +1218,8 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
 
         // Save backup
         std::string content = doc->textArea->GetText();
-        if (autosaveManager.SaveBackup(doc->autosaveBackupPath, content)) {
+        if (autosaveManager.SaveBackup(doc->autosaveBackupPath, content,
+                                       doc->filePath, doc->encoding, doc->language)) {
             std::cout << "Autosaved: " << doc->fileName << std::endl;
         }
     }
@@ -1239,20 +1266,50 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
     }
 
     void UltraCanvasTextEditor::OfferRecoveryForBackup(const std::string& backupPath) {
-        std::string content;
-        if (!autosaveManager.LoadBackup(backupPath, content)) {
+        std::string content, originalPath, encoding, language;
+        if (!autosaveManager.LoadBackup(backupPath, content, originalPath, encoding, language)) {
             return;
         }
 
+        // Determine display name from original path or fallback to "Recovered"
+        std::string displayName;
+        if (!originalPath.empty()) {
+            std::filesystem::path p(originalPath);
+            displayName = p.filename().string();
+        } else {
+            displayName = "Recovered";
+        }
+
         // Create new document with recovered content
-        int docIndex = CreateNewDocument("Recovered");
+        int docIndex = CreateNewDocument(displayName);
         auto doc = documents[docIndex];
         doc->textArea->SetText(content, false);
         doc->isModified = true;
         doc->autosaveBackupPath = backupPath; // Keep backup until saved
 
+        // Restore original file metadata
+        if (!originalPath.empty()) {
+            doc->filePath = originalPath;
+            doc->isNewFile = false;
+        }
+        if (!encoding.empty()) {
+            doc->encoding = encoding;
+        }
+        if (!language.empty()) {
+            doc->language = language;
+            if (language == "Markdown") {
+                doc->textArea->SetMarkdownHybridMode(true);
+            } else if (language != "Plain Text") {
+                doc->textArea->SetHighlightSyntax(true);
+                doc->textArea->SetProgrammingLanguage(language);
+            }
+        }
+
         UpdateTabTitle(docIndex);
         UpdateTabBadge(docIndex);
+        UpdateEncodingDropdown();
+        UpdateLanguageDropdown();
+        UpdateMarkdownToolbarVisibility();
     }
 
 // ===== MARKDOWN TOOLBAR =====
@@ -1568,7 +1625,8 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         ToggleTheme();
     }
 
-    void UltraCanvasTextEditor::OnViewToggleLineNumbers() {
+    void UltraCanvasTextEditor::OnViewToggleLineNumbers(bool checked) {
+        config.showLineNumbers = checked;
         // Apply to all open document TextAreas
         for (auto& doc : documents) {
             if (doc->textArea) {
@@ -1577,7 +1635,8 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         }
     }
 
-    void UltraCanvasTextEditor::OnViewToggleWordWrap() {
+    void UltraCanvasTextEditor::OnViewToggleWordWrap(bool checked) {
+        config.wordWrap = checked;
         // Apply to all open document TextAreas
         for (auto& doc : documents) {
             if (doc->textArea) {

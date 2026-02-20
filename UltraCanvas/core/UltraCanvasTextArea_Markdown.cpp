@@ -9,6 +9,7 @@
 #include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <algorithm>
 #include <sstream>
@@ -1691,9 +1692,10 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     // Get current line index where cursor is located
     auto [cursorLine, cursorCol] = GetLineColumnFromPosition(cursorGraphemePosition);
 
-    // Calculate visible lines
-    int startLine = std::max(0, firstVisibleLine - 1);
-    int endLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
+    // Calculate visible display lines
+    int dlCount = GetDisplayLineCount();
+    int startDL = std::max(0, firstVisibleLine - 1);
+    int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
 
     // --- Pre-scan: build code block state map for entire document ---
     // Supports both ``` (backtick) and ~~~ (tilde) fenced code blocks
@@ -1851,35 +1853,70 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     // Clear previous hit rects
     markdownHitRects.clear();
 
-    int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
+    int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
 
-    for (int i = startLine; i < endLine; i++) {
+    // Cache tokenized cursor line to avoid re-tokenizing for wrapped segments
+    int lastTokenizedLogicalLine = -1;
+    std::vector<SyntaxTokenizer::Token> cachedTokens;
+
+    for (int di = startDL; di < endDL; di++) {
+        const auto& dl = displayLines[di];
+        int i = dl.logicalLine; // logical line index for pre-scan lookups
         const std::string& line = lines[i];
-        int textY = baseY + (i - startLine) * computedLineHeight;
-        int x = visibleTextArea.x - horizontalScrollOffset;
+        int textY = baseY + (di - startDL) * computedLineHeight;
+        int x = visibleTextArea.x;
+        if (!wordWrap) x -= horizontalScrollOffset;
 
         // --- CURRENT LINE: Show raw markdown with syntax highlighting ---
         if (i == cursorLine) {
-            auto tokens = syntaxTokenizer->TokenizeLine(line);
+            // Tokenize logical line (cache for wrapped segments)
+            if (i != lastTokenizedLogicalLine) {
+                cachedTokens = syntaxTokenizer->TokenizeLine(line);
+                lastTokenizedLogicalLine = i;
+            }
 
-            for (const auto& token : tokens) {
-                context->SetFontWeight(GetStyleForTokenType(token.type).bold ?
-                                       FontWeight::Bold : FontWeight::Normal);
-                int tokenWidth = context->GetTextLineWidth(token.text);
+            // Walk tokens, clip to display line's grapheme range
+            int tokenStartGrapheme = 0;
+            for (const auto& token : cachedTokens) {
+                int tokenLen = static_cast<int>(utf8_length(token.text));
+                int tokenEndGrapheme = tokenStartGrapheme + tokenLen;
 
-                if (x + tokenWidth >= visibleTextArea.x &&
-                    x <= visibleTextArea.x + visibleTextArea.width) {
-                    TokenStyle tokenStyle = GetStyleForTokenType(token.type);
-                    context->SetTextPaint(tokenStyle.color);
-                    context->DrawText(token.text, x, textY);
+                int overlapStart = std::max(tokenStartGrapheme, dl.startGrapheme);
+                int overlapEnd = std::min(tokenEndGrapheme, dl.endGrapheme);
+
+                if (overlapStart < overlapEnd) {
+                    std::string visibleText;
+                    if (overlapStart == tokenStartGrapheme && overlapEnd == tokenEndGrapheme) {
+                        visibleText = token.text;
+                    } else {
+                        int localStart = overlapStart - tokenStartGrapheme;
+                        int localLen = overlapEnd - overlapStart;
+                        visibleText = utf8_substr(token.text, localStart, localLen);
+                    }
+
+                    context->SetFontWeight(GetStyleForTokenType(token.type).bold ?
+                                           FontWeight::Bold : FontWeight::Normal);
+                    int tokenWidth = context->GetTextLineWidth(visibleText);
+
+                    if (x + tokenWidth >= visibleTextArea.x &&
+                        x <= visibleTextArea.x + visibleTextArea.width) {
+                        TokenStyle tokenStyle = GetStyleForTokenType(token.type);
+                        context->SetTextPaint(tokenStyle.color);
+                        context->DrawText(visibleText, x, textY);
+                    }
+                    x += tokenWidth;
                 }
 
-                x += tokenWidth;
+                tokenStartGrapheme = tokenEndGrapheme;
+                if (tokenStartGrapheme >= dl.endGrapheme) break;
             }
             continue;
         }
 
         // --- OTHER LINES: Show formatted markdown ---
+        // Only render on the first display line of each logical line
+        // (formatted markdown cannot be split across wrap boundaries)
+        if (dl.startGrapheme != 0) continue;
 
         // Reset to default font settings
         context->SetFontWeight(FontWeight::Normal);

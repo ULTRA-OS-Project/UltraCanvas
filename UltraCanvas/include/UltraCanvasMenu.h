@@ -165,6 +165,7 @@ namespace UltraCanvas {
         // Submenu management
         std::shared_ptr<UltraCanvasMenu> activeSubmenu;
         std::weak_ptr<UltraCanvasMenu> parentMenu;
+        int parentItemIndex = -1;  // Index of the parent item that opened this submenu
         std::vector<std::shared_ptr<UltraCanvasMenu>> childMenus;
 
         // Animation

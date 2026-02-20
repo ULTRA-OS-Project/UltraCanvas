@@ -226,6 +226,7 @@ namespace UltraCanvas {
         activeSubmenu->SetMenuType(MenuType::SubmenuMenu);
         activeSubmenu->SetStyle(style);
         activeSubmenu->parentMenu = std::static_pointer_cast<UltraCanvasMenu>(shared_from_this());
+        activeSubmenu->parentItemIndex = itemIndex;
 
         auto parentWindow = GetWindow();
 
@@ -933,6 +934,15 @@ namespace UltraCanvas {
 
             case MenuItemType::Checkbox: {
                 item.checked = !item.checked;
+                // Propagate checked state back to parent menu's subItems
+                if (auto parent = parentMenu.lock()) {
+                    if (parentItemIndex >= 0) {
+                        auto& subItems = parent->items[parentItemIndex].subItems;
+                        if (index < static_cast<int>(subItems.size())) {
+                            subItems[index].checked = item.checked;
+                        }
+                    }
+                }
                 if (item.onToggle) {
                     item.onToggle(item.checked);
                 }
@@ -953,6 +963,18 @@ namespace UltraCanvas {
                     }
                 }
                 item.checked = true;
+                // Propagate radio states back to parent menu's subItems
+                if (auto parent = parentMenu.lock()) {
+                    if (parentItemIndex >= 0) {
+                        auto& subItems = parent->items[parentItemIndex].subItems;
+                        for (size_t i = 0; i < items.size() && i < subItems.size(); i++) {
+                            if (items[i].type == MenuItemType::Radio &&
+                                items[i].radioGroup == item.radioGroup) {
+                                subItems[i].checked = items[i].checked;
+                            }
+                        }
+                    }
+                }
                 if (item.onClick) {
                     item.onClick();
                 }

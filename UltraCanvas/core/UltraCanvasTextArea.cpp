@@ -171,13 +171,19 @@ namespace UltraCanvas {
 
     // Convert mouse coordinates to grapheme position, line, and column
     int UltraCanvasTextArea::GetGraphemePositionFromPoint(int mouseX, int mouseY, int& outLine, int& outCol) const {
-        int relativeX = mouseX - visibleTextArea.x + horizontalScrollOffset;
+        int relativeX = mouseX - visibleTextArea.x;
+        if (!wordWrap) relativeX += horizontalScrollOffset;
         int relativeY = mouseY - visibleTextArea.y;
 
-        outLine = firstVisibleLine + (relativeY / computedLineHeight);
-        outLine = std::max(0, std::min(outLine, static_cast<int>(lines.size()) - 1));
+        // Map Y to display line index
+        int dlCount = GetDisplayLineCount();
+        int displayLineIdx = firstVisibleLine + (relativeY / computedLineHeight);
+        displayLineIdx = std::max(0, std::min(displayLineIdx, dlCount - 1));
 
-        outCol = 0;
+        const auto& dl = displayLines[displayLineIdx];
+        outLine = dl.logicalLine;
+        outCol = dl.startGrapheme; // default
+
         if (outLine < static_cast<int>(lines.size())) {
             auto context = GetRenderContext();
             if (context) {
@@ -185,31 +191,36 @@ namespace UltraCanvas {
                 context->SetFontStyle(style.fontStyle);
                 context->SetFontWeight(FontWeight::Normal);
 
-                const std::string& lineStr = lines[outLine];
-                
-                // Handle click positioning based on X coordinate
-                if (relativeX <= 0) {
-                    // Click before or at line start - position at column 0
-                    outCol = 0;
-                } else {
-                    // Get the total width of the line text
-                    int lineWidth = context->GetTextLineWidth(lineStr);
-                    
-                    if (relativeX >= lineWidth) {
-                        // Click at or beyond end of line - position at end of line
-                        outCol = static_cast<int>(utf8_length(lines[outLine]));
+                // Get the substring for this display line
+                int segLen = dl.endGrapheme - dl.startGrapheme;
+                std::string segment;
+                if (segLen > 0) {
+                    if (dl.startGrapheme == 0 && dl.endGrapheme == GetLineGraphemeCount(dl.logicalLine)) {
+                        segment = lines[outLine];
                     } else {
-                        // Click within line text - use GetTextIndexForXY
-                        int byteIndex = std::max(0, context->GetTextIndexForXY(lineStr, relativeX, 0));
-                        outCol = ByteToGraphemeColumn(outLine, byteIndex);
+                        segment = utf8_substr(lines[outLine], dl.startGrapheme, segLen);
+                    }
+                }
+
+                if (relativeX <= 0 || segment.empty()) {
+                    outCol = dl.startGrapheme;
+                } else {
+                    int segWidth = context->GetTextLineWidth(segment);
+
+                    if (relativeX >= segWidth) {
+                        outCol = dl.endGrapheme;
+                    } else {
+                        // GetTextIndexForXY returns byte offset within the segment
+                        int byteIndex = std::max(0, context->GetTextIndexForXY(segment, relativeX, 0));
+                        int graphemeInSegment = static_cast<int>(utf8_byte_to_cp(segment, byteIndex));
+                        outCol = dl.startGrapheme + graphemeInSegment;
                     }
                 }
 
                 context->PopState();
             } else {
-                // No render context - fallback to end of line for any positive X
                 if (relativeX > 0) {
-                    outCol = static_cast<int>(utf8_length(lines[outLine]));
+                    outCol = dl.endGrapheme;
                 }
             }
         }
@@ -466,22 +477,54 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::MoveCursorUp(bool selecting) {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
-        if (line > 0) {
-            line--;
-            col = std::min(col, utf8_length(lines[line]));
-            cursorGraphemePosition = GetPositionFromLineColumn(line, col);
-            currentLineIndex = line;
+        if (wordWrap) {
+            int curDL = GetDisplayLineForCursor(line, col);
+            if (curDL > 0) {
+                int oldPos = cursorGraphemePosition;
+                const auto& curDLInfo = displayLines[curDL];
+                const auto& prevDL = displayLines[curDL - 1];
+                int colInDisplayLine = col - curDLInfo.startGrapheme;
+                int prevDLLength = prevDL.endGrapheme - prevDL.startGrapheme;
+                // If prev display line has a continuation (current display line is on same logical line),
+                // clamp to avoid landing at the wrap boundary which maps to the next segment
+                bool prevHasContinuation = (curDLInfo.logicalLine == prevDL.logicalLine);
+                int maxOffset = prevHasContinuation ? std::max(0, prevDLLength - 1) : prevDLLength;
+                int targetCol = prevDL.startGrapheme + std::min(colInDisplayLine, maxOffset);
 
-            if (selecting) {
-                if (selectionStartGrapheme < 0) selectionStartGrapheme = GetPositionFromLineColumn(line + 1, col);
-                selectionEndGrapheme = cursorGraphemePosition;
-            } else {
-                selectionStartGrapheme = -1;
-                selectionEndGrapheme = -1;
+                cursorGraphemePosition = GetPositionFromLineColumn(prevDL.logicalLine, targetCol);
+                currentLineIndex = prevDL.logicalLine;
+
+                if (selecting) {
+                    if (selectionStartGrapheme < 0) selectionStartGrapheme = oldPos;
+                    selectionEndGrapheme = cursorGraphemePosition;
+                } else {
+                    selectionStartGrapheme = -1;
+                    selectionEndGrapheme = -1;
+                }
+                RequestRedraw();
+                auto [newL, newC] = GetLineColumnFromPosition(cursorGraphemePosition);
+                if (onCursorPositionChanged) {
+                    onCursorPositionChanged(newL, newC);
+                }
             }
-            RequestRedraw();
-            if (onCursorPositionChanged) {
-                onCursorPositionChanged(line, col);
+        } else {
+            if (line > 0) {
+                line--;
+                col = std::min(col, utf8_length(lines[line]));
+                cursorGraphemePosition = GetPositionFromLineColumn(line, col);
+                currentLineIndex = line;
+
+                if (selecting) {
+                    if (selectionStartGrapheme < 0) selectionStartGrapheme = GetPositionFromLineColumn(line + 1, col);
+                    selectionEndGrapheme = cursorGraphemePosition;
+                } else {
+                    selectionStartGrapheme = -1;
+                    selectionEndGrapheme = -1;
+                }
+                RequestRedraw();
+                if (onCursorPositionChanged) {
+                    onCursorPositionChanged(line, col);
+                }
             }
         }
     }
@@ -489,22 +532,54 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::MoveCursorDown(bool selecting) {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
-        if (line < static_cast<int>(lines.size()) - 1) {
-            line++;
-            col = std::min(col, utf8_length(lines[line]));
-            cursorGraphemePosition = GetPositionFromLineColumn(line, col);
-            currentLineIndex = line;
+        if (wordWrap) {
+            int curDL = GetDisplayLineForCursor(line, col);
+            if (curDL < GetDisplayLineCount() - 1) {
+                int oldPos = cursorGraphemePosition;
+                const auto& curDLInfo = displayLines[curDL];
+                const auto& nextDL = displayLines[curDL + 1];
+                int colInDisplayLine = col - curDLInfo.startGrapheme;
+                int nextDLLength = nextDL.endGrapheme - nextDL.startGrapheme;
+                // If next display line has a continuation, clamp to avoid boundary
+                bool nextHasContinuation = (curDL + 2 < static_cast<int>(displayLines.size()) &&
+                                            displayLines[curDL + 2].logicalLine == nextDL.logicalLine);
+                int maxOffset = nextHasContinuation ? std::max(0, nextDLLength - 1) : nextDLLength;
+                int targetCol = nextDL.startGrapheme + std::min(colInDisplayLine, maxOffset);
 
-            if (selecting) {
-                if (selectionStartGrapheme < 0) selectionStartGrapheme = GetPositionFromLineColumn(line - 1, col);
-                selectionEndGrapheme = cursorGraphemePosition;
-            } else {
-                selectionStartGrapheme = -1;
-                selectionEndGrapheme = -1;
+                cursorGraphemePosition = GetPositionFromLineColumn(nextDL.logicalLine, targetCol);
+                currentLineIndex = nextDL.logicalLine;
+
+                if (selecting) {
+                    if (selectionStartGrapheme < 0) selectionStartGrapheme = oldPos;
+                    selectionEndGrapheme = cursorGraphemePosition;
+                } else {
+                    selectionStartGrapheme = -1;
+                    selectionEndGrapheme = -1;
+                }
+                RequestRedraw();
+                auto [newL, newC] = GetLineColumnFromPosition(cursorGraphemePosition);
+                if (onCursorPositionChanged) {
+                    onCursorPositionChanged(newL, newC);
+                }
             }
-            RequestRedraw();
-            if (onCursorPositionChanged) {
-                onCursorPositionChanged(line, col);
+        } else {
+            if (line < static_cast<int>(lines.size()) - 1) {
+                line++;
+                col = std::min(col, utf8_length(lines[line]));
+                cursorGraphemePosition = GetPositionFromLineColumn(line, col);
+                currentLineIndex = line;
+
+                if (selecting) {
+                    if (selectionStartGrapheme < 0) selectionStartGrapheme = GetPositionFromLineColumn(line - 1, col);
+                    selectionEndGrapheme = cursorGraphemePosition;
+                } else {
+                    selectionStartGrapheme = -1;
+                    selectionEndGrapheme = -1;
+                }
+                RequestRedraw();
+                if (onCursorPositionChanged) {
+                    onCursorPositionChanged(line, col);
+                }
             }
         }
     }
@@ -636,22 +711,51 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::MoveCursorPageUp(bool selecting) {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
-        if (line > 0) {
-            line = std::max(0, line - maxVisibleLines);
-            col = std::min(col, utf8_length(lines[line]));
-            cursorGraphemePosition = GetPositionFromLineColumn(line, col);
-            currentLineIndex = line;
+        if (wordWrap) {
+            int curDL = GetDisplayLineForCursor(line, col);
+            int targetDL = std::max(0, curDL - maxVisibleLines);
+            if (targetDL != curDL) {
+                int oldPos = cursorGraphemePosition;
+                const auto& curDLInfo = displayLines[curDL];
+                const auto& dl = displayLines[targetDL];
+                int colInDisplayLine = col - curDLInfo.startGrapheme;
+                int targetCol = dl.startGrapheme +
+                    std::min(colInDisplayLine, dl.endGrapheme - dl.startGrapheme);
 
-            if (selecting) {
-                if (selectionStartGrapheme < 0) selectionStartGrapheme = GetPositionFromLineColumn(line + maxVisibleLines, col);
-                selectionEndGrapheme = cursorGraphemePosition;
-            } else {
-                selectionStartGrapheme = -1;
-                selectionEndGrapheme = -1;
+                cursorGraphemePosition = GetPositionFromLineColumn(dl.logicalLine, targetCol);
+                currentLineIndex = dl.logicalLine;
+
+                if (selecting) {
+                    if (selectionStartGrapheme < 0) selectionStartGrapheme = oldPos;
+                    selectionEndGrapheme = cursorGraphemePosition;
+                } else {
+                    selectionStartGrapheme = -1;
+                    selectionEndGrapheme = -1;
+                }
+                RequestRedraw();
+                auto [newL, newC] = GetLineColumnFromPosition(cursorGraphemePosition);
+                if (onCursorPositionChanged) {
+                    onCursorPositionChanged(newL, newC);
+                }
             }
-            RequestRedraw();
-            if (onCursorPositionChanged) {
-                onCursorPositionChanged(line, col);
+        } else {
+            if (line > 0) {
+                line = std::max(0, line - maxVisibleLines);
+                col = std::min(col, utf8_length(lines[line]));
+                cursorGraphemePosition = GetPositionFromLineColumn(line, col);
+                currentLineIndex = line;
+
+                if (selecting) {
+                    if (selectionStartGrapheme < 0) selectionStartGrapheme = GetPositionFromLineColumn(line + maxVisibleLines, col);
+                    selectionEndGrapheme = cursorGraphemePosition;
+                } else {
+                    selectionStartGrapheme = -1;
+                    selectionEndGrapheme = -1;
+                }
+                RequestRedraw();
+                if (onCursorPositionChanged) {
+                    onCursorPositionChanged(line, col);
+                }
             }
         }
     }
@@ -659,22 +763,51 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::MoveCursorPageDown(bool selecting) {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
-        if (line < static_cast<int>(lines.size() - 1)) {
-            line = std::min(static_cast<int>(lines.size() - 1), line + maxVisibleLines);
-            col = std::min(col, utf8_length(lines[line]));
-            cursorGraphemePosition = GetPositionFromLineColumn(line, col);
-            currentLineIndex = line;
+        if (wordWrap) {
+            int curDL = GetDisplayLineForCursor(line, col);
+            int targetDL = std::min(GetDisplayLineCount() - 1, curDL + maxVisibleLines);
+            if (targetDL != curDL) {
+                int oldPos = cursorGraphemePosition;
+                const auto& curDLInfo = displayLines[curDL];
+                const auto& dl = displayLines[targetDL];
+                int colInDisplayLine = col - curDLInfo.startGrapheme;
+                int targetCol = dl.startGrapheme +
+                    std::min(colInDisplayLine, dl.endGrapheme - dl.startGrapheme);
 
-            if (selecting) {
-                if (selectionStartGrapheme < 0) selectionStartGrapheme = GetPositionFromLineColumn(line - maxVisibleLines, col);
-                selectionEndGrapheme = cursorGraphemePosition;
-            } else {
-                selectionStartGrapheme = -1;
-                selectionEndGrapheme = -1;
+                cursorGraphemePosition = GetPositionFromLineColumn(dl.logicalLine, targetCol);
+                currentLineIndex = dl.logicalLine;
+
+                if (selecting) {
+                    if (selectionStartGrapheme < 0) selectionStartGrapheme = oldPos;
+                    selectionEndGrapheme = cursorGraphemePosition;
+                } else {
+                    selectionStartGrapheme = -1;
+                    selectionEndGrapheme = -1;
+                }
+                RequestRedraw();
+                auto [newL, newC] = GetLineColumnFromPosition(cursorGraphemePosition);
+                if (onCursorPositionChanged) {
+                    onCursorPositionChanged(newL, newC);
+                }
             }
-            RequestRedraw();
-            if (onCursorPositionChanged) {
-                onCursorPositionChanged(line, col);
+        } else {
+            if (line < static_cast<int>(lines.size() - 1)) {
+                line = std::min(static_cast<int>(lines.size() - 1), line + maxVisibleLines);
+                col = std::min(col, utf8_length(lines[line]));
+                cursorGraphemePosition = GetPositionFromLineColumn(line, col);
+                currentLineIndex = line;
+
+                if (selecting) {
+                    if (selectionStartGrapheme < 0) selectionStartGrapheme = GetPositionFromLineColumn(line - maxVisibleLines, col);
+                    selectionEndGrapheme = cursorGraphemePosition;
+                } else {
+                    selectionStartGrapheme = -1;
+                    selectionEndGrapheme = -1;
+                }
+                RequestRedraw();
+                if (onCursorPositionChanged) {
+                    onCursorPositionChanged(line, col);
+                }
             }
         }
     }
@@ -682,18 +815,26 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::MoveCursorToLineStart(bool selecting) {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
+        int targetCol;
+        if (wordWrap) {
+            int curDL = GetDisplayLineForCursor(line, col);
+            targetCol = displayLines[curDL].startGrapheme;
+        } else {
+            targetCol = 0;
+        }
+
         if (selecting) {
             if (selectionStartGrapheme < 0) selectionStartGrapheme = cursorGraphemePosition;
-            cursorGraphemePosition = GetPositionFromLineColumn(line, 0);
+            cursorGraphemePosition = GetPositionFromLineColumn(line, targetCol);
             selectionEndGrapheme = cursorGraphemePosition;
         } else {
-            cursorGraphemePosition = GetPositionFromLineColumn(line, 0);
+            cursorGraphemePosition = GetPositionFromLineColumn(line, targetCol);
             selectionStartGrapheme = -1;
             selectionEndGrapheme = -1;
         }
         RequestRedraw();
         if (onCursorPositionChanged) {
-            onCursorPositionChanged(line, 0);
+            onCursorPositionChanged(line, targetCol);
         }
     }
 
@@ -701,20 +842,33 @@ namespace UltraCanvas {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
         if (line < static_cast<int>(lines.size())) {
-            int lineLength = utf8_length(lines[line]);
+            int targetCol;
+            if (wordWrap) {
+                int curDL = GetDisplayLineForCursor(line, col);
+                // Check if this is the last display line of the logical line
+                bool isLastSegment = (curDL + 1 >= static_cast<int>(displayLines.size()) ||
+                                      displayLines[curDL + 1].logicalLine != line);
+                if (isLastSegment) {
+                    targetCol = displayLines[curDL].endGrapheme;  // end of logical line
+                } else {
+                    targetCol = displayLines[curDL].endGrapheme - 1;  // last char of this segment
+                }
+            } else {
+                targetCol = utf8_length(lines[line]);
+            }
 
             if (selecting) {
                 if (selectionStartGrapheme < 0) selectionStartGrapheme = cursorGraphemePosition;
-                cursorGraphemePosition = GetPositionFromLineColumn(line, lineLength);
+                cursorGraphemePosition = GetPositionFromLineColumn(line, targetCol);
                 selectionEndGrapheme = cursorGraphemePosition;
             } else {
-                cursorGraphemePosition = GetPositionFromLineColumn(line, lineLength);
+                cursorGraphemePosition = GetPositionFromLineColumn(line, targetCol);
                 selectionStartGrapheme = -1;
                 selectionEndGrapheme = -1;
             }
             RequestRedraw();
             if (onCursorPositionChanged) {
-                onCursorPositionChanged(line, lineLength);
+                onCursorPositionChanged(line, targetCol);
             }
         }
     }
@@ -957,21 +1111,29 @@ namespace UltraCanvas {
         context->SetTextPaint(style.fontColor);
         context->ClipRect(visibleTextArea);
 
-        int startLine = std::max(0, firstVisibleLine - 1);
-        int endLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
-        int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
+        int dlCount = GetDisplayLineCount();
+        int startDL = std::max(0, firstVisibleLine - 1);
+        int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
+        int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
 
-        for (int i = startLine; i < endLine; i++) {
-            const std::string& line = lines[i];
-            if (!line.empty()) {
-                int y = baseY + (i - startLine) * computedLineHeight;
+        for (int di = startDL; di < endDL; di++) {
+            const auto& dl = displayLines[di];
+            int y = baseY + (di - startDL) * computedLineHeight;
+            int segLen = dl.endGrapheme - dl.startGrapheme;
+            if (segLen <= 0) continue;
 
-                if (horizontalScrollOffset > 0) {
-                    context->DrawText(line, visibleTextArea.x - horizontalScrollOffset, y);
-                } else {
-                    context->DrawText(line, visibleTextArea.x, y);
-                }
+            std::string segment;
+            if (dl.startGrapheme == 0 && dl.endGrapheme == GetLineGraphemeCount(dl.logicalLine)) {
+                segment = lines[dl.logicalLine]; // full line, no substr needed
+            } else {
+                segment = utf8_substr(lines[dl.logicalLine], dl.startGrapheme, segLen);
             }
+
+            int x = visibleTextArea.x;
+            if (!wordWrap) {
+                x -= horizontalScrollOffset;
+            }
+            context->DrawText(segment, x, y);
         }
         context->PopState();
     }
@@ -982,29 +1144,69 @@ namespace UltraCanvas {
         context->ClipRect(visibleTextArea);
         context->SetFontStyle(style.fontStyle);
 
-        int startLine = std::max(0, firstVisibleLine - 1);
-        int endLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
-        int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
+        int dlCount = GetDisplayLineCount();
+        int startDL = std::max(0, firstVisibleLine - 1);
+        int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
+        int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
 
-        for (int i = startLine; i < endLine; i++) {
-            const std::string& line = lines[i];
-            int textY = baseY + (i - startLine) * computedLineHeight;
+        // Cache tokenized lines to avoid re-tokenizing the same logical line
+        int lastTokenizedLogicalLine = -1;
+        std::vector<SyntaxTokenizer::Token> cachedTokens;
 
-            if (!line.empty()) {
-                auto tokens = syntaxTokenizer->TokenizeLine(line);
-                int x = visibleTextArea.x - horizontalScrollOffset;
+        for (int di = startDL; di < endDL; di++) {
+            const auto& dl = displayLines[di];
+            int textY = baseY + (di - startDL) * computedLineHeight;
 
-                for (const auto& token : tokens) {
-                    context->SetFontWeight(GetStyleForTokenType(token.type).bold ? FontWeight::Bold : FontWeight::Normal);
-                    int tokenWidth = context->GetTextLineWidth(token.text);
+            const std::string& fullLine = lines[dl.logicalLine];
+            if (fullLine.empty()) continue;
 
-                    if (x + tokenWidth >= visibleTextArea.x && x <= visibleTextArea.x + visibleTextArea.width) {
+            // Tokenize logical line (cache to avoid re-tokenizing for wrapped segments)
+            if (dl.logicalLine != lastTokenizedLogicalLine) {
+                cachedTokens = syntaxTokenizer->TokenizeLine(fullLine);
+                lastTokenizedLogicalLine = dl.logicalLine;
+            }
+
+            int x = visibleTextArea.x;
+            if (!wordWrap) x -= horizontalScrollOffset;
+
+            // Walk tokens, tracking grapheme position within the logical line
+            int tokenStartGrapheme = 0;
+            for (const auto& token : cachedTokens) {
+                int tokenLen = static_cast<int>(utf8_length(token.text));
+                int tokenEndGrapheme = tokenStartGrapheme + tokenLen;
+
+                // Check overlap with this display line's grapheme range
+                int overlapStart = std::max(tokenStartGrapheme, dl.startGrapheme);
+                int overlapEnd = std::min(tokenEndGrapheme, dl.endGrapheme);
+
+                if (overlapStart < overlapEnd) {
+                    // Extract the visible portion of this token
+                    std::string visibleText;
+                    if (overlapStart == tokenStartGrapheme && overlapEnd == tokenEndGrapheme) {
+                        visibleText = token.text;
+                    } else {
+                        int localStart = overlapStart - tokenStartGrapheme;
+                        int localLen = overlapEnd - overlapStart;
+                        visibleText = utf8_substr(token.text, localStart, localLen);
+                    }
+
+                    context->SetFontWeight(GetStyleForTokenType(token.type).bold ?
+                                           FontWeight::Bold : FontWeight::Normal);
+                    int tokenWidth = context->GetTextLineWidth(visibleText);
+
+                    if (x + tokenWidth >= visibleTextArea.x &&
+                        x <= visibleTextArea.x + visibleTextArea.width) {
                         TokenStyle tokenStyle = GetStyleForTokenType(token.type);
                         context->SetTextPaint(tokenStyle.color);
-                        context->DrawText(token.text, x, textY);
+                        context->DrawText(visibleText, x, textY);
                     }
                     x += tokenWidth;
                 }
+
+                tokenStartGrapheme = tokenEndGrapheme;
+
+                // Early exit if we've passed the display line's range
+                if (tokenStartGrapheme >= dl.endGrapheme) break;
             }
         }
         context->PopState();
@@ -1027,14 +1229,19 @@ namespace UltraCanvas {
         context->PushState();
         context->ClipRect(lineNumberClipRect);
 
-        int startLine = std::max(0, firstVisibleLine - 1);
-        int endLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
-        int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
+        int dlCount = GetDisplayLineCount();
+        int startDL = std::max(0, firstVisibleLine - 1);
+        int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
+        int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
 
-        for (int i = startLine; i < endLine; i++) {
-            int numY = baseY + (i - startLine) * computedLineHeight;
+        for (int di = startDL; di < endDL; di++) {
+            const auto& dl = displayLines[di];
+            int numY = baseY + (di - startDL) * computedLineHeight;
 
-            if (i == currentLineIndex) {
+            // Only show line number on the first display line of each logical line
+            if (dl.startGrapheme != 0) continue;
+
+            if (dl.logicalLine == currentLineIndex) {
                 context->SetTextPaint(style.fontColor);
                 context->SetFontWeight(FontWeight::Bold);
             } else {
@@ -1042,7 +1249,7 @@ namespace UltraCanvas {
                 context->SetFontWeight(FontWeight::Normal);
             }
             context->SetTextAlignment(TextAlignment::Right);
-            context->DrawTextInRect(std::to_string(i + 1), bounds.x, numY, style.lineNumbersWidth, computedLineHeight);
+            context->DrawTextInRect(std::to_string(dl.logicalLine + 1), bounds.x, numY, style.lineNumbersWidth, computedLineHeight);
         }
         context->PopState();
     }
@@ -1056,30 +1263,42 @@ namespace UltraCanvas {
         auto [startLine, startCol] = GetLineColumnFromPosition(startPos);
         auto [endLine, endCol] = GetLineColumnFromPosition(endPos);
 
-        int textX = visibleTextArea.x;
-        int visibleStartLine = std::max(0, firstVisibleLine - 1);
-        int visibleEndLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
+        int dlCount = GetDisplayLineCount();
+        int visStartDL = std::max(0, firstVisibleLine - 1);
+        int visEndDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
 
-        for (int line = startLine; line <= endLine; line++) {
-            if (line < visibleStartLine || line >= visibleEndLine) continue;
-            if (line >= static_cast<int>(lines.size())) break;
+        for (int di = visStartDL; di < visEndDL; di++) {
+            const auto& dl = displayLines[di];
+            int logLine = dl.logicalLine;
 
-            int lineY = visibleTextArea.y + (line - firstVisibleLine) * computedLineHeight;
+            // Check if this display line's logical line is within selection range
+            if (logLine < startLine || logLine > endLine) continue;
 
-            int selStart = (line == startLine) ? startCol : 0;
-            int selEnd = (line == endLine) ? endCol : utf8_length(lines[line]);
+            int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
 
-            int selX = textX - horizontalScrollOffset;
-            if (selStart > 0) {
-                std::string textBeforeSelection = utf8_substr(lines[line], 0, selStart);
-                selX += MeasureTextWidth(textBeforeSelection);
+            // Determine the selection range in grapheme coords within this logical line
+            int selStartInLine = (logLine == startLine) ? startCol : 0;
+            int selEndInLine = (logLine == endLine) ? endCol : GetLineGraphemeCount(logLine);
+
+            // Clip to this display line's grapheme range
+            int dlSelStart = std::max(selStartInLine, dl.startGrapheme);
+            int dlSelEnd = std::min(selEndInLine, dl.endGrapheme);
+
+            if (dlSelStart >= dlSelEnd) continue;
+
+            // Compute X positions relative to display line start
+            int selX = visibleTextArea.x;
+            if (!wordWrap) selX -= horizontalScrollOffset;
+
+            if (dlSelStart > dl.startGrapheme) {
+                std::string before = utf8_substr(lines[logLine], dl.startGrapheme,
+                                                  dlSelStart - dl.startGrapheme);
+                selX += MeasureTextWidth(before);
             }
 
-            int selWidth = 0;
-            if (selEnd > selStart) {
-                std::string selectedText = utf8_substr(lines[line], selStart, selEnd - selStart);
-                selWidth = MeasureTextWidth(selectedText);
-            }
+            std::string selectedSegment = utf8_substr(lines[logLine], dlSelStart,
+                                                        dlSelEnd - dlSelStart);
+            int selWidth = MeasureTextWidth(selectedSegment);
 
             context->SetFillPaint(style.selectionColor);
             context->FillRectangle(selX, lineY, selWidth, computedLineHeight);
@@ -1092,43 +1311,51 @@ namespace UltraCanvas {
         context->FillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
 
         if (highlightCurrentLine) {
-            int visibleStartLine = firstVisibleLine - 1;
-            int visibleEndLine = firstVisibleLine + maxVisibleLines;
+            int visStartDL = firstVisibleLine - 1;
+            int visEndDL = firstVisibleLine + maxVisibleLines;
+            int highlightX = style.showLineNumbers ? bounds.x + style.lineNumbersWidth : bounds.x;
+            int highlightW = bounds.width - (style.showLineNumbers ? style.lineNumbersWidth : 0);
 
-            if (currentLineIndex >= visibleStartLine && currentLineIndex <= visibleEndLine) {
-                context->SetFillPaint(style.currentLineHighlightColor);
-                int lineY = visibleTextArea.y + (currentLineIndex - firstVisibleLine) * computedLineHeight;
-                int highlightX = style.showLineNumbers ? bounds.x + style.lineNumbersWidth : bounds.x;
+            context->PushState();
+            context->ClipRect(visibleTextArea);
+            context->SetFillPaint(style.currentLineHighlightColor);
 
-                context->PushState();
-                context->ClipRect(visibleTextArea);
-                context->FillRectangle(highlightX, lineY,
-                                       bounds.width - (style.showLineNumbers ? style.lineNumbersWidth : 0),
-                                       computedLineHeight);
-                context->PopState();
+            // Highlight all display lines belonging to the current logical line
+            for (int di = std::max(0, visStartDL); di <= visEndDL && di < GetDisplayLineCount(); di++) {
+                if (displayLines[di].logicalLine == currentLineIndex) {
+                    int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
+                    context->FillRectangle(highlightX, lineY, highlightW, computedLineHeight);
+                }
             }
+            context->PopState();
         }
     }
 
     void UltraCanvasTextArea::DrawCursor(IRenderContext* context) {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
-        int visibleStartLine = firstVisibleLine - 1;
-        int visibleEndLine = firstVisibleLine + maxVisibleLines;
+        int displayLine = GetDisplayLineForCursor(line, col);
+        int visStartDL = firstVisibleLine - 1;
+        int visEndDL = firstVisibleLine + maxVisibleLines;
 
-        if (line < visibleStartLine || line > visibleEndLine) return;
+        if (displayLine < visStartDL || displayLine > visEndDL) return;
 
-        int cursorX = visibleTextArea.x - horizontalScrollOffset;
-        if (col > 0 && line < static_cast<int>(lines.size())) {
-            std::string textBeforeCursor = utf8_substr(lines[line], 0, col);
+        const auto& dl = displayLines[displayLine];
+
+        // X position: measure from display line start to cursor column
+        int cursorX = visibleTextArea.x;
+        if (!wordWrap) cursorX -= horizontalScrollOffset;
+
+        int colWithinDisplayLine = col - dl.startGrapheme;
+        if (colWithinDisplayLine > 0 && line < static_cast<int>(lines.size())) {
+            std::string textBeforeCursor = utf8_substr(lines[line], dl.startGrapheme, colWithinDisplayLine);
             cursorX += MeasureTextWidth(textBeforeCursor);
         }
         if (cursorX > visibleTextArea.x + visibleTextArea.width) return;
 
-        int cursorY = visibleTextArea.y + (line - firstVisibleLine) * computedLineHeight;
+        int cursorY = visibleTextArea.y + (displayLine - firstVisibleLine) * computedLineHeight;
 
         context->PushState();
-        context->ClipRect(visibleTextArea);
         context->SetStrokeWidth(2);
         context->DrawLine(cursorX, cursorY, cursorX, cursorY + computedLineHeight, style.cursorColor);
         context->PopState();
@@ -1140,7 +1367,7 @@ namespace UltraCanvas {
         if (IsNeedVerticalScrollbar()) {
             int scrollbarX = bounds.x + bounds.width - 15;
             int scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
-            int totalLines = static_cast<int>(lines.size());
+            int totalLines = GetDisplayLineCount();
             int visibleLines = maxVisibleLines;
 
             int thumbHeight = std::max(20, (visibleLines * scrollbarHeight) / totalLines);
@@ -1188,35 +1415,44 @@ namespace UltraCanvas {
 
     void UltraCanvasTextArea::DrawSearchHighlights(IRenderContext* context) {
         if (searchHighlights.empty()) return;
-        
+
         Color highlightColor = {255, 255, 0, 100};
-        int visibleStartLine = std::max(0, firstVisibleLine - 1);
-        int visibleEndLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
+        int dlCount = GetDisplayLineCount();
+        int visStartDL = std::max(0, firstVisibleLine - 1);
+        int visEndDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
 
         for (const auto& [startPos, endPos] : searchHighlights) {
             auto [startLine, startCol] = GetLineColumnFromPosition(startPos);
             auto [endLine, endCol] = GetLineColumnFromPosition(endPos);
 
-            for (int line = startLine; line <= endLine; line++) {
-                if (line < visibleStartLine || line >= visibleEndLine) continue;
-                if (line >= static_cast<int>(lines.size())) break;
+            for (int di = visStartDL; di < visEndDL; di++) {
+                const auto& dl = displayLines[di];
+                int logLine = dl.logicalLine;
 
-                int lineY = visibleTextArea.y + (line - firstVisibleLine) * computedLineHeight;
+                if (logLine < startLine || logLine > endLine) continue;
 
-                int hlStart = (line == startLine) ? startCol : 0;
-                int hlEnd = (line == endLine) ? endCol : utf8_length(lines[line]);
+                int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
 
-                int hlX = visibleTextArea.x - horizontalScrollOffset;
-                if (hlStart > 0) {
-                    std::string textBeforeHighlight = utf8_substr(lines[line], 0, hlStart);
-                    hlX += MeasureTextWidth(textBeforeHighlight);
+                int hlStartInLine = (logLine == startLine) ? startCol : 0;
+                int hlEndInLine = (logLine == endLine) ? endCol : GetLineGraphemeCount(logLine);
+
+                // Clip to this display line's grapheme range
+                int dlHlStart = std::max(hlStartInLine, dl.startGrapheme);
+                int dlHlEnd = std::min(hlEndInLine, dl.endGrapheme);
+
+                if (dlHlStart >= dlHlEnd) continue;
+
+                int hlX = visibleTextArea.x;
+                if (!wordWrap) hlX -= horizontalScrollOffset;
+
+                if (dlHlStart > dl.startGrapheme) {
+                    std::string before = utf8_substr(lines[logLine], dl.startGrapheme,
+                                                      dlHlStart - dl.startGrapheme);
+                    hlX += MeasureTextWidth(before);
                 }
 
-                int hlWidth = 0;
-                if (hlEnd > hlStart) {
-                    std::string highlightedText = utf8_substr(lines[line], hlStart, hlEnd - hlStart);
-                    hlWidth = MeasureTextWidth(highlightedText);
-                }
+                std::string hlText = utf8_substr(lines[logLine], dlHlStart, dlHlEnd - dlHlStart);
+                int hlWidth = MeasureTextWidth(hlText);
 
                 context->SetFillPaint(highlightColor);
                 context->FillRectangle(hlX, lineY, hlWidth, computedLineHeight);
@@ -1389,7 +1625,7 @@ namespace UltraCanvas {
             int scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
             int thumbHeight = verticalScrollThumb.height;
             int maxThumbY = scrollbarHeight - thumbHeight;
-            int totalLines = static_cast<int>(lines.size());
+            int totalLines = GetDisplayLineCount();
             int visibleLines = maxVisibleLines;
 
             int newThumbY = event.globalY - dragStartOffset.y - bounds.y;
@@ -1505,7 +1741,7 @@ namespace UltraCanvas {
         if (event.wheelDelta > 0) {
             firstVisibleLine = std::max(0, firstVisibleLine - scrollAmount);
         } else {
-            int maxFirstLine = std::max(0, static_cast<int>(lines.size()) - maxVisibleLines);
+            int maxFirstLine = std::max(0, GetDisplayLineCount() - maxVisibleLines);
             firstVisibleLine = std::min(maxFirstLine, firstVisibleLine + scrollAmount);
         }
 
@@ -1681,24 +1917,33 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::EnsureCursorVisible() {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
 
-        if (line < firstVisibleLine) {
-            firstVisibleLine = line;
-        } else if (line >= firstVisibleLine + maxVisibleLines) {
-            firstVisibleLine = line - maxVisibleLines + 1;
-        }
-        
-        if (col > 0 && line < static_cast<int>(lines.size())) {
-            std::string textToCursor = utf8_substr(lines[line], 0, col);
-            int cursorX = MeasureTextWidth(textToCursor);
-            int visibleWidth = visibleTextArea.width;
+        // Find the cursor's display line
+        int displayLine = GetDisplayLineForCursor(line, col);
 
-            if (cursorX < horizontalScrollOffset) {
-                horizontalScrollOffset = cursorX;
-            } else if (cursorX > horizontalScrollOffset + visibleWidth) {
-                horizontalScrollOffset = cursorX - visibleWidth;
-            }
-            if (maxLineWidth > visibleWidth) {
-                horizontalScrollOffset = std::min(horizontalScrollOffset, maxLineWidth - visibleWidth);
+        // Vertical scroll using display line index
+        if (displayLine < firstVisibleLine) {
+            firstVisibleLine = displayLine;
+        } else if (displayLine >= firstVisibleLine + maxVisibleLines) {
+            firstVisibleLine = displayLine - maxVisibleLines + 1;
+        }
+
+        // Horizontal scroll (only when not word-wrapping)
+        if (!wordWrap) {
+            if (col > 0 && line < static_cast<int>(lines.size())) {
+                std::string textToCursor = utf8_substr(lines[line], 0, col);
+                int cursorX = MeasureTextWidth(textToCursor);
+                int visibleWidth = visibleTextArea.width;
+
+                if (cursorX < horizontalScrollOffset) {
+                    horizontalScrollOffset = cursorX;
+                } else if (cursorX > horizontalScrollOffset + visibleWidth) {
+                    horizontalScrollOffset = cursorX - visibleWidth;
+                }
+                if (maxLineWidth > visibleWidth) {
+                    horizontalScrollOffset = std::min(horizontalScrollOffset, maxLineWidth - visibleWidth);
+                }
+            } else {
+                horizontalScrollOffset = 0;
             }
         } else {
             horizontalScrollOffset = 0;
@@ -1725,9 +1970,13 @@ namespace UltraCanvas {
         ctx->SetFontStyle(style.fontStyle);
         ctx->SetFontWeight(FontWeight::Normal);
         computedLineHeight = static_cast<int>(static_cast<float>(ctx->GetTextLineHeight("M")) * style.lineHeight);
-        maxLineWidth = 0;
-        for (const auto& line : lines) {
-            maxLineWidth = std::max(maxLineWidth, ctx->GetTextLineWidth(line));
+        if (wordWrap) {
+            maxLineWidth = visibleTextArea.width;
+        } else {
+            maxLineWidth = 0;
+            for (const auto& line : lines) {
+                maxLineWidth = std::max(maxLineWidth, ctx->GetTextLineWidth(line));
+            }
         }
         ctx->PopState();
 
@@ -1747,7 +1996,189 @@ namespace UltraCanvas {
                 }
             }
         }
+
+        RecalculateDisplayLines();
         isNeedRecalculateVisibleArea = false;
+    }
+
+// ===== WORD WRAP DISPLAY LINE CALCULATION =====
+
+    void UltraCanvasTextArea::SetWordWrap(bool wrap) {
+        if (wordWrap == wrap) return;
+
+        // Remember which logical line is at the top of the viewport
+        int topLogicalLine = 0;
+        if (!displayLines.empty() && firstVisibleLine < static_cast<int>(displayLines.size())) {
+            topLogicalLine = displayLines[firstVisibleLine].logicalLine;
+        }
+
+        wordWrap = wrap;
+        horizontalScrollOffset = 0;
+        isNeedRecalculateVisibleArea = true;
+
+        // Temporarily set firstVisibleLine to the logical line index;
+        // RecalculateDisplayLines will convert it to the display line index.
+        firstVisibleLine = topLogicalLine;
+        needFirstVisibleLineFixup = true;
+
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextArea::RecalculateDisplayLines() {
+        displayLines.clear();
+
+        if (!wordWrap) {
+            // 1:1 mapping: each logical line is one display line
+            for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+                displayLines.push_back({i, 0, GetLineGraphemeCount(i)});
+            }
+            return;
+        }
+
+        // Word wrap mode: wrap long lines
+        int wrapWidth = visibleTextArea.width;
+        if (wrapWidth <= 0) {
+            // Fallback: 1:1 mapping
+            for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+                displayLines.push_back({i, 0, GetLineGraphemeCount(i)});
+            }
+            return;
+        }
+
+        auto context = GetRenderContext();
+        if (!context) {
+            for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+                displayLines.push_back({i, 0, GetLineGraphemeCount(i)});
+            }
+            return;
+        }
+
+        context->PushState();
+        context->SetFontStyle(style.fontStyle);
+        context->SetFontWeight(FontWeight::Normal);
+
+        for (int logLine = 0; logLine < static_cast<int>(lines.size()); logLine++) {
+            const std::string& line = lines[logLine];
+            int lineGraphemeCount = GetLineGraphemeCount(logLine);
+
+            // Empty line: still produces one display line
+            if (lineGraphemeCount == 0) {
+                displayLines.push_back({logLine, 0, 0});
+                continue;
+            }
+
+            int lineWidth = context->GetTextLineWidth(line);
+            if (lineWidth <= wrapWidth) {
+                // Line fits: single display line
+                displayLines.push_back({logLine, 0, lineGraphemeCount});
+                continue;
+            }
+
+            // Line needs wrapping
+            int startG = 0;
+            while (startG < lineGraphemeCount) {
+                int remaining = lineGraphemeCount - startG;
+
+                // Check if the rest fits
+                std::string restSegment = utf8_substr(line, startG, remaining);
+                int restWidth = context->GetTextLineWidth(restSegment);
+                if (restWidth <= wrapWidth) {
+                    displayLines.push_back({logLine, startG, lineGraphemeCount});
+                    break;
+                }
+
+                // Binary search for max graphemes that fit in wrapWidth
+                int lo = 1, hi = remaining;
+                int bestFit = 1; // At minimum, one grapheme per display line
+
+                while (lo <= hi) {
+                    int mid = (lo + hi) / 2;
+                    std::string segment = utf8_substr(line, startG, mid);
+                    int segWidth = context->GetTextLineWidth(segment);
+
+                    if (segWidth <= wrapWidth) {
+                        bestFit = mid;
+                        lo = mid + 1;
+                    } else {
+                        hi = mid - 1;
+                    }
+                }
+
+                int breakAt = startG + bestFit;
+
+                // If we didn't consume the entire remaining line, try word boundary
+                if (breakAt < lineGraphemeCount && bestFit > 1) {
+                    int wordBreak = -1;
+                    for (int g = breakAt - 1; g > startG; g--) {
+                        gunichar cp = utf8_get_cp(line, g);
+                        if (cp == ' ' || cp == '\t' || cp == '-') {
+                            wordBreak = g + 1; // break after the space/hyphen
+                            break;
+                        }
+                    }
+                    if (wordBreak > startG) {
+                        breakAt = wordBreak;
+                    }
+                }
+
+                displayLines.push_back({logLine, startG, breakAt});
+                startG = breakAt;
+            }
+        }
+
+        context->PopState();
+
+        // Fix up firstVisibleLine after SetWordWrap toggle:
+        // Convert from logical line index to display line index
+        if (needFirstVisibleLineFixup) {
+            needFirstVisibleLineFixup = false;
+            int targetLogicalLine = firstVisibleLine;
+            for (int i = 0; i < static_cast<int>(displayLines.size()); i++) {
+                if (displayLines[i].logicalLine >= targetLogicalLine) {
+                    firstVisibleLine = i;
+                    break;
+                }
+            }
+        }
+        // Clamp to valid display line range
+        int maxFirst = std::max(0, static_cast<int>(displayLines.size()) - maxVisibleLines);
+        firstVisibleLine = std::max(0, std::min(firstVisibleLine, maxFirst));
+    }
+
+    int UltraCanvasTextArea::GetDisplayLineForCursor(int logicalLine, int graphemeCol) const {
+        for (int i = 0; i < static_cast<int>(displayLines.size()); i++) {
+            const auto& dl = displayLines[i];
+            if (dl.logicalLine == logicalLine) {
+                // Cursor at the end of a display line segment belongs to this display line
+                // unless there's a next segment starting at exactly this position
+                if (graphemeCol >= dl.startGrapheme && graphemeCol < dl.endGrapheme) {
+                    return i;
+                }
+                // Cursor at endGrapheme: belongs to this line if it's the last segment
+                // of the logical line, or if graphemeCol == endGrapheme and no next segment
+                if (graphemeCol == dl.endGrapheme) {
+                    if (i + 1 >= static_cast<int>(displayLines.size()) ||
+                        displayLines[i + 1].logicalLine != logicalLine) {
+                        return i; // Last segment of this logical line
+                    }
+                    // There's a next segment; cursor goes to start of next display line
+                    // unless it's exactly at end of logical line content
+                    if (graphemeCol == GetLineGraphemeCount(logicalLine)) {
+                        return i; // At the very end of the logical line
+                    }
+                }
+            }
+            if (dl.logicalLine > logicalLine) break;
+        }
+        // Fallback: find last display line for this logical line
+        for (int i = static_cast<int>(displayLines.size()) - 1; i >= 0; i--) {
+            if (displayLines[i].logicalLine == logicalLine) return i;
+        }
+        return 0;
+    }
+
+    int UltraCanvasTextArea::GetDisplayLineCount() const {
+        return static_cast<int>(displayLines.size());
     }
 
     void UltraCanvasTextArea::RebuildText() {
@@ -1782,10 +2213,11 @@ namespace UltraCanvas {
 
 
     bool UltraCanvasTextArea::IsNeedVerticalScrollbar() {
-        return lines.size() > static_cast<size_t>(maxVisibleLines);
+        return GetDisplayLineCount() > maxVisibleLines;
     }
 
     bool UltraCanvasTextArea::IsNeedHorizontalScrollbar() {
+        if (wordWrap) return false;
         return maxLineWidth > visibleTextArea.width;
     }
 
@@ -1825,7 +2257,7 @@ namespace UltraCanvas {
 // ===== SCROLLING =====
 
     void UltraCanvasTextArea::ScrollTo(int line) {
-        firstVisibleLine = std::max(0, std::min(line, static_cast<int>(lines.size()) - maxVisibleLines));
+        firstVisibleLine = std::max(0, std::min(line, GetDisplayLineCount() - maxVisibleLines));
         RequestRedraw();
     }
 
@@ -1834,25 +2266,27 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-void UltraCanvasTextArea::ScrollDown(int lineCount) {
-        int maxFirstLine = std::max(0, static_cast<int>(lines.size()) - maxVisibleLines);
+    void UltraCanvasTextArea::ScrollDown(int lineCount) {
+        int maxFirstLine = std::max(0, GetDisplayLineCount() - maxVisibleLines);
         firstVisibleLine = std::min(maxFirstLine, firstVisibleLine + lineCount);
         RequestRedraw();
     }
 
     void UltraCanvasTextArea::ScrollLeft(int chars) {
+        if (wordWrap) return; // No horizontal scrolling when word wrap is on
         horizontalScrollOffset = std::max(0, horizontalScrollOffset - chars * 10);
         RequestRedraw();
     }
 
     void UltraCanvasTextArea::ScrollRight(int chars) {
+        if (wordWrap) return; // No horizontal scrolling when word wrap is on
         int maxOffset = std::max(0, maxLineWidth - visibleTextArea.width);
         horizontalScrollOffset = std::min(maxOffset, horizontalScrollOffset + chars * 10);
         RequestRedraw();
     }
 
     void UltraCanvasTextArea::SetFirstVisibleLine(int line) {
-        firstVisibleLine = std::max(0, std::min(line, static_cast<int>(lines.size()) - 1));
+        firstVisibleLine = std::max(0, std::min(line, GetDisplayLineCount() - 1));
         RequestRedraw();
     }
 // ===== UNDO/REDO =====
