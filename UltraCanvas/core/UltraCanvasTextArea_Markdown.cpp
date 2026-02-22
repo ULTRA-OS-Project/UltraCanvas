@@ -36,7 +36,7 @@ struct MarkdownHybridStyle {
     std::array<float, 6> headerSizeMultipliers = {2.0f, 1.5f, 1.3f, 1.2f, 1.1f, 1.0f};
 
     // Code styling
-    Color codeTextColor = Color(200, 50, 50);
+    Color codeTextColor = Color(0x4, 0xaf, 0xaf);
     Color codeBackgroundColor = Color(245, 245, 245);
     Color codeBlockBackgroundColor = Color(248, 248, 248);
     Color codeBlockBorderColor = Color(220, 220, 220);
@@ -1132,14 +1132,14 @@ struct MarkdownInlineRenderer {
         ctx->DrawText(headerText, x, y);
 
         // Draw underline for H1 and H2 (visual distinction)
-        if (level <= 2) {
-            int underlineY = y + lineHeight - 2;
-            ctx->SetStrokePaint(mdStyle.horizontalRuleColor);
-            ctx->SetStrokeWidth(level == 1 ? 2.0f : 1.0f);
-            // We don't know the full width here, so use text width + some padding
-            int textW = ctx->GetTextLineWidth(headerText);
-            ctx->DrawLine(x, underlineY, x + textW + 20, underlineY);
-        }
+        // if (level <= 2) {
+        //     int underlineY = y + lineHeight - 2;
+        //     ctx->SetStrokePaint(mdStyle.horizontalRuleColor);
+        //     ctx->SetStrokeWidth(level == 1 ? 2.0f : 1.0f);
+        //     // We don't know the full width here, so use text width + some padding
+        //     int textW = ctx->GetTextLineWidth(headerText);
+        //     ctx->DrawLine(x, underlineY, x + textW + 20, underlineY);
+        // }
 
         // Restore font
         ctx->SetFontSize(baseFontSize);

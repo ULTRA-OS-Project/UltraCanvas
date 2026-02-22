@@ -21,9 +21,43 @@
 #include <algorithm>
 #include <filesystem>
 #include <ctime>
+#include <cstdlib>
 #include <fmt/os.h>
 
 namespace UltraCanvas {
+
+namespace {
+    std::string GetAppDataDirectory() {
+#ifdef _WIN32
+        const char* localAppData = std::getenv("LOCALAPPDATA");
+        if (localAppData) {
+            return std::string(localAppData) + "\\TextEditor\\";
+        }
+        const char* appData = std::getenv("APPDATA");
+        if (appData) {
+            return std::string(appData) + "\\TextEditor\\";
+        }
+        return "C:\\TextEditor\\";
+#elif __APPLE__
+        const char* home = std::getenv("HOME");
+        if (home) {
+            return std::string(home) + "/Library/Application Support/TextEditor/";
+        }
+        return "/tmp/TextEditor/";
+#else
+        // Linux: XDG Base Directory Specification
+        const char* xdgDataHome = std::getenv("XDG_DATA_HOME");
+        if (xdgDataHome && xdgDataHome[0] != '\0') {
+            return std::string(xdgDataHome) + "/TextEditor/";
+        }
+        const char* home = std::getenv("HOME");
+        if (home) {
+            return std::string(home) + "/.local/share/TextEditor/";
+        }
+        return "/tmp/TextEditor/";
+#endif
+    }
+} // anonymous namespace
 
 // ===== AUTOSAVE MANAGER IMPLEMENTATION =====
 
@@ -31,15 +65,7 @@ namespace UltraCanvas {
         if (!autosaveDirectory.empty()) {
             return autosaveDirectory;
         }
-
-        // Use system temp directory
-#ifdef _WIN32
-        char tempPath[MAX_PATH];
-        GetTempPathA(MAX_PATH, tempPath);
-        return std::string(tempPath) + "UltraTexter\\Autosave\\";
-#else
-        return "/tmp/UltraTexter/Autosave/";
-#endif
+        return GetAppDataDirectory() + "Autosave/";
     }
 
     bool AutosaveManager::ShouldAutosave() const {
@@ -224,6 +250,102 @@ namespace UltraCanvas {
         }
     }
 
+// ===== RECENT FILES MANAGER IMPLEMENTATION =====
+
+    std::string RecentFilesManager::GetStorageDirectory() const {
+        if (!storageDirectory.empty()) return storageDirectory;
+        return GetAppDataDirectory();
+    }
+
+    std::string RecentFilesManager::GetFilePath() const {
+        return GetStorageDirectory() + "recentfiles.txt";
+    }
+
+    void RecentFilesManager::AddFile(const std::string& filePath) {
+        if (filePath.empty()) return;
+
+        // Normalize path
+        std::string normalized = filePath;
+        try {
+            if (std::filesystem::exists(filePath)) {
+                normalized = std::filesystem::canonical(filePath).string();
+            }
+        } catch (...) {}
+
+        // Remove existing entry if present (to move it to front)
+        auto it = std::find(recentFiles.begin(), recentFiles.end(), normalized);
+        if (it != recentFiles.end()) {
+            recentFiles.erase(it);
+        }
+
+        // Insert at front (most recent first)
+        recentFiles.insert(recentFiles.begin(), normalized);
+
+        // Trim to max
+        if (static_cast<int>(recentFiles.size()) > maxFiles) {
+            recentFiles.resize(maxFiles);
+        }
+
+        Save();
+    }
+
+    void RecentFilesManager::RemoveFile(const std::string& filePath) {
+        auto it = std::find(recentFiles.begin(), recentFiles.end(), filePath);
+        if (it != recentFiles.end()) {
+            recentFiles.erase(it);
+            Save();
+        }
+    }
+
+    void RecentFilesManager::Clear() {
+        recentFiles.clear();
+        Save();
+    }
+
+    bool RecentFilesManager::Load() {
+        recentFiles.clear();
+        std::string path = GetFilePath();
+
+        try {
+            std::ifstream file(path);
+            if (!file.is_open()) return false;
+
+            std::string line;
+            while (std::getline(file, line)) {
+                if (line.empty()) continue;
+                if (std::filesystem::exists(line)) {
+                    recentFiles.push_back(line);
+                }
+                if (static_cast<int>(recentFiles.size()) >= maxFiles) break;
+            }
+            return true;
+        } catch (...) {
+            return false;
+        }
+    }
+
+    bool RecentFilesManager::Save() const {
+        std::string dir = GetStorageDirectory();
+        try {
+            std::filesystem::create_directories(dir);
+        } catch (...) {
+            std::cerr << "Failed to create data directory: " << dir << std::endl;
+            return false;
+        }
+
+        try {
+            std::ofstream file(GetFilePath(), std::ios::trunc);
+            if (!file.is_open()) return false;
+
+            for (const auto& p : recentFiles) {
+                file << p << "\n";
+            }
+            return true;
+        } catch (...) {
+            return false;
+        }
+    }
+
 // ===== CONSTRUCTOR =====
     UltraCanvasTextEditor::UltraCanvasTextEditor(
             const std::string& identifier, long id,
@@ -259,9 +381,13 @@ namespace UltraCanvas {
             autosaveManager.SetDirectory(config.autosaveDirectory);
         }
 
+        // Load recent files
+        recentFilesManager.Load();
+
         // Setup UI components in order
         if (config.showMenuBar) {
             SetupMenuBar();
+            UpdateRecentFilesMenu();
         }
 
         if (config.showToolbar) {
@@ -1056,6 +1182,10 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             UpdateLanguageDropdown();
             UpdateMarkdownToolbarVisibility();
 
+            // Track in recent files
+            recentFilesManager.AddFile(filePath);
+            UpdateRecentFilesMenu();
+
             if (onFileLoaded) {
                 onFileLoaded(filePath, docIndex);
             }
@@ -1174,6 +1304,10 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             UpdateTitle();
             UpdateStatusBar();
 
+            // Track in recent files
+            recentFilesManager.AddFile(filePath);
+            UpdateRecentFilesMenu();
+
             if (onFileSaved) {
                 onFileSaved(filePath, docIndex);
             }
@@ -1231,8 +1365,32 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
 
         hasCheckedForBackups = true;
 
-        // Find existing backups
+        // Find existing backups in current location
         std::vector<std::string> backups = autosaveManager.FindExistingBackups();
+
+        // Also check legacy location (/tmp/) for migration
+        std::string legacyDir = "/tmp/UltraTexter/Autosave/";
+#ifdef _WIN32
+        {
+            char tempPath[MAX_PATH];
+            GetTempPathA(MAX_PATH, tempPath);
+            legacyDir = std::string(tempPath) + "UltraTexter\\Autosave\\";
+        }
+#endif
+        if (legacyDir != autosaveManager.GetDirectory()) {
+            try {
+                if (std::filesystem::exists(legacyDir)) {
+                    for (const auto& entry : std::filesystem::directory_iterator(legacyDir)) {
+                        if (entry.is_regular_file()) {
+                            std::string filename = entry.path().filename().string();
+                            if (filename.find(".autosave") != std::string::npos) {
+                                backups.push_back(entry.path().string());
+                            }
+                        }
+                    }
+                }
+            } catch (...) {}
+        }
 
         if (backups.empty()) {
             return;
@@ -1349,6 +1507,69 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             int selEnd = selStart + static_cast<int>(sampleText.size());
             doc->textArea->SetSelection(selStart, selEnd);
         }
+    }
+
+// ===== RECENT FILES =====
+
+    void UltraCanvasTextEditor::UpdateRecentFilesMenu() {
+        if (!menuBar) return;
+
+        // Get the File menu item (index 0 in the menubar)
+        MenuItemData* fileMenu = menuBar->GetItem(0);
+        if (!fileMenu || fileMenu->type != MenuItemType::Submenu) return;
+
+        // Find and remove existing "Recent Files" submenu entry if present
+        auto& items = fileMenu->subItems;
+        for (auto it = items.begin(); it != items.end(); ++it) {
+            if (it->type == MenuItemType::Submenu && it->label == "Recent Files") {
+                items.erase(it);
+                break;
+            }
+        }
+
+        // Build recent files sub-items
+        const auto& recentFiles = recentFilesManager.GetRecentFiles();
+        if (recentFiles.empty()) return;
+
+        std::vector<MenuItemData> recentItems;
+        for (const auto& filePath : recentFiles) {
+            std::filesystem::path p(filePath);
+            std::string displayName = p.filename().string();
+            std::string parentDir = p.parent_path().filename().string();
+            std::string label = parentDir.empty() ? displayName : parentDir + "/" + displayName;
+
+            recentItems.push_back(MenuItemData::Action(label, [this, filePath]() {
+                OpenRecentFile(filePath);
+            }));
+        }
+
+        // Add separator and "Clear Recent Files" at the bottom
+        recentItems.push_back(MenuItemData::Separator());
+        recentItems.push_back(MenuItemData::Action("Clear Recent Files", [this]() {
+            recentFilesManager.Clear();
+            UpdateRecentFilesMenu();
+        }));
+
+        // Insert "Recent Files" submenu after "Open..."
+        int insertPos = 2; // Default fallback
+        for (int i = 0; i < static_cast<int>(items.size()); i++) {
+            if (items[i].label == "Open...") {
+                insertPos = i + 1;
+                break;
+            }
+        }
+
+        items.insert(items.begin() + insertPos, MenuItemData::Submenu("Recent Files", recentItems));
+    }
+
+    void UltraCanvasTextEditor::OpenRecentFile(const std::string& filePath) {
+        if (!std::filesystem::exists(filePath)) {
+            recentFilesManager.RemoveFile(filePath);
+            UpdateRecentFilesMenu();
+            return;
+        }
+
+        OpenDocumentFromPath(filePath);
     }
 
 // ===== MENU HANDLERS =====

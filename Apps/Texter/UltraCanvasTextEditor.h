@@ -140,6 +140,34 @@ namespace UltraCanvas {
     };
 
 /**
+ * @brief Manages a persistent list of recently opened files
+ */
+    class RecentFilesManager {
+    private:
+        std::vector<std::string> recentFiles;
+        int maxFiles;
+        std::string storageDirectory;
+
+    public:
+        RecentFilesManager(int maxRecentFiles = 10)
+            : maxFiles(maxRecentFiles) {}
+
+        void SetStorageDirectory(const std::string& dir) { storageDirectory = dir; }
+        std::string GetStorageDirectory() const;
+        std::string GetFilePath() const;
+
+        void AddFile(const std::string& filePath);
+        void RemoveFile(const std::string& filePath);
+        void Clear();
+
+        const std::vector<std::string>& GetRecentFiles() const { return recentFiles; }
+        int GetCount() const { return static_cast<int>(recentFiles.size()); }
+
+        bool Load();
+        bool Save() const;
+    };
+
+/**
  * @brief Complete multi-file text editor application component
  *
  * This component provides a full-featured text editor with:
@@ -195,6 +223,9 @@ namespace UltraCanvas {
         AutosaveManager autosaveManager;
         bool hasCheckedForBackups;
 
+        // ===== RECENT FILES =====
+        RecentFilesManager recentFilesManager;
+
         // ===== LAYOUT =====
         int menuBarHeight;
         int toolbarHeight;
@@ -238,6 +269,10 @@ namespace UltraCanvas {
         void AutosaveDocument(int docIndex);
         void CheckForCrashRecovery();
         void OfferRecoveryForBackup(const std::string& backupPath);
+
+        // ===== RECENT FILES =====
+        void UpdateRecentFilesMenu();
+        void OpenRecentFile(const std::string& filePath);
 
         // ===== MENU HANDLERS =====
         void OnFileNew();
