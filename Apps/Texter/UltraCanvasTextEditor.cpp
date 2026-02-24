@@ -604,6 +604,11 @@ namespace {
                             "| ", " | Column 2 |\n|----------|----------|\n|          |          |",
                             "Column 1");
                     })
+                .AddSeparator()
+                .AddButton("md-link", "", "media/icons/texter/md-link.svg",
+                    [this]() { InsertMarkdownSnippet("[", "](http://example.com/)", "Link title"); })
+                .AddButton("md-image", "", "media/icons/texter/md-image.svg",
+                    [this]() { InsertMarkdownSnippet("![", "](image path)", "Image title"); })
                 .Build();
 
         // Disable focus on markdown toolbar buttons
@@ -637,6 +642,8 @@ namespace {
         // Configure tab container
         tabContainer->SetTabStyle(TabStyle::Flat);
         tabContainer->SetTabPosition(TabPosition::Top);
+        tabContainer->SetOverflowDropdownPosition(OverflowDropdownPosition::Left);
+        tabContainer->SetDropdownSearchEnabled(false);
         tabContainer->SetCloseMode(TabCloseMode::Closable);
         tabContainer->SetShowNewTabButton(true);
         tabContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
@@ -1152,6 +1159,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             // Set text in editor
             doc->textArea->SetText(utf8Text, false);
             doc->filePath = filePath;
+            doc->textArea->SetDocumentFilePath(filePath);
             doc->isNewFile = false;
             doc->isModified = false;
             doc->lastSaveTime = std::chrono::steady_clock::now();
@@ -1262,6 +1270,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             file.close();
 
             doc->filePath = filePath;
+            doc->textArea->SetDocumentFilePath(filePath);
             bool wasNewFile = doc->isNewFile;
             doc->isNewFile = false;
             doc->lastSaveTime = std::chrono::steady_clock::now();
@@ -1559,7 +1568,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             }
         }
 
-        items.insert(items.begin() + insertPos, MenuItemData::Submenu("Recent Files", recentItems));
+        items.insert(items.begin() + insertPos, MenuItemData::Submenu("Recent Files", "media/icons/texter/clock-five.svg", recentItems));
     }
 
     void UltraCanvasTextEditor::OpenRecentFile(const std::string& filePath) {

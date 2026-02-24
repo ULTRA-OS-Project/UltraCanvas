@@ -482,7 +482,10 @@ namespace UltraCanvas {
          * @param mouseY Mouse Y coordinate
          * @return true if hovering over a clickable element
          */
-        bool HandleMarkdownHover(int mouseX, int mouseY);        
+        bool HandleMarkdownHover(int mouseX, int mouseY);
+
+        void SetDocumentFilePath(const std::string& path) { documentFilePath = path; }
+        std::string GetDocumentFilePath() const { return documentFilePath; }
 
     protected:
         /**
@@ -512,6 +515,10 @@ namespace UltraCanvas {
         bool markdownHybridMode = false;
         // Markdown clickable hit regions (rebuilt each render frame)
         std::vector<MarkdownHitRect> markdownHitRects;
+        // Path of the currently loaded document (for resolving relative image paths)
+        std::string documentFilePath;
+        // Per-display-line cumulative Y offset from block images (rebuilt each frame)
+        std::vector<int> markdownLineYOffsets;
 
     };
 

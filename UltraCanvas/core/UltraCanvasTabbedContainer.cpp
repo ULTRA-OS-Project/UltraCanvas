@@ -254,9 +254,9 @@ namespace UltraCanvas {
 
             std::string displayTitle = tabs[i]->title;
 
-            if (i == activeTabIndex) {
-                displayTitle = "● " + displayTitle;
-            }
+            // if (i == activeTabIndex) {
+            //     displayTitle = "● " + displayTitle;
+            // }
 
             if (!tabs[i]->enabled) {
                 displayTitle = "[" + displayTitle + "]";
@@ -474,40 +474,82 @@ namespace UltraCanvas {
             case TabPosition::Top:
             case TabPosition::Bottom: {
                 // Horizontal tabs - buttons at right edge
-                leftButton = Rect2Di(tabBarBounds.x + tabBarBounds.width - 40, tabBarBounds.y, 20, tabBarBounds.height);
-                rightButton = Rect2Di(tabBarBounds.x + tabBarBounds.width - 20, tabBarBounds.y, 20, tabBarBounds.height);
+                leftButton = Rect2Di(tabBarBounds.x + tabBarBounds.width - 48, tabBarBounds.y, 24, tabBarBounds.height);
+                rightButton = Rect2Di(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
 
                 ctx->DrawFilledRectangle(leftButton, Color(220, 220, 220), 1.0, tabBorderColor);
                 ctx->DrawFilledRectangle(rightButton, Color(220, 220, 220), 1.0, tabBorderColor);
 
+                ctx->SetFillPaint(Colors::Black);
                 ctx->SetStrokePaint(Colors::Black);
-                Point2Di leftCenter(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
-                ctx->DrawLine(Point2Di(leftCenter.x - 3, leftCenter.y), Point2Di(leftCenter.x + 3, leftCenter.y - 3));
-                ctx->DrawLine(Point2Di(leftCenter.x - 3, leftCenter.y), Point2Di(leftCenter.x + 3, leftCenter.y + 3));
+                ctx->SetLineJoin(LineJoin::Round);
+                ctx->SetLineCap(LineCap::Round);
+                ctx->SetStrokeWidth(3);
+                // Left arrow - filled triangle pointing left
+                {
+                    Point2Di c(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
+                    int s = 3;
+                    ctx->ClearPath();
+                    ctx->MoveTo(c.x - s, c.y);
+                    ctx->LineTo(c.x + s, c.y - (s + s));
+                    ctx->LineTo(c.x + s, c.y + (s + s));
+                    ctx->ClosePath();
+                    ctx->FillPathPreserve();
+                    ctx->Stroke();
+                }
 
-                Point2Di rightCenter(rightButton.x + rightButton.width / 2, rightButton.y + rightButton.height / 2);
-                ctx->DrawLine(Point2Di(rightCenter.x - 3, rightCenter.y - 3), Point2Di(rightCenter.x + 3, rightCenter.y));
-                ctx->DrawLine(Point2Di(rightCenter.x - 3, rightCenter.y + 3), Point2Di(rightCenter.x + 3, rightCenter.y));
+                // Right arrow - filled triangle pointing right
+                {
+                    Point2Di c(rightButton.x + rightButton.width / 2, rightButton.y + rightButton.height / 2);
+                    int s = 3;
+                    ctx->ClearPath();
+                    ctx->MoveTo(c.x + s, c.y);
+                    ctx->LineTo(c.x - s, c.y - (s + s));
+                    ctx->LineTo(c.x - s, c.y + (s + s));
+                    ctx->ClosePath();
+                    ctx->FillPathPreserve();
+                    ctx->Stroke();
+                }
                 break;
             }
 
             case TabPosition::Left:
             case TabPosition::Right: {
                 // Vertical tabs - buttons at bottom edge
-                leftButton = Rect2Di(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 40, tabBarBounds.width, 20);
-                rightButton = Rect2Di(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 20, tabBarBounds.width, 20);
+                leftButton = Rect2Di(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 48, tabBarBounds.width, 24);
+                rightButton = Rect2Di(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 24, tabBarBounds.width, 24);
 
                 ctx->DrawFilledRectangle(leftButton, Color(220, 220, 220), 1.0, tabBorderColor);
                 ctx->DrawFilledRectangle(rightButton, Color(220, 220, 220), 1.0, tabBorderColor);
 
+                ctx->SetFillPaint(Colors::Black);
                 ctx->SetStrokePaint(Colors::Black);
-                Point2Di leftCenter(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
-                ctx->DrawLine(Point2Di(leftCenter.x, leftCenter.y - 3), Point2Di(leftCenter.x - 3, leftCenter.y + 3));
-                ctx->DrawLine(Point2Di(leftCenter.x, leftCenter.y - 3), Point2Di(leftCenter.x + 3, leftCenter.y + 3));
+                ctx->SetLineJoin(LineJoin::Round);
+                ctx->SetLineCap(LineCap::Round);
+                ctx->SetStrokeWidth(3);
+                // Up arrow - filled triangle pointing up
+                {
+                    Point2Di c(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
+                    int s = 3;
+                    ctx->ClearPath();
+                    ctx->MoveTo(c.x, c.y - s);
+                    ctx->LineTo(c.x + (s+s), c.y + s);
+                    ctx->LineTo(c.x - (s+s), c.y + s);
+                    ctx->ClosePath();
+                    ctx->Fill();
+                }
 
-                Point2Di rightCenter(rightButton.x + rightButton.width / 2, rightButton.y + rightButton.height / 2);
-                ctx->DrawLine(Point2Di(rightCenter.x - 3, rightCenter.y - 3), Point2Di(rightCenter.x, rightCenter.y + 3));
-                ctx->DrawLine(Point2Di(rightCenter.x + 3, rightCenter.y - 3), Point2Di(rightCenter.x, rightCenter.y + 3));
+                // Down arrow - filled triangle pointing down
+                {
+                    Point2Di c(rightButton.x + rightButton.width / 2, rightButton.y + rightButton.height / 2);
+                    int s = 3;
+                    ctx->ClearPath();
+                    ctx->MoveTo(c.x, c.y + s);
+                    ctx->LineTo(c.x - (s+s), c.y - s);
+                    ctx->LineTo(c.x + (s+s), c.y - s);
+                    ctx->ClosePath();
+                    ctx->Fill();
+                }
                 break;
             }
         }

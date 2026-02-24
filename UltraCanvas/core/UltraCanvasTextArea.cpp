@@ -177,7 +177,23 @@ namespace UltraCanvas {
 
         // Map Y to display line index
         int dlCount = GetDisplayLineCount();
-        int displayLineIdx = firstVisibleLine + (relativeY / computedLineHeight);
+        int displayLineIdx;
+
+        if (markdownHybridMode && !markdownLineYOffsets.empty()) {
+            // Account for block image offsets — find the display line whose
+            // rendered Y range contains relativeY
+            displayLineIdx = firstVisibleLine;
+            int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 10);
+            for (int di = firstVisibleLine; di < endDL; di++) {
+                int offset = (di < static_cast<int>(markdownLineYOffsets.size())) ? markdownLineYOffsets[di] : 0;
+                int lineTop = (di - firstVisibleLine) * computedLineHeight + offset;
+                if (lineTop > relativeY) break;
+                displayLineIdx = di;
+            }
+        } else {
+            displayLineIdx = firstVisibleLine + (relativeY / computedLineHeight);
+        }
+
         displayLineIdx = std::max(0, std::min(displayLineIdx, dlCount - 1));
 
         const auto& dl = displayLines[displayLineIdx];
@@ -1237,6 +1253,8 @@ namespace UltraCanvas {
         for (int di = startDL; di < endDL; di++) {
             const auto& dl = displayLines[di];
             int numY = baseY + (di - startDL) * computedLineHeight;
+            if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
+                numY += markdownLineYOffsets[di];
 
             // Only show line number on the first display line of each logical line
             if (dl.startGrapheme != 0) continue;
@@ -1275,6 +1293,8 @@ namespace UltraCanvas {
             if (logLine < startLine || logLine > endLine) continue;
 
             int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
+            if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
+                lineY += markdownLineYOffsets[di];
 
             // Determine the selection range in grapheme coords within this logical line
             int selStartInLine = (logLine == startLine) ? startCol : 0;
@@ -1324,6 +1344,8 @@ namespace UltraCanvas {
             for (int di = std::max(0, visStartDL); di <= visEndDL && di < GetDisplayLineCount(); di++) {
                 if (displayLines[di].logicalLine == currentLineIndex) {
                     int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
+                    if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
+                        lineY += markdownLineYOffsets[di];
                     context->FillRectangle(highlightX, lineY, highlightW, computedLineHeight);
                 }
             }
@@ -1354,6 +1376,8 @@ namespace UltraCanvas {
         if (cursorX > visibleTextArea.x + visibleTextArea.width) return;
 
         int cursorY = visibleTextArea.y + (displayLine - firstVisibleLine) * computedLineHeight;
+        if (markdownHybridMode && displayLine < static_cast<int>(markdownLineYOffsets.size()))
+            cursorY += markdownLineYOffsets[displayLine];
 
         context->PushState();
         context->SetStrokeWidth(2);
@@ -1432,6 +1456,8 @@ namespace UltraCanvas {
                 if (logLine < startLine || logLine > endLine) continue;
 
                 int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
+                if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
+                    lineY += markdownLineYOffsets[di];
 
                 int hlStartInLine = (logLine == startLine) ? startCol : 0;
                 int hlEndInLine = (logLine == endLine) ? endCol : GetLineGraphemeCount(logLine);

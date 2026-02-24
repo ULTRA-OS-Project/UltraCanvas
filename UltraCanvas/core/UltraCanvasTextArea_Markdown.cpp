@@ -10,6 +10,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
+#include "UltraCanvasImage.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <algorithm>
 #include <sstream>
@@ -18,6 +19,11 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <filesystem>
+#ifdef __linux__
+#include <unistd.h>
+#include <climits>
+#endif
 
 namespace UltraCanvas {
 
@@ -479,6 +485,62 @@ struct TableParseResult {
 // ===== MARKDOWN INLINE RENDERER =====
 // Renders markdown inline formatting directly in the text area
 
+// ===== MARKDOWN IMAGE HELPERS =====
+
+static std::string ResolveMarkdownImagePath(const std::string& imagePath,
+                                             const std::string& documentFilePath) {
+    if (imagePath.empty()) return "";
+
+    // Skip URLs
+    if (imagePath.find("http://") == 0 || imagePath.find("https://") == 0)
+        return "";
+
+    // Absolute path — check if readable
+    std::filesystem::path p(imagePath);
+    if (p.is_absolute()) {
+        if (std::filesystem::exists(p)) return imagePath;
+        return "";
+    }
+
+    // Relative to document directory
+    if (!documentFilePath.empty()) {
+        auto docDir = std::filesystem::path(documentFilePath).parent_path();
+        auto candidate = docDir / imagePath;
+        if (std::filesystem::exists(candidate))
+            return std::filesystem::canonical(candidate).string();
+    }
+
+    // Relative to executable directory
+#ifdef __linux__
+    char exePath[PATH_MAX] = {};
+    ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
+    if (len > 0) {
+        exePath[len] = '\0';
+        auto exeDir = std::filesystem::path(exePath).parent_path();
+        auto candidate = exeDir / imagePath;
+        if (std::filesystem::exists(candidate))
+            return std::filesystem::canonical(candidate).string();
+    }
+#endif
+
+    return "";
+}
+
+static bool IsStandaloneImageLine(const std::string& trimmedLine,
+                                   std::string& outAlt, std::string& outUrl) {
+    if (trimmedLine.size() < 5 || trimmedLine[0] != '!' || trimmedLine[1] != '[')
+        return false;
+    auto altEnd = trimmedLine.find(']', 2);
+    if (altEnd == std::string::npos || altEnd + 1 >= trimmedLine.size() || trimmedLine[altEnd + 1] != '(')
+        return false;
+    auto urlEnd = trimmedLine.find(')', altEnd + 2);
+    if (urlEnd == std::string::npos || urlEnd + 1 != trimmedLine.size())
+        return false;
+    outAlt = trimmedLine.substr(2, altEnd - 2);
+    outUrl = trimmedLine.substr(altEnd + 2, urlEnd - altEnd - 2);
+    return true;
+}
+
 struct MarkdownInlineRenderer {
 
     // ---------------------------------------------------------------
@@ -850,7 +912,8 @@ struct MarkdownInlineRenderer {
                                   int x, int y, int lineHeight,
                                   const TextAreaStyle& style,
                                   const MarkdownHybridStyle& mdStyle,
-                                  std::vector<MarkdownHitRect>* hitRects = nullptr) {
+                                  std::vector<MarkdownHitRect>* hitRects = nullptr,
+                                  const std::string& documentFilePath = "") {
 
         std::vector<MarkdownInlineElement> elements = ParseInlineMarkdown(line);
         int currentX = x;
@@ -863,25 +926,34 @@ struct MarkdownInlineRenderer {
                 int imgSize = lineHeight - 2;
                 int imgY = y + 1;
 
-                // Draw image placeholder/thumbnail
-                ctx->SetFillPaint(mdStyle.imagePlaceholderBackground);
-                ctx->FillRectangle(currentX, imgY, imgSize, imgSize);
-                ctx->SetStrokePaint(mdStyle.imagePlaceholderBorderColor);
-                ctx->SetStrokeWidth(1.0f);
-                ctx->DrawRectangle(currentX, imgY, imgSize, imgSize);
+                // Try to load and display actual local image as thumbnail
+                bool drewActualImage = false;
+                std::string resolved = ResolveMarkdownImagePath(elem.url, documentFilePath);
+                if (!resolved.empty()) {
+                    auto img = UCImage::Get(resolved);
+                    if (img && img->IsValid()) {
+                        ctx->DrawImage(*img, currentX, imgY, imgSize, imgSize, ImageFitMode::Contain);
+                        drewActualImage = true;
+                    }
+                }
 
-                // Draw small icon indicator in center
-                int iconCenterX = currentX + imgSize / 2;
-                int iconCenterY = imgY + imgSize / 2;
-                int iconR = std::max(2, imgSize / 6);
-                ctx->SetFillPaint(mdStyle.imagePlaceholderTextColor);
-                // Mountain icon: small triangle
-                ctx->ClearPath();
-                ctx->MoveTo(currentX + 2, imgY + imgSize - 2);
-                ctx->LineTo(iconCenterX, imgY + 3);
-                ctx->LineTo(currentX + imgSize - 2, imgY + imgSize - 2);
-                ctx->ClosePath();
-                ctx->Fill();
+                if (!drewActualImage) {
+                    // Fallback: draw placeholder box with mountain icon
+                    ctx->SetFillPaint(mdStyle.imagePlaceholderBackground);
+                    ctx->FillRectangle(currentX, imgY, imgSize, imgSize);
+                    ctx->SetStrokePaint(mdStyle.imagePlaceholderBorderColor);
+                    ctx->SetStrokeWidth(1.0f);
+                    ctx->DrawRectangle(currentX, imgY, imgSize, imgSize);
+
+                    int iconCenterX = currentX + imgSize / 2;
+                    ctx->SetFillPaint(mdStyle.imagePlaceholderTextColor);
+                    ctx->ClearPath();
+                    ctx->MoveTo(currentX + 2, imgY + imgSize - 2);
+                    ctx->LineTo(iconCenterX, imgY + 3);
+                    ctx->LineTo(currentX + imgSize - 2, imgY + imgSize - 2);
+                    ctx->ClosePath();
+                    ctx->Fill();
+                }
 
                 // Store hit rect for click interaction
                 if (hitRects) {
@@ -1094,7 +1166,8 @@ struct MarkdownInlineRenderer {
                                      int x, int y, int lineHeight,
                                      const TextAreaStyle& style,
                                      const MarkdownHybridStyle& mdStyle,
-                                     std::vector<MarkdownHitRect>* hitRects = nullptr) {
+                                     std::vector<MarkdownHitRect>* hitRects = nullptr,
+                                     const std::string& documentFilePath = "") {
         // Detect header level
         int level = 0;
         size_t pos = 0;
@@ -1104,7 +1177,7 @@ struct MarkdownInlineRenderer {
         }
 
         if (level == 0 || level > 6) {
-            RenderMarkdownLine(ctx, line, x, y, lineHeight, style, mdStyle, hitRects);
+            RenderMarkdownLine(ctx, line, x, y, lineHeight, style, mdStyle, hitRects, documentFilePath);
             return;
         }
 
@@ -1154,7 +1227,8 @@ struct MarkdownInlineRenderer {
                                        int x, int y, int lineHeight,
                                        const TextAreaStyle& style,
                                        const MarkdownHybridStyle& mdStyle,
-                                       std::vector<MarkdownHitRect>* hitRects = nullptr) {
+                                       std::vector<MarkdownHitRect>* hitRects = nullptr,
+                                       const std::string& documentFilePath = "") {
         size_t pos = 0;
 
         // Count leading whitespace for nesting depth
@@ -1283,7 +1357,7 @@ struct MarkdownInlineRenderer {
             ctx->SetStrokeWidth(1.0f);
             ctx->DrawLine(bulletX, strikeY, bulletX + textWidth, strikeY);
         } else {
-            RenderMarkdownLine(ctx, itemText, bulletX, y, lineHeight, style, mdStyle, hitRects);
+            RenderMarkdownLine(ctx, itemText, bulletX, y, lineHeight, style, mdStyle, hitRects, documentFilePath);
         }
     }
 
@@ -1295,7 +1369,8 @@ struct MarkdownInlineRenderer {
                                          int x, int y, int lineHeight, int width,
                                          const TextAreaStyle& style,
                                          const MarkdownHybridStyle& mdStyle,
-                                         std::vector<MarkdownHitRect>* hitRects = nullptr) {
+                                         std::vector<MarkdownHitRect>* hitRects = nullptr,
+                                         const std::string& documentFilePath = "") {
         // Count nesting depth (>>)
         size_t pos = 0;
         int depth = 0;
@@ -1326,7 +1401,7 @@ struct MarkdownInlineRenderer {
         int textX = quoteX + mdStyle.quoteIndent;
         ctx->SetFontSlant(FontSlant::Italic);
         ctx->SetTextPaint(mdStyle.quoteTextColor);
-        RenderMarkdownLine(ctx, quoteText, textX, y, lineHeight, style, mdStyle, hitRects);
+        RenderMarkdownLine(ctx, quoteText, textX, y, lineHeight, style, mdStyle, hitRects, documentFilePath);
         ctx->SetFontSlant(FontSlant::Normal);
     }
 
@@ -1550,7 +1625,8 @@ struct MarkdownInlineRenderer {
                                        int columnCount,
                                        const TextAreaStyle& style,
                                        const MarkdownHybridStyle& mdStyle,
-                                       std::vector<MarkdownHitRect>* hitRects = nullptr) {
+                                       std::vector<MarkdownHitRect>* hitRects = nullptr,
+                                       const std::string& documentFilePath = "") {
         auto parsed = ParseTableRow(line);
         if (!parsed.isValid) return;
 
@@ -1607,7 +1683,7 @@ struct MarkdownInlineRenderer {
             }
 
             // Render cell content with inline markdown
-            RenderMarkdownLine(ctx, cellText, textX, y, lineHeight, style, mdStyle, hitRects);
+            RenderMarkdownLine(ctx, cellText, textX, y, lineHeight, style, mdStyle, hitRects, documentFilePath);
 
             cellX += cellWidth;
         }
@@ -1847,6 +1923,80 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         }
     }
 
+    // --- Pre-scan: detect standalone image lines and resolve local paths ---
+    struct ImageLineInfo {
+        std::string resolvedPath;
+        std::string altText;
+        int renderWidth = 0;
+        int renderHeight = 0;
+        int extraHeight = 0; // extra pixels beyond computedLineHeight
+    };
+    std::unordered_map<int, ImageLineInfo> imageLines;
+
+    {
+        int availableWidth = visibleTextArea.width - 20; // some padding
+        const int maxImageHeight = 300;
+        const int imagePadding = 8; // vertical padding around image
+
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (isInsideCodeBlock[i]) continue;
+            std::string trimmed = TrimWhitespace(lines[i]);
+            std::string alt, url;
+            if (!IsStandaloneImageLine(trimmed, alt, url)) continue;
+
+            std::string resolved = ResolveMarkdownImagePath(url, documentFilePath);
+            if (resolved.empty()) continue;
+
+            auto img = UCImage::Get(resolved);
+            if (!img || !img->IsValid()) continue;
+
+            int imgW = img->GetWidth();
+            int imgH = img->GetHeight();
+            if (imgW <= 0 || imgH <= 0) continue;
+
+            float aspect = img->GetAspectRatio();
+            int renderW = std::min(imgW, availableWidth);
+            int renderH = static_cast<int>(renderW / aspect);
+
+            if (renderH > maxImageHeight) {
+                renderH = maxImageHeight;
+                renderW = static_cast<int>(renderH * aspect);
+            }
+
+            int totalHeight = renderH + imagePadding;
+            int extra = std::max(0, totalHeight - computedLineHeight);
+
+            ImageLineInfo info;
+            info.resolvedPath = resolved;
+            info.altText = alt;
+            info.renderWidth = renderW;
+            info.renderHeight = renderH;
+            info.extraHeight = extra;
+            imageLines[static_cast<int>(i)] = std::move(info);
+        }
+    }
+
+    // --- Build per-display-line Y offset vector for use by all Draw methods ---
+    markdownLineYOffsets.assign(dlCount, 0);
+    {
+        int cumOffset = 0;
+        for (int di = 0; di < dlCount; di++) {
+            markdownLineYOffsets[di] = cumOffset;
+            const auto& dl = displayLines[di];
+            if (dl.startGrapheme == 0 && dl.logicalLine != cursorLine) {
+                auto imgIt = imageLines.find(dl.logicalLine);
+                if (imgIt != imageLines.end()) {
+                    cumOffset += imgIt->second.extraHeight;
+                }
+            }
+        }
+        // Extend endDL to account for content pushed down by images
+        if (cumOffset > 0) {
+            int extraLines = cumOffset / computedLineHeight + 2;
+            endDL = std::min(dlCount, endDL + extraLines);
+        }
+    }
+
     // --- Markdown hybrid style ---
     MarkdownHybridStyle mdStyle = MarkdownHybridStyle::Default();
 
@@ -1863,9 +2013,36 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         const auto& dl = displayLines[di];
         int i = dl.logicalLine; // logical line index for pre-scan lookups
         const std::string& line = lines[i];
-        int textY = baseY + (di - startDL) * computedLineHeight;
+        int textY = baseY + (di - startDL) * computedLineHeight + markdownLineYOffsets[di];
         int x = visibleTextArea.x;
         if (!wordWrap) x -= horizontalScrollOffset;
+
+        // --- STANDALONE BLOCK IMAGE ---
+        // Render actual image for lines that are purely ![alt](path) with a resolved local file
+        if (dl.startGrapheme == 0 && i != cursorLine) {
+            auto imgIt = imageLines.find(i);
+            if (imgIt != imageLines.end()) {
+                const auto& imgInfo = imgIt->second;
+
+                // Draw the image centered horizontally
+                int imgX = x + (visibleTextArea.width - imgInfo.renderWidth) / 2;
+                int imgY = textY + 2;
+
+                context->DrawImage(imgInfo.resolvedPath, imgX, imgY,
+                                   imgInfo.renderWidth, imgInfo.renderHeight,
+                                   ImageFitMode::Contain);
+
+                // Store hit rect for click interaction
+                MarkdownHitRect hr;
+                hr.bounds = {imgX, imgY, imgInfo.renderWidth, imgInfo.renderHeight};
+                hr.url = imgInfo.resolvedPath;
+                hr.altText = imgInfo.altText;
+                hr.isImage = true;
+                markdownHitRects.push_back(hr);
+
+                continue;
+            }
+        }
 
         // --- CURRENT LINE: Show raw markdown with syntax highlighting ---
         if (i == cursorLine) {
@@ -2016,7 +2193,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                         context, line, x, textY, computedLineHeight,
                         visibleTextArea.width, isHeader,
                         tableAlignments[i], tableColumnCounts[i],
-                        style, mdStyle, &markdownHitRects);
+                        style, mdStyle, &markdownHitRects, documentFilePath);
             }
             continue;
         }
@@ -2025,7 +2202,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         if (trimmed[0] == '#') {
             MarkdownInlineRenderer::RenderMarkdownHeader(
                     context, trimmed, x, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects);
+                    style, mdStyle, &markdownHitRects, documentFilePath);
             continue;
         }
 
@@ -2041,7 +2218,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         if (trimmed[0] == '>') {
             MarkdownInlineRenderer::RenderMarkdownBlockquote(
                     context, line, x, textY, computedLineHeight,
-                    visibleTextArea.width, style, mdStyle, &markdownHitRects);
+                    visibleTextArea.width, style, mdStyle, &markdownHitRects, documentFilePath);
             continue;
         }
 
@@ -2049,7 +2226,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         if (IsMarkdownListItem(trimmed)) {
             MarkdownInlineRenderer::RenderMarkdownListItem(
                     context, line, x, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects);
+                    style, mdStyle, &markdownHitRects, documentFilePath);
             continue;
         }
 
@@ -2068,14 +2245,14 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             // Draw definition text with inline formatting
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, defText, x + defIndent, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects);
+                    style, mdStyle, &markdownHitRects, documentFilePath);
             continue;
         }
 
         // --- Regular text with inline formatting ---
         MarkdownInlineRenderer::RenderMarkdownLine(
                 context, line, x, textY, computedLineHeight,
-                style, mdStyle, &markdownHitRects);
+                style, mdStyle, &markdownHitRects, documentFilePath);
     }
 
     context->PopState();
