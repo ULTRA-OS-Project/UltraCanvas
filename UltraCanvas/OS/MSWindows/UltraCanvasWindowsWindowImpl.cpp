@@ -85,8 +85,8 @@ static UCKeys ConvertVKToUCKey(WPARAM vk) {
         case VK_NUMPAD8:   return UCKeys::NumPad8;
         case VK_NUMPAD9:   return UCKeys::NumPad9;
         case VK_DECIMAL:   return UCKeys::NumPadDecimal;
-        case VK_ADD:       return UCKeys::NumPadAdd;
-        case VK_SUBTRACT:  return UCKeys::NumPadSubtract;
+        case VK_ADD:       return UCKeys::NumPadPlus;
+        case VK_SUBTRACT:  return UCKeys::NumPadMinus;
         case VK_MULTIPLY:  return UCKeys::NumPadMultiply;
         case VK_DIVIDE:    return UCKeys::NumPadDivide;
 
