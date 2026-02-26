@@ -1190,7 +1190,8 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             UpdateLanguageDropdown();
             UpdateMarkdownToolbarVisibility();
 
-            // Track in recent files
+            // Track directory and recent files
+            lastOpenedDirectory = p.parent_path().string();
             recentFilesManager.AddFile(filePath);
             UpdateRecentFilesMenu();
 
@@ -1591,9 +1592,10 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         UltraCanvasDialogManager::ShowOpenFileDialog(
                 "Open File",
                 config.fileFilters,
-                "",
+                lastOpenedDirectory,
                 [this](DialogResult result, const std::string& filePath) {
                     if (result == DialogResult::OK && !filePath.empty()) {
+                        lastOpenedDirectory = std::filesystem::path(filePath).parent_path().string();
                         OpenDocumentFromPath(filePath);
                     }
                 },

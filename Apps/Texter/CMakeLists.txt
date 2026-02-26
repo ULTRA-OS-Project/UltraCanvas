@@ -180,6 +180,10 @@ if(APPLE)
     target_link_libraries(UltraTexter PRIVATE iconv)
 endif()
 
+if(WIN32)
+    target_link_libraries(UltraTexter PRIVATE iconv)
+endif()
+
 # Link against plugin libraries if available
 if(ULTRACANVAS_PLUGIN_TARGETS)
     target_link_libraries(UltraTexter PRIVATE

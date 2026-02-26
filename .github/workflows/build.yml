@@ -50,7 +50,7 @@ jobs:
         if: runner.os == 'Windows'
         run: >
           vcpkg install
-          cairo pango harfbuzz glib freetype tinyxml2 jsoncpp zlib pkgconf
+          cairo pango harfbuzz glib libiconv freetype tinyxml2 jsoncpp zlib pkgconf
           --triplet x64-windows
 
       # ===== macOS / Linux: system package manager =====

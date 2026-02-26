@@ -225,6 +225,7 @@ namespace UltraCanvas {
 
         // ===== RECENT FILES =====
         RecentFilesManager recentFilesManager;
+        std::string lastOpenedDirectory;
 
         // ===== LAYOUT =====
         int menuBarHeight;

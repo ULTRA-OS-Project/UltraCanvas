@@ -315,6 +315,15 @@ if (BUILD_TEXTER_APP)
     )
     target_link_libraries(UltraCanvasTexter PRIVATE fmt::fmt)
 
+    # iconv - on Linux it's part of glibc, on macOS it needs explicit linking
+if(APPLE)
+    target_link_libraries(UltraCanvasTexter PRIVATE iconv)
+endif()
+
+if(WIN32)
+    target_link_libraries(UltraCanvasTexter PRIVATE iconv)
+endif()
+
     # Compile features
     target_compile_features(UltraCanvasTexter PRIVATE cxx_std_20)
 
