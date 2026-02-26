@@ -504,9 +504,15 @@ namespace UltraCanvas {
 
         // Render checkbox/radio
         if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
-            RenderCheckbox(item, Point2Di(currentX, textY), ctx);
+            int checkboxY = itemBounds.y + (itemBounds.height - style.iconSize) / 2 - 1;
+            RenderCheckbox(item, Point2Di(currentX, checkboxY), ctx);
             currentX += style.iconSize + style.iconSpacing;
         }
+        // if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
+            
+        //     RenderCheckbox(item, Point2Di(currentX, textY), ctx);
+        //     currentX += style.iconSize + style.iconSpacing;
+        // }
 
         // Render icon
         if (!item.iconPath.empty()) {
