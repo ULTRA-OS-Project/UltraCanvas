@@ -61,6 +61,7 @@ namespace UltraCanvas {
         auto historyButton = std::make_shared<UltraCanvasButton>("SearchHistoryBtn", 3004, 0, 0, 22, 25);
         historyButton->SetText("▼");
         historyButton->SetFontSize(8);
+        historyButton->onClick = [this]() { ShowSearchHistory(); };
 
         searchRowLayout->AddUIElement(searchLabel);
         searchRowLayout->AddUIElement(searchInput);
@@ -129,6 +130,7 @@ namespace UltraCanvas {
         // Create the history dropdown (hidden initially, positioned on demand)
         historyDropdown = std::make_shared<UltraCanvasDropdown>("SearchHistoryDropdown", 3030, 0, 0, 290, 24);
         historyDropdown->SetVisible(false);
+        AddChild(historyDropdown);
     }
 
     void UltraCanvasFindDialog::AddToSearchHistory(const std::string& text) {
@@ -165,8 +167,7 @@ namespace UltraCanvas {
         // Position below the search input
         if (searchInput) {
             auto inputBounds = searchInput->GetBounds();
-            historyDropdown->SetPosition(inputBounds.x, inputBounds.y + inputBounds.height + 2);
-            historyDropdown->SetSize(inputBounds.width, 24);
+            historyDropdown->SetBounds(inputBounds);
         }
 
         // Wire selection callback
@@ -178,8 +179,31 @@ namespace UltraCanvas {
             historyDropdown->SetVisible(false);
         };
 
+        historyDropdown->onDropdownClosed = [this]() {
+            historyDropdown->SetVisible(false);
+        };
+
         historyDropdown->SetVisible(true);
         historyDropdown->OpenDropdown();
+    }
+
+    void UltraCanvasFindDialog::UpdateStatus(int currentIndex, int totalMatches) {
+        if (!statusLabel) return;
+
+        if (totalMatches == 0) {
+            statusLabel->SetText("None found");
+            statusLabel->SetTextColor(Color(200, 50, 50));  // Red for error
+        } else if (currentIndex > 0) {
+            // Show "X / Y" format
+            std::string status = std::to_string(currentIndex) + " / " + std::to_string(totalMatches);
+            statusLabel->SetText(status);
+            statusLabel->SetTextColor(Color(80, 80, 80));   // Normal gray
+        } else {
+            // Matches exist but no current match selected
+            std::string status = std::to_string(totalMatches) + " found";
+            statusLabel->SetText(status);
+            statusLabel->SetTextColor(Color(80, 80, 80));
+        }
     }
 
     void UltraCanvasFindDialog::WireCallbacks() {
@@ -226,12 +250,6 @@ namespace UltraCanvas {
         closeButton->onClick = [this]() {
             CloseDialog(DialogResult::Cancel);
         };
-
-        // History dropdown button (ID 3004)
-        // Find the button by iterating contentSection children, or use a member pointer
-        // Since we created it as a local in BuildLayout, we need to store it as a member
-        // OR wire it up right after creation in BuildLayout.
-        // See CHANGE 3 addendum below.
 
         // Initially disable buttons
         findNextButton->SetDisabled(true);
@@ -422,9 +440,11 @@ namespace UltraCanvas {
         // Create history dropdowns (hidden, positioned on demand)
         findHistoryDropdown = std::make_shared<UltraCanvasDropdown>("FindHistoryDrop", 4050, 0, 0, 330, 24);
         findHistoryDropdown->SetVisible(false);
+        AddChild(findHistoryDropdown);
 
         replaceHistoryDropdown = std::make_shared<UltraCanvasDropdown>("ReplaceHistoryDrop", 4051, 0, 0, 330, 24);
         replaceHistoryDropdown->SetVisible(false);
+        AddChild(replaceHistoryDropdown);
     }
 
     void UltraCanvasReplaceDialog::WireCallbacks() {
@@ -539,8 +559,7 @@ namespace UltraCanvas {
 
         if (findInput) {
             auto inputBounds = findInput->GetBounds();
-            findHistoryDropdown->SetPosition(inputBounds.x, inputBounds.y + inputBounds.height + 2);
-            findHistoryDropdown->SetSize(inputBounds.width, 24);
+            findHistoryDropdown->SetBounds(inputBounds);
         }
 
         findHistoryDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
@@ -548,6 +567,10 @@ namespace UltraCanvas {
                 findInput->SetText(item.text);
                 findText = item.text;
             }
+            findHistoryDropdown->SetVisible(false);
+        };
+
+        findHistoryDropdown->onDropdownClosed = [this]() {
             findHistoryDropdown->SetVisible(false);
         };
 
@@ -565,8 +588,7 @@ namespace UltraCanvas {
 
         if (replaceInput) {
             auto inputBounds = replaceInput->GetBounds();
-            replaceHistoryDropdown->SetPosition(inputBounds.x, inputBounds.y + inputBounds.height + 2);
-            replaceHistoryDropdown->SetSize(inputBounds.width, 24);
+            replaceHistoryDropdown->SetBounds(inputBounds);
         }
 
         replaceHistoryDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
@@ -577,8 +599,29 @@ namespace UltraCanvas {
             replaceHistoryDropdown->SetVisible(false);
         };
 
+        replaceHistoryDropdown->onDropdownClosed = [this]() {
+            replaceHistoryDropdown->SetVisible(false);
+        };
+
         replaceHistoryDropdown->SetVisible(true);
         replaceHistoryDropdown->OpenDropdown();
+    }
+
+    void UltraCanvasReplaceDialog::UpdateStatus(int currentIndex, int totalMatches) {
+        if (!statusLabel) return;
+
+        if (totalMatches == 0) {
+            statusLabel->SetText("None found");
+            statusLabel->SetTextColor(Color(200, 50, 50));
+        } else if (currentIndex > 0) {
+            std::string status = std::to_string(currentIndex) + " / " + std::to_string(totalMatches);
+            statusLabel->SetText(status);
+            statusLabel->SetTextColor(Color(80, 80, 80));
+        } else {
+            std::string status = std::to_string(totalMatches) + " found";
+            statusLabel->SetText(status);
+            statusLabel->SetTextColor(Color(80, 80, 80));
+        }
     }
 
     void UltraCanvasReplaceDialog::SetFindText(const std::string& text) {

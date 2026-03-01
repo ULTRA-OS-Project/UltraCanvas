@@ -195,6 +195,14 @@ namespace UltraCanvas {
         void HighlightMatches(const std::string& searchText);
         void ClearHighlights();
 
+        /// Count total occurrences of search text in document
+        /// @return Total number of matches
+        int CountMatches(const std::string& searchText, bool caseSensitive = false) const;
+
+        /// Get the index (1-based) of the current match among all matches
+        /// @return Current match index (1-based), or 0 if no current match
+        int GetCurrentMatchIndex(const std::string& searchText, bool caseSensitive = false) const;
+
         // Undo/Redo (basic support)
         void Undo();
         void Redo();

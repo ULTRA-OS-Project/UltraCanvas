@@ -84,6 +84,10 @@ namespace UltraCanvas {
         void SetSearchHistory(const std::vector<std::string>& history);
         const std::vector<std::string>& GetSearchHistory() const { return searchHistory; }
 
+        /// Update the status text showing match position or error
+        /// @param currentIndex 1-based index of current match (0 = none)
+        /// @param totalMatches Total number of matches found
+        void UpdateStatus(int currentIndex, int totalMatches);
 
         // Callbacks
         std::function<void(const std::string&, bool, bool)> onFindNext;
@@ -171,6 +175,11 @@ namespace UltraCanvas {
         void SetReplaceHistory(const std::vector<std::string>& history);
         const std::vector<std::string>& GetFindHistory() const { return findHistory; }
         const std::vector<std::string>& GetReplaceHistory() const { return replaceHistory; }
+
+        /// Update the status text showing match position or error
+        /// @param currentIndex 1-based index of current match (0 = none)
+        /// @param totalMatches Total number of matches found
+        void UpdateStatus(int currentIndex, int totalMatches);
 
         // Callbacks
         std::function<void(const std::string&, bool, bool)> onFindNext;

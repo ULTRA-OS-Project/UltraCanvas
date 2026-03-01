@@ -1600,6 +1600,11 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 if (doc && doc->textArea) {
                     doc->textArea->SetTextToFind(searchText, caseSensitive);
                     doc->textArea->FindNext();
+
+                    // Update status in the dialog
+                    int total = doc->textArea->CountMatches(searchText, caseSensitive);
+                    int current = doc->textArea->GetCurrentMatchIndex(searchText, caseSensitive);
+                    findDialog->UpdateStatus(current, total);
                 }
             };
 
@@ -1608,6 +1613,10 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 if (doc && doc->textArea) {
                     doc->textArea->SetTextToFind(searchText, caseSensitive);
                     doc->textArea->FindPrevious();
+
+                    int total = doc->textArea->CountMatches(searchText, caseSensitive);
+                    int current = doc->textArea->GetCurrentMatchIndex(searchText, caseSensitive);
+                    findDialog->UpdateStatus(current, total);
                 }
             };
         }
@@ -1642,6 +1651,10 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 if (doc && doc->textArea) {
                     doc->textArea->SetTextToFind(findText, caseSensitive);
                     doc->textArea->FindNext();
+
+                    int total = doc->textArea->CountMatches(findText, caseSensitive);
+                    int current = doc->textArea->GetCurrentMatchIndex(findText, caseSensitive);
+                    replaceDialog->UpdateStatus(current, total);
                 }
             };
 
@@ -1653,6 +1666,11 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                     doc->textArea->SetTextToFind(findText, caseSensitive);
                     // Replace single occurrence
                     doc->textArea->ReplaceText(findText, replaceText, false);
+
+                    // After replace, update counts (total may have decreased by 1)
+                    int total = doc->textArea->CountMatches(findText, caseSensitive);
+                    int current = doc->textArea->GetCurrentMatchIndex(findText, caseSensitive);
+                    replaceDialog->UpdateStatus(current, total);
                 }
             };
 
@@ -1662,6 +1680,16 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 if (doc && doc->textArea) {
                     // Replace all occurrences
                     doc->textArea->ReplaceText(findText, replaceText, true);
+
+                    // After replace all, show "0 found" (all replaced)
+                    int total = doc->textArea->CountMatches(findText, caseSensitive);
+                    if (total == 0) {
+                        replaceDialog->UpdateStatus(0, 0);
+                        // Optionally show a more descriptive message:
+                        // replaceDialog->SetStatusText("All replaced");
+                    } else {
+                        replaceDialog->UpdateStatus(0, total);
+                    }
                 }
             };
         }

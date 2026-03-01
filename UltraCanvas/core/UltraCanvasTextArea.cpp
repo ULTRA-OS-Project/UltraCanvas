@@ -2782,6 +2782,39 @@ namespace UltraCanvas {
         // Implementation placeholder
     }
 
+    int UltraCanvasTextArea::CountMatches(const std::string& searchText, bool caseSensitive) const {
+        if (searchText.empty()) return 0;
+
+        int count = 0;
+        int pos = 0;
+        int searchLen = utf8_length(searchText);
+
+        while ((pos = utf8_find(textContent, searchText, pos, caseSensitive)) >= 0) {
+            count++;
+            pos += searchLen;
+        }
+        return count;
+    }
+
+    int UltraCanvasTextArea::GetCurrentMatchIndex(const std::string& searchText, bool caseSensitive) const {
+        if (searchText.empty() || !HasSelection()) return 0;
+
+        // The current match is the one at selectionStartGrapheme
+        int currentPos = std::min(selectionStartGrapheme, selectionEndGrapheme);
+
+        int index = 0;
+        int pos = 0;
+        int searchLen = utf8_length(searchText);
+
+        while ((pos = utf8_find(textContent, searchText, pos, caseSensitive)) >= 0) {
+            index++;
+            if (pos == currentPos) {
+                return index;
+            }
+            pos += searchLen;
+        }
+        return 0; // Current selection doesn't match any occurrence
+    }
 
 
     void UltraCanvasTextArea::SetMarkdownHybridMode(bool enable) {
