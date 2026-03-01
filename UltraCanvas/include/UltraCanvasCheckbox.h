@@ -138,6 +138,7 @@ namespace UltraCanvas {
 
         void SetColors(const Color& box, const Color& checkmark, const Color& text);
         void SetFont(const std::string& family, float size, FontWeight weight = FontWeight::Normal);
+        void SetFontSize(float size);
 
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override;

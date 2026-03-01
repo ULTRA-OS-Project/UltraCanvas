@@ -17,6 +17,7 @@
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasTextEditorHelpers.h"
 #include "UltraCanvasTextEditorDialogs.h"
+#include "UltraCanvasTextEditorConfig.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasBoxLayout.h"
 #include <memory>
@@ -48,11 +49,18 @@ namespace UltraCanvas {
         bool showLineNumbers = true;
         bool enableAutosave = true;
 
+        bool showRecentFiles = true;       // Show Recent Files submenu in File menu
+        int maxRecentFiles = 10;           // Max files shown in Recent Files submenu (configurable)
+
+
         // Editor settings
         std::string defaultLanguage = "Plain Text";
         bool darkTheme = false;
         bool wordWrap = false;
         std::string defaultEncoding = "UTF-8";
+
+        const std::vector<int> fontZoomPercents = {50,65,80,90,100,110,125,150,175,200};
+        int fontZoomPercent = 100;
         float defaultFontSize = 10.0;
 
         // Autosave settings
@@ -140,34 +148,6 @@ namespace UltraCanvas {
     };
 
 /**
- * @brief Manages a persistent list of recently opened files
- */
-    class RecentFilesManager {
-    private:
-        std::vector<std::string> recentFiles;
-        int maxFiles;
-        std::string storageDirectory;
-
-    public:
-        RecentFilesManager(int maxRecentFiles = 10)
-            : maxFiles(maxRecentFiles) {}
-
-        void SetStorageDirectory(const std::string& dir) { storageDirectory = dir; }
-        std::string GetStorageDirectory() const;
-        std::string GetFilePath() const;
-
-        void AddFile(const std::string& filePath);
-        void RemoveFile(const std::string& filePath);
-        void Clear();
-
-        const std::vector<std::string>& GetRecentFiles() const { return recentFiles; }
-        int GetCount() const { return static_cast<int>(recentFiles.size()); }
-
-        bool Load();
-        bool Save() const;
-    };
-
-/**
  * @brief Complete multi-file text editor application component
  *
  * This component provides a full-featured text editor with:
@@ -193,8 +173,6 @@ namespace UltraCanvas {
         // ===== CONFIGURATION =====
         TextEditorConfig config;
         bool isDarkTheme;
-        const std::vector<int> fontZoomLevels;
-        int fontZoomLevelIdx;
 
         // ===== UI COMPONENTS =====
         std::shared_ptr<UltraCanvasMenu> menuBar;
@@ -224,7 +202,26 @@ namespace UltraCanvas {
         bool hasCheckedForBackups;
 
         // ===== RECENT FILES =====
-        RecentFilesManager recentFilesManager;
+        std::vector<std::string> recentFiles;      // Ordered list (newest first)
+        int recentFilesMenuIndex = -1;             // Index of "Recent Files" item in File menu
+        TextEditorConfigFile configFile;           // Persistent config file manager
+
+        // Recent files methods
+        void AddToRecentFiles(const std::string& filePath);
+        void RemoveFromRecentFiles(const std::string& filePath);
+        void RebuildRecentFilesSubmenu();
+        void LoadRecentFiles();
+        void SaveRecentFiles();
+
+        // Config file methods
+        void LoadConfig();
+        void SaveConfig();
+
+        // Shared search history across Find/Replace dialog instances
+        std::vector<std::string> searchHistory;
+        std::vector<std::string> replaceHistory;
+
+//        RecentFilesManager recentFilesManager;
         std::string lastOpenedDirectory;
 
         // ===== LAYOUT =====
@@ -270,10 +267,6 @@ namespace UltraCanvas {
         void AutosaveDocument(int docIndex);
         void CheckForCrashRecovery();
         void OfferRecoveryForBackup(const std::string& backupPath);
-
-        // ===== RECENT FILES =====
-        void UpdateRecentFilesMenu();
-        void OpenRecentFile(const std::string& filePath);
 
         // ===== MENU HANDLERS =====
         void OnFileNew();
@@ -326,6 +319,18 @@ namespace UltraCanvas {
         // Layout
         void UpdateChildLayout();
 
+        // ===== DRAG-AND-DROP STATE =====
+        bool isDragOverActive = false;        // true while external drag is hovering
+        int dragOverX = 0;                    // Current drag position X
+        int dragOverY = 0;                    // Current drag position Y
+
+        // ===== DRAG-AND-DROP METHODS =====
+        void HandleDragEnter(const UCEvent& event);
+        void HandleDragOver(const UCEvent& event);
+        void HandleDragLeave(const UCEvent& event);
+        void HandleFileDrop(const UCEvent& event);
+        void RenderDropOverlay(IRenderContext* ctx);
+        
     public:
         // ===== CONSTRUCTOR =====
         UltraCanvasTextEditor(const std::string& identifier, long id,
@@ -484,29 +489,29 @@ namespace UltraCanvas {
          * @param size Font size in points
          */
         void SetDefaultFontSize(float fontSize);
-        void SetFontZoomLevel(int level);
+        void SetFontZoomPercent(int percent);
 
         /**
          * @brief Get current font size
          * @return Font size in points
          */
-        float GetFontSize() const { return config.defaultFontSize * fontZoomLevels[fontZoomLevelIdx] / 100.0; }
-        float GetFontZoomLevel() const { return fontZoomLevelIdx; }
+        float GetFontSize() const { return config.defaultFontSize * config.fontZoomPercent / 100.0; }
+        int GetFontZoomPercent() const { return config.fontZoomPercent; }
 
         /**
          * @brief Increase font size
          */
-        void IncreaseFontZoomLevel();
+        void IncreaseFontZoom();
 
         /**
          * @brief Decrease font size
          */
-        void DecreaseFontZoomLevel();
+        void DecreaseFontZoom();
 
         /**
          * @brief Reset font size to default
          */
-        void ResetFontZoomLevel();
+        void ResetFontZoom();
 
         // ===== AUTOSAVE =====
 
@@ -572,6 +577,10 @@ namespace UltraCanvas {
          * @param tabIndex Tab index that was closed
          */
         std::function<void(int tabIndex)> onTabClosed;
+
+        /// Callback when files are dropped onto the editor
+        /// @param filePaths Vector of dropped file paths
+        std::function<void(const std::vector<std::string>& filePaths)> onFileDrop;
     };
 
 // ===== FACTORY FUNCTIONS =====

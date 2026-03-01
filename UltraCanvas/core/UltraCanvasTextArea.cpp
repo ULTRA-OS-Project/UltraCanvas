@@ -70,7 +70,6 @@ namespace UltraCanvas {
         style.borderWidth = 1;
         style.padding = 5;
         style.showLineNumbers = false;
-        style.lineNumbersWidth = 50;
         style.highlightSyntax = false;
 
         // Syntax highlighting colors
@@ -1231,35 +1230,32 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::DrawLineNumbers(IRenderContext* context) {
         auto bounds = GetBounds();
 
+        // Draw gutter background using computed width
         context->SetFillPaint(style.lineNumbersBackgroundColor);
-        context->FillRectangle(bounds.x, bounds.y, style.lineNumbersWidth, bounds.height);
+        context->FillRectangle(bounds.x, bounds.y, computedLineNumbersWidth, bounds.height);
 
+        // Draw separator line at the right edge of the gutter
         context->SetStrokePaint(style.borderColor);
         context->SetStrokeWidth(1);
-        context->DrawLine(bounds.x + style.lineNumbersWidth, bounds.y,
-                          bounds.x + style.lineNumbersWidth, bounds.y + bounds.height);
+        context->DrawLine(bounds.x + computedLineNumbersWidth, bounds.y,
+                          bounds.x + computedLineNumbersWidth, bounds.y + bounds.height);
 
         context->SetFontStyle(style.fontStyle);
 
-        Rect2Di lineNumberClipRect = {bounds.x, visibleTextArea.y, style.lineNumbersWidth, visibleTextArea.height};
+        // Clip to gutter area
+        Rect2Di lineNumberClipRect = {bounds.x, visibleTextArea.y,
+                                      computedLineNumbersWidth, visibleTextArea.height};
         context->PushState();
         context->ClipRect(lineNumberClipRect);
 
-        int dlCount = GetDisplayLineCount();
-        int startDL = std::max(0, firstVisibleLine - 1);
-        int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
-        int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
+        int startLine = std::max(0, firstVisibleLine - 1);
+        int endLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
+        int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
 
-        for (int di = startDL; di < endDL; di++) {
-            const auto& dl = displayLines[di];
-            int numY = baseY + (di - startDL) * computedLineHeight;
-            if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
-                numY += markdownLineYOffsets[di];
+        for (int i = startLine; i < endLine; i++) {
+            int numY = baseY + (i - startLine) * computedLineHeight;
 
-            // Only show line number on the first display line of each logical line
-            if (dl.startGrapheme != 0) continue;
-
-            if (dl.logicalLine == currentLineIndex) {
+            if (i == currentLineIndex) {
                 context->SetTextPaint(style.fontColor);
                 context->SetFontWeight(FontWeight::Bold);
             } else {
@@ -1267,7 +1263,8 @@ namespace UltraCanvas {
                 context->SetFontWeight(FontWeight::Normal);
             }
             context->SetTextAlignment(TextAlignment::Right);
-            context->DrawTextInRect(std::to_string(dl.logicalLine + 1), bounds.x, numY, style.lineNumbersWidth, computedLineHeight);
+            context->DrawTextInRect(std::to_string(i + 1),
+                                    bounds.x, numY, computedLineNumbersWidth, computedLineHeight);
         }
         context->PopState();
     }
@@ -1333,8 +1330,8 @@ namespace UltraCanvas {
         if (highlightCurrentLine) {
             int visStartDL = firstVisibleLine - 1;
             int visEndDL = firstVisibleLine + maxVisibleLines;
-            int highlightX = style.showLineNumbers ? bounds.x + style.lineNumbersWidth : bounds.x;
-            int highlightW = bounds.width - (style.showLineNumbers ? style.lineNumbersWidth : 0);
+            int highlightX = style.showLineNumbers ? bounds.x + computedLineNumbersWidth : bounds.x;
+            int highlightW = bounds.width - (style.showLineNumbers ? computedLineNumbersWidth : 0);
 
             context->PushState();
             context->ClipRect(visibleTextArea);
@@ -1346,7 +1343,9 @@ namespace UltraCanvas {
                     int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
                     if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
                         lineY += markdownLineYOffsets[di];
-                    context->FillRectangle(highlightX, lineY, highlightW, computedLineHeight);
+                    context->FillRectangle(highlightX, lineY,
+                            bounds.width - (style.showLineNumbers ? computedLineNumbersWidth : 0),
+                            computedLineHeight);
                 }
             }
             context->PopState();
@@ -1988,8 +1987,9 @@ namespace UltraCanvas {
         visibleTextArea.height -= style.padding * 2;
         
         if (style.showLineNumbers) {
-            visibleTextArea.x += (style.lineNumbersWidth + 5);
-            visibleTextArea.width -= (style.lineNumbersWidth + 5);
+            computedLineNumbersWidth = CalculateLineNumbersWidth(ctx);
+            visibleTextArea.x += (computedLineNumbersWidth + 5);
+            visibleTextArea.width -= (computedLineNumbersWidth + 5);
         }
 
         ctx->PushState();
@@ -2732,6 +2732,40 @@ namespace UltraCanvas {
         
         InvalidateGraphemeCache();
         RebuildText();
+    }
+
+    int UltraCanvasTextArea::CalculateLineNumbersWidth(IRenderContext* ctx) {
+        if (!style.showLineNumbers) return 0;
+
+        // Calculate the maximum line number we need to display:
+        // current line count + 50 lines of headroom so the gutter doesn't
+        // constantly resize as the user types near the threshold
+        int maxLineNumber = static_cast<int>(lines.size()) + 50;
+
+        // Count digits needed
+        int digits = 1;
+        int temp = maxLineNumber;
+        while (temp >= 10) {
+            digits++;
+            temp /= 10;
+        }
+
+        // Minimum 2 digits (lines 1-99 should not produce a tiny gutter)
+        digits = std::max(digits, 2);
+
+        // Measure the width of the widest digit string at current font
+        // Use '9' repeated since it's typically the widest digit
+        std::string maxNumberStr(digits, '9');
+
+        ctx->PushState();
+        ctx->SetFontStyle(style.fontStyle);
+        ctx->SetFontWeight(FontWeight::Normal);
+        int textWidth = ctx->GetTextLineWidth(maxNumberStr);
+        ctx->PopState();
+
+        // Add padding: left margin + right margin before the separator line
+        int padding = 12; // 4px left + 8px right
+        return textWidth + padding;
     }
 
     void UltraCanvasTextArea::AutoIndentLine(int lineIndex) {

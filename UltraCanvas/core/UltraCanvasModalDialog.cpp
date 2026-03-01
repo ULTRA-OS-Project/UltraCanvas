@@ -1515,30 +1515,30 @@ namespace UltraCanvas {
         }
     }
 
-//    std::vector<std::string> UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(const std::string& title,
-//                                                                                   const std::vector<FileFilter>& filters,
-//                                                                                   const std::string& initialDir) {
-//        if (!enabled) return {};
-//
-//        FileDialogConfig config;
-//        config.title = title.empty() ? "Open Files" : title;
-//        config.dialogType = FileDialogType::OpenMultiple;
-//        config.allowMultipleSelection = true;
-//        config.initialDirectory = initialDir;
-//        if (!filters.empty()) {
-//            config.filters = filters;
-//        }
-//
-//        auto dialog = CreateFileDialog(config);
-//        DialogResult result = ShowCustomDialog(dialog);
-//
-//        if (result == DialogResult::OK) {
-//            auto fileDialog = std::dynamic_pointer_cast<UltraCanvasFileDialog>(dialog);
-//            return fileDialog ? fileDialog->GetSelectedFilePaths() : std::vector<std::string>();
-//        }
-//
-//        return {};
-//    }
+    void UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(
+            const std::string& title,
+            const std::vector<FileFilter>& filters,
+            const std::string& initialDir,
+            std::function<void(DialogResult, const std::vector<std::string>&)> onResult,
+            UltraCanvasWindowBase* parent) {
+
+        if (!enabled) {
+            if (onResult) onResult(DialogResult::Cancel, {});
+            return;
+        }
+
+        // Use native multi-file dialog for best user experience
+        NativeWindowHandle parentHandle = parent ?
+                                          reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
+
+        std::vector<std::string> results = UltraCanvasNativeDialogs::OpenMultipleFiles(
+                title.empty() ? "Open Files" : title,
+                filters, initialDir, parentHandle);
+
+        if (onResult) {
+            onResult(results.empty() ? DialogResult::Cancel : DialogResult::OK, results);
+        }
+    }
 
     void UltraCanvasDialogManager::ShowSelectFolderDialog(const std::string& title,
                                                           const std::string& initialDir,

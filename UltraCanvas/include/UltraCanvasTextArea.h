@@ -65,7 +65,6 @@ namespace UltraCanvas {
 
         // Line numbers
         bool showLineNumbers;
-        int lineNumbersWidth;
         Color lineNumbersColor;
         Color lineNumbersBackgroundColor;
 
@@ -323,6 +322,7 @@ namespace UltraCanvas {
         std::pair<int, int> GetLineColumnFromPoint(int x, int y) const;
         void CalculateVisibleArea();
         void RecalculateDisplayLines();
+        int CalculateLineNumbersWidth(IRenderContext* ctx);
         int GetDisplayLineForCursor(int logicalLine, int graphemeCol) const;
         int GetDisplayLineCount() const;
         void RebuildText();
@@ -365,6 +365,7 @@ namespace UltraCanvas {
         int selectionStartGrapheme;            // Selection start in graphemes (-1 if no selection)
         int selectionEndGrapheme;              // Selection end in graphemes (-1 if no selection)
         int computedLineHeight = 12;
+        int computedLineNumbersWidth = 40;
 
         // Scrolling
         int horizontalScrollOffset;

@@ -123,6 +123,12 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasCheckbox::SetFontSize(float size) {
+        visualStyle.fontSize = size;
+        layoutDirty = true;
+        RequestRedraw();
+    }
+
 // ===== COLOR HELPERS =====
     Color UltraCanvasCheckbox::GetCurrentBoxColor() const {
         switch (GetPrimaryState()) {

@@ -536,6 +536,13 @@ namespace UltraCanvas {
                                            std::function<void(DialogResult, const std::string&)> onResult,
                                            UltraCanvasWindowBase* parent = nullptr);
 
+        static void ShowOpenMultipleFilesDialog(
+             const std::string& title,
+             const std::vector<FileFilter>& filters,
+             const std::string& initialDir,
+             std::function<void(DialogResult, const std::vector<std::string>&)> onResult,
+             UltraCanvasWindowBase* parent = nullptr);
+
         // ===== CUSTOM DIALOGS =====
         static std::shared_ptr<UltraCanvasModalDialog> CreateDialog(const DialogConfig& config);
         static void ShowDialog(std::shared_ptr<UltraCanvasModalDialog> dialog,

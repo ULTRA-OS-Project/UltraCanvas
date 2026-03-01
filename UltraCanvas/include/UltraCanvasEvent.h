@@ -9,6 +9,8 @@
 
 #include <chrono>
 #include <string>
+#include <vector>
+
 namespace UltraCanvas {
     class UltraCanvasUIElement;
 
@@ -56,6 +58,7 @@ namespace UltraCanvas {
         // Drag and Drop
         DragStart,
         DragEnter,
+        DragLeave,
         DragOver,
         Drop,
 
@@ -317,6 +320,7 @@ namespace UltraCanvas {
         // Drag and Drop
         std::string dragData;                // Dragged data (text, file paths, etc.)
         std::string dragMimeType;            // MIME type of dragged data
+        std::vector<std::string> droppedFiles; // Multiple file paths for file drop
 
         // Window specific
         int width = 0, height = 0;           // For resize events

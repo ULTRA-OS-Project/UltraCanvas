@@ -1,16 +1,14 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
-// Version: 2.3.0
-// Last Modified: 2026-02-19
+// Version: 2.3.3
+// Last Modified: 2026-02-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUtils.h"
-#include "UltraCanvasUtilsUtf8.h"
-#include "UltraCanvasImage.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <algorithm>
 #include <sstream>
@@ -19,11 +17,6 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
-#include <filesystem>
-#ifdef __linux__
-#include <unistd.h>
-#include <climits>
-#endif
 
 namespace UltraCanvas {
 
@@ -42,10 +35,15 @@ struct MarkdownHybridStyle {
     std::array<float, 6> headerSizeMultipliers = {2.0f, 1.5f, 1.3f, 1.2f, 1.1f, 1.0f};
 
     // Code styling
-    Color codeTextColor = Color(0x4, 0xaf, 0xaf);
+    Color codeTextColor = Color(200, 50, 50);
     Color codeBackgroundColor = Color(245, 245, 245);
     Color codeBlockBackgroundColor = Color(248, 248, 248);
     Color codeBlockBorderColor = Color(220, 220, 220);
+    Color codeBlockTextColor = Color(50, 50, 50);       // Default text color inside code blocks
+    Color codeBlockCommentColor = Color(106, 153, 85);   // Green for comments in code blocks
+    Color codeBlockKeywordColor = Color(0, 0, 200);      // Blue for keywords in code blocks
+    Color codeBlockStringColor = Color(163, 21, 21);     // Red for strings in code blocks
+    Color codeBlockNumberColor = Color(9, 134, 88);      // Green for numbers in code blocks
     std::string codeFont = "Courier New";
 
     // Link styling
@@ -109,6 +107,11 @@ struct MarkdownHybridStyle {
         s.codeBackgroundColor = Color(50, 50, 50);
         s.codeBlockBackgroundColor = Color(40, 40, 40);
         s.codeBlockBorderColor = Color(80, 80, 80);
+        s.codeBlockTextColor = Color(210, 210, 210);
+        s.codeBlockCommentColor = Color(106, 153, 85);
+        s.codeBlockKeywordColor = Color(86, 156, 214);
+        s.codeBlockStringColor = Color(206, 145, 120);
+        s.codeBlockNumberColor = Color(181, 206, 168);
         s.linkColor = Color(100, 180, 255);
         s.linkHoverColor = Color(150, 200, 255);
         s.quoteBarColor = Color(100, 100, 100);
@@ -129,6 +132,7 @@ struct MarkdownHybridStyle {
         return s;
     }
 };
+
 
 // ===== MARKDOWN INLINE ELEMENT =====
 // Parsed inline element with formatting state
@@ -484,62 +488,6 @@ struct TableParseResult {
 
 // ===== MARKDOWN INLINE RENDERER =====
 // Renders markdown inline formatting directly in the text area
-
-// ===== MARKDOWN IMAGE HELPERS =====
-
-static std::string ResolveMarkdownImagePath(const std::string& imagePath,
-                                             const std::string& documentFilePath) {
-    if (imagePath.empty()) return "";
-
-    // Skip URLs
-    if (imagePath.find("http://") == 0 || imagePath.find("https://") == 0)
-        return "";
-
-    // Absolute path — check if readable
-    std::filesystem::path p(imagePath);
-    if (p.is_absolute()) {
-        if (std::filesystem::exists(p)) return imagePath;
-        return "";
-    }
-
-    // Relative to document directory
-    if (!documentFilePath.empty()) {
-        auto docDir = std::filesystem::path(documentFilePath).parent_path();
-        auto candidate = docDir / imagePath;
-        if (std::filesystem::exists(candidate))
-            return std::filesystem::canonical(candidate).string();
-    }
-
-    // Relative to executable directory
-#ifdef __linux__
-    char exePath[PATH_MAX] = {};
-    ssize_t len = readlink("/proc/self/exe", exePath, sizeof(exePath) - 1);
-    if (len > 0) {
-        exePath[len] = '\0';
-        auto exeDir = std::filesystem::path(exePath).parent_path();
-        auto candidate = exeDir / imagePath;
-        if (std::filesystem::exists(candidate))
-            return std::filesystem::canonical(candidate).string();
-    }
-#endif
-
-    return "";
-}
-
-static bool IsStandaloneImageLine(const std::string& trimmedLine,
-                                   std::string& outAlt, std::string& outUrl) {
-    if (trimmedLine.size() < 5 || trimmedLine[0] != '!' || trimmedLine[1] != '[')
-        return false;
-    auto altEnd = trimmedLine.find(']', 2);
-    if (altEnd == std::string::npos || altEnd + 1 >= trimmedLine.size() || trimmedLine[altEnd + 1] != '(')
-        return false;
-    auto urlEnd = trimmedLine.find(')', altEnd + 2);
-    if (urlEnd == std::string::npos || urlEnd + 1 != trimmedLine.size())
-        return false;
-    outAlt = trimmedLine.substr(2, altEnd - 2);
-    outUrl = trimmedLine.substr(altEnd + 2, urlEnd - altEnd - 2);
-    return true;
-}
 
 struct MarkdownInlineRenderer {
 
@@ -912,8 +860,7 @@ struct MarkdownInlineRenderer {
                                   int x, int y, int lineHeight,
                                   const TextAreaStyle& style,
                                   const MarkdownHybridStyle& mdStyle,
-                                  std::vector<MarkdownHitRect>* hitRects = nullptr,
-                                  const std::string& documentFilePath = "") {
+                                  std::vector<MarkdownHitRect>* hitRects = nullptr) {
 
         std::vector<MarkdownInlineElement> elements = ParseInlineMarkdown(line);
         int currentX = x;
@@ -926,34 +873,25 @@ struct MarkdownInlineRenderer {
                 int imgSize = lineHeight - 2;
                 int imgY = y + 1;
 
-                // Try to load and display actual local image as thumbnail
-                bool drewActualImage = false;
-                std::string resolved = ResolveMarkdownImagePath(elem.url, documentFilePath);
-                if (!resolved.empty()) {
-                    auto img = UCImage::Get(resolved);
-                    if (img && img->IsValid()) {
-                        ctx->DrawImage(*img, currentX, imgY, imgSize, imgSize, ImageFitMode::Contain);
-                        drewActualImage = true;
-                    }
-                }
+                // Draw image placeholder/thumbnail
+                ctx->SetFillPaint(mdStyle.imagePlaceholderBackground);
+                ctx->FillRectangle(currentX, imgY, imgSize, imgSize);
+                ctx->SetStrokePaint(mdStyle.imagePlaceholderBorderColor);
+                ctx->SetStrokeWidth(1.0f);
+                ctx->DrawRectangle(currentX, imgY, imgSize, imgSize);
 
-                if (!drewActualImage) {
-                    // Fallback: draw placeholder box with mountain icon
-                    ctx->SetFillPaint(mdStyle.imagePlaceholderBackground);
-                    ctx->FillRectangle(currentX, imgY, imgSize, imgSize);
-                    ctx->SetStrokePaint(mdStyle.imagePlaceholderBorderColor);
-                    ctx->SetStrokeWidth(1.0f);
-                    ctx->DrawRectangle(currentX, imgY, imgSize, imgSize);
-
-                    int iconCenterX = currentX + imgSize / 2;
-                    ctx->SetFillPaint(mdStyle.imagePlaceholderTextColor);
-                    ctx->ClearPath();
-                    ctx->MoveTo(currentX + 2, imgY + imgSize - 2);
-                    ctx->LineTo(iconCenterX, imgY + 3);
-                    ctx->LineTo(currentX + imgSize - 2, imgY + imgSize - 2);
-                    ctx->ClosePath();
-                    ctx->Fill();
-                }
+                // Draw small icon indicator in center
+                int iconCenterX = currentX + imgSize / 2;
+                int iconCenterY = imgY + imgSize / 2;
+                int iconR = std::max(2, imgSize / 6);
+                ctx->SetFillPaint(mdStyle.imagePlaceholderTextColor);
+                // Mountain icon: small triangle
+                ctx->ClearPath();
+                ctx->MoveTo(currentX + 2, imgY + imgSize - 2);
+                ctx->LineTo(iconCenterX, imgY + 3);
+                ctx->LineTo(currentX + imgSize - 2, imgY + imgSize - 2);
+                ctx->ClosePath();
+                ctx->Fill();
 
                 // Store hit rect for click interaction
                 if (hitRects) {
@@ -1166,8 +1104,7 @@ struct MarkdownInlineRenderer {
                                      int x, int y, int lineHeight,
                                      const TextAreaStyle& style,
                                      const MarkdownHybridStyle& mdStyle,
-                                     std::vector<MarkdownHitRect>* hitRects = nullptr,
-                                     const std::string& documentFilePath = "") {
+                                     std::vector<MarkdownHitRect>* hitRects = nullptr) {
         // Detect header level
         int level = 0;
         size_t pos = 0;
@@ -1177,7 +1114,7 @@ struct MarkdownInlineRenderer {
         }
 
         if (level == 0 || level > 6) {
-            RenderMarkdownLine(ctx, line, x, y, lineHeight, style, mdStyle, hitRects, documentFilePath);
+            RenderMarkdownLine(ctx, line, x, y, lineHeight, style, mdStyle, hitRects);
             return;
         }
 
@@ -1205,14 +1142,14 @@ struct MarkdownInlineRenderer {
         ctx->DrawText(headerText, x, y);
 
         // Draw underline for H1 and H2 (visual distinction)
-        // if (level <= 2) {
-        //     int underlineY = y + lineHeight - 2;
-        //     ctx->SetStrokePaint(mdStyle.horizontalRuleColor);
-        //     ctx->SetStrokeWidth(level == 1 ? 2.0f : 1.0f);
-        //     // We don't know the full width here, so use text width + some padding
-        //     int textW = ctx->GetTextLineWidth(headerText);
-        //     ctx->DrawLine(x, underlineY, x + textW + 20, underlineY);
-        // }
+        if (level <= 2) {
+            int underlineY = y + lineHeight - 2;
+            ctx->SetStrokePaint(mdStyle.horizontalRuleColor);
+            ctx->SetStrokeWidth(level == 1 ? 2.0f : 1.0f);
+            // We don't know the full width here, so use text width + some padding
+            int textW = ctx->GetTextLineWidth(headerText);
+            ctx->DrawLine(x, underlineY, x + textW + 20, underlineY);
+        }
 
         // Restore font
         ctx->SetFontSize(baseFontSize);
@@ -1227,8 +1164,7 @@ struct MarkdownInlineRenderer {
                                        int x, int y, int lineHeight,
                                        const TextAreaStyle& style,
                                        const MarkdownHybridStyle& mdStyle,
-                                       std::vector<MarkdownHitRect>* hitRects = nullptr,
-                                       const std::string& documentFilePath = "") {
+                                       std::vector<MarkdownHitRect>* hitRects = nullptr) {
         size_t pos = 0;
 
         // Count leading whitespace for nesting depth
@@ -1346,19 +1282,9 @@ struct MarkdownInlineRenderer {
         }
 
         // --- Draw item text with inline formatting ---
-        if (isTaskChecked) {
-            // Render checked items with strikethrough styling
-            ctx->SetTextPaint(mdStyle.strikethroughColor);
-            ctx->SetFontWeight(FontWeight::Normal);
-            ctx->DrawText(itemText, bulletX, y);
-            int textWidth = ctx->GetTextLineWidth(itemText);
-            int strikeY = y + lineHeight / 2;
-            ctx->SetStrokePaint(mdStyle.strikethroughColor);
-            ctx->SetStrokeWidth(1.0f);
-            ctx->DrawLine(bulletX, strikeY, bulletX + textWidth, strikeY);
-        } else {
-            RenderMarkdownLine(ctx, itemText, bulletX, y, lineHeight, style, mdStyle, hitRects, documentFilePath);
-        }
+        // Checked and unchecked task items both render with normal inline formatting
+        // The checkbox itself indicates completion — no strikethrough needed
+        RenderMarkdownLine(ctx, itemText, bulletX, y, lineHeight, style, mdStyle, hitRects);
     }
 
     // ---------------------------------------------------------------
@@ -1369,8 +1295,7 @@ struct MarkdownInlineRenderer {
                                          int x, int y, int lineHeight, int width,
                                          const TextAreaStyle& style,
                                          const MarkdownHybridStyle& mdStyle,
-                                         std::vector<MarkdownHitRect>* hitRects = nullptr,
-                                         const std::string& documentFilePath = "") {
+                                         std::vector<MarkdownHitRect>* hitRects = nullptr) {
         // Count nesting depth (>>)
         size_t pos = 0;
         int depth = 0;
@@ -1401,7 +1326,7 @@ struct MarkdownInlineRenderer {
         int textX = quoteX + mdStyle.quoteIndent;
         ctx->SetFontSlant(FontSlant::Italic);
         ctx->SetTextPaint(mdStyle.quoteTextColor);
-        RenderMarkdownLine(ctx, quoteText, textX, y, lineHeight, style, mdStyle, hitRects, documentFilePath);
+        RenderMarkdownLine(ctx, quoteText, textX, y, lineHeight, style, mdStyle, hitRects);
         ctx->SetFontSlant(FontSlant::Normal);
     }
 
@@ -1425,7 +1350,7 @@ struct MarkdownInlineRenderer {
         ctx->SetFontFamily(mdStyle.codeFont);
         ctx->SetFontWeight(FontWeight::Normal);
         ctx->SetFontSlant(FontSlant::Normal);
-        ctx->SetTextPaint(mdStyle.codeTextColor);
+        ctx->SetTextPaint(mdStyle.codeBlockTextColor);
         ctx->DrawText(line, x + 4, y);
 
         // Restore font
@@ -1459,15 +1384,48 @@ struct MarkdownInlineRenderer {
 
         if (tokenizer) {
             // Tokenize the line and render each token with its color
+            // IMPORTANT: We use code-block-specific colors instead of the TextArea
+            // theme colors, because the TextArea theme may be dark-on-light or
+            // light-on-dark and the code block background is always a specific color
             auto tokens = tokenizer->TokenizeLine(line);
             int tokenX = x + 4;
 
             for (const auto& token : tokens) {
-                TokenStyle ts = getStyleForType(token.type);
+                // Map token types to code-block-specific colors
+                Color tokenColor = mdStyle.codeBlockTextColor;
+                bool tokenBold = false;
 
-                ctx->SetFontWeight(ts.bold ? FontWeight::Bold : FontWeight::Normal);
-                ctx->SetFontSlant(ts.italic ? FontSlant::Italic : FontSlant::Normal);
-                ctx->SetTextPaint(ts.color);
+                switch (token.type) {
+                    case TokenType::Keyword:
+                    case TokenType::Preprocessor:
+                        tokenColor = mdStyle.codeBlockKeywordColor;
+                        tokenBold = true;
+                        break;
+                    case TokenType::String:
+                    case TokenType::Character:
+                        tokenColor = mdStyle.codeBlockStringColor;
+                        break;
+                    case TokenType::Comment:
+                        tokenColor = mdStyle.codeBlockCommentColor;
+                        break;
+                    case TokenType::Number:
+                        tokenColor = mdStyle.codeBlockNumberColor;
+                        break;
+                    case TokenType::Function:
+                    case TokenType::Type:
+                    case TokenType::Builtin:
+                        tokenColor = mdStyle.codeBlockKeywordColor;
+                        break;
+                    case TokenType::Operator:
+                        tokenColor = mdStyle.codeBlockTextColor;
+                        break;
+                    default:
+                        tokenColor = mdStyle.codeBlockTextColor;
+                        break;
+                }
+
+                ctx->SetFontWeight(tokenBold ? FontWeight::Bold : FontWeight::Normal);
+                ctx->SetTextPaint(tokenColor);
 
                 int tokenWidth = ctx->GetTextLineWidth(token.text);
                 ctx->DrawText(token.text, tokenX, y);
@@ -1475,7 +1433,7 @@ struct MarkdownInlineRenderer {
             }
         } else {
             // Fallback: render as plain monospace
-            ctx->SetTextPaint(mdStyle.codeTextColor);
+            ctx->SetTextPaint(mdStyle.codeBlockTextColor);
             ctx->DrawText(line, x + 4, y);
         }
 
@@ -1501,36 +1459,9 @@ struct MarkdownInlineRenderer {
         ctx->SetFillPaint(mdStyle.codeBlockBorderColor);
         ctx->FillRectangle(x - 4, y, 3, lineHeight);
 
-        // Extract language label if present (e.g., ```cpp or ~~~python)
-        std::string langLabel;
-        // Determine fence length (3 for ``` or ~~~)
-        size_t fenceLen = 0;
-        if (line.find("```") == 0) fenceLen = 3;
-        else if (line.find("~~~") == 0) fenceLen = 3;
-
-        if (fenceLen > 0 && line.length() > fenceLen) {
-            langLabel = line.substr(fenceLen);
-            // Trim whitespace
-            size_t start = langLabel.find_first_not_of(' ');
-            if (start != std::string::npos) {
-                langLabel = langLabel.substr(start);
-                size_t end = langLabel.find_last_not_of(' ');
-                if (end != std::string::npos) {
-                    langLabel = langLabel.substr(0, end + 1);
-                }
-            } else {
-                langLabel.clear();
-            }
-        }
-
-        if (!langLabel.empty()) {
-            ctx->SetFontFamily(mdStyle.codeFont);
-            ctx->SetFontWeight(FontWeight::Bold);
-            ctx->SetTextPaint(mdStyle.codeBlockBorderColor);
-            ctx->DrawText(langLabel, x + 4, y);
-            ctx->SetFontFamily(style.fontStyle.fontFamily);
-            ctx->SetFontWeight(FontWeight::Normal);
-        }
+        // Delimiter lines (``` or ~~~) are rendered as empty accent bars
+        // The language tag is internal metadata used for syntax highlighting
+        // and is NOT displayed as visible text
     }
 
     // ---------------------------------------------------------------
@@ -1625,8 +1556,7 @@ struct MarkdownInlineRenderer {
                                        int columnCount,
                                        const TextAreaStyle& style,
                                        const MarkdownHybridStyle& mdStyle,
-                                       std::vector<MarkdownHitRect>* hitRects = nullptr,
-                                       const std::string& documentFilePath = "") {
+                                       std::vector<MarkdownHitRect>* hitRects = nullptr) {
         auto parsed = ParseTableRow(line);
         if (!parsed.isValid) return;
 
@@ -1640,13 +1570,17 @@ struct MarkdownInlineRenderer {
             ctx->FillRectangle(x, y, availableWidth, lineHeight);
         }
 
-        // Draw top border line
+        // Draw top border line (for all rows)
         ctx->SetStrokePaint(mdStyle.tableBorderColor);
         ctx->SetStrokeWidth(1.0f);
         ctx->DrawLine(x, y, x + availableWidth, y);
 
         // Draw bottom border line
-        ctx->DrawLine(x, y + lineHeight, x + availableWidth, y + lineHeight);
+        // For header rows: DON'T draw bottom border — the separator line handles it
+        // For data rows: draw bottom border
+        if (!isHeaderRow) {
+            ctx->DrawLine(x, y + lineHeight, x + availableWidth, y + lineHeight);
+        }
 
         // Draw cells
         int cellX = x;
@@ -1683,7 +1617,7 @@ struct MarkdownInlineRenderer {
             }
 
             // Render cell content with inline markdown
-            RenderMarkdownLine(ctx, cellText, textX, y, lineHeight, style, mdStyle, hitRects, documentFilePath);
+            RenderMarkdownLine(ctx, cellText, textX, y, lineHeight, style, mdStyle, hitRects);
 
             cellX += cellWidth;
         }
@@ -1701,20 +1635,15 @@ struct MarkdownInlineRenderer {
                                              int x, int y, int lineHeight, int width,
                                              int columnCount,
                                              const MarkdownHybridStyle& mdStyle) {
-        int cellWidth = (columnCount > 0) ? width / columnCount : width;
+        // Option A: The separator source line (|---|---|) is rendered as a thin
+        // horizontal divider between header and data rows.
+        // It occupies its source line space but does NOT render as a full row
+        // with cell borders — just a single clean horizontal line.
 
-        // Draw thick separator line
         int separatorY = y + lineHeight / 2;
         ctx->SetStrokePaint(mdStyle.tableBorderColor);
         ctx->SetStrokeWidth(2.0f);
         ctx->DrawLine(x, separatorY, x + width, separatorY);
-
-        // Draw vertical lines at column boundaries
-        ctx->SetStrokeWidth(1.0f);
-        for (int col = 0; col <= columnCount; col++) {
-            int colX = x + col * cellWidth;
-            ctx->DrawLine(colX, y, colX, y + lineHeight);
-        }
     }
 };
 
@@ -1768,10 +1697,9 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     // Get current line index where cursor is located
     auto [cursorLine, cursorCol] = GetLineColumnFromPosition(cursorGraphemePosition);
 
-    // Calculate visible display lines
-    int dlCount = GetDisplayLineCount();
-    int startDL = std::max(0, firstVisibleLine - 1);
-    int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
+    // Calculate visible lines
+    int startLine = std::max(0, firstVisibleLine - 1);
+    int endLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
 
     // --- Pre-scan: build code block state map for entire document ---
     // Supports both ``` (backtick) and ~~~ (tilde) fenced code blocks
@@ -1923,177 +1851,41 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         }
     }
 
-    // --- Pre-scan: detect standalone image lines and resolve local paths ---
-    struct ImageLineInfo {
-        std::string resolvedPath;
-        std::string altText;
-        int renderWidth = 0;
-        int renderHeight = 0;
-        int extraHeight = 0; // extra pixels beyond computedLineHeight
-    };
-    std::unordered_map<int, ImageLineInfo> imageLines;
-
-    {
-        int availableWidth = visibleTextArea.width - 20; // some padding
-        const int maxImageHeight = 300;
-        const int imagePadding = 8; // vertical padding around image
-
-        for (size_t i = 0; i < lines.size(); i++) {
-            if (isInsideCodeBlock[i]) continue;
-            std::string trimmed = TrimWhitespace(lines[i]);
-            std::string alt, url;
-            if (!IsStandaloneImageLine(trimmed, alt, url)) continue;
-
-            std::string resolved = ResolveMarkdownImagePath(url, documentFilePath);
-            if (resolved.empty()) continue;
-
-            auto img = UCImage::Get(resolved);
-            if (!img || !img->IsValid()) continue;
-
-            int imgW = img->GetWidth();
-            int imgH = img->GetHeight();
-            if (imgW <= 0 || imgH <= 0) continue;
-
-            float aspect = img->GetAspectRatio();
-            int renderW = std::min(imgW, availableWidth);
-            int renderH = static_cast<int>(renderW / aspect);
-
-            if (renderH > maxImageHeight) {
-                renderH = maxImageHeight;
-                renderW = static_cast<int>(renderH * aspect);
-            }
-
-            int totalHeight = renderH + imagePadding;
-            int extra = std::max(0, totalHeight - computedLineHeight);
-
-            ImageLineInfo info;
-            info.resolvedPath = resolved;
-            info.altText = alt;
-            info.renderWidth = renderW;
-            info.renderHeight = renderH;
-            info.extraHeight = extra;
-            imageLines[static_cast<int>(i)] = std::move(info);
-        }
-    }
-
-    // --- Build per-display-line Y offset vector for use by all Draw methods ---
-    markdownLineYOffsets.assign(dlCount, 0);
-    {
-        int cumOffset = 0;
-        for (int di = 0; di < dlCount; di++) {
-            markdownLineYOffsets[di] = cumOffset;
-            const auto& dl = displayLines[di];
-            if (dl.startGrapheme == 0 && dl.logicalLine != cursorLine) {
-                auto imgIt = imageLines.find(dl.logicalLine);
-                if (imgIt != imageLines.end()) {
-                    cumOffset += imgIt->second.extraHeight;
-                }
-            }
-        }
-        // Extend endDL to account for content pushed down by images
-        if (cumOffset > 0) {
-            int extraLines = cumOffset / computedLineHeight + 2;
-            endDL = std::min(dlCount, endDL + extraLines);
-        }
-    }
-
     // --- Markdown hybrid style ---
     MarkdownHybridStyle mdStyle = MarkdownHybridStyle::Default();
 
     // Clear previous hit rects
     markdownHitRects.clear();
 
-    int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
+    int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
 
-    // Cache tokenized cursor line to avoid re-tokenizing for wrapped segments
-    int lastTokenizedLogicalLine = -1;
-    std::vector<SyntaxTokenizer::Token> cachedTokens;
-
-    for (int di = startDL; di < endDL; di++) {
-        const auto& dl = displayLines[di];
-        int i = dl.logicalLine; // logical line index for pre-scan lookups
+    for (int i = startLine; i < endLine; i++) {
         const std::string& line = lines[i];
-        int textY = baseY + (di - startDL) * computedLineHeight + markdownLineYOffsets[di];
-        int x = visibleTextArea.x;
-        if (!wordWrap) x -= horizontalScrollOffset;
-
-        // --- STANDALONE BLOCK IMAGE ---
-        // Render actual image for lines that are purely ![alt](path) with a resolved local file
-        if (dl.startGrapheme == 0 && i != cursorLine) {
-            auto imgIt = imageLines.find(i);
-            if (imgIt != imageLines.end()) {
-                const auto& imgInfo = imgIt->second;
-
-                // Draw the image centered horizontally
-                int imgX = x + (visibleTextArea.width - imgInfo.renderWidth) / 2;
-                int imgY = textY + 2;
-
-                context->DrawImage(imgInfo.resolvedPath, imgX, imgY,
-                                   imgInfo.renderWidth, imgInfo.renderHeight,
-                                   ImageFitMode::Contain);
-
-                // Store hit rect for click interaction
-                MarkdownHitRect hr;
-                hr.bounds = {imgX, imgY, imgInfo.renderWidth, imgInfo.renderHeight};
-                hr.url = imgInfo.resolvedPath;
-                hr.altText = imgInfo.altText;
-                hr.isImage = true;
-                markdownHitRects.push_back(hr);
-
-                continue;
-            }
-        }
+        int textY = baseY + (i - startLine) * computedLineHeight;
+        int x = visibleTextArea.x - horizontalScrollOffset;
 
         // --- CURRENT LINE: Show raw markdown with syntax highlighting ---
         if (i == cursorLine) {
-            // Tokenize logical line (cache for wrapped segments)
-            if (i != lastTokenizedLogicalLine) {
-                cachedTokens = syntaxTokenizer->TokenizeLine(line);
-                lastTokenizedLogicalLine = i;
-            }
+            auto tokens = syntaxTokenizer->TokenizeLine(line);
 
-            // Walk tokens, clip to display line's grapheme range
-            int tokenStartGrapheme = 0;
-            for (const auto& token : cachedTokens) {
-                int tokenLen = static_cast<int>(utf8_length(token.text));
-                int tokenEndGrapheme = tokenStartGrapheme + tokenLen;
+            for (const auto& token : tokens) {
+                context->SetFontWeight(GetStyleForTokenType(token.type).bold ?
+                                       FontWeight::Bold : FontWeight::Normal);
+                int tokenWidth = context->GetTextLineWidth(token.text);
 
-                int overlapStart = std::max(tokenStartGrapheme, dl.startGrapheme);
-                int overlapEnd = std::min(tokenEndGrapheme, dl.endGrapheme);
-
-                if (overlapStart < overlapEnd) {
-                    std::string visibleText;
-                    if (overlapStart == tokenStartGrapheme && overlapEnd == tokenEndGrapheme) {
-                        visibleText = token.text;
-                    } else {
-                        int localStart = overlapStart - tokenStartGrapheme;
-                        int localLen = overlapEnd - overlapStart;
-                        visibleText = utf8_substr(token.text, localStart, localLen);
-                    }
-
-                    context->SetFontWeight(GetStyleForTokenType(token.type).bold ?
-                                           FontWeight::Bold : FontWeight::Normal);
-                    int tokenWidth = context->GetTextLineWidth(visibleText);
-
-                    if (x + tokenWidth >= visibleTextArea.x &&
-                        x <= visibleTextArea.x + visibleTextArea.width) {
-                        TokenStyle tokenStyle = GetStyleForTokenType(token.type);
-                        context->SetTextPaint(tokenStyle.color);
-                        context->DrawText(visibleText, x, textY);
-                    }
-                    x += tokenWidth;
+                if (x + tokenWidth >= visibleTextArea.x &&
+                    x <= visibleTextArea.x + visibleTextArea.width) {
+                    TokenStyle tokenStyle = GetStyleForTokenType(token.type);
+                    context->SetTextPaint(tokenStyle.color);
+                    context->DrawText(token.text, x, textY);
                 }
 
-                tokenStartGrapheme = tokenEndGrapheme;
-                if (tokenStartGrapheme >= dl.endGrapheme) break;
+                x += tokenWidth;
             }
             continue;
         }
 
         // --- OTHER LINES: Show formatted markdown ---
-        // Only render on the first display line of each logical line
-        // (formatted markdown cannot be split across wrap boundaries)
-        if (dl.startGrapheme != 0) continue;
 
         // Reset to default font settings
         context->SetFontWeight(FontWeight::Normal);
@@ -2193,7 +1985,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                         context, line, x, textY, computedLineHeight,
                         visibleTextArea.width, isHeader,
                         tableAlignments[i], tableColumnCounts[i],
-                        style, mdStyle, &markdownHitRects, documentFilePath);
+                        style, mdStyle, &markdownHitRects);
             }
             continue;
         }
@@ -2202,7 +1994,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         if (trimmed[0] == '#') {
             MarkdownInlineRenderer::RenderMarkdownHeader(
                     context, trimmed, x, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects, documentFilePath);
+                    style, mdStyle, &markdownHitRects);
             continue;
         }
 
@@ -2218,7 +2010,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         if (trimmed[0] == '>') {
             MarkdownInlineRenderer::RenderMarkdownBlockquote(
                     context, line, x, textY, computedLineHeight,
-                    visibleTextArea.width, style, mdStyle, &markdownHitRects, documentFilePath);
+                    visibleTextArea.width, style, mdStyle, &markdownHitRects);
             continue;
         }
 
@@ -2226,7 +2018,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         if (IsMarkdownListItem(trimmed)) {
             MarkdownInlineRenderer::RenderMarkdownListItem(
                     context, line, x, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects, documentFilePath);
+                    style, mdStyle, &markdownHitRects);
             continue;
         }
 
@@ -2245,14 +2037,14 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             // Draw definition text with inline formatting
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, defText, x + defIndent, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects, documentFilePath);
+                    style, mdStyle, &markdownHitRects);
             continue;
         }
 
         // --- Regular text with inline formatting ---
         MarkdownInlineRenderer::RenderMarkdownLine(
                 context, line, x, textY, computedLineHeight,
-                style, mdStyle, &markdownHitRects, documentFilePath);
+                style, mdStyle, &markdownHitRects);
     }
 
     context->PopState();

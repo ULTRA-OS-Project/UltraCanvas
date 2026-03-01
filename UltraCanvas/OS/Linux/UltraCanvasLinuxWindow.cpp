@@ -138,6 +138,52 @@ namespace UltraCanvas {
             XSetWMProtocols(display, xWindow, &wmDeleteWindow, 1);
         }
 
+        // Initialize XDnD drag-and-drop support
+        dragDropHandler.Initialize(display, xWindow);
+
+        // Wire XDnD callbacks to dispatch UCEvents
+        dragDropHandler.onFileDrop = [this](const std::vector<std::string>& paths) {
+            UCEvent event;
+            event.type = UCEventType::Drop;
+            event.targetWindow = this;
+            event.nativeWindowHandle = xWindow;
+            event.droppedFiles = paths;
+            event.dragMimeType = "text/uri-list";
+            // Join paths for legacy dragData compatibility
+            std::string joined;
+            for (const auto& p : paths) {
+                if (!joined.empty()) joined += "\n";
+                joined += p;
+            }
+            event.dragData = joined;
+            UltraCanvasApplication::GetInstance()->PushEvent(event);
+        };
+
+        dragDropHandler.onDragEnter = [this]() {
+            UCEvent event;
+            event.type = UCEventType::DragEnter;
+            event.targetWindow = this;
+            event.nativeWindowHandle = xWindow;
+            UltraCanvasApplication::GetInstance()->PushEvent(event);
+        };
+
+        dragDropHandler.onDragLeave = [this]() {
+            UCEvent event;
+            event.type = UCEventType::DragLeave;
+            event.targetWindow = this;
+            event.nativeWindowHandle = xWindow;
+            UltraCanvasApplication::GetInstance()->PushEvent(event);
+        };
+
+        dragDropHandler.onDragOver = [this](int x, int y) {
+            UCEvent event;
+            event.type = UCEventType::DragOver;
+            event.targetWindow = this;
+            event.nativeWindowHandle = xWindow;
+            event.x = event.windowX = x;
+            event.y = event.windowY = y;
+            UltraCanvasApplication::GetInstance()->PushEvent(event);
+        };        
         XSync(display, False);
         return true;
     }
@@ -257,6 +303,7 @@ namespace UltraCanvas {
 
         renderContext.reset();
         DestroyCairoSurface();
+        dragDropHandler.Shutdown();
         auto application = UltraCanvasApplication::GetInstance();
         if (xWindow && application && application->GetDisplay()) {        
             DestroyXIC();
@@ -570,6 +617,10 @@ namespace UltraCanvas {
 
 // ===== EVENT HANDLING =====
     bool UltraCanvasLinuxWindow::HandleXEvent(const XEvent& event) {
+        // Let the XDnD handler process drag-and-drop events first
+        if (dragDropHandler.HandleXEvent(event)) {
+            return true;
+        }
         return false;
     }
 

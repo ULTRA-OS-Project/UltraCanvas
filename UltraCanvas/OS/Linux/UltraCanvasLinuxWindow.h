@@ -10,6 +10,7 @@
 
 // ===== CORE INCLUDES =====
 #include "../../libspecific/Cairo/RenderContextCairo.h"
+#include "UltraCanvasLinuxDragDrop.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
 #include <X11/Xlib.h>
@@ -44,6 +45,7 @@ namespace UltraCanvas {
 
         cairo_surface_t* cairoSurface;
         std::unique_ptr<RenderContextCairo> renderContext;
+        UltraCanvasLinuxDragDrop dragDropHandler;
 
         bool CreateNative() override;
         void DestroyNative() override;
@@ -66,6 +68,7 @@ namespace UltraCanvas {
         virtual void SetFullscreen(bool fullscreen) override;
         virtual void Flush() override;
         virtual unsigned long GetNativeHandle() const override;
+        UltraCanvasLinuxDragDrop& GetDragDropHandler() { return dragDropHandler; }
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }
 //        virtual void ProcessEvents() override;
 //        virtual bool OnEvent(const UCEvent&) override;

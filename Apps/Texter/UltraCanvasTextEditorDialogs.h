@@ -9,6 +9,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
@@ -34,6 +35,7 @@ namespace UltraCanvas {
         // UI Components
         std::shared_ptr<UltraCanvasContainer> contentSection;
         std::shared_ptr<UltraCanvasLabel> searchLabel;
+        std::shared_ptr<UltraCanvasLabel> statusLabel;
         std::shared_ptr<UltraCanvasTextInput> searchInput;
         std::shared_ptr<UltraCanvasCheckbox> caseSensitiveCheck;
         std::shared_ptr<UltraCanvasCheckbox> wholeWordCheck;
@@ -42,11 +44,18 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasButton> findNextButton;
         std::shared_ptr<UltraCanvasButton> findPreviousButton;
         std::shared_ptr<UltraCanvasButton> closeButton;
+        std::shared_ptr<UltraCanvasDropdown> historyDropdown;  // Popup for history
 
         // State
         std::string searchText;
         bool caseSensitive;
         bool wholeWord;
+
+        std::vector<std::string> searchHistory;          // Owned history list
+        int maxHistoryItems = 20;
+
+        void ShowSearchHistory();
+        void AddToSearchHistory(const std::string& text);
 
         // Layout
         void BuildLayout();
@@ -71,6 +80,10 @@ namespace UltraCanvas {
         void SetSearchText(const std::string& text);
         void SetCaseSensitive(bool sensitive);
         void SetWholeWord(bool whole);
+
+        void SetSearchHistory(const std::vector<std::string>& history);
+        const std::vector<std::string>& GetSearchHistory() const { return searchHistory; }
+
 
         // Callbacks
         std::function<void(const std::string&, bool, bool)> onFindNext;
@@ -97,6 +110,7 @@ namespace UltraCanvas {
         // UI Components
         std::shared_ptr<UltraCanvasContainer> contentSection;
         std::shared_ptr<UltraCanvasLabel> findLabel;
+        std::shared_ptr<UltraCanvasLabel> statusLabel;
         std::shared_ptr<UltraCanvasTextInput> findInput;
         std::shared_ptr<UltraCanvasLabel> replaceLabel;
         std::shared_ptr<UltraCanvasTextInput> replaceInput;
@@ -108,12 +122,24 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasButton> replaceButton;
         std::shared_ptr<UltraCanvasButton> replaceAllButton;
         std::shared_ptr<UltraCanvasButton> closeButton;
+        std::shared_ptr<UltraCanvasDropdown> findHistoryDropdown;
+        std::shared_ptr<UltraCanvasDropdown> replaceHistoryDropdown;
 
         // State
         std::string findText;
         std::string replaceText;
         bool caseSensitive;
         bool wholeWord;
+
+        // Search & replace history
+        std::vector<std::string> findHistory;
+        std::vector<std::string> replaceHistory;
+        int maxHistoryItems = 20;
+
+        void ShowFindHistory();
+        void ShowReplaceHistory();
+        void AddToFindHistory(const std::string& text);
+        void AddToReplaceHistory(const std::string& text);
 
         // Layout
         void BuildLayout();
@@ -140,6 +166,11 @@ namespace UltraCanvas {
         void SetReplaceText(const std::string& text);
         void SetCaseSensitive(bool sensitive);
         void SetWholeWord(bool whole);
+
+        void SetFindHistory(const std::vector<std::string>& history);
+        void SetReplaceHistory(const std::vector<std::string>& history);
+        const std::vector<std::string>& GetFindHistory() const { return findHistory; }
+        const std::vector<std::string>& GetReplaceHistory() const { return replaceHistory; }
 
         // Callbacks
         std::function<void(const std::string&, bool, bool)> onFindNext;

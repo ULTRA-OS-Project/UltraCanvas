@@ -250,102 +250,6 @@ namespace {
         }
     }
 
-// ===== RECENT FILES MANAGER IMPLEMENTATION =====
-
-    std::string RecentFilesManager::GetStorageDirectory() const {
-        if (!storageDirectory.empty()) return storageDirectory;
-        return GetAppDataDirectory();
-    }
-
-    std::string RecentFilesManager::GetFilePath() const {
-        return GetStorageDirectory() + "recentfiles.txt";
-    }
-
-    void RecentFilesManager::AddFile(const std::string& filePath) {
-        if (filePath.empty()) return;
-
-        // Normalize path
-        std::string normalized = filePath;
-        try {
-            if (std::filesystem::exists(filePath)) {
-                normalized = std::filesystem::canonical(filePath).string();
-            }
-        } catch (...) {}
-
-        // Remove existing entry if present (to move it to front)
-        auto it = std::find(recentFiles.begin(), recentFiles.end(), normalized);
-        if (it != recentFiles.end()) {
-            recentFiles.erase(it);
-        }
-
-        // Insert at front (most recent first)
-        recentFiles.insert(recentFiles.begin(), normalized);
-
-        // Trim to max
-        if (static_cast<int>(recentFiles.size()) > maxFiles) {
-            recentFiles.resize(maxFiles);
-        }
-
-        Save();
-    }
-
-    void RecentFilesManager::RemoveFile(const std::string& filePath) {
-        auto it = std::find(recentFiles.begin(), recentFiles.end(), filePath);
-        if (it != recentFiles.end()) {
-            recentFiles.erase(it);
-            Save();
-        }
-    }
-
-    void RecentFilesManager::Clear() {
-        recentFiles.clear();
-        Save();
-    }
-
-    bool RecentFilesManager::Load() {
-        recentFiles.clear();
-        std::string path = GetFilePath();
-
-        try {
-            std::ifstream file(path);
-            if (!file.is_open()) return false;
-
-            std::string line;
-            while (std::getline(file, line)) {
-                if (line.empty()) continue;
-                if (std::filesystem::exists(line)) {
-                    recentFiles.push_back(line);
-                }
-                if (static_cast<int>(recentFiles.size()) >= maxFiles) break;
-            }
-            return true;
-        } catch (...) {
-            return false;
-        }
-    }
-
-    bool RecentFilesManager::Save() const {
-        std::string dir = GetStorageDirectory();
-        try {
-            std::filesystem::create_directories(dir);
-        } catch (...) {
-            std::cerr << "Failed to create data directory: " << dir << std::endl;
-            return false;
-        }
-
-        try {
-            std::ofstream file(GetFilePath(), std::ios::trunc);
-            if (!file.is_open()) return false;
-
-            for (const auto& p : recentFiles) {
-                file << p << "\n";
-            }
-            return true;
-        } catch (...) {
-            return false;
-        }
-    }
-
 // ===== CONSTRUCTOR =====
     UltraCanvasTextEditor::UltraCanvasTextEditor(
             const std::string& identifier, long id,
@@ -363,14 +267,9 @@ namespace {
             , markdownToolbarWidth(44)
             , statusBarHeight(24)
             , tabBarHeight(32)
-            , fontZoomLevels({50,65,80,90,100,110,125,150,175,200})
-    {        
-        for(int i = 0; i < fontZoomLevels.size(); i++) {
-            if (fontZoomLevels[i] == 100) {
-                fontZoomLevelIdx = i;
-                break;
-            }
-        }
+    {
+
+        LoadConfig();
 
         SetBackgroundColor(Color(240, 240, 240, 255));
 
@@ -381,13 +280,12 @@ namespace {
             autosaveManager.SetDirectory(config.autosaveDirectory);
         }
 
-        // Load recent files
-        recentFilesManager.Load();
+        configFile.LoadSearchHistory(searchHistory, replaceHistory);
 
         // Setup UI components in order
         if (config.showMenuBar) {
             SetupMenuBar();
-            UpdateRecentFilesMenu();
+//            UpdateRecentFilesMenu();
         }
 
         if (config.showToolbar) {
@@ -428,6 +326,7 @@ namespace {
                         MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", "media/icons/texter/folder-open.svg", [this]() {
                             OnFileOpen();
                         }),
+                        MenuItemData::Submenu("Recent Files", "media/icons/texter/clock-five.svg",  {}),  // Empty — populated dynamically
                         MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("Save", "Ctrl+S", "media/icons/texter/save.svg", [this]() {
                             OnFileSave();
@@ -519,6 +418,14 @@ namespace {
                 })
 
                 .Build();
+
+        // Store the index of "Recent Files" within the File menu items
+        // It's at position 2 (0=New, 1=Open, 2=Recent Files)
+        recentFilesMenuIndex = 2;
+
+        // Load and populate recent files
+        LoadRecentFiles();
+        RebuildRecentFilesSubmenu();
 
         AddChild(menuBar);
     }
@@ -740,25 +647,20 @@ namespace {
                 xPos, yPos + 2,
                 zoomDropdownWidth, statusBarHeight - 4
         );
-        fontZoomLevelIdx = 4;
-        for(size_t i = 0; i < fontZoomLevels.size(); i++) {
-            auto zoomLabel = fmt::format("{}%", fontZoomLevels[i]);
-            auto zoomValue = fmt::format("{}", i);
-            zoomDropdown->AddItem(zoomLabel, zoomValue);
-            if (fontZoomLevels[i] == 100) {
-                fontZoomLevelIdx = static_cast<int>(i);
-            }
-        }
 
-        zoomDropdown->SetSelectedIndex(fontZoomLevelIdx); // 100%
+        for(size_t i = 0; i < config.fontZoomPercents.size(); i++) {
+            auto zoomLabel = fmt::format("{}%", config.fontZoomPercents[i]);
+            auto zoomValue = fmt::format("{}", config.fontZoomPercents[i]);
+            zoomDropdown->AddItem(zoomLabel, zoomValue);
+        }
+        UpdateZoomDropdownSelection();
 
         DropdownStyle zoomStyle = zoomDropdown->GetStyle();
         zoomStyle.fontSize = 10;
         zoomDropdown->SetStyle(zoomStyle);
 
         zoomDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
-            int levelIdx = std::stoi(item.value);
-            SetFontZoomLevel(levelIdx);
+            SetFontZoomPercent(std::stoi(item.value));
         };
 
         AddChild(zoomDropdown);
@@ -1192,8 +1094,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
 
             // Track directory and recent files
             lastOpenedDirectory = p.parent_path().string();
-            recentFilesManager.AddFile(filePath);
-            UpdateRecentFilesMenu();
+            AddToRecentFiles(filePath);
 
             if (onFileLoaded) {
                 onFileLoaded(filePath, docIndex);
@@ -1315,8 +1216,9 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             UpdateStatusBar();
 
             // Track in recent files
-            recentFilesManager.AddFile(filePath);
-            UpdateRecentFilesMenu();
+//            recentFilesManager.AddFile(filePath);
+//            UpdateRecentFilesMenu();
+            AddToRecentFiles(filePath);
 
             if (onFileSaved) {
                 onFileSaved(filePath, docIndex);
@@ -1519,69 +1421,6 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         }
     }
 
-// ===== RECENT FILES =====
-
-    void UltraCanvasTextEditor::UpdateRecentFilesMenu() {
-        if (!menuBar) return;
-
-        // Get the File menu item (index 0 in the menubar)
-        MenuItemData* fileMenu = menuBar->GetItem(0);
-        if (!fileMenu || fileMenu->type != MenuItemType::Submenu) return;
-
-        // Find and remove existing "Recent Files" submenu entry if present
-        auto& items = fileMenu->subItems;
-        for (auto it = items.begin(); it != items.end(); ++it) {
-            if (it->type == MenuItemType::Submenu && it->label == "Recent Files") {
-                items.erase(it);
-                break;
-            }
-        }
-
-        // Build recent files sub-items
-        const auto& recentFiles = recentFilesManager.GetRecentFiles();
-        if (recentFiles.empty()) return;
-
-        std::vector<MenuItemData> recentItems;
-        for (const auto& filePath : recentFiles) {
-            std::filesystem::path p(filePath);
-            std::string displayName = p.filename().string();
-            std::string parentDir = p.parent_path().filename().string();
-            std::string label = parentDir.empty() ? displayName : parentDir + "/" + displayName;
-
-            recentItems.push_back(MenuItemData::Action(label, [this, filePath]() {
-                OpenRecentFile(filePath);
-            }));
-        }
-
-        // Add separator and "Clear Recent Files" at the bottom
-        recentItems.push_back(MenuItemData::Separator());
-        recentItems.push_back(MenuItemData::Action("Clear Recent Files", [this]() {
-            recentFilesManager.Clear();
-            UpdateRecentFilesMenu();
-        }));
-
-        // Insert "Recent Files" submenu after "Open..."
-        int insertPos = 2; // Default fallback
-        for (int i = 0; i < static_cast<int>(items.size()); i++) {
-            if (items[i].label == "Open...") {
-                insertPos = i + 1;
-                break;
-            }
-        }
-
-        items.insert(items.begin() + insertPos, MenuItemData::Submenu("Recent Files", "media/icons/texter/clock-five.svg", recentItems));
-    }
-
-    void UltraCanvasTextEditor::OpenRecentFile(const std::string& filePath) {
-        if (!std::filesystem::exists(filePath)) {
-            recentFilesManager.RemoveFile(filePath);
-            UpdateRecentFilesMenu();
-            return;
-        }
-
-        OpenDocumentFromPath(filePath);
-    }
-
 // ===== MENU HANDLERS =====
 
     void UltraCanvasTextEditor::OnFileNew() {
@@ -1589,14 +1428,17 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
     }
 
     void UltraCanvasTextEditor::OnFileOpen() {
-        UltraCanvasDialogManager::ShowOpenFileDialog(
-                "Open File",
+        UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(
+                "Open File(s)",
                 config.fileFilters,
-                lastOpenedDirectory,
-                [this](DialogResult result, const std::string& filePath) {
-                    if (result == DialogResult::OK && !filePath.empty()) {
-                        lastOpenedDirectory = std::filesystem::path(filePath).parent_path().string();
-                        OpenDocumentFromPath(filePath);
+                "",
+                [this](DialogResult result, const std::vector<std::string>& filePaths) {
+                    if (result == DialogResult::OK) {
+                        for (const auto& filePath : filePaths) {
+                            if (!filePath.empty()) {
+                                OpenDocumentFromPath(filePath);
+                            }
+                        }
                     }
                 },
                 nullptr
@@ -1742,6 +1584,17 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             findDialog = CreateFindDialog();
 
             // Wire up callbacks
+            findDialog->SetSearchHistory(searchHistory);
+
+            // In the onResult callback, save history back before destroying:
+            findDialog->onResult = [this](DialogResult res) {
+                if (findDialog) {
+                    searchHistory = findDialog->GetSearchHistory();
+                    configFile.SaveSearchHistory(searchHistory, replaceHistory);
+                }
+                findDialog.reset();
+            };
+
             findDialog->onFindNext = [this](const std::string& searchText, bool caseSensitive, bool wholeWord) {
                 auto doc = GetActiveDocument();
                 if (doc && doc->textArea) {
@@ -1756,10 +1609,6 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                     doc->textArea->SetTextToFind(searchText, caseSensitive);
                     doc->textArea->FindPrevious();
                 }
-            };
-
-            findDialog->onResult = [this](DialogResult res) {
-                findDialog.reset();
             };
         }
 
@@ -1776,6 +1625,18 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
             replaceDialog = CreateReplaceDialog();
 
             // Wire up callbacks
+            replaceDialog->SetFindHistory(searchHistory);
+            replaceDialog->SetReplaceHistory(replaceHistory);
+
+            // In the onResult callback:
+            replaceDialog->onResult = [this](DialogResult res) {
+                if (replaceDialog) {
+                    searchHistory = replaceDialog->GetFindHistory();
+                    replaceHistory = replaceDialog->GetReplaceHistory();
+                    configFile.SaveSearchHistory(searchHistory, replaceHistory);
+                }
+                replaceDialog.reset();
+            };
             replaceDialog->onFindNext = [this](const std::string& findText, bool caseSensitive, bool wholeWord) {
                 auto doc = GetActiveDocument();
                 if (doc && doc->textArea) {
@@ -1802,10 +1663,6 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                     // Replace all occurrences
                     doc->textArea->ReplaceText(findText, replaceText, true);
                 }
-            };
-
-            replaceDialog->onResult = [this](DialogResult res) {
-                replaceDialog.reset();
             };
         }
 
@@ -1842,15 +1699,15 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
     }
 
     void UltraCanvasTextEditor::OnViewIncreaseFontSize() {
-        IncreaseFontZoomLevel();
+        IncreaseFontZoom();
     }
 
     void UltraCanvasTextEditor::OnViewDecreaseFontSize() {
-        DecreaseFontZoomLevel();
+        DecreaseFontZoom();
     }
 
     void UltraCanvasTextEditor::OnViewResetFontSize() {
-        ResetFontZoomLevel();
+        ResetFontZoom();
     }
 
     void UltraCanvasTextEditor::OnViewToggleTheme() {
@@ -1875,6 +1732,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 doc->textArea->SetWordWrap(config.wordWrap);
             }
         }
+        SaveConfig();
     }
 
     void UltraCanvasTextEditor::OnInfoAbout() {
@@ -1885,7 +1743,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         config.dialogType = DialogType::Custom;
         config.buttons = DialogButtons::NoButtons;
         config.width = 430;
-        config.height = 520;
+        config.height = 526;
 
         aboutDialog = UltraCanvasDialogManager::CreateDialog(config);
 
@@ -1938,7 +1796,7 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
 
         // Copyright
         auto copyrightLabel = std::make_shared<UltraCanvasLabel>("AboutCopyright", 350, 20,
-                "\u00A9 2026 UltraCanvas GUI API of ULTRA OS");
+                "2026 UltraCanvas GUI API of ULTRA OS");
         copyrightLabel->SetFontSize(10);
         copyrightLabel->SetTextColor(Color(120, 120, 120));
         copyrightLabel->SetAlignment(TextAlignment::Center);
@@ -1946,13 +1804,13 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
 
         // Clickable URL label
         auto urlLabel = std::make_shared<UltraCanvasLabel>("AboutURL", 300, 20);
-        urlLabel->SetText("<span color=\"blue\">http://www.ultraos.eu/</span>");
+        urlLabel->SetText("<span color=\"blue\">www.ultraos.eu</span>");
         urlLabel->SetTextIsMarkup(true);
         urlLabel->SetFontSize(11);
         urlLabel->SetAlignment(TextAlignment::Center);
         urlLabel->SetMouseCursor(UCMouseCursor::Hand);
         urlLabel->onClick = []() {
-            system("xdg-open http://www.ultraos.eu/");
+            system("xdg-open https://www.ultraos.eu/");
         };
         urlLabel->SetMargin(0, 0, 10, 20);
         mainLayout->AddUIElement(urlLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center);
@@ -2016,7 +1874,14 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
     void UltraCanvasTextEditor::UpdateZoomDropdownSelection() {
         if (!zoomDropdown) return;
 
-        zoomDropdown->SetSelectedIndex(fontZoomLevelIdx, false);
+        int fontZoomPercentIdx = 4;
+        for(size_t i = 0; i < config.fontZoomPercents.size(); i++) {
+            if (config.fontZoomPercents[i] == config.fontZoomPercent) {
+                fontZoomPercentIdx = static_cast<int>(i);
+            }
+        }
+
+        zoomDropdown->SetSelectedIndex(fontZoomPercentIdx, false);
     }
 
     void UltraCanvasTextEditor::UpdateLanguageDropdown() {
@@ -2436,54 +2301,76 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
         }
 
         UltraCanvasContainer::Render(ctx);
+
+        if (isDragOverActive) {
+            RenderDropOverlay(ctx);
+        }        
     }
 
     bool UltraCanvasTextEditor::OnEvent(const UCEvent& event) {
-        if (event.type == UCEventType::KeyDown) {
-            if (event.ctrl && event.virtualKey == UCKeys::N) {
-                OnFileNew();
+        switch(event.type) {
+            case UCEventType::KeyDown:
+                if (event.ctrl && event.virtualKey == UCKeys::N) {
+                    OnFileNew();
+                    return true;
+                }
+                if (event.ctrl && event.virtualKey == UCKeys::O) {
+                    OnFileOpen();
+                    return true;
+                }
+                if (event.ctrl && !event.shift && event.virtualKey == UCKeys::S) {
+                    OnFileSave();
+                    return true;
+                }
+                if (event.ctrl && event.shift && event.virtualKey == UCKeys::S) {
+                    OnFileSaveAs();
+                    return true;
+                }
+                if (event.ctrl && event.virtualKey == UCKeys::W) {
+                    OnFileClose();
+                    return true;
+                }
+                if (event.ctrl && event.virtualKey == UCKeys::T) {
+                    OnViewToggleTheme();
+                    return true;
+                }
+                if (event.ctrl && event.virtualKey == UCKeys::F) {
+                    OnEditSearch();
+                    return true;
+                }
+                if (event.ctrl && event.virtualKey == UCKeys::H) {
+                    OnEditReplace();
+                    return true;
+                }
+                if (event.ctrl && event.virtualKey == UCKeys::G) {
+                    OnEditGoToLine();
+                    return true;
+                }
+                if (event.ctrl && (event.virtualKey == UCKeys::Plus || event.virtualKey == UCKeys::NumPadPlus)) {
+                    OnViewIncreaseFontSize();
+                    return true;
+                }
+                if (event.ctrl && (event.virtualKey == UCKeys::Minus || event.virtualKey == UCKeys::NumPadMinus)) {
+                    OnViewDecreaseFontSize();
+                    return true;
+                }
+            case UCEventType::DragEnter:
+                HandleDragEnter(event);
                 return true;
-            }
-            if (event.ctrl && event.virtualKey == UCKeys::O) {
-                OnFileOpen();
+
+            case UCEventType::DragOver:
+                HandleDragOver(event);
                 return true;
-            }
-            if (event.ctrl && !event.shift && event.virtualKey == UCKeys::S) {
-                OnFileSave();
+
+            case UCEventType::DragLeave:
+                HandleDragLeave(event);
                 return true;
-            }
-            if (event.ctrl && event.shift && event.virtualKey == UCKeys::S) {
-                OnFileSaveAs();
+
+            case UCEventType::Drop:
+                HandleFileDrop(event);
                 return true;
-            }
-            if (event.ctrl && event.virtualKey == UCKeys::W) {
-                OnFileClose();
-                return true;
-            }
-            if (event.ctrl && event.virtualKey == UCKeys::T) {
-                OnViewToggleTheme();
-                return true;
-            }
-            if (event.ctrl && event.virtualKey == UCKeys::F) {
-                OnEditSearch();
-                return true;
-            }
-            if (event.ctrl && event.virtualKey == UCKeys::H) {
-                OnEditReplace();
-                return true;
-            }
-            if (event.ctrl && event.virtualKey == UCKeys::G) {
-                OnEditGoToLine();
-                return true;
-            }
-            if (event.ctrl && (event.virtualKey == UCKeys::Plus || event.virtualKey == UCKeys::NumPadPlus)) {
-                OnViewIncreaseFontSize();
-                return true;
-            }
-            if (event.ctrl && (event.virtualKey == UCKeys::Minus || event.virtualKey == UCKeys::NumPadMinus)) {
-                OnViewDecreaseFontSize();
-                return true;
-            }
+            default:
+                break;
         }
 
         return UltraCanvasContainer::OnEvent(event);
@@ -2607,19 +2494,17 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
     void UltraCanvasTextEditor::ToggleTheme() {
         isDarkTheme = !isDarkTheme;
         ApplyThemeToAllDocuments();
+        SaveConfig();
     }
 
     void UltraCanvasTextEditor::SetDefaultFontSize(float size) {
         config.defaultFontSize = std::max(4.0f, std::min(72.0f, size));
-        SetFontZoomLevel(fontZoomLevelIdx);
+        SetFontZoomPercent(config.fontZoomPercent);
     }
 
-    void UltraCanvasTextEditor::SetFontZoomLevel(int lvl) {
-        if (lvl < 0 || lvl >= fontZoomLevels.size()) {
-            return;
-        }
-        fontZoomLevelIdx = lvl;
-        float fontSize = config.defaultFontSize * fontZoomLevels[fontZoomLevelIdx] / 100.0;
+    void UltraCanvasTextEditor::SetFontZoomPercent(int percent) {
+        config.fontZoomPercent = percent;
+        float fontSize = config.defaultFontSize * percent / 100.0;
         fontSize = std::max(4.0f, std::min(72.0f, fontSize));
 
         // Apply to all open document TextAreas
@@ -2631,23 +2516,29 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
 
         UpdateZoomDropdownSelection();
         UpdateStatusBar();
+        SaveConfig();
     }
 
-    void UltraCanvasTextEditor::IncreaseFontZoomLevel() {
-        SetFontZoomLevel(fontZoomLevelIdx + 1);
-    }
-
-    void UltraCanvasTextEditor::DecreaseFontZoomLevel() {
-        SetFontZoomLevel(fontZoomLevelIdx - 1);
-    }
-
-    void UltraCanvasTextEditor::ResetFontZoomLevel() {
-        for(int i = 0; i < fontZoomLevels.size(); i++) {
-            if (fontZoomLevels[i] == 100) {
-                SetFontZoomLevel(i);
+    void UltraCanvasTextEditor::IncreaseFontZoom() {
+        for(int i = 0; i < config.fontZoomPercents.size() - 2; i++) {
+            if (config.fontZoomPercents[i] == config.fontZoomPercent) {
+                SetFontZoomPercent(config.fontZoomPercents[i+1]);
                 break;
             }
         }
+    }
+
+    void UltraCanvasTextEditor::DecreaseFontZoom() {
+        for(int i = config.fontZoomPercents.size(); i > 1; i--) {
+            if (config.fontZoomPercents[i] == config.fontZoomPercent) {
+                SetFontZoomPercent(config.fontZoomPercents[i-1]);
+                break;
+            }
+        }
+    }
+
+    void UltraCanvasTextEditor::ResetFontZoom() {
+        SetFontZoomPercent(100);
     }
 
     void UltraCanvasTextEditor::SetAutosaveEnabled(bool enable) {
@@ -2701,4 +2592,285 @@ void UltraCanvasTextEditor::SwitchToDocument(int index) {
                 identifier, id, x, y, width, height, config);
     }
 
+    void UltraCanvasTextEditor::HandleDragEnter(const UCEvent& event) {
+        isDragOverActive = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextEditor::HandleDragOver(const UCEvent& event) {
+        dragOverX = event.x;
+        dragOverY = event.y;
+        // Redraw to update the overlay position (drop indicator follows cursor)
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextEditor::HandleDragLeave(const UCEvent& event) {
+        isDragOverActive = false;
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextEditor::HandleFileDrop(const UCEvent& event) {
+        isDragOverActive = false;
+
+        const auto& files = event.droppedFiles;
+        if (files.empty()) {
+            // Fallback: try parsing dragData as newline-separated paths
+            if (!event.dragData.empty()) {
+                std::istringstream stream(event.dragData);
+                std::string line;
+                while (std::getline(stream, line)) {
+                    if (!line.empty() && line.back() == '\r') {
+                        line.pop_back();
+                    }
+                    if (!line.empty()) {
+                        OpenFile(line);
+                    }
+                }
+            }
+        } else {
+            // Open each dropped file in a new tab
+            for (const auto& filePath : files) {
+                std::cout << "Opening dropped file: " << filePath << std::endl;
+                OpenFile(filePath);
+            }
+        }
+
+        // Notify via callback
+        if (onFileDrop) {
+            onFileDrop(files.empty() ? std::vector<std::string>{event.dragData} : files);
+        }
+
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextEditor::RenderDropOverlay(IRenderContext* ctx) {
+        // Semi-transparent overlay covering the entire editor        
+        int w = GetWidth();
+        int h = GetHeight();
+        ctx->PushState();
+        // Dark translucent background
+        ctx->SetFillPaint(Color(0, 0, 0, 100));
+        ctx->FillRectangle(0, 0, w, h);
+
+        // Central drop zone indicator
+        int zoneMargin = 40;
+        int zoneX = zoneMargin;
+        int zoneY = zoneMargin;
+        int zoneW = w - zoneMargin * 2;
+        int zoneH = h - zoneMargin * 2;
+
+        // Dashed border effect — draw corner brackets instead of full border
+        // This gives a clean, modern "drop here" visual
+        Color accentColor = isDarkTheme ? Color(100, 180, 255, 200) : Color(0, 120, 215, 200);
+        ctx->SetStrokePaint(accentColor);
+        ctx->SetStrokeWidth(3.0f);
+
+        int bracketLen = 40; // Length of each corner bracket arm
+
+        // Top-left corner
+        ctx->DrawLine(zoneX, zoneY, zoneX + bracketLen, zoneY);
+        ctx->DrawLine(zoneX, zoneY, zoneX, zoneY + bracketLen);
+
+        // Top-right corner
+        ctx->DrawLine(zoneX + zoneW, zoneY, zoneX + zoneW - bracketLen, zoneY);
+        ctx->DrawLine(zoneX + zoneW, zoneY, zoneX + zoneW, zoneY + bracketLen);
+
+        // Bottom-left corner
+        ctx->DrawLine(zoneX, zoneY + zoneH, zoneX + bracketLen, zoneY + zoneH);
+        ctx->DrawLine(zoneX, zoneY + zoneH, zoneX, zoneY + zoneH - bracketLen);
+
+        // Bottom-right corner
+        ctx->DrawLine(zoneX + zoneW, zoneY + zoneH, zoneX + zoneW - bracketLen, zoneY + zoneH);
+        ctx->DrawLine(zoneX + zoneW, zoneY + zoneH, zoneX + zoneW, zoneY + zoneH - bracketLen);
+
+        // Central icon — document/file icon using simple drawing
+        int iconCenterX = w / 2;
+        int iconCenterY = h / 2 - 20;
+        int iconW = 40;
+        int iconH = 50;
+
+        // Document body
+        ctx->SetFillPaint(accentColor);
+        ctx->FillRectangle(iconCenterX - iconW / 2, iconCenterY - iconH / 2,
+                        iconW, iconH);
+
+        // Document fold corner (top-right triangle overlay)
+        int foldSize = 12;
+        Color bgColor = isDarkTheme ? Color(0, 0, 0, 100) : Color(0, 0, 0, 100);
+        ctx->SetFillPaint(bgColor);
+        // Approximate triangle with a small rectangle overlay at top-right
+        ctx->FillRectangle(iconCenterX + iconW / 2 - foldSize,
+                        iconCenterY - iconH / 2,
+                        foldSize, foldSize);
+
+        // Lines on document (simulate text)
+        Color lineColor = isDarkTheme ? Color(30, 30, 30, 180) : Color(255, 255, 255, 180);
+        ctx->SetFillPaint(lineColor);
+        int lineY = iconCenterY - iconH / 2 + 18;
+        for (int i = 0; i < 4; i++) {
+            int lineW = (i == 3) ? iconW - 20 : iconW - 12;
+            ctx->FillRectangle(iconCenterX - iconW / 2 + 6, lineY, lineW, 2);
+            lineY += 8;
+        }
+
+        // "Drop files here" text
+        Color textColor = isDarkTheme ? Color(200, 220, 255, 230) : Color(0, 80, 180, 230);
+        ctx->SetTextPaint(textColor);
+        ctx->SetFontWeight(FontWeight::Bold);
+        ctx->SetFontSize(18.0f);
+
+        std::string dropText = "Drop files to open in new tabs";
+        int textWidth = ctx->GetTextLineWidth(dropText);
+        ctx->DrawText(dropText, iconCenterX - textWidth / 2, iconCenterY + iconH / 2 + 16);
+
+        // restore state
+        ctx->PopState();
+    }
+
+
+    //  Recent Files Management Methods
+    void UltraCanvasTextEditor::AddToRecentFiles(const std::string& filePath) {
+        if (filePath.empty()) return;
+
+        // Remove if already present (will re-add at front)
+        auto it = std::find(recentFiles.begin(), recentFiles.end(), filePath);
+        if (it != recentFiles.end()) {
+            recentFiles.erase(it);
+        }
+
+        // Insert at front (newest first)
+        recentFiles.insert(recentFiles.begin(), filePath);
+
+        // Trim to configured maximum
+        int maxFiles = config.maxRecentFiles;
+        if (static_cast<int>(recentFiles.size()) > maxFiles) {
+            recentFiles.resize(maxFiles);
+        }
+
+        // Persist and update menu
+        SaveRecentFiles();
+        RebuildRecentFilesSubmenu();
+    }
+
+    void UltraCanvasTextEditor::RemoveFromRecentFiles(const std::string& filePath) {
+        auto it = std::find(recentFiles.begin(), recentFiles.end(), filePath);
+        if (it != recentFiles.end()) {
+            recentFiles.erase(it);
+            SaveRecentFiles();
+            RebuildRecentFilesSubmenu();
+        }
+    }
+
+    void UltraCanvasTextEditor::RebuildRecentFilesSubmenu() {
+        if (!menuBar || recentFilesMenuIndex < 0) return;
+
+        // Get the File menu (first submenu in the menubar)
+        // The menubar items[0] is "File" which has subItems
+        auto* fileMenuItem = menuBar->GetItem(0);
+        if (!fileMenuItem || recentFilesMenuIndex >= static_cast<int>(fileMenuItem->subItems.size())) {
+            return;
+        }
+
+        // Build the submenu items from the recent files list
+        std::vector<MenuItemData> recentItems;
+
+        if (recentFiles.empty()) {
+            // Show a disabled "(No recent files)" entry
+            MenuItemData emptyItem;
+            emptyItem.type = MenuItemType::Action;
+            emptyItem.label = "(No recent files)";
+            emptyItem.enabled = false;
+            recentItems.push_back(emptyItem);
+        } else {
+            // Add each recent file as an action item
+            int displayCount = std::min(static_cast<int>(recentFiles.size()),
+                                        config.maxRecentFiles);
+
+            for (int i = 0; i < displayCount; i++) {
+                const std::string& fullPath = recentFiles[i];
+
+                // Show just the filename for the label, with full path as tooltip
+                std::filesystem::path p(fullPath);
+                std::string displayName = p.filename().string();
+
+                // Add numbering for quick access: "1. filename.txt"
+                std::string label = std::to_string(i + 1) + ". " + displayName;
+
+                // Capture by value for the lambda
+                std::string pathCopy = fullPath;
+                recentItems.push_back(
+                        MenuItemData::Action(label, [this, pathCopy]() {
+                            // Check if file still exists before opening
+                            if (std::filesystem::exists(pathCopy)) {
+                                OpenDocumentFromPath(pathCopy);
+                            } else {
+                                // File no longer exists — remove from list and notify
+                                RemoveFromRecentFiles(pathCopy);
+                                std::cerr << "Recent file no longer exists: " << pathCopy << std::endl;
+                            }
+                        })
+                );
+            }
+
+            // Add separator + "Clear Recent Files" at the bottom
+            recentItems.push_back(MenuItemData::Separator());
+            recentItems.push_back(
+                    MenuItemData::Action("Clear Recent Files", [this]() {
+                        recentFiles.clear();
+                        SaveRecentFiles();
+                        RebuildRecentFilesSubmenu();
+                    })
+            );
+        }
+
+        // Update the submenu in-place
+        fileMenuItem->subItems[recentFilesMenuIndex].subItems = recentItems;
+    }
+
+    void UltraCanvasTextEditor::LoadRecentFiles() {
+        recentFiles = configFile.LoadRecentFiles();
+
+        // Trim to configured max
+        if (static_cast<int>(recentFiles.size()) > config.maxRecentFiles) {
+            recentFiles.resize(config.maxRecentFiles);
+        }
+    }
+
+    void UltraCanvasTextEditor::SaveRecentFiles() {
+        configFile.SaveRecentFiles(recentFiles);
+    }
+
+
+// -------------------------------------------------------------------------
+// 4c: Config File Load/Save
+// -------------------------------------------------------------------------
+
+
+    void UltraCanvasTextEditor::LoadConfig() {
+        configFile.Load();
+
+        // Apply loaded settings to TextEditorConfig
+        config.darkTheme = configFile.GetBool("darkTheme", config.darkTheme);
+        config.showLineNumbers = configFile.GetBool("showLineNumbers", config.showLineNumbers);
+        config.wordWrap = configFile.GetBool("wordWrap", config.wordWrap);
+        config.defaultFontSize = configFile.GetInt("defaultFontSize", config.defaultFontSize);
+        config.fontZoomPercent = configFile.GetInt("fontZoomPercent", 100);
+        config.maxRecentFiles = configFile.GetInt("maxRecentFiles", config.maxRecentFiles);
+        config.enableAutosave = configFile.GetBool("enableAutosave", config.enableAutosave);
+        config.autosaveIntervalSeconds = configFile.GetInt("autosaveInterval", config.autosaveIntervalSeconds);
+        config.defaultLanguage = configFile.GetString("defaultLanguage", config.defaultLanguage);
+    }
+
+    void UltraCanvasTextEditor::SaveConfig() {
+        configFile.SetBool("darkTheme", isDarkTheme);
+        configFile.SetBool("showLineNumbers", config.showLineNumbers);
+        configFile.SetBool("wordWrap", config.wordWrap);
+        configFile.SetInt("defaultFontSize", config.defaultFontSize);
+        configFile.SetInt("fontZoomPercent", config.fontZoomPercent);
+        configFile.SetInt("maxRecentFiles", config.maxRecentFiles);
+        configFile.SetBool("enableAutosave", config.enableAutosave);
+        configFile.SetInt("autosaveInterval", config.autosaveIntervalSeconds);
+        configFile.SetString("defaultLanguage", config.defaultLanguage);
+        configFile.Save();
+    }
 } // namespace UltraCanvas
