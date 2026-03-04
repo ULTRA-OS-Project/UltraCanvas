@@ -321,7 +321,9 @@ namespace UltraCanvas {
         }
 
         if (showScrollButtons) {
-            availableSpace -= 40;
+            bool canPrev = activeTabIndex > 0;
+            bool canNext = activeTabIndex < (int)tabs.size() - 1;
+            availableSpace -= (canPrev && canNext) ? 48 : 24;
         }
 
         if (showNewTabButton) {
@@ -375,6 +377,8 @@ namespace UltraCanvas {
             UpdateOverflowDropdown();
             CalculateLayout();
             EnsureTabVisible(activeTabIndex);
+            PackTabBar();
+            CalculateLayout();
             UpdateContentVisibility();
             tabbarLayoutDirty = false;
         }
@@ -506,88 +510,83 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::RenderScrollButtons(IRenderContext *ctx) {
         if (!showScrollButtons) return;
 
+        bool canGoPrev = activeTabIndex > 0;
+        bool canGoNext = activeTabIndex < (int)tabs.size() - 1;
+        if (!canGoPrev && !canGoNext) return;
+
         Rect2Di tabBarBounds = GetTabBarBounds();
-        Rect2Di leftButton, rightButton;
+
+        ctx->SetFillPaint(Colors::Black);
+        ctx->SetStrokePaint(Colors::Black);
+        ctx->SetLineJoin(LineJoin::Round);
+        ctx->SetLineCap(LineCap::Round);
+        ctx->SetStrokeWidth(3);
 
         switch (tabPosition) {
             case TabPosition::Top:
             case TabPosition::Bottom: {
-                // Horizontal tabs - buttons at right edge
-                leftButton = Rect2Di(tabBarBounds.x + tabBarBounds.width - 48, tabBarBounds.y, 24, tabBarBounds.height);
-                rightButton = Rect2Di(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
-
-                ctx->DrawFilledRectangle(leftButton, Color(220, 220, 220), 1.0, tabBorderColor);
-                ctx->DrawFilledRectangle(rightButton, Color(220, 220, 220), 1.0, tabBorderColor);
-
-                ctx->SetFillPaint(Colors::Black);
-                ctx->SetStrokePaint(Colors::Black);
-                ctx->SetLineJoin(LineJoin::Round);
-                ctx->SetLineCap(LineCap::Round);
-                ctx->SetStrokeWidth(3);
-                // Left arrow - filled triangle pointing left
-                {
-                    Point2Di c(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
-                    int s = 3;
+                if (canGoPrev && canGoNext) {
+                    // Both buttons
+                    Rect2Di prevBtn(tabBarBounds.x + tabBarBounds.width - 48, tabBarBounds.y, 24, tabBarBounds.height);
+                    Rect2Di nextBtn(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
+                    ctx->DrawFilledRectangle(prevBtn, Color(220, 220, 220), 1.0, tabBorderColor);
+                    ctx->DrawFilledRectangle(nextBtn, Color(220, 220, 220), 1.0, tabBorderColor);
+                    // Left arrow
+                    { Point2Di c(prevBtn.x + prevBtn.width / 2, prevBtn.y + prevBtn.height / 2); int s = 3;
+                      ctx->ClearPath(); ctx->MoveTo(c.x - s, c.y); ctx->LineTo(c.x + s, c.y - (s+s)); ctx->LineTo(c.x + s, c.y + (s+s));
+                      ctx->ClosePath(); ctx->FillPathPreserve(); ctx->Stroke(); }
+                    // Right arrow
+                    { Point2Di c(nextBtn.x + nextBtn.width / 2, nextBtn.y + nextBtn.height / 2); int s = 3;
+                      ctx->ClearPath(); ctx->MoveTo(c.x + s, c.y); ctx->LineTo(c.x - s, c.y - (s+s)); ctx->LineTo(c.x - s, c.y + (s+s));
+                      ctx->ClosePath(); ctx->FillPathPreserve(); ctx->Stroke(); }
+                } else {
+                    // Single button at rightmost position
+                    Rect2Di btn(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
+                    ctx->DrawFilledRectangle(btn, Color(220, 220, 220), 1.0, tabBorderColor);
+                    Point2Di c(btn.x + btn.width / 2, btn.y + btn.height / 2); int s = 3;
                     ctx->ClearPath();
-                    ctx->MoveTo(c.x - s, c.y);
-                    ctx->LineTo(c.x + s, c.y - (s + s));
-                    ctx->LineTo(c.x + s, c.y + (s + s));
-                    ctx->ClosePath();
-                    ctx->FillPathPreserve();
-                    ctx->Stroke();
-                }
-
-                // Right arrow - filled triangle pointing right
-                {
-                    Point2Di c(rightButton.x + rightButton.width / 2, rightButton.y + rightButton.height / 2);
-                    int s = 3;
-                    ctx->ClearPath();
-                    ctx->MoveTo(c.x + s, c.y);
-                    ctx->LineTo(c.x - s, c.y - (s + s));
-                    ctx->LineTo(c.x - s, c.y + (s + s));
-                    ctx->ClosePath();
-                    ctx->FillPathPreserve();
-                    ctx->Stroke();
+                    if (canGoPrev) {
+                        // Left arrow
+                        ctx->MoveTo(c.x - s, c.y); ctx->LineTo(c.x + s, c.y - (s+s)); ctx->LineTo(c.x + s, c.y + (s+s));
+                    } else {
+                        // Right arrow
+                        ctx->MoveTo(c.x + s, c.y); ctx->LineTo(c.x - s, c.y - (s+s)); ctx->LineTo(c.x - s, c.y + (s+s));
+                    }
+                    ctx->ClosePath(); ctx->FillPathPreserve(); ctx->Stroke();
                 }
                 break;
             }
 
             case TabPosition::Left:
             case TabPosition::Right: {
-                // Vertical tabs - buttons at bottom edge
-                leftButton = Rect2Di(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 48, tabBarBounds.width, 24);
-                rightButton = Rect2Di(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 24, tabBarBounds.width, 24);
-
-                ctx->DrawFilledRectangle(leftButton, Color(220, 220, 220), 1.0, tabBorderColor);
-                ctx->DrawFilledRectangle(rightButton, Color(220, 220, 220), 1.0, tabBorderColor);
-
-                ctx->SetFillPaint(Colors::Black);
-                ctx->SetStrokePaint(Colors::Black);
-                ctx->SetLineJoin(LineJoin::Round);
-                ctx->SetLineCap(LineCap::Round);
-                ctx->SetStrokeWidth(3);
-                // Up arrow - filled triangle pointing up
-                {
-                    Point2Di c(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
-                    int s = 3;
+                if (canGoPrev && canGoNext) {
+                    // Both buttons
+                    Rect2Di prevBtn(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 48, tabBarBounds.width, 24);
+                    Rect2Di nextBtn(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 24, tabBarBounds.width, 24);
+                    ctx->DrawFilledRectangle(prevBtn, Color(220, 220, 220), 1.0, tabBorderColor);
+                    ctx->DrawFilledRectangle(nextBtn, Color(220, 220, 220), 1.0, tabBorderColor);
+                    // Up arrow
+                    { Point2Di c(prevBtn.x + prevBtn.width / 2, prevBtn.y + prevBtn.height / 2); int s = 3;
+                      ctx->ClearPath(); ctx->MoveTo(c.x, c.y - s); ctx->LineTo(c.x + (s+s), c.y + s); ctx->LineTo(c.x - (s+s), c.y + s);
+                      ctx->ClosePath(); ctx->Fill(); }
+                    // Down arrow
+                    { Point2Di c(nextBtn.x + nextBtn.width / 2, nextBtn.y + nextBtn.height / 2); int s = 3;
+                      ctx->ClearPath(); ctx->MoveTo(c.x, c.y + s); ctx->LineTo(c.x - (s+s), c.y - s); ctx->LineTo(c.x + (s+s), c.y - s);
+                      ctx->ClosePath(); ctx->Fill(); }
+                } else {
+                    // Single button at bottommost position
+                    Rect2Di btn(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 24, tabBarBounds.width, 24);
+                    ctx->DrawFilledRectangle(btn, Color(220, 220, 220), 1.0, tabBorderColor);
+                    Point2Di c(btn.x + btn.width / 2, btn.y + btn.height / 2); int s = 3;
                     ctx->ClearPath();
-                    ctx->MoveTo(c.x, c.y - s);
-                    ctx->LineTo(c.x + (s+s), c.y + s);
-                    ctx->LineTo(c.x - (s+s), c.y + s);
-                    ctx->ClosePath();
-                    ctx->Fill();
-                }
-
-                // Down arrow - filled triangle pointing down
-                {
-                    Point2Di c(rightButton.x + rightButton.width / 2, rightButton.y + rightButton.height / 2);
-                    int s = 3;
-                    ctx->ClearPath();
-                    ctx->MoveTo(c.x, c.y + s);
-                    ctx->LineTo(c.x - (s+s), c.y - s);
-                    ctx->LineTo(c.x + (s+s), c.y - s);
-                    ctx->ClosePath();
-                    ctx->Fill();
+                    if (canGoPrev) {
+                        // Up arrow
+                        ctx->MoveTo(c.x, c.y - s); ctx->LineTo(c.x + (s+s), c.y + s); ctx->LineTo(c.x - (s+s), c.y + s);
+                    } else {
+                        // Down arrow
+                        ctx->MoveTo(c.x, c.y + s); ctx->LineTo(c.x - (s+s), c.y - s); ctx->LineTo(c.x + (s+s), c.y - s);
+                    }
+                    ctx->ClosePath(); ctx->Fill();
                 }
                 break;
             }
@@ -738,15 +737,20 @@ namespace UltraCanvas {
         }
 
         if (showScrollButtons) {
-            Rect2Di leftButton(tabBarBounds.x + tabBarBounds.width - 40, tabBarBounds.y, 20, tabBarBounds.height);
-            Rect2Di rightButton(tabBarBounds.x + tabBarBounds.width - 20, tabBarBounds.y, 20, tabBarBounds.height);
+            bool canGoPrev = activeTabIndex > 0;
+            bool canGoNext = activeTabIndex < (int)tabs.size() - 1;
 
-            if (leftButton.Contains(x, y)) {
-                ScrollTabs(-1);
-                return true;
-            } else if (rightButton.Contains(x, y)) {
-                ScrollTabs(1);
-                return true;
+            if (canGoPrev && canGoNext) {
+                Rect2Di prevBtn(tabBarBounds.x + tabBarBounds.width - 48, tabBarBounds.y, 24, tabBarBounds.height);
+                Rect2Di nextBtn(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
+                if (prevBtn.Contains(x, y)) { SetActiveTab(activeTabIndex - 1); return true; }
+                if (nextBtn.Contains(x, y)) { SetActiveTab(activeTabIndex + 1); return true; }
+            } else if (canGoPrev || canGoNext) {
+                Rect2Di btn(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
+                if (btn.Contains(x, y)) {
+                    SetActiveTab(canGoPrev ? activeTabIndex - 1 : activeTabIndex + 1);
+                    return true;
+                }
             }
         }
 
@@ -1114,7 +1118,13 @@ namespace UltraCanvas {
             }
 
             case NewTabButtonPosition::FarRight:
-                xPos = tabBarBounds.width - newTabButtonWidth - (showScrollButtons ? 40 : 0);
+                if (showScrollButtons) {
+                    bool canPrev = activeTabIndex > 0;
+                    bool canNext = activeTabIndex < (int)tabs.size() - 1;
+                    xPos = tabBarBounds.width - newTabButtonWidth - ((canPrev && canNext) ? 48 : 24);
+                } else {
+                    xPos = tabBarBounds.width - newTabButtonWidth;
+                }
                 break;
 
             case NewTabButtonPosition::BeforeTabs:
@@ -1171,9 +1181,7 @@ namespace UltraCanvas {
                 availableSpace -= overflowDropdownWidth + tabSpacing;
             }
 
-            if (showScrollButtons) {
-                availableSpace -= 40;
-            }
+            // Note: scroll button space is already subtracted by GetTabAreaBounds()
 
             maxVisibleTabs = 0;
             int totalSpace = 0;
@@ -1201,9 +1209,7 @@ namespace UltraCanvas {
                 availableSpace -= overflowDropdownWidth + tabSpacing;
             }
 
-            if (showScrollButtons) {
-                availableSpace -= 40;
-            }
+            // Note: scroll button space is already subtracted by GetTabAreaBounds()
 
             maxVisibleTabs = 0;
             int totalSpace = 0;
@@ -1281,6 +1287,46 @@ namespace UltraCanvas {
         }
 
         tabScrollOffset = std::max(0, std::min(tabScrollOffset, (int)tabs.size() - maxVisibleTabs));
+    }
+
+    void UltraCanvasTabbedContainer::PackTabBar() {
+        if (!enableTabScrolling || tabScrollOffset <= 0) return;
+
+        bool isVertical = (tabPosition == TabPosition::Left || tabPosition == TabPosition::Right);
+        Rect2Di tabAreaBounds = GetTabAreaBounds();
+        int availableSpace = isVertical ? tabAreaBounds.height : tabAreaBounds.width;
+
+        if (showNewTabButton && newTabButtonPosition != NewTabButtonPosition::FarRight) {
+            availableSpace -= newTabButtonWidth + tabSpacing;
+        }
+        if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Right) {
+            availableSpace -= overflowDropdownWidth + tabSpacing;
+        }
+
+        // Calculate total space used by tabs from tabScrollOffset onward
+        int totalSpace = 0;
+        for (int i = tabScrollOffset; i < (int)tabs.size(); i++) {
+            if (!tabs[i]->visible) continue;
+            int tabSize = isVertical ? tabHeight : CalculateTabWidth(i);
+            if (totalSpace + tabSize > availableSpace) break;
+            totalSpace += tabSize + tabSpacing;
+        }
+
+        // Try to include tabs before tabScrollOffset to fill remaining space
+        while (tabScrollOffset > 0) {
+            int prevIndex = tabScrollOffset - 1;
+            if (!tabs[prevIndex]->visible) {
+                tabScrollOffset--;
+                continue;
+            }
+            int prevTabSize = isVertical ? tabHeight : CalculateTabWidth(prevIndex);
+            if (totalSpace + prevTabSize <= availableSpace) {
+                tabScrollOffset--;
+                totalSpace += prevTabSize + tabSpacing;
+            } else {
+                break;
+            }
+        }
     }
 
     void UltraCanvasTabbedContainer::PositionTabContent(int index) {
@@ -1521,7 +1567,9 @@ namespace UltraCanvas {
                 }
 
                 if (showScrollButtons) {
-                    bounds.width -= 40;
+                    bool canPrev = activeTabIndex > 0;
+                    bool canNext = activeTabIndex < (int)tabs.size() - 1;
+                    bounds.width -= (canPrev && canNext) ? 48 : 24;
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
@@ -1539,7 +1587,9 @@ namespace UltraCanvas {
                 }
 
                 if (showScrollButtons) {
-                    bounds.height -= 40;
+                    bool canPrev = activeTabIndex > 0;
+                    bool canNext = activeTabIndex < (int)tabs.size() - 1;
+                    bounds.height -= (canPrev && canNext) ? 48 : 24;
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {

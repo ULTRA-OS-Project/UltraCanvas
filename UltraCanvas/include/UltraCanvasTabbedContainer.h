@@ -327,6 +327,7 @@ namespace UltraCanvas {
         void ScrollTabs(int direction);
         void ReorderTabs(int fromIndex, int toIndex);
         void EnsureTabVisible(int index);
+        void PackTabBar();
         void PositionTabContent(int index);
         void UpdateContentVisibility();
 
