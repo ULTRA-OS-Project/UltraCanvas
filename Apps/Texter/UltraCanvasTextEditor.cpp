@@ -550,12 +550,18 @@ namespace {
         tabContainer->SetTabStyle(TabStyle::Flat);
         tabContainer->SetTabPosition(TabPosition::Top);
         tabContainer->SetOverflowDropdownPosition(OverflowDropdownPosition::Left);
-        tabContainer->SetDropdownSearchEnabled(false);
+        tabContainer->SetDropdownSearchEnabled(true);
+        tabContainer->SetDropdownSearchThreshold(5);
         tabContainer->SetCloseMode(TabCloseMode::Closable);
         tabContainer->SetShowNewTabButton(true);
         tabContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
         tabContainer->SetTabHeight(tabBarHeight);
         tabContainer->SetActiveTabBackgroundColor(Colors::White);
+//     // Configure overflow dropdown: maximised height + menu font size
+         DropdownStyle dropStyle = tabContainer->GetOverflowDropdownStyle();
+         dropStyle.fontSize = 12.0f;       // Match menu bar font size
+         dropStyle.maxVisibleItems = 30;   // Maximise dropdown height
+         tabContainer->SetOverflowDropdownStyle(dropStyle);
 
         // Setup callbacks
         tabContainer->onTabChange = [this](int oldIndex, int newIndex) {
@@ -573,6 +579,51 @@ namespace {
         tabContainer->onNewTabRequest = [this]() {
             OnFileNew();
         };
+
+        // ===== V2.0.0: Enable tab reordering by drag =====
+        tabContainer->allowTabReordering = true;
+
+        // Sync documents[] vector when tabs are reordered so that
+        // documents[i] always corresponds to tabContainer->tabs[i].
+        tabContainer->onTabReorder = [this](int fromIndex, int toIndex) {
+            if (fromIndex < 0 || fromIndex >= static_cast<int>(documents.size()) ||
+                toIndex < 0 || toIndex >= static_cast<int>(documents.size())) {
+                return;
+            }
+
+            // Move the document entry to match the new tab order
+            auto doc = std::move(documents[fromIndex]);
+            documents.erase(documents.begin() + fromIndex);
+            documents.insert(documents.begin() + toIndex, std::move(doc));
+
+            // Update activeDocumentIndex to follow the active tab
+            // (TabbedContainer already updated its activeTabIndex internally
+            // via ReorderTabs, so we just read it back)
+            activeDocumentIndex = tabContainer->GetActiveTab();
+
+            // Update status bar to reflect potential index change
+            UpdateStatusBar();
+        };
+
+// =========================================================================
+// Drag-out is NOT wired for Texter in this version because UltraTexter is
+// a single-window application. The TabbedContainer infrastructure supports
+// drag-out/drag-in for future multi-window scenarios.
+//
+// When multi-window support is added, wire it like this:
+//
+//     tabContainer->allowTabDragOut = true;
+//     tabContainer->onTabDragOut = [this](int tabIndex, int screenX, int screenY) -> bool {
+//         // Extract tab data
+//         auto transferData = tabContainer->GetTabTransferData(tabIndex);
+//         transferData.userData = documents[tabIndex].get();
+//
+//         // Create new window, add tab there, remove from here
+//         // ... application-specific logic ...
+//
+//         // Return true if tab was removed from this container
+//         return false;
+//     };
 
         AddChild(tabContainer);
     }
@@ -913,7 +964,7 @@ namespace {
         isDocumentClosing = false;
     }
 
-void UltraCanvasTextEditor::SwitchToDocument(int index) {
+    void UltraCanvasTextEditor::SwitchToDocument(int index) {
         if (index < 0 || index >= static_cast<int>(documents.size())) {
             return;
         }

@@ -1,7 +1,7 @@
 // UltraCanvas/OS/Linux/UltraCanvasLinuxDragDrop.h
 // X11 XDnD (Drag and Drop) protocol handler for external file drops
-// Version: 1.0.0
-// Last Modified: 2026-02-26
+// Version: 1.1.0
+// Last Modified: 2026-03-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -30,6 +30,11 @@ namespace UltraCanvas {
     //   2. Call HandleXEvent() from the window's event handler for ClientMessage
     //      and SelectionNotify events
     //   3. Set callbacks to receive drop notifications
+    //
+    // V1.1.0 fixes:
+    //   - Added source window validation to prevent Ctrl/XIM false triggers
+    //   - Added dedicated selection property atom for reliable drop data retrieval
+    //   - Format-aware byte count in SelectionNotify handling
     // =========================================================================
 
     class UltraCanvasLinuxDragDrop {
@@ -51,6 +56,7 @@ namespace UltraCanvas {
         // ===== EVENT HANDLING =====
 
         /// Handle an X11 event — returns true if the event was consumed
+        /// Only processes ClientMessage and SelectionNotify events.
         /// @param event X11 event to process
         /// @return true if event was an XDnD event and was handled
         bool HandleXEvent(const XEvent& event);
@@ -109,6 +115,7 @@ namespace UltraCanvas {
         Atom xdndActionCopy = None;
         Atom xdndTypeList = None;
         Atom xdndSelection = None;
+        Atom xdndSelectionProperty = None;   // Dedicated property for receiving selection data
 
         // Supported drop types
         Atom textUriList = None;     // text/uri-list (file paths)

@@ -618,8 +618,10 @@ namespace UltraCanvas {
 // ===== EVENT HANDLING =====
     bool UltraCanvasLinuxWindow::HandleXEvent(const XEvent& event) {
         // Let the XDnD handler process drag-and-drop events first
-        if (dragDropHandler.HandleXEvent(event)) {
-            return true;
+        if (event.type == ClientMessage || event.type == SelectionNotify) {
+            if (dragDropHandler.HandleXEvent(event)) {
+                return true;
+            }
         }
         return false;
     }

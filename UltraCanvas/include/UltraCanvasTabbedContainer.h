@@ -1,7 +1,7 @@
 // include/UltraCanvasTabbedContainer.h
-// Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 1.9.1
-// Last Modified: 2026-02-07
+// Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
+// Version: 2.0.0
+// Last Modified: 2026-03-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -32,9 +32,9 @@ namespace UltraCanvas {
     enum class TabStyle {
         Classic,        // Traditional rectangular tabs
         Modern,         // Flat with subtle borders
-        Flat,          // Minimal style, no borders
-        Rounded,       // Browser-style rounded tops
-        Custom         // User-defined rendering
+        Flat,           // Minimal style, no borders
+        Rounded,        // Browser-style rounded tops
+        Custom          // User-defined rendering
     };
 
 // ===== TAB CLOSE BEHAVIOR =====
@@ -79,6 +79,16 @@ namespace UltraCanvas {
         void* userData = nullptr;
 
         TabData(const std::string& tabTitle) : title(tabTitle) {}
+    };
+
+// ===== V2.0.0: TAB TRANSFER DATA (for drag-out / drag-in between containers) =====
+    struct TabTransferData {
+        std::string title;
+        std::shared_ptr<UltraCanvasUIElement> content;
+        std::string iconPath;
+        bool modified = false;
+        bool closable = true;
+        void* userData = nullptr;     // Application-defined data (e.g., DocumentTab*)
     };
 
 // ===== TABBED CONTAINER COMPONENT =====
@@ -127,7 +137,7 @@ namespace UltraCanvas {
         Color contentAreaColor = Color(255, 255, 255);
         Color badgeTextColor = Colors::White;
         Color tabSeparatorColor = Color(200, 200, 200);
-        
+
         Color modifiedMarkerColor = Color(195, 30, 3);    // #C31E03
         int modifiedMarkerRadius = 4;
 
@@ -167,6 +177,14 @@ namespace UltraCanvas {
         Point2Di dragStartPosition;
         bool isDraggingTab = false;
 
+        // ===== V2.0.0: ENHANCED DRAG STATE =====
+        int dragInsertionIndex = -1;          // Where the insertion line is drawn (-1 = none)
+        int dragOutThreshold = 40;            // Pixels beyond tab bar to trigger drag-out
+        bool dragOutTriggered = false;        // True once drag-out callback has fired for this drag
+        Point2Di dragCurrentPosition;         // Current mouse position during drag (for ghost rendering)
+        Color dragInsertionColor = Color(0, 120, 215, 230);   // Blue insertion indicator
+        Color dragGhostBorderColor = Color(0, 120, 215, 120); // Ghost tab border
+
         // ===== CALLBACKS (USING CORRECT BASE VERB FORMS) =====
         std::function<void(int, int)> onTabChange;           // (oldIndex, newIndex)
         std::function<void(int)> onTabSelect;                // (tabIndex)
@@ -174,6 +192,20 @@ namespace UltraCanvas {
         std::function<void(int, int)> onTabReorder;          // (fromIndex, toIndex)
         std::function<void(int, const std::string&)> onTabRename; // (tabIndex, newTitle)
         std::function<void()> onTabBarRightClick;
+
+        // ===== V2.0.0: DRAG-OUT / DRAG-IN CALLBACKS =====
+        /// Tab dragged out of the tab bar beyond threshold.
+        /// @param tabIndex Index of the dragged tab
+        /// @param screenX Screen X coordinate of mouse at drag-out
+        /// @param screenY Screen Y coordinate of mouse at drag-out
+        /// @return true if the handler removed the tab (e.g., moved to new window)
+        std::function<bool(int tabIndex, int screenX, int screenY)> onTabDragOut;
+
+        /// External tab offered for insertion via AcceptTabTransfer().
+        /// @param data Transfer data for the incoming tab
+        /// @param insertionIndex Suggested insertion position
+        /// @return New tab index if accepted, -1 to reject
+        std::function<int(const TabTransferData& data, int insertionIndex)> onTabDragIn;
 
         UltraCanvasTabbedContainer(const std::string& elementId, long uniqueId, long posX, long posY, long w, long h);
 
@@ -194,23 +226,17 @@ namespace UltraCanvas {
         bool CalcBadgeDimensions(TabData* tabData);
 
         void SetNewTabButtonWidth(int w) { newTabButtonWidth = w; }
-        void SetInactiveTabBackgroundColor(const Color& c) {
-            inactiveTabColor = c;
-        }
-        void SetActiveTabBackgroundColor(const Color& c) {
-            activeTabColor = c;
-        }
-        void SetInactiveTabTextColor(const Color& c) {
-            inactiveTabTextColor = c;
-        }
-        void SetNewButtonColor(const Color& c) {
-            newTabButtonColor = c;
-        }
+        void SetInactiveTabBackgroundColor(const Color& c) { inactiveTabColor = c; }
+        void SetActiveTabBackgroundColor(const Color& c) { activeTabColor = c; }
+        void SetInactiveTabTextColor(const Color& c) { inactiveTabTextColor = c; }
+        void SetNewButtonColor(const Color& c) { newTabButtonColor = c; }
 
         // ===== OVERFLOW DROPDOWN CONFIGURATION =====
         void SetOverflowDropdownPosition(OverflowDropdownPosition position);
         OverflowDropdownPosition GetOverflowDropdownPosition() const { return overflowDropdownPosition; }
         void SetOverflowDropdownWidth(int width);
+        void SetOverflowDropdownStyle(const DropdownStyle& st) { overflowDropdown->SetStyle(st); }
+        const DropdownStyle& GetOverflowDropdownStyle() { return overflowDropdown->GetStyle(); };
 
         // ===== DROPDOWN SEARCH CONFIGURATION =====
         void SetDropdownSearchEnabled(bool enabled);
@@ -270,6 +296,10 @@ namespace UltraCanvas {
         void RenderContentArea(IRenderContext* ctx);
         void RenderNewTabButton(IRenderContext* ctx);
 
+        // ===== V2.0.0: DRAG VISUAL FEEDBACK RENDERING =====
+        void RenderDragInsertionIndicator(IRenderContext* ctx);
+        void RenderDraggedTabGhost(IRenderContext* ctx);
+
         // ===== EVENT HANDLING (CORRECTED TO RETURN BOOL) =====
         bool OnEvent(const UCEvent& event) override;
         bool HandleDropdownSearchInput(const UCEvent& event);
@@ -300,6 +330,28 @@ namespace UltraCanvas {
         void PositionTabContent(int index);
         void UpdateContentVisibility();
 
+        // ===== V2.0.0: DRAG-OUT / DRAG-IN METHODS =====
+
+        /// Set pixel threshold beyond tab bar that triggers drag-out (default: 40)
+        void SetDragOutThreshold(int pixels) { dragOutThreshold = pixels; }
+        int GetDragOutThreshold() const { return dragOutThreshold; }
+
+        /// Enable/disable drag-out support
+        void SetAllowTabDragOut(bool allow) { allowTabDragOut = allow; }
+        bool GetAllowTabDragOut() const { return allowTabDragOut; }
+
+        /// Accept an external tab transfer into this container at the given position.
+        /// If onTabDragIn callback is set, it is called first and can reject by returning -1.
+        /// @param data Tab transfer data
+        /// @param insertionIndex Position to insert (-1 = append at end)
+        /// @return New tab index, or -1 if rejected
+        int AcceptTabTransfer(const TabTransferData& data, int insertionIndex = -1);
+
+        /// Extract transfer data from an existing tab (for use when dragging out)
+        /// @param index Tab index to extract data from
+        /// @return TabTransferData populated from the tab
+        TabTransferData GetTabTransferData(int index) const;
+
         // ===== GETTERS AND SETTERS =====
         int GetActiveTab() const { return activeTabIndex; }
         int GetTabCount() const { return (int)tabs.size(); }
@@ -329,6 +381,13 @@ namespace UltraCanvas {
         Color GetTabBackgroundColor(int index) const;
         void SetTabTextColor(int index, const Color& color);
         Color GetTabTextColor(int index) const;
+
+    private:
+        std::string ToLowerCase(const std::string& str) const {
+            std::string result = str;
+            std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+            return result;
+        }
     };
 
 // ===== FACTORY FUNCTIONS =====

@@ -1,8 +1,8 @@
 // UltraCanvas/OS/Linux/UltraCanvasLinuxDragDrop.cpp
 // X11 XDnD (Drag and Drop) protocol implementation
 // Implements XDND version 5 for receiving file drops from external applications
-// Version: 1.0.0
-// Last Modified: 2026-02-26
+// Version: 1.1.0
+// Last Modified: 2026-03-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLinuxDragDrop.h"
@@ -44,6 +44,11 @@ namespace UltraCanvas {
         xdndTypeList  = XInternAtom(display, "XdndTypeList",  False);
         xdndSelection = XInternAtom(display, "XdndSelection", False);
 
+        // Dedicated property for receiving selection data during drop
+        // Using a custom property avoids conflicts when xdndSelection is used
+        // as both selection AND property (which some X servers reject)
+        xdndSelectionProperty = XInternAtom(display, "ULTRACANVAS_XDND_DATA", False);
+
         // Supported MIME types for drop
         textUriList = XInternAtom(display, "text/uri-list", False);
         textPlain   = XInternAtom(display, "text/plain",   False);
@@ -51,8 +56,8 @@ namespace UltraCanvas {
         // Advertise XDnD support on the window — version 5
         Atom xdndVersion = 5;
         XChangeProperty(display, window, xdndAware, XA_ATOM, 32,
-                         PropModeReplace,
-                         reinterpret_cast<unsigned char*>(&xdndVersion), 1);
+                        PropModeReplace,
+                        reinterpret_cast<unsigned char*>(&xdndVersion), 1);
 
         std::cout << "UltraCanvas XDnD: Drag-and-drop initialized for window "
                   << window << std::endl;
@@ -67,34 +72,53 @@ namespace UltraCanvas {
         display = nullptr;
         window = 0;
         isDragActive = false;
+        dragSourceWindow = None;
     }
 
 // ===== EVENT HANDLING =====
 
     bool UltraCanvasLinuxDragDrop::HandleXEvent(const XEvent& event) {
+        // Only handle ClientMessage and SelectionNotify — never KeyPress, etc.
         if (event.type == ClientMessage) {
             const XClientMessageEvent& cm = event.xclient;
 
+            // Guard: Only process if we're properly initialized
+            if (!display || window == 0) return false;
+
             if (cm.message_type == xdndEnter) {
+                // Validate source window: must be non-zero and not our own window.
+                // This prevents XIM or other subsystems from accidentally triggering
+                // drag-drop when their ClientMessage atoms happen to match XDnD atoms.
+                Window sourceWin = static_cast<Window>(cm.data.l[0]);
+                if (sourceWin == 0 || sourceWin == window) return false;
                 HandleXdndEnter(cm);
                 return true;
             }
             if (cm.message_type == xdndPosition) {
+                // Only process if we have an active drag from a valid source
+                if (dragSourceWindow == None) return false;
                 HandleXdndPosition(cm);
                 return true;
             }
             if (cm.message_type == xdndLeave) {
+                // Only process if we have an active drag
+                if (dragSourceWindow == None) return false;
                 HandleXdndLeave(cm);
                 return true;
             }
             if (cm.message_type == xdndDrop) {
+                // Only process if we have an active drag
+                if (dragSourceWindow == None) return false;
                 HandleXdndDrop(cm);
                 return true;
             }
         }
 
         if (event.type == SelectionNotify) {
-            if (event.xselection.selection == xdndSelection) {
+            // Only handle if we're expecting selection data (active drag in progress)
+            if (isDragActive &&
+                (event.xselection.selection == xdndSelection ||
+                 event.xselection.property == xdndSelectionProperty)) {
                 HandleSelectionNotify(event.xselection);
                 return true;
             }
@@ -151,7 +175,7 @@ namespace UltraCanvas {
         Window child;
         int localX = 0, localY = 0;
         XTranslateCoordinates(display, DefaultRootWindow(display), window,
-                               rootX, rootY, &localX, &localY, &child);
+                              rootX, rootY, &localX, &localY, &child);
 
         dragX = localX;
         dragY = localY;
@@ -184,10 +208,11 @@ namespace UltraCanvas {
             return;
         }
 
-        // Request the selection data in text/uri-list format
-        // The source will respond with a SelectionNotify event
+        // Request the selection data in text/uri-list format.
+        // Use xdndSelectionProperty as the target property — using xdndSelection
+        // as both selection AND property can fail on some X servers.
         XConvertSelection(display, xdndSelection, textUriList,
-                           xdndSelection, window, CurrentTime);
+                          xdndSelectionProperty, window, CurrentTime);
         XFlush(display);
     }
 
@@ -208,13 +233,25 @@ namespace UltraCanvas {
         unsigned char* data = nullptr;
 
         int result = XGetWindowProperty(display, window, sel.property,
-                                         0, 65536, True, AnyPropertyType,
-                                         &actualType, &actualFormat,
-                                         &itemCount, &bytesRemaining,
-                                         &data);
+                                        0, 65536, True, AnyPropertyType,
+                                        &actualType, &actualFormat,
+                                        &itemCount, &bytesRemaining,
+                                        &data);
 
-        if (result == Success && data) {
-            std::string uriList(reinterpret_cast<char*>(data), itemCount);
+        if (result == Success && data && itemCount > 0) {
+            // Calculate actual byte length based on the property format.
+            // XGetWindowProperty returns itemCount in units of the format size:
+            //   format 8  → itemCount is byte count
+            //   format 16 → itemCount is count of 16-bit values
+            //   format 32 → itemCount is count of long values (4 or 8 bytes)
+            unsigned long byteCount = itemCount;
+            if (actualFormat == 16) {
+                byteCount = itemCount * 2;
+            } else if (actualFormat == 32) {
+                byteCount = itemCount * sizeof(long);
+            }
+
+            std::string uriList(reinterpret_cast<char*>(data), byteCount);
             XFree(data);
 
             // Parse the URI list into individual file paths
@@ -234,6 +271,9 @@ namespace UltraCanvas {
             SendXdndFinished(dragSourceWindow, true);
         } else {
             if (data) XFree(data);
+            std::cerr << "UltraCanvas XDnD: Failed to read selection data"
+                      << " (result=" << result
+                      << ", itemCount=" << itemCount << ")" << std::endl;
             SendXdndFinished(dragSourceWindow, false);
         }
 
@@ -263,7 +303,7 @@ namespace UltraCanvas {
         msg.data.l[4] = accept ? static_cast<long>(xdndActionCopy) : None;  // Accepted action
 
         XSendEvent(display, sourceWindow, False, NoEventMask,
-                    reinterpret_cast<XEvent*>(&msg));
+                   reinterpret_cast<XEvent*>(&msg));
         XFlush(display);
     }
 
@@ -282,7 +322,7 @@ namespace UltraCanvas {
         msg.data.l[2] = accepted ? static_cast<long>(xdndActionCopy) : None;
 
         XSendEvent(display, sourceWindow, False, NoEventMask,
-                    reinterpret_cast<XEvent*>(&msg));
+                   reinterpret_cast<XEvent*>(&msg));
         XFlush(display);
     }
 
@@ -295,10 +335,10 @@ namespace UltraCanvas {
         unsigned char* data = nullptr;
 
         int result = XGetWindowProperty(display, sourceWindow, xdndTypeList,
-                                         0, 256, False, XA_ATOM,
-                                         &actualType, &actualFormat,
-                                         &itemCount, &bytesRemaining,
-                                         &data);
+                                        0, 256, False, XA_ATOM,
+                                        &actualType, &actualFormat,
+                                        &itemCount, &bytesRemaining,
+                                        &data);
 
         if (result == Success && data) {
             Atom* atoms = reinterpret_cast<Atom*>(data);
