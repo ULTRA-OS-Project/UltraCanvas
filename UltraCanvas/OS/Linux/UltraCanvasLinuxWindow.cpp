@@ -142,11 +142,13 @@ namespace UltraCanvas {
         dragDropHandler.Initialize(display, xWindow);
 
         // Wire XDnD callbacks to dispatch UCEvents
-        dragDropHandler.onFileDrop = [this](const std::vector<std::string>& paths) {
+        dragDropHandler.onFileDrop = [this](const std::vector<std::string>& paths, int x, int y) {
             UCEvent event;
             event.type = UCEventType::Drop;
             event.targetWindow = this;
             event.nativeWindowHandle = xWindow;
+            event.x = event.windowX = x;
+            event.y = event.windowY = y;
             event.droppedFiles = paths;
             event.dragMimeType = "text/uri-list";
             // Join paths for legacy dragData compatibility
@@ -159,19 +161,23 @@ namespace UltraCanvas {
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };
 
-        dragDropHandler.onDragEnter = [this]() {
+        dragDropHandler.onDragEnter = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragEnter;
             event.targetWindow = this;
             event.nativeWindowHandle = xWindow;
+            event.x = event.windowX = x;
+            event.y = event.windowY = y;
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };
 
-        dragDropHandler.onDragLeave = [this]() {
+        dragDropHandler.onDragLeave = [this](int x, int y) {
             UCEvent event;
             event.type = UCEventType::DragLeave;
             event.targetWindow = this;
             event.nativeWindowHandle = xWindow;
+            event.x = event.windowX = x;
+            event.y = event.windowY = y;
             UltraCanvasApplication::GetInstance()->PushEvent(event);
         };
 

@@ -285,6 +285,14 @@ namespace UltraCanvas {
     void UltraCanvasLinuxApplication::ProcessXEvent(XEvent& xEvent) {
         // Find the window that owns this event
         if (xEvent.type == SelectionRequest || xEvent.type == SelectionNotify || xEvent.type == SelectionClear) {
+            // For SelectionNotify, let the window's drag-drop handler try first
+            // (XDnD drop uses SelectionNotify to deliver file data)
+            if (xEvent.type == SelectionNotify) {
+                auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
+                if (window && window->HandleXEvent(xEvent)) {
+                    return;
+                }
+            }
             UltraCanvasLinuxClipboard::ProcessClipboardEvent(xEvent);
         } else {
             auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));

@@ -14,9 +14,9 @@
 namespace UltraCanvas {
 
     // Callback types for drag-and-drop events
-    using FileDropCallback = std::function<void(const std::vector<std::string>& filePaths)>;
-    using DragEnterCallback = std::function<void()>;
-    using DragLeaveCallback = std::function<void()>;
+    using FileDropCallback = std::function<void(const std::vector<std::string>& filePaths, int x, int y)>;
+    using DragEnterCallback = std::function<void(int x, int y)>;
+    using DragLeaveCallback = std::function<void(int x, int y)>;
     using DragOverCallback = std::function<void(int x, int y)>;
 
     // =========================================================================

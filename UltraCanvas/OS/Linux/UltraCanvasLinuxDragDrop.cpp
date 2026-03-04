@@ -161,7 +161,7 @@ namespace UltraCanvas {
                   << (acceptDrop ? "accepting" : "rejecting") << std::endl;
 
         if (onDragEnter) {
-            onDragEnter();
+            onDragEnter(dragX, dragY);
         }
     }
 
@@ -195,7 +195,7 @@ namespace UltraCanvas {
         dragSourceWindow = None;
 
         if (onDragLeave) {
-            onDragLeave();
+            onDragLeave(dragX, dragY);
         }
     }
 
@@ -265,7 +265,7 @@ namespace UltraCanvas {
 
             // Notify via callback
             if (onFileDrop && !filePaths.empty()) {
-                onFileDrop(filePaths);
+                onFileDrop(filePaths, dragX, dragY);
             }
 
             SendXdndFinished(dragSourceWindow, true);

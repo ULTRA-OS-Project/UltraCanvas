@@ -365,6 +365,15 @@ rescan_windows:
                 }
 
             }
+            if (event.IsDragEvent()) {
+                auto elem = targetWindow->FindElementAtPoint(event.x, event.y);
+                if (elem) {
+                    HandleEventWithBubbling(event, elem);
+                } else {
+                    DispatchEventToElement(targetWindow, event);
+                }
+                goto finish;
+            }
             if (event.IsMouseEvent()) {
                 if (hoveredElement && hoveredElement != pointerElem) {
                     UCEvent leaveEvent = event;
@@ -423,7 +432,7 @@ rescan_windows:
         if (!event.isCommandEvent()) {
             auto newEvent = event;
             newEvent.targetElement = elem;
-            if (event.IsMouseEvent()) {
+            if (event.IsMouseEvent() || event.IsDragEvent()) {
                 elem->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
             }
             if (DispatchEventToElement(elem, newEvent)) {
@@ -434,7 +443,7 @@ rescan_windows:
         while(parent) {
             auto newParentEvent = event;
             newParentEvent.targetElement = elem;
-            if (event.IsMouseEvent()) {
+            if (event.IsMouseEvent() || event.IsDragEvent()) {
                 parent->ConvertWindowToParentContainerCoordinates(newParentEvent.x, newParentEvent.y);
             }
             if (DispatchEventToElement(parent, newParentEvent)) {
