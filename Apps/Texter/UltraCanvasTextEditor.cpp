@@ -2433,6 +2433,7 @@ namespace {
                     OnViewDecreaseFontSize();
                     return true;
                 }
+                break;
             case UCEventType::DragEnter:
                 HandleDragEnter(event);
                 return true;
