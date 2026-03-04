@@ -101,6 +101,7 @@ namespace UltraCanvas {
         std::function<void(int, const DropdownItem&)> onItemHovered;
         std::function<void()> onDropdownOpened;
         std::function<void()> onDropdownClosed;
+        std::function<bool(const UCEvent&)> onKeyDown;
 
         // NEW: Multi-selection callbacks
         std::function<void(const std::vector<int>&)> onMultiSelectionChanged;

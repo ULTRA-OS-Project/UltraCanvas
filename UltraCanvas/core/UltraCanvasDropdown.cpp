@@ -301,11 +301,14 @@ namespace UltraCanvas {
             dropdownOpen = false;
             hoveredIndex = -1;
 
+            RemoveThisPopupElementFromWindow();
+            RequestRedraw();
+
+            // Fire callback after cleanup is complete, so reopening from the
+            // callback won't be undone by RemoveThisPopupElementFromWindow.
             if (onDropdownClosed) {
                 onDropdownClosed();
             }
-            RemoveThisPopupElementFromWindow();
-            RequestRedraw();
         }
     }
 
@@ -403,16 +406,41 @@ namespace UltraCanvas {
             CalculateDropdownDimensions();
         }
         Point2Di globalPos = GetPositionInWindow();
-
         Rect2Di buttonRect = GetBounds();
-        Rect2Di listRect(globalPos.x, globalPos.y + buttonRect.height,
-                         dropdownWidth, dropdownHeight);
-        if (listRect.x + listRect.width > window->GetWidth()) {
-            listRect.x = window->GetWidth() - dropdownWidth;
+
+        int windowHeight = window ? window->GetHeight() : 9999;
+        int windowWidth = window ? window->GetWidth() : 9999;
+
+        // Calculate available space below and above the button
+        int spaceBelow = windowHeight - (globalPos.y + buttonRect.height);
+        int spaceAbove = globalPos.y;
+
+        int effectiveHeight = dropdownHeight;
+        int listY;
+
+        if (effectiveHeight <= spaceBelow) {
+            // Fits below — preferred position
+            listY = globalPos.y + buttonRect.height;
+        } else if (effectiveHeight <= spaceAbove) {
+            // Fits above
+            listY = globalPos.y - effectiveHeight;
+        } else if (spaceBelow >= spaceAbove) {
+            // More space below — clamp height to available space
+            effectiveHeight = std::max(spaceBelow, static_cast<int>(style.itemHeight) + 2);
+            listY = globalPos.y + buttonRect.height;
+        } else {
+            // More space above — clamp height to available space
+            effectiveHeight = std::max(spaceAbove, static_cast<int>(style.itemHeight) + 2);
+            listY = globalPos.y - effectiveHeight;
         }
-        if (listRect.y + listRect.height > window->GetHeight()) {
-            listRect.y -= (buttonRect.height + dropdownHeight);
+
+        Rect2Di listRect(globalPos.x, listY, dropdownWidth, effectiveHeight);
+
+        // Horizontal adjustment
+        if (listRect.x + listRect.width > windowWidth) {
+            listRect.x = windowWidth - dropdownWidth;
         }
+
         return listRect;
     }
 
@@ -433,19 +461,34 @@ namespace UltraCanvas {
 
         Rect2Di listRect = CalculatePopupPosition();
 
+        // Check if popup height was clamped (less than full dropdown height)
+        bool heightClamped = listRect.height < dropdownHeight;
+        bool showScrollbar = needScrollbar || heightClamped;
+
+        // Calculate how many items actually fit in the (potentially clamped) height
+        int fittingItems = std::max(1, (listRect.height - 2) / static_cast<int>(style.itemHeight));
+        int effectiveVisibleItems = heightClamped
+            ? std::min(fittingItems, static_cast<int>(items.size()))
+            : std::min(static_cast<int>(items.size()), style.maxVisibleItems);
+
+        // Update scrollbar if height was clamped
+        if (heightClamped && listScrollbar) {
+            listScrollbar->SetViewportSize(effectiveVisibleItems);
+            listScrollbar->SetContentSize(static_cast<int>(items.size()));
+        }
+
         // Draw list background and border
         ctx->DrawFilledRectangle(listRect, style.listBackgroundColor, style.borderWidth, style.listBorderColor);
 
         // Set clipping for items
         ctx->PushState();
-        int scrollbarWidth = needScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
+        int sbWidth = showScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
         ctx->ClipRect(Rect2Di(listRect.x + 1, listRect.y + 1,
-                              listRect.width - 2 - scrollbarWidth, listRect.height - 2));
+                              listRect.width - 2 - sbWidth, listRect.height - 2));
 
         // Render visible items
-        int visibleItems = std::min(static_cast<int>(items.size()), style.maxVisibleItems);
         int startIndex = scrollOffset;
-        int endIndex = std::min(startIndex + visibleItems, static_cast<int>(items.size()));
+        int endIndex = std::min(startIndex + effectiveVisibleItems, static_cast<int>(items.size()));
 
         for (int i = startIndex; i < endIndex; i++) {
             RenderDropdownItem(i, listRect, i - startIndex, ctx);
@@ -454,7 +497,7 @@ namespace UltraCanvas {
         ctx->PopState();
 
         // Render scrollbar if needed
-        if (needScrollbar) {
+        if (showScrollbar) {
             RenderScrollbar(listRect, ctx);
         }
 
@@ -510,6 +553,12 @@ namespace UltraCanvas {
         std::string displayText = GetDisplayText();
 
         if (!displayText.empty()) {
+            // Clip text to button bounds so it doesn't overflow into adjacent elements
+            ctx->PushState();
+            int arrowSpace = static_cast<int>(style.arrowSize * 2 + 2);
+            ctx->ClipRect(Rect2Di(buttonRect.x + 1, buttonRect.y,
+                                  buttonRect.width - arrowSpace - 1, buttonRect.height));
+
             ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
             ctx->SetFontSize(style.fontSize);
             ctx->SetTextPaint(textColor);
@@ -537,6 +586,7 @@ namespace UltraCanvas {
             }
 
             ctx->DrawText(displayText, Point2Di(textX, textY));
+            ctx->PopState();
         }
 
         // Draw dropdown arrow
@@ -898,13 +948,20 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasDropdown::HandleMouseWheel(const UCEvent &event) {
-        if (!dropdownOpen || !needScrollbar) return false;
+        if (!dropdownOpen) return false;
 
         Rect2Di listRect = CalculatePopupPosition();
+        bool heightClamped = listRect.height < dropdownHeight;
+        if (!needScrollbar && !heightClamped) return false;
+
         if (!listRect.Contains(event.x, event.y)) return false;
 
+        int fittingItems = heightClamped
+            ? std::max(1, (listRect.height - 2) / static_cast<int>(style.itemHeight))
+            : style.maxVisibleItems;
+
         int delta = event.wheelDelta > 0 ? -1 : 1;
-        int maxScroll = std::max(0, static_cast<int>(items.size()) - style.maxVisibleItems);
+        int maxScroll = std::max(0, static_cast<int>(items.size()) - fittingItems);
         scrollOffset = std::clamp(scrollOffset + delta, 0, maxScroll);
 
         if (listScrollbar) {
@@ -937,6 +994,7 @@ namespace UltraCanvas {
                 return false;
 
             case UCEventType::KeyDown:
+                if (onKeyDown && onKeyDown(event)) return true;
                 HandleKeyDown(event);
                 return true;
 

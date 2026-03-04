@@ -211,19 +211,41 @@ namespace UltraCanvas {
         overflowDropdown->SetVisible(false);
 
         overflowDropdown->onSelectionChanged = [this](int selectedIndex, const DropdownItem& item) {
-            if (selectedIndex == -1) {
-                dropdownSearchActive = true;
-                RequestRedraw();
+            if (item.value == "-1") {
+                // Clicked on the search field itself — just ignore, search is already active
+                overflowDropdown->SetSelectedIndex(-1, false);
                 return;
             }
 
             int tabIndex = item.value.empty() ? selectedIndex : std::stoi(item.value);
             if (tabIndex >= 0 && tabIndex < (int)tabs.size()) {
                 SetActiveTab(tabIndex);
-//                overflowDropdownVisible = false;
-//                overflowDropdown->SetVisible(false);
                 ClearDropdownSearch();
             }
+        };
+
+        // Activate search mode automatically when dropdown opens
+        overflowDropdown->onDropdownOpened = [this]() {
+            bool shouldShowSearch = enableDropdownSearch && ((int)tabs.size() >= dropdownSearchThreshold);
+            if (shouldShowSearch) {
+                dropdownSearchActive = true;
+            }
+        };
+
+        // Clear search state when dropdown closes
+        overflowDropdown->onDropdownClosed = [this]() {
+            if (dropdownSearchActive) {
+                dropdownSearchText = "";
+                dropdownSearchActive = false;
+            }
+        };
+
+        // Route key events from the dropdown popup to the search input handler
+        overflowDropdown->onKeyDown = [this](const UCEvent& event) {
+            if (dropdownSearchActive) {
+                return HandleDropdownSearchInput(event);
+            }
+            return false;
         };
     }
 
@@ -235,7 +257,7 @@ namespace UltraCanvas {
         bool shouldShowSearch = enableDropdownSearch && ((int)tabs.size() >= dropdownSearchThreshold);
 
         if (shouldShowSearch) {
-            std::string searchDisplayText = (dropdownSearchText.empty() ? "Search tabs..." : dropdownSearchText);
+            std::string searchDisplayText = (dropdownSearchText.empty() ? "Type to find the tab..." : dropdownSearchText);
             overflowDropdown->AddItem(searchDisplayText, "-1");
             overflowDropdown->AddSeparator();
         }
@@ -658,6 +680,7 @@ namespace UltraCanvas {
 
         if (event.virtualKey == UCKeys::Escape) {
             ClearDropdownSearch();
+            overflowDropdown->CloseDropdown();
             return true;
         }
 
@@ -665,6 +688,7 @@ namespace UltraCanvas {
             if (!dropdownSearchText.empty()) {
                 dropdownSearchText.pop_back();
                 UpdateOverflowDropdown();
+                overflowDropdown->RequestRedraw();
             }
             return true;
         }
@@ -673,14 +697,16 @@ namespace UltraCanvas {
             auto filtered = GetFilteredTabIndices();
             if (!filtered.empty()) {
                 SetActiveTab(filtered[0]);
-                ClearDropdownSearch();
             }
+            ClearDropdownSearch();
+            overflowDropdown->CloseDropdown();
             return true;
         }
 
         if (event.character >= 32 && event.character <= 126) {
             dropdownSearchText += static_cast<char>(event.character);
             UpdateOverflowDropdown();
+            overflowDropdown->RequestRedraw();
             return true;
         }
 
