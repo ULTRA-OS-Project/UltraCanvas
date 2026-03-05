@@ -162,6 +162,12 @@ namespace UltraCanvas {
             y = config_.y;
         }
 
+        /// Get the actual screen position of the window (queries the platform)
+        virtual void GetScreenPosition(int& x, int& y) const {
+            x = config_.x;
+            y = config_.y;
+        }
+
         void GetWindowSize(int& w, int& h) const {
             w = config_.width;
             h = config_.height;

@@ -323,6 +323,9 @@ namespace {
                         MenuItemData::ActionWithShortcut("New", "Ctrl+N", "media/icons/texter/add-document.svg", [this]() {
                             OnFileNew();
                         }),
+                        MenuItemData::ActionWithShortcut("New Window", "Ctrl+Shift+N", "media/icons/texter/add-document.svg", [this]() {
+                            if (onNewWindowRequest) onNewWindowRequest();
+                        }),
                         MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", "media/icons/texter/folder-open.svg", [this]() {
                             OnFileOpen();
                         }),
@@ -424,8 +427,8 @@ namespace {
                 .Build();
 
         // Store the index of "Recent Files" within the File menu items
-        // It's at position 2 (0=New, 1=Open, 2=Recent Files)
-        recentFilesMenuIndex = 2;
+        // It's at position 3 (0=New, 1=New Window, 2=Open, 3=Recent Files)
+        recentFilesMenuIndex = 3;
 
         // Load and populate recent files
         LoadRecentFiles();
@@ -609,25 +612,29 @@ namespace {
             UpdateStatusBar();
         };
 
-// =========================================================================
-// Drag-out is NOT wired for Texter in this version because UltraTexter is
-// a single-window application. The TabbedContainer infrastructure supports
-// drag-out/drag-in for future multi-window scenarios.
-//
-// When multi-window support is added, wire it like this:
-//
-//     tabContainer->allowTabDragOut = true;
-//     tabContainer->onTabDragOut = [this](int tabIndex, int screenX, int screenY) -> bool {
-//         // Extract tab data
-//         auto transferData = tabContainer->GetTabTransferData(tabIndex);
-//         transferData.userData = documents[tabIndex].get();
-//
-//         // Create new window, add tab there, remove from here
-//         // ... application-specific logic ...
-//
-//         // Return true if tab was removed from this container
-//         return false;
-//     };
+        // ===== Enable tab drag-out for multi-window support =====
+        tabContainer->allowTabDragOut = true;
+
+        tabContainer->onTabDragOut = [this](int tabIndex, int screenX, int screenY) -> bool {
+            if (tabIndex < 0 || tabIndex >= static_cast<int>(documents.size())) {
+                return false;
+            }
+
+            // Extract the document without save prompts
+            auto doc = ExtractDocument(tabIndex);
+            if (!doc) {
+                return false;
+            }
+
+            // Ask the window manager to handle the document.
+            // The manager will either drop it into a target window or create a new one.
+            // If this editor is now empty, the manager will close this window.
+            if (onTabDraggedOut) {
+                onTabDraggedOut(doc, screenX, screenY);
+            }
+
+            return true;  // Tab already removed by ExtractDocument
+        };
 
         AddChild(tabContainer);
     }
@@ -1009,6 +1016,72 @@ namespace {
             UpdateStatusBar();
         }
         isDocumentClosing = false;
+    }
+
+    std::shared_ptr<DocumentTab> UltraCanvasTextEditor::ExtractDocument(int index) {
+        if (index < 0 || index >= static_cast<int>(documents.size())) {
+            return nullptr;
+        }
+
+        auto doc = documents[index];
+
+        // Remove from documents vector
+        documents.erase(documents.begin() + index);
+
+        // Remove the tab from TabbedContainer (bypass onTabClose callback)
+        isDocumentClosing = true;
+        tabContainer->RemoveTab(index);
+        isDocumentClosing = false;
+
+        // Update active index without auto-creating a new document
+        if (documents.empty()) {
+            activeDocumentIndex = -1;
+        } else if (activeDocumentIndex >= static_cast<int>(documents.size())) {
+            activeDocumentIndex = static_cast<int>(documents.size()) - 1;
+        }
+
+        UpdateStatusBar();
+        return doc;
+    }
+
+    int UltraCanvasTextEditor::AcceptDocument(std::shared_ptr<DocumentTab> doc) {
+        if (!doc || !doc->textArea) return -1;
+
+        // Assign new document ID to avoid conflicts
+        doc->documentId = nextDocumentId++;
+
+        // Add to documents vector
+        documents.push_back(doc);
+        int docIndex = static_cast<int>(documents.size()) - 1;
+
+        // Rebind callbacks for this editor context
+        SetupDocumentCallbacks(docIndex);
+
+        // Apply this editor's current theme and view settings
+        ApplyThemeToDocument(docIndex);
+        doc->textArea->SetFontSize(GetFontSize());
+        doc->textArea->SetShowLineNumbers(config.showLineNumbers);
+        doc->textArea->SetWordWrap(config.wordWrap);
+
+        // Add tab to TabbedContainer
+        int tabIndex = tabContainer->AddTab(doc->fileName, doc->textArea);
+
+        // Propagate modified state
+        if (doc->isModified) {
+            tabContainer->SetTabModified(tabIndex, true);
+        }
+
+        // Activate the new tab
+        activeDocumentIndex = docIndex;
+        tabContainer->SetActiveTab(tabIndex);
+
+        UpdateTabTitle(docIndex);
+        UpdateStatusBar();
+        UpdateEncodingDropdown();
+        UpdateLanguageDropdown();
+        UpdateMarkdownToolbarVisibility();
+
+        return docIndex;
     }
 
     void UltraCanvasTextEditor::SwitchToDocument(int index) {
@@ -2622,6 +2695,9 @@ namespace {
         isDarkTheme = !isDarkTheme;
         ApplyThemeToAllDocuments();
         SaveConfig();
+        if (onThemeChanged) {
+            onThemeChanged(isDarkTheme);
+        }
     }
 
     void UltraCanvasTextEditor::SetDefaultFontSize(float size) {

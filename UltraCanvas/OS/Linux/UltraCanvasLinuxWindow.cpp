@@ -637,5 +637,23 @@ namespace UltraCanvas {
         return xWindow;
     }
 
+    void UltraCanvasLinuxWindow::GetScreenPosition(int& outX, int& outY) const {
+        if (!_created) {
+            outX = config_.x;
+            outY = config_.y;
+            return;
+        }
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) {
+            outX = config_.x;
+            outY = config_.y;
+            return;
+        }
+        Window child;
+        XTranslateCoordinates(app->GetDisplay(), xWindow,
+                              DefaultRootWindow(app->GetDisplay()),
+                              0, 0, &outX, &outY, &child);
+    }
+
 // ===== MOUSE POINTER CONTROL =====
 } // namespace UltraCanvas

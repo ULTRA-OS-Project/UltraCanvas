@@ -182,6 +182,7 @@ namespace UltraCanvas {
         int dragOutThreshold = 40;            // Pixels beyond tab bar to trigger drag-out
         bool dragOutTriggered = false;        // True once drag-out callback has fired for this drag
         Point2Di dragCurrentPosition;         // Current mouse position during drag (for ghost rendering)
+        Point2Di dragGlobalAnchor;            // Screen coords at drag start (for cross-window delta)
         Color dragInsertionColor = Color(0, 120, 215, 230);   // Blue insertion indicator
         Color dragGhostBorderColor = Color(0, 120, 215, 120); // Ghost tab border
 

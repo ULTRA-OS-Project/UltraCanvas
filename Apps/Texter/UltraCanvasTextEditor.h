@@ -585,6 +585,33 @@ namespace UltraCanvas {
         /// Callback when files are dropped onto the editor
         /// @param filePaths Vector of dropped file paths
         std::function<void(const std::vector<std::string>& filePaths)> onFileDrop;
+
+        // ===== MULTI-WINDOW SUPPORT =====
+
+        /// Callback when "New Window" is selected from File menu
+        std::function<void()> onNewWindowRequest;
+
+        /// Callback when a tab is dragged out of the tab bar
+        /// @param doc The DocumentTab being transferred
+        /// @param screenX Screen X where the drag ended
+        /// @param screenY Screen Y where the drag ended
+        std::function<void(std::shared_ptr<DocumentTab> doc, int screenX, int screenY)> onTabDraggedOut;
+
+        /// Callback when theme is toggled (for syncing across windows)
+        std::function<void(bool isDark)> onThemeChanged;
+
+        /// Accept a DocumentTab from another window
+        /// @param doc The document to insert
+        /// @return Tab index, or -1 on failure
+        int AcceptDocument(std::shared_ptr<DocumentTab> doc);
+
+        /// Extract a DocumentTab without save prompts or auto-creating empty tab
+        /// @param index Document index to extract
+        /// @return The extracted document, or nullptr if invalid
+        std::shared_ptr<DocumentTab> ExtractDocument(int index);
+
+        /// Get number of open documents
+        int GetDocumentCount() const { return static_cast<int>(documents.size()); }
     };
 
 // ===== FACTORY FUNCTIONS =====

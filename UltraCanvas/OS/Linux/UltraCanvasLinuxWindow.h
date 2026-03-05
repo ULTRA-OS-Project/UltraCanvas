@@ -68,6 +68,7 @@ namespace UltraCanvas {
         virtual void SetFullscreen(bool fullscreen) override;
         virtual void Flush() override;
         virtual unsigned long GetNativeHandle() const override;
+        virtual void GetScreenPosition(int& x, int& y) const override;
         UltraCanvasLinuxDragDrop& GetDragDropHandler() { return dragDropHandler; }
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }
 //        virtual void ProcessEvents() override;
