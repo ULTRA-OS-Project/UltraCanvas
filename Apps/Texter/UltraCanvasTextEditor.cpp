@@ -412,6 +412,10 @@ namespace {
 
                         // ===== INFO MENU =====
                 .AddSubmenu("Info", {
+                        MenuItemData::Action("File Statistics", [this]() {
+                         OnInfoFileStatistics();
+                        }),
+                        MenuItemData::Separator(),
                         MenuItemData::Action("About UltraTexter", [this]() {
                             OnInfoAbout();
                         })
@@ -646,15 +650,44 @@ namespace {
         );
 
         languageDropdown->AddItem("Plain Text", "Plain Text");
+        languageDropdown->AddItem("Markdown", "Markdown");
+        languageDropdown->AddSeparator();
+
         {
-            // Get supported languages and sort them
             UltraCanvasTextArea tempArea("_tmp", 0, 0, 0, 0, 0);
             auto languages = tempArea.GetSupportedLanguages();
             std::sort(languages.begin(), languages.end());
+
+            // Assembler display name mapping (tokenizer name → dropdown display)
+            const std::vector<std::pair<std::string, std::string>> assemblerMap = {
+                    {"68000 Assembly", "Assembler (68000)"},
+                    {"ARM Assembly",   "Assembler (ARM)"},
+                    {"x86 Assembly",   "Assembler (x86)"},
+                    {"Z80 Assembly",   "Assembler (Z80)"},
+            };
+
+            auto isAssembler = [&](const std::string& lang) -> bool {
+                for (const auto& [tokenName, displayName] : assemblerMap) {
+                    if (lang == tokenName) return true;
+                }
+                return false;
+            };
+
+            // Add all non-assembler languages (skip Markdown — already added above)
             for (const auto& lang : languages) {
+                if (lang == "Markdown" || isAssembler(lang)) continue;
                 languageDropdown->AddItem(lang, lang);
             }
+
+            // Separator before assembler group
+            languageDropdown->AddSeparator();
+
+            // Add assembler variants with renamed display text, sorted alphabetically
+            for (const auto& [tokenName, displayName] : assemblerMap) {
+                languageDropdown->AddItem(displayName, tokenName);
+            }
         }
+
         languageDropdown->SetSelectedIndex(0); // Plain Text
 
         DropdownStyle langStyle = languageDropdown->GetStyle();
@@ -675,10 +708,24 @@ namespace {
                 encodingDropdownWidth, statusBarHeight - 4
         );
 
+        // Populate encoding dropdown with grouped charsets and separators
         auto encodings = GetSupportedEncodings();
-        for (size_t i = 0; i < encodings.size(); i++) {
+
+        // Group boundaries (indices into GetSupportedEncodings())
+        // Unicode: 0..4, Legacy: 5..12, East Asian: 13..19, Other: 20..22
+        const int unicodeEnd = 5;    // first 5 entries (UTF-8, UTF-16 LE/BE, UTF-32 LE/BE)
+        const int legacyEnd = 13;    // next 8 entries (ASCII through Windows-1251)
+        const int eastAsianEnd = 20; // next 7 entries (Shift-JIS through EUC-KR)
+        // remaining entries are "Other Notable"
+
+        for (int i = 0; i < static_cast<int>(encodings.size()); i++) {
+            // Insert separator between groups
+            if (i == unicodeEnd || i == legacyEnd || i == eastAsianEnd) {
+                encodingDropdown->AddSeparator();
+            }
             encodingDropdown->AddItem(encodings[i].displayName, encodings[i].iconvName);
         }
+
         encodingDropdown->SetSelectedIndex(0); // Default: UTF-8
 
         DropdownStyle encStyle = encodingDropdown->GetStyle();

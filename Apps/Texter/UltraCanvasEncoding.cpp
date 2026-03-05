@@ -13,28 +13,41 @@ namespace UltraCanvas {
 
 // ===== SUPPORTED ENCODINGS =====
 
-std::vector<EncodingInfo> GetSupportedEncodings() {
-    static const std::vector<EncodingInfo> encodings = {
-        {"UTF-8",        "UTF-8"},
-        {"ISO-8859-1",   "ISO 8859-1 (Latin-1)"},
-        {"ISO-8859-2",   "ISO 8859-2 (Latin-2)"},
-        {"ISO-8859-5",   "ISO 8859-5 (Cyrillic)"},
-        {"ISO-8859-9",   "ISO 8859-9 (Turkish)"},
-        {"ISO-8859-15",  "ISO 8859-15 (Latin-9)"},
-        {"CP1250",       "Windows-1250 (Central European)"},
-        {"CP1251",       "Windows-1251 (Cyrillic)"},
-        {"CP1252",       "Windows-1252 (Western)"},
-        {"CP1253",       "Windows-1253 (Greek)"},
-        {"CP1254",       "Windows-1254 (Turkish)"},
-        {"CP1256",       "Windows-1256 (Arabic)"},
-        {"CP866",        "DOS-866 (Cyrillic)"},
-        {"KOI8-R",       "KOI8-R (Russian)"},
-        {"KOI8-U",       "KOI8-U (Ukrainian)"},
-        {"UTF-16LE",     "UTF-16 LE"},
-        {"UTF-16BE",     "UTF-16 BE"},
-    };
-    return encodings;
-}
+    std::vector<EncodingInfo> GetSupportedEncodings() {
+        static const std::vector<EncodingInfo> encodings = {
+                // ── Unicode (Modern Standard) ──
+                {"UTF-8",        "UTF-8"},
+                {"UTF-16LE",     "UTF-16 LE"},
+                {"UTF-16BE",     "UTF-16 BE"},
+                {"UTF-32LE",     "UTF-32 LE"},
+                {"UTF-32BE",     "UTF-32 BE"},
+
+                // ── Legacy / Regional ──
+                {"ASCII",        "ASCII"},
+                {"ISO-8859-1",   "ISO-8859-1 (Latin-1)"},
+                {"ISO-8859-5",   "ISO-8859-5 (Cyrillic)"},
+                {"ISO-8859-6",   "ISO-8859-6 (Arabic)"},
+                {"ISO-8859-7",   "ISO-8859-7 (Greek)"},
+                {"ISO-8859-8",   "ISO-8859-8 (Hebrew)"},
+                {"CP1252",       "Windows-1252 (Western)"},
+                {"CP1251",       "Windows-1251 (Cyrillic)"},
+
+                // ── East Asian ──
+                {"SHIFT_JIS",    "Shift-JIS (Japanese)"},
+                {"EUC-JP",       "EUC-JP (Japanese)"},
+                {"GB2312",       "GB2312 (Chinese Simplified)"},
+                {"GBK",          "GBK (Chinese Simplified)"},
+                {"GB18030",      "GB18030 (Chinese)"},
+                {"BIG5",         "Big5 (Chinese Traditional)"},
+                {"EUC-KR",       "EUC-KR (Korean)"},
+
+                // ── Other Notable ──
+                {"EBCDIC-US",    "EBCDIC (IBM Mainframe)"},
+                {"KOI8-R",       "KOI8-R (Russian)"},
+                {"KOI8-U",       "KOI8-U (Ukrainian)"},
+        };
+        return encodings;
+    }
 
 int FindEncodingIndex(const std::string& iconvName) {
     auto encodings = GetSupportedEncodings();

@@ -190,6 +190,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasReplaceDialog> replaceDialog;
         std::shared_ptr<UltraCanvasGoToLineDialog> goToLineDialog;
         std::shared_ptr<UltraCanvasModalDialog> aboutDialog;
+        std::shared_ptr<UltraCanvasModalDialog> fileStatsDialog;
 
         // ===== DOCUMENT MANAGEMENT =====
         std::vector<std::shared_ptr<DocumentTab>> documents;
@@ -296,6 +297,7 @@ namespace UltraCanvas {
         void OnViewToggleWordWrap(bool checked);
 
         void OnInfoAbout();
+        void OnInfoFileStatistics();
 
         // ===== UI UPDATES =====
         void UpdateStatusBar();
@@ -330,7 +332,9 @@ namespace UltraCanvas {
         void HandleDragLeave(const UCEvent& event);
         void HandleFileDrop(const UCEvent& event);
         void RenderDropOverlay(IRenderContext* ctx);
-        
+
+        static std::string FormatFileSize(uintmax_t bytes);
+
     public:
         // ===== CONSTRUCTOR =====
         UltraCanvasTextEditor(const std::string& identifier, long id,
