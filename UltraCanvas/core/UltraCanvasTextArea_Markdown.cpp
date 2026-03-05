@@ -1,8 +1,8 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
-// Version: 2.3.3
-// Last Modified: 2026-02-26
+// Version: 2.4.1
+// Last Modified: 2026-05-26
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -1141,16 +1141,6 @@ struct MarkdownInlineRenderer {
         // within headers is a rare edge case and the header already has styling
         ctx->DrawText(headerText, x, y);
 
-        // Draw underline for H1 and H2 (visual distinction)
-        if (level <= 2) {
-            int underlineY = y + lineHeight - 2;
-            ctx->SetStrokePaint(mdStyle.horizontalRuleColor);
-            ctx->SetStrokeWidth(level == 1 ? 2.0f : 1.0f);
-            // We don't know the full width here, so use text width + some padding
-            int textW = ctx->GetTextLineWidth(headerText);
-            ctx->DrawLine(x, underlineY, x + textW + 20, underlineY);
-        }
-
         // Restore font
         ctx->SetFontSize(baseFontSize);
         ctx->SetFontWeight(FontWeight::Normal);
@@ -1549,6 +1539,98 @@ struct MarkdownInlineRenderer {
         return alignments;
     }
 
+
+    static std::vector<int> CalculateTableColumnWidths(
+            IRenderContext* ctx,
+            const std::vector<std::string>& allLines,
+            size_t headerLineIndex,
+            int columnCount,
+            int availableWidth,
+            const TextAreaStyle& style,
+            const MarkdownHybridStyle& mdStyle) {
+
+        int padding = static_cast<int>(mdStyle.tableCellPadding);
+        int minColumnWidth = padding * 2 + 20; // Minimum: padding + some space
+
+        // Collect max content width per column across all table rows
+        std::vector<int> maxContentWidths(columnCount, 0);
+
+        // Measure header row
+        {
+            auto headerParsed = ParseTableRow(allLines[headerLineIndex]);
+            ctx->SetFontWeight(FontWeight::Bold);
+            for (size_t col = 0; col < headerParsed.cells.size() &&
+                                 col < static_cast<size_t>(columnCount); col++) {
+                int textWidth = ctx->GetTextLineWidth(headerParsed.cells[col]);
+                maxContentWidths[col] = std::max(maxContentWidths[col], textWidth + padding * 2);
+            }
+            ctx->SetFontWeight(FontWeight::Normal);
+        }
+
+        // Measure all data rows (skip separator at headerLineIndex + 1)
+        for (size_t j = headerLineIndex + 2; j < allLines.size(); j++) {
+            std::string trimmed = allLines[j];
+            // Trim whitespace
+            size_t start = trimmed.find_first_not_of(' ');
+            if (start != std::string::npos) trimmed = trimmed.substr(start);
+            size_t end = trimmed.find_last_not_of(' ');
+            if (end != std::string::npos) trimmed = trimmed.substr(0, end + 1);
+
+            if (trimmed.empty() || trimmed[0] != '|') break; // End of table
+
+            auto rowParsed = ParseTableRow(allLines[j]);
+            if (!rowParsed.isValid) break;
+
+            for (size_t col = 0; col < rowParsed.cells.size() &&
+                                 col < static_cast<size_t>(columnCount); col++) {
+                int textWidth = ctx->GetTextLineWidth(rowParsed.cells[col]);
+                maxContentWidths[col] = std::max(maxContentWidths[col], textWidth + padding * 2);
+            }
+        }
+
+        // Enforce minimum column width
+        for (int col = 0; col < columnCount; col++) {
+            maxContentWidths[col] = std::max(maxContentWidths[col], minColumnWidth);
+        }
+
+        // Calculate total content width needed
+        int totalContentWidth = 0;
+        for (int col = 0; col < columnCount; col++) {
+            totalContentWidth += maxContentWidths[col];
+        }
+
+        std::vector<int> columnWidths(columnCount);
+
+        if (totalContentWidth <= availableWidth) {
+            // Content fits — distribute remaining space proportionally
+            int remainingSpace = availableWidth - totalContentWidth;
+
+            for (int col = 0; col < columnCount; col++) {
+                // Proportional share of remaining space based on content ratio
+                float ratio = static_cast<float>(maxContentWidths[col]) /
+                              static_cast<float>(totalContentWidth);
+                int extraSpace = static_cast<int>(remainingSpace * ratio);
+                columnWidths[col] = maxContentWidths[col] + extraSpace;
+            }
+
+            // Fix rounding: assign leftover pixels to the last column
+            int assigned = 0;
+            for (int col = 0; col < columnCount; col++) {
+                assigned += columnWidths[col];
+            }
+            if (assigned < availableWidth) {
+                columnWidths[columnCount - 1] += (availableWidth - assigned);
+            }
+        } else {
+            // Content exceeds available width — expand table, use content widths directly
+            for (int col = 0; col < columnCount; col++) {
+                columnWidths[col] = maxContentWidths[col];
+            }
+        }
+
+        return columnWidths;
+    }
+
     static void RenderMarkdownTableRow(IRenderContext* ctx, const std::string& line,
                                        int x, int y, int lineHeight, int width,
                                        bool isHeaderRow,
@@ -1556,35 +1638,53 @@ struct MarkdownInlineRenderer {
                                        int columnCount,
                                        const TextAreaStyle& style,
                                        const MarkdownHybridStyle& mdStyle,
-                                       std::vector<MarkdownHitRect>* hitRects = nullptr) {
+                                       std::vector<MarkdownHitRect>* hitRects = nullptr,
+                                       const std::vector<int>* columnWidths = nullptr) {
         auto parsed = ParseTableRow(line);
         if (!parsed.isValid) return;
 
-        int availableWidth = width;
-        int cellWidth = (columnCount > 0) ? availableWidth / columnCount : availableWidth;
         int padding = static_cast<int>(mdStyle.tableCellPadding);
+
+        // Calculate total table width from column widths
+        int totalTableWidth = 0;
+        if (columnWidths && !columnWidths->empty()) {
+            for (int w : *columnWidths) {
+                totalTableWidth += w;
+            }
+        } else {
+            // Fallback: equal distribution (legacy behavior)
+            totalTableWidth = width;
+        }
 
         // Draw header background
         if (isHeaderRow) {
             ctx->SetFillPaint(mdStyle.tableHeaderBackground);
-            ctx->FillRectangle(x, y, availableWidth, lineHeight);
+            ctx->FillRectangle(x, y, totalTableWidth, lineHeight);
         }
 
         // Draw top border line (for all rows)
         ctx->SetStrokePaint(mdStyle.tableBorderColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(x, y, x + availableWidth, y);
+        ctx->DrawLine(x, y, x + totalTableWidth, y);
 
         // Draw bottom border line
         // For header rows: DON'T draw bottom border — the separator line handles it
         // For data rows: draw bottom border
         if (!isHeaderRow) {
-            ctx->DrawLine(x, y + lineHeight, x + availableWidth, y + lineHeight);
+            ctx->DrawLine(x, y + lineHeight, x + totalTableWidth, y + lineHeight);
         }
 
         // Draw cells
         int cellX = x;
         for (size_t col = 0; col < parsed.cells.size() && col < static_cast<size_t>(columnCount); col++) {
+            // Get column width: from pre-computed widths or equal fallback
+            int cellWidth = 0;
+            if (columnWidths && col < columnWidths->size()) {
+                cellWidth = (*columnWidths)[col];
+            } else {
+                cellWidth = (columnCount > 0) ? width / columnCount : width;
+            }
+
             // Draw vertical separator
             ctx->SetStrokePaint(mdStyle.tableBorderColor);
             ctx->SetStrokeWidth(1.0f);
@@ -1601,7 +1701,8 @@ struct MarkdownInlineRenderer {
             }
 
             // Set font weight for header
-            ctx->SetFontWeight(isHeaderRow ? FontWeight::Bold : FontWeight::Normal);
+            ctx->SetFontWeight(isHeaderRow ?
+                               FontWeight::Bold : FontWeight::Normal);
             ctx->SetTextPaint(style.fontColor);
 
             // Draw cell text
@@ -1634,16 +1735,49 @@ struct MarkdownInlineRenderer {
     static void RenderMarkdownTableSeparator(IRenderContext* ctx,
                                              int x, int y, int lineHeight, int width,
                                              int columnCount,
-                                             const MarkdownHybridStyle& mdStyle) {
-        // Option A: The separator source line (|---|---|) is rendered as a thin
-        // horizontal divider between header and data rows.
-        // It occupies its source line space but does NOT render as a full row
-        // with cell borders — just a single clean horizontal line.
+                                             const MarkdownHybridStyle& mdStyle,
+                                             const std::vector<int>* columnWidths = nullptr) {
+        // The separator source line (|---|---|) is rendered as an extension
+        // of the header row — same background, vertical cell borders, and
+        // a bottom border that closes the unified header block.
+        // This makes header + separator visually appear as one cell per column.
 
-        int separatorY = y + lineHeight / 2;
+        // Calculate total table width from column widths
+        int totalTableWidth = 0;
+        if (columnWidths && !columnWidths->empty()) {
+            for (int w : *columnWidths) {
+                totalTableWidth += w;
+            }
+        } else {
+            totalTableWidth = width;
+        }
+
+        // Fill separator area with header background color (visual continuation)
+        ctx->SetFillPaint(mdStyle.tableHeaderBackground);
+        ctx->FillRectangle(x, y, totalTableWidth, lineHeight);
+
+        // Draw bottom border of the unified header block
         ctx->SetStrokePaint(mdStyle.tableBorderColor);
-        ctx->SetStrokeWidth(2.0f);
-        ctx->DrawLine(x, separatorY, x + width, separatorY);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawLine(x, y + lineHeight, x + totalTableWidth, y + lineHeight);
+
+        // Draw vertical cell borders (extending header's vertical separators)
+        int cellX = x;
+        // Left border
+        ctx->DrawLine(cellX, y, cellX, y + lineHeight);
+
+        for (int col = 0; col < columnCount; col++) {
+            int cellWidth = 0;
+            if (columnWidths && col < static_cast<int>(columnWidths->size())) {
+                cellWidth = (*columnWidths)[col];
+            } else {
+                cellWidth = (columnCount > 0) ? width / columnCount : width;
+            }
+            cellX += cellWidth;
+
+            // Draw right border of each column
+            ctx->DrawLine(cellX, y, cellX, y + lineHeight);
+        }
     }
 };
 
@@ -1689,6 +1823,13 @@ static bool IsMarkdownTableRow(const std::string& trimmed) {
  */
 void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     if (!syntaxTokenizer) return;
+
+    // --- Markdown hybrid style ---
+    MarkdownHybridStyle mdStyle = MarkdownHybridStyle::Default();
+    // --- Create a temporary SyntaxTokenizer for code block highlighting ---
+    // Reused across all code block lines of the same language
+    std::unique_ptr<SyntaxTokenizer> codeBlockTokenizer;
+    std::string currentCodeBlockLang;
 
     context->PushState();
     context->ClipRect(visibleTextArea);
@@ -1798,10 +1939,6 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         }
     }
 
-    // --- Create a temporary SyntaxTokenizer for code block highlighting ---
-    // Reused across all code block lines of the same language
-    std::unique_ptr<SyntaxTokenizer> codeBlockTokenizer;
-    std::string currentCodeBlockLang;
 
     // --- Pre-scan: detect table context for visible range ---
     // For each visible line, determine if it's part of a table and its role
@@ -1809,6 +1946,8 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     std::vector<TableLineRole> tableRoles(lines.size(), TableLineRole::NoneRole);
     std::vector<int> tableColumnCounts(lines.size(), 0);
     std::vector<std::vector<TableColumnAlignment>> tableAlignments(lines.size());
+    // NEW: Per-line storage of pre-computed column widths for the table this line belongs to
+    std::vector<std::vector<int>> tableColumnWidths(lines.size());
     {
         for (size_t i = 0; i < lines.size(); i++) {
             std::string trimmed = TrimWhitespace(lines[i]);
@@ -1844,15 +1983,30 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                         }
                     }
 
+                    // NEW: Calculate content-aware column widths for this table
+                    std::vector<int> colWidths =
+                            MarkdownInlineRenderer::CalculateTableColumnWidths(
+                                    context, lines, i, colCount,
+                                    visibleTextArea.width, style, mdStyle);
+
+                    // Store column widths for every line of this table
+                    tableColumnWidths[i] = colWidths;          // header
+                    tableColumnWidths[i + 1] = colWidths;      // separator
+                    for (size_t j = i + 2; j < lines.size(); j++) {
+                        std::string dataTrimmed = TrimWhitespace(lines[j]);
+                        if (IsMarkdownTableRow(dataTrimmed)) {
+                            tableColumnWidths[j] = colWidths;
+                        } else {
+                            break;
+                        }
+                    }
+
                     // Skip past the table we just processed
                     // (the outer loop will still iterate, but roles are already set)
                 }
             }
         }
     }
-
-    // --- Markdown hybrid style ---
-    MarkdownHybridStyle mdStyle = MarkdownHybridStyle::Default();
 
     // Clear previous hit rects
     markdownHitRects.clear();
@@ -1975,17 +2129,23 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
 
         // --- Table rows ---
         if (tableRoles[i] != TableLineRole::NoneRole) {
+            // Get pre-computed column widths for this table (may be empty for fallback)
+            const std::vector<int>* colWidths =
+                    tableColumnWidths[i].empty() ? nullptr : &tableColumnWidths[i];
+
             if (tableRoles[i] == TableLineRole::Separator) {
                 MarkdownInlineRenderer::RenderMarkdownTableSeparator(
                         context, x, textY, computedLineHeight,
-                        visibleTextArea.width, tableColumnCounts[i], mdStyle);
+                        visibleTextArea.width, tableColumnCounts[i], mdStyle,
+                        colWidths);
             } else {
                 bool isHeader = (tableRoles[i] == TableLineRole::Header);
                 MarkdownInlineRenderer::RenderMarkdownTableRow(
                         context, line, x, textY, computedLineHeight,
                         visibleTextArea.width, isHeader,
                         tableAlignments[i], tableColumnCounts[i],
-                        style, mdStyle, &markdownHitRects);
+                        style, mdStyle, &markdownHitRects,
+                        colWidths);
             }
             continue;
         }
