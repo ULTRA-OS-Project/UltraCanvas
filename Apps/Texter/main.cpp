@@ -62,6 +62,11 @@ private:
             win->Close();
         };
 
+        // Allow auto-close when last document is closed and other windows exist
+        editor->canCloseEmptyWindow = [this]() {
+            return static_cast<int>(windows.size()) > 1;
+        };
+
         // New Window menu item
         editor->onNewWindowRequest = [this]() {
             CreateNewWindow();

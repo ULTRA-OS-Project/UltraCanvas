@@ -354,8 +354,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::CalculateAndUpdateSize(IRenderContext* ctx) {
-        ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-        ctx->SetFontSize(style.fontSize);
+        ctx->SetFontStyle(style.font);
 
         needCalculateSize = false;
         if (items.empty()) {
@@ -371,6 +370,7 @@ namespace UltraCanvas {
 
             for (const auto& item : items) {
                 if (!item.visible) continue;
+                ctx->SetFontStyle(item.font.value_or(style.font));
                 totalWidth += CalculateItemWidth(item) + style.paddingLeft + style.paddingRight;
             }
             if (GetWidth() <= 0) {
@@ -401,6 +401,9 @@ namespace UltraCanvas {
             // First pass: scan all items to determine column requirements
             for (const auto& item : items) {
                 if (!item.visible) continue;
+
+                // Apply per-item font for accurate measurement
+                ctx->SetFontStyle(item.font.value_or(style.font));
 
                 // Check for checkbox/radio column
                 if (item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio) {
@@ -494,8 +497,7 @@ namespace UltraCanvas {
             return;
         }
 
-        ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-        ctx->SetFontSize(style.fontSize);
+        ctx->SetFontStyle(item.font.value_or(style.font));
 
         Point2Di textSize = ctx->GetTextDimension(item.label);
         int fontHeight = textSize.y;

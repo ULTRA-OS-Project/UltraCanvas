@@ -185,6 +185,9 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasDropdown> encodingDropdown;
         std::shared_ptr<UltraCanvasDropdown> zoomDropdown;
 
+        // ===== TAB CONTEXT MENU =====
+        std::shared_ptr<UltraCanvasMenu> tabContextMenu;
+
         // ===== DIALOGS =====
         std::shared_ptr<UltraCanvasFindDialog> findDialog;
         std::shared_ptr<UltraCanvasReplaceDialog> replaceDialog;
@@ -237,6 +240,7 @@ namespace UltraCanvas {
         void SetupToolbar();
         void SetupMarkdownToolbar();
         void SetupTabContainer();
+        void SetupTabContextMenu();
         void SetupStatusBar();
         void SetupLayout();
 
@@ -599,6 +603,10 @@ namespace UltraCanvas {
 
         /// Callback when theme is toggled (for syncing across windows)
         std::function<void(bool isDark)> onThemeChanged;
+
+        /// Callback to check if this window can close when empty (i.e. other windows exist)
+        /// Return true to allow auto-close, false to keep window open with a new document
+        std::function<bool()> canCloseEmptyWindow;
 
         /// Accept a DocumentTab from another window
         /// @param doc The document to insert

@@ -9,6 +9,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUtils.h"
 #include <string>
@@ -186,6 +187,10 @@ namespace UltraCanvas {
         Color dragInsertionColor = Color(0, 120, 215, 230);   // Blue insertion indicator
         Color dragGhostBorderColor = Color(0, 120, 215, 120); // Ghost tab border
 
+        // ===== TAB CONTEXT MENU =====
+        std::shared_ptr<UltraCanvasMenu> tabContextMenu;
+        int contextMenuTabIndex = -1;  // Index of the tab that was right-clicked
+
         // ===== CALLBACKS (USING CORRECT BASE VERB FORMS) =====
         std::function<void(int, int)> onTabChange;           // (oldIndex, newIndex)
         std::function<void(int)> onTabSelect;                // (tabIndex)
@@ -193,6 +198,7 @@ namespace UltraCanvas {
         std::function<void(int, int)> onTabReorder;          // (fromIndex, toIndex)
         std::function<void(int, const std::string&)> onTabRename; // (tabIndex, newTitle)
         std::function<void()> onTabBarRightClick;
+        std::function<void(int)> onTabContextMenu;  // Called before context menu shown (tabIndex)
 
         // ===== V2.0.0: DRAG-OUT / DRAG-IN CALLBACKS =====
         /// Tab dragged out of the tab bar beyond threshold.
@@ -252,6 +258,11 @@ namespace UltraCanvas {
         NewTabButtonPosition GetNewTabButtonPosition() const { return newTabButtonPosition; }
         void SetShowNewTabButton(bool show);
         bool GetShowNewTabButton() const { return showNewTabButton; }
+
+        // ===== TAB CONTEXT MENU =====
+        void SetTabContextMenu(std::shared_ptr<UltraCanvasMenu> menu) { tabContextMenu = menu; }
+        std::shared_ptr<UltraCanvasMenu> GetTabContextMenu() const { return tabContextMenu; }
+        int GetContextMenuTabIndex() const { return contextMenuTabIndex; }
 
         // ===== TAB MANAGEMENT =====
         int AddTab(const std::string& title, std::shared_ptr<UltraCanvasUIElement> content = nullptr);

@@ -766,6 +766,16 @@ namespace UltraCanvas {
         }
 
         int clickedTab = GetTabAtPosition(x, y);
+        if (clickedTab >= 0 && event.button == UCMouseButton::Right) {
+            if (tabContextMenu) {
+                contextMenuTabIndex = clickedTab;
+                if (onTabContextMenu) {
+                    onTabContextMenu(clickedTab);
+                }
+                tabContextMenu->ShowAtWindow(event.x, event.y, GetWindow());
+                return true;
+            }
+        }
         if (clickedTab >= 0) {
             if ((allowTabReordering || allowTabDragOut) && event.button == UCMouseButton::Left) {
                 draggingTabIndex = clickedTab;

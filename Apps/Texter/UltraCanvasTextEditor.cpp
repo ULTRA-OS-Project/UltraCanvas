@@ -285,7 +285,6 @@ namespace {
         // Setup UI components in order
         if (config.showMenuBar) {
             SetupMenuBar();
-//            UpdateRecentFilesMenu();
         }
 
         if (config.showToolbar) {
@@ -636,7 +635,71 @@ namespace {
             return true;  // Tab already removed by ExtractDocument
         };
 
+        SetupTabContextMenu();
+
         AddChild(tabContainer);
+    }
+
+    void UltraCanvasTextEditor::SetupTabContextMenu() {
+        tabContextMenu = std::make_shared<UltraCanvasMenu>("TabContextMenu", 0, 0, 0, 200, 200);
+        tabContextMenu->SetMenuType(MenuType::PopupMenu);
+
+        // Items are rebuilt each time the menu opens via onTabContextMenu callback
+        tabContainer->SetTabContextMenu(tabContextMenu);
+
+        tabContainer->onTabContextMenu = [this](int tabIndex) {
+            tabContextMenu->Clear();
+
+            // 1. Tab title (disabled, just for display)
+            std::string title = (tabIndex >= 0 && tabIndex < static_cast<int>(documents.size()))
+                                ? documents[tabIndex]->fileName : "Tab";
+            auto titleItem = MenuItemData::Action(title, []() {});
+            titleItem.enabled = false;
+            tabContextMenu->AddItem(titleItem);
+
+            // 2. Separator
+            tabContextMenu->AddItem(MenuItemData::Separator());
+
+            // 3. Open in new window
+            tabContextMenu->AddItem(MenuItemData::Action("Open in New Window", [this, tabIndex]() {
+                if (tabIndex >= 0 && tabIndex < static_cast<int>(documents.size())) {
+                    auto doc = ExtractDocument(tabIndex);
+                    if (doc && onTabDraggedOut) {
+                        onTabDraggedOut(doc, 0, 0);
+                    }
+                }
+            }));
+
+            // 4. Close
+            tabContextMenu->AddItem(MenuItemData::Action("Close", [this, tabIndex]() {
+                if (tabIndex >= 0 && tabIndex < static_cast<int>(documents.size())) {
+                    CloseDocument(tabIndex);
+                }
+            }));
+
+            // 5. Close other tabs
+            tabContextMenu->AddItem(MenuItemData::Action("Close Other Tabs", [this, tabIndex]() {
+                isDocumentClosing = true;
+                for (int i = static_cast<int>(documents.size()) - 1; i >= 0; i--) {
+                    if (i != tabIndex) {
+                        if (!documents[i]->autosaveBackupPath.empty()) {
+                            autosaveManager.DeleteBackup(documents[i]->autosaveBackupPath);
+                        }
+                        documents.erase(documents.begin() + i);
+                        tabContainer->RemoveTab(i);
+                    }
+                }
+                activeDocumentIndex = 0;
+                tabContainer->SetActiveTab(0);
+                isDocumentClosing = false;
+                UpdateStatusBar();
+            }));
+
+            // 6. Close all tabs
+            tabContextMenu->AddItem(MenuItemData::Action("Close All Tabs", [this]() {
+                OnFileCloseAll();
+            }));
+        };
     }
 
     void UltraCanvasTextEditor::SetupStatusBar() {
@@ -979,7 +1042,10 @@ namespace {
 
                     // Update active document index
                     if (documents.empty()) {
-                        // No documents left - create a new one
+                        if (canCloseEmptyWindow && canCloseEmptyWindow() && onQuitRequest) {
+                            onQuitRequest();
+                            return;
+                        }
                         CreateNewDocument();
                     } else if (activeDocumentIndex >= static_cast<int>(documents.size())) {
                         activeDocumentIndex = static_cast<int>(documents.size()) - 1;
@@ -1004,6 +1070,14 @@ namespace {
             tabContainer->RemoveTab(index);
 
             if (documents.empty()) {
+                if (canCloseEmptyWindow && canCloseEmptyWindow() && onQuitRequest) {
+                    if (onTabClosed) {
+                        onTabClosed(index);
+                    }
+                    isDocumentClosing = false;
+                    onQuitRequest();
+                    return;
+                }
                 CreateNewDocument();
             } else if (activeDocumentIndex >= static_cast<int>(documents.size())) {
                 activeDocumentIndex = static_cast<int>(documents.size()) - 1;
@@ -1687,7 +1761,10 @@ namespace {
                 activeDocumentIndex = -1;
                 isDocumentClosing = false;
 
-                // Create new empty document
+                if (canCloseEmptyWindow && canCloseEmptyWindow() && onQuitRequest) {
+                    onQuitRequest();
+                    return;
+                }
                 CreateNewDocument();
                 UpdateStatusBar();
             }
