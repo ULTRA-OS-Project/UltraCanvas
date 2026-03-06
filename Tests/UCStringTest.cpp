@@ -16,7 +16,7 @@ using namespace UltraCanvas::StringLiterals;
 #define TEST(name, condition) \
     do { \
         bool passed = (condition); \
-        std::cout << (passed ? "✓ PASS" : "✗ FAIL") << ": " << name << std::endl; \
+        std::cerr << (passed ? "✓ PASS" : "✗ FAIL") << ": " << name << std::endl; \
         if (!passed) failCount++; \
         testCount++; \
     } while(0)
@@ -95,8 +95,8 @@ int main() {
     std::cout << "--- Grapheme Cluster Tests ---" << std::endl;
 
     {
-        // Family emoji: 👨�👩�👦 (man + ZWJ + woman + ZWJ + boy)
-        UCString family("👨�👩�👦");
+        // Family emoji: 👨�👩�👦 (man + ZWJ + woman + ZWJ + boy)
+        UCString family("👨�👩�👦");
         TEST("Family emoji is 1 grapheme cluster", family.Length() == 1);
         std::cout << "   (Family emoji bytes: " << family.ByteLength() << ")" << std::endl;
     }
@@ -297,7 +297,7 @@ int main() {
     std::cout << "--- Cursor Navigation Tests ---" << std::endl;
 
     {
-        UCString str("A👨�👩�👦B");  // A + family emoji + B
+        UCString str("A👨�👩�👦B");  // A + family emoji + B
         
         size_t pos = 0;
         pos = str.NextGraphemePosition(pos);  // After 'A'
@@ -483,7 +483,7 @@ int main() {
     std::cout << "--- Text Editor Simulation ---" << std::endl;
 
     {
-        UCString text("Hello 👨�👩�👦 World!");
+        UCString text("Hello 👨�👩�👦 World!");
         
         // Simulate cursor at position 0
         size_t cursorByte = 0;
@@ -508,7 +508,7 @@ int main() {
         
         // Insert text at cursor position
         UCString newText = text.Substr(0, cursorGrapheme) + "!" + text.Substr(cursorGrapheme);
-        TEST("Insert at cursor", newText.Contains("👨�👩�👦!"));
+        TEST("Insert at cursor", newText.Contains("👨�👩�👦!"));
         
         // Delete the family emoji (simulate backspace)
         UCString afterDelete = text;

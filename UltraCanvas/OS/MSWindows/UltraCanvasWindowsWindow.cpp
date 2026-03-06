@@ -1,467 +1,599 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
-// Windows platform window implementation for UltraCanvas Framework
+// Complete Windows window implementation with Cairo rendering
 // Version: 1.0.0
-// Last Modified: 2025-12-22
+// Last Modified: 2026-03-06
 // Author: UltraCanvas Framework
 
-#ifdef _WIN32
-
-#include "UltraCanvasWindowsWindow.h"
+#include "../../include/UltraCanvasWindow.h"
 #include "UltraCanvasWindowsApplication.h"
 #include <iostream>
-#include <cstring>
 
 namespace UltraCanvas {
 
-// ===== CONSTRUCTOR & DESTRUCTOR =====
-UltraCanvasWindowsWindow::UltraCanvasWindowsWindow()
-    : hwnd(nullptr)
-    , isTrackingMouse(false)
-{
-    std::cout << "UltraCanvas Windows: Window constructor completed" << std::endl;
-}
-
-UltraCanvasWindowsWindow::~UltraCanvasWindowsWindow() {
-    std::cout << "UltraCanvas Windows: Window destructor called" << std::endl;
-    DestroyNative();
-}
+// ===== CONSTRUCTOR =====
+    UltraCanvasWindowsWindow::UltraCanvasWindowsWindow()
+            : hwnd(nullptr)
+            , hdc(nullptr)
+            , cairoSurface(nullptr)
+            , dropTarget(nullptr)
+            , trackingMouseLeave(false)
+            , savedStyle(0)
+            , savedExStyle(0) {
+        std::memset(&savedPlacement, 0, sizeof(savedPlacement));
+        savedPlacement.length = sizeof(WINDOWPLACEMENT);
+    }
 
 // ===== WINDOW CREATION =====
-bool UltraCanvasWindowsWindow::CreateNative() {
-    if (_created) {
-        std::cout << "UltraCanvas Windows: Window already created" << std::endl;
+
+    bool UltraCanvasWindowsWindow::CreateNative() {
+        if (_created) return true;
+
+        auto* app = UltraCanvasWindowsApplication::GetInstance();
+        if (!app || !app->IsInitialized()) {
+            std::cerr << "UltraCanvas Windows: Application not initialized" << std::endl;
+            return false;
+        }
+
+        std::cerr << "UltraCanvas Windows: Creating window..." << std::endl;
+
+        // STEP 1: Create HWND
+        if (!CreateHWND()) {
+            std::cerr << "UltraCanvas Windows: Failed to create HWND" << std::endl;
+            return false;
+        }
+
+        // STEP 2: Create Cairo surface from HWND's DC
+        if (!CreateCairoSurface()) {
+            std::cerr << "UltraCanvas Windows: Failed to create Cairo surface" << std::endl;
+            DestroyWindow(hwnd);
+            hwnd = nullptr;
+            return false;
+        }
+
+        // STEP 3: Create render context (same RenderContextCairo as Linux)
+        try {
+            renderContext = std::make_unique<RenderContextCairo>(
+                cairoSurface, config_.width, config_.height, true);
+        } catch (const std::exception& e) {
+            std::cerr << "UltraCanvas Windows: Failed to create render context: "
+                      << e.what() << std::endl;
+            DestroyCairoSurface();
+            DestroyWindow(hwnd);
+            hwnd = nullptr;
+            return false;
+        }
+
+        // STEP 4: Initialize OLE drag-drop
+        dropTarget = new UltraCanvasWindowsDropTarget(this);
+
+        // Wire drag-drop callbacks to push UCEvents
+        dropTarget->onFileDrop = [this](const std::vector<std::string>& paths, int x, int y) {
+            UCEvent event;
+            event.type = UCEventType::Drop;
+            event.targetWindow = this;
+            event.nativeWindowHandle = reinterpret_cast<unsigned long>(hwnd);
+            event.x = event.windowX = x;
+            event.y = event.windowY = y;
+            event.droppedFiles = paths;
+            event.dragMimeType = "text/uri-list";
+            std::string joined;
+            for (const auto& p : paths) {
+                if (!joined.empty()) joined += "\n";
+                joined += p;
+            }
+            event.dragData = joined;
+            UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
+        };
+
+        dropTarget->onDragEnter = [this](int x, int y) {
+            UCEvent event;
+            event.type = UCEventType::DragEnter;
+            event.targetWindow = this;
+            event.nativeWindowHandle = reinterpret_cast<unsigned long>(hwnd);
+            event.x = event.windowX = x;
+            event.y = event.windowY = y;
+            UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
+        };
+
+        dropTarget->onDragLeave = [this](int x, int y) {
+            UCEvent event;
+            event.type = UCEventType::DragLeave;
+            event.targetWindow = this;
+            event.nativeWindowHandle = reinterpret_cast<unsigned long>(hwnd);
+            event.x = event.windowX = x;
+            event.y = event.windowY = y;
+            UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
+        };
+
+        dropTarget->onDragOver = [this](int x, int y) {
+            UCEvent event;
+            event.type = UCEventType::DragOver;
+            event.targetWindow = this;
+            event.nativeWindowHandle = reinterpret_cast<unsigned long>(hwnd);
+            event.x = event.windowX = x;
+            event.y = event.windowY = y;
+            UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
+        };
+
+        RegisterDragDrop(hwnd, dropTarget);
+
+        _created = true;
+        std::cerr << "UltraCanvas Windows: Window created successfully (HWND="
+                  << hwnd << ")" << std::endl;
         return true;
     }
 
-    auto application = UltraCanvasWindowsApplication::GetInstance();
-    if (!application || !application->IsInitialized()) {
-        std::cerr << "UltraCanvas Windows: Cannot create window - application not ready" << std::endl;
-        return false;
-    }
+    bool UltraCanvasWindowsWindow::CreateHWND() {
+        auto* app = UltraCanvasWindowsApplication::GetInstance();
 
-    std::cout << "UltraCanvas Windows: Creating window..." << std::endl;
+        DWORD style = WS_OVERLAPPEDWINDOW;
+        DWORD exStyle = WS_EX_APPWINDOW;
 
-    // Create the HWND
-    if (!CreateHWND()) {
-        std::cerr << "UltraCanvas Windows: Failed to create HWND" << std::endl;
-        return false;
-    }
+        // Adjust style based on WindowType
+        switch (config_.type) {
+            case WindowType::Dialog:
+                style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU;
+                exStyle |= WS_EX_DLGMODALFRAME;
+                break;
+            case WindowType::Popup:
+                style = WS_POPUP | WS_BORDER;
+                exStyle |= WS_EX_TOPMOST;
+                break;
+            case WindowType::Tool:
+                style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME;
+                exStyle |= WS_EX_TOOLWINDOW;
+                break;
+            case WindowType::Borderless:
+                style = WS_POPUP;
+                break;
+            case WindowType::Fullscreen:
+                style = WS_POPUP;
+                break;
+            default: // Standard
+                break;
+        }
 
-    // Create render target
-    if (!CreateRenderTarget()) {
-        std::cerr << "UltraCanvas Windows: Failed to create render target" << std::endl;
-        DestroyWindow(hwnd);
-        hwnd = nullptr;
-        return false;
-    }
+        // Apply config flags
+        if (!config_.resizable)   style &= ~WS_THICKFRAME;
+        if (!config_.minimizable) style &= ~WS_MINIMIZEBOX;
+        if (!config_.maximizable) style &= ~WS_MAXIMIZEBOX;
+        if (config_.alwaysOnTop)  exStyle |= WS_EX_TOPMOST;
 
-    // Register window with application
-    application->RegisterWindowHandle(hwnd, this);
+        // Calculate window rect to get correct client area size
+        RECT rect = {0, 0, config_.width, config_.height};
+        AdjustWindowRectEx(&rect, style, FALSE, exStyle);
 
-    _created = true;
-    std::cout << "UltraCanvas Windows: Window created successfully (HWND: " << hwnd << ")" << std::endl;
+        int winWidth = rect.right - rect.left;
+        int winHeight = rect.bottom - rect.top;
+        int winX = (config_.x >= 0) ? config_.x : CW_USEDEFAULT;
+        int winY = (config_.y >= 0) ? config_.y : CW_USEDEFAULT;
 
-    return true;
-}
+        std::wstring wTitle = UltraCanvasWindowsApplication::Utf8ToUtf16(config_.title);
 
-bool UltraCanvasWindowsWindow::CreateHWND() {
-    auto application = UltraCanvasWindowsApplication::GetInstance();
-    if (!application) {
-        return false;
-    }
+        HWND parentHwnd = nullptr;
+        if (config_.parentWindow) {
+            parentHwnd = reinterpret_cast<HWND>(config_.parentWindow->GetNativeHandle());
+        }
 
-    // Calculate window rectangle including frame
-    RECT rect = {0, 0, config_.width, config_.height};
-    DWORD style = GetWindowStyle();
-    DWORD exStyle = GetWindowExStyle();
-    AdjustWindowRectEx(&rect, style, FALSE, exStyle);
-
-    int windowWidth = rect.right - rect.left;
-    int windowHeight = rect.bottom - rect.top;
-
-    // Convert title to wide string
-    std::wstring wTitle = UltraCanvasWindowsApplication::StringToWString(config_.title);
-
-    // Create the window
-    hwnd = CreateWindowExW(
-        exStyle,
-        application->GetWindowClassName(),
-        wTitle.c_str(),
-        style,
-        config_.x != 0 ? config_.x : CW_USEDEFAULT,
-        config_.y != 0 ? config_.y : CW_USEDEFAULT,
-        windowWidth,
-        windowHeight,
-        nullptr,    // No parent
-        nullptr,    // No menu
-        application->GetHInstance(),
-        nullptr     // No additional data
-    );
-
-    if (!hwnd) {
-        DWORD error = GetLastError();
-        std::cerr << "UltraCanvas Windows: CreateWindowExW failed with error: " << error << std::endl;
-        return false;
-    }
-
-    std::cout << "UltraCanvas Windows: HWND created: " << hwnd << std::endl;
-    return true;
-}
-
-DWORD UltraCanvasWindowsWindow::GetWindowStyle() const {
-    DWORD style = WS_OVERLAPPEDWINDOW;
-    
-    if (!config_.resizable) {
-        style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
-    }
-    
-    if (!config_.hasCloseButton) {
-        style &= ~WS_SYSMENU;
-    }
-    
-    return style;
-}
-
-DWORD UltraCanvasWindowsWindow::GetWindowExStyle() const {
-    DWORD exStyle = 0;
-    
-    if (config_.topMost) {
-        exStyle |= WS_EX_TOPMOST;
-    }
-    
-    return exStyle;
-}
-
-bool UltraCanvasWindowsWindow::CreateRenderTarget() {
-    auto application = UltraCanvasWindowsApplication::GetInstance();
-    if (!application || !hwnd) {
-        return false;
-    }
-
-    try {
-        renderContext = std::make_unique<RenderContextDirect2D>(
-            hwnd,
-            config_.width,
-            config_.height,
-            application->GetD2DFactory(),
-            application->GetDWriteFactory(),
-            application->GetWICFactory()
+        hwnd = CreateWindowExW(
+            exStyle,
+            UltraCanvasWindowsApplication::GetWindowClassName(),
+            wTitle.c_str(),
+            style,
+            winX, winY, winWidth, winHeight,
+            parentHwnd,
+            nullptr,               // No menu
+            app->GetHInstance(),
+            this                   // Pass 'this' to WM_NCCREATE via CREATESTRUCT::lpCreateParams
         );
-        
-        std::cout << "UltraCanvas Windows: Render context created successfully" << std::endl;
+
+        if (!hwnd) {
+            std::cerr << "UltraCanvas Windows: CreateWindowExW failed: "
+                      << GetLastError() << std::endl;
+            return false;
+        }
+
+        hdc = GetDC(hwnd);
+        if (!hdc) {
+            std::cerr << "UltraCanvas Windows: GetDC failed" << std::endl;
+            DestroyWindow(hwnd);
+            hwnd = nullptr;
+            return false;
+        }
+
+        trackingMouseLeave = false;
         return true;
-        
-    } catch (const std::exception& e) {
-        std::cerr << "UltraCanvas Windows: Failed to create render context: " << e.what() << std::endl;
-        return false;
-    }
-}
-
-void UltraCanvasWindowsWindow::DestroyRenderTarget() {
-    renderContext.reset();
-    std::cout << "UltraCanvas Windows: Render target destroyed" << std::endl;
-}
-
-void UltraCanvasWindowsWindow::UpdateRenderTarget(int width, int height) {
-    std::lock_guard<std::mutex> lock(renderMutex);
-    
-    if (renderContext) {
-        renderContext->Resize(width, height);
-        std::cout << "UltraCanvas Windows: Render target resized to " << width << "x" << height << std::endl;
-    }
-}
-
-void UltraCanvasWindowsWindow::DestroyNative() {
-    std::cout << "UltraCanvas Windows: Destroying window..." << std::endl;
-
-    auto application = UltraCanvasWindowsApplication::GetInstance();
-    
-    if (application && hwnd) {
-        application->UnregisterWindowHandle(hwnd);
     }
 
-    DestroyRenderTarget();
+    bool UltraCanvasWindowsWindow::CreateCairoSurface() {
+        if (!hwnd) return false;
 
-    if (hwnd) {
-        DestroyWindow(hwnd);
-        hwnd = nullptr;
-    }
-
-    _created = false;
-    std::cout << "UltraCanvas Windows: Window destroyed" << std::endl;
-}
-
-// ===== WINDOW VISIBILITY =====
-void UltraCanvasWindowsWindow::Show() {
-    if (!_created || visible) {
-        return;
-    }
-
-    ShowWindow(hwnd, SW_SHOW);
-    UpdateWindow(hwnd);
-    visible = true;
-    
-    std::cout << "UltraCanvas Windows: Window shown" << std::endl;
-
-    // Trigger onWindowShow callback
-    if (onWindowShow) {
-        onWindowShow();
-    }
-}
-
-void UltraCanvasWindowsWindow::Hide() {
-    if (!_created || !visible) {
-        return;
-    }
-
-    ShowWindow(hwnd, SW_HIDE);
-    visible = false;
-    
-    std::cout << "UltraCanvas Windows: Window hidden" << std::endl;
-
-    // Trigger onWindowHide callback
-    if (onWindowHide) {
-        onWindowHide();
-    }
-}
-
-// ===== WINDOW PROPERTIES =====
-void UltraCanvasWindowsWindow::SetWindowTitle(const std::string& title) {
-    config_.title = title;
-
-    if (hwnd) {
-        std::wstring wTitle = UltraCanvasWindowsApplication::StringToWString(title);
-        SetWindowTextW(hwnd, wTitle.c_str());
-        std::cout << "UltraCanvas Windows: Window title set to: \"" << title << "\"" << std::endl;
-    }
-}
-
-void UltraCanvasWindowsWindow::SetWindowSize(int width, int height) {
-    config_.width = width;
-    config_.height = height;
-
-    if (_created && hwnd) {
-        // Calculate window size including frame
-        RECT rect = {0, 0, width, height};
-        AdjustWindowRectEx(&rect, GetWindowStyle(), FALSE, GetWindowExStyle());
-        
-        int windowWidth = rect.right - rect.left;
-        int windowHeight = rect.bottom - rect.top;
-        
-        SetWindowPos(hwnd, nullptr, 0, 0, windowWidth, windowHeight, 
-                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-        
-        UpdateRenderTarget(width, height);
-    }
-
-    UltraCanvasWindowBase::SetSize(width, height);
-}
-
-void UltraCanvasWindowsWindow::SetWindowPosition(int x, int y) {
-    config_.x = x;
-    config_.y = y;
-
-    if (_created && hwnd) {
-        SetWindowPos(hwnd, nullptr, x, y, 0, 0, 
-                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-    }
-}
-
-void UltraCanvasWindowsWindow::SetResizable(bool resizable) {
-    config_.resizable = resizable;
-
-    if (_created && hwnd) {
-        LONG style = GetWindowLong(hwnd, GWL_STYLE);
-        
-        if (resizable) {
-            style |= (WS_THICKFRAME | WS_MAXIMIZEBOX);
-        } else {
-            style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+        // Use a Cairo image surface instead of cairo_win32_surface.
+        // This avoids DWM composition issues where rendering to a persistent
+        // window DC outside of BeginPaint/EndPaint is not reliably displayed.
+        // The image surface data is blitted to the window DC in WM_PAINT.
+        cairoSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24,
+                                                   config_.width, config_.height);
+        if (!cairoSurface) {
+            std::cerr << "UltraCanvas Windows: cairo_image_surface_create failed" << std::endl;
+            return false;
         }
-        
-        SetWindowLong(hwnd, GWL_STYLE, style);
-        SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, 
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-    }
-}
 
-// ===== WINDOW STATE =====
-void UltraCanvasWindowsWindow::Minimize() {
-    if (_created && hwnd) {
-        ShowWindow(hwnd, SW_MINIMIZE);
-        _state = WindowState::Minimized;
-        
-        if (onWindowMinimize) {
-            onWindowMinimize();
+        cairo_status_t status = cairo_surface_status(cairoSurface);
+        if (status != CAIRO_STATUS_SUCCESS) {
+            std::cerr << "UltraCanvas Windows: Cairo surface error: "
+                      << cairo_status_to_string(status) << std::endl;
+            cairo_surface_destroy(cairoSurface);
+            cairoSurface = nullptr;
+            return false;
+        }
+
+        std::cerr << "UltraCanvas Windows: Cairo image surface created ("
+                  << config_.width << "x" << config_.height << ")" << std::endl;
+        return true;
+    }
+
+    void UltraCanvasWindowsWindow::DestroyCairoSurface() {
+        if (cairoSurface) {
+            cairo_surface_destroy(cairoSurface);
+            cairoSurface = nullptr;
         }
     }
-}
 
-void UltraCanvasWindowsWindow::Maximize() {
-    if (_created && hwnd) {
-        ShowWindow(hwnd, SW_MAXIMIZE);
-        _state = WindowState::Maximized;
-        
-        if (onWindowMaximize) {
-            onWindowMaximize();
+    void UltraCanvasWindowsWindow::UpdateCairoSurface(int w, int h) {
+        std::lock_guard<std::mutex> lock(cairoMutex);
+
+        if (cairoSurface) {
+            cairo_surface_destroy(cairoSurface);
+            cairoSurface = nullptr;
+        }
+
+        cairoSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, w, h);
+        if (!cairoSurface) {
+            std::cerr << "UltraCanvas Windows: Failed to recreate Cairo surface on resize" << std::endl;
+            return;
+        }
+
+        if (renderContext) {
+            renderContext->SetTargetSurface(cairoSurface, w, h);
+            renderContext->ResizeStagingSurface(w, h);
         }
     }
-}
 
-void UltraCanvasWindowsWindow::Restore() {
-    if (_created && hwnd) {
-        ShowWindow(hwnd, SW_RESTORE);
-        _state = WindowState::Normal;
-        
-        if (onWindowRestore) {
-            onWindowRestore();
+    void UltraCanvasWindowsWindow::DestroyNative() {
+        if (!_created) return;
+
+        // Revoke drag-drop registration
+        if (hwnd) {
+            RevokeDragDrop(hwnd);
         }
+
+        // Release drop target
+        if (dropTarget) {
+            dropTarget->Release();
+            dropTarget = nullptr;
+        }
+
+        // Destroy render context first (uses cairo surface)
+        renderContext.reset();
+
+        // Destroy Cairo surface
+        DestroyCairoSurface();
+
+        // Release DC
+        if (hdc && hwnd) {
+            ReleaseDC(hwnd, hdc);
+            hdc = nullptr;
+        }
+
+        // Destroy window
+        if (hwnd) {
+            DestroyWindow(hwnd);
+            hwnd = nullptr;
+        }
+
+        _created = false;
+        std::cerr << "UltraCanvas Windows: Window destroyed" << std::endl;
     }
-}
 
-void UltraCanvasWindowsWindow::SetFullscreen(bool fullscreen) {
-    if (!_created || !hwnd) {
-        return;
+// ===== WNDPROC MESSAGE HANDLER =====
+
+    LRESULT UltraCanvasWindowsWindow::HandleMessage(
+            HWND h, UINT msg, WPARAM wParam, LPARAM lParam) {
+
+        switch (msg) {
+            case WM_PAINT: {
+                PAINTSTRUCT ps;
+                HDC paintDC = BeginPaint(h, &ps);
+                // Blit the Cairo image surface to the window
+                BlitSurfaceToHDC(paintDC);
+                EndPaint(h, &ps);
+                return 0;
+            }
+
+            case WM_SIZE: {
+                int w = LOWORD(lParam);
+                int h_new = HIWORD(lParam);
+                if (w > 0 && h_new > 0) {
+                    HandleResizeEvent(w, h_new);
+                }
+                // Track window state from SIZE message
+                if (wParam == SIZE_MINIMIZED)
+                    _state = WindowState::Minimized;
+                else if (wParam == SIZE_MAXIMIZED)
+                    _state = WindowState::Maximized;
+                else if (wParam == SIZE_RESTORED)
+                    _state = WindowState::Normal;
+                return 0;
+            }
+
+            case WM_CLOSE: {
+                // Don't call DestroyWindow here - let the framework handle it
+                // via WindowCloseRequest event (pushed by ProcessWindowMessage)
+                return 0;
+            }
+
+            case WM_DESTROY: {
+                return 0;
+            }
+
+            case WM_ERASEBKGND: {
+                // Return 1 to prevent GDI from erasing the background
+                // We paint everything ourselves via Cairo
+                return 1;
+            }
+
+            case WM_MOUSEMOVE: {
+                // Track mouse for WM_MOUSELEAVE notifications
+                if (!trackingMouseLeave) {
+                    TRACKMOUSEEVENT tme = {};
+                    tme.cbSize = sizeof(tme);
+                    tme.dwFlags = TME_LEAVE;
+                    tme.hwndTrack = h;
+                    TrackMouseEvent(&tme);
+                    trackingMouseLeave = true;
+                }
+                break;  // Let ProcessWindowMessage handle the event
+            }
+
+            case WM_MOUSELEAVE: {
+                trackingMouseLeave = false;
+                break;  // Let ProcessWindowMessage handle the event
+            }
+
+            case WM_GETMINMAXINFO: {
+                auto* mmi = reinterpret_cast<MINMAXINFO*>(lParam);
+                DWORD style = static_cast<DWORD>(GetWindowLongW(h, GWL_STYLE));
+                DWORD exStyle = static_cast<DWORD>(GetWindowLongW(h, GWL_EXSTYLE));
+
+                if (config_.minWidth > 0 && config_.minHeight > 0) {
+                    RECT r = {0, 0, config_.minWidth, config_.minHeight};
+                    AdjustWindowRectEx(&r, style, FALSE, exStyle);
+                    mmi->ptMinTrackSize.x = r.right - r.left;
+                    mmi->ptMinTrackSize.y = r.bottom - r.top;
+                }
+                if (config_.maxWidth > 0 && config_.maxHeight > 0) {
+                    RECT r = {0, 0, config_.maxWidth, config_.maxHeight};
+                    AdjustWindowRectEx(&r, style, FALSE, exStyle);
+                    mmi->ptMaxTrackSize.x = r.right - r.left;
+                    mmi->ptMaxTrackSize.y = r.bottom - r.top;
+                }
+                return 0;
+            }
+
+            case WM_SETCURSOR: {
+                // Handle cursor in client area - prevent Windows from resetting it
+                if (LOWORD(lParam) == HTCLIENT) {
+                    auto* app = UltraCanvasWindowsApplication::GetInstance();
+                    if (app) {
+                        app->SelectMouseCursorNative(this, currentMouseCursor);
+                        return TRUE;
+                    }
+                }
+                break;
+            }
+        }
+
+        return DefWindowProcW(h, msg, wParam, lParam);
     }
 
-    static WINDOWPLACEMENT prevPlacement = {sizeof(prevPlacement)};
-    static LONG prevStyle = 0;
+// ===== WINDOW OPERATIONS =====
 
-    if (fullscreen) {
-        // Save current state
-        prevStyle = GetWindowLong(hwnd, GWL_STYLE);
-        GetWindowPlacement(hwnd, &prevPlacement);
+    void UltraCanvasWindowsWindow::Show() {
+        if (!_created || visible) return;
+        ShowWindow(hwnd, SW_SHOW);
+        UpdateWindow(hwnd);
 
-        // Get monitor info
-        HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-        MONITORINFO mi = {sizeof(mi)};
-        GetMonitorInfo(hMonitor, &mi);
+        visible = true;
 
-        // Set fullscreen
-        SetWindowLong(hwnd, GWL_STYLE, prevStyle & ~WS_OVERLAPPEDWINDOW);
-        SetWindowPos(hwnd, HWND_TOP,
-                     mi.rcMonitor.left,
-                     mi.rcMonitor.top,
-                     mi.rcMonitor.right - mi.rcMonitor.left,
-                     mi.rcMonitor.bottom - mi.rcMonitor.top,
-                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-
-        _state = WindowState::Fullscreen;
-    } else {
-        // Restore previous state
-        SetWindowLong(hwnd, GWL_STYLE, prevStyle);
-        SetWindowPlacement(hwnd, &prevPlacement);
-        SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | 
-                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-
-        _state = WindowState::Normal;
+        if (onWindowShow) onWindowShow();
     }
-}
 
-void UltraCanvasWindowsWindow::RaiseAndFocus() {
-    if (_created && hwnd) {
-        BringWindowToTop(hwnd);
+    void UltraCanvasWindowsWindow::Hide() {
+        if (!_created || !visible) return;
+        ShowWindow(hwnd, SW_HIDE);
+
+        visible = false;
+
+        if (onWindowHide) onWindowHide();
+    }
+
+    void UltraCanvasWindowsWindow::RaiseAndFocus() {
+        if (!_created) return;
+
         SetForegroundWindow(hwnd);
         SetFocus(hwnd);
     }
-}
 
-void UltraCanvasWindowsWindow::Focus() {
-    if (_created && hwnd) {
-        SetForegroundWindow(hwnd);
-        SetFocus(hwnd);
-    }
-}
-
-// ===== RENDERING =====
-void UltraCanvasWindowsWindow::Flush() {
-    if (renderContext) {
-        renderContext->SwapBuffers();
-    }
-}
-
-void UltraCanvasWindowsWindow::Invalidate() {
-    if (hwnd) {
-        InvalidateRect(hwnd, nullptr, FALSE);
-    }
-}
-
-void UltraCanvasWindowsWindow::RenderFrame() {
-    if (!_created || !visible || !renderContext) {
-        return;
+    void UltraCanvasWindowsWindow::SetWindowTitle(const std::string& title) {
+        config_.title = title;
+        if (hwnd) {
+            std::wstring wTitle = UltraCanvasWindowsApplication::Utf8ToUtf16(title);
+            SetWindowTextW(hwnd, wTitle.c_str());
+        }
     }
 
-    std::lock_guard<std::mutex> lock(renderMutex);
-
-    // Begin drawing
-    renderContext->BeginDraw();
-
-    // Clear background
-    renderContext->Clear(config_.backgroundColor);
-
-    // Render UI content
-    Render(renderContext.get());
-
-    // End drawing and present
-    renderContext->EndDraw();
-    renderContext->SwapBuffers();
-
-    ClearRequestRedraw();
-}
-
-// ===== EVENT HANDLING =====
-void UltraCanvasWindowsWindow::HandleResizeEvent(int width, int height) {
-    if (config_.width != width || config_.height != height) {
+    void UltraCanvasWindowsWindow::SetWindowSize(int width, int height) {
         config_.width = width;
         config_.height = height;
-        
-        UpdateRenderTarget(width, height);
-        
-        // Call base class handler
-        UltraCanvasWindowBase::HandleResizeEvent(width, height);
-        
-        // Trigger callback
-        if (onWindowResize) {
-            onWindowResize(width, height);
+
+        if (hwnd) {
+            // Calculate window size from desired client area
+            DWORD style = static_cast<DWORD>(GetWindowLongW(hwnd, GWL_STYLE));
+            DWORD exStyle = static_cast<DWORD>(GetWindowLongW(hwnd, GWL_EXSTYLE));
+            RECT rect = {0, 0, width, height};
+            AdjustWindowRectEx(&rect, style, FALSE, exStyle);
+
+            SetWindowPos(hwnd, nullptr, 0, 0,
+                         rect.right - rect.left, rect.bottom - rect.top,
+                         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
         }
-        
-        // Request redraw
-        RequestRedraw();
-        Invalidate();
     }
-}
 
-void UltraCanvasWindowsWindow::HandleMoveEvent(int x, int y) {
-    config_.x = x;
-    config_.y = y;
-    
-    if (onWindowMove) {
-        onWindowMove(x, y);
+    void UltraCanvasWindowsWindow::SetWindowPosition(int x, int y) {
+        config_.x = x;
+        config_.y = y;
+
+        if (hwnd) {
+            SetWindowPos(hwnd, nullptr, x, y, 0, 0,
+                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
     }
-}
 
-void UltraCanvasWindowsWindow::HandleCloseRequest() {
-    // Check if close is allowed via callback
-    if (onWindowClose) {
-        onWindowClose();
+    void UltraCanvasWindowsWindow::SetResizable(bool resizable) {
+        config_.resizable = resizable;
+
+        if (hwnd) {
+            LONG style = GetWindowLongW(hwnd, GWL_STYLE);
+            if (resizable) {
+                style |= WS_THICKFRAME;
+            } else {
+                style &= ~WS_THICKFRAME;
+            }
+            SetWindowLongW(hwnd, GWL_STYLE, style);
+            // Apply style change
+            SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        }
     }
-    
-    // Request deletion
-    RequestDelete();
-}
 
-void UltraCanvasWindowsWindow::HandleDestroyEvent() {
-    if (onWindowDestroy) {
-        onWindowDestroy();
+    void UltraCanvasWindowsWindow::Minimize() {
+        if (!_created) return;
+        ShowWindow(hwnd, SW_MINIMIZE);
+        _state = WindowState::Minimized;
+        if (onWindowMinimize) onWindowMinimize();
     }
-}
 
-// ===== GETTERS =====
-unsigned long UltraCanvasWindowsWindow::GetNativeHandle() const {
-    return reinterpret_cast<unsigned long>(hwnd);
-}
+    void UltraCanvasWindowsWindow::Maximize() {
+        if (!_created) return;
+        ShowWindow(hwnd, SW_MAXIMIZE);
+        _state = WindowState::Maximized;
+        if (onWindowMaximize) onWindowMaximize();
+    }
+
+    void UltraCanvasWindowsWindow::Restore() {
+        if (!_created) return;
+        ShowWindow(hwnd, SW_RESTORE);
+        _state = WindowState::Normal;
+        if (onWindowRestore) onWindowRestore();
+    }
+
+    void UltraCanvasWindowsWindow::SetFullscreen(bool fullscreen) {
+        if (!_created) return;
+
+        if (fullscreen) {
+            // Save current window state
+            GetWindowPlacement(hwnd, &savedPlacement);
+            savedStyle = GetWindowLongW(hwnd, GWL_STYLE);
+            savedExStyle = GetWindowLongW(hwnd, GWL_EXSTYLE);
+
+            // Remove window borders and title bar
+            SetWindowLongW(hwnd, GWL_STYLE,
+                           savedStyle & ~(WS_CAPTION | WS_THICKFRAME));
+            SetWindowLongW(hwnd, GWL_EXSTYLE,
+                           savedExStyle & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE |
+                                            WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
+
+            // Get the monitor that contains the window
+            MONITORINFO mi = {sizeof(mi)};
+            GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi);
+
+            // Resize to fill the entire monitor
+            SetWindowPos(hwnd, HWND_TOP,
+                         mi.rcMonitor.left, mi.rcMonitor.top,
+                         mi.rcMonitor.right - mi.rcMonitor.left,
+                         mi.rcMonitor.bottom - mi.rcMonitor.top,
+                         SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+
+            _state = WindowState::Fullscreen;
+        } else {
+            // Restore saved window state
+            SetWindowLongW(hwnd, GWL_STYLE, savedStyle);
+            SetWindowLongW(hwnd, GWL_EXSTYLE, savedExStyle);
+            SetWindowPlacement(hwnd, &savedPlacement);
+            SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+
+            _state = WindowState::Normal;
+        }
+    }
+
+    void UltraCanvasWindowsWindow::Flush() {
+        if (!renderContext || !cairoSurface || !hwnd) return;
+        std::lock_guard<std::mutex> lock(cairoMutex);
+        renderContext->SwapBuffers();
+        cairo_surface_flush(cairoSurface);
+        // Trigger a synchronous WM_PAINT to blit the image surface to the window
+        InvalidateRect(hwnd, NULL, FALSE);
+        UpdateWindow(hwnd);
+    }
+
+    void UltraCanvasWindowsWindow::BlitSurfaceToHDC(HDC targetDC) {
+        if (!cairoSurface || !targetDC) return;
+        if (cairo_surface_get_type(cairoSurface) != CAIRO_SURFACE_TYPE_IMAGE) return;
+
+        cairo_surface_flush(cairoSurface);
+
+        int width = cairo_image_surface_get_width(cairoSurface);
+        int height = cairo_image_surface_get_height(cairoSurface);
+        unsigned char* data = cairo_image_surface_get_data(cairoSurface);
+        if (!data) return;
+
+        BITMAPINFO bmi = {};
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = width;
+        bmi.bmiHeader.biHeight = -height;  // Negative = top-down DIB
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+
+        SetDIBitsToDevice(targetDC, 0, 0, width, height,
+                          0, 0, 0, height,
+                          data, &bmi, DIB_RGB_COLORS);
+    }
+
+    unsigned long UltraCanvasWindowsWindow::GetNativeHandle() const {
+        return reinterpret_cast<unsigned long>(hwnd);
+    }
+
+    void UltraCanvasWindowsWindow::GetScreenPosition(int& x, int& y) const {
+        if (hwnd) {
+            RECT r;
+            GetWindowRect(hwnd, &r);
+            x = r.left;
+            y = r.top;
+        } else {
+            x = config_.x;
+            y = config_.y;
+        }
+    }
+
+    void UltraCanvasWindowsWindow::HandleResizeEvent(int w, int h) {
+        if (config_.width != w || config_.height != h) {
+            UpdateCairoSurface(w, h);
+            UltraCanvasWindowBase::HandleResizeEvent(w, h);
+        }
+    }
 
 } // namespace UltraCanvas
-
-#endif // _WIN32

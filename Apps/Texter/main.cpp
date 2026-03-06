@@ -145,7 +145,7 @@ private:
 
         // File saved
         editor->onFileSaved = [](const std::string& path, int tabIndex) {
-            std::cout << "File saved: " << path << std::endl;
+            std::cerr << "File saved: " << path << std::endl;
         };
 
         // Window resize: sync editor size

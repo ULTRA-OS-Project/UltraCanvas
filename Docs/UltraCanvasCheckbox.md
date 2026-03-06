@@ -348,7 +348,7 @@ auto checkbox = std::make_shared<UltraCanvasCheckbox>(
 );
 checkbox->SetChecked(false);
 checkbox->onChecked = []() {
-    std::cout << "User agreed to terms" << std::endl;
+    std::cerr << "User agreed to terms" << std::endl;
 };
 ```
 
@@ -360,7 +360,7 @@ auto triStateBox = std::make_shared<UltraCanvasCheckbox>(
 triStateBox->SetAllowIndeterminate(true);
 triStateBox->SetCheckState(CheckboxState::Indeterminate);
 triStateBox->onStateChanged = [](CheckboxState oldState, CheckboxState newState) {
-    std::cout << "State changed from " << (int)oldState 
+    std::cerr << "State changed from " << (int)oldState 
               << " to " << (int)newState << std::endl;
 };
 ```
@@ -371,10 +371,10 @@ auto toggleSwitch = UltraCanvasCheckbox::CreateSwitch(
     "NotificationSwitch", 3001, 10, 100, "Enable Notifications", true
 );
 toggleSwitch->onChecked = []() {
-    std::cout << "Notifications enabled" << std::endl;
+    std::cerr << "Notifications enabled" << std::endl;
 };
 toggleSwitch->onUnchecked = []() {
-    std::cout << "Notifications disabled" << std::endl;
+    std::cerr << "Notifications disabled" << std::endl;
 };
 ```
 
@@ -397,7 +397,7 @@ radioGroup->AddRadioButton(radio2);
 radioGroup->AddRadioButton(radio3);
 
 radioGroup->onSelectionChanged = [](auto selected) {
-    std::cout << "Selected: " << selected->GetText() << std::endl;
+    std::cerr << "Selected: " << selected->GetText() << std::endl;
 };
 ```
 

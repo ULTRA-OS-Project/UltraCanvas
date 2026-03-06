@@ -170,12 +170,12 @@ namespace UltraCanvas {
         // Setup callbacks for status updates
         ruleLegend->onAllRulesMet = [](bool allMet) {
             if (allMet) {
-                std::cout << "✓ All password requirements met!" << std::endl;
+                std::cerr << "✓ All password requirements met!" << std::endl;
             }
         };
 
         ruleLegend->onRuleStatusChanged = [](int met, int total) {
-            std::cout << "Password rules: " << met << "/" << total << " met" << std::endl;
+            std::cerr << "Password rules: " << met << "/" << total << " met" << std::endl;
         };
 
         container->AddChild(ruleLegend);
@@ -225,11 +225,11 @@ namespace UltraCanvas {
 
         // Add callbacks for strength updates
         circularMeter->onStrengthChanged = [](float strength) {
-            std::cout << "Password strength: " << strength << "%" << std::endl;
+            std::cerr << "Password strength: " << strength << "%" << std::endl;
         };
 
         circularMeter->onStrengthLevelChanged = [](const std::string& level) {
-            std::cout << "Strength level: " << level << std::endl;
+            std::cerr << "Strength level: " << level << std::endl;
         };
 
         container->AddChild(detailedLegend);

@@ -85,7 +85,7 @@ namespace UltraCanvas {
                 "public:\n"
                 "    TextEditorDemo(const std::string& name) \n"
                 "        : documentName(name) {\n"
-                "        std::cout << \"Creating document: \" << name << std::endl;\n"
+                "        std::cerr << \"Creating document: \" << name << std::endl;\n"
                 "    }\n"
                 "\n"
                 "    void AddLine(const std::string& line) {\n"
@@ -110,7 +110,7 @@ namespace UltraCanvas {
                 "    demo.AddLine(\"Hello, UltraCanvas!\");\n"
                 "    demo.AddLine(\"This is a text editor demo.\");\n"
                 "    \n"
-                "    std::cout << \"Lines: \" << demo.GetLineCount() << std::endl;\n"
+                "    std::cerr << \"Lines: \" << demo.GetLineCount() << std::endl;\n"
                 "    \n"
                 "    return 0;\n"
                 "}\n"
@@ -118,7 +118,7 @@ namespace UltraCanvas {
 
         // Set up callbacks
         textEditor->onFileLoaded = [](const std::string& path) {
-            std::cout << "File loaded: " << path << std::endl;
+            std::cerr << "File loaded: " << path << std::endl;
         };
 
         textEditor->onFileSaved = [](const std::string& path) {

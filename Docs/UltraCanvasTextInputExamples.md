@@ -562,7 +562,7 @@ nameInput->AddValidationRule(ValidationRule::MinLength(2));
 
 // Set callback
 nameInput->onTextChanged = [](const std::string& text) {
-    std::cout << "Name changed: " << text << std::endl;
+    std::cerr << "Name changed: " << text << std::endl;
 };
 
 // Add to window
@@ -579,7 +579,7 @@ emailInput->SetStyle(TextInputStyle::Outlined());
 emailInput->onValidationStateChanged = [](const ValidationResult& result) {
     if (!result.isValid) {
         for (const auto& error : result.errors) {
-            std::cout << "Error: " << error << std::endl;
+            std::cerr << "Error: " << error << std::endl;
         }
     }
 };

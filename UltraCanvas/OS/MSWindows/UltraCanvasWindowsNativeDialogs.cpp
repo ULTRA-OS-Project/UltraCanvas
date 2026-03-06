@@ -1,13 +1,12 @@
-// OS/MSWindows/UltraCanvasNativeDialogsWindows.cpp
-// Windows implementation of native OS dialogs using Win32 API
+// OS/MSWindows/UltraCanvasWindowsNativeDialogs.cpp
+// Win32 implementation of native OS dialogs
 // Uses unified DialogType, DialogButtons, DialogResult from UltraCanvasModalDialog.h
-// Version: 2.0.0
-// Last Modified: 2026-01-25
+// Version: 1.0.0
+// Last Modified: 2026-03-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNativeDialogs.h"
-
-#if defined(_WIN32) || defined(_WIN64)
+#include "UltraCanvasWindowsApplication.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -15,698 +14,709 @@
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
-
 #include <windows.h>
 #include <commdlg.h>
 #include <shlobj.h>
 #include <shobjidl.h>
-#include <string>
-#include <vector>
-#include <algorithm>
-#include <codecvt>
-#include <locale>
+#include <iostream>
 
 namespace UltraCanvas {
 
-namespace {
+    namespace {
 
-// ===== STRING CONVERSION HELPERS =====
+// ===== HELPER FUNCTIONS =====
 
-std::wstring ToWideString(const std::string& str) {
-    if (str.empty()) return L"";
-    int size = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, nullptr, 0);
-    std::wstring wstr(size - 1, 0);
-    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &wstr[0], size);
-    return wstr;
-}
+        HWND ToHWND(NativeWindowHandle handle) {
+            return static_cast<HWND>(handle);
+        }
 
-std::string ToNarrowString(const std::wstring& wstr) {
-    if (wstr.empty()) return "";
-    int size = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    std::string str(size - 1, 0);
-    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, &str[0], size, nullptr, nullptr);
-    return str;
-}
-
-// Convert DialogType to MessageBox icon
-UINT ToMessageBoxIcon(DialogType type) {
-    switch (type) {
-        case DialogType::Information: return MB_ICONINFORMATION;
-        case DialogType::Warning:     return MB_ICONWARNING;
-        case DialogType::Error:       return MB_ICONERROR;
-        case DialogType::Question:    return MB_ICONQUESTION;
-        case DialogType::Custom:
-        default:                      return MB_ICONINFORMATION;
-    }
-}
-
-// Convert DialogButtons to MessageBox buttons
-UINT ToMessageBoxButtons(DialogButtons buttons) {
-    switch (buttons) {
-        case DialogButtons::OK:              return MB_OK;
-        case DialogButtons::OKCancel:        return MB_OKCANCEL;
-        case DialogButtons::YesNo:           return MB_YESNO;
-        case DialogButtons::YesNoCancel:     return MB_YESNOCANCEL;
-        case DialogButtons::RetryCancel:     return MB_RETRYCANCEL;
-        case DialogButtons::AbortRetryIgnore: return MB_ABORTRETRYIGNORE;
-        default:                             return MB_OK;
-    }
-}
-
-// Convert MessageBox result to DialogResult
-DialogResult FromMessageBoxResult(int result) {
-    switch (result) {
-        case IDOK:     return DialogResult::OK;
-        case IDCANCEL: return DialogResult::Cancel;
-        case IDYES:    return DialogResult::Yes;
-        case IDNO:     return DialogResult::No;
-        case IDABORT:  return DialogResult::Abort;
-        case IDRETRY:  return DialogResult::Retry;
-        case IDIGNORE: return DialogResult::Ignore;
-        case IDCLOSE:  return DialogResult::Close;
-        default:       return DialogResult::Cancel;
-    }
-}
-
-// Build filter string for file dialogs using FileFilter
-// Format: "Description\0*.ext1;*.ext2\0Description2\0*.ext3\0\0"
-std::wstring BuildFilterString(const std::vector<FileFilter>& filters) {
-    std::wstring filterStr;
-
-    for (const auto& filter : filters) {
-        filterStr += ToWideString(filter.description);
-        filterStr += L'\0';
-
-        // Build extension pattern
-        std::wstring extPattern;
-        for (size_t i = 0; i < filter.extensions.size(); ++i) {
-            if (i > 0) extPattern += L";";
-            if (filter.extensions[i] == "*") {
-                extPattern += L"*.*";
-            } else {
-                extPattern += L"*." + ToWideString(filter.extensions[i]);
+// Convert DialogType to MessageBox icon flags
+        UINT ToMessageBoxIcon(DialogType type) {
+            switch (type) {
+                case DialogType::Information: return MB_ICONINFORMATION;
+                case DialogType::Warning:     return MB_ICONWARNING;
+                case DialogType::Error:       return MB_ICONERROR;
+                case DialogType::Question:    return MB_ICONQUESTION;
+                case DialogType::Custom:
+                default:                      return 0;
             }
         }
-        filterStr += extPattern;
-        filterStr += L'\0';
-    }
 
-    // Add "All Files" if no filters specified
-    if (filters.empty()) {
-        filterStr += L"All Files\0*.*\0";
-    }
-
-    // Double null terminator
-    filterStr += L'\0';
-
-    return filterStr;
-}
-
-// COM initialization helper
-class ComInitializer {
-public:
-    ComInitializer() : initialized(false) {
-        HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-        initialized = SUCCEEDED(hr) || hr == S_FALSE; // S_FALSE = already initialized
-    }
-
-    ~ComInitializer() {
-        if (initialized) {
-            CoUninitialize();
+// Convert DialogButtons to MessageBox button flags
+        UINT ToMessageBoxButtons(DialogButtons buttons) {
+            switch (buttons) {
+                case DialogButtons::OK:               return MB_OK;
+                case DialogButtons::OKCancel:         return MB_OKCANCEL;
+                case DialogButtons::YesNo:            return MB_YESNO;
+                case DialogButtons::YesNoCancel:      return MB_YESNOCANCEL;
+                case DialogButtons::RetryCancel:      return MB_RETRYCANCEL;
+                case DialogButtons::AbortRetryIgnore: return MB_ABORTRETRYIGNORE;
+                default:                              return MB_OK;
+            }
         }
-    }
 
-    bool IsInitialized() const { return initialized; }
+// Convert MessageBox result to DialogResult
+        DialogResult FromMessageBoxResult(int result) {
+            switch (result) {
+                case IDOK:     return DialogResult::OK;
+                case IDCANCEL: return DialogResult::Cancel;
+                case IDYES:    return DialogResult::Yes;
+                case IDNO:     return DialogResult::No;
+                case IDRETRY:  return DialogResult::Retry;
+                case IDIGNORE: return DialogResult::Ignore;
+                case IDABORT:  return DialogResult::Abort;
+                default:       return DialogResult::NoResult;
+            }
+        }
 
-private:
-    bool initialized;
-};
+// Build COMDLG_FILTERSPEC array from FileFilter vector
+        struct FilterSpecData {
+            std::vector<std::wstring> descriptions;
+            std::vector<std::wstring> patterns;
+            std::vector<COMDLG_FILTERSPEC> specs;
 
-} // anonymous namespace
+            void Build(const std::vector<FileFilter>& filters) {
+                descriptions.reserve(filters.size());
+                patterns.reserve(filters.size());
+                specs.reserve(filters.size());
+
+                for (const auto& filter : filters) {
+                    descriptions.push_back(
+                        UltraCanvasWindowsApplication::Utf8ToUtf16(filter.description));
+
+                    // Build pattern string: "*.txt;*.log;*.md"
+                    std::wstring pattern;
+                    for (size_t i = 0; i < filter.extensions.size(); i++) {
+                        if (i > 0) pattern += L";";
+                        if (filter.extensions[i] == "*") {
+                            pattern += L"*.*";
+                        } else {
+                            pattern += L"*." + UltraCanvasWindowsApplication::Utf8ToUtf16(
+                                filter.extensions[i]);
+                        }
+                    }
+                    patterns.push_back(pattern);
+                }
+
+                for (size_t i = 0; i < descriptions.size(); i++) {
+                    COMDLG_FILTERSPEC spec;
+                    spec.pszName = descriptions[i].c_str();
+                    spec.pszSpec = patterns[i].c_str();
+                    specs.push_back(spec);
+                }
+            }
+        };
+
+// Set initial directory on a file dialog via IShellItem
+        void SetInitialDirectory(IFileDialog* dialog, const std::string& dir) {
+            if (dir.empty()) return;
+
+            std::wstring wdir = UltraCanvasWindowsApplication::Utf8ToUtf16(dir);
+            IShellItem* psi = nullptr;
+            if (SUCCEEDED(SHCreateItemFromParsingName(wdir.c_str(), nullptr,
+                    IID_PPV_ARGS(&psi)))) {
+                dialog->SetFolder(psi);
+                psi->Release();
+            }
+        }
+
+// Extract file path from IShellItem
+        std::string GetPathFromShellItem(IShellItem* item) {
+            PWSTR pszPath = nullptr;
+            std::string result;
+            if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &pszPath))) {
+                result = UltraCanvasWindowsApplication::Utf16ToUtf8(pszPath);
+                CoTaskMemFree(pszPath);
+            }
+            return result;
+        }
+
+    } // anonymous namespace
 
 // ===== MESSAGE DIALOGS =====
 
-DialogResult UltraCanvasNativeDialogs::ShowInfo(
-    const std::string& message,
-    const std::string& title,
-    NativeWindowHandle parent) {
-    return ShowMessage(message, title, DialogType::Information, DialogButtons::OK, parent);
-}
-
-DialogResult UltraCanvasNativeDialogs::ShowWarning(
-    const std::string& message,
-    const std::string& title,
-    NativeWindowHandle parent) {
-    return ShowMessage(message, title, DialogType::Warning, DialogButtons::OK, parent);
-}
-
-DialogResult UltraCanvasNativeDialogs::ShowError(
-    const std::string& message,
-    const std::string& title,
-    NativeWindowHandle parent) {
-    return ShowMessage(message, title, DialogType::Error, DialogButtons::OK, parent);
-}
-
-DialogResult UltraCanvasNativeDialogs::ShowQuestion(
-    const std::string& message,
-    const std::string& title,
-    DialogButtons buttons,
-    NativeWindowHandle parent) {
-    return ShowMessage(message, title, DialogType::Question, buttons, parent);
-}
-
-DialogResult UltraCanvasNativeDialogs::ShowMessage(
-    const std::string& message,
-    const std::string& title,
-    DialogType type,
-    DialogButtons buttons,
-    NativeWindowHandle parent) {
-
-    std::wstring wMessage = ToWideString(message);
-    std::wstring wTitle = ToWideString(title);
-
-    UINT uType = ToMessageBoxButtons(buttons) | ToMessageBoxIcon(type) | MB_SETFOREGROUND;
-
-    // If parent is provided, add MB_APPLMODAL to keep dialog on top of parent
-    if (parent != nullptr) {
-        uType |= MB_APPLMODAL;
-    } else {
-        uType |= MB_TASKMODAL;  // System modal if no parent
+    DialogResult UltraCanvasNativeDialogs::ShowInfo(
+            const std::string& message, const std::string& title,
+            NativeWindowHandle parent) {
+        return ShowMessage(message, title, DialogType::Information, DialogButtons::OK, parent);
     }
 
-    HWND hwndParent = static_cast<HWND>(parent);
-    int result = MessageBoxW(hwndParent, wMessage.c_str(), wTitle.c_str(), uType);
+    DialogResult UltraCanvasNativeDialogs::ShowWarning(
+            const std::string& message, const std::string& title,
+            NativeWindowHandle parent) {
+        return ShowMessage(message, title, DialogType::Warning, DialogButtons::OK, parent);
+    }
 
-    return FromMessageBoxResult(result);
-}
+    DialogResult UltraCanvasNativeDialogs::ShowError(
+            const std::string& message, const std::string& title,
+            NativeWindowHandle parent) {
+        return ShowMessage(message, title, DialogType::Error, DialogButtons::OK, parent);
+    }
+
+    DialogResult UltraCanvasNativeDialogs::ShowQuestion(
+            const std::string& message, const std::string& title,
+            DialogButtons buttons, NativeWindowHandle parent) {
+        return ShowMessage(message, title, DialogType::Question, buttons, parent);
+    }
+
+    DialogResult UltraCanvasNativeDialogs::ShowMessage(
+            const std::string& message, const std::string& title,
+            DialogType type, DialogButtons buttons,
+            NativeWindowHandle parent) {
+
+        std::wstring wmessage = UltraCanvasWindowsApplication::Utf8ToUtf16(message);
+        std::wstring wtitle = UltraCanvasWindowsApplication::Utf8ToUtf16(title);
+
+        UINT flags = ToMessageBoxIcon(type) | ToMessageBoxButtons(buttons);
+        int result = MessageBoxW(ToHWND(parent), wmessage.c_str(), wtitle.c_str(), flags);
+
+        return FromMessageBoxResult(result);
+    }
 
 // ===== CONFIRMATION DIALOGS =====
 
-bool UltraCanvasNativeDialogs::Confirm(
-    const std::string& message,
-    const std::string& title,
-    NativeWindowHandle parent) {
-    DialogResult result = ShowMessage(message, title,
-        DialogType::Question, DialogButtons::OKCancel, parent);
-    return result == DialogResult::OK;
-}
+    bool UltraCanvasNativeDialogs::Confirm(
+            const std::string& message, const std::string& title,
+            NativeWindowHandle parent) {
+        DialogResult result = ShowMessage(message, title,
+            DialogType::Question, DialogButtons::OKCancel, parent);
+        return result == DialogResult::OK;
+    }
 
-bool UltraCanvasNativeDialogs::ConfirmYesNo(
-    const std::string& message,
-    const std::string& title,
-    NativeWindowHandle parent) {
-    DialogResult result = ShowMessage(message, title,
-        DialogType::Question, DialogButtons::YesNo, parent);
-    return result == DialogResult::Yes;
-}
+    bool UltraCanvasNativeDialogs::ConfirmYesNo(
+            const std::string& message, const std::string& title,
+            NativeWindowHandle parent) {
+        DialogResult result = ShowMessage(message, title,
+            DialogType::Question, DialogButtons::YesNo, parent);
+        return result == DialogResult::Yes;
+    }
 
 // ===== FILE DIALOGS =====
 
-std::string UltraCanvasNativeDialogs::OpenFile(
-    const std::string& title,
-    const std::vector<FileFilter>& filters,
-    const std::string& initialDir,
-    NativeWindowHandle parent) {
+    std::string UltraCanvasNativeDialogs::OpenFile(
+            const std::string& title, const std::vector<FileFilter>& filters,
+            const std::string& initialDir, NativeWindowHandle parent) {
 
-    NativeFileDialogOptions options;
-    options.title = title;
-    options.filters = filters;
-    options.initialDirectory = initialDir;
-    options.parentWindow = parent;
-    return OpenFile(options);
-}
-
-std::string UltraCanvasNativeDialogs::OpenFile(const NativeFileDialogOptions& options) {
-    std::wstring filterStr = BuildFilterString(options.filters);
-    std::wstring initialDir = ToWideString(options.initialDirectory);
-    std::wstring titleStr = ToWideString(options.title.empty() ? "Open File" : options.title);
-
-    wchar_t filename[MAX_PATH] = {0};
-
-    OPENFILENAMEW ofn = {};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = static_cast<HWND>(options.parentWindow);  // Parent window handle
-    ofn.lpstrFilter = filterStr.c_str();
-    ofn.lpstrFile = filename;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrTitle = titleStr.c_str();
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
-
-    if (!initialDir.empty()) {
-        ofn.lpstrInitialDir = initialDir.c_str();
+        NativeFileDialogOptions options;
+        options.title = title;
+        options.filters = filters;
+        options.initialDirectory = initialDir;
+        options.parentWindow = parent;
+        return OpenFile(options);
     }
 
-    if (options.showHiddenFiles) {
-        ofn.Flags |= OFN_FORCESHOWHIDDEN;
-    }
+    std::string UltraCanvasNativeDialogs::OpenFile(const NativeFileDialogOptions& options) {
+        IFileOpenDialog* pDialog = nullptr;
+        HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL,
+            IID_PPV_ARGS(&pDialog));
+        if (FAILED(hr)) {
+            std::cerr << "UltraCanvas NativeDialogs: Failed to create FileOpenDialog" << std::endl;
+            return "";
+        }
 
-    if (GetOpenFileNameW(&ofn)) {
-        return ToNarrowString(filename);
-    }
+        // Set title
+        if (!options.title.empty()) {
+            std::wstring wtitle = UltraCanvasWindowsApplication::Utf8ToUtf16(options.title);
+            pDialog->SetTitle(wtitle.c_str());
+        }
 
-    return "";
-}
+        // Set filters
+        FilterSpecData filterData;
+        if (!options.filters.empty()) {
+            filterData.Build(options.filters);
+            pDialog->SetFileTypes(
+                static_cast<UINT>(filterData.specs.size()), filterData.specs.data());
+        }
 
-std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(
-    const std::string& title,
-    const std::vector<FileFilter>& filters,
-    const std::string& initialDir,
-    NativeWindowHandle parent) {
+        // Set initial directory
+        SetInitialDirectory(pDialog, options.initialDirectory);
 
-    NativeFileDialogOptions options;
-    options.title = title;
-    options.filters = filters;
-    options.initialDirectory = initialDir;
-    options.allowMultiSelect = true;
-    options.parentWindow = parent;
-    return OpenMultipleFiles(options);
-}
+        // Show hidden files
+        if (options.showHiddenFiles) {
+            DWORD dwFlags = 0;
+            pDialog->GetOptions(&dwFlags);
+            pDialog->SetOptions(dwFlags | FOS_FORCESHOWHIDDEN);
+        }
 
-std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(const NativeFileDialogOptions& options) {
-    std::wstring filterStr = BuildFilterString(options.filters);
-    std::wstring initialDir = ToWideString(options.initialDirectory);
-    std::wstring titleStr = ToWideString(options.title.empty() ? "Open Files" : options.title);
+        // Show dialog
+        hr = pDialog->Show(ToHWND(options.parentWindow));
+        std::string result;
 
-    // Use larger buffer for multiple files
-    const int bufferSize = 32768;
-    std::vector<wchar_t> buffer(bufferSize, 0);
-
-    OPENFILENAMEW ofn = {};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = static_cast<HWND>(options.parentWindow);  // Parent window handle
-    ofn.lpstrFilter = filterStr.c_str();
-    ofn.lpstrFile = buffer.data();
-    ofn.nMaxFile = bufferSize;
-    ofn.lpstrTitle = titleStr.c_str();
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR |
-                OFN_EXPLORER | OFN_ALLOWMULTISELECT;
-
-    if (!initialDir.empty()) {
-        ofn.lpstrInitialDir = initialDir.c_str();
-    }
-
-    if (options.showHiddenFiles) {
-        ofn.Flags |= OFN_FORCESHOWHIDDEN;
-    }
-
-    std::vector<std::string> results;
-
-    if (GetOpenFileNameW(&ofn)) {
-        // Parse the result - could be single file or directory + multiple files
-        const wchar_t* ptr = buffer.data();
-        std::wstring firstPart = ptr;
-        ptr += firstPart.length() + 1;
-
-        if (*ptr == L'\0') {
-            // Single file selected
-            results.push_back(ToNarrowString(firstPart));
-        } else {
-            // Multiple files: firstPart is directory, subsequent are filenames
-            std::wstring directory = firstPart;
-            while (*ptr != L'\0') {
-                std::wstring filename = ptr;
-                std::wstring fullPath = directory + L"\\" + filename;
-                results.push_back(ToNarrowString(fullPath));
-                ptr += filename.length() + 1;
+        if (SUCCEEDED(hr)) {
+            IShellItem* pItem = nullptr;
+            if (SUCCEEDED(pDialog->GetResult(&pItem))) {
+                result = GetPathFromShellItem(pItem);
+                pItem->Release();
             }
         }
+
+        pDialog->Release();
+        return result;
     }
 
-    return results;
-}
+    std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(
+            const std::string& title, const std::vector<FileFilter>& filters,
+            const std::string& initialDir, NativeWindowHandle parent) {
 
-std::string UltraCanvasNativeDialogs::SaveFile(
-    const std::string& title,
-    const std::vector<FileFilter>& filters,
-    const std::string& initialDir,
-    const std::string& defaultFileName,
-    NativeWindowHandle parent) {
-
-    NativeFileDialogOptions options;
-    options.title = title;
-    options.filters = filters;
-    options.initialDirectory = initialDir;
-    options.defaultFileName = defaultFileName;
-    options.parentWindow = parent;
-    return SaveFile(options);
-}
-
-std::string UltraCanvasNativeDialogs::SaveFile(const NativeFileDialogOptions& options) {
-    std::wstring filterStr = BuildFilterString(options.filters);
-    std::wstring initialDir = ToWideString(options.initialDirectory);
-    std::wstring titleStr = ToWideString(options.title.empty() ? "Save File" : options.title);
-
-    wchar_t filename[MAX_PATH] = {0};
-
-    // Set default filename if provided
-    if (!options.defaultFileName.empty()) {
-        std::wstring defaultName = ToWideString(options.defaultFileName);
-        wcscpy_s(filename, MAX_PATH, defaultName.c_str());
+        NativeFileDialogOptions options;
+        options.title = title;
+        options.filters = filters;
+        options.initialDirectory = initialDir;
+        options.parentWindow = parent;
+        options.allowMultiSelect = true;
+        return OpenMultipleFiles(options);
     }
 
-    OPENFILENAMEW ofn = {};
-    ofn.lStructSize = sizeof(ofn);
-    ofn.hwndOwner = static_cast<HWND>(options.parentWindow);  // Parent window handle
-    ofn.lpstrFilter = filterStr.c_str();
-    ofn.lpstrFile = filename;
-    ofn.nMaxFile = MAX_PATH;
-    ofn.lpstrTitle = titleStr.c_str();
-    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_EXPLORER;
+    std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(
+            const NativeFileDialogOptions& options) {
+        std::vector<std::string> results;
 
-    if (!initialDir.empty()) {
-        ofn.lpstrInitialDir = initialDir.c_str();
-    }
-
-    if (options.showHiddenFiles) {
-        ofn.Flags |= OFN_FORCESHOWHIDDEN;
-    }
-
-    if (GetSaveFileNameW(&ofn)) {
-        return ToNarrowString(filename);
-    }
-
-    return "";
-}
-
-std::string UltraCanvasNativeDialogs::SelectFolder(
-    const std::string& title,
-    const std::string& initialDir,
-    NativeWindowHandle parent) {
-
-    ComInitializer com;
-    if (!com.IsInitialized()) {
-        return "";
-    }
-
-    IFileDialog* pFileDialog = nullptr;
-    HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
-                                   IID_IFileDialog, reinterpret_cast<void**>(&pFileDialog));
-
-    if (FAILED(hr) || !pFileDialog) {
-        return "";
-    }
-
-    // Set options for folder picker
-    DWORD options;
-    pFileDialog->GetOptions(&options);
-    pFileDialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-
-    // Set title
-    if (!title.empty()) {
-        std::wstring wTitle = ToWideString(title);
-        pFileDialog->SetTitle(wTitle.c_str());
-    }
-
-    // Set initial directory
-    if (!initialDir.empty()) {
-        std::wstring wInitialDir = ToWideString(initialDir);
-        IShellItem* pFolder = nullptr;
-        hr = SHCreateItemFromParsingName(wInitialDir.c_str(), nullptr, IID_IShellItem,
-                                          reinterpret_cast<void**>(&pFolder));
-        if (SUCCEEDED(hr) && pFolder) {
-            pFileDialog->SetFolder(pFolder);
-            pFolder->Release();
+        IFileOpenDialog* pDialog = nullptr;
+        HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL,
+            IID_PPV_ARGS(&pDialog));
+        if (FAILED(hr)) {
+            std::cerr << "UltraCanvas NativeDialogs: Failed to create FileOpenDialog" << std::endl;
+            return results;
         }
-    }
 
-    std::string result;
+        // Enable multi-select
+        DWORD dwFlags = 0;
+        pDialog->GetOptions(&dwFlags);
+        dwFlags |= FOS_ALLOWMULTISELECT;
+        if (options.showHiddenFiles) {
+            dwFlags |= FOS_FORCESHOWHIDDEN;
+        }
+        pDialog->SetOptions(dwFlags);
 
-    // Show dialog with parent window handle
-    HWND hwndParent = static_cast<HWND>(parent);
-    hr = pFileDialog->Show(hwndParent);
-    if (SUCCEEDED(hr)) {
-        IShellItem* pItem = nullptr;
-        hr = pFileDialog->GetResult(&pItem);
-        if (SUCCEEDED(hr) && pItem) {
-            PWSTR pszFilePath = nullptr;
-            hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath);
-            if (SUCCEEDED(hr) && pszFilePath) {
-                result = ToNarrowString(pszFilePath);
-                CoTaskMemFree(pszFilePath);
+        // Set title
+        if (!options.title.empty()) {
+            std::wstring wtitle = UltraCanvasWindowsApplication::Utf8ToUtf16(options.title);
+            pDialog->SetTitle(wtitle.c_str());
+        }
+
+        // Set filters
+        FilterSpecData filterData;
+        if (!options.filters.empty()) {
+            filterData.Build(options.filters);
+            pDialog->SetFileTypes(
+                static_cast<UINT>(filterData.specs.size()), filterData.specs.data());
+        }
+
+        // Set initial directory
+        SetInitialDirectory(pDialog, options.initialDirectory);
+
+        // Show dialog
+        hr = pDialog->Show(ToHWND(options.parentWindow));
+
+        if (SUCCEEDED(hr)) {
+            IShellItemArray* pItems = nullptr;
+            if (SUCCEEDED(pDialog->GetResults(&pItems))) {
+                DWORD count = 0;
+                pItems->GetCount(&count);
+
+                for (DWORD i = 0; i < count; i++) {
+                    IShellItem* pItem = nullptr;
+                    if (SUCCEEDED(pItems->GetItemAt(i, &pItem))) {
+                        std::string path = GetPathFromShellItem(pItem);
+                        if (!path.empty()) {
+                            results.push_back(path);
+                        }
+                        pItem->Release();
+                    }
+                }
+                pItems->Release();
             }
-            pItem->Release();
         }
+
+        pDialog->Release();
+        return results;
     }
 
-    pFileDialog->Release();
+    std::string UltraCanvasNativeDialogs::SaveFile(
+            const std::string& title, const std::vector<FileFilter>& filters,
+            const std::string& initialDir, const std::string& defaultFileName,
+            NativeWindowHandle parent) {
 
-    return result;
-}
+        NativeFileDialogOptions options;
+        options.title = title;
+        options.filters = filters;
+        options.initialDirectory = initialDir;
+        options.defaultFileName = defaultFileName;
+        options.parentWindow = parent;
+        return SaveFile(options);
+    }
+
+    std::string UltraCanvasNativeDialogs::SaveFile(const NativeFileDialogOptions& options) {
+        IFileSaveDialog* pDialog = nullptr;
+        HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_ALL,
+            IID_PPV_ARGS(&pDialog));
+        if (FAILED(hr)) {
+            std::cerr << "UltraCanvas NativeDialogs: Failed to create FileSaveDialog" << std::endl;
+            return "";
+        }
+
+        // Set title
+        if (!options.title.empty()) {
+            std::wstring wtitle = UltraCanvasWindowsApplication::Utf8ToUtf16(options.title);
+            pDialog->SetTitle(wtitle.c_str());
+        }
+
+        // Set filters
+        FilterSpecData filterData;
+        if (!options.filters.empty()) {
+            filterData.Build(options.filters);
+            pDialog->SetFileTypes(
+                static_cast<UINT>(filterData.specs.size()), filterData.specs.data());
+        }
+
+        // Set default filename
+        if (!options.defaultFileName.empty()) {
+            std::wstring wname = UltraCanvasWindowsApplication::Utf8ToUtf16(options.defaultFileName);
+            pDialog->SetFileName(wname.c_str());
+        }
+
+        // Set initial directory
+        SetInitialDirectory(pDialog, options.initialDirectory);
+
+        // Show hidden files
+        if (options.showHiddenFiles) {
+            DWORD dwFlags = 0;
+            pDialog->GetOptions(&dwFlags);
+            pDialog->SetOptions(dwFlags | FOS_FORCESHOWHIDDEN);
+        }
+
+        // Show dialog
+        hr = pDialog->Show(ToHWND(options.parentWindow));
+        std::string result;
+
+        if (SUCCEEDED(hr)) {
+            IShellItem* pItem = nullptr;
+            if (SUCCEEDED(pDialog->GetResult(&pItem))) {
+                result = GetPathFromShellItem(pItem);
+                pItem->Release();
+            }
+        }
+
+        pDialog->Release();
+        return result;
+    }
+
+    std::string UltraCanvasNativeDialogs::SelectFolder(
+            const std::string& title, const std::string& initialDir,
+            NativeWindowHandle parent) {
+
+        IFileOpenDialog* pDialog = nullptr;
+        HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL,
+            IID_PPV_ARGS(&pDialog));
+        if (FAILED(hr)) {
+            std::cerr << "UltraCanvas NativeDialogs: Failed to create FileOpenDialog" << std::endl;
+            return "";
+        }
+
+        // Set folder-picking mode
+        DWORD dwFlags = 0;
+        pDialog->GetOptions(&dwFlags);
+        pDialog->SetOptions(dwFlags | FOS_PICKFOLDERS);
+
+        // Set title
+        if (!title.empty()) {
+            std::wstring wtitle = UltraCanvasWindowsApplication::Utf8ToUtf16(title);
+            pDialog->SetTitle(wtitle.c_str());
+        }
+
+        // Set initial directory
+        SetInitialDirectory(pDialog, initialDir);
+
+        // Show dialog
+        hr = pDialog->Show(ToHWND(parent));
+        std::string result;
+
+        if (SUCCEEDED(hr)) {
+            IShellItem* pItem = nullptr;
+            if (SUCCEEDED(pDialog->GetResult(&pItem))) {
+                result = GetPathFromShellItem(pItem);
+                pItem->Release();
+            }
+        }
+
+        pDialog->Release();
+        return result;
+    }
 
 // ===== INPUT DIALOGS =====
 
-namespace {
+    namespace {
 
-// Dialog template for input dialog
-struct InputDialogData {
-    std::wstring title;
-    std::wstring prompt;
-    std::wstring defaultValue;
-    std::wstring result;
-    bool password;
-    bool okPressed;
-};
+// Dialog control IDs for input dialog
+        const int IDC_INPUT_LABEL = 100;
+        const int IDC_INPUT_EDIT  = 101;
 
-// Input dialog procedure
-INT_PTR CALLBACK InputDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    InputDialogData* data = reinterpret_cast<InputDialogData*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+// In-memory dialog template for input dialogs
+// Creates a simple dialog with a label and an edit control
+        struct InputDialogData {
+            std::wstring title;
+            std::wstring prompt;
+            std::wstring defaultValue;
+            std::wstring resultValue;
+            bool password;
+            bool accepted;
+        };
 
-    switch (msg) {
-        case WM_INITDIALOG: {
-            data = reinterpret_cast<InputDialogData*>(lParam);
-            SetWindowLongPtr(hwnd, GWLP_USERDATA, lParam);
+        INT_PTR CALLBACK InputDialogProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
+            switch (msg) {
+                case WM_INITDIALOG: {
+                    auto* data = reinterpret_cast<InputDialogData*>(lParam);
+                    SetWindowLongPtrW(hDlg, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(data));
 
-            // Set title
-            SetWindowTextW(hwnd, data->title.c_str());
+                    // Set title
+                    SetWindowTextW(hDlg, data->title.c_str());
 
-            // Set prompt
-            SetDlgItemTextW(hwnd, 101, data->prompt.c_str());
+                    // Set prompt label
+                    SetDlgItemTextW(hDlg, IDC_INPUT_LABEL, data->prompt.c_str());
 
-            // Set default value and password mode
-            HWND hEdit = GetDlgItem(hwnd, 102);
-            if (data->password) {
-                SendMessageW(hEdit, EM_SETPASSWORDCHAR, L'*', 0);
+                    // Set default value
+                    SetDlgItemTextW(hDlg, IDC_INPUT_EDIT, data->defaultValue.c_str());
+
+                    // Set password mode
+                    if (data->password) {
+                        SendDlgItemMessageW(hDlg, IDC_INPUT_EDIT, EM_SETPASSWORDCHAR,
+                            static_cast<WPARAM>(L'*'), 0);
+                    }
+
+                    // Select all text and focus
+                    SendDlgItemMessageW(hDlg, IDC_INPUT_EDIT, EM_SETSEL, 0, -1);
+                    SetFocus(GetDlgItem(hDlg, IDC_INPUT_EDIT));
+
+                    // Center dialog on parent or screen
+                    RECT rcDlg, rcOwner;
+                    HWND hwndOwner = GetParent(hDlg);
+                    if (!hwndOwner) hwndOwner = GetDesktopWindow();
+                    GetWindowRect(hwndOwner, &rcOwner);
+                    GetWindowRect(hDlg, &rcDlg);
+                    int x = rcOwner.left + (rcOwner.right - rcOwner.left - (rcDlg.right - rcDlg.left)) / 2;
+                    int y = rcOwner.top + (rcOwner.bottom - rcOwner.top - (rcDlg.bottom - rcDlg.top)) / 2;
+                    SetWindowPos(hDlg, HWND_TOP, x, y, 0, 0, SWP_NOSIZE);
+
+                    return FALSE; // We set focus manually
+                }
+
+                case WM_COMMAND: {
+                    auto* data = reinterpret_cast<InputDialogData*>(
+                        GetWindowLongPtrW(hDlg, GWLP_USERDATA));
+
+                    switch (LOWORD(wParam)) {
+                        case IDOK: {
+                            // Get text from edit control
+                            int len = GetWindowTextLengthW(GetDlgItem(hDlg, IDC_INPUT_EDIT));
+                            std::wstring wtext(len + 1, 0);
+                            GetDlgItemTextW(hDlg, IDC_INPUT_EDIT, &wtext[0], len + 1);
+                            wtext.resize(len);
+
+                            if (data) {
+                                data->resultValue = wtext;
+                                data->accepted = true;
+                            }
+                            EndDialog(hDlg, IDOK);
+                            return TRUE;
+                        }
+
+                        case IDCANCEL:
+                            if (data) {
+                                data->accepted = false;
+                            }
+                            EndDialog(hDlg, IDCANCEL);
+                            return TRUE;
+                    }
+                    break;
+                }
+
+                case WM_CLOSE:
+                    EndDialog(hDlg, IDCANCEL);
+                    return TRUE;
             }
-            SetWindowTextW(hEdit, data->defaultValue.c_str());
 
-            // Center dialog
-            RECT rcDlg, rcOwner;
-            GetWindowRect(hwnd, &rcDlg);
-            GetWindowRect(GetDesktopWindow(), &rcOwner);
-            int x = (rcOwner.right - rcOwner.left - (rcDlg.right - rcDlg.left)) / 2;
-            int y = (rcOwner.bottom - rcOwner.top - (rcDlg.bottom - rcDlg.top)) / 2;
-            SetWindowPos(hwnd, HWND_TOP, x, y, 0, 0, SWP_NOSIZE);
-
-            SetFocus(hEdit);
             return FALSE;
         }
 
-        case WM_COMMAND:
-            switch (LOWORD(wParam)) {
-                case IDOK: {
-                    wchar_t buffer[4096];
-                    GetDlgItemTextW(hwnd, 102, buffer, 4096);
-                    data->result = buffer;
-                    data->okPressed = true;
-                    EndDialog(hwnd, IDOK);
-                    return TRUE;
-                }
-                case IDCANCEL:
-                    data->okPressed = false;
-                    EndDialog(hwnd, IDCANCEL);
-                    return TRUE;
-            }
-            break;
+// Build an in-memory DLGTEMPLATE for the input dialog
+// Layout: prompt label at top, edit control below, OK/Cancel buttons at bottom
+        std::vector<uint8_t> BuildInputDialogTemplate() {
+            // Dialog dimensions (in dialog units)
+            const int DLG_WIDTH = 280;
+            const int DLG_HEIGHT = 90;
+            const int MARGIN = 7;
+            const int LABEL_HEIGHT = 14;
+            const int EDIT_HEIGHT = 14;
+            const int BUTTON_WIDTH = 50;
+            const int BUTTON_HEIGHT = 14;
 
-        case WM_CLOSE:
-            data->okPressed = false;
-            EndDialog(hwnd, IDCANCEL);
-            return TRUE;
+            // Estimate buffer size and reserve
+            std::vector<uint8_t> buffer;
+            buffer.reserve(1024);
+
+            auto Align4 = [&buffer]() {
+                while (buffer.size() % 4 != 0) buffer.push_back(0);
+            };
+
+            auto PushWord = [&buffer](WORD w) {
+                buffer.push_back(static_cast<uint8_t>(w & 0xFF));
+                buffer.push_back(static_cast<uint8_t>((w >> 8) & 0xFF));
+            };
+
+            auto PushDWord = [&buffer](DWORD d) {
+                buffer.push_back(static_cast<uint8_t>(d & 0xFF));
+                buffer.push_back(static_cast<uint8_t>((d >> 8) & 0xFF));
+                buffer.push_back(static_cast<uint8_t>((d >> 16) & 0xFF));
+                buffer.push_back(static_cast<uint8_t>((d >> 24) & 0xFF));
+            };
+
+            auto PushString = [&buffer](const wchar_t* str) {
+                do {
+                    buffer.push_back(static_cast<uint8_t>(*str & 0xFF));
+                    buffer.push_back(static_cast<uint8_t>((*str >> 8) & 0xFF));
+                } while (*str++);
+            };
+
+            // === DLGTEMPLATE ===
+            DWORD style = DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_SETFONT;
+            PushDWord(style);        // style
+            PushDWord(0);            // dwExtendedStyle
+            PushWord(4);             // cdit (4 controls: label, edit, OK, Cancel)
+            PushWord(0);             // x
+            PushWord(0);             // y
+            PushWord(DLG_WIDTH);     // cx
+            PushWord(DLG_HEIGHT);    // cy
+            PushString(L"");         // menu
+            PushString(L"");         // class
+            PushString(L"Input");    // title (overridden in WM_INITDIALOG)
+            PushWord(8);             // font size
+            PushString(L"MS Shell Dlg 2");  // font name
+
+            // === Label (STATIC) ===
+            Align4();
+            PushDWord(WS_CHILD | WS_VISIBLE | SS_LEFT);  // style
+            PushDWord(0);                                  // dwExtendedStyle
+            PushWord(MARGIN);                              // x
+            PushWord(MARGIN);                              // y
+            PushWord(DLG_WIDTH - 2 * MARGIN);              // cx
+            PushWord(LABEL_HEIGHT);                        // cy
+            PushWord(IDC_INPUT_LABEL);                     // id
+            PushWord(0xFFFF); PushWord(0x0082);            // class: STATIC
+            PushString(L"");                               // text (set in WM_INITDIALOG)
+            PushWord(0);                                   // extra
+
+            // === Edit Control ===
+            Align4();
+            DWORD editStyle = WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL;
+            PushDWord(editStyle);                          // style
+            PushDWord(0);                                  // dwExtendedStyle
+            PushWord(MARGIN);                              // x
+            PushWord(MARGIN + LABEL_HEIGHT + 4);           // y
+            PushWord(DLG_WIDTH - 2 * MARGIN);              // cx
+            PushWord(EDIT_HEIGHT);                         // cy
+            PushWord(IDC_INPUT_EDIT);                      // id
+            PushWord(0xFFFF); PushWord(0x0081);            // class: EDIT
+            PushString(L"");                               // text
+            PushWord(0);                                   // extra
+
+            // === OK Button ===
+            int btnY = DLG_HEIGHT - MARGIN - BUTTON_HEIGHT;
+            int okX = DLG_WIDTH - 2 * BUTTON_WIDTH - MARGIN - 4;
+            int cancelX = DLG_WIDTH - BUTTON_WIDTH - MARGIN;
+
+            Align4();
+            PushDWord(WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON);  // style
+            PushDWord(0);                                  // dwExtendedStyle
+            PushWord(okX);                                 // x
+            PushWord(btnY);                                // y
+            PushWord(BUTTON_WIDTH);                        // cx
+            PushWord(BUTTON_HEIGHT);                       // cy
+            PushWord(IDOK);                                // id
+            PushWord(0xFFFF); PushWord(0x0080);            // class: BUTTON
+            PushString(L"OK");                             // text
+            PushWord(0);                                   // extra
+
+            // === Cancel Button ===
+            Align4();
+            PushDWord(WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON);  // style
+            PushDWord(0);                                  // dwExtendedStyle
+            PushWord(cancelX);                             // x
+            PushWord(btnY);                                // y
+            PushWord(BUTTON_WIDTH);                        // cx
+            PushWord(BUTTON_HEIGHT);                       // cy
+            PushWord(IDCANCEL);                            // id
+            PushWord(0xFFFF); PushWord(0x0080);            // class: BUTTON
+            PushString(L"Cancel");                         // text
+            PushWord(0);                                   // extra
+
+            return buffer;
+        }
+
+        NativeInputResult ShowInputDialogImpl(
+                const std::string& prompt, const std::string& title,
+                const std::string& defaultValue, bool password,
+                NativeWindowHandle parent) {
+
+            InputDialogData data;
+            data.title = UltraCanvasWindowsApplication::Utf8ToUtf16(title);
+            data.prompt = UltraCanvasWindowsApplication::Utf8ToUtf16(prompt);
+            data.defaultValue = UltraCanvasWindowsApplication::Utf8ToUtf16(defaultValue);
+            data.password = password;
+            data.accepted = false;
+
+            auto templateData = BuildInputDialogTemplate();
+
+            INT_PTR result = DialogBoxIndirectParamW(
+                GetModuleHandle(nullptr),
+                reinterpret_cast<LPCDLGTEMPLATEW>(templateData.data()),
+                ToHWND(parent),
+                InputDialogProc,
+                reinterpret_cast<LPARAM>(&data));
+
+            NativeInputResult inputResult;
+            if (result == IDOK && data.accepted) {
+                inputResult.result = DialogResult::OK;
+                inputResult.value = UltraCanvasWindowsApplication::Utf16ToUtf8(data.resultValue);
+            } else {
+                inputResult.result = DialogResult::Cancel;
+            }
+            return inputResult;
+        }
+
+    } // anonymous namespace
+
+    NativeInputResult UltraCanvasNativeDialogs::InputText(
+            const std::string& prompt, const std::string& title,
+            const std::string& defaultValue, NativeWindowHandle parent) {
+        return ShowInputDialogImpl(prompt, title, defaultValue, false, parent);
     }
 
-    return FALSE;
-}
+    NativeInputResult UltraCanvasNativeDialogs::InputText(
+            const NativeInputDialogOptions& options) {
+        return ShowInputDialogImpl(options.prompt, options.title,
+            options.defaultValue, options.password, options.parentWindow);
+    }
 
-// Create dialog template in memory
-std::vector<BYTE> CreateInputDialogTemplate() {
-    std::vector<BYTE> buffer;
-
-    // Helper to add data to buffer
-    auto AddWord = [&buffer](WORD w) {
-        buffer.push_back(static_cast<BYTE>(w & 0xFF));
-        buffer.push_back(static_cast<BYTE>((w >> 8) & 0xFF));
-    };
-
-    auto AddDWord = [&buffer](DWORD dw) {
-        buffer.push_back(static_cast<BYTE>(dw & 0xFF));
-        buffer.push_back(static_cast<BYTE>((dw >> 8) & 0xFF));
-        buffer.push_back(static_cast<BYTE>((dw >> 16) & 0xFF));
-        buffer.push_back(static_cast<BYTE>((dw >> 24) & 0xFF));
-    };
-
-    auto AddString = [&buffer](const wchar_t* str) {
-        while (*str) {
-            buffer.push_back(static_cast<BYTE>(*str & 0xFF));
-            buffer.push_back(static_cast<BYTE>((*str >> 8) & 0xFF));
-            str++;
-        }
-        buffer.push_back(0);
-        buffer.push_back(0);
-    };
-
-    auto Align = [&buffer]() {
-        while (buffer.size() % 4 != 0) {
-            buffer.push_back(0);
-        }
-    };
-
-    // DLGTEMPLATE
-    DWORD style = DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_SETFONT;
-    AddDWord(style);      // style
-    AddDWord(0);          // extended style
-    AddWord(4);           // number of items
-    AddWord(0);           // x
-    AddWord(0);           // y
-    AddWord(200);         // width
-    AddWord(70);          // height
-    AddWord(0);           // menu
-    AddWord(0);           // class
-    AddString(L"Input"); // title
-    AddWord(9);           // font size
-    AddString(L"Segoe UI"); // font name
-
-    // Static text (prompt) - ID 101
-    Align();
-    AddDWord(WS_CHILD | WS_VISIBLE | SS_LEFT);  // style
-    AddDWord(0);          // extended style
-    AddWord(10);          // x
-    AddWord(10);          // y
-    AddWord(180);         // width
-    AddWord(14);          // height
-    AddWord(101);         // ID
-    AddWord(0xFFFF);      // class (predefined)
-    AddWord(0x0082);      // STATIC
-    AddString(L"");       // text
-    AddWord(0);           // creation data
-
-    // Edit control - ID 102
-    Align();
-    AddDWord(WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL);  // style
-    AddDWord(0);          // extended style
-    AddWord(10);          // x
-    AddWord(26);          // y
-    AddWord(180);         // width
-    AddWord(14);          // height
-    AddWord(102);         // ID
-    AddWord(0xFFFF);      // class (predefined)
-    AddWord(0x0081);      // EDIT
-    AddString(L"");       // text
-    AddWord(0);           // creation data
-
-    // OK button - IDOK
-    Align();
-    AddDWord(WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON);  // style
-    AddDWord(0);          // extended style
-    AddWord(50);          // x
-    AddWord(48);          // y
-    AddWord(45);          // width
-    AddWord(14);          // height
-    AddWord(IDOK);        // ID
-    AddWord(0xFFFF);      // class (predefined)
-    AddWord(0x0080);      // BUTTON
-    AddString(L"OK");     // text
-    AddWord(0);           // creation data
-
-    // Cancel button - IDCANCEL
-    Align();
-    AddDWord(WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON);  // style
-    AddDWord(0);          // extended style
-    AddWord(105);         // x
-    AddWord(48);          // y
-    AddWord(45);          // width
-    AddWord(14);          // height
-    AddWord(IDCANCEL);    // ID
-    AddWord(0xFFFF);      // class (predefined)
-    AddWord(0x0080);      // BUTTON
-    AddString(L"Cancel"); // text
-    AddWord(0);           // creation data
-
-    return buffer;
-}
-
-} // anonymous namespace
-
-NativeInputResult UltraCanvasNativeDialogs::InputText(
-    const std::string& prompt,
-    const std::string& title,
-    const std::string& defaultValue,
-    NativeWindowHandle) {
-
-    NativeInputDialogOptions options;
-    options.prompt = prompt;
-    options.title = title;
-    options.defaultValue = defaultValue;
-    return InputText(options);
-}
-
-NativeInputResult UltraCanvasNativeDialogs::InputText(const NativeInputDialogOptions& options) {
-    InputDialogData data;
-    data.title = ToWideString(options.title);
-    data.prompt = ToWideString(options.prompt);
-    data.defaultValue = ToWideString(options.defaultValue);
-    data.password = options.password;
-    data.okPressed = false;
-
-    std::vector<BYTE> dialogTemplate = CreateInputDialogTemplate();
-
-    DialogBoxIndirectParamW(
-        GetModuleHandle(nullptr),
-        reinterpret_cast<LPCDLGTEMPLATEW>(dialogTemplate.data()),
-        nullptr,
-        InputDialogProc,
-        reinterpret_cast<LPARAM>(&data)
-    );
-
-    NativeInputResult result;
-    result.result = data.okPressed ? DialogResult::OK : DialogResult::Cancel;
-    result.value = ToNarrowString(data.result);
-
-    return result;
-}
-
-NativeInputResult UltraCanvasNativeDialogs::InputPassword(
-    const std::string& prompt,
-    const std::string& title,
-    NativeWindowHandle) {
-
-    NativeInputDialogOptions options;
-    options.prompt = prompt;
-    options.title = title;
-    options.password = true;
-    return InputText(options);
-}
+    NativeInputResult UltraCanvasNativeDialogs::InputPassword(
+            const std::string& prompt, const std::string& title,
+            NativeWindowHandle parent) {
+        return ShowInputDialogImpl(prompt, title, "", true, parent);
+    }
 
 // ===== CONVENIENCE FUNCTIONS =====
 
-std::string UltraCanvasNativeDialogs::GetInput(
-    const std::string& prompt,
-    const std::string& title,
-    const std::string& defaultValue,
-    NativeWindowHandle) {
+    std::string UltraCanvasNativeDialogs::GetInput(
+            const std::string& prompt, const std::string& title,
+            const std::string& defaultValue, NativeWindowHandle parent) {
+        auto result = InputText(prompt, title, defaultValue, parent);
+        return result.IsOK() ? result.value : "";
+    }
 
-    NativeInputResult result = InputText(prompt, title, defaultValue);
-    return result.IsOK() ? result.value : "";
-}
-
-std::string UltraCanvasNativeDialogs::GetPassword(
-    const std::string& prompt,
-    const std::string& title,
-    NativeWindowHandle) {
-
-    NativeInputResult result = InputPassword(prompt, title);
-    return result.IsOK() ? result.value : "";
-}
+    std::string UltraCanvasNativeDialogs::GetPassword(
+            const std::string& prompt, const std::string& title,
+            NativeWindowHandle parent) {
+        auto result = InputPassword(prompt, title, parent);
+        return result.IsOK() ? result.value : "";
+    }
 
 } // namespace UltraCanvas
-
-#endif // _WIN32 || _WIN64

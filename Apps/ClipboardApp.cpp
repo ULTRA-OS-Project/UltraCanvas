@@ -99,7 +99,7 @@ public:
                 std::string text = textInput->GetText();
                 if (!text.empty()) {
                     AddClipboardText(text);
-                    std::cout << "Text copied to clipboard history" << std::endl;
+                    std::cerr << "Text copied to clipboard history" << std::endl;
                 }
             }
         };
@@ -116,7 +116,7 @@ public:
         clearHistoryButton = CreateButton("clearBtn", 2004, 400, 300, 150, 30, "Clear History");
         clearHistoryButton->onClick = [this]() {
             ClearClipboardHistory();
-            std::cout << "Clipboard history cleared" << std::endl;
+            std::cerr << "Clipboard history cleared" << std::endl;
         };
         mainWindow->AddElement(clearHistoryButton);
         
@@ -199,14 +199,14 @@ public:
             AddClipboardText(text);
         }
         
-        std::cout << "Added " << sampleTexts.size() << " sample clipboard entries" << std::endl;
-        std::cout << "Try pressing ALT+P to see the clipboard window" << std::endl;
-        std::cout << "Each entry will have 'C' (copy), 'S' (save), and 'X' (delete) buttons" << std::endl;
+        std::cerr << "Added " << sampleTexts.size() << " sample clipboard entries" << std::endl;
+        std::cerr << "Try pressing ALT+P to see the clipboard window" << std::endl;
+        std::cerr << "Each entry will have 'C' (copy), 'S' (save), and 'X' (delete) buttons" << std::endl;
     }
     
     void Run() {
-        std::cout << "Clipboard Demo App starting..." << std::endl;
-        std::cout << "Press ALT+P to open the clipboard window" << std::endl;
+        std::cerr << "Clipboard Demo App starting..." << std::endl;
+        std::cerr << "Press ALT+P to open the clipboard window" << std::endl;
         
         if (mainWindow) {
             mainWindow->Show();
@@ -217,7 +217,7 @@ public:
             application->Run();
         }
         
-        std::cout << "Application shutting down..." << std::endl;
+        std::cerr << "Application shutting down..." << std::endl;
     }
     
     // Custom window class for rendering

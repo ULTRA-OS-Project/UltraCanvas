@@ -264,7 +264,7 @@ namespace UltraCanvas {
             auto period = periods[i];
             periodBtn->SetOnClick([chart, period]() {
                 // In real app, this would filter the data to show only the specified period
-                std::cout << "Switching to " << period.first << " view (" << period.second << " days)" << std::endl;
+                std::cerr << "Switching to " << period.first << " view (" << period.second << " days)" << std::endl;
                 chart->RequestRedraw();
             });
             controlPanel->AddChild(periodBtn);
@@ -283,7 +283,7 @@ namespace UltraCanvas {
         auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 1081, 130, 165, 100, 35);
         exportBtn->SetText("Export PNG");
         exportBtn->SetOnClick([chart]() {
-            std::cout << "Exporting chart to PNG..." << std::endl;
+            std::cerr << "Exporting chart to PNG..." << std::endl;
             // In real app, this would export the chart to a PNG file
         });
         controlPanel->AddChild(exportBtn);
@@ -291,7 +291,7 @@ namespace UltraCanvas {
         auto dataBtn = std::make_shared<UltraCanvasButton>("DataBtn", 1082, 240, 165, 100, 35);
         dataBtn->SetText("Load CSV");
         dataBtn->SetOnClick([chart]() {
-            std::cout << "Loading data from CSV..." << std::endl;
+            std::cerr << "Loading data from CSV..." << std::endl;
             // In real app, this would open a file dialog to load CSV data
         });
         controlPanel->AddChild(dataBtn);
@@ -338,10 +338,10 @@ namespace UltraCanvas {
         liveToggle->SetChecked(false);
         liveToggle->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
             if (newState == CheckboxState::Checked) {
-                std::cout << "Starting live data simulation..." << std::endl;
+                std::cerr << "Starting live data simulation..." << std::endl;
                 // In real app, this would start a timer to update data
             } else {
-                std::cout << "Stopping live data simulation..." << std::endl;
+                std::cerr << "Stopping live data simulation..." << std::endl;
             }
         };
         controlPanel->AddChild(liveToggle);

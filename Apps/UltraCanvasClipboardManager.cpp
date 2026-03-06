@@ -306,13 +306,13 @@ namespace UltraCanvas {
                 static_cast<int>(UCKeys::P), // P key
                 static_cast<int>(ModifierKeys::Alt), // ALT modifier
                 [this]() {
-                    std::cout << "ALT+P pressed - toggling clipboard window" << std::endl;
+                    std::cerr << "ALT+P pressed - toggling clipboard window" << std::endl;
                     ToggleClipboardWindow();
                 },
                 "Toggle Multi-Entry Clipboard"
         );
 
-        std::cout << "Registered ALT+P shortcut for clipboard manager" << std::endl;
+        std::cerr << "Registered ALT+P shortcut for clipboard manager" << std::endl;
     }
 
     void UltraCanvasClipboardManager::ToggleClipboardWindow() {
@@ -341,11 +341,11 @@ namespace UltraCanvas {
     void UltraCanvasClipboardManager::StartClipboardMonitoring() {
         lastCheckTime = std::chrono::steady_clock::now();
         lastClipboardContent = GetSystemClipboardText();
-        std::cout << "Clipboard monitoring started" << std::endl;
+        std::cerr << "Clipboard monitoring started" << std::endl;
     }
 
     void UltraCanvasClipboardManager::StopClipboardMonitoring() {
-        std::cout << "Clipboard monitoring stopped" << std::endl;
+        std::cerr << "Clipboard monitoring stopped" << std::endl;
     }
 
     void UltraCanvasClipboardManager::AddClipboardEntry(const ClipboardEntry& entry) {
@@ -443,7 +443,7 @@ namespace UltraCanvas {
             std::string currentClipboard = GetSystemClipboardText();
 
             if (currentClipboard != lastClipboardContent && !currentClipboard.empty()) {
-                std::cout << "Clipboard changed: " << currentClipboard.substr(0, 50) << "..." << std::endl;
+                std::cerr << "Clipboard changed: " << currentClipboard.substr(0, 50) << "..." << std::endl;
 
                 ClipboardEntry newEntry(ClipboardEntryType::Text, currentClipboard);
                 AddClipboardEntry(newEntry);
@@ -591,11 +591,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasClipboardManager::ShowSaveSuccessNotification(const std::string& filePath) {
-        std::cout << "✅ File saved successfully: " << filePath << std::endl;
+        std::cerr << "✅ File saved successfully: " << filePath << std::endl;
     }
 
     void UltraCanvasClipboardManager::ShowSaveErrorNotification() {
-        std::cout << "❌ Error saving file" << std::endl;
+        std::cerr << "❌ Error saving file" << std::endl;
     }
 
     void UltraCanvasClipboardManager::SetSystemClipboardText(const std::string& text) {
@@ -645,14 +645,14 @@ namespace UltraCanvas {
     void InitializeClipboardManager() {
         if (!g_globalClipboardManager) {
             g_globalClipboardManager = std::make_unique<UltraCanvasClipboardManager>();
-            std::cout << "Clipboard manager initialized" << std::endl;
+            std::cerr << "Clipboard manager initialized" << std::endl;
         }
     }
 
     void ShutdownClipboardManager() {
         if (g_globalClipboardManager) {
             g_globalClipboardManager.reset();
-            std::cout << "Clipboard manager shutdown" << std::endl;
+            std::cerr << "Clipboard manager shutdown" << std::endl;
         }
     }
 

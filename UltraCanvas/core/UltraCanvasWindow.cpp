@@ -25,7 +25,7 @@ namespace UltraCanvas {
 
 //    UltraCanvasWindowBase::~UltraCanvasWindowBase() {
 //        UnregisterWindow();
-//        std::cout << "UltraCanvas: Window deleted" << std::endl;
+//        std::cerr << "UltraCanvas: Window deleted" << std::endl;
 //    }
 
     // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
@@ -58,7 +58,7 @@ namespace UltraCanvas {
         // Request window redraw to update focus indicators
         _needsRedraw = true;
 
-        std::cout << "Focus changed to: " << (element ? element->GetIdentifier() : "none") << std::endl;
+        std::cerr << "Focus changed to: " << (element ? element->GetIdentifier() : "none") << std::endl;
     }
 
     void UltraCanvasWindowBase::ClearFocus() {
@@ -409,7 +409,7 @@ namespace UltraCanvas {
 
         _state = WindowState::Closing;
 
-        std::cout << "UltraCanvas: Window close requested" << std::endl;
+        std::cerr << "UltraCanvas: Window close requested" << std::endl;
 
         if (onWindowClose) {
             onWindowClose();
@@ -451,11 +451,11 @@ namespace UltraCanvas {
 //        UltraCanvasZOrderManager::SortElementsByZOrder(sortedElements);
 //        zOrderDirty = false;
 //
-//        std::cout << "Window z-order updated with " << sortedElements.size() << " elements:" << std::endl;
+//        std::cerr << "Window z-order updated with " << sortedElements.size() << " elements:" << std::endl;
 //        for (size_t i = 0; i < sortedElements.size(); i++) {
 //            auto* element = sortedElements[i];
 //            if (element) {
-//                std::cout << "  [" << i << "] Z=" << element->GetZIndex()
+//                std::cerr << "  [" << i << "] Z=" << element->GetZIndex()
 //                          << " " << element->GetIdentifier() << std::endl;
 //            }
 //        }

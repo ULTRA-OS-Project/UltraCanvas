@@ -64,7 +64,7 @@ namespace UltraCanvas {
         // Return duration in microseconds
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
-        std::cout << logPrefix << " Execution time: " << duration << " us\n";
+        std::cerr << logPrefix << " Execution time: " << duration << " us\n";
     }
 
 

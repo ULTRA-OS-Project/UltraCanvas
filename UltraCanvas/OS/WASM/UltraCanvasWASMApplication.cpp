@@ -27,11 +27,11 @@ UltraCanvasWASMApplication::UltraCanvasWASMApplication()
     , lastFPSUpdate(0.0)
 {
     instance = this;
-    std::cout << "[WASM] UltraCanvasWASMApplication created" << std::endl;
+    std::cerr << "[WASM] UltraCanvasWASMApplication created" << std::endl;
 }
 
 UltraCanvasWASMApplication::~UltraCanvasWASMApplication() {
-    std::cout << "[WASM] UltraCanvasWASMApplication destroyed" << std::endl;
+    std::cerr << "[WASM] UltraCanvasWASMApplication destroyed" << std::endl;
     
     if (running) {
         Exit();
@@ -44,11 +44,11 @@ UltraCanvasWASMApplication::~UltraCanvasWASMApplication() {
 
 bool UltraCanvasWASMApplication::InitializeNative() {
     if (initialized) {
-        std::cout << "[WASM] Already initialized" << std::endl;
+        std::cerr << "[WASM] Already initialized" << std::endl;
         return true;
     }
     
-    std::cout << "[WASM] Initializing WebAssembly application..." << std::endl;
+    std::cerr << "[WASM] Initializing WebAssembly application..." << std::endl;
     
     // Register page lifecycle callbacks
     emscripten_set_beforeunload_callback(this, OnBeforeUnload);
@@ -68,7 +68,7 @@ bool UltraCanvasWASMApplication::InitializeNative() {
     });
     
     initialized = true;
-    std::cout << "[WASM] Initialization complete" << std::endl;
+    std::cerr << "[WASM] Initialization complete" << std::endl;
     
     return true;
 }
@@ -82,11 +82,11 @@ void UltraCanvasWASMApplication::RunNative() {
     }
     
     if (running) {
-        std::cout << "[WASM] Already running" << std::endl;
+        std::cerr << "[WASM] Already running" << std::endl;
         return;
     }
     
-    std::cout << "[WASM] Starting main loop (target FPS: " << targetFPS << ")" << std::endl;
+    std::cerr << "[WASM] Starting main loop (target FPS: " << targetFPS << ")" << std::endl;
     
     running = true;
     
@@ -124,7 +124,7 @@ void UltraCanvasWASMApplication::MainLoopIteration() {
         frameCount = 0;
         
         // Optionally log FPS (can be disabled in production)
-        // std::cout << "[WASM] FPS: " << fps << std::endl;
+        // std::cerr << "[WASM] FPS: " << fps << std::endl;
     }
     
     // Process events (from browser event queue)
@@ -143,7 +143,7 @@ void UltraCanvasWASMApplication::Exit() {
         return;
     }
     
-    std::cout << "[WASM] Exiting application..." << std::endl;
+    std::cerr << "[WASM] Exiting application..." << std::endl;
     
     running = false;
     
@@ -157,7 +157,7 @@ void UltraCanvasWASMApplication::Exit() {
         }
     }
     
-    std::cout << "[WASM] Application exited" << std::endl;
+    std::cerr << "[WASM] Application exited" << std::endl;
 }
 
 // ===== FRAME RATE CONTROL =====
@@ -171,7 +171,7 @@ void UltraCanvasWASMApplication::SetTargetFPS(int fps) {
     targetFPS = fps;
     targetFrameTime = 1.0 / fps;
     
-    std::cout << "[WASM] Target FPS set to: " << fps << std::endl;
+    std::cerr << "[WASM] Target FPS set to: " << fps << std::endl;
     
     // Update main loop if running
     if (running) {
@@ -204,7 +204,7 @@ void UltraCanvasWASMApplication::CancelAnimationFrame() {
 EM_BOOL UltraCanvasWASMApplication::OnBeforeUnload(int eventType, const void* reserved, void* userData) {
     auto* app = static_cast<UltraCanvasWASMApplication*>(userData);
     if (app) {
-        std::cout << "[WASM] Page unloading..." << std::endl;
+        std::cerr << "[WASM] Page unloading..." << std::endl;
         app->OnPageUnload();
     }
     return EM_FALSE; // Allow default behavior
@@ -213,7 +213,7 @@ EM_BOOL UltraCanvasWASMApplication::OnBeforeUnload(int eventType, const void* re
 EM_BOOL UltraCanvasWASMApplication::OnResize(int eventType, const EmscriptenUiEvent* event, void* userData) {
     auto* app = static_cast<UltraCanvasWASMApplication*>(userData);
     if (app) {
-        std::cout << "[WASM] Window resized to: " << event->windowInnerWidth 
+        std::cerr << "[WASM] Window resized to: " << event->windowInnerWidth
                   << "x" << event->windowInnerHeight << std::endl;
         
         // Notify all windows about resize
@@ -233,10 +233,10 @@ EM_BOOL UltraCanvasWASMApplication::OnVisibilityChange(int eventType,
     auto* app = static_cast<UltraCanvasWASMApplication*>(userData);
     if (app) {
         if (event->hidden) {
-            std::cout << "[WASM] Page hidden" << std::endl;
+            std::cerr << "[WASM] Page hidden" << std::endl;
             app->OnPageHidden();
         } else {
-            std::cout << "[WASM] Page visible" << std::endl;
+            std::cerr << "[WASM] Page visible" << std::endl;
             app->OnPageVisible();
         }
     }
@@ -244,19 +244,19 @@ EM_BOOL UltraCanvasWASMApplication::OnVisibilityChange(int eventType,
 }
 
 void UltraCanvasWASMApplication::OnPageVisible() {
-    std::cout << "[WASM] Page became visible - resuming rendering" << std::endl;
+    std::cerr << "[WASM] Page became visible - resuming rendering" << std::endl;
     // Resume rendering if paused
     running = true;
 }
 
 void UltraCanvasWASMApplication::OnPageHidden() {
-    std::cout << "[WASM] Page hidden - pausing rendering" << std::endl;
+    std::cerr << "[WASM] Page hidden - pausing rendering" << std::endl;
     // Pause rendering to save resources
     // Note: We don't fully stop, just reduce activity
 }
 
 void UltraCanvasWASMApplication::OnPageUnload() {
-    std::cout << "[WASM] Page unloading - cleaning up" << std::endl;
+    std::cerr << "[WASM] Page unloading - cleaning up" << std::endl;
     Exit();
 }
 

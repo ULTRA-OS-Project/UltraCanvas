@@ -293,7 +293,7 @@ computer->Expand();
 ```cpp
 // Handle selection
 treeView->onNodeSelected = [](TreeNode* node) {
-    std::cout << "Selected: " << node->data.text << std::endl;
+    std::cerr << "Selected: " << node->data.text << std::endl;
     // Update UI based on selection
 };
 

@@ -74,7 +74,7 @@ namespace UltraCanvas {
         }
 
         pendingHide = false;
-        std::cout << "Tooltip requested. Text: " << text << std::endl;
+        std::cerr << "Tooltip requested. Text: " << text << std::endl;
     }
 
     void UltraCanvasTooltipManager::Update() {
@@ -88,7 +88,7 @@ namespace UltraCanvas {
             if (elapsed >= showDelay) {
                 visible = true;
                 pendingShow = false;
-                std::cout << "Tooltip shown" << std::endl;
+                std::cerr << "Tooltip shown" << std::endl;
                 targetWindow->RequestRedraw();
                 return;
             }
@@ -101,7 +101,7 @@ namespace UltraCanvas {
                 visible = false;
                 pendingHide = false;
                 targetWindow->RequestRedraw();
-                std::cout << "Tooltip hidden" << std::endl;
+                std::cerr << "Tooltip hidden" << std::endl;
                 return;
             }
         }
@@ -125,7 +125,7 @@ namespace UltraCanvas {
             visible = false;
         }
 
-        std::cout << "Tooltip hide requested" << std::endl;
+        std::cerr << "Tooltip hide requested" << std::endl;
     }
 
     void UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const std::string &text,

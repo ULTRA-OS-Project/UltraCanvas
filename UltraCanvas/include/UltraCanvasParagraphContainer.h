@@ -992,7 +992,7 @@ inline std::shared_ptr<UltraCanvasParagraphContainer> CreateRichTextViewer(
 auto editor = CreateRichTextEditor("editor", 10, 10, 400, 300);
 editor->SetText("Hello World!\nSecond paragraph.");
 editor->onTextChanged = [](const std::string& text) {
-    std::cout << "Text: " << text << std::endl;
+    std::cerr << "Text: " << text << std::endl;
 };
 window->AddElement(editor.get());
 ```

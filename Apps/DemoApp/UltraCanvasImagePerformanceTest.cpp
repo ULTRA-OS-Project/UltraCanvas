@@ -209,7 +209,7 @@ namespace UltraCanvas {
             if (!item.value.empty()) {
                 imageElement->LoadFromFile(item.value);
                 imageElement->RequestRedraw();
-                std::cout << "Image Performance Test: Selected image - " << item.value << std::endl;
+                std::cerr << "Image Performance Test: Selected image - " << item.value << std::endl;
             }
         };
 
@@ -347,7 +347,7 @@ namespace UltraCanvas {
             imageDropdown->SetDisabled(false);
             modeDropdown->SetDisabled(false);
 
-            std::cout << "Image Performance Test Complete: " << totalIterations
+            std::cerr << "Image Performance Test Complete: " << totalIterations
                       << " iterations in " << durationSeconds << "s" << std::endl;
         });
 

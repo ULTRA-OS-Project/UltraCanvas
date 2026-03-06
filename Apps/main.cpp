@@ -43,18 +43,18 @@ public:
     }
 
     bool CreateApplication() {
-        std::cout << "Creating UltraCanvas application..." << std::endl;
+        std::cerr << "Creating UltraCanvas application..." << std::endl;
 
         try {
             application = new UltraCanvasApplication();
 
-            std::cout << "Initializing UltraCanvas application..." << std::endl;
+            std::cerr << "Initializing UltraCanvas application..." << std::endl;
             if (!application->Initialize()) {
                 std::cerr << "Failed to initialize UltraCanvas application" << std::endl;
                 return false;
             }
 
-            std::cout << "UltraCanvas application initialized successfully" << std::endl;
+            std::cerr << "UltraCanvas application initialized successfully" << std::endl;
             return true;
 
         } catch (const std::exception& e) {
@@ -70,7 +70,7 @@ public:
             return false;
         }
 
-        std::cout << "Creating main window..." << std::endl;
+        std::cerr << "Creating main window..." << std::endl;
 
         try {
             // Step 1: Create window instance
@@ -89,7 +89,7 @@ public:
                 return false;
             }
 
-            std::cout << "Main window created successfully" << std::endl;
+            std::cerr << "Main window created successfully" << std::endl;
             return true;
 
         } catch (const std::exception& e) {
@@ -107,7 +107,7 @@ public:
             return;
         }
 
-        std::cout << "Creating UI components..." << std::endl;
+        std::cerr << "Creating UI components..." << std::endl;
 
         try {
             // Create text input area using proper constructor
@@ -116,35 +116,35 @@ public:
                 textInput->SetText("Type or paste text here, then click 'Copy to Clipboard' to add it to the clipboard history.");
                 textInput->SetInputType(TextInputType::Multiline);
                 mainWindow->AddElement(textInput);
-                std::cout << "Text input created and added" << std::endl;
+                std::cerr << "Text input created and added" << std::endl;
             }
 
             // Create buttons using proper constructor and factory functions
             copyButton = CreateButton("copyBtn", 2002, 20, 440, 150, 30, "Copy to Clipboard");
             if (copyButton) {
                 mainWindow->AddElement(copyButton);
-                std::cout << "Copy button created and added" << std::endl;
+                std::cerr << "Copy button created and added" << std::endl;
             }
 
             showClipboardButton = CreateButton("showBtn", 2003, 180, 440, 150, 30, "Show Clipboard (Alt+P)");
             if (showClipboardButton) {
                 mainWindow->AddElement(showClipboardButton);
-                std::cout << "Show clipboard button created and added" << std::endl;
+                std::cerr << "Show clipboard button created and added" << std::endl;
             }
 
             clearHistoryButton = CreateButton("clearBtn", 2004, 340, 440, 120, 30, "Clear History");
             if (clearHistoryButton) {
                 mainWindow->AddElement(clearHistoryButton);
-                std::cout << "Clear history button created and added" << std::endl;
+                std::cerr << "Clear history button created and added" << std::endl;
             }
 
             addSampleButton = CreateButton("sampleBtn", 2005, 470, 440, 120, 30, "Add Samples");
             if (addSampleButton) {
                 mainWindow->AddElement(addSampleButton);
-                std::cout << "Add sample button created and added" << std::endl;
+                std::cerr << "Add sample button created and added" << std::endl;
             }
 
-            std::cout << "UI components created successfully" << std::endl;
+            std::cerr << "UI components created successfully" << std::endl;
 
         } catch (const std::exception& e) {
             std::cerr << "Exception during UI creation: " << e.what() << std::endl;
@@ -168,7 +168,7 @@ public:
     }
 
     void SetupEventHandlers() {
-        std::cout << "Setting up event handlers..." << std::endl;
+        std::cerr << "Setting up event handlers..." << std::endl;
 
         try {
             // Copy button event
@@ -179,7 +179,7 @@ public:
                             std::string text = textInput->GetText();
                             if (!text.empty()) {
                                 AddClipboardText(text);
-                                std::cout << "Added text to clipboard: " << text.substr(0, 50)
+                                std::cerr << "Added text to clipboard: " << text.substr(0, 50)
                                           << (text.length() > 50 ? "..." : "") << std::endl;
                             }
                         }
@@ -187,7 +187,7 @@ public:
                         std::cerr << "Error in copy button handler: " << e.what() << std::endl;
                     }
                 };
-                std::cout << "Copy button event handler set" << std::endl;
+                std::cerr << "Copy button event handler set" << std::endl;
             }
 
             // Show clipboard button event
@@ -199,7 +199,7 @@ public:
                         std::cerr << "Error in show clipboard handler: " << e.what() << std::endl;
                     }
                 };
-                std::cout << "Show clipboard button event handler set" << std::endl;
+                std::cerr << "Show clipboard button event handler set" << std::endl;
             }
 
             // Clear history button event
@@ -207,12 +207,12 @@ public:
                 clearHistoryButton->onClicked = [this]() {
                     try {
                         ClearClipboardHistory();
-                        std::cout << "Clipboard history cleared" << std::endl;
+                        std::cerr << "Clipboard history cleared" << std::endl;
                     } catch (const std::exception& e) {
                         std::cerr << "Error in clear history handler: " << e.what() << std::endl;
                     }
                 };
-                std::cout << "Clear history button event handler set" << std::endl;
+                std::cerr << "Clear history button event handler set" << std::endl;
             }
 
             // Add sample data button event
@@ -224,23 +224,23 @@ public:
                         std::cerr << "Error in add sample handler: " << e.what() << std::endl;
                     }
                 };
-                std::cout << "Add sample button event handler set" << std::endl;
+                std::cerr << "Add sample button event handler set" << std::endl;
             }
 
             // Window close event
             if (mainWindow) {
                 mainWindow->onWindowClosing = [this]() {
-                    std::cout << "Window closing..." << std::endl;
+                    std::cerr << "Window closing..." << std::endl;
                     isRunning = false;
                     if (application) {
                         application->RequestExit();
                     }
                     return true;
                 };
-                std::cout << "Window close event handler set" << std::endl;
+                std::cerr << "Window close event handler set" << std::endl;
             }
 
-            std::cout << "Event handlers set up successfully" << std::endl;
+            std::cerr << "Event handlers set up successfully" << std::endl;
 
         } catch (const std::exception& e) {
             std::cerr << "Exception during event handler setup: " << e.what() << std::endl;
@@ -248,7 +248,7 @@ public:
     }
 
     void AddSampleData() {
-        std::cout << "Adding sample clipboard data..." << std::endl;
+        std::cerr << "Adding sample clipboard data..." << std::endl;
 
         try {
             std::vector<std::string> sampleTexts = {
@@ -266,9 +266,9 @@ public:
                 AddClipboardText(text);
             }
 
-            std::cout << "Added " << sampleTexts.size() << " sample clipboard entries" << std::endl;
-            std::cout << "Try pressing ALT+P to see the clipboard window" << std::endl;
-            std::cout << "Each entry will have 'C' (copy), 'S' (save), and 'X' (delete) buttons" << std::endl;
+            std::cerr << "Added " << sampleTexts.size() << " sample clipboard entries" << std::endl;
+            std::cerr << "Try pressing ALT+P to see the clipboard window" << std::endl;
+            std::cerr << "Each entry will have 'C' (copy), 'S' (save), and 'X' (delete) buttons" << std::endl;
 
         } catch (const std::exception& e) {
             std::cerr << "Exception during sample data addition: " << e.what() << std::endl;
@@ -276,20 +276,20 @@ public:
     }
 
     void Run() {
-        std::cout << "Clipboard Demo App starting..." << std::endl;
-        std::cout << "Press ALT+P to open the clipboard window" << std::endl;
+        std::cerr << "Clipboard Demo App starting..." << std::endl;
+        std::cerr << "Press ALT+P to open the clipboard window" << std::endl;
 
         try {
             if (mainWindow) {
                 mainWindow->Show();
-                std::cout << "Main window shown" << std::endl;
+                std::cerr << "Main window shown" << std::endl;
             }
 
             // Use the application's main loop
             if (application && application->IsInitialized()) {
-                std::cout << "Starting application main loop..." << std::endl;
+                std::cerr << "Starting application main loop..." << std::endl;
                 application->Run();
-                std::cout << "Application main loop ended" << std::endl;
+                std::cerr << "Application main loop ended" << std::endl;
             } else {
                 std::cerr << "Cannot run - application not properly initialized" << std::endl;
             }
@@ -300,7 +300,7 @@ public:
     }
 
     ~ClipboardDemoApp() {
-        std::cout << "Cleaning up ClipboardDemoApp..." << std::endl;
+        std::cerr << "Cleaning up ClipboardDemoApp..." << std::endl;
 
         try {
             // Clean up in reverse order
@@ -322,39 +322,39 @@ public:
 
 // ===== MAIN FUNCTION =====
 int main() {
-    std::cout << "=== UltraCanvas Clipboard Manager Demo ===" << std::endl;
+    std::cerr << "=== UltraCanvas Clipboard Manager Demo ===" << std::endl;
 
     try {
 
-        std::cout << "Creating demo application..." << std::endl;
+        std::cerr << "Creating demo application..." << std::endl;
         ClipboardDemoApp app;
 
         // STEP 1: Initialize keyboard manager FIRST
-        std::cout << "Initializing keyboard manager..." << std::endl;
+        std::cerr << "Initializing keyboard manager..." << std::endl;
         if (!UltraCanvasKeyboardManager::Initialize()) {
             std::cerr << "Failed to initialize keyboard manager" << std::endl;
             return -1;
         }
-        std::cout << "Keyboard manager initialized successfully" << std::endl;
+        std::cerr << "Keyboard manager initialized successfully" << std::endl;
 
         // STEP 2: Initialize clipboard manager
-        std::cout << "Initializing clipboard manager..." << std::endl;
+        std::cerr << "Initializing clipboard manager..." << std::endl;
         InitializeClipboardManager();
-        std::cout << "Clipboard manager initialized successfully" << std::endl;
+        std::cerr << "Clipboard manager initialized successfully" << std::endl;
 
-        std::cout << "Running demo application..." << std::endl;
+        std::cerr << "Running demo application..." << std::endl;
         app.Run();
 
-        std::cout << "Demo application completed" << std::endl;
+        std::cerr << "Demo application completed" << std::endl;
 
         // STEP 4: Cleanup in reverse order
-        std::cout << "Shutting down clipboard manager..." << std::endl;
+        std::cerr << "Shutting down clipboard manager..." << std::endl;
         ShutdownClipboardManager();
 
-        std::cout << "Shutting down keyboard manager..." << std::endl;
+        std::cerr << "Shutting down keyboard manager..." << std::endl;
         UltraCanvasKeyboardManager::Shutdown();
 
-        std::cout << "=== Application completed successfully ===" << std::endl;
+        std::cerr << "=== Application completed successfully ===" << std::endl;
         return 0;
 
     } catch (const std::exception& e) {

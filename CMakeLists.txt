@@ -50,7 +50,7 @@ option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires poppler)" OFF)
 if(WIN32 AND DEFINED CMAKE_TOOLCHAIN_FILE)
     find_program(PKG_CONFIG_EXECUTABLE
         NAMES pkgconf pkg-config
-        PATHS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/pkgconf"
+       s PATHS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/pkgconf"
               "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/pkgconf"
         NO_DEFAULT_PATH
     )

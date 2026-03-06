@@ -492,16 +492,16 @@ textArea->SetTabSize(4);
 textArea->ApplyDarkTheme();
 
 // Set initial content
-textArea->SetText("#include <iostream>\n\nint main() {\n    std::cout << \"Hello World!\" << std::endl;\n    return 0;\n}");
+textArea->SetText("#include <iostream>\n\nint main() {\n    std::cerr << \"Hello World!\" << std::endl;\n    return 0;\n}");
 
 // Add text change callback
 textArea->SetOnTextChanged([](const std::string& text) {
-    std::cout << "Text changed, length: " << text.length() << std::endl;
+    std::cerr << "Text changed, length: " << text.length() << std::endl;
 });
 
 // Add cursor position callback
 textArea->SetOnCursorPositionChanged([](int line, int column) {
-    std::cout << "Cursor at line " << line << ", column " << column << std::endl;
+    std::cerr << "Cursor at line " << line << ", column " << column << std::endl;
 });
 
 // Add to window

@@ -219,7 +219,7 @@ namespace UltraCanvas {
         [newCursor set];
 
 
-        std::cout << "UltraCanvas MacOS: Custom cursor loaded from " << filename
+        std::cerr << "UltraCanvas MacOS: Custom cursor loaded from " << filename
                   << " (hotspot: " << hotspotX << "," << hotspotY << ")" << std::endl;
         return true;
     }
@@ -245,7 +245,7 @@ namespace UltraCanvas {
 //            g_CustomCursorActive = true;
 //            [g_CustomCursor set];
 //
-//            std::cout << "UltraCanvas macOS: Custom cursor loaded from " << filename
+//            std::cerr << "UltraCanvas macOS: Custom cursor loaded from " << filename
 //                      << " (hotspot: " << hotspotX << "," << hotspotY << ")" << std::endl;
 //            return true;
 //        }

@@ -252,12 +252,12 @@ private:
                 static bool gradientEnabled = true;
                 gradientEnabled = !gradientEnabled;
                 areaChart->SetFillGradientEnabled(gradientEnabled);
-                std::cout << "Area chart gradient " << (gradientEnabled ? "enabled" : "disabled") << std::endl;
+                std::cerr << "Area chart gradient " << (gradientEnabled ? "enabled" : "disabled") << std::endl;
                 break;
             }
             case UCKeys::U: {
                 UpdateRevenueData();
-                std::cout << "Revenue data updated with new values" << std::endl;
+                std::cerr << "Revenue data updated with new values" << std::endl;
                 break;
             }
             case UCKeys::P:

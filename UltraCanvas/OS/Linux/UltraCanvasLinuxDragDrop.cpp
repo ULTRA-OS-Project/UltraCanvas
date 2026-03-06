@@ -59,7 +59,7 @@ namespace UltraCanvas {
                         PropModeReplace,
                         reinterpret_cast<unsigned char*>(&xdndVersion), 1);
 
-        std::cout << "UltraCanvas XDnD: Drag-and-drop initialized for window "
+        std::cerr << "UltraCanvas XDnD: Drag-and-drop initialized for window "
                   << window << std::endl;
         return true;
     }
@@ -156,7 +156,7 @@ namespace UltraCanvas {
         // Check if source offers a file type we support
         acceptDrop = SupportsFileType(sourceTypes);
 
-        std::cout << "UltraCanvas XDnD: DragEnter from window " << dragSourceWindow
+        std::cerr << "UltraCanvas XDnD: DragEnter from window " << dragSourceWindow
                   << " — " << sourceTypes.size() << " types offered, "
                   << (acceptDrop ? "accepting" : "rejecting") << std::endl;
 
@@ -189,7 +189,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxDragDrop::HandleXdndLeave(const XClientMessageEvent& cm) {
-        std::cout << "UltraCanvas XDnD: DragLeave" << std::endl;
+        std::cerr << "UltraCanvas XDnD: DragLeave" << std::endl;
 
         isDragActive = false;
         dragSourceWindow = None;
@@ -257,10 +257,10 @@ namespace UltraCanvas {
             // Parse the URI list into individual file paths
             std::vector<std::string> filePaths = ParseUriList(uriList);
 
-            std::cout << "UltraCanvas XDnD: Dropped " << filePaths.size()
+            std::cerr << "UltraCanvas XDnD: Dropped " << filePaths.size()
                       << " file(s)" << std::endl;
             for (const auto& path : filePaths) {
-                std::cout << "  → " << path << std::endl;
+                std::cerr << "  → " << path << std::endl;
             }
 
             // Notify via callback

@@ -592,7 +592,7 @@ namespace UltraCanvas {
 
         // Set up callbacks
         advancedTabs->onTabChange = [](int oldIndex, int newIndex) {
-            std::cout << "Tab changed from " << oldIndex << " to " << newIndex << std::endl;
+            std::cerr << "Tab changed from " << oldIndex << " to " << newIndex << std::endl;
         };
 
         advancedTabs->SetActiveTab(0);

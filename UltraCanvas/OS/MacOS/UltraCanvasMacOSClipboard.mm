@@ -458,7 +458,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMacOSClipboard::LogInfo(const std::string& operation, const std::string& details) {
-        std::cout << "UltraCanvas: " << operation << " - " << details << std::endl;
+        std::cerr << "UltraCanvas: " << operation << " - " << details << std::endl;
     }
 
 } // namespace UltraCanvas

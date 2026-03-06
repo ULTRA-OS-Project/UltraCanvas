@@ -249,21 +249,21 @@ namespace UltraCanvas {
 
         // Initialize Pango for text rendering with proper error checking
         try {
-            std::cout << "RenderContextCairo: Initializing Pango..." << std::endl;
+            std::cerr << "RenderContextCairo: Initializing Pango..." << std::endl;
 
             auto fontMap = pango_cairo_font_map_get_default();
             if (!fontMap) {
                 std::cerr << "ERROR: Failed to get default Pango font map" << std::endl;
                 throw std::runtime_error("RenderContextCairo: Failed to get Pango font map");
             }
-            std::cout << "RenderContextCairo: Got Pango font map: " << fontMap << std::endl;
+            std::cerr << "RenderContextCairo: Got Pango font map: " << fontMap << std::endl;
 
             pangoContext = pango_font_map_create_context(fontMap);
             if (!pangoContext) {
                 std::cerr << "ERROR: Failed to create Pango context" << std::endl;
                 throw std::runtime_error("RenderContextCairo: Failed to create Pango context");
             }
-            std::cout << "RenderContextCairo: Created Pango context: " << pangoContext << std::endl;
+            std::cerr << "RenderContextCairo: Created Pango context: " << pangoContext << std::endl;
 
             // Associate Pango context with Cairo context
             pango_cairo_context_set_resolution(pangoContext, 96.0);  // Standard DPI
@@ -274,7 +274,7 @@ namespace UltraCanvas {
             pango_cairo_context_set_font_options(pangoContext, fontOptions);
             cairo_font_options_destroy(fontOptions);
 
-            std::cout << "RenderContextCairo: Pango initialization complete" << std::endl;
+            std::cerr << "RenderContextCairo: Pango initialization complete" << std::endl;
 
         } catch (const std::exception &e) {
             std::cerr << "ERROR: Exception during Pango initialization: " << e.what() << std::endl;
@@ -293,11 +293,11 @@ namespace UltraCanvas {
         }
         // Initialize default state
         ResetState();
-        std::cout << "RenderContextCairo: Initialization complete" << std::endl;
+        std::cerr << "RenderContextCairo: Initialization complete" << std::endl;
     }
 
     RenderContextCairo::~RenderContextCairo() {
-        std::cout << "RenderContextCairo: Destroying..." << std::endl;
+        std::cerr << "RenderContextCairo: Destroying..." << std::endl;
         destroying = true;
 
         // Clear the state stack to prevent any pending cairo operations
@@ -317,7 +317,7 @@ namespace UltraCanvas {
         cairo_destroy(targetContext);
         cairo_destroy(cairo);
 
-        std::cout << "RenderContextCairo: Destruction complete" << std::endl;
+        std::cerr << "RenderContextCairo: Destruction complete" << std::endl;
     }
 
     void RenderContextCairo::SetTargetSurface(cairo_surface_t* surf, int w, int h) {
@@ -411,7 +411,7 @@ namespace UltraCanvas {
 
         cairo_surface_destroy(oldStagingSurface);
 
-        std::cout << "ResizeStagingSurface: Resized to " << newWidth << "x" << newHeight << std::endl;
+        std::cerr << "ResizeStagingSurface: Resized to " << newWidth << "x" << newHeight << std::endl;
         return true;
     }
 
@@ -443,7 +443,7 @@ namespace UltraCanvas {
             currentState = stateStack.back();
             stateStack.pop_back();
         } else {
-            std::cout << "RenderContextCairo::PopState() stateStack empty!" << std::endl;
+            std::cerr << "RenderContextCairo::PopState() stateStack empty!" << std::endl;
         }
         cairo_restore(cairo);
     }
@@ -497,15 +497,15 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::ClearClipRect() {
-        std::cout << "RenderContextCairo::ClearClipRect - clearing clip region" << std::endl;
+        std::cerr << "RenderContextCairo::ClearClipRect - clearing clip region" << std::endl;
 
         // Reset the clip region to cover the entire surface
         cairo_reset_clip(cairo);
-//        std::cout << "RenderContextCairo::ClearClipRect - clip region cleared successfully" << std::endl;
+//        std::cerr << "RenderContextCairo::ClearClipRect - clip region cleared successfully" << std::endl;
     }
 
     void RenderContextCairo::ClipRect(float x, float y, float w, float h) {
-//        std::cout << "RenderContextCairo::ClipRect - setting clip to "
+//        std::cerr << "RenderContextCairo::ClipRect - setting clip to "
 //                  << x << "," << y << " " << w << "x" << h << std::endl;
         cairo_rectangle(cairo, x, y, w, h);
         cairo_clip(cairo);
@@ -599,7 +599,7 @@ namespace UltraCanvas {
 
 // ===== BASIC DRAWING =====
     void RenderContextCairo::FillRectangle(float x, float y, float w, float h) {
-//        std::cout << "RenderContextCairo::FillRectangle this=" << this << " cairo=" << cairo << std::endl;
+//        std::cerr << "RenderContextCairo::FillRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply fill style explicitly ***
         //ApplyFillStyle(currentState.style);
@@ -607,11 +607,11 @@ namespace UltraCanvas {
         cairo_rectangle(cairo, x, y, w, h);
         Fill();
 
-//        std::cout << "RenderContextCairo::FillRectangle: Complete" << std::endl;
+//        std::cerr << "RenderContextCairo::FillRectangle: Complete" << std::endl;
     }
 
     void RenderContextCairo::DrawRectangle(float x, float y, float w, float h) {
-//        std::cout << "RenderContextCairo::DrawRectangle this=" << this << " cairo=" << cairo << std::endl;
+//        std::cerr << "RenderContextCairo::DrawRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply stroke style explicitly ***
         //ApplyStrokeStyle(currentState.style);
@@ -619,11 +619,11 @@ namespace UltraCanvas {
         cairo_rectangle(cairo, x, y, w, h);
         Stroke();
 
-//        std::cout << "RenderContextCairo::DrawRectangle: Complete" << std::endl;
+//        std::cerr << "RenderContextCairo::DrawRectangle: Complete" << std::endl;
     }
 
     void RenderContextCairo::FillRoundedRectangle(float x, float y, float w, float h, float radius) {
-//        std::cout << "RenderContextCairo::FillRoundedRectangle" << std::endl;
+//        std::cerr << "RenderContextCairo::FillRoundedRectangle" << std::endl;
 
         // *** Apply fill style ***
         //ApplyFillStyle(currentState.style);
@@ -640,7 +640,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::DrawRoundedRectangle(float x, float y, float w, float h, float radius) {
-//        std::cout << "RenderContextCairo::DrawRoundedRectangle" << std::endl;
+//        std::cerr << "RenderContextCairo::DrawRoundedRectangle" << std::endl;
 
         // *** Apply stroke style ***
         //ApplyStrokeStyle(currentState.style);
@@ -657,7 +657,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::FillCircle(float x, float y, float radius) {
-//        std::cout << "RenderContextCairo::FillCircle" << std::endl;
+//        std::cerr << "RenderContextCairo::FillCircle" << std::endl;
 
         // *** Apply fill style ***
         //ApplyFillStyle(currentState.style);
@@ -666,7 +666,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::DrawCircle(float x, float y, float radius) {
-//        std::cout << "RenderContextCairo::DrawCircle" << std::endl;
+//        std::cerr << "RenderContextCairo::DrawCircle" << std::endl;
 
         // *** Apply stroke style ***
         //ApplyStrokeStyle(currentState.style);
@@ -675,7 +675,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::DrawLine(float start_x, float start_y, float end_x, float end_y) {
-//        std::cout << "RenderContextCairo::DrawLine" << std::endl;
+//        std::cerr << "RenderContextCairo::DrawLine" << std::endl;
 
         // *** Apply stroke style ***
         //ApplyStrokeStyle(currentState.style);
@@ -783,7 +783,7 @@ namespace UltraCanvas {
             std::cerr << "RenderContextCairo::DrawText: No text source surface" << std::endl;
         }
 //        try {
-//            //std::cout << "DrawText: Rendering '" << text << "' at (" << x << "," << y << ")" << std::endl;
+//            //std::cerr << "DrawText: Rendering '" << text << "' at (" << x << "," << y << ")" << std::endl;
 //            PangoFontDescription *desc = CreatePangoFont(currentState.fontStyle);
 //            if (!desc) {
 //                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
@@ -811,7 +811,7 @@ namespace UltraCanvas {
 //            pango_font_description_free(desc);
 //            g_object_unref(layout);
 //
-////            std::cout << "DrawText: Completed successfully" << std::endl;
+////            std::cerr << "DrawText: Completed successfully" << std::endl;
 //
 //        } catch (const std::exception &e) {
 //            std::cerr << "ERROR: Exception in DrawText: " << e.what() << std::endl;
@@ -1056,7 +1056,7 @@ namespace UltraCanvas {
     }
 
     PangoFontDescription *RenderContextCairo::CreatePangoFont(const FontStyle &style) {
-        //std::cout << "RenderContextCairo::CreatePangoFont" << std::endl;
+        //std::cerr << "RenderContextCairo::CreatePangoFont" << std::endl;
         try {
             PangoFontDescription *desc = pango_font_description_new();
             if (!desc) {
@@ -1120,7 +1120,7 @@ namespace UltraCanvas {
                                   color.g / 255.0f,
                                   color.b / 255.0f,
                                   color.a / 255.0f * currentState.globalAlpha);
-//            std::cout << "RenderContextCairo::SetCairoColor r=" << (int) color.r << " g=" << (int) color.g << " b="
+//            std::cerr << "RenderContextCairo::SetCairoColor r=" << (int) color.r << " g=" << (int) color.g << " b="
 //                      << (int) color.b << std::endl;
         } catch (...) {
             std::cerr << "ERROR: Exception in SetCairoColor" << std::endl;
@@ -1861,7 +1861,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::UpdateContext(cairo_t *newCairoContext) {
-        std::cout << "RenderContextCairo: Updating Cairo context..." << std::endl;
+        std::cerr << "RenderContextCairo: Updating Cairo context..." << std::endl;
 
         if (!newCairoContext) {
             std::cerr << "ERROR: RenderContextCairo: New Cairo context is null!" << std::endl;
@@ -1891,7 +1891,7 @@ namespace UltraCanvas {
         // Reset state
         ResetState();
 
-        std::cout << "RenderContextCairo: Cairo context updated successfully" << std::endl;
+        std::cerr << "RenderContextCairo: Cairo context updated successfully" << std::endl;
     }
 
     void RenderContextCairo::FillPathPreserve() {

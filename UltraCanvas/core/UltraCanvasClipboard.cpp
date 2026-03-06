@@ -109,7 +109,7 @@ bool UltraCanvasClipboard::Initialize() {
         AddEntry(entry);
     }
 
-    std::cout << "UltraCanvas: Clipboard initialized successfully" << std::endl;
+    std::cerr << "UltraCanvas: Clipboard initialized successfully" << std::endl;
     return true;
 }
 
@@ -122,7 +122,7 @@ void UltraCanvasClipboard::Shutdown() {
     }
     
     entries.clear();
-    std::cout << "UltraCanvas: Clipboard shut down" << std::endl;
+    std::cerr << "UltraCanvas: Clipboard shut down" << std::endl;
 }
 
 // ===== CLIPBOARD OPERATIONS =====
@@ -206,12 +206,12 @@ void UltraCanvasClipboard::StartMonitoring() {
         lastClipboardContent = currentText;
     }
     
-    std::cout << "UltraCanvas: Clipboard monitoring started" << std::endl;
+    std::cerr << "UltraCanvas: Clipboard monitoring started" << std::endl;
 }
 
 void UltraCanvasClipboard::StopMonitoring() {
     monitoringEnabled = false;
-    std::cout << "UltraCanvas: Clipboard monitoring stopped" << std::endl;
+    std::cerr << "UltraCanvas: Clipboard monitoring stopped" << std::endl;
 }
 
 void UltraCanvasClipboard::Update() {
@@ -238,7 +238,7 @@ void UltraCanvasClipboard::CheckForChanges() {
 void UltraCanvasClipboard::ProcessNewClipboardContent() {
     std::string currentText;
     if (GetText(currentText) && currentText != lastClipboardContent && !currentText.empty()) {
-        std::cout << "UltraCanvas: Clipboard changed: " << currentText.substr(0, 50) << "..." << std::endl;
+        std::cerr << "UltraCanvas: Clipboard changed: " << currentText.substr(0, 50) << "..." << std::endl;
 
         ClipboardData newEntry = CreateEntryFromCurrentClipboard();
         AddEntry(newEntry);

@@ -823,15 +823,15 @@ verticalProgress->SetStyle(UltraCanvas::ProgressBarStyle::Gradient);
 
 // Set up callbacks
 standardProgress->onValueChanged = [](float value) {
-    std::cout << "Progress changed to: " << value << std::endl;
+    std::cerr << "Progress changed to: " << value << std::endl;
 };
 
 standardProgress->onCompleted = []() {
-    std::cout << "Progress completed!" << std::endl;
+    std::cerr << "Progress completed!" << std::endl;
 };
 
 standardProgress->onStateChanged = [](UltraCanvas::ProgressState state) {
-    std::cout << "Progress state changed" << std::endl;
+    std::cerr << "Progress state changed" << std::endl;
 };
 
 // Animate progress over time
@@ -953,7 +953,7 @@ auto progress = UltraCanvas::CreateHorizontalProgressBar("progress", 1001, x, y,
 progress->SetValue(75.0f);
 progress->SetStyle(UltraCanvas::ProgressBarStyle::Rounded);
 progress->SetTextDisplay(true, true);
-progress->onCompleted = []() { std::cout << "Done!" << std::endl; };
+progress->onCompleted = []() { std::cerr << "Done!" << std::endl; };
 window->AddElement(progress.get());
 ```
 

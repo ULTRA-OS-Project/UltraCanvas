@@ -342,22 +342,22 @@ contextMenu->SetMenuType(MenuType::PopupMenu);
 
 // Add items with icons
 contextMenu->AddItem(MenuItemData::Action("📋 Copy", "Ctrl+C", []() {
-    std::cout << "Copy action executed" << std::endl;
+    std::cerr << "Copy action executed" << std::endl;
 }));
 
 contextMenu->AddItem(MenuItemData::Action("✂️ Cut", "Ctrl+X", []() {
-    std::cout << "Cut action executed" << std::endl;
+    std::cerr << "Cut action executed" << std::endl;
 }));
 
 contextMenu->AddItem(MenuItemData::Action("📄 Paste", "Ctrl+V", []() {
-    std::cout << "Paste action executed" << std::endl;
+    std::cerr << "Paste action executed" << std::endl;
 }));
 
 contextMenu->AddItem(MenuItemData::Separator());
 
 // Add checkbox item
 contextMenu->AddItem(MenuItemData::Checkbox("Show Grid", true, [](bool checked) {
-    std::cout << "Grid visibility: " << checked << std::endl;
+    std::cerr << "Grid visibility: " << checked << std::endl;
 }));
 
 // Show on right-click

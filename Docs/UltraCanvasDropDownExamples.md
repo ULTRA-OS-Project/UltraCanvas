@@ -197,7 +197,7 @@ auto dropdown = DropdownBuilder("myDropdown", 100, 100)
     .SetStyle(DropdownStyles::Modern())
     .SetSelectedIndex(0)
     .OnSelectionChanged([](int index, const DropdownItem& item) {
-        std::cout << "Selected: " << item.text << std::endl;
+        std::cerr << "Selected: " << item.text << std::endl;
     })
     .Build();
 ```
@@ -336,13 +336,13 @@ auto dropdown = CreateAutoDropdown("themeSelector", 200, 50,
 
 // Selection change handler
 dropdown->onSelectionChanged = [](int index, const DropdownItem& item) {
-    std::cout << "Theme changed to: " << item.text << std::endl;
+    std::cerr << "Theme changed to: " << item.text << std::endl;
     ApplyTheme(item.text);
 };
 
 // Dropdown opened handler
 dropdown->onDropdownOpened = []() {
-    std::cout << "Theme selector opened" << std::endl;
+    std::cerr << "Theme selector opened" << std::endl;
 };
 ```
 
@@ -424,7 +424,7 @@ Debug output is available through console logging:
 - Render state information
 - Item selection feedback
 
-To enable verbose logging, the component includes strategic `std::cout` statements that can be toggled for development.
+To enable verbose logging, the component includes strategic `std::cerr` statements that can be toggled for development.
 
 ## Dependencies
 

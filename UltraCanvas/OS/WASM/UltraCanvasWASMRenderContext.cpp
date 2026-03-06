@@ -22,17 +22,17 @@ UltraCanvasWASMRenderContext::UltraCanvasWASMRenderContext(const std::string& ca
     , hasClipRect(false)
     , inFrame(false)
 {
-    std::cout << "[WASM RenderContext] Created for canvas: " << canvasId << std::endl;
+    std::cerr << "[WASM RenderContext] Created for canvas: " << canvasId << std::endl;
 }
 
 UltraCanvasWASMRenderContext::~UltraCanvasWASMRenderContext() {
-    std::cout << "[WASM RenderContext] Destroyed" << std::endl;
+    std::cerr << "[WASM RenderContext] Destroyed" << std::endl;
 }
 
 // ===== INITIALIZATION =====
 
 bool UltraCanvasWASMRenderContext::Initialize() {
-    std::cout << "[WASM RenderContext] Initializing Canvas 2D context..." << std::endl;
+    std::cerr << "[WASM RenderContext] Initializing Canvas 2D context..." << std::endl;
     
     // Get 2D rendering context from canvas
     bool success = EM_ASM_INT({
@@ -66,7 +66,7 @@ bool UltraCanvasWASMRenderContext::Initialize() {
     // Reset to default state
     ResetState();
     
-    std::cout << "[WASM RenderContext] Initialization complete" << std::endl;
+    std::cerr << "[WASM RenderContext] Initialization complete" << std::endl;
     return true;
 }
 
@@ -74,7 +74,7 @@ void UltraCanvasWASMRenderContext::SetViewportSize(int width, int height) {
     viewportWidth = width;
     viewportHeight = height;
     
-    std::cout << "[WASM RenderContext] Viewport size: " << width << "x" << height << std::endl;
+    std::cerr << "[WASM RenderContext] Viewport size: " << width << "x" << height << std::endl;
 }
 
 // ===== FRAME CONTROL =====

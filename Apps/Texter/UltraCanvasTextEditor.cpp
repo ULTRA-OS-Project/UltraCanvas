@@ -1511,7 +1511,7 @@ namespace {
         std::string content = doc->textArea->GetText();
         if (autosaveManager.SaveBackup(doc->autosaveBackupPath, content,
                                        doc->filePath, doc->encoding, doc->language)) {
-            std::cout << "Autosaved: " << doc->fileName << std::endl;
+            std::cerr << "Autosaved: " << doc->fileName << std::endl;
         }
     }
 

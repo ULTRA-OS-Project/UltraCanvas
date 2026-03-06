@@ -424,18 +424,18 @@ namespace UltraCanvas {
         }
 
         static void PrintRegisteredPlugins() {
-            std::cout << "Registered Graphics Plugins (" << plugins.size() << "):" << std::endl;
+            std::cerr << "Registered Graphics Plugins (" << plugins.size() << "):" << std::endl;
             for (const auto& plugin : plugins) {
-                std::cout << "- " << plugin->GetPluginName()
+                std::cerr << "- " << plugin->GetPluginName()
                           << " v" << plugin->GetPluginVersion() << std::endl;
 
                 auto extensions = plugin->GetSupportedExtensions();
-                std::cout << "  Extensions: ";
+                std::cerr << "  Extensions: ";
                 for (size_t i = 0; i < extensions.size(); ++i) {
-                    std::cout << extensions[i];
-                    if (i < extensions.size() - 1) std::cout << ", ";
+                    std::cerr << extensions[i];
+                    if (i < extensions.size() - 1) std::cerr << ", ";
                 }
-                std::cout << std::endl;
+                std::cerr << std::endl;
             }
         }
     };

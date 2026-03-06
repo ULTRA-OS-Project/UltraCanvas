@@ -135,16 +135,16 @@ auto button = CreateButton("MyButton", 1, 10, 10, 100, 30, "Click Me");
 
 // Set click handler
 button->onClick = []() {
-    std::cout << "Button clicked!" << std::endl;
+    std::cerr << "Button clicked!" << std::endl;
 };
 
 // Set hover handlers
 button->onHoverEnter = []() {
-    std::cout << "Mouse entered button" << std::endl;
+    std::cerr << "Mouse entered button" << std::endl;
 };
 
 button->onHoverLeave = []() {
-    std::cout << "Mouse left button" << std::endl;
+    std::cerr << "Mouse left button" << std::endl;
 };
 ```
 
@@ -223,7 +223,7 @@ auto button = ButtonBuilder("MyButton", 10, 10, "Click Me")
     .SetColors(Colors::Blue, Colors::LightBlue, Colors::DarkBlue, Colors::Gray)
     .SetTextColors(Colors::White, Colors::White, Colors::White, Colors::DarkGray)
     .SetCornerRadius(5.0f)
-    .OnClick([]() { std::cout << "Clicked!" << std::endl; })
+    .OnClick([]() { std::cerr << "Clicked!" << std::endl; })
     .Build();
 ```
 
@@ -234,7 +234,7 @@ auto button = ButtonBuilder("MyButton", 10, 10, "Click Me")
 ```cpp
 auto standardBtn = CreateButton("StandardButton", 1, 20, 20, 100, 30, "Standard");
 standardBtn->onClick = []() {
-    std::cout << "Standard button clicked" << std::endl;
+    std::cerr << "Standard button clicked" << std::endl;
 };
 ```
 

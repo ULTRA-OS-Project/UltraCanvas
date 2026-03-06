@@ -34,27 +34,27 @@ std::unique_ptr<UltraCanvasTemplate> CreateSimpleToolbar() {
         
         // Add toolbar elements
         .AddButton("btn_new", "New", "icons/new.png", []() {
-            std::cout << "New file clicked!" << std::endl;
+            std::cerr << "New file clicked!" << std::endl;
         })
         .AddButton("btn_open", "Open", "icons/open.png", []() {
-            std::cout << "Open file clicked!" << std::endl;
+            std::cerr << "Open file clicked!" << std::endl;
         })
         .AddButton("btn_save", "Save", "icons/save.png", []() {
-            std::cout << "Save file clicked!" << std::endl;
+            std::cerr << "Save file clicked!" << std::endl;
         })
         .AddSeparator(true)  // Vertical separator
         .AddButton("btn_cut", "", "icons/cut.png", []() {
-            std::cout << "Cut clicked!" << std::endl;
+            std::cerr << "Cut clicked!" << std::endl;
         })
         .AddButton("btn_copy", "", "icons/copy.png", []() {
-            std::cout << "Copy clicked!" << std::endl;
+            std::cerr << "Copy clicked!" << std::endl;
         })
         .AddButton("btn_paste", "", "icons/paste.png", []() {
-            std::cout << "Paste clicked!" << std::endl;
+            std::cerr << "Paste clicked!" << std::endl;
         })
         .AddSeparator(true)
         .AddDropDown("dd_zoom", {"50%", "75%", "100%", "125%", "150%", "200%"}, [](const std::string& selected) {
-            std::cout << "Zoom level changed to: " << selected << std::endl;
+            std::cerr << "Zoom level changed to: " << selected << std::endl;
         })
         .AddSpacer(16.0f)  // Flexible spacer
         .AddLabel("lbl_status", "Ready")
@@ -96,49 +96,49 @@ std::unique_ptr<UltraCanvasTemplate> CreateAdvancedToolbar() {
     
     // Add elements with detailed configuration
     toolbar->AddElement(TemplateElementDescriptor::Button("file_new", "New Document", "icons/document_new.png", []() {
-        std::cout << "Creating new document..." << std::endl;
+        std::cerr << "Creating new document..." << std::endl;
     }));
     
     toolbar->AddElement(TemplateElementDescriptor::Button("file_open", "Open", "icons/folder_open.png", []() {
-        std::cout << "Opening file dialog..." << std::endl;
+        std::cerr << "Opening file dialog..." << std::endl;
     }));
     
     toolbar->AddElement(TemplateElementDescriptor::Button("file_save", "Save", "icons/disk.png", []() {
-        std::cout << "Saving current document..." << std::endl;
+        std::cerr << "Saving current document..." << std::endl;
     }));
     
     toolbar->AddElement(TemplateElementDescriptor::Separator("sep1", true));
     
     // Add formatting tools
     toolbar->AddElement(TemplateElementDescriptor::Button("format_bold", "B", "", []() {
-        std::cout << "Toggle bold formatting" << std::endl;
+        std::cerr << "Toggle bold formatting" << std::endl;
     }));
     
     toolbar->AddElement(TemplateElementDescriptor::Button("format_italic", "I", "", []() {
-        std::cout << "Toggle italic formatting" << std::endl;
+        std::cerr << "Toggle italic formatting" << std::endl;
     }));
     
     toolbar->AddElement(TemplateElementDescriptor::Button("format_underline", "U", "", []() {
-        std::cout << "Toggle underline formatting" << std::endl;
+        std::cerr << "Toggle underline formatting" << std::endl;
     }));
     
     toolbar->AddElement(TemplateElementDescriptor::Separator("sep2", true));
     
     // Add alignment tools in second row
     toolbar->AddElement(TemplateElementDescriptor::Button("align_left", "", "icons/text_align_left.png", []() {
-        std::cout << "Align text left" << std::endl;
+        std::cerr << "Align text left" << std::endl;
     }));
     
     toolbar->AddElement(TemplateElementDescriptor::Button("align_center", "", "icons/text_align_center.png", []() {
-        std::cout << "Align text center" << std::endl;
+        std::cerr << "Align text center" << std::endl;
     }));
     
     toolbar->AddElement(TemplateElementDescriptor::Button("align_right", "", "icons/text_align_right.png", []() {
-        std::cout << "Align text right" << std::endl;
+        std::cerr << "Align text right" << std::endl;
     }));
     
     toolbar->AddElement(TemplateElementDescriptor::Button("align_justify", "", "icons/text_align_justify.png", []() {
-        std::cout << "Justify text" << std::endl;
+        std::cerr << "Justify text" << std::endl;
     }));
     
     return toolbar;
@@ -174,40 +174,40 @@ std::unique_ptr<UltraCanvasTemplate> CreateToolPanel() {
         // Add tool categories
         .AddLabel("lbl_drawing", "Drawing Tools")
         .AddButton("tool_select", "Select", "icons/cursor.png", []() {
-            std::cout << "Select tool activated" << std::endl;
+            std::cerr << "Select tool activated" << std::endl;
         })
         .AddButton("tool_pen", "Pen", "icons/pen.png", []() {
-            std::cout << "Pen tool activated" << std::endl;
+            std::cerr << "Pen tool activated" << std::endl;
         })
         .AddButton("tool_brush", "Brush", "icons/brush.png", []() {
-            std::cout << "Brush tool activated" << std::endl;
+            std::cerr << "Brush tool activated" << std::endl;
         })
         .AddButton("tool_eraser", "Eraser", "icons/eraser.png", []() {
-            std::cout << "Eraser tool activated" << std::endl;
+            std::cerr << "Eraser tool activated" << std::endl;
         })
         .AddSeparator(false)  // Horizontal separator
         
         .AddLabel("lbl_shapes", "Shape Tools")
         .AddButton("shape_rect", "Rectangle", "icons/rectangle.png", []() {
-            std::cout << "Rectangle tool activated" << std::endl;
+            std::cerr << "Rectangle tool activated" << std::endl;
         })
         .AddButton("shape_circle", "Circle", "icons/circle.png", []() {
-            std::cout << "Circle tool activated" << std::endl;
+            std::cerr << "Circle tool activated" << std::endl;
         })
         .AddButton("shape_line", "Line", "icons/line.png", []() {
-            std::cout << "Line tool activated" << std::endl;
+            std::cerr << "Line tool activated" << std::endl;
         })
         .AddSeparator(false)
         
         .AddLabel("lbl_colors", "Colors")
         .AddButton("color_black", "", "", []() {
-            std::cout << "Black color selected" << std::endl;
+            std::cerr << "Black color selected" << std::endl;
         })
         .AddButton("color_red", "", "", []() {
-            std::cout << "Red color selected" << std::endl;
+            std::cerr << "Red color selected" << std::endl;
         })
         .AddButton("color_blue", "", "", []() {
-            std::cout << "Blue color selected" << std::endl;
+            std::cerr << "Blue color selected" << std::endl;
         })
         .Build();
 }
@@ -316,15 +316,15 @@ std::unique_ptr<UltraCanvasTemplate> CreateFloatingPalette() {
         .SetDragHandle(TemplateDragHandle::Top(8.0f))
         
         // Add color palette buttons
-        .AddButton("color1", "", "", []() { std::cout << "Color 1 selected" << std::endl; })
-        .AddButton("color2", "", "", []() { std::cout << "Color 2 selected" << std::endl; })
-        .AddButton("color3", "", "", []() { std::cout << "Color 3 selected" << std::endl; })
-        .AddButton("color4", "", "", []() { std::cout << "Color 4 selected" << std::endl; })
-        .AddButton("color5", "", "", []() { std::cout << "Color 5 selected" << std::endl; })
-        .AddButton("color6", "", "", []() { std::cout << "Color 6 selected" << std::endl; })
-        .AddButton("color7", "", "", []() { std::cout << "Color 7 selected" << std::endl; })
-        .AddButton("color8", "", "", []() { std::cout << "Color 8 selected" << std::endl; })
-        .AddButton("color9", "", "", []() { std::cout << "Color 9 selected" << std::endl; })
+        .AddButton("color1", "", "", []() { std::cerr << "Color 1 selected" << std::endl; })
+        .AddButton("color2", "", "", []() { std::cerr << "Color 2 selected" << std::endl; })
+        .AddButton("color3", "", "", []() { std::cerr << "Color 3 selected" << std::endl; })
+        .AddButton("color4", "", "", []() { std::cerr << "Color 4 selected" << std::endl; })
+        .AddButton("color5", "", "", []() { std::cerr << "Color 5 selected" << std::endl; })
+        .AddButton("color6", "", "", []() { std::cerr << "Color 6 selected" << std::endl; })
+        .AddButton("color7", "", "", []() { std::cerr << "Color 7 selected" << std::endl; })
+        .AddButton("color8", "", "", []() { std::cerr << "Color 8 selected" << std::endl; })
+        .AddButton("color9", "", "", []() { std::cerr << "Color 9 selected" << std::endl; })
         .Build();
 }
 
@@ -443,12 +443,12 @@ int main() {
         return -1;
     }
     
-    std::cout << "Starting UltraCanvas Template Example..." << std::endl;
-    std::cout << "Templates created:" << std::endl;
-    std::cout << "- Main Toolbar (horizontal flow)" << std::endl;
-    std::cout << "- Tool Panel (vertical stack)" << std::endl;
-    std::cout << "- Status Bar (horizontal with spacers)" << std::endl;
-    std::cout << "- Floating Palette (3x3 grid)" << std::endl;
+    std::cerr << "Starting UltraCanvas Template Example..." << std::endl;
+    std::cerr << "Templates created:" << std::endl;
+    std::cerr << "- Main Toolbar (horizontal flow)" << std::endl;
+    std::cerr << "- Tool Panel (vertical stack)" << std::endl;
+    std::cerr << "- Status Bar (horizontal with spacers)" << std::endl;
+    std::cerr << "- Floating Palette (3x3 grid)" << std::endl;
     
     app.Run();
     
@@ -484,7 +484,7 @@ void RegisterCustomElementFactory(UltraCanvasTemplate* template_) {
 void ModifyToolbarAtRuntime(UltraCanvasTemplate* toolbar) {
     // Add new element at runtime
     toolbar->AddElement(TemplateElementDescriptor::Button("btn_new_feature", "New Feature", "icons/star.png", []() {
-        std::cout << "New feature activated!" << std::endl;
+        std::cerr << "New feature activated!" << std::endl;
     }));
     
     // Remove an element
@@ -498,12 +498,12 @@ void ModifyToolbarAtRuntime(UltraCanvasTemplate* toolbar) {
 void SaveTemplateConfiguration(const UltraCanvasTemplate* template_, const std::string& filename) {
     // This would serialize the template configuration to a file
     // Implementation would depend on chosen serialization format (JSON, XML, binary, etc.)
-    std::cout << "Saving template configuration to: " << filename << std::endl;
+    std::cerr << "Saving template configuration to: " << filename << std::endl;
 }
 
 void LoadTemplateConfiguration(UltraCanvasTemplate* template_, const std::string& filename) {
     // This would load and apply template configuration from a file
-    std::cout << "Loading template configuration from: " << filename << std::endl;
+    std::cerr << "Loading template configuration from: " << filename << std::endl;
 }
 
 Color ParseColorFromString(const std::string& colorStr) {

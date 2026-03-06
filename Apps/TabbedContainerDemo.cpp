@@ -457,7 +457,7 @@ private:
 
 public:
     bool Initialize() override {
-        std::cout << "Initializing UltraCanvas Tabbed Container Demo..." << std::endl;
+        std::cerr << "Initializing UltraCanvas Tabbed Container Demo..." << std::endl;
 
         // Initialize base application
         if (!UltraCanvasApplication::Initialize()) {
@@ -494,7 +494,7 @@ public:
         // Show window
         demoWindow->Show();
 
-        std::cout << "Demo initialized successfully!" << std::endl;
+        std::cerr << "Demo initialized successfully!" << std::endl;
         PrintUsageInstructions();
 
         return true;
@@ -502,34 +502,34 @@ public:
 
 private:
     void PrintUsageInstructions() {
-        std::cout << "\n=== UltraCanvas Tabbed Container Demo ===" << std::endl;
-        std::cout << "\nFEATURES TO TEST:" << std::endl;
-        std::cout << "• Overflow Dropdown: Add tabs until dropdown appears" << std::endl;
-        std::cout << "• Search Functionality: Type in dropdown to filter tabs" << std::endl;
-        std::cout << "• Tab Reordering: Drag tabs to reorder (if enabled)" << std::endl;
-        std::cout << "• Close Buttons: Click × to close tabs" << std::endl;
-        std::cout << "• Nested Tabs: Check the 'Nested Tabs' tab" << std::endl;
-        std::cout << "\nCONTROLS:" << std::endl;
-        std::cout << "• Add Tab: Creates new dynamic tab" << std::endl;
-        std::cout << "• Remove Tab: Removes active tab" << std::endl;
-        std::cout << "• Toggle Dropdown: Cycles dropdown position (Left/Right/Off)" << std::endl;
-        std::cout << "• Toggle Search: Enables/disables search functionality" << std::endl;
-        std::cout << "\nKEYBOARD:" << std::endl;
-        std::cout << "• Arrow Keys: Navigate between tabs" << std::endl;
-        std::cout << "• Ctrl+W: Close active tab (if closable)" << std::endl;
-        std::cout << "• Escape: Exit application" << std::endl;
-        std::cout << "\nSEARCH DEMO:" << std::endl;
-        std::cout << "• Type 'doc' to find document tabs" << std::endl;
-        std::cout << "• Type numbers to find specific tabs" << std::endl;
-        std::cout << "• Search appears when >5 tabs (configurable)" << std::endl;
-        std::cout << "=======================================" << std::endl;
+        std::cerr << "\n=== UltraCanvas Tabbed Container Demo ===" << std::endl;
+        std::cerr << "\nFEATURES TO TEST:" << std::endl;
+        std::cerr << "• Overflow Dropdown: Add tabs until dropdown appears" << std::endl;
+        std::cerr << "• Search Functionality: Type in dropdown to filter tabs" << std::endl;
+        std::cerr << "• Tab Reordering: Drag tabs to reorder (if enabled)" << std::endl;
+        std::cerr << "• Close Buttons: Click × to close tabs" << std::endl;
+        std::cerr << "• Nested Tabs: Check the 'Nested Tabs' tab" << std::endl;
+        std::cerr << "\nCONTROLS:" << std::endl;
+        std::cerr << "• Add Tab: Creates new dynamic tab" << std::endl;
+        std::cerr << "• Remove Tab: Removes active tab" << std::endl;
+        std::cerr << "• Toggle Dropdown: Cycles dropdown position (Left/Right/Off)" << std::endl;
+        std::cerr << "• Toggle Search: Enables/disables search functionality" << std::endl;
+        std::cerr << "\nKEYBOARD:" << std::endl;
+        std::cerr << "• Arrow Keys: Navigate between tabs" << std::endl;
+        std::cerr << "• Ctrl+W: Close active tab (if closable)" << std::endl;
+        std::cerr << "• Escape: Exit application" << std::endl;
+        std::cerr << "\nSEARCH DEMO:" << std::endl;
+        std::cerr << "• Type 'doc' to find document tabs" << std::endl;
+        std::cerr << "• Type numbers to find specific tabs" << std::endl;
+        std::cerr << "• Search appears when >5 tabs (configurable)" << std::endl;
+        std::cerr << "=======================================" << std::endl;
     }
 };
 
 // ===== MAIN FUNCTION =====
 
 int main(int argc, char* argv[]) {
-    std::cout << "Starting UltraCanvas Enhanced Tabbed Container Demo..." << std::endl;
+    std::cerr << "Starting UltraCanvas Enhanced Tabbed Container Demo..." << std::endl;
 
     try {
         // Create and initialize demo application
@@ -540,12 +540,12 @@ int main(int argc, char* argv[]) {
             return -1;
         }
 
-        std::cout << "Demo application initialized. Starting main loop..." << std::endl;
+        std::cerr << "Demo application initialized. Starting main loop..." << std::endl;
 
         // Run the application main loop
         app->Run();
 
-        std::cout << "Demo application finished successfully." << std::endl;
+        std::cerr << "Demo application finished successfully." << std::endl;
         return 0;
 
     } catch (const std::exception& e) {

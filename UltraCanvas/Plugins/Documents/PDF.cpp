@@ -44,7 +44,7 @@ PopplerPDFEngine::~PopplerPDFEngine() {
 
 void PopplerPDFEngine::InitializePoppler() {
     // Poppler initialization (if needed)
-    std::cout << "Initializing Poppler PDF Engine v" << poppler::version_string() << std::endl;
+    std::cerr << "Initializing Poppler PDF Engine v" << poppler::version_string() << std::endl;
 }
 
 void PopplerPDFEngine::CleanupPoppler() {
@@ -67,7 +67,7 @@ bool PopplerPDFEngine::LoadDocument(const std::string& filePath, const std::stri
         document = popplerDoc.release();
         documentPath = filePath;
         
-        std::cout << "Successfully loaded PDF: " << filePath << " (" 
+        std::cerr << "Successfully loaded PDF: " << filePath << " ("
                   << GetPageCount() << " pages)" << std::endl;
         
         return true;
@@ -98,7 +98,7 @@ bool PopplerPDFEngine::LoadDocumentFromMemory(const std::vector<uint8_t>& data, 
         document = popplerDoc.release();
         documentPath = "<memory>";
         
-        std::cout << "Successfully loaded PDF from memory (" 
+        std::cerr << "Successfully loaded PDF from memory ("
                   << GetPageCount() << " pages)" << std::endl;
         
         return true;
@@ -484,7 +484,7 @@ void MuPDFEngine::InitializeMuPDF() {
     if (!context) {
         std::cerr << "Failed to initialize MuPDF context" << std::endl;
     } else {
-        std::cout << "Initialized MuPDF Engine" << std::endl;
+        std::cerr << "Initialized MuPDF Engine" << std::endl;
     }
 }
 
@@ -523,7 +523,7 @@ bool MuPDFEngine::LoadDocument(const std::string& filePath, const std::string& p
         document = doc;
         documentPath = filePath;
         
-        std::cout << "Successfully loaded PDF: " << filePath << " (" 
+        std::cerr << "Successfully loaded PDF: " << filePath << " ("
                   << GetPageCount() << " pages)" << std::endl;
         
         return true;
@@ -565,7 +565,7 @@ bool MuPDFEngine::LoadDocumentFromMemory(const std::vector<uint8_t>& data, const
         document = doc;
         documentPath = "<memory>";
         
-        std::cout << "Successfully loaded PDF from memory (" 
+        std::cerr << "Successfully loaded PDF from memory ("
                   << GetPageCount() << " pages)" << std::endl;
         
         return true;
@@ -783,7 +783,7 @@ std::shared_ptr<IPDFEngine> UltraCanvasPDFPlugin::CreateDefaultEngine() {
         if (std::find(engines.begin(), engines.end(), engineType) != engines.end()) {
             auto engine = PDFEngineFactory::CreateEngine(engineType);
             if (engine) {
-                std::cout << "Using " << engine->GetEngineName() << " v" << engine->GetEngineVersion() << std::endl;
+                std::cerr << "Using " << engine->GetEngineName() << " v" << engine->GetEngineVersion() << std::endl;
                 return engine;
             }
         }

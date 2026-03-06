@@ -232,7 +232,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasClipboardUI::Initialize() {
-        std::cout << "UltraCanvas: Initializing clipboard UI with scrollable container..." << std::endl;
+        std::cerr << "UltraCanvas: Initializing clipboard UI with scrollable container..." << std::endl;
 
         // Get the clipboard instance
         clipboard = GetClipboard();
@@ -251,12 +251,12 @@ namespace UltraCanvas {
             OnClipboardChanged(newEntry);
         });
 
-        std::cout << "UltraCanvas: Clipboard UI initialized successfully" << std::endl;
+        std::cerr << "UltraCanvas: Clipboard UI initialized successfully" << std::endl;
         return true;
     }
 
     void UltraCanvasClipboardUI::Shutdown() {
-        std::cout << "UltraCanvas: Shutting down clipboard UI..." << std::endl;
+        std::cerr << "UltraCanvas: Shutting down clipboard UI..." << std::endl;
 
         if (clipboardWindow) {
             clipboardWindow->Close();
@@ -331,7 +331,7 @@ namespace UltraCanvas {
                 ToggleClipboardWindow();
             });
         }
-        std::cout << "Registered ALT+P shortcut for clipboard UI" << std::endl;
+        std::cerr << "Registered ALT+P shortcut for clipboard UI" << std::endl;
     }
 
     void UltraCanvasClipboardUI::ToggleClipboardWindow() {
@@ -514,7 +514,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasClipboardUI::ShowSaveSuccessNotification(const std::string& filePath) {
-        std::cout << "File saved successfully: " << filePath << std::endl;
+        std::cerr << "File saved successfully: " << filePath << std::endl;
         // TODO: Implement toast notification
     }
 

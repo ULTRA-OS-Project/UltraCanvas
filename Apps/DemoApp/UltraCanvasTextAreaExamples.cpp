@@ -67,7 +67,7 @@ public:
         : name(n), id(i) {}
 
     virtual void Render() {
-        std::cout << "Rendering: "
+        std::cerr << "Rendering: "
                   << name << std::endl;
     }
 

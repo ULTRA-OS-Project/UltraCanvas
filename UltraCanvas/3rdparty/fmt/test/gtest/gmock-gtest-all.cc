@@ -1933,7 +1933,7 @@ class FailureTest : public Test {
       AssertHelper(TestPartResult::kNonFatalFailure, loc_.file.c_str(),
                    loc_.line, "") = Message() << error_message_;
     } else {
-      std::cout << error_message_ << std::endl;
+      std::cerr << error_message_ << std::endl;
     }
   }
 
@@ -12817,13 +12817,13 @@ GTEST_API_ void Log(LogSeverity severity, const std::string& message,
 
   if (severity == kWarning) {
     // Prints a GMOCK WARNING marker to make the warnings easily searchable.
-    std::cout << "\nGMOCK WARNING:";
+    std::cerr << "\nGMOCK WARNING:";
   }
   // Pre-pends a new-line to message if it doesn't start with one.
   if (message.empty() || message[0] != '\n') {
-    std::cout << "\n";
+    std::cerr << "\n";
   }
-  std::cout << message;
+  std::cerr << message;
   if (stack_frames_to_skip >= 0) {
 #ifdef NDEBUG
     // In opt mode, we have to be conservative and skip no stack frame.
@@ -12836,13 +12836,13 @@ GTEST_API_ void Log(LogSeverity severity, const std::string& message,
 
     // Appends a new-line to message if it doesn't end with one.
     if (!message.empty() && *message.rbegin() != '\n') {
-      std::cout << "\n";
+      std::cerr << "\n";
     }
-    std::cout << "Stack trace:\n"
+    std::cerr << "Stack trace:\n"
          << ::testing::internal::GetCurrentOsStackTraceExceptTop(
              ::testing::UnitTest::GetInstance(), actual_to_skip);
   }
-  std::cout << ::std::flush;
+  std::cerr << ::std::flush;
 }
 
 GTEST_API_ WithoutMatchers GetWithoutMatchers() { return WithoutMatchers(); }

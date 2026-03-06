@@ -727,15 +727,15 @@ horizontalSplit->SetAnimation(true, 0.3f);
 
 // Set up callbacks
 horizontalSplit->onSplitRatioChanged = [](float ratio) {
-    std::cout << "Split ratio changed to: " << ratio << std::endl;
+    std::cerr << "Split ratio changed to: " << ratio << std::endl;
 };
 
 horizontalSplit->onPaneCollapsed = [](bool leftCollapsed, bool rightCollapsed) {
-    std::cout << "Pane collapsed - Left: " << leftCollapsed << ", Right: " << rightCollapsed << std::endl;
+    std::cerr << "Pane collapsed - Left: " << leftCollapsed << ", Right: " << rightCollapsed << std::endl;
 };
 
 horizontalSplit->onSplitterDoubleClicked = []() {
-    std::cout << "Splitter double-clicked - resetting to center" << std::endl;
+    std::cerr << "Splitter double-clicked - resetting to center" << std::endl;
 };
 
 // Create a vertical split pane

@@ -527,13 +527,13 @@ int main() {
         return -1;
     }
 
-    std::cout << "GraphicFormulaApp initialized successfully" << std::endl;
-    std::cout << "Running application..." << std::endl;
+    std::cerr << "GraphicFormulaApp initialized successfully" << std::endl;
+    std::cerr << "Running application..." << std::endl;
 
     // Run the application
     app->Run();
 
-    std::cout << "Application finished" << std::endl;
+    std::cerr << "Application finished" << std::endl;
 
     delete app;
     return 0;

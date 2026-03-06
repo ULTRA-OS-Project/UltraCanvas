@@ -275,7 +275,7 @@ namespace UltraCanvas {
         // Print z-order hierarchy for debugging
         static void PrintZOrderHierarchy(const std::vector<UltraCanvasUIElement*>& elements,
                                          const std::string& title = "Z-Order Hierarchy") {
-            std::cout << "=== " << title << " ===" << std::endl;
+            std::cerr << "=== " << title << " ===" << std::endl;
 
             auto sorted = GetElementsSortedByZOrder(elements);
 
@@ -288,14 +288,14 @@ namespace UltraCanvas {
                         typeName = typeName.substr(pos);
                     }
 
-                    std::cout << "  [" << i << "] Z=" << element->GetZIndex()
+                    std::cerr << "  [" << i << "] Z=" << element->GetZIndex()
                               << " " << typeName
                               << " '" << element->GetIdentifier() << "'"
                               << " Visible=" << (element->IsVisible() ? "true" : "false")
                               << std::endl;
                 }
             }
-            std::cout << "=========================" << std::endl;
+            std::cerr << "=========================" << std::endl;
         }
 
         // Validate z-order consistency
@@ -305,7 +305,7 @@ namespace UltraCanvas {
 
             for (size_t i = 1; i < sorted.size(); i++) {
                 if (sorted[i]->GetZIndex() < sorted[i-1]->GetZIndex()) {
-                    std::cout << "Z-Order validation failed at index " << i << std::endl;
+                    std::cerr << "Z-Order validation failed at index " << i << std::endl;
                     valid = false;
                 }
             }
@@ -408,7 +408,7 @@ protected:
         UltraCanvasZOrderManager::SortElementsByZOrder(sortedChildren);
         _zOrderDirty = false;
 
-        std::cout << "Container z-order updated with " << sortedChildren.size() << " children" << std::endl;
+        std::cerr << "Container z-order updated with " << sortedChildren.size() << " children" << std::endl;
     }
 
     virtual std::vector<std::shared_ptr<UltraCanvasUIElement>> GetDirectChildren() = 0;
@@ -434,7 +434,7 @@ public:
     }
 
     void PrintChildrenZOrder(const std::string& containerName) {
-        std::cout << "=== " << containerName << " Children Z-Order ===" << std::endl;
+        std::cerr << "=== " << containerName << " Children Z-Order ===" << std::endl;
 
         if (_zOrderDirty) {
             UpdateChildrenZOrder();
@@ -449,13 +449,13 @@ public:
                     typeName = typeName.substr(pos);
                 }
 
-                std::cout << "  [" << i << "] Z=" << child->GetZIndex()
+                std::cerr << "  [" << i << "] Z=" << child->GetZIndex()
                           << " " << typeName
                           << " '" << child->GetIdentifier() << "'"
                           << std::endl;
             }
         }
-        std::cout << "===========================================" << std::endl;
+        std::cerr << "===========================================" << std::endl;
     }
 };
 

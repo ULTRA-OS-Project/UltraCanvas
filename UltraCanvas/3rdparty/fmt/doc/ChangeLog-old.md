@@ -1201,7 +1201,7 @@
   };
 
   int main() {
-    std::cout << S() << "\n"; // prints 1 using operator<<
+    std::cerr << S() << "\n"; // prints 1 using operator<<
     fmt::print("{}\n", S());  // prints 2 using formatter
   }
   ```

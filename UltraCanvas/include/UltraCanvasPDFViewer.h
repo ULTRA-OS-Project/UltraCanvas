@@ -1107,11 +1107,11 @@ auto pdfViewer = UltraCanvas::CreatePDFViewer("pdfViewer", 50, 50, 800, 600);
 
 // Set up event handlers
 pdfViewer->onPageChanged = [](int current, int total) {
-    std::cout << "Page " << current << " of " << total << std::endl;
+    std::cerr << "Page " << current << " of " << total << std::endl;
 };
 
 pdfViewer->onZoomChanged = [](float zoom, UltraCanvas::PDFZoomMode mode) {
-    std::cout << "Zoom: " << (zoom * 100) << "%" << std::endl;
+    std::cerr << "Zoom: " << (zoom * 100) << "%" << std::endl;
 };
 
 pdfViewer->onError = [](const std::string& error) {
@@ -1120,7 +1120,7 @@ pdfViewer->onError = [](const std::string& error) {
 
 // Load document
 if (pdfViewer->LoadDocument("document.pdf")) {
-    std::cout << "PDF loaded successfully" << std::endl;
+    std::cerr << "PDF loaded successfully" << std::endl;
 }
 
 // Navigate programmatically

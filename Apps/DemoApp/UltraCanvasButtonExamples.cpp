@@ -313,17 +313,17 @@ namespace UltraCanvas {
         }));
 
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("📂 Open...", "Ctrl+O", []() {
-              std::cout << "Open file" << std::endl;
+              std::cerr << "Open file" << std::endl;
         }));
 
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("💾 Save", "Ctrl+S", []() {
-              std::cout << "Save file" << std::endl;
+              std::cerr << "Save file" << std::endl;
         }));
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("💾 Save As...", "Ctrl+Shift+S", []() {
-              std::cout << "Save as" << std::endl;
+              std::cerr << "Save as" << std::endl;
           }));
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("🚪 Exit", "Alt+F4", []() {
-            std::cout << "Exit application" << std::endl;
+            std::cerr << "Exit application" << std::endl;
         }));
 
 

@@ -15,7 +15,7 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateToolbarExamples() {
-        std::cout << "Creating Toolbar Examples..." << std::endl;
+        std::cerr << "Creating Toolbar Examples..." << std::endl;
 
         // Main container for all toolbar examples
         auto mainContainer = std::make_shared<UltraCanvasContainer>(
@@ -71,23 +71,23 @@ namespace UltraCanvas {
                 .SetAppearance(ToolbarAppearance::Default())
                 .SetDimensions(20, currentY, 960, 48)
                 .AddButton("new", "", "media/icons/new-icon.png", []() {
-                    std::cout << "New button clicked" << std::endl;
+                    std::cerr << "New button clicked" << std::endl;
                 })
                 .AddButton("open", "", "media/icons/open-icon.png", []() {
-                    std::cout << "Open button clicked" << std::endl;
+                    std::cerr << "Open button clicked" << std::endl;
                 })
                 .AddButton("save", "", "media/icons/save-icon.png", []() {
-                    std::cout << "Save button clicked" << std::endl;
+                    std::cerr << "Save button clicked" << std::endl;
                 })
                 .AddSeparator()
                 .AddButton("cut", "", "media/icons/cut-icon.png", []() {
-                    std::cout << "Cut button clicked" << std::endl;
+                    std::cerr << "Cut button clicked" << std::endl;
                 })
                 .AddButton("copy", "", "media/icons/copy-icon.png", []() {
-                    std::cout << "Copy button clicked" << std::endl;
+                    std::cerr << "Copy button clicked" << std::endl;
                 })
                 .AddButton("paste", "", "media/icons/paste-icon.png", []() {
-                    std::cout << "Paste button clicked" << std::endl;
+                    std::cerr << "Paste button clicked" << std::endl;
                 })
                 .AddSeparator()
                 .AddStretch(1.0f)
@@ -124,17 +124,17 @@ namespace UltraCanvas {
 
         // Add buttons and dropdowns
         dropdownToolbar->AddButton("undo", "", "media/icons/undo-icon.png", []() {
-            std::cout << "Undo clicked" << std::endl;
+            std::cerr << "Undo clicked" << std::endl;
         });
         dropdownToolbar->AddButton("redo", "", "media/icons/redo-icon.png", []() {
-            std::cout << "Redo clicked" << std::endl;
+            std::cerr << "Redo clicked" << std::endl;
         });
         dropdownToolbar->AddSeparator();
 
         // Add dropdown for font selection
         std::vector<std::string> fonts = {"Arial", "Times New Roman", "Courier New", "Verdana", "Georgia"};
         dropdownToolbar->AddDropdownButton("font", "Arial", fonts, [](const std::string& selected) {
-            std::cout << "Font selected: " << selected << std::endl;
+            std::cerr << "Font selected: " << selected << std::endl;
         });
 
         dropdownToolbar->AddSpacer(10);
@@ -142,19 +142,19 @@ namespace UltraCanvas {
         // Add dropdown for font size
         std::vector<std::string> sizes = {"8", "10", "12", "14", "16", "18", "20", "24"};
         dropdownToolbar->AddDropdownButton("size", "12", sizes, [](const std::string& selected) {
-            std::cout << "Size selected: " << selected << std::endl;
+            std::cerr << "Size selected: " << selected << std::endl;
         });
 
         dropdownToolbar->AddSeparator();
 
         dropdownToolbar->AddToggleButton("bold", "B", "", [](bool checked) {
-            std::cout << "Bold: " << (checked ? "ON" : "OFF") << std::endl;
+            std::cerr << "Bold: " << (checked ? "ON" : "OFF") << std::endl;
         });
         dropdownToolbar->AddToggleButton("italic", "I", "", [](bool checked) {
-            std::cout << "Italic: " << (checked ? "ON" : "OFF") << std::endl;
+            std::cerr << "Italic: " << (checked ? "ON" : "OFF") << std::endl;
         });
         dropdownToolbar->AddToggleButton("underline", "U", "", [](bool checked) {
-            std::cout << "Underline: " << (checked ? "ON" : "OFF") << std::endl;
+            std::cerr << "Underline: " << (checked ? "ON" : "OFF") << std::endl;
         });
 
         mainContainer->AddChild(dropdownToolbar);
@@ -185,20 +185,20 @@ namespace UltraCanvas {
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(20, currentY, 960, 48)
                 .AddButton("home", "", "media/icons/home-icon.png", []() {
-                    std::cout << "Home clicked" << std::endl;
+                    std::cerr << "Home clicked" << std::endl;
                 })
                 .AddButton("profile", "", "media/icons/profile-icon.png", []() {
-                    std::cout << "Profile clicked" << std::endl;
+                    std::cerr << "Profile clicked" << std::endl;
                 })
                 .AddButton("settings", "", "media/icons/settings.png", []() {
-                    std::cout << "Settings clicked" << std::endl;
+                    std::cerr << "Settings clicked" << std::endl;
                 })
                 .AddStretch(1.0f)
                 .AddButton("notifications", "", "media/icons/bell-icon.png", []() {
-                    std::cout << "Notifications clicked" << std::endl;
+                    std::cerr << "Notifications clicked" << std::endl;
                 })
                 .AddButton("messages", "", "media/icons/envelope-icon.png", []() {
-                    std::cout << "Messages clicked" << std::endl;
+                    std::cerr << "Messages clicked" << std::endl;
                 })
                 .Build();
 
@@ -236,20 +236,20 @@ namespace UltraCanvas {
                 .SetAppearance(ToolbarAppearance::Sidebar())
                 .SetDimensions(10, 10, 50, 220)
                 .AddButton("dashboard", "📊", "", []() {
-                    std::cout << "Dashboard clicked" << std::endl;
+                    std::cerr << "Dashboard clicked" << std::endl;
                 })
                 .AddButton("files", "📁", "", []() {
-                    std::cout << "Files clicked" << std::endl;
+                    std::cerr << "Files clicked" << std::endl;
                 })
                 .AddButton("users", "👥", "", []() {
-                    std::cout << "Users clicked" << std::endl;
+                    std::cerr << "Users clicked" << std::endl;
                 })
                 .AddSeparator()
                 .AddButton("analytics", "📈", "", []() {
-                    std::cout << "Analytics clicked" << std::endl;
+                    std::cerr << "Analytics clicked" << std::endl;
                 })
                 .AddButton("reports", "📋", "", []() {
-                    std::cout << "Reports clicked" << std::endl;
+                    std::cerr << "Reports clicked" << std::endl;
                 })
                 .Build();
 

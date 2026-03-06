@@ -289,7 +289,7 @@ likertChart->AddDataRow("Question 1", responses);
 
 // Add click handler
 likertChart->onBarClick = [](int row, const std::string& category) {
-    std::cout << "Clicked row " << row << ", category: " << category << std::endl;
+    std::cerr << "Clicked row " << row << ", category: " << category << std::endl;
 };
 ```
 

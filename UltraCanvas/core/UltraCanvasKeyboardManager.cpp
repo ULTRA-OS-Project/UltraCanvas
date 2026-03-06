@@ -62,7 +62,7 @@ namespace UltraCanvas {
         initialized = true;
 
         if (debugMode) {
-            std::cout << "UltraCanvas Keyboard Manager initialized" << std::endl;
+            std::cerr << "UltraCanvas Keyboard Manager initialized" << std::endl;
         }
 
         return true;
@@ -89,7 +89,7 @@ namespace UltraCanvas {
         initialized = false;
 
         if (debugMode) {
-            std::cout << "UltraCanvas Keyboard Manager shutdown" << std::endl;
+            std::cerr << "UltraCanvas Keyboard Manager shutdown" << std::endl;
         }
     }
 
@@ -296,7 +296,7 @@ namespace UltraCanvas {
         hotkeyMap[combo] = registeredHotkeys.size() - 1;
 
         if (debugMode) {
-            std::cout << "Registered hotkey: " << combo.ToString() << " (ID: " << id << ")" << std::endl;
+            std::cerr << "Registered hotkey: " << combo.ToString() << " (ID: " << id << ")" << std::endl;
         }
 
         return id;
@@ -317,7 +317,7 @@ namespace UltraCanvas {
                 registeredHotkeys.erase(it);
 
                 if (debugMode) {
-                    std::cout << "Unregistered hotkey ID: " << hotkeyId << std::endl;
+                    std::cerr << "Unregistered hotkey ID: " << hotkeyId << std::endl;
                 }
 
                 return true;
@@ -331,7 +331,7 @@ namespace UltraCanvas {
         hotkeyMap.clear();
 
         if (debugMode) {
-            std::cout << "Unregistered all hotkeys" << std::endl;
+            std::cerr << "Unregistered all hotkeys" << std::endl;
         }
     }
 
@@ -515,7 +515,7 @@ namespace UltraCanvas {
                     hotkey.callback();
 
                     if (debugMode) {
-                        std::cout << "Triggered hotkey: " << hotkey.combination.ToString() << std::endl;
+                        std::cerr << "Triggered hotkey: " << hotkey.combination.ToString() << std::endl;
                     }
                 }
             }

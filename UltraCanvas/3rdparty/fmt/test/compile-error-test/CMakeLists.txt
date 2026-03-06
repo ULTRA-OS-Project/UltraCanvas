@@ -188,7 +188,7 @@ if (CMAKE_CXX_STANDARD GREATER_EQUAL 20)
   " ERROR)
   expect_compile(print-stream-string-number-spec-error "
   #ifdef FMT_HAS_CONSTEVAL
-    fmt::print(std::cout, \"{:d}\", \"I am not a number\");
+    fmt::print(std::cerr, \"{:d}\", \"I am not a number\");
   #else
     #error
   #endif

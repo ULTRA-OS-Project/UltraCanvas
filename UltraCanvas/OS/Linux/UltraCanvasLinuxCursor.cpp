@@ -214,7 +214,7 @@ namespace UltraCanvas {
         XFlush(display);
 
 
-        std::cout << "UltraCanvas Linux: Custom cursor loaded from " << filename
+        std::cerr << "UltraCanvas Linux: Custom cursor loaded from " << filename
                   << " (hotspot: " << hotspotX << "," << hotspotY << ")" << std::endl;
         return true;
     }

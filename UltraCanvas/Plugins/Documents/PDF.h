@@ -410,12 +410,12 @@ UltraCanvas::RegisterPDFPlugin();
 UltraCanvas::ImageData pageImage;
 auto plugin = UltraCanvas::CreatePDFPlugin();
 if (plugin->LoadPage("document.pdf", 1, pageImage)) {
-    std::cout << "Loaded page 1: " << pageImage.width << "x" << pageImage.height << std::endl;
+    std::cerr << "Loaded page 1: " << pageImage.width << "x" << pageImage.height << std::endl;
 }
 
 // Get document info
 auto docInfo = plugin->GetDocumentInfo("document.pdf");
-std::cout << "Document: " << docInfo.title << " (" << docInfo.pageCount << " pages)" << std::endl;
+std::cerr << "Document: " << docInfo.title << " (" << docInfo.pageCount << " pages)" << std::endl;
 
 // Load thumbnail
 UltraCanvas::ImageData thumbnail;

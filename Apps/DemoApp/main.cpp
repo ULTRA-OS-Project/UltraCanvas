@@ -53,7 +53,7 @@ void HandleFatalError(const std::string& error) {
 // ===== SIGNAL HANDLERS =====
 #ifdef __linux__
 void SignalHandler(int signal) {
-    std::cout << "\nReceived signal " << signal << " - shutting down gracefully..." << std::endl;
+    std::cerr << "\nReceived signal " << signal << " - shutting down gracefully..." << std::endl;
 
     if (g_demoApp) {
         g_demoApp->Shutdown();
@@ -66,22 +66,22 @@ void SignalHandler(int signal) {
 
 // ===== SYSTEM INITIALIZATION =====
 bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
-    std::cout << "=== UltraCanvas Framework Demonstration Program ===" << std::endl;
-    std::cout << "Version: 1.0.0" << std::endl;
-    std::cout << "Build Date: " << __DATE__ << " " << __TIME__ << std::endl;
-    std::cout << "Platform: ";
+    std::cerr << "=== UltraCanvas Framework Demonstration Program ===" << std::endl;
+    std::cerr << "Version: 1.0.0" << std::endl;
+    std::cerr << "Build Date: " << __DATE__ << " " << __TIME__ << std::endl;
+    std::cerr << "Platform: ";
 
 #ifdef _WIN32
-    std::cout << "Windows";
+    std::cerr << "Windows";
 
         // Enable memory leak detection in debug builds
         #ifdef _DEBUG
             _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-            std::cout << " (Debug Build - Memory Leak Detection Enabled)";
+            std::cerr << " (Debug Build - Memory Leak Detection Enabled)";
         #endif
 
 #elif __linux__
-    std::cout << "Linux";
+    std::cerr << "Linux";
 
     // Setup signal handlers for graceful shutdown
     signal(SIGINT, SignalHandler);
@@ -93,23 +93,23 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
     }
 
 #elif __APPLE__
-    std::cout << "macOS";
+    std::cerr << "macOS";
     #else
-        std::cout << "Unknown";
+        std::cerr << "Unknown";
 #endif
 
-    std::cout << std::endl << std::endl;
+    std::cerr << std::endl << std::endl;
 
     try {
         // Initialize UltraCanvas framework
-        std::cout << "Initializing UltraCanvas framework..." << std::endl;
+        std::cerr << "Initializing UltraCanvas framework..." << std::endl;
 
         if (!g_app.Initialize(aName)) {
             HandleFatalError("Failed to initialize UltraCanvas application");
             return false;
         }
 //        RegisterCDRPlugin();
-        std::cout << "✓ UltraCanvas framework initialized successfully" << std::endl;
+        std::cerr << "✓ UltraCanvas framework initialized successfully" << std::endl;
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Framework initialization failed: ") + e.what());
         return false;
@@ -119,19 +119,19 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
 }
 
 void ShutdownSystem() {
-    std::cout << std::endl << "Shutting down system..." << std::endl;
+    std::cerr << std::endl << "Shutting down system..." << std::endl;
 
     // Shutdown demo application
     if (g_demoApp) {
         g_demoApp->Shutdown();
         g_demoApp.reset();
-        std::cout << "✓ Demo application shut down" << std::endl;
+        std::cerr << "✓ Demo application shut down" << std::endl;
     }
 }
 
 // ===== MAIN APPLICATION ENTRY POINT =====
 int main(int argc, char* argv[]) {
-    std::cout << std::endl;
+    std::cerr << std::endl;
     UltraCanvasApplication g_app;
     try {
         // Process command line arguments
@@ -144,27 +144,27 @@ int main(int argc, char* argv[]) {
 
             if (arg == "--verbose" || arg == "-v") {
                 verboseMode = true;
-                std::cout << "Verbose mode enabled" << std::endl;
+                std::cerr << "Verbose mode enabled" << std::endl;
             } else if (arg == "--test" || arg == "-t") {
                 testMode = true;
-                std::cout << "Test mode enabled" << std::endl;
+                std::cerr << "Test mode enabled" << std::endl;
             } else if (arg == "--component" || arg == "-c") {
                 if (i + 1 < argc) {
                     startupComponent = argv[++i];
-                    std::cout << "Startup component: " << startupComponent << std::endl;
+                    std::cerr << "Startup component: " << startupComponent << std::endl;
                 }
             } else if (arg == "--help" || arg == "-h") {
-                std::cout << "UltraCanvas Demo Application" << std::endl;
-                std::cout << "Usage: " << argv[0] << " [options]" << std::endl;
-                std::cout << "Options:" << std::endl;
-                std::cout << "  -v, --verbose     Enable verbose output" << std::endl;
-                std::cout << "  -t, --test        Run in test mode" << std::endl;
-                std::cout << "  -c, --component   Start with specific component selected" << std::endl;
-                std::cout << "  -h, --help        Show this help message" << std::endl;
+                std::cerr << "UltraCanvas Demo Application" << std::endl;
+                std::cerr << "Usage: " << argv[0] << " [options]" << std::endl;
+                std::cerr << "Options:" << std::endl;
+                std::cerr << "  -v, --verbose     Enable verbose output" << std::endl;
+                std::cerr << "  -t, --test        Run in test mode" << std::endl;
+                std::cerr << "  -c, --component   Start with specific component selected" << std::endl;
+                std::cerr << "  -h, --help        Show this help message" << std::endl;
                 return 0;
             } else {
-                std::cout << "Unknown argument: " << arg << std::endl;
-                std::cout << "Use --help for usage information" << std::endl;
+                std::cerr << "Unknown argument: " << arg << std::endl;
+                std::cerr << "Use --help for usage information" << std::endl;
             }
         }
 
@@ -175,7 +175,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Create and initialize demo application
-        std::cout << "Creating demo application..." << std::endl;
+        std::cerr << "Creating demo application..." << std::endl;
         g_demoApp = CreateDemoApplication();
 
         if (!g_demoApp) {
@@ -190,22 +190,22 @@ int main(int argc, char* argv[]) {
 
         // Auto-select startup component if specified
         if (!startupComponent.empty()) {
-            std::cout << "Auto-selecting component: " << startupComponent << std::endl;
+            std::cerr << "Auto-selecting component: " << startupComponent << std::endl;
             // Implementation would go here to programmatically select the component
         }
 
-        std::cout << std::endl;
-        std::cout << "=== Demo Application Ready ===" << std::endl;
-        std::cout << "Instructions:" << std::endl;
-        std::cout << "• Use the tree view on the left to browse component categories" << std::endl;
-        std::cout << "• Click on individual components to see implementation examples" << std::endl;
-        std::cout << "• Status icons indicate implementation progress:" << std::endl;
-        std::cout << "  ✓ Fully implemented" << std::endl;
-        std::cout << "  ⚠ Partially implemented" << std::endl;
-        std::cout << "  ✗ Not implemented" << std::endl;
-        std::cout << "  📋 Planned for future release" << std::endl;
-        std::cout << "• Close the window or press Ctrl+C to exit" << std::endl;
-        std::cout << std::endl;
+        std::cerr << std::endl;
+        std::cerr << "=== Demo Application Ready ===" << std::endl;
+        std::cerr << "Instructions:" << std::endl;
+        std::cerr << "• Use the tree view on the left to browse component categories" << std::endl;
+        std::cerr << "• Click on individual components to see implementation examples" << std::endl;
+        std::cerr << "• Status icons indicate implementation progress:" << std::endl;
+        std::cerr << "  ✓ Fully implemented" << std::endl;
+        std::cerr << "  ⚠ Partially implemented" << std::endl;
+        std::cerr << "  ✗ Not implemented" << std::endl;
+        std::cerr << "  📋 Planned for future release" << std::endl;
+        std::cerr << "• Close the window or press Ctrl+C to exit" << std::endl;
+        std::cerr << std::endl;
 
         // Run the demo application
         g_demoApp->Run();

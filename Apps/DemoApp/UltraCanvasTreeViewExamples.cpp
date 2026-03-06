@@ -51,7 +51,7 @@ namespace UltraCanvas {
         fileTree->AddNode("drive_c", pictures);
 
         fileTree->onNodeSelected = [](TreeNode* node) {
-            std::cout << "Selected: " << node->data.text << std::endl;
+            std::cerr << "Selected: " << node->data.text << std::endl;
         };
 
         root->Expand();

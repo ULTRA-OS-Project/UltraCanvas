@@ -213,17 +213,9 @@ file(GLOB ULTRACANVAS_HEADERS
 )
 
 # Platform-specific sources
-if(NOT WIN32)
-    file(GLOB ULTRACANVAS_PLATFORM_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.cpp
-    )
-else()
-    # Windows: only include working platform files (Window/Application headers are inline stubs)
-    set(ULTRACANVAS_PLATFORM_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/UltraCanvasWindowsNativeDialogs.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/UltraCanvasWindowsWindowImpl.cpp
-    )
-endif()
+file(GLOB ULTRACANVAS_PLATFORM_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.cpp
+)
 
 # macOS needs Objective-C++ files
 if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
@@ -326,13 +318,16 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     )
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
-            d2d1
-            dwrite
-            windowscodecs
             gdi32
             user32
             ole32
+            oleaut32
             uuid
+            shell32
+            comdlg32
+            comctl32
+            imm32
+            dwmapi
     )
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
@@ -364,6 +359,10 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
         ULTRACANVAS_PLATFORM_${ULTRACANVAS_PLATFORM}=1
         $<$<CXX_COMPILER_ID:MSVC>:_USE_MATH_DEFINES>
         $<$<CXX_COMPILER_ID:MSVC>:NOMINMAX>
+        $<$<BOOL:${WIN32}>:WIN32_LEAN_AND_MEAN>
+        $<$<BOOL:${WIN32}>:NOMINMAX>
+        $<$<BOOL:${WIN32}>:UNICODE>
+        $<$<BOOL:${WIN32}>:_UNICODE>
     PRIVATE
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
 )

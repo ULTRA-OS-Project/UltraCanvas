@@ -292,7 +292,7 @@ button->SetClickable(true);
 button->SetTintColor(Color(200, 200, 200));
 
 button->onImageClicked = []() {
-    std::cout << "Image clicked!" << std::endl;
+    std::cerr << "Image clicked!" << std::endl;
 };
 
 button->onHoverEnter = [button]() {
@@ -311,7 +311,7 @@ auto draggable = CreateImageFromFile("icon", 3, 50, 50, 32, 32, "icon.png");
 draggable->SetDraggable(true);
 
 draggable->onImageDragged = [](const Point2Di& delta) {
-    std::cout << "Dragged: " << delta.x << ", " << delta.y << std::endl;
+    std::cerr << "Dragged: " << delta.x << ", " << delta.y << std::endl;
 };
 ```
 
@@ -321,7 +321,7 @@ draggable->onImageDragged = [](const Point2Di& delta) {
 auto gallery = CreateImageElement("photo", 0, 0, 400, 300);
 
 gallery->onImageLoaded = []() {
-    std::cout << "Image loaded successfully" << std::endl;
+    std::cerr << "Image loaded successfully" << std::endl;
 };
 
 gallery->onImageLoadFailed = [](const std::string& error) {

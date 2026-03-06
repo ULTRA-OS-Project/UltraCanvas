@@ -177,7 +177,7 @@ public:
 
                 styleIndex = (styleIndex + 1) % 3;
                 stockChart->SetCandleDisplayStyle(styles[styleIndex]);
-                std::cout << "Switched to " << styleNames[styleIndex] << " style" << std::endl;
+                std::cerr << "Switched to " << styleNames[styleIndex] << " style" << std::endl;
                 break;
             }
 
@@ -186,7 +186,7 @@ public:
                 static bool volumeVisible = true;
                 volumeVisible = !volumeVisible;
                 stockChart->SetShowVolumePanel(volumeVisible);
-                std::cout << "Volume display: " << (volumeVisible ? "enabled" : "disabled") << std::endl;
+                std::cerr << "Volume display: " << (volumeVisible ? "enabled" : "disabled") << std::endl;
                 break;
             }
 
@@ -195,19 +195,19 @@ public:
                 static bool maVisible = true;
                 maVisible = !maVisible;
                 stockChart->SetShowMovingAverage(maVisible, 20);
-                std::cout << "Moving average: " << (maVisible ? "enabled" : "disabled") << std::endl;
+                std::cerr << "Moving average: " << (maVisible ? "enabled" : "disabled") << std::endl;
                 break;
             }
 
             case UCKeys::R: {
                 // Reset zoom and pan (would need to implement in base class)
-                std::cout << "Chart view reset" << std::endl;
+                std::cerr << "Chart view reset" << std::endl;
                 break;
             }
 
             case UCKeys::G: {
                 // Toggle grid (would access through base class method)
-                std::cout << "Grid display toggled" << std::endl;
+                std::cerr << "Grid display toggled" << std::endl;
                 static bool gridEnabled = true;
                 gridEnabled = !gridEnabled;
                 stockChart->SetGridEnabled(gridEnabled);
@@ -263,7 +263,7 @@ public:
         // Refresh chart
         stockChart->RequestRedraw();
 
-        std::cout << "Added new trading day: " << newDate
+        std::cerr << "Added new trading day: " << newDate
                   << " Close: $" << std::fixed << std::setprecision(2) << newClose << std::endl;
     }
 };
@@ -277,8 +277,8 @@ int main() {
         return -1;
     }
 
-    std::cout << "Financial Chart Example initialized successfully!" << std::endl;
-    std::cout << "Use keyboard controls to interact with the chart." << std::endl;
+    std::cerr << "Financial Chart Example initialized successfully!" << std::endl;
+    std::cerr << "Use keyboard controls to interact with the chart." << std::endl;
 
     app.Run();
 

@@ -154,7 +154,7 @@ public:
             return false;
         }
         
-        std::cout << "[UltraCanvas3DModelElement] Loading 3D model: " << filePath << std::endl;
+        std::cerr << "[UltraCanvas3DModelElement] Loading 3D model: " << filePath << std::endl;
         
         // Load model data based on format
         bool success = LoadModelData(filePath, modelFormat);
@@ -174,7 +174,7 @@ public:
                 onModelLoaded();
             }
             
-            std::cout << "[UltraCanvas3DModelElement] Model loaded successfully. Vertices: " 
+            std::cerr << "[UltraCanvas3DModelElement] Model loaded successfully. Vertices: "
                       << modelData.vertexCount << ", Faces: " << modelData.faceCount << std::endl;
         } else {
             SetError("Failed to load 3D model data");

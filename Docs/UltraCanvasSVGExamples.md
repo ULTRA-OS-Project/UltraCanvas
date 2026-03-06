@@ -276,7 +276,7 @@ public:
     }
 
     void OnSVGClick() {
-        std::cout << "SVG clicked!" << std::endl;
+        std::cerr << "SVG clicked!" << std::endl;
     }
 };
 ```

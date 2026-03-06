@@ -1,181 +1,153 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.h
-// Windows platform application implementation for UltraCanvas Framework
-// TODO: Implement full Windows application backend (cpp file is WIP)
+// Windows platform implementation for UltraCanvas Framework
+// Version: 1.0.0
+// Last Modified: 2026-03-06
+// Author: UltraCanvas Framework
 #pragma once
 
 #ifndef ULTRACANVAS_WINDOWS_APPLICATION_H
 #define ULTRACANVAS_WINDOWS_APPLICATION_H
 
-// ===== WINDOWS INCLUDES =====
+// ===== CORE INCLUDES =====
+#include "../../include/UltraCanvasApplication.h"
+#include "../../include/UltraCanvasCommonTypes.h"
+#include "../../include/UltraCanvasEvent.h"
+#include "../../include/UltraCanvasWindow.h"
+
+// ===== WINDOWS PLATFORM INCLUDES =====
 #ifndef WIN32_LEAN_AND_MEAN
-    #define WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
 #endif
 #ifndef NOMINMAX
-    #define NOMINMAX
+#define NOMINMAX
 #endif
 #include <windows.h>
-#include <d2d1.h>
-#include <dwrite.h>
-#include <wincodec.h>
+#include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM macros
+#include <imm.h>       // Input Method Editor support
 
-// Undefine problematic macros AFTER including windows.h
-#ifdef RGB
-    #undef RGB
+// Undefine Windows macros that conflict with our method names
+#ifdef DrawText
+#undef DrawText
 #endif
 #ifdef CreateWindow
-    #undef CreateWindow
-#endif
-#ifdef DrawText
-    #undef DrawText
+#undef CreateWindow
 #endif
 #ifdef CreateDialog
-    #undef CreateDialog
+#undef CreateDialog
+#endif
+#ifdef RGB
+#undef RGB
 #endif
 
 // ===== STANDARD INCLUDES =====
 #include <memory>
-#include <string>
 #include <vector>
 #include <unordered_map>
-#include <mutex>
-#include <thread>
+#include <functional>
 #include <chrono>
 #include <queue>
+#include <mutex>
 #include <condition_variable>
+#include <string>
 
-// ===== ULTRACANVAS INCLUDES =====
-#include "../../include/UltraCanvasCommonTypes.h"
-#include "../../include/UltraCanvasEvent.h"
-
-// Forward declare base class
 namespace UltraCanvas {
-    class UltraCanvasBaseApplication;
+
+    // Forward declarations
     class UltraCanvasWindowsWindow;
-}
 
-// Include base after forward declarations
-#include "../../include/UltraCanvasApplication.h"
+    struct MouseClickInfo {
+        HWND window = nullptr;
+        DWORD lastClickTime = 0;
+        int lastClickX = 0;
+        int lastClickY = 0;
+        UINT lastButton = 0;
+        DWORD doubleClickTime = 250;  // milliseconds
+        int doubleClickDistance = 5;   // pixels
+    };
 
-namespace UltraCanvas {
+// ===== WINDOWS APPLICATION CLASS =====
+    class UltraCanvasWindowsApplication : public UltraCanvasBaseApplication {
+    private:
+        static UltraCanvasWindowsApplication* instance;
 
-// ===== WINDOWS APPLICATION CLASS (stub - implementations are WIP) =====
-class UltraCanvasWindowsApplication : public UltraCanvasBaseApplication {
-private:
-    static inline UltraCanvasWindowsApplication* instance = nullptr;
+        // ===== WIN32 RESOURCES =====
+        HINSTANCE hInstance;
+        ATOM windowClassAtom;
 
-    HINSTANCE hInstance = nullptr;
-    std::wstring windowClassName = L"UltraCanvasWindow";
+        // ===== CURSOR CACHE =====
+        std::unordered_map<UCMouseCursor, HCURSOR> cursors;
 
-    ID2D1Factory* d2dFactory = nullptr;
-    IDWriteFactory* dwriteFactory = nullptr;
-    IWICImagingFactory* wicFactory = nullptr;
+        // ===== DOUBLE-CLICK TRACKING =====
+        MouseClickInfo mouseClickInfo;
 
-    std::unordered_map<HWND, UltraCanvasWindowsWindow*> windowMap;
-    std::mutex windowMapMutex;
+        // ===== UTF-16 SURROGATE STATE (for WM_CHAR) =====
+        wchar_t highSurrogate = 0;
 
-public:
-    UltraCanvasWindowsApplication() { instance = this; }
-    ~UltraCanvasWindowsApplication() { if (instance == this) instance = nullptr; }
+        // ===== WINDOW CLASS NAME =====
+        static const wchar_t* WINDOW_CLASS_NAME;
 
-    static UltraCanvasWindowsApplication* GetInstance() { return instance; }
+    public:
+        // ===== CONSTRUCTOR & DESTRUCTOR =====
+        UltraCanvasWindowsApplication();
 
-    // ===== OVERRIDES FROM BASE =====
-    bool InitializeNative() override {
-        // Set console to UTF-8 for proper Unicode output
-        SetConsoleOutputCP(CP_UTF8);
-
-        hInstance = GetModuleHandle(nullptr);
-        if (!hInstance) return false;
-
-        // Initialize COM (needed for native file dialogs)
-        HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-        if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) return false;
-
-        // Register window class
-        WNDCLASSEXW wc = {};
-        wc.cbSize = sizeof(WNDCLASSEXW);
-        wc.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
-        wc.lpfnWndProc = WindowProc;
-        wc.hInstance = hInstance;
-        wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-        wc.hbrBackground = static_cast<HBRUSH>(GetStockObject(WHITE_BRUSH));
-        wc.lpszClassName = windowClassName.c_str();
-        RegisterClassExW(&wc);
-
-        initialized = true;
-        return true;
-    }
-    void ShutdownNative() override {
-        CoUninitialize();
-    }
-    void CollectAndProcessNativeEvents() override {
-        MSG msg;
-        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-            if (msg.message == WM_QUIT) {
-                running = false;
-                return;
-            }
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
+        static UltraCanvasWindowsApplication* GetInstance() {
+            return instance;
         }
-    }
-    void RunInEventLoop() override {
-        ::Sleep(1); // Yield CPU when idle to prevent busy-waiting
-    }
-    void RunBeforeMainLoop() override {}
-    void CaptureMouseNative() override {}
-    void ReleaseMouseNative() override {}
-    bool SelectMouseCursorNative(UltraCanvasWindowBase*, UCMouseCursor) override { return true; }
-    bool SelectMouseCursorNative(UltraCanvasWindowBase*, UCMouseCursor, const char*, int, int) override { return true; }
 
-    // ===== FACTORY ACCESS =====
-    ID2D1Factory* GetD2DFactory() const { return d2dFactory; }
-    IDWriteFactory* GetDWriteFactory() const { return dwriteFactory; }
-    IWICImagingFactory* GetWICFactory() const { return wicFactory; }
-    HINSTANCE GetHInstance() const { return hInstance; }
-    const std::wstring& GetWindowClassName() const { return windowClassName; }
+        // ===== WINDOWS-SPECIFIC METHODS =====
+        HINSTANCE GetHInstance() const { return hInstance; }
+        ATOM GetWindowClassAtom() const { return windowClassAtom; }
+        static const wchar_t* GetWindowClassName() { return WINDOW_CLASS_NAME; }
 
-    // ===== WINDOW REGISTRATION =====
-    void RegisterWindowHandle(HWND hwnd, UltraCanvasWindowsWindow* window) {
-        std::lock_guard<std::mutex> lock(windowMapMutex);
-        windowMap[hwnd] = window;
-    }
-    void UnregisterWindowHandle(HWND hwnd) {
-        std::lock_guard<std::mutex> lock(windowMapMutex);
-        windowMap.erase(hwnd);
-    }
-    UltraCanvasWindowsWindow* FindWindowByHandle(HWND hwnd) {
-        std::lock_guard<std::mutex> lock(windowMapMutex);
-        auto it = windowMap.find(hwnd);
-        return (it != windowMap.end()) ? it->second : nullptr;
-    }
+        void ProcessWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-    // ===== CLIPBOARD =====
-    std::string GetClipboardTextNative() { return ""; }
-    void SetClipboardTextNative(const std::string&) {}
+        /**
+         * Set the maximum time interval (in milliseconds) between clicks
+         * to be considered a double-click
+         */
+        void SetDoubleClickTime(unsigned int milliseconds) {
+            mouseClickInfo.doubleClickTime = milliseconds;
+        }
 
-    // ===== WINDOW PROCEDURE =====
-    // Declared here, defined in UltraCanvasWindowsWindow.h (after Window class is complete)
-    static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+        /**
+         * Set the maximum distance (in pixels) the mouse can move between
+         * clicks to be considered a double-click
+         */
+        void SetDoubleClickDistance(int pixels) {
+            mouseClickInfo.doubleClickDistance = pixels;
+        }
 
-    // ===== STRING CONVERSION =====
-    static std::wstring StringToWString(const std::string& str) {
-        if (str.empty()) return L"";
-        int needed = MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), nullptr, 0);
-        if (needed <= 0) return L"";
-        std::wstring result(needed, 0);
-        MultiByteToWideChar(CP_UTF8, 0, str.data(), static_cast<int>(str.size()), result.data(), needed);
-        return result;
-    }
-    static std::string WStringToString(const std::wstring& wstr) {
-        if (wstr.empty()) return "";
-        int needed = WideCharToMultiByte(CP_UTF8, 0, wstr.data(), static_cast<int>(wstr.size()), nullptr, 0, nullptr, nullptr);
-        if (needed <= 0) return "";
-        std::string result(needed, 0);
-        WideCharToMultiByte(CP_UTF8, 0, wstr.data(), static_cast<int>(wstr.size()), result.data(), needed, nullptr, nullptr);
-        return result;
-    }
-};
+        bool SelectMouseCursorNative(UltraCanvasWindowBase* win, UCMouseCursor cur) override;
+        bool SelectMouseCursorNative(UltraCanvasWindowBase* win, UCMouseCursor cur,
+                                     const char* filename, int hotspotX, int hotspotY) override;
+
+        // ===== UTF-8 CONVERSION UTILITIES =====
+        static std::wstring Utf8ToUtf16(const std::string& utf8);
+        static std::string Utf16ToUtf8(const std::wstring& utf16);
+
+    protected:
+        // ===== INHERITED FROM BASE APPLICATION =====
+        bool InitializeNative() override;
+        void ShutdownNative() override;
+        void CaptureMouseNative() override;
+        void ReleaseMouseNative() override;
+        void CollectAndProcessNativeEvents() override;
+
+    private:
+        // ===== INTERNAL INITIALIZATION =====
+        bool RegisterWindowClass();
+        void UnregisterWindowClass();
+
+        // ===== WNDPROC =====
+        static LRESULT CALLBACK StaticWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+        // ===== EVENT CONVERSION =====
+        UCKeys ConvertVKToUCKey(WPARAM vk);
+        UCMouseButton ConvertWin32ButtonToUCButton(UINT msg, WPARAM wParam);
+
+        // ===== CURSOR LOADING =====
+        HCURSOR LoadCursorFromImageFile(const char* filename, int hotspotX, int hotspotY);
+    };
 
 } // namespace UltraCanvas
 

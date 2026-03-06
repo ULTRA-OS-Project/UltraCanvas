@@ -288,7 +288,7 @@ tabs->tabBarColor = Color(240, 248, 255);
 
 // Set up event handlers
 tabs->onTabChange = [](int oldIndex, int newIndex) {
-    std::cout << "Tab changed from " << oldIndex << " to " << newIndex << std::endl;
+    std::cerr << "Tab changed from " << oldIndex << " to " << newIndex << std::endl;
 };
 
 tabs->onTabClose = [](int index) {
@@ -299,7 +299,7 @@ tabs->onTabClose = [](int index) {
 // Enable reordering
 tabs->allowTabReordering = true;
 tabs->onTabReorder = [](int from, int to) {
-    std::cout << "Tab moved from " << from << " to " << to << std::endl;
+    std::cerr << "Tab moved from " << from << " to " << to << std::endl;
 };
 ```
 

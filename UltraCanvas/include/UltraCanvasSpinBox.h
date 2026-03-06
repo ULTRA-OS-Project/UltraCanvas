@@ -753,7 +753,7 @@ spinBox->SetValue(50);
 
 // Set up callbacks
 spinBox->onValueChanged = [](int newValue) {
-    std::cout << "Value changed to: " << newValue << std::endl;
+    std::cerr << "Value changed to: " << newValue << std::endl;
 };
 
 // Create a spin box with custom appearance

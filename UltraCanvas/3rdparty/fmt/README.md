@@ -403,7 +403,7 @@ platforms.
 The main issue with iostreams is best illustrated with an example:
 
 ``` c++
-std::cout << std::setprecision(2) << std::fixed << 1.23456 << "\n";
+std::cerr << std::setprecision(2) << std::fixed << 1.23456 << "\n";
 ```
 
 which is a lot of typing compared to printf:

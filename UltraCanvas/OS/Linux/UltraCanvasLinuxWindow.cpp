@@ -16,13 +16,13 @@ namespace UltraCanvas {
             : xWindow(0)
             , cairoSurface(nullptr) {
 
-        std::cout << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
+        std::cerr << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
     }
 
 // ===== WINDOW CREATION =====
     bool UltraCanvasLinuxWindow::CreateNative() {
         if (_created) {
-            std::cout << "UltraCanvas Linux: Window already created" << std::endl;
+            std::cerr << "UltraCanvas Linux: Window already created" << std::endl;
             return true;
         }
         auto application = UltraCanvasApplication::GetInstance();
@@ -31,7 +31,7 @@ namespace UltraCanvas {
             return false;
         }
 
-        std::cout << "UltraCanvas Linux: Creating X11 window..." << std::endl;
+        std::cerr << "UltraCanvas Linux: Creating X11 window..." << std::endl;
 
         if (!CreateXWindow()) {
             std::cerr << "UltraCanvas Linux: Failed to create X11 window" << std::endl;
@@ -49,7 +49,7 @@ namespace UltraCanvas {
 
         try {
             renderContext = std::make_unique<RenderContextCairo>(cairoSurface, config_.width, config_.height, true);
-            std::cout << "UltraCanvas Linux: Render context created successfully" << std::endl;
+            std::cerr << "UltraCanvas Linux: Render context created successfully" << std::endl;
         } catch (const std::exception& e) {
             std::cerr << "UltraCanvas Linux: Failed to create render context: " << e.what() << std::endl;
             DestroyCairoSurface();
@@ -58,7 +58,7 @@ namespace UltraCanvas {
             return false;
         }
 
-        std::cout << "UltraCanvas Linux: Window created successfully!" << std::endl;
+        std::cerr << "UltraCanvas Linux: Window created successfully!" << std::endl;
         return true;
     }
 
@@ -104,7 +104,7 @@ namespace UltraCanvas {
 //        unsigned long valueMask = CWBackPixel | CWBorderPixel | CWColormap | CWEventMask | CWBackingStore;
         unsigned long valueMask = CWColormap | CWEventMask | CWBackingStore;
 
-        std::cout << "UltraCanvas Linux: Creating X11 window with dimensions: "
+        std::cerr << "UltraCanvas Linux: Creating X11 window with dimensions: "
                   << config_.width << "x" << config_.height
                   << " at position: " << config_.x << "," << config_.y << std::endl;
 
@@ -127,7 +127,7 @@ namespace UltraCanvas {
             return false;
         }
 
-        std::cout << "UltraCanvas Linux: X11 window created with ID: " << xWindow << std::endl;
+        std::cerr << "UltraCanvas Linux: X11 window created with ID: " << xWindow << std::endl;
 
         SetWindowTitle(config_.title);
         SetWindowHints();
@@ -223,7 +223,7 @@ namespace UltraCanvas {
             return false;
         }
 
-        std::cout << "UltraCanvas Linux: Cairo surface and context created successfully" << std::endl;
+        std::cerr << "UltraCanvas Linux: Cairo surface and context created successfully" << std::endl;
         return true;
     }
     bool UltraCanvasLinuxWindow::CreateXIC() {        
@@ -285,7 +285,7 @@ namespace UltraCanvas {
             return false;
         }
 
-        std::cout << "UltraCanvas: XIC created for window " << xWindow << std::endl;
+        std::cerr << "UltraCanvas: XIC created for window " << xWindow << std::endl;
         return true;
     }
 
@@ -298,14 +298,14 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxWindow::DestroyCairoSurface() {
         if (cairoSurface) {
-            std::cout << "UltraCanvas Linux: Destroying Cairo surface..." << std::endl;
+            std::cerr << "UltraCanvas Linux: Destroying Cairo surface..." << std::endl;
             cairo_surface_destroy(cairoSurface);
             cairoSurface = nullptr;
         }
     }
 
     void UltraCanvasLinuxWindow::DestroyNative() {
-        std::cout << "UltraCanvas Linux: Destroying window..." << std::endl;
+        std::cerr << "UltraCanvas Linux: Destroying window..." << std::endl;
 
         renderContext.reset();
         DestroyCairoSurface();
@@ -313,12 +313,12 @@ namespace UltraCanvas {
         auto application = UltraCanvasApplication::GetInstance();
         if (xWindow && application && application->GetDisplay()) {        
             DestroyXIC();
-            std::cout << "UltraCanvas Linux: Destroying X11 window..." << std::endl;
+            std::cerr << "UltraCanvas Linux: Destroying X11 window..." << std::endl;
             XDestroyWindow(application->GetDisplay(), xWindow);
             XSync(application->GetDisplay(), False);
             xWindow = 0;
         }
-        std::cout << "UltraCanvas Linux: Window destroyed successfully" << std::endl;
+        std::cerr << "UltraCanvas Linux: Window destroyed successfully" << std::endl;
     }
 
 
@@ -363,7 +363,7 @@ namespace UltraCanvas {
             // CRITICAL: Flush the X11 display to ensure changes are sent to the X server
             XFlush(display);
 
-            std::cout << "UltraCanvas Linux: Window title set to: \"" << title << "\"" << std::endl;
+            std::cerr << "UltraCanvas Linux: Window title set to: \"" << title << "\"" << std::endl;
         }
     }
 
@@ -404,7 +404,7 @@ namespace UltraCanvas {
             return;
         }
 
-        std::cout << "UltraCanvas Linux: Showing window..." << std::endl;
+        std::cerr << "UltraCanvas Linux: Showing window..." << std::endl;
         auto application = UltraCanvasApplication::GetInstance();
 
         XMapWindow(application->GetDisplay(), xWindow);
@@ -426,7 +426,7 @@ namespace UltraCanvas {
             return;
         }
 
-        std::cout << "UltraCanvas Linux: Hiding window..." << std::endl;
+        std::cerr << "UltraCanvas Linux: Hiding window..." << std::endl;
         auto application = UltraCanvasApplication::GetInstance();
         XUnmapWindow(application->GetDisplay(), xWindow);
         XFlush(application->GetDisplay());
@@ -603,7 +603,7 @@ namespace UltraCanvas {
             renderContext->ResizeStagingSurface(w,h);
         }
 
-        std::cout << "UltraCanvas Linux: Cairo surface updated successfully" << std::endl;
+        std::cerr << "UltraCanvas Linux: Cairo surface updated successfully" << std::endl;
     }
 
     void UltraCanvasLinuxWindow::HandleResizeEvent(int w, int h) {

@@ -182,11 +182,11 @@ strengthMeter->SetConfig(config);
 
 // Callbacks
 strengthMeter->onStrengthChanged = [](float strength) {
-    std::cout << "Strength: " << strength << "%" << std::endl;
+    std::cerr << "Strength: " << strength << "%" << std::endl;
 };
 
 strengthMeter->onStrengthLevelChanged = [](const std::string& level) {
-    std::cout << "Level: " << level << std::endl;
+    std::cerr << "Level: " << level << std::endl;
 };
 
 window->AddElement(passwordInput.get());

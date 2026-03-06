@@ -35,7 +35,7 @@ namespace UltraCanvas {
 
 // ===== INITIALIZATION =====
     bool UltraCanvasLinuxClipboard::Initialize() {
-        std::cout << "UltraCanvas: Initializing Linux clipboard..." << std::endl;
+        std::cerr << "UltraCanvas: Initializing Linux clipboard..." << std::endl;
 
         // Get X11 display from the main application
         if (!GetDisplayFromApplication()) {
@@ -59,7 +59,7 @@ namespace UltraCanvas {
             lastClipboardText = initialText;
         }
 
-        std::cout << "UltraCanvas: Linux clipboard initialized successfully" << std::endl;
+        std::cerr << "UltraCanvas: Linux clipboard initialized successfully" << std::endl;
         return true;
     }
 
@@ -70,7 +70,7 @@ namespace UltraCanvas {
         }
 
         display = nullptr;
-        std::cout << "UltraCanvas: Linux clipboard shut down" << std::endl;
+        std::cerr << "UltraCanvas: Linux clipboard shut down" << std::endl;
     }
 
     bool UltraCanvasLinuxClipboard::GetDisplayFromApplication() {
@@ -141,13 +141,13 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasLinuxClipboard::SetClipboardText(const std::string& text) {
-        std::cout << "UltraCanvas: Setting clipboard text: \"" << text.substr(0, 50) << "...\"" << std::endl;
+        std::cerr << "UltraCanvas: Setting clipboard text: \"" << text.substr(0, 50) << "...\"" << std::endl;
 
         bool success = WriteTextToClipboard(atomClipboard, text);
         if (success) {
-            std::cout << "UltraCanvas: Successfully acquired ownership of CLIPBOARD" << std::endl;
+            std::cerr << "UltraCanvas: Successfully acquired ownership of CLIPBOARD" << std::endl;
         } else {
-            std::cout << "UltraCanvas: Failed to set clipboard text" << std::endl;
+            std::cerr << "UltraCanvas: Failed to set clipboard text" << std::endl;
         }
 
         return success;
@@ -187,7 +187,7 @@ namespace UltraCanvas {
             if (currentText != lastClipboardText) {
                 lastClipboardText = currentText;
                 clipboardChanged = true;
-                std::cout << "UltraCanvas: Received selection data (" << currentText.length()
+                std::cerr << "UltraCanvas: Received selection data (" << currentText.length()
                           << " bytes, format: UTF8_STRING)" << std::endl;
             }
         }
@@ -444,7 +444,7 @@ namespace UltraCanvas {
         response.property = request.property;
         response.time = request.time;
 
-        std::cout << "UltraCanvas: Received SelectionRequest from window " << request.requestor
+        std::cerr << "UltraCanvas: Received SelectionRequest from window " << request.requestor
                   << " for target " << AtomToString(request.target) << std::endl;
 
         bool success = false;
@@ -467,7 +467,7 @@ namespace UltraCanvas {
             );
 
             success = true;
-            std::cout << "UltraCanvas: Provided TARGETS list" << std::endl;
+            std::cerr << "UltraCanvas: Provided TARGETS list" << std::endl;
 
         } else if (IsTextFormat(request.target) && !selectionData.empty()) {
             // Client wants text data
@@ -478,12 +478,12 @@ namespace UltraCanvas {
             );
 
             success = true;
-            std::cout << "UltraCanvas: Provided text data (" << selectionData.size() << " bytes)" << std::endl;
+            std::cerr << "UltraCanvas: Provided text data (" << selectionData.size() << " bytes)" << std::endl;
 
         } else {
             // Unsupported target or no data
             response.property = None;
-            std::cout << "UltraCanvas: Unsupported target or no data available" << std::endl;
+            std::cerr << "UltraCanvas: Unsupported target or no data available" << std::endl;
         }
 
         // Send response
@@ -494,7 +494,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxClipboard::HandleSelectionClear(const XSelectionClearEvent & clear) {
-        std::cout << "UltraCanvas: Lost ownership of "
+        std::cerr << "UltraCanvas: Lost ownership of "
                   << AtomToString(clear.selection) << std::endl;
 
         if (clear.selection == atomClipboard) {
@@ -507,7 +507,7 @@ namespace UltraCanvas {
         if (!ownsClipboard && !ownsPrimary) {
             clipboardTextData.clear();
             selectionData.clear();
-            std::cout << "UltraCanvas: Cleared clipboard data (lost all ownership)" << std::endl;
+            std::cerr << "UltraCanvas: Cleared clipboard data (lost all ownership)" << std::endl;
         }
     }
 

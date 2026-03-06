@@ -20,7 +20,7 @@ namespace UltraCanvas {
     }
 
     bool InfoWindow::Initialize() {
-        std::cout << "Initializing Info Window..." << std::endl;
+        std::cerr << "Initializing Info Window..." << std::endl;
 
         // Configure the info window
         WindowConfig config;
@@ -202,7 +202,7 @@ namespace UltraCanvas {
     }
 
     void InfoWindow::OnOkButtonClick() {
-        std::cout << "OK button clicked - closing info window" << std::endl;
+        std::cerr << "OK button clicked - closing info window" << std::endl;
 
         // Call the callback if set
         if (onOkCallback) {
@@ -220,7 +220,7 @@ namespace UltraCanvas {
             return; // Already shown
         }
 
-        std::cout << "Showing application info window..." << std::endl;
+        std::cerr << "Showing application info window..." << std::endl;
 
         // Create the info window
         infoWindow = std::make_shared<InfoWindow>();
@@ -246,7 +246,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDemoApplication::CloseInfoWindow() {
-        std::cout << "Closing info window..." << std::endl;
+        std::cerr << "Closing info window..." << std::endl;
 
         if (infoWindow) {
             infoWindow->RequestDelete();

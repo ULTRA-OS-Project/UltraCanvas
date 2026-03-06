@@ -186,7 +186,7 @@ namespace UltraCanvas {
             , contentView(nullptr)
             , windowDelegate(nullptr)
             , cairoSurface(nullptr) {
-        std::cout << "UltraCanvas macOS: Window constructor started" << std::endl;
+        std::cerr << "UltraCanvas macOS: Window constructor started" << std::endl;
     }
 
 
@@ -212,14 +212,14 @@ namespace UltraCanvas {
                 [nsWindow close];
                 nsWindow = nullptr;
             }
-            std::cout << "UltraCanvas macOS: Native Window destroyed" << std::endl;
+            std::cerr << "UltraCanvas macOS: Native Window destroyed" << std::endl;
         }
     }
 
     // ===== WINDOW CREATION =====
     bool UltraCanvasMacOSWindow::CreateNative() {
         if (_created) {
-            std::cout << "UltraCanvas macOS: Window already created" << std::endl;
+            std::cerr << "UltraCanvas macOS: Window already created" << std::endl;
             return true;
         }
 
@@ -229,7 +229,7 @@ namespace UltraCanvas {
             return false;
         }
 
-        std::cout << "UltraCanvas macOS: Creating NSWindow..." << std::endl;
+        std::cerr << "UltraCanvas macOS: Creating NSWindow..." << std::endl;
 
         @autoreleasepool {
             if (!CreateNSWindow()) {
@@ -246,7 +246,7 @@ namespace UltraCanvas {
             try {
                 renderContext = std::make_unique<RenderContextCairo>(
                     cairoSurface, config_.width, config_.height, false);
-                std::cout << "UltraCanvas macOS: Render context created successfully" << std::endl;
+                std::cerr << "UltraCanvas macOS: Render context created successfully" << std::endl;
             } catch (const std::exception& e) {
                 std::cerr << "UltraCanvas macOS: Failed to create render context: " << e.what() << std::endl;
                 DestroyCairoSurface();
@@ -254,7 +254,7 @@ namespace UltraCanvas {
                 return false;
             }
 
-            std::cout << "UltraCanvas macOS: CreateNative Native Window created successfully!" << std::endl;
+            std::cerr << "UltraCanvas macOS: CreateNative Native Window created successfully!" << std::endl;
             return true;
         }
     }
@@ -304,7 +304,7 @@ namespace UltraCanvas {
             windowDelegate = (__bridge_retained void*)delegate;
             [nsWindow setDelegate:delegate];
 
-            std::cout << "UltraCanvas macOS: NSWindow created successfully" << std::endl;
+            std::cerr << "UltraCanvas macOS: NSWindow created successfully" << std::endl;
             return true;
         }
     }
@@ -312,7 +312,7 @@ namespace UltraCanvas {
     bool UltraCanvasMacOSWindow::CreateCairoSurface() {
         //std::lock_guard<std::mutex> lock(cairoMutex);
 
-        std::cout << "UltraCanvas macOS: Creating Cairo surface..." << std::endl;
+        std::cerr << "UltraCanvas macOS: Creating Cairo surface..." << std::endl;
 
         // Get window dimensions
         int width = config_.width;
@@ -348,7 +348,7 @@ namespace UltraCanvas {
             [(UltraCanvasView*)contentView setCairoSurface:cairoSurface];
         }
 
-        std::cout << "UltraCanvas macOS: Cairo surface created successfully" << std::endl;
+        std::cerr << "UltraCanvas macOS: Cairo surface created successfully" << std::endl;
         return true;
     }
 
@@ -356,7 +356,7 @@ namespace UltraCanvas {
         std::lock_guard<std::mutex> lock(cairoMutex);
 
         if (cairoSurface) {
-            std::cout << "UltraCanvas macOS: Destroying Cairo surface..." << std::endl;
+            std::cerr << "UltraCanvas macOS: Destroying Cairo surface..." << std::endl;
             cairo_surface_destroy(cairoSurface);
             cairoSurface = nullptr;
         }
@@ -367,7 +367,7 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::ResizeCairoSurface(int width, int height) {
         std::lock_guard<std::mutex> lock(cairoMutex);
 
-        std::cout << "UltraCanvas macOS: Resizing Cairo surface to " << width << "x" << height << std::endl;
+        std::cerr << "UltraCanvas macOS: Resizing Cairo surface to " << width << "x" << height << std::endl;
 
         auto oldCairoSurface = cairoSurface;
 
@@ -390,9 +390,9 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::Show() {
         if (!_created || visible) return;
 
-        std::cout << "UltraCanvas macOS: Showing window..." << std::endl;
+        std::cerr << "UltraCanvas macOS: Showing window..." << std::endl;
         if (!UltraCanvasApplication::GetInstance()->IsRunning()) {
-            std::cout << "UltraCanvas Application is not running yet, delaying window show..." << std::endl;
+            std::cerr << "UltraCanvas Application is not running yet, delaying window show..." << std::endl;
             pendingShow = true;
             return;
         }
@@ -420,7 +420,7 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::Hide() {
         if (!_created || !visible) return;
 
-        std::cout << "UltraCanvas macOS: Hiding window..." << std::endl;
+        std::cerr << "UltraCanvas macOS: Hiding window..." << std::endl;
 
         @autoreleasepool {
             [nsWindow orderOut:nil];
@@ -553,7 +553,7 @@ namespace UltraCanvas {
 
     // ===== WINDOW DELEGATE CALLBACKS =====
     void UltraCanvasMacOSWindow::OnWindowWillClose() {
-        std::cout << "UltraCanvas macOS: Window will close callback" << std::endl;
+        std::cerr << "UltraCanvas macOS: Window will close callback" << std::endl;
         Close();
     }
 
@@ -601,11 +601,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidMiniaturize() {
-        std::cout << "UltraCanvas macOS: Window minimized" << std::endl;
+        std::cerr << "UltraCanvas macOS: Window minimized" << std::endl;
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidDeminiaturize() {
-        std::cout << "UltraCanvas macOS: Window restored from minimized" << std::endl;
+        std::cerr << "UltraCanvas macOS: Window restored from minimized" << std::endl;
     }
 } // namespace UltraCanvas
 

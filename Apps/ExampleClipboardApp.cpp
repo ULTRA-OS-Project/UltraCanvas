@@ -26,7 +26,7 @@ private:
 
 public:
     bool Initialize() {
-        std::cout << "=== UltraCanvas Modular Clipboard Demo ===" << std::endl;
+        std::cerr << "=== UltraCanvas Modular Clipboard Demo ===" << std::endl;
         
         // Step 1: Initialize the application
         application = new UltraCanvasApplication();
@@ -49,15 +49,15 @@ public:
         CreateUI();
         //AddSampleData();
         
-        std::cout << "✅ Modular clipboard system initialized successfully!" << std::endl;
-        std::cout << "📋 Features available:" << std::endl;
-        std::cout << "   • Platform-independent clipboard core" << std::endl;
-        std::cout << "   • X11 backend for Linux" << std::endl;
-        std::cout << "   • Separate UI component" << std::endl;
-        std::cout << "   • History management (up to 100 entries)" << std::endl;
-        std::cout << "   • Multiple data types support" << std::endl;
-        std::cout << "   • File save functionality" << std::endl;
-        std::cout << "🚀 Press ALT+P to show clipboard history window" << std::endl;
+        std::cerr << "✅ Modular clipboard system initialized successfully!" << std::endl;
+        std::cerr << "📋 Features available:" << std::endl;
+        std::cerr << "   • Platform-independent clipboard core" << std::endl;
+        std::cerr << "   • X11 backend for Linux" << std::endl;
+        std::cerr << "   • Separate UI component" << std::endl;
+        std::cerr << "   • History management (up to 100 entries)" << std::endl;
+        std::cerr << "   • Multiple data types support" << std::endl;
+        std::cerr << "   • File save functionality" << std::endl;
+        std::cerr << "🚀 Press ALT+P to show clipboard history window" << std::endl;
         
         return true;
     }
@@ -118,9 +118,9 @@ public:
                 if (!text.empty()) {
                     // Use the new modular clipboard API
                     if (SetClipboardText(text)) {
-                        std::cout << "✅ Text copied to clipboard using modular system" << std::endl;
+                        std::cerr << "✅ Text copied to clipboard using modular system" << std::endl;
                     } else {
-                        std::cout << "❌ Failed to copy text" << std::endl;
+                        std::cerr << "❌ Failed to copy text" << std::endl;
                     }
                 }
             }
@@ -134,10 +134,10 @@ public:
             if (GetClipboardText(clipboardText)) {
                 if (textInput) {
                     textInput->SetText(clipboardText);
-                    std::cout << "✅ Text pasted from clipboard using modular system" << std::endl;
+                    std::cerr << "✅ Text pasted from clipboard using modular system" << std::endl;
                 }
             } else {
-                std::cout << "❌ Failed to get clipboard text" << std::endl;
+                std::cerr << "❌ Failed to get clipboard text" << std::endl;
             }
         };
         mainWindow->AddElement(pasteButton);
@@ -146,7 +146,7 @@ public:
         showClipboardButton = CreateButton("showClipboardBtn", 2004, 380, 300, 180, 30, "Show Clipboard History");
         showClipboardButton->onClick = [this]() {
             ShowClipboard();
-            std::cout << "📋 Clipboard history window opened" << std::endl;
+            std::cerr << "📋 Clipboard history window opened" << std::endl;
         };
         mainWindow->AddElement(showClipboardButton);
         
@@ -155,7 +155,7 @@ public:
         addEntryButton->onClick = [this]() {
             ClipboardData sampleEntry(ClipboardDataType::Text, "Sample programmatically added entry");
             AddClipboardEntry(sampleEntry);
-            std::cout << "✅ Sample entry added to clipboard history" << std::endl;
+            std::cerr << "✅ Sample entry added to clipboard history" << std::endl;
         };
         mainWindow->AddElement(addEntryButton);
     }
@@ -183,11 +183,11 @@ public:
             clipboard->AddEntry(entry);
         }
         
-        std::cout << "📋 Added " << sampleTexts.size() << " sample entries to clipboard history" << std::endl;
+        std::cerr << "📋 Added " << sampleTexts.size() << " sample entries to clipboard history" << std::endl;
     }
     
     void Run() {
-        std::cout << "🚀 Starting modular clipboard demo..." << std::endl;
+        std::cerr << "🚀 Starting modular clipboard demo..." << std::endl;
         
         if (mainWindow) {
             mainWindow->Show();
@@ -204,11 +204,11 @@ public:
             application->Run();
         }
         
-        std::cout << "👋 Application shutting down..." << std::endl;
+        std::cerr << "👋 Application shutting down..." << std::endl;
     }
 
     void Shutdown() {
-        std::cout << "🔄 Shutting down modular clipboard system..." << std::endl;
+        std::cerr << "🔄 Shutting down modular clipboard system..." << std::endl;
         
         // Stop clipboard monitoring
         UltraCanvasClipboard* clipboard = GetClipboard();
@@ -222,7 +222,7 @@ public:
         // Shutdown core
         ShutdownClipboard();
         
-        std::cout << "✅ Modular clipboard system shut down cleanly" << std::endl;
+        std::cerr << "✅ Modular clipboard system shut down cleanly" << std::endl;
     }
     
     // Custom window class for rendering status
@@ -328,8 +328,8 @@ public:
 // ===== MAIN FUNCTION =====
 int main() {
     try {
-        std::cout << "🎉 UltraCanvas Modular Clipboard System Demo" << std::endl;
-        std::cout << "=============================================" << std::endl;
+        std::cerr << "🎉 UltraCanvas Modular Clipboard System Demo" << std::endl;
+        std::cerr << "=============================================" << std::endl;
         
         // Initialize keyboard manager first
         if (!UltraCanvasKeyboardManager::Initialize()) {
@@ -350,7 +350,7 @@ int main() {
         // Cleanup
         UltraCanvasKeyboardManager::Shutdown();
         
-        std::cout << "🎉 Demo completed successfully!" << std::endl;
+        std::cerr << "🎉 Demo completed successfully!" << std::endl;
         return 0;
         
     } catch (const std::exception& e) {

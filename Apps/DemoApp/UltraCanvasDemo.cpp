@@ -278,7 +278,7 @@ namespace UltraCanvas {
 
 // ===== INITIALIZATION =====
     bool UltraCanvasDemoApplication::Initialize() {
-        std::cout << "Initializing UltraCanvas Demo Application..." << std::endl;
+        std::cerr << "Initializing UltraCanvas Demo Application..." << std::endl;
 
         // Create main window using proper configuration
         WindowConfig config;
@@ -290,12 +290,12 @@ namespace UltraCanvas {
         config.deleteOnClose = true;
 
         mainWindow = CreateWindow(config);
-        std::cout << "Creating Main window.." << std::endl;
+        std::cerr << "Creating Main window.." << std::endl;
         if (!mainWindow->IsCreated()) {
             std::cerr << "Failed to create main window" << std::endl;
             return false;
         }
-        std::cout << "Main window created" << std::endl;
+        std::cerr << "Main window created" << std::endl;
         // Calculate positions for adjusted layout
         const int treeViewHeight = 740;  // Reduced from 840 to make room for legend
         const int legendHeight = 95;     // Height for legend container
@@ -310,7 +310,7 @@ namespace UltraCanvas {
         categoryTreeView->SetAutoExpandSelectedNode(true);
         categoryTreeView->SetPadding(1,3,1,3);
 
-        std::cout << "categoryTreeView created" << std::endl;
+        std::cerr << "categoryTreeView created" << std::endl;
 
         // Create legend container below tree view
         legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 6, 0, 0, 100, legendHeight);
@@ -388,7 +388,7 @@ namespace UltraCanvas {
         mainLayout->AddUIElement(mainContainer, 0, 1)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
         mainLayout->AddUIElement(statusLabel, 1, 0, 1, 2)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
 
-        std::cout << "✓ Demo application initialized successfully" << std::endl;
+        std::cerr << "✓ Demo application initialized successfully" << std::endl;
         return true;
     }
 
@@ -406,7 +406,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDemoApplication::RegisterAllDemoItems() {
-        std::cout << "Registering demo items..." << std::endl;
+        std::cerr << "Registering demo items..." << std::endl;
 
         // ===== BASIC UI ELEMENTS =====
         auto basicBuilder = DemoCategoryBuilder(this, DemoCategory::BasicUI);
@@ -999,7 +999,7 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Photo/Video viewer"); });
 
-        std::cout << "✓ Registered " << demoItems.size() << " demo items across "
+        std::cerr << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
     }
 
@@ -1188,8 +1188,8 @@ namespace UltraCanvas {
 // ===== APPLICATION LIFECYCLE =====
     void UltraCanvasDemoApplication::Run() {
         // Run application main loop
-        std::cout << "Running UltraCanvas Demo Application..." << std::endl;
-        std::cout << "Select items from the tree view to see implementation examples." << std::endl;
+        std::cerr << "Running UltraCanvas Demo Application..." << std::endl;
+        std::cerr << "Select items from the tree view to see implementation examples." << std::endl;
 
         if (mainWindow) {
             mainWindow->Show();
@@ -1204,7 +1204,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDemoApplication::Shutdown() {
-        std::cout << "Shutting down Demo Application..." << std::endl;
+        std::cerr << "Shutting down Demo Application..." << std::endl;
 
         ClearDisplay();
         demoItems.clear();

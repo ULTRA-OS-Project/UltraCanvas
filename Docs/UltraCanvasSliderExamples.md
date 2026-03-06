@@ -272,7 +272,7 @@ hSlider->SetValueDisplay(SliderValueDisplay::Number);
 
 // Add callback
 hSlider->onValueChanged = [](float value) {
-    std::cout << "Volume: " << value << std::endl;
+    std::cerr << "Volume: " << value << std::endl;
 };
 
 // Add to container

@@ -36,7 +36,7 @@ namespace UltraCanvas {
             // Force immediate redraw with z-order update
             RequestRedraw();
 
-            std::cout << "Menu '" << GetIdentifier()
+            std::cerr << "Menu '" << GetIdentifier()
                       << "' shown with Z=" << GetZIndex() << std::endl;
         }
     }
@@ -61,7 +61,7 @@ namespace UltraCanvas {
             if (onMenuClosed) onMenuClosed();
 //            RequestRedraw();
 
-            std::cout << "Menu '" << GetIdentifier() << "' hidden. State: " << (int)currentState
+            std::cerr << "Menu '" << GetIdentifier() << "' hidden. State: " << (int)currentState
                       << " Visible: " << IsVisible() << std::endl;
         }
     }
@@ -132,7 +132,7 @@ namespace UltraCanvas {
         // Debug output for dropdown menus
 //        if ((menuType == MenuType::DropdownMenu || menuType == MenuType::SubmenuMenu) &&
 //            (event.type == UCEventType::MouseDown || event.type == UCEventType::MouseUp)) {
-//            std::cout << "Dropdown Menu '" << GetIdentifier() << "' received event type: " << (int)event.type
+//            std::cerr << "Dropdown Menu '" << GetIdentifier() << "' received event type: " << (int)event.type
 //                      << " at (" << event.x << "," << event.y << ")"
 //                      << " Menu bounds: (" << GetX() << "," << GetY()
 //                      << "," << GetWidth() << "," << GetHeight() << ")"
@@ -241,7 +241,7 @@ namespace UltraCanvas {
         if (parentWindow) {
             // Add the submenu to the window's element collection so it gets rendered
 //            parentWindow->AddChild(activeSubmenu);
-            std::cout << "Added submenu '" << activeSubmenu->GetIdentifier()
+            std::cerr << "Added submenu '" << activeSubmenu->GetIdentifier()
                       << "' to window for rendering" << std::endl;
             activeSubmenu->SetWindow(parentWindow);
 //            parentWindow->AddPopupElement(activeSubmenu.get());
@@ -262,7 +262,7 @@ namespace UltraCanvas {
                 parentWindow->RemoveChild(activeSubmenu);
 //                parentWindow->RemovePopupElement(activeSubmenu.get());
 //                parentWindow->CleanupRemovedPopupElements();
-                std::cout << "Removed submenu '" << activeSubmenu->GetIdentifier()
+                std::cerr << "Removed submenu '" << activeSubmenu->GetIdentifier()
                           << "' from window" << std::endl;
             }
 

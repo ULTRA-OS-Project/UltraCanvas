@@ -233,11 +233,11 @@ std::function<void(long, long)> onSizeChanged;
 
 ```cpp
 label->onClick = []() {
-    std::cout << "Label clicked!" << std::endl;
+    std::cerr << "Label clicked!" << std::endl;
 };
 
 label->onTextChanged = [](const std::string& newText) {
-    std::cout << "Text changed to: " << newText << std::endl;
+    std::cerr << "Text changed to: " << newText << std::endl;
 };
 ```
 
@@ -299,7 +299,7 @@ auto label = CreateLabelBuilder("myLabel", 10, 10, 200, 30)
     .SetCrossAlignment(TextAlignment::Center)
     .SetPadding(10.0f)
     .SetAutoResize(true)
-    .OnClick([]() { std::cout << "Clicked!" << std::endl; })
+    .OnClick([]() { std::cerr << "Clicked!" << std::endl; })
     .Build();
 ```
 

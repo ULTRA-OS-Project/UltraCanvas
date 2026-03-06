@@ -119,7 +119,7 @@ namespace UltraCanvas {
             std::string debugText = GenerateDebugText(element, settings, ctx);
 
             if (!debugText.empty()) {
-                std::cout << debugText << std::endl;
+                std::cerr << debugText << std::endl;
                 DrawDebugText(debugText, bounds, absolutePos, settings,ctx);
             }
             ctx->PopState();

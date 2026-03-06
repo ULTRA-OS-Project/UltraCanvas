@@ -19,8 +19,8 @@ extern auto make_message_cpp() -> std::string;
 extern auto make_message_cuda() -> std::string;
 
 int main() {
-  std::cout << make_message_cuda() << std::endl;
-  std::cout << make_message_cpp() << std::endl;
+  std::cerr << make_message_cuda() << std::endl;
+  std::cerr << make_message_cpp() << std::endl;
 }
 
 auto make_message_cuda() -> std::string {
