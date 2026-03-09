@@ -33,25 +33,38 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    defaults:
+      run:
+        shell: ${{ matrix.os == 'windows-latest' && 'msys2 {0}' || 'bash' }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # ===== Windows: vcpkg-based dependency management =====
-      - name: Setup vcpkg (Windows)
+      # ===== Windows: MSYS2/MinGW dependency management =====
+      - name: Setup MSYS2 (Windows)
         if: runner.os == 'Windows'
-        uses: lukka/run-vcpkg@v11
+        uses: msys2/setup-msys2@v2
         with:
-          vcpkgGitCommitId: '66c0373dc7fca549e5803087b9487edfe3aca0a1'  # 2026.01.16
-
-      - name: Install vcpkg packages (Windows)
-        if: runner.os == 'Windows'
-        run: >
-          vcpkg install
-          cairo pango harfbuzz glib libiconv freetype tinyxml2 jsoncpp zlib pkgconf
-          --triplet x64-windows
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-pkgconf
+            mingw-w64-x86_64-cairo
+            mingw-w64-x86_64-pango
+            mingw-w64-x86_64-harfbuzz
+            mingw-w64-x86_64-glib2
+            mingw-w64-x86_64-freetype
+            mingw-w64-x86_64-tinyxml2
+            mingw-w64-x86_64-jsoncpp
+            mingw-w64-x86_64-libiconv
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-libvips
 
       # ===== macOS / Linux: system package manager =====
       - name: Install dependencies (macOS/Linux)
@@ -62,9 +75,8 @@ jobs:
       - name: Configure CMake (Windows)
         if: runner.os == 'Windows'
         run: >
-          cmake -B build
+          cmake -B build -G Ninja
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
           -DBUILD_DEMO_APP=ON
           -DULTRACANVAS_PLUGIN_CDR=OFF
           -DULTRACANVAS_PLUGIN_XAR=ON
