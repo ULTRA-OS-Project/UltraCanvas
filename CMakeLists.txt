@@ -204,6 +204,8 @@ if(BUILD_DEMO_APP)
         ${ULTRACANVAS_LIBRARY}
         ${JSONCPP_LIBRARIES}
     )
+
+    find_package(fmt)
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 
     # Link against all plugin libraries

@@ -42,8 +42,8 @@ else()
 endif()
 
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty-libs/fmt fmt)
-
+find_package(fmt)
+#add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty-libs/fmt fmt)
 # add_subdirectory(3rdparty/uni-algo-1.2.0)
 
 # # ===== LIBGRAPHEME - Unicode string library (bundled) =====
@@ -288,8 +288,6 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Plugins>
         $<INSTALL_INTERFACE:include/ultracanvas>
     PRIVATE
-#        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty-libs/fmt/include
-        # ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty-libs/libgrapheme-3.0.0
         ${CMAKE_CURRENT_SOURCE_DIR}/core
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}
         ${FREETYPE_INCLUDE_DIRS}
