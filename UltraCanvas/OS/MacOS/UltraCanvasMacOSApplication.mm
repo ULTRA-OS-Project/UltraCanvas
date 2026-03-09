@@ -243,10 +243,10 @@ namespace UltraCanvas {
         // Find target window
         NSWindow* nsWindow = [nsEvent window];
         UltraCanvasMacOSWindow* targetWindow = nullptr;
-        event.nativeWindowHandle = (unsigned long)nsWindow;
+        event.nativeWindowHandle = (uintptr_t)nsWindow;
 
         if (nsWindow) {
-            targetWindow = static_cast<UltraCanvasMacOSWindow*>(FindWindow((unsigned long)nsWindow));
+            targetWindow = static_cast<UltraCanvasMacOSWindow*>(FindWindow((uintptr_t)nsWindow));
         }
 
         event.targetWindow = targetWindow;

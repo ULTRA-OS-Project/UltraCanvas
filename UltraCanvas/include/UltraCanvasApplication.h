@@ -80,7 +80,7 @@ namespace UltraCanvas {
         UltraCanvasUIElement* GetHoveredElement() { return hoveredElement; }
         UltraCanvasUIElement* GetCapturedElement() { return capturedElement; }
 
-        UltraCanvasWindow* FindWindow(unsigned long nativeHandle);
+        UltraCanvasWindow* FindWindow(uintptr_t nativeHandle);
 
         const UCEvent& GetCurrentEvent() { return currentEvent; }
 

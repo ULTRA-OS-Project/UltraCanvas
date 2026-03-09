@@ -26,7 +26,7 @@ namespace UltraCanvas {
         WindowConfig config;
         config.title = "UltraCanvas Demo - Information";
         config.width = 630;
-        config.height = 480;
+        config.height = 500;
         config.resizable = false;
         config.type = WindowType::Dialog;
         config.modal = true;

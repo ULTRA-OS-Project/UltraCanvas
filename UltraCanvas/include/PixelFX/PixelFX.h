@@ -19,6 +19,11 @@
 #include <functional>
 #include <stdexcept>
 
+// Windows defines CopyMemory as a macro (RtlCopyMemory) which conflicts with our method name
+#ifdef CopyMemory
+#undef CopyMemory
+#endif
+
 namespace PixelFX {
 
 // ===== ERROR HANDLING =====

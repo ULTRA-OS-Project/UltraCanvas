@@ -192,7 +192,7 @@ rescan_windows:
         std::cerr << "UltraCanvas: window found and unregistered successfully" << std::endl;
     }
 
-    UltraCanvasWindow* UltraCanvasBaseApplication::FindWindow(unsigned long nativeHandle) {
+    UltraCanvasWindow* UltraCanvasBaseApplication::FindWindow(uintptr_t nativeHandle) {
         auto it = std::find_if(windows.begin(), windows.end(),
                                [nativeHandle](const std::shared_ptr<UltraCanvasWindowBase>& ptr) {
                                    return ptr->GetNativeHandle() == nativeHandle;

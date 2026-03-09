@@ -13,25 +13,9 @@ set(PLUGIN_VERSION "1.0.0")
 message(STATUS "Configuring ${PLUGIN_NAME} v${PLUGIN_VERSION}")
 
 # ===== FIND DEPENDENCIES =====
-# Only use PkgConfig on non-Windows platforms
-if(NOT WIN32)
-    find_package(PkgConfig REQUIRED)
-
-    # libcdr - CorelDRAW file format parser
-    pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
-    pkg_check_modules(LIBZLIB REQUIRED zlib)
-else()
-    # On Windows, use find_package with vcpkg
-    find_package(ZLIB REQUIRED)
-
-    # libvips is not available on Windows vcpkg, mark as not found
-    set(LIBVIPS_FOUND FALSE)
-
-    if(ZLIB_FOUND)
-        set(LIBZLIB_FOUND TRUE)
-        set(LIBZLIB_LIBRARIES ZLIB::ZLIB)
-    endif()
-endif()
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
+pkg_check_modules(LIBZLIB REQUIRED zlib)
 
 # ===== SOURCE FILES =====
 set(VECTOR_PLUGIN_SOURCES

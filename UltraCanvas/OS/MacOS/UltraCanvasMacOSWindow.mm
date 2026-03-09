@@ -547,8 +547,8 @@ namespace UltraCanvas {
         Invalidate();
     }
 
-    unsigned long UltraCanvasMacOSWindow::GetNativeHandle() const  {
-        return (unsigned long)(__bridge_retained void*)nsWindow;
+    uintptr_t UltraCanvasMacOSWindow::GetNativeHandle() const  {
+        return (uintptr_t)(__bridge_retained void*)nsWindow;
     };
 
     // ===== WINDOW DELEGATE CALLBACKS =====

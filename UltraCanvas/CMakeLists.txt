@@ -5,6 +5,7 @@
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
+include(FetchContent)
 
 # ===== LIBRARY DEFINITION =====
 set(ULTRACANVAS_VERSION "1.2.0")
@@ -41,7 +42,7 @@ else()
 endif()
 
 
-add_subdirectory(3rdparty/fmt)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty-libs/fmt fmt)
 
 # add_subdirectory(3rdparty/uni-algo-1.2.0)
 
@@ -108,15 +109,18 @@ pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
 
-# libvips - Image processing (not available on Windows via vcpkg)
-if(NOT WIN32)
-    pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
-else()
-    set(LIBVIPS_FOUND FALSE)
-endif()
+# libvips - Image processing
+pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
 
 # FreeType - Font Rendering
-find_package(Freetype REQUIRED)
+# On Windows with vcpkg, use pkg-config since FindFreetype may not locate vcpkg's install
+if(WIN32 AND PKG_CONFIG_FOUND)
+    pkg_check_modules(FREETYPE REQUIRED freetype2)
+else()
+    find_package(Freetype REQUIRED)
+    set(FREETYPE_INCLUDE_DIRS ${FREETYPE_INCLUDE_DIRS})
+    set(FREETYPE_LIBRARIES ${FREETYPE_LIBRARIES})
+endif()
 
 # Platform-specific dependencies
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
@@ -197,8 +201,8 @@ set(ULTRACANVAS_CORE_SOURCES
         #        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsDoubleBuffer.cpp
 )
 
-# libvips-dependent sources (not available on Windows)
-if(NOT WIN32)
+# libvips-dependent sources
+if(LIBVIPS_FOUND)
     list(APPEND ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
@@ -245,7 +249,7 @@ set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
 )
-if(NOT WIN32)
+if(LIBVIPS_FOUND)
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
     )
@@ -284,8 +288,8 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Plugins>
         $<INSTALL_INTERFACE:include/ultracanvas>
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/fmt/include
-        # ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/libgrapheme-3.0.0
+#        ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty-libs/fmt/include
+        # ${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty-libs/libgrapheme-3.0.0
         ${CMAKE_CURRENT_SOURCE_DIR}/core
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}
         ${FREETYPE_INCLUDE_DIRS}
@@ -346,6 +350,7 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${LIBVIPS_LIBRARIES}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
+        fmt::fmt
     # PRIVATE
     #     grapheme
 )
@@ -357,6 +362,7 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
     PUBLIC
         ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
         ULTRACANVAS_PLATFORM_${ULTRACANVAS_PLATFORM}=1
+        $<$<BOOL:${LIBVIPS_FOUND}>:HAS_LIBVIPS=1>
         $<$<CXX_COMPILER_ID:MSVC>:_USE_MATH_DEFINES>
         $<$<CXX_COMPILER_ID:MSVC>:NOMINMAX>
         $<$<BOOL:${WIN32}>:WIN32_LEAN_AND_MEAN>
@@ -373,8 +379,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         -Werror=return-type
 #        -Wall -Wextra -Wpedantic -Wno-unused-parameter
     )
-elseif(MSVC)
-    target_compile_options(${ULTRACANVAS_LIB_NAME} PUBLIC /utf-8)
 endif()
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
@@ -464,6 +468,7 @@ endif()
 # ===== EXPORT VARIABLES TO PARENT =====
 set(ULTRACANVAS_LIBRARY ${ULTRACANVAS_LIB_NAME} PARENT_SCOPE)
 set(ULTRACANVAS_LIBRARIES ${ULTRACANVAS_LIB_NAME} ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
+set(LIBVIPS_FOUND ${LIBVIPS_FOUND} PARENT_SCOPE)
 set(ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
 set(ULTRACANVAS_INCLUDE_DIRS 
     ${CMAKE_CURRENT_SOURCE_DIR}/include

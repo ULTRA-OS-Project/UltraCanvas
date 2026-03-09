@@ -633,7 +633,7 @@ namespace UltraCanvas {
     }
 
 // ===== ACCESSORS =====
-    unsigned long UltraCanvasLinuxWindow::GetNativeHandle() const {
+    uintptr_t UltraCanvasLinuxWindow::GetNativeHandle() const {
         return xWindow;
     }
 

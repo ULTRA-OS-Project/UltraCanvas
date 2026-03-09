@@ -46,20 +46,6 @@ option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires poppler)" OFF)
 
 # ===== FIND REQUIRED PACKAGES =====
-# On Windows with vcpkg, auto-detect pkgconf for pkg_check_modules support
-if(WIN32 AND DEFINED CMAKE_TOOLCHAIN_FILE)
-    find_program(PKG_CONFIG_EXECUTABLE
-        NAMES pkgconf pkg-config
-       s PATHS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/pkgconf"
-              "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/pkgconf"
-        NO_DEFAULT_PATH
-    )
-    if(PKG_CONFIG_EXECUTABLE)
-        # Ensure pkgconf can find vcpkg's .pc files
-        set(ENV{PKG_CONFIG_PATH} "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib/pkgconfig")
-        message(STATUS "Using vcpkg pkgconf: ${PKG_CONFIG_EXECUTABLE}")
-    endif()
-endif()
 find_package(PkgConfig REQUIRED)
 
 # ===== BUILD ULTRACANVAS CORE LIBRARY =====
@@ -71,6 +57,7 @@ add_subdirectory(UltraCanvas)
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
 #   ULTRACANVAS_PLUGIN_TARGETS - List of plugin targets
+
 #   ULTRACANVAS_INCLUDE_DIRS   - All include directories
 
 # ===== DEMO APPLICATION =====
@@ -111,8 +98,8 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
     )
 
-    # These files depend on libvips (non-trivial effort)
-    if(NOT WIN32)
+    # These files depend on libvips
+    if(LIBVIPS_FOUND)
         list(APPEND DEMO_SOURCES
             Apps/DemoApp/UltraCanvasBitmapExamples.cpp
             Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
@@ -210,7 +197,6 @@ if(BUILD_DEMO_APP)
     target_include_directories(UltraCanvasDemo PRIVATE
         ${ULTRACANVAS_INCLUDE_DIRS}
         ${CMAKE_CURRENT_SOURCE_DIR}/Apps/DemoApp
-#        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/3rdparty/fmt/include
     )
     
     # Link against UltraCanvas core library
@@ -306,7 +292,6 @@ if (BUILD_TEXTER_APP)
     # Include directories
     target_include_directories(UltraCanvasTexter PRIVATE
             ${ULTRACANVAS_INCLUDE_DIRS}
-            #        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/3rdparty/fmt/include
     )
 
     # Link against UltraCanvas core library

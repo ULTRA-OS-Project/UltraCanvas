@@ -7,7 +7,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 #include "ImageCairo.h"
-#ifndef _WIN32
+#ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
 #endif
 
@@ -113,7 +113,7 @@ namespace UltraCanvas {
     }
 
 
-#ifndef _WIN32
+#ifdef HAS_LIBVIPS
     bool UCImageRaster::InitializeImageSubsysterm(const char *programName) {
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
@@ -193,7 +193,7 @@ namespace UltraCanvas {
         return imgDataPtr != nullptr;
     }
 
-#ifndef _WIN32
+#ifdef HAS_LIBVIPS
     std::shared_ptr<UCImageRaster> UCImageRaster::Load(const std::string &imagePath, bool loadOnlyHeader) {
         auto result = std::make_shared<UCImageRaster>(imagePath);
         try {
@@ -248,9 +248,8 @@ namespace UltraCanvas {
 #else
     std::shared_ptr<UCImageRaster> UCImageRaster::Load(const std::string &imagePath, bool loadOnlyHeader) {
         auto result = std::make_shared<UCImageRaster>(imagePath);
-        // TODO: Windows image loading (WIC)
         result->LoadFileToMemory(imagePath);
-        result->errorMessage = "Image loading not yet implemented on Windows";
+        result->errorMessage = "Image loading not yet implemented (no libvips)";
         return result;
     }
 
@@ -264,8 +263,7 @@ namespace UltraCanvas {
         }
         result->imgDataPtr = (uint8_t *)data;
         result->imgDataSize = dataSize;
-        // TODO: Windows image loading (WIC)
-        result->errorMessage = "Image loading not yet implemented on Windows";
+        result->errorMessage = "Image loading not yet implemented (no libvips)";
         return result;
     }
 #endif
@@ -299,7 +297,7 @@ namespace UltraCanvas {
         return pm;
     }
 
-#ifndef _WIN32
+#ifdef HAS_LIBVIPS
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode) {
         try {
             auto options = vips::VImage::option();
@@ -402,7 +400,6 @@ namespace UltraCanvas {
     }
 #else
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int, int, ImageFitMode) {
-        // TODO: Windows image pixmap creation (WIC/Direct2D)
         return nullptr;
     }
 #endif
@@ -446,7 +443,7 @@ namespace UltraCanvas {
         }
     }
 
-#ifndef _WIN32
+#ifdef HAS_LIBVIPS
     std::string UCImageRaster::Save(const std::string &imagePath, const UCImageSave::ImageExportOptions& opts) {
         vips::VImage vImg;
         try {
@@ -619,8 +616,7 @@ namespace UltraCanvas {
     }
 #else
     std::string UCImageRaster::Save(const std::string &, const UCImageSave::ImageExportOptions&) {
-        // TODO: Windows image export (WIC)
-        return "Image export not yet implemented on Windows";
+        return "Image export not yet implemented (no libvips)";
     }
 #endif
 }

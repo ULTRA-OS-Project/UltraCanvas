@@ -8,6 +8,7 @@
 #define ULTRA_CANVAS_EVENT_H
 
 #include <chrono>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -326,7 +327,7 @@ namespace UltraCanvas {
         int width = 0, height = 0;           // For resize events
 
         void *targetWindow = nullptr;        // Pointer to the target UltraCanvasWindow
-        unsigned long nativeWindowHandle = 0; // Platform-specific window handle (X11 Window, HWND, etc.)
+        uintptr_t nativeWindowHandle = 0; // Platform-specific window handle (X11 Window, HWND, etc.)
 
         // Generic data
         union {

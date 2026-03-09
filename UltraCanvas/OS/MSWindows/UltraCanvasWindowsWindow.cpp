@@ -71,7 +71,7 @@ namespace UltraCanvas {
             UCEvent event;
             event.type = UCEventType::Drop;
             event.targetWindow = this;
-            event.nativeWindowHandle = reinterpret_cast<unsigned long>(hwnd);
+            event.nativeWindowHandle = reinterpret_cast<uintptr_t>(hwnd);
             event.x = event.windowX = x;
             event.y = event.windowY = y;
             event.droppedFiles = paths;
@@ -89,7 +89,7 @@ namespace UltraCanvas {
             UCEvent event;
             event.type = UCEventType::DragEnter;
             event.targetWindow = this;
-            event.nativeWindowHandle = reinterpret_cast<unsigned long>(hwnd);
+            event.nativeWindowHandle = reinterpret_cast<uintptr_t>(hwnd);
             event.x = event.windowX = x;
             event.y = event.windowY = y;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
@@ -99,7 +99,7 @@ namespace UltraCanvas {
             UCEvent event;
             event.type = UCEventType::DragLeave;
             event.targetWindow = this;
-            event.nativeWindowHandle = reinterpret_cast<unsigned long>(hwnd);
+            event.nativeWindowHandle = reinterpret_cast<uintptr_t>(hwnd);
             event.x = event.windowX = x;
             event.y = event.windowY = y;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
@@ -109,7 +109,7 @@ namespace UltraCanvas {
             UCEvent event;
             event.type = UCEventType::DragOver;
             event.targetWindow = this;
-            event.nativeWindowHandle = reinterpret_cast<unsigned long>(hwnd);
+            event.nativeWindowHandle = reinterpret_cast<uintptr_t>(hwnd);
             event.x = event.windowX = x;
             event.y = event.windowY = y;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
@@ -573,8 +573,8 @@ namespace UltraCanvas {
                           data, &bmi, DIB_RGB_COLORS);
     }
 
-    unsigned long UltraCanvasWindowsWindow::GetNativeHandle() const {
-        return reinterpret_cast<unsigned long>(hwnd);
+    uintptr_t UltraCanvasWindowsWindow::GetNativeHandle() const {
+        return reinterpret_cast<uintptr_t>(hwnd);
     }
 
     void UltraCanvasWindowsWindow::GetScreenPosition(int& x, int& y) const {

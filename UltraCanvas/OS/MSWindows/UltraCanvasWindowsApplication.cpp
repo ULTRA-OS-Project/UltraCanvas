@@ -211,10 +211,10 @@ namespace UltraCanvas {
 
         UCEvent event;
         event.timestamp = std::chrono::steady_clock::now();
-        event.nativeWindowHandle = reinterpret_cast<unsigned long>(hwnd);
+        event.nativeWindowHandle = reinterpret_cast<uintptr_t>(hwnd);
 
         auto* targetWindow = static_cast<UltraCanvasWindowsWindow*>(
-            FindWindow(reinterpret_cast<unsigned long>(hwnd)));
+            FindWindow(reinterpret_cast<uintptr_t>(hwnd)));
         event.targetWindow = static_cast<void*>(targetWindow);
 
         // Common modifier state helper

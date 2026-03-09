@@ -46,12 +46,10 @@ else ()
     # Check if UltraCanvas is available as subdirectory or find it
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas/CMakeLists.txt")
         # UltraCanvas is sibling directory
-        #    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas/3rdparty/fmt ${CMAKE_BINARY_DIR}/fmt)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas ${CMAKE_BINARY_DIR}/UltraCanvas)
         set(ULTRACANVAS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas")
     elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/CMakeLists.txt")
         # UltraTexter is in Apps folder
-        #    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/3rdparty/fmt ${CMAKE_BINARY_DIR}/fmt)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas ${CMAKE_BINARY_DIR}/UltraCanvas)
         set(ULTRACANVAS_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas")
     else()
