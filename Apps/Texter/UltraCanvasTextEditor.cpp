@@ -2471,6 +2471,18 @@ namespace {
         doc->textArea->onSelectionChanged = [this](int start, int end) {
             UpdateStatusBar();
         };
+
+        // Markdown link click — open URL in browser
+        doc->textArea->onMarkdownLinkClick = [](const std::string& url) {
+#if defined(_WIN32)
+            std::string command = "start \"\" \"" + url + "\"";
+#elif defined(__APPLE__)
+            std::string command = "open \"" + url + "\"";
+#else
+            std::string command = "xdg-open \"" + url + "\" &";
+#endif
+            system(command.c_str());
+        };
     }
 
     void UltraCanvasTextEditor::ConfirmSaveChanges(int docIndex, std::function<void(bool)> onComplete) {

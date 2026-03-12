@@ -1542,6 +1542,11 @@ namespace UltraCanvas {
 
         SetFocus(true);
 
+        // --- Markdown link/image click: intercept before cursor move ---
+        if (markdownHybridMode && HandleMarkdownClick(event.x, event.y)) {
+            return true;
+        }
+
         // --- Click counting for single / double / triple click ---
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastClickTime).count();
@@ -1682,6 +1687,13 @@ namespace UltraCanvas {
 
             RequestRedraw();
             return true;
+        }
+
+        // --- Markdown hover: update cursor for links/images ---
+        if (markdownHybridMode && !isSelectingText) {
+            if (!HandleMarkdownHover(event.x, event.y)) {
+                SetMouseCursor(UCMouseCursor::Text);
+            }
         }
 
         // --- Text drag selection ---

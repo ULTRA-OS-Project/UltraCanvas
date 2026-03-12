@@ -357,6 +357,7 @@ static std::string LookupEmojiShortcode(const std::string& code) {
         {"mask",            "\xF0\x9F\x98\xB7"},   // 😷
         {"nerd_face",       "\xF0\x9F\xA4\x93"},   // 🤓
         {"stuck_out_tongue","\xF0\x9F\x98\x9B"},   // 😛
+        {"yum",             "\xF0\x9F\x98\x8B"},   // 😋
         {"clown_face",      "\xF0\x9F\xA4\xA1"},   // 🤡
         {"skull",           "\xF0\x9F\x92\x80"},   // 💀
         {"ghost",           "\xF0\x9F\x91\xBB"},   // 👻
@@ -496,8 +497,46 @@ struct MarkdownInlineRenderer {
     //                 strikethrough, highlight, links, images
     // ---------------------------------------------------------------
 
-    static std::vector<MarkdownInlineElement> ParseInlineMarkdown(const std::string& line) {
+    static std::vector<MarkdownInlineElement> ParseInlineMarkdown(const std::string& lineRaw) {
         std::vector<MarkdownInlineElement> elements;
+
+        // --- Typographic & emoticon pre-pass ---
+        static const std::vector<std::pair<std::string, std::string>> typographicMap = {
+                {"(c)",  "\xC2\xA9"},          // ©
+                {"(C)",  "\xC2\xA9"},          // ©
+                {"(r)",  "\xC2\xAE"},          // ®
+                {"(R)",  "\xC2\xAE"},          // ®
+                {"(tm)", "\xE2\x84\xA2"},      // ™
+                {"(TM)", "\xE2\x84\xA2"},      // ™
+                {"(p)",  "\xE2\x84\x97"},      // ℗
+                {"(P)",  "\xE2\x84\x97"},      // ℗
+                {":-)",  "\xF0\x9F\x98\x83"},  // 😃
+                {":)",   "\xF0\x9F\x98\x83"},  // 😃
+                {":-(",  "\xF0\x9F\x98\xA2"},  // 😢
+                {":(",   "\xF0\x9F\x98\xA2"},  // 😢
+                {":-D",  "\xF0\x9F\x98\x86"},  // 😆
+                {":D",   "\xF0\x9F\x98\x86"},  // 😆
+                {";-)",  "\xF0\x9F\x98\x89"},  // 😉
+                {";)",   "\xF0\x9F\x98\x89"},  // 😉
+                {"8-)",  "\xF0\x9F\x98\x8E"},  // 😎
+                {":-P",  "\xF0\x9F\x98\x9B"},  // 😛
+                {":P",   "\xF0\x9F\x98\x9B"},  // 😛
+                {":-|",  "\xF0\x9F\x98\x90"},  // 😐
+                {":-/",  "\xF0\x9F\x98\x95"},  // 😕
+                {">:(",  "\xF0\x9F\x98\xA0"},  // 😠
+                {":'(",  "\xF0\x9F\x98\xAD"},  // 😭
+        };
+
+        std::string processedLine = lineRaw;
+        for (const auto& [pattern, replacement] : typographicMap) {
+            size_t searchPos = 0;
+            while ((searchPos = processedLine.find(pattern, searchPos)) != std::string::npos) {
+                processedLine.replace(searchPos, pattern.length(), replacement);
+                searchPos += replacement.length();
+            }
+        }
+
+        const std::string& line = processedLine;  // loop body unchanged
         size_t pos = 0;
         size_t len = line.length();
 
@@ -1136,10 +1175,14 @@ struct MarkdownInlineRenderer {
         ctx->SetFontWeight(FontWeight::Bold);
         ctx->SetTextPaint(mdStyle.headerColors[levelIndex]);
 
+        // Vertically center the header text within the fixed line height
+        int textHeight = ctx->GetTextLineHeight(headerText.empty() ? "M" : headerText);
+        int centeredY = y + (lineHeight - textHeight) / 2;
+
         // Render inline markdown within header text (links, bold, etc.)
         // For headers, we render the text directly since inline formatting
         // within headers is a rare edge case and the header already has styling
-        ctx->DrawText(headerText, x, y);
+        ctx->DrawText(headerText, x, centeredY);
 
         // Restore font
         ctx->SetFontSize(baseFontSize);
@@ -1210,9 +1253,13 @@ struct MarkdownInlineRenderer {
         // Calculate x offset based on nesting
         int bulletX = x + (nestingLevel * mdStyle.listIndent);
 
+        // Reserve space for bullet/number (keeps consistent indentation)
+        int bulletCharWidth = ctx->GetTextLineWidth(mdStyle.bulletCharacter);
+        int bulletSlotWidth = bulletCharWidth + 4;
+
         // --- Draw bullet/number/checkbox ---
         if (isTaskList) {
-            // Draw checkbox
+            // Draw checkbox (no bullet point)
             int cbSize = mdStyle.checkboxSize;
             int cbX = bulletX;
             int cbY = y + (lineHeight - cbSize) / 2;
@@ -1245,30 +1292,8 @@ struct MarkdownInlineRenderer {
             int numWidth = ctx->GetTextLineWidth(numberStr);
             bulletX += numWidth + 4;
         } else {
-            // Draw bullet character
-            ctx->SetTextPaint(mdStyle.bulletColor);
-
-            // Alternate bullet style per nesting level
-            if (nestingLevel % 3 == 0) {
-                // Filled circle (bullet character)
-                ctx->DrawText(mdStyle.bulletCharacter, bulletX, y);
-            } else if (nestingLevel % 3 == 1) {
-                // Open circle
-                int circleR = 3;
-                int circleY = y + lineHeight / 2;
-                ctx->SetStrokePaint(mdStyle.bulletColor);
-                ctx->SetStrokeWidth(1.0f);
-                ctx->DrawCircle(bulletX + circleR + 1, circleY, circleR);
-            } else {
-                // Small filled square
-                int sqSize = 5;
-                int sqY = y + (lineHeight - sqSize) / 2;
-                ctx->SetFillPaint(mdStyle.bulletColor);
-                ctx->FillRectangle(bulletX + 1, sqY, sqSize, sqSize);
-            }
-
-            int bulletCharWidth = ctx->GetTextLineWidth(mdStyle.bulletCharacter);
-            bulletX += bulletCharWidth + 4;
+            // Unordered list: skip bullet, just advance by the bullet slot width
+            bulletX += bulletSlotWidth;
         }
 
         // --- Draw item text with inline formatting ---
@@ -1824,8 +1849,9 @@ static bool IsMarkdownTableRow(const std::string& trimmed) {
 void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     if (!syntaxTokenizer) return;
 
-    // --- Markdown hybrid style ---
-    MarkdownHybridStyle mdStyle = MarkdownHybridStyle::Default();
+    // --- Markdown hybrid style: pick dark/light based on background brightness ---
+    bool isDarkBg = (style.backgroundColor.r + style.backgroundColor.g + style.backgroundColor.b) < 384;
+    MarkdownHybridStyle mdStyle = isDarkBg ? MarkdownHybridStyle::DarkMode() : MarkdownHybridStyle::Default();
     // --- Create a temporary SyntaxTokenizer for code block highlighting ---
     // Reused across all code block lines of the same language
     std::unique_ptr<SyntaxTokenizer> codeBlockTokenizer;
@@ -2085,7 +2111,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                         else if (lang == "rb") normalizedLang = "Ruby";
                         else if (lang == "rs") normalizedLang = "Rust";
                         else if (lang == "objc") normalizedLang = "Objective-C";
-                        else if (lang == "sh" || lang == "bash" || lang == "shell") normalizedLang = "Shell";
+                        else if (lang == "sh" || lang == "bash" || lang == "shell") normalizedLang = "Shell Script";
                         else if (lang == "html" || lang == "htm") normalizedLang = "HTML";
                         else if (lang == "css") normalizedLang = "CSS";
                         else if (lang == "sql") normalizedLang = "SQL";
@@ -2235,9 +2261,7 @@ bool UltraCanvasTextArea::IsMarkdownListItem(const std::string& line) const {
     if (std::isdigit(line[pos])) {
         while (pos < line.length() && std::isdigit(line[pos])) pos++;
         if (pos < line.length() && line[pos] == '.') {
-            if (pos + 1 < line.length() && line[pos + 1] == ' ') {
-                return true;
-            }
+            return true;
         }
     }
 

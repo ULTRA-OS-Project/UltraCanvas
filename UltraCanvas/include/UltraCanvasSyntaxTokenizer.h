@@ -229,6 +229,7 @@ namespace UltraCanvas {
     SyntaxTokenizationRules CreateZ80AssemblyRules();
 
     SyntaxTokenizationRules CreateMarkdownRules();
+    SyntaxTokenizationRules CreateShellScriptRules();
 
     // ===== IMPLEMENTATION =====
 
@@ -269,7 +270,7 @@ namespace UltraCanvas {
 //        RegisterLanguage(CreateScalaRules());
 //        RegisterLanguage(CreateMatlabRules());
 //        RegisterLanguage(CreateVbaRules());
-//        RegisterLanguage(CreateShellScriptRules());
+        RegisterLanguage(CreateShellScriptRules());
 
         // Assembly languagesRules
         RegisterLanguage(CreateX86AssemblyRules());
