@@ -487,7 +487,7 @@ namespace UltraCanvas {
         //      int txtW, txtH;
 //        ctx->GetTextLineDimensions(badgeText, txtW, txtH);
         ctx->SetTextAlignment(TextAlignment::Center);
-        ctx->SetTextVerticalAlignment(TextVerticalAlignement::Middle);
+        ctx->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
         ctx->DrawTextInRect(tab->badgeText, Rect2Di(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight));
         ctx->PopState();
     }

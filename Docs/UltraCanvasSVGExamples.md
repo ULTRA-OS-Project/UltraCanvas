@@ -70,7 +70,7 @@ Loads SVG content from a file.
 **Example:**
 ```cpp
 auto svgElement = std::make_shared<UltraCanvasSVGElement>("logo", 10, 10, 200, 200);
-if (svgElement->LoadFromFile("media/logo.svg")) {
+if (svgElement->LoadFromFile(GetResourcesDir() + "media/logo.svg")) {
     // SVG loaded successfully
 }
 ```
@@ -241,7 +241,7 @@ public:
         container->SetContainerStyle(style);
 
         svg = std::make_shared<UltraCanvasSVGElement>("icon", 10, 10, 180, 180);
-        svg->LoadFromFile("media/icon.svg");
+        svg->LoadFromFile(GetResourcesDir() + "media/icon.svg");
 
         svg->SetEventCallback([this](const UCEvent& event) {
             return HandleSVGEvent(event);
@@ -319,10 +319,10 @@ class SVGGallery {
 private:
     std::vector<std::shared_ptr<UltraCanvasSVGElement>> svgElements;
     std::vector<std::string> svgFiles = {
-        "media/icon1.svg",
-        "media/icon2.svg",
-        "media/icon3.svg",
-        "media/icon4.svg"
+        GetResourcesDir() + "media/icon1.svg",
+        GetResourcesDir() + "media/icon2.svg",
+        GetResourcesDir() + "media/icon3.svg",
+        GetResourcesDir() + "media/icon4.svg"
     };
 
 public:

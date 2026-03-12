@@ -59,6 +59,7 @@ namespace UltraCanvas {
         virtual void Hide() override;
         virtual void RaiseAndFocus() override;
         virtual void SetWindowTitle(const std::string& title) override;
+        virtual void SetWindowIcon(const std::string& iconPath) override;
         virtual void SetWindowSize(int width, int height) override;
         virtual void SetWindowPosition(int x, int y) override;
         virtual void SetResizable(bool resizable) override;

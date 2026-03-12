@@ -42,57 +42,13 @@ else()
 endif()
 
 
-find_package(fmt)
-#add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../3rdparty-libs/fmt fmt)
-# add_subdirectory(3rdparty/uni-algo-1.2.0)
-
-# # ===== LIBGRAPHEME - Unicode string library (bundled) =====
-# # Built from source in 3rdparty/libgrapheme-3.0.0
-# # Provides: grapheme cluster/word/sentence/line segmentation, case conversion
-# # License: ISC | Unicode 17.0.0 compliant
-# enable_language(C)
-# set(LIBGRAPHEME_DIR ${CMAKE_CURRENT_SOURCE_DIR}/3rdparty/libgrapheme-3.0.0)
-
-# add_library(grapheme STATIC
-#     ${LIBGRAPHEME_DIR}/src/bidirectional.c
-#     ${LIBGRAPHEME_DIR}/src/case.c
-#     ${LIBGRAPHEME_DIR}/src/character.c
-#     ${LIBGRAPHEME_DIR}/src/line.c
-#     ${LIBGRAPHEME_DIR}/src/sentence.c
-#     ${LIBGRAPHEME_DIR}/src/utf8.c
-#     ${LIBGRAPHEME_DIR}/src/util.c
-#     ${LIBGRAPHEME_DIR}/src/word.c
-# )
-
-# target_include_directories(grapheme
-#     PUBLIC
-#         $<BUILD_INTERFACE:${LIBGRAPHEME_DIR}>            # grapheme.h at build time
-#         $<INSTALL_INTERFACE:include/ultracanvas/grapheme> # grapheme.h after install
-#     PRIVATE
-#         ${LIBGRAPHEME_DIR}/gen   # gen/*.h pre-generated Unicode tables
-#         ${LIBGRAPHEME_DIR}/src   # src/util.h internal header
-# )
-
-# target_compile_definitions(grapheme PRIVATE
-#     _ISOC99_SOURCE
-# )
-
-# # Use C99 as required by libgrapheme, with freestanding + PIC for static linking
-# set_target_properties(grapheme PROPERTIES
-#     C_STANDARD 99
-#     C_STANDARD_REQUIRED ON
-#     POSITION_INDEPENDENT_CODE ON
-# )
-
-# if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
-#     target_compile_options(grapheme PRIVATE
-#         -ffreestanding
-#         -Wall -Wextra -Wpedantic
-#         -Wno-overlength-strings
-#     )
-# endif()
-
-# message(STATUS "  libgrapheme: Bundled (Unicode 17.0.0)")
+#include(FetchContent)
+#
+#FetchContent_Declare(
+#        fmt
+#        GIT_REPOSITORY https://github.com/fmtlib/fmt
+#        GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
+#FetchContent_MakeAvailable(fmt)
 
 message(STATUS "Target Platform: ${ULTRACANVAS_PLATFORM}")
 
@@ -146,6 +102,7 @@ set(ULTRACANVAS_PLATFORM ${ULTRACANVAS_PLATFORM} PARENT_SCOPE)
 set(ULTRACANVAS_CORE_SOURCES
         # Platform-specific sources
         #${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasString.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasConfig.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtils.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtilsUtf8.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasApplication.cpp

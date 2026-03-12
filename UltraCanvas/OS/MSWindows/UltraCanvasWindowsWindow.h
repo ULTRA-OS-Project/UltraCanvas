@@ -53,6 +53,8 @@ namespace UltraCanvas {
     protected:
         HWND hwnd;
         HDC hdc;
+        HICON hIconBig = nullptr;
+        HICON hIconSmall = nullptr;
 
         cairo_surface_t* cairoSurface;
         std::unique_ptr<RenderContextCairo> renderContext;
@@ -77,6 +79,7 @@ namespace UltraCanvas {
         void Hide() override;
         void RaiseAndFocus() override;
         void SetWindowTitle(const std::string& title) override;
+        void SetWindowIcon(const std::string& iconPath) override;
         void SetWindowSize(int width, int height) override;
         void SetWindowPosition(int x, int y) override;
         void SetResizable(bool resizable) override;

@@ -7,6 +7,7 @@
 
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasConfig.h"
 #include <iostream>
 #include <string>
 #include <vector>

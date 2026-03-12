@@ -6,13 +6,25 @@
 
 #include <algorithm>
 #include <iostream>
+#include <filesystem>
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasModalDialog.h"
 
+#if defined(__linux__) || defined(__unix__)
+#include <unistd.h>
+#include <linux/limits.h>
+#elif defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#include <climits>
+#endif
+
 
 namespace UltraCanvas {
+
     bool UltraCanvasBaseApplication::Initialize(const std::string& app) {
         appName = app;
 
@@ -22,6 +34,16 @@ namespace UltraCanvas {
             if (!InitializeClipboard()) {
                 std::cerr << "UltraCanvas: Failed to initialize clipboard" << std::endl;
             }
+
+            // Auto-set default window icon if available
+            std::string iconPath = GetResourcesDir() + UC_DEFAULT_ICON_SUBPATH;
+            if (std::filesystem::exists(iconPath)) {
+                SetDefaultWindowIcon(iconPath);
+                std::cerr << "UltraCanvas: Default window icon set to: " << iconPath << std::endl;
+            } else {
+                std::cerr << "UltraCanvas: Default icon not found at: " << iconPath << std::endl;
+            }
+
             return true;
         } else {
             std::cerr << "UltraCanvas: Failed to initialize application" << std::endl;

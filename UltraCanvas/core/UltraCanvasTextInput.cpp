@@ -406,7 +406,7 @@ namespace UltraCanvas {
         TextStyle textStyle;
         ctx->SetFontStyle(style.fontStyle);
         textStyle.alignment = style.textAlignment;
-        textStyle.verticalAlignement = TextVerticalAlignement::Middle;
+        textStyle.verticalAlignement = TextVerticalAlignment::Middle;
         ctx->SetTextStyle(textStyle);
         ctx->SetTextPaint(color);
 
@@ -429,7 +429,7 @@ namespace UltraCanvas {
     void UltraCanvasTextInput::RenderPlaceholder(const Rect2Df &area, IRenderContext* ctx) {
         ctx->SetTextAlignment(style.textAlignment);
         ctx->SetTextVerticalAlignment((inputType == TextInputType::Multiline) ?
-            TextVerticalAlignement::Top : TextVerticalAlignement::Middle);
+            TextVerticalAlignment::Top : TextVerticalAlignment::Middle);
         ctx->SetFontStyle(style.fontStyle);
         ctx->SetTextPaint(style.placeholderColor);
 

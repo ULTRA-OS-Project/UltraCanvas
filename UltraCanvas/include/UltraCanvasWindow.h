@@ -56,6 +56,9 @@ namespace UltraCanvas {
         // Container-specific window settings
         bool enableWindowScrolling = false;
         bool autoResizeToContent = false;
+
+        // Window icon (empty = use application default)
+        std::string iconPath;
     };
 
 // ===== ENHANCED BASE WINDOW (INHERITS FROM CONTAINER) =====
@@ -112,6 +115,7 @@ namespace UltraCanvas {
         // Window state
         virtual void RaiseAndFocus() = 0;
         virtual void SetWindowTitle(const std::string& title) = 0;
+        virtual void SetWindowIcon(const std::string& iconPath) = 0;
         virtual void SetWindowPosition(int x, int y) = 0;
         virtual void SetWindowSize(int width, int height) = 0;
 

@@ -45,6 +45,8 @@ option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires poppler)" OFF)
 
+include(FetchContent)
+
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
 
@@ -205,7 +207,11 @@ if(BUILD_DEMO_APP)
         ${JSONCPP_LIBRARIES}
     )
 
-    find_package(fmt)
+    FetchContent_Declare(
+            fmt
+            GIT_REPOSITORY https://github.com/fmtlib/fmt
+            GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
+    FetchContent_MakeAvailable(fmt)
     target_link_libraries(UltraCanvasDemo PRIVATE fmt::fmt)
 
     # Link against all plugin libraries
@@ -240,10 +246,10 @@ if(BUILD_DEMO_APP)
     endif()
     
     # Set executable properties
-    set_target_properties(UltraCanvasDemo PROPERTIES
-        OUTPUT_NAME "UltraCanvasDemo"
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
-    )
+#    set_target_properties(UltraCanvasDemo PROPERTIES
+#        OUTPUT_NAME "UltraCanvasDemo"
+#        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
+#    )
     
     # Installation
 #    install(TARGETS UltraCanvasDemo
@@ -329,10 +335,10 @@ endif()
     endif()
 
     # Set executable properties
-    set_target_properties(UltraCanvasTexter PROPERTIES
-            OUTPUT_NAME "UltraCanvasTexter"
-            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
-    )
+#    set_target_properties(UltraCanvasTexter PROPERTIES
+#            OUTPUT_NAME "UltraCanvasTexter"
+#            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
+#    )
 endif ()
 
 if (BUILD_FILEMANAGER_APP)
@@ -387,9 +393,15 @@ if (BUILD_FILEMANAGER_APP)
     # Set executable properties
     set_target_properties(UCFileManager PROPERTIES
             OUTPUT_NAME "UCFileManager"
-            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
     )
 endif()
+
+add_custom_target(copy_assets
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/media ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/media
+)
+add_dependencies(UltraCanvasTexter copy_assets)
+add_dependencies(UltraCanvasDemo copy_assets)
 
 # ===== PACKAGE CONFIGURATION =====
 include(CMakePackageConfigHelpers)

@@ -29,6 +29,8 @@ namespace UltraCanvas {
     std::string LoadFile(const std::string& filePath);
     std::string FormatFileSize(size_t bytes);
 
+    std::string GetExecutableDir();
+
     std::vector<uint8_t> Base64Decode(const std::string& input);
 
     inline std::string LTrimWhitespace(std::string s) {

@@ -674,7 +674,10 @@ namespace UltraCanvas {
             textPos.x = textRect.x;
         }
         textPos.y = textRect.y + (textRect.height - textHeight) / 2;
-
+        if (GetPrimaryState() == ElementState::Pressed) {
+            textPos.y ++;
+            textPos.x ++;
+        }
         //ctx->DrawRectangle((int)textPos.x, (int)textPos.y, textWidth, textHeight);
         ctx->DrawText(text, textPos);
     }
@@ -699,27 +702,27 @@ namespace UltraCanvas {
 
         // Adjust bounds for pressed effect
         Rect2Di drawBounds = bounds;
-        if (GetPrimaryState() == ElementState::Pressed) {
-            drawBounds.x += 1;
-            drawBounds.y += 1;
-        }
+//        if (GetPrimaryState() == ElementState::Pressed) {
+//            drawBounds.x += 1;
+//            drawBounds.y += 1;
+//        }
 
         // Draw primary and secondary sections
         if (split.horizontal) {
             // Draw primary section
             Rect2Di primaryDraw = primarySectionRect;
-            if (GetPrimaryState() == ElementState::Pressed) {
-                primaryDraw.x += 1;
-                primaryDraw.y += 1;
-            }
+//            if (GetPrimaryState() == ElementState::Pressed) {
+//                primaryDraw.x += 1;
+//                primaryDraw.y += 1;
+//            }
             ctx->DrawFilledRectangle(primaryDraw, primaryBg, 0, Colors::Transparent, 0);
 
             // Draw secondary section
             Rect2Di secondaryDraw = secondarySectionRect;
-            if (GetPrimaryState() == ElementState::Pressed) {
-                secondaryDraw.x += 1;
-                secondaryDraw.y += 1;
-            }
+//            if (GetPrimaryState() == ElementState::Pressed) {
+//                secondaryDraw.x += 1;
+//                secondaryDraw.y += 1;
+//            }
             ctx->DrawFilledRectangle(secondaryDraw, secondaryBg, 0, Colors::Transparent, 0);
         } else {
             // Vertical split
@@ -732,10 +735,10 @@ namespace UltraCanvas {
                                      style.cornerRadius);
 
             Rect2Di secondaryDraw = secondarySectionRect;
-            if (GetPrimaryState() == ElementState::Pressed) {
-                secondaryDraw.x += 1;
-                secondaryDraw.y += 1;
-            }
+//            if (GetPrimaryState() == ElementState::Pressed) {
+//                secondaryDraw.x += 1;
+//                secondaryDraw.y += 1;
+//            }
             ctx->DrawFilledRectangle(secondaryDraw, secondaryBg, 0, Colors::Transparent,
                                      style.cornerRadius);
         }
@@ -822,16 +825,11 @@ namespace UltraCanvas {
 
         // Draw border around entire button
         if (style.borderWidth > 0) {
-            ctx->SetStrokePaint(style.borderColor);
-            ctx->SetStrokeWidth(style.borderWidth);
+            ctx->SetStrokePaint(IsFocused() ? style.focusedColor : style.borderColor);
+            ctx->SetStrokeWidth(IsFocused() ? style.borderWidth + 1 : style.borderWidth);
             ctx->DrawRoundedRectangle(drawBounds, style.cornerRadius);
         }
 
-        // Draw focus indicator if focused
-        if (IsFocused()) {
-            ctx->SetStrokePaint(style.focusedColor);
-            ctx->DrawRoundedRectangle(drawBounds, style.cornerRadius);
-        }
     }
 
 // ===== MAIN RENDER METHOD =====
@@ -864,25 +862,13 @@ namespace UltraCanvas {
                                          Colors::Transparent, style.cornerRadius);
             }
 
-            // Adjust bounds for pressed effect
-            if (GetPrimaryState() == ElementState::Pressed) {
-                bounds.x += 1;
-                bounds.y += 1;
-            }
-
             // Draw button background
-            ctx->DrawFilledRectangle(bounds, bgColor, style.borderWidth,
-                                     style.borderColor, style.cornerRadius);
+            ctx->DrawFilledRectangle(bounds, bgColor, IsFocused() ? style.borderWidth + 1 : style.borderWidth,
+                                     (IsFocused() ? style.focusedColor : style.borderColor), style.cornerRadius);
 
             // Draw icon and text
             DrawIcon(ctx);
             DrawText(ctx);
-
-            // Draw focus indicator if focused
-            if (IsFocused()) {
-                ctx->SetStrokePaint(style.focusedColor);
-                ctx->DrawRoundedRectangle(bounds, style.cornerRadius);
-            }
         }
 
         ctx->PopState();

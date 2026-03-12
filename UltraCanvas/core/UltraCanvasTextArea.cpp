@@ -2458,6 +2458,32 @@ namespace UltraCanvas {
 
         RequestRedraw();
     }
+    void UltraCanvasTextArea::ApplyLightTheme() {
+        style.fontColor = {0, 0, 0, 255};
+        style.backgroundColor = {255, 255, 255, 255};
+        style.borderColor = {200, 200, 200, 255};
+        style.selectionColor = {51, 153, 255, 100};
+        style.cursorColor = {0, 0, 0, 255};
+        style.currentLineColor = {240, 240, 240, 255};
+        style.lineNumbersColor = {128, 128, 128, 255};
+        style.lineNumbersBackgroundColor = {248, 248, 248, 255};
+        style.currentLineHighlightColor = {255, 255, 0, 30};
+        style.scrollbarTrackColor = {128, 128, 128, 255};
+        style.scrollbarColor = {200, 200, 200, 255};
+
+        // Syntax highlighting colors
+        style.tokenStyles.keywordStyle.color = {0, 0, 255, 255};
+        style.tokenStyles.functionStyle.color = {128, 0, 128, 255};
+        style.tokenStyles.stringStyle.color = {0, 128, 0, 255};
+        style.tokenStyles.characterStyle.color = {0, 128, 0, 255};
+        style.tokenStyles.commentStyle.color = {128, 128, 128, 255};
+        style.tokenStyles.numberStyle.color = {255, 128, 0, 255};
+        style.tokenStyles.identifierStyle.color = {0, 128, 128, 255};
+        style.tokenStyles.operatorStyle.color = {128, 0, 0, 255};
+        style.tokenStyles.constantStyle.color = {0, 0, 128, 255};
+        style.tokenStyles.preprocessorStyle.color = {64, 128, 128, 255};
+        style.tokenStyles.builtinStyle.color = {128, 0, 255, 255};
+    }
 
     void UltraCanvasTextArea::ApplyCustomTheme(const TextAreaStyle& customStyle) {
         style = customStyle;

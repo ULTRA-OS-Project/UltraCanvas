@@ -11,6 +11,14 @@
 #include <iomanip>
 #include <string>
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM macros
+#elif defined(__APPLE__)
+#import <Cocoa/Cocoa.h>
+#import <AppKit/AppKit.h>
+#endif
+
 namespace UltraCanvas {
     const char* versionString = "0.45";
 
@@ -431,5 +439,42 @@ namespace UltraCanvas {
             oss << bytes << " bytes";
         }
         return oss.str();
+    }
+
+    std::string GetExecutableDir() {
+        std::string path;
+#if defined(__linux__) || defined(__unix__)
+        char buf[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        if (len > 0) {
+            buf[len] = '\0';
+            path = buf;
+        }
+#elif defined(_WIN32) || defined(_WIN64)
+        char buf[4096];
+        size_t len = GetModuleFileNameA(nullptr, buf, sizeof(buf) - 1);
+        if (len > 0 && len < sizeof(buf) - 1) {
+            path = buf;
+        }
+#elif defined(__APPLE__)
+        char buf[PATH_MAX];
+        uint32_t size = sizeof(buf);
+        if (_NSGetExecutablePath(buf, &size) == 0) {
+            char resolved[PATH_MAX];
+            if (realpath(buf, resolved)) {
+                path = resolved;
+            } else {
+                path = buf;
+            }
+        }
+#endif
+        std::cerr << "GetExecutableDir exec=" << path << std::endl;
+        if (!path.empty()) {
+            auto pos = path.find_last_of("/\\");
+            if (pos != std::string::npos) {
+                return path.substr(0, pos);
+            }
+        }
+        return ".";
     }
 }

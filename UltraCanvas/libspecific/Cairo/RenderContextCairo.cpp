@@ -134,7 +134,7 @@ namespace UltraCanvas {
 
             // Calculate vertical position for alignment
 //            float yOffset = 0;
-//            if (rectHeight > 0 && currentState.textStyle.verticalAlignement == TextVerticalAlignement::Middle) {
+//            if (rectHeight > 0 && currentState.textStyle.verticalAlignement == TextVerticalAlignment::Middle) {
 //                yOffset = (rectHeight - textHeight) / 2.0f;
 //                if (yOffset < 0) yOffset = 0;
 //            }
@@ -746,7 +746,7 @@ namespace UltraCanvas {
 
 //    GetTextSurfaceEntry(const std::string &text, float w, float h,
 //                        const std::string& fontFamily, float fontSize, FontWeight fw, FontSlant fs,
-//                        TextAlignment halign, TextVerticalAlignement valign, TextWrap wrap,
+//                        TextAlignment halign, TextVerticalAlignment valign, TextWrap wrap,
 //                        Color& textColor, float lineHeight, bool isMarkup) {
 //        char key[400];
 //        snprintf(key, sizeof(key), "%dx%d-%s-%f-%d%d%d%d%d#%x-%f-%d-%s", w, h,
@@ -830,10 +830,10 @@ namespace UltraCanvas {
             cairo_save(cairo);
 
             switch (currentState.textStyle.verticalAlignement) {
-                case TextVerticalAlignement::Middle:
+                case TextVerticalAlignment::Middle:
                     y = y + ((h - cachedSurface->height) / 2);
                     break;
-                case TextVerticalAlignement::Bottom:
+                case TextVerticalAlignment::Bottom:
                     y = y + (h - cachedSurface->height);
                     break;
                 default:
@@ -887,7 +887,7 @@ namespace UltraCanvas {
 //                pango_layout_set_text(layout, text.c_str(), -1);
 //            }
 //
-//            if (currentState.textStyle.verticalAlignement == TextVerticalAlignement::Middle) {
+//            if (currentState.textStyle.verticalAlignement == TextVerticalAlignment::Middle) {
 //                int w1, h1;
 //                pango_layout_get_pixel_size(layout, &w1, &h1);
 //                cairo_move_to(cairo, x, y + ((h - h1) / 2));
@@ -1655,7 +1655,7 @@ namespace UltraCanvas {
         currentState.textStyle.alignment = align;
     }
 
-    void RenderContextCairo::SetTextVerticalAlignment(TextVerticalAlignement align) {
+    void RenderContextCairo::SetTextVerticalAlignment(TextVerticalAlignment align) {
         currentState.textStyle.verticalAlignement = align;
     }
 

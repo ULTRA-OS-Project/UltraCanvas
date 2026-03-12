@@ -334,6 +334,7 @@ bool InitializeSystem(UltraCanvasApplication& app, const std::string& appName) {
             HandleFatalError("Failed to initialize UltraCanvas application");
             return false;
         }
+        app.SetDefaultWindowIcon(GetResourcesDir()+"media/icons/texter/Texter_icon.png");
 
         std::cout << "✓ UltraCanvas framework initialized successfully" << std::endl;
     } catch (const std::exception& e) {

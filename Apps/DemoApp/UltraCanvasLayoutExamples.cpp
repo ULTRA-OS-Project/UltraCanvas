@@ -186,6 +186,7 @@ namespace UltraCanvas {
         nameLabel->SetText("Name:");
         nameLabel->SetTextColor(Colors::Black);
         auto nameInput = std::make_shared<UltraCanvasTextInput>("NameIn", 1034, 0, 0, 250, 25);
+        nameInput->SetShowValidationState(false);
         gridLayout->AddUIElement(nameLabel, row, 0);
         gridLayout->AddUIElement(nameInput, row++, 1);
 

@@ -103,13 +103,13 @@ namespace UltraCanvas {
         infoLabel1_2->onClick = openGitHubCallback;
         layout->AddUIElement(infoLabel1_2);
 
-        infoLabel1_3 = std::make_shared<UltraCanvasLabel>();
-        infoLabel1_3->SetText("Planned first release 12/2025");
-        infoLabel1_3->SetFontSize(12);
-        infoLabel1_3->SetTextColor(Color(60, 60, 60, 255));
-        infoLabel1_3->SetAutoResize(true);
-        infoLabel1_3->SetMargin(2,20);
-        layout->AddUIElement(infoLabel1_3);
+//        infoLabel1_3 = std::make_shared<UltraCanvasLabel>();
+//        infoLabel1_3->SetText("Planned first release 12/2025");
+//        infoLabel1_3->SetFontSize(12);
+//        infoLabel1_3->SetTextColor(Color(60, 60, 60, 255));
+//        infoLabel1_3->SetAutoResize(true);
+//        infoLabel1_3->SetMargin(2,20);
+//        layout->AddUIElement(infoLabel1_3);
 
         infoLabel1_4 = CreateLabel("On the right side of the title of each UC element you can find these icons:");
         infoLabel1_4->SetFontSize(12);
@@ -127,7 +127,7 @@ namespace UltraCanvas {
         doccontainer->SetMargin(10,20,10,20);
         layout->AddUIElement(doccontainer)->SetWidthMode(SizeMode::Fill);
         programmersGuideIcon = CreateImageElement("DocIcon", iconSize, iconSize);
-        programmersGuideIcon->LoadFromFile("media/icons/text.png");
+        programmersGuideIcon->LoadFromFile(GetResourcesDir() + "media/icons/text.png");
         programmersGuideIcon->SetFitMode(ImageFitMode::Contain);
         docContainerLayout->AddUIElement(programmersGuideIcon);
 
@@ -146,7 +146,7 @@ namespace UltraCanvas {
         layout->AddUIElement(codeContainer)->SetWidthMode(SizeMode::Fill);
 
         exampleCodeIcon = CreateImageElement("CodeIcon", iconSize, iconSize);
-        exampleCodeIcon->LoadFromFile("media/icons/c-plus-plus-icon.svg");
+        exampleCodeIcon->LoadFromFile(GetResourcesDir() + "media/icons/c-plus-plus-icon.png");
         exampleCodeIcon->SetFitMode(ImageFitMode::Contain);
         codeContainerLayout->AddUIElement(exampleCodeIcon);
 
@@ -187,7 +187,7 @@ namespace UltraCanvas {
 
         layout->AddUIElement(okButton)->SetCrossAlignment(LayoutAlignment::Center);
 
-        auto verLabel = CreateLabel("VerText", 0, 22, std::string("UltraCanvas v. ")+versionString);
+        auto verLabel = CreateLabel("VerText", 0, 22, std::string("UltraCanvas version ")+versionString);
         verLabel->SetFontSize(10);
         verLabel->SetAlignment(TextAlignment::Center);
         verLabel->SetTextColor(Color(60, 60, 60, 255));

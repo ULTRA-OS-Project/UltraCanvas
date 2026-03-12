@@ -188,43 +188,43 @@ namespace UltraCanvas {
 
         // Calculate text area (inside padding and borders)
         textArea = GetContentRect();
-
-        if (!text.empty()) {
-            // Set text style for measurement
-
-            // Calculate horizontal position
-            float textX = textArea.x;
-            switch (style.horizontalAlign) {
-                case TextAlignment::Left:
-                    textX = textArea.x;
-                    break;
-                case TextAlignment::Center:
-                    textX = textArea.x + (textArea.width - textDimensions.width) / 2;
-                    break;
-                case TextAlignment::Right:
-                    textX = textArea.x + textArea.width - textDimensions.width;
-                    break;
-                case TextAlignment::Justify:
-                    textX = textArea.x; // For single line, same as left
-                    break;
-            }
-
-            // Calculate vertical position
-            float textY = textArea.y;
-            switch (style.verticalAlign) {
-                case TextVerticalAlignment::Top:
-                    textY = textArea.y; // Baseline offset
-                    break;
-                case TextVerticalAlignment::Middle:
-                    textY = textArea.y + (textArea.height / 2) - textDimensions.height / 2;
-                    break;
-                case TextVerticalAlignment::Bottom:
-                    textY = textArea.y + textArea.height;
-                    break;
-            }
-
-            textPosition = Point2Di(textX, textY);
-        }
+//
+//        if (!text.empty()) {
+//            // Set text style for measurement
+//
+//            // Calculate horizontal position
+//            float textX = textArea.x;
+//            switch (style.horizontalAlign) {
+//                case TextAlignment::Left:
+//                    textX = textArea.x;
+//                    break;
+//                case TextAlignment::Center:
+//                    textX = textArea.x + (textArea.width - textDimensions.width) / 2;
+//                    break;
+//                case TextAlignment::Right:
+//                    textX = textArea.x + textArea.width - textDimensions.width;
+//                    break;
+//                case TextAlignment::Justify:
+//                    textX = textArea.x; // For single line, same as left
+//                    break;
+//            }
+//
+//            // Calculate vertical position
+//            float textY = textArea.y;
+//            switch (style.verticalAlign) {
+//                case TextVerticalAlignment::Top:
+//                    textY = textArea.y; // Baseline offset
+//                    break;
+//                case TextVerticalAlignment::Middle:
+//                    textY = textArea.y + (textArea.height / 2) - textDimensions.height / 2;
+//                    break;
+//                case TextVerticalAlignment::Bottom:
+//                    textY = textArea.y + textArea.height;
+//                    break;
+//            }
+//
+//            textPosition = Point2Di(textX, textY);
+//        }
 
         ctx->PopState();
         layoutDirty = false;
@@ -301,6 +301,7 @@ namespace UltraCanvas {
             ctx->SetTextPaint(style.textColor);
             ctx->SetFontStyle(style.fontStyle);
             ctx->SetTextAlignment(style.horizontalAlign);
+            ctx->SetTextVerticalAlignment(style.verticalAlign);
             ctx->DrawTextInRect(text, textArea);
         }
 

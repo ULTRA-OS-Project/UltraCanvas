@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
+#include "../../include/UltraCanvasImage.h"
 #include "UltraCanvasWindowsApplication.h"
 #include <iostream>
 
@@ -116,6 +117,15 @@ namespace UltraCanvas {
         };
 
         RegisterDragDrop(hwnd, dropTarget);
+
+        // Apply window icon
+        std::string iconToUse = config_.iconPath;
+        if (iconToUse.empty()) {
+            iconToUse = app->GetDefaultWindowIcon();
+        }
+        if (!iconToUse.empty()) {
+            SetWindowIcon(iconToUse);
+        }
 
         _created = true;
         std::cerr << "UltraCanvas Windows: Window created successfully (HWND="
@@ -286,6 +296,10 @@ namespace UltraCanvas {
             hdc = nullptr;
         }
 
+        // Destroy icons
+        if (hIconBig) { DestroyIcon(hIconBig); hIconBig = nullptr; }
+        if (hIconSmall) { DestroyIcon(hIconSmall); hIconSmall = nullptr; }
+
         // Destroy window
         if (hwnd) {
             DestroyWindow(hwnd);
@@ -431,6 +445,98 @@ namespace UltraCanvas {
             std::wstring wTitle = UltraCanvasWindowsApplication::Utf8ToUtf16(title);
             SetWindowTextW(hwnd, wTitle.c_str());
         }
+    }
+
+    void UltraCanvasWindowsWindow::SetWindowIcon(const std::string& iconPath) {
+        if (!hwnd || iconPath.empty()) return;
+
+        // Load the icon image
+        auto img = UCImageRaster::Load(iconPath, false);
+        if (!img || !img->IsValid()) {
+            std::cerr << "UltraCanvas Windows: Failed to load icon: " << iconPath << std::endl;
+            return;
+        }
+
+        auto pixmap = img->GetPixmap();
+        if (!pixmap || !pixmap->IsValid()) {
+            std::cerr << "UltraCanvas Windows: Failed to create pixmap for icon" << std::endl;
+            return;
+        }
+
+        int w = pixmap->GetWidth();
+        int h = pixmap->GetHeight();
+        uint32_t* pixels = pixmap->GetPixelData();
+        if (!pixels || w <= 0 || h <= 0) return;
+
+        // Helper lambda to create HICON from ARGB pixel data at a given size
+        auto createIcon = [&](int targetW, int targetH) -> HICON {
+            // Get pixmap at target size
+            auto sizedPixmap = img->GetPixmap(targetW, targetH);
+            if (!sizedPixmap || !sizedPixmap->IsValid()) return nullptr;
+
+            int pw = sizedPixmap->GetWidth();
+            int ph = sizedPixmap->GetHeight();
+            uint32_t* px = sizedPixmap->GetPixelData();
+            if (!px) return nullptr;
+
+            // Create a 32-bit ARGB DIB section
+            BITMAPV5HEADER bi = {};
+            bi.bV5Size = sizeof(BITMAPV5HEADER);
+            bi.bV5Width = pw;
+            bi.bV5Height = -ph; // top-down
+            bi.bV5Planes = 1;
+            bi.bV5BitCount = 32;
+            bi.bV5Compression = BI_BITFIELDS;
+            bi.bV5RedMask   = 0x00FF0000;
+            bi.bV5GreenMask = 0x0000FF00;
+            bi.bV5BlueMask  = 0x000000FF;
+            bi.bV5AlphaMask = 0xFF000000;
+
+            void* dibBits = nullptr;
+            HDC screenDC = GetDC(nullptr);
+            HBITMAP hBitmap = CreateDIBSection(screenDC,
+                reinterpret_cast<BITMAPINFO*>(&bi),
+                DIB_RGB_COLORS, &dibBits, nullptr, 0);
+            ReleaseDC(nullptr, screenDC);
+
+            if (!hBitmap || !dibBits) return nullptr;
+
+            // Copy pixel data — Cairo ARGB32 premultiplied to Windows ARGB
+            // Both use the same byte layout (BGRA in memory on little-endian)
+            memcpy(dibBits, px, pw * ph * 4);
+
+            // Create mask bitmap (all zeros = fully opaque, alpha is in the color bitmap)
+            HBITMAP hMask = CreateBitmap(pw, ph, 1, 1, nullptr);
+
+            ICONINFO iconInfo = {};
+            iconInfo.fIcon = TRUE;
+            iconInfo.hbmColor = hBitmap;
+            iconInfo.hbmMask = hMask;
+
+            HICON icon = CreateIconIndirect(&iconInfo);
+
+            DeleteObject(hBitmap);
+            DeleteObject(hMask);
+
+            return icon;
+        };
+
+        // Clean up previous icons
+        if (hIconBig) { DestroyIcon(hIconBig); hIconBig = nullptr; }
+        if (hIconSmall) { DestroyIcon(hIconSmall); hIconSmall = nullptr; }
+
+        // Create icons at standard sizes
+        hIconBig = createIcon(48, 48);    // Taskbar / Alt-Tab
+        hIconSmall = createIcon(16, 16);  // Title bar
+
+        if (hIconBig) {
+            SendMessage(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(hIconBig));
+        }
+        if (hIconSmall) {
+            SendMessage(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hIconSmall));
+        }
+
+        std::cerr << "UltraCanvas Windows: Window icon set from: " << iconPath << std::endl;
     }
 
     void UltraCanvasWindowsWindow::SetWindowSize(int width, int height) {

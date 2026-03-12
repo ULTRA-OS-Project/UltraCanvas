@@ -184,7 +184,7 @@ namespace UltraCanvas {
         container->AddChild(mainMenuBar);
 
         // Dark theme menu
-        auto darkMenuBtn = std::make_shared<UltraCanvasButton>("DarkMenuBtn", 115, 20, 225, 150, 35);
+        auto darkMenuBtn = std::make_shared<UltraCanvasButton>("DarkMenuBtn", 115, 20, 225, 170, 35);
         darkMenuBtn->SetText("Dark Theme Menu");
         container->AddChild(darkMenuBtn);
 
@@ -213,7 +213,7 @@ namespace UltraCanvas {
         container->AddChild(darkMenu);
 
         // Flat style menu
-        auto flatMenuBtn = std::make_shared<UltraCanvasButton>("FlatMenuBtn", 117, 180, 225, 150, 35);
+        auto flatMenuBtn = std::make_shared<UltraCanvasButton>("FlatMenuBtn", 117, 200, 225, 170, 35);
         flatMenuBtn->SetText("Flat Style Menu");
         container->AddChild(flatMenuBtn);
 
@@ -229,7 +229,7 @@ namespace UltraCanvas {
             std::cout << "Desktop view" << std::endl;
         }));
 
-        flatMenu->AddItem(MenuItemData::Action("Tablet View", "media/icons/tablet48px.png", []() {
+        flatMenu->AddItem(MenuItemData::Action("Tablet View", GetResourcesDir() + "media/icons/tablet48px.png", []() {
             std::cout << "Tablet view" << std::endl;
         }));
 

@@ -42,21 +42,21 @@ namespace UltraCanvas {
         successLabel->SetText("✓ Success");
         successLabel->SetBackgroundColor(Color(200, 255, 200, 255));
         successLabel->SetTextColor(Color(0, 150, 0, 255));
-        successLabel->SetAlignment(TextAlignment::Center);
+        successLabel->SetAlignment(TextAlignment::Center, TextVerticalAlignment::Middle);
         container->AddChild(successLabel);
 
         auto warningLabel = std::make_shared<UltraCanvasLabel>("WarningLabel", 505, 180, 140, 150, 25);
         warningLabel->SetText("⚠ Warning");
         warningLabel->SetBackgroundColor(Color(255, 255, 200, 255));
         warningLabel->SetTextColor(Color(200, 150, 0, 255));
-        warningLabel->SetAlignment(TextAlignment::Center);
+        warningLabel->SetAlignment(TextAlignment::Center, TextVerticalAlignment::Middle);
         container->AddChild(warningLabel);
 
         auto errorLabel = std::make_shared<UltraCanvasLabel>("ErrorLabel", 506, 340, 140, 150, 25);
         errorLabel->SetText("✗ Error");
         errorLabel->SetBackgroundColor(Color(255, 200, 200, 255));
         errorLabel->SetTextColor(Color(200, 0, 0, 255));
-        errorLabel->SetAlignment(TextAlignment::Center);
+        errorLabel->SetAlignment(TextAlignment::Center, TextVerticalAlignment::Middle);
         container->AddChild(errorLabel);
 
         // Multi-line Label

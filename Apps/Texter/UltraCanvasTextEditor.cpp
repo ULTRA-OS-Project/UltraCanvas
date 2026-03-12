@@ -319,35 +319,35 @@ namespace {
 
                         // ===== FILE MENU =====
                 .AddSubmenu("File", {
-                        MenuItemData::ActionWithShortcut("New", "Ctrl+N", "media/icons/texter/add-document.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("New", "Ctrl+N", GetResourcesDir() + "media/icons/texter/add-document.svg", [this]() {
                             OnFileNew();
                         }),
-                        MenuItemData::ActionWithShortcut("New Window", "Ctrl+Shift+N", "media/icons/texter/add-document.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("New Window", "Ctrl+Shift+N", GetResourcesDir() + "media/icons/texter/add-document.svg", [this]() {
                             if (onNewWindowRequest) onNewWindowRequest();
                         }),
-                        MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", "media/icons/texter/folder-open.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", GetResourcesDir() + "media/icons/texter/folder-open.svg", [this]() {
                             OnFileOpen();
                         }),
-                        MenuItemData::Submenu("Recent Files", "media/icons/texter/clock-five.svg",  {}),  // Empty — populated dynamically
+                        MenuItemData::Submenu("Recent Files", GetResourcesDir() + "media/icons/texter/clock-five.svg",  {}),  // Empty — populated dynamically
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Save", "Ctrl+S", "media/icons/texter/save.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Save", "Ctrl+S", GetResourcesDir() + "media/icons/texter/save.svg", [this]() {
                             OnFileSave();
                         }),
-                        MenuItemData::ActionWithShortcut("Save As...", "Ctrl+Shift+S", "media/icons/texter/save.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Save As...", "Ctrl+Shift+S", GetResourcesDir() + "media/icons/texter/save.svg", [this]() {
                             OnFileSaveAs();
                         }),
-                        MenuItemData::Action("Save All", "media/icons/texter/save.svg", [this]() {
+                        MenuItemData::Action("Save All", GetResourcesDir() + "media/icons/texter/save.svg", [this]() {
                             OnFileSaveAll();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", "media/icons/texter/close_tab.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", GetResourcesDir() + "media/icons/texter/close_tab.svg", [this]() {
                             OnFileClose();
                         }),
-                        MenuItemData::Action("Close All", "media/icons/texter/close_tab.svg", [this]() {
+                        MenuItemData::Action("Close All", GetResourcesDir() + "media/icons/texter/close_tab.svg", [this]() {
                             OnFileCloseAll();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Quit", "Alt+F4", "media/icons/texter/exit.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Quit", "Alt+F4", GetResourcesDir() + "media/icons/texter/exit.svg", [this]() {
                             OnFileQuit();
                         })
                 })
@@ -355,31 +355,31 @@ namespace {
                         // ===== EDIT MENU =====
                 .AddSubmenu("Edit", {
                         // "↶ Undo"
-                        MenuItemData::ActionWithShortcut("Undo", "Ctrl+Z", "media/icons/texter/undo.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Undo", "Ctrl+Z", GetResourcesDir() + "media/icons/texter/undo.svg", [this]() {
                             OnEditUndo();
                         }),
                         // "↷ Redo"
-                        MenuItemData::ActionWithShortcut("Redo", "Ctrl+Y", "media/icons/texter/redo.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Redo", "Ctrl+Y", GetResourcesDir() + "media/icons/texter/redo.svg", [this]() {
                             OnEditRedo();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", "media/icons/texter/scissors.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", GetResourcesDir() + "media/icons/texter/scissors.svg", [this]() {
                             OnEditCut();
                         }),
-                        MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", "media/icons/texter/copy.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", GetResourcesDir() + "media/icons/texter/copy.svg", [this]() {
                             OnEditCopy();
                         }),
-                        MenuItemData::ActionWithShortcut("Paste", "Ctrl+V", "media/icons/texter/paste.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Paste", "Ctrl+V", GetResourcesDir() + "media/icons/texter/paste.svg", [this]() {
                             OnEditPaste();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Find...", "Ctrl+F", "media/icons/texter/search.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Find...", "Ctrl+F", GetResourcesDir() + "media/icons/texter/search.svg", [this]() {
                             OnEditSearch();
                         }),
-                        MenuItemData::ActionWithShortcut("Replace...", "Ctrl+H",  "media/icons/texter/replace.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Replace...", "Ctrl+H",  GetResourcesDir() + "media/icons/texter/replace.svg", [this]() {
                             OnEditReplace();
                         }),
-                        MenuItemData::ActionWithShortcut("Go to Line...", "Ctrl+G", "media/icons/texter/gotoline.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Go to Line...", "Ctrl+G", GetResourcesDir() + "media/icons/texter/gotoline.svg", [this]() {
                             OnEditGoToLine();
                         }),
                         MenuItemData::Separator(),
@@ -390,17 +390,17 @@ namespace {
 
                         // ===== VIEW MENU =====
                 .AddSubmenu("View", {
-                        MenuItemData::ActionWithShortcut("Increase Font Size", "Ctrl++", "media/icons/texter/zoom-in.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Increase Font Size", "Ctrl++", GetResourcesDir() + "media/icons/texter/zoom-in.svg", [this]() {
                             OnViewIncreaseFontSize();
                         }),
-                        MenuItemData::ActionWithShortcut("Decrease Font Size", "Ctrl+-", "media/icons/texter/zoom-out.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Decrease Font Size", "Ctrl+-", GetResourcesDir() + "media/icons/texter/zoom-out.svg", [this]() {
                             OnViewDecreaseFontSize();
                         }),
                         MenuItemData::ActionWithShortcut("Reset Font Size", "Ctrl+0", [this]() {
                             OnViewResetFontSize();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Toggle Theme", "Ctrl+T", "media/icons/texter/theme_mode.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Toggle Theme", "Ctrl+T", GetResourcesDir() + "media/icons/texter/theme_mode.svg", [this]() {
                             OnViewToggleTheme();
                         }),
                         MenuItemData::Separator(),
@@ -443,22 +443,22 @@ namespace {
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(0, 0, GetWidth(), toolbarHeight)
-                .AddButton("new", "", "media/icons/texter/add-document.svg", [this]() { OnFileNew(); })
-                .AddButton("open", "", "media/icons/texter/folder-open.svg", [this]() { OnFileOpen(); })
-                .AddButton("save", "", "media/icons/texter/save.svg", [this]() { OnFileSave(); })
+                .AddButton("new", "", GetResourcesDir() + "media/icons/texter/add-document.svg", [this]() { OnFileNew(); })
+                .AddButton("open", "", GetResourcesDir() + "media/icons/texter/folder-open.svg", [this]() { OnFileOpen(); })
+                .AddButton("save", "", GetResourcesDir() + "media/icons/texter/save.svg", [this]() { OnFileSave(); })
                 .AddSeparator()
-                .AddButton("cut", "", "media/icons/texter/scissors.svg", [this]() { OnEditCut(); })
-                .AddButton("copy", "", "media/icons/texter/copy.svg", [this]() { OnEditCopy(); })
-                .AddButton("paste", "", "media/icons/texter/paste.svg", [this]() { OnEditPaste(); })
+                .AddButton("cut", "", GetResourcesDir() + "media/icons/texter/scissors.svg", [this]() { OnEditCut(); })
+                .AddButton("copy", "", GetResourcesDir() + "media/icons/texter/copy.svg", [this]() { OnEditCopy(); })
+                .AddButton("paste", "", GetResourcesDir() + "media/icons/texter/paste.svg", [this]() { OnEditPaste(); })
                 .AddSeparator()
-                .AddButton("undo", "", "media/icons/texter/undo.svg", [this]() { OnEditUndo(); })
-                .AddButton("redo", "", "media/icons/texter/redo.svg", [this]() { OnEditRedo(); })
+                .AddButton("undo", "", GetResourcesDir() + "media/icons/texter/undo.svg", [this]() { OnEditUndo(); })
+                .AddButton("redo", "", GetResourcesDir() + "media/icons/texter/redo.svg", [this]() { OnEditRedo(); })
                 .AddSeparator()
-                .AddButton("search", "", "media/icons/texter/search.svg", [this]() { OnEditSearch(); })
-                .AddButton("replace", "", "media/icons/texter/replace.svg", [this]() { OnEditReplace(); })
+                .AddButton("search", "", GetResourcesDir() + "media/icons/texter/search.svg", [this]() { OnEditSearch(); })
+                .AddButton("replace", "", GetResourcesDir() + "media/icons/texter/replace.svg", [this]() { OnEditReplace(); })
                 .AddSeparator()
-                .AddButton("zoom-in", "", "media/icons/texter/zoom-in.svg", [this]() { OnViewIncreaseFontSize(); })
-                .AddButton("zoom-out", "", "media/icons/texter/zoom-out.svg", [this]() { OnViewDecreaseFontSize(); })
+                .AddButton("zoom-in", "", GetResourcesDir() + "media/icons/texter/zoom-in.svg", [this]() { OnViewIncreaseFontSize(); })
+                .AddButton("zoom-out", "", GetResourcesDir() + "media/icons/texter/zoom-out.svg", [this]() { OnViewDecreaseFontSize(); })
                 .Build();
 
         // Disable focus on toolbar buttons so they don't steal focus from the text area
@@ -488,39 +488,39 @@ namespace {
                 .SetOrientation(ToolbarOrientation::Vertical)
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(0, 0, markdownToolbarWidth, 400)
-                .AddButton("md-bold", "", "media/icons/texter/md-bold.svg",
+                .AddButton("md-bold", "", GetResourcesDir() + "media/icons/texter/md-bold.svg",
                     [this]() { InsertMarkdownSnippet("**", "**", "bold text"); })
-                .AddButton("md-italic", "", "media/icons/texter/md-italic.svg",
+                .AddButton("md-italic", "", GetResourcesDir() + "media/icons/texter/md-italic.svg",
                     [this]() { InsertMarkdownSnippet("*", "*", "emphasized text"); })
-                .AddButton("md-superscript", "", "media/icons/texter/md-superscript.svg",
+                .AddButton("md-superscript", "", GetResourcesDir() + "media/icons/texter/md-superscript.svg",
                     [this]() { InsertMarkdownSnippet("^", "^", "sup"); })
-                .AddButton("md-code", "", "media/icons/texter/md-subscript.svg",
+                .AddButton("md-code", "", GetResourcesDir() + "media/icons/texter/md-subscript.svg",
                     [this]() { InsertMarkdownSnippet("~", "~", "sub"); })
                 .AddSeparator()
-                .AddButton("md-heading", "", "media/icons/texter/md-heading.svg",
+                .AddButton("md-heading", "", GetResourcesDir() + "media/icons/texter/md-heading.svg",
                     [this]() { InsertMarkdownSnippet("## ", "", "Heading"); })
                 .AddSeparator()
-                .AddButton("md-ul", "", "media/icons/texter/md-list-unordered.svg",
+                .AddButton("md-ul", "", GetResourcesDir() + "media/icons/texter/md-list-unordered.svg",
                     [this]() { InsertMarkdownSnippet("- ", "", "list item"); })
-                .AddButton("md-ol", "", "media/icons/texter/md-list-ordered.svg",
+                .AddButton("md-ol", "", GetResourcesDir() + "media/icons/texter/md-list-ordered.svg",
                     [this]() { InsertMarkdownSnippet("1. ", "", "list item"); })
-                .AddButton("md-checklist", "", "media/icons/texter/md-list-check.svg",
+                .AddButton("md-checklist", "", GetResourcesDir() + "media/icons/texter/md-list-check.svg",
                     [this]() { InsertMarkdownSnippet("- [ ] ", "", "list item"); })
                 .AddSeparator()
-                .AddButton("md-quote", "", "media/icons/texter/md-quote.svg",
+                .AddButton("md-quote", "", GetResourcesDir() + "media/icons/texter/md-quote.svg",
                     [this]() { InsertMarkdownSnippet("> ", "", "quote"); })
-                .AddButton("md-code", "", "media/icons/texter/md-code.svg",
+                .AddButton("md-code", "", GetResourcesDir() + "media/icons/texter/md-code.svg",
                     [this]() { InsertMarkdownSnippet("```\n", "\n```", "code"); })
-                .AddButton("md-table", "", "media/icons/texter/md-table.svg",
+                .AddButton("md-table", "", GetResourcesDir() + "media/icons/texter/md-table.svg",
                     [this]() {
                         InsertMarkdownSnippet(
                             "| ", " | Column 2 |\n|----------|----------|\n|          |          |",
                             "Column 1");
                     })
                 .AddSeparator()
-                .AddButton("md-link", "", "media/icons/texter/md-link.svg",
+                .AddButton("md-link", "", GetResourcesDir() + "media/icons/texter/md-link.svg",
                     [this]() { InsertMarkdownSnippet("[", "](http://example.com/)", "Link title"); })
-                .AddButton("md-image", "", "media/icons/texter/md-image.svg",
+                .AddButton("md-image", "", GetResourcesDir() + "media/icons/texter/md-image.svg",
                     [this]() { InsertMarkdownSnippet("![", "](image path)", "Image title"); })
                 .Build();
 
@@ -2030,7 +2030,7 @@ namespace {
 
         // Logo image
         auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo", 0, 0, 0, 74, 74);
-        logo->LoadFromFile("media/Logo_Texter.png");
+        logo->LoadFromFile(GetResourcesDir() + "media/Logo_Texter.png");
         logo->SetFitMode(ImageFitMode::Contain);
         logo->SetMargin(0, 0, 8, 0);
         mainLayout->AddUIElement(logo)->SetCrossAlignment(LayoutAlignment::Center);
@@ -2281,7 +2281,7 @@ namespace {
             doc->textArea->ApplyDarkTheme();
         } else {
             // Apply light theme
-            doc->textArea->ApplyPlainTextStyle();
+            doc->textArea->ApplyLightTheme();
         }
 
         // Reapply syntax highlighting if needed
@@ -2350,6 +2350,8 @@ namespace {
                 tabContainer->tabBarColor = Color(40, 40, 40, 255);
                 tabContainer->activeTabColor = Color(60, 60, 60, 255);
                 tabContainer->inactiveTabColor = Color(50, 50, 50, 255);
+                tabContainer->activeTabTextColor = Colors::White;
+                tabContainer->newTabButtonColor  = Color(50, 50, 50, 255);
             }
         } else {
             SetBackgroundColor(Color(240, 240, 240, 255));
@@ -2400,6 +2402,8 @@ namespace {
                 tabContainer->tabBarColor = Color(240, 240, 240, 255);
                 tabContainer->activeTabColor = Color(255, 255, 255, 255);
                 tabContainer->inactiveTabColor = Color(220, 220, 220, 255);
+                tabContainer->activeTabTextColor = Colors::Black;
+                tabContainer->newTabButtonColor = Color(240, 240, 240);
             }
         }
         RequestRedraw();

@@ -276,7 +276,7 @@ namespace UltraCanvas {
 
         // Main PNG Image
         auto pngImage = std::make_shared<UltraCanvasImageElement>("PNGMainImage", 1514, 25, 25, 400, 300);
-        pngImage->LoadFromFile("media/images/transparent_overlay.png");
+        pngImage->LoadFromFile(GetResourcesDir() + "media/images/transparent_overlay.png");
         pngImage->SetFitMode(ImageFitMode::Contain);
         imageContainer->AddChild(pngImage);
 
@@ -301,11 +301,11 @@ namespace UltraCanvas {
         auto bgPattern = std::make_shared<UltraCanvasContainer>("BGPattern", 1518, 10, 70, 300, 100);
         // Transparent PNG overlay
         auto notransImage = std::make_shared<UltraCanvasImageElement>("NoTransPNG", 1519, 0, 0, 100, 100);
-        notransImage->LoadFromFile("media/images/ship.jpg");
+        notransImage->LoadFromFile(GetResourcesDir() + "media/images/ship.jpg");
         notransImage->SetFitMode(ImageFitMode::Fill);
 
         auto transImage = std::make_shared<UltraCanvasImageElement>("TransPNG", 1519, 0, 0, 100, 100);
-        transImage->LoadFromFile("media/images/transparent_overlay.png");
+        transImage->LoadFromFile(GetResourcesDir() + "media/images/transparent_overlay.png");
         bgPattern->AddChild(notransImage);
         bgPattern->AddChild(transImage);
 
@@ -368,21 +368,21 @@ namespace UltraCanvas {
         auto btnIcon = std::make_shared<UltraCanvasButton>("BtnIcon", 1525, 10, 620, 100, 30);
         btnIcon->SetText("Load Icon");
         btnIcon->onClick = [pngImage]() {
-            pngImage->LoadFromFile("media/images/png_68.png");
+            pngImage->LoadFromFile(GetResourcesDir() + "media/images/png_68.png");
         };
         container->AddChild(btnIcon);
 
         auto btnLogo = std::make_shared<UltraCanvasButton>("BtnLogo", 1526, 120, 620, 100, 30);
         btnLogo->SetText("Load Logo");
         btnLogo->onClick = [pngImage]() {
-            pngImage->LoadFromFile("media/images/logo_transparent.png");
+            pngImage->LoadFromFile(GetResourcesDir() + "media/images/logo_transparent.png");
         };
         container->AddChild(btnLogo);
 
         auto btnScreenshot = std::make_shared<UltraCanvasButton>("BtnScreenshot", 1527, 230, 620, 150, 30);
         btnScreenshot->SetText("Load Screenshot");
         btnScreenshot->onClick = [pngImage]() {
-            pngImage->LoadFromFile("media/images/screenshot.png");
+            pngImage->LoadFromFile(GetResourcesDir() + "media/images/screenshot.png");
         };
         container->AddChild(btnScreenshot);
 
@@ -419,7 +419,7 @@ namespace UltraCanvas {
 
         // Main JPEG Image
         auto jpegImage = std::make_shared<UltraCanvasImageElement>("JPEGMainImage", 1534, 0, 25, 420, 320);
-        jpegImage->LoadFromFile("media/images/sample_photo.jpg");
+        jpegImage->LoadFromFile(GetResourcesDir() + "media/images/sample_photo.jpg");
         jpegImage->SetFitMode(ImageFitMode::Contain);
         imageContainer->AddChild(jpegImage);
 
@@ -506,14 +506,14 @@ namespace UltraCanvas {
         auto btnPhoto = std::make_shared<UltraCanvasButton>("BtnPhoto", 1551, 20, 505, 120, 30);
         btnPhoto->SetText("Load Photo");
         btnPhoto->onClick = [jpegImage]() {
-            jpegImage->LoadFromFile("media/images/landscape.jpg");
+            jpegImage->LoadFromFile(GetResourcesDir() + "media/images/landscape.jpg");
         };
         container->AddChild(btnPhoto);
 
         auto btnPortrait = std::make_shared<UltraCanvasButton>("BtnPortrait", 1552, 160, 505, 120, 30);
         btnPortrait->SetText("Load Portrait");
         btnPortrait->onClick = [jpegImage]() {
-            jpegImage->LoadFromFile("media/images/portrait.jpg");
+            jpegImage->LoadFromFile(GetResourcesDir() + "media/images/portrait.jpg");
         };
         container->AddChild(btnPortrait);
 
@@ -549,7 +549,7 @@ namespace UltraCanvas {
 
         // Image Display Area
         auto avifImage = std::make_shared<UltraCanvasImageElement>("AVIFImage", 1603, 20, 140, 450, 350);
-        avifImage->LoadFromFile("media/images/Cat.avif");
+        avifImage->LoadFromFile(GetResourcesDir() + "media/images/Cat.avif");
         avifImage->SetFitMode(ImageFitMode::Contain);
         avifImage->SetBorders(1.0f, Color(200, 200, 200, 255));
         avifImage->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -558,14 +558,14 @@ namespace UltraCanvas {
         avifImage->SetMouseCursor(UCMouseCursor::Hand);
         avifImage->SetClickable(true);
         avifImage->onClick = []() {
-            ShowFullSizeImageViewer("media/Cat.avif");
+            ShowFullSizeImageViewer(GetResourcesDir() + "media/Cat.avif");
         };
 
         container->AddChild(avifImage);
 
 //        // Performance Metrics Panel
 //        auto perfPanel = std::make_shared<UltraCanvasLabel>("AVIFPerf", 1604, 490, 140, 440, 120);
-//        perfPanel->SetText(MeasureImagePerformance("media/Cat.avif"));
+//        perfPanel->SetText(MeasureImagePerformance(GetResourcesDir() + "media/Cat.avif"));
 //        perfPanel->SetAlignment(TextAlignment::Left);
 //        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
 //        perfPanel->SetBorders(1.0f);
@@ -575,7 +575,7 @@ namespace UltraCanvas {
 
         // Metadata Panel
         auto metadataPanel = std::make_shared<UltraCanvasLabel>("AVIFMetadata", 1605, 490, 140, 440, 180);
-        metadataPanel->SetText(ExtractImageMetadata("media/images/Cat.avif"));
+        metadataPanel->SetText(ExtractImageMetadata(GetResourcesDir() + "media/images/Cat.avif"));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
         metadataPanel->SetBorders(1.0f);
@@ -640,7 +640,7 @@ namespace UltraCanvas {
 
         // Image Display Area
         auto webpImage = std::make_shared<UltraCanvasImageElement>("WEBPImage", 1703, 20, 140, 450, 350);
-        webpImage->LoadFromFile("media/images/Kindigs-1953-Corvette-TwelveAir.webp");
+        webpImage->LoadFromFile(GetResourcesDir() + "media/images/Kindigs-1953-Corvette-TwelveAir.webp");
         webpImage->SetFitMode(ImageFitMode::Contain);
         webpImage->SetBorders(1.0f, Color(200, 200, 200, 255));
         webpImage->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -649,14 +649,14 @@ namespace UltraCanvas {
         webpImage->SetMouseCursor(UCMouseCursor::Hand);
         webpImage->SetClickable(true);
         webpImage->onClick = []() {
-            ShowFullSizeImageViewer("media/images/Kindigs-1953-Corvette-TwelveAir.webp");
+            ShowFullSizeImageViewer(GetResourcesDir() + "media/images/Kindigs-1953-Corvette-TwelveAir.webp");
         };
 
         container->AddChild(webpImage);
 
         // Performance Metrics Panel
 //        auto perfPanel = std::make_shared<UltraCanvasLabel>("WEBPPerf", 1704, 490, 140, 440, 120);
-//        perfPanel->SetText(MeasureImagePerformance("media/Kindigs-1953-Corvette-TwelveAir.webp"));
+//        perfPanel->SetText(MeasureImagePerformance(GetResourcesDir() + "media/Kindigs-1953-Corvette-TwelveAir.webp"));
 //        perfPanel->SetAlignment(TextAlignment::Left);
 //        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
 //        perfPanel->SetBorders(1.0f);
@@ -666,7 +666,7 @@ namespace UltraCanvas {
 
         // Metadata Panel
         auto metadataPanel = std::make_shared<UltraCanvasLabel>("WEBPMetadata", 1705, 490, 140, 440, 180);
-        metadataPanel->SetText(ExtractImageMetadata("media/images/Kindigs-1953-Corvette-TwelveAir.webp"));
+        metadataPanel->SetText(ExtractImageMetadata(GetResourcesDir() + "media/images/Kindigs-1953-Corvette-TwelveAir.webp"));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
         metadataPanel->SetBorders(1.0f);
@@ -732,7 +732,7 @@ namespace UltraCanvas {
 //
 //        // Image Display Area
 //        auto heifImage = std::make_shared<UltraCanvasImageElement>("HEIFImage", 1803, 20, 140, 450, 350);
-//        heifImage->LoadFromFile("media/images/fantasycutemonster.heif");
+//        heifImage->LoadFromFile(GetResourcesDir() + "media/images/fantasycutemonster.heif");
 //        heifImage->SetFitMode(ImageFitMode::Contain);
 //        heifImage->SetBorders(1.0f, Color(200, 200, 200, 255));
 //        heifImage->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -741,14 +741,14 @@ namespace UltraCanvas {
 //        heifImage->SetMousePointer(MousePointer::Hand);
 //        heifImage->SetClickable(true);
 //        heifImage->onClick = []() {
-//            ShowFullSizeImageViewer("media/images/fantasycutemonster.heif");
+//            ShowFullSizeImageViewer(GetResourcesDir() + "media/images/fantasycutemonster.heif");
 //        };
 //
 //        container->AddChild(heifImage);
 //
 //        // Performance Metrics Panel
 ////        auto perfPanel = std::make_shared<UltraCanvasLabel>("HEIFPerf", 1804, 490, 140, 440, 120);
-////        perfPanel->SetText(MeasureImagePerformance("media/fantasycutemonster.heif"));
+////        perfPanel->SetText(MeasureImagePerformance(GetResourcesDir() + "media/fantasycutemonster.heif"));
 ////        perfPanel->SetAlignment(TextAlignment::Left);
 ////        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
 ////        perfPanel->SetBorders(1.0f);
@@ -758,7 +758,7 @@ namespace UltraCanvas {
 //
 //        // Metadata Panel
 //        auto metadataPanel = std::make_shared<UltraCanvasLabel>("HEIFMetadata", 1805, 490, 140, 440, 180);
-//        metadataPanel->SetText(ExtractImageMetadata("media/images/fantasycutemonster.heif"));
+//        metadataPanel->SetText(ExtractImageMetadata(GetResourcesDir() + "media/images/fantasycutemonster.heif"));
 //        metadataPanel->SetAlignment(TextAlignment::Left);
 //        metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
 //        metadataPanel->SetBorders(1.0f);
@@ -827,7 +827,7 @@ namespace UltraCanvas {
         // Image Display Area (animated GIF generated from fordGT.jpg)
         auto gifImage = std::make_shared<UltraCanvasImageElement>("GIFImage", 2003, 20, 140, 450, 350);
         // Note: In real implementation, would generate animated GIF from fordGT.jpg
-        gifImage->LoadFromFile("media/images/Cat.gif");
+        gifImage->LoadFromFile(GetResourcesDir() + "media/images/Cat.gif");
         gifImage->SetFitMode(ImageFitMode::Contain);
         gifImage->SetBorders(1.0f, Color(200, 200, 200, 255));
         gifImage->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -836,7 +836,7 @@ namespace UltraCanvas {
         gifImage->SetMouseCursor(UCMouseCursor::Hand);
         gifImage->SetClickable(true);
         gifImage->onClick = []() {
-            ShowFullSizeImageViewer("media/images/Cat.gif");
+            ShowFullSizeImageViewer(GetResourcesDir() + "media/images/Cat.gif");
         };
 
         container->AddChild(gifImage);
@@ -858,7 +858,7 @@ namespace UltraCanvas {
 
         // Metadata Panel
         auto metadataPanel = std::make_shared<UltraCanvasLabel>("GIFMetadata", 2005, 490, 140, 440, 180);
-        metadataPanel->SetText(ExtractImageMetadata("media/images/Cat.gif"));
+        metadataPanel->SetText(ExtractImageMetadata(GetResourcesDir() + "media/images/Cat.gif"));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
         metadataPanel->SetBorders(1.0f);
@@ -927,7 +927,7 @@ namespace UltraCanvas {
         // Image Display Area (converted from artist.jpg)
         auto tiffImage = std::make_shared<UltraCanvasImageElement>("TIFFImage", 2103, 20, 140, 450, 350);
         // Note: In real implementation, would convert artist.jpg to TIFF
-        tiffImage->LoadFromFile("media/images/Cat.tiff");
+        tiffImage->LoadFromFile(GetResourcesDir() + "media/images/Cat.tiff");
         tiffImage->SetFitMode(ImageFitMode::Contain);
         tiffImage->SetBorders(1.0f, Color(200, 200, 200, 255));
         tiffImage->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -936,7 +936,7 @@ namespace UltraCanvas {
         tiffImage->SetMouseCursor(UCMouseCursor::Hand);
         tiffImage->SetClickable(true);
         tiffImage->onClick = []() {
-            ShowFullSizeImageViewer("media/images/artist_converted.tiff");
+            ShowFullSizeImageViewer(GetResourcesDir() + "media/images/artist_converted.tiff");
         };
 
         container->AddChild(tiffImage);
@@ -959,7 +959,7 @@ namespace UltraCanvas {
 
         // Metadata Panel
         auto metadataPanel = std::make_shared<UltraCanvasLabel>("TIFFMetadata", 2005, 490, 140, 440, 180);
-        metadataPanel->SetText(ExtractImageMetadata("media/images/Cat.tiff"));
+        metadataPanel->SetText(ExtractImageMetadata(GetResourcesDir() + "media/images/Cat.tiff"));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
         metadataPanel->SetBorders(1.0f);
@@ -1027,7 +1027,7 @@ namespace UltraCanvas {
         // Image Display Area (converted from fantasy.jpg)
         auto bmpImage = std::make_shared<UltraCanvasImageElement>("BMPImage", 2203, 20, 140, 450, 350);
         // Note: In real implementation, would convert fantasy.jpg to BMP
-        bmpImage->LoadFromFile("media/images/Cat.bmp");
+        bmpImage->LoadFromFile(GetResourcesDir() + "media/images/Cat.bmp");
         bmpImage->SetFitMode(ImageFitMode::Contain);
         bmpImage->SetBorders(1.0f, Color(200, 200, 200, 255));
         bmpImage->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -1036,7 +1036,7 @@ namespace UltraCanvas {
         bmpImage->SetMouseCursor(UCMouseCursor::Hand);
         bmpImage->SetClickable(true);
         bmpImage->onClick = []() {
-            ShowFullSizeImageViewer("media/images/fantasy_converted.bmp");
+            ShowFullSizeImageViewer(GetResourcesDir() + "media/images/fantasy_converted.bmp");
         };
 
         container->AddChild(bmpImage);
@@ -1059,7 +1059,7 @@ namespace UltraCanvas {
 
         // Metadata Panel
         auto metadataPanel = std::make_shared<UltraCanvasLabel>("BMPMetadata", 2205, 490, 140, 440, 180);
-        metadataPanel->SetText(ExtractImageMetadata("media/images/Cat.bmp"));
+        metadataPanel->SetText(ExtractImageMetadata(GetResourcesDir() + "media/images/Cat.bmp"));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
         metadataPanel->SetBorders(1.0f);

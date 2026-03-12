@@ -10,6 +10,7 @@
 
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasConfig.h"
 #include <vector>
 #include <algorithm>
 #include <functional>
@@ -23,6 +24,7 @@ namespace UltraCanvas {
         bool volatile running = false;
         bool volatile initialized = false;
         std::string appName;
+        std::string defaultWindowIconPath;
         std::queue<UCEvent> eventQueue;
         std::mutex eventQueueMutex;
         std::condition_variable eventCondition;
@@ -90,6 +92,10 @@ namespace UltraCanvas {
         // ===== MOUSE CAPTURE =====
         void CaptureMouse(UltraCanvasUIElement* element);
         void ReleaseMouse(UltraCanvasUIElement* element);
+
+        // Application icon
+        void SetDefaultWindowIcon(const std::string& iconPath) { defaultWindowIconPath = iconPath; }
+        std::string GetDefaultWindowIcon() const { return defaultWindowIconPath; }
 
         void Run();
         bool Initialize(const std::string& app);

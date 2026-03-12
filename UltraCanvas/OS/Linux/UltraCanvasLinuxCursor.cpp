@@ -20,9 +20,9 @@
 namespace UltraCanvas {
 
 // ===== IMAGE LOADING WITH LIBVIPS =====
-    static vips::VImage LoadImageForCursor(const char* filename) {
+    static vips::VImage LoadImageForCursor(const std::string & filename) {
         // Load image with libvips (supports PNG, JPEG, WebP, TIFF, etc.)
-        vips::VImage image = vips::VImage::new_from_file(filename);
+        vips::VImage image = vips::VImage::new_from_file(filename.c_str());
 
         // Convert to sRGB if needed
         if (image.interpretation() != VIPS_INTERPRETATION_sRGB) {
@@ -83,8 +83,8 @@ namespace UltraCanvas {
         return cursor;
     }
 
-    Cursor UltraCanvasLinuxApplication::LoadCursorFromImage(const char* filename, int hotspotX, int hotspotY) {
-        if (!filename || !display) return 0;
+    Cursor UltraCanvasLinuxApplication::LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY) {
+        if (filename.empty() || !display) return 0;
         try {
             vips::VImage img = LoadImageForCursor(filename);
             // Create new cursor
@@ -174,7 +174,7 @@ namespace UltraCanvas {
 
             case UCMouseCursor::LookingGlass:
                 // Load cursor from image
-                newCursor = LoadCursorFromImage("media/lib/cursor/looking-glass.png", 0, 0);
+                newCursor = LoadCursorFromImage(GetResourcesDir() + "media/lib/cursor/looking-glass.png", 0, 0);
                 break;
             default:
                 newCursor = XCreateFontCursor(display, XC_left_ptr);

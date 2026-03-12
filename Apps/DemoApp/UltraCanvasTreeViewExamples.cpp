@@ -31,23 +31,23 @@ namespace UltraCanvas {
 
         // Setup file tree structure
         TreeNodeData rootData("root", "My Computer");
-        rootData.leftIcon = TreeNodeIcon("media/icons/computer.png", 16, 16);
+        rootData.leftIcon = TreeNodeIcon(GetResourcesDir() + "media/icons/computer.png", 16, 16);
         TreeNode* root = fileTree->SetRootNode(rootData);
 
         TreeNodeData driveC("drive_c", "Local Disk (C:)");
-        driveC.leftIcon = TreeNodeIcon("media/icons/drive.png", 16, 16);
+        driveC.leftIcon = TreeNodeIcon(GetResourcesDir() + "media/icons/drive.png", 16, 16);
         fileTree->AddNode("root", driveC);
 
         TreeNodeData documents("documents", "Documents");
-        documents.leftIcon = TreeNodeIcon("media/icons/folder.png", 16, 16);
+        documents.leftIcon = TreeNodeIcon(GetResourcesDir() + "media/icons/folder.png", 16, 16);
         fileTree->AddNode("drive_c", documents);
 
         TreeNodeData file1("file1", "Document.txt");
-        file1.leftIcon = TreeNodeIcon("media/icons/text.png", 16, 16);
+        file1.leftIcon = TreeNodeIcon(GetResourcesDir() + "media/icons/text.png", 16, 16);
         fileTree->AddNode("documents", file1);
 
         TreeNodeData pictures("pictures", "Pictures");
-        pictures.leftIcon = TreeNodeIcon("media/icons/folder.png", 16, 16);
+        pictures.leftIcon = TreeNodeIcon(GetResourcesDir() + "media/icons/folder.png", 16, 16);
         fileTree->AddNode("drive_c", pictures);
 
         fileTree->onNodeSelected = [](TreeNode* node) {

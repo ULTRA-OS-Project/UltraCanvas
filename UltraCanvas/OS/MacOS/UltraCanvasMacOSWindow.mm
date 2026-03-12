@@ -6,6 +6,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasMacOSWindow.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 
 #import <Cocoa/Cocoa.h>
@@ -254,6 +255,15 @@ namespace UltraCanvas {
                 return false;
             }
 
+            // Apply window icon
+            std::string iconToUse = config_.iconPath;
+            if (iconToUse.empty()) {
+                iconToUse = application->GetDefaultWindowIcon();
+            }
+            if (!iconToUse.empty()) {
+                SetWindowIcon(iconToUse);
+            }
+
             std::cerr << "UltraCanvas macOS: CreateNative Native Window created successfully!" << std::endl;
             return true;
         }
@@ -483,6 +493,55 @@ namespace UltraCanvas {
             @autoreleasepool {
                 [nsWindow setTitle:[NSString stringWithUTF8String:title.c_str()]];
             }
+        }
+    }
+
+    void UltraCanvasMacOSWindow::SetWindowIcon(const std::string& iconPath) {
+        if (iconPath.empty()) return;
+
+        // Load the icon image
+        auto img = UCImageRaster::Load(iconPath, false);
+        if (!img || !img->IsValid()) {
+            std::cerr << "UltraCanvas macOS: Failed to load icon: " << iconPath << std::endl;
+            return;
+        }
+
+        auto pixmap = img->GetPixmap();
+        if (!pixmap || !pixmap->IsValid()) {
+            std::cerr << "UltraCanvas macOS: Failed to create pixmap for icon" << std::endl;
+            return;
+        }
+
+        int w = pixmap->GetWidth();
+        int h = pixmap->GetHeight();
+        uint32_t* pixels = pixmap->GetPixelData();
+        if (!pixels || w <= 0 || h <= 0) return;
+
+        @autoreleasepool {
+            // Create CGImage from ARGB pixel data
+            CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+            CGContextRef ctx = CGBitmapContextCreate(
+                pixels, w, h, 8, w * 4,
+                colorSpace,
+                kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host
+            );
+
+            if (ctx) {
+                CGImageRef cgImage = CGBitmapContextCreateImage(ctx);
+                if (cgImage) {
+                    NSImage* nsImage = [[NSImage alloc] initWithCGImage:cgImage
+                                                                  size:NSMakeSize(w, h)];
+                    if (nsImage) {
+                        // macOS sets icon at the application level (Dock icon)
+                        [NSApp setApplicationIconImage:nsImage];
+                        std::cerr << "UltraCanvas macOS: Application icon set (" << w << "x" << h
+                                  << ") from: " << iconPath << std::endl;
+                    }
+                    CGImageRelease(cgImage);
+                }
+                CGContextRelease(ctx);
+            }
+            CGColorSpaceRelease(colorSpace);
         }
     }
 

@@ -94,38 +94,55 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::RenderPopupContent(IRenderContext* ctx) {
-        // FIX: Simplified visibility check - if not visible at all, don't render
         if (!IsVisible() || currentState == MenuState::Hidden) return;
 
         if (needCalculateSize) {
             CalculateAndUpdateSize(ctx);
         }
 
-        // Apply animation if active
-        if (style.enableAnimations && (currentState == MenuState::Opening || currentState == MenuState::Closing)) {
+        if (style.enableAnimations &&
+            (currentState == MenuState::Opening || currentState == MenuState::Closing)) {
             UpdateAnimation();
         }
 
-        // Render shadow first (for dropdown menus)
-        if (style.showShadow && (menuType == MenuType::PopupMenu || menuType == MenuType::SubmenuMenu)) {
+        // Shadow draws intentionally outside bounds — must be before clip is set
+        if (style.showShadow &&
+            (menuType == MenuType::PopupMenu || menuType == MenuType::SubmenuMenu)) {
             RenderShadow(ctx);
         }
 
-        // Render background
         Rect2Di bounds = GetBounds();
-        ctx->DrawFilledRectangle(bounds, style.backgroundColor, style.borderWidth, style.borderColor);
 
-        // Render items
+        // FIX 1: Ensure background is painted with fully opaque solid color
+        // so no underlying window content bleeds through the menu body or border.
+        ctx->DrawFilledRectangle(bounds, style.backgroundColor,
+                                 style.borderWidth, style.borderColor);
+
+        // FIX 2: Clip all item rendering strictly to the inner popup bounds.
+        // This prevents item text (especially the title/first row) from
+        // rendering outside the menu rectangle and showing gray fringe
+        // artifacts or overlapping the background window content.
+        // We inset by borderWidth on all sides so the border stroke itself
+        // is not clipped away.
+        ctx->PushState();
+        int bw = static_cast<int>(style.borderWidth);
+        ctx->ClipRect(Rect2Di(bounds.x + bw,
+                              bounds.y + bw,
+                              bounds.width  - bw * 2,
+                              bounds.height - bw * 2));
+
         for (int i = 0; i < static_cast<int>(items.size()); ++i) {
             if (items[i].visible) {
                 RenderItem(i, items[i], ctx);
             }
         }
 
-        // Render keyboard navigation highlight
-        if (keyboardNavigation && keyboardIndex >= 0 && keyboardIndex < static_cast<int>(items.size())) {
+        if (keyboardNavigation && keyboardIndex >= 0 &&
+            keyboardIndex < static_cast<int>(items.size())) {
             RenderKeyboardHighlight(GetItemBounds(keyboardIndex), ctx);
         }
+
+        ctx->PopState();  // releases the clip region
     }
 
     bool UltraCanvasMenu::OnEvent(const UCEvent &event) {

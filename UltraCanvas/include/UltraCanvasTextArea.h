@@ -172,6 +172,7 @@ namespace UltraCanvas {
 
         // Theme application
         void ApplyDarkTheme();
+        void ApplyLightTheme();
         void ApplyCustomTheme(const TextAreaStyle& customStyle);
 
         // Quick style applications

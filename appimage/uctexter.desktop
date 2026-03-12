@@ -1,0 +1,11 @@
+[Desktop Entry]
+X-AppImage-Arch=x86_64
+X-AppImage-Version=latest
+X-AppImage-Name=UltraCanvas Texter App
+Name=UltraCanvas Texter App
+Exec=UltraCanvasTexter
+Icon=uctexter.appimage
+Type=Application
+Terminal=false
+Categories=Utility;
+Comment=

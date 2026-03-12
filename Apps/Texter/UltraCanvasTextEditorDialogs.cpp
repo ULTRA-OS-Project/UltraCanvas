@@ -706,7 +706,7 @@ namespace UltraCanvas {
         lineLabel = std::make_shared<UltraCanvasLabel>("LineLabel", 5002, 0, 0, 100, 25);
         lineLabel->SetText("Line number:");
         lineLabel->SetFontSize(11);
-        // lineLabel->SetTextVerticalAlignment(TextVerticalAlignement::Middle);
+        // lineLabel->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
 
         lineInput = std::make_shared<UltraCanvasTextInput>("LineInput", 5003, 0, 0, 180, 25);
         lineInput->SetInputType(TextInputType::Number);

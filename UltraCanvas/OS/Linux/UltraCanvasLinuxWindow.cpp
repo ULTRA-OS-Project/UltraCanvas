@@ -6,6 +6,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLinuxWindow.h"
+#include "UltraCanvasImage.h"
 #include <iostream>
 #include <cstring>
 
@@ -36,6 +37,15 @@ namespace UltraCanvas {
         if (!CreateXWindow()) {
             std::cerr << "UltraCanvas Linux: Failed to create X11 window" << std::endl;
             return false;
+        }
+
+        // Apply window icon
+        std::string iconToUse = config_.iconPath;
+        if (iconToUse.empty()) {
+            iconToUse = application->GetDefaultWindowIcon();
+        }
+        if (!iconToUse.empty()) {
+            SetWindowIcon(iconToUse);
         }
 
         CreateXIC();
@@ -365,6 +375,62 @@ namespace UltraCanvas {
 
             std::cerr << "UltraCanvas Linux: Window title set to: \"" << title << "\"" << std::endl;
         }
+    }
+
+    void UltraCanvasLinuxWindow::SetWindowIcon(const std::string& iconPath) {
+        if (xWindow == 0 || iconPath.empty()) {
+            return;
+        }
+
+        auto application = UltraCanvasApplication::GetInstance();
+        if (!application || !application->GetDisplay()) {
+            return;
+        }
+
+        // Load the icon image
+        auto img = UCImageRaster::Load(iconPath, false);
+        if (!img || !img->IsValid()) {
+            std::cerr << "UltraCanvas Linux: Failed to load icon: " << iconPath << std::endl;
+            return;
+        }
+
+        // Get pixmap at original size
+        auto pixmap = img->GetPixmap();
+        if (!pixmap || !pixmap->IsValid()) {
+            std::cerr << "UltraCanvas Linux: Failed to create pixmap for icon" << std::endl;
+            return;
+        }
+
+        int w = pixmap->GetWidth();
+        int h = pixmap->GetHeight();
+        uint32_t* pixels = pixmap->GetPixelData();
+        if (!pixels || w <= 0 || h <= 0) {
+            return;
+        }
+
+        // Build _NET_WM_ICON data: [width, height, pixel0, pixel1, ...]
+        // Each element must be unsigned long (8 bytes on 64-bit systems)
+        size_t dataSize = 2 + (size_t)w * h;
+        std::vector<unsigned long> iconData(dataSize);
+        iconData[0] = (unsigned long)w;
+        iconData[1] = (unsigned long)h;
+
+        // Cairo uses premultiplied ARGB32, _NET_WM_ICON expects non-premultiplied ARGB.
+        // For icon purposes, premultiplied is close enough and widely accepted by WMs.
+        for (int i = 0; i < w * h; i++) {
+            iconData[2 + i] = (unsigned long)pixels[i];
+        }
+
+        Display* display = application->GetDisplay();
+        Atom netWmIcon = XInternAtom(display, "_NET_WM_ICON", False);
+
+        XChangeProperty(display, xWindow, netWmIcon, XA_CARDINAL, 32,
+                        PropModeReplace,
+                        reinterpret_cast<const unsigned char*>(iconData.data()),
+                        dataSize);
+
+        XFlush(display);
+        std::cerr << "UltraCanvas Linux: Window icon set (" << w << "x" << h << ") from: " << iconPath << std::endl;
     }
 
     void UltraCanvasLinuxWindow::SetWindowSize(int width, int height) {

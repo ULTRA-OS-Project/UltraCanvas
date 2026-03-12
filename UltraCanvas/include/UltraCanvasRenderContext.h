@@ -73,13 +73,6 @@ namespace UltraCanvas {
         virtual void* GetHandle() = 0;
     };
 
-    enum class TextVerticalAlignement {
-        Top,
-        Middle,
-        Bottom,
-        Baseline
-    };
-
     enum class TextWrap {
         WrapNone,
         WrapWord,
@@ -109,7 +102,7 @@ namespace UltraCanvas {
 
     struct TextStyle {
         TextAlignment alignment = TextAlignment::Left;
-        TextVerticalAlignement verticalAlignement = TextVerticalAlignement::Baseline;
+        TextVerticalAlignment verticalAlignement = TextVerticalAlignment::Baseline;
         float lineHeight = 1.2f;
         float letterSpacing = 0.0f;
         float wordSpacing = 0.0f;
@@ -333,7 +326,7 @@ namespace UltraCanvas {
         virtual const TextStyle& GetTextStyle() const = 0;
         virtual void SetTextStyle(const TextStyle& style) = 0;
         virtual void SetTextAlignment(TextAlignment align) = 0;
-        virtual void SetTextVerticalAlignment(TextVerticalAlignement align) = 0;
+        virtual void SetTextVerticalAlignment(TextVerticalAlignment align) = 0;
         virtual void SetTextIsMarkup(bool isMarkup) = 0;
 
         virtual void FillText(const std::string& text, float x, float y) = 0;

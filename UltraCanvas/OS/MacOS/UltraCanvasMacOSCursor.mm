@@ -153,7 +153,7 @@ namespace UltraCanvas {
 
                 case UCMouseCursor::LookingGlass:
                     // Load cursor from image
-                    cursor = LoadCursorFromImage("media/lib/cursor/looking-glass.png", 0, 0);
+                    cursor = LoadCursorFromImage(GetResourcesDir() + "media/lib/cursor/looking-glass.png", 0, 0);
                     break;
 
                 case UCMouseCursor::SizeAll:

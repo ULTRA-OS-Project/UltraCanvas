@@ -278,7 +278,7 @@ bool OnEvent(const UCEvent& event) override;
 ### Basic Image Display
 ```cpp
 // Create and display an image
-auto image = CreateImageFromFile("logo", 1, 10, 10, 200, 150, "media/logo.png");
+auto image = CreateImageFromFile("logo", 1, 10, 10, 200, 150, GetResourcesDir() + "media/logo.png");
 image->SetScaleMode(ImageScaleMode::Uniform);
 window->AddChild(image);
 ```

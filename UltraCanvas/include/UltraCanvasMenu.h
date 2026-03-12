@@ -146,7 +146,7 @@ namespace UltraCanvas {
         // Shadow
         bool showShadow = true;
         Color shadowColor = Color(0, 0, 0, 100);
-        Point2Di shadowOffset = Point2Di(2, 2);
+        Point2Di shadowOffset = Point2Di(1, 1);
         int shadowBlur = 4;
 
         static MenuStyle Default();

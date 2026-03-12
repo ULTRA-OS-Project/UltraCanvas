@@ -66,6 +66,7 @@ jobs:
             mingw-w64-x86_64-zlib
             mingw-w64-x86_64-libvips
             mingw-w64-x86_64-fmt
+            zip
 
       # ===== macOS / Linux: system package manager =====
       - name: Install dependencies (macOS/Linux)
@@ -94,11 +95,27 @@ jobs:
       - name: Build
         run: cmake --build build --config ${{ matrix.build_type }} --parallel 2
 
-      - name: Upload build artifacts
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: ./package-win.sh
+
+
+      - name: Upload build artifacts (Windows)
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ultracanvas-${{ matrix.os }}-${{ matrix.build_type }}
           path: |
-            build/bin/
+            dist/
+          retention-days: 7
+
+      - name: Upload build artifacts (Linux/MacOS)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ultracanvas-${{ matrix.os }}-${{ matrix.build_type }}
+          path: |
             build/lib/
+            build/bin/
+            build/share/
           retention-days: 7
