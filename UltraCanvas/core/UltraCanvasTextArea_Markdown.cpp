@@ -9,6 +9,7 @@
 #include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <algorithm>
 #include <sstream>
@@ -1864,10 +1865,6 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     // Get current line index where cursor is located
     auto [cursorLine, cursorCol] = GetLineColumnFromPosition(cursorGraphemePosition);
 
-    // Calculate visible lines
-    int startLine = std::max(0, firstVisibleLine - 1);
-    int endLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
-
     // --- Pre-scan: build code block state map for entire document ---
     // Supports both ``` (backtick) and ~~~ (tilde) fenced code blocks
     // Also tracks language per code block for syntax highlighting
@@ -2037,30 +2034,73 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     // Clear previous hit rects
     markdownHitRects.clear();
 
-    int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
+    // Iterate over display lines (not logical lines) for correct word wrap support
+    int dlCount = GetDisplayLineCount();
+    int startDL = std::max(0, firstVisibleLine - 1);
+    int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
+    int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
 
-    for (int i = startLine; i < endLine; i++) {
-        const std::string& line = lines[i];
-        int textY = baseY + (i - startLine) * computedLineHeight;
-        int x = visibleTextArea.x - horizontalScrollOffset;
+    // Cache tokenized lines to avoid re-tokenizing the same logical line
+    int lastTokenizedLogicalLine = -1;
+    std::vector<SyntaxTokenizer::Token> cachedTokens;
+
+    for (int di = startDL; di < endDL; di++) {
+        const auto& dl = displayLines[di];
+        int logLine = dl.logicalLine;
+        if (logLine < 0 || logLine >= static_cast<int>(lines.size())) continue;
+
+        const std::string& line = lines[logLine];
+        int textY = baseY + (di - startDL) * computedLineHeight;
+        if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
+            textY += markdownLineYOffsets[di];
+
+        int x = visibleTextArea.x;
+        if (!wordWrap) x -= horizontalScrollOffset;
+
+        bool isFirstSegment = (dl.startGrapheme == 0);
 
         // --- CURRENT LINE: Show raw markdown with syntax highlighting ---
-        if (i == cursorLine) {
-            auto tokens = syntaxTokenizer->TokenizeLine(line);
+        // Use token-clipping approach (like DrawHighlightedText) to handle wrapped segments
+        if (logLine == cursorLine) {
+            if (logLine != lastTokenizedLogicalLine) {
+                cachedTokens = syntaxTokenizer->TokenizeLine(line);
+                lastTokenizedLogicalLine = logLine;
+            }
 
-            for (const auto& token : tokens) {
-                context->SetFontWeight(GetStyleForTokenType(token.type).bold ?
-                                       FontWeight::Bold : FontWeight::Normal);
-                int tokenWidth = context->GetTextLineWidth(token.text);
+            int tokenStartGrapheme = 0;
+            for (const auto& token : cachedTokens) {
+                int tokenLen = static_cast<int>(utf8_length(token.text));
+                int tokenEndGrapheme = tokenStartGrapheme + tokenLen;
 
-                if (x + tokenWidth >= visibleTextArea.x &&
-                    x <= visibleTextArea.x + visibleTextArea.width) {
-                    TokenStyle tokenStyle = GetStyleForTokenType(token.type);
-                    context->SetTextPaint(tokenStyle.color);
-                    context->DrawText(token.text, x, textY);
+                // Check overlap with this display line's grapheme range
+                int overlapStart = std::max(tokenStartGrapheme, dl.startGrapheme);
+                int overlapEnd = std::min(tokenEndGrapheme, dl.endGrapheme);
+
+                if (overlapStart < overlapEnd) {
+                    std::string visibleText;
+                    if (overlapStart == tokenStartGrapheme && overlapEnd == tokenEndGrapheme) {
+                        visibleText = token.text;
+                    } else {
+                        int localStart = overlapStart - tokenStartGrapheme;
+                        int localLen = overlapEnd - overlapStart;
+                        visibleText = utf8_substr(token.text, localStart, localLen);
+                    }
+
+                    context->SetFontWeight(GetStyleForTokenType(token.type).bold ?
+                                           FontWeight::Bold : FontWeight::Normal);
+                    int tokenWidth = context->GetTextLineWidth(visibleText);
+
+                    if (x + tokenWidth >= visibleTextArea.x &&
+                        x <= visibleTextArea.x + visibleTextArea.width) {
+                        TokenStyle tokenStyle = GetStyleForTokenType(token.type);
+                        context->SetTextPaint(tokenStyle.color);
+                        context->DrawText(visibleText, x, textY);
+                    }
+                    x += tokenWidth;
                 }
 
-                x += tokenWidth;
+                tokenStartGrapheme = tokenEndGrapheme;
+                if (tokenStartGrapheme >= dl.endGrapheme) break;
             }
             continue;
         }
@@ -2079,16 +2119,18 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         std::string trimmed = TrimWhitespace(line);
         if (trimmed.empty()) continue;
 
-        // --- Code block content ---
-        if (isInsideCodeBlock[i]) {
-            if (isCodeBlockDelimiter[i]) {
+        // --- Code block content (block-level: render only on first segment) ---
+        if (isInsideCodeBlock[logLine]) {
+            if (!isFirstSegment) continue;
+
+            if (isCodeBlockDelimiter[logLine]) {
                 // This is a ``` or ~~~ delimiter line
                 MarkdownInlineRenderer::RenderMarkdownCodeBlockDelimiter(
                         context, trimmed, x, textY, computedLineHeight,
                         visibleTextArea.width, style, mdStyle);
             } else {
                 // This is a code content line — use syntax highlighting if language known
-                const std::string& lang = codeBlockLanguage[i];
+                const std::string& lang = codeBlockLanguage[logLine];
 
                 if (!lang.empty()) {
                     // Switch tokenizer language if needed
@@ -2096,9 +2138,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                         codeBlockTokenizer = std::make_unique<SyntaxTokenizer>();
 
                         // Map common markdown language tags to SyntaxTokenizer names
-                        // SyntaxTokenizer expects exact language names like "Python", "C++"
                         std::string normalizedLang = lang;
-                        // Capitalize first letter for common mappings
                         if (!normalizedLang.empty()) {
                             normalizedLang[0] = std::toupper(normalizedLang[0]);
                         }
@@ -2121,7 +2161,6 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                         else if (lang == "pas" || lang == "pascal" || lang == "delphi") normalizedLang = "Pascal";
 
                         if (!codeBlockTokenizer->SetLanguage(normalizedLang)) {
-                            // Try by extension as fallback
                             codeBlockTokenizer->SetLanguageByExtension(lang);
                         }
                         currentCodeBlockLang = lang;
@@ -2135,10 +2174,8 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                             [this](TokenType type) -> TokenStyle { return GetStyleForTokenType(type); });
                 } else {
                     // No language — render as plain monospace code
-                    // For 4-space indented blocks, strip the leading 4 spaces
                     std::string codeLine = line;
-                    if (codeBlockLanguage[i].empty() && !isCodeBlockDelimiter[i]) {
-                        // Check if it's a 4-space indented line
+                    if (codeBlockLanguage[logLine].empty() && !isCodeBlockDelimiter[logLine]) {
                         if (codeLine.length() >= 4 && codeLine.substr(0, 4) == "    ") {
                             codeLine = codeLine.substr(4);
                         } else if (!codeLine.empty() && codeLine[0] == '\t') {
@@ -2153,83 +2190,114 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             continue;
         }
 
-        // --- Table rows ---
-        if (tableRoles[i] != TableLineRole::NoneRole) {
-            // Get pre-computed column widths for this table (may be empty for fallback)
-            const std::vector<int>* colWidths =
-                    tableColumnWidths[i].empty() ? nullptr : &tableColumnWidths[i];
+        // --- Table rows (block-level: render only on first segment) ---
+        if (tableRoles[logLine] != TableLineRole::NoneRole) {
+            if (!isFirstSegment) continue;
 
-            if (tableRoles[i] == TableLineRole::Separator) {
+            const std::vector<int>* colWidths =
+                    tableColumnWidths[logLine].empty() ? nullptr : &tableColumnWidths[logLine];
+
+            if (tableRoles[logLine] == TableLineRole::Separator) {
                 MarkdownInlineRenderer::RenderMarkdownTableSeparator(
                         context, x, textY, computedLineHeight,
-                        visibleTextArea.width, tableColumnCounts[i], mdStyle,
+                        visibleTextArea.width, tableColumnCounts[logLine], mdStyle,
                         colWidths);
             } else {
-                bool isHeader = (tableRoles[i] == TableLineRole::Header);
+                bool isHeader = (tableRoles[logLine] == TableLineRole::Header);
                 MarkdownInlineRenderer::RenderMarkdownTableRow(
                         context, line, x, textY, computedLineHeight,
                         visibleTextArea.width, isHeader,
-                        tableAlignments[i], tableColumnCounts[i],
+                        tableAlignments[logLine], tableColumnCounts[logLine],
                         style, mdStyle, &markdownHitRects,
                         colWidths);
             }
             continue;
         }
 
-        // --- Headers ---
+        // --- Headers (block-level: render only on first segment) ---
         if (trimmed[0] == '#') {
+            if (!isFirstSegment) continue;
             MarkdownInlineRenderer::RenderMarkdownHeader(
                     context, trimmed, x, textY, computedLineHeight,
                     style, mdStyle, &markdownHitRects);
             continue;
         }
 
-        // --- Horizontal rules ---
+        // --- Horizontal rules (block-level: render only on first segment) ---
         if (IsMarkdownHorizontalRule(trimmed)) {
+            if (!isFirstSegment) continue;
             MarkdownInlineRenderer::RenderMarkdownHorizontalRule(
                     context, x, textY, computedLineHeight,
                     visibleTextArea.width, mdStyle);
             continue;
         }
 
+        // --- Wrappable content: extract this display line's text segment ---
+        int segLen = dl.endGrapheme - dl.startGrapheme;
+        if (segLen <= 0) continue;
+        std::string segment;
+        if (dl.startGrapheme == 0 && dl.endGrapheme == GetLineGraphemeCount(logLine)) {
+            segment = line; // full line, no substr needed
+        } else {
+            segment = utf8_substr(line, dl.startGrapheme, segLen);
+        }
+
         // --- Blockquotes ---
-        if (trimmed[0] == '>') {
+        if (isFirstSegment && trimmed[0] == '>') {
             MarkdownInlineRenderer::RenderMarkdownBlockquote(
-                    context, line, x, textY, computedLineHeight,
+                    context, segment, x, textY, computedLineHeight,
                     visibleTextArea.width, style, mdStyle, &markdownHitRects);
+            continue;
+        }
+        if (!isFirstSegment && TrimWhitespace(lines[logLine])[0] == '>') {
+            // Continuation of a blockquote: render with indent
+            int quoteIndent = mdStyle.quoteBarWidth + mdStyle.quoteIndent;
+            MarkdownInlineRenderer::RenderMarkdownLine(
+                    context, segment, x + quoteIndent, textY, computedLineHeight,
+                    style, mdStyle, &markdownHitRects);
             continue;
         }
 
         // --- List items ---
-        if (IsMarkdownListItem(trimmed)) {
+        if (isFirstSegment && IsMarkdownListItem(trimmed)) {
             MarkdownInlineRenderer::RenderMarkdownListItem(
-                    context, line, x, textY, computedLineHeight,
+                    context, segment, x, textY, computedLineHeight,
+                    style, mdStyle, &markdownHitRects);
+            continue;
+        }
+        if (!isFirstSegment && IsMarkdownListItem(TrimWhitespace(lines[logLine]))) {
+            // Continuation of a list item: render with indent
+            MarkdownInlineRenderer::RenderMarkdownLine(
+                    context, segment, x + mdStyle.listIndent, textY, computedLineHeight,
                     style, mdStyle, &markdownHitRects);
             continue;
         }
 
         // --- Definition list definition line: starts with ": " ---
-        // A definition list consists of:
-        //   Term          (plain text line — rendered normally)
-        //   : Definition  (line starting with ": ")
-        if (trimmed.length() >= 2 && trimmed[0] == ':' && trimmed[1] == ' ') {
+        if (isFirstSegment && trimmed.length() >= 2 && trimmed[0] == ':' && trimmed[1] == ' ') {
             std::string defText = trimmed.substr(2);
-            int defIndent = mdStyle.listIndent + 10; // Indent definition text
+            int defIndent = mdStyle.listIndent + 10;
 
-            // Draw small dash indicator
             context->SetTextPaint(mdStyle.bulletColor);
             context->DrawText("\xE2\x80\x94", x + 4, textY); // em-dash —
 
-            // Draw definition text with inline formatting
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, defText, x + defIndent, textY, computedLineHeight,
+                    style, mdStyle, &markdownHitRects);
+            continue;
+        }
+        if (!isFirstSegment && TrimWhitespace(lines[logLine]).length() >= 2 &&
+            TrimWhitespace(lines[logLine])[0] == ':' && TrimWhitespace(lines[logLine])[1] == ' ') {
+            int defIndent = mdStyle.listIndent + 10;
+            MarkdownInlineRenderer::RenderMarkdownLine(
+                    context, segment, x + defIndent, textY, computedLineHeight,
                     style, mdStyle, &markdownHitRects);
             continue;
         }
 
         // --- Regular text with inline formatting ---
         MarkdownInlineRenderer::RenderMarkdownLine(
-                context, line, x, textY, computedLineHeight,
+                context, segment, x, textY, computedLineHeight,
                 style, mdStyle, &markdownHitRects);
     }
 

@@ -9,7 +9,7 @@
 #include "UltraCanvasImage.h"
 
 namespace UltraCanvas {
-    const int scrollbarWidth = 12;
+    const int scrollbarWidth = 10;
 
     UltraCanvasDropdown::UltraCanvasDropdown(const std::string &identifier, long id, long x, long y,
                                              long w,

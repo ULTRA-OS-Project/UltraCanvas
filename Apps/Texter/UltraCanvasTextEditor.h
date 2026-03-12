@@ -47,6 +47,7 @@ namespace UltraCanvas {
         bool showToolbar = true;
         bool showStatusBar = true;
         bool showLineNumbers = true;
+        bool showMarkdownToolbar = true;
         bool enableAutosave = true;
 
         bool showRecentFiles = true;       // Show Recent Files submenu in File menu
@@ -300,6 +301,9 @@ namespace UltraCanvas {
         void OnViewToggleTheme();
         void OnViewToggleLineNumbers(bool checked);
         void OnViewToggleWordWrap(bool checked);
+        void OnViewToggleToolbar(bool checked);
+        void OnViewToggleMarkdownToolbar(bool checked);
+        void UpdateToolbarsSubmenu();
 
         void OnInfoAbout();
         void OnInfoFileStatistics();

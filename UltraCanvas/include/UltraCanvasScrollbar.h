@@ -106,14 +106,14 @@ namespace UltraCanvas {
 
         static ScrollbarStyle DropDown() {
             ScrollbarStyle style;
-            style.trackSize = 12;
+            style.trackSize = 10;
             style.thumbMinSize = 20;
             style.arrowButtonSize = 0;
             style.trackColor = Color(250, 250, 250, 200);
             style.thumbColor = Color(160, 160, 160, 200);
             style.thumbHoverColor = Color(130, 130, 130, 220);
             style.thumbPressedColor = Color(100, 100, 100, 255);
-            style.thumbCornerRadius = 4;
+            style.thumbCornerRadius = 5;
             style.trackCornerRadius = 4;
             style.autoHide = false;
             return style;

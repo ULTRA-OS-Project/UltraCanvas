@@ -1248,14 +1248,20 @@ namespace UltraCanvas {
         context->PushState();
         context->ClipRect(lineNumberClipRect);
 
-        int startLine = std::max(0, firstVisibleLine - 1);
-        int endLine = std::min(static_cast<int>(lines.size()), firstVisibleLine + maxVisibleLines + 1);
-        int baseY = visibleTextArea.y - (firstVisibleLine - startLine) * computedLineHeight;
+        int dlCount = GetDisplayLineCount();
+        int startDL = std::max(0, firstVisibleLine - 1);
+        int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
+        int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
 
-        for (int i = startLine; i < endLine; i++) {
-            int numY = baseY + (i - startLine) * computedLineHeight;
+        for (int di = startDL; di < endDL; di++) {
+            const auto& dl = displayLines[di];
+            int numY = baseY + (di - startDL) * computedLineHeight;
 
-            if (i == currentLineIndex) {
+            // Adjust for markdown Y offsets if applicable
+            if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
+                numY += markdownLineYOffsets[di];
+
+            if (dl.logicalLine == currentLineIndex) {
                 context->SetTextPaint(style.fontColor);
                 context->SetFontWeight(FontWeight::Bold);
             } else {
@@ -1263,8 +1269,12 @@ namespace UltraCanvas {
                 context->SetFontWeight(FontWeight::Normal);
             }
             context->SetTextAlignment(TextAlignment::Right);
-            context->DrawTextInRect(std::to_string(i + 1),
-                                    bounds.x, numY, computedLineNumbersWidth, computedLineHeight);
+
+            // Only show line number on the first display line of each logical line
+            if (dl.startGrapheme == 0) {
+                context->DrawTextInRect(std::to_string(dl.logicalLine + 1),
+                                        bounds.x, numY, computedLineNumbersWidth, computedLineHeight);
+            }
         }
         context->PopState();
     }
@@ -2103,6 +2113,15 @@ namespace UltraCanvas {
             if (lineGraphemeCount == 0) {
                 displayLines.push_back({logLine, 0, 0});
                 continue;
+            }
+
+            // In markdown mode, don't wrap table rows (lines starting with |)
+            if (markdownHybridMode) {
+                std::string trimmed = TrimWhitespace(line);
+                if (!trimmed.empty() && trimmed[0] == '|') {
+                    displayLines.push_back({logLine, 0, lineGraphemeCount});
+                    continue;
+                }
             }
 
             int lineWidth = context->GetTextLineWidth(line);

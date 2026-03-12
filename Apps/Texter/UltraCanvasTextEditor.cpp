@@ -263,14 +263,15 @@ namespace {
             , nextDocumentId(0)
             , activeDocumentIndex(-1)
             , hasCheckedForBackups(false)
-            , menuBarHeight(28)
-            , toolbarHeight(cfg.showToolbar ? 44 : 0)
-            , markdownToolbarWidth(44)
-            , statusBarHeight(24)
-            , tabBarHeight(32)
+            , menuBarHeight(24)
+            , toolbarHeight(cfg.showToolbar ? 40 : 0)
+            , markdownToolbarWidth(40)
+            , statusBarHeight(22)
+            , tabBarHeight(26)
     {
 
         LoadConfig();
+        toolbarHeight = config.showToolbar ? 40 : 0;
 
         SetBackgroundColor(Color(240, 240, 240, 255));
 
@@ -288,8 +289,9 @@ namespace {
             SetupMenuBar();
         }
 
-        if (config.showToolbar) {
-            SetupToolbar();
+        SetupToolbar();
+        if (!config.showToolbar && toolbarContainer) {
+            toolbarContainer->SetVisible(false);
         }
 
         SetupTabContainer();
@@ -413,6 +415,15 @@ namespace {
                         }),
                         MenuItemData::Checkbox("Word Wrap", config.wordWrap, [this](bool checked) {
                             OnViewToggleWordWrap(checked);
+                        }),
+                        MenuItemData::Separator(),
+                        MenuItemData::Submenu("Toolbars", {
+                            MenuItemData::Checkbox("Main Toolbar", config.showToolbar, [this](bool checked) {
+                                OnViewToggleToolbar(checked);
+                            }),
+                            MenuItemData::Checkbox("Markdown Toolbar", config.showMarkdownToolbar, [this](bool checked) {
+                                OnViewToggleMarkdownToolbar(checked);
+                            })
                         })
                 })
 
@@ -436,6 +447,11 @@ namespace {
         // Load and populate recent files
         LoadRecentFiles();
         RebuildRecentFilesSubmenu();
+
+        MenuStyle menuStyle = MenuStyle::Default();
+        menuStyle.font.fontSize = 11.0f;
+        menuStyle.itemHeight     = 20;
+        menuBar->SetStyle(menuStyle);
 
         AddChild(menuBar);
     }
@@ -488,6 +504,22 @@ namespace {
     }
 
     void UltraCanvasTextEditor::SetupMarkdownToolbar() {
+        struct { const char* id; const char* tip; } mdTooltips[] = {
+            { "md-bold",       "Bold (**text**)"                    },
+            { "md-italic",     "Italic (*text*)"                    },
+            { "md-superscript","Superscript (^text^)"               },
+            { "md-subscript",  "Subscript (~text~)"                 },
+            { "md-heading",    "Heading (## Heading)"               },
+            { "md-ul",         "Unordered List (- item)"            },
+            { "md-ol",         "Ordered List (1. item)"             },
+            { "md-checklist",  "Checklist (- [ ] item)"             },
+            { "md-quote",      "Blockquote (> text)"                },
+            { "md-code",       "Code Block (```code```)"            },
+            { "md-table",      "Insert Table"                       },
+            { "md-link",       "Hyperlink ([title](url))"           },
+            { "md-image",      "Image (![title](path))"             },
+        };
+
         markdownToolbar = UltraCanvasToolbarBuilder("MarkdownToolbar", 202)
                 .SetOrientation(ToolbarOrientation::Vertical)
                 .SetAppearance(ToolbarAppearance::Flat())
@@ -498,7 +530,7 @@ namespace {
                     [this]() { InsertMarkdownSnippet("*", "*", "emphasized text"); })
                 .AddButton("md-superscript", "", GetResourcesDir() + "media/icons/texter/md-superscript.svg",
                     [this]() { InsertMarkdownSnippet("^", "^", "sup"); })
-                .AddButton("md-code", "", GetResourcesDir() + "media/icons/texter/md-subscript.svg",
+                .AddButton("md-subscript", "", GetResourcesDir() + "media/icons/texter/md-subscript.svg",
                     [this]() { InsertMarkdownSnippet("~", "~", "sub"); })
                 .AddSeparator()
                 .AddButton("md-heading", "", GetResourcesDir() + "media/icons/texter/md-heading.svg",
@@ -528,12 +560,14 @@ namespace {
                     [this]() { InsertMarkdownSnippet("![", "](image path)", "Image title"); })
                 .Build();
 
-        // Disable focus on markdown toolbar buttons
-        for (int i = 0; i < markdownToolbar->GetItemCount(); i++) {
-            auto item = markdownToolbar->GetItemAt(i);
+        for (auto& entry : mdTooltips) {
+            auto item = markdownToolbar->GetItem(entry.id);
             if (item) {
                 auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
-                if (btn) btn->SetAcceptsFocus(false);
+                if (btn) {
+                    btn->SetTooltip(entry.tip);
+                    btn->SetAcceptsFocus(false);
+                }
             }
         }
 
@@ -569,7 +603,7 @@ namespace {
         tabContainer->SetActiveTabBackgroundColor(Colors::White);
 //     // Configure overflow dropdown: maximised height + menu font size
          DropdownStyle dropStyle = tabContainer->GetOverflowDropdownStyle();
-         dropStyle.fontSize = 12.0f;       // Match menu bar font size
+         dropStyle.fontSize = 10.0f;       // Match menu bar font size
          dropStyle.maxVisibleItems = 30;   // Maximise dropdown height
          tabContainer->SetOverflowDropdownStyle(dropStyle);
 
@@ -1640,7 +1674,7 @@ namespace {
 
     void UltraCanvasTextEditor::UpdateMarkdownToolbarVisibility() {
         if (!markdownToolbar) return;
-        bool show = IsMarkdownMode();
+        bool show = IsMarkdownMode() && config.showMarkdownToolbar;
         if (markdownToolbar->IsVisible() != show) {
             markdownToolbar->SetVisible(show);
             UpdateChildLayout();
@@ -1680,7 +1714,7 @@ namespace {
         UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(
                 "Open File(s)",
                 config.fileFilters,
-                "",
+                lastOpenedDirectory,
                 [this](DialogResult result, const std::vector<std::string>& filePaths) {
                     if (result == DialogResult::OK) {
                         for (const auto& filePath : filePaths) {
@@ -1717,7 +1751,7 @@ namespace {
         UltraCanvasDialogManager::ShowSaveFileDialog(
                 "Save File As",
                 config.fileFilters,
-                "",
+                lastOpenedDirectory,
                 defaultName,
                 [this, doc](DialogResult result, const std::string& filePath) {
                     if (result == DialogResult::OK && !filePath.empty()) {
@@ -2024,6 +2058,45 @@ namespace {
             }
         }
         SaveConfig();
+    }
+
+    void UltraCanvasTextEditor::OnViewToggleToolbar(bool checked) {
+        config.showToolbar = checked;
+        toolbarHeight = checked ? 40 : 0;
+        if (toolbarContainer) {
+            toolbarContainer->SetVisible(checked);
+        }
+        UpdateToolbarsSubmenu();
+        UpdateChildLayout();
+        SaveConfig();
+    }
+
+    void UltraCanvasTextEditor::OnViewToggleMarkdownToolbar(bool checked) {
+        config.showMarkdownToolbar = checked;
+        UpdateMarkdownToolbarVisibility();
+        UpdateToolbarsSubmenu();
+        SaveConfig();
+    }
+
+    void UltraCanvasTextEditor::UpdateToolbarsSubmenu() {
+        if (!menuBar) return;
+        // View menu is at index 2 (File=0, Edit=1, View=2)
+        auto* viewItem = menuBar->GetItem(2);
+        if (!viewItem) return;
+        // "Toolbars" submenu is the last item in View's subItems
+        auto& viewSubs = viewItem->subItems;
+        for (auto& sub : viewSubs) {
+            if (sub.type == MenuItemType::Submenu && sub.label == "Toolbars") {
+                for (auto& tbItem : sub.subItems) {
+                    if (tbItem.label == "Main Toolbar") {
+                        tbItem.checked = config.showToolbar;
+                    } else if (tbItem.label == "Markdown Toolbar") {
+                        tbItem.checked = config.showMarkdownToolbar;
+                    }
+                }
+                break;
+            }
+        }
     }
 
     void UltraCanvasTextEditor::OnInfoAbout() {
@@ -3171,6 +3244,8 @@ namespace {
         config.enableAutosave = configFile.GetBool("enableAutosave", config.enableAutosave);
         config.autosaveIntervalSeconds = configFile.GetInt("autosaveInterval", config.autosaveIntervalSeconds);
         config.defaultLanguage = configFile.GetString("defaultLanguage", config.defaultLanguage);
+        config.showToolbar = configFile.GetBool("showToolbar", config.showToolbar);
+        config.showMarkdownToolbar = configFile.GetBool("showMarkdownToolbar", config.showMarkdownToolbar);
     }
 
     void UltraCanvasTextEditor::SaveConfig() {
@@ -3183,6 +3258,8 @@ namespace {
         configFile.SetBool("enableAutosave", config.enableAutosave);
         configFile.SetInt("autosaveInterval", config.autosaveIntervalSeconds);
         configFile.SetString("defaultLanguage", config.defaultLanguage);
+        configFile.SetBool("showToolbar", config.showToolbar);
+        configFile.SetBool("showMarkdownToolbar", config.showMarkdownToolbar);
         configFile.Save();
     }
 } // namespace UltraCanvas

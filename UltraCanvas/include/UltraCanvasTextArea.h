@@ -109,6 +109,14 @@ namespace UltraCanvas {
         // Render method
         virtual void Render(IRenderContext* ctx) override;
 
+        // Override SetBounds to trigger layout recalculation on resize
+        void SetBounds(const Rect2Di& b) override {
+            if (b.width != GetWidth() || b.height != GetHeight()) {
+                isNeedRecalculateVisibleArea = true;
+            }
+            UltraCanvasUIElement::SetBounds(b);
+        }
+
         // Event handling
         virtual bool OnEvent(const UCEvent& event) override;
 
