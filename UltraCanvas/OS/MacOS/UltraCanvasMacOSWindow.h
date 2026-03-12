@@ -86,7 +86,7 @@ namespace UltraCanvas {
         void Restore() override;
         void SetFullscreen(bool fullscreen) override;
         void Flush() override;
-        uintptr_t GetNativeHandle() const override;
+        NativeWindowHandle GetNativeHandle() const override;
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }
         void RaiseAndFocus() override;
 

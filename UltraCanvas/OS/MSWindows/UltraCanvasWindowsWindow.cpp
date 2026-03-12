@@ -679,8 +679,8 @@ namespace UltraCanvas {
                           data, &bmi, DIB_RGB_COLORS);
     }
 
-    uintptr_t UltraCanvasWindowsWindow::GetNativeHandle() const {
-        return reinterpret_cast<uintptr_t>(hwnd);
+    NativeWindowHandle UltraCanvasWindowsWindow::GetNativeHandle() const {
+        return reinterpret_cast<NativeWindowHandle>(hwnd);
     }
 
     void UltraCanvasWindowsWindow::GetScreenPosition(int& x, int& y) const {

@@ -82,7 +82,7 @@ endif()
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     pkg_check_modules(X11 REQUIRED x11 xcursor)
     find_package(OpenGL REQUIRED)
-    pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+    pkg_check_modules(GTK3 REQUIRED gtk+-3.0 gtk+-unix-print-3.0)
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     # Windows SDK provides most dependencies
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")

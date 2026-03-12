@@ -26,8 +26,11 @@ namespace UltraCanvas {
 
 // ===== HELPER FUNCTIONS =====
 
-        HWND ToHWND(NativeWindowHandle handle) {
-            return static_cast<HWND>(handle);
+        HWND ToHWND(UltraCanvasWindowBase* win) {
+            if (win) {
+                return win->GetNativeHandle();
+            }
+            return 0;
         }
 
 // Convert DialogType to MessageBox icon flags
@@ -137,32 +140,32 @@ namespace UltraCanvas {
 
     DialogResult UltraCanvasNativeDialogs::ShowInfo(
             const std::string& message, const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         return ShowMessage(message, title, DialogType::Information, DialogButtons::OK, parent);
     }
 
     DialogResult UltraCanvasNativeDialogs::ShowWarning(
             const std::string& message, const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         return ShowMessage(message, title, DialogType::Warning, DialogButtons::OK, parent);
     }
 
     DialogResult UltraCanvasNativeDialogs::ShowError(
             const std::string& message, const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         return ShowMessage(message, title, DialogType::Error, DialogButtons::OK, parent);
     }
 
     DialogResult UltraCanvasNativeDialogs::ShowQuestion(
             const std::string& message, const std::string& title,
-            DialogButtons buttons, NativeWindowHandle parent) {
+            DialogButtons buttons, UltraCanvasWindowBase*  parent) {
         return ShowMessage(message, title, DialogType::Question, buttons, parent);
     }
 
     DialogResult UltraCanvasNativeDialogs::ShowMessage(
             const std::string& message, const std::string& title,
             DialogType type, DialogButtons buttons,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase* parent) {
 
         std::wstring wmessage = UltraCanvasWindowsApplication::Utf8ToUtf16(message);
         std::wstring wtitle = UltraCanvasWindowsApplication::Utf8ToUtf16(title);
@@ -177,7 +180,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasNativeDialogs::Confirm(
             const std::string& message, const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         DialogResult result = ShowMessage(message, title,
             DialogType::Question, DialogButtons::OKCancel, parent);
         return result == DialogResult::OK;
@@ -185,7 +188,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasNativeDialogs::ConfirmYesNo(
             const std::string& message, const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         DialogResult result = ShowMessage(message, title,
             DialogType::Question, DialogButtons::YesNo, parent);
         return result == DialogResult::Yes;
@@ -195,7 +198,7 @@ namespace UltraCanvas {
 
     std::string UltraCanvasNativeDialogs::OpenFile(
             const std::string& title, const std::vector<FileFilter>& filters,
-            const std::string& initialDir, NativeWindowHandle parent) {
+            const std::string& initialDir, UltraCanvasWindowBase*  parent) {
 
         NativeFileDialogOptions options;
         options.title = title;
@@ -256,7 +259,7 @@ namespace UltraCanvas {
 
     std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(
             const std::string& title, const std::vector<FileFilter>& filters,
-            const std::string& initialDir, NativeWindowHandle parent) {
+            const std::string& initialDir, UltraCanvasWindowBase*  parent) {
 
         NativeFileDialogOptions options;
         options.title = title;
@@ -335,7 +338,7 @@ namespace UltraCanvas {
     std::string UltraCanvasNativeDialogs::SaveFile(
             const std::string& title, const std::vector<FileFilter>& filters,
             const std::string& initialDir, const std::string& defaultFileName,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
 
         NativeFileDialogOptions options;
         options.title = title;
@@ -403,7 +406,7 @@ namespace UltraCanvas {
 
     std::string UltraCanvasNativeDialogs::SelectFolder(
             const std::string& title, const std::string& initialDir,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
 
         IFileOpenDialog* pDialog = nullptr;
         HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL,
@@ -655,7 +658,7 @@ namespace UltraCanvas {
         NativeInputResult ShowInputDialogImpl(
                 const std::string& prompt, const std::string& title,
                 const std::string& defaultValue, bool password,
-                NativeWindowHandle parent) {
+                UltraCanvasWindowBase*  parent) {
 
             InputDialogData data;
             data.title = UltraCanvasWindowsApplication::Utf8ToUtf16(title);
@@ -687,7 +690,7 @@ namespace UltraCanvas {
 
     NativeInputResult UltraCanvasNativeDialogs::InputText(
             const std::string& prompt, const std::string& title,
-            const std::string& defaultValue, NativeWindowHandle parent) {
+            const std::string& defaultValue, UltraCanvasWindowBase*  parent) {
         return ShowInputDialogImpl(prompt, title, defaultValue, false, parent);
     }
 
@@ -699,7 +702,7 @@ namespace UltraCanvas {
 
     NativeInputResult UltraCanvasNativeDialogs::InputPassword(
             const std::string& prompt, const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         return ShowInputDialogImpl(prompt, title, "", true, parent);
     }
 
@@ -707,16 +710,53 @@ namespace UltraCanvas {
 
     std::string UltraCanvasNativeDialogs::GetInput(
             const std::string& prompt, const std::string& title,
-            const std::string& defaultValue, NativeWindowHandle parent) {
+            const std::string& defaultValue, UltraCanvasWindowBase*  parent) {
         auto result = InputText(prompt, title, defaultValue, parent);
         return result.IsOK() ? result.value : "";
     }
 
     std::string UltraCanvasNativeDialogs::GetPassword(
-            const std::string& prompt, const std::string& title,
-            NativeWindowHandle parent) {
-        auto result = InputPassword(prompt, title, parent);
-        return result.IsOK() ? result.value : "";
-    }
+                const std::string& prompt, const std::string& title,
+                UltraCanvasWindowBase*  parent) {
+            auto result = InputPassword(prompt, title, parent);
+            return result.IsOK() ? result.value : "";
+        }
 
+    bool UltraCanvasNativeDialogs::ShowPrintDialog(
+            const std::string& documentName,
+            const std::string& textContent,
+            UltraCanvasWindowBase*  parent) {
+
+        HWND hwndParent = ToHWND(parent);
+
+        // Write content to a temp file
+        char tmpPath[MAX_PATH];
+        GetTempPathA(MAX_PATH, tmpPath);
+        std::string tmpFile = std::string(tmpPath) + "ultratexter_print.txt";
+        {
+            std::ofstream f(tmpFile, std::ios::binary);
+            if (!f.is_open()) return false;
+            f << textContent;
+        }
+
+        // Use ShellExecute "print" verb — triggers the OS print dialog
+        // for .txt files via Notepad or the registered text handler
+        HINSTANCE result = ShellExecuteA(
+                hwndParent,
+                "print",
+                tmpFile.c_str(),
+                nullptr,
+                nullptr,
+                SW_HIDE
+        );
+
+        // ShellExecute returns >32 on success
+        bool launched = (reinterpret_cast<INT_PTR>(result) > 32);
+
+        // Delete temp file after a short delay (printing is async)
+        // In a production implementation this would use a cleanup timer
+        // For now we leave it in the temp folder (OS cleans on reboot)
+
+        return launched;
+    }
 } // namespace UltraCanvas

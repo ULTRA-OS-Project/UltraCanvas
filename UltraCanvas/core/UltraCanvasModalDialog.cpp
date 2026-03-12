@@ -1306,13 +1306,7 @@ namespace UltraCanvas {
 
         // If native dialogs are enabled, use them (blocking call)
         if (useNativeDialogs) {
-            // Get native window handle from parent if available
-            NativeWindowHandle parentHandle = nullptr;
-            if (parent != nullptr) {
-                parentHandle = reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle());
-            }
-
-            DialogResult result = UltraCanvasNativeDialogs::ShowMessage(message, title, type, buttons, parentHandle);
+            DialogResult result = UltraCanvasNativeDialogs::ShowMessage(message, title, type, buttons, parent);
             if (onResult) onResult(result);
             return;
         }
@@ -1326,8 +1320,7 @@ namespace UltraCanvas {
                                                    std::function<void(DialogResult)> onResult,
                                                    UltraCanvasWindowBase* parent) {
         if (useNativeDialogs && enabled) {
-            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
-            DialogResult result = UltraCanvasNativeDialogs::ShowInfo(message, title, parentHandle);
+            DialogResult result = UltraCanvasNativeDialogs::ShowInfo(message, title, parent);
             if (onResult) onResult(result);
             return;
         }
@@ -1338,8 +1331,7 @@ namespace UltraCanvas {
                                                 std::function<void(DialogResult)> onResult,
                                                 UltraCanvasWindowBase* parent) {
         if (useNativeDialogs && enabled) {
-            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
-            DialogResult result = UltraCanvasNativeDialogs::ShowQuestion(message, title, DialogButtons::YesNo, parentHandle);
+            DialogResult result = UltraCanvasNativeDialogs::ShowQuestion(message, title, DialogButtons::YesNo, parent);
             if (onResult) onResult(result);
             return;
         }
@@ -1350,8 +1342,7 @@ namespace UltraCanvas {
                                                std::function<void(DialogResult)> onResult,
                                                UltraCanvasWindowBase* parent) {
         if (useNativeDialogs && enabled) {
-            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
-            DialogResult result = UltraCanvasNativeDialogs::ShowWarning(message, title, parentHandle);
+            DialogResult result = UltraCanvasNativeDialogs::ShowWarning(message, title, parent);
             if (onResult) onResult(result);
             return;
         }
@@ -1362,8 +1353,7 @@ namespace UltraCanvas {
                                              std::function<void(DialogResult)> onResult,
                                              UltraCanvasWindowBase* parent) {
         if (useNativeDialogs && enabled) {
-            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
-            DialogResult result = UltraCanvasNativeDialogs::ShowError(message, title, parentHandle);
+            DialogResult result = UltraCanvasNativeDialogs::ShowError(message, title, parent);
             if (onResult) onResult(result);
             return;
         }
@@ -1374,8 +1364,7 @@ namespace UltraCanvas {
                                                     std::function<void(bool confirmed)> onResult,
                                                     UltraCanvasWindowBase* parent) {
         if (useNativeDialogs && enabled) {
-            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
-            bool confirmed = UltraCanvasNativeDialogs::ConfirmYesNo(message, title, parentHandle);
+            bool confirmed = UltraCanvasNativeDialogs::ConfirmYesNo(message, title, parent);
             if (onResult) onResult(confirmed);
             return;
         }
@@ -1439,7 +1428,8 @@ namespace UltraCanvas {
 
     void UltraCanvasDialogManager::ShowInputDialog(const std::string& prompt, const std::string& title,
                                                    const std::string& defaultValue, InputType type,
-                                                   std::function<void(DialogResult, const std::string&)> onResult, UltraCanvasWindowBase* parent) {
+                                                   std::function<void(DialogResult, const std::string&)> onResult,
+                                                   UltraCanvasWindowBase* parent) {
         if (!enabled) {
             if (onResult) onResult(DialogResult::Cancel, "");
             return;
@@ -1447,12 +1437,11 @@ namespace UltraCanvas {
 
         // If native dialogs are enabled, use them (blocking call)
         if (useNativeDialogs) {
-            NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
             NativeInputResult result;
             if (type == InputType::Password) {
-                result = UltraCanvasNativeDialogs::InputPassword(prompt, title, parentHandle);
+                result = UltraCanvasNativeDialogs::InputPassword(prompt, title, parent);
             } else {
-                result = UltraCanvasNativeDialogs::InputText(prompt, title, defaultValue, parentHandle);
+                result = UltraCanvasNativeDialogs::InputText(prompt, title, defaultValue, parent);
             }
             if (onResult) onResult(result.result, result.value);
             return;
@@ -1485,9 +1474,8 @@ namespace UltraCanvas {
 
         // File dialogs always use native dialogs for best user experience
         // (native file browser is always better than custom implementation)
-        NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
         std::string result = UltraCanvasNativeDialogs::OpenFile(
-                title.empty() ? "Open File" : title, filters, initialDir, parentHandle);
+                title.empty() ? "Open File" : title, filters, initialDir, parent);
 
         if (onResult) {
             onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
@@ -1506,9 +1494,8 @@ namespace UltraCanvas {
         }
 
         // File dialogs always use native dialogs for best user experience
-        NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
         std::string result = UltraCanvasNativeDialogs::SaveFile(
-                title.empty() ? "Save File" : title, filters, initialDir, defaultName, parentHandle);
+                title.empty() ? "Save File" : title, filters, initialDir, defaultName, parent);
 
         if (onResult) {
             onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
@@ -1528,12 +1515,9 @@ namespace UltraCanvas {
         }
 
         // Use native multi-file dialog for best user experience
-        NativeWindowHandle parentHandle = parent ?
-                                          reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
-
         std::vector<std::string> results = UltraCanvasNativeDialogs::OpenMultipleFiles(
                 title.empty() ? "Open Files" : title,
-                filters, initialDir, parentHandle);
+                filters, initialDir, parent);
 
         if (onResult) {
             onResult(results.empty() ? DialogResult::Cancel : DialogResult::OK, results);
@@ -1550,9 +1534,8 @@ namespace UltraCanvas {
         }
 
         // Folder dialogs always use native dialogs for best user experience
-        NativeWindowHandle parentHandle = parent ? reinterpret_cast<NativeWindowHandle>(parent->GetNativeHandle()) : nullptr;
         std::string result = UltraCanvasNativeDialogs::SelectFolder(
-                title.empty() ? "Select Folder" : title, initialDir, parentHandle);
+                title.empty() ? "Select Folder" : title, initialDir, parent);
 
         if (onResult) {
             onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);

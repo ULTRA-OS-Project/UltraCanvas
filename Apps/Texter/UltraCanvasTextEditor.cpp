@@ -14,6 +14,7 @@
 #include "UltraCanvasTextEditorHelpers.h"
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasEncoding.h"
+#include "UltraCanvasNativeDialogs.h"
 //#include "UltraCanvasDialogManager.h"
 #include <fstream>
 #include <sstream>
@@ -339,7 +340,10 @@ namespace {
                         MenuItemData::Action("Save All", GetResourcesDir() + "media/icons/texter/save.svg", [this]() {
                             OnFileSaveAll();
                         }),
-                        MenuItemData::Separator(),
+                        // ── ADD THESE TWO LINES ──
+                        MenuItemData::ActionWithShortcut("Print...", "Ctrl+P", [this]() {
+                            OnFilePrint();
+                        }),                        MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", GetResourcesDir() + "media/icons/texter/close_tab.svg", [this]() {
                             OnFileClose();
                         }),
@@ -1576,7 +1580,7 @@ namespace {
                         }
                     }
                 },
-                nullptr
+                GetWindow()
         );
     }
 
@@ -1686,7 +1690,7 @@ namespace {
                         }
                     }
                 },
-                nullptr
+                GetWindow()
         );
     }
 
@@ -1720,7 +1724,7 @@ namespace {
                         SaveDocumentAs(activeDocumentIndex, filePath);
                     }
                 },
-                nullptr
+                GetWindow()
         );
     }
 
@@ -1732,6 +1736,17 @@ namespace {
                 }
             }
         }
+    }
+
+    void UltraCanvasTextEditor::OnFilePrint() {
+        auto doc = GetActiveDocument();
+        if (!doc) return;
+
+        std::string docName = doc->fileName.empty() ? "Untitled" : doc->fileName;
+        std::string content = doc->textArea ? doc->textArea->GetText() : "";
+
+        // Retrieve the native window handle for modal parenting
+        UltraCanvasNativeDialogs::ShowPrintDialog(docName, content, GetWindow());
     }
 
     void UltraCanvasTextEditor::OnFileClose() {
@@ -2020,6 +2035,7 @@ namespace {
         config.buttons = DialogButtons::NoButtons;
         config.width = 430;
         config.height = 526;
+
 
         aboutDialog = UltraCanvasDialogManager::CreateDialog(config);
 
@@ -2500,7 +2516,7 @@ namespace {
                                             }
                                         }
                                     },
-                                    nullptr
+                                    GetWindow()
                             );
                         } else {
                             bool saved = SaveDocument(docIndex);
@@ -2518,7 +2534,7 @@ namespace {
                         }
                     }
                 },
-                nullptr
+                GetWindow()
         );
     }
 
@@ -2569,7 +2585,7 @@ namespace {
                         }
                     }
                 },
-                nullptr
+                GetWindow()
         );
     }
 

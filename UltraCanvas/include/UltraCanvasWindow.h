@@ -146,7 +146,7 @@ namespace UltraCanvas {
 
 
         // Platform-specific
-        virtual uintptr_t GetNativeHandle() const = 0;
+        virtual NativeWindowHandle GetNativeHandle() const = 0;
         virtual void Flush() = 0;
 
         void AddPopupElement(UltraCanvasUIElement* element);

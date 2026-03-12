@@ -214,7 +214,7 @@ rescan_windows:
         std::cerr << "UltraCanvas: window found and unregistered successfully" << std::endl;
     }
 
-    UltraCanvasWindow* UltraCanvasBaseApplication::FindWindow(uintptr_t nativeHandle) {
+    UltraCanvasWindow* UltraCanvasBaseApplication::FindWindow(NativeWindowHandle nativeHandle) {
         auto it = std::find_if(windows.begin(), windows.end(),
                                [nativeHandle](const std::shared_ptr<UltraCanvasWindowBase>& ptr) {
                                    return ptr->GetNativeHandle() == nativeHandle;
@@ -322,12 +322,12 @@ rescan_windows:
                     // Update focused window
                     DispatchEventToElement(targetWindow, event);
                     focusedWindow = targetWindow;
-                    std::cerr << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << (int)focusedWindow->GetNativeHandle() << ") gained focus" << std::endl;
+                    std::cerr << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << focusedWindow->GetNativeHandle() << ") gained focus" << std::endl;
                 }
                 return;
             case UCEventType::WindowBlur:
                 if (targetWindow && targetWindow == focusedWindow) {
-                    std::cerr << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << (int)focusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
+                    std::cerr << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << focusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
                     DispatchEventToElement(targetWindow, event);
                     focusedWindow = nullptr;
                 }

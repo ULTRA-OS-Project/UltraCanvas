@@ -10,6 +10,7 @@
 #ifdef __linux__
 
 #include <gtk-3.0/gtk/gtk.h>
+#include <gtk/gtkunixprint.h>
 #include <iostream>
 #include <cstring>
 
@@ -116,21 +117,21 @@ namespace UltraCanvas {
     DialogResult UltraCanvasNativeDialogs::ShowInfo(
             const std::string& message,
             const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         return ShowMessage(message, title, DialogType::Information, DialogButtons::OK, parent);
     }
 
     DialogResult UltraCanvasNativeDialogs::ShowWarning(
             const std::string& message,
             const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         return ShowMessage(message, title, DialogType::Warning, DialogButtons::OK, parent);
     }
 
     DialogResult UltraCanvasNativeDialogs::ShowError(
             const std::string& message,
             const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         return ShowMessage(message, title, DialogType::Error, DialogButtons::OK, parent);
     }
 
@@ -138,7 +139,7 @@ namespace UltraCanvas {
             const std::string& message,
             const std::string& title,
             DialogButtons buttons,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         return ShowMessage(message, title, DialogType::Question, buttons, parent);
     }
 
@@ -147,7 +148,7 @@ namespace UltraCanvas {
             const std::string& title,
             DialogType type,
             DialogButtons buttons,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
 
         EnsureGtkInitialized();
 
@@ -156,10 +157,10 @@ namespace UltraCanvas {
 
         // Get parent GtkWindow if provided
         GtkWindow* parentWindow = nullptr;
-        if (parent != nullptr) {
-            // The parent handle should be a GtkWindow* when using GTK
-            parentWindow = GTK_WINDOW(parent);
-        }
+//        if (parent != nullptr) {
+//            // The parent handle should be a GtkWindow* when using GTK
+//            parentWindow = GTK_WINDOW(parent);
+//        }
 
         GtkWidget* dialog = gtk_message_dialog_new(
                 parentWindow,
@@ -220,7 +221,7 @@ namespace UltraCanvas {
     bool UltraCanvasNativeDialogs::Confirm(
             const std::string& message,
             const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         DialogResult result = ShowMessage(message, title,
                                           DialogType::Question, DialogButtons::OKCancel, parent);
         return result == DialogResult::OK;
@@ -229,7 +230,7 @@ namespace UltraCanvas {
     bool UltraCanvasNativeDialogs::ConfirmYesNo(
             const std::string& message,
             const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
         DialogResult result = ShowMessage(message, title,
                                           DialogType::Question, DialogButtons::YesNo, parent);
         return result == DialogResult::Yes;
@@ -241,7 +242,7 @@ namespace UltraCanvas {
             const std::string& title,
             const std::vector<FileFilter>& filters,
             const std::string& initialDir,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
 
         NativeFileDialogOptions options;
         options.title = title;
@@ -256,9 +257,9 @@ namespace UltraCanvas {
 
         // Get parent GtkWindow if provided
         GtkWindow* parentWindow = nullptr;
-        if (options.parentWindow != nullptr) {
-            parentWindow = GTK_WINDOW(options.parentWindow);
-        }
+//        if (options.parentWindow != nullptr) {
+//            parentWindow = GTK_WINDOW(options.parentWindow);
+//        }
 
         GtkWidget* dialog = gtk_file_chooser_dialog_new(
                 options.title.empty() ? "Open File" : options.title.c_str(),
@@ -317,7 +318,7 @@ namespace UltraCanvas {
             const std::string& title,
             const std::vector<FileFilter>& filters,
             const std::string& initialDir,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
 
         NativeFileDialogOptions options;
         options.title = title;
@@ -333,9 +334,9 @@ namespace UltraCanvas {
 
         // Get parent GtkWindow if provided
         GtkWindow* parentWindow = nullptr;
-        if (options.parentWindow != nullptr) {
-            parentWindow = GTK_WINDOW(options.parentWindow);
-        }
+//        if (options.parentWindow != nullptr) {
+//            parentWindow = GTK_WINDOW(options.parentWindow);
+//        }
 
         GtkWidget* dialog = gtk_file_chooser_dialog_new(
                 options.title.empty() ? "Open Files" : options.title.c_str(),
@@ -404,7 +405,7 @@ namespace UltraCanvas {
             const std::vector<FileFilter>& filters,
             const std::string& initialDir,
             const std::string& defaultFileName,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
 
         NativeFileDialogOptions options;
         options.title = title;
@@ -420,9 +421,9 @@ namespace UltraCanvas {
 
         // Get parent GtkWindow if provided
         GtkWindow* parentWindow = nullptr;
-        if (options.parentWindow != nullptr) {
-            parentWindow = GTK_WINDOW(options.parentWindow);
-        }
+//        if (options.parentWindow != nullptr) {
+//            parentWindow = GTK_WINDOW(options.parentWindow);
+//        }
 
         GtkWidget* dialog = gtk_file_chooser_dialog_new(
                 options.title.empty() ? "Save File" : options.title.c_str(),
@@ -488,15 +489,15 @@ namespace UltraCanvas {
     std::string UltraCanvasNativeDialogs::SelectFolder(
             const std::string& title,
             const std::string& initialDir,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
 
         EnsureGtkInitialized();
 
         // Get parent GtkWindow if provided
         GtkWindow* parentWindow = nullptr;
-        if (parent != nullptr) {
-            parentWindow = GTK_WINDOW(parent);
-        }
+//        if (parent != nullptr) {
+//            parentWindow = GTK_WINDOW(parent);
+//        }
 
         GtkWidget* dialog = gtk_file_chooser_dialog_new(
                 title.empty() ? "Select Folder" : title.c_str(),
@@ -538,7 +539,7 @@ namespace UltraCanvas {
             const std::string& prompt,
             const std::string& title,
             const std::string& defaultValue,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
 
         NativeInputDialogOptions options;
         options.prompt = prompt;
@@ -556,9 +557,9 @@ namespace UltraCanvas {
 
         // Get parent GtkWindow if provided
         GtkWindow* parentWindow = nullptr;
-        if (options.parentWindow != nullptr) {
-            parentWindow = GTK_WINDOW(options.parentWindow);
-        }
+//        if (options.parentWindow != nullptr) {
+//            parentWindow = GTK_WINDOW(options.parentWindow);
+//        }
 
         // Create dialog
         GtkWidget* dialog = gtk_dialog_new_with_buttons(
@@ -621,7 +622,7 @@ namespace UltraCanvas {
     NativeInputResult UltraCanvasNativeDialogs::InputPassword(
             const std::string& prompt,
             const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
 
         NativeInputDialogOptions options;
         options.prompt = prompt;
@@ -637,7 +638,7 @@ namespace UltraCanvas {
             const std::string& prompt,
             const std::string& title,
             const std::string& defaultValue,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
 
         NativeInputResult result = InputText(prompt, title, defaultValue, parent);
         return result.IsOK() ? result.value : "";
@@ -646,12 +647,69 @@ namespace UltraCanvas {
     std::string UltraCanvasNativeDialogs::GetPassword(
             const std::string& prompt,
             const std::string& title,
-            NativeWindowHandle parent) {
+            UltraCanvasWindowBase*  parent) {
 
         NativeInputResult result = InputPassword(prompt, title, parent);
         return result.IsOK() ? result.value : "";
     }
 
+    bool UltraCanvasNativeDialogs::ShowPrintDialog(
+            const std::string& documentName,
+            const std::string& textContent,
+            UltraCanvasWindowBase* parent) {
+
+        EnsureGtkInitialized();
+
+        GtkWindow* parentWindow = nullptr;
+
+        // Build a GtkPrintUnixDialog — the standard GTK print dialog
+        GtkWidget* dialog = gtk_print_unix_dialog_new(
+                documentName.empty() ? "Print" : documentName.c_str(),
+                parentWindow
+        );
+
+        gtk_window_set_keep_above(GTK_WINDOW(dialog), TRUE);
+
+        // Configure: show all pages tab, hide page range (plain text only)
+        GtkPrintCapabilities capabilities = (GtkPrintCapabilities) (GTK_PRINT_CAPABILITY_COPIES |
+                                            GTK_PRINT_CAPABILITY_COLLATE |
+                                            GTK_PRINT_CAPABILITY_REVERSE);
+
+        gtk_print_unix_dialog_set_manual_capabilities(GTK_PRINT_UNIX_DIALOG(dialog), capabilities);
+
+        bool printed = false;
+
+        if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_OK) {
+            GtkPrinter*     printer  = gtk_print_unix_dialog_get_selected_printer(GTK_PRINT_UNIX_DIALOG(dialog));
+            GtkPrintSettings* settings = gtk_print_unix_dialog_get_settings(GTK_PRINT_UNIX_DIALOG(dialog));
+            GtkPageSetup*   pageSetup = gtk_print_unix_dialog_get_page_setup(GTK_PRINT_UNIX_DIALOG(dialog));
+
+            if (printer && settings) {
+                // Write text content to a temp file and hand it to lpr
+                char tmpPath[] = "/tmp/ultratexter_print_XXXXXX";
+                int fd = mkstemp(tmpPath);
+                if (fd >= 0) {
+                    write(fd, textContent.c_str(), textContent.size());
+                    close(fd);
+
+                    // Retrieve chosen printer name for lpr -P
+                    const gchar* printerName = gtk_printer_get_name(printer);
+                    std::string cmd = std::string("lpr -P \"") + printerName + "\" \"" + tmpPath + "\"";
+                    int ret = system(cmd.c_str());
+                    printed = (ret == 0);
+
+                    unlink(tmpPath);  // Remove temp file after submission
+                }
+            }
+
+            if (settings)  g_object_unref(settings);
+        }
+
+        gtk_widget_destroy(dialog);
+        ProcessGtkEvents();
+
+        return printed;
+    }
 } // namespace UltraCanvas
 
 #endif // __linux__

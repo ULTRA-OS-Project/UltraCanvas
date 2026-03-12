@@ -10,7 +10,29 @@
 #include <vector>
 #include <string>
 
+// Platform-specific native window handle for parent window support
+// This ensures native dialogs stay on top of their parent window
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#elif defined(__linux__) || defined(__unix__)
+#include <X11/Xlib.h>
+#elif defined(__APPLE__)
+#endif
+
 namespace UltraCanvas {
+
+    // ===== NATIVE WINDOW HANDLE TYPE =====
+// Platform-specific native window handle for parent window support
+// This ensures native dialogs stay on top of their parent window
+#if defined(_WIN32) || defined(_WIN64)
+    using NativeWindowHandle = HWND;  // HWND
+#elif defined(__linux__) || defined(__unix__)
+    using NativeWindowHandle = XID;  // X11 Window
+#elif defined(__APPLE__)
+    using NativeWindowHandle = void*;  // NSWindow*
+#else
+    using NativeWindowHandle = void*;
+#endif
 
 // ===== COMMON GEOMETRIC TYPES =====
 template <typename T>

@@ -98,21 +98,21 @@ NSArray<NSString*>* ParseExtensions(const FileFilter& filter) {
 DialogResult UltraCanvasNativeDialogs::ShowInfo(
     const std::string& message,
     const std::string& title,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
     return ShowMessage(message, title, DialogType::Information, DialogButtons::OK, parent);
 }
 
 DialogResult UltraCanvasNativeDialogs::ShowWarning(
     const std::string& message,
     const std::string& title,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
     return ShowMessage(message, title, DialogType::Warning, DialogButtons::OK, parent);
 }
 
 DialogResult UltraCanvasNativeDialogs::ShowError(
     const std::string& message,
     const std::string& title,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
     return ShowMessage(message, title, DialogType::Error, DialogButtons::OK, parent);
 }
 
@@ -120,7 +120,7 @@ DialogResult UltraCanvasNativeDialogs::ShowQuestion(
     const std::string& message,
     const std::string& title,
     DialogButtons buttons,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
     return ShowMessage(message, title, DialogType::Question, buttons, parent);
 }
 
@@ -129,7 +129,7 @@ DialogResult UltraCanvasNativeDialogs::ShowMessage(
     const std::string& title,
     DialogType type,
     DialogButtons buttons,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
 
     @autoreleasepool {
         NSAlert* alert = [[NSAlert alloc] init];
@@ -177,7 +177,7 @@ DialogResult UltraCanvasNativeDialogs::ShowMessage(
         // If parent window is provided, run as sheet (attached modal)
         // Otherwise run as application-modal dialog
         if (parent != nullptr) {
-            NSWindow* parentWindow = (__bridge NSWindow*)parent;
+            NSWindow* parentWindow = parent->GetNativeHandle();
 
             // For sheet-style, we need to use beginSheetModalForWindow
             // But since we need a synchronous result, we use runModal with window level
@@ -199,7 +199,7 @@ DialogResult UltraCanvasNativeDialogs::ShowMessage(
 bool UltraCanvasNativeDialogs::Confirm(
     const std::string& message,
     const std::string& title,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
     DialogResult result = ShowMessage(message, title,
         DialogType::Question, DialogButtons::OKCancel, parent);
     return result == DialogResult::OK;
@@ -208,7 +208,7 @@ bool UltraCanvasNativeDialogs::Confirm(
 bool UltraCanvasNativeDialogs::ConfirmYesNo(
     const std::string& message,
     const std::string& title,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
     DialogResult result = ShowMessage(message, title,
         DialogType::Question, DialogButtons::YesNo, parent);
     return result == DialogResult::Yes;
@@ -220,7 +220,7 @@ std::string UltraCanvasNativeDialogs::OpenFile(
     const std::string& title,
     const std::vector<FileFilter>& filters,
     const std::string& initialDir,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
 
     NativeFileDialogOptions options;
     options.title = title;
@@ -289,7 +289,7 @@ std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(
     const std::string& title,
     const std::vector<FileFilter>& filters,
     const std::string& initialDir,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
 
     NativeFileDialogOptions options;
     options.title = title;
@@ -355,7 +355,7 @@ std::string UltraCanvasNativeDialogs::SaveFile(
     const std::vector<FileFilter>& filters,
     const std::string& initialDir,
     const std::string& defaultFileName,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
 
     NativeFileDialogOptions options;
     options.title = title;
@@ -420,7 +420,7 @@ std::string UltraCanvasNativeDialogs::SaveFile(const NativeFileDialogOptions& op
 std::string UltraCanvasNativeDialogs::SelectFolder(
     const std::string& title,
     const std::string& initialDir,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
 
     @autoreleasepool {
         NSOpenPanel* panel = [NSOpenPanel openPanel];
@@ -461,7 +461,7 @@ NativeInputResult UltraCanvasNativeDialogs::InputText(
     const std::string& prompt,
     const std::string& title,
     const std::string& defaultValue,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
 
     NativeInputDialogOptions options;
     options.prompt = prompt;
@@ -514,7 +514,7 @@ NativeInputResult UltraCanvasNativeDialogs::InputText(const NativeInputDialogOpt
 NativeInputResult UltraCanvasNativeDialogs::InputPassword(
     const std::string& prompt,
     const std::string& title,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
 
     NativeInputDialogOptions options;
     options.prompt = prompt;
@@ -530,7 +530,7 @@ std::string UltraCanvasNativeDialogs::GetInput(
     const std::string& prompt,
     const std::string& title,
     const std::string& defaultValue,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
 
     NativeInputResult result = InputText(prompt, title, defaultValue, parent);
     return result.IsOK() ? result.value : "";
@@ -539,11 +539,38 @@ std::string UltraCanvasNativeDialogs::GetInput(
 std::string UltraCanvasNativeDialogs::GetPassword(
     const std::string& prompt,
     const std::string& title,
-    NativeWindowHandle parent) {
+    UltraCanvasWindowBase*  parent) {
 
     NativeInputResult result = InputPassword(prompt, title, parent);
     return result.IsOK() ? result.value : "";
 }
+
+    bool UltraCanvasNativeDialogs::ShowPrintDialog(
+            const std::string& documentName,
+            const std::string& textContent,
+            UltraCanvasWindowBase*  parent) {
+        @autoreleasepool {
+            // Write content to a temp file
+            NSString* tmpPath = [NSTemporaryDirectory()
+                    stringByAppendingPathComponent:@"ultratexter_print.txt"];
+            NSData* data = [NSData dataWithBytes:textContent.c_str()
+                                          length:textContent.size()];
+            [data writeToFile:tmpPath atomically:YES];
+
+            // Open the file with NSWorkspace "print" operation — shows OS print dialog
+            NSURL* fileURL = [NSURL fileURLWithPath:tmpPath];
+            NSWorkspaceOpenConfiguration* config = [NSWorkspaceOpenConfiguration configuration];
+            config.activates = YES;
+
+            [[NSWorkspace sharedWorkspace]
+                    openURLs:@[fileURL]
+            withApplicationAtURL:nil
+                   configuration:config
+               completionHandler:nil];
+
+            return true;
+        }
+    }
 
 } // namespace UltraCanvas
 

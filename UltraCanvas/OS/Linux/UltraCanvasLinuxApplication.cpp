@@ -245,7 +245,7 @@ namespace UltraCanvas {
             return;
         }
 
-        Window xWindow = linuxWindow->GetNativeHandle();
+        Window xWindow = (Window) linuxWindow->GetNativeHandle();
         if (xWindow == 0) {
             std::cerr << "UltraCanvas: Cannot capture mouse - invalid X11 window handle" << std::endl;
             return;
@@ -288,14 +288,14 @@ namespace UltraCanvas {
             // For SelectionNotify, let the window's drag-drop handler try first
             // (XDnD drop uses SelectionNotify to deliver file data)
             if (xEvent.type == SelectionNotify) {
-                auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
+                auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow((NativeWindowHandle)xEvent.xany.window));
                 if (window && window->HandleXEvent(xEvent)) {
                     return;
                 }
             }
             UltraCanvasLinuxClipboard::ProcessClipboardEvent(xEvent);
         } else {
-            auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
+            auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow((NativeWindowHandle)xEvent.xany.window));
 
             if (window) {
                 // Let the window handle the X11 event first

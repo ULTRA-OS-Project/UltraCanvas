@@ -282,6 +282,7 @@ namespace UltraCanvas {
         void OnFileClose();
         void OnFileCloseAll();
         void OnFileQuit();
+        void OnFilePrint();
 
         void OnEditUndo();
         void OnEditRedo();

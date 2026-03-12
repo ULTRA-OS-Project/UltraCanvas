@@ -13,19 +13,6 @@
 
 namespace UltraCanvas {
 
-// ===== NATIVE WINDOW HANDLE TYPE =====
-// Platform-specific native window handle for parent window support
-// This ensures native dialogs stay on top of their parent window
-#if defined(_WIN32) || defined(_WIN64)
-    using NativeWindowHandle = void*;  // HWND
-#elif defined(__linux__) || defined(__unix__)
-    using NativeWindowHandle = void*;  // GtkWindow* or X11 Window
-#elif defined(__APPLE__)
-    using NativeWindowHandle = void*;  // NSWindow*
-#else
-    using NativeWindowHandle = void*;
-#endif
-
 // ===== NATIVE FILE DIALOG OPTIONS =====
 // Uses FileFilter from UltraCanvasModalDialog.h
     struct NativeFileDialogOptions {
@@ -35,7 +22,7 @@ namespace UltraCanvas {
         std::vector<FileFilter> filters;
         bool allowMultiSelect = false;
         bool showHiddenFiles = false;
-        NativeWindowHandle parentWindow = nullptr;  // Parent window for modal behavior
+        UltraCanvasWindowBase* parentWindow = nullptr;  // Parent window for modal behavior
 
         NativeFileDialogOptions() = default;
 
@@ -52,7 +39,7 @@ namespace UltraCanvas {
         }
         NativeFileDialogOptions& SetMultiSelect(bool multi) { allowMultiSelect = multi; return *this; }
         NativeFileDialogOptions& SetShowHidden(bool show) { showHiddenFiles = show; return *this; }
-        NativeFileDialogOptions& SetParentWindow(NativeWindowHandle parent) { parentWindow = parent; return *this; }
+        NativeFileDialogOptions& SetParentWindow(UltraCanvasWindowBase* parent) { parentWindow = parent; return *this; }
     };
 
 // ===== NATIVE INPUT DIALOG OPTIONS =====
@@ -61,7 +48,7 @@ namespace UltraCanvas {
         std::string prompt = "Enter value:";
         std::string defaultValue;
         bool password = false;
-        NativeWindowHandle parentWindow = nullptr;  // Parent window for modal behavior
+        void* parentWindow = nullptr;  // Parent window for modal behavior
 
         NativeInputDialogOptions() = default;
 
@@ -69,7 +56,7 @@ namespace UltraCanvas {
         NativeInputDialogOptions& SetPrompt(const std::string& p) { prompt = p; return *this; }
         NativeInputDialogOptions& SetDefaultValue(const std::string& val) { defaultValue = val; return *this; }
         NativeInputDialogOptions& SetPassword(bool pwd) { password = pwd; return *this; }
-        NativeInputDialogOptions& SetParentWindow(NativeWindowHandle parent) { parentWindow = parent; return *this; }
+        NativeInputDialogOptions& SetParentWindow(void* parent) { parentWindow = parent; return *this; }
     };
 
 // ===== NATIVE INPUT RESULT =====
@@ -93,26 +80,26 @@ namespace UltraCanvas {
         static DialogResult ShowInfo(
                 const std::string& message,
                 const std::string& title = "Information",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // Show warning message
         static DialogResult ShowWarning(
                 const std::string& message,
                 const std::string& title = "Warning",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // Show error message
         static DialogResult ShowError(
                 const std::string& message,
                 const std::string& title = "Error",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // Show question dialog
         static DialogResult ShowQuestion(
                 const std::string& message,
                 const std::string& title = "Question",
                 DialogButtons buttons = DialogButtons::YesNo,
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // Show generic message box
         static DialogResult ShowMessage(
@@ -120,7 +107,7 @@ namespace UltraCanvas {
                 const std::string& title,
                 DialogType type,
                 DialogButtons buttons,
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // ===== CONFIRMATION DIALOGS =====
 
@@ -128,13 +115,13 @@ namespace UltraCanvas {
         static bool Confirm(
                 const std::string& message,
                 const std::string& title = "Confirm",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // Show Yes/No confirmation (returns true if Yes)
         static bool ConfirmYesNo(
                 const std::string& message,
                 const std::string& title = "Confirm",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // ===== FILE DIALOGS =====
 
@@ -143,7 +130,7 @@ namespace UltraCanvas {
                 const std::string& title = "Open File",
                 const std::vector<FileFilter>& filters = {},
                 const std::string& initialDir = "",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // Show open file dialog with options
         static std::string OpenFile(const NativeFileDialogOptions& options);
@@ -153,7 +140,7 @@ namespace UltraCanvas {
                 const std::string& title = "Open Files",
                 const std::vector<FileFilter>& filters = {},
                 const std::string& initialDir = "",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // Show open multiple files dialog with options
         static std::vector<std::string> OpenMultipleFiles(const NativeFileDialogOptions& options);
@@ -164,7 +151,7 @@ namespace UltraCanvas {
                 const std::vector<FileFilter>& filters = {},
                 const std::string& initialDir = "",
                 const std::string& defaultFileName = "",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // Show save file dialog with options
         static std::string SaveFile(const NativeFileDialogOptions& options);
@@ -173,7 +160,7 @@ namespace UltraCanvas {
         static std::string SelectFolder(
                 const std::string& title = "Select Folder",
                 const std::string& initialDir = "",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // ===== INPUT DIALOGS =====
 
@@ -182,7 +169,7 @@ namespace UltraCanvas {
                 const std::string& prompt,
                 const std::string& title = "Input",
                 const std::string& defaultValue = "",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // Show text input dialog with options
         static NativeInputResult InputText(const NativeInputDialogOptions& options);
@@ -191,7 +178,7 @@ namespace UltraCanvas {
         static NativeInputResult InputPassword(
                 const std::string& prompt,
                 const std::string& title = "Password",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // ===== CONVENIENCE FUNCTIONS =====
 
@@ -200,13 +187,23 @@ namespace UltraCanvas {
                 const std::string& prompt,
                 const std::string& title = "Input",
                 const std::string& defaultValue = "",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
 
         // Simple password input that returns string directly (empty if cancelled)
         static std::string GetPassword(
                 const std::string& prompt,
                 const std::string& title = "Password",
-                NativeWindowHandle parent = nullptr);
+                UltraCanvasWindowBase*  parent = nullptr);
+
+        // Show the OS native print dialog for the given text content.
+        // documentName  — displayed in the printer queue (e.g. the filename)
+        // textContent   — UTF-8 plain text to be sent to the printer on OK
+        // parent        — native parent window handle for modal behaviour
+        // Returns true if the user confirmed printing, false if cancelled.
+        static bool ShowPrintDialog(
+                const std::string& documentName,
+                const std::string& textContent,
+                UltraCanvasWindowBase*  parent = nullptr);
     };
 
 // ===== GLOBAL CONVENIENCE FUNCTIONS =====
@@ -216,34 +213,34 @@ namespace UltraCanvas {
 
 // Message boxes
         inline DialogResult Info(const std::string& message, const std::string& title = "Information",
-                                 NativeWindowHandle parent = nullptr) {
+                                 UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::ShowInfo(message, title, parent);
         }
 
         inline DialogResult Warning(const std::string& message, const std::string& title = "Warning",
-                                    NativeWindowHandle parent = nullptr) {
+                                    UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::ShowWarning(message, title, parent);
         }
 
         inline DialogResult Error(const std::string& message, const std::string& title = "Error",
-                                  NativeWindowHandle parent = nullptr) {
+                                  UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::ShowError(message, title, parent);
         }
 
         inline DialogResult Question(const std::string& message, const std::string& title = "Question",
                                      DialogButtons buttons = DialogButtons::YesNo,
-                                     NativeWindowHandle parent = nullptr) {
+                                     UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::ShowQuestion(message, title, buttons, parent);
         }
 
 // Confirmations
         inline bool Confirm(const std::string& message, const std::string& title = "Confirm",
-                            NativeWindowHandle parent = nullptr) {
+                            UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::Confirm(message, title, parent);
         }
 
         inline bool ConfirmYesNo(const std::string& message, const std::string& title = "Confirm",
-                                 NativeWindowHandle parent = nullptr) {
+                                 UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::ConfirmYesNo(message, title, parent);
         }
 
@@ -251,14 +248,14 @@ namespace UltraCanvas {
         inline std::string OpenFile(const std::string& title = "Open File",
                                     const std::vector<FileFilter>& filters = {},
                                     const std::string& initialDir = "",
-                                    NativeWindowHandle parent = nullptr) {
+                                    UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::OpenFile(title, filters, initialDir, parent);
         }
 
         inline std::vector<std::string> OpenMultipleFiles(const std::string& title = "Open Files",
                                                           const std::vector<FileFilter>& filters = {},
                                                           const std::string& initialDir = "",
-                                                          NativeWindowHandle parent = nullptr) {
+                                                          UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::OpenMultipleFiles(title, filters, initialDir, parent);
         }
 
@@ -266,28 +263,33 @@ namespace UltraCanvas {
                                     const std::vector<FileFilter>& filters = {},
                                     const std::string& initialDir = "",
                                     const std::string& defaultFileName = "",
-                                    NativeWindowHandle parent = nullptr) {
+                                    UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::SaveFile(title, filters, initialDir, defaultFileName, parent);
         }
 
         inline std::string SelectFolder(const std::string& title = "Select Folder",
                                         const std::string& initialDir = "",
-                                        NativeWindowHandle parent = nullptr) {
+                                        UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::SelectFolder(title, initialDir, parent);
         }
 
 // Input dialogs
         inline std::string Input(const std::string& prompt, const std::string& title = "Input",
                                  const std::string& defaultValue = "",
-                                 NativeWindowHandle parent = nullptr) {
+                                 UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::GetInput(prompt, title, defaultValue, parent);
         }
 
         inline std::string Password(const std::string& prompt, const std::string& title = "Password",
-                                    NativeWindowHandle parent = nullptr) {
+                                    UltraCanvasWindowBase*  parent = nullptr) {
             return UltraCanvasNativeDialogs::GetPassword(prompt, title, parent);
         }
 
+        inline bool Print(const std::string& documentName,
+                          const std::string& textContent,
+                          UltraCanvasWindowBase*  parent = nullptr) {
+            return UltraCanvasNativeDialogs::ShowPrintDialog(documentName, textContent, parent);
+        }
     } // namespace NativeDialog
 
 } // namespace UltraCanvas

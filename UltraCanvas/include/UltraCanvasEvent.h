@@ -7,6 +7,7 @@
 #ifndef ULTRA_CANVAS_EVENT_H
 #define ULTRA_CANVAS_EVENT_H
 
+#include "UltraCanvasCommonTypes.h"
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -326,9 +327,16 @@ namespace UltraCanvas {
         // Window specific
         int width = 0, height = 0;           // For resize events
 
-        void *targetWindow = nullptr;        // Pointer to the target UltraCanvasWindow
-        uintptr_t nativeWindowHandle = 0; // Platform-specific window handle (X11 Window, HWND, etc.)
-
+        void* targetWindow = nullptr;        // Pointer to the target UltraCanvasWindow
+#if defined(_WIN32) || defined(_WIN64)
+        NativeWindowHandle nativeWindowHandle = nullptr; // Platform-specific window handle (X11 Window, HWND, etc.)
+#elif defined(__linux__) || defined(__unix__)
+        NativeWindowHandle nativeWindowHandle = 0; // Platform-specific window handle (X11 Window, HWND, etc.)
+#elif defined(__APPLE__)
+        NativeWindowHandle nativeWindowHandle = nullptr; // Platform-specific window handle (X11 Window, HWND, etc.)
+#else
+        NativeWindowHandle nativeWindowHandle = nullptr; // Platform-specific window handle (X11 Window, HWND, etc.)
+#endif
         // Generic data
         union {
             void *userDataPtr = nullptr;            // Custom user data

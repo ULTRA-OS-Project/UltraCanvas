@@ -606,8 +606,8 @@ namespace UltraCanvas {
         Invalidate();
     }
 
-    uintptr_t UltraCanvasMacOSWindow::GetNativeHandle() const  {
-        return (uintptr_t)(__bridge_retained void*)nsWindow;
+    NativeWindowHandle UltraCanvasMacOSWindow::GetNativeHandle() const  {
+        return (NativeWindowHandle)(__bridge_retained void*)nsWindow;
     };
 
     // ===== WINDOW DELEGATE CALLBACKS =====
