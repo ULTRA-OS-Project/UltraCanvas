@@ -2051,7 +2051,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
 
         const std::string& line = lines[logLine];
         int textY = baseY + (di - startDL) * computedLineHeight;
-        if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
             textY += markdownLineYOffsets[di];
 
         int x = visibleTextArea.x;
@@ -2351,7 +2351,7 @@ std::string UltraCanvasTextArea::TrimWhitespace(const std::string& str) const {
 // ---------------------------------------------------------------
 
 bool UltraCanvasTextArea::HandleMarkdownClick(int mouseX, int mouseY) {
-    if (!markdownHybridMode) return false;
+    if (editingMode != TextAreaEditingMode::MarkdownHybrid) return false;
 
     for (const auto& hitRect : markdownHitRects) {
         if (mouseX >= hitRect.bounds.x && mouseX <= hitRect.bounds.x + hitRect.bounds.width &&
@@ -2380,7 +2380,7 @@ bool UltraCanvasTextArea::HandleMarkdownClick(int mouseX, int mouseY) {
 // ---------------------------------------------------------------
 
 bool UltraCanvasTextArea::HandleMarkdownHover(int mouseX, int mouseY) {
-    if (!markdownHybridMode) return false;
+    if (editingMode != TextAreaEditingMode::MarkdownHybrid) return false;
 
     for (const auto& hitRect : markdownHitRects) {
         if (mouseX >= hitRect.bounds.x && mouseX <= hitRect.bounds.x + hitRect.bounds.width &&

@@ -18,6 +18,7 @@
 //#include "UltraCanvasDialogManager.h"
 #include <fstream>
 #include <sstream>
+#include <iomanip>
 #include <iostream>
 #include <algorithm>
 #include <filesystem>
@@ -450,7 +451,7 @@ namespace {
 
         MenuStyle menuStyle = MenuStyle::Default();
         menuStyle.font.fontSize = 11.0f;
-        menuStyle.itemHeight     = 20;
+        menuStyle.itemHeight     = 24;
         menuBar->SetStyle(menuStyle);
 
         AddChild(menuBar);
@@ -481,14 +482,40 @@ namespace {
                 .AddButton("zoom-out", "", GetResourcesDir() + "media/icons/texter/zoom-out.svg", [this]() { OnViewDecreaseFontSize(); })
                 .Build();
 
-        // Disable focus on toolbar buttons so they don't steal focus from the text area
-        for (int i = 0; i < toolbar->GetItemCount(); i++) {
-            auto item = toolbar->GetItemAt(i);
+        struct { const char* id; const char* tip; } toolbarTooltips[] = {
+                { "new",     "New File (Ctrl+N)"          },
+                { "open",    "Open File... (Ctrl+O)"       },
+                { "save",    "Save (Ctrl+S)"               },
+                { "cut",     "Cut (Ctrl+X)"                },
+                { "copy",    "Copy (Ctrl+C)"               },
+                { "paste",   "Paste (Ctrl+V)"              },
+                { "undo",    "Undo (Ctrl+Z)"               },
+                { "redo",    "Redo (Ctrl+Y)"               },
+                { "search",  "Find... (Ctrl+F)"            },
+                { "replace", "Replace... (Ctrl+H)"         },
+                { "zoom-in", "Increase Font Size (Ctrl++)" },
+                { "zoom-out","Decrease Font Size (Ctrl+-)" },
+        };
+
+        for (auto& entry : toolbarTooltips) {
+            auto item = toolbar->GetItem(entry.id);
             if (item) {
                 auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
-                if (btn) btn->SetAcceptsFocus(false);
+                if (btn) {
+                    btn->SetTooltip(entry.tip);
+                    btn->SetAcceptsFocus(false);
+                }
             }
         }
+
+        // Disable focus on toolbar buttons so they don't steal focus from the text area
+//        for (int i = 0; i < toolbar->GetItemCount(); i++) {
+//            auto item = toolbar->GetItemAt(i);
+//            if (item) {
+//                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
+//                if (btn) btn->SetAcceptsFocus(false);
+//            }
+//        }
 
         // Wrap toolbar(s) in an HBox container
         toolbarContainer = std::make_shared<UltraCanvasContainer>(
@@ -758,6 +785,7 @@ namespace {
         );
 
         languageDropdown->AddItem("Plain Text", "Plain Text");
+        languageDropdown->AddItem("Hex/Binary", "Hex/Binary");
         languageDropdown->AddItem("Markdown", "Markdown");
         languageDropdown->AddSeparator();
 
@@ -1306,67 +1334,84 @@ namespace {
 
             auto doc = documents[docIndex];
 
-            // Detect encoding
-            DetectionResult detection = DetectEncoding(rawBytes);
-            doc->encoding = detection.encoding;
-
-            // Handle BOM
-            size_t bomLength = 0;
-            std::string bomEncoding = DetectBOM(rawBytes, bomLength);
-            doc->hasBOM = !bomEncoding.empty();
-
-            // Store raw bytes for potential re-encoding (if not too large)
-            if (rawBytes.size() <= MAX_RAW_BYTES_CACHE) {
-                doc->originalRawBytes = rawBytes;
-            } else {
-                doc->originalRawBytes.clear();
-            }
-
-            // Prepare content bytes (strip BOM if present)
-            std::vector<uint8_t> contentBytes;
-            if (bomLength > 0 && bomLength < rawBytes.size()) {
-                contentBytes.assign(rawBytes.begin() + bomLength, rawBytes.end());
-            } else if (bomLength == 0) {
-                contentBytes = std::move(rawBytes);
-            }
-            // else: file is only BOM bytes, contentBytes stays empty
-
-            // Convert to UTF-8
-            std::string utf8Text;
-            if (!ConvertToUtf8(contentBytes, doc->encoding, utf8Text)) {
-                // Conversion failed; fallback to ISO-8859-1 (always succeeds)
-                std::cerr << "Encoding conversion failed for " << doc->encoding
-                          << ", falling back to ISO-8859-1" << std::endl;
-                doc->encoding = "ISO-8859-1";
-                ConvertToUtf8(contentBytes, "ISO-8859-1", utf8Text);
-            }
-
-            // Set text in editor
-            doc->textArea->SetText(utf8Text, false);
+            // Update filename from path
+            std::filesystem::path p(filePath);
+            doc->fileName = p.filename().string();
             doc->filePath = filePath;
             doc->textArea->SetDocumentFilePath(filePath);
             doc->isNewFile = false;
             doc->isModified = false;
             doc->lastSaveTime = std::chrono::steady_clock::now();
 
-            // Update filename from path
-            std::filesystem::path p(filePath);
-            doc->fileName = p.filename().string();
-
-            // Detect and set language from file extension
+            // Get file extension
             std::string ext = p.extension().string();
             if (!ext.empty() && ext[0] == '.') {
                 ext = ext.substr(1);
             }
 
-            if (ext == "md") {
-                doc->textArea->SetMarkdownHybridMode(true);
-            } else if (doc->textArea->SetProgrammingLanguageByExtension(ext)) {
-                doc->textArea->SetHighlightSyntax(true);
-            } else {
+            // Check if this is a binary (non-text) file
+            if (IsBinaryFile(rawBytes, ext)) {
+                // Load in hex mode directly with raw bytes
+                doc->encoding = "BINARY";
+                doc->hasBOM = false;
+                if (rawBytes.size() <= MAX_RAW_BYTES_CACHE) {
+                    doc->originalRawBytes = rawBytes;
+                } else {
+                    doc->originalRawBytes.clear();
+                }
+
+                doc->textArea->SetEditingMode(TextAreaEditingMode::Hex);
+                doc->textArea->SetRawBytes(rawBytes);
                 doc->textArea->SetHighlightSyntax(false);
+                doc->language = "Hex/Binary";
+            } else {
+                // Text file: detect encoding and convert
+                DetectionResult detection = DetectEncoding(rawBytes);
+                doc->encoding = detection.encoding;
+
+                // Handle BOM
+                size_t bomLength = 0;
+                std::string bomEncoding = DetectBOM(rawBytes, bomLength);
+                doc->hasBOM = !bomEncoding.empty();
+
+                // Store raw bytes for potential re-encoding (if not too large)
+                if (rawBytes.size() <= MAX_RAW_BYTES_CACHE) {
+                    doc->originalRawBytes = rawBytes;
+                } else {
+                    doc->originalRawBytes.clear();
+                }
+
+                // Prepare content bytes (strip BOM if present)
+                std::vector<uint8_t> contentBytes;
+                if (bomLength > 0 && bomLength < rawBytes.size()) {
+                    contentBytes.assign(rawBytes.begin() + bomLength, rawBytes.end());
+                } else if (bomLength == 0) {
+                    contentBytes = std::move(rawBytes);
+                }
+                // else: file is only BOM bytes, contentBytes stays empty
+
+                // Convert to UTF-8
+                std::string utf8Text;
+                if (!ConvertToUtf8(contentBytes, doc->encoding, utf8Text)) {
+                    // Conversion failed; fallback to ISO-8859-1 (always succeeds)
+                    std::cerr << "Encoding conversion failed for " << doc->encoding
+                              << ", falling back to ISO-8859-1" << std::endl;
+                    doc->encoding = "ISO-8859-1";
+                    ConvertToUtf8(contentBytes, "ISO-8859-1", utf8Text);
+                }
+
+                // Set text in editor
+                doc->textArea->SetText(utf8Text, false);
+
+                if (ext == "md") {
+                    doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+                } else if (doc->textArea->SetProgrammingLanguageByExtension(ext)) {
+                    doc->textArea->SetHighlightSyntax(true);
+                } else {
+                    doc->textArea->SetHighlightSyntax(false);
+                }
+                doc->language = doc->textArea->GetCurrentProgrammingLanguage();
             }
-            doc->language = doc->textArea->GetCurrentProgrammingLanguage();
 
             UpdateTabTitle(docIndex);
             UpdateTabBadge(docIndex);
@@ -1391,6 +1436,64 @@ namespace {
         }
     }
 
+    bool UltraCanvasTextEditor::IsBinaryFile(const std::vector<uint8_t>& rawBytes, const std::string& extension) const {
+        // Known binary file extensions
+        static const std::vector<std::string> binaryExtensions = {
+            // Executables and libraries
+            "exe", "dll", "so", "dylib", "bin", "o", "obj", "a", "lib", "elf",
+            // Images
+            "png", "jpg", "jpeg", "gif", "bmp", "ico", "tiff", "tif", "webp",
+            "psd", "raw", "cr2", "nef", "svg", "heic", "heif", "jxl", "avif",
+            // Audio
+            "mp3", "wav", "flac", "aac", "ogg", "wma", "m4a", "opus", "aiff",
+            // Video
+            "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
+            // Archives
+            "zip", "tar", "gz", "bz2", "xz", "7z", "rar", "zst", "lz4",
+            // Documents (binary formats)
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods",
+            // Fonts
+            "ttf", "otf", "woff", "woff2", "eot",
+            // Database
+            "db", "sqlite", "sqlite3",
+            // Other binary
+            "class", "pyc", "pyo", "wasm", "deb", "rpm", "iso", "img", "dmg"
+        };
+
+        // Check extension first
+        std::string extLower = extension;
+        std::transform(extLower.begin(), extLower.end(), extLower.begin(), ::tolower);
+        for (const auto& bext : binaryExtensions) {
+            if (extLower == bext) return true;
+        }
+
+        // Content-based detection: check for null bytes and high ratio of non-text bytes
+        if (rawBytes.empty()) return false;
+
+        size_t sampleSize = std::min(rawBytes.size(), size_t(8192));
+        int nullCount = 0;
+        int controlCount = 0;
+
+        for (size_t i = 0; i < sampleSize; i++) {
+            uint8_t b = rawBytes[i];
+            if (b == 0x00) {
+                nullCount++;
+            } else if (b < 0x08 || (b > 0x0D && b < 0x20 && b != 0x1B)) {
+                // Control chars excluding tab, newline, carriage return, escape
+                controlCount++;
+            }
+        }
+
+        // Null bytes are a strong indicator of binary content
+        if (nullCount > 0) return true;
+
+        // High ratio of control characters suggests binary
+        double controlRatio = static_cast<double>(controlCount) / static_cast<double>(sampleSize);
+        if (controlRatio > 0.10) return true;
+
+        return false;
+    }
+
     bool UltraCanvasTextEditor::SaveDocument(int docIndex) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
             return false;
@@ -1412,47 +1515,61 @@ namespace {
 
         try {
             auto doc = documents[docIndex];
-            std::string utf8Text = doc->textArea->GetText();
 
-            // Convert from UTF-8 to document encoding
-            std::vector<uint8_t> outputBytes;
-
-            if (doc->encoding == "UTF-8") {
-                outputBytes.assign(utf8Text.begin(), utf8Text.end());
+            // In hex mode, save raw bytes directly — no encoding conversion, no BOM
+            if (doc->textArea->IsHexMode()) {
+                std::vector<uint8_t> rawBytes = doc->textArea->GetRawBytes();
+                std::ofstream file(filePath, std::ios::binary);
+                if (!file.is_open()) {
+                    std::cerr << "Failed to save file: " << filePath << std::endl;
+                    return false;
+                }
+                file.write(reinterpret_cast<const char*>(rawBytes.data()),
+                           static_cast<std::streamsize>(rawBytes.size()));
+                file.close();
             } else {
-                if (!ConvertFromUtf8(utf8Text, doc->encoding, outputBytes)) {
-                    std::cerr << "Failed to convert to encoding " << doc->encoding
-                              << " while saving " << filePath
-                              << ", falling back to UTF-8" << std::endl;
-                    outputBytes.assign(utf8Text.begin(), utf8Text.end());
-                    doc->encoding = "UTF-8";
-                    UpdateEncodingDropdown();
-                }
-            }
+                std::string utf8Text = doc->textArea->GetText();
 
-            std::ofstream file(filePath, std::ios::binary);
-            if (!file.is_open()) {
-                std::cerr << "Failed to save file: " << filePath << std::endl;
-                return false;
-            }
+                // Convert from UTF-8 to document encoding
+                std::vector<uint8_t> outputBytes;
 
-            // Write BOM if the original file had one
-            if (doc->hasBOM) {
                 if (doc->encoding == "UTF-8") {
-                    const uint8_t bom[] = {0xEF, 0xBB, 0xBF};
-                    file.write(reinterpret_cast<const char*>(bom), 3);
-                } else if (doc->encoding == "UTF-16LE") {
-                    const uint8_t bom[] = {0xFF, 0xFE};
-                    file.write(reinterpret_cast<const char*>(bom), 2);
-                } else if (doc->encoding == "UTF-16BE") {
-                    const uint8_t bom[] = {0xFE, 0xFF};
-                    file.write(reinterpret_cast<const char*>(bom), 2);
+                    outputBytes.assign(utf8Text.begin(), utf8Text.end());
+                } else {
+                    if (!ConvertFromUtf8(utf8Text, doc->encoding, outputBytes)) {
+                        std::cerr << "Failed to convert to encoding " << doc->encoding
+                                  << " while saving " << filePath
+                                  << ", falling back to UTF-8" << std::endl;
+                        outputBytes.assign(utf8Text.begin(), utf8Text.end());
+                        doc->encoding = "UTF-8";
+                        UpdateEncodingDropdown();
+                    }
                 }
-            }
 
-            file.write(reinterpret_cast<const char*>(outputBytes.data()),
-                       static_cast<std::streamsize>(outputBytes.size()));
-            file.close();
+                std::ofstream file(filePath, std::ios::binary);
+                if (!file.is_open()) {
+                    std::cerr << "Failed to save file: " << filePath << std::endl;
+                    return false;
+                }
+
+                // Write BOM if the original file had one
+                if (doc->hasBOM) {
+                    if (doc->encoding == "UTF-8") {
+                        const uint8_t bom[] = {0xEF, 0xBB, 0xBF};
+                        file.write(reinterpret_cast<const char*>(bom), 3);
+                    } else if (doc->encoding == "UTF-16LE") {
+                        const uint8_t bom[] = {0xFF, 0xFE};
+                        file.write(reinterpret_cast<const char*>(bom), 2);
+                    } else if (doc->encoding == "UTF-16BE") {
+                        const uint8_t bom[] = {0xFE, 0xFF};
+                        file.write(reinterpret_cast<const char*>(bom), 2);
+                    }
+                }
+
+                file.write(reinterpret_cast<const char*>(outputBytes.data()),
+                           static_cast<std::streamsize>(outputBytes.size()));
+                file.close();
+            }
 
             doc->filePath = filePath;
             doc->textArea->SetDocumentFilePath(filePath);
@@ -1472,7 +1589,7 @@ namespace {
                 }
 
                 if (ext == "md") {
-                    doc->textArea->SetMarkdownHybridMode(true);
+                    doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
                 } else if (doc->textArea->SetProgrammingLanguageByExtension(ext)) {
                     doc->textArea->SetHighlightSyntax(true);
                 } else {
@@ -1651,7 +1768,7 @@ namespace {
         if (!language.empty()) {
             doc->language = language;
             if (language == "Markdown") {
-                doc->textArea->SetMarkdownHybridMode(true);
+                doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
             } else if (language != "Plain Text") {
                 doc->textArea->SetHighlightSyntax(true);
                 doc->textArea->SetProgrammingLanguage(language);
@@ -2213,20 +2330,22 @@ namespace {
         // int graphemesCount = Grapheme::CountGraphemes(text);
         // int wordCount = Grapheme::CountWords(text);
 
-        // Get cursor position
-        int line = doc->textArea->GetCurrentLine();
-        int col = doc->textArea->GetCurrentColumn();
-
         // Build status text
         std::stringstream status;
-        status << "Line: " << (line + 1) << ", Col: " << (col + 1);
-        // status << " | Words: " << wordCount << " | Chars: " << graphemesCount;
 
-        // Add selection info if exists
-        // if (doc->textArea->HasSelection()) {
-        //     std::string selectedText = doc->textArea->GetSelectedText();
-        //     status << " | Selected: " << Grapheme::CountGraphemes(selectedText) << " chars";
-        // }
+        if (doc->textArea->IsHexMode()) {
+            int byteOffset = doc->textArea->GetHexCursorByteOffset();
+            status << "Offset: 0x" << std::hex << std::uppercase << std::setfill('0')
+                   << std::setw(8) << byteOffset << std::dec
+                   << " (" << byteOffset << ")"
+                   << " | Size: " << doc->textArea->GetRawBytes().size() << " bytes"
+                   << " | HEX";
+        } else {
+            // Get cursor position
+            int line = doc->textArea->GetCurrentLine();
+            int col = doc->textArea->GetCurrentColumn();
+            status << "Line: " << (line + 1) << ", Col: " << (col + 1);
+        }
 
         // Add modified indicator
         if (doc->isModified) {
@@ -2255,9 +2374,15 @@ namespace {
         auto doc = GetActiveDocument();
         if (!doc) return;
 
+        // If in hex mode, select "Hex/Binary"
+        std::string langToMatch = doc->language;
+        if (doc->textArea && doc->textArea->IsHexMode()) {
+            langToMatch = "Hex/Binary";
+        }
+
         const auto& items = languageDropdown->GetItems();
         for (int i = 0; i < static_cast<int>(items.size()); i++) {
-            if (items[i].value == doc->language) {
+            if (items[i].value == langToMatch) {
                 languageDropdown->SetSelectedIndex(i, false);
                 return;
             }
@@ -2273,13 +2398,15 @@ namespace {
         std::string lang = item.value;
         if (lang == doc->language) return;
 
-        if (lang == "Plain Text") {
-            doc->textArea->SetHighlightSyntax(false);
-            doc->textArea->SetMarkdownHybridMode(false);
+        if (lang == "Hex/Binary") {
+            doc->textArea->SetEditingMode(TextAreaEditingMode::Hex);
         } else if (lang == "Markdown") {
-            doc->textArea->SetMarkdownHybridMode(true);
+            doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+        } else if (lang == "Plain Text") {
+            doc->textArea->SetEditingMode(TextAreaEditingMode::PlainText);
+            doc->textArea->SetHighlightSyntax(false);
         } else {
-            doc->textArea->SetMarkdownHybridMode(false);
+            doc->textArea->SetEditingMode(TextAreaEditingMode::PlainText);
             doc->textArea->SetHighlightSyntax(true);
             doc->textArea->SetProgrammingLanguage(lang);
         }

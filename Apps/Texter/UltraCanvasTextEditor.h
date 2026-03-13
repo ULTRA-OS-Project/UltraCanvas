@@ -267,6 +267,7 @@ namespace UltraCanvas {
         bool LoadFileIntoDocument(int docIndex, const std::string& filePath);
         bool SaveDocument(int docIndex);
         bool SaveDocumentAs(int docIndex, const std::string& filePath);
+        bool IsBinaryFile(const std::vector<uint8_t>& rawBytes, const std::string& extension) const;
 
         // ===== AUTOSAVE =====
         void PerformAutosave();

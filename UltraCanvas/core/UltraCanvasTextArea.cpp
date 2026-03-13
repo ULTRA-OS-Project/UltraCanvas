@@ -178,7 +178,7 @@ namespace UltraCanvas {
         int dlCount = GetDisplayLineCount();
         int displayLineIdx;
 
-        if (markdownHybridMode && !markdownLineYOffsets.empty()) {
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid && !markdownLineYOffsets.empty()) {
             // Account for block image offsets — find the display line whose
             // rendered Y range contains relativeY
             displayLineIdx = firstVisibleLine;
@@ -1078,34 +1078,42 @@ namespace UltraCanvas {
         if (!IsVisible()) return;
 
         if (isNeedRecalculateVisibleArea) {
-            CalculateVisibleArea();
+            if (editingMode == TextAreaEditingMode::Hex) {
+                CalculateHexLayout();
+            } else {
+                CalculateVisibleArea();
+            }
         }
 
         ctx->PushState();
         DrawBackground(ctx);
 
-        if (style.showLineNumbers) {
-            DrawLineNumbers(ctx);
-        }
-
-        if (markdownHybridMode) {
-            DrawMarkdownHybridText(ctx);
-        } else if (style.highlightSyntax && syntaxTokenizer) {
-            DrawHighlightedText(ctx);
+        if (editingMode == TextAreaEditingMode::Hex) {
+            DrawHexView(ctx);
         } else {
-            DrawPlainText(ctx);
-        }
+            if (style.showLineNumbers) {
+                DrawLineNumbers(ctx);
+            }
 
-        if (HasSelection()) {
-            DrawSelection(ctx);
-        }
-        
-        if (!searchHighlights.empty()) {
-            DrawSearchHighlights(ctx);
-        }
+            if (editingMode == TextAreaEditingMode::MarkdownHybrid) {
+                DrawMarkdownHybridText(ctx);
+            } else if (style.highlightSyntax && syntaxTokenizer) {
+                DrawHighlightedText(ctx);
+            } else {
+                DrawPlainText(ctx);
+            }
 
-        if (IsFocused() && cursorVisible && !isReadOnly) {
-            DrawCursor(ctx);
+            if (HasSelection()) {
+                DrawSelection(ctx);
+            }
+
+            if (!searchHighlights.empty()) {
+                DrawSearchHighlights(ctx);
+            }
+
+            if (IsFocused() && cursorVisible && !isReadOnly) {
+                DrawCursor(ctx);
+            }
         }
 
         DrawBorder(ctx);
@@ -1258,7 +1266,7 @@ namespace UltraCanvas {
             int numY = baseY + (di - startDL) * computedLineHeight;
 
             // Adjust for markdown Y offsets if applicable
-            if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
+            if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
                 numY += markdownLineYOffsets[di];
 
             if (dl.logicalLine == currentLineIndex) {
@@ -1300,7 +1308,7 @@ namespace UltraCanvas {
             if (logLine < startLine || logLine > endLine) continue;
 
             int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
-            if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
+            if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
                 lineY += markdownLineYOffsets[di];
 
             // Determine the selection range in grapheme coords within this logical line
@@ -1351,7 +1359,7 @@ namespace UltraCanvas {
             for (int di = std::max(0, visStartDL); di <= visEndDL && di < GetDisplayLineCount(); di++) {
                 if (displayLines[di].logicalLine == currentLineIndex) {
                     int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
-                    if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
+                    if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
                         lineY += markdownLineYOffsets[di];
                     context->FillRectangle(highlightX, lineY,
                             bounds.width - (style.showLineNumbers ? computedLineNumbersWidth : 0),
@@ -1385,7 +1393,7 @@ namespace UltraCanvas {
         if (cursorX > visibleTextArea.x + visibleTextArea.width) return;
 
         int cursorY = visibleTextArea.y + (displayLine - firstVisibleLine) * computedLineHeight;
-        if (markdownHybridMode && displayLine < static_cast<int>(markdownLineYOffsets.size()))
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid && displayLine < static_cast<int>(markdownLineYOffsets.size()))
             cursorY += markdownLineYOffsets[displayLine];
 
         context->PushState();
@@ -1400,15 +1408,24 @@ namespace UltraCanvas {
         if (IsNeedVerticalScrollbar()) {
             int scrollbarX = bounds.x + bounds.width - 15;
             int scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
-            int totalLines = GetDisplayLineCount();
-            int visibleLines = maxVisibleLines;
 
-            int thumbHeight = std::max(20, (visibleLines * scrollbarHeight) / totalLines);
+            int totalLines, visibleLines, firstLine;
+            if (editingMode == TextAreaEditingMode::Hex) {
+                totalLines = hexTotalRows;
+                visibleLines = hexMaxVisibleRows;
+                firstLine = hexFirstVisibleRow;
+            } else {
+                totalLines = GetDisplayLineCount();
+                visibleLines = maxVisibleLines;
+                firstLine = firstVisibleLine;
+            }
+
+            int thumbHeight = std::max(20, (visibleLines * scrollbarHeight) / std::max(1, totalLines));
             int maxThumbY = scrollbarHeight - thumbHeight;
             int thumbY = bounds.y;
 
             if (totalLines > visibleLines && maxThumbY > 0) {
-                thumbY = bounds.y + (firstVisibleLine * maxThumbY) / (totalLines - visibleLines);
+                thumbY = bounds.y + (firstLine * maxThumbY) / (totalLines - visibleLines);
             }
 
             context->SetFillPaint(style.scrollbarTrackColor);
@@ -1465,7 +1482,7 @@ namespace UltraCanvas {
                 if (logLine < startLine || logLine > endLine) continue;
 
                 int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
-                if (markdownHybridMode && di < static_cast<int>(markdownLineYOffsets.size()))
+                if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
                     lineY += markdownLineYOffsets[di];
 
                 int hlStartInLine = (logLine == startLine) ? startCol : 0;
@@ -1506,6 +1523,37 @@ namespace UltraCanvas {
 
     bool UltraCanvasTextArea::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
+
+        // Hex mode delegates to its own handlers
+        if (editingMode == TextAreaEditingMode::Hex) {
+            switch (event.type) {
+                case UCEventType::MouseDown:
+                    return HandleHexMouseDown(event);
+                case UCEventType::MouseUp:
+                    if (hexIsSelectingWithMouse) {
+                        hexIsSelectingWithMouse = false;
+                        hexSelectionAnchor = -1;
+                        UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
+                        RequestRedraw();
+                    }
+                    return true;
+                case UCEventType::MouseMove:
+                    return HandleHexMouseMove(event);
+                case UCEventType::KeyDown:
+                    return HandleHexKeyDown(event);
+                case UCEventType::MouseWheel:
+                    return HandleMouseWheel(event);
+                case UCEventType::FocusGained:
+                    cursorVisible = true;
+                    cursorBlinkTime = 0;
+                    return true;
+                case UCEventType::FocusLost:
+                    cursorVisible = false;
+                    return true;
+                default:
+                    return false;
+            }
+        }
 
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -1553,7 +1601,7 @@ namespace UltraCanvas {
         SetFocus(true);
 
         // --- Markdown link/image click: intercept before cursor move ---
-        if (markdownHybridMode && HandleMarkdownClick(event.x, event.y)) {
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid && HandleMarkdownClick(event.x, event.y)) {
             return true;
         }
 
@@ -1700,7 +1748,7 @@ namespace UltraCanvas {
         }
 
         // --- Markdown hover: update cursor for links/images ---
-        if (markdownHybridMode && !isSelectingText) {
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid && !isSelectingText) {
             if (!HandleMarkdownHover(event.x, event.y)) {
                 SetMouseCursor(UCMouseCursor::Text);
             }
@@ -1785,11 +1833,20 @@ namespace UltraCanvas {
 
         int scrollAmount = 3;
 
-        if (event.wheelDelta > 0) {
-            firstVisibleLine = std::max(0, firstVisibleLine - scrollAmount);
+        if (editingMode == TextAreaEditingMode::Hex) {
+            if (event.wheelDelta > 0) {
+                hexFirstVisibleRow = std::max(0, hexFirstVisibleRow - scrollAmount);
+            } else {
+                int maxFirstRow = std::max(0, hexTotalRows - hexMaxVisibleRows);
+                hexFirstVisibleRow = std::min(maxFirstRow, hexFirstVisibleRow + scrollAmount);
+            }
         } else {
-            int maxFirstLine = std::max(0, GetDisplayLineCount() - maxVisibleLines);
-            firstVisibleLine = std::min(maxFirstLine, firstVisibleLine + scrollAmount);
+            if (event.wheelDelta > 0) {
+                firstVisibleLine = std::max(0, firstVisibleLine - scrollAmount);
+            } else {
+                int maxFirstLine = std::max(0, GetDisplayLineCount() - maxVisibleLines);
+                firstVisibleLine = std::min(maxFirstLine, firstVisibleLine + scrollAmount);
+            }
         }
 
         RequestRedraw();
@@ -2116,7 +2173,7 @@ namespace UltraCanvas {
             }
 
             // In markdown mode, don't wrap table rows (lines starting with |)
-            if (markdownHybridMode) {
+            if (editingMode == TextAreaEditingMode::MarkdownHybrid) {
                 std::string trimmed = TrimWhitespace(line);
                 if (!trimmed.empty() && trimmed[0] == '|') {
                     displayLines.push_back({logLine, 0, lineGraphemeCount});
@@ -2270,10 +2327,14 @@ namespace UltraCanvas {
 
 
     bool UltraCanvasTextArea::IsNeedVerticalScrollbar() {
+        if (editingMode == TextAreaEditingMode::Hex) {
+            return hexTotalRows > hexMaxVisibleRows;
+        }
         return GetDisplayLineCount() > maxVisibleLines;
     }
 
     bool UltraCanvasTextArea::IsNeedHorizontalScrollbar() {
+        if (editingMode == TextAreaEditingMode::Hex) return false;
         if (wordWrap) return false;
         return maxLineWidth > visibleTextArea.width;
     }
@@ -2363,6 +2424,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::Undo() {
+        if (editingMode == TextAreaEditingMode::Hex) { HexUndo(); return; }
         if (undoStack.empty()) return;
 
         TextState currentState;
@@ -2386,6 +2448,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::Redo() {
+        if (editingMode == TextAreaEditingMode::Hex) { HexRedo(); return; }
         if (redoStack.empty()) return;
 
         TextState currentState;
@@ -2408,8 +2471,14 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    bool UltraCanvasTextArea::CanUndo() const { return !undoStack.empty(); }
-    bool UltraCanvasTextArea::CanRedo() const { return !redoStack.empty(); }
+    bool UltraCanvasTextArea::CanUndo() const {
+        if (editingMode == TextAreaEditingMode::Hex) return !hexUndoStack.empty();
+        return !undoStack.empty();
+    }
+    bool UltraCanvasTextArea::CanRedo() const {
+        if (editingMode == TextAreaEditingMode::Hex) return !hexRedoStack.empty();
+        return !redoStack.empty();
+    }
 
 // ===== SYNTAX HIGHLIGHTING =====
 
@@ -2873,20 +2942,67 @@ namespace UltraCanvas {
         return 0; // Current selection doesn't match any occurrence
     }
 
+// ===== EDITING MODE SWITCHING =====
 
-    void UltraCanvasTextArea::SetMarkdownHybridMode(bool enable) {
-        markdownHybridMode = enable;
-        markdownHitRects.clear();
-        if (enable) {
-            // Ensure syntax highlighting is enabled for raw markdown on current line
+    void UltraCanvasTextArea::SetEditingMode(TextAreaEditingMode mode) {
+        if (editingMode == mode) return;
+
+        TextAreaEditingMode oldMode = editingMode;
+
+        // Leaving hex mode: convert buffer back to text
+        if (oldMode == TextAreaEditingMode::Hex && mode != TextAreaEditingMode::Hex) {
+            textContent = std::string(hexBuffer.begin(), hexBuffer.end());
+            lines.clear();
+            // Split by newline
+            std::string::size_type start = 0;
+            std::string::size_type pos;
+            while ((pos = textContent.find('\n', start)) != std::string::npos) {
+                lines.push_back(textContent.substr(start, pos - start));
+                start = pos + 1;
+            }
+            lines.push_back(textContent.substr(start));
+            if (lines.empty()) lines.push_back(std::string());
+
+            cursorGraphemePosition = 0;
+            currentLineIndex = 0;
+            selectionStartGrapheme = -1;
+            selectionEndGrapheme = -1;
+            hexUndoStack.clear();
+            hexRedoStack.clear();
+        }
+
+        // Leaving markdown mode: clear hit rects
+        if (oldMode == TextAreaEditingMode::MarkdownHybrid && mode != TextAreaEditingMode::MarkdownHybrid) {
+            markdownHitRects.clear();
+        }
+
+        // Entering hex mode: convert text to buffer
+        if (mode == TextAreaEditingMode::Hex && oldMode != TextAreaEditingMode::Hex) {
+            hexBuffer.assign(textContent.begin(), textContent.end());
+            hexCursorByteOffset = 0;
+            hexCursorInAsciiPanel = false;
+            hexCursorNibble = 0;
+            hexSelectionStart = -1;
+            hexSelectionEnd = -1;
+            hexFirstVisibleRow = 0;
+            hexUndoStack.clear();
+            hexRedoStack.clear();
+        }
+
+        // Entering markdown mode: set up syntax highlighting for raw markdown
+        if (mode == TextAreaEditingMode::MarkdownHybrid && oldMode != TextAreaEditingMode::MarkdownHybrid) {
+            markdownHitRects.clear();
             SetHighlightSyntax(true);
             if (syntaxTokenizer) {
                 syntaxTokenizer->SetLanguage("Markdown");
             }
         }
-        
+
+        editingMode = mode;
+        isNeedRecalculateVisibleArea = true;
         RequestRedraw();
     }
+
 
 // ===== FACTORY FUNCTIONS =====
     std::shared_ptr<UltraCanvasTextArea> CreateMarkdownEditor(
@@ -2895,7 +3011,7 @@ namespace UltraCanvas {
         auto editor = std::make_shared<UltraCanvasTextArea>(name, id, x, y, width, height);
         
         // Enable hybrid markdown mode
-        editor->SetMarkdownHybridMode(true);
+        editor->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
         
         // Apply markdown-friendly styling
         editor->ApplyPlainTextStyle();

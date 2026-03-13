@@ -16,6 +16,7 @@
 #include <memory>
 #include <utility>
 #include <chrono>
+#include <cstdint>
 
 namespace UltraCanvas {
 
@@ -96,6 +97,13 @@ namespace UltraCanvas {
             TokenStyle registerStyle;
             TokenStyle defaultStyle;
         } tokenStyles;
+    };
+
+// Editing mode for text area (mutually exclusive)
+    enum class TextAreaEditingMode {
+        PlainText,      // Default text editing (with optional syntax highlighting)
+        MarkdownHybrid, // Hybrid markdown rendering
+        Hex             // Hex editor mode
     };
 
 // Text area control with integrated syntax highlighting and full UTF-8 support
@@ -471,21 +479,10 @@ namespace UltraCanvas {
         MarkdownLinkClickCallback onMarkdownLinkClick;
         MarkdownImageClickCallback onMarkdownImageClick;
         /**
-         * @brief Enable hybrid markdown rendering mode
-         * 
-         * When enabled:
-         * - Current line (with cursor) shows raw markdown with syntax highlighting
-         * - All other lines show formatted markdown (bold, italic, headers, etc.)
-         * 
-         * @param enable true to enable hybrid markdown mode
-         */
-        void SetMarkdownHybridMode(bool enable);
-        
-        /**
          * @brief Check if hybrid markdown mode is enabled
          * @return true if hybrid markdown mode is active
          */
-        bool IsMarkdownHybridMode() const { return markdownHybridMode; }
+        bool IsMarkdownHybridMode() const { return editingMode == TextAreaEditingMode::MarkdownHybrid; }
         /**
          * @brief Handle click on markdown link or image
          * @param mouseX Mouse X coordinate
@@ -504,6 +501,14 @@ namespace UltraCanvas {
 
         void SetDocumentFilePath(const std::string& path) { documentFilePath = path; }
         std::string GetDocumentFilePath() const { return documentFilePath; }
+
+        // ===== EDITING MODE PUBLIC API =====
+        void SetEditingMode(TextAreaEditingMode mode);
+        bool IsHexMode() const { return editingMode == TextAreaEditingMode::Hex; }
+        TextAreaEditingMode GetEditingMode() const { return editingMode; }
+        void SetRawBytes(const std::vector<uint8_t>& bytes);
+        std::vector<uint8_t> GetRawBytes() const;
+        int GetHexCursorByteOffset() const { return hexCursorByteOffset; }
 
     protected:
         /**
@@ -528,15 +533,93 @@ namespace UltraCanvas {
          */
         std::string TrimWhitespace(const std::string& str) const;
 
+        // ===== HEX MODE PROTECTED METHODS =====
+        // Hex rendering
+        void DrawHexView(IRenderContext* ctx);
+        void DrawHexAddresses(IRenderContext* ctx);
+        void DrawHexBytes(IRenderContext* ctx);
+        void DrawHexAscii(IRenderContext* ctx);
+        void DrawHexSelection(IRenderContext* ctx);
+        void DrawHexCursor(IRenderContext* ctx);
+        void DrawHexCurrentRowHighlight(IRenderContext* ctx);
+        void CalculateHexLayout();
+
+        // Hex events
+        bool HandleHexKeyDown(const UCEvent& event);
+        bool HandleHexMouseDown(const UCEvent& event);
+        bool HandleHexMouseMove(const UCEvent& event);
+
+        // Hex editing
+        void HexOverwriteNibble(int nibbleValue);
+        void HexOverwriteAscii(char ch);
+        void HexDeleteByte();
+        void HexDeleteByteBackward();
+        void HexSaveState();
+        void HexUndo();
+        void HexRedo();
+
+        // Hex cursor
+        void HexMoveCursorLeft(bool selecting = false);
+        void HexMoveCursorRight(bool selecting = false);
+        void HexMoveCursorUp(bool selecting = false);
+        void HexMoveCursorDown(bool selecting = false);
+        void HexMoveCursorPageUp(bool selecting = false);
+        void HexMoveCursorPageDown(bool selecting = false);
+        void HexMoveCursorToRowStart(bool selecting = false);
+        void HexMoveCursorToRowEnd(bool selecting = false);
+        void HexEnsureCursorVisible();
+
+        // Hex helpers
+        int HexGetRowForByte(int byteOffset) const;
+        int HexGetColumnForByte(int byteOffset) const;
+        std::pair<int,int> HexHitTestPoint(int mouseX, int mouseY) const;
+        static std::string HexFormatAddress(int offset);
+        static std::string HexFormatByte(uint8_t byte);
+        static char HexPrintableChar(uint8_t byte);
+
     private:
-        // Markdown hybrid rendering mode
-        bool markdownHybridMode = false;
+        // Editing mode (PlainText, MarkdownHybrid, Hex)
+        TextAreaEditingMode editingMode = TextAreaEditingMode::PlainText;
         // Markdown clickable hit regions (rebuilt each render frame)
         std::vector<MarkdownHitRect> markdownHitRects;
         // Path of the currently loaded document (for resolving relative image paths)
         std::string documentFilePath;
         // Per-display-line cumulative Y offset from block images (rebuilt each frame)
         std::vector<int> markdownLineYOffsets;
+
+        // ===== HEX MODE STATE =====
+        std::vector<uint8_t> hexBuffer;
+        int hexCursorByteOffset = 0;
+        bool hexCursorInAsciiPanel = false;   // false=hex panel, true=ASCII panel
+        int hexCursorNibble = 0;              // 0=high, 1=low nibble (hex panel only)
+        int hexSelectionStart = -1;
+        int hexSelectionEnd = -1;
+        bool hexIsSelectingWithMouse = false;
+        int hexSelectionAnchor = -1;
+
+        // Hex layout (recomputed on resize)
+        int hexBytesPerRow = 16;
+        int hexAddressWidth = 0;
+        int hexByteWidth = 0;
+        int hexAsciiCharWidth = 0;
+        int hexPanelStartX = 0;
+        int hexAsciiPanelStartX = 0;
+        int hexRowHeight = 0;
+        int hexTotalRows = 0;
+        int hexFirstVisibleRow = 0;
+        int hexMaxVisibleRows = 0;
+        Rect2Di hexVisibleArea;
+
+        // Hex undo
+        struct HexState {
+            std::vector<uint8_t> data;
+            int cursorByteOffset;
+            bool cursorInAsciiPanel;
+            int selectionStart;
+            int selectionEnd;
+        };
+        std::vector<HexState> hexUndoStack;
+        std::vector<HexState> hexRedoStack;
 
     };
 
