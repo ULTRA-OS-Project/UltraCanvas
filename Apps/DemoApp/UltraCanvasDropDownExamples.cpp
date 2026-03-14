@@ -11,6 +11,7 @@
 #include "UltraCanvasButton.h"
 #include <sstream>
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -179,7 +180,7 @@ namespace UltraCanvas {
 
         // Callback for country selection
         countriesDropdown->onSelectionChanged = [countryStatusLabel](int index, const DropdownItem& item) {
-            std::cerr << "Country selected: " << item.text << " (" << item.value << ")" << std::endl;
+            debugOutput << "Country selected: " << item.text << " (" << item.value << ")" << std::endl;
             countryStatusLabel->SetText("Selected: " + item.text + " (" + item.value + ")");
         };
 
@@ -226,7 +227,7 @@ namespace UltraCanvas {
                 }
             }
             languagesStatus->SetText(selectedText);
-            std::cerr << "Programming languages selection changed: " << selectedText << std::endl;
+            debugOutput << "Programming languages selection changed: " << selectedText << std::endl;
         };
 
         mainContainer->AddChild(languagesDropdown);
@@ -260,25 +261,25 @@ namespace UltraCanvas {
         selectAllBtn->SetText("Select All");
         selectAllBtn->SetOnClick([fruitsDropdown]() {
             fruitsDropdown->SelectAll();
-            std::cerr << "Selected all fruits" << std::endl;
+            debugOutput << "Selected all fruits" << std::endl;
         });
 
         auto deselectAllBtn = std::make_shared<UltraCanvasButton>("DeselectAllFruits", 346, 140, currentY, 100, 30);
         deselectAllBtn->SetText("Clear All");
         deselectAllBtn->SetOnClick([fruitsDropdown]() {
             fruitsDropdown->DeselectAll();
-            std::cerr << "Cleared all fruit selections" << std::endl;
+            debugOutput << "Cleared all fruit selections" << std::endl;
         });
 
         auto getSelectedBtn = std::make_shared<UltraCanvasButton>("GetSelectedFruits", 347, 250, currentY, 120, 30);
         getSelectedBtn->SetText("Get Selected");
         getSelectedBtn->SetOnClick([fruitsDropdown]() {
             auto selected = fruitsDropdown->GetSelectedItems();
-            std::cerr << "Currently selected fruits (" << selected.size() << "): ";
+            debugOutput << "Currently selected fruits (" << selected.size() << "): ";
             for (const auto& item : selected) {
-                std::cerr << item.text << " ";
+                debugOutput << item.text << " ";
             }
-            std::cerr << std::endl;
+            debugOutput << std::endl;
         });
 
         mainContainer->AddChild(selectAllBtn);
@@ -328,11 +329,11 @@ namespace UltraCanvas {
         };
 
         travelDropdown->onSelectedItemsChanged = [](const std::vector<DropdownItem>& items) {
-            std::cerr << "Travel destinations: ";
+            debugOutput << "Travel destinations: ";
             for (const auto& item : items) {
-                std::cerr << item.text << " (" << item.value << ") ";
+                debugOutput << item.text << " (" << item.value << ") ";
             }
-            std::cerr << std::endl;
+            debugOutput << std::endl;
         };
 
         mainContainer->AddChild(travelDropdown);
@@ -368,7 +369,7 @@ namespace UltraCanvas {
         interactiveDropdown->onSelectionChanged = [eventLog](int index, const DropdownItem& item) {
             std::string log = "Selection Changed: " + item.text + " (index: " + std::to_string(index) + ")";
             eventLog->SetText(log);
-            std::cerr << log << std::endl;
+            debugOutput << log << std::endl;
         };
 
         interactiveDropdown->onItemHovered = [eventLog](int index, const DropdownItem& item) {
@@ -379,13 +380,13 @@ namespace UltraCanvas {
         interactiveDropdown->onDropdownOpened = [eventLog]() {
             std::string log = "Event: Dropdown Opened";
             eventLog->SetText(log);
-            std::cerr << log << std::endl;
+            debugOutput << log << std::endl;
         };
 
         interactiveDropdown->onDropdownClosed = [eventLog]() {
             std::string log = "Event: Dropdown Closed";
             eventLog->SetText(log);
-            std::cerr << log << std::endl;
+            debugOutput << log << std::endl;
         };
 
         mainContainer->AddChild(interactiveDropdown);
@@ -393,7 +394,7 @@ namespace UltraCanvas {
 
         currentY += 95;
 
-        std::cerr << "Dropdown examples created successfully with " << (currentY + 60) << " pixels height" << std::endl;
+        debugOutput << "Dropdown examples created successfully with " << (currentY + 60) << " pixels height" << std::endl;
 
         return mainContainer;
     }

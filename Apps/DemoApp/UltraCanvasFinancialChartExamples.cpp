@@ -14,6 +14,7 @@
 #include <random>
 #include <sstream>
 #include <iomanip>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     void CreateFinancialChartControlPanel(
@@ -264,7 +265,7 @@ namespace UltraCanvas {
             auto period = periods[i];
             periodBtn->SetOnClick([chart, period]() {
                 // In real app, this would filter the data to show only the specified period
-                std::cerr << "Switching to " << period.first << " view (" << period.second << " days)" << std::endl;
+                debugOutput << "Switching to " << period.first << " view (" << period.second << " days)" << std::endl;
                 chart->RequestRedraw();
             });
             controlPanel->AddChild(periodBtn);
@@ -283,7 +284,7 @@ namespace UltraCanvas {
         auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 1081, 130, 165, 100, 35);
         exportBtn->SetText("Export PNG");
         exportBtn->SetOnClick([chart]() {
-            std::cerr << "Exporting chart to PNG..." << std::endl;
+            debugOutput << "Exporting chart to PNG..." << std::endl;
             // In real app, this would export the chart to a PNG file
         });
         controlPanel->AddChild(exportBtn);
@@ -291,7 +292,7 @@ namespace UltraCanvas {
         auto dataBtn = std::make_shared<UltraCanvasButton>("DataBtn", 1082, 240, 165, 100, 35);
         dataBtn->SetText("Load CSV");
         dataBtn->SetOnClick([chart]() {
-            std::cerr << "Loading data from CSV..." << std::endl;
+            debugOutput << "Loading data from CSV..." << std::endl;
             // In real app, this would open a file dialog to load CSV data
         });
         controlPanel->AddChild(dataBtn);
@@ -338,10 +339,10 @@ namespace UltraCanvas {
         liveToggle->SetChecked(false);
         liveToggle->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
             if (newState == CheckboxState::Checked) {
-                std::cerr << "Starting live data simulation..." << std::endl;
+                debugOutput << "Starting live data simulation..." << std::endl;
                 // In real app, this would start a timer to update data
             } else {
-                std::cerr << "Stopping live data simulation..." << std::endl;
+                debugOutput << "Stopping live data simulation..." << std::endl;
             }
         };
         controlPanel->AddChild(liveToggle);

@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include "UltraCanvasDebug.h"
 #endif
 
 namespace UltraCanvas {
@@ -232,12 +233,12 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasClipboardUI::Initialize() {
-        std::cerr << "UltraCanvas: Initializing clipboard UI with scrollable container..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing clipboard UI with scrollable container..." << std::endl;
 
         // Get the clipboard instance
         clipboard = GetClipboard();
         if (!clipboard) {
-            std::cerr << "UltraCanvas: No clipboard instance available" << std::endl;
+            debugOutput << "UltraCanvas: No clipboard instance available" << std::endl;
             return false;
         }
 
@@ -251,12 +252,12 @@ namespace UltraCanvas {
             OnClipboardChanged(newEntry);
         });
 
-        std::cerr << "UltraCanvas: Clipboard UI initialized successfully" << std::endl;
+        debugOutput << "UltraCanvas: Clipboard UI initialized successfully" << std::endl;
         return true;
     }
 
     void UltraCanvasClipboardUI::Shutdown() {
-        std::cerr << "UltraCanvas: Shutting down clipboard UI..." << std::endl;
+        debugOutput << "UltraCanvas: Shutting down clipboard UI..." << std::endl;
 
         if (clipboardWindow) {
             clipboardWindow->Close();
@@ -281,7 +282,7 @@ namespace UltraCanvas {
         // Create window using proper API
         clipboardWindow = std::make_shared<UltraCanvasWindow>();
         if (!clipboardWindow->Create(config)) {
-            std::cerr << "Failed to create clipboard window" << std::endl;
+            debugOutput << "Failed to create clipboard window" << std::endl;
             return;
         }
 
@@ -331,7 +332,7 @@ namespace UltraCanvas {
                 ToggleClipboardWindow();
             });
         }
-        std::cerr << "Registered ALT+P shortcut for clipboard UI" << std::endl;
+        debugOutput << "Registered ALT+P shortcut for clipboard UI" << std::endl;
     }
 
     void UltraCanvasClipboardUI::ToggleClipboardWindow() {
@@ -514,12 +515,12 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasClipboardUI::ShowSaveSuccessNotification(const std::string& filePath) {
-        std::cerr << "File saved successfully: " << filePath << std::endl;
+        debugOutput << "File saved successfully: " << filePath << std::endl;
         // TODO: Implement toast notification
     }
 
     void UltraCanvasClipboardUI::ShowSaveErrorNotification() {
-        std::cerr << "Error: Failed to save file" << std::endl;
+        debugOutput << "Error: Failed to save file" << std::endl;
         // TODO: Implement error toast notification
     }
 

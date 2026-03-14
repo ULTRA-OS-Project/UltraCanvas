@@ -10,6 +10,7 @@
 #include "UltraCanvasApplication.h"
 //#include "UltraCanvasZOrderManager.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -36,7 +37,7 @@ namespace UltraCanvas {
             // Force immediate redraw with z-order update
             RequestRedraw();
 
-            std::cerr << "Menu '" << GetIdentifier()
+            debugOutput << "Menu '" << GetIdentifier()
                       << "' shown with Z=" << GetZIndex() << std::endl;
         }
     }
@@ -61,7 +62,7 @@ namespace UltraCanvas {
             if (onMenuClosed) onMenuClosed();
 //            RequestRedraw();
 
-            std::cerr << "Menu '" << GetIdentifier() << "' hidden. State: " << (int)currentState
+            debugOutput << "Menu '" << GetIdentifier() << "' hidden. State: " << (int)currentState
                       << " Visible: " << IsVisible() << std::endl;
         }
     }
@@ -149,7 +150,7 @@ namespace UltraCanvas {
         // Debug output for dropdown menus
 //        if ((menuType == MenuType::DropdownMenu || menuType == MenuType::SubmenuMenu) &&
 //            (event.type == UCEventType::MouseDown || event.type == UCEventType::MouseUp)) {
-//            std::cerr << "Dropdown Menu '" << GetIdentifier() << "' received event type: " << (int)event.type
+//            debugOutput << "Dropdown Menu '" << GetIdentifier() << "' received event type: " << (int)event.type
 //                      << " at (" << event.x << "," << event.y << ")"
 //                      << " Menu bounds: (" << GetX() << "," << GetY()
 //                      << "," << GetWidth() << "," << GetHeight() << ")"
@@ -258,7 +259,7 @@ namespace UltraCanvas {
         if (parentWindow) {
             // Add the submenu to the window's element collection so it gets rendered
 //            parentWindow->AddChild(activeSubmenu);
-            std::cerr << "Added submenu '" << activeSubmenu->GetIdentifier()
+            debugOutput << "Added submenu '" << activeSubmenu->GetIdentifier()
                       << "' to window for rendering" << std::endl;
             activeSubmenu->SetWindow(parentWindow);
 //            parentWindow->AddPopupElement(activeSubmenu.get());
@@ -279,7 +280,7 @@ namespace UltraCanvas {
                 parentWindow->RemoveChild(activeSubmenu);
 //                parentWindow->RemovePopupElement(activeSubmenu.get());
 //                parentWindow->CleanupRemovedPopupElements();
-                std::cerr << "Removed submenu '" << activeSubmenu->GetIdentifier()
+                debugOutput << "Removed submenu '" << activeSubmenu->GetIdentifier()
                           << "' from window" << std::endl;
             }
 

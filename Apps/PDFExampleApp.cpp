@@ -12,6 +12,7 @@
 #include "UltraCanvasMenuBar.h"
 #include <iostream>
 #include <memory>
+#include "UltraCanvasDebug.h"
 
 class PDFViewerApplication {
 private:
@@ -24,11 +25,11 @@ public:
     bool Initialize() {
         using namespace UltraCanvas;
         
-        std::cerr << "Initializing PDF Viewer Application..." << std::endl;
+        debugOutput << "Initializing PDF Viewer Application..." << std::endl;
         
         // Register PDF plugin
         RegisterPDFPlugin();
-        std::cerr << "✓ PDF Plugin registered" << std::endl;
+        debugOutput << "✓ PDF Plugin registered" << std::endl;
         
         // Create main window
         mainWindow = std::make_shared<UltraCanvasWindow>(
@@ -49,7 +50,7 @@ public:
         mainWindow->AddElement(menuBar.get());
         mainWindow->AddElement(pdfViewer.get());
         
-        std::cerr << "✓ Application initialized successfully" << std::endl;
+        debugOutput << "✓ Application initialized successfully" << std::endl;
         return true;
     }
     
@@ -111,7 +112,7 @@ public:
         
         // Page change notifications
         pdfViewer->onPageChanged = [this](int currentPage, int totalPages) {
-            std::cerr << "Page changed: " << currentPage << " of " << totalPages << std::endl;
+            debugOutput << "Page changed: " << currentPage << " of " << totalPages << std::endl;
             
             // Update window title with page info
             std::string title = "UltraCanvas PDF Viewer";
@@ -126,41 +127,41 @@ public:
         
         // Zoom change notifications
         pdfViewer->onZoomChanged = [](float zoom, PDFZoomMode mode) {
-            std::cerr << "Zoom changed: " << (zoom * 100) << "% (";
+            debugOutput << "Zoom changed: " << (zoom * 100) << "% (";
             switch (mode) {
-                case PDFZoomMode::FitPage: std::cerr << "Fit Page"; break;
-                case PDFZoomMode::FitWidth: std::cerr << "Fit Width"; break;
-                case PDFZoomMode::FitHeight: std::cerr << "Fit Height"; break;
-                case PDFZoomMode::ActualSize: std::cerr << "Actual Size"; break;
-                case PDFZoomMode::Custom: std::cerr << "Custom"; break;
+                case PDFZoomMode::FitPage: debugOutput << "Fit Page"; break;
+                case PDFZoomMode::FitWidth: debugOutput << "Fit Width"; break;
+                case PDFZoomMode::FitHeight: debugOutput << "Fit Height"; break;
+                case PDFZoomMode::ActualSize: debugOutput << "Actual Size"; break;
+                case PDFZoomMode::Custom: debugOutput << "Custom"; break;
             }
-            std::cerr << ")" << std::endl;
+            debugOutput << ")" << std::endl;
         };
         
         // Error handling
         pdfViewer->onError = [this](const std::string& error) {
-            std::cerr << "PDF Viewer Error: " << error << std::endl;
+            debugOutput << "PDF Viewer Error: " << error << std::endl;
             ShowErrorDialog("PDF Error", error);
         };
         
         // Loading progress
         pdfViewer->onLoadingProgress = [](float progress) {
-            std::cerr << "Loading progress: " << (progress * 100) << "%" << std::endl;
+            debugOutput << "Loading progress: " << (progress * 100) << "%" << std::endl;
         };
         
         // General viewer events
         pdfViewer->onViewerEvent = [this](const PDFViewerEvent& event) {
             switch (event.type) {
                 case PDFViewerEvent::DocumentLoaded:
-                    std::cerr << "Document loaded successfully" << std::endl;
+                    debugOutput << "Document loaded successfully" << std::endl;
                     OnDocumentLoaded();
                     break;
                 case PDFViewerEvent::DocumentClosed:
-                    std::cerr << "Document closed" << std::endl;
+                    debugOutput << "Document closed" << std::endl;
                     OnDocumentClosed();
                     break;
                 case PDFViewerEvent::LoadingProgress:
-                    std::cerr << "Loading: " << (event.progress * 100) << "%" << std::endl;
+                    debugOutput << "Loading: " << (event.progress * 100) << "%" << std::endl;
                     break;
                 default:
                     break;
@@ -200,28 +201,28 @@ public:
     }
     
     void LoadPDFDocument(const std::string& filePath) {
-        std::cerr << "Loading PDF document: " << filePath << std::endl;
+        debugOutput << "Loading PDF document: " << filePath << std::endl;
         
         if (!pdfViewer->LoadDocument(filePath)) {
             ShowErrorDialog("Load Error", "Failed to load PDF document: " + filePath);
             return;
         }
         
-        std::cerr << "PDF document loaded successfully" << std::endl;
+        debugOutput << "PDF document loaded successfully" << std::endl;
     }
     
     void OnDocumentLoaded() {
         // Document-specific setup after loading
         auto docInfo = pdfViewer->GetDocumentInfo();
         
-        std::cerr << "=== Document Information ===" << std::endl;
-        std::cerr << "Title: " << docInfo.title << std::endl;
-        std::cerr << "Author: " << docInfo.author << std::endl;
-        std::cerr << "Pages: " << docInfo.pageCount << std::endl;
-        std::cerr << "PDF Version: " << docInfo.pdfVersion << std::endl;
-        std::cerr << "File Size: " << (docInfo.fileSize / 1024) << " KB" << std::endl;
-        std::cerr << "Encrypted: " << (docInfo.isEncrypted ? "Yes" : "No") << std::endl;
-        std::cerr << "===========================" << std::endl;
+        debugOutput << "=== Document Information ===" << std::endl;
+        debugOutput << "Title: " << docInfo.title << std::endl;
+        debugOutput << "Author: " << docInfo.author << std::endl;
+        debugOutput << "Pages: " << docInfo.pageCount << std::endl;
+        debugOutput << "PDF Version: " << docInfo.pdfVersion << std::endl;
+        debugOutput << "File Size: " << (docInfo.fileSize / 1024) << " KB" << std::endl;
+        debugOutput << "Encrypted: " << (docInfo.isEncrypted ? "Yes" : "No") << std::endl;
+        debugOutput << "===========================" << std::endl;
         
         // Enable document-related menu items
         // (Implementation would update menu item states)
@@ -267,7 +268,7 @@ public:
         
         // Create simple input dialog for page number
         // (Implementation would create a proper dialog)
-        std::cerr << "Go to page dialog requested" << std::endl;
+        debugOutput << "Go to page dialog requested" << std::endl;
         
         // For demonstration, go to page 5 if it exists
         if (pdfViewer->GetPageCount() >= 5) {
@@ -283,7 +284,7 @@ public:
         
         // Create search dialog
         // (Implementation would create a proper search interface)
-        std::cerr << "Search dialog requested" << std::endl;
+        debugOutput << "Search dialog requested" << std::endl;
         
         // For demonstration, search for "the"
         pdfViewer->SearchText("the");
@@ -291,16 +292,16 @@ public:
     
     void ShowPreferences() {
         // Create preferences dialog
-        std::cerr << "Preferences dialog requested" << std::endl;
+        debugOutput << "Preferences dialog requested" << std::endl;
         
         // Example: Toggle high-quality rendering
         auto settings = pdfViewer->GetRenderSettings();
         if (settings.dpi < 200) {
             settings = UltraCanvas::PDFRenderSettings::HighQuality();
-            std::cerr << "Switched to high-quality rendering (300 DPI)" << std::endl;
+            debugOutput << "Switched to high-quality rendering (300 DPI)" << std::endl;
         } else {
             settings = UltraCanvas::PDFRenderSettings::Default();
-            std::cerr << "Switched to normal rendering (150 DPI)" << std::endl;
+            debugOutput << "Switched to normal rendering (150 DPI)" << std::endl;
         }
         pdfViewer->SetRenderSettings(settings);
     }
@@ -324,37 +325,37 @@ public:
     }
     
     void ShowErrorDialog(const std::string& title, const std::string& message) {
-        std::cerr << "[ERROR] " << title << ": " << message << std::endl;
+        debugOutput << "[ERROR] " << title << ": " << message << std::endl;
         // Implementation would show actual error dialog
     }
     
     void ShowInfoDialog(const std::string& title, const std::string& message) {
-        std::cerr << "[INFO] " << title << ": " << message << std::endl;
+        debugOutput << "[INFO] " << title << ": " << message << std::endl;
         // Implementation would show actual info dialog
     }
     
     void Run() {
         if (!mainWindow) {
-            std::cerr << "Main window not initialized" << std::endl;
+            debugOutput << "Main window not initialized" << std::endl;
             return;
         }
         
         // Show window
         mainWindow->Show();
         
-        std::cerr << "PDF Viewer Application started" << std::endl;
-        std::cerr << "Use File -> Open PDF... to load a document" << std::endl;
-        std::cerr << "\nKeyboard Shortcuts:" << std::endl;
-        std::cerr << "  Home/End - First/Last page" << std::endl;
-        std::cerr << "  PageUp/PageDown - Previous/Next page" << std::endl;
-        std::cerr << "  Arrow Left/Right - Previous/Next page" << std::endl;
-        std::cerr << "  Ctrl+0 - Actual size" << std::endl;
-        std::cerr << "  Ctrl+1 - Fit page" << std::endl;
-        std::cerr << "  Ctrl+2 - Fit width" << std::endl;
-        std::cerr << "  Ctrl+3 - Fit height" << std::endl;
-        std::cerr << "  +/- - Zoom in/out" << std::endl;
-        std::cerr << "  Ctrl+Wheel - Zoom" << std::endl;
-        std::cerr << "  Middle click + drag - Pan" << std::endl;
+        debugOutput << "PDF Viewer Application started" << std::endl;
+        debugOutput << "Use File -> Open PDF... to load a document" << std::endl;
+        debugOutput << "\nKeyboard Shortcuts:" << std::endl;
+        debugOutput << "  Home/End - First/Last page" << std::endl;
+        debugOutput << "  PageUp/PageDown - Previous/Next page" << std::endl;
+        debugOutput << "  Arrow Left/Right - Previous/Next page" << std::endl;
+        debugOutput << "  Ctrl+0 - Actual size" << std::endl;
+        debugOutput << "  Ctrl+1 - Fit page" << std::endl;
+        debugOutput << "  Ctrl+2 - Fit width" << std::endl;
+        debugOutput << "  Ctrl+3 - Fit height" << std::endl;
+        debugOutput << "  +/- - Zoom in/out" << std::endl;
+        debugOutput << "  Ctrl+Wheel - Zoom" << std::endl;
+        debugOutput << "  Middle click + drag - Pan" << std::endl;
         
         // Main event loop would be here
         // mainWindow->RunEventLoop();
@@ -365,25 +366,25 @@ public:
             pdfViewer->CloseDocument();
         }
         
-        std::cerr << "PDF Viewer Application shutdown" << std::endl;
+        debugOutput << "PDF Viewer Application shutdown" << std::endl;
     }
 };
 
 // ===== MAIN APPLICATION ENTRY POINT =====
 int main(int argc, char* argv[]) {
-    std::cerr << "=== UltraCanvas PDF Viewer Example ===" << std::endl;
+    debugOutput << "=== UltraCanvas PDF Viewer Example ===" << std::endl;
     
     PDFViewerApplication app;
     
     if (!app.Initialize()) {
-        std::cerr << "Failed to initialize application" << std::endl;
+        debugOutput << "Failed to initialize application" << std::endl;
         return 1;
     }
     
     // Load PDF from command line if provided
     if (argc > 1) {
         std::string pdfFile = argv[1];
-        std::cerr << "Loading PDF from command line: " << pdfFile << std::endl;
+        debugOutput << "Loading PDF from command line: " << pdfFile << std::endl;
         // app.LoadPDFDocument(pdfFile);
     }
     
@@ -415,11 +416,11 @@ pdfViewer->SetRenderSettings(settings);
 3. **Event Handling**:
 ```cpp
 pdfViewer->onPageChanged = [](int page, int total) {
-    std::cerr << "Page " << page << " of " << total << std::endl;
+    debugOutput << "Page " << page << " of " << total << std::endl;
 };
 
 pdfViewer->onZoomChanged = [](float zoom, PDFZoomMode mode) {
-    std::cerr << "Zoom: " << (zoom * 100) << "%" << std::endl;
+    debugOutput << "Zoom: " << (zoom * 100) << "%" << std::endl;
 };
 ```
 
@@ -439,8 +440,8 @@ pdfViewer->SearchText("search term");
 6. **Document Information**:
 ```cpp
 auto docInfo = pdfViewer->GetDocumentInfo();
-std::cerr << "Title: " << docInfo.title << std::endl;
-std::cerr << "Pages: " << docInfo.pageCount << std::endl;
+debugOutput << "Title: " << docInfo.title << std::endl;
+debugOutput << "Pages: " << docInfo.pageCount << std::endl;
 ```
 
 === BUILD CONFIGURATION ===

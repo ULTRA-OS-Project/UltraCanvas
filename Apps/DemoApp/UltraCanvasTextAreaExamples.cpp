@@ -56,6 +56,7 @@ namespace UltraCanvas {
 #include <iostream>
 #include <vector>
 #include <memory>
+#include "UltraCanvasDebug.h"
 
 class Widget {
 private:
@@ -67,7 +68,7 @@ public:
         : name(n), id(i) {}
 
     virtual void Render() {
-        std::cerr << "Rendering: "
+        debugOutput << "Rendering: "
                   << name << std::endl;
     }
 

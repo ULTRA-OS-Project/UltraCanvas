@@ -15,6 +15,7 @@
 
 namespace UltraCanvas {
     class UltraCanvasUIElement;
+    class UltraCanvasWindowBase;
 
     enum class UCEventType {
         NoneEvent,
@@ -327,15 +328,16 @@ namespace UltraCanvas {
         // Window specific
         int width = 0, height = 0;           // For resize events
 
-        void* targetWindow = nullptr;        // Pointer to the target UltraCanvasWindow
+        UltraCanvasWindowBase* targetWindow = nullptr;        // Pointer to the target UltraCanvasWindow
+        // Platform-specific window handle (X11 Window, HWND, etc.)
 #if defined(_WIN32) || defined(_WIN64)
-        NativeWindowHandle nativeWindowHandle = nullptr; // Platform-specific window handle (X11 Window, HWND, etc.)
+        NativeWindowHandle nativeWindowHandle = nullptr;
 #elif defined(__linux__) || defined(__unix__)
-        NativeWindowHandle nativeWindowHandle = 0; // Platform-specific window handle (X11 Window, HWND, etc.)
+        NativeWindowHandle nativeWindowHandle = 0;
 #elif defined(__APPLE__)
-        NativeWindowHandle nativeWindowHandle = nullptr; // Platform-specific window handle (X11 Window, HWND, etc.)
+        NativeWindowHandle nativeWindowHandle = nullptr;
 #else
-        NativeWindowHandle nativeWindowHandle = nullptr; // Platform-specific window handle (X11 Window, HWND, etc.)
+        NativeWindowHandle nativeWindowHandle = nullptr;
 #endif
         // Generic data
         union {

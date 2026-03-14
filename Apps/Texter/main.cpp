@@ -26,6 +26,7 @@
 #ifdef __linux__
 #include <X11/Xlib.h>
 #include <signal.h>
+#include "UltraCanvasDebug.h"
 #endif
 
 using namespace UltraCanvas;
@@ -145,7 +146,7 @@ private:
 
         // File saved
         editor->onFileSaved = [](const std::string& path, int tabIndex) {
-            std::cerr << "File saved: " << path << std::endl;
+            debugOutput << "File saved: " << path << std::endl;
         };
 
         // Window resize: sync editor size
@@ -216,7 +217,7 @@ public:
         windowConfig.deleteOnClose = true;
 
         if (!tw->window->Create(windowConfig)) {
-            std::cerr << "Failed to create window" << std::endl;
+            debugOutput << "Failed to create window" << std::endl;
             return nullptr;
         }
 
@@ -232,7 +233,7 @@ public:
         );
 
         if (!tw->editor) {
-            std::cerr << "Failed to create text editor" << std::endl;
+            debugOutput << "Failed to create text editor" << std::endl;
             return nullptr;
         }
 
@@ -273,7 +274,7 @@ public:
 
 // ===== ERROR HANDLING =====
 void HandleFatalError(const std::string& error) {
-    std::cerr << "FATAL ERROR: " << error << std::endl;
+    debugOutput << "FATAL ERROR: " << error << std::endl;
 
 #ifdef _WIN32
     MessageBoxA(nullptr, error.c_str(), "UltraTexter - Fatal Error", MB_ICONERROR | MB_OK);
@@ -285,7 +286,7 @@ void HandleFatalError(const std::string& error) {
 // ===== SIGNAL HANDLERS =====
 #ifdef __linux__
 void SignalHandler(int signal) {
-    std::cout << "\nReceived signal " << signal << " - shutting down gracefully..." << std::endl;
+    debugOutput << "\nReceived signal " << signal << " - shutting down gracefully..." << std::endl;
 
     if (g_app) {
         g_app->RequestExit();
@@ -297,19 +298,19 @@ void SignalHandler(int signal) {
 
 // ===== SYSTEM INITIALIZATION =====
 bool InitializeSystem(UltraCanvasApplication& app, const std::string& appName) {
-    std::cout << "=== UltraTexter - Text Editor ===" << std::endl;
-    std::cout << "Version: 2.0.0" << std::endl;
-    std::cout << "Build Date: " << __DATE__ << " " << __TIME__ << std::endl;
-    std::cout << "Platform: ";
+    debugOutput << "=== UltraTexter - Text Editor ===" << std::endl;
+    debugOutput << "Version: 2.0.0" << std::endl;
+    debugOutput << "Build Date: " << __DATE__ << " " << __TIME__ << std::endl;
+    debugOutput << "Platform: ";
 
 #ifdef _WIN32
-    std::cout << "Windows";
+    debugOutput << "Windows";
     #ifdef _DEBUG
         _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-        std::cout << " (Debug Build - Memory Leak Detection Enabled)";
+        debugOutput << " (Debug Build - Memory Leak Detection Enabled)";
     #endif
 #elif __linux__
-    std::cout << "Linux";
+    debugOutput << "Linux";
 
     // Setup signal handlers for graceful shutdown
     signal(SIGINT, SignalHandler);
@@ -317,18 +318,18 @@ bool InitializeSystem(UltraCanvasApplication& app, const std::string& appName) {
 
     // Initialize X11 threading support
     if (!XInitThreads()) {
-        std::cerr << "Warning: X11 threading initialization failed" << std::endl;
+        debugOutput << "Warning: X11 threading initialization failed" << std::endl;
     }
 #elif __APPLE__
-    std::cout << "macOS";
+    debugOutput << "macOS";
 #else
-    std::cout << "Unknown";
+    debugOutput << "Unknown";
 #endif
 
-    std::cout << std::endl << std::endl;
+    debugOutput << std::endl << std::endl;
 
     try {
-        std::cout << "Initializing UltraCanvas framework..." << std::endl;
+        debugOutput << "Initializing UltraCanvas framework..." << std::endl;
 
         if (!app.Initialize(appName)) {
             HandleFatalError("Failed to initialize UltraCanvas application");
@@ -336,7 +337,7 @@ bool InitializeSystem(UltraCanvasApplication& app, const std::string& appName) {
         }
         app.SetDefaultWindowIcon(GetResourcesDir()+"media/icons/texter/Texter_icon.png");
 
-        std::cout << "✓ UltraCanvas framework initialized successfully" << std::endl;
+        debugOutput << "✓ UltraCanvas framework initialized successfully" << std::endl;
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Framework initialization failed: ") + e.what());
         return false;
@@ -349,32 +350,32 @@ bool InitializeSystem(UltraCanvasApplication& app, const std::string& appName) {
 
 // ===== SHUTDOWN =====
 void ShutdownSystem() {
-    std::cout << std::endl << "Shutting down UltraTexter..." << std::endl;
-    std::cout << "✓ UltraTexter shut down complete" << std::endl;
+    debugOutput << std::endl << "Shutting down UltraTexter..." << std::endl;
+    debugOutput << "✓ UltraTexter shut down complete" << std::endl;
 }
 
 // ===== PRINT USAGE =====
 void PrintUsage(const char* programName) {
-    std::cout << "UltraTexter - Text Editor powered by UltraCanvas Framework" << std::endl;
-    std::cout << std::endl;
-    std::cout << "Usage: " << programName << " [options] [file]" << std::endl;
-    std::cout << std::endl;
-    std::cout << "Options:" << std::endl;
-    std::cout << "  -h, --help        Show this help message" << std::endl;
-    std::cout << "  -v, --version     Show version information" << std::endl;
-    std::cout << "  -d, --dark        Start with dark theme" << std::endl;
-    std::cout << "  -l, --lang LANG   Set syntax highlighting language" << std::endl;
-    std::cout << std::endl;
-    std::cout << "Examples:" << std::endl;
-    std::cout << "  " << programName << "                    # Start with empty document" << std::endl;
-    std::cout << "  " << programName << " myfile.cpp         # Open myfile.cpp" << std::endl;
-    std::cout << "  " << programName << " -d myfile.py       # Open with dark theme" << std::endl;
-    std::cout << "  " << programName << " -l Python script   # Open 'script' with Python highlighting" << std::endl;
+    debugOutput << "UltraTexter - Text Editor powered by UltraCanvas Framework" << std::endl;
+    debugOutput << std::endl;
+    debugOutput << "Usage: " << programName << " [options] [file]" << std::endl;
+    debugOutput << std::endl;
+    debugOutput << "Options:" << std::endl;
+    debugOutput << "  -h, --help        Show this help message" << std::endl;
+    debugOutput << "  -v, --version     Show version information" << std::endl;
+    debugOutput << "  -d, --dark        Start with dark theme" << std::endl;
+    debugOutput << "  -l, --lang LANG   Set syntax highlighting language" << std::endl;
+    debugOutput << std::endl;
+    debugOutput << "Examples:" << std::endl;
+    debugOutput << "  " << programName << "                    # Start with empty document" << std::endl;
+    debugOutput << "  " << programName << " myfile.cpp         # Open myfile.cpp" << std::endl;
+    debugOutput << "  " << programName << " -d myfile.py       # Open with dark theme" << std::endl;
+    debugOutput << "  " << programName << " -l Python script   # Open 'script' with Python highlighting" << std::endl;
 }
 
 // ===== MAIN APPLICATION ENTRY POINT =====
 int main(int argc, char* argv[]) {
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // Parse command line arguments
     std::string fileToOpen;
@@ -388,8 +389,8 @@ int main(int argc, char* argv[]) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
         } else if (arg == "--version" || arg == "-v") {
-            std::cout << "UltraTexter version 2.0.0" << std::endl;
-            std::cout << "UltraCanvas Framework" << std::endl;
+            debugOutput << "UltraTexter version 2.0.0" << std::endl;
+            debugOutput << "UltraCanvas Framework" << std::endl;
             return EXIT_SUCCESS;
         } else if (arg == "--dark" || arg == "-d") {
             useDarkTheme = true;
@@ -397,15 +398,15 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc) {
                 language = argv[++i];
             } else {
-                std::cerr << "Error: --lang requires a language name" << std::endl;
+                debugOutput << "Error: --lang requires a language name" << std::endl;
                 return EXIT_FAILURE;
             }
         } else if (arg[0] != '-') {
             // Assume it's a file path
             fileToOpen = arg;
         } else {
-            std::cerr << "Unknown argument: " << arg << std::endl;
-            std::cout << "Use --help for usage information" << std::endl;
+            debugOutput << "Unknown argument: " << arg << std::endl;
+            debugOutput << "Use --help for usage information" << std::endl;
             return EXIT_FAILURE;
         }
     }
@@ -438,31 +439,31 @@ int main(int argc, char* argv[]) {
         g_windowManager = &windowManager;
 
         // Create the first window
-        std::cout << "Creating main window..." << std::endl;
+        debugOutput << "Creating main window..." << std::endl;
         auto firstWindow = windowManager.CreateNewWindow();
         if (!firstWindow) {
             HandleFatalError("Failed to create main window");
             return EXIT_FAILURE;
         }
-        std::cout << "✓ Main window created" << std::endl;
+        debugOutput << "✓ Main window created" << std::endl;
 
         // Open file from command line
         if (!fileToOpen.empty()) {
-            std::cout << "Opening file: " << fileToOpen << std::endl;
+            debugOutput << "Opening file: " << fileToOpen << std::endl;
             if (firstWindow->editor->OpenFile(fileToOpen)) {
-                std::cout << "✓ File loaded successfully" << std::endl;
+                debugOutput << "✓ File loaded successfully" << std::endl;
             } else {
-                std::cerr << "Warning: Failed to load file: " << fileToOpen << std::endl;
+                debugOutput << "Warning: Failed to load file: " << fileToOpen << std::endl;
             }
         }
 
-        std::cout << std::endl;
-        std::cout << "=== UltraTexter Ready ===" << std::endl;
-        std::cout << "• Use File menu for New/Open/Save operations" << std::endl;
-        std::cout << "• Use Edit menu for text editing operations" << std::endl;
-        std::cout << "• Drag tabs out to create new windows" << std::endl;
-        std::cout << "• Close the window or use File > Quit to exit" << std::endl;
-        std::cout << std::endl;
+        debugOutput << std::endl;
+        debugOutput << "=== UltraTexter Ready ===" << std::endl;
+        debugOutput << "• Use File menu for New/Open/Save operations" << std::endl;
+        debugOutput << "• Use Edit menu for text editing operations" << std::endl;
+        debugOutput << "• Drag tabs out to create new windows" << std::endl;
+        debugOutput << "• Close the window or use File > Quit to exit" << std::endl;
+        debugOutput << std::endl;
 
         // Run application main loop
         app.Run();

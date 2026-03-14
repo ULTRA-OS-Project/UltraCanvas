@@ -17,6 +17,7 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -358,7 +359,7 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         // Add Cairo-specific debug info
         std::string matrixTxt = UltraCanvasCairoDebugExtension::DrawCairoTransformDebug(element, settings);
 
-        std::cerr << debugInfo << std::endl << matrixTxt << std::endl;
+        debugOutput << debugInfo << std::endl << matrixTxt << std::endl;
 
     }
 

@@ -14,6 +14,7 @@
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM macros
+#include "UltraCanvasDebug.h"
 #elif defined(__APPLE__)
 #import <Cocoa/Cocoa.h>
 #import <AppKit/AppKit.h>
@@ -367,7 +368,7 @@ namespace UltraCanvas {
 
         std::ifstream file(filePath);
         if (!file.is_open()) {
-            std::cerr << "Failed to open file: " << filePath << std::endl;
+            debugOutput << "Failed to open file: " << filePath << std::endl;
             return "// Error: Could not load file: " + filePath;
         }
 
@@ -468,7 +469,7 @@ namespace UltraCanvas {
             }
         }
 #endif
-        std::cerr << "GetExecutableDir exec=" << path << std::endl;
+        debugOutput << "GetExecutableDir exec=" << path << std::endl;
         if (!path.empty()) {
             auto pos = path.find_last_of("/\\");
             if (pos != std::string::npos) {

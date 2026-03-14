@@ -16,6 +16,7 @@
 #include <string>
 #include <functional>
 #include <memory>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -992,7 +993,7 @@ inline std::shared_ptr<UltraCanvasParagraphContainer> CreateRichTextViewer(
 auto editor = CreateRichTextEditor("editor", 10, 10, 400, 300);
 editor->SetText("Hello World!\nSecond paragraph.");
 editor->onTextChanged = [](const std::string& text) {
-    std::cerr << "Text: " << text << std::endl;
+    debugOutput << "Text: " << text << std::endl;
 };
 window->AddElement(editor.get());
 ```

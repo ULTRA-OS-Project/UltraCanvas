@@ -8,6 +8,7 @@
 #include "UltraCanvasWASMWindow.h"
 #include <iostream>
 #include <emscripten/html5.h>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -27,11 +28,11 @@ UltraCanvasWASMApplication::UltraCanvasWASMApplication()
     , lastFPSUpdate(0.0)
 {
     instance = this;
-    std::cerr << "[WASM] UltraCanvasWASMApplication created" << std::endl;
+    debugOutput << "[WASM] UltraCanvasWASMApplication created" << std::endl;
 }
 
 UltraCanvasWASMApplication::~UltraCanvasWASMApplication() {
-    std::cerr << "[WASM] UltraCanvasWASMApplication destroyed" << std::endl;
+    debugOutput << "[WASM] UltraCanvasWASMApplication destroyed" << std::endl;
     
     if (running) {
         Exit();
@@ -44,11 +45,11 @@ UltraCanvasWASMApplication::~UltraCanvasWASMApplication() {
 
 bool UltraCanvasWASMApplication::InitializeNative() {
     if (initialized) {
-        std::cerr << "[WASM] Already initialized" << std::endl;
+        debugOutput << "[WASM] Already initialized" << std::endl;
         return true;
     }
     
-    std::cerr << "[WASM] Initializing WebAssembly application..." << std::endl;
+    debugOutput << "[WASM] Initializing WebAssembly application..." << std::endl;
     
     // Register page lifecycle callbacks
     emscripten_set_beforeunload_callback(this, OnBeforeUnload);
@@ -68,7 +69,7 @@ bool UltraCanvasWASMApplication::InitializeNative() {
     });
     
     initialized = true;
-    std::cerr << "[WASM] Initialization complete" << std::endl;
+    debugOutput << "[WASM] Initialization complete" << std::endl;
     
     return true;
 }
@@ -77,16 +78,16 @@ bool UltraCanvasWASMApplication::InitializeNative() {
 
 void UltraCanvasWASMApplication::RunNative() {
     if (!initialized) {
-        std::cerr << "[WASM] ERROR: Application not initialized!" << std::endl;
+        debugOutput << "[WASM] ERROR: Application not initialized!" << std::endl;
         return;
     }
     
     if (running) {
-        std::cerr << "[WASM] Already running" << std::endl;
+        debugOutput << "[WASM] Already running" << std::endl;
         return;
     }
     
-    std::cerr << "[WASM] Starting main loop (target FPS: " << targetFPS << ")" << std::endl;
+    debugOutput << "[WASM] Starting main loop (target FPS: " << targetFPS << ")" << std::endl;
     
     running = true;
     
@@ -124,7 +125,7 @@ void UltraCanvasWASMApplication::MainLoopIteration() {
         frameCount = 0;
         
         // Optionally log FPS (can be disabled in production)
-        // std::cerr << "[WASM] FPS: " << fps << std::endl;
+        // debugOutput << "[WASM] FPS: " << fps << std::endl;
     }
     
     // Process events (from browser event queue)
@@ -143,7 +144,7 @@ void UltraCanvasWASMApplication::Exit() {
         return;
     }
     
-    std::cerr << "[WASM] Exiting application..." << std::endl;
+    debugOutput << "[WASM] Exiting application..." << std::endl;
     
     running = false;
     
@@ -157,21 +158,21 @@ void UltraCanvasWASMApplication::Exit() {
         }
     }
     
-    std::cerr << "[WASM] Application exited" << std::endl;
+    debugOutput << "[WASM] Application exited" << std::endl;
 }
 
 // ===== FRAME RATE CONTROL =====
 
 void UltraCanvasWASMApplication::SetTargetFPS(int fps) {
     if (fps <= 0 || fps > 240) {
-        std::cerr << "[WASM] Invalid FPS: " << fps << " (valid range: 1-240)" << std::endl;
+        debugOutput << "[WASM] Invalid FPS: " << fps << " (valid range: 1-240)" << std::endl;
         return;
     }
     
     targetFPS = fps;
     targetFrameTime = 1.0 / fps;
     
-    std::cerr << "[WASM] Target FPS set to: " << fps << std::endl;
+    debugOutput << "[WASM] Target FPS set to: " << fps << std::endl;
     
     // Update main loop if running
     if (running) {
@@ -204,7 +205,7 @@ void UltraCanvasWASMApplication::CancelAnimationFrame() {
 EM_BOOL UltraCanvasWASMApplication::OnBeforeUnload(int eventType, const void* reserved, void* userData) {
     auto* app = static_cast<UltraCanvasWASMApplication*>(userData);
     if (app) {
-        std::cerr << "[WASM] Page unloading..." << std::endl;
+        debugOutput << "[WASM] Page unloading..." << std::endl;
         app->OnPageUnload();
     }
     return EM_FALSE; // Allow default behavior
@@ -213,7 +214,7 @@ EM_BOOL UltraCanvasWASMApplication::OnBeforeUnload(int eventType, const void* re
 EM_BOOL UltraCanvasWASMApplication::OnResize(int eventType, const EmscriptenUiEvent* event, void* userData) {
     auto* app = static_cast<UltraCanvasWASMApplication*>(userData);
     if (app) {
-        std::cerr << "[WASM] Window resized to: " << event->windowInnerWidth
+        debugOutput << "[WASM] Window resized to: " << event->windowInnerWidth
                   << "x" << event->windowInnerHeight << std::endl;
         
         // Notify all windows about resize
@@ -233,10 +234,10 @@ EM_BOOL UltraCanvasWASMApplication::OnVisibilityChange(int eventType,
     auto* app = static_cast<UltraCanvasWASMApplication*>(userData);
     if (app) {
         if (event->hidden) {
-            std::cerr << "[WASM] Page hidden" << std::endl;
+            debugOutput << "[WASM] Page hidden" << std::endl;
             app->OnPageHidden();
         } else {
-            std::cerr << "[WASM] Page visible" << std::endl;
+            debugOutput << "[WASM] Page visible" << std::endl;
             app->OnPageVisible();
         }
     }
@@ -244,19 +245,19 @@ EM_BOOL UltraCanvasWASMApplication::OnVisibilityChange(int eventType,
 }
 
 void UltraCanvasWASMApplication::OnPageVisible() {
-    std::cerr << "[WASM] Page became visible - resuming rendering" << std::endl;
+    debugOutput << "[WASM] Page became visible - resuming rendering" << std::endl;
     // Resume rendering if paused
     running = true;
 }
 
 void UltraCanvasWASMApplication::OnPageHidden() {
-    std::cerr << "[WASM] Page hidden - pausing rendering" << std::endl;
+    debugOutput << "[WASM] Page hidden - pausing rendering" << std::endl;
     // Pause rendering to save resources
     // Note: We don't fully stop, just reduce activity
 }
 
 void UltraCanvasWASMApplication::OnPageUnload() {
-    std::cerr << "[WASM] Page unloading - cleaning up" << std::endl;
+    debugOutput << "[WASM] Page unloading - cleaning up" << std::endl;
     Exit();
 }
 

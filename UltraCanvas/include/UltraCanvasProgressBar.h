@@ -12,6 +12,7 @@
 #include <functional>
 #include <algorithm>
 #include <cmath>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -823,15 +824,15 @@ verticalProgress->SetStyle(UltraCanvas::ProgressBarStyle::Gradient);
 
 // Set up callbacks
 standardProgress->onValueChanged = [](float value) {
-    std::cerr << "Progress changed to: " << value << std::endl;
+    debugOutput << "Progress changed to: " << value << std::endl;
 };
 
 standardProgress->onCompleted = []() {
-    std::cerr << "Progress completed!" << std::endl;
+    debugOutput << "Progress completed!" << std::endl;
 };
 
 standardProgress->onStateChanged = [](UltraCanvas::ProgressState state) {
-    std::cerr << "Progress state changed" << std::endl;
+    debugOutput << "Progress state changed" << std::endl;
 };
 
 // Animate progress over time
@@ -953,7 +954,7 @@ auto progress = UltraCanvas::CreateHorizontalProgressBar("progress", 1001, x, y,
 progress->SetValue(75.0f);
 progress->SetStyle(UltraCanvas::ProgressBarStyle::Rounded);
 progress->SetTextDisplay(true, true);
-progress->onCompleted = []() { std::cerr << "Done!" << std::endl; };
+progress->onCompleted = []() { debugOutput << "Done!" << std::endl; };
 window->AddElement(progress.get());
 ```
 

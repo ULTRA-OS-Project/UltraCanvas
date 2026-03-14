@@ -21,6 +21,9 @@ mkdir -p "$DIST_DIR"
 cp ./build/bin/UltraCanvas*.exe "$DIST_DIR/"
 echo "Copied EXE"
 
+powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode Sign -ExePath dist/UltraCanvasTexter.exe
+powershell -ExecutionPolicy Bypass -File SignUltraDemo.ps1 -Mode Sign -ExePath dist/UltraCanvasDemo.exe
+
 # Collect all required DLLs using ldd, filtering to only MSYS2/MinGW DLLs
 echo ""
 echo "Collecting DLLs..."

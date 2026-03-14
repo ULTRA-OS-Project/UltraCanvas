@@ -9,6 +9,7 @@
 #include <string>
 #include <algorithm>
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 // ===== STATIC MEMBER DEFINITIONS =====
@@ -74,7 +75,7 @@ namespace UltraCanvas {
         }
 
         pendingHide = false;
-        std::cerr << "Tooltip requested. Text: " << text << std::endl;
+        debugOutput << "Tooltip requested. Text: " << text << std::endl;
     }
 
     void UltraCanvasTooltipManager::Update() {
@@ -88,7 +89,7 @@ namespace UltraCanvas {
             if (elapsed >= showDelay) {
                 visible = true;
                 pendingShow = false;
-                std::cerr << "Tooltip shown" << std::endl;
+                debugOutput << "Tooltip shown" << std::endl;
                 targetWindow->RequestRedraw();
                 return;
             }
@@ -101,7 +102,7 @@ namespace UltraCanvas {
                 visible = false;
                 pendingHide = false;
                 targetWindow->RequestRedraw();
-                std::cerr << "Tooltip hidden" << std::endl;
+                debugOutput << "Tooltip hidden" << std::endl;
                 return;
             }
         }
@@ -125,7 +126,7 @@ namespace UltraCanvas {
             visible = false;
         }
 
-        std::cerr << "Tooltip hide requested" << std::endl;
+        debugOutput << "Tooltip hide requested" << std::endl;
     }
 
     void UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(UltraCanvasWindowBase* win, const std::string &text,

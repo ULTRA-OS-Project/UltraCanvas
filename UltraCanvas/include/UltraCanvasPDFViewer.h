@@ -21,6 +21,7 @@
 #include <functional>
 #include <chrono>
 #include <future>
+#include "UltraCanvasDebug.h"
 
 #ifdef ULTRACANVAS_PDF_SUPPORT
 
@@ -1026,7 +1027,7 @@ class UltraCanvasPDFViewer : public UltraCanvasUIElement {
 public:
     UltraCanvasPDFViewer(const std::string& id, long uid, long x, long y, long w, long h)
         : UltraCanvasUIElement(id, uid, x, y, w, h) {
-        std::cerr << "PDF Viewer: Not compiled with PDF support" << std::endl;
+        debugOutput << "PDF Viewer: Not compiled with PDF support" << std::endl;
     }
     
     bool LoadDocument(const std::string&, const std::string& = "") { return false; }
@@ -1036,7 +1037,7 @@ public:
 
 inline std::shared_ptr<UltraCanvasPDFViewer> CreatePDFViewer(
     const std::string& id, long x, long y, long w, long h) {
-    std::cerr << "PDF Viewer: Cannot create - not compiled with PDF support" << std::endl;
+    debugOutput << "PDF Viewer: Cannot create - not compiled with PDF support" << std::endl;
     return nullptr;
 }
 
@@ -1107,20 +1108,20 @@ auto pdfViewer = UltraCanvas::CreatePDFViewer("pdfViewer", 50, 50, 800, 600);
 
 // Set up event handlers
 pdfViewer->onPageChanged = [](int current, int total) {
-    std::cerr << "Page " << current << " of " << total << std::endl;
+    debugOutput << "Page " << current << " of " << total << std::endl;
 };
 
 pdfViewer->onZoomChanged = [](float zoom, UltraCanvas::PDFZoomMode mode) {
-    std::cerr << "Zoom: " << (zoom * 100) << "%" << std::endl;
+    debugOutput << "Zoom: " << (zoom * 100) << "%" << std::endl;
 };
 
 pdfViewer->onError = [](const std::string& error) {
-    std::cerr << "PDF Error: " << error << std::endl;
+    debugOutput << "PDF Error: " << error << std::endl;
 };
 
 // Load document
 if (pdfViewer->LoadDocument("document.pdf")) {
-    std::cerr << "PDF loaded successfully" << std::endl;
+    debugOutput << "PDF loaded successfully" << std::endl;
 }
 
 // Navigate programmatically

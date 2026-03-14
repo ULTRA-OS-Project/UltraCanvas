@@ -12,6 +12,7 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -28,28 +29,28 @@ namespace UltraCanvas {
             , mainThreadId(std::this_thread::get_id())
     {
         instance = this;
-        std::cerr << "UltraCanvas: macOS Application created" << std::endl;
+        debugOutput << "UltraCanvas: macOS Application created" << std::endl;
     }
 
 // ===== INITIALIZATION =====
     bool UltraCanvasMacOSApplication::InitializeNative() {
         if (initialized) {
-            std::cerr << "UltraCanvas: Already initialized" << std::endl;
+            debugOutput << "UltraCanvas: Already initialized" << std::endl;
             return true;
         }
 
-        std::cerr << "UltraCanvas: Initializing macOS Application..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing macOS Application..." << std::endl;
 
         @autoreleasepool {
             // STEP 1: Initialize Cocoa
             if (!InitializeCocoa()) {
-                std::cerr << "UltraCanvas: Failed to initialize Cocoa" << std::endl;
+                debugOutput << "UltraCanvas: Failed to initialize Cocoa" << std::endl;
                 return false;
             }
 
             // STEP 2: Initialize Cairo
             if (!InitializeCairo()) {
-                std::cerr << "UltraCanvas: Failed to initialize Cairo" << std::endl;
+                debugOutput << "UltraCanvas: Failed to initialize Cairo" << std::endl;
                 return false;
             }
 
@@ -64,20 +65,20 @@ namespace UltraCanvas {
 
             initialized = true;
 
-            std::cerr << "UltraCanvas: macOS Application initialized successfully" << std::endl;
+            debugOutput << "UltraCanvas: macOS Application initialized successfully" << std::endl;
             return true;
         }
     }
 
     bool UltraCanvasMacOSApplication::InitializeCocoa() {
-        std::cerr << "UltraCanvas: Initializing Cocoa..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing Cocoa..." << std::endl;
 
         @autoreleasepool {
             // Create autorelease pool
             // Get shared application instance
             nsApplication = [NSApplication sharedApplication];
             if (!nsApplication) {
-                std::cerr << "UltraCanvas: Failed to get NSApplication instance" << std::endl;
+                debugOutput << "UltraCanvas: Failed to get NSApplication instance" << std::endl;
                 return false;
             }
 
@@ -87,13 +88,13 @@ namespace UltraCanvas {
             // Get main run loop
             mainRunLoop = [NSRunLoop mainRunLoop];
 
-            std::cerr << "UltraCanvas: Cocoa initialized successfully" << std::endl;
+            debugOutput << "UltraCanvas: Cocoa initialized successfully" << std::endl;
             return true;
         }
     }
 
     bool UltraCanvasMacOSApplication::InitializeCairo() {
-        std::cerr << "UltraCanvas: Initializing Cairo..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing Cairo..." << std::endl;
 
         // Test if Cairo Quartz backend is available
         cairo_surface_t* test_surface = cairo_quartz_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
@@ -101,15 +102,15 @@ namespace UltraCanvas {
             cairo_status_t status = cairo_surface_status(test_surface);
             if (status == CAIRO_STATUS_SUCCESS) {
                 cairoSupported = true;
-                std::cerr << "UltraCanvas: Cairo Quartz backend available" << std::endl;
+                debugOutput << "UltraCanvas: Cairo Quartz backend available" << std::endl;
             } else {
-                std::cerr << "UltraCanvas: Cairo surface creation failed: "
+                debugOutput << "UltraCanvas: Cairo surface creation failed: "
                           << cairo_status_to_string(status) << std::endl;
                 cairoSupported = false;
             }
             cairo_surface_destroy(test_surface);
         } else {
-            std::cerr << "UltraCanvas: Cairo Quartz backend not available" << std::endl;
+            debugOutput << "UltraCanvas: Cairo Quartz backend not available" << std::endl;
             cairoSupported = false;
         }
 
@@ -117,7 +118,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMacOSApplication::InitializeMenuBar() {
-        std::cerr << "UltraCanvas: Initializing menu bar..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing menu bar..." << std::endl;
 
         @autoreleasepool {
             // Create main menu
@@ -150,12 +151,12 @@ namespace UltraCanvas {
             // Set as main menu
             [nsApplication setMainMenu:mainMenu];
 
-            std::cerr << "UltraCanvas: Menu bar initialized" << std::endl;
+            debugOutput << "UltraCanvas: Menu bar initialized" << std::endl;
         }
     }
 
     void UltraCanvasMacOSApplication::InitializeDisplaySettings() {
-        std::cerr << "UltraCanvas: Initializing display settings..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing display settings..." << std::endl;
 
         @autoreleasepool {
             NSScreen* mainScreen = [NSScreen mainScreen];
@@ -163,14 +164,14 @@ namespace UltraCanvas {
                 displayScaleFactor = [mainScreen backingScaleFactor];
                 retinaSupported = (displayScaleFactor > 1.0f);
 
-                std::cerr << "UltraCanvas: Display scale factor: " << displayScaleFactor << std::endl;
-                std::cerr << "UltraCanvas: Retina display: " << (retinaSupported ? "Yes" : "No") << std::endl;
+                debugOutput << "UltraCanvas: Display scale factor: " << displayScaleFactor << std::endl;
+                debugOutput << "UltraCanvas: Retina display: " << (retinaSupported ? "Yes" : "No") << std::endl;
             }
         }
     }
 
     void UltraCanvasMacOSApplication::ShutdownNative() {
-        std::cerr << "UltraCanvas: Shutting down macOS Application..." << std::endl;
+        debugOutput << "UltraCanvas: Shutting down macOS Application..." << std::endl;
 
         vips_shutdown();
 
@@ -182,7 +183,7 @@ namespace UltraCanvas {
 
         running = false;
 
-        std::cerr << "UltraCanvas: macOS Application shut down" << std::endl;
+        debugOutput << "UltraCanvas: macOS Application shut down" << std::endl;
     }
 
 
@@ -212,7 +213,7 @@ namespace UltraCanvas {
             [nsApplication activateIgnoringOtherApps:YES];
 
             dispatch_async(dispatch_get_main_queue(), ^{
-                std::cerr << "UltraCanvas: Showing pending windows from dispatch..." << std::endl;
+                debugOutput << "UltraCanvas: Showing pending windows from dispatch..." << std::endl;
                 for (auto &window: windows) {
                     auto win = ((UltraCanvasMacOSWindow *) window.get());
                     if (win->pendingShow) {
@@ -243,10 +244,10 @@ namespace UltraCanvas {
         // Find target window
         NSWindow* nsWindow = [nsEvent window];
         UltraCanvasMacOSWindow* targetWindow = nullptr;
-        event.nativeWindowHandle = (uintptr_t)nsWindow;
+        event.nativeWindowHandle = nsWindow;
 
         if (nsWindow) {
-            targetWindow = static_cast<UltraCanvasMacOSWindow*>(FindWindow((uintptr_t)nsWindow));
+            targetWindow = static_cast<UltraCanvasMacOSWindow*>(FindWindow(nsWindow));
         }
 
         event.targetWindow = targetWindow;
@@ -429,14 +430,14 @@ namespace UltraCanvas {
                     }
                 }
             }
-            std::cerr << "UltraCanvas macOS: Mouse capture activated" << std::endl;
+            debugOutput << "UltraCanvas macOS: Mouse capture activated" << std::endl;
         }
     }
 
     void UltraCanvasMacOSApplication::ReleaseMouseNative() {
         // macOS automatically releases mouse tracking when mouse button is released
         // No explicit ungrab operation is needed
-        std::cerr << "UltraCanvas macOS: Mouse capture released" << std::endl;
+        debugOutput << "UltraCanvas macOS: Mouse capture released" << std::endl;
     }
 
 // ===== THREAD SAFETY =====

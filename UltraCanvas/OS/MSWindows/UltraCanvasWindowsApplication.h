@@ -38,6 +38,12 @@
 #ifdef RGB
 #undef RGB
 #endif
+#ifdef CopyMemory
+#undef CopyMemory
+#endif
+#ifdef Rect
+#undef Rect
+#endif
 
 // ===== STANDARD INCLUDES =====
 #include <memory>

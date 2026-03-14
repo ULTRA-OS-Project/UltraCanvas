@@ -13,6 +13,7 @@
 #include <PixelFX/PixelFX.h>
 #include <errno.h>
 #include <clocale>  // For setlocale
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     UltraCanvasLinuxApplication* UltraCanvasLinuxApplication::instance = nullptr;
@@ -29,28 +30,28 @@ namespace UltraCanvas {
             , xim(nullptr)           // XIM initialization
             , eventThreadRunning(false) {
         instance = this;
-        std::cerr << "UltraCanvas: Linux Application created" << std::endl;
+        debugOutput << "UltraCanvas: Linux Application created" << std::endl;
     }
 
 // ===== INITIALIZATION =====
     bool UltraCanvasLinuxApplication::InitializeNative() {
         if (initialized) {
-            std::cerr << "UltraCanvas: Already initialized" << std::endl;
+            debugOutput << "UltraCanvas: Already initialized" << std::endl;
             return true;
         }
 
-        std::cerr << "UltraCanvas: Initializing Linux Application..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing Linux Application..." << std::endl;
 
         try {
             // STEP 1: Initialize X11 display connection
             if (!InitializeX11()) {
-                std::cerr << "UltraCanvas: Failed to initialize X11" << std::endl;
+                debugOutput << "UltraCanvas: Failed to initialize X11" << std::endl;
                 return false;
             }
 
             // STEP 2: Initialize GLX (optional)
             if (!InitializeGLX()) {
-                std::cerr << "UltraCanvas: Failed to initialize GLX (non-critical)" << std::endl;
+                debugOutput << "UltraCanvas: Failed to initialize GLX (non-critical)" << std::endl;
             }
 
             // STEP 3: Initialize window manager atoms
@@ -58,18 +59,18 @@ namespace UltraCanvas {
 
             // STEP 4: Initialize X Input Method (XIM) for UTF-8 support
             if (!InitializeXIM()) {
-                std::cerr << "UltraCanvas: Failed to initialize XIM (non-critical, falling back to basic input)" << std::endl;
+                debugOutput << "UltraCanvas: Failed to initialize XIM (non-critical, falling back to basic input)" << std::endl;
             }
 
             // STEP 5: Mark as initialized
             initialized = true;
             running = false;
 
-            std::cerr << "UltraCanvas: Linux Application initialized successfully" << std::endl;
+            debugOutput << "UltraCanvas: Linux Application initialized successfully" << std::endl;
             return true;
 
         } catch (const std::exception& e) {
-            std::cerr << "UltraCanvas: Exception during initialization: " << e.what() << std::endl;
+            debugOutput << "UltraCanvas: Exception during initialization: " << e.what() << std::endl;
             ShutdownNative();
             return false;
         }
@@ -84,7 +85,7 @@ namespace UltraCanvas {
         }
 
         if (display) {
-            std::cerr << "UltraCanvas: Closing X11 display..." << std::endl;
+            debugOutput << "UltraCanvas: Closing X11 display..." << std::endl;
             XCloseDisplay(display);
             display = nullptr;
         }
@@ -93,30 +94,30 @@ namespace UltraCanvas {
     bool UltraCanvasLinuxApplication::InitializeX11() {
         // Initialize X11 threading support
         if (!XInitThreads()) {
-            std::cerr << "UltraCanvas: XInitThreads() failed" << std::endl;
+            debugOutput << "UltraCanvas: XInitThreads() failed" << std::endl;
             return false;
         }
 
         // CRITICAL: Set locale for proper UTF-8 handling BEFORE opening display
         // This is essential for XIM to work correctly with international characters
         if (setlocale(LC_ALL, "") == nullptr) {
-            std::cerr << "UltraCanvas: Warning - setlocale() failed, UTF-8 input may not work" << std::endl;
+            debugOutput << "UltraCanvas: Warning - setlocale() failed, UTF-8 input may not work" << std::endl;
         }
 
         // Check if X supports the current locale
         if (!XSupportsLocale()) {
-            std::cerr << "UltraCanvas: Warning - X does not support current locale" << std::endl;
+            debugOutput << "UltraCanvas: Warning - X does not support current locale" << std::endl;
         }
 
         // Set X locale modifiers (required for XIM)
         if (XSetLocaleModifiers("") == nullptr) {
-            std::cerr << "UltraCanvas: Warning - XSetLocaleModifiers() failed" << std::endl;
+            debugOutput << "UltraCanvas: Warning - XSetLocaleModifiers() failed" << std::endl;
         }
 
         // Connect to X server
         display = XOpenDisplay(nullptr);
         if (!display) {
-            std::cerr << "UltraCanvas: Cannot connect to X server" << std::endl;
+            debugOutput << "UltraCanvas: Cannot connect to X server" << std::endl;
             return false;
         }
 
@@ -129,21 +130,21 @@ namespace UltraCanvas {
 
         // Validate critical resources
         if (rootWindow == 0) {
-            std::cerr << "UltraCanvas: Invalid root window" << std::endl;
+            debugOutput << "UltraCanvas: Invalid root window" << std::endl;
             XCloseDisplay(display);
             display = nullptr;
             return false;
         }
 
         if (!visual) {
-            std::cerr << "UltraCanvas: Invalid visual" << std::endl;
+            debugOutput << "UltraCanvas: Invalid visual" << std::endl;
             XCloseDisplay(display);
             display = nullptr;
             return false;
         }
 
-        std::cerr << "X11 Display: " << DisplayString(display) << std::endl;
-        std::cerr << "Screen: " << screen << ", Depth: " << depth << std::endl;
+        debugOutput << "X11 Display: " << DisplayString(display) << std::endl;
+        debugOutput << "Screen: " << screen << ", Depth: " << depth << std::endl;
 
         // Set up error handling
         XSetErrorHandler(XErrorHandler);
@@ -164,26 +165,26 @@ namespace UltraCanvas {
 // ===== XIM (X INPUT METHOD) SUPPORT FOR UTF-8 =====
     bool UltraCanvasLinuxApplication::InitializeXIM() {
         if (!display) {
-            std::cerr << "UltraCanvas: Cannot initialize XIM - no display" << std::endl;
+            debugOutput << "UltraCanvas: Cannot initialize XIM - no display" << std::endl;
             return false;
         }
 
         // Open the X Input Method
         xim = XOpenIM(display, nullptr, nullptr, nullptr);
         if (!xim) {
-            std::cerr << "UltraCanvas: XOpenIM() failed - trying with @im=none" << std::endl;
+            debugOutput << "UltraCanvas: XOpenIM() failed - trying with @im=none" << std::endl;
             
             // Try with explicit fallback
             XSetLocaleModifiers("@im=none");
             xim = XOpenIM(display, nullptr, nullptr, nullptr);
             
             if (!xim) {
-                std::cerr << "UltraCanvas: XOpenIM() failed completely" << std::endl;
+                debugOutput << "UltraCanvas: XOpenIM() failed completely" << std::endl;
                 return false;
             }
         }
 
-        std::cerr << "UltraCanvas: XIM initialized successfully" << std::endl;
+        debugOutput << "UltraCanvas: XIM initialized successfully" << std::endl;
         return true;
     }
 
@@ -194,7 +195,7 @@ namespace UltraCanvas {
         if (xim) {
             XCloseIM(xim);
             xim = nullptr;
-            std::cerr << "UltraCanvas: XIM closed" << std::endl;
+            debugOutput << "UltraCanvas: XIM closed" << std::endl;
         }
     }
 
@@ -226,7 +227,7 @@ namespace UltraCanvas {
             int result = select(ConnectionNumber(display) + 1, &readfds, nullptr, nullptr, &timeout);
 
             if (result < 0 && errno != EINTR) {
-                std::cerr << "CollectAndProcessNativeEvents: select() error" << std::endl;
+                debugOutput << "CollectAndProcessNativeEvents: select() error" << std::endl;
             }
         }
     }
@@ -235,19 +236,19 @@ namespace UltraCanvas {
     // ===== MOUSE CAPTURE SUPPORT =====
     void UltraCanvasLinuxApplication::CaptureMouseNative() {
         if (!display || !focusedWindow) {
-            std::cerr << "UltraCanvas: Cannot capture mouse - no display or focused window" << std::endl;
+            debugOutput << "UltraCanvas: Cannot capture mouse - no display or focused window" << std::endl;
             return;
         }
 
         auto* linuxWindow = dynamic_cast<UltraCanvasLinuxWindow*>(focusedWindow);
         if (!linuxWindow) {
-            std::cerr << "UltraCanvas: Cannot capture mouse - invalid window type" << std::endl;
+            debugOutput << "UltraCanvas: Cannot capture mouse - invalid window type" << std::endl;
             return;
         }
 
         Window xWindow = (Window) linuxWindow->GetNativeHandle();
         if (xWindow == 0) {
-            std::cerr << "UltraCanvas: Cannot capture mouse - invalid X11 window handle" << std::endl;
+            debugOutput << "UltraCanvas: Cannot capture mouse - invalid X11 window handle" << std::endl;
             return;
         }
 
@@ -264,9 +265,9 @@ namespace UltraCanvas {
         );
 
         if (grabResult != GrabSuccess) {
-            std::cerr << "UltraCanvas: XGrabPointer failed with code: " << grabResult << std::endl;
+            debugOutput << "UltraCanvas: XGrabPointer failed with code: " << grabResult << std::endl;
         } else {
-            std::cerr << "UltraCanvas: Mouse captured successfully" << std::endl;
+            debugOutput << "UltraCanvas: Mouse captured successfully" << std::endl;
         }
     }
 
@@ -277,7 +278,7 @@ namespace UltraCanvas {
 
         XUngrabPointer(display, CurrentTime);
         XFlush(display);
-        std::cerr << "UltraCanvas: Mouse released" << std::endl;
+        debugOutput << "UltraCanvas: Mouse released" << std::endl;
     }
 
 // ===== EVENT PROCESSING =====
@@ -288,14 +289,14 @@ namespace UltraCanvas {
             // For SelectionNotify, let the window's drag-drop handler try first
             // (XDnD drop uses SelectionNotify to deliver file data)
             if (xEvent.type == SelectionNotify) {
-                auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow((NativeWindowHandle)xEvent.xany.window));
+                auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
                 if (window && window->HandleXEvent(xEvent)) {
                     return;
                 }
             }
             UltraCanvasLinuxClipboard::ProcessClipboardEvent(xEvent);
         } else {
-            auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow((NativeWindowHandle)xEvent.xany.window));
+            auto window = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
 
             if (window) {
                 // Let the window handle the X11 event first
@@ -322,7 +323,7 @@ namespace UltraCanvas {
 
         // Find and store the corresponding UltraCanvas window
         auto targetWindow = static_cast<UltraCanvasLinuxWindow*>(FindWindow(xEvent.xany.window));
-        event.targetWindow = static_cast<void*>(targetWindow);
+        event.targetWindow = targetWindow;
 
         switch (xEvent.type) {
             case KeyPress:
@@ -353,7 +354,7 @@ namespace UltraCanvas {
                     
                     if (status == XBufferOverflow) {
                         // Buffer too small - rare for single characters, but handle it
-                        std::cerr << "UltraCanvas: Xutf8LookupString buffer overflow" << std::endl;
+                        debugOutput << "UltraCanvas: Xutf8LookupString buffer overflow" << std::endl;
                         len = 0;
                     } else if (status == XLookupNone) {
                         len = 0;
@@ -528,7 +529,7 @@ namespace UltraCanvas {
             }
 
             case FocusIn: {
-                std::cerr << "focus xwindow=" << xEvent.xany.window << std::endl;
+                debugOutput << "focus xwindow=" << xEvent.xany.window << std::endl;
                 event.type = UCEventType::WindowFocus;
                 
                 // Set XIC focus when window gains focus
@@ -542,7 +543,7 @@ namespace UltraCanvas {
             }
 
             case FocusOut: {
-                std::cerr << "blur xwindow=" << xEvent.xany.window << std::endl;
+                debugOutput << "blur xwindow=" << xEvent.xany.window << std::endl;
                 event.type = UCEventType::WindowBlur;
                 
                 // Unset XIC focus when window loses focus
@@ -686,14 +687,14 @@ namespace UltraCanvas {
             return;
         }
 
-        std::cerr << "UltraCanvas: Starting event processing thread..." << std::endl;
+        debugOutput << "UltraCanvas: Starting event processing thread..." << std::endl;
 
         eventThreadRunning = true;
         eventThread = std::thread([this]() {
             EventThreadFunction();
         });
 
-        std::cerr << "UltraCanvas: Event thread started successfully" << std::endl;
+        debugOutput << "UltraCanvas: Event thread started successfully" << std::endl;
     }
 
     void UltraCanvasLinuxApplication::StopEventThread() {
@@ -701,7 +702,7 @@ namespace UltraCanvas {
             return;
         }
 
-        std::cerr << "UltraCanvas: Stopping event thread..." << std::endl;
+        debugOutput << "UltraCanvas: Stopping event thread..." << std::endl;
 
         eventThreadRunning = false;
         eventCondition.notify_all();
@@ -709,15 +710,15 @@ namespace UltraCanvas {
         if (eventThread.joinable()) {
             try {
                 eventThread.join();
-                std::cerr << "UltraCanvas: Event thread stopped successfully" << std::endl;
+                debugOutput << "UltraCanvas: Event thread stopped successfully" << std::endl;
             } catch (const std::exception& e) {
-                std::cerr << "UltraCanvas: Exception stopping event thread: " << e.what() << std::endl;
+                debugOutput << "UltraCanvas: Exception stopping event thread: " << e.what() << std::endl;
             }
         }
     }
 
     void UltraCanvasLinuxApplication::EventThreadFunction() {
-        std::cerr << "UltraCanvas: Event thread running..." << std::endl;
+        debugOutput << "UltraCanvas: Event thread running..." << std::endl;
 
         while (eventThreadRunning && display) {
             try {
@@ -744,17 +745,17 @@ namespace UltraCanvas {
                     int result = select(ConnectionNumber(display) + 1, &readfds, nullptr, nullptr, &timeout);
 
                     if (result < 0 && errno != EINTR) {
-                        std::cerr << "UltraCanvas: select() error in event thread" << std::endl;
+                        debugOutput << "UltraCanvas: select() error in event thread" << std::endl;
                         break;
                     }
                 }
             } catch (const std::exception& e) {
-                std::cerr << "UltraCanvas: Exception in event thread: " << e.what() << std::endl;
+                debugOutput << "UltraCanvas: Exception in event thread: " << e.what() << std::endl;
                 break;
             }
         }
 
-        std::cerr << "UltraCanvas: Event thread ended" << std::endl;
+        debugOutput << "UltraCanvas: Event thread ended" << std::endl;
     }
 
 // ===== CLIPBOARD SUPPORT =====
@@ -771,19 +772,19 @@ namespace UltraCanvas {
     int UltraCanvasLinuxApplication::XErrorHandler(Display* display, XErrorEvent* event) {
         char errorText[256];
         XGetErrorText(display, event->error_code, errorText, sizeof(errorText));
-        std::cerr << "X11 Error: " << errorText
+        debugOutput << "X11 Error: " << errorText
                   << " (code: " << (int)event->error_code << ")" << std::endl;
         return 0;
     }
 
     int UltraCanvasLinuxApplication::XIOErrorHandler(Display* display) {
-        std::cerr << "X11 IO Error: Connection to X server lost" << std::endl;
+        debugOutput << "X11 IO Error: Connection to X server lost" << std::endl;
         exit(1);
         return 0;
     }
 
     void UltraCanvasLinuxApplication::LogXError(const std::string& context, int errorCode) {
-        std::cerr << "UltraCanvas X11 Error in " << context << ": code " << errorCode << std::endl;
+        debugOutput << "UltraCanvas X11 Error in " << context << ": code " << errorCode << std::endl;
     }
 
 } // namespace UltraCanvas

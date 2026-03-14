@@ -13,6 +13,7 @@
 #include <memory>
 #include <vector>
 #include <random>
+#include "UltraCanvasDebug.h"
 
 using namespace UltraCanvas;
 
@@ -252,12 +253,12 @@ private:
                 static bool gradientEnabled = true;
                 gradientEnabled = !gradientEnabled;
                 areaChart->SetFillGradientEnabled(gradientEnabled);
-                std::cerr << "Area chart gradient " << (gradientEnabled ? "enabled" : "disabled") << std::endl;
+                debugOutput << "Area chart gradient " << (gradientEnabled ? "enabled" : "disabled") << std::endl;
                 break;
             }
             case UCKeys::U: {
                 UpdateRevenueData();
-                std::cerr << "Revenue data updated with new values" << std::endl;
+                debugOutput << "Revenue data updated with new values" << std::endl;
                 break;
             }
             case UCKeys::P:
@@ -396,7 +397,7 @@ int main() {
     }
     catch (const std::exception& e) {
         // Handle any initialization or runtime errors
-        std::cerr << "Application error: " << e.what() << std::endl;
+        debugOutput << "Application error: " << e.what() << std::endl;
         return -1;
     }
 }

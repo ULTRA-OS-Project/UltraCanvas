@@ -10,6 +10,7 @@
 #include "UltraCanvasLabel.h"
 #include <random>
 #include <iomanip>
+#include "UltraCanvasDebug.h"
 
 using namespace UltraCanvas;
 
@@ -177,7 +178,7 @@ public:
 
                 styleIndex = (styleIndex + 1) % 3;
                 stockChart->SetCandleDisplayStyle(styles[styleIndex]);
-                std::cerr << "Switched to " << styleNames[styleIndex] << " style" << std::endl;
+                debugOutput << "Switched to " << styleNames[styleIndex] << " style" << std::endl;
                 break;
             }
 
@@ -186,7 +187,7 @@ public:
                 static bool volumeVisible = true;
                 volumeVisible = !volumeVisible;
                 stockChart->SetShowVolumePanel(volumeVisible);
-                std::cerr << "Volume display: " << (volumeVisible ? "enabled" : "disabled") << std::endl;
+                debugOutput << "Volume display: " << (volumeVisible ? "enabled" : "disabled") << std::endl;
                 break;
             }
 
@@ -195,19 +196,19 @@ public:
                 static bool maVisible = true;
                 maVisible = !maVisible;
                 stockChart->SetShowMovingAverage(maVisible, 20);
-                std::cerr << "Moving average: " << (maVisible ? "enabled" : "disabled") << std::endl;
+                debugOutput << "Moving average: " << (maVisible ? "enabled" : "disabled") << std::endl;
                 break;
             }
 
             case UCKeys::R: {
                 // Reset zoom and pan (would need to implement in base class)
-                std::cerr << "Chart view reset" << std::endl;
+                debugOutput << "Chart view reset" << std::endl;
                 break;
             }
 
             case UCKeys::G: {
                 // Toggle grid (would access through base class method)
-                std::cerr << "Grid display toggled" << std::endl;
+                debugOutput << "Grid display toggled" << std::endl;
                 static bool gridEnabled = true;
                 gridEnabled = !gridEnabled;
                 stockChart->SetGridEnabled(gridEnabled);
@@ -263,7 +264,7 @@ public:
         // Refresh chart
         stockChart->RequestRedraw();
 
-        std::cerr << "Added new trading day: " << newDate
+        debugOutput << "Added new trading day: " << newDate
                   << " Close: $" << std::fixed << std::setprecision(2) << newClose << std::endl;
     }
 };
@@ -273,12 +274,12 @@ int main() {
     FinancialChartExampleApp app;
 
     if (!app.Initialize()) {
-        std::cerr << "Failed to initialize Financial Chart Example" << std::endl;
+        debugOutput << "Failed to initialize Financial Chart Example" << std::endl;
         return -1;
     }
 
-    std::cerr << "Financial Chart Example initialized successfully!" << std::endl;
-    std::cerr << "Use keyboard controls to interact with the chart." << std::endl;
+    debugOutput << "Financial Chart Example initialized successfully!" << std::endl;
+    debugOutput << "Use keyboard controls to interact with the chart." << std::endl;
 
     app.Run();
 

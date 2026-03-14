@@ -20,6 +20,7 @@
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <climits>
+#include "UltraCanvasDebug.h"
 #endif
 
 
@@ -32,21 +33,21 @@ namespace UltraCanvas {
 
         if (InitializeNative()) {
             if (!InitializeClipboard()) {
-                std::cerr << "UltraCanvas: Failed to initialize clipboard" << std::endl;
+                debugOutput << "UltraCanvas: Failed to initialize clipboard" << std::endl;
             }
 
             // Auto-set default window icon if available
             std::string iconPath = GetResourcesDir() + UC_DEFAULT_ICON_SUBPATH;
             if (std::filesystem::exists(iconPath)) {
                 SetDefaultWindowIcon(iconPath);
-                std::cerr << "UltraCanvas: Default window icon set to: " << iconPath << std::endl;
+                debugOutput << "UltraCanvas: Default window icon set to: " << iconPath << std::endl;
             } else {
-                std::cerr << "UltraCanvas: Default icon not found at: " << iconPath << std::endl;
+                debugOutput << "UltraCanvas: Default icon not found at: " << iconPath << std::endl;
             }
 
             return true;
         } else {
-            std::cerr << "UltraCanvas: Failed to initialize application" << std::endl;
+            debugOutput << "UltraCanvas: Failed to initialize application" << std::endl;
             return false;
         }
     }
@@ -56,9 +57,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasBaseApplication::Run() {
-        std::cerr << "UltraCanvasBaseApplication::Run Starting app" << std::endl;
+        debugOutput << "UltraCanvasBaseApplication::Run Starting app" << std::endl;
         if (!initialized) {
-            std::cerr << "UltraCanvas: Cannot run - application not initialized" << std::endl;
+            debugOutput << "UltraCanvas: Cannot run - application not initialized" << std::endl;
             return;
         }
 
@@ -69,7 +70,7 @@ namespace UltraCanvas {
 
         auto clipbrd = GetClipboard();
 
-        std::cerr << "UltraCanvas: Starting main loop..." << std::endl;
+        debugOutput << "UltraCanvas: Starting main loop..." << std::endl;
         try {
             while (running && !windows.empty()) {
                 CollectAndProcessNativeEvents();
@@ -88,12 +89,15 @@ rescan_windows:
                         windows.erase(it);
                         goto rescan_windows;
                     }
-//                    std::cerr << "window w=" << window << " nativeh=" << window->GetNativeHandle() << " visible=" << window->IsVisible() << " needredraw=" << window->IsNeedsRedraw() << " ctx=" << window->GetRenderContext() << std::endl;
+//                    debugOutput << "window w=" << window << " nativeh=" << window->GetNativeHandle() << " visible=" << window->IsVisible() << " needredraw=" << window->IsNeedsRedraw() << " ctx=" << window->GetRenderContext() << std::endl;
                     if (window->IsVisible()) {
+                        if (window->IsNeedsResize()) {
+                            window->DoResize();
+                        }
                         if (window->IsNeedsRedraw()) {
                             auto ctx = window->GetRenderContext();
                             if (ctx) {
-//                                std::cerr << "Redraw window w=" << window << " nativeh=" << window->GetNativeHandle() << std::endl;
+//                                debugOutput << "Redraw window w=" << window << " nativeh=" << window->GetNativeHandle() << std::endl;
                                 window->Render(ctx);
                                 window->Flush();
                                 window->ClearRequestRedraw();
@@ -104,7 +108,7 @@ rescan_windows:
                 }
 
                 if (windows.empty()) {
-                    std::cerr << "UltraCanvas: No windows, exiting..." << std::endl;
+                    debugOutput << "UltraCanvas: No windows, exiting..." << std::endl;
                     break;
                 }
 
@@ -121,32 +125,32 @@ rescan_windows:
             }
 
         } catch (const std::exception& e) {
-            std::cerr << "UltraCanvas: Exception in main loop: " << e.what() << std::endl;
+            debugOutput << "UltraCanvas: Exception in main loop: " << e.what() << std::endl;
         }
 
         // Clean shutdown
-        std::cerr << "UltraCanvas: Main loop ended, performing cleanup..." << std::endl;
+        debugOutput << "UltraCanvas: Main loop ended, performing cleanup..." << std::endl;
         //StopEventThread();
 
-        std::cerr << "UltraCanvas: Destroying all windows..." << std::endl;
+        debugOutput << "UltraCanvas: Destroying all windows..." << std::endl;
         while (!windows.empty()) {
             try {
                 auto window = windows.back();
                 window->Destroy();
                 windows.pop_back();
             } catch (const std::exception& e) {
-                std::cerr << "UltraCanvas: Exception destroying window: " << e.what() << std::endl;
+                debugOutput << "UltraCanvas: Exception destroying window: " << e.what() << std::endl;
             }
         }
 
         initialized = false;
-        std::cerr << "UltraCanvas: main loop completed, shutting down.." << std::endl;
+        debugOutput << "UltraCanvas: main loop completed, shutting down.." << std::endl;
         ShutdownClipboard();
         ShutdownNative();
     }
 
     void UltraCanvasBaseApplication::RequestExit() {
-        std::cerr << "UltraCanvas: Linux application exit requested" << std::endl;
+        debugOutput << "UltraCanvas: Linux application exit requested" << std::endl;
         running = false;
     }
 
@@ -194,7 +198,7 @@ rescan_windows:
     void UltraCanvasBaseApplication::RegisterWindow(const std::shared_ptr<UltraCanvasWindowBase>& window) {
         if (window && window->GetNativeHandle() != 0) {
             windows.push_back(window);
-            std::cerr << "UltraCanvas: Window registered with Native ID: " << window->GetNativeHandle() << std::endl;
+            debugOutput << "UltraCanvas: Window registered with Native ID: " << window->GetNativeHandle() << std::endl;
         }
     }
 
@@ -211,7 +215,7 @@ rescan_windows:
         if (draggedElement && draggedElement->GetWindow() == win) {
             draggedElement = nullptr;
         }
-        std::cerr << "UltraCanvas: window found and unregistered successfully" << std::endl;
+        debugOutput << "UltraCanvas: window found and unregistered successfully" << std::endl;
     }
 
     UltraCanvasWindow* UltraCanvasBaseApplication::FindWindow(NativeWindowHandle nativeHandle) {
@@ -322,12 +326,12 @@ rescan_windows:
                     // Update focused window
                     DispatchEventToElement(targetWindow, event);
                     focusedWindow = targetWindow;
-                    std::cerr << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << focusedWindow->GetNativeHandle() << ") gained focus" << std::endl;
+                    debugOutput << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << focusedWindow->GetNativeHandle() << ") gained focus" << std::endl;
                 }
                 return;
             case UCEventType::WindowBlur:
                 if (targetWindow && targetWindow == focusedWindow) {
-                    std::cerr << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << focusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
+                    debugOutput << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << focusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
                     DispatchEventToElement(targetWindow, event);
                     focusedWindow = nullptr;
                 }
@@ -439,13 +443,13 @@ rescan_windows:
             targetWindow->CleanupRemovedPopupElements();
 //            // Debug logging
 //            if (event.type != UCEventType::MouseMove) {
-//                std::cerr << "UltraCanvas: Event type " << static_cast<int>(event.type)
+//                debugOutput << "UltraCanvas: Event type " << static_cast<int>(event.type)
 //                          << " dispatched to window " << targetWindow
 //                          << " (X11 Window: " << std::hex << event.nativeWindowHandle << std::dec << ")"
 //                          << " focused=" << (targetWindow == focusedWindow ? "yes" : "no") << std::endl;
         } else {
             // No target window found - this might be normal for some system events
-            std::cerr << "UltraCanvas: Warning - Event type " << static_cast<int>(event.type)
+            debugOutput << "UltraCanvas: Warning - Event type " << static_cast<int>(event.type)
                       << " has no target window (Native Window: " << std::hex << event.nativeWindowHandle << std::dec << ")" << std::endl;
         }
     }
@@ -493,7 +497,7 @@ rescan_windows:
 //                //blurEvent.nativeWindowHandle = previousFocusedWindow->GetXWindow();
 //                DispatchEventToElement(previousFocusedWindow, blurEvent);
 //
-//                std::cerr << "UltraCanvasBaseApplication: Window " << previousFocusedWindow  << " (native=" << (int)previousFocusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
+//                debugOutput << "UltraCanvasBaseApplication: Window " << previousFocusedWindow  << " (native=" << (int)previousFocusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
 //            }
 //
 //            // Notify new window it gained focus
@@ -505,7 +509,7 @@ rescan_windows:
 //                //focusEvent.nativeWindowHandle = focusedWindow->GetXWindow();
 //                DispatchEventToElement(focusedWindow, focusEvent);
 //
-//                std::cerr << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << (int)focusedWindow->GetNativeHandle() << ") gained focus" << std::endl;
+//                debugOutput << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << (int)focusedWindow->GetNativeHandle() << ") gained focus" << std::endl;
 //            }
 //            return true;
 //        }

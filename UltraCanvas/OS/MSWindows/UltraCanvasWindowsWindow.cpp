@@ -8,6 +8,7 @@
 #include "../../include/UltraCanvasImage.h"
 #include "UltraCanvasWindowsApplication.h"
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -31,21 +32,21 @@ namespace UltraCanvas {
 
         auto* app = UltraCanvasWindowsApplication::GetInstance();
         if (!app || !app->IsInitialized()) {
-            std::cerr << "UltraCanvas Windows: Application not initialized" << std::endl;
+            debugOutput << "UltraCanvas Windows: Application not initialized" << std::endl;
             return false;
         }
 
-        std::cerr << "UltraCanvas Windows: Creating window..." << std::endl;
+        debugOutput << "UltraCanvas Windows: Creating window..." << std::endl;
 
         // STEP 1: Create HWND
         if (!CreateHWND()) {
-            std::cerr << "UltraCanvas Windows: Failed to create HWND" << std::endl;
+            debugOutput << "UltraCanvas Windows: Failed to create HWND" << std::endl;
             return false;
         }
 
         // STEP 2: Create Cairo surface from HWND's DC
         if (!CreateCairoSurface()) {
-            std::cerr << "UltraCanvas Windows: Failed to create Cairo surface" << std::endl;
+            debugOutput << "UltraCanvas Windows: Failed to create Cairo surface" << std::endl;
             DestroyWindow(hwnd);
             hwnd = nullptr;
             return false;
@@ -56,7 +57,7 @@ namespace UltraCanvas {
             renderContext = std::make_unique<RenderContextCairo>(
                 cairoSurface, config_.width, config_.height, true);
         } catch (const std::exception& e) {
-            std::cerr << "UltraCanvas Windows: Failed to create render context: "
+            debugOutput << "UltraCanvas Windows: Failed to create render context: "
                       << e.what() << std::endl;
             DestroyCairoSurface();
             DestroyWindow(hwnd);
@@ -72,7 +73,7 @@ namespace UltraCanvas {
             UCEvent event;
             event.type = UCEventType::Drop;
             event.targetWindow = this;
-            event.nativeWindowHandle = reinterpret_cast<uintptr_t>(hwnd);
+            event.nativeWindowHandle = hwnd;
             event.x = event.windowX = x;
             event.y = event.windowY = y;
             event.droppedFiles = paths;
@@ -90,7 +91,7 @@ namespace UltraCanvas {
             UCEvent event;
             event.type = UCEventType::DragEnter;
             event.targetWindow = this;
-            event.nativeWindowHandle = reinterpret_cast<uintptr_t>(hwnd);
+            event.nativeWindowHandle = hwnd;
             event.x = event.windowX = x;
             event.y = event.windowY = y;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
@@ -100,7 +101,7 @@ namespace UltraCanvas {
             UCEvent event;
             event.type = UCEventType::DragLeave;
             event.targetWindow = this;
-            event.nativeWindowHandle = reinterpret_cast<uintptr_t>(hwnd);
+            event.nativeWindowHandle = hwnd;
             event.x = event.windowX = x;
             event.y = event.windowY = y;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
@@ -110,7 +111,7 @@ namespace UltraCanvas {
             UCEvent event;
             event.type = UCEventType::DragOver;
             event.targetWindow = this;
-            event.nativeWindowHandle = reinterpret_cast<uintptr_t>(hwnd);
+            event.nativeWindowHandle = hwnd;
             event.x = event.windowX = x;
             event.y = event.windowY = y;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
@@ -128,7 +129,7 @@ namespace UltraCanvas {
         }
 
         _created = true;
-        std::cerr << "UltraCanvas Windows: Window created successfully (HWND="
+        debugOutput << "UltraCanvas Windows: Window created successfully (HWND="
                   << hwnd << ")" << std::endl;
         return true;
     }
@@ -198,14 +199,14 @@ namespace UltraCanvas {
         );
 
         if (!hwnd) {
-            std::cerr << "UltraCanvas Windows: CreateWindowExW failed: "
+            debugOutput << "UltraCanvas Windows: CreateWindowExW failed: "
                       << GetLastError() << std::endl;
             return false;
         }
 
         hdc = GetDC(hwnd);
         if (!hdc) {
-            std::cerr << "UltraCanvas Windows: GetDC failed" << std::endl;
+            debugOutput << "UltraCanvas Windows: GetDC failed" << std::endl;
             DestroyWindow(hwnd);
             hwnd = nullptr;
             return false;
@@ -225,20 +226,20 @@ namespace UltraCanvas {
         cairoSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24,
                                                    config_.width, config_.height);
         if (!cairoSurface) {
-            std::cerr << "UltraCanvas Windows: cairo_image_surface_create failed" << std::endl;
+            debugOutput << "UltraCanvas Windows: cairo_image_surface_create failed" << std::endl;
             return false;
         }
 
         cairo_status_t status = cairo_surface_status(cairoSurface);
         if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "UltraCanvas Windows: Cairo surface error: "
+            debugOutput << "UltraCanvas Windows: Cairo surface error: "
                       << cairo_status_to_string(status) << std::endl;
             cairo_surface_destroy(cairoSurface);
             cairoSurface = nullptr;
             return false;
         }
 
-        std::cerr << "UltraCanvas Windows: Cairo image surface created ("
+        debugOutput << "UltraCanvas Windows: Cairo image surface created ("
                   << config_.width << "x" << config_.height << ")" << std::endl;
         return true;
     }
@@ -250,8 +251,20 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasWindowsWindow::UpdateCairoSurface(int w, int h) {
+    void UltraCanvasWindowsWindow::HandleResizeEventWindows(int w, int h) {
+        HandleResizeEvent(w, h);
+        DoResize();
+        Render(GetRenderContext());
+        Flush();
+        ClearRequestRedraw();
+
+        debugOutput << "UltraCanvasWindowsWindow::HandleResizeEventWindows: nativeh=" << GetNativeHandle() << " updated successfully" << std::endl;
+    }
+
+    void UltraCanvasWindowsWindow::DoResizeNative() {
         std::lock_guard<std::mutex> lock(cairoMutex);
+        int w = config_.width;
+        int h = config_.height;
 
         if (cairoSurface) {
             cairo_surface_destroy(cairoSurface);
@@ -260,7 +273,7 @@ namespace UltraCanvas {
 
         cairoSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, w, h);
         if (!cairoSurface) {
-            std::cerr << "UltraCanvas Windows: Failed to recreate Cairo surface on resize" << std::endl;
+            debugOutput << "UltraCanvas Windows: Failed to recreate Cairo surface on resize" << std::endl;
             return;
         }
 
@@ -268,6 +281,8 @@ namespace UltraCanvas {
             renderContext->SetTargetSurface(cairoSurface, w, h);
             renderContext->ResizeStagingSurface(w, h);
         }
+
+        debugOutput << "UltraCanvasWindowsWindow::DoResizeNative: nativeh=" << GetNativeHandle() << " Cairo surface=" << cairoSurface << " updated successfully" << std::endl;
     }
 
     void UltraCanvasWindowsWindow::DestroyNative() {
@@ -307,7 +322,7 @@ namespace UltraCanvas {
         }
 
         _created = false;
-        std::cerr << "UltraCanvas Windows: Window destroyed" << std::endl;
+        debugOutput << "UltraCanvas Windows: Window destroyed" << std::endl;
     }
 
 // ===== WNDPROC MESSAGE HANDLER =====
@@ -326,11 +341,8 @@ namespace UltraCanvas {
             }
 
             case WM_SIZE: {
-                int w = LOWORD(lParam);
+                int w_new = LOWORD(lParam);
                 int h_new = HIWORD(lParam);
-                if (w > 0 && h_new > 0) {
-                    HandleResizeEvent(w, h_new);
-                }
                 // Track window state from SIZE message
                 if (wParam == SIZE_MINIMIZED)
                     _state = WindowState::Minimized;
@@ -338,6 +350,10 @@ namespace UltraCanvas {
                     _state = WindowState::Maximized;
                 else if (wParam == SIZE_RESTORED)
                     _state = WindowState::Normal;
+
+                if (w_new > 0 && h_new > 0) {
+                    HandleResizeEventWindows(w_new, h_new);
+                }
                 return 0;
             }
 
@@ -453,13 +469,13 @@ namespace UltraCanvas {
         // Load the icon image
         auto img = UCImageRaster::Load(iconPath, false);
         if (!img || !img->IsValid()) {
-            std::cerr << "UltraCanvas Windows: Failed to load icon: " << iconPath << std::endl;
+            debugOutput << "UltraCanvas Windows: Failed to load icon: " << iconPath << std::endl;
             return;
         }
 
         auto pixmap = img->GetPixmap();
         if (!pixmap || !pixmap->IsValid()) {
-            std::cerr << "UltraCanvas Windows: Failed to create pixmap for icon" << std::endl;
+            debugOutput << "UltraCanvas Windows: Failed to create pixmap for icon" << std::endl;
             return;
         }
 
@@ -536,7 +552,7 @@ namespace UltraCanvas {
             SendMessage(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(hIconSmall));
         }
 
-        std::cerr << "UltraCanvas Windows: Window icon set from: " << iconPath << std::endl;
+        debugOutput << "UltraCanvas Windows: Window icon set from: " << iconPath << std::endl;
     }
 
     void UltraCanvasWindowsWindow::SetWindowSize(int width, int height) {
@@ -553,6 +569,7 @@ namespace UltraCanvas {
             SetWindowPos(hwnd, nullptr, 0, 0,
                          rect.right - rect.left, rect.bottom - rect.top,
                          SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            debugOutput << "UltraCanvasWindowsWindow::SetWindowSize nativeh=" << GetNativeHandle() << " (" << width << "x" << height << ")" << std::endl;
         }
     }
 
@@ -588,6 +605,7 @@ namespace UltraCanvas {
         ShowWindow(hwnd, SW_MINIMIZE);
         _state = WindowState::Minimized;
         if (onWindowMinimize) onWindowMinimize();
+        debugOutput << "UltraCanvasWindowsWindow::Minimize nativeh=" << GetNativeHandle() << std::endl;
     }
 
     void UltraCanvasWindowsWindow::Maximize() {
@@ -595,6 +613,7 @@ namespace UltraCanvas {
         ShowWindow(hwnd, SW_MAXIMIZE);
         _state = WindowState::Maximized;
         if (onWindowMaximize) onWindowMaximize();
+        debugOutput << "UltraCanvasWindowsWindow::Maximize nativeh=" << GetNativeHandle() << std::endl;
     }
 
     void UltraCanvasWindowsWindow::Restore() {
@@ -602,6 +621,7 @@ namespace UltraCanvas {
         ShowWindow(hwnd, SW_RESTORE);
         _state = WindowState::Normal;
         if (onWindowRestore) onWindowRestore();
+        debugOutput << "UltraCanvasWindowsWindow::Restore nativeh=" << GetNativeHandle() << std::endl;
     }
 
     void UltraCanvasWindowsWindow::SetFullscreen(bool fullscreen) {
@@ -632,6 +652,7 @@ namespace UltraCanvas {
                          SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
             _state = WindowState::Fullscreen;
+            debugOutput << "UltraCanvasWindowsWindow::SetFullscreen(true) nativeh=" << GetNativeHandle() << std::endl;
         } else {
             // Restore saved window state
             SetWindowLongW(hwnd, GWL_STYLE, savedStyle);
@@ -640,7 +661,7 @@ namespace UltraCanvas {
             SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
                          SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                          SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-
+            debugOutput << "UltraCanvasWindowsWindow::SetFullscreen(false) nativeh=" << GetNativeHandle() << std::endl;
             _state = WindowState::Normal;
         }
     }
@@ -677,6 +698,7 @@ namespace UltraCanvas {
         SetDIBitsToDevice(targetDC, 0, 0, width, height,
                           0, 0, 0, height,
                           data, &bmi, DIB_RGB_COLORS);
+        //debugOutput << "UltraCanvasWindowsWindow::BlitSurfaceToHDC hativeh=" << GetNativeHandle() << " surface=" << cairoSurface << std::endl;
     }
 
     NativeWindowHandle UltraCanvasWindowsWindow::GetNativeHandle() const {
@@ -694,12 +716,4 @@ namespace UltraCanvas {
             y = config_.y;
         }
     }
-
-    void UltraCanvasWindowsWindow::HandleResizeEvent(int w, int h) {
-        if (config_.width != w || config_.height != h) {
-            UpdateCairoSurface(w, h);
-            UltraCanvasWindowBase::HandleResizeEvent(w, h);
-        }
-    }
-
 } // namespace UltraCanvas

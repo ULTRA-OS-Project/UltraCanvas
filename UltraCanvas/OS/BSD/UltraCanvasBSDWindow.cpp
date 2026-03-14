@@ -10,6 +10,7 @@
 #include "UltraCanvasApplication.h"
 #include <iostream>
 #include <cstring>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -20,11 +21,11 @@ UltraCanvasBSDWindow::UltraCanvasBSDWindow(const WindowConfig& config)
     , cairoSurface(nullptr)
     , cairoContext(nullptr) {
     
-    std::cerr << "UltraCanvas BSD: Window constructor completed successfully" << std::endl;
+    debugOutput << "UltraCanvas BSD: Window constructor completed successfully" << std::endl;
 }
 
 UltraCanvasBSDWindow::~UltraCanvasBSDWindow() {
-    std::cerr << "UltraCanvas BSD: Window destructor called" << std::endl;
+    debugOutput << "UltraCanvas BSD: Window destructor called" << std::endl;
     
     if (_created) {
         Close();
@@ -34,25 +35,25 @@ UltraCanvasBSDWindow::~UltraCanvasBSDWindow() {
 // ===== WINDOW CREATION =====
 bool UltraCanvasBSDWindow::CreateNative(const WindowConfig& config) {
     if (_created) {
-        std::cerr << "UltraCanvas BSD: Window already created" << std::endl;
+        debugOutput << "UltraCanvas BSD: Window already created" << std::endl;
         return true;
     }
     
     auto application = UltraCanvasApplication::GetInstance();
     if (!application || !application->IsInitialized()) {
-        std::cerr << "UltraCanvas BSD: Cannot create window - application not ready" << std::endl;
+        debugOutput << "UltraCanvas BSD: Cannot create window - application not ready" << std::endl;
         return false;
     }
     
-    std::cerr << "UltraCanvas BSD: Creating X11 window..." << std::endl;
+    debugOutput << "UltraCanvas BSD: Creating X11 window..." << std::endl;
     
     if (!CreateXWindow()) {
-        std::cerr << "UltraCanvas BSD: Failed to create X11 window" << std::endl;
+        debugOutput << "UltraCanvas BSD: Failed to create X11 window" << std::endl;
         return false;
     }
     
     if (!CreateCairoSurface()) {
-        std::cerr << "UltraCanvas BSD: Failed to create Cairo surface" << std::endl;
+        debugOutput << "UltraCanvas BSD: Failed to create Cairo surface" << std::endl;
         auto bsdApp = static_cast<UltraCanvasBSDApplication*>(application);
         XDestroyWindow(bsdApp->GetDisplay(), xWindow);
         xWindow = 0;
@@ -67,9 +68,9 @@ bool UltraCanvasBSDWindow::CreateNative(const WindowConfig& config) {
             config_.height, 
             true
         );
-        std::cerr << "UltraCanvas BSD: Render context created successfully" << std::endl;
+        debugOutput << "UltraCanvas BSD: Render context created successfully" << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "UltraCanvas BSD: Failed to create render context: " << e.what() << std::endl;
+        debugOutput << "UltraCanvas BSD: Failed to create render context: " << e.what() << std::endl;
         DestroyCairoSurface();
         auto bsdApp = static_cast<UltraCanvasBSDApplication*>(application);
         XDestroyWindow(bsdApp->GetDisplay(), xWindow);
@@ -79,14 +80,14 @@ bool UltraCanvasBSDWindow::CreateNative(const WindowConfig& config) {
     
     _created = true;
     
-    std::cerr << "UltraCanvas BSD: Window created successfully!" << std::endl;
+    debugOutput << "UltraCanvas BSD: Window created successfully!" << std::endl;
     return true;
 }
 
 bool UltraCanvasBSDWindow::CreateXWindow() {
     auto application = UltraCanvasApplication::GetInstance();
     if (!application) {
-        std::cerr << "UltraCanvas BSD: Invalid application" << std::endl;
+        debugOutput << "UltraCanvas BSD: Invalid application" << std::endl;
         return false;
     }
     
@@ -99,14 +100,14 @@ bool UltraCanvasBSDWindow::CreateXWindow() {
     
     // Validate resources
     if (!display || rootWindow == 0 || !visual) {
-        std::cerr << "UltraCanvas BSD: Invalid X11 resources" << std::endl;
+        debugOutput << "UltraCanvas BSD: Invalid X11 resources" << std::endl;
         return false;
     }
     
     // Validate dimensions
     if (config_.width <= 0 || config_.height <= 0 || 
         config_.width > 4096 || config_.height > 4096) {
-        std::cerr << "UltraCanvas BSD: Invalid window dimensions: "
+        debugOutput << "UltraCanvas BSD: Invalid window dimensions: "
                   << config_.width << "x" << config_.height << std::endl;
         return false;
     }
@@ -125,7 +126,7 @@ bool UltraCanvasBSDWindow::CreateXWindow() {
     
     unsigned long valueMask = CWBackPixel | CWBorderPixel | CWColormap | CWEventMask;
     
-    std::cerr << "UltraCanvas BSD: Creating X11 window with dimensions: "
+    debugOutput << "UltraCanvas BSD: Creating X11 window with dimensions: "
               << config_.width << "x" << config_.height
               << " at position: " << config_.x << "," << config_.y << std::endl;
     
@@ -143,7 +144,7 @@ bool UltraCanvasBSDWindow::CreateXWindow() {
     );
     
     if (xWindow == 0) {
-        std::cerr << "UltraCanvas BSD: XCreateWindow() failed" << std::endl;
+        debugOutput << "UltraCanvas BSD: XCreateWindow() failed" << std::endl;
         return false;
     }
     
@@ -174,7 +175,7 @@ bool UltraCanvasBSDWindow::CreateXWindow() {
     // Register window with application
     bsdApp->RegisterWindow(xWindow, this);
     
-    std::cerr << "UltraCanvas BSD: X11 window created successfully (ID: "
+    debugOutput << "UltraCanvas BSD: X11 window created successfully (ID: "
               << xWindow << ")" << std::endl;
     
     return true;
@@ -191,7 +192,7 @@ bool UltraCanvasBSDWindow::CreateCairoSurface() {
     Visual* visual = bsdApp->GetVisual();
     
     if (!display || !visual || xWindow == 0) {
-        std::cerr << "UltraCanvas BSD: Invalid parameters for Cairo surface" << std::endl;
+        debugOutput << "UltraCanvas BSD: Invalid parameters for Cairo surface" << std::endl;
         return false;
     }
     
@@ -205,7 +206,7 @@ bool UltraCanvasBSDWindow::CreateCairoSurface() {
     );
     
     if (!cairoSurface || cairo_surface_status(cairoSurface) != CAIRO_STATUS_SUCCESS) {
-        std::cerr << "UltraCanvas BSD: Failed to create Cairo surface" << std::endl;
+        debugOutput << "UltraCanvas BSD: Failed to create Cairo surface" << std::endl;
         if (cairoSurface) {
             cairo_surface_destroy(cairoSurface);
             cairoSurface = nullptr;
@@ -217,7 +218,7 @@ bool UltraCanvasBSDWindow::CreateCairoSurface() {
     cairoContext = cairo_create(cairoSurface);
     
     if (!cairoContext || cairo_status(cairoContext) != CAIRO_STATUS_SUCCESS) {
-        std::cerr << "UltraCanvas BSD: Failed to create Cairo context" << std::endl;
+        debugOutput << "UltraCanvas BSD: Failed to create Cairo context" << std::endl;
         if (cairoContext) {
             cairo_destroy(cairoContext);
             cairoContext = nullptr;
@@ -227,7 +228,7 @@ bool UltraCanvasBSDWindow::CreateCairoSurface() {
         return false;
     }
     
-    std::cerr << "UltraCanvas BSD: Cairo surface and context created successfully" << std::endl;
+    debugOutput << "UltraCanvas BSD: Cairo surface and context created successfully" << std::endl;
     return true;
 }
 
@@ -267,7 +268,7 @@ void UltraCanvasBSDWindow::Show() {
     XFlush(display);
     
     _visible = true;
-    std::cerr << "UltraCanvas BSD: Window shown" << std::endl;
+    debugOutput << "UltraCanvas BSD: Window shown" << std::endl;
 }
 
 void UltraCanvasBSDWindow::Hide() {
@@ -287,7 +288,7 @@ void UltraCanvasBSDWindow::Hide() {
     XFlush(display);
     
     _visible = false;
-    std::cerr << "UltraCanvas BSD: Window hidden" << std::endl;
+    debugOutput << "UltraCanvas BSD: Window hidden" << std::endl;
 }
 
 void UltraCanvasBSDWindow::Close() {
@@ -295,7 +296,7 @@ void UltraCanvasBSDWindow::Close() {
         return;
     }
     
-    std::cerr << "UltraCanvas BSD: Closing window..." << std::endl;
+    debugOutput << "UltraCanvas BSD: Closing window..." << std::endl;
     
     auto application = UltraCanvasApplication::GetInstance();
     if (application) {
@@ -316,7 +317,7 @@ void UltraCanvasBSDWindow::Close() {
     _created = false;
     _visible = false;
     
-    std::cerr << "UltraCanvas BSD: Window closed" << std::endl;
+    debugOutput << "UltraCanvas BSD: Window closed" << std::endl;
 }
 
 void UltraCanvasBSDWindow::Minimize() {
@@ -336,17 +337,17 @@ void UltraCanvasBSDWindow::Minimize() {
     XIconifyWindow(display, xWindow, screen);
     XFlush(display);
     
-    std::cerr << "UltraCanvas BSD: Window minimized" << std::endl;
+    debugOutput << "UltraCanvas BSD: Window minimized" << std::endl;
 }
 
 void UltraCanvasBSDWindow::Maximize() {
     // TODO: Implement maximize using _NET_WM_STATE
-    std::cerr << "UltraCanvas BSD: Maximize not yet implemented" << std::endl;
+    debugOutput << "UltraCanvas BSD: Maximize not yet implemented" << std::endl;
 }
 
 void UltraCanvasBSDWindow::Restore() {
     // TODO: Implement restore
-    std::cerr << "UltraCanvas BSD: Restore not yet implemented" << std::endl;
+    debugOutput << "UltraCanvas BSD: Restore not yet implemented" << std::endl;
 }
 
 void UltraCanvasBSDWindow::Focus() {
@@ -435,7 +436,7 @@ void UltraCanvasBSDWindow::SetSize(int width, int height) {
 
 void UltraCanvasBSDWindow::SetFullscreen(bool fullscreen) {
     // TODO: Implement fullscreen using _NET_WM_STATE_FULLSCREEN
-    std::cerr << "UltraCanvas BSD: Fullscreen not yet implemented" << std::endl;
+    debugOutput << "UltraCanvas BSD: Fullscreen not yet implemented" << std::endl;
 }
 
 // ===== RENDERING =====

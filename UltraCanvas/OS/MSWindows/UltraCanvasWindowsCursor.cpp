@@ -14,6 +14,7 @@
 #endif
 #include <windows.h>
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -114,7 +115,7 @@ namespace UltraCanvas {
             return true;
         }
 
-        std::cerr << "UltraCanvas Cursor: Failed to load cursor from '"
+        debugOutput << "UltraCanvas Cursor: Failed to load cursor from '"
                   << filename << "'" << std::endl;
         return SelectMouseCursorNative(win, cursor);
     }

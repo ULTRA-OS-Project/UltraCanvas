@@ -11,6 +11,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasCheckbox.h"
 #include <sstream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -592,7 +593,7 @@ namespace UltraCanvas {
 
         // Set up callbacks
         advancedTabs->onTabChange = [](int oldIndex, int newIndex) {
-            std::cerr << "Tab changed from " << oldIndex << " to " << newIndex << std::endl;
+            debugOutput << "Tab changed from " << oldIndex << " to " << newIndex << std::endl;
         };
 
         advancedTabs->SetActiveTab(0);

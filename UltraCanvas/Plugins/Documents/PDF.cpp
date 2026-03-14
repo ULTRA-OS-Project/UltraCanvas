@@ -26,6 +26,7 @@
 #ifdef ULTRACANVAS_MUPDF_SUPPORT
 #include <mupdf/fitz.h>
 #include <mupdf/pdf.h>
+#include "UltraCanvasDebug.h"
 #endif
 
 namespace UltraCanvas {
@@ -44,7 +45,7 @@ PopplerPDFEngine::~PopplerPDFEngine() {
 
 void PopplerPDFEngine::InitializePoppler() {
     // Poppler initialization (if needed)
-    std::cerr << "Initializing Poppler PDF Engine v" << poppler::version_string() << std::endl;
+    debugOutput << "Initializing Poppler PDF Engine v" << poppler::version_string() << std::endl;
 }
 
 void PopplerPDFEngine::CleanupPoppler() {
@@ -60,20 +61,20 @@ bool PopplerPDFEngine::LoadDocument(const std::string& filePath, const std::stri
         // Load document using Poppler
         auto popplerDoc = poppler::document::load_from_file(filePath, password);
         if (!popplerDoc) {
-            std::cerr << "Failed to load PDF document: " << filePath << std::endl;
+            debugOutput << "Failed to load PDF document: " << filePath << std::endl;
             return false;
         }
         
         document = popplerDoc.release();
         documentPath = filePath;
         
-        std::cerr << "Successfully loaded PDF: " << filePath << " ("
+        debugOutput << "Successfully loaded PDF: " << filePath << " ("
                   << GetPageCount() << " pages)" << std::endl;
         
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "Exception loading PDF: " << e.what() << std::endl;
+        debugOutput << "Exception loading PDF: " << e.what() << std::endl;
         return false;
     }
 }
@@ -91,20 +92,20 @@ bool PopplerPDFEngine::LoadDocumentFromMemory(const std::vector<uint8_t>& data, 
             password);
             
         if (!popplerDoc) {
-            std::cerr << "Failed to load PDF from memory buffer" << std::endl;
+            debugOutput << "Failed to load PDF from memory buffer" << std::endl;
             return false;
         }
         
         document = popplerDoc.release();
         documentPath = "<memory>";
         
-        std::cerr << "Successfully loaded PDF from memory ("
+        debugOutput << "Successfully loaded PDF from memory ("
                   << GetPageCount() << " pages)" << std::endl;
         
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "Exception loading PDF from memory: " << e.what() << std::endl;
+        debugOutput << "Exception loading PDF from memory: " << e.what() << std::endl;
         return false;
     }
 }
@@ -307,7 +308,7 @@ std::vector<uint8_t> PopplerPDFEngine::RenderPageInternal(int pageNumber, float 
         return pngData;
         
     } catch (const std::exception& e) {
-        std::cerr << "Exception rendering page " << pageNumber << ": " << e.what() << std::endl;
+        debugOutput << "Exception rendering page " << pageNumber << ": " << e.what() << std::endl;
         return {};
     }
 }
@@ -347,7 +348,7 @@ std::vector<std::string> PopplerPDFEngine::ExtractTextFromPage(int pageNumber) {
         delete page;
         
     } catch (const std::exception& e) {
-        std::cerr << "Exception extracting text from page " << pageNumber << ": " << e.what() << std::endl;
+        debugOutput << "Exception extracting text from page " << pageNumber << ": " << e.what() << std::endl;
     }
     
     return textLines;
@@ -376,7 +377,7 @@ std::vector<Rect2D> PopplerPDFEngine::SearchTextInPage(int pageNumber, const std
         delete page;
         
     } catch (const std::exception& e) {
-        std::cerr << "Exception searching text in page " << pageNumber << ": " << e.what() << std::endl;
+        debugOutput << "Exception searching text in page " << pageNumber << ": " << e.what() << std::endl;
     }
     
     return results;
@@ -400,7 +401,7 @@ std::string PopplerPDFEngine::GetPageText(int pageNumber) {
         return text;
         
     } catch (const std::exception& e) {
-        std::cerr << "Exception getting page text " << pageNumber << ": " << e.what() << std::endl;
+        debugOutput << "Exception getting page text " << pageNumber << ": " << e.what() << std::endl;
         return "";
     }
 }
@@ -482,9 +483,9 @@ MuPDFEngine::~MuPDFEngine() {
 void MuPDFEngine::InitializeMuPDF() {
     context = fz_new_context(nullptr, nullptr, FZ_STORE_UNLIMITED);
     if (!context) {
-        std::cerr << "Failed to initialize MuPDF context" << std::endl;
+        debugOutput << "Failed to initialize MuPDF context" << std::endl;
     } else {
-        std::cerr << "Initialized MuPDF Engine" << std::endl;
+        debugOutput << "Initialized MuPDF Engine" << std::endl;
     }
 }
 
@@ -507,14 +508,14 @@ bool MuPDFEngine::LoadDocument(const std::string& filePath, const std::string& p
         auto doc = fz_open_document(ctx, filePath.c_str());
         
         if (!doc) {
-            std::cerr << "Failed to load PDF document: " << filePath << std::endl;
+            debugOutput << "Failed to load PDF document: " << filePath << std::endl;
             return false;
         }
         
         // Authenticate if password provided
         if (!password.empty()) {
             if (!fz_authenticate_password(ctx, doc, password.c_str())) {
-                std::cerr << "Invalid password for PDF document" << std::endl;
+                debugOutput << "Invalid password for PDF document" << std::endl;
                 fz_drop_document(ctx, doc);
                 return false;
             }
@@ -523,13 +524,13 @@ bool MuPDFEngine::LoadDocument(const std::string& filePath, const std::string& p
         document = doc;
         documentPath = filePath;
         
-        std::cerr << "Successfully loaded PDF: " << filePath << " ("
+        debugOutput << "Successfully loaded PDF: " << filePath << " ("
                   << GetPageCount() << " pages)" << std::endl;
         
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "Exception loading PDF: " << e.what() << std::endl;
+        debugOutput << "Exception loading PDF: " << e.what() << std::endl;
         return false;
     }
 }
@@ -547,7 +548,7 @@ bool MuPDFEngine::LoadDocumentFromMemory(const std::vector<uint8_t>& data, const
         auto doc = fz_open_document_with_stream(ctx, "pdf", stream);
         
         if (!doc) {
-            std::cerr << "Failed to load PDF from memory buffer" << std::endl;
+            debugOutput << "Failed to load PDF from memory buffer" << std::endl;
             fz_drop_stream(ctx, stream);
             return false;
         }
@@ -555,7 +556,7 @@ bool MuPDFEngine::LoadDocumentFromMemory(const std::vector<uint8_t>& data, const
         // Authenticate if password provided
         if (!password.empty()) {
             if (!fz_authenticate_password(ctx, doc, password.c_str())) {
-                std::cerr << "Invalid password for PDF document" << std::endl;
+                debugOutput << "Invalid password for PDF document" << std::endl;
                 fz_drop_document(ctx, doc);
                 fz_drop_stream(ctx, stream);
                 return false;
@@ -565,13 +566,13 @@ bool MuPDFEngine::LoadDocumentFromMemory(const std::vector<uint8_t>& data, const
         document = doc;
         documentPath = "<memory>";
         
-        std::cerr << "Successfully loaded PDF from memory ("
+        debugOutput << "Successfully loaded PDF from memory ("
                   << GetPageCount() << " pages)" << std::endl;
         
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "Exception loading PDF from memory: " << e.what() << std::endl;
+        debugOutput << "Exception loading PDF from memory: " << e.what() << std::endl;
         return false;
     }
 }
@@ -751,14 +752,14 @@ bool UltraCanvasPDFPlugin::LoadFromMemory(const std::vector<uint8_t>& data, Imag
 
 bool UltraCanvasPDFPlugin::SaveToFile(const std::string& filePath, const ImageData& imageData, int quality) {
     // PDF plugin is read-only
-    std::cerr << "PDF Plugin: Save operation not supported (read-only plugin)" << std::endl;
+    debugOutput << "PDF Plugin: Save operation not supported (read-only plugin)" << std::endl;
     return false;
 }
 
 bool UltraCanvasPDFPlugin::SaveToMemory(std::vector<uint8_t>& data, const ImageData& imageData, 
                                        const std::string& format, int quality) {
     // PDF plugin is read-only
-    std::cerr << "PDF Plugin: Save operation not supported (read-only plugin)" << std::endl;
+    debugOutput << "PDF Plugin: Save operation not supported (read-only plugin)" << std::endl;
     return false;
 }
 
@@ -783,13 +784,13 @@ std::shared_ptr<IPDFEngine> UltraCanvasPDFPlugin::CreateDefaultEngine() {
         if (std::find(engines.begin(), engines.end(), engineType) != engines.end()) {
             auto engine = PDFEngineFactory::CreateEngine(engineType);
             if (engine) {
-                std::cerr << "Using " << engine->GetEngineName() << " v" << engine->GetEngineVersion() << std::endl;
+                debugOutput << "Using " << engine->GetEngineName() << " v" << engine->GetEngineVersion() << std::endl;
                 return engine;
             }
         }
     }
     
-    std::cerr << "No PDF engine available" << std::endl;
+    debugOutput << "No PDF engine available" << std::endl;
     return nullptr;
 }
 
@@ -853,7 +854,7 @@ std::shared_ptr<IPDFEngine> PDFEngineFactory::CreateEngine(EngineType type) {
 #ifdef ULTRACANVAS_POPPLER_SUPPORT
             return std::make_shared<PopplerPDFEngine>();
 #else
-            std::cerr << "Poppler engine not available (not compiled with ULTRACANVAS_POPPLER_SUPPORT)" << std::endl;
+            debugOutput << "Poppler engine not available (not compiled with ULTRACANVAS_POPPLER_SUPPORT)" << std::endl;
             return nullptr;
 #endif
             
@@ -861,13 +862,13 @@ std::shared_ptr<IPDFEngine> PDFEngineFactory::CreateEngine(EngineType type) {
 #ifdef ULTRACANVAS_MUPDF_SUPPORT
             return std::make_shared<MuPDFEngine>();
 #else
-            std::cerr << "MuPDF engine not available (not compiled with ULTRACANVAS_MUPDF_SUPPORT)" << std::endl;
+            debugOutput << "MuPDF engine not available (not compiled with ULTRACANVAS_MUPDF_SUPPORT)" << std::endl;
             return nullptr;
 #endif
             
         case EngineType::System:
             // Would use system PDF APIs (e.g., PDFKit on macOS, etc.)
-            std::cerr << "System PDF engine not implemented" << std::endl;
+            debugOutput << "System PDF engine not implemented" << std::endl;
             return nullptr;
             
         default:

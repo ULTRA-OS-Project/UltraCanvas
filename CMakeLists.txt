@@ -397,6 +397,19 @@ if (BUILD_FILEMANAGER_APP)
     )
 endif()
 
+# Hide console window on Windows Release builds
+if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    if(BUILD_DEMO_APP)
+        set_target_properties(UltraCanvasDemo PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
+    if(BUILD_TEXTER_APP)
+        set_target_properties(UltraCanvasTexter PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
+    if(BUILD_FILEMANAGER_APP)
+        set_target_properties(UCFileManager PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
+endif()
+
 add_custom_target(copy_assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/media ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/media
 )

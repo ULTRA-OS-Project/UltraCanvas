@@ -10,6 +10,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cstring>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -25,7 +26,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasLinuxDragDrop::Initialize(Display* disp, Window win) {
         if (!disp || win == 0) {
-            std::cerr << "UltraCanvas XDnD: Invalid display or window" << std::endl;
+            debugOutput << "UltraCanvas XDnD: Invalid display or window" << std::endl;
             return false;
         }
 
@@ -59,7 +60,7 @@ namespace UltraCanvas {
                         PropModeReplace,
                         reinterpret_cast<unsigned char*>(&xdndVersion), 1);
 
-        std::cerr << "UltraCanvas XDnD: Drag-and-drop initialized for window "
+        debugOutput << "UltraCanvas XDnD: Drag-and-drop initialized for window "
                   << window << std::endl;
         return true;
     }
@@ -156,7 +157,7 @@ namespace UltraCanvas {
         // Check if source offers a file type we support
         acceptDrop = SupportsFileType(sourceTypes);
 
-        std::cerr << "UltraCanvas XDnD: DragEnter from window " << dragSourceWindow
+        debugOutput << "UltraCanvas XDnD: DragEnter from window " << dragSourceWindow
                   << " — " << sourceTypes.size() << " types offered, "
                   << (acceptDrop ? "accepting" : "rejecting") << std::endl;
 
@@ -189,7 +190,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxDragDrop::HandleXdndLeave(const XClientMessageEvent& cm) {
-        std::cerr << "UltraCanvas XDnD: DragLeave" << std::endl;
+        debugOutput << "UltraCanvas XDnD: DragLeave" << std::endl;
 
         isDragActive = false;
         dragSourceWindow = None;
@@ -219,7 +220,7 @@ namespace UltraCanvas {
     void UltraCanvasLinuxDragDrop::HandleSelectionNotify(const XSelectionEvent& sel) {
         if (sel.property == None) {
             // Selection conversion failed
-            std::cerr << "UltraCanvas XDnD: Selection conversion failed" << std::endl;
+            debugOutput << "UltraCanvas XDnD: Selection conversion failed" << std::endl;
             SendXdndFinished(dragSourceWindow, false);
             isDragActive = false;
             dragSourceWindow = None;
@@ -257,10 +258,10 @@ namespace UltraCanvas {
             // Parse the URI list into individual file paths
             std::vector<std::string> filePaths = ParseUriList(uriList);
 
-            std::cerr << "UltraCanvas XDnD: Dropped " << filePaths.size()
+            debugOutput << "UltraCanvas XDnD: Dropped " << filePaths.size()
                       << " file(s)" << std::endl;
             for (const auto& path : filePaths) {
-                std::cerr << "  → " << path << std::endl;
+                debugOutput << "  → " << path << std::endl;
             }
 
             // Notify via callback
@@ -271,7 +272,7 @@ namespace UltraCanvas {
             SendXdndFinished(dragSourceWindow, true);
         } else {
             if (data) XFree(data);
-            std::cerr << "UltraCanvas XDnD: Failed to read selection data"
+            debugOutput << "UltraCanvas XDnD: Failed to read selection data"
                       << " (result=" << result
                       << ", itemCount=" << itemCount << ")" << std::endl;
             SendXdndFinished(dragSourceWindow, false);

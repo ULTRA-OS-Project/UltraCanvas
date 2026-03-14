@@ -181,6 +181,17 @@ endif()
 
 if(WIN32)
     target_link_libraries(UltraTexter PRIVATE iconv)
+
+    target_sources(UltraTexter PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraTexter.rc
+    )
+    # Make sure the manifest file is found relative to the .rc file
+    # (windres/rc.exe resolves paths from the .rc file's directory)
+    set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraTexter.rc
+        PROPERTIES
+            COMPILE_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}"
+    )
 endif()
 
 # Link against plugin libraries if available

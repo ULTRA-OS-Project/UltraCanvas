@@ -12,6 +12,7 @@
 #include <memory>
 #include <fstream>
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -199,7 +200,7 @@ namespace UltraCanvas {
 //        loadState = ImageLoadState::Failed;
         loadedImage = std::make_shared<UCImage>(); // Reset
 
-        std::cerr << "[UltraCanvasImageElement] Error: " << message << std::endl;
+        debugOutput << "[UltraCanvasImageElement] Error: " << message << std::endl;
 
         if (onImageLoadFailed) {
             onImageLoadFailed(message);

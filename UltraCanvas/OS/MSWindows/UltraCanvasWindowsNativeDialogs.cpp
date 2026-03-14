@@ -19,6 +19,8 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <iostream>
+#include <fstream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -213,7 +215,7 @@ namespace UltraCanvas {
         HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL,
             IID_PPV_ARGS(&pDialog));
         if (FAILED(hr)) {
-            std::cerr << "UltraCanvas NativeDialogs: Failed to create FileOpenDialog" << std::endl;
+            debugOutput << "UltraCanvas NativeDialogs: Failed to create FileOpenDialog" << std::endl;
             return "";
         }
 
@@ -278,7 +280,7 @@ namespace UltraCanvas {
         HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL,
             IID_PPV_ARGS(&pDialog));
         if (FAILED(hr)) {
-            std::cerr << "UltraCanvas NativeDialogs: Failed to create FileOpenDialog" << std::endl;
+            debugOutput << "UltraCanvas NativeDialogs: Failed to create FileOpenDialog" << std::endl;
             return results;
         }
 
@@ -354,7 +356,7 @@ namespace UltraCanvas {
         HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_ALL,
             IID_PPV_ARGS(&pDialog));
         if (FAILED(hr)) {
-            std::cerr << "UltraCanvas NativeDialogs: Failed to create FileSaveDialog" << std::endl;
+            debugOutput << "UltraCanvas NativeDialogs: Failed to create FileSaveDialog" << std::endl;
             return "";
         }
 
@@ -412,7 +414,7 @@ namespace UltraCanvas {
         HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_ALL,
             IID_PPV_ARGS(&pDialog));
         if (FAILED(hr)) {
-            std::cerr << "UltraCanvas NativeDialogs: Failed to create FileOpenDialog" << std::endl;
+            debugOutput << "UltraCanvas NativeDialogs: Failed to create FileOpenDialog" << std::endl;
             return "";
         }
 

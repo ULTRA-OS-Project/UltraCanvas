@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <sstream>
 #include <regex>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -1935,7 +1936,7 @@ namespace UltraCanvas {
         }
 
         if (!success) {
-            std::cerr << "[UltraCanvasCDRPlugin] Failed to parse file: " << filePath << std::endl;
+            debugOutput << "[UltraCanvasCDRPlugin] Failed to parse file: " << filePath << std::endl;
             return nullptr;
         }
 
@@ -1961,7 +1962,7 @@ namespace UltraCanvas {
         }
 
         if (!success) {
-            std::cerr << "[UltraCanvasCDRPlugin] Failed to parse CDR data from memory" << std::endl;
+            debugOutput << "[UltraCanvasCDRPlugin] Failed to parse CDR data from memory" << std::endl;
             return nullptr;
         }
 

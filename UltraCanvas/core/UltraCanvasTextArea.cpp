@@ -53,7 +53,7 @@ namespace UltraCanvas {
 
 // Initialize default style
     void UltraCanvasTextArea::ApplyDefaultStyle() {
-        style.fontStyle.fontFamily = "DejaVu Sans Mono";
+        style.fontStyle.fontFamily = "Sans";
         style.fontStyle.fontSize = 11;
         style.fontColor = {0, 0, 0, 255};
         style.lineHeight = 1.1;
@@ -1281,7 +1281,7 @@ namespace UltraCanvas {
             // Only show line number on the first display line of each logical line
             if (dl.startGrapheme == 0) {
                 context->DrawTextInRect(std::to_string(dl.logicalLine + 1),
-                                        bounds.x, numY, computedLineNumbersWidth, computedLineHeight);
+                                        bounds.x, numY, computedLineNumbersWidth - 4, computedLineHeight);
             }
         }
         context->PopState();
@@ -2890,7 +2890,7 @@ namespace UltraCanvas {
         ctx->PopState();
 
         // Add padding: left margin + right margin before the separator line
-        int padding = 12; // 4px left + 8px right
+        int padding = 8; // 4px left + 4px right
         return textWidth + padding;
     }
 

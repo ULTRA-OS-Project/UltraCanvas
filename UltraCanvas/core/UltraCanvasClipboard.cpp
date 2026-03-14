@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasDebug.h"
 #include <algorithm>
 #include <iostream>
 #include <sstream>
@@ -17,6 +18,7 @@
 #include "../OS/MSWindows/UltraCanvasWindowsClipboard.h"
 #elif __APPLE__
 #include "../OS/MacOS/UltraCanvasMacOSClipboard.h"
+#include "UltraCanvasDebug.h"
 #endif
 
 namespace UltraCanvas {
@@ -92,12 +94,12 @@ bool UltraCanvasClipboard::Initialize() {
 #elif __APPLE__
     backend = std::make_unique<UltraCanvasMacOSClipboard>();
 #else
-    std::cerr << "UltraCanvas: Clipboard not supported on this platform" << std::endl;
+    debugOutput << "UltraCanvas: Clipboard not supported on this platform" << std::endl;
     return false;
 #endif
 
     if (!backend || !backend->Initialize()) {
-        std::cerr << "UltraCanvas: Failed to initialize clipboard backend" << std::endl;
+        debugOutput << "UltraCanvas: Failed to initialize clipboard backend" << std::endl;
         return false;
     }
 
@@ -109,7 +111,7 @@ bool UltraCanvasClipboard::Initialize() {
         AddEntry(entry);
     }
 
-    std::cerr << "UltraCanvas: Clipboard initialized successfully" << std::endl;
+    debugOutput << "UltraCanvas: Clipboard initialized successfully" << std::endl;
     return true;
 }
 
@@ -122,7 +124,7 @@ void UltraCanvasClipboard::Shutdown() {
     }
     
     entries.clear();
-    std::cerr << "UltraCanvas: Clipboard shut down" << std::endl;
+    debugOutput << "UltraCanvas: Clipboard shut down" << std::endl;
 }
 
 // ===== CLIPBOARD OPERATIONS =====
@@ -206,12 +208,12 @@ void UltraCanvasClipboard::StartMonitoring() {
         lastClipboardContent = currentText;
     }
     
-    std::cerr << "UltraCanvas: Clipboard monitoring started" << std::endl;
+    debugOutput << "UltraCanvas: Clipboard monitoring started" << std::endl;
 }
 
 void UltraCanvasClipboard::StopMonitoring() {
     monitoringEnabled = false;
-    std::cerr << "UltraCanvas: Clipboard monitoring stopped" << std::endl;
+    debugOutput << "UltraCanvas: Clipboard monitoring stopped" << std::endl;
 }
 
 void UltraCanvasClipboard::Update() {
@@ -238,7 +240,7 @@ void UltraCanvasClipboard::CheckForChanges() {
 void UltraCanvasClipboard::ProcessNewClipboardContent() {
     std::string currentText;
     if (GetText(currentText) && currentText != lastClipboardContent && !currentText.empty()) {
-        std::cerr << "UltraCanvas: Clipboard changed: " << currentText.substr(0, 50) << "..." << std::endl;
+        debugOutput << "UltraCanvas: Clipboard changed: " << currentText.substr(0, 50) << "..." << std::endl;
 
         ClipboardData newEntry = CreateEntryFromCurrentClipboard();
         AddEntry(newEntry);

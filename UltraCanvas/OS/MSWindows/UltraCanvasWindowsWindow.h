@@ -103,12 +103,13 @@ namespace UltraCanvas {
         bool CreateHWND();
         bool CreateCairoSurface();
         void DestroyCairoSurface();
-        void UpdateCairoSurface(int w, int h);
         void BlitSurfaceToHDC(HDC targetDC);
         void SetWindowStyle();
 
+        void HandleResizeEventWindows(int w, int h);
+
     protected:
-        void HandleResizeEvent(int w, int h) override;
+        void DoResizeNative() override;
     };
 
 } // namespace UltraCanvas

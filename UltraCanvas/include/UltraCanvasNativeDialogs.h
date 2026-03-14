@@ -48,7 +48,7 @@ namespace UltraCanvas {
         std::string prompt = "Enter value:";
         std::string defaultValue;
         bool password = false;
-        void* parentWindow = nullptr;  // Parent window for modal behavior
+        UltraCanvasWindowBase* parentWindow = nullptr;  // Parent window for modal behavior
 
         NativeInputDialogOptions() = default;
 
@@ -56,7 +56,7 @@ namespace UltraCanvas {
         NativeInputDialogOptions& SetPrompt(const std::string& p) { prompt = p; return *this; }
         NativeInputDialogOptions& SetDefaultValue(const std::string& val) { defaultValue = val; return *this; }
         NativeInputDialogOptions& SetPassword(bool pwd) { password = pwd; return *this; }
-        NativeInputDialogOptions& SetParentWindow(void* parent) { parentWindow = parent; return *this; }
+        NativeInputDialogOptions& SetParentWindow(UltraCanvasWindowBase* parent) { parentWindow = parent; return *this; }
     };
 
 // ===== NATIVE INPUT RESULT =====

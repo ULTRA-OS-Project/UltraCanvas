@@ -11,6 +11,7 @@
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <iostream>
 #include <sstream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     DemoLegendContainer::DemoLegendContainer(const std::string& identifier, long id, long x, long y, long width, long height)
@@ -165,7 +166,7 @@ namespace UltraCanvas {
 
         std::ifstream file(filePath);
         if (!file.is_open()) {
-            std::cerr << "Failed to open file: " << filePath << std::endl;
+            debugOutput << "Failed to open file: " << filePath << std::endl;
             return "// Error: Could not load file: " + filePath;
         }
 
@@ -210,7 +211,7 @@ namespace UltraCanvas {
 
         sourceWindow = CreateWindow(config);
         if (!sourceWindow->IsCreated()) {
-            std::cerr << "Failed to create source window" << std::endl;
+            debugOutput << "Failed to create source window" << std::endl;
             return;
         }
 
@@ -254,7 +255,7 @@ namespace UltraCanvas {
 
         docWindow = CreateWindow(config);
         if (!docWindow->IsCreated()) {
-            std::cerr << "Failed to create documentation window" << std::endl;
+            debugOutput << "Failed to create documentation window" << std::endl;
             return;
         }
         // Create text area for documentation
@@ -286,7 +287,7 @@ namespace UltraCanvas {
 
 // ===== INITIALIZATION =====
     bool UltraCanvasDemoApplication::Initialize() {
-        std::cerr << "Initializing UltraCanvas Demo Application..." << std::endl;
+        debugOutput << "Initializing UltraCanvas Demo Application..." << std::endl;
 
         // Create main window using proper configuration
         WindowConfig config;
@@ -298,12 +299,12 @@ namespace UltraCanvas {
         config.deleteOnClose = true;
 
         mainWindow = CreateWindow(config);
-        std::cerr << "Creating Main window.." << std::endl;
+        debugOutput << "Creating Main window.." << std::endl;
         if (!mainWindow->IsCreated()) {
-            std::cerr << "Failed to create main window" << std::endl;
+            debugOutput << "Failed to create main window" << std::endl;
             return false;
         }
-        std::cerr << "Main window created" << std::endl;
+        debugOutput << "Main window created" << std::endl;
         // Calculate positions for adjusted layout
         const int treeViewHeight = 740;  // Reduced from 840 to make room for legend
         const int legendHeight = 95;     // Height for legend container
@@ -318,7 +319,7 @@ namespace UltraCanvas {
         categoryTreeView->SetAutoExpandSelectedNode(true);
         categoryTreeView->SetPadding(1,3,1,3);
 
-        std::cerr << "categoryTreeView created" << std::endl;
+        debugOutput << "categoryTreeView created" << std::endl;
 
         // Create legend container below tree view
         legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 6, 0, 0, 100, legendHeight);
@@ -396,7 +397,7 @@ namespace UltraCanvas {
         mainLayout->AddUIElement(mainContainer, 0, 1)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
         mainLayout->AddUIElement(statusLabel, 1, 0, 1, 2)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
 
-        std::cerr << "✓ Demo application initialized successfully" << std::endl;
+        debugOutput << "✓ Demo application initialized successfully" << std::endl;
         return true;
     }
 
@@ -414,7 +415,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDemoApplication::RegisterAllDemoItems() {
-        std::cerr << "Registering demo items..." << std::endl;
+        debugOutput << "Registering demo items..." << std::endl;
 
         // ===== BASIC UI ELEMENTS =====
         auto basicBuilder = DemoCategoryBuilder(this, DemoCategory::BasicUI);
@@ -1005,7 +1006,7 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Photo/Video viewer"); });
 
-        std::cerr << "✓ Registered " << demoItems.size() << " demo items across "
+        debugOutput << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
     }
 
@@ -1099,7 +1100,7 @@ namespace UltraCanvas {
                 }
                 currentSelectedId = itemId;
             } catch (const std::exception& e) {
-                std::cerr << "Error creating example for " << itemId << ": " << e.what() << std::endl;
+                debugOutput << "Error creating example for " << itemId << ": " << e.what() << std::endl;
             }
         } else {
             // Show placeholder for not implemented items
@@ -1194,8 +1195,8 @@ namespace UltraCanvas {
 // ===== APPLICATION LIFECYCLE =====
     void UltraCanvasDemoApplication::Run() {
         // Run application main loop
-        std::cerr << "Running UltraCanvas Demo Application..." << std::endl;
-        std::cerr << "Select items from the tree view to see implementation examples." << std::endl;
+        debugOutput << "Running UltraCanvas Demo Application..." << std::endl;
+        debugOutput << "Select items from the tree view to see implementation examples." << std::endl;
 
         if (mainWindow) {
             mainWindow->Show();
@@ -1210,7 +1211,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDemoApplication::Shutdown() {
-        std::cerr << "Shutting down Demo Application..." << std::endl;
+        debugOutput << "Shutting down Demo Application..." << std::endl;
 
         ClearDisplay();
         demoItems.clear();

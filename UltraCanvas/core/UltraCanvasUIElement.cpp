@@ -6,6 +6,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     // new here
@@ -213,7 +214,7 @@ namespace UltraCanvas {
         // If trying to set focus, delegate to window's focus management
         if (focus) {
             if (!window) {
-                std::cerr << "Warning: Element " << GetIdentifier() << " has no window assigned" << std::endl;
+                debugOutput << "Warning: Element " << GetIdentifier() << " has no window assigned" << std::endl;
                 return false;
             }
 

@@ -14,6 +14,7 @@
 #include <memory>
 #include <functional>
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -154,7 +155,7 @@ public:
             return false;
         }
         
-        std::cerr << "[UltraCanvas3DModelElement] Loading 3D model: " << filePath << std::endl;
+        debugOutput << "[UltraCanvas3DModelElement] Loading 3D model: " << filePath << std::endl;
         
         // Load model data based on format
         bool success = LoadModelData(filePath, modelFormat);
@@ -174,7 +175,7 @@ public:
                 onModelLoaded();
             }
             
-            std::cerr << "[UltraCanvas3DModelElement] Model loaded successfully. Vertices: "
+            debugOutput << "[UltraCanvas3DModelElement] Model loaded successfully. Vertices: "
                       << modelData.vertexCount << ", Faces: " << modelData.faceCount << std::endl;
         } else {
             SetError("Failed to load 3D model data");
@@ -416,7 +417,7 @@ private:
         isLoaded = false;
         errorMessage = message;
         
-        std::cerr << "[UltraCanvas3DModelElement] Error: " << message << std::endl;
+        debugOutput << "[UltraCanvas3DModelElement] Error: " << message << std::endl;
         
         if (onModelLoadFailed) {
             onModelLoadFailed(message);

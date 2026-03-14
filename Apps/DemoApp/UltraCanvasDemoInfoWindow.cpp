@@ -7,6 +7,7 @@
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasBoxLayout.h"
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -20,7 +21,7 @@ namespace UltraCanvas {
     }
 
     bool InfoWindow::Initialize() {
-        std::cerr << "Initializing Info Window..." << std::endl;
+        debugOutput << "Initializing Info Window..." << std::endl;
 
         // Configure the info window
         WindowConfig config;
@@ -34,7 +35,7 @@ namespace UltraCanvas {
 
         Create(config);
         if (!_created) {
-            std::cerr << "Failed to create info window" << std::endl;
+            debugOutput << "Failed to create info window" << std::endl;
             return false;
         }
 
@@ -202,7 +203,7 @@ namespace UltraCanvas {
     }
 
     void InfoWindow::OnOkButtonClick() {
-        std::cerr << "OK button clicked - closing info window" << std::endl;
+        debugOutput << "OK button clicked - closing info window" << std::endl;
 
         // Call the callback if set
         if (onOkCallback) {
@@ -220,13 +221,13 @@ namespace UltraCanvas {
             return; // Already shown
         }
 
-        std::cerr << "Showing application info window..." << std::endl;
+        debugOutput << "Showing application info window..." << std::endl;
 
         // Create the info window
         infoWindow = std::make_shared<InfoWindow>();
 
         if (!infoWindow->Initialize()) {
-            std::cerr << "Failed to initialize info window" << std::endl;
+            debugOutput << "Failed to initialize info window" << std::endl;
             return;
         }
 
@@ -246,7 +247,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDemoApplication::CloseInfoWindow() {
-        std::cerr << "Closing info window..." << std::endl;
+        debugOutput << "Closing info window..." << std::endl;
 
         if (infoWindow) {
             infoWindow->RequestDelete();

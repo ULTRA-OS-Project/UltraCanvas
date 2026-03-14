@@ -8,6 +8,7 @@
 #include "UltraCanvasWASMApplication.h"
 #include <iostream>
 #include <emscripten.h>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -20,18 +21,18 @@ UltraCanvasWASMWindow::UltraCanvasWASMWindow()
     , lastMouseX(0)
     , lastMouseY(0)
 {
-    std::cerr << "[WASM Window] Created" << std::endl;
+    debugOutput << "[WASM Window] Created" << std::endl;
 }
 
 UltraCanvasWASMWindow::~UltraCanvasWASMWindow() {
-    std::cerr << "[WASM Window] Destroyed" << std::endl;
+    debugOutput << "[WASM Window] Destroyed" << std::endl;
     DestroyNative();
 }
 
 // ===== WINDOW CREATION =====
 
 bool UltraCanvasWASMWindow::CreateNative(const WindowConfig& config) {
-    std::cerr << "[WASM Window] Creating window: " << config.title
+    debugOutput << "[WASM Window] Creating window: " << config.title
               << " (" << config.width << "x" << config.height << ")" << std::endl;
     
     // Store configuration
@@ -44,14 +45,14 @@ bool UltraCanvasWASMWindow::CreateNative(const WindowConfig& config) {
     
     // Create or find canvas element
     if (!CreateCanvas()) {
-        std::cerr << "[WASM Window] ERROR: Failed to create canvas" << std::endl;
+        debugOutput << "[WASM Window] ERROR: Failed to create canvas" << std::endl;
         return false;
     }
     
     // Create render context
     wasmRenderContext = std::make_unique<UltraCanvasWASMRenderContext>(canvasId);
     if (!wasmRenderContext->Initialize()) {
-        std::cerr << "[WASM Window] ERROR: Failed to initialize render context" << std::endl;
+        debugOutput << "[WASM Window] ERROR: Failed to initialize render context" << std::endl;
         return false;
     }
     
@@ -85,7 +86,7 @@ bool UltraCanvasWASMWindow::CreateNative(const WindowConfig& config) {
     emscripten_set_blur_callback(target, this, true, OnFocusEvent);
     
     _created = true;
-    std::cerr << "[WASM Window] Window created successfully" << std::endl;
+    debugOutput << "[WASM Window] Window created successfully" << std::endl;
     
     return true;
 }
@@ -95,7 +96,7 @@ void UltraCanvasWASMWindow::DestroyNative() {
         return;
     }
     
-    std::cerr << "[WASM Window] Destroying window" << std::endl;
+    debugOutput << "[WASM Window] Destroying window" << std::endl;
     
     // Unregister event callbacks
     const char* target = ("#" + canvasId).c_str();
@@ -131,13 +132,13 @@ bool UltraCanvasWASMWindow::CreateCanvas() {
     }, canvasId.c_str());
     
     if (exists) {
-        std::cerr << "[WASM Window] Using existing canvas: " << canvasId << std::endl;
+        debugOutput << "[WASM Window] Using existing canvas: " << canvasId << std::endl;
         canvasCreated = false; // We didn't create it
         return true;
     }
     
     // Create new canvas element
-    std::cerr << "[WASM Window] Creating new canvas: " << canvasId << std::endl;
+    debugOutput << "[WASM Window] Creating new canvas: " << canvasId << std::endl;
     
     EM_ASM({
         const canvas = document.createElement('canvas');
@@ -153,7 +154,7 @@ bool UltraCanvasWASMWindow::CreateCanvas() {
 
 void UltraCanvasWASMWindow::DestroyCanvas() {
     if (canvasCreated) {
-        std::cerr << "[WASM Window] Destroying canvas: " << canvasId << std::endl;
+        debugOutput << "[WASM Window] Destroying canvas: " << canvasId << std::endl;
         
         EM_ASM({
             const canvas = document.getElementById(UTF8ToString($0));
@@ -180,7 +181,7 @@ void UltraCanvasWASMWindow::UpdateCanvasSize() {
         }
     }, canvasId.c_str(), width, height);
     
-    std::cerr << "[WASM Window] Canvas size updated: " << width << "x" << height << std::endl;
+    debugOutput << "[WASM Window] Canvas size updated: " << width << "x" << height << std::endl;
 }
 
 // ===== WINDOW OPERATIONS =====
@@ -213,7 +214,7 @@ void UltraCanvasWASMWindow::Hide() {
 
 void UltraCanvasWASMWindow::Minimize() {
     // Not applicable in web context
-    std::cerr << "[WASM Window] Minimize not supported in web context" << std::endl;
+    debugOutput << "[WASM Window] Minimize not supported in web context" << std::endl;
 }
 
 void UltraCanvasWASMWindow::Maximize() {
@@ -236,7 +237,7 @@ void UltraCanvasWASMWindow::Restore() {
 }
 
 void UltraCanvasWASMWindow::Close() {
-    std::cerr << "[WASM Window] Closing window" << std::endl;
+    debugOutput << "[WASM Window] Closing window" << std::endl;
     
     // Generate close event
     UCEvent closeEvent;
@@ -336,7 +337,7 @@ IRenderContext* UltraCanvasWASMWindow::GetRenderContext() {
 
 void UltraCanvasWASMWindow::SetCanvasId(const std::string& id) {
     if (_created) {
-        std::cerr << "[WASM Window] Cannot change canvas ID after window creation" << std::endl;
+        debugOutput << "[WASM Window] Cannot change canvas ID after window creation" << std::endl;
         return;
     }
     canvasId = id;

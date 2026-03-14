@@ -14,6 +14,7 @@
 
 #include <iostream>
 #include <algorithm>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     UltraCanvasWindowBase::UltraCanvasWindowBase()
@@ -25,7 +26,7 @@ namespace UltraCanvas {
 
 //    UltraCanvasWindowBase::~UltraCanvasWindowBase() {
 //        UnregisterWindow();
-//        std::cerr << "UltraCanvas: Window deleted" << std::endl;
+//        debugOutput << "UltraCanvas: Window deleted" << std::endl;
 //    }
 
     // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
@@ -38,7 +39,7 @@ namespace UltraCanvas {
 
         // Validate element belongs to this window
         if (element && element->GetWindow() != this) {
-            std::cerr << "Warning: Trying to focus element from different window" << std::endl;
+            debugOutput << "Warning: Trying to focus element from different window" << std::endl;
             return;
         }
 
@@ -58,7 +59,7 @@ namespace UltraCanvas {
         // Request window redraw to update focus indicators
         _needsRedraw = true;
 
-        std::cerr << "Focus changed to: " << (element ? element->GetIdentifier() : "none") << std::endl;
+        debugOutput << "Focus changed to: " << (element ? element->GetIdentifier() : "none") << std::endl;
     }
 
     void UltraCanvasWindowBase::ClearFocus() {
@@ -244,8 +245,23 @@ namespace UltraCanvas {
     void UltraCanvasWindowBase::HandleResizeEvent(int width, int height) {
         config_.width = width;
         config_.height = height;
-        SetOriginalSize(width, height);
-        if (onWindowResize) onWindowResize(width, height);
+        _needsResize = true;
+        debugOutput << "UltraCanvasWindowBase::HandleResizeEvent nativeh=" << GetNativeHandle() << " (" << config_.width << "x" << config_.height << ")" << std::endl;
+    }
+
+    void UltraCanvasWindowBase::DoResize() {
+        _needsResize = false;
+        if (GetWidth() == config_.width && GetHeight() == config_.height) {
+            debugOutput << "UltraCanvasWindowBase::DoResize windows already has same size, return. nativeh=" << GetNativeHandle() << " (" << config_.width << "x" << config_.height << ")" << std::endl;
+            return;
+        }
+        debugOutput << "UltraCanvasWindowBase::DoResize nativeh=" << GetNativeHandle() << " (" << config_.width << "x" << config_.height << ")" << std::endl;
+        DoResizeNative();
+        SetOriginalSize(config_.width, config_.height);
+
+        if (onWindowResize) onWindowResize(config_.width, config_.height);
+
+        _needsRedraw = true;
     }
 
     void UltraCanvasWindowBase::HandleMoveEvent(int x, int y) {
@@ -409,7 +425,7 @@ namespace UltraCanvas {
 
         _state = WindowState::Closing;
 
-        std::cerr << "UltraCanvas: Window close requested" << std::endl;
+        debugOutput << "UltraCanvas: Window close requested" << std::endl;
 
         if (onWindowClose) {
             onWindowClose();
@@ -451,11 +467,11 @@ namespace UltraCanvas {
 //        UltraCanvasZOrderManager::SortElementsByZOrder(sortedElements);
 //        zOrderDirty = false;
 //
-//        std::cerr << "Window z-order updated with " << sortedElements.size() << " elements:" << std::endl;
+//        debugOutput << "Window z-order updated with " << sortedElements.size() << " elements:" << std::endl;
 //        for (size_t i = 0; i < sortedElements.size(); i++) {
 //            auto* element = sortedElements[i];
 //            if (element) {
-//                std::cerr << "  [" << i << "] Z=" << element->GetZIndex()
+//                debugOutput << "  [" << i << "] Z=" << element->GetZIndex()
 //                          << " " << element->GetIdentifier() << std::endl;
 //            }
 //        }

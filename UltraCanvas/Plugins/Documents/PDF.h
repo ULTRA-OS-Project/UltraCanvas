@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <functional>
 #include <mutex>
+#include "UltraCanvasDebug.h"
 
 #ifdef ULTRACANVAS_PDF_SUPPORT
 
@@ -345,12 +346,12 @@ public:
 namespace UltraCanvas {
 
 inline std::shared_ptr<IGraphicsPlugin> CreatePDFPlugin() {
-    std::cerr << "PDF Plugin: Not compiled with PDF support" << std::endl;
+    debugOutput << "PDF Plugin: Not compiled with PDF support" << std::endl;
     return nullptr;
 }
 
 inline void RegisterPDFPlugin() {
-    std::cerr << "PDF Plugin: Cannot register - not compiled with PDF support" << std::endl;
+    debugOutput << "PDF Plugin: Cannot register - not compiled with PDF support" << std::endl;
 }
 
 } // namespace UltraCanvas
@@ -410,12 +411,12 @@ UltraCanvas::RegisterPDFPlugin();
 UltraCanvas::ImageData pageImage;
 auto plugin = UltraCanvas::CreatePDFPlugin();
 if (plugin->LoadPage("document.pdf", 1, pageImage)) {
-    std::cerr << "Loaded page 1: " << pageImage.width << "x" << pageImage.height << std::endl;
+    debugOutput << "Loaded page 1: " << pageImage.width << "x" << pageImage.height << std::endl;
 }
 
 // Get document info
 auto docInfo = plugin->GetDocumentInfo("document.pdf");
-std::cerr << "Document: " << docInfo.title << " (" << docInfo.pageCount << " pages)" << std::endl;
+debugOutput << "Document: " << docInfo.title << " (" << docInfo.pageCount << " pages)" << std::endl;
 
 // Load thumbnail
 UltraCanvas::ImageData thumbnail;

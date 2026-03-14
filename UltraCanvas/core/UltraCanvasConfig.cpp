@@ -10,13 +10,14 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     std::string resourcesDir;
     std::string GetResourcesDir() {
         if (resourcesDir.empty()) {
             resourcesDir = GetExecutableDir() + "/" + UC_DEFAULT_RESOURCES_DIR;
-            std::cerr << "GetResourcesDir dir=" << resourcesDir << std::endl;
+            debugOutput << "GetResourcesDir dir=" << resourcesDir << std::endl;
         }
         return resourcesDir;
     }

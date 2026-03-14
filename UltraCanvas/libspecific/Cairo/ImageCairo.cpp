@@ -19,6 +19,7 @@
 #include <iostream>
 #include <unordered_map>
 #include <fmt/os.h>
+#include "UltraCanvasDebug.h"
 
 #define HAS_PIXMAPS_CACHE 1
 
@@ -36,7 +37,7 @@ namespace UltraCanvas {
     UCPixmapCairo::UCPixmapCairo(cairo_surface_t *surf) {
         surface = surf;
         if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "UCPixmapCairo: Invalid surface" << std::endl;
+            debugOutput << "UCPixmapCairo: Invalid surface" << std::endl;
             return;
         }
         pixelsPtr = (uint32_t *)cairo_image_surface_get_data(surface);
@@ -68,7 +69,7 @@ namespace UltraCanvas {
         }
         surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
         if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "UCPixmapCairo: Cant create surface" << std::endl;
+            debugOutput << "UCPixmapCairo: Cant create surface" << std::endl;
             return false;
         }
         pixelsPtr = (uint32_t *)cairo_image_surface_get_data(surface);
@@ -187,7 +188,7 @@ namespace UltraCanvas {
                 free(imgDataPtr);
                 imgDataPtr = nullptr;
             }
-            std::cerr << "UCImage::Load: Failed Failed to load image to memory " << imagePath << " Err:" << err.what() << std::endl;
+            debugOutput << "UCImage::Load: Failed Failed to load image to memory " << imagePath << " Err:" << err.what() << std::endl;
             errorMessage = std::string("Failed to load image ") + imagePath + " Err:" + err.what();
         }
         return imgDataPtr != nullptr;
@@ -204,7 +205,7 @@ namespace UltraCanvas {
                 result->LoadFileToMemory(imagePath);
             }
         } catch (vips::VError& err) {
-            std::cerr << "UCImage::Load: Failed Failed to load image for " << imagePath << " Err:" << err.what() << std::endl;
+            debugOutput << "UCImage::Load: Failed Failed to load image for " << imagePath << " Err:" << err.what() << std::endl;
             result->errorMessage = std::string("Failed to load image ") + imagePath + " Err:" + err.what();
         }
 
@@ -239,7 +240,7 @@ namespace UltraCanvas {
             result->width = vipsImage.width();
             result->height = vipsImage.height();
         } catch (vips::VError& err) {
-            std::cerr << "UCImageVips::LoadFromMemory: Failed to load image from buffer. Err:" << err.what() << std::endl;
+            debugOutput << "UCImageVips::LoadFromMemory: Failed to load image from buffer. Err:" << err.what() << std::endl;
             result->errorMessage = std::string("Failed to load image from memory buffer. Err:") + err.what();
         }
 
@@ -327,7 +328,7 @@ namespace UltraCanvas {
                 return CreatePixmapFromVImage(vips::VImage::thumbnail(fileName.c_str(), w, options));
             }
         } catch (vips::VError& err) {
-            std::cerr << "UCImage::CreatePixmap: Failed to make pixmap for " << fileName << " Err:" << err.what() << std::endl;
+            debugOutput << "UCImage::CreatePixmap: Failed to make pixmap for " << fileName << " Err:" << err.what() << std::endl;
             errorMessage = std::string("Failed to make pixmap Err:") + err.what();
         }
         return nullptr;
@@ -449,7 +450,7 @@ namespace UltraCanvas {
         try {
             vImg = GetVImage();
         } catch (vips::VError& err) {
-            std::cerr << "UCImageRaster::Save: Failed to load image. Err:" << err.what() << std::endl;
+            debugOutput << "UCImageRaster::Save: Failed to load image. Err:" << err.what() << std::endl;
             return err.what();
         }
         return ExportVImage(vImg, imagePath, opts);
@@ -604,12 +605,12 @@ namespace UltraCanvas {
                 }
 
                 default:
-                    std::cerr << "UCImageRaster::Save: Failed save image: " << imagePath
+                    debugOutput << "UCImageRaster::Save: Failed save image: " << imagePath
                               << " Err: Unsupported format (" << static_cast<int>(opts.format) << ")" << std::endl;
                     return fmt::format("Unsupported format ({})", static_cast<int>(opts.format));
             }
         } catch (vips::VError& err) {
-            std::cerr << "UCImageRaster::Save: Failed save image: " << imagePath << " Err:" << err.what() << std::endl;
+            debugOutput << "UCImageRaster::Save: Failed save image: " << imagePath << " Err:" << err.what() << std::endl;
             return err.what();
         }
         return "";

@@ -12,6 +12,7 @@
 #include <memory>
 #include <functional>
 #include <algorithm>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -727,15 +728,15 @@ horizontalSplit->SetAnimation(true, 0.3f);
 
 // Set up callbacks
 horizontalSplit->onSplitRatioChanged = [](float ratio) {
-    std::cerr << "Split ratio changed to: " << ratio << std::endl;
+    debugOutput << "Split ratio changed to: " << ratio << std::endl;
 };
 
 horizontalSplit->onPaneCollapsed = [](bool leftCollapsed, bool rightCollapsed) {
-    std::cerr << "Pane collapsed - Left: " << leftCollapsed << ", Right: " << rightCollapsed << std::endl;
+    debugOutput << "Pane collapsed - Left: " << leftCollapsed << ", Right: " << rightCollapsed << std::endl;
 };
 
 horizontalSplit->onSplitterDoubleClicked = []() {
-    std::cerr << "Splitter double-clicked - resetting to center" << std::endl;
+    debugOutput << "Splitter double-clicked - resetting to center" << std::endl;
 };
 
 // Create a vertical split pane

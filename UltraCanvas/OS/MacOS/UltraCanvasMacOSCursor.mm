@@ -16,6 +16,7 @@
 #include <iostream>
 #include <vector>
 #include <cstring>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -93,7 +94,7 @@ namespace UltraCanvas {
             // Create new cursor
             return CreateNSCursorFromImage(img, hotspotX, hotspotY);
         } catch (const vips::VError& e) {
-            std::cerr << "UltraCanvas MacOS: error loading cursor image " << filename << ": " << e.what() << std::endl;
+            debugOutput << "UltraCanvas MacOS: error loading cursor image " << filename << ": " << e.what() << std::endl;
         }
         return 0;
     }
@@ -219,7 +220,7 @@ namespace UltraCanvas {
         [newCursor set];
 
 
-        std::cerr << "UltraCanvas MacOS: Custom cursor loaded from " << filename
+        debugOutput << "UltraCanvas MacOS: Custom cursor loaded from " << filename
                   << " (hotspot: " << hotspotX << "," << hotspotY << ")" << std::endl;
         return true;
     }
@@ -245,7 +246,7 @@ namespace UltraCanvas {
 //            g_CustomCursorActive = true;
 //            [g_CustomCursor set];
 //
-//            std::cerr << "UltraCanvas macOS: Custom cursor loaded from " << filename
+//            debugOutput << "UltraCanvas macOS: Custom cursor loaded from " << filename
 //                      << " (hotspot: " << hotspotX << "," << hotspotY << ")" << std::endl;
 //            return true;
 //        }

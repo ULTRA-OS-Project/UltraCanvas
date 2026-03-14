@@ -10,6 +10,7 @@
 #include "UltraCanvasContainer.h"
 #include <sstream>
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -313,17 +314,17 @@ namespace UltraCanvas {
         }));
 
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("📂 Open...", "Ctrl+O", []() {
-              std::cerr << "Open file" << std::endl;
+              debugOutput << "Open file" << std::endl;
         }));
 
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("💾 Save", "Ctrl+S", []() {
-              std::cerr << "Save file" << std::endl;
+              debugOutput << "Save file" << std::endl;
         }));
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("💾 Save As...", "Ctrl+Shift+S", []() {
-              std::cerr << "Save as" << std::endl;
+              debugOutput << "Save as" << std::endl;
           }));
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("🚪 Exit", "Alt+F4", []() {
-            std::cerr << "Exit application" << std::endl;
+            debugOutput << "Exit application" << std::endl;
         }));
 
 

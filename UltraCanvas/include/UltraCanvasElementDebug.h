@@ -12,6 +12,7 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -119,7 +120,7 @@ namespace UltraCanvas {
             std::string debugText = GenerateDebugText(element, settings, ctx);
 
             if (!debugText.empty()) {
-                std::cerr << debugText << std::endl;
+                debugOutput << debugText << std::endl;
                 DrawDebugText(debugText, bounds, absolutePos, settings,ctx);
             }
             ctx->PopState();

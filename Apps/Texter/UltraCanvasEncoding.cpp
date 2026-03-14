@@ -8,6 +8,7 @@
 #include <cstring>
 #include <iostream>
 #include <algorithm>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -342,7 +343,7 @@ bool ConvertToUtf8(const std::vector<uint8_t>& rawBytes,
 
     iconv_t cd = iconv_open("UTF-8", sourceEncoding.c_str());
     if (cd == reinterpret_cast<iconv_t>(-1)) {
-        std::cerr << "iconv_open failed for " << sourceEncoding
+        debugOutput << "iconv_open failed for " << sourceEncoding
                   << " -> UTF-8: " << strerror(errno) << std::endl;
         return false;
     }
@@ -362,12 +363,12 @@ bool ConvertToUtf8(const std::vector<uint8_t>& rawBytes,
     if (result == static_cast<size_t>(-1)) {
         if (errno == E2BIG) {
             // Output buffer too small — shouldn't happen with 4x allocation
-            std::cerr << "iconv: output buffer too small" << std::endl;
+            debugOutput << "iconv: output buffer too small" << std::endl;
         } else if (errno == EILSEQ) {
-            std::cerr << "iconv: invalid byte sequence in input for encoding "
+            debugOutput << "iconv: invalid byte sequence in input for encoding "
                       << sourceEncoding << std::endl;
         } else if (errno == EINVAL) {
-            std::cerr << "iconv: incomplete byte sequence at end of input" << std::endl;
+            debugOutput << "iconv: incomplete byte sequence at end of input" << std::endl;
         }
         // Even on error, use whatever was converted so far
         size_t converted = outBufSize - outBytesLeft;
@@ -402,7 +403,7 @@ bool ConvertFromUtf8(const std::string& utf8Text,
         // Try without TRANSLIT
         cd = iconv_open(targetEncoding.c_str(), "UTF-8");
         if (cd == reinterpret_cast<iconv_t>(-1)) {
-            std::cerr << "iconv_open failed for UTF-8 -> " << targetEncoding
+            debugOutput << "iconv_open failed for UTF-8 -> " << targetEncoding
                       << ": " << strerror(errno) << std::endl;
             return false;
         }
@@ -423,7 +424,7 @@ bool ConvertFromUtf8(const std::string& utf8Text,
 
     if (result == static_cast<size_t>(-1) && errno != E2BIG) {
         if (errno == EILSEQ) {
-            std::cerr << "iconv: character cannot be represented in "
+            debugOutput << "iconv: character cannot be represented in "
                       << targetEncoding << std::endl;
         }
         // Use partial conversion

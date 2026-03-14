@@ -96,7 +96,6 @@ namespace UltraCanvas {
         void DestroyXIC();
         bool CreateCairoSurface();
         void DestroyCairoSurface();
-        void UpdateCairoSurface(int w, int h);
         void SetWindowHints();
 //        void SetWindowDecorations();
 
@@ -106,7 +105,7 @@ namespace UltraCanvas {
 //        void SaveWindowGeometry();
 //        void RestoreWindowGeometry();
     protected:
-        void HandleResizeEvent(int w, int h) override;
+        void DoResizeNative() override;
     };
 
 } // namespace UltraCanvas

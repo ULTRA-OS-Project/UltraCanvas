@@ -72,9 +72,11 @@ namespace UltraCanvas {
         bool _created = false;
         bool _focused = false;
         bool _needsRedraw = true;
+        bool _needsResize = false;
 
         virtual bool CreateNative() = 0;
         virtual void DestroyNative() = 0;
+        virtual void DoResizeNative() = 0;
 
         std::vector<UltraCanvasUIElement *> activePopups;
         std::unordered_set<UltraCanvasUIElement *> popupsToRemove;
@@ -168,14 +170,16 @@ namespace UltraCanvas {
 
         /// Get the actual screen position of the window (queries the platform)
         virtual void GetScreenPosition(int& x, int& y) const {
-            x = config_.x;
-            y = config_.y;
+            x = config_.x + x;
+            y = config_.y + y;
         }
 
         void GetWindowSize(int& w, int& h) const {
             w = config_.width;
             h = config_.height;
         }
+
+        void DoResize();
 
         bool IsCreated() const { return _created; }
         bool IsMinimized() const { return _state == WindowState::Minimized; }
@@ -192,6 +196,8 @@ namespace UltraCanvas {
         virtual void RenderCustomContent(IRenderContext* ctx) {}
 
         bool IsNeedsRedraw() const { return _needsRedraw; }
+        bool IsNeedsResize() const { return _needsResize; }
+
         void RequestRedraw() { _needsRedraw = true; }
         void ClearRequestRedraw() { _needsRedraw = false; }
 
@@ -235,11 +241,11 @@ namespace UltraCanvas {
         std::string GetElementTypeName(UltraCanvasUIElement* element);
 
     protected:
-        virtual bool HandleWindowEvent(const UCEvent &event);
+        bool HandleWindowEvent(const UCEvent &event);
 //        virtual void HandleCloseEvent();
-        virtual void HandleResizeEvent(int width, int height);
-        virtual void HandleMoveEvent(int x, int y);
-        virtual void HandleFocusEvent(bool focused);
+        void HandleResizeEvent(int width, int height);
+        void HandleMoveEvent(int x, int y);
+        void HandleFocusEvent(bool focused);
 
         // ===== PROTECTED HELPER METHODS =====
         virtual void RenderWindowBackground(IRenderContext* ctx) {

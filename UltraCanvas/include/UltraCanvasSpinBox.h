@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -753,7 +754,7 @@ spinBox->SetValue(50);
 
 // Set up callbacks
 spinBox->onValueChanged = [](int newValue) {
-    std::cerr << "Value changed to: " << newValue << std::endl;
+    debugOutput << "Value changed to: " << newValue << std::endl;
 };
 
 // Create a spin box with custom appearance

@@ -12,6 +12,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -182,11 +183,11 @@ strengthMeter->SetConfig(config);
 
 // Callbacks
 strengthMeter->onStrengthChanged = [](float strength) {
-    std::cerr << "Strength: " << strength << "%" << std::endl;
+    debugOutput << "Strength: " << strength << "%" << std::endl;
 };
 
 strengthMeter->onStrengthLevelChanged = [](const std::string& level) {
-    std::cerr << "Level: " << level << std::endl;
+    debugOutput << "Level: " << level << std::endl;
 };
 
 window->AddElement(passwordInput.get());

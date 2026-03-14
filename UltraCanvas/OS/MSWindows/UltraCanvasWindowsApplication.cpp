@@ -9,6 +9,7 @@
 #include "UltraCanvasWindowsApplication.h"
 #include <iostream>
 #include <algorithm>
+#include "UltraCanvasDebug.h"
 
 // Link against IME library
 #pragma comment(lib, "imm32.lib")
@@ -23,30 +24,30 @@ namespace UltraCanvas {
             : hInstance(nullptr)
             , windowClassAtom(0) {
         instance = this;
-        std::cerr << "UltraCanvas: Windows Application created" << std::endl;
+        debugOutput << "UltraCanvas: Windows Application created" << std::endl;
     }
 
 // ===== INITIALIZATION =====
     bool UltraCanvasWindowsApplication::InitializeNative() {
         if (initialized) {
-            std::cerr << "UltraCanvas: Already initialized" << std::endl;
+            debugOutput << "UltraCanvas: Already initialized" << std::endl;
             return true;
         }
 
-        std::cerr << "UltraCanvas: Initializing Windows Application..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing Windows Application..." << std::endl;
 
         try {
             // STEP 1: Get module handle
             hInstance = GetModuleHandle(nullptr);
             if (!hInstance) {
-                std::cerr << "UltraCanvas: GetModuleHandle failed" << std::endl;
+                debugOutput << "UltraCanvas: GetModuleHandle failed" << std::endl;
                 return false;
             }
 
             // STEP 2: Initialize COM/OLE for drag-drop and file dialogs
             HRESULT hr = OleInitialize(nullptr);
             if (FAILED(hr)) {
-                std::cerr << "UltraCanvas: OleInitialize failed: 0x" << std::hex << hr << std::endl;
+                debugOutput << "UltraCanvas: OleInitialize failed: 0x" << std::hex << hr << std::endl;
                 return false;
             }
 
@@ -67,7 +68,7 @@ namespace UltraCanvas {
 
             // STEP 4: Register window class
             if (!RegisterWindowClass()) {
-                std::cerr << "UltraCanvas: Failed to register window class" << std::endl;
+                debugOutput << "UltraCanvas: Failed to register window class" << std::endl;
                 OleUninitialize();
                 return false;
             }
@@ -76,11 +77,11 @@ namespace UltraCanvas {
             initialized = true;
             running = false;
 
-            std::cerr << "UltraCanvas: Windows Application initialized successfully" << std::endl;
+            debugOutput << "UltraCanvas: Windows Application initialized successfully" << std::endl;
             return true;
 
         } catch (const std::exception& e) {
-            std::cerr << "UltraCanvas: Exception during initialization: " << e.what() << std::endl;
+            debugOutput << "UltraCanvas: Exception during initialization: " << e.what() << std::endl;
             ShutdownNative();
             return false;
         }
@@ -102,7 +103,7 @@ namespace UltraCanvas {
         OleUninitialize();
 
         hInstance = nullptr;
-        std::cerr << "UltraCanvas: Windows Application shut down" << std::endl;
+        debugOutput << "UltraCanvas: Windows Application shut down" << std::endl;
     }
 
     bool UltraCanvasWindowsApplication::RegisterWindowClass() {
@@ -122,11 +123,11 @@ namespace UltraCanvas {
 
         windowClassAtom = RegisterClassExW(&wc);
         if (!windowClassAtom) {
-            std::cerr << "UltraCanvas: RegisterClassExW failed: " << GetLastError() << std::endl;
+            debugOutput << "UltraCanvas: RegisterClassExW failed: " << GetLastError() << std::endl;
             return false;
         }
 
-        std::cerr << "UltraCanvas: Window class registered" << std::endl;
+        debugOutput << "UltraCanvas: Window class registered" << std::endl;
         return true;
     }
 
@@ -190,11 +191,11 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowsApplication::CaptureMouseNative() {
         if (!focusedWindow) {
-            std::cerr << "UltraCanvas: Cannot capture mouse - no focused window" << std::endl;
+            debugOutput << "UltraCanvas: Cannot capture mouse - no focused window" << std::endl;
             return;
         }
 
-        HWND hwnd = reinterpret_cast<HWND>(focusedWindow->GetNativeHandle());
+        HWND hwnd = focusedWindow->GetNativeHandle();
         if (hwnd) {
             SetCapture(hwnd);
         }
@@ -211,11 +212,8 @@ namespace UltraCanvas {
 
         UCEvent event;
         event.timestamp = std::chrono::steady_clock::now();
-        event.nativeWindowHandle = reinterpret_cast<uintptr_t>(hwnd);
-
-        auto* targetWindow = static_cast<UltraCanvasWindowsWindow*>(
-            FindWindow(reinterpret_cast<uintptr_t>(hwnd)));
-        event.targetWindow = static_cast<void*>(targetWindow);
+        event.nativeWindowHandle = hwnd;
+        event.targetWindow = FindWindow(hwnd);
 
         // Common modifier state helper
         auto fillModifiers = [&event]() {
@@ -471,17 +469,17 @@ namespace UltraCanvas {
             }
 
             // ===== WINDOW EVENTS =====
-            case WM_SIZE: {
-                int w = LOWORD(lParam);
-                int h = HIWORD(lParam);
-                if (w > 0 && h > 0) {
-                    event.type = UCEventType::WindowResize;
-                    event.width = w;
-                    event.height = h;
-                    PushEvent(event);
-                }
-                return;
-            }
+//            case WM_SIZE: {
+//                int w = LOWORD(lParam);
+//                int h = HIWORD(lParam);
+//                if (w > 0 && h > 0) {
+//                    event.type = UCEventType::WindowResize;
+//                    event.width = w;
+//                    event.height = h;
+//                    PushEvent(event);
+//                }
+//                return;
+//            }
 
             case WM_PAINT: {
                 event.type = UCEventType::WindowRepaint;
@@ -496,14 +494,14 @@ namespace UltraCanvas {
             }
 
             case WM_SETFOCUS: {
-                std::cerr << "focus hwnd=" << hwnd << std::endl;
+                debugOutput << "focus hwnd=" << hwnd << std::endl;
                 event.type = UCEventType::WindowFocus;
                 PushEvent(event);
                 return;
             }
 
             case WM_KILLFOCUS: {
-                std::cerr << "blur hwnd=" << hwnd << std::endl;
+                debugOutput << "blur hwnd=" << hwnd << std::endl;
                 event.type = UCEventType::WindowBlur;
                 PushEvent(event);
                 return;

@@ -11,11 +11,12 @@
 #include <sstream>
 #include <random>
 #include <map>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuExamples() {
-        std::cerr << "Creating Menu Examples..." << std::endl;
+        debugOutput << "Creating Menu Examples..." << std::endl;
 
         // Create container for menu examples
         auto container = std::make_shared<UltraCanvasContainer>("MenuContainer", 100, 0, 0, 1000, 630);
@@ -41,15 +42,15 @@ namespace UltraCanvas {
 
         // Add context menu items
         contextMenu->AddItem(MenuItemData::ActionWithShortcut("📋 Copy", "Ctrl+C", []() {
-            std::cerr << "Copy action triggered" << std::endl;
+            debugOutput << "Copy action triggered" << std::endl;
         }));
 
         contextMenu->AddItem(MenuItemData::ActionWithShortcut("✂️ Cut", "Ctrl+X", []() {
-            std::cerr << "Cut action triggered" << std::endl;
+            debugOutput << "Cut action triggered" << std::endl;
         }));
 
         contextMenu->AddItem(MenuItemData::ActionWithShortcut("📌 Paste", "Ctrl+V", []() {
-            std::cerr << "Paste action triggered" << std::endl;
+            debugOutput << "Paste action triggered" << std::endl;
         }));
 
         contextMenu->AddItem(MenuItemData::Separator());
@@ -58,16 +59,16 @@ namespace UltraCanvas {
         MenuItemData formatItem("🎨 Format");
         formatItem.type = MenuItemType::Submenu;
         formatItem.subItems = {
-                MenuItemData::ActionWithShortcut("Bold", "Ctrl+B", []() { std::cerr << "Bold" << std::endl; }),
-                MenuItemData::ActionWithShortcut("Italic", "Ctrl+I", []() { std::cerr << "Italic" << std::endl; }),
-                MenuItemData::ActionWithShortcut("Underline", "Ctrl+U", []() { std::cerr << "Underline" << std::endl; })
+                MenuItemData::ActionWithShortcut("Bold", "Ctrl+B", []() { debugOutput << "Bold" << std::endl; }),
+                MenuItemData::ActionWithShortcut("Italic", "Ctrl+I", []() { debugOutput << "Italic" << std::endl; }),
+                MenuItemData::ActionWithShortcut("Underline", "Ctrl+U", []() { debugOutput << "Underline" << std::endl; })
         };
         contextMenu->AddItem(formatItem);
 
         contextMenu->AddItem(MenuItemData::Separator());
 
         contextMenu->AddItem(MenuItemData::ActionWithShortcut("🗑️ Delete", "Del", []() {
-            std::cerr << "Delete action triggered" << std::endl;
+            debugOutput << "Delete action triggered" << std::endl;
         }));
 
         // Set right-click handler for button
@@ -93,90 +94,90 @@ namespace UltraCanvas {
                 .SetType(MenuType::Menubar)
                 .AddSubmenu("File", {
                         MenuItemData::ActionWithShortcut("📄 New", "Ctrl+N", []() {
-                                std::cerr << "New file" << std::endl;
+                                debugOutput << "New file" << std::endl;
                             }),
                         MenuItemData::ActionWithShortcut("📂 Open...", "Ctrl+O", []() {
-                                std::cerr << "Open file" << std::endl;
+                                debugOutput << "Open file" << std::endl;
                             }),
                         MenuItemData::Submenu("📁 Recent Files", {
                                 MenuItemData::Action("Document1.txt", []() {
-                                            std::cerr << "Open Document1.txt" << std::endl;
+                                            debugOutput << "Open Document1.txt" << std::endl;
                                         }),
                                 MenuItemData::Action("Project.cpp", []() {
-                                            std::cerr << "Open Project.cpp" << std::endl;
+                                            debugOutput << "Open Project.cpp" << std::endl;
                                         }),
                                 MenuItemData::Action("Config.json", []() {
-                                            std::cerr << "Open Config.json" << std::endl;
+                                            debugOutput << "Open Config.json" << std::endl;
                                         })
                             }),
                         MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("💾 Save", "Ctrl+S", []() {
-                                std::cerr << "Save file" << std::endl;
+                                debugOutput << "Save file" << std::endl;
                             }),
                         MenuItemData::ActionWithShortcut("💾 Save As...", "Ctrl+Shift+S", []() {
-                                std::cerr << "Save as" << std::endl;
+                                debugOutput << "Save as" << std::endl;
                             }),
                         MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("🚪 Exit", "Alt+F4", []() {
-                                std::cerr << "Exit application" << std::endl;
+                                debugOutput << "Exit application" << std::endl;
                             })
                     })
                 .AddSubmenu("Edit", {
                             MenuItemData::ActionWithShortcut("↩️ Undo", "Ctrl+Z", []() {
-                                std::cerr << "Undo" << std::endl;
+                                debugOutput << "Undo" << std::endl;
                             }),
                             MenuItemData::ActionWithShortcut("↪️ Redo", "Ctrl+Y", []() {
-                                std::cerr << "Redo" << std::endl;
+                                debugOutput << "Redo" << std::endl;
                             }),
                             MenuItemData::Separator(),
                             MenuItemData::ActionWithShortcut("✂️ Cut", "Ctrl+X", []() {
-                                std::cerr << "Cut" << std::endl;
+                                debugOutput << "Cut" << std::endl;
                             }),
                             MenuItemData::ActionWithShortcut("📋 Copy", "Ctrl+C", []() {
-                                std::cerr << "Copy" << std::endl;
+                                debugOutput << "Copy" << std::endl;
                             }),
                             MenuItemData::ActionWithShortcut("📌 Paste", "Ctrl+V", []() {
-                                std::cerr << "Paste" << std::endl;
+                                debugOutput << "Paste" << std::endl;
                             }),
                             MenuItemData::Separator(),
                             MenuItemData::ActionWithShortcut("🔍 Find...", "Ctrl+F", []() {
-                                std::cerr << "Find" << std::endl;
+                                debugOutput << "Find" << std::endl;
                             }),
                             MenuItemData::ActionWithShortcut("🔄 Replace...", "Ctrl+H", []() {
-                                std::cerr << "Replace" << std::endl;
+                                debugOutput << "Replace" << std::endl;
                             })
                 })
                 .AddSubmenu("View", {
                         MenuItemData::Checkbox("🔧 Toolbar", true, [](bool checked) {
-                                std::cerr << "Toolbar " << (checked ? "shown" : "hidden") << std::endl;
+                                debugOutput << "Toolbar " << (checked ? "shown" : "hidden") << std::endl;
                             }),
                             MenuItemData::Checkbox("📊 Status Bar", true, [](bool checked) {
-                                std::cerr << "Status bar " << (checked ? "shown" : "hidden") << std::endl;
+                                debugOutput << "Status bar " << (checked ? "shown" : "hidden") << std::endl;
                             }),
                             MenuItemData::Checkbox("📁 Sidebar", false, [](bool checked) {
-                                std::cerr << "Sidebar " << (checked ? "shown" : "hidden") << std::endl;
+                                debugOutput << "Sidebar " << (checked ? "shown" : "hidden") << std::endl;
                             }),
                             MenuItemData::Separator(),
                             MenuItemData::Radio("Zoom 50%", 1, false, [](bool checked) {
-                                if (checked) std::cerr << "Zoom 50%" << std::endl;
+                                if (checked) debugOutput << "Zoom 50%" << std::endl;
                             }),
                             MenuItemData::Radio("Zoom 100%", 1, true, [](bool checked) {
-                                if (checked) std::cerr << "Zoom 100%" << std::endl;
+                                if (checked) debugOutput << "Zoom 100%" << std::endl;
                             }),
                             MenuItemData::Radio("Zoom 150%", 1, false, [](bool checked) {
-                                if (checked) std::cerr << "Zoom 150%" << std::endl;
+                                if (checked) debugOutput << "Zoom 150%" << std::endl;
                             })
                 })
                 .AddSubmenu("Help", {
                             MenuItemData::ActionWithShortcut("📖 Documentation", "F1", []() {
-                                std::cerr << "Show documentation" << std::endl;
+                                debugOutput << "Show documentation" << std::endl;
                             }),
                             MenuItemData::Action("🎓 Tutorials", []() {
-                                std::cerr << "Show tutorials" << std::endl;
+                                debugOutput << "Show tutorials" << std::endl;
                             }),
                             MenuItemData::Separator(),
                             MenuItemData::Action("ℹ️ About UltraCanvas", []() {
-                                std::cout << "About UltraCanvas Framework" << std::endl;
+                                debugOutput << "About UltraCanvas Framework" << std::endl;
                             })
                 })
                 .Build();
@@ -193,15 +194,15 @@ namespace UltraCanvas {
         darkMenu->SetStyle(MenuStyle::Dark());
 
         darkMenu->AddItem(MenuItemData::Action("🌙 Dark Mode", []() {
-            std::cout << "Dark mode activated" << std::endl;
+            debugOutput << "Dark mode activated" << std::endl;
         }));
 
         darkMenu->AddItem(MenuItemData::Action("☀️ Light Mode", []() {
-            std::cout << "Light mode activated" << std::endl;
+            debugOutput << "Light mode activated" << std::endl;
         }));
 
         darkMenu->AddItem(MenuItemData::Action("🎨 Custom Theme", []() {
-            std::cout << "Custom theme" << std::endl;
+            debugOutput << "Custom theme" << std::endl;
         }));
 
         darkMenuBtn->onClick = [darkMenu, darkMenuBtn, container]() {
@@ -222,15 +223,15 @@ namespace UltraCanvas {
         flatMenu->SetStyle(MenuStyle::Flat());
 
         flatMenu->AddItem(MenuItemData::Action("📱 Mobile View", []() {
-            std::cout << "Mobile view" << std::endl;
+            debugOutput << "Mobile view" << std::endl;
         }));
 
         flatMenu->AddItem(MenuItemData::Action("💻 Desktop View", []() {
-            std::cout << "Desktop view" << std::endl;
+            debugOutput << "Desktop view" << std::endl;
         }));
 
         flatMenu->AddItem(MenuItemData::Action("Tablet View", GetResourcesDir() + "media/icons/tablet48px.png", []() {
-            std::cout << "Tablet view" << std::endl;
+            debugOutput << "Tablet view" << std::endl;
         }));
 
         flatMenuBtn->onClick = [flatMenu, flatMenuBtn, container]() {
@@ -286,15 +287,15 @@ namespace UltraCanvas {
             itemMenu->SetMenuType(MenuType::PopupMenu);
 
             itemMenu->AddItem(MenuItemData::Action("✏️ Edit", [i]() {
-                std::cout << "Edit item " << (i + 1) << std::endl;
+                debugOutput << "Edit item " << (i + 1) << std::endl;
             }));
 
             itemMenu->AddItem(MenuItemData::Action("📋 Duplicate", [i]() {
-                std::cout << "Duplicate item " << (i + 1) << std::endl;
+                debugOutput << "Duplicate item " << (i + 1) << std::endl;
             }));
 
             itemMenu->AddItem(MenuItemData::Action("🗑️ Delete", [i]() {
-                std::cout << "Delete item " << (i + 1) << std::endl;
+                debugOutput << "Delete item " << (i + 1) << std::endl;
             }));
 
             // Set right-click handler
@@ -311,7 +312,7 @@ namespace UltraCanvas {
             container->AddChild(itemMenu);
         }
 
-        std::cout << "✓ Menu examples created" << std::endl;
+        debugOutput << "✓ Menu examples created" << std::endl;
         return container;
     }
 } // namespace UltraCanvas

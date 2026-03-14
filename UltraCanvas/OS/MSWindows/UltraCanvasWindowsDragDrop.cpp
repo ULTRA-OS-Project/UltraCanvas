@@ -8,6 +8,7 @@
 #include "../../include/UltraCanvasWindow.h"
 #include "UltraCanvasWindowsApplication.h"
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -63,7 +64,7 @@ namespace UltraCanvas {
             onDragEnter(clientPt.x, clientPt.y);
         }
 
-        std::cerr << "UltraCanvas DragDrop: DragEnter - "
+        debugOutput << "UltraCanvas DragDrop: DragEnter - "
                   << (acceptDrop ? "accepting" : "rejecting") << std::endl;
         return S_OK;
     }
@@ -84,7 +85,7 @@ namespace UltraCanvas {
     }
 
     HRESULT STDMETHODCALLTYPE UltraCanvasWindowsDropTarget::DragLeave() {
-        std::cerr << "UltraCanvas DragDrop: DragLeave" << std::endl;
+        debugOutput << "UltraCanvas DragDrop: DragLeave" << std::endl;
 
         if (onDragLeave) {
             onDragLeave(lastDragX, lastDragY);
@@ -105,10 +106,10 @@ namespace UltraCanvas {
 
         auto paths = ExtractFilePaths(pDataObj);
 
-        std::cerr << "UltraCanvas DragDrop: Dropped " << paths.size()
+        debugOutput << "UltraCanvas DragDrop: Dropped " << paths.size()
                   << " file(s)" << std::endl;
         for (const auto& path : paths) {
-            std::cerr << "  -> " << path << std::endl;
+            debugOutput << "  -> " << path << std::endl;
         }
 
         if (!paths.empty() && onFileDrop) {

@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <functional>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -73,7 +74,7 @@ namespace UltraCanvas {
                 std::filesystem::create_directories(configDir);
                 return true;
             } catch (const std::exception& e) {
-                std::cerr << "UltraTexter: Failed to create config directory: "
+                debugOutput << "UltraTexter: Failed to create config directory: "
                           << e.what() << std::endl;
                 return false;
             }

@@ -8,6 +8,7 @@
 #include "UltraCanvasWindowsApplication.h"
 #include <iostream>
 #include <cstring>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -29,12 +30,12 @@ namespace UltraCanvas {
     bool UltraCanvasWindowsClipboard::Initialize() {
         lastSequenceNumber = GetClipboardSequenceNumber();
         clipboardChanged = false;
-        std::cerr << "UltraCanvas: Windows clipboard initialized" << std::endl;
+        debugOutput << "UltraCanvas: Windows clipboard initialized" << std::endl;
         return true;
     }
 
     void UltraCanvasWindowsClipboard::Shutdown() {
-        std::cerr << "UltraCanvas: Windows clipboard shut down" << std::endl;
+        debugOutput << "UltraCanvas: Windows clipboard shut down" << std::endl;
     }
 
 // ===== TEXT OPERATIONS =====
@@ -45,7 +46,7 @@ namespace UltraCanvas {
         }
 
         if (!OpenClipboard(nullptr)) {
-            std::cerr << "UltraCanvas Clipboard: OpenClipboard failed" << std::endl;
+            debugOutput << "UltraCanvas Clipboard: OpenClipboard failed" << std::endl;
             return false;
         }
 
@@ -74,7 +75,7 @@ namespace UltraCanvas {
 
         HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, byteSize);
         if (!hMem) {
-            std::cerr << "UltraCanvas Clipboard: GlobalAlloc failed" << std::endl;
+            debugOutput << "UltraCanvas Clipboard: GlobalAlloc failed" << std::endl;
             return false;
         }
 
@@ -88,7 +89,7 @@ namespace UltraCanvas {
 
         if (!OpenClipboard(nullptr)) {
             GlobalFree(hMem);
-            std::cerr << "UltraCanvas Clipboard: OpenClipboard failed" << std::endl;
+            debugOutput << "UltraCanvas Clipboard: OpenClipboard failed" << std::endl;
             return false;
         }
 
@@ -96,7 +97,7 @@ namespace UltraCanvas {
         if (!SetClipboardData(CF_UNICODETEXT, hMem)) {
             GlobalFree(hMem);
             CloseClipboard();
-            std::cerr << "UltraCanvas Clipboard: SetClipboardData failed" << std::endl;
+            debugOutput << "UltraCanvas Clipboard: SetClipboardData failed" << std::endl;
             return false;
         }
 

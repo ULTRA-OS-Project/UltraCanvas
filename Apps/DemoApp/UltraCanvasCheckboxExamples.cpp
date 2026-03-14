@@ -11,6 +11,7 @@
 #include "UltraCanvasButton.h"
 #include <iostream>
 #include <vector>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -61,10 +62,10 @@ namespace UltraCanvas {
         auto basicCheckbox1 = std::make_shared<UltraCanvasCheckbox>("BasicCheckbox1", 3011, 30, currentY, 200, 24, "Standard Checkbox");
         basicCheckbox1->SetChecked(false);
         basicCheckbox1->onChecked = []() {
-            std::cerr << "Basic checkbox checked!" << std::endl;
+            debugOutput << "Basic checkbox checked!" << std::endl;
         };
         basicCheckbox1->onUnchecked = []() {
-            std::cerr << "Basic checkbox unchecked!" << std::endl;
+            debugOutput << "Basic checkbox unchecked!" << std::endl;
         };
         mainContainer->AddChild(basicCheckbox1);
 
@@ -211,11 +212,11 @@ namespace UltraCanvas {
             if (newState == CheckboxState::Checked) {
                 switchStatus1->SetText("ON");
                 switchStatus1->SetTextColor(Color(0, 150, 0, 255));
-                std::cerr << "Notifications enabled" << std::endl;
+                debugOutput << "Notifications enabled" << std::endl;
             } else {
                 switchStatus1->SetText("OFF");
                 switchStatus1->SetTextColor(Color(150, 0, 0, 255));
-                std::cerr << "Notifications disabled" << std::endl;
+                debugOutput << "Notifications disabled" << std::endl;
             }
         };
 
@@ -223,11 +224,11 @@ namespace UltraCanvas {
             if (newState == CheckboxState::Checked) {
                 switchStatus2->SetText("ON");
                 switchStatus2->SetTextColor(Color(0, 150, 0, 255));
-                std::cerr << "Dark mode enabled" << std::endl;
+                debugOutput << "Dark mode enabled" << std::endl;
             } else {
                 switchStatus2->SetText("OFF");
                 switchStatus2->SetTextColor(Color(150, 0, 0, 255));
-                std::cerr << "Dark mode disabled" << std::endl;
+                debugOutput << "Dark mode disabled" << std::endl;
             }
         };
 
@@ -235,11 +236,11 @@ namespace UltraCanvas {
             if (newState == CheckboxState::Checked) {
                 switchStatus3->SetText("ON");
                 switchStatus3->SetTextColor(Color(0, 150, 0, 255));
-                std::cerr << "Auto-save enabled" << std::endl;
+                debugOutput << "Auto-save enabled" << std::endl;
             } else {
                 switchStatus3->SetText("OFF");
                 switchStatus3->SetTextColor(Color(150, 0, 0, 255));
-                std::cerr << "Auto-save disabled" << std::endl;
+                debugOutput << "Auto-save disabled" << std::endl;
             }
         };
 
@@ -294,7 +295,7 @@ namespace UltraCanvas {
             if (selected) {
                 std::string themeName = selected->GetText();
                 selectedTheme->SetText("Selected Theme: " + themeName.substr(0, themeName.find(" ")));
-                std::cerr << "Theme changed to: " << selected->GetText() << std::endl;
+                debugOutput << "Theme changed to: " << selected->GetText() << std::endl;
             }
         };
 
@@ -302,7 +303,7 @@ namespace UltraCanvas {
             if (selected) {
                 std::string qualityName = selected->GetText();
                 selectedQuality->SetText("Selected Quality: " + qualityName.substr(0, qualityName.find(" ")));
-                std::cerr << "Quality changed to: " << selected->GetText() << std::endl;
+                debugOutput << "Quality changed to: " << selected->GetText() << std::endl;
             }
         };
 
@@ -405,7 +406,7 @@ namespace UltraCanvas {
             feature6->SetChecked(true);
             feature7->SetChecked(true);
             feature8->SetChecked(true);
-            std::cerr << "All features selected" << std::endl;
+            debugOutput << "All features selected" << std::endl;
         });
 
         auto clearAllBtn = std::make_shared<UltraCanvasButton>("ClearAllBtn", 3072, 580, currentY, 120, 30);
@@ -419,7 +420,7 @@ namespace UltraCanvas {
             feature6->SetChecked(false);
             feature7->SetChecked(false);
             feature8->SetChecked(false);
-            std::cerr << "All features cleared" << std::endl;
+            debugOutput << "All features cleared" << std::endl;
         });
 
         auto toggleAllBtn = std::make_shared<UltraCanvasButton>("ToggleAllBtn", 3073, 710, currentY, 120, 30);
@@ -433,7 +434,7 @@ namespace UltraCanvas {
             feature6->Toggle();
             feature7->Toggle();
             feature8->Toggle();
-            std::cerr << "All features toggled" << std::endl;
+            debugOutput << "All features toggled" << std::endl;
         });
 
         // Feature status display

@@ -11,6 +11,7 @@
 #include <fmt/os.h>
 #include <iostream>
 #include <algorithm>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -669,7 +670,7 @@ namespace UltraCanvas {
                 if (onDirectoryChanged) onDirectoryChanged(currentDirectory);
             }
         } catch (const std::exception& e) {
-            std::cerr << "Invalid path: " << directory << " - " << e.what() << std::endl;
+            debugOutput << "Invalid path: " << directory << " - " << e.what() << std::endl;
         }
     }
 
@@ -708,7 +709,7 @@ namespace UltraCanvas {
             std::sort(fileList.begin(), fileList.end());
 
         } catch (const std::exception& e) {
-            std::cerr << "Error reading directory: " << e.what() << std::endl;
+            debugOutput << "Error reading directory: " << e.what() << std::endl;
         }
 
         selectedFileIndex = -1;
@@ -1188,7 +1189,7 @@ namespace UltraCanvas {
                 SetCurrentDirectory(parentPath.string());
             }
         } catch (const std::exception& e) {
-            std::cerr << "Error navigating to parent directory: " << e.what() << std::endl;
+            debugOutput << "Error navigating to parent directory: " << e.what() << std::endl;
         }
     }
 

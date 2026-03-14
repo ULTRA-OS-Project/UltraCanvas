@@ -9,6 +9,7 @@
 #import <AppKit/AppKit.h>
 #include <iostream>
 #include <algorithm>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -454,11 +455,11 @@ namespace UltraCanvas {
 
 // ===== LOGGING =====
     void UltraCanvasMacOSClipboard::LogError(const std::string& operation, const std::string& details) {
-        std::cerr << "UltraCanvas macOS Clipboard Error [" << operation << "]: " << details << std::endl;
+        debugOutput << "UltraCanvas macOS Clipboard Error [" << operation << "]: " << details << std::endl;
     }
 
     void UltraCanvasMacOSClipboard::LogInfo(const std::string& operation, const std::string& details) {
-        std::cerr << "UltraCanvas: " << operation << " - " << details << std::endl;
+        debugOutput << "UltraCanvas: " << operation << " - " << details << std::endl;
     }
 
 } // namespace UltraCanvas

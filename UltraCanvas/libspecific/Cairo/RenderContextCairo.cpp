@@ -13,6 +13,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <unordered_map>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 // ===== GLOBAL TEXT SURFACE CACHE =====
@@ -34,7 +35,7 @@ namespace UltraCanvas {
             if (handle) {
                 cairo_set_source(cairo, handle);
             } else {
-                std::cerr << "ERROR: ApplySourceToCairo no pattern handle";
+                debugOutput << "ERROR: ApplySourceToCairo no pattern handle";
             }
         }
     }
@@ -69,7 +70,7 @@ namespace UltraCanvas {
             // Create Pango font description
             PangoFontDescription* desc = CreatePangoFont(currentState.fontStyle);
             if (!desc) {
-                std::cerr << "ERROR: MakeTextSurface - Failed to create Pango font description" << std::endl;
+                debugOutput << "ERROR: MakeTextSurface - Failed to create Pango font description" << std::endl;
                 return nullptr;
             }
 
@@ -77,7 +78,7 @@ namespace UltraCanvas {
             PangoLayout* layout = CreatePangoLayout(desc, rectWidth, rectHeight);
             if (!layout) {
                 pango_font_description_free(desc);
-                std::cerr << "ERROR: MakeTextSurface - Failed to create Pango layout" << std::endl;
+                debugOutput << "ERROR: MakeTextSurface - Failed to create Pango layout" << std::endl;
                 return nullptr;
             }
 
@@ -99,7 +100,7 @@ namespace UltraCanvas {
 
             // Ensure minimum dimensions
             if (logicalLayoutRect.width <= 0 || logicalLayoutRect.height <= 0) {
-                std::cerr << "ERROR: MakeTextSurface - Surface dimensions zero, width=" << surfaceWidth << ", height=" << surfaceHeight << std::endl;
+                debugOutput << "ERROR: MakeTextSurface - Surface dimensions zero, width=" << surfaceWidth << ", height=" << surfaceHeight << std::endl;
                 pango_font_description_free(desc);
                 g_object_unref(layout);
                 return nullptr;
@@ -110,7 +111,7 @@ namespace UltraCanvas {
                     CAIRO_FORMAT_ARGB32, logicalLayoutRect.width, logicalLayoutRect.height);
 
             if (cairo_surface_status(textSurface) != CAIRO_STATUS_SUCCESS) {
-                std::cerr << "ERROR: MakeTextSurface - Failed to create Cairo surface" << std::endl;
+                debugOutput << "ERROR: MakeTextSurface - Failed to create Cairo surface" << std::endl;
                 pango_font_description_free(desc);
                 g_object_unref(layout);
                 return nullptr;
@@ -119,7 +120,7 @@ namespace UltraCanvas {
             // Create Cairo context for the text surface
             cairo_t* textCairo = cairo_create(textSurface);
             if (cairo_status(textCairo) != CAIRO_STATUS_SUCCESS) {
-                std::cerr << "ERROR: MakeTextSurface - Failed to create Cairo context" << std::endl;
+                debugOutput << "ERROR: MakeTextSurface - Failed to create Cairo context" << std::endl;
                 cairo_surface_destroy(textSurface);
                 pango_font_description_free(desc);
                 g_object_unref(layout);
@@ -160,10 +161,10 @@ namespace UltraCanvas {
             return entry;
 
         } catch (const std::exception& e) {
-            std::cerr << "ERROR: MakeTextSurface - Exception: " << e.what() << std::endl;
+            debugOutput << "ERROR: MakeTextSurface - Exception: " << e.what() << std::endl;
             return nullptr;
         } catch (...) {
-            std::cerr << "ERROR: MakeTextSurface - Unknown exception" << std::endl;
+            debugOutput << "ERROR: MakeTextSurface - Unknown exception" << std::endl;
             return nullptr;
         }
     }
@@ -202,7 +203,7 @@ namespace UltraCanvas {
             // Create Pango font description
             PangoFontDescription* desc = CreatePangoFont(currentState.fontStyle);
             if (!desc) {
-                std::cerr << "ERROR: MeasureTextDimensions - Failed to create Pango font description" << std::endl;
+                debugOutput << "ERROR: MeasureTextDimensions - Failed to create Pango font description" << std::endl;
                 return nullptr;
             }
 
@@ -210,7 +211,7 @@ namespace UltraCanvas {
             PangoLayout* layout = CreatePangoLayout(desc, rectWidth, rectHeight);
             if (!layout) {
                 pango_font_description_free(desc);
-                std::cerr << "ERROR: MeasureTextDimensions - Failed to create Pango layout" << std::endl;
+                debugOutput << "ERROR: MeasureTextDimensions - Failed to create Pango layout" << std::endl;
                 return nullptr;
             }
 
@@ -234,10 +235,10 @@ namespace UltraCanvas {
             return entry;
 
         } catch (const std::exception& e) {
-            std::cerr << "ERROR: MeasureTextDimensions - Exception: " << e.what() << std::endl;
+            debugOutput << "ERROR: MeasureTextDimensions - Exception: " << e.what() << std::endl;
             return nullptr;
         } catch (...) {
-            std::cerr << "ERROR: MeasureTextDimensions - Unknown exception" << std::endl;
+            debugOutput << "ERROR: MeasureTextDimensions - Unknown exception" << std::endl;
             return nullptr;
         }
     }
@@ -249,21 +250,21 @@ namespace UltraCanvas {
 
         // Initialize Pango for text rendering with proper error checking
         try {
-            std::cerr << "RenderContextCairo: Initializing Pango..." << std::endl;
+            debugOutput << "RenderContextCairo: Initializing Pango..." << std::endl;
 
             auto fontMap = pango_cairo_font_map_get_default();
             if (!fontMap) {
-                std::cerr << "ERROR: Failed to get default Pango font map" << std::endl;
+                debugOutput << "ERROR: Failed to get default Pango font map" << std::endl;
                 throw std::runtime_error("RenderContextCairo: Failed to get Pango font map");
             }
-            std::cerr << "RenderContextCairo: Got Pango font map: " << fontMap << std::endl;
+            debugOutput << "RenderContextCairo: Got Pango font map: " << fontMap << std::endl;
 
             pangoContext = pango_font_map_create_context(fontMap);
             if (!pangoContext) {
-                std::cerr << "ERROR: Failed to create Pango context" << std::endl;
+                debugOutput << "ERROR: Failed to create Pango context" << std::endl;
                 throw std::runtime_error("RenderContextCairo: Failed to create Pango context");
             }
-            std::cerr << "RenderContextCairo: Created Pango context: " << pangoContext << std::endl;
+            debugOutput << "RenderContextCairo: Created Pango context: " << pangoContext << std::endl;
 
             // Associate Pango context with Cairo context
             pango_cairo_context_set_resolution(pangoContext, 96.0);  // Standard DPI
@@ -274,10 +275,10 @@ namespace UltraCanvas {
             pango_cairo_context_set_font_options(pangoContext, fontOptions);
             cairo_font_options_destroy(fontOptions);
 
-            std::cerr << "RenderContextCairo: Pango initialization complete" << std::endl;
+            debugOutput << "RenderContextCairo: Pango initialization complete" << std::endl;
 
         } catch (const std::exception &e) {
-            std::cerr << "ERROR: Exception during Pango initialization: " << e.what() << std::endl;
+            debugOutput << "ERROR: Exception during Pango initialization: " << e.what() << std::endl;
 
             // Cleanup on failure
             if (pangoContext) {
@@ -293,11 +294,11 @@ namespace UltraCanvas {
         }
         // Initialize default state
         ResetState();
-        std::cerr << "RenderContextCairo: Initialization complete" << std::endl;
+        debugOutput << "RenderContextCairo: Initialization complete" << std::endl;
     }
 
     RenderContextCairo::~RenderContextCairo() {
-        std::cerr << "RenderContextCairo: Destroying..." << std::endl;
+        debugOutput << "RenderContextCairo: Destroying..." << std::endl;
         destroying = true;
 
         // Clear the state stack to prevent any pending cairo operations
@@ -317,13 +318,13 @@ namespace UltraCanvas {
         cairo_destroy(targetContext);
         cairo_destroy(cairo);
 
-        std::cerr << "RenderContextCairo: Destruction complete" << std::endl;
+        debugOutput << "RenderContextCairo: Destruction complete" << std::endl;
     }
 
     void RenderContextCairo::SetTargetSurface(cairo_surface_t* surf, int w, int h) {
         cairo_status_t status = cairo_surface_status(surf);
         if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "ERROR: RenderContextCairo: Cairo target surface is invalid: " << cairo_status_to_string(status)
+            debugOutput << "ERROR: RenderContextCairo: Cairo target surface is invalid: " << cairo_status_to_string(status)
                       << std::endl;
             throw std::runtime_error("RenderContextCairo: Invalid target Cairo surface");
         }
@@ -343,7 +344,7 @@ namespace UltraCanvas {
         // Check Cairo context status
         status = cairo_status(targetContext);
         if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "ERROR: RenderContextCairo: Cairo target context is invalid: " << cairo_status_to_string(status)
+            debugOutput << "ERROR: RenderContextCairo: Cairo target context is invalid: " << cairo_status_to_string(status)
                       << std::endl;
             throw std::runtime_error("RenderContextCairo: Invalid target Cairo context");
         }
@@ -351,7 +352,7 @@ namespace UltraCanvas {
         cairo = cairo_create(targetSurface);
         status = cairo_status(cairo);
         if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "ERROR: RenderContextCairo: Cairo context is invalid: " << cairo_status_to_string(status)
+            debugOutput << "ERROR: RenderContextCairo: Cairo context is invalid: " << cairo_status_to_string(status)
                       << std::endl;
             throw std::runtime_error("RenderContextCairo: Invalid Cairo context");
         }
@@ -362,7 +363,7 @@ namespace UltraCanvas {
         stagingSurface = cairo_surface_create_similar(targetSurface, CAIRO_CONTENT_COLOR_ALPHA, surfaceWidth, surfaceHeight);
 
         if (cairo_surface_status(stagingSurface) != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "RenderContextCairo: Failed to create staging surface" << std::endl;
+            debugOutput << "RenderContextCairo: Failed to create staging surface" << std::endl;
             return false;
         }
 
@@ -374,10 +375,6 @@ namespace UltraCanvas {
 
         if (newWidth <= 0 || newHeight <= 0 || !stagingSurface) {
             return false;
-        }
-
-        if (newWidth == surfaceWidth && newHeight == surfaceHeight) {
-            return true; // No change needed
         }
 
         // Update dimensions
@@ -411,13 +408,13 @@ namespace UltraCanvas {
 
         cairo_surface_destroy(oldStagingSurface);
 
-        std::cerr << "ResizeStagingSurface: Resized to " << newWidth << "x" << newHeight << std::endl;
+        debugOutput << "ResizeStagingSurface: Resized to " << newWidth << "x" << newHeight << std::endl;
         return true;
     }
 
     void RenderContextCairo::SwitchToSurface(cairo_surface_t* surf) {
         if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "SwitchToSurface: Invalid surface" << std::endl;
+            debugOutput << "SwitchToSurface: Invalid surface" << std::endl;
             return;
         }
 
@@ -427,7 +424,7 @@ namespace UltraCanvas {
         cairo = cairo_create(surf);
 
         if (cairo_status(cairo) != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "SwitchToSurface: Invalid context" << std::endl;
+            debugOutput << "SwitchToSurface: Invalid context" << std::endl;
         }
         ResetState();
     }
@@ -443,7 +440,7 @@ namespace UltraCanvas {
             currentState = stateStack.back();
             stateStack.pop_back();
         } else {
-            std::cerr << "RenderContextCairo::PopState() stateStack empty!" << std::endl;
+            debugOutput << "RenderContextCairo::PopState() stateStack empty!" << std::endl;
         }
         cairo_restore(cairo);
     }
@@ -497,15 +494,15 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::ClearClipRect() {
-        std::cerr << "RenderContextCairo::ClearClipRect - clearing clip region" << std::endl;
+        debugOutput << "RenderContextCairo::ClearClipRect - clearing clip region" << std::endl;
 
         // Reset the clip region to cover the entire surface
         cairo_reset_clip(cairo);
-//        std::cerr << "RenderContextCairo::ClearClipRect - clip region cleared successfully" << std::endl;
+//        debugOutput << "RenderContextCairo::ClearClipRect - clip region cleared successfully" << std::endl;
     }
 
     void RenderContextCairo::ClipRect(float x, float y, float w, float h) {
-//        std::cerr << "RenderContextCairo::ClipRect - setting clip to "
+//        debugOutput << "RenderContextCairo::ClipRect - setting clip to "
 //                  << x << "," << y << " " << w << "x" << h << std::endl;
         cairo_rectangle(cairo, x, y, w, h);
         cairo_clip(cairo);
@@ -599,7 +596,7 @@ namespace UltraCanvas {
 
 // ===== BASIC DRAWING =====
     void RenderContextCairo::FillRectangle(float x, float y, float w, float h) {
-//        std::cerr << "RenderContextCairo::FillRectangle this=" << this << " cairo=" << cairo << std::endl;
+//        debugOutput << "RenderContextCairo::FillRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply fill style explicitly ***
         //ApplyFillStyle(currentState.style);
@@ -607,11 +604,11 @@ namespace UltraCanvas {
         cairo_rectangle(cairo, x, y, w, h);
         Fill();
 
-//        std::cerr << "RenderContextCairo::FillRectangle: Complete" << std::endl;
+//        debugOutput << "RenderContextCairo::FillRectangle: Complete" << std::endl;
     }
 
     void RenderContextCairo::DrawRectangle(float x, float y, float w, float h) {
-//        std::cerr << "RenderContextCairo::DrawRectangle this=" << this << " cairo=" << cairo << std::endl;
+//        debugOutput << "RenderContextCairo::DrawRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply stroke style explicitly ***
         //ApplyStrokeStyle(currentState.style);
@@ -619,11 +616,11 @@ namespace UltraCanvas {
         cairo_rectangle(cairo, x, y, w, h);
         Stroke();
 
-//        std::cerr << "RenderContextCairo::DrawRectangle: Complete" << std::endl;
+//        debugOutput << "RenderContextCairo::DrawRectangle: Complete" << std::endl;
     }
 
     void RenderContextCairo::FillRoundedRectangle(float x, float y, float w, float h, float radius) {
-//        std::cerr << "RenderContextCairo::FillRoundedRectangle" << std::endl;
+//        debugOutput << "RenderContextCairo::FillRoundedRectangle" << std::endl;
 
         // *** Apply fill style ***
         //ApplyFillStyle(currentState.style);
@@ -640,7 +637,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::DrawRoundedRectangle(float x, float y, float w, float h, float radius) {
-//        std::cerr << "RenderContextCairo::DrawRoundedRectangle" << std::endl;
+//        debugOutput << "RenderContextCairo::DrawRoundedRectangle" << std::endl;
 
         // *** Apply stroke style ***
         //ApplyStrokeStyle(currentState.style);
@@ -657,7 +654,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::FillCircle(float x, float y, float radius) {
-//        std::cerr << "RenderContextCairo::FillCircle" << std::endl;
+//        debugOutput << "RenderContextCairo::FillCircle" << std::endl;
 
         // *** Apply fill style ***
         //ApplyFillStyle(currentState.style);
@@ -666,7 +663,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::DrawCircle(float x, float y, float radius) {
-//        std::cerr << "RenderContextCairo::DrawCircle" << std::endl;
+//        debugOutput << "RenderContextCairo::DrawCircle" << std::endl;
 
         // *** Apply stroke style ***
         //ApplyStrokeStyle(currentState.style);
@@ -675,7 +672,7 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::DrawLine(float start_x, float start_y, float end_x, float end_y) {
-//        std::cerr << "RenderContextCairo::DrawLine" << std::endl;
+//        debugOutput << "RenderContextCairo::DrawLine" << std::endl;
 
         // *** Apply stroke style ***
         //ApplyStrokeStyle(currentState.style);
@@ -688,7 +685,7 @@ namespace UltraCanvas {
     PangoLayout* RenderContextCairo::CreatePangoLayout(PangoFontDescription *desc, int w, int h) {
         PangoLayout *layout = pango_layout_new(pangoContext);
         if (!layout) {
-            std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
+            debugOutput << "ERROR: Failed to create Pango layout" << std::endl;
             return nullptr;
         }
 
@@ -780,19 +777,19 @@ namespace UltraCanvas {
 
             cairo_restore(cairo);
         } else {
-            std::cerr << "RenderContextCairo::DrawText: No text source surface" << std::endl;
+            debugOutput << "RenderContextCairo::DrawText: No text source surface" << std::endl;
         }
 //        try {
-//            //std::cerr << "DrawText: Rendering '" << text << "' at (" << x << "," << y << ")" << std::endl;
+//            //debugOutput << "DrawText: Rendering '" << text << "' at (" << x << "," << y << ")" << std::endl;
 //            PangoFontDescription *desc = CreatePangoFont(currentState.fontStyle);
 //            if (!desc) {
-//                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
+//                debugOutput << "ERROR: Failed to create Pango font description" << std::endl;
 //                return;
 //            }
 //            PangoLayout *layout = CreatePangoLayout(desc);
 //            if (!layout) {
 //                pango_font_description_free(desc);
-//                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
+//                debugOutput << "ERROR: Failed to create Pango layout" << std::endl;
 //                return;
 //            }
 //
@@ -811,12 +808,12 @@ namespace UltraCanvas {
 //            pango_font_description_free(desc);
 //            g_object_unref(layout);
 //
-////            std::cerr << "DrawText: Completed successfully" << std::endl;
+////            debugOutput << "DrawText: Completed successfully" << std::endl;
 //
 //        } catch (const std::exception &e) {
-//            std::cerr << "ERROR: Exception in DrawText: " << e.what() << std::endl;
+//            debugOutput << "ERROR: Exception in DrawText: " << e.what() << std::endl;
 //        } catch (...) {
-//            std::cerr << "ERROR: Unknown exception in DrawText" << std::endl;
+//            debugOutput << "ERROR: Unknown exception in DrawText" << std::endl;
 //        }
     }
 
@@ -866,19 +863,19 @@ namespace UltraCanvas {
 //            DrawRectangle(x,y,cachedSurface->width, cachedSurface->height);
             cairo_restore(cairo);
         } else {
-            std::cerr << "RenderContextCairo::DrawText: No text source surface" << std::endl;
+            debugOutput << "RenderContextCairo::DrawText: No text source surface" << std::endl;
         }
 
 //        try {
 //            PangoFontDescription *desc = CreatePangoFont(currentState.fontStyle);
 //            if (!desc) {
-//                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
+//                debugOutput << "ERROR: Failed to create Pango font description" << std::endl;
 //                return;
 //            }
 //            PangoLayout *layout = CreatePangoLayout(desc, w, h);
 //            if (!layout) {
 //                pango_font_description_free(desc);
-//                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
+//                debugOutput << "ERROR: Failed to create Pango layout" << std::endl;
 //                return;
 //            }
 //            if (currentState.textStyle.isMarkup) {
@@ -904,7 +901,7 @@ namespace UltraCanvas {
 //            g_object_unref(layout);
 //
 //        } catch (...) {
-//            std::cerr << "ERROR: Exception in DrawTextInRect" << std::endl;
+//            debugOutput << "ERROR: Exception in DrawTextInRect" << std::endl;
 //        }
     }
 
@@ -936,19 +933,19 @@ namespace UltraCanvas {
             return true;
         }
 
-        std::cerr << "RenderContextCairo::GetTextDimensions: Error in measuring text dimensions, text=" << text << std::endl;
+        debugOutput << "RenderContextCairo::GetTextDimensions: Error in measuring text dimensions, text=" << text << std::endl;
         return false;
 
 //        try {
 //            PangoFontDescription *desc = CreatePangoFont(currentState.fontStyle);
 //            if (!desc) {
-//                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
+//                debugOutput << "ERROR: Failed to create Pango font description" << std::endl;
 //                return false;
 //            }
 //            PangoLayout *layout = CreatePangoLayout(desc, rectWidth, rectHeight);
 //            if (!layout) {
 //                pango_font_description_free(desc);
-//                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
+//                debugOutput << "ERROR: Failed to create Pango layout" << std::endl;
 //                return false;
 //            }
 //            if (currentState.textStyle.isMarkup) {
@@ -968,7 +965,7 @@ namespace UltraCanvas {
 //            return true;
 //
 //        } catch (...) {
-//            std::cerr << "ERROR: Exception in GetTextLineDimensions" << std::endl;
+//            debugOutput << "ERROR: Exception in GetTextLineDimensions" << std::endl;
 //            return false;
 //        }
     }
@@ -987,13 +984,13 @@ namespace UltraCanvas {
         try {
             PangoFontDescription *desc = CreatePangoFont(currentState.fontStyle);
             if (!desc) {
-                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
+                debugOutput << "ERROR: Failed to create Pango font description" << std::endl;
                 return -1;
             }
             PangoLayout *layout = CreatePangoLayout(desc, w, h);
             if (!layout) {
                 pango_font_description_free(desc);
-                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
+                debugOutput << "ERROR: Failed to create Pango layout" << std::endl;
                 return -1;
             }
 
@@ -1008,7 +1005,7 @@ namespace UltraCanvas {
             return index;
 
         } catch (...) {
-            std::cerr << "ERROR: Exception in TextXYToIndex" << std::endl;
+            debugOutput << "ERROR: Exception in TextXYToIndex" << std::endl;
             return -1;
         }
     }
@@ -1025,6 +1022,7 @@ namespace UltraCanvas {
     void RenderContextCairo::SwapBuffers() {
         std::lock_guard<std::mutex> lock(cairoMutex);
         if (stagingSurface) {
+            //debugOutput << "RenderContextCairo::SwapBuffers stagingSurface=" << stagingSurface << " target_surf=" << cairo_get_target(targetContext) << std::endl;
             cairo_surface_flush(stagingSurface);
             // Copy staging surface to window surface
             cairo_set_source_surface(targetContext, stagingSurface, 0, 0);
@@ -1056,11 +1054,11 @@ namespace UltraCanvas {
     }
 
     PangoFontDescription *RenderContextCairo::CreatePangoFont(const FontStyle &style) {
-        //std::cerr << "RenderContextCairo::CreatePangoFont" << std::endl;
+        //debugOutput << "RenderContextCairo::CreatePangoFont" << std::endl;
         try {
             PangoFontDescription *desc = pango_font_description_new();
             if (!desc) {
-                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
+                debugOutput << "ERROR: Failed to create Pango font description" << std::endl;
                 return nullptr;
             }
 
@@ -1108,7 +1106,7 @@ namespace UltraCanvas {
             return desc;
 
         } catch (...) {
-            std::cerr << "ERROR: Exception in CreatePangoFont" << std::endl;
+            debugOutput << "ERROR: Exception in CreatePangoFont" << std::endl;
             return nullptr;
         }
     }
@@ -1120,10 +1118,10 @@ namespace UltraCanvas {
                                   color.g / 255.0f,
                                   color.b / 255.0f,
                                   color.a / 255.0f * currentState.globalAlpha);
-//            std::cerr << "RenderContextCairo::SetCairoColor r=" << (int) color.r << " g=" << (int) color.g << " b="
+//            debugOutput << "RenderContextCairo::SetCairoColor r=" << (int) color.r << " g=" << (int) color.g << " b="
 //                      << (int) color.b << std::endl;
         } catch (...) {
-            std::cerr << "ERROR: Exception in SetCairoColor" << std::endl;
+            debugOutput << "ERROR: Exception in SetCairoColor" << std::endl;
         }
     }
 
@@ -1780,7 +1778,7 @@ namespace UltraCanvas {
             // Restore cairo state
             cairo_restore(cairo);
         } catch (const std::exception &e) {
-            std::cerr << "RenderContextCairo::DrawImage: Exception loading image: " << e.what() << std::endl;
+            debugOutput << "RenderContextCairo::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
     }
 
@@ -1790,7 +1788,7 @@ namespace UltraCanvas {
             if (srcRect.x < 0 || srcRect.y < 0 ||
                 srcRect.x + srcRect.width > pixmap.GetWidth() ||
                 srcRect.y + srcRect.height > pixmap.GetHeight()) {
-                std::cerr << "RenderContextCairo::DrawPartOfPixmap: Source rectangle out of bounds" << std::endl;
+                debugOutput << "RenderContextCairo::DrawPartOfPixmap: Source rectangle out of bounds" << std::endl;
                 return;
             }
 
@@ -1825,7 +1823,7 @@ namespace UltraCanvas {
             // Restore cairo state
             cairo_restore(cairo);
         } catch (const std::exception &e) {
-            std::cerr << "RenderContextCairo::DrawImage: Exception loading image: " << e.what() << std::endl;
+            debugOutput << "RenderContextCairo::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
     }
 
@@ -1856,20 +1854,20 @@ namespace UltraCanvas {
             cairo_restore(cairo);
 
         } catch (const std::exception &e) {
-            std::cerr << "RenderContextCairo::DrawImageTiled: Exception: " << e.what() << std::endl;
+            debugOutput << "RenderContextCairo::DrawImageTiled: Exception: " << e.what() << std::endl;
         }
     }
 
     void RenderContextCairo::UpdateContext(cairo_t *newCairoContext) {
-        std::cerr << "RenderContextCairo: Updating Cairo context..." << std::endl;
+        debugOutput << "RenderContextCairo: Updating Cairo context..." << std::endl;
 
         if (!newCairoContext) {
-            std::cerr << "ERROR: RenderContextCairo: New Cairo context is null!" << std::endl;
+            debugOutput << "ERROR: RenderContextCairo: New Cairo context is null!" << std::endl;
             return;
         }
         cairo_status_t status = cairo_status(newCairoContext);
         if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "ERROR: RenderContextCairo: New Cairo context is invalid: "
+            debugOutput << "ERROR: RenderContextCairo: New Cairo context is invalid: "
                       << cairo_status_to_string(status) << std::endl;
             throw std::runtime_error("RenderContextCairo: New Cairo context is invalid");
             return;
@@ -1891,7 +1889,7 @@ namespace UltraCanvas {
         // Reset state
         ResetState();
 
-        std::cerr << "RenderContextCairo: Cairo context updated successfully" << std::endl;
+        debugOutput << "RenderContextCairo: Cairo context updated successfully" << std::endl;
     }
 
     void RenderContextCairo::FillPathPreserve() {

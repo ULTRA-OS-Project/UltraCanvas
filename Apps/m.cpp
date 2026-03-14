@@ -7,6 +7,7 @@
 #include "UltraCanvasUI.h"
 #include <iostream>
 #include <thread>
+#include "UltraCanvasDebug.h"
 
 using namespace UltraCanvas;
 
@@ -26,45 +27,45 @@ public:
 
     virtual void Destroy() override {
         if (!_created) {
-            std::cerr << "=== CrossPlatformFrameworkWindow already destroyed ===" << std::endl;
+            debugOutput << "=== CrossPlatformFrameworkWindow already destroyed ===" << std::endl;
             return;
         }
-        std::cerr << "=== Destroying CrossPlatformFrameworkWindow ===" << std::endl;
+        debugOutput << "=== Destroying CrossPlatformFrameworkWindow ===" << std::endl;
         try {
             uiElements.clear();
             ClearElements();
         } catch (...) {
-            std::cerr << "Exception during window destruction" << std::endl;
+            debugOutput << "Exception during window destruction" << std::endl;
         }
         UltraCanvasWindow::Destroy();
     }
 
     void CreateUserInterface() {
-        std::cerr << "=== Creating Cross-Platform UI Elements ===" << std::endl;
+        debugOutput << "=== Creating Cross-Platform UI Elements ===" << std::endl;
 
         // Create buttons using ONLY UltraCanvas framework APIs
         auto copyButton = CreateButton("copy_btn", 1001, 50, 150, 180, 50, "Copy Text");
         copyButton->onClicked = [this]() {
-            std::cerr << "=== COPY BUTTON CLICKED! ===" << std::endl;
-            std::cerr << "Cross-platform button working perfectly!" << std::endl;
+            debugOutput << "=== COPY BUTTON CLICKED! ===" << std::endl;
+            debugOutput << "Cross-platform button working perfectly!" << std::endl;
         };
 
         auto pasteButton = CreateButton("paste_btn", 1002, 250, 150, 180, 50, "Paste Text");
         pasteButton->onClicked = [this]() {
-            std::cerr << "=== PASTE BUTTON CLICKED! ===" << std::endl;
-            std::cerr << "Cross-platform button working perfectly!" << std::endl;
+            debugOutput << "=== PASTE BUTTON CLICKED! ===" << std::endl;
+            debugOutput << "Cross-platform button working perfectly!" << std::endl;
         };
 
         auto clearButton = CreateButton("clear_btn", 1003, 450, 150, 180, 50, "Clear All");
         clearButton->onClicked = [this]() {
-            std::cerr << "=== CLEAR BUTTON CLICKED! ===" << std::endl;
-            std::cerr << "Cross-platform button working perfectly!" << std::endl;
+            debugOutput << "=== CLEAR BUTTON CLICKED! ===" << std::endl;
+            debugOutput << "Cross-platform button working perfectly!" << std::endl;
         };
 
         auto exitButton = CreateButton("exit_btn", 1004, 300, 450, 200, 60, "Exit Application");
         exitButton->onClicked = [this]() {
-            std::cerr << "=== EXIT BUTTON CLICKED! ===" << std::endl;
-            std::cerr << "Requesting application exit..." << std::endl;
+            debugOutput << "=== EXIT BUTTON CLICKED! ===" << std::endl;
+            debugOutput << "Requesting application exit..." << std::endl;
             shouldClose = true;
 
             // Use the cross-platform way to request exit
@@ -82,7 +83,7 @@ public:
                 .AddItem("United Kingdom", "UK")
                 .SetStyle(DropdownStyles::Modern())
                 .OnSelectionChanged([](int index, const DropdownItem& item) {
-                    std::cerr << "Selected: " << item.text << " (" << item.value << ")" << std::endl;
+                    debugOutput << "Selected: " << item.text << " (" << item.value << ")" << std::endl;
                 })
                 .Build();
 
@@ -100,7 +101,7 @@ public:
         uiElements.push_back(exitButton);
         uiElements.push_back(dropdown);
 
-        std::cerr << "Created " << uiElements.size() << " cross-platform UI elements" << std::endl;
+        debugOutput << "Created " << uiElements.size() << " cross-platform UI elements" << std::endl;
     }
 
     bool ShouldClose() {
@@ -111,14 +112,14 @@ public:
     bool OnEvent(const UCEvent& event) override {
         // Only log important events to reduce noise
         if (event.type == UCEventType::MouseDown || event.type == UCEventType::KeyDown) {
-            std::cerr << "CROSS-PLATFORM EVENT: type=" << static_cast<int>(event.type)
+            debugOutput << "CROSS-PLATFORM EVENT: type=" << static_cast<int>(event.type)
                       << " pos=(" << event.x << "," << event.y << ")" << std::endl;
         }
 
         // Handle window-level events using cross-platform approach
         if (event.type == UCEventType::KeyDown) {
             if (event.virtualKey == UCKeys::Escape) {
-                std::cerr << ">>> ESC KEY PRESSED - REQUESTING EXIT!" << std::endl;
+                debugOutput << ">>> ESC KEY PRESSED - REQUESTING EXIT!" << std::endl;
                 shouldClose = true;
 
                 // Use cross-platform exit request
@@ -131,7 +132,7 @@ public:
         }
 
         if (event.type == UCEventType::WindowClose) {
-            std::cerr << ">>> WINDOW CLOSE EVENT - REQUESTING EXIT!" << std::endl;
+            debugOutput << ">>> WINDOW CLOSE EVENT - REQUESTING EXIT!" << std::endl;
             shouldClose = true;
 
             // Use cross-platform exit request
@@ -159,7 +160,7 @@ public:
         UltraCanvasWindow::Render();
 
         IRenderContext* ctx = GetRenderContext();
-        std::cerr << "DEBUG: Render context is available: " << ctx << std::endl;
+        debugOutput << "DEBUG: Render context is available: " << ctx << std::endl;
 
         // Now the render context is properly set up and GetRenderContext() will work
         // No need for ULTRACANVAS_RENDER_SCOPE() here since base class already set it up
@@ -169,36 +170,36 @@ public:
         // Get window dimensions using cross-platform method
         int width, height;
         GetSize(width, height);
-        std::cerr << "DEBUG: Window dimensions: " << width << "x" << height << std::endl;
+        debugOutput << "DEBUG: Window dimensions: " << width << "x" << height << std::endl;
 
         // Draw window background using cross-platform rendering
-//        std::cerr << "DEBUG: Setting background color..." << std::endl;
+//        debugOutput << "DEBUG: Setting background color..." << std::endl;
 //        SetFillColor(Color(245, 248, 255, 255)); // Light blue background
 //        FillRectangle(Rect2D(0, 0, width, height));
-//        std::cerr << "DEBUG: Background filled" << std::endl;
+//        debugOutput << "DEBUG: Background filled" << std::endl;
 
         // Test 1: Draw title using cross-platform text rendering
-//        std::cerr << "\n--- Testing Title Text ---" << std::endl;
+//        debugOutput << "\n--- Testing Title Text ---" << std::endl;
 //
 //        // Set text color and verify
 //        Color titleColor(0.1f * 255, 0.2f * 255, 0.4f * 255, 1.0f * 255);
-//        std::cerr << "DEBUG: Setting text color to: R=" << (int)titleColor.r
+//        debugOutput << "DEBUG: Setting text color to: R=" << (int)titleColor.r
 //                  << " G=" << (int)titleColor.g << " B=" << (int)titleColor.b
 //                  << " A=" << (int)titleColor.a << std::endl;
 //        SetTextColor(titleColor);
 
         // Verify text style was set
 //        const TextStyle& currentTextStyle = ctx->GetTextStyle();
-//        std::cerr << "DEBUG: Current text style after SetTextColor:" << std::endl;
-//        std::cerr << "  - fontFamily: '" << currentTextStyle.fontFamily << "'" << std::endl;
-//        std::cerr << "  - fontSize: " << currentTextStyle.fontSize << std::endl;
-//        std::cerr << "  - textColor: R=" << (int)currentTextStyle.textColor.r
+//        debugOutput << "DEBUG: Current text style after SetTextColor:" << std::endl;
+//        debugOutput << "  - fontFamily: '" << currentTextStyle.fontFamily << "'" << std::endl;
+//        debugOutput << "  - fontSize: " << currentTextStyle.fontSize << std::endl;
+//        debugOutput << "  - textColor: R=" << (int)currentTextStyle.textColor.r
 //                  << " G=" << (int)currentTextStyle.textColor.g
 //                  << " B=" << (int)currentTextStyle.textColor.b
 //                  << " A=" << (int)currentTextStyle.textColor.a << std::endl;
 //
 //        // Set font and verify
-//        std::cerr << "DEBUG: Setting font to Arial, 24..." << std::endl;
+//        debugOutput << "DEBUG: Setting font to Arial, 24..." << std::endl;
 //        SetFont("Arial", 24);
 
         // Verify font was set
@@ -211,10 +212,10 @@ public:
 //        ctx->SetTextStyle(directStyle);
         //SetTextStyle(directStyle);
 
-//        std::cerr << "DEBUG: Current text style after SetFont:" << std::endl;
-//        std::cerr << "  - fontFamily: '" << fontStyle.fontFamily << "'" << std::endl;
-//        std::cerr << "  - fontSize: " << fontStyle.fontSize << std::endl;
-//        std::cerr << "  - textColor: R=" << (int)fontStyle.textColor.r
+//        debugOutput << "DEBUG: Current text style after SetFont:" << std::endl;
+//        debugOutput << "  - fontFamily: '" << fontStyle.fontFamily << "'" << std::endl;
+//        debugOutput << "  - fontSize: " << fontStyle.fontSize << std::endl;
+//        debugOutput << "  - textColor: R=" << (int)fontStyle.textColor.r
 //                  << " G=" << (int)fontStyle.textColor.g
 //                  << " B=" << (int)fontStyle.textColor.b
 //                  << " A=" << (int)fontStyle.textColor.a << std::endl;
@@ -222,50 +223,50 @@ public:
         // Test text measurement first
         std::string titleText = "UltraCanvas Cross-Platform Demo0";
 //        Point2D titleSize = ctx->MeasureText(titleText);
-//        std::cerr << "DEBUG: Text '" << titleText << "' measures: "
+//        debugOutput << "DEBUG: Text '" << titleText << "' measures: "
 //                  << titleSize.x << "x" << titleSize.y << " pixels" << std::endl;
 
         // Now draw the text
         Point2D titlePos(50, 50);
-        std::cerr << "DEBUG: About to draw title text at (" << titlePos.x << "," << titlePos.y << ")" << std::endl;
+        debugOutput << "DEBUG: About to draw title text at (" << titlePos.x << "," << titlePos.y << ")" << std::endl;
         DrawText(titleText, titlePos);
-        std::cerr << "DEBUG: Title text draw call completed" << std::endl;
+        debugOutput << "DEBUG: Title text draw call completed" << std::endl;
 //
 //        // Test 2: Try direct context call to bypass inline functions
-//        std::cerr << "\n--- Testing Direct Context Call ---" << std::endl;
+//        debugOutput << "\n--- Testing Direct Context Call ---" << std::endl;
 //
 //        // Set up text style manually
 //
-//        std::cerr << "DEBUG: Set text style directly on context" << std::endl;
-//        std::cerr << "DEBUG: About to call ctx->DrawText directly..." << std::endl;
+//        debugOutput << "DEBUG: Set text style directly on context" << std::endl;
+//        debugOutput << "DEBUG: About to call ctx->DrawText directly..." << std::endl;
 //
 //        // Call DrawText directly on the context
 //        ctx->DrawText("DIRECT CONTEXT TEST", Point2D(50, 100));
-//        std::cerr << "DEBUG: Direct context DrawText completed" << std::endl;
+//        debugOutput << "DEBUG: Direct context DrawText completed" << std::endl;
 //
 //        // Test 3: Test with different colors
-//        std::cerr << "\n--- Testing Different Colors ---" << std::endl;
+//        debugOutput << "\n--- Testing Different Colors ---" << std::endl;
 //
 //        // Test with solid colors (no float multiplication)
 //        SetTextColor(Color(255, 0, 0, 255)); // Solid red
 //        SetFont("Arial", 14);
-//        std::cerr << "DEBUG: About to draw RED text" << std::endl;
+//        debugOutput << "DEBUG: About to draw RED text" << std::endl;
 //        DrawText("RED TEXT TEST", Point2D(50, 130));
 //
 //        SetTextColor(Color(0, 255, 0, 255)); // Solid green
-//        std::cerr << "DEBUG: About to draw GREEN text" << std::endl;
+//        debugOutput << "DEBUG: About to draw GREEN text" << std::endl;
 //        DrawText("GREEN TEXT TEST", Point2D(50, 150));
 //
 //        SetTextColor(Color(0, 0, 255, 255)); // Solid blue
-//        std::cerr << "DEBUG: About to draw BLUE text" << std::endl;
+//        debugOutput << "DEBUG: About to draw BLUE text" << std::endl;
 //        DrawText("BLUE TEXT TEST", Point2D(50, 170));
 //
 //        // Force Cairo to flush all operations
-//        std::cerr << "\n--- Flushing Render Context ---" << std::endl;
+//        debugOutput << "\n--- Flushing Render Context ---" << std::endl;
 //        ctx->Flush();
-//        std::cerr << "DEBUG: Render context flushed" << std::endl;
+//        debugOutput << "DEBUG: Render context flushed" << std::endl;
 //
-//        std::cerr << "=== RENDER DEBUG COMPLETE ===\n" << std::endl;
+//        debugOutput << "=== RENDER DEBUG COMPLETE ===\n" << std::endl;
 //        return;
 
         GetSize(width, height);
@@ -298,7 +299,7 @@ public:
 
 // Enhanced debug version of RenderWithDebug() method
     void RenderWithDebugEnhanced() {
-        std::cerr << "\n=== STARTING RENDER DEBUG ===" << std::endl;
+        debugOutput << "\n=== STARTING RENDER DEBUG ===" << std::endl;
 
         // Call base class render to set up the render context
         UltraCanvasWindow::Render();
@@ -306,53 +307,53 @@ public:
         // Debug: Verify render context is available
         IRenderContext* ctx = GetRenderContext();
         if (!ctx) {
-            std::cerr << "ERROR: No render context available after base class render!" << std::endl;
+            debugOutput << "ERROR: No render context available after base class render!" << std::endl;
             return;
         }
 
-        std::cerr << "DEBUG: Render context is available: " << ctx << std::endl;
+        debugOutput << "DEBUG: Render context is available: " << ctx << std::endl;
 
         // Get window dimensions using cross-platform method
         int width, height;
         GetSize(width, height);
-        std::cerr << "DEBUG: Window dimensions: " << width << "x" << height << std::endl;
+        debugOutput << "DEBUG: Window dimensions: " << width << "x" << height << std::endl;
 
         // Draw window background using cross-platform rendering
-        std::cerr << "DEBUG: Setting background color..." << std::endl;
+        debugOutput << "DEBUG: Setting background color..." << std::endl;
         SetFillColor(Color(245, 248, 255, 255)); // Light blue background
         FillRectangle(Rect2D(0, 0, width, height));
-        std::cerr << "DEBUG: Background filled" << std::endl;
+        debugOutput << "DEBUG: Background filled" << std::endl;
 
         // Test 1: Draw title using cross-platform text rendering
-        std::cerr << "\n--- Testing Title Text ---" << std::endl;
+        debugOutput << "\n--- Testing Title Text ---" << std::endl;
 
         // Set text color and verify
         Color titleColor(0.1f * 255, 0.2f * 255, 0.4f * 255, 1.0f * 255);
-        std::cerr << "DEBUG: Setting text color to: R=" << (int)titleColor.r
+        debugOutput << "DEBUG: Setting text color to: R=" << (int)titleColor.r
                   << " G=" << (int)titleColor.g << " B=" << (int)titleColor.b
                   << " A=" << (int)titleColor.a << std::endl;
         SetTextColor(titleColor);
 
         // Verify text style was set
         const TextStyle& currentTextStyle = ctx->GetTextStyle();
-        std::cerr << "DEBUG: Current text style after SetTextColor:" << std::endl;
-        std::cerr << "  - fontFamily: '" << currentTextStyle.fontFamily << "'" << std::endl;
-        std::cerr << "  - fontSize: " << currentTextStyle.fontSize << std::endl;
-        std::cerr << "  - textColor: R=" << (int)currentTextStyle.textColor.r
+        debugOutput << "DEBUG: Current text style after SetTextColor:" << std::endl;
+        debugOutput << "  - fontFamily: '" << currentTextStyle.fontFamily << "'" << std::endl;
+        debugOutput << "  - fontSize: " << currentTextStyle.fontSize << std::endl;
+        debugOutput << "  - textColor: R=" << (int)currentTextStyle.textColor.r
                   << " G=" << (int)currentTextStyle.textColor.g
                   << " B=" << (int)currentTextStyle.textColor.b
                   << " A=" << (int)currentTextStyle.textColor.a << std::endl;
 
         // Set font and verify
-        std::cerr << "DEBUG: Setting font to Sans, 24..." << std::endl;
+        debugOutput << "DEBUG: Setting font to Sans, 24..." << std::endl;
         SetFont("Sans", 24);
 
         // Verify font was set
         const TextStyle& fontStyle = ctx->GetTextStyle();
-        std::cerr << "DEBUG: Current text style after SetFont:" << std::endl;
-        std::cerr << "  - fontFamily: '" << fontStyle.fontFamily << "'" << std::endl;
-        std::cerr << "  - fontSize: " << fontStyle.fontSize << std::endl;
-        std::cerr << "  - textColor: R=" << (int)fontStyle.textColor.r
+        debugOutput << "DEBUG: Current text style after SetFont:" << std::endl;
+        debugOutput << "  - fontFamily: '" << fontStyle.fontFamily << "'" << std::endl;
+        debugOutput << "  - fontSize: " << fontStyle.fontSize << std::endl;
+        debugOutput << "  - textColor: R=" << (int)fontStyle.textColor.r
                   << " G=" << (int)fontStyle.textColor.g
                   << " B=" << (int)fontStyle.textColor.b
                   << " A=" << (int)fontStyle.textColor.a << std::endl;
@@ -360,17 +361,17 @@ public:
         // Test text measurement first
         std::string titleText = "UltraCanvas Cross-Platform Demo";
         Point2D titleSize = ctx->MeasureText(titleText);
-        std::cerr << "DEBUG: Text '" << titleText << "' measures: "
+        debugOutput << "DEBUG: Text '" << titleText << "' measures: "
                   << titleSize.x << "x" << titleSize.y << " pixels" << std::endl;
 
         // Now draw the text
         Point2D titlePos(50, 50);
-        std::cerr << "DEBUG: About to draw title text at (" << titlePos.x << "," << titlePos.y << ")" << std::endl;
+        debugOutput << "DEBUG: About to draw title text at (" << titlePos.x << "," << titlePos.y << ")" << std::endl;
         DrawText(titleText, titlePos);
-        std::cerr << "DEBUG: Title text draw call completed" << std::endl;
+        debugOutput << "DEBUG: Title text draw call completed" << std::endl;
 
         // Test 2: Try direct context call to bypass inline functions
-        std::cerr << "\n--- Testing Direct Context Call ---" << std::endl;
+        debugOutput << "\n--- Testing Direct Context Call ---" << std::endl;
 
         // Set up text style manually
         TextStyle directStyle;
@@ -379,41 +380,41 @@ public:
         directStyle.textColor = Color(255, 0, 0, 255); // Red text
         ctx->SetTextStyle(directStyle);
 
-        std::cerr << "DEBUG: Set text style directly on context" << std::endl;
-        std::cerr << "DEBUG: About to call ctx->DrawText directly..." << std::endl;
+        debugOutput << "DEBUG: Set text style directly on context" << std::endl;
+        debugOutput << "DEBUG: About to call ctx->DrawText directly..." << std::endl;
 
         // Call DrawText directly on the context
         ctx->DrawText("DIRECT CONTEXT TEST", Point2D(50, 100));
-        std::cerr << "DEBUG: Direct context DrawText completed" << std::endl;
+        debugOutput << "DEBUG: Direct context DrawText completed" << std::endl;
 
         // Test 3: Test with different colors
-        std::cerr << "\n--- Testing Different Colors ---" << std::endl;
+        debugOutput << "\n--- Testing Different Colors ---" << std::endl;
 
         // Test with solid colors (no float multiplication)
         SetTextColor(Color(255, 0, 0, 255)); // Solid red
         SetFont("Sans", 14);
-        std::cerr << "DEBUG: About to draw RED text" << std::endl;
+        debugOutput << "DEBUG: About to draw RED text" << std::endl;
         DrawText("RED TEXT TEST", Point2D(50, 130));
 
         SetTextColor(Color(0, 255, 0, 255)); // Solid green
-        std::cerr << "DEBUG: About to draw GREEN text" << std::endl;
+        debugOutput << "DEBUG: About to draw GREEN text" << std::endl;
         DrawText("GREEN TEXT TEST", Point2D(50, 150));
 
         SetTextColor(Color(0, 0, 255, 255)); // Solid blue
-        std::cerr << "DEBUG: About to draw BLUE text" << std::endl;
+        debugOutput << "DEBUG: About to draw BLUE text" << std::endl;
         DrawText("BLUE TEXT TEST", Point2D(50, 170));
 
         // Force Cairo to flush all operations
-        std::cerr << "\n--- Flushing Render Context ---" << std::endl;
+        debugOutput << "\n--- Flushing Render Context ---" << std::endl;
         ctx->Flush();
-        std::cerr << "DEBUG: Render context flushed" << std::endl;
+        debugOutput << "DEBUG: Render context flushed" << std::endl;
 
-        std::cerr << "=== RENDER DEBUG COMPLETE ===\n" << std::endl;
+        debugOutput << "=== RENDER DEBUG COMPLETE ===\n" << std::endl;
     }
 
 // Alternative test: Use the explicit scope method with more debug info
     void RenderWithExplicitScopeDebug() {
-        std::cerr << "\n=== STARTING EXPLICIT SCOPE DEBUG ===" << std::endl;
+        debugOutput << "\n=== STARTING EXPLICIT SCOPE DEBUG ===" << std::endl;
 
         // Call base class render to draw UI elements first
         UltraCanvasWindow::Render();
@@ -423,10 +424,10 @@ public:
             ULTRACANVAS_WINDOW_RENDER_SCOPE(this);
 
             IRenderContext* ctx = GetRenderContext();
-            std::cerr << "DEBUG: Context after explicit scope: " << ctx << std::endl;
+            debugOutput << "DEBUG: Context after explicit scope: " << ctx << std::endl;
 
             if (!ctx) {
-                std::cerr << "ERROR: No context even after explicit scope!" << std::endl;
+                debugOutput << "ERROR: No context even after explicit scope!" << std::endl;
                 return;
             }
 
@@ -435,20 +436,20 @@ public:
             GetSize(width, height);
 
             // Draw background
-            std::cerr << "DEBUG: Drawing background..." << std::endl;
+            debugOutput << "DEBUG: Drawing background..." << std::endl;
             SetFillColor(Color(245, 248, 255, 255));
             FillRectangle(Rect2D(0, 0, width, height));
 
             // Draw text with debugging
-            std::cerr << "DEBUG: Drawing text with explicit scope..." << std::endl;
+            debugOutput << "DEBUG: Drawing text with explicit scope..." << std::endl;
             SetTextColor(Color(0, 0, 0, 255)); // Black text
             SetFont("Sans", 24);
 
             const TextStyle& style = ctx->GetTextStyle();
-            std::cerr << "DEBUG: Final text style before drawing:" << std::endl;
-            std::cerr << "  - fontFamily: '" << style.fontFamily << "'" << std::endl;
-            std::cerr << "  - fontSize: " << style.fontSize << std::endl;
-            std::cerr << "  - textColor: R=" << (int)style.textColor.r
+            debugOutput << "DEBUG: Final text style before drawing:" << std::endl;
+            debugOutput << "  - fontFamily: '" << style.fontFamily << "'" << std::endl;
+            debugOutput << "  - fontSize: " << style.fontSize << std::endl;
+            debugOutput << "  - textColor: R=" << (int)style.textColor.r
                       << " G=" << (int)style.textColor.g
                       << " B=" << (int)style.textColor.b
                       << " A=" << (int)style.textColor.a << std::endl;
@@ -456,10 +457,10 @@ public:
             DrawText("EXPLICIT SCOPE TEST", Point2D(50, 50));
 
             ctx->Flush();
-            std::cerr << "DEBUG: Explicit scope render complete" << std::endl;
+            debugOutput << "DEBUG: Explicit scope render complete" << std::endl;
         }
 
-        std::cerr << "=== EXPLICIT SCOPE DEBUG COMPLETE ===\n" << std::endl;
+        debugOutput << "=== EXPLICIT SCOPE DEBUG COMPLETE ===\n" << std::endl;
     }};
 
 class PureCrossPlatformApp {
@@ -470,7 +471,7 @@ private:
 
 public:
     PureCrossPlatformApp() {
-        std::cerr << "=== Initializing Pure Cross-Platform App ===" << std::endl;
+        debugOutput << "=== Initializing Pure Cross-Platform App ===" << std::endl;
 
         try {
             // Create the cross-platform application instance
@@ -480,19 +481,19 @@ public:
                 throw std::runtime_error("Cross-platform application initialization failed");
             }
             appInitialized = true;
-            std::cerr << "UltraCanvas cross-platform application initialized successfully" << std::endl;
+            debugOutput << "UltraCanvas cross-platform application initialized successfully" << std::endl;
 
             CreateMainWindow();
             SetupGlobalEventHandling();
 
         } catch (const std::exception& e) {
-            std::cerr << "Exception in constructor: " << e.what() << std::endl;
+            debugOutput << "Exception in constructor: " << e.what() << std::endl;
             throw;
         }
     }
 
     void CreateMainWindow() {
-        std::cerr << "=== Creating Cross-Platform Window ===" << std::endl;
+        debugOutput << "=== Creating Cross-Platform Window ===" << std::endl;
 
         WindowConfig config;
         config.title = "UltraCanvas Pure Cross-Platform Demo";
@@ -509,23 +510,23 @@ public:
             mainWindow->Create(config);
             //theApp->RegisterWindow(mainWindow.get());
 
-            std::cerr << "Cross-platform window created successfully" << std::endl;
+            debugOutput << "Cross-platform window created successfully" << std::endl;
 
         } catch (const std::exception& e) {
-            std::cerr << "Exception during window creation: " << e.what() << std::endl;
+            debugOutput << "Exception during window creation: " << e.what() << std::endl;
             throw;
         }
     }
 
     void SetupGlobalEventHandling() {
-        std::cerr << "=== Setting Up Cross-Platform Event Handling ===" << std::endl;
+        debugOutput << "=== Setting Up Cross-Platform Event Handling ===" << std::endl;
 
         // Set up global event handler using cross-platform API
         // This works the same way on all platforms
         theApp->SetGlobalEventHandler([this](const UCEvent& event) -> bool {
             // Log important global events
             if (event.type == UCEventType::KeyDown && event.virtualKey == UCKeys::F4 && event.alt) {
-                std::cerr << "GLOBAL ALT+F4 - REQUESTING EXIT!" << std::endl;
+                debugOutput << "GLOBAL ALT+F4 - REQUESTING EXIT!" << std::endl;
                 theApp->Exit();
                 return true; // Consume the event
             }
@@ -534,31 +535,31 @@ public:
             return false;
         });
 
-        std::cerr << "Cross-platform event handler configured" << std::endl;
+        debugOutput << "Cross-platform event handler configured" << std::endl;
     }
 
     void Run() {
-        std::cerr << "=== Starting Pure Cross-Platform Application ===" << std::endl;
+        debugOutput << "=== Starting Pure Cross-Platform Application ===" << std::endl;
 
         if (!appInitialized || !mainWindow) {
-            std::cerr << "Cannot run: not properly initialized" << std::endl;
+            debugOutput << "Cannot run: not properly initialized" << std::endl;
             return;
         }
 
         try {
             // Show the window using cross-platform API
-            std::cerr << "Showing window..." << std::endl;
+            debugOutput << "Showing window..." << std::endl;
             mainWindow->Show();
 
-            std::cerr << "=========================================" << std::endl;
-            std::cerr << "=== CROSS-PLATFORM DEMO READY! ===" << std::endl;
-            std::cerr << "=== CLICK BUTTONS TO TEST! ===" << std::endl;
-            std::cerr << "=== PRESS ESC OR ALT+F4 TO EXIT! ===" << std::endl;
-            std::cerr << "=========================================" << std::endl;
+            debugOutput << "=========================================" << std::endl;
+            debugOutput << "=== CROSS-PLATFORM DEMO READY! ===" << std::endl;
+            debugOutput << "=== CLICK BUTTONS TO TEST! ===" << std::endl;
+            debugOutput << "=== PRESS ESC OR ALT+F4 TO EXIT! ===" << std::endl;
+            debugOutput << "=========================================" << std::endl;
 
             // Use the cross-platform main loop - this handles ALL platform-specific details
             // No X11, Win32, or Cocoa code needed anywhere!
-            std::cerr << "Starting cross-platform main loop..." << std::endl;
+            debugOutput << "Starting cross-platform main loop..." << std::endl;
 
             // This single call handles everything:
             // - Event processing (X11/Win32/Cocoa)
@@ -568,17 +569,17 @@ public:
             // - Platform-specific cleanup
             theApp->Run();
 
-            std::cerr << "Cross-platform main loop completed" << std::endl;
+            debugOutput << "Cross-platform main loop completed" << std::endl;
 
         } catch (const std::exception& e) {
-            std::cerr << "Error during cross-platform application run: " << e.what() << std::endl;
+            debugOutput << "Error during cross-platform application run: " << e.what() << std::endl;
         }
 
-        std::cout << "=== Pure Cross-Platform Application Complete ===" << std::endl;
+        debugOutput << "=== Pure Cross-Platform Application Complete ===" << std::endl;
     }
 
     ~PureCrossPlatformApp() {
-        std::cout << "=== Cleaning up Pure Cross-Platform App ===" << std::endl;
+        debugOutput << "=== Cleaning up Pure Cross-Platform App ===" << std::endl;
 
         // Clean shutdown using cross-platform APIs
         if (mainWindow) {
@@ -595,11 +596,11 @@ public:
 
 // ===== MAIN FUNCTION - COMPLETELY CROSS-PLATFORM =====
 int main() {
-    std::cout << "=======================================================" << std::endl;
-    std::cout << "===        UltraCanvas Pure Cross-Platform Demo    ===" << std::endl;
-    std::cout << "===              NO PLATFORM CODE                  ===" << std::endl;
-    std::cout << "===       Same Source Runs on Any Platform!        ===" << std::endl;
-    std::cout << "=======================================================" << std::endl;
+    debugOutput << "=======================================================" << std::endl;
+    debugOutput << "===        UltraCanvas Pure Cross-Platform Demo    ===" << std::endl;
+    debugOutput << "===              NO PLATFORM CODE                  ===" << std::endl;
+    debugOutput << "===       Same Source Runs on Any Platform!        ===" << std::endl;
+    debugOutput << "=======================================================" << std::endl;
 
     try {
         // This entire block is completely cross-platform
@@ -608,19 +609,19 @@ int main() {
             PureCrossPlatformApp app;
             app.Run();
 
-            std::cout << "Application completed successfully" << std::endl;
+            debugOutput << "Application completed successfully" << std::endl;
         }
 
-        std::cout << "=======================================================" << std::endl;
-        std::cout << "===    Cross-Platform Demo Completed Successfully ===" << std::endl;
-        std::cout << "=======================================================" << std::endl;
+        debugOutput << "=======================================================" << std::endl;
+        debugOutput << "===    Cross-Platform Demo Completed Successfully ===" << std::endl;
+        debugOutput << "=======================================================" << std::endl;
 
         return 0;
 
     } catch (const std::exception& e) {
-        std::cerr << "=== CROSS-PLATFORM APPLICATION ERROR ===" << std::endl;
-        std::cerr << "Error: " << e.what() << std::endl;
-        std::cerr << "=========================================" << std::endl;
+        debugOutput << "=== CROSS-PLATFORM APPLICATION ERROR ===" << std::endl;
+        debugOutput << "Error: " << e.what() << std::endl;
+        debugOutput << "=========================================" << std::endl;
         return -1;
     }
 }

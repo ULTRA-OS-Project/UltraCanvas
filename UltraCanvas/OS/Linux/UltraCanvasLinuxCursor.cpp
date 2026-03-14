@@ -16,6 +16,7 @@
 #include <iostream>
 #include <vector>
 #include <cstring>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -90,7 +91,7 @@ namespace UltraCanvas {
             // Create new cursor
             return CreateXCursorFromImage(display, img, hotspotX, hotspotY);
         } catch (const vips::VError& e) {
-            std::cerr << "UltraCanvas Linux: libvips error loading " << filename << ": " << e.what() << std::endl;
+            debugOutput << "UltraCanvas Linux: libvips error loading " << filename << ": " << e.what() << std::endl;
         }
         return 0;
     }
@@ -214,7 +215,7 @@ namespace UltraCanvas {
         XFlush(display);
 
 
-        std::cerr << "UltraCanvas Linux: Custom cursor loaded from " << filename
+        debugOutput << "UltraCanvas Linux: Custom cursor loaded from " << filename
                   << " (hotspot: " << hotspotX << "," << hotspotY << ")" << std::endl;
         return true;
     }

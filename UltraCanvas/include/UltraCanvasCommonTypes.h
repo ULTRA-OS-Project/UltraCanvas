@@ -14,11 +14,28 @@
 // This ensures native dialogs stay on top of their parent window
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
+#ifdef DrawText
+#undef DrawText
+#endif
+#ifdef CreateWindow
+#undef CreateWindow
+#endif
+#ifdef CreateDialog
+#undef CreateDialog
+#endif
+#ifdef RGB
+#undef RGB
+#endif
+#ifdef CopyMemory
+#undef CopyMemory
+#endif
+#ifdef Rect
+#undef Rect
+#endif
 #elif defined(__linux__) || defined(__unix__)
 #include <X11/Xlib.h>
 #elif defined(__APPLE__)
 #endif
-
 namespace UltraCanvas {
 
     // ===== NATIVE WINDOW HANDLE TYPE =====

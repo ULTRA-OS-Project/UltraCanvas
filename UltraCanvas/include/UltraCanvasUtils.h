@@ -17,6 +17,7 @@
 #include <chrono>
 #include <iostream>
 #include <mutex>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     extern const char* versionString;
@@ -66,7 +67,7 @@ namespace UltraCanvas {
         // Return duration in microseconds
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
-        std::cerr << logPrefix << " Execution time: " << duration << " us\n";
+        debugOutput << logPrefix << " Execution time: " << duration << " us\n";
     }
 
 

@@ -25,13 +25,13 @@ int main() {
     int testCount = 0;
     int failCount = 0;
 
-    std::cout << "========================================" << std::endl;
-    std::cout << "   UCString UTF-8 Test Suite" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << std::endl;
+    debugOutput << "========================================" << std::endl;
+    debugOutput << "   UCString UTF-8 Test Suite" << std::endl;
+    debugOutput << "========================================" << std::endl;
+    debugOutput << std::endl;
 
     // ===== CONSTRUCTOR TESTS =====
-    std::cout << "--- Constructor Tests ---" << std::endl;
+    debugOutput << "--- Constructor Tests ---" << std::endl;
 
     {
         UCString empty;
@@ -59,10 +59,10 @@ int main() {
         TEST("Euro sign is 3 bytes", fromCodepoint.ByteLength() == 3);
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== UTF-8 LENGTH TESTS =====
-    std::cout << "--- UTF-8 Length Tests ---" << std::endl;
+    debugOutput << "--- UTF-8 Length Tests ---" << std::endl;
 
     {
         UCString ascii("Hello");
@@ -89,16 +89,16 @@ int main() {
         TEST("'Hello 👋!': 11 bytes", emoji.ByteLength() == 11);
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== GRAPHEME CLUSTER TESTS =====
-    std::cout << "--- Grapheme Cluster Tests ---" << std::endl;
+    debugOutput << "--- Grapheme Cluster Tests ---" << std::endl;
 
     {
         // Family emoji: 👨�👩�👦 (man + ZWJ + woman + ZWJ + boy)
         UCString family("👨�👩�👦");
         TEST("Family emoji is 1 grapheme cluster", family.Length() == 1);
-        std::cout << "   (Family emoji bytes: " << family.ByteLength() << ")" << std::endl;
+        debugOutput << "   (Family emoji bytes: " << family.ByteLength() << ")" << std::endl;
     }
 
     {
@@ -121,10 +121,10 @@ int main() {
         TEST("Hindi 'नी' is 1 grapheme", hindi.Length() == 1);
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== COMPARISON OPERATORS =====
-    std::cout << "--- Comparison Operator Tests ---" << std::endl;
+    debugOutput << "--- Comparison Operator Tests ---" << std::endl;
 
     {
         UCString a("Hello");
@@ -143,10 +143,10 @@ int main() {
         TEST("UCString > UCString", c > a);
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== CONCATENATION TESTS =====
-    std::cout << "--- Concatenation Tests ---" << std::endl;
+    debugOutput << "--- Concatenation Tests ---" << std::endl;
 
     {
         UCString hello("Hello");
@@ -174,10 +174,10 @@ int main() {
         TEST("UCString += char32_t", str == "A→B");
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== ELEMENT ACCESS TESTS =====
-    std::cout << "--- Element Access Tests ---" << std::endl;
+    debugOutput << "--- Element Access Tests ---" << std::endl;
 
     {
         UCString mixed("Héllo🌍!");  // H, é, l, l, o, 🌍, !
@@ -199,10 +199,10 @@ int main() {
         TEST("Back() returns last grapheme", str.Back() == "C");
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== MODIFICATION TESTS =====
-    std::cout << "--- Modification Tests ---" << std::endl;
+    debugOutput << "--- Modification Tests ---" << std::endl;
 
     {
         UCString str("Hello World");
@@ -237,10 +237,10 @@ int main() {
         TEST("PopBack on mixed content", str == "Emoji");
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== SUBSTRING TESTS =====
-    std::cout << "--- Substring Tests ---" << std::endl;
+    debugOutput << "--- Substring Tests ---" << std::endl;
 
     {
         UCString str("Hello🌍World");
@@ -260,10 +260,10 @@ int main() {
         TEST("Substr Japanese characters", sub == "日本語");
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== SEARCH TESTS =====
-    std::cout << "--- Search Tests ---" << std::endl;
+    debugOutput << "--- Search Tests ---" << std::endl;
 
     {
         UCString str("Hello World Hello");
@@ -291,10 +291,10 @@ int main() {
         TEST("EndsWith (false)", !str.EndsWith("Hello"));
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== CURSOR NAVIGATION TESTS =====
-    std::cout << "--- Cursor Navigation Tests ---" << std::endl;
+    debugOutput << "--- Cursor Navigation Tests ---" << std::endl;
 
     {
         UCString str("A👨�👩�👦B");  // A + family emoji + B
@@ -324,10 +324,10 @@ int main() {
         TEST("PrevGrapheme before 't'", pos == 3);
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== POSITION CONVERSION TESTS =====
-    std::cout << "--- Position Conversion Tests ---" << std::endl;
+    debugOutput << "--- Position Conversion Tests ---" << std::endl;
 
     {
         UCString str("A🌍B");  // A(1) + emoji(4) + B(1) = 6 bytes, 3 graphemes
@@ -341,10 +341,10 @@ int main() {
         TEST("ByteToGraphemeIndex(5)", str.ByteToGraphemeIndex(5) == 2);
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== ITERATOR TESTS =====
-    std::cout << "--- Iterator Tests ---" << std::endl;
+    debugOutput << "--- Iterator Tests ---" << std::endl;
 
     {
         UCString str("A🌍B");
@@ -367,10 +367,10 @@ int main() {
         TEST("Range-based for loop", collected == "Hello");
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== UTILITY TESTS =====
-    std::cout << "--- Utility Tests ---" << std::endl;
+    debugOutput << "--- Utility Tests ---" << std::endl;
 
     {
         UCString str("  Hello World  ");
@@ -405,10 +405,10 @@ int main() {
         TEST("Reversed preserves graphemes", reversed == "B🌍A");
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== CONVERSION TESTS =====
-    std::cout << "--- Conversion Tests ---" << std::endl;
+    debugOutput << "--- Conversion Tests ---" << std::endl;
 
     {
         UCString str("Hello🌍");
@@ -438,10 +438,10 @@ int main() {
         TEST("FromUTF32", fromU32 == "日本語");
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== VALIDATION TESTS =====
-    std::cout << "--- Validation Tests ---" << std::endl;
+    debugOutput << "--- Validation Tests ---" << std::endl;
 
     {
         UCString valid("Hello 世界 🌍");
@@ -455,20 +455,20 @@ int main() {
         TEST("Sanitized replaces invalid bytes", sanitized.IsValidUTF8());
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== STRING LITERAL TESTS =====
-    std::cout << "--- String Literal Tests ---" << std::endl;
+    debugOutput << "--- String Literal Tests ---" << std::endl;
 
     {
         UCString str = "Hello"_uc;
         TEST("User-defined literal _uc", str == "Hello");
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== STREAM OPERATOR TESTS =====
-    std::cout << "--- Stream Operator Tests ---" << std::endl;
+    debugOutput << "--- Stream Operator Tests ---" << std::endl;
 
     {
         UCString str("Hello 🌍");
@@ -477,10 +477,10 @@ int main() {
         TEST("Stream output operator", oss.str() == "Hello 🌍");
     }
 
-    std::cout << std::endl;
+    debugOutput << std::endl;
 
     // ===== REAL-WORLD TEXT EDITOR SCENARIO =====
-    std::cout << "--- Text Editor Simulation ---" << std::endl;
+    debugOutput << "--- Text Editor Simulation ---" << std::endl;
 
     {
         UCString text("Hello 👨�👩�👦 World!");
@@ -516,15 +516,15 @@ int main() {
         TEST("Delete family emoji", afterDelete == "Hello  World!");
     }
 
-    std::cout << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << "   Test Results: " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
+    debugOutput << std::endl;
+    debugOutput << "========================================" << std::endl;
+    debugOutput << "   Test Results: " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     if (failCount == 0) {
-        std::cout << "   All tests PASSED! ✓" << std::endl;
+        debugOutput << "   All tests PASSED! ✓" << std::endl;
     } else {
-        std::cout << "   " << failCount << " tests FAILED! ✗" << std::endl;
+        debugOutput << "   " << failCount << " tests FAILED! ✗" << std::endl;
     }
-    std::cout << "========================================" << std::endl;
+    debugOutput << "========================================" << std::endl;
 
     return failCount > 0 ? 1 : 0;
 }

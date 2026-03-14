@@ -27,6 +27,7 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include "UltraCanvasDebug.h"
 
 using namespace UltraCanvas;
 
@@ -483,7 +484,7 @@ public:
         // Create main window with config
         mainWindow = std::make_shared<GraphicFormulaWindow>();
         if (!mainWindow) {
-            std::cerr << "Failed to create main window" << std::endl;
+            debugOutput << "Failed to create main window" << std::endl;
             return false;
         }
 
@@ -494,7 +495,7 @@ public:
         config.height = 800;
 
         if (!mainWindow->Create(config)) {
-            std::cerr << "Failed to create main window" << std::endl;
+            debugOutput << "Failed to create main window" << std::endl;
             return false;
         }
         mainWindow->Show();
@@ -523,17 +524,17 @@ int main() {
     auto app = new GraphicFormulaApp();
 
     if (!app->Initialize()) {
-        std::cerr << "Failed to initialize GraphicFormulaApp" << std::endl;
+        debugOutput << "Failed to initialize GraphicFormulaApp" << std::endl;
         return -1;
     }
 
-    std::cerr << "GraphicFormulaApp initialized successfully" << std::endl;
-    std::cerr << "Running application..." << std::endl;
+    debugOutput << "GraphicFormulaApp initialized successfully" << std::endl;
+    debugOutput << "Running application..." << std::endl;
 
     // Run the application
     app->Run();
 
-    std::cerr << "Application finished" << std::endl;
+    debugOutput << "Application finished" << std::endl;
 
     delete app;
     return 0;

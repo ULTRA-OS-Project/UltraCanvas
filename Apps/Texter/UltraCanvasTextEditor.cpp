@@ -25,6 +25,7 @@
 #include <ctime>
 #include <cstdlib>
 #include <fmt/os.h>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -85,7 +86,7 @@ namespace {
         try {
             std::filesystem::create_directories(dir);
         } catch (...) {
-            std::cerr << "Failed to create autosave directory: " << dir << std::endl;
+            debugOutput << "Failed to create autosave directory: " << dir << std::endl;
             return "";
         }
 
@@ -136,7 +137,7 @@ namespace {
 
             return true;
         } catch (const std::exception& e) {
-            std::cerr << "Autosave error: " << e.what() << std::endl;
+            debugOutput << "Autosave error: " << e.what() << std::endl;
             return false;
         }
     }
@@ -182,7 +183,7 @@ namespace {
             file.close();
             return true;
         } catch (const std::exception& e) {
-            std::cerr << "Backup load error: " << e.what() << std::endl;
+            debugOutput << "Backup load error: " << e.what() << std::endl;
             return false;
         }
     }
@@ -1319,7 +1320,7 @@ namespace {
             // Read raw bytes from file in binary mode
             std::ifstream file(filePath, std::ios::binary | std::ios::ate);
             if (!file.is_open()) {
-                std::cerr << "Failed to open file: " << filePath << std::endl;
+                debugOutput << "Failed to open file: " << filePath << std::endl;
                 return false;
             }
 
@@ -1394,7 +1395,7 @@ namespace {
                 std::string utf8Text;
                 if (!ConvertToUtf8(contentBytes, doc->encoding, utf8Text)) {
                     // Conversion failed; fallback to ISO-8859-1 (always succeeds)
-                    std::cerr << "Encoding conversion failed for " << doc->encoding
+                    debugOutput << "Encoding conversion failed for " << doc->encoding
                               << ", falling back to ISO-8859-1" << std::endl;
                     doc->encoding = "ISO-8859-1";
                     ConvertToUtf8(contentBytes, "ISO-8859-1", utf8Text);
@@ -1431,7 +1432,7 @@ namespace {
             return true;
 
         } catch (const std::exception& e) {
-            std::cerr << "Error loading file: " << e.what() << std::endl;
+            debugOutput << "Error loading file: " << e.what() << std::endl;
             return false;
         }
     }
@@ -1521,7 +1522,7 @@ namespace {
                 std::vector<uint8_t> rawBytes = doc->textArea->GetRawBytes();
                 std::ofstream file(filePath, std::ios::binary);
                 if (!file.is_open()) {
-                    std::cerr << "Failed to save file: " << filePath << std::endl;
+                    debugOutput << "Failed to save file: " << filePath << std::endl;
                     return false;
                 }
                 file.write(reinterpret_cast<const char*>(rawBytes.data()),
@@ -1537,7 +1538,7 @@ namespace {
                     outputBytes.assign(utf8Text.begin(), utf8Text.end());
                 } else {
                     if (!ConvertFromUtf8(utf8Text, doc->encoding, outputBytes)) {
-                        std::cerr << "Failed to convert to encoding " << doc->encoding
+                        debugOutput << "Failed to convert to encoding " << doc->encoding
                                   << " while saving " << filePath
                                   << ", falling back to UTF-8" << std::endl;
                         outputBytes.assign(utf8Text.begin(), utf8Text.end());
@@ -1548,7 +1549,7 @@ namespace {
 
                 std::ofstream file(filePath, std::ios::binary);
                 if (!file.is_open()) {
-                    std::cerr << "Failed to save file: " << filePath << std::endl;
+                    debugOutput << "Failed to save file: " << filePath << std::endl;
                     return false;
                 }
 
@@ -1627,7 +1628,7 @@ namespace {
             return true;
 
         } catch (const std::exception& e) {
-            std::cerr << "Error saving file: " << e.what() << std::endl;
+            debugOutput << "Error saving file: " << e.what() << std::endl;
             return false;
         }
     }
@@ -1666,7 +1667,7 @@ namespace {
         std::string content = doc->textArea->GetText();
         if (autosaveManager.SaveBackup(doc->autosaveBackupPath, content,
                                        doc->filePath, doc->encoding, doc->language)) {
-            std::cerr << "Autosaved: " << doc->fileName << std::endl;
+            debugOutput << "Autosaved: " << doc->fileName << std::endl;
         }
     }
 
@@ -2457,7 +2458,7 @@ namespace {
                 UpdateTabBadge(activeDocumentIndex);
             } else {
                 // Conversion failed: revert dropdown selection
-                std::cerr << "Failed to re-interpret file as " << newEncoding << std::endl;
+                debugOutput << "Failed to re-interpret file as " << newEncoding << std::endl;
                 UpdateEncodingDropdown();
                 return;
             }
@@ -3142,7 +3143,7 @@ namespace {
         } else {
             // Open each dropped file in a new tab
             for (const auto& filePath : files) {
-                std::cout << "Opening dropped file: " << filePath << std::endl;
+                debugOutput << "Opening dropped file: " << filePath << std::endl;
                 OpenFile(filePath);
             }
         }
@@ -3318,7 +3319,7 @@ namespace {
                             } else {
                                 // File no longer exists — remove from list and notify
                                 RemoveFromRecentFiles(pathCopy);
-                                std::cerr << "Recent file no longer exists: " << pathCopy << std::endl;
+                                debugOutput << "Recent file no longer exists: " << pathCopy << std::endl;
                             }
                         })
                 );

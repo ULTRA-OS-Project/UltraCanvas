@@ -10,6 +10,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -62,7 +63,7 @@ namespace UltraCanvas {
         initialized = true;
 
         if (debugMode) {
-            std::cerr << "UltraCanvas Keyboard Manager initialized" << std::endl;
+            debugOutput << "UltraCanvas Keyboard Manager initialized" << std::endl;
         }
 
         return true;
@@ -89,7 +90,7 @@ namespace UltraCanvas {
         initialized = false;
 
         if (debugMode) {
-            std::cerr << "UltraCanvas Keyboard Manager shutdown" << std::endl;
+            debugOutput << "UltraCanvas Keyboard Manager shutdown" << std::endl;
         }
     }
 
@@ -296,7 +297,7 @@ namespace UltraCanvas {
         hotkeyMap[combo] = registeredHotkeys.size() - 1;
 
         if (debugMode) {
-            std::cerr << "Registered hotkey: " << combo.ToString() << " (ID: " << id << ")" << std::endl;
+            debugOutput << "Registered hotkey: " << combo.ToString() << " (ID: " << id << ")" << std::endl;
         }
 
         return id;
@@ -317,7 +318,7 @@ namespace UltraCanvas {
                 registeredHotkeys.erase(it);
 
                 if (debugMode) {
-                    std::cerr << "Unregistered hotkey ID: " << hotkeyId << std::endl;
+                    debugOutput << "Unregistered hotkey ID: " << hotkeyId << std::endl;
                 }
 
                 return true;
@@ -331,7 +332,7 @@ namespace UltraCanvas {
         hotkeyMap.clear();
 
         if (debugMode) {
-            std::cerr << "Unregistered all hotkeys" << std::endl;
+            debugOutput << "Unregistered all hotkeys" << std::endl;
         }
     }
 
@@ -515,7 +516,7 @@ namespace UltraCanvas {
                     hotkey.callback();
 
                     if (debugMode) {
-                        std::cerr << "Triggered hotkey: " << hotkey.combination.ToString() << std::endl;
+                        debugOutput << "Triggered hotkey: " << hotkey.combination.ToString() << std::endl;
                     }
                 }
             }

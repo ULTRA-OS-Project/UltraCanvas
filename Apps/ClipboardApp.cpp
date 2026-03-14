@@ -10,6 +10,7 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include "UltraCanvasDebug.h"
 
 using namespace UltraCanvas;
 
@@ -99,7 +100,7 @@ public:
                 std::string text = textInput->GetText();
                 if (!text.empty()) {
                     AddClipboardText(text);
-                    std::cerr << "Text copied to clipboard history" << std::endl;
+                    debugOutput << "Text copied to clipboard history" << std::endl;
                 }
             }
         };
@@ -116,7 +117,7 @@ public:
         clearHistoryButton = CreateButton("clearBtn", 2004, 400, 300, 150, 30, "Clear History");
         clearHistoryButton->onClick = [this]() {
             ClearClipboardHistory();
-            std::cerr << "Clipboard history cleared" << std::endl;
+            debugOutput << "Clipboard history cleared" << std::endl;
         };
         mainWindow->AddElement(clearHistoryButton);
         
@@ -199,14 +200,14 @@ public:
             AddClipboardText(text);
         }
         
-        std::cerr << "Added " << sampleTexts.size() << " sample clipboard entries" << std::endl;
-        std::cerr << "Try pressing ALT+P to see the clipboard window" << std::endl;
-        std::cerr << "Each entry will have 'C' (copy), 'S' (save), and 'X' (delete) buttons" << std::endl;
+        debugOutput << "Added " << sampleTexts.size() << " sample clipboard entries" << std::endl;
+        debugOutput << "Try pressing ALT+P to see the clipboard window" << std::endl;
+        debugOutput << "Each entry will have 'C' (copy), 'S' (save), and 'X' (delete) buttons" << std::endl;
     }
     
     void Run() {
-        std::cerr << "Clipboard Demo App starting..." << std::endl;
-        std::cerr << "Press ALT+P to open the clipboard window" << std::endl;
+        debugOutput << "Clipboard Demo App starting..." << std::endl;
+        debugOutput << "Press ALT+P to open the clipboard window" << std::endl;
         
         if (mainWindow) {
             mainWindow->Show();
@@ -217,7 +218,7 @@ public:
             application->Run();
         }
         
-        std::cerr << "Application shutting down..." << std::endl;
+        debugOutput << "Application shutting down..." << std::endl;
     }
     
     // Custom window class for rendering
@@ -242,7 +243,7 @@ int main() {
     try {
         // ✅ UPDATED: Initialize keyboard manager first
         if (!UltraCanvasKeyboardManager::Initialize()) {
-            std::cerr << "Failed to initialize keyboard manager" << std::endl;
+            debugOutput << "Failed to initialize keyboard manager" << std::endl;
             return -1;
         }
         
@@ -260,10 +261,10 @@ int main() {
         return 0;
         
     } catch (const std::exception& e) {
-        std::cerr << "Application error: " << e.what() << std::endl;
+        debugOutput << "Application error: " << e.what() << std::endl;
         return -1;
     } catch (...) {
-        std::cerr << "Unknown application error" << std::endl;
+        debugOutput << "Unknown application error" << std::endl;
         return -1;
     }
 }

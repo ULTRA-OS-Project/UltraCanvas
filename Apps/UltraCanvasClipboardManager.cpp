@@ -17,6 +17,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include "UltraCanvasDebug.h"
 #endif
 
 namespace UltraCanvas {
@@ -288,7 +289,7 @@ namespace UltraCanvas {
         // Create window using proper API
         clipboardWindow = std::make_shared<UltraCanvasWindow>();
         if (!clipboardWindow->Create(config)) {
-            std::cerr << "Failed to create clipboard window" << std::endl;
+            debugOutput << "Failed to create clipboard window" << std::endl;
             return;
         }
 
@@ -306,13 +307,13 @@ namespace UltraCanvas {
                 static_cast<int>(UCKeys::P), // P key
                 static_cast<int>(ModifierKeys::Alt), // ALT modifier
                 [this]() {
-                    std::cerr << "ALT+P pressed - toggling clipboard window" << std::endl;
+                    debugOutput << "ALT+P pressed - toggling clipboard window" << std::endl;
                     ToggleClipboardWindow();
                 },
                 "Toggle Multi-Entry Clipboard"
         );
 
-        std::cerr << "Registered ALT+P shortcut for clipboard manager" << std::endl;
+        debugOutput << "Registered ALT+P shortcut for clipboard manager" << std::endl;
     }
 
     void UltraCanvasClipboardManager::ToggleClipboardWindow() {
@@ -341,11 +342,11 @@ namespace UltraCanvas {
     void UltraCanvasClipboardManager::StartClipboardMonitoring() {
         lastCheckTime = std::chrono::steady_clock::now();
         lastClipboardContent = GetSystemClipboardText();
-        std::cerr << "Clipboard monitoring started" << std::endl;
+        debugOutput << "Clipboard monitoring started" << std::endl;
     }
 
     void UltraCanvasClipboardManager::StopClipboardMonitoring() {
-        std::cerr << "Clipboard monitoring stopped" << std::endl;
+        debugOutput << "Clipboard monitoring stopped" << std::endl;
     }
 
     void UltraCanvasClipboardManager::AddClipboardEntry(const ClipboardEntry& entry) {
@@ -443,7 +444,7 @@ namespace UltraCanvas {
             std::string currentClipboard = GetSystemClipboardText();
 
             if (currentClipboard != lastClipboardContent && !currentClipboard.empty()) {
-                std::cerr << "Clipboard changed: " << currentClipboard.substr(0, 50) << "..." << std::endl;
+                debugOutput << "Clipboard changed: " << currentClipboard.substr(0, 50) << "..." << std::endl;
 
                 ClipboardEntry newEntry(ClipboardEntryType::Text, currentClipboard);
                 AddClipboardEntry(newEntry);
@@ -568,7 +569,7 @@ namespace UltraCanvas {
                     return false;
             }
         } catch (const std::exception& e) {
-            std::cerr << "Error saving file: " << e.what() << std::endl;
+            debugOutput << "Error saving file: " << e.what() << std::endl;
         }
 
         return false;
@@ -584,18 +585,18 @@ namespace UltraCanvas {
                 return true;
             }
         } catch (const std::exception& e) {
-            std::cerr << "Error copying file: " << e.what() << std::endl;
+            debugOutput << "Error copying file: " << e.what() << std::endl;
         }
 
         return false;
     }
 
     void UltraCanvasClipboardManager::ShowSaveSuccessNotification(const std::string& filePath) {
-        std::cerr << "✅ File saved successfully: " << filePath << std::endl;
+        debugOutput << "✅ File saved successfully: " << filePath << std::endl;
     }
 
     void UltraCanvasClipboardManager::ShowSaveErrorNotification() {
-        std::cerr << "❌ Error saving file" << std::endl;
+        debugOutput << "❌ Error saving file" << std::endl;
     }
 
     void UltraCanvasClipboardManager::SetSystemClipboardText(const std::string& text) {
@@ -645,14 +646,14 @@ namespace UltraCanvas {
     void InitializeClipboardManager() {
         if (!g_globalClipboardManager) {
             g_globalClipboardManager = std::make_unique<UltraCanvasClipboardManager>();
-            std::cerr << "Clipboard manager initialized" << std::endl;
+            debugOutput << "Clipboard manager initialized" << std::endl;
         }
     }
 
     void ShutdownClipboardManager() {
         if (g_globalClipboardManager) {
             g_globalClipboardManager.reset();
-            std::cerr << "Clipboard manager shutdown" << std::endl;
+            debugOutput << "Clipboard manager shutdown" << std::endl;
         }
     }
 

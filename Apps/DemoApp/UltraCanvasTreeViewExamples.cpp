@@ -11,6 +11,7 @@
 #include <sstream>
 #include <random>
 #include <map>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTreeViewExamples() {
@@ -51,7 +52,7 @@ namespace UltraCanvas {
         fileTree->AddNode("drive_c", pictures);
 
         fileTree->onNodeSelected = [](TreeNode* node) {
-            std::cerr << "Selected: " << node->data.text << std::endl;
+            debugOutput << "Selected: " << node->data.text << std::endl;
         };
 
         root->Expand();

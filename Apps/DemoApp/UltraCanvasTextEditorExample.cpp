@@ -85,7 +85,7 @@ namespace UltraCanvas {
                 "public:\n"
                 "    TextEditorDemo(const std::string& name) \n"
                 "        : documentName(name) {\n"
-                "        std::cerr << \"Creating document: \" << name << std::endl;\n"
+                "        debugOutput << \"Creating document: \" << name << std::endl;\n"
                 "    }\n"
                 "\n"
                 "    void AddLine(const std::string& line) {\n"
@@ -110,7 +110,7 @@ namespace UltraCanvas {
                 "    demo.AddLine(\"Hello, UltraCanvas!\");\n"
                 "    demo.AddLine(\"This is a text editor demo.\");\n"
                 "    \n"
-                "    std::cerr << \"Lines: \" << demo.GetLineCount() << std::endl;\n"
+                "    debugOutput << \"Lines: \" << demo.GetLineCount() << std::endl;\n"
                 "    \n"
                 "    return 0;\n"
                 "}\n"
@@ -118,19 +118,19 @@ namespace UltraCanvas {
 
         // Set up callbacks
         textEditor->onFileLoaded = [](const std::string& path) {
-            std::cerr << "File loaded: " << path << std::endl;
+            debugOutput << "File loaded: " << path << std::endl;
         };
 
         textEditor->onFileSaved = [](const std::string& path) {
-            std::cout << "File saved: " << path << std::endl;
+            debugOutput << "File saved: " << path << std::endl;
         };
 
         textEditor->onModifiedChange = [](bool modified) {
-            std::cout << "Document modified: " << (modified ? "yes" : "no") << std::endl;
+            debugOutput << "Document modified: " << (modified ? "yes" : "no") << std::endl;
         };
 
         textEditor->onQuitRequest = []() {
-            std::cout << "Quit requested" << std::endl;
+            debugOutput << "Quit requested" << std::endl;
         };
 
         container->AddChild(textEditor);
@@ -174,6 +174,7 @@ namespace UltraCanvas {
                         "#include <string>\n"
                         "#include <vector>\n"
                         "#include <memory>\n"
+#include "UltraCanvasDebug.h"
                         "\n"
                         "namespace UltraCanvas {\n"
                         "\n"
@@ -189,7 +190,7 @@ namespace UltraCanvas {
                         "public:\n"
                         "    TextEditorDemo(const std::string& name) \n"
                         "        : documentName(name) {\n"
-                        "        std::cout << \"Creating document: \" << name << std::endl;\n"
+                        "        debugOutput << \"Creating document: \" << name << std::endl;\n"
                         "    }\n"
                         "\n"
                         "    void AddLine(const std::string& line) {\n"
@@ -214,7 +215,7 @@ namespace UltraCanvas {
                         "    demo.AddLine(\"Hello, UltraCanvas!\");\n"
                         "    demo.AddLine(\"This is a text editor demo.\");\n"
                         "    \n"
-                        "    std::cout << \"Lines: \" << demo.GetLineCount() << std::endl;\n"
+                        "    debugOutput << \"Lines: \" << demo.GetLineCount() << std::endl;\n"
                         "    \n"
                         "    return 0;\n"
                         "}\n"

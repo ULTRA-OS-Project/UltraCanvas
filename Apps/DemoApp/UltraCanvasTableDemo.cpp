@@ -20,6 +20,7 @@
 #include <random>
 #include <sstream>
 #include <iomanip>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -165,19 +166,19 @@ namespace UltraCanvas {
             itemMenu->SetMenuType(MenuType::PopupMenu);
 
             itemMenu->AddItem(MenuItemData::Action("Deactivate", []() {
-                std::cerr << "Deactivate item " << std::endl;
+                debugOutput << "Deactivate item " << std::endl;
             }));
 
             itemMenu->AddItem(MenuItemData::Action("Upgrade to Pro plan", []() {
-                std::cerr << "Upgrade item " << std::endl;
+                debugOutput << "Upgrade item " << std::endl;
             }));
 
             itemMenu->AddItem(MenuItemData::Action("Remove", []() {
-                std::cerr << "Remove item " <<  std::endl;
+                debugOutput << "Remove item " <<  std::endl;
             }));
 
             itemMenu->AddItem(MenuItemData::Action("Configure", []() {
-                std::cerr << "Remove item " <<  std::endl;
+                debugOutput << "Remove item " <<  std::endl;
             }));
         }
 
@@ -210,7 +211,7 @@ namespace UltraCanvas {
 
             // Security button click
             securityButton->onClick = [this]() {
-                std::cerr << "Security insights for: " << domainUrl << std::endl;
+                debugOutput << "Security insights for: " << domainUrl << std::endl;
             };
 
             // More button click
@@ -442,7 +443,7 @@ namespace UltraCanvas {
 
             // Set up event handlers for this row
             domainRow->onDomainClick = [](const std::string& url) {
-                std::cerr << "Opening URL: " << url << std::endl;
+                debugOutput << "Opening URL: " << url << std::endl;
                 system(std::string("xdg-open "+url).c_str());
                 // In a real implementation, this would open the URL in a browser
                 // For now, just log it
@@ -453,7 +454,7 @@ namespace UltraCanvas {
 //                auto usaidDialog = std::make_shared<USAIDInfoDialog>();
 //
 //                usaidDialog->onMoreInfoClick = [](const std::string& url) {
-//                    std::cerr << "Opening Wikipedia: " << url << std::endl;
+//                    debugOutput << "Opening Wikipedia: " << url << std::endl;
 //                    // In a real implementation, this would open the URL
 //                };
 //

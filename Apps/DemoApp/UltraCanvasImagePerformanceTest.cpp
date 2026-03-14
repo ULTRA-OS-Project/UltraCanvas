@@ -17,6 +17,7 @@
 #include <iomanip>
 #include <atomic>
 #include <thread>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -209,7 +210,7 @@ namespace UltraCanvas {
             if (!item.value.empty()) {
                 imageElement->LoadFromFile(item.value);
                 imageElement->RequestRedraw();
-                std::cerr << "Image Performance Test: Selected image - " << item.value << std::endl;
+                debugOutput << "Image Performance Test: Selected image - " << item.value << std::endl;
             }
         };
 
@@ -347,7 +348,7 @@ namespace UltraCanvas {
             imageDropdown->SetDisabled(false);
             modeDropdown->SetDisabled(false);
 
-            std::cerr << "Image Performance Test Complete: " << totalIterations
+            debugOutput << "Image Performance Test Complete: " << totalIterations
                       << " iterations in " << durationSeconds << "s" << std::endl;
         });
 

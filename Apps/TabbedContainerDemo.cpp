@@ -15,6 +15,7 @@
 #include <sstream>
 #include <iomanip>
 #include <random>
+#include "UltraCanvasDebug.h"
 
 using namespace UltraCanvas;
 
@@ -457,18 +458,18 @@ private:
 
 public:
     bool Initialize() override {
-        std::cerr << "Initializing UltraCanvas Tabbed Container Demo..." << std::endl;
+        debugOutput << "Initializing UltraCanvas Tabbed Container Demo..." << std::endl;
 
         // Initialize base application
         if (!UltraCanvasApplication::Initialize()) {
-            std::cerr << "Failed to initialize UltraCanvas application" << std::endl;
+            debugOutput << "Failed to initialize UltraCanvas application" << std::endl;
             return false;
         }
 
         // Create demo window
         demoWindow = std::make_shared<TabbedContainerDemoWindow>();
         if (!demoWindow) {
-            std::cerr << "Failed to create demo window" << std::endl;
+            debugOutput << "Failed to create demo window" << std::endl;
             return false;
         }
 
@@ -481,20 +482,20 @@ public:
         config.backgroundColor = Color(250, 250, 250);
 
         if (!demoWindow->Create(config)) {
-            std::cerr << "Failed to create demo window with config" << std::endl;
+            debugOutput << "Failed to create demo window with config" << std::endl;
             return false;
         }
 
         // Initialize demo content
         if (!demoWindow->Initialize()) {
-            std::cerr << "Failed to initialize demo window content" << std::endl;
+            debugOutput << "Failed to initialize demo window content" << std::endl;
             return false;
         }
 
         // Show window
         demoWindow->Show();
 
-        std::cerr << "Demo initialized successfully!" << std::endl;
+        debugOutput << "Demo initialized successfully!" << std::endl;
         PrintUsageInstructions();
 
         return true;
@@ -502,57 +503,57 @@ public:
 
 private:
     void PrintUsageInstructions() {
-        std::cerr << "\n=== UltraCanvas Tabbed Container Demo ===" << std::endl;
-        std::cerr << "\nFEATURES TO TEST:" << std::endl;
-        std::cerr << "• Overflow Dropdown: Add tabs until dropdown appears" << std::endl;
-        std::cerr << "• Search Functionality: Type in dropdown to filter tabs" << std::endl;
-        std::cerr << "• Tab Reordering: Drag tabs to reorder (if enabled)" << std::endl;
-        std::cerr << "• Close Buttons: Click × to close tabs" << std::endl;
-        std::cerr << "• Nested Tabs: Check the 'Nested Tabs' tab" << std::endl;
-        std::cerr << "\nCONTROLS:" << std::endl;
-        std::cerr << "• Add Tab: Creates new dynamic tab" << std::endl;
-        std::cerr << "• Remove Tab: Removes active tab" << std::endl;
-        std::cerr << "• Toggle Dropdown: Cycles dropdown position (Left/Right/Off)" << std::endl;
-        std::cerr << "• Toggle Search: Enables/disables search functionality" << std::endl;
-        std::cerr << "\nKEYBOARD:" << std::endl;
-        std::cerr << "• Arrow Keys: Navigate between tabs" << std::endl;
-        std::cerr << "• Ctrl+W: Close active tab (if closable)" << std::endl;
-        std::cerr << "• Escape: Exit application" << std::endl;
-        std::cerr << "\nSEARCH DEMO:" << std::endl;
-        std::cerr << "• Type 'doc' to find document tabs" << std::endl;
-        std::cerr << "• Type numbers to find specific tabs" << std::endl;
-        std::cerr << "• Search appears when >5 tabs (configurable)" << std::endl;
-        std::cerr << "=======================================" << std::endl;
+        debugOutput << "\n=== UltraCanvas Tabbed Container Demo ===" << std::endl;
+        debugOutput << "\nFEATURES TO TEST:" << std::endl;
+        debugOutput << "• Overflow Dropdown: Add tabs until dropdown appears" << std::endl;
+        debugOutput << "• Search Functionality: Type in dropdown to filter tabs" << std::endl;
+        debugOutput << "• Tab Reordering: Drag tabs to reorder (if enabled)" << std::endl;
+        debugOutput << "• Close Buttons: Click × to close tabs" << std::endl;
+        debugOutput << "• Nested Tabs: Check the 'Nested Tabs' tab" << std::endl;
+        debugOutput << "\nCONTROLS:" << std::endl;
+        debugOutput << "• Add Tab: Creates new dynamic tab" << std::endl;
+        debugOutput << "• Remove Tab: Removes active tab" << std::endl;
+        debugOutput << "• Toggle Dropdown: Cycles dropdown position (Left/Right/Off)" << std::endl;
+        debugOutput << "• Toggle Search: Enables/disables search functionality" << std::endl;
+        debugOutput << "\nKEYBOARD:" << std::endl;
+        debugOutput << "• Arrow Keys: Navigate between tabs" << std::endl;
+        debugOutput << "• Ctrl+W: Close active tab (if closable)" << std::endl;
+        debugOutput << "• Escape: Exit application" << std::endl;
+        debugOutput << "\nSEARCH DEMO:" << std::endl;
+        debugOutput << "• Type 'doc' to find document tabs" << std::endl;
+        debugOutput << "• Type numbers to find specific tabs" << std::endl;
+        debugOutput << "• Search appears when >5 tabs (configurable)" << std::endl;
+        debugOutput << "=======================================" << std::endl;
     }
 };
 
 // ===== MAIN FUNCTION =====
 
 int main(int argc, char* argv[]) {
-    std::cerr << "Starting UltraCanvas Enhanced Tabbed Container Demo..." << std::endl;
+    debugOutput << "Starting UltraCanvas Enhanced Tabbed Container Demo..." << std::endl;
 
     try {
         // Create and initialize demo application
         auto app = std::make_shared<TabbedContainerDemoApp>();
 
         if (!app->Initialize()) {
-            std::cerr << "Failed to initialize demo application!" << std::endl;
+            debugOutput << "Failed to initialize demo application!" << std::endl;
             return -1;
         }
 
-        std::cerr << "Demo application initialized. Starting main loop..." << std::endl;
+        debugOutput << "Demo application initialized. Starting main loop..." << std::endl;
 
         // Run the application main loop
         app->Run();
 
-        std::cerr << "Demo application finished successfully." << std::endl;
+        debugOutput << "Demo application finished successfully." << std::endl;
         return 0;
 
     } catch (const std::exception& e) {
-        std::cerr << "Exception in main: " << e.what() << std::endl;
+        debugOutput << "Exception in main: " << e.what() << std::endl;
         return -1;
     } catch (...) {
-        std::cerr << "Unknown exception in main!" << std::endl;
+        debugOutput << "Unknown exception in main!" << std::endl;
         return -1;
     }
 }
