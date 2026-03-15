@@ -265,7 +265,8 @@ namespace UltraCanvas {
                 } else {
                     highSurrogate = 0;
                     // Skip control characters (Ctrl+A..Z produce 0x01..0x1A)
-                    if (ch < 0x20 && ch != L'\t' && ch != L'\r' && ch != L'\n') {
+                    // if (ch < 0x20 && ch != L'\t' && ch != L'\r' && ch != L'\n') {
+                    if (ch < 0x20) {
                         return;
                     }
                     wstr = {ch};

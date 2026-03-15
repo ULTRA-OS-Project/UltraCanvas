@@ -10,6 +10,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
+#include "UltraCanvasTooltipManager.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <algorithm>
 #include <sstream>
@@ -87,6 +88,15 @@ struct MarkdownHybridStyle {
     // Highlight
     Color highlightBackground = Color(255, 255, 0, 100);
 
+    // Abbreviation styling
+    Color abbreviationBackground = Color(230, 230, 230, 120);
+    Color abbreviationUnderlineColor = Color(150, 150, 150);
+    float abbreviationUnderlineDashLength = 2.0f;
+    float abbreviationUnderlineGapLength = 2.0f;
+
+    // Footnote reference styling
+    Color footnoteRefColor = Color(0, 102, 204);
+
     // Task list checkbox
     Color checkboxBorderColor = Color(150, 150, 150);
     Color checkboxCheckedColor = Color(0, 120, 215);
@@ -138,6 +148,9 @@ struct MarkdownHybridStyle {
         s.imagePlaceholderTextColor = Color(140, 140, 170);
         s.mathTextColor = Color(100, 220, 140);
         s.mathBackgroundColor = Color(30, 50, 35, 150);
+        s.abbreviationBackground = Color(70, 70, 80, 120);
+        s.abbreviationUnderlineColor = Color(140, 140, 160);
+        s.footnoteRefColor = Color(100, 180, 255);
         s.nestedBulletCharacters = {
             "\xe2\x80\xa2",     // level 0: •
             "\xe2\x97\xa6",     // level 1: ◦
@@ -166,8 +179,12 @@ struct MarkdownInlineElement {
     bool isSuperscript = false; // ^x^ single caret
     bool isAutoLink = false;    // bare http:// or https:// URL
     bool isEmoji = false;       // :shortcode: emoji
+    bool isAbbreviation = false; // matched abbreviation with tooltip
+    bool isFootnote = false;     // footnote reference or inline footnote
     std::string url;
     std::string altText;
+    std::string abbreviationExpansion; // tooltip text for abbreviations
+    std::string footnoteContent;      // tooltip text for footnotes
 };
 
 // ===== MATH / GREEK LETTER SUBSTITUTION =====
@@ -786,11 +803,12 @@ struct MarkdownInlineRenderer {
                 // If [ was not part of a valid [text](url) link,
                 // consume the entire [...] as plain text to avoid splitting
                 if (!parsed) {
-                    // Check if this is a footnote ref [^1] — render as superscript-style text
+                    // Check if this is a footnote ref [^label] — mark as footnote for tooltip
                     if (textEnd != std::string::npos && pos + 1 < len && line[pos + 1] == '^') {
-                        std::string refText = line.substr(pos, textEnd - pos + 1);
-                        elem.text = refText;
-                        elem.isCode = false; // Render as plain text (footnote marker)
+                        std::string label = line.substr(pos + 2, textEnd - pos - 2);
+                        elem.isFootnote = true;
+                        elem.text = "[" + label + "]";
+                        // footnoteContent will be filled by ApplyFootnotes post-processor
                         elements.push_back(elem);
                         pos = textEnd + 1;
                         parsed = true;
@@ -834,10 +852,13 @@ struct MarkdownInlineRenderer {
                     std::string closeMarker(3, marker);
                     size_t end = line.find(closeMarker, pos + 3);
                     if (end != std::string::npos) {
-                        elem.text = line.substr(pos + 3, end - pos - 3);
-                        elem.isBold = true;
-                        elem.isItalic = true;
-                        elements.push_back(elem);
+                        std::string innerText = line.substr(pos + 3, end - pos - 3);
+                        auto innerElements = ParseInlineMarkdown(innerText);
+                        for (auto& inner : innerElements) {
+                            inner.isBold = true;
+                            inner.isItalic = true;
+                            elements.push_back(inner);
+                        }
                         pos = end + 3;
                         parsed = true;
                     }
@@ -890,6 +911,22 @@ struct MarkdownInlineRenderer {
                         pos = end + 1;
                         parsed = true;
                     }
+                }
+            }
+
+            if (parsed) continue;
+
+            // --- Inline footnote: ^[text] ---
+            if (line[pos] == '^' && pos + 1 < len && line[pos + 1] == '[') {
+                size_t bracketEnd = FindMatchingBracket(line, pos + 1);
+                if (bracketEnd != std::string::npos) {
+                    std::string footnoteText = line.substr(pos + 2, bracketEnd - pos - 2);
+                    elem.isFootnote = true;
+                    elem.footnoteContent = footnoteText;
+                    elem.text = "[*]";
+                    elements.push_back(elem);
+                    pos = bracketEnd + 1;
+                    parsed = true;
                 }
             }
 
@@ -978,10 +1015,17 @@ struct MarkdownInlineRenderer {
                 if ((c == '*' || c == '_') && line[pos + 1] == c) {
                     std::string closeMarker(2, c);
                     size_t end = line.find(closeMarker, pos + 2);
+                    // In *** clusters, align closing ** to the right so inner * can close italic
+                    while (end != std::string::npos && end + 2 < len && line[end + 2] == c) {
+                        end++;
+                    }
                     if (end != std::string::npos) {
-                        elem.text = line.substr(pos + 2, end - pos - 2);
-                        elem.isBold = true;
-                        elements.push_back(elem);
+                        std::string innerText = line.substr(pos + 2, end - pos - 2);
+                        auto innerElements = ParseInlineMarkdown(innerText);
+                        for (auto& inner : innerElements) {
+                            inner.isBold = true;
+                            elements.push_back(inner);
+                        }
                         pos = end + 2;
                         parsed = true;
                     }
@@ -1001,9 +1045,12 @@ struct MarkdownInlineRenderer {
                             // Check it's not a double marker
                             bool isDouble = (end + 1 < len && line[end + 1] == marker);
                             if (!isDouble) {
-                                elem.text = line.substr(pos + 1, end - pos - 1);
-                                elem.isItalic = true;
-                                elements.push_back(elem);
+                                std::string innerText = line.substr(pos + 1, end - pos - 1);
+                                auto innerElements = ParseInlineMarkdown(innerText);
+                                for (auto& inner : innerElements) {
+                                    inner.isItalic = true;
+                                    elements.push_back(inner);
+                                }
                                 pos = end + 1;
                                 parsed = true;
                                 break;
@@ -1047,6 +1094,174 @@ struct MarkdownInlineRenderer {
     }
 
     // ---------------------------------------------------------------
+    // ABBREVIATION POST-PROCESSOR — splits plain text at abbreviation
+    // boundaries so each occurrence becomes its own element
+    // ---------------------------------------------------------------
+
+    static bool IsAbbrWordBoundary(const std::string& text, size_t pos) {
+        if (pos == 0 || pos >= text.size()) return true;
+        unsigned char c = static_cast<unsigned char>(text[pos]);
+        return !std::isalnum(c) && c != '_';
+    }
+
+    static std::vector<MarkdownInlineElement> ApplyAbbreviations(
+        const std::vector<MarkdownInlineElement>& elements,
+        const std::unordered_map<std::string, std::string>& abbreviations)
+    {
+        if (abbreviations.empty()) return elements;
+
+        // Sort abbreviation keys by length descending (prefer longer matches)
+        std::vector<std::pair<std::string, std::string>> sortedAbbrs(
+            abbreviations.begin(), abbreviations.end());
+        std::sort(sortedAbbrs.begin(), sortedAbbrs.end(),
+            [](const auto& a, const auto& b) { return a.first.size() > b.first.size(); });
+
+        std::vector<MarkdownInlineElement> result;
+
+        for (const auto& elem : elements) {
+            // Only process plain text elements (not code, link, math, image, etc.)
+            if (elem.isCode || elem.isLink || elem.isImage || elem.isMath ||
+                elem.isAutoLink || elem.isAbbreviation || elem.text.empty()) {
+                result.push_back(elem);
+                continue;
+            }
+
+            // Scan text for abbreviation occurrences
+            const std::string& text = elem.text;
+            size_t pos = 0;
+            bool found = false;
+
+            while (pos < text.size()) {
+                bool matchedHere = false;
+
+                for (const auto& [abbr, expansion] : sortedAbbrs) {
+                    if (pos + abbr.size() > text.size()) continue;
+
+                    // Check if the abbreviation matches at this position
+                    if (text.compare(pos, abbr.size(), abbr) != 0) continue;
+
+                    // Check word boundaries
+                    bool leftOk = IsAbbrWordBoundary(text, pos);
+                    bool rightOk = IsAbbrWordBoundary(text, pos + abbr.size());
+                    if (!leftOk || !rightOk) continue;
+
+                    // Found a match — emit text before it
+                    if (pos > 0) {
+                        // Find start of unprocessed text
+                        size_t segStart = 0;
+                        if (!result.empty() && found) {
+                            segStart = 0; // already handled
+                        }
+                    }
+
+                    found = true;
+                    matchedHere = true;
+
+                    // We need to re-scan from the beginning of this element's text
+                    // Split: text-before, abbreviation, then continue with text-after
+                    // Restart approach: collect all splits for this element
+                    break;
+                }
+
+                if (matchedHere) break;
+                pos++;
+            }
+
+            if (!found) {
+                result.push_back(elem);
+                continue;
+            }
+
+            // Re-scan the full text and split at all abbreviation boundaries
+            pos = 0;
+            size_t lastEnd = 0;
+
+            while (pos < text.size()) {
+                bool matchedHere = false;
+
+                for (const auto& [abbr, expansion] : sortedAbbrs) {
+                    if (pos + abbr.size() > text.size()) continue;
+                    if (text.compare(pos, abbr.size(), abbr) != 0) continue;
+
+                    bool leftOk = IsAbbrWordBoundary(text, pos);
+                    bool rightOk = IsAbbrWordBoundary(text, pos + abbr.size());
+                    if (!leftOk || !rightOk) continue;
+
+                    // Emit text before the abbreviation
+                    if (pos > lastEnd) {
+                        MarkdownInlineElement before = elem;
+                        before.text = text.substr(lastEnd, pos - lastEnd);
+                        before.isAbbreviation = false;
+                        before.abbreviationExpansion.clear();
+                        result.push_back(before);
+                    }
+
+                    // Emit the abbreviation element
+                    MarkdownInlineElement abbrElem = elem;
+                    abbrElem.text = abbr;
+                    abbrElem.isAbbreviation = true;
+                    abbrElem.abbreviationExpansion = expansion;
+                    result.push_back(abbrElem);
+
+                    pos += abbr.size();
+                    lastEnd = pos;
+                    matchedHere = true;
+                    break;
+                }
+
+                if (!matchedHere) pos++;
+            }
+
+            // Emit remaining text after last abbreviation
+            if (lastEnd < text.size()) {
+                MarkdownInlineElement after = elem;
+                after.text = text.substr(lastEnd);
+                after.isAbbreviation = false;
+                after.abbreviationExpansion.clear();
+                result.push_back(after);
+            }
+        }
+
+        return result;
+    }
+
+    // ---------------------------------------------------------------
+    // FOOTNOTE POST-PROCESSOR — fills footnote content from the
+    // footnote map for reference-style footnotes [^label]
+    // ---------------------------------------------------------------
+
+    static std::vector<MarkdownInlineElement> ApplyFootnotes(
+        const std::vector<MarkdownInlineElement>& elements,
+        const std::unordered_map<std::string, std::string>& footnotes)
+    {
+        if (footnotes.empty()) return elements;
+
+        std::vector<MarkdownInlineElement> result;
+        result.reserve(elements.size());
+
+        for (const auto& elem : elements) {
+            if (elem.isFootnote && elem.footnoteContent.empty()) {
+                // Reference footnote — look up content from map
+                // elem.text is "[label]", extract label
+                std::string label = elem.text;
+                if (label.size() >= 2 && label.front() == '[' && label.back() == ']') {
+                    label = label.substr(1, label.size() - 2);
+                }
+                auto it = footnotes.find(label);
+                if (it != footnotes.end()) {
+                    MarkdownInlineElement resolved = elem;
+                    resolved.footnoteContent = it->second;
+                    result.push_back(resolved);
+                    continue;
+                }
+            }
+            result.push_back(elem);
+        }
+
+        return result;
+    }
+
+    // ---------------------------------------------------------------
     // INLINE LINE RENDERER — renders parsed inline elements
     // ---------------------------------------------------------------
 
@@ -1054,9 +1269,17 @@ struct MarkdownInlineRenderer {
                                   int x, int y, int lineHeight,
                                   const TextAreaStyle& style,
                                   const MarkdownHybridStyle& mdStyle,
-                                  std::vector<MarkdownHitRect>* hitRects = nullptr) {
+                                  std::vector<MarkdownHitRect>* hitRects = nullptr,
+                                  const std::unordered_map<std::string, std::string>* abbreviations = nullptr,
+                                  const std::unordered_map<std::string, std::string>* footnotes = nullptr) {
 
         std::vector<MarkdownInlineElement> elements = ParseInlineMarkdown(line);
+        if (abbreviations && !abbreviations->empty()) {
+            elements = ApplyAbbreviations(elements, *abbreviations);
+        }
+        if (footnotes && !footnotes->empty()) {
+            elements = ApplyFootnotes(elements, *footnotes);
+        }
         int currentX = x;
 
         for (const auto& elem : elements) {
@@ -1236,6 +1459,78 @@ struct MarkdownInlineRenderer {
                 continue;
             }
 
+            // --- Abbreviation element: gray background + dotted underline ---
+            if (elem.isAbbreviation) {
+                FontWeight weight = elem.isBold ? FontWeight::Bold : FontWeight::Normal;
+                FontSlant slant = elem.isItalic ? FontSlant::Italic : FontSlant::Normal;
+                ctx->SetFontWeight(weight);
+                ctx->SetFontSlant(slant);
+
+                int textWidth = ctx->GetTextLineWidth(elem.text);
+
+                // Draw gray background
+                ctx->SetFillPaint(mdStyle.abbreviationBackground);
+                ctx->FillRoundedRectangle(currentX - 1, y + 1, textWidth + 2, lineHeight - 2, 2);
+
+                // Draw text
+                ctx->SetTextPaint(style.fontColor);
+                ctx->DrawText(elem.text, currentX, y);
+
+                // Draw dotted underline
+                int underlineY = y + lineHeight - 2;
+                ctx->SetStrokePaint(mdStyle.abbreviationUnderlineColor);
+                ctx->SetStrokeWidth(1.0f);
+                float dashLen = mdStyle.abbreviationUnderlineDashLength;
+                float gapLen = mdStyle.abbreviationUnderlineGapLength;
+                float drawX = static_cast<float>(currentX);
+                float endX = static_cast<float>(currentX + textWidth);
+                while (drawX < endX) {
+                    float segEnd = std::min(drawX + dashLen, endX);
+                    ctx->DrawLine(static_cast<int>(drawX), underlineY,
+                                  static_cast<int>(segEnd), underlineY);
+                    drawX = segEnd + gapLen;
+                }
+
+                // Store hit rect for hover tooltip
+                if (hitRects) {
+                    MarkdownHitRect hr;
+                    hr.bounds = {currentX, y, textWidth, lineHeight};
+                    hr.altText = elem.abbreviationExpansion;
+                    hr.isAbbreviation = true;
+                    hitRects->push_back(hr);
+                }
+
+                currentX += textWidth;
+                continue;
+            }
+
+            // --- Footnote element: superscript colored reference ---
+            if (elem.isFootnote) {
+                float origSize = style.fontStyle.fontSize;
+                float supSize = origSize * 0.7f;
+                ctx->SetFontSize(supSize);
+                ctx->SetFontWeight(FontWeight::Normal);
+                ctx->SetFontSlant(FontSlant::Normal);
+                ctx->SetTextPaint(mdStyle.footnoteRefColor);
+
+                int textWidth = ctx->GetTextLineWidth(elem.text);
+                int supY = y - static_cast<int>(lineHeight * 0.15f);
+                ctx->DrawText(elem.text, currentX, supY);
+
+                // Store hit rect for hover tooltip
+                if (hitRects && !elem.footnoteContent.empty()) {
+                    MarkdownHitRect hr;
+                    hr.bounds = {currentX, y, textWidth, lineHeight};
+                    hr.altText = elem.footnoteContent;
+                    hr.isFootnote = true;
+                    hitRects->push_back(hr);
+                }
+
+                ctx->SetFontSize(origSize);
+                currentX += textWidth;
+                continue;
+            }
+
             // --- Determine formatting ---
             FontWeight weight = elem.isBold ? FontWeight::Bold : FontWeight::Normal;
             FontSlant slant = elem.isItalic ? FontSlant::Italic : FontSlant::Normal;
@@ -1298,7 +1593,9 @@ struct MarkdownInlineRenderer {
                                      int x, int y, int lineHeight,
                                      const TextAreaStyle& style,
                                      const MarkdownHybridStyle& mdStyle,
-                                     std::vector<MarkdownHitRect>* hitRects = nullptr) {
+                                     std::vector<MarkdownHitRect>* hitRects = nullptr,
+                                     const std::unordered_map<std::string, std::string>* abbreviations = nullptr,
+                                     const std::unordered_map<std::string, std::string>* footnotes = nullptr) {
         // Detect header level
         int level = 0;
         size_t pos = 0;
@@ -1308,7 +1605,7 @@ struct MarkdownInlineRenderer {
         }
 
         if (level == 0 || level > 6) {
-            RenderMarkdownLine(ctx, line, x, y, lineHeight, style, mdStyle, hitRects);
+            RenderMarkdownLine(ctx, line, x, y, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes);
             return;
         }
 
@@ -1346,7 +1643,7 @@ struct MarkdownInlineRenderer {
         int centeredY = y + (lineHeight - textHeight) / 2;
 
         // Render inline markdown within header text (links, bold, etc.)
-        RenderMarkdownLine(ctx, headerText, x, centeredY, lineHeight, style, mdStyle, hitRects);
+        RenderMarkdownLine(ctx, headerText, x, centeredY, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes);
 
         // Restore font
         ctx->SetFontSize(baseFontSize);
@@ -1361,7 +1658,10 @@ struct MarkdownInlineRenderer {
                                        int x, int y, int lineHeight,
                                        const TextAreaStyle& style,
                                        const MarkdownHybridStyle& mdStyle,
-                                       std::vector<MarkdownHitRect>* hitRects = nullptr) {
+                                       std::vector<MarkdownHitRect>* hitRects = nullptr,
+                                       int orderNumberOverride = -1,
+                                       const std::unordered_map<std::string, std::string>* abbreviations = nullptr,
+                                       const std::unordered_map<std::string, std::string>* footnotes = nullptr) {
         size_t pos = 0;
 
         // Count leading whitespace for nesting depth
@@ -1383,7 +1683,9 @@ struct MarkdownInlineRenderer {
             size_t numStart = pos;
             while (pos < line.length() && std::isdigit(line[pos])) pos++;
             if (pos < line.length() && line[pos] == '.') {
-                orderNumber = std::stoi(line.substr(numStart, pos - numStart));
+                orderNumber = (orderNumberOverride >= 0)
+                    ? orderNumberOverride
+                    : std::stoi(line.substr(numStart, pos - numStart));
                 isOrdered = true;
                 pos++; // skip '.'
             } else {
@@ -1468,7 +1770,7 @@ struct MarkdownInlineRenderer {
         // --- Draw item text with inline formatting ---
         // Checked and unchecked task items both render with normal inline formatting
         // The checkbox itself indicates completion — no strikethrough needed
-        RenderMarkdownLine(ctx, itemText, bulletX, y, lineHeight, style, mdStyle, hitRects);
+        RenderMarkdownLine(ctx, itemText, bulletX, y, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes);
     }
 
     // ---------------------------------------------------------------
@@ -1479,7 +1781,9 @@ struct MarkdownInlineRenderer {
                                          int x, int y, int lineHeight, int width,
                                          const TextAreaStyle& style,
                                          const MarkdownHybridStyle& mdStyle,
-                                         std::vector<MarkdownHitRect>* hitRects = nullptr) {
+                                         std::vector<MarkdownHitRect>* hitRects = nullptr,
+                                         const std::unordered_map<std::string, std::string>* abbreviations = nullptr,
+                                         const std::unordered_map<std::string, std::string>* footnotes = nullptr) {
         // Count nesting depth (>>)
         size_t pos = 0;
         int depth = 0;
@@ -1513,7 +1817,7 @@ struct MarkdownInlineRenderer {
         int textX = x + (depth - 1) * barStride + mdStyle.quoteIndent;
         ctx->SetFontSlant(FontSlant::Italic);
         ctx->SetTextPaint(mdStyle.quoteTextColor);
-        RenderMarkdownLine(ctx, quoteText, textX, y, lineHeight, style, mdStyle, hitRects);
+        RenderMarkdownLine(ctx, quoteText, textX, y, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes);
         ctx->SetFontSlant(FontSlant::Normal);
     }
 
@@ -1977,7 +2281,9 @@ struct MarkdownInlineRenderer {
                                        const TextAreaStyle& style,
                                        const MarkdownHybridStyle& mdStyle,
                                        std::vector<MarkdownHitRect>* hitRects = nullptr,
-                                       const std::vector<int>* columnWidths = nullptr) {
+                                       const std::vector<int>* columnWidths = nullptr,
+                                       const std::unordered_map<std::string, std::string>* abbreviations = nullptr,
+                                       const std::unordered_map<std::string, std::string>* footnotes = nullptr) {
         auto parsed = ParseTableRow(line);
         if (!parsed.isValid) return;
 
@@ -2063,7 +2369,7 @@ struct MarkdownInlineRenderer {
                 }
 
                 // Render cell content with inline markdown
-                RenderMarkdownLine(ctx, wrappedLines[wl], textX, lineY, lineHeight, style, mdStyle, hitRects);
+                RenderMarkdownLine(ctx, wrappedLines[wl], textX, lineY, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes);
             }
 
             cellX += cellWidth;
@@ -2369,6 +2675,216 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         }
     }
 
+    // --- Pre-scan: compute ordered list numbering per CommonMark spec ---
+    // First item's literal number sets the start; subsequent items increment by 1
+    std::vector<int> orderedListNumber(lines.size(), -1);
+    {
+        int currentOrderNumber = 0;
+        int currentLevel = -1;
+        bool inOrderedList = false;
+
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (isInsideCodeBlock[i] || isCodeBlockDelimiter[i]) {
+                inOrderedList = false;
+                currentLevel = -1;
+                continue;
+            }
+            std::string trimmed = TrimWhitespace(lines[i]);
+            if (trimmed.empty()) {
+                inOrderedList = false;
+                currentLevel = -1;
+                continue;
+            }
+
+            // Check if this is an ordered list item
+            size_t pos = 0;
+            int indent = 0;
+            while (pos < lines[i].length() && (lines[i][pos] == ' ' || lines[i][pos] == '\t')) {
+                if (lines[i][pos] == '\t') indent += 4; else indent++;
+                pos++;
+            }
+            int nestingLevel = indent / 2;
+
+            if (pos < lines[i].length() && std::isdigit(lines[i][pos])) {
+                size_t numStart = pos;
+                while (pos < lines[i].length() && std::isdigit(lines[i][pos])) pos++;
+                if (pos < lines[i].length() && lines[i][pos] == '.' &&
+                    pos + 1 < lines[i].length() && lines[i][pos + 1] == ' ') {
+                    int literalNumber = std::stoi(lines[i].substr(numStart, pos - numStart));
+                    if (!inOrderedList || nestingLevel != currentLevel) {
+                        currentOrderNumber = literalNumber;
+                        currentLevel = nestingLevel;
+                        inOrderedList = true;
+                    } else {
+                        currentOrderNumber++;
+                    }
+                    orderedListNumber[i] = currentOrderNumber;
+                    continue;
+                }
+            }
+
+            // Non-ordered-list line breaks the sequence
+            // (unordered list items also break it per CommonMark)
+            inOrderedList = false;
+            currentLevel = -1;
+        }
+    }
+
+    // --- Pre-scan: detect definition list structure ---
+    // Identifies: term lines (bold), definition lines (": "), lazy continuations (merge),
+    // and indented continuation paragraphs
+    isDefinitionTermLine.assign(lines.size(), false);
+    isDefinitionHiddenLine.assign(lines.size(), false);
+    isDefinitionContinuationLine.assign(lines.size(), false);
+    definitionMergedText.assign(lines.size(), "");
+    {
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (isInsideCodeBlock[i] || isCodeBlockDelimiter[i]) continue;
+            std::string trimmed = TrimWhitespace(lines[i]);
+            if (trimmed.length() < 2 || trimmed[0] != ':' || trimmed[1] != ' ') continue;
+
+            // This is a definition line (": ...")
+            // Mark the previous non-empty, non-code line as a term
+            for (int k = static_cast<int>(i) - 1; k >= 0; k--) {
+                if (isInsideCodeBlock[k] || isCodeBlockDelimiter[k]) break;
+                std::string prevTrimmed = TrimWhitespace(lines[k]);
+                if (prevTrimmed.empty()) continue;
+                // Don't mark another definition line as a term
+                if (prevTrimmed.length() >= 2 && prevTrimmed[0] == ':' && prevTrimmed[1] == ' ') break;
+                isDefinitionTermLine[k] = true;
+                break;
+            }
+
+            // Build merged text: strip ": " prefix and append lazy continuations
+            std::string mergedText = trimmed.substr(2);
+            // Strip additional leading whitespace after ": " (e.g., ":   Definition")
+            size_t textStart = mergedText.find_first_not_of(" \t");
+            if (textStart != std::string::npos && textStart > 0)
+                mergedText = mergedText.substr(textStart);
+
+            // Look ahead for lazy continuation lines (non-empty, non-indented, no blank line gap)
+            for (size_t j = i + 1; j < lines.size(); j++) {
+                if (isInsideCodeBlock[j] || isCodeBlockDelimiter[j]) break;
+                const std::string& nextLine = lines[j];
+                std::string nextTrimmed = TrimWhitespace(nextLine);
+                if (nextTrimmed.empty()) break; // blank line ends lazy continuation
+                // If it starts with ": " it's a new definition
+                if (nextTrimmed.length() >= 2 && nextTrimmed[0] == ':' && nextTrimmed[1] == ' ') break;
+                // If it has leading whitespace, it's not a lazy continuation
+                if (!nextLine.empty() && (nextLine[0] == ' ' || nextLine[0] == '\t')) break;
+                // This is a lazy continuation line
+                mergedText += " " + nextTrimmed;
+                isDefinitionHiddenLine[j] = true;
+            }
+
+            definitionMergedText[i] = mergedText;
+
+            // Look ahead for indented continuation paragraphs after this definition block
+            // Find the end of the current definition + lazy continuations
+            size_t afterDef = i + 1;
+            while (afterDef < lines.size() && isDefinitionHiddenLine[afterDef]) afterDef++;
+
+            // Check for blank line followed by indented continuation paragraphs
+            bool inContinuation = false;
+            for (size_t j = afterDef; j < lines.size(); j++) {
+                if (isInsideCodeBlock[j] || isCodeBlockDelimiter[j]) break;
+                std::string nextTrimmed = TrimWhitespace(lines[j]);
+                const std::string& nextLine = lines[j];
+
+                if (nextTrimmed.empty()) {
+                    // Blank line - could be between continuation paragraphs
+                    if (inContinuation) continue;
+                    // First blank line after definition - check if followed by indented content
+                    inContinuation = false;
+                    continue;
+                }
+
+                // Check if line has leading whitespace (indented)
+                if (!nextLine.empty() && (nextLine[0] == ' ' || nextLine[0] == '\t')) {
+                    isDefinitionContinuationLine[j] = true;
+                    inContinuation = true;
+                } else {
+                    // Non-indented, non-empty line - end of definition block
+                    break;
+                }
+            }
+        }
+    }
+
+    // --- Pre-scan: extract abbreviation definitions (*[ABBR]: expansion) ---
+    markdownAbbreviations.clear();
+    isAbbreviationDefinitionLine.assign(lines.size(), false);
+    {
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (isInsideCodeBlock[i]) continue;
+            const std::string& line = lines[i];
+            size_t pos = 0;
+            while (pos < line.size() && (line[pos] == ' ' || line[pos] == '\t')) pos++;
+            if (pos + 2 < line.size() && line[pos] == '*' && line[pos + 1] == '[') {
+                size_t closeBracket = line.find("]:", pos + 2);
+                if (closeBracket != std::string::npos) {
+                    std::string abbr = line.substr(pos + 2, closeBracket - pos - 2);
+                    std::string expansion = line.substr(closeBracket + 2);
+                    size_t expStart = expansion.find_first_not_of(" \t");
+                    if (expStart != std::string::npos)
+                        expansion = expansion.substr(expStart);
+                    if (!abbr.empty() && !expansion.empty()) {
+                        markdownAbbreviations[abbr] = expansion;
+                        isAbbreviationDefinitionLine[i] = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Pre-scan: extract footnote definitions ([^label]: content) ---
+    markdownFootnotes.clear();
+    isFootnoteDefinitionLine.assign(lines.size(), false);
+    {
+        std::string lastFootnoteLabel;
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (isInsideCodeBlock[i]) { lastFootnoteLabel.clear(); continue; }
+            const std::string& line = lines[i];
+
+            // Check for continuation line (4+ spaces or tab indent) of previous footnote
+            if (!lastFootnoteLabel.empty() && !line.empty() &&
+                (line[0] == '\t' || (line.size() >= 4 && line[0] == ' ' && line[1] == ' ' && line[2] == ' ' && line[3] == ' '))) {
+                // Append to previous footnote content
+                size_t contentStart = (line[0] == '\t') ? 1 : 4;
+                std::string continuation = line.substr(contentStart);
+                size_t cs = continuation.find_first_not_of(" \t");
+                if (cs != std::string::npos)
+                    continuation = continuation.substr(cs);
+                if (!continuation.empty()) {
+                    markdownFootnotes[lastFootnoteLabel] += " " + continuation;
+                }
+                isFootnoteDefinitionLine[i] = true;
+                continue;
+            }
+
+            lastFootnoteLabel.clear();
+
+            // Check for [^label]: content pattern
+            size_t pos = 0;
+            while (pos < line.size() && (line[pos] == ' ' || line[pos] == '\t')) pos++;
+            if (pos + 3 < line.size() && line[pos] == '[' && line[pos + 1] == '^') {
+                size_t closeBracket = line.find("]:", pos + 2);
+                if (closeBracket != std::string::npos) {
+                    std::string label = line.substr(pos + 2, closeBracket - pos - 2);
+                    std::string content = line.substr(closeBracket + 2);
+                    size_t cs = content.find_first_not_of(" \t");
+                    if (cs != std::string::npos)
+                        content = content.substr(cs);
+                    if (!label.empty()) {
+                        markdownFootnotes[label] = content;
+                        isFootnoteDefinitionLine[i] = true;
+                        lastFootnoteLabel = label;
+                    }
+                }
+            }
+        }
+    }
+
     // Build cumulative Y offsets for display lines affected by multi-line table rows
     {
         int dlCount = GetDisplayLineCount();
@@ -2403,6 +2919,24 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         const auto& dl = displayLines[di];
         int logLine = dl.logicalLine;
         if (logLine < 0 || logLine >= static_cast<int>(lines.size())) continue;
+
+        // Skip abbreviation definition lines (they are metadata, not visible content)
+        if (logLine < static_cast<int>(isAbbreviationDefinitionLine.size()) &&
+            isAbbreviationDefinitionLine[logLine] && logLine != cursorLine) {
+            continue;
+        }
+
+        // Skip footnote definition lines (they are metadata, not visible content)
+        if (logLine < static_cast<int>(isFootnoteDefinitionLine.size()) &&
+            isFootnoteDefinitionLine[logLine] && logLine != cursorLine) {
+            continue;
+        }
+
+        // Skip definition list lazy continuation lines (merged into the definition line)
+        if (logLine < static_cast<int>(isDefinitionHiddenLine.size()) &&
+            isDefinitionHiddenLine[logLine] && logLine != cursorLine) {
+            continue;
+        }
 
         const std::string& line = lines[logLine];
         int textY = baseY + (di - startDL) * computedLineHeight;
@@ -2565,7 +3099,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                         rowHeight, visibleTextArea.width, isHeader,
                         tableAlignments[logLine], tableColumnCounts[logLine],
                         style, mdStyle, &markdownHitRects,
-                        colWidths);
+                        colWidths, &markdownAbbreviations, &markdownFootnotes);
             }
             continue;
         }
@@ -2575,7 +3109,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             if (!isFirstSegment) continue;
             MarkdownInlineRenderer::RenderMarkdownHeader(
                     context, trimmed, x, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects);
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
             continue;
         }
 
@@ -2602,7 +3136,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         if (isFirstSegment && trimmed[0] == '>') {
             MarkdownInlineRenderer::RenderMarkdownBlockquote(
                     context, segment, x, textY, computedLineHeight,
-                    visibleTextArea.width, style, mdStyle, &markdownHitRects);
+                    visibleTextArea.width, style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
             continue;
         }
         if (!isFirstSegment && TrimWhitespace(lines[logLine])[0] == '>') {
@@ -2610,7 +3144,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             int quoteIndent = mdStyle.quoteBarWidth + mdStyle.quoteIndent;
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, segment, x + quoteIndent, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects);
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
             continue;
         }
 
@@ -2618,28 +3152,57 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         if (isFirstSegment && IsMarkdownListItem(trimmed)) {
             MarkdownInlineRenderer::RenderMarkdownListItem(
                     context, segment, x, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects);
+                    style, mdStyle, &markdownHitRects,
+                    orderedListNumber[logLine], &markdownAbbreviations, &markdownFootnotes);
             continue;
         }
         if (!isFirstSegment && IsMarkdownListItem(TrimWhitespace(lines[logLine]))) {
             // Continuation of a list item: render with indent
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, segment, x + mdStyle.listIndent, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects);
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
+            continue;
+        }
+
+        // --- Definition list term: line before a ": " definition (render bold) ---
+        if (logLine < static_cast<int>(isDefinitionTermLine.size()) &&
+            isDefinitionTermLine[logLine] && logLine != cursorLine) {
+            // Wrap in ** so the inline parser produces bold elements
+            std::string boldSegment = "**" + segment + "**";
+            MarkdownInlineRenderer::RenderMarkdownLine(
+                    context, boldSegment, x, textY, computedLineHeight,
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
             continue;
         }
 
         // --- Definition list definition line: starts with ": " ---
         if (isFirstSegment && trimmed.length() >= 2 && trimmed[0] == ':' && trimmed[1] == ' ') {
-            std::string defText = trimmed.substr(2);
             int defIndent = mdStyle.listIndent + 10;
-
-            context->SetTextPaint(mdStyle.bulletColor);
-            context->DrawText("\xE2\x80\x94", x + 4, textY); // em-dash —
+            // Use merged text (includes lazy continuations) if available
+            std::string defText;
+            if (logLine < static_cast<int>(definitionMergedText.size()) &&
+                !definitionMergedText[logLine].empty()) {
+                defText = definitionMergedText[logLine];
+            } else {
+                defText = trimmed.substr(2);
+                size_t textStart = defText.find_first_not_of(" \t");
+                if (textStart != std::string::npos && textStart > 0)
+                    defText = defText.substr(textStart);
+            }
 
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, defText, x + defIndent, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects);
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
+            continue;
+        }
+
+        // --- Definition list continuation paragraph (indented lines after definition) ---
+        if (isFirstSegment && logLine < static_cast<int>(isDefinitionContinuationLine.size()) &&
+            isDefinitionContinuationLine[logLine] && logLine != cursorLine) {
+            int defIndent = mdStyle.listIndent + 10;
+            MarkdownInlineRenderer::RenderMarkdownLine(
+                    context, trimmed, x + defIndent, textY, computedLineHeight,
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
             continue;
         }
         if (!isFirstSegment && TrimWhitespace(lines[logLine])[0] == '>') {
@@ -2658,13 +3221,13 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             int contTextX = x + (contDepth - 1) * mdStyle.quoteNestingStep + mdStyle.quoteIndent;
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, segment, contTextX, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects);
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
             continue;
         }
         // --- Regular text with inline formatting ---
         MarkdownInlineRenderer::RenderMarkdownLine(
                 context, segment, x, textY, computedLineHeight,
-                style, mdStyle, &markdownHitRects);
+                style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
     }
 
     context->PopState();
@@ -2751,10 +3314,25 @@ bool UltraCanvasTextArea::HandleMarkdownHover(int mouseX, int mouseY) {
     for (const auto& hitRect : markdownHitRects) {
         if (mouseX >= hitRect.bounds.x && mouseX <= hitRect.bounds.x + hitRect.bounds.width &&
             mouseY >= hitRect.bounds.y && mouseY <= hitRect.bounds.y + hitRect.bounds.height) {
+
+            if (hitRect.isAbbreviation || hitRect.isFootnote) {
+                // Show tooltip with expansion/footnote text; keep default cursor
+                auto* win = GetWindow();
+                if (win && !hitRect.altText.empty()) {
+                    Point2Di tooltipPos = {mouseX, mouseY};
+                    UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                        win, hitRect.altText, tooltipPos);
+                }
+                return true;
+            }
+
             SetMouseCursor(UCMouseCursor::Hand);
             return true;
         }
     }
+
+    // Mouse moved off all interactive elements — hide any active tooltip
+    UltraCanvasTooltipManager::HideTooltip();
     return false;
 }
 

@@ -17,6 +17,7 @@
 #include <utility>
 #include <chrono>
 #include <cstdint>
+#include <unordered_map>
 
 namespace UltraCanvas {
 
@@ -31,6 +32,8 @@ namespace UltraCanvas {
         std::string url;
         std::string altText;
         bool isImage = false;
+        bool isAbbreviation = false;
+        bool isFootnote = false;
     };
 
 // Syntax highlighting mode
@@ -605,6 +608,22 @@ namespace UltraCanvas {
         TextAreaEditingMode editingMode = TextAreaEditingMode::PlainText;
         // Markdown clickable hit regions (rebuilt each render frame)
         std::vector<MarkdownHitRect> markdownHitRects;
+        // Abbreviation definitions: abbreviation -> expansion text
+        std::unordered_map<std::string, std::string> markdownAbbreviations;
+        // Per-logical-line flag: true if line is an abbreviation definition (hidden from rendering)
+        std::vector<bool> isAbbreviationDefinitionLine;
+        // Footnote definitions: label -> content text
+        std::unordered_map<std::string, std::string> markdownFootnotes;
+        // Per-logical-line flag: true if line is a footnote definition (hidden from rendering)
+        std::vector<bool> isFootnoteDefinitionLine;
+        // Per-logical-line flag: true if line is a definition list term (rendered bold)
+        std::vector<bool> isDefinitionTermLine;
+        // Per-logical-line flag: true if line is hidden (lazy continuation merged into definition)
+        std::vector<bool> isDefinitionHiddenLine;
+        // Per-logical-line flag: true if line is a continuation paragraph of a definition
+        std::vector<bool> isDefinitionContinuationLine;
+        // Per-logical-line: for ": " lines, the full merged text (including lazy continuations)
+        std::vector<std::string> definitionMergedText;
         // Path of the currently loaded document (for resolving relative image paths)
         std::string documentFilePath;
         // Per-display-line cumulative Y offset from block images (rebuilt each frame)

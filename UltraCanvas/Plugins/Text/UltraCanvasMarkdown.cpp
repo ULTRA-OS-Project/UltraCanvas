@@ -323,6 +323,28 @@ namespace UltraCanvas {
             previousLine = line;
         }
 
+        // Fix ordered list numbering per CommonMark spec:
+        // first item's number sets the start; subsequent items increment by 1
+        int currentOrderNumber = 0;
+        int currentLevel = -1;
+        bool inOrderedList = false;
+
+        for (auto& el : elements) {
+            if (el->type == MarkdownElementType::ListItem && el->ordered) {
+                if (!inOrderedList || el->level != currentLevel) {
+                    currentOrderNumber = el->orderNumber;
+                    currentLevel = el->level;
+                    inOrderedList = true;
+                } else {
+                    currentOrderNumber++;
+                }
+                el->orderNumber = currentOrderNumber;
+            } else {
+                inOrderedList = false;
+                currentLevel = -1;
+            }
+        }
+
         return elements;
     }
 
