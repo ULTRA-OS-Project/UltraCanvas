@@ -174,133 +174,196 @@ struct MarkdownInlineElement {
 // Converts LaTeX-style commands to Unicode characters for display
 
 static std::string SubstituteGreekLetters(const std::string& input) {
-    // Map of LaTeX commands to UTF-8 Unicode characters
-    static const std::vector<std::pair<std::string, std::string>> greekMap = {
-        // Lowercase Greek
-        {"\\alpha",    "\xCE\xB1"},   // α
-        {"\\beta",     "\xCE\xB2"},   // β
-        {"\\gamma",    "\xCE\xB3"},   // γ
-        {"\\delta",    "\xCE\xB4"},   // δ
-        {"\\epsilon",  "\xCE\xB5"},   // ε
-        {"\\zeta",     "\xCE\xB6"},   // ζ
-        {"\\eta",      "\xCE\xB7"},   // η
-        {"\\theta",    "\xCE\xB8"},   // θ
-        {"\\iota",     "\xCE\xB9"},   // ι
-        {"\\kappa",    "\xCE\xBA"},   // κ
-        {"\\lambda",   "\xCE\xBB"},   // λ
-        {"\\mu",       "\xCE\xBC"},   // μ
-        {"\\nu",       "\xCE\xBD"},   // ν
-        {"\\xi",       "\xCE\xBE"},   // ξ
-        {"\\pi",       "\xCF\x80"},   // π
-        {"\\rho",      "\xCF\x81"},   // ρ
-        {"\\sigma",    "\xCF\x83"},   // σ
-        {"\\tau",      "\xCF\x84"},   // τ
-        {"\\upsilon",  "\xCF\x85"},   // υ
-        {"\\phi",      "\xCF\x86"},   // φ
-        {"\\chi",      "\xCF\x87"},   // χ
-        {"\\psi",      "\xCF\x88"},   // ψ
-        {"\\omega",    "\xCF\x89"},   // ω
-        // Uppercase Greek
-        {"\\Alpha",    "\xCE\x91"},   // Α
-        {"\\Beta",     "\xCE\x92"},   // Β
-        {"\\Gamma",    "\xCE\x93"},   // Γ
-        {"\\Delta",    "\xCE\x94"},   // Δ
-        {"\\Epsilon",  "\xCE\x95"},   // Ε
-        {"\\Zeta",     "\xCE\x96"},   // Ζ
-        {"\\Eta",      "\xCE\x97"},   // Η
-        {"\\Theta",    "\xCE\x98"},   // Θ
-        {"\\Iota",     "\xCE\x99"},   // Ι
-        {"\\Kappa",    "\xCE\x9A"},   // Κ
-        {"\\Lambda",   "\xCE\x9B"},   // Λ
-        {"\\Mu",       "\xCE\x9C"},   // Μ
-        {"\\Nu",       "\xCE\x9D"},   // Ν
-        {"\\Xi",       "\xCE\x9E"},   // Ξ
-        {"\\Pi",       "\xCE\xA0"},   // Π
-        {"\\Rho",      "\xCE\xA1"},   // Ρ
-        {"\\Sigma",    "\xCE\xA3"},   // Σ
-        {"\\Tau",      "\xCE\xA4"},   // Τ
-        {"\\Upsilon",  "\xCE\xA5"},   // Υ
-        {"\\Phi",      "\xCE\xA6"},   // Φ
-        {"\\Chi",      "\xCE\xA7"},   // Χ
-        {"\\Psi",      "\xCE\xA8"},   // Ψ
-        {"\\Omega",    "\xCE\xA9"},   // Ω
-        // Math symbols
-        {"\\infty",    "\xE2\x88\x9E"},   // ∞
-        {"\\pm",       "\xC2\xB1"},       // ±
-        {"\\mp",       "\xE2\x88\x93"},   // ∓
-        {"\\times",    "\xC3\x97"},       // ×
-        {"\\div",      "\xC3\xB7"},       // ÷
-        {"\\cdot",     "\xC2\xB7"},       // ·
-        {"\\leq",      "\xE2\x89\xA4"},   // ≤
-        {"\\geq",      "\xE2\x89\xA5"},   // ≥
-        {"\\neq",      "\xE2\x89\xA0"},   // ≠
-        {"\\approx",   "\xE2\x89\x88"},   // ≈
-        {"\\equiv",    "\xE2\x89\xA1"},   // ≡
-        {"\\sum",      "\xE2\x88\x91"},   // ∑
-        {"\\prod",     "\xE2\x88\x8F"},   // ∏
-        {"\\int",      "\xE2\x88\xAB"},   // ∫
-        {"\\partial",  "\xE2\x88\x82"},   // ∂
-        {"\\nabla",    "\xE2\x88\x87"},   // ∇
-        {"\\forall",   "\xE2\x88\x80"},   // ∀
-        {"\\exists",   "\xE2\x88\x83"},   // ∃
-        {"\\in",       "\xE2\x88\x88"},   // ∈
-        {"\\notin",    "\xE2\x88\x89"},   // ∉
-        {"\\subset",   "\xE2\x8A\x82"},   // ⊂
-        {"\\supset",   "\xE2\x8A\x83"},   // ⊃
-        {"\\cup",      "\xE2\x88\xAA"},   // ∪
-        {"\\cap",      "\xE2\x88\xA9"},   // ∩
-        {"\\emptyset", "\xE2\x88\x85"},   // ∅
-        {"\\sqrt",     "\xE2\x88\x9A"},   // √
-        {"\\langle",   "\xE2\x9F\xA8"},   // ⟨
-        {"\\rangle",   "\xE2\x9F\xA9"},   // ⟩
-        {"\\to",       "\xE2\x86\x92"},   // →
-        {"\\leftarrow","\xE2\x86\x90"},   // ←
-        {"\\Rightarrow","\xE2\x87\x92"},  // ⇒
-        {"\\Leftarrow", "\xE2\x87\x90"},  // ⇐
-        // Superscripts and subscripts
-        {"^{0}",  "\xE2\x81\xB0"},   // ⁰
-        {"^{1}",  "\xC2\xB9"},       // ¹
-        {"^{2}",  "\xC2\xB2"},       // ²
-        {"^{3}",  "\xC2\xB3"},       // ³
-        {"^{4}",  "\xE2\x81\xB4"},   // ⁴
-        {"^{5}",  "\xE2\x81\xB5"},   // ⁵
-        {"^{6}",  "\xE2\x81\xB6"},   // ⁶
-        {"^{7}",  "\xE2\x81\xB7"},   // ⁷
-        {"^{8}",  "\xE2\x81\xB8"},   // ⁸
-        {"^{9}",  "\xE2\x81\xB9"},   // ⁹
-        {"^{n}",  "\xE2\x81\xBF"},   // ⁿ
-        {"^{i}",  "\xE2\x81\xB1"},   // ⁱ
-        {"_{0}",  "\xE2\x82\x80"},   // ₀
-        {"_{1}",  "\xE2\x82\x81"},   // ₁
-        {"_{2}",  "\xE2\x82\x82"},   // ₂
-        {"_{3}",  "\xE2\x82\x83"},   // ₃
-        {"_{4}",  "\xE2\x82\x84"},   // ₄
-        {"_{5}",  "\xE2\x82\x85"},   // ₅
-        {"_{6}",  "\xE2\x82\x86"},   // ₆
-        {"_{7}",  "\xE2\x82\x87"},   // ₇
-        {"_{8}",  "\xE2\x82\x88"},   // ₈
-        {"_{9}",  "\xE2\x82\x89"},   // ₉
-        // Fractions
-        {"\\frac{1}{2}", "\xC2\xBD"},       // ½
-        {"\\frac{1}{3}", "\xE2\x85\x93"},   // ⅓
-        {"\\frac{2}{3}", "\xE2\x85\x94"},   // ⅔
-        {"\\frac{1}{4}", "\xC2\xBC"},       // ¼
-        {"\\frac{3}{4}", "\xC2\xBE"},       // ¾
-    };
+    // Map of LaTeX commands to UTF-8 Unicode characters.
+    // Sorted by pattern length (longest first) at init time to prevent
+    // shorter patterns from false-matching as prefixes of longer ones.
+    static const std::vector<std::pair<std::string, std::string>> greekMap = []() {
+        std::vector<std::pair<std::string, std::string>> map = {
+            // Lowercase Greek
+            {"\\alpha",    "\xCE\xB1"},   // α
+            {"\\beta",     "\xCE\xB2"},   // β
+            {"\\gamma",    "\xCE\xB3"},   // γ
+            {"\\delta",    "\xCE\xB4"},   // δ
+            {"\\epsilon",  "\xCE\xB5"},   // ε
+            {"\\varepsilon","\xCE\xB5"},  // ε (variant)
+            {"\\zeta",     "\xCE\xB6"},   // ζ
+            {"\\eta",      "\xCE\xB7"},   // η
+            {"\\theta",    "\xCE\xB8"},   // θ
+            {"\\vartheta", "\xCF\x91"},   // ϑ (variant)
+            {"\\iota",     "\xCE\xB9"},   // ι
+            {"\\kappa",    "\xCE\xBA"},   // κ
+            {"\\lambda",   "\xCE\xBB"},   // λ
+            {"\\mu",       "\xCE\xBC"},   // μ
+            {"\\nu",       "\xCE\xBD"},   // ν
+            {"\\xi",       "\xCE\xBE"},   // ξ
+            {"\\pi",       "\xCF\x80"},   // π
+            {"\\rho",      "\xCF\x81"},   // ρ
+            {"\\sigma",    "\xCF\x83"},   // σ
+            {"\\tau",      "\xCF\x84"},   // τ
+            {"\\upsilon",  "\xCF\x85"},   // υ
+            {"\\phi",      "\xCF\x86"},   // φ
+            {"\\varphi",   "\xCF\x86"},   // φ (variant)
+            {"\\chi",      "\xCF\x87"},   // χ
+            {"\\psi",      "\xCF\x88"},   // ψ
+            {"\\omega",    "\xCF\x89"},   // ω
+            // Uppercase Greek
+            {"\\Alpha",    "\xCE\x91"},   // Α
+            {"\\Beta",     "\xCE\x92"},   // Β
+            {"\\Gamma",    "\xCE\x93"},   // Γ
+            {"\\Delta",    "\xCE\x94"},   // Δ
+            {"\\Epsilon",  "\xCE\x95"},   // Ε
+            {"\\Zeta",     "\xCE\x96"},   // Ζ
+            {"\\Eta",      "\xCE\x97"},   // Η
+            {"\\Theta",    "\xCE\x98"},   // Θ
+            {"\\Iota",     "\xCE\x99"},   // Ι
+            {"\\Kappa",    "\xCE\x9A"},   // Κ
+            {"\\Lambda",   "\xCE\x9B"},   // Λ
+            {"\\Mu",       "\xCE\x9C"},   // Μ
+            {"\\Nu",       "\xCE\x9D"},   // Ν
+            {"\\Xi",       "\xCE\x9E"},   // Ξ
+            {"\\Pi",       "\xCE\xA0"},   // Π
+            {"\\Rho",      "\xCE\xA1"},   // Ρ
+            {"\\Sigma",    "\xCE\xA3"},   // Σ
+            {"\\Tau",      "\xCE\xA4"},   // Τ
+            {"\\Upsilon",  "\xCE\xA5"},   // Υ
+            {"\\Phi",      "\xCE\xA6"},   // Φ
+            {"\\Chi",      "\xCE\xA7"},   // Χ
+            {"\\Psi",      "\xCE\xA8"},   // Ψ
+            {"\\Omega",    "\xCE\xA9"},   // Ω
+            // Math symbols
+            {"\\infty",    "\xE2\x88\x9E"},   // ∞
+            {"\\pm",       "\xC2\xB1"},       // ±
+            {"\\mp",       "\xE2\x88\x93"},   // ∓
+            {"\\times",    "\xC3\x97"},       // ×
+            {"\\div",      "\xC3\xB7"},       // ÷
+            {"\\cdot",     "\xC2\xB7"},       // ·
+            {"\\cdots",    "\xE2\x8B\xAF"},   // ⋯
+            {"\\ldots",    "\xE2\x80\xA6"},   // …
+            {"\\leq",      "\xE2\x89\xA4"},   // ≤
+            {"\\geq",      "\xE2\x89\xA5"},   // ≥
+            {"\\neq",      "\xE2\x89\xA0"},   // ≠
+            {"\\le",       "\xE2\x89\xA4"},   // ≤ (short alias)
+            {"\\ge",       "\xE2\x89\xA5"},   // ≥ (short alias)
+            {"\\ne",       "\xE2\x89\xA0"},   // ≠ (short alias)
+            {"\\approx",   "\xE2\x89\x88"},   // ≈
+            {"\\equiv",    "\xE2\x89\xA1"},   // ≡
+            {"\\sum",      "\xE2\x88\x91"},   // ∑
+            {"\\prod",     "\xE2\x88\x8F"},   // ∏
+            {"\\int",      "\xE2\x88\xAB"},   // ∫
+            {"\\partial",  "\xE2\x88\x82"},   // ∂
+            {"\\nabla",    "\xE2\x88\x87"},   // ∇
+            {"\\forall",   "\xE2\x88\x80"},   // ∀
+            {"\\exists",   "\xE2\x88\x83"},   // ∃
+            {"\\in",       "\xE2\x88\x88"},   // ∈
+            {"\\notin",    "\xE2\x88\x89"},   // ∉
+            {"\\subset",   "\xE2\x8A\x82"},   // ⊂
+            {"\\supset",   "\xE2\x8A\x83"},   // ⊃
+            {"\\cup",      "\xE2\x88\xAA"},   // ∪
+            {"\\cap",      "\xE2\x88\xA9"},   // ∩
+            {"\\emptyset", "\xE2\x88\x85"},   // ∅
+            {"\\sqrt",     "\xE2\x88\x9A"},   // √
+            {"\\langle",   "\xE2\x9F\xA8"},   // ⟨
+            {"\\rangle",   "\xE2\x9F\xA9"},   // ⟩
+            {"\\to",       "\xE2\x86\x92"},   // →
+            {"\\gets",     "\xE2\x86\x90"},   // ←
+            {"\\leftarrow","\xE2\x86\x90"},   // ←
+            {"\\Rightarrow","\xE2\x87\x92"},  // ⇒
+            {"\\Leftarrow", "\xE2\x87\x90"},  // ⇐
+            {"\\iff",      "\xE2\x9F\xBA"},   // ⟺
+            {"\\implies",  "\xE2\x9F\xB9"},   // ⟹
+            // Named math functions (render as upright text without backslash)
+            {"\\sin",  "sin"},
+            {"\\cos",  "cos"},
+            {"\\tan",  "tan"},
+            {"\\log",  "log"},
+            {"\\ln",   "ln"},
+            {"\\lim",  "lim"},
+            {"\\min",  "min"},
+            {"\\max",  "max"},
+            {"\\exp",  "exp"},
+            {"\\det",  "det"},
+            {"\\dim",  "dim"},
+            {"\\ker",  "ker"},
+            {"\\deg",  "deg"},
+            // Superscripts and subscripts
+            {"^{0}",  "\xE2\x81\xB0"},   // ⁰
+            {"^{1}",  "\xC2\xB9"},       // ¹
+            {"^{2}",  "\xC2\xB2"},       // ²
+            {"^{3}",  "\xC2\xB3"},       // ³
+            {"^{4}",  "\xE2\x81\xB4"},   // ⁴
+            {"^{5}",  "\xE2\x81\xB5"},   // ⁵
+            {"^{6}",  "\xE2\x81\xB6"},   // ⁶
+            {"^{7}",  "\xE2\x81\xB7"},   // ⁷
+            {"^{8}",  "\xE2\x81\xB8"},   // ⁸
+            {"^{9}",  "\xE2\x81\xB9"},   // ⁹
+            {"^{n}",  "\xE2\x81\xBF"},   // ⁿ
+            {"^{i}",  "\xE2\x81\xB1"},   // ⁱ
+            {"_{0}",  "\xE2\x82\x80"},   // ₀
+            {"_{1}",  "\xE2\x82\x81"},   // ₁
+            {"_{2}",  "\xE2\x82\x82"},   // ₂
+            {"_{3}",  "\xE2\x82\x83"},   // ₃
+            {"_{4}",  "\xE2\x82\x84"},   // ₄
+            {"_{5}",  "\xE2\x82\x85"},   // ₅
+            {"_{6}",  "\xE2\x82\x86"},   // ₆
+            {"_{7}",  "\xE2\x82\x87"},   // ₇
+            {"_{8}",  "\xE2\x82\x88"},   // ₈
+            {"_{9}",  "\xE2\x82\x89"},   // ₉
+            // Fractions (known Unicode fraction chars)
+            {"\\frac{1}{2}", "\xC2\xBD"},       // ½
+            {"\\frac{1}{3}", "\xE2\x85\x93"},   // ⅓
+            {"\\frac{2}{3}", "\xE2\x85\x94"},   // ⅔
+            {"\\frac{1}{4}", "\xC2\xBC"},       // ¼
+            {"\\frac{3}{4}", "\xC2\xBE"},       // ¾
+        };
+        // Sort by pattern length descending so longer patterns match first
+        std::stable_sort(map.begin(), map.end(), [](const auto& a, const auto& b) {
+            return a.first.length() > b.first.length();
+        });
+        return map;
+    }();
 
     std::string result = input;
 
-    // Replace longer patterns first to avoid partial matches
-    // The vector is already ordered with longer patterns first within categories
+    // Replace patterns longest-first with word-boundary guard for backslash commands
     for (const auto& [pattern, replacement] : greekMap) {
+        bool isBackslashCmd = (!pattern.empty() && pattern[0] == '\\');
         size_t searchPos = 0;
         while ((searchPos = result.find(pattern, searchPos)) != std::string::npos) {
+            size_t afterMatch = searchPos + pattern.length();
+            // Word boundary: for \cmd patterns, next char must not be a letter
+            // (prevents e.g. \in matching inside \integral)
+            if (isBackslashCmd && afterMatch < result.length() &&
+                std::isalpha(static_cast<unsigned char>(result[afterMatch]))) {
+                searchPos++;
+                continue;
+            }
             result.replace(searchPos, pattern.length(), replacement);
             searchPos += replacement.length();
         }
     }
 
     // Clean up remaining LaTeX formatting that we can simplify:
+
+    // \frac{X}{Y} → X/Y (general fractions not in the known-fraction table)
+    {
+        size_t searchPos = 0;
+        while ((searchPos = result.find("\\frac{", searchPos)) != std::string::npos) {
+            size_t numEnd = result.find('}', searchPos + 6);
+            if (numEnd != std::string::npos && numEnd + 1 < result.length() && result[numEnd + 1] == '{') {
+                size_t denEnd = result.find('}', numEnd + 2);
+                if (denEnd != std::string::npos) {
+                    std::string num = result.substr(searchPos + 6, numEnd - searchPos - 6);
+                    std::string den = result.substr(numEnd + 2, denEnd - numEnd - 2);
+                    std::string frac = num + "/" + den;
+                    result.replace(searchPos, denEnd - searchPos + 1, frac);
+                    searchPos += frac.length();
+                    continue;
+                }
+            }
+            break;
+        }
+    }
+
     // \text{...} → just the text
     {
         size_t searchPos = 0;
@@ -328,6 +391,52 @@ static std::string SubstituteGreekLetters(const std::string& input) {
             } else {
                 break;
             }
+        }
+    }
+
+    // \mathrm{...} → just the text
+    {
+        size_t searchPos = 0;
+        while ((searchPos = result.find("\\mathrm{", searchPos)) != std::string::npos) {
+            size_t braceEnd = result.find('}', searchPos + 8);
+            if (braceEnd != std::string::npos) {
+                std::string content = result.substr(searchPos + 8, braceEnd - searchPos - 8);
+                result.replace(searchPos, braceEnd - searchPos + 1, content);
+                searchPos += content.length();
+            } else {
+                break;
+            }
+        }
+    }
+
+    // \sqrt{...} → √(...)
+    {
+        size_t searchPos = 0;
+        while ((searchPos = result.find("\xE2\x88\x9A{", searchPos)) != std::string::npos) {
+            // \sqrt was already replaced with √, now handle the {content}
+            size_t braceEnd = result.find('}', searchPos + 4); // 3 bytes for √ + 1 for {
+            if (braceEnd != std::string::npos) {
+                std::string content = result.substr(searchPos + 4, braceEnd - searchPos - 4);
+                std::string replacement = "\xE2\x88\x9A(" + content + ")";
+                result.replace(searchPos, braceEnd - searchPos + 1, replacement);
+                searchPos += replacement.length();
+            } else {
+                break;
+            }
+        }
+    }
+
+    // \left and \right delimiters — just remove them
+    {
+        size_t searchPos = 0;
+        while ((searchPos = result.find("\\left", searchPos)) != std::string::npos) {
+            result.erase(searchPos, 5);
+        }
+    }
+    {
+        size_t searchPos = 0;
+        while ((searchPos = result.find("\\right", searchPos)) != std::string::npos) {
+            result.erase(searchPos, 6);
         }
     }
 
@@ -507,6 +616,32 @@ struct TableParseResult {
 struct MarkdownInlineRenderer {
 
     // ---------------------------------------------------------------
+    // BRACKET / PAREN MATCHING HELPERS
+    // ---------------------------------------------------------------
+
+    // Find the matching ']' for a '[' at openPos, respecting nesting and escapes.
+    static size_t FindMatchingBracket(const std::string& line, size_t openPos) {
+        int depth = 1;
+        for (size_t i = openPos + 1; i < line.length(); i++) {
+            if (line[i] == '\\' && i + 1 < line.length()) { i++; continue; }
+            if (line[i] == '[') depth++;
+            if (line[i] == ']') { depth--; if (depth == 0) return i; }
+        }
+        return std::string::npos;
+    }
+
+    // Find the matching ')' for a '(' at openPos, respecting nesting and escapes.
+    static size_t FindMatchingParen(const std::string& line, size_t openPos) {
+        int depth = 1;
+        for (size_t i = openPos + 1; i < line.length(); i++) {
+            if (line[i] == '\\' && i + 1 < line.length()) { i++; continue; }
+            if (line[i] == '(') depth++;
+            if (line[i] == ')') { depth--; if (depth == 0) return i; }
+        }
+        return std::string::npos;
+    }
+
+    // ---------------------------------------------------------------
     // INLINE PARSER — handles bold, italic, bold+italic, code,
     //                 strikethrough, highlight, links, images
     // ---------------------------------------------------------------
@@ -614,9 +749,9 @@ struct MarkdownInlineRenderer {
 
             // --- Image: ![alt](url) ---
             if (pos + 1 < len && line[pos] == '!' && line[pos + 1] == '[') {
-                size_t altEnd = line.find(']', pos + 2);
+                size_t altEnd = FindMatchingBracket(line, pos + 1);
                 if (altEnd != std::string::npos && altEnd + 1 < len && line[altEnd + 1] == '(') {
-                    size_t urlEnd = line.find(')', altEnd + 2);
+                    size_t urlEnd = FindMatchingParen(line, altEnd + 1);
                     if (urlEnd != std::string::npos) {
                         elem.isImage = true;
                         elem.altText = line.substr(pos + 2, altEnd - pos - 2);
@@ -635,9 +770,9 @@ struct MarkdownInlineRenderer {
             // Also handles footnote refs [^1] and reference links [text][ref]
             // by falling through gracefully
             if (line[pos] == '[') {
-                size_t textEnd = line.find(']', pos + 1);
+                size_t textEnd = FindMatchingBracket(line, pos);
                 if (textEnd != std::string::npos && textEnd + 1 < len && line[textEnd + 1] == '(') {
-                    size_t urlEnd = line.find(')', textEnd + 2);
+                    size_t urlEnd = FindMatchingParen(line, textEnd + 1);
                     if (urlEnd != std::string::npos) {
                         elem.isLink = true;
                         elem.text = line.substr(pos + 1, textEnd - pos - 1);
@@ -649,7 +784,7 @@ struct MarkdownInlineRenderer {
                 }
 
                 // If [ was not part of a valid [text](url) link,
-                // consume the [ as plain text and advance to avoid re-matching
+                // consume the entire [...] as plain text to avoid splitting
                 if (!parsed) {
                     // Check if this is a footnote ref [^1] — render as superscript-style text
                     if (textEnd != std::string::npos && pos + 1 < len && line[pos + 1] == '^') {
@@ -659,8 +794,14 @@ struct MarkdownInlineRenderer {
                         elements.push_back(elem);
                         pos = textEnd + 1;
                         parsed = true;
+                    } else if (textEnd != std::string::npos) {
+                        // Non-link [text] — consume entire [...] as plain text
+                        elem.text = line.substr(pos, textEnd - pos + 1);
+                        elements.push_back(elem);
+                        pos = textEnd + 1;
+                        parsed = true;
                     } else {
-                        // Just a [ character — consume it as plain text
+                        // Unmatched [ — consume as plain text
                         elem.text = "[";
                         elements.push_back(elem);
                         pos++;
@@ -1181,9 +1322,20 @@ struct MarkdownInlineRenderer {
         float baseFontSize = style.fontStyle.fontSize;
         float headerFontSize = baseFontSize * mdStyle.headerSizeMultipliers[levelIndex];
 
-        // Clamp font size so it doesn't overflow the fixed row height
-        float maxFontSize = static_cast<float>(lineHeight) * 0.85f;
-        headerFontSize = std::min(headerFontSize, maxFontSize);
+        // Clamp font size so it doesn't overflow the fixed row height.
+        // Each heading level gets progressively more headroom so H1 always
+        // renders visibly larger than H2 even at small base font sizes.
+        // levelIndex 0=H1, 1=H2, ... 5=H6
+        static constexpr float levelCeilMultipliers[6] = {
+            1.05f,  // H1 — allowed to slightly exceed line height for distinction
+            0.90f,  // H2
+            0.85f,  // H3
+            0.82f,  // H4
+            0.80f,  // H5
+            0.78f   // H6
+        };
+        float maxFontSize = static_cast<float>(lineHeight) * levelCeilMultipliers[levelIndex];
+        headerFontSize = std::min(headerFontSize, maxFontSize); 
 
         ctx->SetFontSize(headerFontSize);
         ctx->SetFontWeight(FontWeight::Bold);
@@ -1194,9 +1346,7 @@ struct MarkdownInlineRenderer {
         int centeredY = y + (lineHeight - textHeight) / 2;
 
         // Render inline markdown within header text (links, bold, etc.)
-        // For headers, we render the text directly since inline formatting
-        // within headers is a rare edge case and the header already has styling
-        ctx->DrawText(headerText, x, centeredY);
+        RenderMarkdownLine(ctx, headerText, x, centeredY, lineHeight, style, mdStyle, hitRects);
 
         // Restore font
         ctx->SetFontSize(baseFontSize);
@@ -1669,17 +1819,158 @@ struct MarkdownInlineRenderer {
                 columnWidths[columnCount - 1] += (availableWidth - assigned);
             }
         } else {
-            // Content exceeds available width — expand table, use content widths directly
-            for (int col = 0; col < columnCount; col++) {
-                columnWidths[col] = maxContentWidths[col];
+            // Content exceeds available width — shrink proportionally (browser-like behavior)
+            // First, calculate total minimum width needed
+            int totalMinWidth = minColumnWidth * columnCount;
+
+            if (availableWidth <= totalMinWidth) {
+                // Not enough space even for minimums — use minimum widths
+                for (int col = 0; col < columnCount; col++) {
+                    columnWidths[col] = minColumnWidth;
+                }
+            } else {
+                // Distribute availableWidth proportionally based on content widths
+                int assigned = 0;
+                for (int col = 0; col < columnCount; col++) {
+                    float ratio = static_cast<float>(maxContentWidths[col]) /
+                                  static_cast<float>(totalContentWidth);
+                    int colWidth = std::max(minColumnWidth,
+                                            static_cast<int>(availableWidth * ratio));
+                    columnWidths[col] = colWidth;
+                    assigned += colWidth;
+                }
+
+                // Fix rounding: adjust last column to match exactly
+                if (assigned != availableWidth) {
+                    columnWidths[columnCount - 1] += (availableWidth - assigned);
+                    columnWidths[columnCount - 1] = std::max(columnWidths[columnCount - 1], minColumnWidth);
+                }
             }
         }
 
         return columnWidths;
     }
 
+    // Word-wrap cell text to fit within maxWidth, breaking long words at character boundaries
+    static std::vector<std::string> WrapCellText(IRenderContext* ctx, const std::string& text,
+                                                  int maxWidth) {
+        std::vector<std::string> wrappedLines;
+        if (text.empty() || maxWidth <= 0) {
+            wrappedLines.push_back(text);
+            return wrappedLines;
+        }
+
+        // Split text into words by spaces
+        std::vector<std::string> words;
+        {
+            std::istringstream ss(text);
+            std::string word;
+            while (ss >> word) {
+                words.push_back(word);
+            }
+        }
+
+        if (words.empty()) {
+            wrappedLines.push_back("");
+            return wrappedLines;
+        }
+
+        std::string currentLine;
+        for (const auto& word : words) {
+            std::string testLine = currentLine.empty() ? word : currentLine + " " + word;
+            int testWidth = ctx->GetTextLineWidth(testLine);
+
+            if (testWidth <= maxWidth || currentLine.empty()) {
+                // Word fits on current line, OR it's the first word (must place it)
+                if (currentLine.empty() && testWidth > maxWidth) {
+                    // Single word exceeds maxWidth — break it character by character
+                    int wordLen = static_cast<int>(utf8_length(word));
+                    std::string chunk;
+                    for (int ci = 0; ci < wordLen; ci++) {
+                        std::string ch = utf8_substr(word, ci, 1);
+                        std::string testChunk = chunk + ch;
+                        int chunkWidth = ctx->GetTextLineWidth(testChunk);
+                        if (chunkWidth > maxWidth && !chunk.empty()) {
+                            wrappedLines.push_back(chunk);
+                            chunk = ch;
+                        } else {
+                            chunk = testChunk;
+                        }
+                    }
+                    currentLine = chunk; // remainder of broken word
+                } else {
+                    currentLine = testLine;
+                }
+            } else {
+                // Word doesn't fit — flush current line, start new one
+                wrappedLines.push_back(currentLine);
+
+                // Check if this word itself exceeds maxWidth
+                int wordWidth = ctx->GetTextLineWidth(word);
+                if (wordWidth > maxWidth) {
+                    // Break the word character by character
+                    int wordLen = static_cast<int>(utf8_length(word));
+                    std::string chunk;
+                    for (int ci = 0; ci < wordLen; ci++) {
+                        std::string ch = utf8_substr(word, ci, 1);
+                        std::string testChunk = chunk + ch;
+                        int chunkWidth = ctx->GetTextLineWidth(testChunk);
+                        if (chunkWidth > maxWidth && !chunk.empty()) {
+                            wrappedLines.push_back(chunk);
+                            chunk = ch;
+                        } else {
+                            chunk = testChunk;
+                        }
+                    }
+                    currentLine = chunk;
+                } else {
+                    currentLine = word;
+                }
+            }
+        }
+
+        if (!currentLine.empty()) {
+            wrappedLines.push_back(currentLine);
+        }
+
+        if (wrappedLines.empty()) {
+            wrappedLines.push_back("");
+        }
+
+        return wrappedLines;
+    }
+
+    // Calculate the height of a table row based on wrapped cell content
+    static int CalculateTableRowHeight(IRenderContext* ctx, const std::string& line,
+                                       int lineHeight, int columnCount,
+                                       const std::vector<int>& columnWidths,
+                                       const MarkdownHybridStyle& mdStyle,
+                                       bool isBold) {
+        auto parsed = ParseTableRow(line);
+        if (!parsed.isValid) return lineHeight;
+
+        int padding = static_cast<int>(mdStyle.tableCellPadding);
+        int maxLines = 1;
+
+        if (isBold) ctx->SetFontWeight(FontWeight::Bold);
+
+        for (size_t col = 0; col < parsed.cells.size() &&
+                             col < static_cast<size_t>(columnCount); col++) {
+            int cellWidth = (col < columnWidths.size()) ? columnWidths[col] : 0;
+            int contentWidth = cellWidth - padding * 2;
+            if (contentWidth <= 0) contentWidth = 1;
+
+            auto wrapped = WrapCellText(ctx, parsed.cells[col], contentWidth);
+            maxLines = std::max(maxLines, static_cast<int>(wrapped.size()));
+        }
+
+        if (isBold) ctx->SetFontWeight(FontWeight::Normal);
+
+        return maxLines * lineHeight;
+    }
+
     static void RenderMarkdownTableRow(IRenderContext* ctx, const std::string& line,
-                                       int x, int y, int lineHeight, int width,
+                                       int x, int y, int lineHeight, int rowHeight, int width,
                                        bool isHeaderRow,
                                        const std::vector<TableColumnAlignment>& alignments,
                                        int columnCount,
@@ -1706,7 +1997,7 @@ struct MarkdownInlineRenderer {
         // Draw header background
         if (isHeaderRow) {
             ctx->SetFillPaint(mdStyle.tableHeaderBackground);
-            ctx->FillRectangle(x, y, totalTableWidth, lineHeight);
+            ctx->FillRectangle(x, y, totalTableWidth, rowHeight);
         }
 
         // Draw top border line (for all rows)
@@ -1718,7 +2009,7 @@ struct MarkdownInlineRenderer {
         // For header rows: DON'T draw bottom border — the separator line handles it
         // For data rows: draw bottom border
         if (!isHeaderRow) {
-            ctx->DrawLine(x, y + lineHeight, x + totalTableWidth, y + lineHeight);
+            ctx->DrawLine(x, y + rowHeight, x + totalTableWidth, y + rowHeight);
         }
 
         // Draw cells
@@ -1735,7 +2026,7 @@ struct MarkdownInlineRenderer {
             // Draw vertical separator
             ctx->SetStrokePaint(mdStyle.tableBorderColor);
             ctx->SetStrokeWidth(1.0f);
-            ctx->DrawLine(cellX, y, cellX, y + lineHeight);
+            ctx->DrawLine(cellX, y, cellX, y + rowHeight);
 
             // Determine text alignment for this column
             TextAlignment align = TextAlignment::Left;
@@ -1752,20 +2043,28 @@ struct MarkdownInlineRenderer {
                                FontWeight::Bold : FontWeight::Normal);
             ctx->SetTextPaint(style.fontColor);
 
-            // Draw cell text
+            // Wrap cell text and render each wrapped line
             const std::string& cellText = parsed.cells[col];
-            int textX = cellX + padding;
-            int textWidth = ctx->GetTextLineWidth(cellText);
             int contentWidth = cellWidth - padding * 2;
+            if (contentWidth <= 0) contentWidth = 1;
 
-            if (align == TextAlignment::Center) {
-                textX = cellX + (cellWidth - textWidth) / 2;
-            } else if (align == TextAlignment::Right) {
-                textX = cellX + cellWidth - padding - textWidth;
+            auto wrappedLines = WrapCellText(ctx, cellText, contentWidth);
+
+            for (size_t wl = 0; wl < wrappedLines.size(); wl++) {
+                int lineY = y + static_cast<int>(wl) * lineHeight;
+                int textX = cellX + padding;
+
+                if (align == TextAlignment::Center) {
+                    int wlWidth = ctx->GetTextLineWidth(wrappedLines[wl]);
+                    textX = cellX + (cellWidth - wlWidth) / 2;
+                } else if (align == TextAlignment::Right) {
+                    int wlWidth = ctx->GetTextLineWidth(wrappedLines[wl]);
+                    textX = cellX + cellWidth - padding - wlWidth;
+                }
+
+                // Render cell content with inline markdown
+                RenderMarkdownLine(ctx, wrappedLines[wl], textX, lineY, lineHeight, style, mdStyle, hitRects);
             }
-
-            // Render cell content with inline markdown
-            RenderMarkdownLine(ctx, cellText, textX, y, lineHeight, style, mdStyle, hitRects);
 
             cellX += cellWidth;
         }
@@ -1773,7 +2072,7 @@ struct MarkdownInlineRenderer {
         // Draw right border of last column
         ctx->SetStrokePaint(mdStyle.tableBorderColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(cellX, y, cellX, y + lineHeight);
+        ctx->DrawLine(cellX, y, cellX, y + rowHeight);
 
         // Reset font
         ctx->SetFontWeight(FontWeight::Normal);
@@ -2052,6 +2351,41 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         }
     }
 
+    // --- Compute per-row heights for table rows and populate Y offsets ---
+    std::vector<int> tableRowHeights(lines.size(), computedLineHeight);
+    {
+        context->SetFontStyle(style.fontStyle);
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (tableRoles[i] == TableLineRole::Header && !tableColumnWidths[i].empty()) {
+                tableRowHeights[i] = MarkdownInlineRenderer::CalculateTableRowHeight(
+                        context, lines[i], computedLineHeight,
+                        tableColumnCounts[i], tableColumnWidths[i], mdStyle, true);
+            } else if (tableRoles[i] == TableLineRole::DataRow && !tableColumnWidths[i].empty()) {
+                tableRowHeights[i] = MarkdownInlineRenderer::CalculateTableRowHeight(
+                        context, lines[i], computedLineHeight,
+                        tableColumnCounts[i], tableColumnWidths[i], mdStyle, false);
+            }
+            // Separator rows keep default computedLineHeight
+        }
+    }
+
+    // Build cumulative Y offsets for display lines affected by multi-line table rows
+    {
+        int dlCount = GetDisplayLineCount();
+        markdownLineYOffsets.assign(dlCount, 0);
+        int cumulativeOffset = 0;
+        for (int di = 0; di < dlCount; di++) {
+            markdownLineYOffsets[di] = cumulativeOffset;
+            int logLine = displayLines[di].logicalLine;
+            if (logLine >= 0 && logLine < static_cast<int>(lines.size())) {
+                int extraHeight = tableRowHeights[logLine] - computedLineHeight;
+                if (extraHeight > 0 && displayLines[di].startGrapheme == 0) {
+                    cumulativeOffset += extraHeight;
+                }
+            }
+        }
+    }
+
     // Clear previous hit rects
     markdownHitRects.clear();
 
@@ -2225,9 +2559,10 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                         colWidths);
             } else {
                 bool isHeader = (tableRoles[logLine] == TableLineRole::Header);
+                int rowHeight = tableRowHeights[logLine];
                 MarkdownInlineRenderer::RenderMarkdownTableRow(
                         context, line, x, textY, computedLineHeight,
-                        visibleTextArea.width, isHeader,
+                        rowHeight, visibleTextArea.width, isHeader,
                         tableAlignments[logLine], tableColumnCounts[logLine],
                         style, mdStyle, &markdownHitRects,
                         colWidths);
