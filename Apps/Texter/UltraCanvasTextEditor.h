@@ -96,6 +96,7 @@ namespace UltraCanvas {
         std::string encoding;                  // iconv encoding name (e.g. "UTF-8", "CP1251")
         std::vector<uint8_t> originalRawBytes; // Raw file bytes for re-encoding on manual change
         bool hasBOM;                           // Whether the file had a BOM
+        LineEndingType eolType = UltraCanvasTextArea::GetSystemDefaultLineEnding(); // Line ending type
 
         DocumentTab()
                 : documentId(-1)
@@ -184,6 +185,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> statusLabel;
         std::shared_ptr<UltraCanvasDropdown> languageDropdown;
         std::shared_ptr<UltraCanvasDropdown> encodingDropdown;
+        std::shared_ptr<UltraCanvasDropdown> eolDropdown;
         std::shared_ptr<UltraCanvasDropdown> zoomDropdown;
 
         // ===== TAB CONTEXT MENU =====
@@ -316,6 +318,8 @@ namespace UltraCanvas {
         void OnLanguageChanged(int index, const DropdownItem& item);
         void UpdateEncodingDropdown();
         void OnEncodingChanged(int index, const DropdownItem& item);
+        void UpdateEOLDropdown();
+        void OnEOLChanged(int index, const DropdownItem& item);
         void UpdateMenuStates();
         void UpdateTitle();
 

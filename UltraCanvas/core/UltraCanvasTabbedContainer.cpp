@@ -501,11 +501,16 @@ namespace UltraCanvas {
         Point2Di center(closeBounds.x + closeBounds.width / 2, closeBounds.y + closeBounds.height / 2);
 
         int halfSize = closeButtonSize / 4;
+        // Active tab gets thin X, inactive gets bold X (inverted for visual hierarchy)
+        bool isActiveTab = (index == activeTabIndex);
+        ctx->SetStrokeWidth(isActiveTab ? 1.0f : 2.0f);
+        ctx->SetLineCap(LineCap::Round);
         ctx->SetStrokePaint(buttonColor);
         ctx->DrawLine(Point2Di(center.x - halfSize, center.y - halfSize),
                       Point2Di(center.x + halfSize, center.y + halfSize));
         ctx->DrawLine(Point2Di(center.x + halfSize, center.y - halfSize),
                       Point2Di(center.x - halfSize, center.y + halfSize));
+        ctx->SetStrokeWidth(1.0f); // Restore default   
     }
 
     void UltraCanvasTabbedContainer::RenderScrollButtons(IRenderContext *ctx) {

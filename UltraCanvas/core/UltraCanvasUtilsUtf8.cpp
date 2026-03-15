@@ -89,4 +89,25 @@ namespace UltraCanvas {
         result.push_back(s.substr(start));
         return result;
     }
-}    
+
+    // Split text into lines, handling all EOL styles: \r\n, \n, \r
+    std::vector<std::string> utf8_split_lines(const std::string& s) {
+        std::vector<std::string> result;
+        size_t start = 0;
+        size_t len = s.size();
+        while (start <= len) {
+            size_t pos = start;
+            while (pos < len && s[pos] != '\r' && s[pos] != '\n') {
+                pos++;
+            }
+            result.push_back(s.substr(start, pos - start));
+            if (pos >= len) break;
+            if (s[pos] == '\r' && pos + 1 < len && s[pos + 1] == '\n') {
+                start = pos + 2; // \r\n
+            } else {
+                start = pos + 1; // \n or \r
+            }
+        }
+        return result;
+    }
+}

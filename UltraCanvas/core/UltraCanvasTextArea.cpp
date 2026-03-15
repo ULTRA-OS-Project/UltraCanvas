@@ -55,6 +55,8 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::ApplyDefaultStyle() {
         style.fontStyle.fontFamily = "Sans";
         style.fontStyle.fontSize = 11;
+        style.fixedFontStyle.fontFamily = "Courier New";
+        style.fixedFontStyle.fontSize = 11;
         style.fontColor = {0, 0, 0, 255};
         style.lineHeight = 1.1;
         style.backgroundColor = {255, 255, 255, 255};
@@ -84,6 +86,73 @@ namespace UltraCanvas {
         style.tokenStyles.constantStyle.color = {0, 0, 128, 255};
         style.tokenStyles.preprocessorStyle.color = {64, 128, 128, 255};
         style.tokenStyles.builtinStyle.color = {128, 0, 255, 255};
+    }
+
+// ===== LINE ENDING HELPERS =====
+
+    LineEndingType UltraCanvasTextArea::GetSystemDefaultLineEnding() {
+#ifdef _WIN32
+        return LineEndingType::CRLF;
+#else
+        return LineEndingType::LF;
+#endif
+    }
+
+    LineEndingType UltraCanvasTextArea::DetectLineEnding(const std::string& text) {
+        int lfCount = 0;
+        int crlfCount = 0;
+        int crCount = 0;
+
+        for (size_t i = 0; i < text.size(); i++) {
+            if (text[i] == '\r') {
+                if (i + 1 < text.size() && text[i + 1] == '\n') {
+                    crlfCount++;
+                    i++; // skip the \n
+                } else {
+                    crCount++;
+                }
+            } else if (text[i] == '\n') {
+                lfCount++;
+            }
+        }
+
+        // No line endings found — use system default
+        if (lfCount == 0 && crlfCount == 0 && crCount == 0) {
+            return GetSystemDefaultLineEnding();
+        }
+
+        // Return the dominant type
+        if (crlfCount >= lfCount && crlfCount >= crCount) return LineEndingType::CRLF;
+        if (crCount >= lfCount && crCount >= crlfCount) return LineEndingType::CR;
+        return LineEndingType::LF;
+    }
+
+    std::string UltraCanvasTextArea::LineEndingToString(LineEndingType type) {
+        switch (type) {
+            case LineEndingType::LF:   return "LF";
+            case LineEndingType::CRLF: return "CRLF";
+            case LineEndingType::CR:   return "CR";
+        }
+        return "LF";
+    }
+
+    std::string UltraCanvasTextArea::LineEndingSequence(LineEndingType type) {
+        switch (type) {
+            case LineEndingType::LF:   return "\n";
+            case LineEndingType::CRLF: return "\r\n";
+            case LineEndingType::CR:   return "\r";
+        }
+        return "\n";
+    }
+
+    void UltraCanvasTextArea::SetLineEnding(LineEndingType type) {
+        if (lineEndingType != type) {
+            lineEndingType = type;
+            RebuildText();
+            if (onLineEndingChanged) {
+                onLineEndingChanged(lineEndingType);
+            }
+        }
     }
 
 // ===== UTF-8 HELPER METHODS =====
@@ -246,12 +315,28 @@ namespace UltraCanvas {
 // ===== TEXT MANIPULATION METHODS =====
 
     void UltraCanvasTextArea::SetText(const std::string& newText, bool runNotifications) {
-        textContent = newText;
-        InvalidateGraphemeCache();
-        lines = utf8_split(textContent, '\n');
+        // Detect and set line ending type from content
+        LineEndingType detectedEOL = DetectLineEnding(newText);
+        bool eolChanged = (detectedEOL != lineEndingType);
+        lineEndingType = detectedEOL;
+
+        // Split into lines, handling all EOL types
+        lines = utf8_split_lines(newText);
         if (lines.empty()) {
             lines.push_back(std::string());
         }
+
+        // Rebuild textContent with the detected line ending
+        textContent.clear();
+        std::string eolSeq = LineEndingSequence(lineEndingType);
+        for (size_t i = 0; i < lines.size(); i++) {
+            textContent.append(lines[i]);
+            if (i < lines.size() - 1) {
+                textContent.append(eolSeq);
+            }
+        }
+
+        InvalidateGraphemeCache();
         cursorGraphemePosition = 0;
         currentLineIndex = 0;
         selectionStartGrapheme = -1;
@@ -260,6 +345,9 @@ namespace UltraCanvas {
         RequestRedraw();
         if (runNotifications && onTextChanged) {
             onTextChanged(textContent);
+        }
+        if (eolChanged && onLineEndingChanged) {
+            onLineEndingChanged(lineEndingType);
         }
     }
 
@@ -284,19 +372,22 @@ namespace UltraCanvas {
         const char* p = textToInsert.c_str();
         const char* end = p + textToInsert.size();
         while (p < end) {
-            const char* next = g_utf8_next_char(p);
-            std::string ch(p, static_cast<size_t>(next - p));
-            if (ch == "\n") {
+            // Check for line endings: \r\n, \n, or \r
+            if (*p == '\r' || *p == '\n') {
+                bool isCRLF = (*p == '\r' && p + 1 < end && *(p + 1) == '\n');
                 std::string currentLine = lines[line];
                 lines[line] = utf8_substr(currentLine, 0, col);
                 lines.insert(lines.begin() + line + 1, utf8_substr(currentLine, col));
                 line++;
                 col = 0;
+                p += isCRLF ? 2 : 1;
             } else {
+                const char* next = g_utf8_next_char(p);
+                std::string ch(p, static_cast<size_t>(next - p));
                 utf8_insert(lines[line], col, ch);
                 col++;
+                p = next;
             }
-            p = next;
         }
 
         cursorGraphemePosition = GetPositionFromLineColumn(line, col);
@@ -321,8 +412,8 @@ namespace UltraCanvas {
             lines.push_back(std::string());
         }
         if (line < static_cast<int>(lines.size())) {
-            if (ch == '\n') {
-                // Split line at cursor
+            if (ch == '\n' || ch == '\r') {
+                // Split line at cursor (treat \r as line break same as \n)
                 std::string currentLine = lines[line];
                 lines[line] = utf8_substr(currentLine, 0, col);
                 lines.insert(lines.begin() + line + 1, utf8_substr(currentLine, col));
@@ -360,6 +451,7 @@ namespace UltraCanvas {
         InvalidateGraphemeCache();
 
         RebuildText();
+        RecalculateDisplayLines();
     }
 
     void UltraCanvasTextArea::InsertTab() {
@@ -1006,7 +1098,21 @@ namespace UltraCanvas {
         if (!HasSelection()) return std::string();
         int startPos = std::min(selectionStartGrapheme, selectionEndGrapheme);
         int endPos = std::max(selectionStartGrapheme, selectionEndGrapheme);
-        return utf8_substr(textContent, startPos, endPos - startPos);
+
+        auto [startLine, startCol] = GetLineColumnFromPosition(startPos);
+        auto [endLine, endCol] = GetLineColumnFromPosition(endPos);
+
+        std::string eolSeq = LineEndingSequence(lineEndingType);
+        std::string result;
+        for (int i = startLine; i <= endLine && i < static_cast<int>(lines.size()); i++) {
+            int colStart = (i == startLine) ? startCol : 0;
+            int colEnd = (i == endLine) ? endCol : static_cast<int>(utf8_length(lines[i]));
+            result.append(utf8_substr(lines[i], colStart, colEnd - colStart));
+            if (i < endLine) {
+                result.append(eolSeq);
+            }
+        }
+        return result;
     }
 
 // ===== CLIPBOARD OPERATIONS =====
@@ -2297,10 +2403,11 @@ namespace UltraCanvas {
 
     void UltraCanvasTextArea::RebuildText() {
         textContent.clear();
+        std::string eolSeq = LineEndingSequence(lineEndingType);
         for (size_t i = 0; i < lines.size(); i++) {
             textContent.append(lines[i]);
             if (i < lines.size() - 1) {
-                textContent.push_back('\n');
+                textContent.append(eolSeq);
             }
         }
         InvalidateGraphemeCache();
@@ -2538,8 +2645,8 @@ namespace UltraCanvas {
         style.backgroundColor = {30, 30, 30, 255};
         style.fontColor = {210, 210, 210, 255};
         style.currentLineColor = {60, 60, 60, 255};
-        style.lineNumbersColor = {100, 100, 100, 255};
-        style.lineNumbersBackgroundColor = {25, 25, 25, 255};
+        style.lineNumbersColor = {80, 80, 80, 255};           // Dimmer — less visual noise in dark mode
+        style.lineNumbersBackgroundColor = {35, 35, 35, 255}; // Dark gutter background
         style.selectionColor = {60, 90, 150, 100};
         style.cursorColor = {255, 255, 255, 255};
 
@@ -2952,15 +3059,8 @@ namespace UltraCanvas {
         // Leaving hex mode: convert buffer back to text
         if (oldMode == TextAreaEditingMode::Hex && mode != TextAreaEditingMode::Hex) {
             textContent = std::string(hexBuffer.begin(), hexBuffer.end());
-            lines.clear();
-            // Split by newline
-            std::string::size_type start = 0;
-            std::string::size_type pos;
-            while ((pos = textContent.find('\n', start)) != std::string::npos) {
-                lines.push_back(textContent.substr(start, pos - start));
-                start = pos + 1;
-            }
-            lines.push_back(textContent.substr(start));
+            lineEndingType = DetectLineEnding(textContent);
+            lines = utf8_split_lines(textContent);
             if (lines.empty()) lines.push_back(std::string());
 
             cursorGraphemePosition = 0;

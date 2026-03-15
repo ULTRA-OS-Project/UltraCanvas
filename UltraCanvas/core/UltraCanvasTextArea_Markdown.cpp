@@ -1,7 +1,7 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
-// Version: 2.4.1
+// Version: 2.4.2
 // Last Modified: 2026-05-26
 // Author: UltraCanvas Framework
 
@@ -54,16 +54,24 @@ struct MarkdownHybridStyle {
 
     // List styling
     int listIndent = 20;
-    std::string bulletCharacter = "\xe2\x80\xa2"; // UTF-8 bullet •
+    std::string bulletCharacter = "\xe2\x80\xa2"; // UTF-8 bullet • (kept for compatibility)
+    // Nested bullet characters per nesting level (0=•, 1=◦, 2=▪, deeper levels repeat ▪)
+    std::array<std::string, 3> nestedBulletCharacters = {
+        "\xe2\x80\xa2",         // level 0: • (U+2022 BULLET)
+        "\xe2\x97\xa6",         // level 1: ◦ (U+25E6 WHITE BULLET)
+        "\xe2\x96\xaa"          // level 2: ▪ (U+25AA BLACK SMALL SQUARE)
+    };
     Color bulletColor = Color(80, 80, 80);
 
     // Quote styling
     Color quoteBarColor = Color(200, 200, 200);
     Color quoteBackgroundColor = Color(250, 250, 250);
     Color quoteTextColor = Color(100, 100, 100);
-    int quoteBarWidth = 4;
-    int quoteIndent = 15;
-
+    int quoteBarWidth = 3;          // Thin bar — matches reference visual
+    int quoteBarGap = 10;           // Gap between bar and text (new)
+    int quoteIndent = 26;           // Total indent from bar left edge to text
+    int quoteNestingStep = 20;      // Horizontal step per nesting level
+    
     // Horizontal rule
     Color horizontalRuleColor = Color(200, 200, 200);
     float horizontalRuleHeight = 2.0f;
@@ -130,6 +138,11 @@ struct MarkdownHybridStyle {
         s.imagePlaceholderTextColor = Color(140, 140, 170);
         s.mathTextColor = Color(100, 220, 140);
         s.mathBackgroundColor = Color(30, 50, 35, 150);
+        s.nestedBulletCharacters = {
+            "\xe2\x80\xa2",     // level 0: •
+            "\xe2\x97\xa6",     // level 1: ◦
+            "\xe2\x96\xaa"      // level 2: ▪
+        };        
         return s;
     }
 };
@@ -1293,10 +1306,15 @@ struct MarkdownInlineRenderer {
             int numWidth = ctx->GetTextLineWidth(numberStr);
             bulletX += numWidth + 4;
         } else {
-            // Unordered list: skip bullet, just advance by the bullet slot width
-            bulletX += bulletSlotWidth;
+            // Unordered list: draw nesting-level bullet character (•, ◦, ▪)
+            int clampedLevel = std::min(nestingLevel,
+                static_cast<int>(mdStyle.nestedBulletCharacters.size()) - 1);
+            const std::string& bulletChar = mdStyle.nestedBulletCharacters[clampedLevel];
+            ctx->SetFontWeight(FontWeight::Normal);
+            ctx->SetTextPaint(mdStyle.bulletColor);
+            ctx->DrawText(bulletChar, bulletX, y);
+            bulletX += ctx->GetTextLineWidth(bulletChar) + 4;
         }
-
         // --- Draw item text with inline formatting ---
         // Checked and unchecked task items both render with normal inline formatting
         // The checkbox itself indicates completion — no strikethrough needed
@@ -1326,20 +1344,23 @@ struct MarkdownInlineRenderer {
         }
         std::string quoteText = (pos < trimmed.length()) ? trimmed.substr(pos) : "";
 
-        // Draw quote background
-        int quoteX = x + (depth - 1) * (mdStyle.quoteBarWidth + 8);
-        ctx->SetFillPaint(mdStyle.quoteBackgroundColor);
-        ctx->FillRectangle(quoteX, y, width - (quoteX - x), lineHeight);
+        // Each nesting level adds one bar + a fixed horizontal step
+        // barStride = distance from one bar's left edge to the next level's bar left edge
+        int barStride = mdStyle.quoteNestingStep;
 
-        // Draw vertical bar(s) for each nesting level
+        // Full background covers from x to x+width for all nesting levels
+        ctx->SetFillPaint(mdStyle.quoteBackgroundColor);
+        ctx->FillRectangle(x, y, width, lineHeight);
+
+        // Draw one vertical bar per nesting level, each offset by barStride
         for (int d = 0; d < depth; d++) {
-            int barX = x + d * (mdStyle.quoteBarWidth + 8);
+            int barX = x + d * barStride;
             ctx->SetFillPaint(mdStyle.quoteBarColor);
             ctx->FillRectangle(barX, y, mdStyle.quoteBarWidth, lineHeight);
         }
 
-        // Draw text with inline formatting
-        int textX = quoteX + mdStyle.quoteIndent;
+        // Text starts after the outermost bar + gap + per-level indent
+        int textX = x + (depth - 1) * barStride + mdStyle.quoteIndent;
         ctx->SetFontSlant(FontSlant::Italic);
         ctx->SetTextPaint(mdStyle.quoteTextColor);
         RenderMarkdownLine(ctx, quoteText, textX, y, lineHeight, style, mdStyle, hitRects);
@@ -2286,15 +2307,25 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                     style, mdStyle, &markdownHitRects);
             continue;
         }
-        if (!isFirstSegment && TrimWhitespace(lines[logLine]).length() >= 2 &&
-            TrimWhitespace(lines[logLine])[0] == ':' && TrimWhitespace(lines[logLine])[1] == ' ') {
-            int defIndent = mdStyle.listIndent + 10;
+        if (!isFirstSegment && TrimWhitespace(lines[logLine])[0] == '>') {
+            // Continuation of a blockquote wrap: match text indent of first segment
+            // Count depth of the original logical line to align correctly
+            const std::string& origLine = lines[logLine];
+            int contDepth = 0;
+            size_t cp = 0;
+            while (cp < origLine.length() && origLine[cp] == ' ') cp++;
+            while (cp < origLine.length() && origLine[cp] == '>') {
+                contDepth++;
+                cp++;
+                if (cp < origLine.length() && origLine[cp] == ' ') cp++;
+            }
+            if (contDepth < 1) contDepth = 1;
+            int contTextX = x + (contDepth - 1) * mdStyle.quoteNestingStep + mdStyle.quoteIndent;
             MarkdownInlineRenderer::RenderMarkdownLine(
-                    context, segment, x + defIndent, textY, computedLineHeight,
+                    context, segment, contTextX, textY, computedLineHeight,
                     style, mdStyle, &markdownHitRects);
             continue;
         }
-
         // --- Regular text with inline formatting ---
         MarkdownInlineRenderer::RenderMarkdownLine(
                 context, segment, x, textY, computedLineHeight,

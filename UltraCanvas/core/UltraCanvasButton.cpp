@@ -632,8 +632,15 @@ namespace UltraCanvas {
             // TODO: Apply color tinting to icon
         }
 
-        // Draw the icon
-        ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+        // Dim icon when disabled
+        if (GetPrimaryState() == ElementState::Disabled) {
+            ctx->PushState();
+            ctx->SetAlpha(0.35f);
+            ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+            ctx->PopState();
+        } else {
+            ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+        }
     }
 
     void UltraCanvasButton::DrawSecondaryIcon(IRenderContext* ctx) {
@@ -647,8 +654,15 @@ namespace UltraCanvas {
             // TODO: Apply color tinting to icon
         }
 
-        // Draw the secondary icon
-        ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+        // Dim icon when disabled
+        if (GetPrimaryState() == ElementState::Disabled) {
+            ctx->PushState();
+            ctx->SetAlpha(0.35f);
+            ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+            ctx->PopState();
+        } else {
+            ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+        }
     }
 
     void UltraCanvasButton::DrawText(IRenderContext* ctx) {

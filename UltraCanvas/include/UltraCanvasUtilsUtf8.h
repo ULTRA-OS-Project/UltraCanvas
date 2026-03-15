@@ -68,4 +68,7 @@ namespace UltraCanvas {
 
     // Split by single-byte delimiter (e.g. '\n')
     std::vector<std::string> utf8_split(const std::string& s, char delim);
+
+    // Split text into lines, handling all EOL styles: \r\n, \n, \r
+    std::vector<std::string> utf8_split_lines(const std::string& s);
 }

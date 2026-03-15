@@ -77,7 +77,7 @@ namespace UltraCanvas {
         Color normalColor = Colors::ButtonFace;
         Color hoverColor = Colors::SelectionHover;
         Color pressedColor = Color(204, 228, 247, 255);
-        Color disabledColor = Colors::LightGray;
+        Color disabledColor = Color(220, 220, 220, 255);
         Color focusedColor = Color(80, 80, 80, 255);
 
         Color normalTextColor = Colors::TextDefault;

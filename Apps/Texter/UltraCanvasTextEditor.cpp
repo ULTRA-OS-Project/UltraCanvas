@@ -15,6 +15,7 @@
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasClipboard.h"
 //#include "UltraCanvasDialogManager.h"
 #include <fstream>
 #include <sstream>
@@ -774,6 +775,7 @@ namespace {
         int yPos = GetHeight() - statusBarHeight;
         int languageDropdownWidth = 140;
         int encodingDropdownWidth = 160;
+        int eolDropdownWidth = 80;
         int zoomDropdownWidth = 80;
         int gap = 4;
         int xPos = gap;
@@ -785,46 +787,47 @@ namespace {
                 languageDropdownWidth, statusBarHeight - 4
         );
 
-        languageDropdown->AddItem("Plain Text", "Plain Text");
-        languageDropdown->AddItem("Hex/Binary", "Hex/Binary");
+languageDropdown->AddItem("Plain Text", "Plain Text");
         languageDropdown->AddItem("Markdown", "Markdown");
         languageDropdown->AddSeparator();
-
+ 
         {
             UltraCanvasTextArea tempArea("_tmp", 0, 0, 0, 0, 0);
             auto languages = tempArea.GetSupportedLanguages();
             std::sort(languages.begin(), languages.end());
-
-            // Assembler display name mapping (tokenizer name → dropdown display)
+ 
             const std::vector<std::pair<std::string, std::string>> assemblerMap = {
                     {"68000 Assembly", "Assembler (68000)"},
                     {"ARM Assembly",   "Assembler (ARM)"},
                     {"x86 Assembly",   "Assembler (x86)"},
                     {"Z80 Assembly",   "Assembler (Z80)"},
             };
-
+ 
             auto isAssembler = [&](const std::string& lang) -> bool {
                 for (const auto& [tokenName, displayName] : assemblerMap) {
                     if (lang == tokenName) return true;
                 }
                 return false;
             };
-
-            // Add all non-assembler languages (skip Markdown — already added above)
+ 
+            // All non-assembler programming languages (Markdown already added above)
             for (const auto& lang : languages) {
                 if (lang == "Markdown" || isAssembler(lang)) continue;
                 languageDropdown->AddItem(lang, lang);
             }
-
-            // Separator before assembler group
+ 
+            // Assembler group
             languageDropdown->AddSeparator();
-
-            // Add assembler variants with renamed display text, sorted alphabetically
             for (const auto& [tokenName, displayName] : assemblerMap) {
                 languageDropdown->AddItem(displayName, tokenName);
             }
         }
-
+ 
+        // Hex/Binary at the very bottom in its own block —
+        // binary files are a fundamentally different category from text modes
+        languageDropdown->AddSeparator();
+        languageDropdown->AddItem("Hex/Binary", "Hex/Binary");
+ 
         languageDropdown->SetSelectedIndex(0); // Plain Text
 
         DropdownStyle langStyle = languageDropdown->GetStyle();
@@ -875,6 +878,32 @@ namespace {
 
         AddChild(encodingDropdown);
         xPos += encodingDropdownWidth + gap;
+
+        // Create EOL dropdown
+        eolDropdown = std::make_shared<UltraCanvasDropdown>(
+                "EOLDropdown", 304,
+                xPos, yPos + 2,
+                eolDropdownWidth, statusBarHeight - 4
+        );
+
+        eolDropdown->AddItem("LF", "LF");
+        eolDropdown->AddItem("CRLF", "CRLF");
+        eolDropdown->AddItem("CR", "CR");
+
+        // Default to system default
+        auto defaultEOL = UltraCanvasTextArea::GetSystemDefaultLineEnding();
+        eolDropdown->SetSelectedIndex(static_cast<int>(defaultEOL));
+
+        DropdownStyle eolStyle = eolDropdown->GetStyle();
+        eolStyle.fontSize = 10;
+        eolDropdown->SetStyle(eolStyle);
+
+        eolDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
+            OnEOLChanged(index, item);
+        };
+
+        AddChild(eolDropdown);
+        xPos += eolDropdownWidth + gap;
 
         // Create zoom dropdown
         zoomDropdown = std::make_shared<UltraCanvasDropdown>(
@@ -960,7 +989,7 @@ namespace {
         // ===== Status bar =====
         if (config.showStatusBar) {
             int statusY = h - statusBarHeight;
-            int langW = 140, encW = 160, zoomW = 80;
+            int langW = 140, encW = 160, eolW = 80, zoomW = 80;
             int gap = 4;
             int xPos = gap;
 
@@ -978,6 +1007,14 @@ namespace {
                     xPos, statusY + 2, encW, statusBarHeight - 4
                 ));
                 xPos += encW + gap;
+            }
+
+            // EOL dropdown
+            if (eolDropdown) {
+                eolDropdown->SetBounds(Rect2Di(
+                    xPos, statusY + 2, eolW, statusBarHeight - 4
+                ));
+                xPos += eolW + gap;
             }
 
             // Zoom dropdown
@@ -1009,6 +1046,16 @@ namespace {
         doc->language = config.defaultLanguage;
         doc->isModified = false;
         doc->isNewFile = true;
+        
+        // New files are always plain text — never inherit hex mode from the
+        // currently active binary document. Hex/Binary is a file property,
+        // not an editor preference that carries over to new documents.
+        if (doc->language == "Hex/Binary") {
+            doc->language = "Plain Text";
+        }
+
+        // New files use system default line ending
+        doc->eolType = UltraCanvasTextArea::GetSystemDefaultLineEnding();
 
         // Calculate text area bounds
         int contentY = 0;
@@ -1244,8 +1291,10 @@ namespace {
         // Update status bar and dropdowns
         UpdateStatusBar();
         UpdateEncodingDropdown();
+        UpdateEOLDropdown();
         UpdateLanguageDropdown();
         UpdateMarkdownToolbarVisibility();
+        UpdateMenuStates();
 
         // Notify callback
         if (onTabChanged) {
@@ -1267,22 +1316,27 @@ namespace {
         return nullptr;
     }
 
-    void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
+void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (index < 0 || index >= static_cast<int>(documents.size())) {
             return;
         }
-
+ 
         auto doc = documents[index];
         if (doc->isModified != modified) {
             doc->isModified = modified;
             doc->lastModifiedTime = std::chrono::steady_clock::now();
-
+ 
             UpdateTabTitle(index);
             UpdateTabBadge(index);
             UpdateTitle();
-
+ 
             if (onModifiedChange) {
                 onModifiedChange(modified, index);
+            }
+ 
+            // Refresh toolbar state when the active document's modified flag changes
+            if (index == activeDocumentIndex) {
+                UpdateMenuStates();
             }
         }
     }
@@ -1401,8 +1455,9 @@ namespace {
                     ConvertToUtf8(contentBytes, "ISO-8859-1", utf8Text);
                 }
 
-                // Set text in editor
+                // Set text in editor (auto-detects line ending type)
                 doc->textArea->SetText(utf8Text, false);
+                doc->eolType = doc->textArea->GetLineEnding();
 
                 if (ext == "md") {
                     doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
@@ -1855,6 +1910,7 @@ namespace {
         } else {
             SaveDocument(activeDocumentIndex);
         }
+        UpdateMenuStates();
     }
 
     void UltraCanvasTextEditor::OnFileSaveAs() {
@@ -1967,6 +2023,7 @@ namespace {
         if (doc && doc->textArea) {
             doc->textArea->CutSelection();
         }
+         UpdateMenuStates();
     }
 
     void UltraCanvasTextEditor::OnEditCopy() {
@@ -1981,6 +2038,7 @@ namespace {
         if (doc && doc->textArea) {
             doc->textArea->PasteClipboard();
         }
+        UpdateMenuStates();
     }
 
     void UltraCanvasTextEditor::OnEditSelectAll() {
@@ -2392,13 +2450,20 @@ namespace {
         languageDropdown->SetSelectedIndex(0, false);
     }
 
-    void UltraCanvasTextEditor::OnLanguageChanged(int /*index*/, const DropdownItem& item) {
+ void UltraCanvasTextEditor::OnLanguageChanged(int /*index*/, const DropdownItem& item) {
         auto doc = GetActiveDocument();
         if (!doc || !doc->textArea) return;
-
+ 
         std::string lang = item.value;
         if (lang == doc->language) return;
-
+ 
+        // Binary files cannot be re-interpreted as text — block the switch and
+        // restore the dropdown to "Hex/Binary" so the UI stays consistent
+        if (doc->textArea->IsHexMode()) {
+            UpdateLanguageDropdown(); // snaps dropdown back to Hex/Binary
+            return;
+        }
+ 
         if (lang == "Hex/Binary") {
             doc->textArea->SetEditingMode(TextAreaEditingMode::Hex);
         } else if (lang == "Markdown") {
@@ -2473,10 +2538,57 @@ namespace {
         UpdateStatusBar();
     }
 
+    void UltraCanvasTextEditor::UpdateEOLDropdown() {
+        if (!eolDropdown) return;
+
+        auto doc = GetActiveDocument();
+        if (!doc) return;
+
+        eolDropdown->SetSelectedIndex(static_cast<int>(doc->eolType), false);
+    }
+
+    void UltraCanvasTextEditor::OnEOLChanged(int index, const DropdownItem& item) {
+        auto doc = GetActiveDocument();
+        if (!doc || !doc->textArea) return;
+
+        LineEndingType newType;
+        if (item.value == "CRLF") newType = LineEndingType::CRLF;
+        else if (item.value == "CR") newType = LineEndingType::CR;
+        else newType = LineEndingType::LF;
+
+        if (newType == doc->eolType) return;
+
+        doc->eolType = newType;
+        doc->textArea->SetLineEnding(newType);
+        SetDocumentModified(activeDocumentIndex, true);
+        UpdateStatusBar();
+    }
+
     void UltraCanvasTextEditor::UpdateMenuStates() {
-        // Update menu item enabled states based on current state
-        // Note: This would require access to individual menu items
-        // For now, this is a placeholder
+        if (!toolbar) return;
+ 
+        // ── Save: disabled when document has no unsaved changes ──
+        bool canSave = HasUnsavedChanges();
+        if (auto item = toolbar->GetItem("save")) {
+            item->SetEnabled(canSave);
+        }
+ 
+        // ── Undo / Redo ──
+        bool canUndo = CanUndo();
+        bool canRedo = CanRedo();
+        if (auto item = toolbar->GetItem("undo")) {
+            item->SetEnabled(canUndo);
+        }
+        if (auto item = toolbar->GetItem("redo")) {
+            item->SetEnabled(canRedo);
+        }
+ 
+        // ── Paste: disabled when clipboard has no text ──
+        std::string clipboardText;
+        bool canPaste = GetClipboardText(clipboardText) && !clipboardText.empty();
+        if (auto item = toolbar->GetItem("paste")) {
+            item->SetEnabled(canPaste);
+        }
     }
 
     void UltraCanvasTextEditor::UpdateTitle() {
@@ -2564,12 +2676,12 @@ namespace {
                 toolbarContainer->SetBackgroundColor(Color(40, 40, 40, 255));
             }
             if (tabContainer) {
-                tabContainer->tabBarColor = Color(40, 40, 40, 255);
-                tabContainer->activeTabColor = Color(60, 60, 60, 255);
-                tabContainer->inactiveTabColor = Color(50, 50, 50, 255);
-                tabContainer->activeTabTextColor = Colors::White;
-                tabContainer->newTabButtonColor  = Color(50, 50, 50, 255);
-            }
+                tabContainer->tabBarColor        = Color(40, 40, 40, 255);
+                tabContainer->activeTabColor     = Color(60, 60, 60, 255);
+                tabContainer->inactiveTabColor   = Color(45, 45, 45, 255);
+                tabContainer->activeTabTextColor   = Colors::White;
+                tabContainer->inactiveTabTextColor = Color(160, 160, 160, 255); // readable mid-grey
+                tabContainer->newTabButtonColor  = Color(45, 45, 45, 255);            }
         } else {
             SetBackgroundColor(Color(240, 240, 240, 255));
             if (statusLabel) {

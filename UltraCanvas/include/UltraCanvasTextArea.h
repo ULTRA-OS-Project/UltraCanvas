@@ -50,6 +50,7 @@ namespace UltraCanvas {
     struct TextAreaStyle {
         // Font properties
         FontStyle fontStyle;
+        FontStyle fixedFontStyle;
         float lineHeight;
         Color fontColor;
 
@@ -97,6 +98,13 @@ namespace UltraCanvas {
             TokenStyle registerStyle;
             TokenStyle defaultStyle;
         } tokenStyles;
+    };
+
+// Line ending type
+    enum class LineEndingType {
+        LF,     // Unix/macOS (\n)
+        CRLF,   // Windows (\r\n)
+        CR      // Classic Mac OS (\r)
     };
 
 // Editing mode for text area (mutually exclusive)
@@ -261,6 +269,17 @@ namespace UltraCanvas {
         void SetBackgroundColor(const Color& color) { style.backgroundColor = color; RequestRedraw(); }
         void SetSelectionColor(const Color& color) { style.selectionColor = color; RequestRedraw(); }
         void SetCursorColor(const Color& color) { style.cursorColor = color; RequestRedraw(); }
+
+        // Line ending
+        void SetLineEnding(LineEndingType type);
+        LineEndingType GetLineEnding() const { return lineEndingType; }
+        static LineEndingType DetectLineEnding(const std::string& text);
+        static std::string LineEndingToString(LineEndingType type);
+        static std::string LineEndingSequence(LineEndingType type);
+        static LineEndingType GetSystemDefaultLineEnding();
+
+        using LineEndingChangedCallback = std::function<void(LineEndingType)>;
+        LineEndingChangedCallback onLineEndingChanged;
 
         // Scrolling
         void ScrollTo(int line);
@@ -455,6 +474,9 @@ namespace UltraCanvas {
         std::vector<TextState> redoStack;
         const size_t maxUndoStackSize = 100;
 
+        // Line ending type
+        LineEndingType lineEndingType = GetSystemDefaultLineEnding();
+
         // Bookmarks
         std::vector<int> bookmarks;
 
@@ -540,6 +562,7 @@ namespace UltraCanvas {
         void DrawHexBytes(IRenderContext* ctx);
         void DrawHexAscii(IRenderContext* ctx);
         void DrawHexSelection(IRenderContext* ctx);
+        void DrawHexCrossHighlight(IRenderContext* ctx);
         void DrawHexCursor(IRenderContext* ctx);
         void DrawHexCurrentRowHighlight(IRenderContext* ctx);
         void CalculateHexLayout();

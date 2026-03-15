@@ -362,6 +362,13 @@ namespace UltraCanvas {
         // Set default background color and border
         SetBackgroundColor(appearance.backgroundColor);
         SetBorders(1, Color(180, 180, 180, 255));
+        
+        ContainerStyle noScroll;
+        noScroll.autoShowScrollbars = false;
+        noScroll.forceShowVerticalScrollbar = false;
+        noScroll.forceShowHorizontalScrollbar = false;
+        SetContainerStyle(noScroll);
+        
         CreateLayout();
     }
 

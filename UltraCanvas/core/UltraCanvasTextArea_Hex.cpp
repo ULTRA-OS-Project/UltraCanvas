@@ -74,7 +74,7 @@ namespace UltraCanvas {
         auto bounds = GetBounds();
 
         ctx->PushState();
-        ctx->SetFontStyle(style.fontStyle);
+        ctx->SetFontStyle(style.fixedFontStyle);
         ctx->SetFontWeight(FontWeight::Normal);
 
         computedLineHeight = static_cast<int>(
@@ -147,7 +147,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::DrawHexView(IRenderContext* ctx) {
         ctx->PushState();
         ctx->ClipRect(hexVisibleArea);
-        ctx->SetFontStyle(style.fontStyle);
+        ctx->SetFontStyle(style.fixedFontStyle);
         ctx->SetFontWeight(FontWeight::Normal);
 
         DrawHexCurrentRowHighlight(ctx);
@@ -158,6 +158,8 @@ namespace UltraCanvas {
         if (hexSelectionStart >= 0 && hexSelectionEnd >= 0 && hexSelectionStart != hexSelectionEnd) {
             DrawHexSelection(ctx);
         }
+        
+        DrawHexCrossHighlight(ctx); 
 
         if (IsFocused() && cursorVisible && !isReadOnly) {
             DrawHexCursor(ctx);
@@ -1087,4 +1089,42 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasTextArea::DrawHexCrossHighlight(IRenderContext* ctx) {
+        // Nothing to highlight if buffer is empty or cursor is out of range
+        int bufSize = static_cast<int>(hexBuffer.size());
+        if (bufSize == 0 || hexCursorByteOffset < 0 || hexCursorByteOffset >= bufSize) return;
+ 
+        int cursorRow = HexGetRowForByte(hexCursorByteOffset);
+        int displayRow = cursorRow - hexFirstVisibleRow;
+ 
+        // Only draw if the cursor row is visible
+        if (displayRow < 0 || displayRow >= hexMaxVisibleRows) return;
+ 
+        int col = HexGetColumnForByte(hexCursorByteOffset);
+        int y   = hexVisibleArea.y + displayRow * hexRowHeight;
+ 
+        // Use cursor color at low alpha for a soft echo highlight
+        // that is clearly distinct from the selection (which uses selectionColor)
+        Color echoColor = Color(
+            style.cursorColor.r,
+            style.cursorColor.g,
+            style.cursorColor.b,
+            55   // ~22% opacity — visible but non-intrusive
+        );
+ 
+        ctx->PushState();
+        ctx->SetFillPaint(echoColor);
+ 
+        if (hexCursorInAsciiPanel) {
+            // Cursor is in ASCII panel → highlight the corresponding byte in the HEX panel
+            int x = hexPanelStartX + col * hexByteWidth;
+            ctx->FillRectangle(x, y, hexByteWidth, hexRowHeight);
+        } else {
+            // Cursor is in HEX panel → highlight the corresponding char in the ASCII panel
+            int x = hexAsciiPanelStartX + col * hexAsciiCharWidth;
+            ctx->FillRectangle(x, y, hexAsciiCharWidth, hexRowHeight);
+        }
+ 
+        ctx->PopState();
+    }
 } // namespace UltraCanvas
