@@ -52,10 +52,18 @@ namespace UltraCanvas {
     UltraCanvasTextArea::~UltraCanvasTextArea() = default;
 
 // Initialize default style
-    void UltraCanvasTextArea::ApplyDefaultStyle() {
-        style.fontStyle.fontFamily = "Sans";
-        style.fontStyle.fontSize = 11;
+    void UltraCanvasTextArea::ApplyDefaultStyle() {      
+#ifdef _WIN32
+        style.fontStyle.fontFamily = "Arial";
         style.fixedFontStyle.fontFamily = "Courier New";
+#elif __APPLE__        
+        style.fontStyle.fontFamily = "DejaVu Sans";
+        style.fixedFontStyle.fontFamily = "DejaVu Sans Mono";
+#else
+        style.fontStyle.fontFamily = "Sans";
+        style.fixedFontStyle.fontFamily = "Courier New";
+#endif
+        style.fontStyle.fontSize = 11;
         style.fixedFontStyle.fontSize = 11;
         style.fontColor = {0, 0, 0, 255};
         style.lineHeight = 1.1;

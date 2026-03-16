@@ -295,6 +295,8 @@ if (BUILD_TEXTER_APP)
             Apps/Texter/UltraCanvasTextEditorInfoFileStatistics.cpp
             Apps/Texter/UltraCanvasEncoding.cpp
             Apps/Texter/main.cpp
+            Apps/Texter/UltraCanvasSearchBar.cpp
+            Apps/Texter/UltraCanvasSearchBar.h
     )
 
     # Include directories

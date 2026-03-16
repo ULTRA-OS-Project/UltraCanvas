@@ -187,6 +187,80 @@ struct MarkdownInlineElement {
     std::string footnoteContent;      // tooltip text for footnotes
 };
 
+// ===== HEADING ANCHOR UTILITIES =====
+// Generate a URL-friendly slug from heading text (strips inline formatting)
+
+static std::string StripInlineFormatting(const std::string& text) {
+    std::string result;
+    result.reserve(text.size());
+    size_t i = 0;
+    while (i < text.size()) {
+        // Skip formatting markers: **, *, ~~, ==, ^^, ~~, ``
+        if (i + 1 < text.size()) {
+            std::string two = text.substr(i, 2);
+            if (two == "**" || two == "~~" || two == "==" || two == "__") {
+                i += 2;
+                continue;
+            }
+        }
+        char c = text[i];
+        if (c == '*' || c == '_' || c == '`' || c == '^' || c == '~') {
+            i++;
+            continue;
+        }
+        result += c;
+        i++;
+    }
+    return result;
+}
+
+static std::string GenerateHeadingSlug(const std::string& headingText) {
+    std::string stripped = StripInlineFormatting(headingText);
+    std::string slug;
+    slug.reserve(stripped.size());
+    for (unsigned char c : stripped) {
+        if (std::isalnum(c)) {
+            slug += static_cast<char>(std::tolower(c));
+        } else if (c == ' ' || c == '-' || c == '_') {
+            if (!slug.empty() && slug.back() != '-') {
+                slug += '-';
+            }
+        }
+        // skip other characters
+    }
+    // Trim trailing dash
+    while (!slug.empty() && slug.back() == '-') slug.pop_back();
+    return slug;
+}
+
+// Strip explicit anchor {#id} from end of heading text, return the anchor ID (or empty)
+static std::string StripExplicitAnchor(std::string& headerText) {
+    // Look for {#...} at end of text (possibly with trailing whitespace)
+    size_t braceOpen = headerText.rfind('{');
+    if (braceOpen != std::string::npos && braceOpen + 2 < headerText.size() && headerText[braceOpen + 1] == '#') {
+        size_t braceClose = headerText.find('}', braceOpen);
+        if (braceClose != std::string::npos) {
+            // Check that everything after braceClose is whitespace
+            bool trailingOk = true;
+            for (size_t k = braceClose + 1; k < headerText.size(); k++) {
+                if (headerText[k] != ' ' && headerText[k] != '\t') {
+                    trailingOk = false;
+                    break;
+                }
+            }
+            if (trailingOk) {
+                std::string anchorId = headerText.substr(braceOpen + 2, braceClose - braceOpen - 2);
+                headerText = headerText.substr(0, braceOpen);
+                // Trim trailing whitespace from header text
+                while (!headerText.empty() && (headerText.back() == ' ' || headerText.back() == '\t'))
+                    headerText.pop_back();
+                return anchorId;
+            }
+        }
+    }
+    return {};
+}
+
 // ===== MATH / GREEK LETTER SUBSTITUTION =====
 // Converts LaTeX-style commands to Unicode characters for display
 
@@ -1543,6 +1617,11 @@ struct MarkdownInlineRenderer {
             ctx->SetFontWeight(weight);
             ctx->SetFontSlant(slant);
 
+            // --- Set code font BEFORE measuring so width is correct ---
+            if (elem.isCode) {
+                ctx->SetFontFamily(mdStyle.codeFont);
+            }
+
             int textWidth = ctx->GetTextLineWidth(elem.text);
 
             // --- Highlight background ---
@@ -1555,7 +1634,6 @@ struct MarkdownInlineRenderer {
             if (elem.isCode) {
                 ctx->SetFillPaint(mdStyle.codeBackgroundColor);
                 ctx->FillRoundedRectangle(currentX - 2, y + 1, textWidth + 4, lineHeight - 2, 3);
-                ctx->SetFontFamily(mdStyle.codeFont);
             }
 
             // --- Draw the text ---
@@ -1613,6 +1691,10 @@ struct MarkdownInlineRenderer {
         while (pos < line.length() && line[pos] == ' ') pos++;
 
         std::string headerText = line.substr(pos);
+
+        // Strip explicit anchor {#id} from display (it's metadata, not visible content)
+        StripExplicitAnchor(headerText);
+
         int levelIndex = std::clamp(level - 1, 0, 5);
 
         // Set header font size — clamped to not exceed line height
@@ -2885,6 +2967,41 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         }
     }
 
+    // Build anchor map from headings (explicit {#id} and auto-slugs)
+    {
+        markdownAnchors.clear();
+        int lineCount = static_cast<int>(lines.size());
+        for (int i = 0; i < lineCount; i++) {
+            const std::string& line = lines[i];
+            if (line.empty() || line[0] != '#') continue;
+            // Skip lines inside code blocks
+            if (i < static_cast<int>(isInsideCodeBlock.size()) && isInsideCodeBlock[i]) continue;
+
+            // Count heading level
+            size_t lvl = 0;
+            while (lvl < line.size() && line[lvl] == '#') lvl++;
+            if (lvl == 0 || lvl > 6) continue;
+            // Must have space after #
+            if (lvl >= line.size() || line[lvl] != ' ') continue;
+
+            size_t textStart = lvl;
+            while (textStart < line.size() && line[textStart] == ' ') textStart++;
+            std::string headerText = line.substr(textStart);
+
+            // Check for explicit anchor {#id}
+            std::string anchorId = StripExplicitAnchor(headerText);
+            if (!anchorId.empty()) {
+                markdownAnchors[anchorId] = i;
+            }
+
+            // Always generate auto-slug as well (allows both forms to work)
+            std::string slug = GenerateHeadingSlug(headerText);
+            if (!slug.empty() && markdownAnchors.find(slug) == markdownAnchors.end()) {
+                markdownAnchors[slug] = i;
+            }
+        }
+    }
+
     // Build cumulative Y offsets for display lines affected by multi-line table rows
     {
         int dlCount = GetDisplayLineCount();
@@ -3292,8 +3409,24 @@ bool UltraCanvasTextArea::HandleMarkdownClick(int mouseX, int mouseY) {
                     onMarkdownImageClick(hitRect.url, hitRect.altText);
                     return true;
                 }
+            } else if (!hitRect.url.empty() && hitRect.url[0] == '#') {
+                // Internal anchor link — scroll to the target heading
+                std::string anchorId = hitRect.url.substr(1);
+                auto it = markdownAnchors.find(anchorId);
+                if (it != markdownAnchors.end()) {
+                    int targetLogLine = it->second;
+                    // Find display line for this logical line
+                    int dlCount = GetDisplayLineCount();
+                    for (int di = 0; di < dlCount; di++) {
+                        if (displayLines[di].logicalLine == targetLogLine) {
+                            ScrollTo(di);
+                            break;
+                        }
+                    }
+                    return true;
+                }
             } else {
-                // Link click — trigger callback with URL
+                // External link click — trigger callback with URL
                 if (onMarkdownLinkClick) {
                     onMarkdownLinkClick(hitRect.url);
                     return true;

@@ -378,7 +378,7 @@ namespace UltraCanvas {
         dropdownWidth = maxTextWidth + static_cast<int>(style.paddingLeft + style.paddingRight);
 
         // Add scrollbar width if needed
-        needScrollbar = static_cast<int>(items.size()) > style.maxVisibleItems;
+        needScrollbar = (style.maxVisibleItems != -1) && (static_cast<int>(items.size()) > style.maxVisibleItems);
         if (needScrollbar) {
             dropdownWidth += scrollbarWidth;
         }
@@ -387,15 +387,25 @@ namespace UltraCanvas {
         dropdownWidth = std::min(dropdownWidth, style.maxItemWidth);
 
         // Calculate height
-        int visibleItems = std::min(static_cast<int>(items.size()), style.maxVisibleItems);
+        int itemCount = static_cast<int>(items.size());
+        int visibleItems;
+
+        if (style.maxVisibleItems == -1) {
+            // Show all items; scrollbar will be added if clamped by window bounds
+            visibleItems = itemCount;
+            needScrollbar = false;
+        } else {
+            visibleItems = std::min(itemCount, style.maxVisibleItems);
+        }
+
+        effectiveVisibleItems = visibleItems;
         maxDropdownHeight = static_cast<int>(visibleItems * style.itemHeight + 2);
         dropdownHeight = maxDropdownHeight;
 
         // Update scrollbar parameters
         if (listScrollbar && needScrollbar) {
-            int totalItems = static_cast<int>(items.size());
-            listScrollbar->SetViewportSize(style.maxVisibleItems);
-            listScrollbar->SetContentSize(totalItems);
+            listScrollbar->SetViewportSize(visibleItems);
+            listScrollbar->SetContentSize(itemCount);
         }
 
         needCalculateDimensions = false;
@@ -467,12 +477,13 @@ namespace UltraCanvas {
 
         // Calculate how many items actually fit in the (potentially clamped) height
         int fittingItems = std::max(1, (listRect.height - 2) / static_cast<int>(style.itemHeight));
-        int effectiveVisibleItems = heightClamped
+        int maxVis = (style.maxVisibleItems == -1) ? static_cast<int>(items.size()) : style.maxVisibleItems;
+        effectiveVisibleItems = heightClamped
             ? std::min(fittingItems, static_cast<int>(items.size()))
-            : std::min(static_cast<int>(items.size()), style.maxVisibleItems);
+            : std::min(static_cast<int>(items.size()), maxVis);
 
-        // Update scrollbar if height was clamped
-        if (heightClamped && listScrollbar) {
+        // Update scrollbar when height is clamped or scrollbar is needed
+        if (showScrollbar && listScrollbar) {
             listScrollbar->SetViewportSize(effectiveVisibleItems);
             listScrollbar->SetContentSize(static_cast<int>(items.size()));
         }
@@ -735,7 +746,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDropdown::RenderScrollbar(const Rect2Di &listRect, IRenderContext *ctx) {
-        if (!listScrollbar || !needScrollbar) return;
+        if (!listScrollbar) return;
 
         int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
         int scrollbarX = listRect.x + listRect.width - scrollbarWidth - 1;
@@ -749,13 +760,15 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDropdown::EnsureItemVisible(int index) {
+        int visItems = effectiveVisibleItems > 0 ? effectiveVisibleItems :
+                       (style.maxVisibleItems == -1 ? static_cast<int>(items.size()) : style.maxVisibleItems);
         if (index < scrollOffset) {
             scrollOffset = index;
-        } else if (index >= scrollOffset + style.maxVisibleItems) {
-            scrollOffset = index - style.maxVisibleItems + 1;
+        } else if (index >= scrollOffset + visItems) {
+            scrollOffset = index - visItems + 1;
         }
         scrollOffset = std::max(0, std::min(scrollOffset,
-                                            static_cast<int>(items.size()) - style.maxVisibleItems));
+                                            static_cast<int>(items.size()) - visItems));
 
         if (listScrollbar) {
             listScrollbar->SetScrollPosition(scrollOffset);
@@ -958,7 +971,7 @@ namespace UltraCanvas {
 
         int fittingItems = heightClamped
             ? std::max(1, (listRect.height - 2) / static_cast<int>(style.itemHeight))
-            : style.maxVisibleItems;
+            : (style.maxVisibleItems == -1 ? static_cast<int>(items.size()) : style.maxVisibleItems);
 
         int delta = event.wheelDelta > 0 ? -1 : 1;
         int maxScroll = std::max(0, static_cast<int>(items.size()) - fittingItems);
@@ -1016,7 +1029,8 @@ namespace UltraCanvas {
                 ScrollbarOrientation::Vertical);
 
         listScrollbar->onScrollChange = [this](int pos) {
-            int maxScroll = std::max(0, static_cast<int>(items.size()) - style.maxVisibleItems);
+            int viewportItems = listScrollbar->GetViewportSize();
+            int maxScroll = std::max(0, static_cast<int>(items.size()) - viewportItems);
             scrollOffset = std::clamp(pos, 0, maxScroll);
             RequestRedraw();
         };

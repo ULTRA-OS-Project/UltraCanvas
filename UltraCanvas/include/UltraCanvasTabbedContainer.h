@@ -372,6 +372,9 @@ namespace UltraCanvas {
         void SetTabTitle(int index, const std::string& title);
         std::string GetTabTitle(int index) const;
 
+        void SetTabTooltip(int index, const std::string& tooltip);
+        std::string GetTabTooltip(int index) const;
+
         void SetTabEnabled(int index, bool enabled);
         bool IsTabEnabled(int index) const;
 

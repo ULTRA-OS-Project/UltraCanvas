@@ -408,7 +408,11 @@ rescan_windows:
                     leaveEvent.y = -1;
                     leaveEvent.targetElement = hoveredElement;
                     DispatchEventToElement(hoveredElement, leaveEvent);
+                    UltraCanvasTooltipManager::HideTooltip();
                     hoveredElement = nullptr;
+                }
+                if (!pointerElem) {
+                    UltraCanvasTooltipManager::HideTooltip();
                 }
                 if (pointerElem) {
                     int localX = event.x;
@@ -422,11 +426,23 @@ rescan_windows:
                         enterEvent.y = localY;
                         DispatchEventToElement(pointerElem, enterEvent);
                         hoveredElement = pointerElem;
+                        // Show tooltip if element has one
+                        if (!pointerElem->GetTooltip().empty()) {
+                            UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                                targetWindow, pointerElem->GetTooltip(),
+                                Point2Di(event.windowX, event.windowY));
+                        }
                     }
                     auto newEvent = event;
                     newEvent.targetElement = pointerElem;
                     newEvent.x = localX;
                     newEvent.y = localY;
+                    // Update tooltip position as mouse moves
+                    if (!pointerElem->GetTooltip().empty() &&
+                        (UltraCanvasTooltipManager::IsVisible() || UltraCanvasTooltipManager::IsPending())) {
+                        UltraCanvasTooltipManager::UpdateTooltipPosition(
+                            Point2Di(event.windowX, event.windowY));
+                    }
                     if (DispatchEventToElement(pointerElem, newEvent)) {
                         goto finish;
                     }

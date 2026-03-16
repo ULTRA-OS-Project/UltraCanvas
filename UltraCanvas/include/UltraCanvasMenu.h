@@ -11,6 +11,7 @@
 #include "UltraCanvasKeyboardManager.h"
 //#include "UltraCanvasZOrderManager.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasScrollbar.h"
 #include <vector>
 #include <string>
 #include <functional>
@@ -149,6 +150,9 @@ namespace UltraCanvas {
         Point2Di shadowOffset = Point2Di(1, 1);
         int shadowBlur = 4;
 
+        // Scrollbar (for overflow menus)
+        ScrollbarStyle scrollbarStyle;
+
         static MenuStyle Default();
         static MenuStyle Dark();
         static MenuStyle Flat();
@@ -178,6 +182,13 @@ namespace UltraCanvas {
         std::weak_ptr<UltraCanvasMenu> parentMenu;
         int parentItemIndex = -1;  // Index of the parent item that opened this submenu
         std::vector<std::shared_ptr<UltraCanvasMenu>> childMenus;
+
+        // Scroll support for overflow menus
+        std::shared_ptr<UltraCanvasScrollbar> menuScrollbar;
+        int scrollOffsetPixels = 0;
+        int totalContentHeight = 0;
+        int clampedMenuHeight = 0;
+        bool needsScrollbar = false;
 
         // Animation
         std::chrono::steady_clock::time_point animationStartTime;
@@ -259,7 +270,7 @@ namespace UltraCanvas {
             needCalculateSize = true;
         }
 
-        const std::vector<MenuItemData>& GetItems() const { return items; }
+        std::vector<MenuItemData>& GetItems() { return items; }
 
         MenuItemData* GetItem(int index) {
             if (index >= 0 && index < static_cast<int>(items.size())) {
@@ -346,11 +357,17 @@ namespace UltraCanvas {
 
         int GetItemAtPosition(int x, int y) const;
 
+        // ===== SCROLL SUPPORT =====
+        void CreateMenuScrollbar();
+        void ClampMenuToWindow();
+        void EnsureKeyboardItemVisible();
+
         // ===== EVENT HANDLERS =====
         bool HandleMouseMove(const UCEvent& event);
         bool HandleMouseDown(const UCEvent& event);
         bool HandleMouseUp(const UCEvent& event);
         bool HandleKeyDown(const UCEvent& event);
+        bool HandleMouseWheel(const UCEvent& event);
 
         // ===== KEYBOARD NAVIGATION =====
         void NavigateUp();

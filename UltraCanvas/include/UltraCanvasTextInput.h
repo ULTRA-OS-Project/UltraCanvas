@@ -419,11 +419,9 @@ public:
     bool CanRedo() const { return !redoStack.empty(); }
     
     // ===== STYLING =====
-    void SetStyle(const TextInputStyle& inputStyle) {
-        style = inputStyle;
-    }
-    
+    void SetStyle(const TextInputStyle& inputStyle) { style = inputStyle; }
     const TextInputStyle& GetStyle() const { return style; }
+    void SetFontSize(float size) { style.fontStyle.fontSize = size; }
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
     void Render(IRenderContext* ctx) override;

@@ -616,6 +616,8 @@ namespace UltraCanvas {
         std::unordered_map<std::string, std::string> markdownFootnotes;
         // Per-logical-line flag: true if line is a footnote definition (hidden from rendering)
         std::vector<bool> isFootnoteDefinitionLine;
+        // Markdown anchor registry: anchor ID -> logical line number (rebuilt each render frame)
+        std::unordered_map<std::string, int> markdownAnchors;
         // Per-logical-line flag: true if line is a definition list term (rendered bold)
         std::vector<bool> isDefinitionTermLine;
         // Per-logical-line flag: true if line is hidden (lazy continuation merged into definition)

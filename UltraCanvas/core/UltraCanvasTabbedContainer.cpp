@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasTooltipManager.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -844,6 +845,15 @@ namespace UltraCanvas {
             if (newHoveredTab != hoveredTabIndex) {
                 hoveredTabIndex = newHoveredTab;
                 needsRedraw = true;
+
+                // Show per-tab tooltip when hovered tab changes
+                if (hoveredTabIndex >= 0 && !tabs[hoveredTabIndex]->tooltip.empty()) {
+                    UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                        GetWindow(), tabs[hoveredTabIndex]->tooltip,
+                        Point2Di(event.windowX, event.windowY));
+                } else {
+                    UltraCanvasTooltipManager::HideTooltip();
+                }
             }
 
             // Track close button hover (also used for modified marker → close button swap)
@@ -925,6 +935,7 @@ namespace UltraCanvas {
                 hoveredTabIndex = -1;
                 hoveredCloseButtonIndex = -1;
                 hoveredNewTabButton = false;
+                UltraCanvasTooltipManager::HideTooltip();
                 RequestRedraw();
             }
 
@@ -1337,6 +1348,19 @@ namespace UltraCanvas {
     std::string UltraCanvasTabbedContainer::GetTabTitle(int index) const {
         if (index >= 0 && index < (int)tabs.size()) {
             return tabs[index]->title;
+        }
+        return "";
+    }
+
+    void UltraCanvasTabbedContainer::SetTabTooltip(int index, const std::string &tooltip) {
+        if (index >= 0 && index < (int)tabs.size()) {
+            tabs[index]->tooltip = tooltip;
+        }
+    }
+
+    std::string UltraCanvasTabbedContainer::GetTabTooltip(int index) const {
+        if (index >= 0 && index < (int)tabs.size()) {
+            return tabs[index]->tooltip;
         }
         return "";
     }

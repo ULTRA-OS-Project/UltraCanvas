@@ -31,6 +31,8 @@ namespace UltraCanvas {
             keyboardIndex = -1;
             keyboardNavigation = false;
             needCalculateSize = true;
+            scrollOffsetPixels = 0;
+            needsScrollbar = false;
 
             if (onMenuOpened) onMenuOpened();
 
@@ -59,6 +61,8 @@ namespace UltraCanvas {
             CloseAllSubmenus();
             RemoveThisPopupElementFromWindow();
             needCalculateSize = true;
+            scrollOffsetPixels = 0;
+            needsScrollbar = false;
             if (onMenuClosed) onMenuClosed();
 //            RequestRedraw();
 
@@ -127,9 +131,10 @@ namespace UltraCanvas {
         // is not clipped away.
         ctx->PushState();
         int bw = static_cast<int>(style.borderWidth);
+        int sbWidth = needsScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
         ctx->ClipRect(Rect2Di(bounds.x + bw,
                               bounds.y + bw,
-                              bounds.width  - bw * 2,
+                              bounds.width  - bw * 2 - sbWidth,
                               bounds.height - bw * 2));
 
         for (int i = 0; i < static_cast<int>(items.size()); ++i) {
@@ -144,6 +149,18 @@ namespace UltraCanvas {
         }
 
         ctx->PopState();  // releases the clip region
+
+        // Render scrollbar for overflow menus
+        if (needsScrollbar && menuScrollbar) {
+            int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
+            menuScrollbar->SetBounds(Rect2Di(
+                    bounds.x + bounds.width - scrollbarWidth - bw,
+                    bounds.y + bw,
+                    scrollbarWidth,
+                    bounds.height - bw * 2));
+            menuScrollbar->SetScrollPosition(scrollOffsetPixels);
+            menuScrollbar->Render(ctx);
+        }
     }
 
     bool UltraCanvasMenu::OnEvent(const UCEvent &event) {
@@ -190,6 +207,9 @@ namespace UltraCanvas {
 
             case UCEventType::KeyDown:
                 return HandleKeyDown(event);
+
+            case UCEventType::MouseWheel:
+                return HandleMouseWheel(event);
 
             case UCEventType::MouseLeave:
                 hoveredIndex = -1;
@@ -496,6 +516,9 @@ namespace UltraCanvas {
 
             SetWidth(totalWidth);
             SetHeight(totalHeight);
+
+            // Clamp to window bounds and add scrollbar if needed
+            ClampMenuToWindow();
         }
     }
 
@@ -583,7 +606,7 @@ namespace UltraCanvas {
             bounds.width = CalculateItemWidth(items[index]) + style.paddingLeft + style.paddingRight;
             bounds.height = style.itemHeight;
         } else {
-            int currentY = GetY();
+            int currentY = GetY() - scrollOffsetPixels;
 
             for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
                 if (items[i].visible) {
@@ -758,7 +781,7 @@ namespace UltraCanvas {
             }
         } else {
             // For vertical menus, iterate through items by Y position
-            int currentY = GetY();
+            int currentY = GetY() - scrollOffsetPixels;
 
             for (int i = 0; i < static_cast<int>(items.size()); ++i) {
                 if (!items[i].visible) continue;
@@ -778,6 +801,11 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMenu::HandleMouseMove(const UCEvent &event) {
+        // Forward to scrollbar if dragging
+        if (menuScrollbar && menuScrollbar->IsDragging()) {
+            return menuScrollbar->OnEvent(event);
+        }
+
         int newHoveredIndex = GetItemAtPosition(event.x, event.y);
 
         if (newHoveredIndex != hoveredIndex) {
@@ -804,6 +832,11 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMenu::HandleMouseDown(const UCEvent &event) {
+        // Forward to scrollbar if clicking on it
+        if (needsScrollbar && menuScrollbar && menuScrollbar->Contains(event.x, event.y)) {
+            return menuScrollbar->OnEvent(event);
+        }
+
         if (!Contains(event.x, event.y) && menuType != MenuType::Menubar) {
             // Click outside menu - close if context menu
             bool clickOutside = true;
@@ -837,6 +870,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMenu::HandleMouseUp(const UCEvent &event) {
+        if (menuScrollbar && menuScrollbar->IsDragging()) {
+            return menuScrollbar->OnEvent(event);
+        }
         if (!Contains(event.x, event.y)) return false;
 
         int clickedIndex = GetItemAtPosition(event.x, event.y);
@@ -856,10 +892,12 @@ namespace UltraCanvas {
         switch (event.virtualKey) {
             case UCKeys::Up:
                 NavigateUp();
+                EnsureKeyboardItemVisible();
                 return true;
 
             case UCKeys::Down:
                 NavigateDown();
+                EnsureKeyboardItemVisible();
                 return true;
 
             case UCKeys::Left:
@@ -1041,5 +1079,113 @@ namespace UltraCanvas {
         }
 
         return Colors::Transparent;
+    }
+
+    // ===== SCROLL SUPPORT =====
+
+    void UltraCanvasMenu::CreateMenuScrollbar() {
+        menuScrollbar = std::make_shared<UltraCanvasScrollbar>(
+                GetIdentifier() + "_scroll", 0, 0, 0, 10, 100,
+                ScrollbarOrientation::Vertical);
+
+        menuScrollbar->SetStyle(style.scrollbarStyle);
+
+        menuScrollbar->onScrollChange = [this](int pos) {
+            int maxScroll = std::max(0, totalContentHeight - clampedMenuHeight);
+            scrollOffsetPixels = std::clamp(pos, 0, maxScroll);
+            RequestRedraw();
+        };
+    }
+
+    void UltraCanvasMenu::ClampMenuToWindow() {
+        if (orientation != MenuOrientation::Vertical) return;
+
+        auto win = GetWindow();
+        if (!win) return;
+
+        int windowHeight = win->GetHeight();
+        int menuY = GetYInWindow();
+        int fullHeight = GetHeight();
+
+        totalContentHeight = fullHeight;
+
+        int spaceBelow = windowHeight - menuY;
+        int spaceAbove = menuY;
+
+        const int minMenuHeight = style.itemHeight * 3;
+
+        if (fullHeight <= spaceBelow) {
+            needsScrollbar = false;
+            clampedMenuHeight = fullHeight;
+        } else if (fullHeight <= spaceAbove) {
+            // Flip above
+            SetPosition(GetX(), menuY - fullHeight);
+            needsScrollbar = false;
+            clampedMenuHeight = fullHeight;
+        } else {
+            // Clamp to larger available space
+            int availableHeight = std::max(spaceBelow, spaceAbove);
+            clampedMenuHeight = std::max(minMenuHeight, availableHeight);
+            needsScrollbar = true;
+
+            if (spaceAbove > spaceBelow) {
+                SetPosition(GetX(), menuY - clampedMenuHeight);
+            }
+
+            SetHeight(clampedMenuHeight);
+
+            if (!menuScrollbar) CreateMenuScrollbar();
+            menuScrollbar->SetContentSize(totalContentHeight);
+            menuScrollbar->SetViewportSize(clampedMenuHeight);
+            menuScrollbar->SetScrollPosition(scrollOffsetPixels);
+            menuScrollbar->SetWindow(win);
+        }
+    }
+
+    void UltraCanvasMenu::EnsureKeyboardItemVisible() {
+        if (!needsScrollbar || keyboardIndex < 0) return;
+
+        // Calculate the Y position of the keyboard item relative to content start
+        int itemY = 0;
+        for (int i = 0; i < keyboardIndex && i < static_cast<int>(items.size()); ++i) {
+            if (!items[i].visible) continue;
+            itemY += (items[i].type == MenuItemType::Separator) ?
+                     style.separatorHeight : style.itemHeight;
+        }
+
+        int itemHeight = (items[keyboardIndex].type == MenuItemType::Separator) ?
+                         style.separatorHeight : style.itemHeight;
+
+        // Scroll up if item is above visible area
+        if (itemY < scrollOffsetPixels) {
+            scrollOffsetPixels = itemY;
+        }
+        // Scroll down if item is below visible area
+        else if (itemY + itemHeight > scrollOffsetPixels + clampedMenuHeight) {
+            scrollOffsetPixels = itemY + itemHeight - clampedMenuHeight;
+        }
+
+        int maxScroll = std::max(0, totalContentHeight - clampedMenuHeight);
+        scrollOffsetPixels = std::clamp(scrollOffsetPixels, 0, maxScroll);
+
+        if (menuScrollbar) {
+            menuScrollbar->SetScrollPosition(scrollOffsetPixels);
+        }
+    }
+
+    bool UltraCanvasMenu::HandleMouseWheel(const UCEvent &event) {
+        if (!needsScrollbar) return false;
+        if (!Contains(event.x, event.y)) return false;
+
+        int delta = event.wheelDelta > 0 ? -style.itemHeight : style.itemHeight;
+        int maxScroll = std::max(0, totalContentHeight - clampedMenuHeight);
+        scrollOffsetPixels = std::clamp(scrollOffsetPixels + delta, 0, maxScroll);
+
+        if (menuScrollbar) {
+            menuScrollbar->SetScrollPosition(scrollOffsetPixels);
+        }
+
+        RequestRedraw();
+        return true;
     }
 }

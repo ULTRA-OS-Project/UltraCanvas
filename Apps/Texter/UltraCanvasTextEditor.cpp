@@ -1,6 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.0.2
+// Version: 2.0.5
+// Version: 2.0.5
 // Last Modified: 2026-02-02
 // Author: UltraCanvas Framework
 
@@ -302,6 +303,7 @@ namespace {
         if (config.showStatusBar) {
             SetupStatusBar();
         }
+        SetupSearchBar();
 
         SetupLayout();
 
@@ -832,6 +834,7 @@ languageDropdown->AddItem("Plain Text", "Plain Text");
 
         DropdownStyle langStyle = languageDropdown->GetStyle();
         langStyle.fontSize = 10;
+        langStyle.maxVisibleItems = -1;
         languageDropdown->SetStyle(langStyle);
 
         languageDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
@@ -870,6 +873,7 @@ languageDropdown->AddItem("Plain Text", "Plain Text");
 
         DropdownStyle encStyle = encodingDropdown->GetStyle();
         encStyle.fontSize = 10;
+        encStyle.maxVisibleItems = -1;
         encodingDropdown->SetStyle(encStyle);
 
         encodingDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
@@ -921,6 +925,7 @@ languageDropdown->AddItem("Plain Text", "Plain Text");
 
         DropdownStyle zoomStyle = zoomDropdown->GetStyle();
         zoomStyle.fontSize = 10;
+        zoomStyle.maxVisibleItems = -1;
         zoomDropdown->SetStyle(zoomStyle);
 
         zoomDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
@@ -981,9 +986,20 @@ languageDropdown->AddItem("Plain Text", "Plain Text");
 
         // ===== Tab container (fills remaining space minus status bar) =====
         if (tabContainer) {
-            int tabAreaHeight = h - yPos - (config.showStatusBar ? statusBarHeight : 0);
+            int reservedBottom = config.showStatusBar ? statusBarHeight : 0;
+            if (searchBar && searchBar->IsVisible()) {
+                reservedBottom += searchBar->GetBarHeight();
+            }
+            int tabAreaHeight = h - yPos - reservedBottom;
             if (tabAreaHeight < 0) tabAreaHeight = 0;
             tabContainer->SetBounds(Rect2Di(mdToolbarW, yPos, w - mdToolbarW, tabAreaHeight));
+        }
+
+        // ===== Search bar (above status bar, full width) =====
+        if (searchBar && searchBar->IsVisible()) {
+            int barH = searchBar->GetBarHeight();
+            int barY = h - (config.showStatusBar ? statusBarHeight : 0) - barH;
+            searchBar->SetBounds(Rect2Di(0, barY, w, barH));
         }
 
         // ===== Status bar =====
@@ -1350,6 +1366,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         std::string title = doc->fileName;
 
         tabContainer->SetTabTitle(index, title);
+        tabContainer->SetTabTooltip(index, doc->filePath);
     }
 
     void UltraCanvasTextEditor::UpdateTabBadge(int index) {
@@ -2051,125 +2068,137 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     void UltraCanvasTextEditor::OnEditSearch() {
         auto doc = GetActiveDocument();
         if (!doc || !doc->textArea) return;
-
-        // Create find dialog if not exists
-        if (!findDialog) {
-            findDialog = CreateFindDialog();
-
-            // Wire up callbacks
-            findDialog->SetSearchHistory(searchHistory);
-
-            // In the onResult callback, save history back before destroying:
-            findDialog->onResult = [this](DialogResult res) {
-                if (findDialog) {
-                    searchHistory = findDialog->GetSearchHistory();
-                    configFile.SaveSearchHistory(searchHistory, replaceHistory);
-                }
-                findDialog.reset();
-            };
-
-            findDialog->onFindNext = [this](const std::string& searchText, bool caseSensitive, bool wholeWord) {
-                auto doc = GetActiveDocument();
-                if (doc && doc->textArea) {
-                    doc->textArea->SetTextToFind(searchText, caseSensitive);
-                    doc->textArea->FindNext();
-
-                    // Update status in the dialog
-                    int total = doc->textArea->CountMatches(searchText, caseSensitive);
-                    int current = doc->textArea->GetCurrentMatchIndex(searchText, caseSensitive);
-                    findDialog->UpdateStatus(current, total);
-                }
-            };
-
-            findDialog->onFindPrevious = [this](const std::string& searchText, bool caseSensitive, bool wholeWord) {
-                auto doc = GetActiveDocument();
-                if (doc && doc->textArea) {
-                    doc->textArea->SetTextToFind(searchText, caseSensitive);
-                    doc->textArea->FindPrevious();
-
-                    int total = doc->textArea->CountMatches(searchText, caseSensitive);
-                    int current = doc->textArea->GetCurrentMatchIndex(searchText, caseSensitive);
-                    findDialog->UpdateStatus(current, total);
-                }
-            };
-        }
-
-        // Show dialog
-        findDialog->ShowModal();
+        ShowSearchBar(SearchBarMode::Find);
     }
+
+//    void UltraCanvasTextEditor::OnEditSearch() {
+//        auto doc = GetActiveDocument();
+//        if (!doc || !doc->textArea) return;
+//
+//        // Create find dialog if not exists
+//        if (!findDialog) {
+//            findDialog = CreateFindDialog();
+//
+//            // Wire up callbacks
+//            findDialog->SetSearchHistory(searchHistory);
+//
+//            // In the onResult callback, save history back before destroying:
+//            findDialog->onResult = [this](DialogResult res) {
+//                if (findDialog) {
+//                    searchHistory = findDialog->GetSearchHistory();
+//                    configFile.SaveSearchHistory(searchHistory, replaceHistory);
+//                }
+//                findDialog.reset();
+//            };
+//
+//            findDialog->onFindNext = [this](const std::string& searchText, bool caseSensitive, bool wholeWord) {
+//                auto doc = GetActiveDocument();
+//                if (doc && doc->textArea) {
+//                    doc->textArea->SetTextToFind(searchText, caseSensitive);
+//                    doc->textArea->FindNext();
+//
+//                    // Update status in the dialog
+//                    int total = doc->textArea->CountMatches(searchText, caseSensitive);
+//                    int current = doc->textArea->GetCurrentMatchIndex(searchText, caseSensitive);
+//                    findDialog->UpdateStatus(current, total);
+//                }
+//            };
+//
+//            findDialog->onFindPrevious = [this](const std::string& searchText, bool caseSensitive, bool wholeWord) {
+//                auto doc = GetActiveDocument();
+//                if (doc && doc->textArea) {
+//                    doc->textArea->SetTextToFind(searchText, caseSensitive);
+//                    doc->textArea->FindPrevious();
+//
+//                    int total = doc->textArea->CountMatches(searchText, caseSensitive);
+//                    int current = doc->textArea->GetCurrentMatchIndex(searchText, caseSensitive);
+//                    findDialog->UpdateStatus(current, total);
+//                }
+//            };
+//        }
+//
+//        // Show dialog
+//        findDialog->ShowModal();
+//    }
 
     void UltraCanvasTextEditor::OnEditReplace() {
         auto doc = GetActiveDocument();
         if (!doc || !doc->textArea) return;
-
-        // Create replace dialog if not exists
-        if (!replaceDialog) {
-            replaceDialog = CreateReplaceDialog();
-
-            // Wire up callbacks
-            replaceDialog->SetFindHistory(searchHistory);
-            replaceDialog->SetReplaceHistory(replaceHistory);
-
-            // In the onResult callback:
-            replaceDialog->onResult = [this](DialogResult res) {
-                if (replaceDialog) {
-                    searchHistory = replaceDialog->GetFindHistory();
-                    replaceHistory = replaceDialog->GetReplaceHistory();
-                    configFile.SaveSearchHistory(searchHistory, replaceHistory);
-                }
-                replaceDialog.reset();
-            };
-            replaceDialog->onFindNext = [this](const std::string& findText, bool caseSensitive, bool wholeWord) {
-                auto doc = GetActiveDocument();
-                if (doc && doc->textArea) {
-                    doc->textArea->SetTextToFind(findText, caseSensitive);
-                    doc->textArea->FindNext();
-
-                    int total = doc->textArea->CountMatches(findText, caseSensitive);
-                    int current = doc->textArea->GetCurrentMatchIndex(findText, caseSensitive);
-                    replaceDialog->UpdateStatus(current, total);
-                }
-            };
-
-            replaceDialog->onReplace = [this](const std::string& findText, const std::string& replaceText,
-                                              bool caseSensitive, bool wholeWord) {
-                auto doc = GetActiveDocument();
-                if (doc && doc->textArea) {
-                    // Find current occurrence
-                    doc->textArea->SetTextToFind(findText, caseSensitive);
-                    // Replace single occurrence
-                    doc->textArea->ReplaceText(findText, replaceText, false);
-
-                    // After replace, update counts (total may have decreased by 1)
-                    int total = doc->textArea->CountMatches(findText, caseSensitive);
-                    int current = doc->textArea->GetCurrentMatchIndex(findText, caseSensitive);
-                    replaceDialog->UpdateStatus(current, total);
-                }
-            };
-
-            replaceDialog->onReplaceAll = [this](const std::string& findText, const std::string& replaceText,
-                                                 bool caseSensitive, bool wholeWord) {
-                auto doc = GetActiveDocument();
-                if (doc && doc->textArea) {
-                    // Replace all occurrences
-                    doc->textArea->ReplaceText(findText, replaceText, true);
-
-                    // After replace all, show "0 found" (all replaced)
-                    int total = doc->textArea->CountMatches(findText, caseSensitive);
-                    if (total == 0) {
-                        replaceDialog->UpdateStatus(0, 0);
-                        // Optionally show a more descriptive message:
-                        // replaceDialog->SetStatusText("All replaced");
-                    } else {
-                        replaceDialog->UpdateStatus(0, total);
-                    }
-                }
-            };
-        }
-
-        // Show dialog
-        replaceDialog->ShowModal();
+        ShowSearchBar(SearchBarMode::Replace);
     }
+
+//    void UltraCanvasTextEditor::OnEditReplace() {
+//        auto doc = GetActiveDocument();
+//        if (!doc || !doc->textArea) return;
+//
+//        // Create replace dialog if not exists
+//        if (!replaceDialog) {
+//            replaceDialog = CreateReplaceDialog();
+//
+//            // Wire up callbacks
+//            replaceDialog->SetFindHistory(searchHistory);
+//            replaceDialog->SetReplaceHistory(replaceHistory);
+//
+//            // In the onResult callback:
+//            replaceDialog->onResult = [this](DialogResult res) {
+//                if (replaceDialog) {
+//                    searchHistory = replaceDialog->GetFindHistory();
+//                    replaceHistory = replaceDialog->GetReplaceHistory();
+//                    configFile.SaveSearchHistory(searchHistory, replaceHistory);
+//                }
+//                replaceDialog.reset();
+//            };
+//            replaceDialog->onFindNext = [this](const std::string& findText, bool caseSensitive, bool wholeWord) {
+//                auto doc = GetActiveDocument();
+//                if (doc && doc->textArea) {
+//                    doc->textArea->SetTextToFind(findText, caseSensitive);
+//                    doc->textArea->FindNext();
+//
+//                    int total = doc->textArea->CountMatches(findText, caseSensitive);
+//                    int current = doc->textArea->GetCurrentMatchIndex(findText, caseSensitive);
+//                    replaceDialog->UpdateStatus(current, total);
+//                }
+//            };
+//
+//            replaceDialog->onReplace = [this](const std::string& findText, const std::string& replaceText,
+//                                              bool caseSensitive, bool wholeWord) {
+//                auto doc = GetActiveDocument();
+//                if (doc && doc->textArea) {
+//                    // Find current occurrence
+//                    doc->textArea->SetTextToFind(findText, caseSensitive);
+//                    // Replace single occurrence
+//                    doc->textArea->ReplaceText(findText, replaceText, false);
+//
+//                    // After replace, update counts (total may have decreased by 1)
+//                    int total = doc->textArea->CountMatches(findText, caseSensitive);
+//                    int current = doc->textArea->GetCurrentMatchIndex(findText, caseSensitive);
+//                    replaceDialog->UpdateStatus(current, total);
+//                }
+//            };
+//
+//            replaceDialog->onReplaceAll = [this](const std::string& findText, const std::string& replaceText,
+//                                                 bool caseSensitive, bool wholeWord) {
+//                auto doc = GetActiveDocument();
+//                if (doc && doc->textArea) {
+//                    // Replace all occurrences
+//                    doc->textArea->ReplaceText(findText, replaceText, true);
+//
+//                    // After replace all, show "0 found" (all replaced)
+//                    int total = doc->textArea->CountMatches(findText, caseSensitive);
+//                    if (total == 0) {
+//                        replaceDialog->UpdateStatus(0, 0);
+//                        // Optionally show a more descriptive message:
+//                        // replaceDialog->SetStatusText("All replaced");
+//                    } else {
+//                        replaceDialog->UpdateStatus(0, total);
+//                    }
+//                }
+//            };
+//        }
+//
+//        // Show dialog
+//        replaceDialog->ShowModal();
+//    }
 
     void UltraCanvasTextEditor::OnEditGoToLine() {
         auto doc = GetActiveDocument();
@@ -2735,6 +2764,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 tabContainer->newTabButtonColor = Color(240, 240, 240);
             }
         }
+        if (searchBar) {
+            if (isDarkTheme) searchBar->ApplyDarkTheme();
+            else             searchBar->ApplyLightTheme();
+        }
         RequestRedraw();
     }
 
@@ -2967,6 +3000,12 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     OnEditGoToLine();
                     return true;
                 }
+                if (event.virtualKey == UCKeys::Escape) {
+                    if (searchBar && searchBar->IsVisible()) {
+                        HideSearchBar();
+                        return true;
+                    }
+                }
                 if (event.ctrl && (event.virtualKey == UCKeys::Plus || event.virtualKey == UCKeys::NumPadPlus)) {
                     OnViewIncreaseFontSize();
                     return true;
@@ -3180,6 +3219,121 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::AutosaveNow() {
         PerformAutosave();
+    }
+
+
+    void UltraCanvasTextEditor::SetupSearchBar() {
+        searchBar = std::make_shared<UltraCanvasSearchBar>(
+                "SearchBar", 600,
+                0, 0, GetWidth()
+        );
+        searchBar->Initialize();
+
+        // ── Find Next ──
+        searchBar->onFindNext = [this](const std::string& text, bool cs, bool ww) {
+            auto doc = GetActiveDocument();
+            if (!doc || !doc->textArea) return;
+            doc->textArea->SetTextToFind(text, cs);
+            doc->textArea->FindNext();
+            int total   = doc->textArea->CountMatches(text, cs);
+            int current = doc->textArea->GetCurrentMatchIndex(text, cs);
+            searchBar->UpdateMatchCount(current, total);
+        };
+
+        // ── Find Previous ──
+        searchBar->onFindPrevious = [this](const std::string& text, bool cs, bool ww) {
+            auto doc = GetActiveDocument();
+            if (!doc || !doc->textArea) return;
+            doc->textArea->SetTextToFind(text, cs);
+            doc->textArea->FindPrevious();
+            int total   = doc->textArea->CountMatches(text, cs);
+            int current = doc->textArea->GetCurrentMatchIndex(text, cs);
+            searchBar->UpdateMatchCount(current, total);
+        };
+
+        // ── Replace ──
+        searchBar->onReplace = [this](const std::string& find, const std::string& replace, bool cs, bool ww) {
+            auto doc = GetActiveDocument();
+            if (!doc || !doc->textArea) return;
+            doc->textArea->SetTextToFind(find, cs);
+            doc->textArea->ReplaceText(find, replace, false);
+            int total   = doc->textArea->CountMatches(find, cs);
+            int current = doc->textArea->GetCurrentMatchIndex(find, cs);
+            searchBar->UpdateMatchCount(current, total);
+        };
+
+        // ── Replace All ──
+        searchBar->onReplaceAll = [this](const std::string& find, const std::string& replace, bool cs, bool ww) {
+            auto doc = GetActiveDocument();
+            if (!doc || !doc->textArea) return;
+            doc->textArea->SetTextToFind(find, cs);
+            doc->textArea->ReplaceText(find, replace, true);
+            int total = doc->textArea->CountMatches(find, cs);
+            searchBar->UpdateMatchCount(0, total);
+        };
+
+        // ── Close ──
+        searchBar->onClose = [this]() {
+            HideSearchBar();
+        };
+
+        // ── Save histories on close ──
+        searchBar->onClose = [this]() {
+            searchHistory  = searchBar->GetSearchHistory();
+            replaceHistory = searchBar->GetReplaceHistory();
+            configFile.SaveSearchHistory(searchHistory, replaceHistory);
+            HideSearchBar();
+        };
+
+        AddChild(searchBar);
+    }
+
+
+// ── CHANGE 3: ShowSearchBar() / HideSearchBar() ──────────────
+
+    void UltraCanvasTextEditor::ShowSearchBar(SearchBarMode mode) {
+        if (!searchBar) return;
+
+        // Restore histories
+        searchBar->SetSearchHistory(searchHistory);
+        searchBar->SetReplaceHistory(replaceHistory);
+
+        searchBar->SetMode(mode);
+        searchBar->SetVisible(true);
+
+        // Apply current theme
+        if (isDarkTheme) searchBar->ApplyDarkTheme();
+        else             searchBar->ApplyLightTheme();
+
+        // Pre-fill with selected text if any
+        auto doc = GetActiveDocument();
+        if (doc && doc->textArea && doc->textArea->HasSelection()) {
+            std::string sel = doc->textArea->GetSelectedText();
+            // Only pre-fill if single-line selection
+            if (sel.find('\n') == std::string::npos && !sel.empty()) {
+                searchBar->SetSearchText(sel);
+            }
+        }
+
+        searchBar->FocusSearchInput();
+        UpdateChildLayout();
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextEditor::HideSearchBar() {
+        if (!searchBar || !searchBar->IsVisible()) return;
+        searchBar->SetVisible(false);
+
+        // Return focus to active text area
+        auto doc = GetActiveDocument();
+        if (doc && doc->textArea) {
+            doc->textArea->SetFocus(true);
+            // Clear search highlights
+            doc->textArea->ClearHighlights();
+        }
+
+        UpdateChildLayout();
+        RequestRedraw();
     }
 
 // ===== FACTORY FUNCTIONS =====

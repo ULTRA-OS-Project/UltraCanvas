@@ -1,6 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
-// Version: 2.0.2
+// Version: 2.0.5
 // Last Modified: 2026-02-02
 // Author: UltraCanvas Framework
 
@@ -20,6 +20,7 @@
 #include "UltraCanvasTextEditorConfig.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasBoxLayout.h"
+#include "UltraCanvasSearchBar.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -193,6 +194,14 @@ namespace UltraCanvas {
 
         // ===== DIALOGS =====
         std::shared_ptr<UltraCanvasFindDialog> findDialog;
+        // ===== INLINE SEARCH/REPLACE BAR =====
+        std::shared_ptr<UltraCanvasSearchBar> searchBar;
+        static constexpr int searchBarHeight = 32; // single-row height; doubles for replace mode
+
+        void SetupSearchBar();
+        void ShowSearchBar(SearchBarMode mode);
+        void HideSearchBar();
+
         std::shared_ptr<UltraCanvasReplaceDialog> replaceDialog;
         std::shared_ptr<UltraCanvasGoToLineDialog> goToLineDialog;
         std::shared_ptr<UltraCanvasModalDialog> aboutDialog;

@@ -151,6 +151,7 @@ set(ULTRATEXTER_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasTextEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasTextEditorHelpers.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasEncoding.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasSearchBar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasTextEditorInfoFileStatistics.cpp
 )
 

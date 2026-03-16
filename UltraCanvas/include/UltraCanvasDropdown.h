@@ -127,6 +127,7 @@ namespace UltraCanvas {
 
         std::shared_ptr<UltraCanvasScrollbar> listScrollbar;
         int scrollOffset = 0;
+        int effectiveVisibleItems = 0;  // Actual visible items (may differ from maxVisibleItems when clamped)
     public:
         UltraCanvasDropdown(const std::string& identifier, long id, long x, long y, long w, long h = 24);
 
