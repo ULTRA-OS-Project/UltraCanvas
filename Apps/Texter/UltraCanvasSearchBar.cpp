@@ -73,10 +73,10 @@ namespace UltraCanvas {
 
         int x = RowPadding;
 
-        // Search icon (non-interactive label)
-        auto searchIcon = std::make_shared<UltraCanvasLabel>("SearchIcon", 6001, x, inputY, searchIconW, inputH);
-        searchIcon->SetText("🔍");
-        searchIcon->SetFontSize(12);
+        // Search icon (SVG image)
+        auto searchIcon = std::make_shared<UltraCanvasImageElement>("SearchIcon", 6001, x, inputY, searchIconW, inputH);
+        searchIcon->LoadFromFile(GetResourcesDir() + "media/icons/texter/search.svg");
+        searchIcon->SetFitMode(ImageFitMode::Contain);
         AddChild(searchIcon);
         x += searchIconW + HSpacing;
 
@@ -100,7 +100,7 @@ namespace UltraCanvas {
         // ↓ Next
         nextButton = std::make_shared<UltraCanvasButton>("NextBtn", 6004, x, btnY, IconBtnSize, IconBtnSize);
         nextButton->SetText("↓");
-        nextButton->SetFontSize(12);
+        nextButton->SetFontSize(11);
         nextButton->SetTooltip("Find Next (Enter)");
         nextButton->SetAcceptsFocus(false);
         AddChild(nextButton);
@@ -109,7 +109,7 @@ namespace UltraCanvas {
         // ↑ Previous
         prevButton = std::make_shared<UltraCanvasButton>("PrevBtn", 6005, x, btnY, IconBtnSize, IconBtnSize);
         prevButton->SetText("↑");
-        prevButton->SetFontSize(12);
+        prevButton->SetFontSize(11);
         prevButton->SetTooltip("Find Previous (Shift+Enter)");
         prevButton->SetAcceptsFocus(false);
         AddChild(prevButton);
@@ -182,10 +182,10 @@ namespace UltraCanvas {
 
         int x = RowPadding;
 
-        // Replace icon label
-        auto replaceIcon = std::make_shared<UltraCanvasLabel>("ReplaceIcon", 6101, x, inputY, replaceIconW, inputH);
-        replaceIcon->SetText("↺");
-        replaceIcon->SetFontSize(13);
+        // Replace icon (SVG image)
+        auto replaceIcon = std::make_shared<UltraCanvasImageElement>("ReplaceIcon", 6101, x, inputY, replaceIconW, inputH);
+        replaceIcon->LoadFromFile(GetResourcesDir() + "media/icons/texter/replace.svg");
+        replaceIcon->SetFitMode(ImageFitMode::Contain);
         replaceRow->AddChild(replaceIcon);
         x += replaceIconW + HSpacing;
 

@@ -101,10 +101,16 @@ namespace UltraCanvas {
         // Available width for hex + ASCII content
         int availWidth = bounds.width - style.padding * 2 - hexAddressWidth - gapWidth;
 
-        // Account for vertical scrollbar
-        if (hexTotalRows > 0) {
+        // Account for vertical scrollbar — compute preliminary row count first,
+        // since hexTotalRows from the previous call may be stale (0 on first call)
+        {
+            int perByteEst = hexByteWidth + hexAsciiCharWidth;
+            if (perByteEst <= 0) perByteEst = 1;
+            int bprEst = std::max(4, ((availWidth / perByteEst) / 4) * 4);
+            int bufSize = static_cast<int>(hexBuffer.size());
+            int estTotalRows = (bufSize > 0) ? ((bufSize + bprEst - 1) / bprEst) : 1;
             int estMaxVisible = std::max(1, (bounds.height - style.padding * 2) / hexRowHeight);
-            if (hexTotalRows > estMaxVisible) {
+            if (estTotalRows > estMaxVisible) {
                 availWidth -= 15; // scrollbar width
             }
         }

@@ -9,6 +9,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasImageElement.h"
 #include <string>
 #include <functional>
 #include <vector>
@@ -63,7 +64,7 @@ namespace UltraCanvas {
         static constexpr int RowHeight     = 32;
         static constexpr int RowPadding    = 4;   // vertical inset per row
         static constexpr int HSpacing      = 4;
-        static constexpr int IconBtnSize   = 24;
+        static constexpr int IconBtnSize   = 28;
         static constexpr int CountLabelW   = 72;
         static constexpr int ReplaceBtnW   = 110;
 

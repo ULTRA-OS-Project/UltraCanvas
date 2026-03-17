@@ -458,6 +458,10 @@ namespace UltraCanvas {
         // Syntax highlighter
         std::unique_ptr<SyntaxTokenizer> syntaxTokenizer;
 
+        // Cached syntax tokenizer for markdown code block highlighting
+        std::unique_ptr<SyntaxTokenizer> codeBlockTokenizer;
+        std::string codeBlockTokenizerLang;
+
         // Search state
         std::string lastSearchText;
         int lastSearchPosition;

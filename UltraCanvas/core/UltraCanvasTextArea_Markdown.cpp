@@ -2561,10 +2561,8 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     // --- Markdown hybrid style: pick dark/light based on background brightness ---
     bool isDarkBg = (style.backgroundColor.r + style.backgroundColor.g + style.backgroundColor.b) < 384;
     MarkdownHybridStyle mdStyle = isDarkBg ? MarkdownHybridStyle::DarkMode() : MarkdownHybridStyle::Default();
-    // --- Create a temporary SyntaxTokenizer for code block highlighting ---
-    // Reused across all code block lines of the same language
-    std::unique_ptr<SyntaxTokenizer> codeBlockTokenizer;
-    std::string currentCodeBlockLang;
+    // Reset cached code block tokenizer language tracking for this render pass
+    // (the tokenizer itself persists as a class member to avoid expensive reconstruction)
 
     context->PushState();
     context->ClipRect(visibleTextArea);
@@ -2679,6 +2677,24 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     std::vector<std::vector<TableColumnAlignment>> tableAlignments(lines.size());
     // NEW: Per-line storage of pre-computed column widths for the table this line belongs to
     std::vector<std::vector<int>> tableColumnWidths(lines.size());
+
+    // Compute available width for tables from first principles.
+    // Cannot rely on visibleTextArea.width because CalculateVisibleArea() checks
+    // scrollbar state BEFORE RecalculateDisplayLines() runs, so on first render
+    // the vertical scrollbar width may not be subtracted.
+    // By the time DrawMarkdownHybridText() runs, displayLines IS populated,
+    // so IsNeedVerticalScrollbar() returns the correct answer here.
+    int tableAvailableWidth;
+    {
+        auto bounds = GetBounds();
+        tableAvailableWidth = bounds.width - style.padding * 2;
+        if (style.showLineNumbers) {
+            tableAvailableWidth -= (computedLineNumbersWidth + 5);
+        }
+        if (IsNeedVerticalScrollbar()) {
+            tableAvailableWidth -= 15;
+        }
+    }
     {
         for (size_t i = 0; i < lines.size(); i++) {
             std::string trimmed = TrimWhitespace(lines[i]);
@@ -2718,7 +2734,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                     std::vector<int> colWidths =
                             MarkdownInlineRenderer::CalculateTableColumnWidths(
                                     context, lines, i, colCount,
-                                    visibleTextArea.width, style, mdStyle);
+                                    tableAvailableWidth, style, mdStyle);
 
                     // Store column widths for every line of this table
                     tableColumnWidths[i] = colWidths;          // header
@@ -2734,6 +2750,57 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
 
                     // Skip past the table we just processed
                     // (the outer loop will still iterate, but roles are already set)
+                }
+            }
+        }
+    }
+
+    // --- Normalize table column widths: tables with the same column count
+    //     share the MAX column widths for visual consistency ---
+    {
+        // Group tables by column count (collect header line indices)
+        std::unordered_map<int, std::vector<size_t>> tablesByColCount;
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (tableRoles[i] == TableLineRole::Header && !tableColumnWidths[i].empty()) {
+                tablesByColCount[tableColumnCounts[i]].push_back(i);
+            }
+        }
+
+        // For each group with multiple tables, normalize to MAX widths
+        for (auto& [colCount, headerIndices] : tablesByColCount) {
+            if (headerIndices.size() <= 1) continue;
+
+            std::vector<int> maxWidths(colCount, 0);
+            for (size_t hIdx : headerIndices) {
+                for (int c = 0; c < colCount; c++) {
+                    maxWidths[c] = std::max(maxWidths[c], tableColumnWidths[hIdx][c]);
+                }
+            }
+
+            // Clamp normalized widths to available width — MAX across tables
+            // can exceed the per-table budget when tables have different column ratios
+            int totalMax = 0;
+            for (int c = 0; c < colCount; c++) totalMax += maxWidths[c];
+            if (totalMax > tableAvailableWidth && totalMax > 0) {
+                int assigned = 0;
+                for (int c = 0; c < colCount - 1; c++) {
+                    maxWidths[c] = static_cast<int>(
+                        static_cast<float>(maxWidths[c]) / totalMax * tableAvailableWidth);
+                    assigned += maxWidths[c];
+                }
+                maxWidths[colCount - 1] = tableAvailableWidth - assigned;
+            }
+
+            // Apply normalized widths to all lines of every table in this group
+            for (size_t hIdx : headerIndices) {
+                tableColumnWidths[hIdx] = maxWidths;
+                if (hIdx + 1 < lines.size()) tableColumnWidths[hIdx + 1] = maxWidths;
+                for (size_t j = hIdx + 2; j < lines.size(); j++) {
+                    if (tableRoles[j] == TableLineRole::DataRow) {
+                        tableColumnWidths[j] = maxWidths;
+                    } else {
+                        break;
+                    }
                 }
             }
         }
@@ -3140,8 +3207,10 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
 
                 if (!lang.empty()) {
                     // Switch tokenizer language if needed
-                    if (lang != currentCodeBlockLang || !codeBlockTokenizer) {
-                        codeBlockTokenizer = std::make_unique<SyntaxTokenizer>();
+                    if (lang != codeBlockTokenizerLang || !codeBlockTokenizer) {
+                        if (!codeBlockTokenizer) {
+                            codeBlockTokenizer = std::make_unique<SyntaxTokenizer>();
+                        }
 
                         // Map common markdown language tags to SyntaxTokenizer names
                         std::string normalizedLang = lang;
@@ -3169,7 +3238,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                         if (!codeBlockTokenizer->SetLanguage(normalizedLang)) {
                             codeBlockTokenizer->SetLanguageByExtension(lang);
                         }
-                        currentCodeBlockLang = lang;
+                        codeBlockTokenizerLang = lang;
                     }
 
                     // Render syntax-highlighted code line

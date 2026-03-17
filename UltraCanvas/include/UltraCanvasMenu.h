@@ -515,7 +515,7 @@ namespace UltraCanvas {
         style.separatorHeight = 1;
         style.borderWidth = 1;
         style.borderRadius = 0;
-        style.font.fontSize = 12.0f;
+        style.font.fontSize = 11.0f;
 
         style.showShadow = false;
         style.enableAnimations = false;

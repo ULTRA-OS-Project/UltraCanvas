@@ -211,7 +211,7 @@ public:
 
         WindowConfig windowConfig;
         windowConfig.title = "UltraTexter";
-        windowConfig.width = 1280;
+        windowConfig.width = 1200;
         windowConfig.height = 800;
         windowConfig.backgroundColor = useDarkTheme ? Color(30, 30, 30) : Color(240, 240, 240);
         windowConfig.deleteOnClose = true;

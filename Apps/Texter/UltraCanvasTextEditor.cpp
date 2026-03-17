@@ -713,16 +713,17 @@ namespace {
         tabContextMenu = std::make_shared<UltraCanvasMenu>("TabContextMenu", 0, 0, 0, 200, 200);
         tabContextMenu->SetMenuType(MenuType::PopupMenu);
 
-        // Items are rebuilt each time the menu opens via onTabContextMenu callback
         tabContainer->SetTabContextMenu(tabContextMenu);
 
         tabContainer->onTabContextMenu = [this](int tabIndex) {
             tabContextMenu->Clear();
 
-            // 1. Tab title (disabled, just for display)
+            // 1. Tab title — disabled display item, font reduced by 20% (9.6pt vs default 12pt)
             std::string title = (tabIndex >= 0 && tabIndex < static_cast<int>(documents.size()))
                                 ? documents[tabIndex]->fileName : "Tab";
-            auto titleItem = MenuItemData::Action(title, []() {});
+            FontStyle titleFont;
+            titleFont.fontSize = 9.0f;                        // ← 20% smaller than default 12pt
+            auto titleItem = MenuItemData::Action(title, titleFont, []() {});
             titleItem.enabled = false;
             tabContextMenu->AddItem(titleItem);
 
@@ -739,14 +740,17 @@ namespace {
                 }
             }));
 
-            // 4. Close
+            // 4. Separator between "Open in New Window" and "Close"  ← NEW
+            tabContextMenu->AddItem(MenuItemData::Separator());
+
+            // 5. Close
             tabContextMenu->AddItem(MenuItemData::Action("Close", [this, tabIndex]() {
                 if (tabIndex >= 0 && tabIndex < static_cast<int>(documents.size())) {
                     CloseDocument(tabIndex);
                 }
             }));
 
-            // 5. Close other tabs
+            // 6. Close other tabs
             tabContextMenu->AddItem(MenuItemData::Action("Close Other Tabs", [this, tabIndex]() {
                 isDocumentClosing = true;
                 for (int i = static_cast<int>(documents.size()) - 1; i >= 0; i--) {
@@ -764,7 +768,7 @@ namespace {
                 UpdateStatusBar();
             }));
 
-            // 6. Close all tabs
+            // 7. Close all tabs
             tabContextMenu->AddItem(MenuItemData::Action("Close All Tabs", [this]() {
                 OnFileCloseAll();
             }));
@@ -789,7 +793,7 @@ namespace {
                 languageDropdownWidth, statusBarHeight - 4
         );
 
-languageDropdown->AddItem("Plain Text", "Plain Text");
+        languageDropdown->AddItem("Plain Text", "Plain Text");
         languageDropdown->AddItem("Markdown", "Markdown");
         languageDropdown->AddSeparator();
  
@@ -829,8 +833,8 @@ languageDropdown->AddItem("Plain Text", "Plain Text");
         // binary files are a fundamentally different category from text modes
         languageDropdown->AddSeparator();
         languageDropdown->AddItem("Hex/Binary", "Hex/Binary");
- 
         languageDropdown->SetSelectedIndex(0); // Plain Text
+        languageDropdown->SetTooltip("File Type / Syntax Mode");
 
         DropdownStyle langStyle = languageDropdown->GetStyle();
         langStyle.fontSize = 10;
@@ -870,6 +874,7 @@ languageDropdown->AddItem("Plain Text", "Plain Text");
         }
 
         encodingDropdown->SetSelectedIndex(0); // Default: UTF-8
+        encodingDropdown->SetTooltip("Character Encoding");
 
         DropdownStyle encStyle = encodingDropdown->GetStyle();
         encStyle.fontSize = 10;
@@ -897,6 +902,7 @@ languageDropdown->AddItem("Plain Text", "Plain Text");
         // Default to system default
         auto defaultEOL = UltraCanvasTextArea::GetSystemDefaultLineEnding();
         eolDropdown->SetSelectedIndex(static_cast<int>(defaultEOL));
+        eolDropdown->SetTooltip("Line Ending Style (LF / CRLF / CR)");
 
         DropdownStyle eolStyle = eolDropdown->GetStyle();
         eolStyle.fontSize = 10;
@@ -931,6 +937,7 @@ languageDropdown->AddItem("Plain Text", "Plain Text");
         zoomDropdown->onSelectionChanged = [this](int index, const DropdownItem& item) {
             SetFontZoomPercent(std::stoi(item.value));
         };
+        zoomDropdown->SetTooltip("Zoom Level");
 
         AddChild(zoomDropdown);
         xPos += zoomDropdownWidth + gap;
