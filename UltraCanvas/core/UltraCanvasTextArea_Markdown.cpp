@@ -12,6 +12,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 #include "UltraCanvasTooltipManager.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
+#include "UltraCanvasConfig.h"
 #include <algorithm>
 #include <sstream>
 #include <cmath>
@@ -1673,7 +1674,9 @@ struct MarkdownInlineRenderer {
                                      const MarkdownHybridStyle& mdStyle,
                                      std::vector<MarkdownHitRect>* hitRects = nullptr,
                                      const std::unordered_map<std::string, std::string>* abbreviations = nullptr,
-                                     const std::unordered_map<std::string, std::string>* footnotes = nullptr) {
+                                     const std::unordered_map<std::string, std::string>* footnotes = nullptr,
+                                     const std::unordered_map<std::string, int>* anchorBacklinks = nullptr,
+                                     bool isDarkMode = false) {
         // Detect header level
         int level = 0;
         size_t pos = 0;
@@ -1692,8 +1695,8 @@ struct MarkdownInlineRenderer {
 
         std::string headerText = line.substr(pos);
 
-        // Strip explicit anchor {#id} from display (it's metadata, not visible content)
-        StripExplicitAnchor(headerText);
+        // Strip explicit anchor {#id} from display (capture the ID for backlink lookup)
+        std::string explicitAnchorId = StripExplicitAnchor(headerText);
 
         int levelIndex = std::clamp(level - 1, 0, 5);
 
@@ -1714,7 +1717,7 @@ struct MarkdownInlineRenderer {
             0.78f   // H6
         };
         float maxFontSize = static_cast<float>(lineHeight) * levelCeilMultipliers[levelIndex];
-        headerFontSize = std::min(headerFontSize, maxFontSize); 
+        headerFontSize = std::min(headerFontSize, maxFontSize);
 
         ctx->SetFontSize(headerFontSize);
         ctx->SetFontWeight(FontWeight::Bold);
@@ -1725,7 +1728,53 @@ struct MarkdownInlineRenderer {
         int centeredY = y + (lineHeight - textHeight) / 2;
 
         // Render inline markdown within header text (links, bold, etc.)
-        RenderMarkdownLine(ctx, headerText, x, centeredY, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes);
+        int renderedWidth = RenderMarkdownLine(ctx, headerText, x, centeredY, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes);
+
+        // Render backlink icon if exactly 1 internal link points to this header's anchor
+        if (anchorBacklinks && !anchorBacklinks->empty()) {
+            std::string slug = GenerateHeadingSlug(headerText);
+            int backlinkSourceLine = -1;
+
+            // Check explicit anchor first, then auto-slug
+            if (!explicitAnchorId.empty()) {
+                auto it = anchorBacklinks->find(explicitAnchorId);
+                if (it != anchorBacklinks->end()) backlinkSourceLine = it->second;
+            }
+            if (backlinkSourceLine < 0 && !slug.empty()) {
+                auto it = anchorBacklinks->find(slug);
+                if (it != anchorBacklinks->end()) backlinkSourceLine = it->second;
+            }
+
+            if (backlinkSourceLine >= 0) {
+                int iconSize = std::max(20, (lineHeight / 2) + 4);
+                int iconX = x + renderedWidth + 6;
+                int iconY = y + (lineHeight - iconSize) / 2;
+
+                // Draw subtle rounded rectangle background for visibility in both modes
+                if (isDarkMode) {
+                    ctx->SetFillPaint(Color(180, 180, 190, 120));
+                } else {
+                    ctx->SetFillPaint(Color(200, 200, 210, 100));
+                }
+                ctx->FillRoundedRectangle(iconX - 2, iconY - 2, iconSize + 4, iconSize + 4, 4);
+
+                // Draw the undo SVG icon
+                std::string iconPath = GetResourcesDir() + "media/icons/texter/undo.svg";
+                ctx->DrawImage(iconPath, static_cast<float>(iconX), static_cast<float>(iconY),
+                               static_cast<float>(iconSize), static_cast<float>(iconSize),
+                               ImageFitMode::Contain);
+
+                // Register hit rect for click/hover interaction
+                if (hitRects) {
+                    MarkdownHitRect hr;
+                    hr.bounds = {iconX - 2, iconY - 2, iconSize + 4, iconSize + 4};
+                    hr.url = std::to_string(backlinkSourceLine);
+                    hr.altText = "Return back";
+                    hr.isAnchorReturn = true;
+                    hitRects->push_back(hr);
+                }
+            }
+        }
 
         // Restore font
         ctx->SetFontSize(baseFontSize);
@@ -3203,6 +3252,35 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         }
     }
 
+    // Build backlink map: for each anchor, find how many internal links point to it.
+    // Only store anchors with exactly 1 reference (for single-backlink icon on headers).
+    {
+        markdownAnchorBacklinks.clear();
+        std::unordered_map<std::string, std::pair<int,int>> anchorRefCounts; // anchor -> {count, lastSourceLine}
+        int lineCount = static_cast<int>(lines.size());
+        for (int i = 0; i < lineCount; i++) {
+            if (i < static_cast<int>(isInsideCodeBlock.size()) && isInsideCodeBlock[i]) continue;
+            const std::string& line = lines[i];
+            size_t pos = 0;
+            while ((pos = line.find("](#", pos)) != std::string::npos) {
+                size_t anchorStart = pos + 3;
+                size_t parenClose = line.find(')', anchorStart);
+                if (parenClose != std::string::npos && parenClose > anchorStart) {
+                    std::string anchorId = line.substr(anchorStart, parenClose - anchorStart);
+                    auto& ref = anchorRefCounts[anchorId];
+                    ref.first++;
+                    ref.second = i;
+                }
+                pos = anchorStart;
+            }
+        }
+        for (const auto& [anchorId, refInfo] : anchorRefCounts) {
+            if (refInfo.first == 1) {
+                markdownAnchorBacklinks[anchorId] = refInfo.second;
+            }
+        }
+    }
+
     // Build cumulative Y offsets for display lines affected by multi-line table rows
     {
         int dlCount = GetDisplayLineCount();
@@ -3436,7 +3514,8 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             if (!isFirstSegment) continue;
             MarkdownInlineRenderer::RenderMarkdownHeader(
                     context, trimmed, x, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes,
+                    &markdownAnchorBacklinks, isDarkBg);
             continue;
         }
 
@@ -3613,7 +3692,18 @@ bool UltraCanvasTextArea::HandleMarkdownClick(int mouseX, int mouseY) {
         if (mouseX >= hitRect.bounds.x && mouseX <= hitRect.bounds.x + hitRect.bounds.width &&
             mouseY >= hitRect.bounds.y && mouseY <= hitRect.bounds.y + hitRect.bounds.height) {
 
-            if (hitRect.isImage) {
+            if (hitRect.isAnchorReturn) {
+                // Backlink icon click — scroll to the source line that links to this header
+                int targetLogLine = std::stoi(hitRect.url);
+                int dlCount = GetDisplayLineCount();
+                for (int di = 0; di < dlCount; di++) {
+                    if (displayLines[di].logicalLine == targetLogLine) {
+                        ScrollTo(di);
+                        break;
+                    }
+                }
+                return true;
+            } else if (hitRect.isImage) {
                 // Image click — trigger callback with image path
                 if (onMarkdownImageClick) {
                     onMarkdownImageClick(hitRect.url, hitRect.altText);
@@ -3657,6 +3747,18 @@ bool UltraCanvasTextArea::HandleMarkdownHover(int mouseX, int mouseY) {
     for (const auto& hitRect : markdownHitRects) {
         if (mouseX >= hitRect.bounds.x && mouseX <= hitRect.bounds.x + hitRect.bounds.width &&
             mouseY >= hitRect.bounds.y && mouseY <= hitRect.bounds.y + hitRect.bounds.height) {
+
+            if (hitRect.isAnchorReturn) {
+                // Show "Return back" tooltip and hand cursor for backlink icon
+                auto* win = GetWindow();
+                if (win && !hitRect.altText.empty()) {
+                    Point2Di tooltipPos = {mouseX, mouseY};
+                    UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                        win, hitRect.altText, tooltipPos);
+                }
+                SetMouseCursor(UCMouseCursor::Hand);
+                return true;
+            }
 
             if (hitRect.isAbbreviation || hitRect.isFootnote) {
                 // Show tooltip with expansion/footnote text; keep default cursor
