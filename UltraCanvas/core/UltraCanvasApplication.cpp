@@ -336,6 +336,14 @@ rescan_windows:
                     focusedWindow = nullptr;
                 }
                 return;
+
+            case UCEventType::Redraw:
+                if (event.targetElement) {
+                    event.targetElement->RequestRedraw();
+                } else if (targetWindow) {
+                    targetWindow->RequestRedraw();
+                }
+                return;
         }
         // Dispatch other events to focused element
         if (targetWindow) {

@@ -399,6 +399,7 @@ enum class UCMouseCursor {
     SizeWE = 11,       // West-East resize
     SizeNWSE = 12,     // Northwest-Southeast resize
     SizeNESW = 13,     // Northeast-Southwest resize
+    ContextMenu = 14,
     Custom1 = 101,        // Custom cursor
     Custom2 = 102,        // Custom cursor
     Custom3 = 103        // Custom cursor

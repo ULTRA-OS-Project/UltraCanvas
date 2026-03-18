@@ -825,8 +825,10 @@ namespace UltraCanvas {
                     text.erase(caretPosition - 1, 1);
                     caretPosition--;
                     UpdateDisplayText();
+
                 }
                 UpdateScrollOffset();
+                if (onTextChanged) onTextChanged(text);
                 break;
 
             case UCKeys::Delete:
@@ -839,6 +841,7 @@ namespace UltraCanvas {
                     UpdateDisplayText();
                 }
                 UpdateScrollOffset();
+                if (onTextChanged) onTextChanged(text);
                 break;
 
             case UCKeys::Left:

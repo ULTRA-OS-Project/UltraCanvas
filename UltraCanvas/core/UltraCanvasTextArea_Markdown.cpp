@@ -2237,80 +2237,207 @@ struct MarkdownInlineRenderer {
         return columnWidths;
     }
 
-    // Word-wrap cell text to fit within maxWidth, breaking long words at character boundaries
+    // A "word token" for markdown-aware wrapping: tracks whether the token is
+    // an inline code span so we can measure it with the correct font.
+    struct WrapToken {
+        std::string text;  // includes backticks for code spans
+        bool isCode;
+    };
+
+    // Split cell text into tokens that are either plain words (split by spaces)
+    // or complete backtick code spans kept as single tokens.
+    static std::vector<WrapToken> TokenizeCellText(const std::string& text) {
+        std::vector<WrapToken> tokens;
+        size_t i = 0;
+        size_t len = text.size();
+        std::string accumPlain;
+
+        auto flushPlain = [&]() {
+            if (accumPlain.empty()) return;
+            // Split accumulated plain text by spaces into word tokens
+            std::istringstream ss(accumPlain);
+            std::string word;
+            while (ss >> word) {
+                tokens.push_back({word, false});
+            }
+            accumPlain.clear();
+        };
+
+        while (i < len) {
+            if (text[i] == '`') {
+                // Found a backtick — look for the closing backtick
+                size_t end = text.find('`', i + 1);
+                if (end != std::string::npos) {
+                    // Flush any accumulated plain text first
+                    flushPlain();
+                    // Extract content between backticks
+                    std::string codeContent = text.substr(i + 1, end - i - 1);
+                    // Split code content by spaces into per-word code tokens,
+                    // each wrapped with backticks so ParseInlineMarkdown recognizes them
+                    std::istringstream css(codeContent);
+                    std::string codeWord;
+                    while (css >> codeWord) {
+                        tokens.push_back({"`" + codeWord + "`", true});
+                    }
+                    if (codeContent.empty()) {
+                        tokens.push_back({"``", true});
+                    }
+                    i = end + 1;
+                } else {
+                    // No closing backtick — treat as plain text
+                    accumPlain += text[i];
+                    i++;
+                }
+            } else {
+                accumPlain += text[i];
+                i++;
+            }
+        }
+        flushPlain();
+        return tokens;
+    }
+
+    // Measure a token's width using the appropriate font (code font for code spans)
+    static int MeasureTokenWidth(IRenderContext* ctx, const WrapToken& token,
+                                 const std::string& codeFont, const std::string& regularFont) {
+        if (token.isCode) {
+            ctx->SetFontFamily(codeFont);
+            int w = ctx->GetTextLineWidth(token.text);
+            ctx->SetFontFamily(regularFont);
+            return w;
+        }
+        return ctx->GetTextLineWidth(token.text);
+    }
+
+    // Measure a composed line's width accounting for mixed fonts in code spans.
+    // This re-tokenizes the line to measure each segment with the correct font.
+    static int MeasureMixedLineWidth(IRenderContext* ctx, const std::string& line,
+                                     const std::string& codeFont, const std::string& regularFont) {
+        auto tokens = TokenizeCellText(line);
+        if (tokens.empty()) return 0;
+
+        // Rebuild and measure: for accuracy, measure the whole line but with
+        // code spans measured in code font. Since fonts differ in width,
+        // sum individual token widths plus space widths.
+        int totalWidth = 0;
+        int spaceWidth = ctx->GetTextLineWidth(" ");
+        for (size_t i = 0; i < tokens.size(); i++) {
+            if (i > 0) totalWidth += spaceWidth;
+            totalWidth += MeasureTokenWidth(ctx, tokens[i], codeFont, regularFont);
+        }
+        return totalWidth;
+    }
+
+    // Word-wrap cell text to fit within maxWidth, breaking long words at character boundaries.
+    // Markdown-aware: measures backtick code spans with the code font for correct widths.
     static std::vector<std::string> WrapCellText(IRenderContext* ctx, const std::string& text,
-                                                  int maxWidth) {
+                                                  int maxWidth,
+                                                  const std::string& codeFont = "",
+                                                  const std::string& regularFont = "") {
         std::vector<std::string> wrappedLines;
         if (text.empty() || maxWidth <= 0) {
             wrappedLines.push_back(text);
             return wrappedLines;
         }
 
-        // Split text into words by spaces
-        std::vector<std::string> words;
-        {
-            std::istringstream ss(text);
-            std::string word;
-            while (ss >> word) {
-                words.push_back(word);
-            }
-        }
+        bool hasCodeFont = !codeFont.empty() && !regularFont.empty();
 
-        if (words.empty()) {
+        // Tokenize with markdown awareness
+        auto tokens = TokenizeCellText(text);
+
+        if (tokens.empty()) {
             wrappedLines.push_back("");
             return wrappedLines;
         }
 
+        // Helper to measure a token width with the correct font
+        auto measureToken = [&](const WrapToken& tok) -> int {
+            if (hasCodeFont && tok.isCode) {
+                ctx->SetFontFamily(codeFont);
+                int w = ctx->GetTextLineWidth(tok.text);
+                ctx->SetFontFamily(regularFont);
+                return w;
+            }
+            return ctx->GetTextLineWidth(tok.text);
+        };
+
+        // Helper to measure a composed line width (may contain mixed fonts)
+        auto measureLine = [&](const std::string& line) -> int {
+            if (hasCodeFont) {
+                return MeasureMixedLineWidth(ctx, line, codeFont, regularFont);
+            }
+            return ctx->GetTextLineWidth(line);
+        };
+
+        // Helper to break a single token character-by-character when it exceeds maxWidth.
+        // For code tokens: strips backticks before breaking, re-wraps each fragment with backticks.
+        auto breakToken = [&](const WrapToken& tok, std::vector<std::string>& lines) -> std::string {
+            bool isCode = tok.isCode;
+            std::string content = tok.text;
+
+            // For code tokens, strip enclosing backticks and measure/break the inner content
+            if (isCode && content.size() >= 2 && content.front() == '`' && content.back() == '`') {
+                content = content.substr(1, content.size() - 2);
+            }
+
+            if (isCode && hasCodeFont) ctx->SetFontFamily(codeFont);
+
+            // Account for backtick overhead when measuring code fragments
+            int backtickOverhead = 0;
+            if (isCode) {
+                backtickOverhead = ctx->GetTextLineWidth("``");
+            }
+            int effectiveMax = maxWidth - backtickOverhead;
+            if (effectiveMax <= 0) effectiveMax = 1;
+
+            int wordLen = static_cast<int>(utf8_length(content));
+            std::string chunk;
+            for (int ci = 0; ci < wordLen; ci++) {
+                std::string ch = utf8_substr(content, ci, 1);
+                std::string testChunk = chunk + ch;
+                int chunkWidth = ctx->GetTextLineWidth(testChunk);
+                if (chunkWidth > effectiveMax && !chunk.empty()) {
+                    lines.push_back(isCode ? ("`" + chunk + "`") : chunk);
+                    chunk = ch;
+                } else {
+                    chunk = testChunk;
+                }
+            }
+
+            if (isCode && hasCodeFont) ctx->SetFontFamily(regularFont);
+            // Return remainder wrapped with backticks if code
+            return isCode ? ("`" + chunk + "`") : chunk;
+        };
+
         std::string currentLine;
-        for (const auto& word : words) {
-            std::string testLine = currentLine.empty() ? word : currentLine + " " + word;
-            int testWidth = ctx->GetTextLineWidth(testLine);
+        int currentLineWidth = 0;
+        int spaceWidth = ctx->GetTextLineWidth(" ");
+
+        for (const auto& token : tokens) {
+            int tokenWidth = measureToken(token);
+            int testWidth = currentLine.empty() ? tokenWidth : currentLineWidth + spaceWidth + tokenWidth;
 
             if (testWidth <= maxWidth || currentLine.empty()) {
-                // Word fits on current line, OR it's the first word (must place it)
-                if (currentLine.empty() && testWidth > maxWidth) {
-                    // Single word exceeds maxWidth — break it character by character
-                    int wordLen = static_cast<int>(utf8_length(word));
-                    std::string chunk;
-                    for (int ci = 0; ci < wordLen; ci++) {
-                        std::string ch = utf8_substr(word, ci, 1);
-                        std::string testChunk = chunk + ch;
-                        int chunkWidth = ctx->GetTextLineWidth(testChunk);
-                        if (chunkWidth > maxWidth && !chunk.empty()) {
-                            wrappedLines.push_back(chunk);
-                            chunk = ch;
-                        } else {
-                            chunk = testChunk;
-                        }
-                    }
-                    currentLine = chunk; // remainder of broken word
+                if (currentLine.empty() && tokenWidth > maxWidth) {
+                    // Single token exceeds maxWidth — break it character by character
+                    std::string remainder = breakToken(token, wrappedLines);
+                    currentLine = remainder;
+                    currentLineWidth = measureLine(currentLine);
                 } else {
-                    currentLine = testLine;
+                    currentLine = currentLine.empty() ? token.text : currentLine + " " + token.text;
+                    currentLineWidth = testWidth;
                 }
             } else {
-                // Word doesn't fit — flush current line, start new one
+                // Token doesn't fit — flush current line, start new one
                 wrappedLines.push_back(currentLine);
 
-                // Check if this word itself exceeds maxWidth
-                int wordWidth = ctx->GetTextLineWidth(word);
-                if (wordWidth > maxWidth) {
-                    // Break the word character by character
-                    int wordLen = static_cast<int>(utf8_length(word));
-                    std::string chunk;
-                    for (int ci = 0; ci < wordLen; ci++) {
-                        std::string ch = utf8_substr(word, ci, 1);
-                        std::string testChunk = chunk + ch;
-                        int chunkWidth = ctx->GetTextLineWidth(testChunk);
-                        if (chunkWidth > maxWidth && !chunk.empty()) {
-                            wrappedLines.push_back(chunk);
-                            chunk = ch;
-                        } else {
-                            chunk = testChunk;
-                        }
-                    }
-                    currentLine = chunk;
+                if (tokenWidth > maxWidth) {
+                    std::string remainder = breakToken(token, wrappedLines);
+                    currentLine = remainder;
+                    currentLineWidth = measureLine(currentLine);
                 } else {
-                    currentLine = word;
+                    currentLine = token.text;
+                    currentLineWidth = tokenWidth;
                 }
             }
         }
@@ -2331,7 +2458,8 @@ struct MarkdownInlineRenderer {
                                        int lineHeight, int columnCount,
                                        const std::vector<int>& columnWidths,
                                        const MarkdownHybridStyle& mdStyle,
-                                       bool isBold) {
+                                       bool isBold,
+                                       const std::string& regularFont = "") {
         auto parsed = ParseTableRow(line);
         if (!parsed.isValid) return lineHeight;
 
@@ -2346,7 +2474,8 @@ struct MarkdownInlineRenderer {
             int contentWidth = cellWidth - padding * 2;
             if (contentWidth <= 0) contentWidth = 1;
 
-            auto wrapped = WrapCellText(ctx, parsed.cells[col], contentWidth);
+            auto wrapped = WrapCellText(ctx, parsed.cells[col], contentWidth,
+                                        mdStyle.codeFont, regularFont);
             maxLines = std::max(maxLines, static_cast<int>(wrapped.size()));
         }
 
@@ -2436,17 +2565,20 @@ struct MarkdownInlineRenderer {
             int contentWidth = cellWidth - padding * 2;
             if (contentWidth <= 0) contentWidth = 1;
 
-            auto wrappedLines = WrapCellText(ctx, cellText, contentWidth);
+            auto wrappedLines = WrapCellText(ctx, cellText, contentWidth,
+                                               mdStyle.codeFont, style.fontStyle.fontFamily);
 
             for (size_t wl = 0; wl < wrappedLines.size(); wl++) {
                 int lineY = y + static_cast<int>(wl) * lineHeight;
                 int textX = cellX + padding;
 
                 if (align == TextAlignment::Center) {
-                    int wlWidth = ctx->GetTextLineWidth(wrappedLines[wl]);
+                    int wlWidth = MeasureMixedLineWidth(ctx, wrappedLines[wl],
+                                      mdStyle.codeFont, style.fontStyle.fontFamily);
                     textX = cellX + (cellWidth - wlWidth) / 2;
                 } else if (align == TextAlignment::Right) {
-                    int wlWidth = ctx->GetTextLineWidth(wrappedLines[wl]);
+                    int wlWidth = MeasureMixedLineWidth(ctx, wrappedLines[wl],
+                                      mdStyle.codeFont, style.fontStyle.fontFamily);
                     textX = cellX + cellWidth - padding - wlWidth;
                 }
 
@@ -2814,11 +2946,13 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             if (tableRoles[i] == TableLineRole::Header && !tableColumnWidths[i].empty()) {
                 tableRowHeights[i] = MarkdownInlineRenderer::CalculateTableRowHeight(
                         context, lines[i], computedLineHeight,
-                        tableColumnCounts[i], tableColumnWidths[i], mdStyle, true);
+                        tableColumnCounts[i], tableColumnWidths[i], mdStyle, true,
+                        style.fontStyle.fontFamily);
             } else if (tableRoles[i] == TableLineRole::DataRow && !tableColumnWidths[i].empty()) {
                 tableRowHeights[i] = MarkdownInlineRenderer::CalculateTableRowHeight(
                         context, lines[i], computedLineHeight,
-                        tableColumnCounts[i], tableColumnWidths[i], mdStyle, false);
+                        tableColumnCounts[i], tableColumnWidths[i], mdStyle, false,
+                        style.fontStyle.fontFamily);
             }
             // Separator rows keep default computedLineHeight
         }
@@ -3095,6 +3229,13 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
     int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
 
+    // Compute the scroll-origin Y offset so table row offsets are relative to the scroll position
+    int mdScrollBaseOffset = 0;
+    if (editingMode == TextAreaEditingMode::MarkdownHybrid &&
+        firstVisibleLine < static_cast<int>(markdownLineYOffsets.size())) {
+        mdScrollBaseOffset = markdownLineYOffsets[firstVisibleLine];
+    }
+
     // Cache tokenized lines to avoid re-tokenizing the same logical line
     int lastTokenizedLogicalLine = -1;
     std::vector<SyntaxTokenizer::Token> cachedTokens;
@@ -3125,7 +3266,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         const std::string& line = lines[logLine];
         int textY = baseY + (di - startDL) * computedLineHeight;
         if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
-            textY += markdownLineYOffsets[di];
+            textY += markdownLineYOffsets[di] - mdScrollBaseOffset;
 
         int x = visibleTextArea.x;
         if (!wordWrap) x -= horizontalScrollOffset;

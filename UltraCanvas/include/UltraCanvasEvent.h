@@ -78,6 +78,7 @@ namespace UltraCanvas {
         MenuClick,
         CommandEventsEnd, // custom events just to mark the range
 
+        Redraw,
         Unknown
     };
 

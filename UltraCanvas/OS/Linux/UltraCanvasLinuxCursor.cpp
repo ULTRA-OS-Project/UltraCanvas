@@ -177,6 +177,10 @@ namespace UltraCanvas {
                 // Load cursor from image
                 newCursor = LoadCursorFromImage(GetResourcesDir() + "media/lib/cursor/looking-glass.png", 0, 0);
                 break;
+            case UCMouseCursor::ContextMenu:
+                newCursor = LoadCursorFromImage(
+                    GetResourcesDir() + "media/lib/cursor/context-menu.png", 0, 0);
+                break;
             default:
                 newCursor = XCreateFontCursor(display, XC_left_ptr);
                 break;

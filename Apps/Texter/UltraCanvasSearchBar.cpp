@@ -372,6 +372,12 @@ namespace UltraCanvas {
     void UltraCanvasSearchBar::UpdateMatchCount(int currentIndex, int totalMatches) {
         if (!countLabel) return;
 
+        if (totalMatches < 0) {
+            countLabel->SetText("...");
+            countLabel->SetTextColor(Color(120, 120, 120, 255));
+            return;
+        }
+
         if (totalMatches == 0) {
             countLabel->SetText("No results");
             countLabel->SetTextColor(Color(200, 60, 60, 255));

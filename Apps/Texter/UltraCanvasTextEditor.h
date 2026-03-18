@@ -28,6 +28,9 @@
 #include <chrono>
 #include <map>
 #include <cstdint>
+#include <thread>
+#include <atomic>
+#include <mutex>
 
 namespace UltraCanvas {
 
@@ -344,6 +347,18 @@ namespace UltraCanvas {
         // Layout
         void UpdateChildLayout();
 
+        // ===== ASYNC MATCH COUNTING =====
+        std::thread              matchCountThread;
+        std::atomic<bool>        matchCountCancel{false};
+        std::atomic<bool>        matchCountReady{false};
+        std::mutex               matchCountMutex;
+        int                      pendingMatchTotal   = 0;
+        int                      pendingMatchCurrent = 0;
+
+        void StartAsyncMatchCount(const std::string& searchText, bool caseSensitive,
+                                  int selectionPos);
+        void CancelAsyncMatchCount();
+
         // ===== DRAG-AND-DROP STATE =====
         bool isDragOverActive = false;        // true while external drag is hovering
         int dragOverX = 0;                    // Current drag position X
@@ -364,7 +379,7 @@ namespace UltraCanvas {
                               int x, int y, int width, int height,
                               const TextEditorConfig& config = TextEditorConfig());
 
-        virtual ~UltraCanvasTextEditor() = default;
+        virtual ~UltraCanvasTextEditor();
 
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override;

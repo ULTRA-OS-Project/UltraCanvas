@@ -851,6 +851,13 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasDropdown::HandleMouseMove(const UCEvent &event) {
+        // Update cursor based on which area the mouse is over
+        Rect2Di buttonRect = GetBounds();
+        if (buttonRect.Contains(event.x, event.y)) {
+            SetMouseCursor(UCMouseCursor::ContextMenu);
+        } else {
+            SetMouseCursor(UCMouseCursor::Default);
+        }
         if (dropdownOpen) {
             // Handle scrollbar dragging
             if (listScrollbar && listScrollbar->IsDragging()) {

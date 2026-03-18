@@ -258,11 +258,13 @@ namespace UltraCanvas {
         if (editingMode == TextAreaEditingMode::MarkdownHybrid && !markdownLineYOffsets.empty()) {
             // Account for block image offsets — find the display line whose
             // rendered Y range contains relativeY
+            int mdScrollBase = (firstVisibleLine < static_cast<int>(markdownLineYOffsets.size()))
+                ? markdownLineYOffsets[firstVisibleLine] : 0;
             displayLineIdx = firstVisibleLine;
             int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 10);
             for (int di = firstVisibleLine; di < endDL; di++) {
                 int offset = (di < static_cast<int>(markdownLineYOffsets.size())) ? markdownLineYOffsets[di] : 0;
-                int lineTop = (di - firstVisibleLine) * computedLineHeight + offset;
+                int lineTop = (di - firstVisibleLine) * computedLineHeight + offset - mdScrollBase;
                 if (lineTop > relativeY) break;
                 displayLineIdx = di;
             }
@@ -1102,6 +1104,11 @@ namespace UltraCanvas {
                selectionStartGrapheme != selectionEndGrapheme;
     }
     
+    int UltraCanvasTextArea::GetSelectionMinGrapheme() const {
+        if (!HasSelection()) return -1;
+        return std::min(selectionStartGrapheme, selectionEndGrapheme);
+    }
+
     std::string UltraCanvasTextArea::GetSelectedText() const {
         if (!HasSelection()) return std::string();
         int startPos = std::min(selectionStartGrapheme, selectionEndGrapheme);
@@ -1374,6 +1381,10 @@ namespace UltraCanvas {
         int startDL = std::max(0, firstVisibleLine - 1);
         int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
         int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
+        int mdScrollBase = 0;
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid &&
+            firstVisibleLine < static_cast<int>(markdownLineYOffsets.size()))
+            mdScrollBase = markdownLineYOffsets[firstVisibleLine];
 
         for (int di = startDL; di < endDL; di++) {
             const auto& dl = displayLines[di];
@@ -1381,7 +1392,7 @@ namespace UltraCanvas {
 
             // Adjust for markdown Y offsets if applicable
             if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
-                numY += markdownLineYOffsets[di];
+                numY += markdownLineYOffsets[di] - mdScrollBase;
 
             if (dl.logicalLine == currentLineIndex) {
                 context->SetTextPaint(style.fontColor);
@@ -1413,6 +1424,10 @@ namespace UltraCanvas {
         int dlCount = GetDisplayLineCount();
         int visStartDL = std::max(0, firstVisibleLine - 1);
         int visEndDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
+        int mdScrollBase = 0;
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid &&
+            firstVisibleLine < static_cast<int>(markdownLineYOffsets.size()))
+            mdScrollBase = markdownLineYOffsets[firstVisibleLine];
 
         for (int di = visStartDL; di < visEndDL; di++) {
             const auto& dl = displayLines[di];
@@ -1423,7 +1438,7 @@ namespace UltraCanvas {
 
             int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
             if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
-                lineY += markdownLineYOffsets[di];
+                lineY += markdownLineYOffsets[di] - mdScrollBase;
 
             // Determine the selection range in grapheme coords within this logical line
             int selStartInLine = (logLine == startLine) ? startCol : 0;
@@ -1469,12 +1484,17 @@ namespace UltraCanvas {
             context->ClipRect(visibleTextArea);
             context->SetFillPaint(style.currentLineHighlightColor);
 
+            int mdScrollBase = 0;
+            if (editingMode == TextAreaEditingMode::MarkdownHybrid &&
+                firstVisibleLine < static_cast<int>(markdownLineYOffsets.size()))
+                mdScrollBase = markdownLineYOffsets[firstVisibleLine];
+
             // Highlight all display lines belonging to the current logical line
             for (int di = std::max(0, visStartDL); di <= visEndDL && di < GetDisplayLineCount(); di++) {
                 if (displayLines[di].logicalLine == currentLineIndex) {
                     int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
                     if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
-                        lineY += markdownLineYOffsets[di];
+                        lineY += markdownLineYOffsets[di] - mdScrollBase;
                     context->FillRectangle(highlightX, lineY,
                             bounds.width - (style.showLineNumbers ? computedLineNumbersWidth : 0),
                             computedLineHeight);
@@ -1507,8 +1527,11 @@ namespace UltraCanvas {
         if (cursorX > visibleTextArea.x + visibleTextArea.width) return;
 
         int cursorY = visibleTextArea.y + (displayLine - firstVisibleLine) * computedLineHeight;
-        if (editingMode == TextAreaEditingMode::MarkdownHybrid && displayLine < static_cast<int>(markdownLineYOffsets.size()))
-            cursorY += markdownLineYOffsets[displayLine];
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid && displayLine < static_cast<int>(markdownLineYOffsets.size())) {
+            int mdScrollBase = (firstVisibleLine < static_cast<int>(markdownLineYOffsets.size()))
+                ? markdownLineYOffsets[firstVisibleLine] : 0;
+            cursorY += markdownLineYOffsets[displayLine] - mdScrollBase;
+        }
 
         context->PushState();
         context->SetStrokeWidth(2);
@@ -1584,6 +1607,10 @@ namespace UltraCanvas {
         int dlCount = GetDisplayLineCount();
         int visStartDL = std::max(0, firstVisibleLine - 1);
         int visEndDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
+        int mdScrollBase = 0;
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid &&
+            firstVisibleLine < static_cast<int>(markdownLineYOffsets.size()))
+            mdScrollBase = markdownLineYOffsets[firstVisibleLine];
 
         for (const auto& [startPos, endPos] : searchHighlights) {
             auto [startLine, startCol] = GetLineColumnFromPosition(startPos);
@@ -1597,7 +1624,7 @@ namespace UltraCanvas {
 
                 int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
                 if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
-                    lineY += markdownLineYOffsets[di];
+                    lineY += markdownLineYOffsets[di] - mdScrollBase;
 
                 int hlStartInLine = (logLine == startLine) ? startCol : 0;
                 int hlEndInLine = (logLine == endLine) ? endCol : GetLineGraphemeCount(logLine);

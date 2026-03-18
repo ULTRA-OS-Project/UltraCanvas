@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <fmt/os.h>
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
 
@@ -255,6 +256,75 @@ namespace {
         }
     }
 
+// ===== DESTRUCTOR =====
+    UltraCanvasTextEditor::~UltraCanvasTextEditor() {
+        CancelAsyncMatchCount();
+    }
+
+// ===== ASYNC MATCH COUNTING =====
+
+    void UltraCanvasTextEditor::CancelAsyncMatchCount() {
+        matchCountCancel.store(true);
+        if (matchCountThread.joinable()) {
+            matchCountThread.join();
+        }
+        matchCountReady.store(false);
+    }
+
+    void UltraCanvasTextEditor::StartAsyncMatchCount(
+            const std::string& searchText, bool caseSensitive, int selectionPos) {
+        CancelAsyncMatchCount();
+
+        if (searchText.empty()) {
+            if (searchBar) searchBar->UpdateMatchCount(0, 0);
+            return;
+        }
+
+        // Show "..." while counting
+        if (searchBar) searchBar->UpdateMatchCount(0, -1);
+
+        // Snapshot the document text for the background thread
+        auto doc = GetActiveDocument();
+        if (!doc || !doc->textArea) return;
+        std::string textSnapshot = doc->textArea->GetText();
+
+        matchCountCancel.store(false);
+        matchCountReady.store(false);
+
+        matchCountThread = std::thread(
+            [this, textSnapshot = std::move(textSnapshot), searchText, caseSensitive, selectionPos]() {
+                int count = 0;
+                int currentIndex = 0;
+                int pos = 0;
+                int searchLen = utf8_length(searchText);
+
+                while ((pos = utf8_find(textSnapshot, searchText, pos, caseSensitive)) >= 0) {
+                    if (matchCountCancel.load()) return;
+                    count++;
+                    if (pos == selectionPos) {
+                        currentIndex = count;
+                    }
+                    pos += searchLen;
+                }
+
+                if (matchCountCancel.load()) return;
+
+                {
+                    std::lock_guard<std::mutex> lock(matchCountMutex);
+                    pendingMatchTotal = count;
+                    pendingMatchCurrent = currentIndex;
+                }
+                matchCountReady.store(true);
+                
+                UCEvent ev;
+                ev.targetElement = this;
+                ev.type = UCEventType::Redraw;
+                UltraCanvasApplication::GetInstance()->PushEvent(ev);
+                debugOutput << "Count matches thread finished, matches=" << pendingMatchTotal << std::endl;
+            }
+        );
+    }
+
 // ===== CONSTRUCTOR =====
     UltraCanvasTextEditor::UltraCanvasTextEditor(
             const std::string& identifier, long id,
@@ -472,8 +542,8 @@ namespace {
                 .AddButton("open", "", GetResourcesDir() + "media/icons/texter/folder-open.svg", [this]() { OnFileOpen(); })
                 .AddButton("save", "", GetResourcesDir() + "media/icons/texter/save.svg", [this]() { OnFileSave(); })
                 .AddSeparator()
-                .AddButton("cut", "", GetResourcesDir() + "media/icons/texter/scissors.svg", [this]() { OnEditCut(); })
                 .AddButton("copy", "", GetResourcesDir() + "media/icons/texter/copy.svg", [this]() { OnEditCopy(); })
+                .AddButton("cut", "", GetResourcesDir() + "media/icons/texter/scissors.svg", [this]() { OnEditCut(); })
                 .AddButton("paste", "", GetResourcesDir() + "media/icons/texter/paste.svg", [this]() { OnEditPaste(); })
                 .AddSeparator()
                 .AddButton("undo", "", GetResourcesDir() + "media/icons/texter/undo.svg", [this]() { OnEditUndo(); })
@@ -1357,10 +1427,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 onModifiedChange(modified, index);
             }
  
-            // Refresh toolbar state when the active document's modified flag changes
-            if (index == activeDocumentIndex) {
-                UpdateMenuStates();
-            }
+        }
+        // Refresh toolbar state when the active document's modified flag changes
+        if (index == activeDocumentIndex) {
+            UpdateMenuStates();
         }
     }
 
@@ -2957,6 +3027,22 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 // ===== PUBLIC API =====
 
     void UltraCanvasTextEditor::Render(IRenderContext* ctx) {
+        // Poll for async match count results
+        debugOutput << "UltraCanvasTextEditor::Render" << std::endl;
+        if (matchCountReady.load()) {
+            debugOutput << "UltraCanvasTextEditor::Render Update Matches" << std::endl;
+            matchCountReady.store(false);
+            int total, current;
+            {
+                std::lock_guard<std::mutex> lock(matchCountMutex);
+                total = pendingMatchTotal;
+                current = pendingMatchCurrent;
+            }
+            if (searchBar && searchBar->IsVisible()) {
+                searchBar->UpdateMatchCount(current, total);
+            }
+        }
+
         if (autosaveManager.IsEnabled() && autosaveManager.ShouldAutosave()) {
             PerformAutosave();
         }
@@ -2965,7 +3051,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         if (isDragOverActive) {
             RenderDropOverlay(ctx);
-        }        
+        }
     }
 
     bool UltraCanvasTextEditor::OnEvent(const UCEvent& event) {
@@ -3242,9 +3328,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
             doc->textArea->FindNext();
-            int total   = doc->textArea->CountMatches(text, cs);
-            int current = doc->textArea->GetCurrentMatchIndex(text, cs);
-            searchBar->UpdateMatchCount(current, total);
+            int selPos = doc->textArea->GetSelectionMinGrapheme();
+            StartAsyncMatchCount(text, cs, selPos);
         };
 
         // ── Find Previous ──
@@ -3253,9 +3338,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
             doc->textArea->FindPrevious();
-            int total   = doc->textArea->CountMatches(text, cs);
-            int current = doc->textArea->GetCurrentMatchIndex(text, cs);
-            searchBar->UpdateMatchCount(current, total);
+            int selPos = doc->textArea->GetSelectionMinGrapheme();
+            StartAsyncMatchCount(text, cs, selPos);
         };
 
         // ── Replace ──
@@ -3264,9 +3348,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(find, cs);
             doc->textArea->ReplaceText(find, replace, false);
-            int total   = doc->textArea->CountMatches(find, cs);
-            int current = doc->textArea->GetCurrentMatchIndex(find, cs);
-            searchBar->UpdateMatchCount(current, total);
+            int selPos = doc->textArea->GetSelectionMinGrapheme();
+            StartAsyncMatchCount(find, cs, selPos);
         };
 
         // ── Replace All ──
@@ -3275,17 +3358,24 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(find, cs);
             doc->textArea->ReplaceText(find, replace, true);
-            int total = doc->textArea->CountMatches(find, cs);
-            searchBar->UpdateMatchCount(0, total);
+            StartAsyncMatchCount(find, cs, -1);
         };
 
-        // ── Close ──
-        searchBar->onClose = [this]() {
-            HideSearchBar();
+        // ── Search text changed (handles clearing) ──
+        searchBar->onSearchTextChanged = [this](const std::string& text) {
+            if (text.empty()) {
+                CancelAsyncMatchCount();
+                auto doc = GetActiveDocument();
+                if (doc && doc->textArea) {
+                    doc->textArea->ClearHighlights();
+                }
+                searchBar->UpdateMatchCount(0, 0);
+            }
         };
 
         // ── Save histories on close ──
         searchBar->onClose = [this]() {
+            CancelAsyncMatchCount();
             searchHistory  = searchBar->GetSearchHistory();
             replaceHistory = searchBar->GetReplaceHistory();
             configFile.SaveSearchHistory(searchHistory, replaceHistory);
@@ -3329,6 +3419,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::HideSearchBar() {
         if (!searchBar || !searchBar->IsVisible()) return;
+        CancelAsyncMatchCount();
         searchBar->SetVisible(false);
 
         // Return focus to active text area

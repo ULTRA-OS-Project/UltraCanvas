@@ -183,7 +183,10 @@ namespace UltraCanvas {
                     // Same as above - no diagonal resize cursor available
                     cursor = [NSCursor arrowCursor];
                     break;
-
+                case UCMouseCursor::ContextMenu:
+                    cursor = LoadCursorFromImage(
+                        (GetResourcesDir() + "media/lib/cursor/context-menu.png").c_str(), 0, 0);
+                    break;
                 default:
                     cursor = [NSCursor arrowCursor];
                     break;

@@ -19,12 +19,19 @@ namespace UltraCanvas {
             : UltraCanvasUIElement(id, uid, x, y, w, h)
             , orientation(orient) {
         UpdateLayout();
+        mouseCursor = (orient == ScrollbarOrientation::Vertical)
+                  ? UCMouseCursor::SizeNS
+                  : UCMouseCursor::SizeWE;        
     }
 
     void UltraCanvasScrollbar::SetOrientation(ScrollbarOrientation orient) {
         if (orientation != orient) {
             orientation = orient;
             layoutDirty = true;
+            // Sync cursor to new orientation
+            mouseCursor = (orient == ScrollbarOrientation::Vertical)
+                        ? UCMouseCursor::SizeNS
+                        : UCMouseCursor::SizeWE;
             RequestRedraw();
         }
     }

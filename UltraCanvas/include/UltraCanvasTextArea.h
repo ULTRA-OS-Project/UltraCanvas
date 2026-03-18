@@ -34,6 +34,7 @@ namespace UltraCanvas {
         bool isImage = false;
         bool isAbbreviation = false;
         bool isFootnote = false;
+        bool isAnchorReturn = false;   // ↩ return icon on {#id} headings — scrolls back to jump source
     };
 
 // Syntax highlighting mode
@@ -180,6 +181,7 @@ namespace UltraCanvas {
         void ClearSelection();
         bool HasSelection() const;
         std::string GetSelectedText() const;
+        int GetSelectionMinGrapheme() const;
 
         // Clipboard operations
         void CopySelection();

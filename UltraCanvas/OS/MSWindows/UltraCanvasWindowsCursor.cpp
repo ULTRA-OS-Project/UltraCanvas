@@ -74,6 +74,17 @@ namespace UltraCanvas {
             case UCMouseCursor::SizeNESW:
                 cursorId = IDC_SIZENESW;
                 break;
+            case UCMouseCursor::ContextMenu: {
+                HCURSOR hCtx = LoadCursorFromImageFile(
+                    (GetResourcesDir() + "media/lib/cursor/context-menu.png").c_str(), 0, 0);
+                if (hCtx) {
+                    cursors[cursor] = hCtx;
+                    SetCursor(hCtx);
+                    return true;
+                }
+                cursorId = IDC_ARROW;  // Fallback if image missing
+                break;
+            }
             default:
                 cursorId = IDC_ARROW;
                 break;
