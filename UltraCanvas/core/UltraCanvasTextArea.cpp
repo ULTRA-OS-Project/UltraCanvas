@@ -2225,18 +2225,23 @@ namespace UltraCanvas {
             }
         }
         ctx->PopState();
-
+        bool needVerticalScrollbar = false;
+        bool needHorizontalScrollbar = false;
         if (IsNeedHorizontalScrollbar()) {
+            needHorizontalScrollbar = true;
             visibleTextArea.height -= 15;
             maxVisibleLines = std::max(1, visibleTextArea.height / computedLineHeight);
             if (IsNeedVerticalScrollbar()) {
+                needVerticalScrollbar = true;
                 visibleTextArea.width -= 15;
             }
         } else {
             maxVisibleLines = std::max(1, visibleTextArea.height / computedLineHeight);
             if (IsNeedVerticalScrollbar()) {
+                needVerticalScrollbar = true;
                 visibleTextArea.width -= 15;
                 if (IsNeedHorizontalScrollbar()) {
+                    needHorizontalScrollbar = true;
                     visibleTextArea.height -= 15;
                     maxVisibleLines = std::max(1, visibleTextArea.height / computedLineHeight);
                 }
@@ -2244,6 +2249,15 @@ namespace UltraCanvas {
         }
 
         RecalculateDisplayLines();
+
+        if (!needVerticalScrollbar && IsNeedVerticalScrollbar()) {
+            visibleTextArea.width -= 15;
+            if (!needHorizontalScrollbar && IsNeedHorizontalScrollbar()) {
+                visibleTextArea.height -= 15;
+                maxVisibleLines = std::max(1, visibleTextArea.height / computedLineHeight);
+            }
+        }
+
         isNeedRecalculateVisibleArea = false;
     }
 

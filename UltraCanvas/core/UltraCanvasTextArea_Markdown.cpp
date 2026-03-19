@@ -41,7 +41,7 @@ struct MarkdownHybridStyle {
     Color codeTextColor = Color(200, 50, 50);
     Color codeBackgroundColor = Color(245, 245, 245);
     Color codeBlockBackgroundColor = Color(248, 248, 248);
-    Color codeBlockBorderColor = Color(220, 220, 220);
+    Color codeBlockBorderColor = Color(120, 120, 120);
     Color codeBlockTextColor = Color(50, 50, 50);       // Default text color inside code blocks
     Color codeBlockCommentColor = Color(106, 153, 85);   // Green for comments in code blocks
     Color codeBlockKeywordColor = Color(0, 0, 200);      // Blue for keywords in code blocks
@@ -77,6 +77,10 @@ struct MarkdownHybridStyle {
     // Horizontal rule
     Color horizontalRuleColor = Color(200, 200, 200);
     float horizontalRuleHeight = 2.0f;
+    // Vertical inset for block backgrounds (code blocks, blockquotes)
+    // Top border starts this many pixels lower on the first line of a block,
+    // bottom border ends this many pixels earlier on the last line.
+    int blockVerticalInset = 5;
 
     // Table styling
     Color tableBorderColor = Color(200, 200, 200);
@@ -1962,11 +1966,13 @@ struct MarkdownInlineRenderer {
                                             const MarkdownHybridStyle& mdStyle) {
         // Draw background for code block line
         ctx->SetFillPaint(mdStyle.codeBlockBackgroundColor);
-        ctx->FillRectangle(x - 4, y, width, lineHeight);
+        ctx->SetStrokePaint(mdStyle.codeBlockBorderColor);
+        ctx->SetStrokeWidth(0.5);
+        ctx->FillRectangle(x, y, width, lineHeight);
 
-        // Draw left border accent
-        ctx->SetFillPaint(mdStyle.codeBlockBorderColor);
-        ctx->FillRectangle(x - 4, y, 3, lineHeight);
+        // Draw left/right border accent
+        ctx->DrawLine(x, y, x, y + lineHeight);
+        ctx->DrawLine(x + width, y, x + width, y + lineHeight);
 
         // Draw code text in monospace
         ctx->SetFontFamily(mdStyle.codeFont);
@@ -1993,11 +1999,13 @@ struct MarkdownInlineRenderer {
 
         // Draw background for code block line
         ctx->SetFillPaint(mdStyle.codeBlockBackgroundColor);
-        ctx->FillRectangle(x - 4, y, width, lineHeight);
+        ctx->SetStrokePaint(mdStyle.codeBlockBorderColor);
+        ctx->SetStrokeWidth(0.5);
+        ctx->FillRectangle(x, y, width, lineHeight);
 
-        // Draw left border accent
-        ctx->SetFillPaint(mdStyle.codeBlockBorderColor);
-        ctx->FillRectangle(x - 4, y, 3, lineHeight);
+        // Draw left/right border accent
+        ctx->DrawLine(x, y, x, y + lineHeight);
+        ctx->DrawLine(x + width, y, x + width, y + lineHeight);
 
         // Set monospace font
         ctx->SetFontFamily(mdStyle.codeFont);
@@ -2070,20 +2078,26 @@ struct MarkdownInlineRenderer {
     // ---------------------------------------------------------------
 
     static void RenderMarkdownCodeBlockDelimiter(IRenderContext* ctx, const std::string& line,
-                                                  int x, int y, int lineHeight, int width,
-                                                  const TextAreaStyle& style,
-                                                  const MarkdownHybridStyle& mdStyle) {
+                                                 int x, int y, int lineHeight, int width,
+                                                 const TextAreaStyle& style,
+                                                 const MarkdownHybridStyle& mdStyle,
+                                                 bool isOpeningFence) {
+        // Apply vertical inset so the background rectangle does not bleed into
+        // the surrounding text rows:
+        //   Opening fence (```cpp)  → inset at the top only
+        //   Closing fence (```)     → inset at the bottom only
+        int inset = mdStyle.blockVerticalInset;
+        int bgY      = isOpeningFence ? y + lineHeight - inset : y;
+        int bgHeight = inset;   // same reduction regardless of which end
+
         // Draw background
         ctx->SetFillPaint(mdStyle.codeBlockBackgroundColor);
-        ctx->FillRectangle(x - 4, y, width, lineHeight);
-
-        // Draw left border accent
-        ctx->SetFillPaint(mdStyle.codeBlockBorderColor);
-        ctx->FillRectangle(x - 4, y, 3, lineHeight);
-
-        // Delimiter lines (``` or ~~~) are rendered as empty accent bars
-        // The language tag is internal metadata used for syntax highlighting
-        // and is NOT displayed as visible text
+        ctx->SetStrokePaint(mdStyle.codeBlockBorderColor);
+        ctx->SetStrokeWidth(0.5);
+        ctx->FillRectangle(x, bgY, width, bgHeight);
+        ctx->DrawLine(x, isOpeningFence ? bgY : bgY + bgHeight, x + width, isOpeningFence ? bgY : bgY + bgHeight);
+        ctx->DrawLine(x, bgY, x, bgY + bgHeight);
+        ctx->DrawLine(x + width, bgY, x + width, bgY + bgHeight);
     }
 
     // ---------------------------------------------------------------
@@ -2746,7 +2760,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     // (the tokenizer itself persists as a class member to avoid expensive reconstruction)
 
     context->PushState();
-    context->ClipRect(visibleTextArea);
+    context->ClipRect(Rect2Di(visibleTextArea.x - 2, visibleTextArea.y, visibleTextArea.width + 2, visibleTextArea.height));
     context->SetFontStyle(style.fontStyle);
 
     // Get current line index where cursor is located
@@ -3405,21 +3419,23 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         context->SetFontSize(style.fontStyle.fontSize);
         context->SetFontFamily(style.fontStyle.fontFamily);
 
-        // Empty lines
-        if (line.empty()) continue;
-
-        std::string trimmed = TrimWhitespace(line);
-        if (trimmed.empty()) continue;
-
         // --- Code block content (block-level: render only on first segment) ---
         if (isInsideCodeBlock[logLine]) {
             if (!isFirstSegment) continue;
 
+            std::string trimmed = TrimWhitespace(line);
+
             if (isCodeBlockDelimiter[logLine]) {
                 // This is a ``` or ~~~ delimiter line
+                // Determine opening vs closing by checking the previous line:
+                // an opening delimiter has no code block line before it
+                // (the line before is either out-of-range or not inside a code block).
+                bool isOpening = (logLine == 0) ||
+                                 !isInsideCodeBlock[logLine - 1] ||
+                                 isCodeBlockDelimiter[logLine - 1];
                 MarkdownInlineRenderer::RenderMarkdownCodeBlockDelimiter(
                         context, trimmed, x, textY, computedLineHeight,
-                        visibleTextArea.width, style, mdStyle);
+                        visibleTextArea.width, style, mdStyle, isOpening);
             } else {
                 // This is a code content line — use syntax highlighting if language known
                 const std::string& lang = codeBlockLanguage[logLine];
@@ -3483,6 +3499,13 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             }
             continue;
         }
+
+        // Empty lines
+        if (line.empty()) continue;
+
+        std::string trimmed = TrimWhitespace(line);
+        if (trimmed.empty()) continue;
+
 
         // --- Table rows (block-level: render only on first segment) ---
         if (tableRoles[logLine] != TableLineRole::NoneRole) {

@@ -61,7 +61,7 @@ namespace UltraCanvas {
         // Editor settings
         std::string defaultLanguage = "Plain Text";
         bool darkTheme = false;
-        bool wordWrap = false;
+        bool wordWrap = true;
         std::string defaultEncoding = "UTF-8";
 
         const std::vector<int> fontZoomPercents = {50,65,80,90,100,110,125,150,175,200};
@@ -175,7 +175,7 @@ namespace UltraCanvas {
  */
     class UltraCanvasTextEditor : public UltraCanvasContainer {
     private:
-        std::string version = "1.0.2";
+        std::string version = "1.0.3";
         // ===== CONFIGURATION =====
         TextEditorConfig config;
         bool isDarkTheme;

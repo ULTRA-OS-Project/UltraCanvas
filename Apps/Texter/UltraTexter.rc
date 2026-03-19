@@ -12,8 +12,8 @@
 
 // ===== VERSION INFORMATION =====
 VS_VERSION_INFO VERSIONINFO
-    FILEVERSION     2,0,0,0
-    PRODUCTVERSION  2,0,0,0
+    FILEVERSION     1,0,3,0
+    PRODUCTVERSION  1,0,3,0
     FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
 #ifdef _DEBUG
     FILEFLAGS       VS_FF_DEBUG
@@ -31,12 +31,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "Cloverleaf UG\0"
             VALUE "FileDescription",  "UltraTexter - Cross-Platform Text Editor\0"
-            VALUE "FileVersion",      "2.0.0.0\0"
+            VALUE "FileVersion",      "1.0.3\0"
             VALUE "InternalName",     "UltraTexter\0"
             VALUE "LegalCopyright",   "Copyright (C) 2026 Cloverleaf UG\0"
             VALUE "OriginalFilename", "UltraTexter.exe\0"
             VALUE "ProductName",      "UltraTexter\0"
-            VALUE "ProductVersion",   "2.0.0.0\0"
+            VALUE "ProductVersion",   "1.0.3\0"
             VALUE "Comments",         "Part of the ULTRA OS ecosystem - ultracanvas.dev\0"
         END
     END
