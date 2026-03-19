@@ -233,6 +233,10 @@ namespace UltraCanvas {
         std::function<void()> onHoverLeave;
 
         // ===== OVERRIDES =====
+        void SetBounds(const Rect2Di& b) override {
+            UltraCanvasUIElement::SetBounds(b);
+            layoutDirty = true;
+        }
         void Render(IRenderContext* ctx) override;
         bool OnEvent(const UCEvent& event) override;
         bool AcceptsFocus() const override { return canAcceptFocus; }

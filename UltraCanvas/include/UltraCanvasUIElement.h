@@ -223,12 +223,11 @@ namespace UltraCanvas {
         void SetHeight(int h) { SetBounds(bounds.x, bounds.y, bounds.width, h); }
 
         int GetX() const { return bounds.x; }
-        void SetX(int x) { bounds.x = x; }
+        void SetX(int x) { SetBounds(x, bounds.y, bounds.width, bounds.height); }
         int GetY() const { return bounds.y; }
-        void SetY(int y) { bounds.y = y; }
+        void SetY(int y) { SetBounds(bounds.x, y, bounds.width, bounds.height); }
 
-//        void SetAbsolutePosition(int x, int y) { SetAbsoluteX(x); SetAbsoluteY(y); }
-        void SetPosition(int x, int y) { bounds.x = x, bounds.y = y; }
+        void SetPosition(int x, int y) { SetBounds(x, y, bounds.width, bounds.height); }
         void SetSize(int w, int h) { SetBounds(bounds.x, bounds.y, w, h); }
         virtual void SetOriginalSize(int w, int h);
         void SetBounds(int x, int y, int w, int h) {
@@ -241,19 +240,9 @@ namespace UltraCanvas {
             bounds = b;
         }
 
-//        Rect2Di GetAbsoluteBounds() const {
-//            return Rect2Di(static_cast<float>(GetAbsoluteX()), static_cast<float>(GetAbsoluteY()),
-//                          static_cast<float>(properties.width_size), static_cast<float>(properties.height_size));
-//        }
         // actual bounds is for variable-sized elements like dropdowns, menus, popups
         virtual Rect2Di GetActualBounds() { return GetBounds(); }
 
-//        Rect2Di GetActualBoundsInWindow() {
-//            Rect2Di bounds = GetActualBounds();
-//            bounds.x += (GetXInWindow() - properties.x_pos);
-//            bounds.y += (GetYInWindow() - properties.y_pos);
-//            return bounds;
-//        }
         Rect2Di GetActualBoundsInWindow() {
             Rect2Di bounds = GetActualBounds();
 

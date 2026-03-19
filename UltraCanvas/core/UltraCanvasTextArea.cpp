@@ -1888,6 +1888,24 @@ namespace UltraCanvas {
             return true;
         }
 
+        // --- Scrollbar hover cursor ---
+        if (!isSelectingText) {
+            auto bounds = GetBounds();
+            if (IsNeedVerticalScrollbar() &&
+                event.x >= bounds.x + bounds.width - 15 && event.x <= bounds.x + bounds.width &&
+                event.y >= bounds.y && event.y <= bounds.y + bounds.height) {
+                SetMouseCursor(UCMouseCursor::SizeNS);
+                return true;
+            }
+            if (IsNeedHorizontalScrollbar() &&
+                event.y >= bounds.y + bounds.height - 15 && event.y <= bounds.y + bounds.height &&
+                event.x >= bounds.x && event.x <= bounds.x + bounds.width) {
+                SetMouseCursor(UCMouseCursor::SizeWE);
+                return true;
+            }
+            SetMouseCursor(UCMouseCursor::Text);
+        }
+
         // --- Markdown hover: update cursor for links/images ---
         if (editingMode == TextAreaEditingMode::MarkdownHybrid && !isSelectingText) {
             if (!HandleMarkdownHover(event.x, event.y)) {
