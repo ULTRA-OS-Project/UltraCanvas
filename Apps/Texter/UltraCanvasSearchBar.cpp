@@ -1,12 +1,14 @@
 // Apps/Texter/UltraCanvasSearchBar.cpp
 // Inline search and replace bar implementation
-// Version: 1.0.0
-// Last Modified: 2026-03-14
+// Version: 1.2.0
+// Last Modified: 2026-03-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSearchBar.h"
+#include "UltraCanvasWindow.h"
 #include "UltraCanvasBoxLayout.h"
 #include <string>
+#include <algorithm>
 
 namespace UltraCanvas {
 
@@ -14,15 +16,19 @@ namespace UltraCanvas {
 //
 //  FIND mode  (height = RowHeight):
 //  ┌────────────────────────────────────────────────────────────────────────┐
-//  │ 🔍  [    search text                    ]  3 / 12  ↓  ↑  ⚙  ✕      │
+//  │ 🔍  [  search text ≤400  ]  3 / 12          ↓  ↑  ⚙  ✕             │
 //  └────────────────────────────────────────────────────────────────────────┘
 //
 //  REPLACE mode  (height = RowHeight*2 + 2):
 //  ┌────────────────────────────────────────────────────────────────────────┐
-//  │ 🔍  [    search text                    ]  3 / 12  ↓  ↑  ⚙  ✕      │
-//  ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤
-//  │ ↺  [    replace text                   ]  [Replace]  [Replace all]  │
+//  │ 🔍  [  search text ≤400  ]  3 / 12          ↓  ↑  ⚙  ✕             │
+//  ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤
+//  │ ↺  [  replace text ≤400 ]          [Replace]  [Replace all]         │
 //  └────────────────────────────────────────────────────────────────────────┘
+//
+//  Left group: icon + input (≤400) + countLabel — left-aligned
+//  Right group: buttons — right-aligned
+//  ⚙ opens popup menu with: ☑ Case sensitive / ☑ Whole words
 
     UltraCanvasSearchBar::UltraCanvasSearchBar(const std::string& id, long uid, int x, int y, int w)
             : UltraCanvasContainer(id, uid, x, y, w, RowHeight)
@@ -46,115 +52,203 @@ namespace UltraCanvas {
         SetContainerStyle(cs);
 
         BuildFindRow(0, GetWidth());
+        BuildSettingsMenu();
         WireCallbacks();
+        UpdateLayout();
 
         SetVisible(false); // hidden until Ctrl+F / Ctrl+H
+    }
+
+    // ── SetBounds override — reposition children on resize ────────────────
+
+    void UltraCanvasSearchBar::SetBounds(const Rect2Di& bounds) {
+        UltraCanvasContainer::SetBounds(bounds);
+        UpdateLayout();
+    }
+
+    // ── Compute shared input width for both rows ──────────────────────────
+
+    int UltraCanvasSearchBar::ComputeInputWidth() const {
+        int w = GetWidth();
+        int rightButtonsWidth = 4 * (IconBtnSize + HSpacing); // ↓ ↑ ⚙ ✕
+        int fixedLeft = RowPadding + SearchIconW + HSpacing;
+        int fixedAfterInput = HSpacing + CountLabelW;
+        int available = w - fixedLeft - fixedAfterInput - rightButtonsWidth - RowPadding;
+        return std::min(MaxInputWidth, std::max(80, available));
+    }
+
+    // ── UpdateLayout — reposition all children based on current width ─────
+
+    void UltraCanvasSearchBar::UpdateLayout() {
+        int w = GetWidth();
+        if (w <= 0) return;
+
+        int inputW = ComputeInputWidth();
+        int inputH = RowHeight - RowPadding * 2;
+        int inputY = RowPadding;
+        int btnY   = (RowHeight - IconBtnSize) / 2;
+
+        // ── Find row: left group ──
+        int x = RowPadding;
+
+        if (searchIconButton)
+            searchIconButton->SetBounds(Rect2Di(x, inputY, SearchIconW, inputH));
+        x += SearchIconW + HSpacing;
+
+        if (searchInput)
+            searchInput->SetBounds(Rect2Di(x, inputY, inputW, inputH));
+        x += inputW + HSpacing;
+
+        if (countLabel)
+            countLabel->SetBounds(Rect2Di(x, inputY, CountLabelW, inputH));
+
+        // ── Find row: right group (right-aligned) ──
+        int rx = w - RowPadding;
+
+        rx -= IconBtnSize;
+        if (closeButton)
+            closeButton->SetBounds(Rect2Di(rx, btnY, IconBtnSize, IconBtnSize));
+        rx -= HSpacing;
+
+        rx -= IconBtnSize;
+        if (settingsButton)
+            settingsButton->SetBounds(Rect2Di(rx, btnY, IconBtnSize, IconBtnSize));
+        rx -= HSpacing;
+
+        rx -= IconBtnSize;
+        if (prevButton)
+            prevButton->SetBounds(Rect2Di(rx, btnY, IconBtnSize, IconBtnSize));
+        rx -= HSpacing;
+
+        rx -= IconBtnSize;
+        if (nextButton)
+            nextButton->SetBounds(Rect2Di(rx, btnY, IconBtnSize, IconBtnSize));
+
+        // ── Replace row ──
+        if (replaceRow) {
+            int replaceY = RowHeight + 2;
+            replaceRow->SetBounds(Rect2Di(0, replaceY, w, RowHeight));
+
+            int rix = RowPadding;
+            int rInputY = RowPadding;
+            int rBtnY   = (RowHeight - IconBtnSize) / 2;
+
+            if (replaceIconButton)
+                replaceIconButton->SetBounds(Rect2Di(rix, rInputY, SearchIconW, inputH));
+            rix += SearchIconW + HSpacing;
+
+            if (replaceInput)
+                replaceInput->SetBounds(Rect2Di(rix, rInputY, inputW, inputH));
+
+            // Right-aligned replace buttons
+            int rrx = w - RowPadding;
+
+            rrx -= ReplaceBtnW;
+            if (replaceAllButton)
+                replaceAllButton->SetBounds(Rect2Di(rrx, rBtnY, ReplaceBtnW, IconBtnSize));
+            rrx -= HSpacing;
+
+            rrx -= ReplaceBtnW;
+            if (replaceButton)
+                replaceButton->SetBounds(Rect2Di(rrx, rBtnY, ReplaceBtnW, IconBtnSize));
+        }
     }
 
     // ── FIND ROW ─────────────────────────────────────────────────────────────
 
     void UltraCanvasSearchBar::BuildFindRow(int y, int w) {
-        // Work right-to-left to calculate input width
-        // Right side: [close] [options] [prev] [next] — each IconBtnSize wide
-        // Left of input: small search icon label (20px)
-        // After input: count label (CountLabelW)
-
-        int rightButtonsWidth = (IconBtnSize + HSpacing) * 5; // ↓ ↑ Cc W ↕ ✕
-        int searchIconW = 20;
-        int inputW = w - searchIconW - HSpacing
-                     - CountLabelW - HSpacing
-                     - rightButtonsWidth
-                     - RowPadding * 2;
-        if (inputW < 80) inputW = 80;
-
+        int inputW = std::min(MaxInputWidth, std::max(80, w - 236));
         int inputH = RowHeight - RowPadding * 2;
         int btnY   = y + (RowHeight - IconBtnSize) / 2;
         int inputY = y + RowPadding;
-
         int x = RowPadding;
 
-        // Search icon (SVG image)
-        auto searchIcon = std::make_shared<UltraCanvasImageElement>("SearchIcon", 6001, x, inputY, searchIconW, inputH);
-        searchIcon->LoadFromFile(GetResourcesDir() + "media/icons/texter/search.svg");
-        searchIcon->SetFitMode(ImageFitMode::Contain);
-        AddChild(searchIcon);
-        x += searchIconW + HSpacing;
+        // Search icon button
+        searchIconButton = std::make_shared<UltraCanvasButton>("SearchIconBtn", 6001, x, inputY, SearchIconW, inputH);
+        searchIconButton->SetIcon(GetResourcesDir() + "media/icons/texter/search.svg");
+        searchIconButton->SetIconSize(14, 14);
+        searchIconButton->SetIconScaleToFit(true);
+        searchIconButton->SetAcceptsFocus(false);
+        searchIconButton->SetTooltip("Search History");
+        searchIconButton->onClick = [this]() { ShowHistoryMenu(false); };
+        AddChild(searchIconButton);
+        x += SearchIconW + HSpacing;
 
         // Search input
         searchInput = std::make_shared<UltraCanvasTextInput>("SearchInput", 6002, x, inputY, inputW, inputH);
         searchInput->SetPlaceholder("Find...");
         searchInput->SetShowValidationState(false);
         searchInput->SetFontSize(11);
+        searchInput->SetShowClearButton(true);
         AddChild(searchInput);
         x += inputW + HSpacing;
 
-        // Match count label
+        // Match count label — right after input
         countLabel = std::make_shared<UltraCanvasLabel>("CountLabel", 6003, x, inputY, CountLabelW, inputH);
         countLabel->SetText("");
         countLabel->SetFontSize(10);
         countLabel->SetTextColor(Color(120, 120, 120, 255));
         countLabel->SetAlignment(TextAlignment::Left);
         AddChild(countLabel);
-        x += CountLabelW + HSpacing;
 
-        // ↓ Next
-        nextButton = std::make_shared<UltraCanvasButton>("NextBtn", 6004, x, btnY, IconBtnSize, IconBtnSize);
-        nextButton->SetText("↓");
-        nextButton->SetFontSize(11);
-        nextButton->SetTooltip("Find Next (Enter)");
-        nextButton->SetAcceptsFocus(false);
-        AddChild(nextButton);
-        x += IconBtnSize + HSpacing;
+        // Right-aligned buttons (positions will be corrected by UpdateLayout)
+        int rx = w - RowPadding;
 
-        // ↑ Previous
-        prevButton = std::make_shared<UltraCanvasButton>("PrevBtn", 6005, x, btnY, IconBtnSize, IconBtnSize);
-        prevButton->SetText("↑");
-        prevButton->SetFontSize(11);
-        prevButton->SetTooltip("Find Previous (Shift+Enter)");
-        prevButton->SetAcceptsFocus(false);
-        AddChild(prevButton);
-        x += IconBtnSize + HSpacing;
-
-        // Cc — Match Case toggle
-        caseSensitiveButton = std::make_shared<UltraCanvasButton>("CaseSensitiveBtn", 6006, x, btnY, IconBtnSize, IconBtnSize);
-        caseSensitiveButton->SetText("Cc");
-        caseSensitiveButton->SetFontSize(11);
-        caseSensitiveButton->SetTooltip("Match Case");
-        caseSensitiveButton->SetCanToggled(true);
-        caseSensitiveButton->SetAcceptsFocus(false);
-        if (caseSensitive) caseSensitiveButton->SetPressed(true);
-        AddChild(caseSensitiveButton);
-        x += IconBtnSize + HSpacing;
-
-        // W — Whole Word toggle
-        wholeWordButton = std::make_shared<UltraCanvasButton>("WholeWordBtn", 6008, x, btnY, IconBtnSize, IconBtnSize);
-        wholeWordButton->SetText("W");
-        wholeWordButton->SetFontSize(11);
-        wholeWordButton->SetTooltip("Whole Word");
-        wholeWordButton->SetCanToggled(true);
-        wholeWordButton->SetAcceptsFocus(false);
-        if (wholeWord) wholeWordButton->SetPressed(true);
-        AddChild(wholeWordButton);
-        x += IconBtnSize + HSpacing;
-
-        // ↕ — Wrap Around toggle
-        // wrapAroundButton = std::make_shared<UltraCanvasButton>("WrapAroundBtn", 6009, x, btnY, IconBtnSize, IconBtnSize);
-        // wrapAroundButton->SetText("↕");
-        // wrapAroundButton->SetFontSize(13);
-        // wrapAroundButton->SetTooltip("Wrap Around");
-        // wrapAroundButton->SetCanToggled(true);
-        // wrapAroundButton->SetAcceptsFocus(false);
-        // if (wrapAround) wrapAroundButton->SetPressed(true);
-        // AddChild(wrapAroundButton);
-        // x += IconBtnSize + HSpacing;
-
-        // ✕ Close
-        closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 6007, x, btnY, IconBtnSize, IconBtnSize);
-        closeButton->SetText("✕");
+        rx -= IconBtnSize;
+        closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 6007, rx, btnY, IconBtnSize, IconBtnSize);
+        closeButton->SetText("\xe2\x9c\x95"); // ✕
         closeButton->SetFontSize(11);
         closeButton->SetTooltip("Close (Escape)");
         closeButton->SetAcceptsFocus(false);
         AddChild(closeButton);
+        rx -= HSpacing;
+
+        rx -= IconBtnSize;
+        settingsButton = std::make_shared<UltraCanvasButton>("SettingsBtn", 6009, rx, btnY, IconBtnSize, IconBtnSize);
+        settingsButton->SetText("\xe2\x9a\x99"); // ⚙
+        settingsButton->SetFontSize(13);
+        settingsButton->SetTooltip("Search Options");
+        settingsButton->SetAcceptsFocus(false);
+        AddChild(settingsButton);
+        rx -= HSpacing;
+
+        rx -= IconBtnSize;
+        prevButton = std::make_shared<UltraCanvasButton>("PrevBtn", 6005, rx, btnY, IconBtnSize, IconBtnSize);
+        prevButton->SetText("\xe2\x86\x91"); // ↑
+        prevButton->SetFontSize(11);
+        prevButton->SetTooltip("Find Previous (Shift+Enter)");
+        prevButton->SetAcceptsFocus(false);
+        AddChild(prevButton);
+        rx -= HSpacing;
+
+        rx -= IconBtnSize;
+        nextButton = std::make_shared<UltraCanvasButton>("NextBtn", 6004, rx, btnY, IconBtnSize, IconBtnSize);
+        nextButton->SetText("\xe2\x86\x93"); // ↓
+        nextButton->SetFontSize(11);
+        nextButton->SetTooltip("Find Next (Enter)");
+        nextButton->SetAcceptsFocus(false);
+        AddChild(nextButton);
+    }
+
+    // ── SETTINGS MENU ────────────────────────────────────────────────────────
+
+    void UltraCanvasSearchBar::BuildSettingsMenu() {
+        settingsMenu = std::make_shared<UltraCanvasMenu>("SearchSettingsMenu", 6010, 0, 0, 200, 100);
+        settingsMenu->SetMenuType(MenuType::PopupMenu);
+
+        settingsMenu->AddItem(MenuItemData::Checkbox("Case sensitive", caseSensitive, [this](bool checked) {
+            caseSensitive = checked;
+            if (!searchText.empty() && onFindNext) {
+                onFindNext(searchText, caseSensitive, wholeWord);
+            }
+        }));
+
+        settingsMenu->AddItem(MenuItemData::Checkbox("Whole words", wholeWord, [this](bool checked) {
+            wholeWord = checked;
+            if (!searchText.empty() && onFindNext) {
+                onFindNext(searchText, caseSensitive, wholeWord);
+            }
+        }));
     }
 
     // ── REPLACE ROW ──────────────────────────────────────────────────────────
@@ -167,52 +261,50 @@ namespace UltraCanvas {
         replaceRow->SetContainerStyle(cs);
         replaceRow->SetBackgroundColor(Color(0, 0, 0, 0)); // transparent
 
-        int replaceBtnsWidth = ReplaceBtnW + HSpacing + ReplaceBtnW + HSpacing; // [Replace] + [Replace all]
-        int replaceIconW = 20;
-        // input spans up to the replace buttons (skip count label gap to align with find row)
-        int inputW = w - replaceIconW - HSpacing
-                     - CountLabelW - HSpacing
-                     - replaceBtnsWidth
-                     - RowPadding * 2;
-        if (inputW < 80) inputW = 80;
-
+        int inputW = ComputeInputWidth();
         int inputH = RowHeight - RowPadding * 2;
-        int inputY = (RowHeight - inputH) / 2;
+        int inputY = RowPadding;
         int btnY   = (RowHeight - IconBtnSize) / 2;
-
         int x = RowPadding;
 
-        // Replace icon (SVG image)
-        auto replaceIcon = std::make_shared<UltraCanvasImageElement>("ReplaceIcon", 6101, x, inputY, replaceIconW, inputH);
-        replaceIcon->LoadFromFile(GetResourcesDir() + "media/icons/texter/replace.svg");
-        replaceIcon->SetFitMode(ImageFitMode::Contain);
-        replaceRow->AddChild(replaceIcon);
-        x += replaceIconW + HSpacing;
+        // Replace icon button
+        replaceIconButton = std::make_shared<UltraCanvasButton>("ReplaceIconBtn", 6101, x, inputY, SearchIconW, inputH);
+        replaceIconButton->SetIcon(GetResourcesDir() + "media/icons/texter/replace.svg");
+        replaceIconButton->SetIconSize(14, 14);
+        replaceIconButton->SetIconScaleToFit(true);
+        replaceIconButton->SetAcceptsFocus(false);
+        replaceIconButton->SetTooltip("Replace History");
+        replaceIconButton->onClick = [this]() { ShowHistoryMenu(true); };
+        replaceRow->AddChild(replaceIconButton);
+        x += SearchIconW + HSpacing;
 
         // Replace input (same width as search input)
         replaceInput = std::make_shared<UltraCanvasTextInput>("ReplaceInput", 6102, x, inputY, inputW, inputH);
         replaceInput->SetPlaceholder("Replace...");
         replaceInput->SetShowValidationState(false);
         replaceInput->SetFontSize(11);
+        replaceInput->SetShowClearButton(true);
         replaceRow->AddChild(replaceInput);
-        x += inputW + HSpacing + CountLabelW + HSpacing; // skip count label space
 
-        // [Replace]
-        replaceButton = std::make_shared<UltraCanvasButton>("ReplaceBtn", 6103,
-                                                            x, btnY, ReplaceBtnW, IconBtnSize);
-        replaceButton->SetText("Replace");
-        replaceButton->SetFontSize(11);
-        replaceButton->SetAcceptsFocus(false);
-        replaceRow->AddChild(replaceButton);
-        x += ReplaceBtnW + HSpacing;
+        // Right-aligned replace buttons (positions corrected by UpdateLayout)
+        int rx = w - RowPadding;
 
-        // [Replace all]
+        rx -= ReplaceBtnW;
         replaceAllButton = std::make_shared<UltraCanvasButton>("ReplaceAllBtn", 6104,
-                                                               x, btnY, ReplaceBtnW, IconBtnSize);
+                                                               rx, btnY, ReplaceBtnW, IconBtnSize);
         replaceAllButton->SetText("Replace all");
         replaceAllButton->SetFontSize(11);
         replaceAllButton->SetAcceptsFocus(false);
         replaceRow->AddChild(replaceAllButton);
+        rx -= HSpacing;
+
+        rx -= ReplaceBtnW;
+        replaceButton = std::make_shared<UltraCanvasButton>("ReplaceBtn", 6103,
+                                                            rx, btnY, ReplaceBtnW, IconBtnSize);
+        replaceButton->SetText("Replace");
+        replaceButton->SetFontSize(11);
+        replaceButton->SetAcceptsFocus(false);
+        replaceRow->AddChild(replaceButton);
 
         replaceRow->SetVisible(false);
         AddChild(replaceRow);
@@ -267,26 +359,15 @@ namespace UltraCanvas {
             }
         };
 
-        // Cc — Match Case toggle
-        caseSensitiveButton->onToggle = [this](bool isPressed) {
-            caseSensitive = isPressed;
-            if (!searchText.empty() && onFindNext) {
-                onFindNext(searchText, caseSensitive, wholeWord);
-            }
+        // ⚙ Settings — show popup menu
+        settingsButton->onClick = [this]() {
+            auto* win = GetWindow();
+            if (!win || !settingsMenu) return;
+            win->AddChild(settingsMenu);
+            Point2Di pos(settingsButton->GetXInWindow(),
+                         settingsButton->GetYInWindow() + settingsButton->GetHeight() + 1);
+            settingsMenu->ShowAt(pos);
         };
-
-        // W — Whole Word toggle
-        wholeWordButton->onToggle = [this](bool isPressed) {
-            wholeWord = isPressed;
-            if (!searchText.empty() && onFindNext) {
-                onFindNext(searchText, caseSensitive, wholeWord);
-            }
-        };
-
-        // ↕ — Wrap Around toggle
-        // wrapAroundButton->onToggle = [this](bool isPressed) {
-        //     wrapAround = isPressed;
-        // };
 
         // ✕ Close
         closeButton->onClick = [this]() {
@@ -364,6 +445,7 @@ namespace UltraCanvas {
             SetSize(GetWidth(), GetBarHeight());
         }
 
+        UpdateLayout();
         RequestRedraw();
     }
 
@@ -410,10 +492,6 @@ namespace UltraCanvas {
         wholeWord = v;
     }
 
-    // void UltraCanvasSearchBar::SetWrapAround(bool v) {
-    //     wrapAround = v;
-    // }
-
     void UltraCanvasSearchBar::FocusSearchInput() {
         if (searchInput) {
             searchInput->SetFocus(true);
@@ -447,12 +525,12 @@ namespace UltraCanvas {
             s.normalTextColor   = Color(200, 200, 200, 255);
             btn->SetStyle(s);
         };
+        applyBtnDark(searchIconButton);
         applyBtnDark(nextButton);
         applyBtnDark(prevButton);
-        applyBtnDark(caseSensitiveButton);
-        applyBtnDark(wholeWordButton);
-        // applyBtnDark(wrapAroundButton);
+        applyBtnDark(settingsButton);
         applyBtnDark(closeButton);
+        applyBtnDark(replaceIconButton);
         applyBtnDark(replaceButton);
         applyBtnDark(replaceAllButton);
 
@@ -484,12 +562,12 @@ namespace UltraCanvas {
             s.normalTextColor   = Color(60, 60, 60, 255);
             btn->SetStyle(s);
         };
+        applyBtnLight(searchIconButton);
         applyBtnLight(nextButton);
         applyBtnLight(prevButton);
-        applyBtnLight(caseSensitiveButton);
-        applyBtnLight(wholeWordButton);
-        // applyBtnLight(wrapAroundButton);
+        applyBtnLight(settingsButton);
         applyBtnLight(closeButton);
+        applyBtnLight(replaceIconButton);
         applyBtnLight(replaceButton);
         applyBtnLight(replaceAllButton);
 
@@ -499,6 +577,43 @@ namespace UltraCanvas {
 
     // ── HISTORY ──────────────────────────────────────────────────────────────
 
+    void UltraCanvasSearchBar::ShowHistoryMenu(bool isReplace) {
+        auto& history = isReplace ? replaceHistory : searchHistory;
+        if (history.empty()) return;
+
+        auto* win = GetWindow();
+        if (!win) return;
+
+        auto& menu = isReplace ? replaceHistoryMenu : searchHistoryMenu;
+        if (!menu) {
+            menu = std::make_shared<UltraCanvasMenu>(
+                isReplace ? "ReplaceHistoryMenu" : "SearchHistoryMenu",
+                isReplace ? 6012 : 6011, 0, 0, 300, 100);
+            menu->SetMenuType(MenuType::PopupMenu);
+        }
+        menu->Clear();
+
+        for (const auto& item : history) {
+            menu->AddItem(MenuItemData::Action(item, [this, item, isReplace]() {
+                if (isReplace) {
+                    SetReplaceText(item);
+                } else {
+                    SetSearchText(item);
+                    if (onSearchTextChanged) onSearchTextChanged(item);
+                    if (onFindNext) onFindNext(item, caseSensitive, wholeWord);
+                }
+            }));
+        }
+
+        auto icon = isReplace ? replaceIconButton : searchIconButton;
+        if (!icon) return;
+
+        win->AddChild(menu);
+        Point2Di pos(icon->GetXInWindow(),
+                     icon->GetYInWindow() + icon->GetHeight() + 1);
+        menu->ShowAt(pos);
+    }
+
     void UltraCanvasSearchBar::AddToHistory(std::vector<std::string>& history, const std::string& text) {
         if (text.empty()) return;
         history.erase(std::remove(history.begin(), history.end(), text), history.end());
@@ -506,6 +621,7 @@ namespace UltraCanvas {
         if (static_cast<int>(history.size()) > maxHistoryItems) {
             history.resize(maxHistoryItems);
         }
+        if (onHistoryChanged) onHistoryChanged();
     }
 
 } // namespace UltraCanvas

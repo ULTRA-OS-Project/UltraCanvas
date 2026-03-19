@@ -1064,19 +1064,17 @@ namespace {
         // ===== Tab container (fills remaining space minus status bar) =====
         if (tabContainer) {
             int reservedBottom = config.showStatusBar ? statusBarHeight : 0;
-            if (searchBar && searchBar->IsVisible()) {
-                reservedBottom += searchBar->GetBarHeight();
-            }
+            // Search bar overlays content — no space reservation needed
             int tabAreaHeight = h - yPos - reservedBottom;
             if (tabAreaHeight < 0) tabAreaHeight = 0;
             tabContainer->SetBounds(Rect2Di(mdToolbarW, yPos, w - mdToolbarW, tabAreaHeight));
         }
 
-        // ===== Search bar (above status bar, full width) =====
+        // ===== Search bar (top overlay, below tab strip) =====
         if (searchBar && searchBar->IsVisible()) {
             int barH = searchBar->GetBarHeight();
-            int barY = h - (config.showStatusBar ? statusBarHeight : 0) - barH;
-            searchBar->SetBounds(Rect2Di(0, barY, w, barH));
+            int barY = yPos + tabBarHeight; // below tab labels, overlaying editor content
+            searchBar->SetBounds(Rect2Di(mdToolbarW, barY, w - mdToolbarW, barH));
         }
 
         // ===== Status bar =====
@@ -3371,6 +3369,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 }
                 searchBar->UpdateMatchCount(0, 0);
             }
+        };
+
+        // ── Persist history on every change ──
+        searchBar->onHistoryChanged = [this]() {
+            searchHistory  = searchBar->GetSearchHistory();
+            replaceHistory = searchBar->GetReplaceHistory();
+            configFile.SaveSearchHistory(searchHistory, replaceHistory);
         };
 
         // ── Save histories on close ──

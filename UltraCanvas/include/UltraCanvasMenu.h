@@ -360,6 +360,7 @@ namespace UltraCanvas {
         // ===== SCROLL SUPPORT =====
         void CreateMenuScrollbar();
         void ClampMenuToWindow();
+        void ClampMenuToWindowHorizontal();
         void EnsureKeyboardItemVisible();
 
         // ===== EVENT HANDLERS =====

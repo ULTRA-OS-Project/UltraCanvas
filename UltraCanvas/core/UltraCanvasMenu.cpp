@@ -519,6 +519,7 @@ namespace UltraCanvas {
 
             // Clamp to window bounds and add scrollbar if needed
             ClampMenuToWindow();
+            ClampMenuToWindowHorizontal();
         }
     }
 
@@ -675,8 +676,30 @@ namespace UltraCanvas {
             submenuY = GetYInWindow() + GetHeight() + style.submenuOffset;
         }
 
-        // Adjust for screen boundaries (simplified)
-        // In a complete implementation, you'd check screen bounds
+        // Adjust for window boundaries
+        auto win = GetWindow();
+        if (win) {
+            int windowWidth = win->GetWidth();
+            int windowHeight = win->GetHeight();
+            int submenuWidth = submenu->GetWidth();
+            int submenuHeight = submenu->GetHeight();
+
+            // Horizontal: flip to left side if overflows right edge
+            if (submenuX + submenuWidth > windowWidth) {
+                if (orientation == MenuOrientation::Vertical) {
+                    submenuX = GetXInWindow() - submenuWidth - style.submenuOffset;
+                } else {
+                    submenuX = windowWidth - submenuWidth;
+                }
+                if (submenuX < 0) submenuX = 0;
+            }
+
+            // Vertical: shift up if overflows bottom edge
+            if (submenuY + submenuHeight > windowHeight) {
+                submenuY = windowHeight - submenuHeight;
+                if (submenuY < 0) submenuY = 0;
+            }
+        }
 
         submenu->SetPosition(submenuX, submenuY);
     }
@@ -1139,6 +1162,21 @@ namespace UltraCanvas {
             menuScrollbar->SetViewportSize(clampedMenuHeight);
             menuScrollbar->SetScrollPosition(scrollOffsetPixels);
             menuScrollbar->SetWindow(win);
+        }
+    }
+
+    void UltraCanvasMenu::ClampMenuToWindowHorizontal() {
+        auto win = GetWindow();
+        if (!win) return;
+
+        int windowWidth = win->GetWidth();
+        int menuX = GetXInWindow();
+        int menuWidth = GetWidth();
+
+        if (menuX + menuWidth > windowWidth) {
+            int newX = windowWidth - menuWidth;
+            if (newX < 0) newX = 0;
+            SetPosition(newX, GetY());
         }
     }
 

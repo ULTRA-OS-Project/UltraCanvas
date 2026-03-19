@@ -9,7 +9,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
-#include "UltraCanvasImageElement.h"
+#include "UltraCanvasMenu.h"
 #include <string>
 #include <functional>
 #include <vector>
@@ -33,17 +33,20 @@ namespace UltraCanvas {
         SearchBarMode mode = SearchBarMode::Find;
 
         // ===== FIND ROW COMPONENTS =====
+        std::shared_ptr<UltraCanvasButton>       searchIconButton;
         std::shared_ptr<UltraCanvasTextInput>   searchInput;
         std::shared_ptr<UltraCanvasLabel>       countLabel;     // "3 / 12" or "No results"
         std::shared_ptr<UltraCanvasButton>      prevButton;     // ↑
         std::shared_ptr<UltraCanvasButton>      nextButton;     // ↓
-        std::shared_ptr<UltraCanvasButton>      caseSensitiveButton; // Cc
-        std::shared_ptr<UltraCanvasButton>      wholeWordButton;     // W
-        // std::shared_ptr<UltraCanvasButton>      wrapAroundButton;    // ↕
-        std::shared_ptr<UltraCanvasButton>      closeButton;    // ✕
+        std::shared_ptr<UltraCanvasButton>      settingsButton;      // ⚙ opens options menu
+        std::shared_ptr<UltraCanvasMenu>        settingsMenu;        // popup with Case sensitive / Whole words checkboxes
+        std::shared_ptr<UltraCanvasMenu>        searchHistoryMenu;   // popup with recent search terms
+        std::shared_ptr<UltraCanvasMenu>        replaceHistoryMenu;  // popup with recent replace terms
+        std::shared_ptr<UltraCanvasButton>      closeButton;         // ✕
 
         // ===== REPLACE ROW COMPONENTS =====
         std::shared_ptr<UltraCanvasContainer>   replaceRow;
+        std::shared_ptr<UltraCanvasButton>       replaceIconButton;
         std::shared_ptr<UltraCanvasTextInput>   replaceInput;
         std::shared_ptr<UltraCanvasButton>      replaceButton;
         std::shared_ptr<UltraCanvasButton>      replaceAllButton;
@@ -58,7 +61,7 @@ namespace UltraCanvas {
 
         std::vector<std::string> searchHistory;
         std::vector<std::string> replaceHistory;
-        int maxHistoryItems = 20;
+        int maxHistoryItems = 50;
 
         // ===== LAYOUT CONSTANTS =====
         static constexpr int RowHeight     = 32;
@@ -67,18 +70,25 @@ namespace UltraCanvas {
         static constexpr int IconBtnSize   = 28;
         static constexpr int CountLabelW   = 72;
         static constexpr int ReplaceBtnW   = 110;
+        static constexpr int MaxInputWidth  = 400;
+        static constexpr int SearchIconW    = 28;
 
         // ===== PRIVATE HELPERS =====
         void BuildFindRow(int y, int w);
         void BuildReplaceRow(int y, int w);
+        void BuildSettingsMenu();
+        void UpdateLayout();
         void WireCallbacks();
         void AddToHistory(std::vector<std::string>& history, const std::string& text);
+        void ShowHistoryMenu(bool isReplace);
+        int ComputeInputWidth() const;
 
     public:
         UltraCanvasSearchBar(const std::string& id, long uid, int x, int y, int w);
 
         // ===== SETUP =====
         void Initialize();
+        void SetBounds(const Rect2Di& bounds) override;
 
         // ===== MODE CONTROL =====
         void SetMode(SearchBarMode newMode);
@@ -126,6 +136,7 @@ namespace UltraCanvas {
         std::function<void(const std::string& find, const std::string& replace, bool cs, bool ww)> onReplaceAll;
         std::function<void()> onClose;
         std::function<void(const std::string&)> onSearchTextChanged;
+        std::function<void()> onHistoryChanged;
     };
 
 } // namespace UltraCanvas

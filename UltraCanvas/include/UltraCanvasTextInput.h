@@ -329,6 +329,13 @@ private:
     AutoComplete autoCompleteMode;
     std::vector<std::string> autoCompleteSuggestions;
     bool showAutoComplete;
+
+    // ===== CLEAR BUTTON =====
+    bool showClearButton = false;
+    bool isClearButtonHovered = false;
+    int clearButtonSize = 14;
+    Color clearButtonColor = Color(150, 150, 150);
+    Color clearButtonHoverColor = Color(200, 50, 50);
     
 public:
     // ===== CONSTRUCTOR =====
@@ -385,6 +392,10 @@ public:
     void SetShowValidationState(bool show) {
         showValidationState = show;
     }
+
+    // ===== CLEAR BUTTON =====
+    void SetShowClearButton(bool show) { showClearButton = show; RequestRedraw(); }
+    bool IsShowClearButton() const { return showClearButton; }
     
     // ===== FORMATTING =====
     void SetFormatter(const TextFormatter& textFormatter);
@@ -437,6 +448,7 @@ public:
     std::function<void()> onEscapePressed;
     std::function<void()> onFocusGained;
     std::function<void()> onFocusLost;
+    std::function<void()> onCleared;
     
 private:
     // ===== PRIVATE HELPER METHODS =====
@@ -514,6 +526,10 @@ private:
     
     std::vector<std::string> WrapLine(const std::string& line, float maxWidth);
     
+    bool IsClearButtonVisible() const;
+    Rect2Di GetClearButtonBounds() const;
+    void RenderClearButton(IRenderContext* ctx);
+
     size_t GetTextPositionFromPoint(const Point2Di& point);
     
     bool HandleMouseDown(const UCEvent& event);
