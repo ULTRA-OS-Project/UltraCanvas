@@ -195,6 +195,9 @@ namespace UltraCanvas {
         // ===== TAB CONTEXT MENU =====
         std::shared_ptr<UltraCanvasMenu> tabContextMenu;
 
+        // ===== HEADING SUB-TOOLBAR =====
+        std::shared_ptr<UltraCanvasToolbar> headingSubToolbar;
+
         // ===== DIALOGS =====
         std::shared_ptr<UltraCanvasFindDialog> findDialog;
         // ===== INLINE SEARCH/REPLACE BAR =====
@@ -283,6 +286,8 @@ namespace UltraCanvas {
         bool SaveDocumentAs(int docIndex, const std::string& filePath);
         bool IsBinaryFile(const std::vector<uint8_t>& rawBytes, const std::string& extension) const;
 
+        std::string FormatPathTooltip(const std::string& filePath);
+
         // ===== AUTOSAVE =====
         void PerformAutosave();
         void AutosaveDocument(int docIndex);
@@ -322,6 +327,7 @@ namespace UltraCanvas {
 
         void OnInfoAbout();
         void OnInfoFileStatistics();
+
 
         // ===== UI UPDATES =====
         void UpdateStatusBar();

@@ -635,7 +635,26 @@ namespace {
                     [this]() { InsertMarkdownSnippet("~", "~", "sub"); })
                 .AddSeparator()
                 .AddButton("md-heading", "", GetResourcesDir() + "media/icons/texter/md-heading.svg",
-                    [this]() { InsertMarkdownSnippet("## ", "", "Heading"); })
+                    [this]() {
+                        if (!headingSubToolbar) return;
+                        if (headingSubToolbar->IsVisible()) {
+                            headingSubToolbar->SetVisible(false);
+                            GetWindow()->RemoveChild(headingSubToolbar);
+                        } else {
+                            if (headingSubToolbar && markdownToolbar && markdownToolbar->IsVisible()) {
+                                auto item = markdownToolbar->GetItem("md-heading");
+                                if (item && item->GetWidget()) {
+                                    auto btn = item->GetWidget();
+                                    auto pos = btn->GetPositionInWindow();
+                                    int btnW = btn->GetWidth();
+                                    headingSubToolbar->SetBounds(Rect2Di(pos.x + btnW, pos.y, 200, 36));
+                                }
+                            }
+                            headingSubToolbar->SetVisible(true);
+                            GetWindow()->AddChild(headingSubToolbar);
+                        }
+                        //UpdateChildLayout();
+                    })
                 .AddSeparator()
                 .AddButton("md-ul", "", GetResourcesDir() + "media/icons/texter/md-list-unordered.svg",
                     [this]() { InsertMarkdownSnippet("- ", "", "list item"); })
@@ -672,9 +691,42 @@ namespace {
             }
         }
 
+        // Create heading sub-toolbar (horizontal strip shown when clicking the heading button)
+        headingSubToolbar = UltraCanvasToolbarBuilder("HeadingSubToolbar", 203)
+            .SetOrientation(ToolbarOrientation::Horizontal)
+            .SetAppearance(ToolbarAppearance::Flat())
+            .SetDimensions(0, 0, 200, 36)
+            .AddButton("md-h1", "H1", "", [this]() { InsertMarkdownSnippet("# ", "", "Heading"); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h2", "H2", "", [this]() { InsertMarkdownSnippet("## ", "", "Heading"); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h3", "H3", "", [this]() { InsertMarkdownSnippet("### ", "", "Heading"); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h4", "H4", "", [this]() { InsertMarkdownSnippet("#### ", "", "Heading"); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h5", "H5", "", [this]() { InsertMarkdownSnippet("##### ", "", "Heading"); headingSubToolbar->SetVisible(false); })
+            .Build();
+
+        // Style buttons with decreasing font sizes to reflect heading hierarchy
+        struct { const char* id; float fontSize; FontWeight weight; } headingStyles[] = {
+            {"md-h1", 16.0f, FontWeight::Bold},
+            {"md-h2", 14.0f, FontWeight::Bold},
+            {"md-h3", 12.0f, FontWeight::Normal},
+            {"md-h4", 11.0f, FontWeight::Normal},
+            {"md-h5", 10.0f, FontWeight::Normal},
+        };
+        for (auto& s : headingStyles) {
+            auto item = headingSubToolbar->GetItem(s.id);
+            if (item) {
+                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
+                if (btn) {
+                    btn->SetFont("", s.fontSize, s.weight);
+                    btn->SetAcceptsFocus(false);
+                }
+            }
+        }
+        headingSubToolbar->SetVisible(false);
+
         markdownToolbar->SetVisible(false);
 
         AddChild(markdownToolbar);
+
     }
 
     void UltraCanvasTextEditor::SetupTabContainer() {
@@ -1441,7 +1493,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         std::string title = doc->fileName;
 
         tabContainer->SetTabTitle(index, title);
-        tabContainer->SetTabTooltip(index, doc->filePath);
+
+        tabContainer->SetTabTooltip(index, FormatPathTooltip(doc->filePath));
     }
 
     void UltraCanvasTextEditor::UpdateTabBadge(int index) {
@@ -1942,6 +1995,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         bool show = IsMarkdownMode() && config.showMarkdownToolbar;
         if (markdownToolbar->IsVisible() != show) {
             markdownToolbar->SetVisible(show);
+            if (!show && headingSubToolbar) {
+                headingSubToolbar->SetVisible(false);
+            }
             UpdateChildLayout();
         }
     }
@@ -2010,8 +2066,52 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (!doc) return;
 
         std::string defaultName = doc->fileName;
+
         if (defaultName.find("Untitled") == 0) {
-            defaultName = "untitled.txt";
+
+            // Map language name → canonical first extension
+            // Ordered by most common use; matches the extensions in fileFilters.
+            static const std::vector<std::pair<std::string, std::string>> langToExt = {
+                    { "Markdown",       "md"   },
+                    { "C++",            "cpp"  },
+                    { "C",              "c"    },
+                    { "Python",         "py"   },
+                    { "JavaScript",     "js"   },
+                    { "TypeScript",     "ts"   },
+                    { "Java",           "java" },
+                    { "C#",             "cs"   },
+                    { "Go",             "go"   },
+                    { "Rust",           "rs"   },
+                    { "Pascal",         "pas"  },
+                    { "PHP",            "php"  },
+                    { "Ruby",           "rb"   },
+                    { "Swift",          "swift"},
+                    { "Kotlin",         "kt"   },
+                    { "HTML",           "html" },
+                    { "CSS",            "css"  },
+                    { "XML",            "xml"  },
+                    { "JSON",           "json" },
+                    { "YAML",           "yaml" },
+                    { "Shell",          "sh"   },
+                    { "Bash",           "sh"   },
+                    { "SQL",            "sql"  },
+                    { "Lua",            "lua"  },
+                    { "x86 Assembly",   "asm"  },
+                    { "ARM Assembly",   "asm"  },
+                    { "68000 Assembly", "asm"  },
+                    { "Z80 Assembly",   "asm"  },
+                    { "Plain Text",     "txt"  },
+            };
+
+            std::string ext = "txt"; // fallback
+            for (const auto& [lang, langExt] : langToExt) {
+                if (doc->language == lang) {
+                    ext = langExt;
+                    break;
+                }
+            }
+
+            defaultName = "untitled." + ext;
         }
 
         UltraCanvasDialogManager::ShowSaveFileDialog(
@@ -3609,6 +3709,61 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         ctx->PopState();
     }
 
+
+    std::string UltraCanvasTextEditor::FormatPathTooltip(const std::string& filePath) {
+        if (filePath.empty()) return filePath;
+
+        // Split path into segments at every '/' or '\'
+        std::vector<std::string> segments;
+        std::string current;
+
+        for (size_t i = 0; i < filePath.size(); ++i) {
+            char c = filePath[i];
+            if (c == '/' || c == '\\') {
+                if (!current.empty()) {
+                    segments.push_back(current);
+                    current.clear();
+                }
+            } else {
+                current += c;
+            }
+        }
+        if (!current.empty()) {
+            segments.push_back(current);
+        }
+
+        if (segments.empty()) return filePath;
+
+        // Reconstruct with " /\n" as separator.
+        // Special case: Windows drive root "C:" — render as "C:\" on same line
+        // as the first real segment, so we don't get a lone "C:" on line 1.
+        std::string result;
+
+        // Detect Windows drive: first segment is exactly 2 chars and ends with ':'
+        size_t startIdx = 0;
+        if (segments[0].size() == 2 && segments[0][1] == ':') {
+            // e.g. "C:" — combine with first real segment on one line
+            result = segments[0] + ":\\";
+            if (segments.size() > 1) {
+                result += segments[1];
+                startIdx = 2;
+            } else {
+                startIdx = 1;
+            }
+        } else {
+            // Unix/relative path — start with first segment normally
+            result = segments[0];
+            startIdx = 1;
+        }
+
+        // Append remaining segments, each on its own line separated by " /"
+        for (size_t i = startIdx; i < segments.size(); ++i) {
+            result += " /\n";
+            result += segments[i];
+        }
+
+        return result;
+    }
 
     //  Recent Files Management Methods
     void UltraCanvasTextEditor::AddToRecentFiles(const std::string& filePath) {
