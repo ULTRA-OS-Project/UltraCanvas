@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.16)
 include(FetchContent)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "1.2.0")
+set(ULTRACANVAS_VERSION "1.0.11")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")

@@ -1494,7 +1494,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         tabContainer->SetTabTitle(index, title);
 
-        tabContainer->SetTabTooltip(index, FormatPathTooltip(doc->filePath));
+        tabContainer->SetTabTooltip(index, utf8_strreplace(doc->filePath, " ", "\u00A0"));
+        //tabContainer->SetTabTooltip(index, doc->filePath);
     }
 
     void UltraCanvasTextEditor::UpdateTabBadge(int index) {
@@ -2427,6 +2428,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 doc->textArea->SetShowLineNumbers(config.showLineNumbers);
             }
         }
+        SaveConfig();
     }
 
     void UltraCanvasTextEditor::OnViewToggleWordWrap(bool checked) {
@@ -2851,6 +2853,18 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 zStyle.itemHoverColor = Color(65, 65, 65, 255);
                 zStyle.itemSelectedColor = Color(55, 55, 55, 255);
                 zoomDropdown->SetStyle(zStyle);
+            }
+            if (eolDropdown) {
+                DropdownStyle eStyle = eolDropdown->GetStyle();
+                eStyle.normalColor = Color(40, 40, 40, 255);
+                eStyle.hoverColor = Color(55, 55, 55, 255);
+                eStyle.normalTextColor = Color(200, 200, 200, 255);
+                eStyle.borderColor = Color(60, 60, 60, 255);
+                eStyle.listBackgroundColor = Color(45, 45, 45, 255);
+                eStyle.listBorderColor = Color(60, 60, 60, 255);
+                eStyle.itemHoverColor = Color(65, 65, 65, 255);
+                eStyle.itemSelectedColor = Color(55, 55, 55, 255);
+                zoomDropdown->SetStyle(eStyle);
             }
             if (encodingDropdown) {
                 DropdownStyle eStyle = encodingDropdown->GetStyle();
@@ -3711,6 +3725,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
 
     std::string UltraCanvasTextEditor::FormatPathTooltip(const std::string& filePath) {
+
         if (filePath.empty()) return filePath;
 
         // Split path into segments at every '/' or '\'
@@ -3757,8 +3772,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         // Append remaining segments, each on its own line separated by " /"
+        std::string tmpline = result;
         for (size_t i = startIdx; i < segments.size(); ++i) {
-            result += " /\n";
+            result += "/";
+            if (utf8_length(tmpline) > 40) {
+                result += "\n";
+                tmpline = "";
+            }
+            tmpline += segments[i];
             result += segments[i];
         }
 

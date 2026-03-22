@@ -375,10 +375,12 @@ namespace UltraCanvas {
         //cgContext = nullptr;
     }
 
-    void UltraCanvasMacOSWindow::ResizeCairoSurface(int width, int height) {
+    void UltraCanvasMacOSWindow::DoResizeNative() {
         std::lock_guard<std::mutex> lock(cairoMutex);
+        int w = config_.width;
+        int h = config_.height;
 
-        debugOutput << "UltraCanvas macOS: Resizing Cairo surface to " << width << "x" << height << std::endl;
+        debugOutput << "UltraCanvasMacOSWindow::DoResizeNative: Resizing Cairo surface to " << w << "x" << h << std::endl;
 
         auto oldCairoSurface = cairoSurface;
 
@@ -393,7 +395,7 @@ namespace UltraCanvas {
 
             // Update render context
         if (renderContext) {
-            renderContext->SetTargetSurface(cairoSurface, width, height);
+            renderContext->SetTargetSurface(cairoSurface, w, h);
         }
     }
 
@@ -570,7 +572,7 @@ namespace UltraCanvas {
             @autoreleasepool {
                 NSSize size = NSMakeSize(width, height);
                 [nsWindow setContentSize:size];
-                ResizeCairoSurface(width, height);
+                DoResizeNative();
             }
         }
 
@@ -611,6 +613,10 @@ namespace UltraCanvas {
         return (NativeWindowHandle)(__bridge_retained void*)nsWindow;
     };
 
+    NSWindow* UltraCanvasMacOSWindow::GetNSWindowHandle() const {
+        return (NSWindow*)nsWindow;
+    };
+
     // ===== WINDOW DELEGATE CALLBACKS =====
     void UltraCanvasMacOSWindow::OnWindowWillClose() {
         debugOutput << "UltraCanvas macOS: Window will close callback" << std::endl;
@@ -629,7 +635,7 @@ namespace UltraCanvas {
                 config_.width = newWidth;
                 config_.height = newHeight;
 
-                ResizeCairoSurface(newWidth, newHeight);
+                DoResizeNative();
 
                 if (onWindowResize) {
                     onWindowResize(newWidth, newHeight);

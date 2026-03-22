@@ -164,15 +164,16 @@ namespace UltraCanvas {
         int x = RowPadding;
 
         // Search icon button
-        searchIconButton = std::make_shared<UltraCanvasButton>("SearchIconBtn", 6001, x, inputY, SearchIconW, inputH);
+        searchIconButton = std::make_shared<UltraCanvasButton>("SearchIconBtn", 6001, x, inputY, IconBtnSize, IconBtnSize);
         searchIconButton->SetIcon(GetResourcesDir() + "media/icons/texter/search.svg");
+        searchIconButton->SetText("");
         searchIconButton->SetIconSize(14, 14);
-        searchIconButton->SetIconScaleToFit(true);
+        searchIconButton->SetPadding(4,4,4,4);
         searchIconButton->SetAcceptsFocus(false);
         searchIconButton->SetTooltip("Search History");
         searchIconButton->onClick = [this]() { ShowHistoryMenu(false); };
         AddChild(searchIconButton);
-        x += SearchIconW + HSpacing;
+        x += IconBtnSize + HSpacing;
 
         // Search input
         searchInput = std::make_shared<UltraCanvasTextInput>("SearchInput", 6002, x, inputY, inputW, inputH);
@@ -205,8 +206,9 @@ namespace UltraCanvas {
 
         rx -= IconBtnSize;
         settingsButton = std::make_shared<UltraCanvasButton>("SettingsBtn", 6009, rx, btnY, IconBtnSize, IconBtnSize);
-        settingsButton->SetText("\xe2\x9a\x99"); // ⚙
-        settingsButton->SetFontSize(13);
+        settingsButton->SetIcon(GetResourcesDir() + "media/icons/texter/settings-sliders.svg");
+        settingsButton->SetIconSize(18,18);
+        settingsButton->SetPadding(4,4,4,4);
         settingsButton->SetTooltip("Search Options");
         settingsButton->SetAcceptsFocus(false);
         AddChild(settingsButton);
@@ -270,7 +272,9 @@ namespace UltraCanvas {
         // Replace icon button
         replaceIconButton = std::make_shared<UltraCanvasButton>("ReplaceIconBtn", 6101, x, inputY, SearchIconW, inputH);
         replaceIconButton->SetIcon(GetResourcesDir() + "media/icons/texter/replace.svg");
+        replaceIconButton->SetText("");
         replaceIconButton->SetIconSize(14, 14);
+        replaceIconButton->SetPadding(4,4,4,4);
         replaceIconButton->SetIconScaleToFit(true);
         replaceIconButton->SetAcceptsFocus(false);
         replaceIconButton->SetTooltip("Replace History");

@@ -177,7 +177,7 @@ DialogResult UltraCanvasNativeDialogs::ShowMessage(
         // If parent window is provided, run as sheet (attached modal)
         // Otherwise run as application-modal dialog
         if (parent != nullptr) {
-            NSWindow* parentWindow = parent->GetNativeHandle();
+            NSWindow* parentWindow = (NSWindow*)parent->GetNativeHandle();
 
             // For sheet-style, we need to use beginSheetModalForWindow
             // But since we need a synchronous result, we use runModal with window level

@@ -66,6 +66,10 @@ namespace UltraCanvas {
     int utf8_rfind(const std::string& haystack, const std::string& needle,
                         int maxCp = -1, bool caseSensitive = true);
 
+    // Replace occurrences of 'find' with 'rep' in 'src'. maxCount=0 means replace all.
+    std::string utf8_strreplace(const std::string& src, const std::string& find,
+                                const std::string& rep, int maxCount = 0);
+
     // Split by single-byte delimiter (e.g. '\n')
     std::vector<std::string> utf8_split(const std::string& s, char delim);
 

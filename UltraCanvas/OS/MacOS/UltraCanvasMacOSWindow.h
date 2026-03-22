@@ -63,11 +63,11 @@ namespace UltraCanvas {
         bool CreateNSWindow();
         bool CreateCairoSurface();
         void DestroyCairoSurface();
-        void ResizeCairoSurface(int width, int height);
 
     protected:
         bool CreateNative() override;
         void DestroyNative() override;
+        void DoResizeNative() override;
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
@@ -87,6 +87,7 @@ namespace UltraCanvas {
         void SetFullscreen(bool fullscreen) override;
         void Flush() override;
         NativeWindowHandle GetNativeHandle() const override;
+        NSWindow* GetNSWindowHandle() const;
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }
         void RaiseAndFocus() override;
 

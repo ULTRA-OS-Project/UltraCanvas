@@ -278,7 +278,7 @@ namespace UltraCanvas {
         std::string currentLine;
         auto ctx = targetWindow->GetRenderContext();
         for (const std::string& word : words) {
-            std::string testLine = currentLine.empty() ? word : currentLine + " " + word;
+            std::string testLine = currentLine.empty() ? word : currentLine + word;
             float lineWidth = ctx->GetTextLineWidth(testLine);
 
             if (lineWidth <= maxWidth || currentLine.empty()) {
@@ -301,16 +301,12 @@ namespace UltraCanvas {
         std::string word;
 
         for (char c : text) {
-            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            word += c;
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '/' || c == '\\') {
                 if (!word.empty()) {
                     words.push_back(word);
                     word.clear();
                 }
-                if (c == '\n') {
-                    words.push_back("\n"); // Preserve line breaks
-                }
-            } else {
-                word += c;
             }
         }
 

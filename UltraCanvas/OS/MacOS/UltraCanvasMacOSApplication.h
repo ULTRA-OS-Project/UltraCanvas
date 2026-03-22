@@ -157,7 +157,7 @@ namespace UltraCanvas {
         void ReleaseMouseNative() override;
 
         void CollectAndProcessNativeEvents() override;
-        NSCursor* LoadCursorFromImage(const char* filename, int hotspotX, int hotspotY);
+        NSCursor* LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY);
 
     private:
         // Internal helper methods

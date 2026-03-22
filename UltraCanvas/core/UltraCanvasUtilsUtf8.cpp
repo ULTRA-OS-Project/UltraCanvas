@@ -78,6 +78,21 @@ namespace UltraCanvas {
         return static_cast<int>(g_utf8_pointer_to_offset(h.c_str(), h.c_str() + bp));
     }
 
+    // Replace occurrences of 'find' with 'rep' in 'src'. maxCount=0 means replace all.
+    std::string utf8_strreplace(const std::string& src, const std::string& find,
+                                const std::string& rep, int maxCount) {
+        if (find.empty()) return src;
+        std::string result = src;
+        size_t pos = 0;
+        int count = 0;
+        while ((pos = result.find(find, pos)) != std::string::npos) {
+            result.replace(pos, find.size(), rep);
+            pos += rep.size();
+            if (maxCount > 0 && ++count >= maxCount) break;
+        }
+        return result;
+    }
+
     // Split by single-byte delimiter (e.g. '\n')
     std::vector<std::string> utf8_split(const std::string& s, char delim) {
         std::vector<std::string> result;

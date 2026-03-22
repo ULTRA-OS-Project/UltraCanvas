@@ -4,6 +4,14 @@
 // Last Modified: 2025-09-14
 // Author: UltraCanvas Framework
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM macros
+#include "UltraCanvasDebug.h"
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 #include "UltraCanvasUtils.h"
 #include <sstream>
 #include <fstream>
@@ -11,17 +19,8 @@
 #include <iomanip>
 #include <string>
 
-#if defined(_WIN32) || defined(_WIN64)
-#include <windows.h>
-#include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM macros
-#include "UltraCanvasDebug.h"
-#elif defined(__APPLE__)
-#import <Cocoa/Cocoa.h>
-#import <AppKit/AppKit.h>
-#endif
-
 namespace UltraCanvas {
-    const char* versionString = "0.45";
+    const char* versionString = "1.0.11";
 
     std::string ToLowerCase(const std::string &str) {
         std::string result = str;

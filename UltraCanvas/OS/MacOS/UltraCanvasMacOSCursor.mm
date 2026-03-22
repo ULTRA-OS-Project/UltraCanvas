@@ -87,10 +87,10 @@ namespace UltraCanvas {
     }
 
 // ===== PUBLIC API =====
-    NSCursor* UltraCanvasMacOSApplication::LoadCursorFromImage(const char* filename, int hotspotX, int hotspotY) {
-        if (!filename) return 0;
+    NSCursor* UltraCanvasMacOSApplication::LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY) {
+        if (filename.empty()) return 0;
         try {
-            vips::VImage img = LoadImageForCursor(filename);
+            vips::VImage img = LoadImageForCursor(filename.c_str());
             // Create new cursor
             return CreateNSCursorFromImage(img, hotspotX, hotspotY);
         } catch (const vips::VError& e) {

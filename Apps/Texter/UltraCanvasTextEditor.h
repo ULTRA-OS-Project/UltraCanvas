@@ -175,7 +175,7 @@ namespace UltraCanvas {
  */
     class UltraCanvasTextEditor : public UltraCanvasContainer {
     private:
-        std::string version = "1.0.3";
+        std::string version = "1.0.11";
         // ===== CONFIGURATION =====
         TextEditorConfig config;
         bool isDarkTheme;

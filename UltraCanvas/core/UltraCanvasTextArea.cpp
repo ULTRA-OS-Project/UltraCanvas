@@ -1369,7 +1369,8 @@ namespace UltraCanvas {
         context->DrawLine(bounds.x + computedLineNumbersWidth, bounds.y,
                           bounds.x + computedLineNumbersWidth, bounds.y + bounds.height);
 
-        context->SetFontStyle(style.fontStyle);
+        context->SetFontFace(style.fontStyle.fontFamily, style.fontStyle.fontWeight, style.fontStyle.fontSlant);
+        context->SetFontSize(style.fontStyle.fontSize - 2);
 
         // Clip to gutter area
         Rect2Di lineNumberClipRect = {bounds.x, visibleTextArea.y,

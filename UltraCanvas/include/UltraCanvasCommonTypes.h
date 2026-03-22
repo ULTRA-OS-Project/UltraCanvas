@@ -36,6 +36,7 @@
 #include <X11/Xlib.h>
 #elif defined(__APPLE__)
 #endif
+
 namespace UltraCanvas {
 
     // ===== NATIVE WINDOW HANDLE TYPE =====
@@ -46,7 +47,7 @@ namespace UltraCanvas {
 #elif defined(__linux__) || defined(__unix__)
     using NativeWindowHandle = XID;  // X11 Window
 #elif defined(__APPLE__)
-    using NativeWindowHandle = void*;  // NSWindow*
+    using NativeWindowHandle = void*;
 #else
     using NativeWindowHandle = void*;
 #endif
