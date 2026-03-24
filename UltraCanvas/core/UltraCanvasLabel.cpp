@@ -232,6 +232,10 @@ namespace UltraCanvas {
 
     // ===== EVENT HANDLING =====
     bool UltraCanvasLabel::OnEvent(const UCEvent &event) {
+        if (UltraCanvasUIElement::OnEvent(event)) {
+            return true;
+        }        
+
         switch (event.type) {
             case UCEventType::MouseDown:
                 if (Contains(event.x, event.y)) {
@@ -262,7 +266,7 @@ namespace UltraCanvas {
                 break;
         }
 
-        return UltraCanvasUIElement::OnEvent(event);
+        return false;
     }
 
     // ===== SIZE CHANGES =====

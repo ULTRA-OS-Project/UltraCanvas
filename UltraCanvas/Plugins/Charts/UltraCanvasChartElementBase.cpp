@@ -34,7 +34,7 @@ namespace UltraCanvas {
         }
 
         // Set clipping to element bounds using existing functions
-        ctx->ClipRect(GetActualBounds());
+        ctx->ClipRect(GetOverlayBounds());
 
         // Draw common background
         RenderCommonBackground(ctx);

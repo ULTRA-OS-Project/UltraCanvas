@@ -17,6 +17,9 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+    std::unordered_map<UltraCanvasUIElement*, OverlayElementSettings> pendingOverlayElements;
+
+
     UltraCanvasWindowBase::UltraCanvasWindowBase()
             : UltraCanvasContainer("Window", 0, 0, 0, 0, 0) {
         // Configure container for window behavior
@@ -192,21 +195,19 @@ namespace UltraCanvas {
             }
         }
 
-//        if (event.IsMouseEvent() && !activePopups.empty()) {
-//            std::unordered_set<UltraCanvasUIElement*> activePopupsCopy = activePopups;
-//            for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
-//                UltraCanvasUIElement* activePopupElement = *it;
-//                auto localCoords = activePopupElement->ConvertWindowToParentContainerCoordinates(Point2Di(event.x, event.y));
-//                UCEvent localEvent = event;
-//                localEvent.x = localCoords.x;
-//                localEvent.y = localCoords.y;
-//                if (activePopupElement->OnEvent(localEvent)) {
-//                    return true;
-//                }
-//            }
-//        }
-
         return UltraCanvasContainer::OnEvent(event);
+    }
+
+    bool UltraCanvasWindowBase::HandleEventFilters(const UCEvent &event) {
+        auto found = eventFilters.find(event.type);
+        if (found != eventFilters.end()) {
+            for(auto elem : found->second) {
+                if (elem->OnWindowEventFilter(event)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     bool UltraCanvasWindowBase::HandleWindowEvent(const UCEvent &event) {
@@ -289,32 +290,24 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowBase::Render(IRenderContext* ctx) {
         if (!visible || !_created) return;
-//        if (useSelectiveRendering && selectiveRenderer) {
-//            // Use simple selective rendering
-//            selectiveRenderer->RenderFrame();
-//            // Only clear needs redraw if no dirty regions remain
-//            if (!selectiveRenderer->HasDirtyRegions()) {
-//                _needsRedraw = false;
-//            }
-//        } else {
-            // Render container content (children with scrolling)
-            UltraCanvasContainer::Render(ctx);
+        UltraCanvasContainer::Render(ctx);
 
-            RenderActivePopups(ctx);
+        RenderOverlayElements(ctx);
 
-            // Render window-specific overlays
-            RenderCustomContent(ctx);
-
-//            useSelectiveRendering = true;
-//        }
+        RenderCustomContent(ctx);
     }
 
-    void UltraCanvasWindowBase::RenderActivePopups(IRenderContext* ctx) {
+    void UltraCanvasWindowBase::RenderOverlayElements(IRenderContext* ctx) {
         // Render popups in z-order
-        for (UltraCanvasUIElement* popup : activePopups) {
-            if (popup) {
+        for (auto it = overlayElements.begin(); it != overlayElements.end(); ++it) {
+            if (it->element && it->element->IsVisible()) {
                 ctx->PushState();
-                popup->RenderPopupContent(ctx);
+                if (!it->settings.useAbsolutePosition) {
+                    int x = 0, y = 0;
+                    it->element->ConvertContainerToWindowCoordinates(x, y);
+                    ctx->Translate(x, y);
+                }
+                it->element->RenderOverlay(ctx);
                 ctx->PopState();
             }
         }
@@ -322,45 +315,100 @@ namespace UltraCanvas {
         UltraCanvasTooltipManager::Render(ctx, this);
     }
 
+    void UltraCanvasWindowBase::AddToOverlays(UltraCanvasUIElement *elem, const OverlayElementSettings& overlaySettings) {
+        UltraCanvasWindowBase *window = elem->GetWindow();
+        if (window) {
+            auto &overlayElements = window->overlayElements;
 
-
-    void UltraCanvasWindowBase::AddPopupElement(UltraCanvasUIElement *element) {
-        if (element) {
-            MarkElementDirty(element);
-            auto found = std::find(activePopups.begin(), activePopups.end(), element);
-            if (found == activePopups.end()) {
-                activePopups.emplace_back(element);
+            auto it = overlayElements.begin();
+            for(; it != overlayElements.end(); ++it) {
+                if (it->element == elem) {
+                    return; // already added
+                }
+                if (overlaySettings.overlayZOrder > it->settings.overlayZOrder) {
+                    break;
+                }
             }
-            popupsToRemove.erase(element);
+            auto ovElem = OverlayElement {
+                    .element = elem,
+                    .settings = overlaySettings
+            };
+            overlayElements.insert(it, ovElem);
+
+            window->RequestRedraw();
+        } else {
+            pendingOverlayElements[elem] = overlaySettings;
         }
     }
 
-    void UltraCanvasWindowBase::RemovePopupElement(UltraCanvasUIElement *element) {
-        auto found = std::find(activePopups.begin(), activePopups.end(), element);
-        if (found != activePopups.end()) {
-            popupsToRemove.insert(element);
+    void UltraCanvasWindowBase::RemoveFromOverlays(UltraCanvasUIElement* elem) {
+        UltraCanvasWindowBase *window = elem->GetWindow();
+        if (window) {
+            auto &overlayElements = window->overlayElements;
+            for(auto it = overlayElements.begin(); it != overlayElements.end(); it++) {
+                if (it->element == elem) {
+                    overlayElements.erase(it);
+                    elem->OnRemovedFromOverlays();
+                    window->RequestRedraw();
+                    return;
+                }
+            }
+        } else {
+            pendingOverlayElements.erase(elem);
         }
     }
 
-    void UltraCanvasWindowBase::CleanupRemovedPopupElements() {
-        if (popupsToRemove.empty()) return;
-
-        for(auto it : popupsToRemove) {
-            auto found = std::find(activePopups.begin(), activePopups.end(), it);
-            if (found != activePopups.end()) {
-                activePopups.erase(found);
+    void UltraCanvasWindowBase::SetPendingOverlays(UltraCanvasUIElement* elem, UltraCanvasUIElement* win) {
+        if (elem && win) {
+            auto found = pendingOverlayElements.find(elem);
+            if (found != pendingOverlayElements.end()) {
+                UltraCanvasWindowBase::AddToOverlays(elem, found->second);
+                pendingOverlayElements.erase(elem);
             }
         }
-
-        popupsToRemove.clear();
-//        if (selectiveRenderer) {
-//            selectiveRenderer->RestoreBackgroundFromOverlay();
-//        } else {
-//            _needsRedraw = true;
-//        }
-        _needsRedraw = true;
     }
 
+    UltraCanvasUIElement *UltraCanvasWindowBase::FindElementAtPointInWindow(int x, int y, bool onlyHandleInputEvents) {
+        if (!overlayElements.empty()) {
+            int contentX = x  + horizontalScrollbar->GetScrollPosition();
+            int contentY = y + verticalScrollbar->GetScrollPosition();
+            // Check overlay elements in reverse order (topmost first) with proper clipping
+            for(auto it = overlayElements.rbegin(); it != overlayElements.rend(); ++it) {
+                if (!it->element || !it->element->IsVisible() || (onlyHandleInputEvents && ! it->settings.handleInputEvents)) {
+                    continue;
+                }
+                UltraCanvasUIElement* child = it->element;
+                Rect2Di overlayBounds = child->GetOverlayBounds();
+                if (!it->settings.useAbsolutePosition) {
+                    child->ConvertContainerToWindowCoordinates(overlayBounds.x, overlayBounds.y);
+                }
+                    // CRITICAL FIX: Check if content-relative coordinates are within child bounds
+                if (overlayBounds.Contains(contentX, contentY)) {
+                    // Check if child intersects with visible content area for clipping
+                    Rect2Di visibleChildBounds = GetVisibleChildBounds(overlayBounds);
+
+                    // Only return child if it's actually visible (not clipped)
+                    if (visibleChildBounds.width > 0 && visibleChildBounds.height > 0) {
+                        // Recursively check child containers with corrected coordinates
+                        auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
+                        if (childContainer) {
+                            // Pass child-relative coordinates to child container
+                            if (!it->settings.useAbsolutePosition) {
+                                child->ConvertWindowToParentContainerCoordinates(contentX, contentY);
+                            }
+                            UltraCanvasUIElement* hitElement = childContainer->FindElementAtPoint(contentX, contentY);
+                            if (hitElement) {
+                                return hitElement;
+                            }
+                        }
+                        return child;
+                    }
+                }
+            }
+        }
+        return UltraCanvasContainer::FindElementAtPoint(x, y);
+    }
+    
     void UltraCanvasWindowBase::MarkElementDirty(UltraCanvasUIElement* element, bool isOverlay) {
 //        if (selectiveRenderer) {
 ////            if (isOverlay) {
@@ -370,10 +418,6 @@ namespace UltraCanvas {
 //        }
         _needsRedraw = true;
     }
-
-//    bool UltraCanvasWindowBase::IsSelectiveRenderingActive() {
-//        return selectiveRenderer && selectiveRenderer->IsRenderingActive();
-//    }
 
     bool UltraCanvasWindowBase::Create(const WindowConfig& config) {
         config_ = config;

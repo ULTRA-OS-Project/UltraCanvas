@@ -52,7 +52,7 @@ namespace UltraCanvas {
     };
 
 // ===== LINUX APPLICATION CLASS =====
-    class UltraCanvasLinuxApplication : public UltraCanvasBaseApplication {
+    class UltraCanvasLinuxApplication : public UltraCanvasApplicationBase {
     private:
         static UltraCanvasLinuxApplication* instance;
 

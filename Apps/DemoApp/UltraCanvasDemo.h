@@ -207,6 +207,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateButtonExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTextInputExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDropdownExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateAutoCompleteExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSliderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLabelExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateCheckboxExamples();

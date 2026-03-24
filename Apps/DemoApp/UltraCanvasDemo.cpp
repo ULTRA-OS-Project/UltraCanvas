@@ -451,6 +451,15 @@ namespace UltraCanvas {
                 .AddVariant("dropdown", "Editable ComboBox")
                 .AddVariant("dropdown", "Multi-Select");
 
+        basicBuilder.AddItem("autocomplete", "AutoComplete", "Text input with auto-complete suggestions",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateAutoCompleteExamples(); },
+                             "Apps/DemoApp/UltraCanvasAutoCompleteExamples.cpp",
+                             "Docs/UltraCanvasAutoCompleteExamples.md")
+                .AddVariant("autocomplete", "Static Items")
+                .AddVariant("autocomplete", "Dynamic Provider")
+                .AddVariant("autocomplete", "Interactive Demo");
+
         basicBuilder
                 .AddItem("checkbox", "Checkbox",
                          "Interactive checkbox controls with multiple states and styles",

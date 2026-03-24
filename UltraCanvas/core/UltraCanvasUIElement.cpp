@@ -5,11 +5,18 @@
 // Author: UltraCanvas Framework
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+
     // new here
+    UltraCanvasUIElement::~UltraCanvasUIElement() {
+        UltraCanvasWindowBase::RemoveFromOverlays(this);
+        UltraCanvasApplicationBase::UnInstallWindowEventFilter(this);
+    }
+
     void UltraCanvasUIElement::ConvertWindowToParentContainerCoordinates(int &x, int &y) {
         if (parentContainer) {
             auto pc = parentContainer;
@@ -63,18 +70,6 @@ namespace UltraCanvas {
             return window->GetRenderContext();
         }
         return nullptr;
-    }
-
-    void UltraCanvasUIElement::AddThisPopupElementToWindow() {
-        if (window) {
-            window->AddPopupElement(this);
-        }
-    }
-
-    void UltraCanvasUIElement::RemoveThisPopupElementFromWindow() {
-        if (window) {
-            window->RemovePopupElement(this);
-        }
     }
 
     UltraCanvasContainer* UltraCanvasUIElement::GetRootContainer() {
@@ -254,11 +249,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasUIElement::SetWindow(UltraCanvasWindowBase *win) {
+        UltraCanvasApplicationBase::MoveWindowEventFilters(window, this);
         if (win == nullptr && window) {
             SetFocus(false);
-            RemoveThisPopupElementFromWindow();
         }
         window = win;
+        if (window) {
+            UltraCanvasWindowBase::SetPendingOverlays(this, win);
+        }
     }
 
     void UltraCanvasUIElement::SetOriginalSize(int w, int h) {
@@ -269,5 +267,23 @@ namespace UltraCanvas {
         } else {
             SetSize(w, h);
         }
+    }
+
+    Rect2Di UltraCanvasUIElement::GetOverlayBounds() {
+        return GetBounds();
+    }
+
+    void UltraCanvasUIElement::OnRemovedFromOverlays() {
+    }
+
+    void UltraCanvasUIElement::SetEventCallback(std::function<bool(const UCEvent &)> callback) {
+        eventCallback = callback;
+    }
+
+    bool UltraCanvasUIElement::OnEvent(const UCEvent &event) {
+        if (eventCallback) {
+            return eventCallback(event);
+        }
+        return false;
     }
 }

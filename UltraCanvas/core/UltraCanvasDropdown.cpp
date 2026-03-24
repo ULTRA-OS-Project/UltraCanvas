@@ -291,18 +291,27 @@ namespace UltraCanvas {
             if (onDropdownOpened) {
                 onDropdownOpened();
             }
-            AddThisPopupElementToWindow();
+            UltraCanvasWindowBase::AddToOverlays(this, {
+                .closeByEscapeKey = true,
+                .closeByClickOutside = true,
+                .overlayZOrder = OverlayZOrder::Menus,
+                .useAbsolutePosition = false,
+                .handleInputEvents = true
+            });
             RequestRedraw();
         }
     }
 
     void UltraCanvasDropdown::CloseDropdown() {
         if (dropdownOpen) {
+            UltraCanvasWindowBase::RemoveFromOverlays(this);
+        }
+    }
+
+    void UltraCanvasDropdown::OnRemovedFromOverlays() {
+        if (dropdownOpen) {
             dropdownOpen = false;
             hoveredIndex = -1;
-
-            RemoveThisPopupElementFromWindow();
-            RequestRedraw();
 
             // Fire callback after cleanup is complete, so reopening from the
             // callback won't be undone by RemoveThisPopupElementFromWindow.
@@ -319,7 +328,7 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    Rect2Di UltraCanvasDropdown::GetActualBounds() {
+    Rect2Di UltraCanvasDropdown::GetOverlayBounds() {
         Rect2Di baseBounds = GetBounds();
 
         if (dropdownOpen) {
@@ -415,7 +424,7 @@ namespace UltraCanvas {
         if (needCalculateDimensions) {
             CalculateDropdownDimensions();
         }
-        Point2Di globalPos = GetPositionInWindow();
+        Point2Di globalPos = GetPosition();
         Rect2Di buttonRect = GetBounds();
 
         int windowHeight = window ? window->GetHeight() : 9999;
@@ -460,14 +469,12 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
-    void UltraCanvasDropdown::RenderPopupContent(IRenderContext* ctx) {
+    void UltraCanvasDropdown::RenderOverlay(UltraCanvas::IRenderContext *ctx) {
         if (!dropdownOpen || items.empty() || !ctx) return;
 
         if (needCalculateDimensions) {
             CalculateDropdownDimensions();
         }
-
-        ctx->PushState();
 
         Rect2Di listRect = CalculatePopupPosition();
 
@@ -511,8 +518,6 @@ namespace UltraCanvas {
         if (showScrollbar) {
             RenderScrollbar(listRect, ctx);
         }
-
-        ctx->PopState();
     }
 
     std::string UltraCanvasDropdown::GetDisplayText() const {
@@ -823,10 +828,10 @@ namespace UltraCanvas {
             }
 
             // Click outside - close dropdown
-            if (!GetActualBounds().Contains(mousePos)) {
-                CloseDropdown();
-                return false;
-            }
+//            if (!GetOverlayBounds().Contains(mousePos)) {
+//                CloseDropdown();
+//                return false;
+//            }
         }
 
         if (buttonRect.Contains(mousePos)) {

@@ -284,9 +284,12 @@ namespace UltraCanvas {
 // ===== EVENT HANDLING =====
     bool UltraCanvasCheckbox::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
-
+        // Call base class if not handled
+        if (UltraCanvasUIElement::OnEvent(event)) {
+            return true;
+        }
+        
         bool handled = false;
-
         switch (event.type) {
             case UCEventType::MouseDown:
                 if (totalBounds.Contains(event.x, event.y)) {
@@ -336,11 +339,6 @@ namespace UltraCanvas {
 
             default:
                 break;
-        }
-
-        // Call base class if not handled
-        if (!handled) {
-            return UltraCanvasUIElement::OnEvent(event);
         }
 
         return handled;

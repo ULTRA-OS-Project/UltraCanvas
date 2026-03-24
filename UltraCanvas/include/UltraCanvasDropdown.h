@@ -167,10 +167,10 @@ namespace UltraCanvas {
         std::vector<DropdownItem> GetSelectedItems() const;
         int GetSelectedCount() const { return static_cast<int>(selectedIndices.size()); }
 
-        Rect2Di GetActualBounds() override;
+        Rect2Di GetOverlayBounds() override;
 
         bool Contains(int px, int py) override {
-            return GetActualBounds().Contains(px, py);
+            return GetOverlayBounds().Contains(px, py);
         }
 
         // ===== DROPDOWN STATE =====
@@ -193,7 +193,7 @@ namespace UltraCanvas {
         void SetWindow(UltraCanvasWindowBase* win) override;
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override;
-        void RenderPopupContent(IRenderContext* ctx) override;
+        void RenderOverlay(IRenderContext* ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
@@ -230,6 +230,8 @@ namespace UltraCanvas {
         void HandleKeyDown(const UCEvent& event);
         bool HandleMouseWheel(const UCEvent& event);
         void HandleFocusLost();
+
+        void OnRemovedFromOverlays() override;
     };
 
 // ===== FACTORY FUNCTIONS =====

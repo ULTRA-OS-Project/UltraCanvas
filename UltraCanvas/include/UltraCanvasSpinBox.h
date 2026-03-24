@@ -223,7 +223,9 @@ public:
     
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override {
-        UltraCanvasUIElement::OnEvent(event);
+        if (UltraCanvasUIElement::OnEvent(event)) {
+            return true;
+        }
         
         switch (event.type) {
             case UCEventType::MouseDown:

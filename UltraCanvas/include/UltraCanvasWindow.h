@@ -61,8 +61,14 @@ namespace UltraCanvas {
         std::string iconPath;
     };
 
+//    struct OverlayElement {
+//        UltraCanvasUIElement* element;
+//        OverlayElementSettings settings;
+//    };
+
 // ===== ENHANCED BASE WINDOW (INHERITS FROM CONTAINER) =====
     class UltraCanvasWindowBase : public UltraCanvasContainer {
+    friend UltraCanvasApplicationBase;
     protected:
 //        std::unique_ptr<UltraCanvasSelectiveRenderer> selectiveRenderer = nullptr;
 //        bool useSelectiveRendering = false;
@@ -74,12 +80,16 @@ namespace UltraCanvas {
         bool _needsRedraw = true;
         bool _needsResize = false;
 
+        std::unordered_map<UCEventType, std::unordered_set<UltraCanvasUIElement*>> eventFilters;
+        bool HandleEventFilters(const UCEvent& ev);
+
         virtual bool CreateNative() = 0;
         virtual void DestroyNative() = 0;
         virtual void DoResizeNative() = 0;
 
-        std::vector<UltraCanvasUIElement *> activePopups;
-        std::unordered_set<UltraCanvasUIElement *> popupsToRemove;
+
+        std::list<OverlayElement> overlayElements;
+
         UltraCanvasUIElement* _focusedElement = nullptr;  // Current focused element in this window
 
         UCMouseCursor currentMouseCursor = UCMouseCursor::Default;
@@ -151,14 +161,12 @@ namespace UltraCanvas {
         virtual NativeWindowHandle GetNativeHandle() const = 0;
         virtual void Flush() = 0;
 
-        void AddPopupElement(UltraCanvasUIElement* element);
+        // Overlay elements
+        static void AddToOverlays(UltraCanvasUIElement* element, const OverlayElementSettings& settings);
+        static void RemoveFromOverlays(UltraCanvasUIElement* element);
+        static void SetPendingOverlays(UltraCanvasUIElement* elem, UltraCanvasUIElement* win);
 
-        // Unregister popup element
-        void RemovePopupElement(UltraCanvasUIElement* element);
-        void CleanupRemovedPopupElements();
-
-        std::vector<UltraCanvasUIElement *>& GetActivePopups() { return activePopups; }
-        bool HasActivePopups() { return !activePopups.empty(); }
+        UltraCanvasUIElement *FindElementAtPointInWindow(int x, int y, bool onlyHandleInputEvents);
 
         // ===== ENHANCED WINDOW PROPERTIES =====
         std::string GetWindowTitle() const { return config_.title; }
@@ -190,9 +198,12 @@ namespace UltraCanvas {
 
         const WindowConfig& GetConfig() const { return config_; }
 
+        virtual bool OnEvent(const UCEvent& event) override;
+        void InstallEventFilerForElement(UltraCanvasUIElement* elem, const std::vector<UCEventType> eventTypes);
+        void UninstallEventFilerForElement(UltraCanvasUIElement* elem);
+
         // ===== ENHANCED RENDERING AND EVENTS =====
         virtual void Render(IRenderContext* ctx) override;
-        virtual bool OnEvent(const UCEvent& event) override;
         virtual void RenderCustomContent(IRenderContext* ctx) {}
 
         bool IsNeedsRedraw() const { return _needsRedraw; }
@@ -253,7 +264,7 @@ namespace UltraCanvas {
             // OS-specific implementations can override
         }
 
-        void RenderActivePopups(IRenderContext* ctx);
+        void RenderOverlayElements(IRenderContext* ctx);
 
         // ===== FOCUS UTILITY METHODS =====
 
@@ -272,7 +283,6 @@ namespace UltraCanvas {
         void SendFocusGainedEvent(UltraCanvasUIElement* element);
         void SendFocusLostEvent(UltraCanvasUIElement* element);
     };
-
 } // namespace UltraCanvas
 
 #if defined(__linux__) || defined(__unix__) || defined(__unix)

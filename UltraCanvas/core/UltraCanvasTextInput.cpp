@@ -39,9 +39,7 @@ namespace UltraCanvas {
             , maxScrollOffset(0.0f)
             , lastMeasuredSize(0.0f)
             , maxUndoStates(50)
-            , isDragging(false)
-            , autoCompleteMode(AutoComplete::Off)
-            , showAutoComplete(false) {
+            , isDragging(false)  {
         textWidthCache.clear();
         lastMeasuredFont.clear();
         SetMouseCursor(UCMouseCursor::Text);
@@ -83,7 +81,6 @@ namespace UltraCanvas {
                 break;
             case TextInputType::Email:
                 AddValidationRule(ValidationRule::Email());
-                autoCompleteMode = AutoComplete::Email;
                 break;
             case TextInputType::Phone:
                 SetFormatter(TextFormatter::Phone());

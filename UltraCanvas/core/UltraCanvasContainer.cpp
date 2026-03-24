@@ -92,15 +92,16 @@ namespace UltraCanvas {
 
 // ===== EVENT HANDLING IMPLEMENTATION =====
     bool UltraCanvasContainer::OnEvent(const UCEvent& event) {
+        if (UltraCanvasUIElement::OnEvent(event)) {
+            return true;
+        }        
         if (HandleScrollbarEvents(event)) {
             return true;
         }
         if (event.type == UCEventType::MouseMove || event.type == UCEventType::MouseEnter || event.type == UCEventType::MouseLeave) {
             return true;
         }
-
-        // Handle base element events
-        return UltraCanvasUIElement::OnEvent(event);
+        return false;
     }
 
 // ===== PRIVATE IMPLEMENTATION METHODS =====

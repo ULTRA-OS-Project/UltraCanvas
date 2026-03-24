@@ -479,6 +479,10 @@ namespace UltraCanvas {
 
 // ===== EVENT HANDLING =====
     bool UltraCanvasPopulationChart::OnEvent(const UCEvent& event) {
+        if (UltraCanvasUIElement::OnEvent(event)) {
+            return true;
+        }        
+
         if (!interactionEnabled) {
             return false;
         }
@@ -493,7 +497,7 @@ namespace UltraCanvas {
             return true;
         }
 
-        return UltraCanvasUIElement::OnEvent(event);
+        return false;
     }
 
 // ===== UTILITY FUNCTIONS =====

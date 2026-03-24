@@ -325,11 +325,6 @@ private:
     bool isDragging;
     Point2Di dragStartPosition;
     
-    // ===== AUTO-COMPLETE =====
-    AutoComplete autoCompleteMode;
-    std::vector<std::string> autoCompleteSuggestions;
-    bool showAutoComplete;
-
     // ===== CLEAR BUTTON =====
     bool showClearButton = false;
     bool isClearButtonHovered = false;

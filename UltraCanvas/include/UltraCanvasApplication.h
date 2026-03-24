@@ -19,12 +19,13 @@
 #include <queue>
 
 namespace UltraCanvas {
-    class UltraCanvasBaseApplication {
+    class UltraCanvasApplicationBase {
     protected:
         bool volatile running = false;
         bool volatile initialized = false;
         std::string appName;
         std::string defaultWindowIconPath;
+
         std::queue<UCEvent> eventQueue;
         std::mutex eventQueueMutex;
         std::condition_variable eventCondition;
@@ -53,7 +54,7 @@ namespace UltraCanvas {
         bool metaHeld = false;
 
     public:
-        UltraCanvasBaseApplication() = default;
+        UltraCanvasApplicationBase() = default;
 
         void RegisterWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
 
@@ -66,9 +67,11 @@ namespace UltraCanvas {
         bool DispatchEventToElement(UltraCanvasUIElement* elem, const UCEvent &event);
 
         bool HandleEventWithBubbling(const UCEvent &event, UltraCanvasUIElement* elem);
-        void RegisterGlobalEventHandler(std::function<bool(const UCEvent&)> handler);
-        void ClearGlobalEventHandlers() { globalEventHandlers.clear(); }
         void RegisterEventLoopRunCallback(std::function<void()> callback);
+
+        static void InstallWindowEventFilter(UltraCanvasUIElement* elem, const std::vector<UCEventType>& interestedEvents);
+        static void UnInstallWindowEventFilter(UltraCanvasUIElement* elem);
+        static void MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem);
 
         bool IsKeyPressed(int keyCode);
 

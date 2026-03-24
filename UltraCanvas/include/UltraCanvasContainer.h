@@ -43,12 +43,6 @@ namespace UltraCanvas {
     private:
         std::vector<std::shared_ptr<UltraCanvasUIElement>> children;
 
-        // Scrollbar components (using new unified scrollbar)
-        std::unique_ptr<UltraCanvasScrollbar> verticalScrollbar;
-        std::unique_ptr<UltraCanvasScrollbar> horizontalScrollbar;
-        // Corner rectangle (where scrollbars meet)
-        Rect2Di scrollbarsCornerRect;
-
         // Content area management
         bool layoutDirty = true;
 
@@ -59,6 +53,10 @@ namespace UltraCanvas {
 
         UltraCanvasLayout *layout = nullptr;
     protected:
+        // Scrollbar components (using new unified scrollbar)
+        std::unique_ptr<UltraCanvasScrollbar> verticalScrollbar;
+        std::unique_ptr<UltraCanvasScrollbar> horizontalScrollbar;
+
         ContainerStyle style;
         //ScrollState scrollState;
 

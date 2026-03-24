@@ -426,6 +426,10 @@ namespace UltraCanvas {
         bool OnEvent(const UCEvent& event) override {
             if (!IsVisible() || IsDisabled()) return false;
 
+            if (UltraCanvasUIElement::OnEvent(event)) {
+                return true;
+            }        
+
             switch (event.type) {
                 case UCEventType::MouseDown:
                     return HandleMouseDown(event);
@@ -454,7 +458,7 @@ namespace UltraCanvas {
                     break;
             }
 
-            return UltraCanvasUIElement::OnEvent(event);
+            return false;
         }
 
     private:

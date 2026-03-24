@@ -299,17 +299,17 @@ public:
     
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override {
-        UltraCanvasUIElement::OnEvent(event);
-        
-        switch (event.type) {
-            case UCEventType::MouseDown:
-                HandleMouseDown(event);
-                break;
-                
-            case UCEventType::KeyDown:
-                HandleKeyDown(event);
-                break;
-        }
+        if (!UltraCanvasUIElement::OnEvent(event)) {
+            switch (event.type) {
+                case UCEventType::MouseDown:
+                    HandleMouseDown(event);
+                    break;
+                    
+                case UCEventType::KeyDown:
+                    HandleKeyDown(event);
+                    break;
+            }
+        }       
         return false;
     }
     

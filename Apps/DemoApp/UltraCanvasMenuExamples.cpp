@@ -76,11 +76,10 @@ namespace UltraCanvas {
             auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
             if (ev.button == UCMouseButton::Right) {
                 // move menu to window container
-                container->GetWindow()->AddChild(contextMenu);
-                contextMenu->ShowAt(ev.windowX, ev.windowY);
+//                container->GetWindow()->AddChild(contextMenu);
+                contextMenu->ShowAtWindow(ev.windowX, ev.windowY, container->GetWindow());
             }
         };
-        container->AddChild(contextMenu);
 
         // Section label for Main Menu Bar
         auto mainMenuLabel = std::make_shared<UltraCanvasLabel>("MainMenuLabel", 104, 20, 100, 250, 30);
@@ -206,12 +205,8 @@ namespace UltraCanvas {
         }));
 
         darkMenuBtn->onClick = [darkMenu, darkMenuBtn, container]() {
-            container->GetWindow()->AddChild(darkMenu);
-            Point2Di pos(darkMenuBtn->GetXInWindow(), darkMenuBtn->GetYInWindow() + darkMenuBtn->GetHeight() + 1);
-            darkMenu->ShowAt(pos);
+            darkMenu->ShowAtWindow(darkMenuBtn->GetXInWindow(), darkMenuBtn->GetYInWindow() + darkMenuBtn->GetHeight() + 1, container->GetWindow());
         };
-
-        container->AddChild(darkMenu);
 
         // Flat style menu
         auto flatMenuBtn = std::make_shared<UltraCanvasButton>("FlatMenuBtn", 117, 200, 225, 170, 35);
@@ -235,12 +230,8 @@ namespace UltraCanvas {
         }));
 
         flatMenuBtn->onClick = [flatMenu, flatMenuBtn, container]() {
-            container->GetWindow()->AddChild(flatMenu);
-            Point2Di pos(flatMenuBtn->GetXInWindow(), flatMenuBtn->GetYInWindow() + flatMenuBtn->GetHeight() + 1);
-            flatMenu->ShowAt(pos);
+            flatMenu->ShowAtWindow(flatMenuBtn->GetXInWindow(), flatMenuBtn->GetYInWindow() + flatMenuBtn->GetHeight() + 1, container->GetWindow());
         };
-
-        container->AddChild(flatMenu);
 
         // Info label about menu features
         auto infoLabel = std::make_shared<UltraCanvasLabel>("InfoLabel", 119, 20, 270, 960, 140);
@@ -302,14 +293,11 @@ namespace UltraCanvas {
             itemLabel->onClick = [itemMenu, itemLabel, container]() {
                 auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
                 if (ev.button == UCMouseButton::Right) {
-                    container->GetWindow()->AddChild(itemMenu);
-                    //Point2Di pos(itemLabel->GetXInWindow() + 50, itemLabel->GetYInWindow() + itemLabel->GetHeight());
-                    itemMenu->ShowAt(ev.windowX, ev.windowY);
+                    itemMenu->ShowAtWindow(ev.windowX, ev.windowY, container->GetWindow());
                 }
             };
 
             listContainer->AddChild(itemLabel);
-            container->AddChild(itemMenu);
         }
 
         debugOutput << "✓ Menu examples created" << std::endl;

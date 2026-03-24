@@ -25,7 +25,15 @@ namespace UltraCanvas {
             if (style.enableAnimations) {
                 StartAnimation();
             }
-            AddThisPopupElementToWindow();
+            UltraCanvasWindowBase::AddToOverlays(this, {
+                      .closeByEscapeKey = true,
+                      .closeByClickOutside = true,
+                      .overlayZOrder = OverlayZOrder::Menus,
+                      .useAbsolutePosition = true,
+                      .handleInputEvents = true
+            });
+
+            UltraCanvasApplicationBase::InstallWindowEventFilter(this, {UCEventType::MouseDown});
 
             hoveredIndex = -1;
             keyboardIndex = -1;
@@ -46,25 +54,8 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::Hide() {
         if (currentState != MenuState::Hidden && currentState != MenuState::Closing) {
-            // Always hide immediately for dropdown menus without animation
-            currentState = style.enableAnimations ? MenuState::Closing : MenuState::Hidden;
-
-            if (style.enableAnimations) {
-                StartAnimation();
-            } else {
-                SetVisible(false);
-            }
-
-            //UltraCanvasMenuManager::UnregisterActiveMenu(shared_from_this());
-
-            // Close all submenus
-            CloseAllSubmenus();
-            RemoveThisPopupElementFromWindow();
-            needCalculateSize = true;
-            scrollOffsetPixels = 0;
-            needsScrollbar = false;
-            if (onMenuClosed) onMenuClosed();
-//            RequestRedraw();
+            SetVisible(false);
+            UltraCanvasWindowBase::RemoveFromOverlays(this);
 
             debugOutput << "Menu '" << GetIdentifier() << "' hidden. State: " << (int)currentState
                       << " Visible: " << IsVisible() << std::endl;
@@ -98,7 +89,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMenu::RenderPopupContent(IRenderContext* ctx) {
+    void UltraCanvasMenu::RenderOverlay(IRenderContext* ctx) {
         if (!IsVisible() || currentState == MenuState::Hidden) return;
 
         if (needCalculateSize) {
@@ -163,37 +154,55 @@ namespace UltraCanvas {
         }
     }
 
+    // Handle the event
     bool UltraCanvasMenu::OnEvent(const UCEvent &event) {
-        // Debug output for dropdown menus
-//        if ((menuType == MenuType::DropdownMenu || menuType == MenuType::SubmenuMenu) &&
-//            (event.type == UCEventType::MouseDown || event.type == UCEventType::MouseUp)) {
-//            debugOutput << "Dropdown Menu '" << GetIdentifier() << "' received event type: " << (int)event.type
-//                      << " at (" << event.x << "," << event.y << ")"
-//                      << " Menu bounds: (" << GetX() << "," << GetY()
-//                      << "," << GetWidth() << "," << GetHeight() << ")"
-//                      << " Visible: " << IsVisible()
-//                      << " State: " << (int)currentState << std::endl;
-//        }
+        if (IsVisible()) return false;
 
-        // Handle the event
-        bool handled = HandleEvent(event);
+        if (UltraCanvasUIElement::OnEvent(event)) {
+            return true;
+        }        
 
-        // If not handled, pass to base class
-        if (!handled) {
-            return UltraCanvasUIElement::OnEvent(event);
-        }
-        return true;
-    }
-
-    bool UltraCanvasMenu::HandleEvent(const UCEvent &event) {
-        // FIX: Check menu state for dropdown menus
         if (menuType == MenuType::PopupMenu || menuType == MenuType::SubmenuMenu) {
             if (currentState == MenuState::Hidden) {
                 return false;
             }
         }
 
+        switch (event.type) {
+            case UCEventType::MouseMove:
+                return HandleMouseMove(event);
+
+            case UCEventType::MouseDown:
+                return HandleMouseDown(event);
+
+            case UCEventType::MouseUp:
+                return HandleMouseUp(event);
+
+            case UCEventType::KeyDown:
+                return HandleKeyDown(event);
+
+            case UCEventType::MouseWheel:
+                return HandleMouseWheel(event);
+
+            case UCEventType::MouseLeave:
+                hoveredIndex = -1;
+                break;
+
+            default:
+                break;
+        }
+        return false;
+    }
+
+    bool UltraCanvasMenu::HandleEvent(const UCEvent &event) {
+        // FIX: Check menu state for dropdown menus
         if (!IsVisible()) return false;
+
+        if (menuType == MenuType::PopupMenu || menuType == MenuType::SubmenuMenu) {
+            if (currentState == MenuState::Hidden) {
+                return false;
+            }
+        }
 
         switch (event.type) {
             case UCEventType::MouseMove:
@@ -277,12 +286,7 @@ namespace UltraCanvas {
         PositionSubmenu(activeSubmenu, itemIndex);
 
         if (parentWindow) {
-            // Add the submenu to the window's element collection so it gets rendered
-//            parentWindow->AddChild(activeSubmenu);
-            debugOutput << "Added submenu '" << activeSubmenu->GetIdentifier()
-                      << "' to window for rendering" << std::endl;
             activeSubmenu->SetWindow(parentWindow);
-//            parentWindow->AddPopupElement(activeSubmenu.get());
         }
 
         // Show submenu
@@ -292,17 +296,8 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::CloseActiveSubmenu() {
         if (activeSubmenu) {
-            activeSubmenu->CloseAllSubmenus();
+//            activeSubmenu->CloseAllSubmenus();
             activeSubmenu->Hide();
-
-            auto parentWindow = GetWindow();
-            if (parentWindow) {
-                parentWindow->RemoveChild(activeSubmenu);
-//                parentWindow->RemovePopupElement(activeSubmenu.get());
-//                parentWindow->CleanupRemovedPopupElements();
-                debugOutput << "Removed submenu '" << activeSubmenu->GetIdentifier()
-                          << "' from window" << std::endl;
-            }
 
             // Remove from child menus
             auto it = std::find(childMenus.begin(), childMenus.end(), activeSubmenu);
@@ -318,13 +313,7 @@ namespace UltraCanvas {
         for (auto& child : childMenus) {
             if (child) {
                 child->Hide();
-                child->CloseAllSubmenus();
-
-                auto parentWindow = GetWindow();
-                if (parentWindow) {
-                    parentWindow->RemoveChild(child);
-                    parentWindow->RemovePopupElement(child.get());
-                }
+//                child->CloseAllSubmenus();
             }
         }
         childMenus.clear();
@@ -387,8 +376,17 @@ namespace UltraCanvas {
             }
         }
 
-        return x >= GetX() && x < GetX() + GetWidth() &&
-               y >= GetY() && y < GetY() + GetHeight();
+        if (x >= GetX() && x < GetX() + GetWidth() &&
+               y >= GetY() && y < GetY() + GetHeight()) {
+            return true;
+        }
+
+        if (activeSubmenu) {
+            if (activeSubmenu->Contains(x, y)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     void UltraCanvasMenu::CalculateAndUpdateSize(IRenderContext* ctx) {
@@ -823,6 +821,42 @@ namespace UltraCanvas {
         return -1;
     }
 
+    void UltraCanvasMenu::OnRemovedFromOverlays() {
+        UltraCanvasApplicationBase::UnInstallWindowEventFilter(this);
+        CloseAllSubmenus();
+        currentState = MenuState::Hidden;
+        needCalculateSize = true;
+        scrollOffsetPixels = 0;
+        needsScrollbar = false;
+        if (onMenuClosed) onMenuClosed();
+    }
+
+
+    bool UltraCanvasMenu::OnWindowEventFilter(const UCEvent &event) {
+        if (event.type == UCEventType::MouseDown) {
+            if (menuType != MenuType::Menubar && !Contains(event.x, event.y)) {
+                // Click outside menu - close if context menu
+                bool clickOutside = true;
+                if (activeSubmenu) {
+                    for(auto sm = activeSubmenu; sm != nullptr; sm = sm->activeSubmenu) {
+                        if (sm->Contains(event.x, event.y)) {
+                            clickOutside = false;
+                            break;
+                        }
+                    }
+                }
+                if (clickOutside) {
+                    auto pm = parentMenu.lock();
+                    if (!pm || pm->menuType == MenuType::Menubar) {
+                        Hide();
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     bool UltraCanvasMenu::HandleMouseMove(const UCEvent &event) {
         // Forward to scrollbar if dragging
         if (menuScrollbar && menuScrollbar->IsDragging()) {
@@ -860,28 +894,25 @@ namespace UltraCanvas {
             return menuScrollbar->OnEvent(event);
         }
 
-        if (!Contains(event.x, event.y) && menuType != MenuType::Menubar) {
+        if (menuType != MenuType::Menubar && !Contains(event.x, event.y)) {
             // Click outside menu - close if context menu
-            bool clickOutside = true;
-            if (activeSubmenu) {
-                for(auto sm = activeSubmenu; sm != nullptr; sm = sm->activeSubmenu) {
-                    if (sm->Contains(event.x, event.y)) {
-                        clickOutside = false;
-                        break;
-                    }
-                }
-//                if (clickOutside) {
-//                    CloseActiveSubmenu();
+//            bool clickOutside = true;
+//            if (activeSubmenu) {
+//                for(auto sm = activeSubmenu; sm != nullptr; sm = sm->activeSubmenu) {
+//                    if (sm->Contains(event.x, event.y)) {
+//                        clickOutside = false;
+//                        break;
+//                    }
 //                }
-            }
-            if (clickOutside) {
-                auto pm = parentMenu.lock();
-                if (!pm || pm->menuType == MenuType::Menubar) {
-                    Hide();
-                    return true;
-                }
-            }
-            return false;
+//            }
+//            if (clickOutside) {
+//                auto pm = parentMenu.lock();
+//                if (!pm || pm->menuType == MenuType::Menubar) {
+//                    Hide();
+//                    return true;
+//                }
+//            }
+//            return false;
         }
 
         int clickedIndex = GetItemAtPosition(event.x, event.y);
@@ -1225,5 +1256,96 @@ namespace UltraCanvas {
 
         RequestRedraw();
         return true;
+    }
+
+    void UltraCanvasMenu::ShowAt(const Point2Di &position) {
+        ShowAt(position.x, position.y);
+    }
+
+    void UltraCanvasMenu::ShowAt(int x, int y) {
+        if (GetWindow() == nullptr) {
+            debugOutput << "Menu ShowAt window==nullptr" << std::endl;
+        }
+        SetPosition(x, y);
+        Show();
+    }
+
+    void UltraCanvasMenu::ShowAtWindow(int x, int y, UltraCanvasWindowBase *win) {
+        SetWindow(win);
+        SetPosition(x, y);
+        Show();
+    }
+
+    void UltraCanvasMenu::StartAnimation() {
+        animationStartTime = std::chrono::steady_clock::now();
+        animationProgress = 0.0f;
+    }
+
+    void UltraCanvasMenu::UpdateAnimation() {
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - animationStartTime);
+        float elapsedSeconds = elapsed.count() / 1000.0f;
+
+        animationProgress = std::min(1.0f, elapsedSeconds / style.animationDuration);
+
+        if (animationProgress >= 1.0f) {
+            // Animation complete
+            if (currentState == MenuState::Opening) {
+                currentState = MenuState::Visible;
+            } else if (currentState == MenuState::Closing) {
+                currentState = MenuState::Hidden;
+                SetVisible(false);
+            }
+        }
+
+        // Apply animation effects (scale, fade, etc.)
+        // This would modify the rendering parameters based on animationProgress
+    }
+
+    void UltraCanvasMenu::AddItem(const MenuItemData &item) {
+        items.push_back(item);
+        needCalculateSize = true;
+    }
+
+    void UltraCanvasMenu::InsertItem(int index, const MenuItemData &item) {
+        if (index >= 0 && index <= static_cast<int>(items.size())) {
+            items.insert(items.begin() + index, item);
+            needCalculateSize = true;
+        }
+    }
+
+    void UltraCanvasMenu::RemoveItem(int index) {
+        if (index >= 0 && index < static_cast<int>(items.size())) {
+            items.erase(items.begin() + index);
+            needCalculateSize = true;
+        }
+    }
+
+    void UltraCanvasMenu::UpdateItem(int index, const MenuItemData &item) {
+        if (index >= 0 && index < static_cast<int>(items.size())) {
+            items[index] = item;
+            needCalculateSize = true;
+        }
+    }
+
+    void UltraCanvasMenu::Clear() {
+        items.clear();
+        CloseAllSubmenus();
+        needCalculateSize = true;
+    }
+
+    MenuItemData *UltraCanvasMenu::GetItem(int index) {
+        if (index >= 0 && index < static_cast<int>(items.size())) {
+            return &items[index];
+        }
+        return nullptr;
+    }
+
+    void UltraCanvasMenu::Toggle() {
+        if (IsMenuVisible()) {
+            Hide();
+        } else {
+            Show();
+        }
     }
 }

@@ -8,7 +8,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
-#include "UltraCanvasKeyboardManager.h"
+//#include "UltraCanvasKeyboardManager.h"
 //#include "UltraCanvasZOrderManager.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasScrollbar.h"
@@ -141,7 +141,7 @@ namespace UltraCanvas {
         int submenuOffset = 2;
 
         // Animation
-        bool enableAnimations = true;
+        bool enableAnimations = false;
         float animationDuration = 0.15f;
 
         // Shadow
@@ -213,9 +213,11 @@ namespace UltraCanvas {
 
         // ===== CORE RENDERING =====
         void Render(IRenderContext* ctx) override;
-        void RenderPopupContent(IRenderContext* ctx) override;
+        void RenderOverlay(IRenderContext* ctx) override;
+        void OnRemovedFromOverlays() override;
 
         bool OnEvent(const UCEvent& event) override;
+        bool OnWindowEventFilter(const UCEvent& event) override;
 
         // ===== EVENT HANDLING =====
         bool HandleEvent(const UCEvent& event);
@@ -238,80 +240,31 @@ namespace UltraCanvas {
         const MenuStyle& GetStyle() const { return style; }
 
         // ===== ITEM MANAGEMENT =====
-        void AddItem(const MenuItemData& item) {
-            items.push_back(item);
-            needCalculateSize = true;
-        }
+        void AddItem(const MenuItemData& item);
+        void InsertItem(int index, const MenuItemData& item);
+        void RemoveItem(int index);
+        void UpdateItem(int index, const MenuItemData& item);
 
-        void InsertItem(int index, const MenuItemData& item) {
-            if (index >= 0 && index <= static_cast<int>(items.size())) {
-                items.insert(items.begin() + index, item);
-                needCalculateSize = true;
-            }
-        }
-
-        void RemoveItem(int index) {
-            if (index >= 0 && index < static_cast<int>(items.size())) {
-                items.erase(items.begin() + index);
-                needCalculateSize = true;
-            }
-        }
-
-        void UpdateItem(int index, const MenuItemData& item) {
-            if (index >= 0 && index < static_cast<int>(items.size())) {
-                items[index] = item;
-                needCalculateSize = true;
-            }
-        }
-
-        void Clear() {
-            items.clear();
-            CloseAllSubmenus();
-            needCalculateSize = true;
-        }
+        void Clear();
 
         std::vector<MenuItemData>& GetItems() { return items; }
 
-        MenuItemData* GetItem(int index) {
-            if (index >= 0 && index < static_cast<int>(items.size())) {
-                return &items[index];
-            }
-            return nullptr;
-        }
+        MenuItemData* GetItem(int index);
 
         void Show();
         void Hide();
-
-        void Toggle() {
-            if (IsMenuVisible()) {
-                Hide();
-            } else {
-                Show();
-            }
-        }
+        void Toggle();
 
         bool IsMenuVisible() const {
-            // FIX: Simplified visibility check
             return currentState == MenuState::Visible || currentState == MenuState::Opening;
         }
 
         MenuState GetMenuState() const { return currentState; }
 
         // ===== CONTEXT MENU HELPERS =====
-        void ShowAt(const Point2Di& position) {
-            ShowAt(position.x, position.y);
-        }
-
-        void ShowAt(int x, int y) {
-            SetPosition(x, y);
-            Show();
-        }
-
-        void ShowAtWindow(int x, int y, UltraCanvasWindowBase* win) {
-            SetWindow(win);
-            SetPosition(x, y);
-            Show();
-        }
+        void ShowAt(const Point2Di& position);
+        void ShowAt(int x, int y);
+        void ShowAtWindow(int x, int y, UltraCanvasWindowBase* win);
 
         // ===== SUBMENU MANAGEMENT =====
         void OpenSubmenu(int itemIndex);
@@ -390,31 +343,8 @@ namespace UltraCanvas {
         void ExecuteItem(int index);
 
         // ===== ANIMATION =====
-        void StartAnimation() {
-            animationStartTime = std::chrono::steady_clock::now();
-            animationProgress = 0.0f;
-        }
-
-        void UpdateAnimation() {
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - animationStartTime);
-            float elapsedSeconds = elapsed.count() / 1000.0f;
-
-            animationProgress = std::min(1.0f, elapsedSeconds / style.animationDuration);
-
-            if (animationProgress >= 1.0f) {
-                // Animation complete
-                if (currentState == MenuState::Opening) {
-                    currentState = MenuState::Visible;
-                } else if (currentState == MenuState::Closing) {
-                    currentState = MenuState::Hidden;
-                    SetVisible(false);
-                }
-            }
-
-            // Apply animation effects (scale, fade, etc.)
-            // This would modify the rendering parameters based on animationProgress
-        }
+        void StartAnimation();
+        void UpdateAnimation();
     };
 
 // Rest of the file remains the same (factory functions, builder pattern, etc.)
