@@ -14,20 +14,18 @@
 
 namespace UltraCanvas {
 
-    void UltraCanvasMenu::Show() {
-        // Ensure menu is always on top when shown
-//        SetZIndex(UltraCanvas::ZLayers::Menus + 100);
-
-        // Existing Show() implementation continues...
+    void UltraCanvasMenu::Show(bool _closeByClickOutside, bool _closeByEscapeKey) {
         if (currentState != MenuState::Visible && currentState != MenuState::Opening) {
             currentState = style.enableAnimations ? MenuState::Opening : MenuState::Visible;
+            closeByClickOutside = _closeByClickOutside;
+            closeByEscapeKey = _closeByEscapeKey;
             SetVisible(true);
             if (style.enableAnimations) {
                 StartAnimation();
             }
             UltraCanvasWindowBase::AddToOverlays(this, {
-                      .closeByEscapeKey = true,
-                      .closeByClickOutside = true,
+                      .closeByEscapeKey = false,
+                      .closeByClickOutside = false,
                       .overlayZOrder = OverlayZOrder::Menus,
                       .useAbsolutePosition = true,
                       .handleInputEvents = true
@@ -61,6 +59,24 @@ namespace UltraCanvas {
                       << " Visible: " << IsVisible() << std::endl;
         }
     }
+
+    // void UltraCanvasMenu::ShowAsEmbedded(int x, int y) {
+    //     SetPosition(x, y);
+    //     currentState = MenuState::Visible;
+    //     SetVisible(true);
+    //     hoveredIndex = -1;
+    //     keyboardIndex = -1;
+    //     keyboardNavigation = false;
+    //     needCalculateSize = true;
+    //     scrollOffsetPixels = 0;
+    //     needsScrollbar = false;
+    // }
+
+    // void UltraCanvasMenu::HideAsEmbedded() {
+    //     currentState = MenuState::Hidden;
+    //     SetVisible(false);
+    //     CloseAllSubmenus();
+    // }
 
     void UltraCanvasMenu::Render(IRenderContext* ctx) {
         // FIX: Simplified visibility check - if not visible at all, don't render
@@ -156,7 +172,7 @@ namespace UltraCanvas {
 
     // Handle the event
     bool UltraCanvasMenu::OnEvent(const UCEvent &event) {
-        if (IsVisible()) return false;
+        if (!IsVisible()) return false;
 
         if (UltraCanvasUIElement::OnEvent(event)) {
             return true;
@@ -380,12 +396,6 @@ namespace UltraCanvas {
                y >= GetY() && y < GetY() + GetHeight()) {
             return true;
         }
-
-        if (activeSubmenu) {
-            if (activeSubmenu->Contains(x, y)) {
-                return true;
-            }
-        }
         return false;
     }
 
@@ -513,6 +523,9 @@ namespace UltraCanvas {
             totalWidth += style.paddingRight;
 
             SetWidth(totalWidth);
+            if (style.minWidth > 0) {
+                SetWidth(std::max(GetWidth(), style.minWidth));
+            }
             SetHeight(totalHeight);
 
             // Clamp to window bounds and add scrollbar if needed
@@ -833,7 +846,7 @@ namespace UltraCanvas {
 
 
     bool UltraCanvasMenu::OnWindowEventFilter(const UCEvent &event) {
-        if (event.type == UCEventType::MouseDown) {
+        if (closeByClickOutside && event.type == UCEventType::MouseDown) {
             if (menuType != MenuType::Menubar && !Contains(event.x, event.y)) {
                 // Click outside menu - close if context menu
                 bool clickOutside = true;
@@ -947,11 +960,13 @@ namespace UltraCanvas {
             case UCKeys::Up:
                 NavigateUp();
                 EnsureKeyboardItemVisible();
+                RequestRedraw();
                 return true;
 
             case UCKeys::Down:
                 NavigateDown();
                 EnsureKeyboardItemVisible();
+                RequestRedraw();
                 return true;
 
             case UCKeys::Left:
@@ -960,6 +975,7 @@ namespace UltraCanvas {
                 } else {
                     CloseSubmenu();
                 }
+                RequestRedraw();
                 return true;
 
             case UCKeys::Right:
@@ -968,6 +984,7 @@ namespace UltraCanvas {
                 } else {
                     OpenSubmenuFromKeyboard();
                 }
+                RequestRedraw();
                 return true;
 
             case UCKeys::Return:
@@ -975,11 +992,14 @@ namespace UltraCanvas {
                 if (keyboardIndex >= 0) {
                     ExecuteItem(keyboardIndex);
                 }
+                RequestRedraw();
                 return true;
 
             case UCKeys::Escape:
-                Hide();
-                return true;
+                if (closeByEscapeKey) {
+                    Hide();
+                    return true;
+                }
 
             default:
                 break;
@@ -1258,22 +1278,18 @@ namespace UltraCanvas {
         return true;
     }
 
-    void UltraCanvasMenu::ShowAt(const Point2Di &position) {
-        ShowAt(position.x, position.y);
-    }
-
-    void UltraCanvasMenu::ShowAt(int x, int y) {
+    void UltraCanvasMenu::ShowAt(int x, int y, bool closeByClickOutside, bool closeByEscapeKey) {
         if (GetWindow() == nullptr) {
             debugOutput << "Menu ShowAt window==nullptr" << std::endl;
         }
         SetPosition(x, y);
-        Show();
+        Show(closeByClickOutside, closeByEscapeKey);
     }
 
-    void UltraCanvasMenu::ShowAtWindow(int x, int y, UltraCanvasWindowBase *win) {
+    void UltraCanvasMenu::ShowAtWindow(int x, int y, UltraCanvasWindowBase *win, bool closeByClickOutside, bool closeByEscapeKey) {
         SetWindow(win);
         SetPosition(x, y);
-        Show();
+        Show(closeByClickOutside, closeByEscapeKey);
     }
 
     void UltraCanvasMenu::StartAnimation() {

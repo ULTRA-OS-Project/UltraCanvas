@@ -249,11 +249,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasUIElement::SetWindow(UltraCanvasWindowBase *win) {
-        UltraCanvasApplicationBase::MoveWindowEventFilters(window, this);
         if (win == nullptr && window) {
             SetFocus(false);
         }
+        auto oldWindow = window;
         window = win;
+        if (oldWindow != nullptr || window != nullptr) {
+            UltraCanvasApplicationBase::MoveWindowEventFilters(oldWindow, this);
+        }
         if (window) {
             UltraCanvasWindowBase::SetPendingOverlays(this, win);
         }

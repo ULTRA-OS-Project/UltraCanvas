@@ -339,7 +339,7 @@ public:
     virtual ~UltraCanvasTextInput() = default;
     
     // ===== TEXT MANAGEMENT =====
-    void SetText(const std::string& newText);
+    void SetText(const std::string& newText, bool callOnTextChanged = true);
     
     const std::string& GetText() const { return text; }
     const std::string& GetDisplayText() const { return displayText; }
@@ -529,11 +529,10 @@ private:
     
     bool HandleMouseDown(const UCEvent& event);
     bool HandleMouseMove(const UCEvent& event);
-    void HandleMouseUp(const UCEvent& event);
-    void HandleKeyDown(const UCEvent& event);
-    void HandleKeyUp(const UCEvent& event);
-    void HandleFocusGained(const UCEvent& event);
-    void HandleFocusLost(const UCEvent& event);
+    bool HandleMouseUp(const UCEvent& event);
+    bool HandleKeyDown(const UCEvent& event);
+    bool HandleFocusGained(const UCEvent& event);
+    bool HandleFocusLost(const UCEvent& event);
 
     void InsertText(const std::string& insertText);
     

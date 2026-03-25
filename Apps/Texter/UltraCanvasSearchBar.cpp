@@ -367,10 +367,8 @@ namespace UltraCanvas {
         settingsButton->onClick = [this]() {
             auto* win = GetWindow();
             if (!win || !settingsMenu) return;
-            win->AddChild(settingsMenu);
-            Point2Di pos(settingsButton->GetXInWindow(),
-                         settingsButton->GetYInWindow() + settingsButton->GetHeight() + 1);
-            settingsMenu->ShowAt(pos);
+            // win->AddChild(settingsMenu);
+            settingsMenu->ShowAtWindow(settingsButton->GetXInWindow(), settingsButton->GetYInWindow() + settingsButton->GetHeight() + 1, win);
         };
 
         // ✕ Close
@@ -612,10 +610,9 @@ namespace UltraCanvas {
         auto icon = isReplace ? replaceIconButton : searchIconButton;
         if (!icon) return;
 
-        win->AddChild(menu);
-        Point2Di pos(icon->GetXInWindow(),
-                     icon->GetYInWindow() + icon->GetHeight() + 1);
-        menu->ShowAt(pos);
+        //win->AddChild(menu);
+        menu->ShowAtWindow(icon->GetXInWindow(), 
+                    icon->GetYInWindow() + icon->GetHeight() + 1, win);
     }
 
     void UltraCanvasSearchBar::AddToHistory(std::vector<std::string>& history, const std::string& text) {

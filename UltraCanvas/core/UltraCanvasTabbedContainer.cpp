@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasWindow.h"
 #include "UltraCanvasTooltipManager.h"
 #include <string>
 #include <vector>
@@ -68,7 +69,7 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::ClearDropdownSearch() {
         dropdownSearchText = "";
         dropdownSearchActive = false;
-        UpdateOverflowDropdown();
+        HideSearchAutoComplete();
     }
 
     void UltraCanvasTabbedContainer::SetShowNewTabButton(bool show) {
@@ -202,93 +203,43 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTabbedContainer::InitializeOverflowDropdown() {
-        overflowDropdown = std::make_shared<UltraCanvasDropdown>(
-                GetIdentifier() + "_overflow", 0, 0, 0, overflowDropdownWidth, tabHeight
-        );
-        DropdownStyle st;
-//        st.hasShadow = false;
-        st.borderWidth = 1;
-        overflowDropdown->SetStyle(st);
-        AddChild(overflowDropdown);
-        overflowDropdown->SetVisible(false);
+        overflowButton = std::make_shared<UltraCanvasButton>(
+                GetIdentifier() + "_overflow", 0, 0, 0, overflowDropdownWidth, tabHeight, "\xe2\x96\xbe");
+        AddChild(overflowButton);
+        overflowButton->SetVisible(false);
 
-        overflowDropdown->onSelectionChanged = [this](int selectedIndex, const DropdownItem& item) {
-            if (item.value == "-1") {
-                // Clicked on the search field itself — just ignore, search is already active
-                overflowDropdown->SetSelectedIndex(-1, false);
-                return;
-            }
+        overflowButton->onClick = [this]() {
+            ShowSearchAutoComplete();
+        };
 
-            int tabIndex = item.value.empty() ? selectedIndex : std::stoi(item.value);
+        // Create AutoComplete for tab search
+        searchAutoComplete = std::make_shared<UltraCanvasAutoComplete>(
+                GetIdentifier() + "_search", 0, 0, 0, 200, 28);
+        searchAutoComplete->SetPlaceholder("Type to find the tab...");
+        searchAutoComplete->SetMinCharsToTrigger(0);
+        searchAutoComplete->SetCloseOnSelect(true);
+        searchAutoComplete->SetVisible(false);
+        AddChild(searchAutoComplete);
+
+        AutoCompleteStyle acStyle;
+        acStyle.maxVisibleItems = 999;  // Maximize to window height
+        searchAutoComplete->SetStyle(acStyle);
+
+        searchAutoComplete->onItemSelected = [this](int index, const AutoCompleteItem& item) {
+            int tabIndex = item.value.empty() ? index : std::stoi(item.value);
             if (tabIndex >= 0 && tabIndex < (int)tabs.size()) {
                 SetActiveTab(tabIndex);
-                ClearDropdownSearch();
             }
+            HideSearchAutoComplete();
         };
 
-        // Activate search mode automatically when dropdown opens
-        overflowDropdown->onDropdownOpened = [this]() {
-            bool shouldShowSearch = enableDropdownSearch && ((int)tabs.size() >= dropdownSearchThreshold);
-            if (shouldShowSearch) {
-                dropdownSearchActive = true;
-            }
-        };
-
-        // Clear search state when dropdown closes
-        overflowDropdown->onDropdownClosed = [this]() {
-            if (dropdownSearchActive) {
-                dropdownSearchText = "";
-                dropdownSearchActive = false;
-            }
-        };
-
-        // Route key events from the dropdown popup to the search input handler
-        overflowDropdown->onKeyDown = [this](const UCEvent& event) {
-            if (dropdownSearchActive) {
-                return HandleDropdownSearchInput(event);
-            }
-            return false;
+        searchAutoComplete->onPopupClosed = [this]() {
+            HideSearchAutoComplete();
         };
     }
 
     void UltraCanvasTabbedContainer::UpdateOverflowDropdown() {
-        if (!overflowDropdown) return;
-
-        overflowDropdown->ClearItems();
-
-        bool shouldShowSearch = enableDropdownSearch && ((int)tabs.size() >= dropdownSearchThreshold);
-
-        if (shouldShowSearch) {
-            std::string searchDisplayText = (dropdownSearchText.empty() ? "Type to find the tab..." : dropdownSearchText);
-            overflowDropdown->AddItem(searchDisplayText, "-1");
-            overflowDropdown->AddSeparator();
-        }
-
-        std::string searchLower = ToLowerCase(dropdownSearchText);
-
-        for (int i = 0; i < (int)tabs.size(); i++) {
-            if (!tabs[i]->visible) continue;
-
-            if (shouldShowSearch && !dropdownSearchText.empty()) {
-                std::string titleLower = ToLowerCase(tabs[i]->title);
-                if (titleLower.find(searchLower) == std::string::npos) {
-                    continue;
-                }
-            }
-
-            std::string displayTitle = tabs[i]->title;
-
-            // if (i == activeTabIndex) {
-            //     displayTitle = "● " + displayTitle;
-            // }
-
-            if (!tabs[i]->enabled) {
-                displayTitle = "[" + displayTitle + "]";
-            }
-
-            overflowDropdown->AddItem(displayTitle, std::to_string(i));
-        }
-
+        PopulateSearchAutoComplete();
         PositionOverflowDropdown();
     }
 
@@ -296,8 +247,8 @@ namespace UltraCanvas {
         bool needed = CheckIfOverflowDropdownNeeded();
         overflowDropdownVisible = showOverflowDropdown && needed;
 
-        if (overflowDropdown) {
-            overflowDropdown->SetVisible(overflowDropdownVisible);
+        if (overflowButton) {
+            overflowButton->SetVisible(overflowDropdownVisible);
         }
 
         if (overflowDropdownVisible) {
@@ -325,7 +276,8 @@ namespace UltraCanvas {
         if (showScrollButtons) {
             bool canPrev = activeTabIndex > 0;
             bool canNext = activeTabIndex < (int)tabs.size() - 1;
-            availableSpace -= (canPrev && canNext) ? 48 : 24;
+            if (canPrev) availableSpace -= 24;
+            if (canNext) availableSpace -= 24;
         }
 
         if (showNewTabButton) {
@@ -351,24 +303,80 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTabbedContainer::PositionOverflowDropdown() {
-        if (!overflowDropdown || !overflowDropdownVisible) return;
+        if (!overflowButton || !overflowDropdownVisible) return;
 
         Rect2Di tabBarBounds = GetTabBarBounds();
 
         switch (overflowDropdownPosition) {
             case OverflowDropdownPosition::Left:
-                overflowDropdown->SetPosition(0, 0);
+                overflowButton->SetPosition(0, 0);
                 break;
 
             case OverflowDropdownPosition::Right:
-                overflowDropdown->SetPosition(tabBarBounds.width - overflowDropdownWidth, 0);
+                overflowButton->SetPosition(tabBarBounds.width - overflowDropdownWidth, 0);
                 break;
 
             default:
                 break;
         }
 
-        overflowDropdown->SetSize(overflowDropdownWidth, tabBarBounds.height);
+        overflowButton->SetSize(overflowDropdownWidth, tabBarBounds.height);
+    }
+
+    void UltraCanvasTabbedContainer::ShowSearchAutoComplete() {
+        if (!searchAutoComplete) return;
+
+        PopulateSearchAutoComplete();
+
+        // Position below the overflow button (container-relative coords)
+        Rect2Di dropdownBounds = overflowButton->GetBounds();
+
+        int acX = dropdownBounds.x;
+        int acY = dropdownBounds.y + dropdownBounds.height;
+        int acWidth = std::max(200, dropdownBounds.width);
+
+        searchAutoComplete->SetBounds(Rect2Di(acX, acY, acWidth, 28));
+        searchAutoComplete->SetWindow(window);
+        searchAutoComplete->SetVisible(true);
+        searchAutoComplete->SetText("");
+        // Add to overlays so the text input renders above clipping
+        UltraCanvasWindowBase::AddToOverlays(searchAutoComplete.get(), {
+            .closeByEscapeKey = true,
+            .closeByClickOutside = true,
+            .overlayZOrder = OverlayZOrder::Overlays,
+            .useAbsolutePosition = false,
+            .handleInputEvents = true
+        });
+
+        // Give focus to trigger popup opening (minCharsToTrigger=0)
+        if (window) {
+            window->SetFocusedElement(searchAutoComplete.get());
+        }
+
+        dropdownSearchActive = true;
+    }
+
+    void UltraCanvasTabbedContainer::HideSearchAutoComplete() {
+        if (!searchAutoComplete) return;
+        UltraCanvasWindowBase::RemoveFromOverlays(searchAutoComplete.get());
+        searchAutoComplete->ClosePopup();
+        searchAutoComplete->SetVisible(false);
+        dropdownSearchActive = false;
+        dropdownSearchText = "";
+    }
+
+    void UltraCanvasTabbedContainer::PopulateSearchAutoComplete() {
+        if (!searchAutoComplete) return;
+        std::vector<AutoCompleteItem> items;
+        for (int i = 0; i < (int)tabs.size(); i++) {
+            if (!tabs[i]->visible) continue;
+            std::string displayTitle = tabs[i]->title;
+            if (!tabs[i]->enabled) {
+                displayTitle = "[" + displayTitle + "]";
+            }
+            items.emplace_back(displayTitle, std::to_string(i));
+        }
+        searchAutoComplete->SetItems(items);
     }
 
     void UltraCanvasTabbedContainer::Render(IRenderContext* ctx) {
@@ -436,8 +444,8 @@ namespace UltraCanvas {
 //        RenderDockIndicator(ctx);
 
         ctx->PushState();
-        if (overflowDropdownVisible) {
-            overflowDropdown->Render(ctx);
+        if (overflowDropdownVisible && overflowButton) {
+            overflowButton->Render(ctx);
         }
 
          // V2.0.0: Draw drag insertion indicator
@@ -532,9 +540,14 @@ namespace UltraCanvas {
         switch (tabPosition) {
             case TabPosition::Top:
             case TabPosition::Bottom: {
+                int prevBtnX = tabBarBounds.x;
+                if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
+                    prevBtnX += overflowDropdownWidth + tabSpacing;
+                }
+
                 if (canGoPrev && canGoNext) {
-                    // Both buttons
-                    Rect2Di prevBtn(tabBarBounds.x + tabBarBounds.width - 48, tabBarBounds.y, 24, tabBarBounds.height);
+                    // Prev button after overflow button, next button at right edge
+                    Rect2Di prevBtn(prevBtnX, tabBarBounds.y, 24, tabBarBounds.height);
                     Rect2Di nextBtn(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
                     ctx->DrawFilledRectangle(prevBtn, Color(220, 220, 220), 1.0, tabBorderColor);
                     ctx->DrawFilledRectangle(nextBtn, Color(220, 220, 220), 1.0, tabBorderColor);
@@ -547,8 +560,10 @@ namespace UltraCanvas {
                       ctx->ClearPath(); ctx->MoveTo(c.x + s, c.y); ctx->LineTo(c.x - s, c.y - (s+s)); ctx->LineTo(c.x - s, c.y + (s+s));
                       ctx->ClosePath(); ctx->FillPathPreserve(); ctx->Stroke(); }
                 } else {
-                    // Single button at rightmost position
-                    Rect2Di btn(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
+                    // Single button: prev after overflow, next at right edge
+                    Rect2Di btn = canGoPrev
+                        ? Rect2Di(prevBtnX, tabBarBounds.y, 24, tabBarBounds.height)
+                        : Rect2Di(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
                     ctx->DrawFilledRectangle(btn, Color(220, 220, 220), 1.0, tabBorderColor);
                     Point2Di c(btn.x + btn.width / 2, btn.y + btn.height / 2); int s = 3;
                     ctx->ClearPath();
@@ -566,9 +581,14 @@ namespace UltraCanvas {
 
             case TabPosition::Left:
             case TabPosition::Right: {
+                int prevBtnY = tabBarBounds.y;
+                if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
+                    prevBtnY += overflowDropdownWidth + tabSpacing;
+                }
+
                 if (canGoPrev && canGoNext) {
-                    // Both buttons
-                    Rect2Di prevBtn(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 48, tabBarBounds.width, 24);
+                    // Prev button after overflow, next button at bottom
+                    Rect2Di prevBtn(tabBarBounds.x, prevBtnY, tabBarBounds.width, 24);
                     Rect2Di nextBtn(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 24, tabBarBounds.width, 24);
                     ctx->DrawFilledRectangle(prevBtn, Color(220, 220, 220), 1.0, tabBorderColor);
                     ctx->DrawFilledRectangle(nextBtn, Color(220, 220, 220), 1.0, tabBorderColor);
@@ -581,8 +601,10 @@ namespace UltraCanvas {
                       ctx->ClearPath(); ctx->MoveTo(c.x, c.y + s); ctx->LineTo(c.x - (s+s), c.y - s); ctx->LineTo(c.x + (s+s), c.y - s);
                       ctx->ClosePath(); ctx->Fill(); }
                 } else {
-                    // Single button at bottommost position
-                    Rect2Di btn(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 24, tabBarBounds.width, 24);
+                    // Single button: prev after overflow, next at bottom
+                    Rect2Di btn = canGoPrev
+                        ? Rect2Di(tabBarBounds.x, prevBtnY, tabBarBounds.width, 24)
+                        : Rect2Di(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 24, tabBarBounds.width, 24);
                     ctx->DrawFilledRectangle(btn, Color(220, 220, 220), 1.0, tabBorderColor);
                     Point2Di c(btn.x + btn.width / 2, btn.y + btn.height / 2); int s = 3;
                     ctx->ClearPath();
@@ -654,7 +676,6 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::KeyDown:
-                if (HandleDropdownSearchInput(event)) return true;
                 if (HandleKeyDown(event)) return true;
                 break;
 
@@ -679,46 +700,6 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
-    bool UltraCanvasTabbedContainer::HandleDropdownSearchInput(const UCEvent &event) {
-        if (!dropdownSearchActive || event.type != UCEventType::KeyDown) {
-            return false;
-        }
-
-        if (event.virtualKey == UCKeys::Escape) {
-            ClearDropdownSearch();
-            overflowDropdown->CloseDropdown();
-            return true;
-        }
-
-        if (event.virtualKey == UCKeys::Backspace) {
-            if (!dropdownSearchText.empty()) {
-                dropdownSearchText.pop_back();
-                UpdateOverflowDropdown();
-                overflowDropdown->RequestRedraw();
-            }
-            return true;
-        }
-
-        if (event.virtualKey == UCKeys::Return) {
-            auto filtered = GetFilteredTabIndices();
-            if (!filtered.empty()) {
-                SetActiveTab(filtered[0]);
-            }
-            ClearDropdownSearch();
-            overflowDropdown->CloseDropdown();
-            return true;
-        }
-
-        if (event.character >= 32 && event.character <= 126) {
-            dropdownSearchText += static_cast<char>(event.character);
-            UpdateOverflowDropdown();
-            overflowDropdown->RequestRedraw();
-            return true;
-        }
-
-        return false;
-    }
-
     bool UltraCanvasTabbedContainer::HandleMouseDown(const UCEvent &event) {
         int x = event.x - bounds.x;
         int y = event.y - bounds.y;
@@ -726,8 +707,8 @@ namespace UltraCanvas {
 
         if (!tabBarBounds.Contains(x, y)) return false;
 
-        if (overflowDropdownVisible && overflowDropdown) {
-            Rect2Di dropdownBounds = overflowDropdown->GetBounds();
+        if (overflowDropdownVisible && overflowButton) {
+            Rect2Di dropdownBounds = overflowButton->GetBounds();
             if (dropdownBounds.Contains(x, y)) {
                 return false;
             }
@@ -747,13 +728,21 @@ namespace UltraCanvas {
             bool canGoPrev = activeTabIndex > 0;
             bool canGoNext = activeTabIndex < (int)tabs.size() - 1;
 
+            int prevBtnX = tabBarBounds.x;
+            if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
+                prevBtnX += overflowDropdownWidth + tabSpacing;
+            }
+
             if (canGoPrev && canGoNext) {
-                Rect2Di prevBtn(tabBarBounds.x + tabBarBounds.width - 48, tabBarBounds.y, 24, tabBarBounds.height);
+                // Prev after overflow button, next at right edge
+                Rect2Di prevBtn(prevBtnX, tabBarBounds.y, 24, tabBarBounds.height);
                 Rect2Di nextBtn(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
                 if (prevBtn.Contains(x, y)) { SetActiveTab(activeTabIndex - 1); return true; }
                 if (nextBtn.Contains(x, y)) { SetActiveTab(activeTabIndex + 1); return true; }
             } else if (canGoPrev || canGoNext) {
-                Rect2Di btn(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
+                Rect2Di btn = canGoPrev
+                    ? Rect2Di(prevBtnX, tabBarBounds.y, 24, tabBarBounds.height)
+                    : Rect2Di(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
                 if (btn.Contains(x, y)) {
                     SetActiveTab(canGoPrev ? activeTabIndex - 1 : activeTabIndex + 1);
                     return true;
@@ -997,22 +986,6 @@ namespace UltraCanvas {
         return false;
     }
 
-    std::vector<int> UltraCanvasTabbedContainer::GetFilteredTabIndices() const {
-        std::vector<int> result;
-        std::string searchLower = ToLowerCase(dropdownSearchText);
-
-        for (int i = 0; i < (int)tabs.size(); i++) {
-            if (!tabs[i]->visible) continue;
-
-            std::string titleLower = ToLowerCase(tabs[i]->title);
-            if (titleLower.find(searchLower) != std::string::npos) {
-                result.push_back(i);
-            }
-        }
-
-        return result;
-    }
-
     int UltraCanvasTabbedContainer::CalculateMaxTabWidth() {
         int w = 0;
         for(int i = 0; i < (int)tabs.size(); i++) {
@@ -1108,9 +1081,9 @@ namespace UltraCanvas {
 
             case NewTabButtonPosition::FarRight:
                 if (showScrollButtons) {
-                    bool canPrev = activeTabIndex > 0;
                     bool canNext = activeTabIndex < (int)tabs.size() - 1;
-                    xPos = tabBarBounds.width - newTabButtonWidth - ((canPrev && canNext) ? 48 : 24);
+                    // Only the next button is at the right edge now
+                    xPos = tabBarBounds.width - newTabButtonWidth - (canNext ? 24 : 0);
                 } else {
                     xPos = tabBarBounds.width - newTabButtonWidth;
                 }
@@ -1221,8 +1194,8 @@ namespace UltraCanvas {
 
         if (!showOverflowDropdown) {
             overflowDropdownVisible = false;
-            if (overflowDropdown) {
-                overflowDropdown->SetVisible(false);
+            if (overflowButton) {
+                overflowButton->SetVisible(false);
             }
         }
 
@@ -1571,7 +1544,13 @@ namespace UltraCanvas {
                 if (showScrollButtons) {
                     bool canPrev = activeTabIndex > 0;
                     bool canNext = activeTabIndex < (int)tabs.size() - 1;
-                    bounds.width -= (canPrev && canNext) ? 48 : 24;
+                    if (canPrev) {
+                        bounds.x += 24;
+                        bounds.width -= 24;
+                    }
+                    if (canNext) {
+                        bounds.width -= 24;
+                    }
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
@@ -1591,7 +1570,13 @@ namespace UltraCanvas {
                 if (showScrollButtons) {
                     bool canPrev = activeTabIndex > 0;
                     bool canNext = activeTabIndex < (int)tabs.size() - 1;
-                    bounds.height -= (canPrev && canNext) ? 48 : 24;
+                    if (canPrev) {
+                        bounds.y += 24;
+                        bounds.height -= 24;
+                    }
+                    if (canNext) {
+                        bounds.height -= 24;
+                    }
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {

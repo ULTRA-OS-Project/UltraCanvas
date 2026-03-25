@@ -754,12 +754,6 @@ namespace {
         tabContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
         tabContainer->SetTabHeight(tabBarHeight);
         tabContainer->SetActiveTabBackgroundColor(Colors::White);
-//     // Configure overflow dropdown: maximised height + menu font size
-         DropdownStyle dropStyle = tabContainer->GetOverflowDropdownStyle();
-         dropStyle.fontSize = 10.0f;       // Match menu bar font size
-         dropStyle.maxVisibleItems = 30;   // Maximise dropdown height
-         tabContainer->SetOverflowDropdownStyle(dropStyle);
-
         // Setup callbacks
         tabContainer->onTabChange = [this](int oldIndex, int newIndex) {
             SwitchToDocument(newIndex);

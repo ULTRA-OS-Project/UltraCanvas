@@ -135,6 +135,7 @@ namespace UltraCanvas {
         int separatorHeight = 8;
         int borderWidth = 1;
         int borderRadius = 4;
+        int minWidth = 0;       // Minimum menu width (0 = no minimum)
 
         // Submenu
         int submenuDelay = 300;  // milliseconds
@@ -176,6 +177,9 @@ namespace UltraCanvas {
         int keyboardIndex = -1;
         bool keyboardNavigation = false;
         bool needCalculateSize = true;
+
+        bool closeByClickOutside = false;
+        bool closeByEscapeKey = false;
 
         // Submenu management
         std::shared_ptr<UltraCanvasMenu> activeSubmenu;
@@ -251,9 +255,14 @@ namespace UltraCanvas {
 
         MenuItemData* GetItem(int index);
 
-        void Show();
+        void Show(bool closeByClickOutside=true, bool closeByEscapeKey=true);
         void Hide();
         void Toggle();
+
+        // Embedded mode: for composite components (e.g. AutoComplete) that
+        // manage their own overlay lifecycle but use Menu for rendering/events.
+        // void ShowAsEmbedded(int x, int y);
+        // void HideAsEmbedded();
 
         bool IsMenuVisible() const {
             return currentState == MenuState::Visible || currentState == MenuState::Opening;
@@ -262,9 +271,8 @@ namespace UltraCanvas {
         MenuState GetMenuState() const { return currentState; }
 
         // ===== CONTEXT MENU HELPERS =====
-        void ShowAt(const Point2Di& position);
-        void ShowAt(int x, int y);
-        void ShowAtWindow(int x, int y, UltraCanvasWindowBase* win);
+        void ShowAt(int x, int y, bool closeByClickOutside=true, bool closeByEscapeKey=true);
+        void ShowAtWindow(int x, int y, UltraCanvasWindowBase* win, bool closeByClickOutside=true, bool closeByEscapeKey=true);
 
         // ===== SUBMENU MANAGEMENT =====
         void OpenSubmenu(int itemIndex);

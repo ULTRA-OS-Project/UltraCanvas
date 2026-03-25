@@ -8,7 +8,8 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasRenderContext.h"
-#include "UltraCanvasDropdown.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasAutoComplete.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasUtils.h"
@@ -147,7 +148,8 @@ namespace UltraCanvas {
         bool showOverflowDropdown = false;
         bool overflowDropdownVisible = false;
         int overflowDropdownWidth = 24;
-        std::shared_ptr<UltraCanvasDropdown> overflowDropdown = nullptr;
+        std::shared_ptr<UltraCanvasButton> overflowButton = nullptr;
+        std::shared_ptr<UltraCanvasAutoComplete> searchAutoComplete = nullptr;
 
         // ===== DROPDOWN SEARCH =====
         bool enableDropdownSearch = true;
@@ -242,9 +244,6 @@ namespace UltraCanvas {
         void SetOverflowDropdownPosition(OverflowDropdownPosition position);
         OverflowDropdownPosition GetOverflowDropdownPosition() const { return overflowDropdownPosition; }
         void SetOverflowDropdownWidth(int width);
-        void SetOverflowDropdownStyle(const DropdownStyle& st) { overflowDropdown->SetStyle(st); }
-        const DropdownStyle& GetOverflowDropdownStyle() { return overflowDropdown->GetStyle(); };
-
         // ===== DROPDOWN SEARCH CONFIGURATION =====
         void SetDropdownSearchEnabled(bool enabled);
         bool IsDropdownSearchEnabled() const { return enableDropdownSearch; }
@@ -292,6 +291,9 @@ namespace UltraCanvas {
         void UpdateOverflowDropdownVisibility();
         bool CheckIfOverflowDropdownNeeded();
         void PositionOverflowDropdown();
+        void ShowSearchAutoComplete();
+        void HideSearchAutoComplete();
+        void PopulateSearchAutoComplete();
 
         // ===== LAYOUT =====
         void SetBounds(const Rect2Di& b) override;
@@ -314,14 +316,10 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLING (CORRECTED TO RETURN BOOL) =====
         bool OnEvent(const UCEvent& event) override;
-        bool HandleDropdownSearchInput(const UCEvent& event);
         bool HandleMouseDown(const UCEvent& event);
         bool HandleMouseUp(const UCEvent& event);
         bool HandleMouseMove(const UCEvent& event);
         bool HandleKeyDown(const UCEvent& event);
-
-        // ===== DROPDOWN SEARCH UTILITY METHODS =====
-        std::vector<int> GetFilteredTabIndices() const;
 
         // ===== UTILITY METHODS =====
         int CalculateTabWidth(int index);

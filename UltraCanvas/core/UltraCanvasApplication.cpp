@@ -47,8 +47,8 @@ namespace UltraCanvas {
         if (!elem) return;
 
         auto win = elem->GetWindow();
-        pendingUnassignedEventFilters[elem] = {};
-        if (win) {
+        pendingUnassignedEventFilters.erase(elem);
+        if (win && !win->eventFilters.empty()) {
             for(auto &ef : win->eventFilters) {
                 auto &elems = ef.second;
                 elems.erase(elem);
@@ -61,22 +61,27 @@ namespace UltraCanvas {
 
         std::vector<UCEventType> interestedEvents;
         if (winFrom) {
-            for(auto &ef : winFrom->eventFilters) {
-                auto &elems = ef.second;
-                if (elems.find(elem) != elems.end()) {
-                    interestedEvents.push_back(ef.first);
-                    elems.erase(elem);
+            if (!winFrom->eventFilters.empty()) {
+                for(auto &ef : winFrom->eventFilters) {
+                    auto &elems = ef.second;
+                    if (elems.find(elem) != elems.end()) {
+                        interestedEvents.push_back(ef.first);
+                        elems.erase(elem);
+                    }
                 }
             }
         } else {
-            auto found = pendingUnassignedEventFilters.find(elem);
-            if (found != pendingUnassignedEventFilters.end()) {
-                interestedEvents = found->second;
-                pendingUnassignedEventFilters.erase(elem);
+            if (!pendingUnassignedEventFilters.empty()) {
+                auto found = pendingUnassignedEventFilters.find(elem);
+                if (found != pendingUnassignedEventFilters.end()) {
+                    interestedEvents = found->second;
+                    pendingUnassignedEventFilters.erase(elem);
+                }
             }
         }
-
-        UltraCanvasApplicationBase::InstallWindowEventFilter(elem, interestedEvents);
+        if (!interestedEvents.empty()) {
+            UltraCanvasApplicationBase::InstallWindowEventFilter(elem, interestedEvents);
+        }
     }
 
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {
@@ -442,8 +447,8 @@ rescan_windows:
                         auto &elem = overlayElementsCopy.back();
                         if (elem.settings.closeByEscapeKey) {
                             UltraCanvasWindowBase::RemoveFromOverlays(elem.element);
+                            goto finish;
                         }
-                        goto finish;
                     }
                 }
             }

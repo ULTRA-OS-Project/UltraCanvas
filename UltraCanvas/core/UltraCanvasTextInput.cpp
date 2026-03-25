@@ -45,7 +45,7 @@ namespace UltraCanvas {
         SetMouseCursor(UCMouseCursor::Text);
     }
 
-    void UltraCanvasTextInput::SetText(const std::string &newText) {
+    void UltraCanvasTextInput::SetText(const std::string &newText, bool callOnTextChanged) {
         if (readOnly) return;
 
         SaveState();  // For undo
@@ -68,7 +68,7 @@ namespace UltraCanvas {
 
         UpdateScrollOffset();
 
-        if (onTextChanged) onTextChanged(text);
+        if (onTextChanged && callOnTextChanged) onTextChanged(text);
     }
 
     void UltraCanvasTextInput::SetInputType(TextInputType type) {
@@ -285,27 +285,21 @@ namespace UltraCanvas {
         switch (event.type) {
             case UCEventType::MouseDown:
                 return HandleMouseDown(event);
-                break;
 
             case UCEventType::MouseMove:
-                HandleMouseMove(event);
-                break;
+                 return HandleMouseMove(event);
 
             case UCEventType::MouseUp:
-                HandleMouseUp(event);
-                break;
+                return HandleMouseUp(event);
 
             case UCEventType::KeyDown:
-                HandleKeyDown(event);
-                break;
+                return HandleKeyDown(event);
 
             case UCEventType::FocusGained:
-                HandleFocusGained(event);
-                break;
+                return HandleFocusGained(event);
 
             case UCEventType::FocusLost:
-                HandleFocusLost(event);
-                break;
+                return HandleFocusLost(event);
         }
         return false;
     }
@@ -852,14 +846,16 @@ namespace UltraCanvas {
         return true;
     }
 
-    void UltraCanvasTextInput::HandleMouseUp(const UCEvent &event) {
+    bool UltraCanvasTextInput::HandleMouseUp(const UCEvent &event) {
         if (isDragging) {
             isDragging = false;
+            return true;
         }
+        return false;
     }
 
-    void UltraCanvasTextInput::HandleKeyDown(const UCEvent &event) {
-        if (readOnly) return;
+    bool UltraCanvasTextInput::HandleKeyDown(const UCEvent &event) {
+        if (readOnly) return false;
 
         // Handle printable characters from KeyDown events
         // UCEvent already has 'character' and 'text' fields populated by X11
@@ -874,7 +870,7 @@ namespace UltraCanvas {
             std::string charStr(1, event.character);
             InsertText(charStr);
 //            InvalidateLayout();
-            return; // Exit early for character input
+            return true;
         }
 
         // Handle special keys
@@ -1088,34 +1084,27 @@ namespace UltraCanvas {
                 break;
         }
 
-        // Update layout after any text changes
-        //InvalidateLayout();
+        return true;
     }
 
-    void UltraCanvasTextInput::HandleKeyUp(const UCEvent &event) {
-        // KeyUp events mainly for modifier key tracking
-        // Most text input logic is handled in KeyDown
-
-        // Could be used for key repeat stopping, modifier state tracking, etc.
-        // For now, we don't need specific KeyUp handling for text input
-    }
-
-    void UltraCanvasTextInput::HandleFocusGained(const UCEvent &event) {
+    bool UltraCanvasTextInput::HandleFocusGained(const UCEvent &event) {
         SetFocus(true);
         isCaretVisible = true;
         caretBlinkTimer = 0.0f;
 //        InvalidateLayout();
 
         if (onFocusGained) onFocusGained();
+        return true;
     }
 
-    void UltraCanvasTextInput::HandleFocusLost(const UCEvent &event) {
+    bool UltraCanvasTextInput::HandleFocusLost(const UCEvent &event) {
         isCaretVisible = false;
         isDragging = false;
         isClearButtonHovered = false;
 //        InvalidateLayout();
 
         if (onFocusLost) onFocusLost();
+        return true;
     }
 
     void UltraCanvasTextInput::InsertText(const std::string &insertText) {
