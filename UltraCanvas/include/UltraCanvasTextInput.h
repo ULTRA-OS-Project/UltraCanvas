@@ -444,7 +444,10 @@ public:
     std::function<void()> onFocusGained;
     std::function<void()> onFocusLost;
     std::function<void()> onCleared;
-    
+
+protected:
+    virtual void TextChanged();
+
 private:
     // ===== PRIVATE HELPER METHODS =====
     

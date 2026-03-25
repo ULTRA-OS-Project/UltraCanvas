@@ -1,11 +1,10 @@
 // include/UltraCanvasAutoComplete.h
-// AutoComplete text input with popup suggestion list (composite: TextInput + Menu)
-// Version: 2.0.0
+// AutoComplete text input with popup suggestion list (inherits TextInput, composes Menu)
+// Version: 3.0.0
 // Last Modified: 2026-03-25
 // Author: UltraCanvas Framework
 #pragma once
 
-#include "UltraCanvasUIElement.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasEvent.h"
@@ -55,11 +54,10 @@ namespace UltraCanvas {
     };
 
 // ===== AUTOCOMPLETE COMPONENT =====
-    class UltraCanvasAutoComplete : public UltraCanvasUIElement {
+    class UltraCanvasAutoComplete : public UltraCanvasTextInput {
     public:
         // ===== CALLBACKS =====
         std::function<void(int, const AutoCompleteItem&)> onItemSelected;
-        std::function<void(const std::string&)> onTextChanged;
         std::function<void()> onPopupOpened;
         std::function<void()> onPopupClosed;
 
@@ -68,13 +66,12 @@ namespace UltraCanvas {
         std::function<std::vector<AutoCompleteItem>(const std::string&)> onRequestSuggestions;
 
     private:
-        std::shared_ptr<UltraCanvasTextInput> textInput;
         std::shared_ptr<UltraCanvasMenu> popupMenu;
 
         std::vector<AutoCompleteItem> allItems;         // Full static list
         std::vector<AutoCompleteItem> filteredItems;    // Currently displayed (post-filter)
 
-        AutoCompleteStyle style;
+        AutoCompleteStyle acStyle;
         bool popupOpen = false;
         int selectedIndex = -1;
 
@@ -96,10 +93,9 @@ namespace UltraCanvas {
         void ClearItems();
         const std::vector<AutoCompleteItem>& GetAllItems() const { return allItems; }
 
-        // ===== TEXT ACCESS (delegates to inner TextInput) =====
-        void SetText(const std::string& text);
-        const std::string& GetText() const;
-        void SetPlaceholder(const std::string& placeholder);
+        // ===== TEXT ACCESS =====
+        using UltraCanvasTextInput::SetText;
+        void SetText(const std::string& text);  // Suppresses re-filtering
 
         // ===== SELECTED ITEM =====
         const AutoCompleteItem* GetSelectedItem() const;
@@ -111,9 +107,9 @@ namespace UltraCanvas {
         bool IsPopupOpen() const { return popupOpen; }
 
         // ===== STYLING =====
+        using UltraCanvasTextInput::SetStyle;
         void SetStyle(const AutoCompleteStyle& newStyle);
-        const AutoCompleteStyle& GetStyle() const { return style; }
-        void SetTextInputStyle(const TextInputStyle& inputStyle);
+        const AutoCompleteStyle& GetAutoCompleteStyle() const { return acStyle; }
 
         // ===== BEHAVIOR =====
         int GetMinCharsToTrigger() const { return minCharsToTrigger; }
@@ -125,21 +121,16 @@ namespace UltraCanvas {
         bool GetAutoSelectFirst() const { return autoSelectFirst; }
         void SetAutoSelectFirst(bool value) { autoSelectFirst = value; }
 
-        // ===== FOCUS =====
-        bool AcceptsFocus() const override { return true; }
-
         // ===== WINDOW =====
         void SetWindow(UltraCanvasWindowBase* win) override;
 
-        // ===== RENDERING =====
-        void Render(IRenderContext* ctx) override;
-
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
-        bool OnWindowEventFilter(const UCEvent& event) override;
+
+    protected:
+        void TextChanged() override;
 
     private:
-        void CreateTextInput();
         void CreatePopupMenu();
         void WireCallbacks();
         void ApplyStyleToMenu();
@@ -151,13 +142,9 @@ namespace UltraCanvas {
         Point2Di CalculatePopupPosition();
         void SelectItem(int filteredIndex);
 
-        // Event routing
-        bool HandleMouseDown(const UCEvent& event);
+        // Event routing (popup-specific)
         bool HandleMouseUp(const UCEvent& event);
         bool HandleMouseMove(const UCEvent& event);
-        bool HandleKeyDown(const UCEvent& event);
-        bool HandleMouseWheel(const UCEvent& event);
-        void HandleFocusLost();
     };
 
 // ===== FACTORY FUNCTIONS =====

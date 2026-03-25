@@ -45,6 +45,10 @@ namespace UltraCanvas {
         SetMouseCursor(UCMouseCursor::Text);
     }
 
+    void UltraCanvasTextInput::TextChanged() {
+        if (onTextChanged) onTextChanged(text);
+    }
+
     void UltraCanvasTextInput::SetText(const std::string &newText, bool callOnTextChanged) {
         if (readOnly) return;
 
@@ -68,7 +72,7 @@ namespace UltraCanvas {
 
         UpdateScrollOffset();
 
-        if (onTextChanged && callOnTextChanged) onTextChanged(text);
+        if (callOnTextChanged) TextChanged();
     }
 
     void UltraCanvasTextInput::SetInputType(TextInputType type) {
@@ -198,7 +202,7 @@ namespace UltraCanvas {
 
         UpdateScrollOffset();
 
-        if (onTextChanged) onTextChanged(text);
+        TextChanged();
     }
 
     void UltraCanvasTextInput::Redo() {
@@ -222,7 +226,7 @@ namespace UltraCanvas {
 
         UpdateScrollOffset();
 
-        if (onTextChanged) onTextChanged(text);
+        TextChanged();
     }
 
     void UltraCanvasTextInput::Render(IRenderContext* ctx) {
@@ -797,7 +801,7 @@ namespace UltraCanvas {
                 UpdateDisplayText();
                 UpdateScrollOffset();
                 isClearButtonHovered = false;
-                if (onTextChanged) onTextChanged(text);
+                TextChanged();
                 if (onCleared) onCleared();
                 RequestRedraw();
                 return true;
@@ -901,7 +905,7 @@ namespace UltraCanvas {
 
                 }
                 UpdateScrollOffset();
-                if (onTextChanged) onTextChanged(text);
+                TextChanged();
                 break;
 
             case UCKeys::Delete:
@@ -914,7 +918,7 @@ namespace UltraCanvas {
                     UpdateDisplayText();
                 }
                 UpdateScrollOffset();
-                if (onTextChanged) onTextChanged(text);
+                TextChanged();
                 break;
 
             case UCKeys::Left:
@@ -1135,7 +1139,7 @@ namespace UltraCanvas {
             Validate();
         }
 
-        if (onTextChanged) onTextChanged(text);
+        TextChanged();
     }
 
     void UltraCanvasTextInput::DeleteSelection() {
@@ -1154,7 +1158,7 @@ namespace UltraCanvas {
             Validate();
         }
 
-        if (onTextChanged) onTextChanged(text);
+        TextChanged();
     }
 
     void UltraCanvasTextInput::UpdateDisplayText() {

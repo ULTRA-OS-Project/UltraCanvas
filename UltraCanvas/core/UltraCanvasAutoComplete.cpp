@@ -1,6 +1,6 @@
 // core/UltraCanvasAutoComplete.cpp
-// AutoComplete text input with popup suggestion list (composite: TextInput + Menu)
-// Version: 2.0.0
+// AutoComplete text input with popup suggestion list (inherits TextInput, composes Menu)
+// Version: 3.0.0
 // Last Modified: 2026-03-25
 // Author: UltraCanvas Framework
 #include "UltraCanvasAutoComplete.h"
@@ -13,16 +13,13 @@ namespace UltraCanvas {
 
     UltraCanvasAutoComplete::UltraCanvasAutoComplete(const std::string& identifier, long id,
                                                      long x, long y, long w, long h)
-        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
-        CreateTextInput();
+        : UltraCanvasTextInput(identifier, id, x, y, w, h) {
+        SetShowValidationState(false);
         CreatePopupMenu();
         WireCallbacks();
-        UltraCanvasApplicationBase::InstallWindowEventFilter(this, {UCEventType::KeyDown});
     }
 
-    UltraCanvasAutoComplete::~UltraCanvasAutoComplete() {
-        UltraCanvasApplicationBase::UnInstallWindowEventFilter(this);
-    }
+    UltraCanvasAutoComplete::~UltraCanvasAutoComplete() = default;
 
     // ===== ITEM MANAGEMENT =====
 
@@ -56,15 +53,7 @@ namespace UltraCanvas {
     // ===== TEXT ACCESS =====
 
     void UltraCanvasAutoComplete::SetText(const std::string& text) {
-        textInput->SetText(text, false);
-    }
-
-    const std::string& UltraCanvasAutoComplete::GetText() const {
-        return textInput->GetText();
-    }
-
-    void UltraCanvasAutoComplete::SetPlaceholder(const std::string& placeholder) {
-        textInput->SetPlaceholder(placeholder);
+        UltraCanvasTextInput::SetText(text, false);
     }
 
     // ===== SELECTED ITEM =====
@@ -87,7 +76,6 @@ namespace UltraCanvas {
             popupMenu->ShowAt(pos.x, pos.y, false, false);
 
             if (autoSelectFirst && !filteredItems.empty()) {
-                // Simulate a Down key press to select the first item in the menu
                 UCEvent downEvent;
                 downEvent.type = UCEventType::KeyDown;
                 downEvent.virtualKey = UCKeys::Down;
@@ -110,125 +98,110 @@ namespace UltraCanvas {
     // ===== STYLING =====
 
     void UltraCanvasAutoComplete::SetStyle(const AutoCompleteStyle& newStyle) {
-        style = newStyle;
+        acStyle = newStyle;
         ApplyStyleToMenu();
         RequestRedraw();
-    }
-
-    void UltraCanvasAutoComplete::SetTextInputStyle(const TextInputStyle& inputStyle) {
-        textInput->SetStyle(inputStyle);
     }
 
     // ===== WINDOW =====
 
     void UltraCanvasAutoComplete::SetWindow(UltraCanvasWindowBase* win) {
-        UltraCanvasUIElement::SetWindow(win);
-        textInput->SetWindow(win);
+        UltraCanvasTextInput::SetWindow(win);
         if (popupMenu) popupMenu->SetWindow(win);
     }
 
-    // ===== RENDERING =====
+    // ===== TEXT CHANGED (VIRTUAL OVERRIDE) =====
 
-    void UltraCanvasAutoComplete::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
+    void UltraCanvasAutoComplete::TextChanged() {
+        const std::string& currentText = GetText();
+        FilterSuggestions(currentText);
 
-        // Keep TextInput bounds in sync
-        textInput->SetBounds(GetBounds());
-        textInput->Render(ctx);
+        if (static_cast<int>(currentText.length()) >= minCharsToTrigger) {
+            if (!filteredItems.empty()) {
+                OpenPopup();
+            } else {
+                ClosePopup();
+            }
+        } else {
+            ClosePopup();
+        }
+
+        UltraCanvasTextInput::TextChanged();  // fires onTextChanged callback
     }
 
     // ===== EVENT HANDLING =====
 
     bool UltraCanvasAutoComplete::OnEvent(const UCEvent& event) {
         switch (event.type) {
-            case UCEventType::MouseDown:
-                return HandleMouseDown(event);
-            case UCEventType::MouseUp:
-                return HandleMouseUp(event);
-            case UCEventType::MouseMove:
-                return HandleMouseMove(event);
-            case UCEventType::MouseWheel:
-                return HandleMouseWheel(event);
-            case UCEventType::FocusGained:
-                textInput->SetFocus(true);
-                return true;
-            case UCEventType::FocusLost:
-                HandleFocusLost();
-                return false;
-            default:
-                return textInput->OnEvent(event);
-        }
-    }
+            case UCEventType::KeyDown:
+                // Handle popup navigation BEFORE base TextInput processes the key
+                if (popupOpen) {
+                    switch (event.virtualKey) {
+                        case UCKeys::Down:
+                        case UCKeys::Up:
+                        case UCKeys::PageDown:
+                        case UCKeys::PageUp:
+                        case UCKeys::Return:
+                            return popupMenu->HandleEvent(event);
 
-    bool UltraCanvasAutoComplete::OnWindowEventFilter(const UCEvent& event) {
-        if (textInput->IsFocused()) {
-            if (popupOpen) {
-                switch (event.virtualKey) {
-                    case UCKeys::Down:
-                    case UCKeys::Up:
-                    case UCKeys::PageDown:
-                    case UCKeys::PageUp:
-                    case UCKeys::Return:
-                        return popupMenu->HandleEvent(event);
+                        case UCKeys::Escape:
+                            ClosePopup();
+                            return true;
 
-                    case UCKeys::Escape:
-                        ClosePopup();
+                        default:
+                            break;
+                    }
+                } else {
+                    if (event.virtualKey == UCKeys::Down || event.virtualKey == UCKeys::PageDown) {
+                        OpenPopup();
                         return true;
-
-                    default:
-                        break; // Fall through to TextInput
+                    }
                 }
-            } else {
-                if (event.virtualKey == UCKeys::Down || event.virtualKey == UCKeys::PageDown) {
-                    OpenPopup();
-                    return true;
+                return UltraCanvasTextInput::OnEvent(event);
+
+            // case UCEventType::MouseUp:
+            //     return HandleMouseUp(event);
+
+            // case UCEventType::MouseMove:
+            //     return HandleMouseMove(event);
+
+            // case UCEventType::MouseWheel:
+            //     if (popupOpen && popupMenu->Contains(event.x, event.y)) {
+            //         return popupMenu->HandleEvent(event);
+            //     }
+            //     return UltraCanvasTextInput::OnEvent(event);
+
+            case UCEventType::FocusGained:
+                if (minCharsToTrigger == 0) {
+                    FilterSuggestions(GetText());
+                    if (!filteredItems.empty()) {
+                        OpenPopup();
+                    }
                 }
-            }
-        }
-        return false;
-    }
+                return UltraCanvasTextInput::OnEvent(event);
 
-    bool UltraCanvasAutoComplete::HandleMouseDown(const UCEvent& event) {
-        if (GetBounds().Contains(event.x, event.y)) {
-            return textInput->OnEvent(event);
-        }
-        return false;
-    }
+            case UCEventType::FocusLost:
+                ClosePopup();
+                return UltraCanvasTextInput::OnEvent(event);
 
-    bool UltraCanvasAutoComplete::HandleMouseUp(const UCEvent& event) {
-        if (popupOpen && popupMenu->Contains(event.x, event.y)) {
-            return popupMenu->HandleEvent(event);
-        }
-        return textInput->OnEvent(event);
-    }
-
-    bool UltraCanvasAutoComplete::HandleMouseMove(const UCEvent& event) {
-        if (popupOpen) {
-            // Forward to menu for hover tracking
-            popupMenu->HandleEvent(event);
-        }
-
-        return textInput->OnEvent(event);
-    }
-
-    bool UltraCanvasAutoComplete::HandleMouseWheel(const UCEvent& event) {
-        if (!popupOpen) return false;
-
-        if (popupMenu->Contains(event.x, event.y)) {
-            return popupMenu->HandleEvent(event);
-        }
-
-        return false;
-    }
-
-    void UltraCanvasAutoComplete::HandleFocusLost() {
-        ClosePopup();
-        if (window && window->GetFocusedElement() != textInput.get()) {
-            UCEvent focusEvent;
-            focusEvent.type = UCEventType::FocusLost;
-            textInput->OnEvent(focusEvent);
+            default:
+                return UltraCanvasTextInput::OnEvent(event);
         }
     }
+
+    // bool UltraCanvasAutoComplete::HandleMouseUp(const UCEvent& event) {
+    //     if (popupOpen && popupMenu->Contains(event.x, event.y)) {
+    //         return popupMenu->HandleEvent(event);
+    //     }
+    //     return UltraCanvasTextInput::OnEvent(event);
+    // }
+
+    // bool UltraCanvasAutoComplete::HandleMouseMove(const UCEvent& event) {
+    //     if (popupOpen) {
+    //         popupMenu->HandleEvent(event);
+    //     }
+    //     return UltraCanvasTextInput::OnEvent(event);
+    // }
 
     // ===== SELECTION =====
 
@@ -238,8 +211,8 @@ namespace UltraCanvas {
         const AutoCompleteItem& item = filteredItems[filteredIndex];
         selectedIndex = filteredIndex;
 
-        // Set text input to the selected item's text (suppress re-filtering)
-        textInput->SetText(item.text, false);
+        // Set text without triggering re-filtering
+        UltraCanvasTextInput::SetText(item.text, false);
 
         if (onItemSelected) {
             onItemSelected(filteredIndex, item);
@@ -254,10 +227,8 @@ namespace UltraCanvas {
 
     void UltraCanvasAutoComplete::FilterSuggestions(const std::string& query) {
         if (onRequestSuggestions) {
-            // Dynamic provider mode
             filteredItems = onRequestSuggestions(query);
         } else {
-            // Static filtering: case-insensitive substring match
             filteredItems.clear();
             for (const auto& item : allItems) {
                 if (MatchesFilter(item.text, query)) {
@@ -286,7 +257,6 @@ namespace UltraCanvas {
     bool UltraCanvasAutoComplete::MatchesFilter(const std::string& itemText, const std::string& query) const {
         if (query.empty()) return true;
 
-        // Case-insensitive substring match
         auto toLower = [](const std::string& s) {
             std::string result = s;
             for (auto& c : result) {
@@ -304,19 +274,10 @@ namespace UltraCanvas {
         Point2Di globalPos = GetPositionInWindow();
         Rect2Di inputRect = GetBounds();
 
-        // Position below the input field; Menu's ClampMenuToWindow
-        // will flip above if there isn't enough space below.
         return Point2Di(globalPos.x, globalPos.y + inputRect.height);
     }
 
     // ===== PRIVATE SETUP =====
-
-    void UltraCanvasAutoComplete::CreateTextInput() {
-        Rect2Di b = GetBounds();
-        textInput = std::make_shared<UltraCanvasTextInput>(
-            GetIdentifier() + "_input", 0, b.x, b.y, b.width, b.height);
-        textInput->SetShowValidationState(false);
-    }
 
     void UltraCanvasAutoComplete::CreatePopupMenu() {
         popupMenu = std::make_shared<UltraCanvasMenu>(
@@ -326,35 +287,6 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasAutoComplete::WireCallbacks() {
-        textInput->onTextChanged = [this](const std::string& text) {
-            FilterSuggestions(text);
-
-            if (static_cast<int>(text.length()) >= minCharsToTrigger) {
-                if (!filteredItems.empty()) {
-                    OpenPopup();
-                } else {
-                    ClosePopup();
-                }
-            } else {
-                ClosePopup();
-            }
-
-            if (onTextChanged) onTextChanged(text);
-        };
-
-        textInput->onFocusGained = [this]() {
-            if (minCharsToTrigger == 0) {
-                FilterSuggestions(GetText());
-                if (!filteredItems.empty()) {
-                    OpenPopup();
-                }
-            }
-        };
-
-        textInput->onFocusLost = [this]() {
-            ClosePopup();
-        };
-
         popupMenu->OnMenuClosed([this]() {
             ClosePopup();
         });
@@ -364,25 +296,24 @@ namespace UltraCanvas {
         if (!popupMenu) return;
 
         MenuStyle menuStyle;
-        menuStyle.backgroundColor = style.listBackgroundColor;
-        menuStyle.borderColor = style.listBorderColor;
-        menuStyle.hoverColor = style.itemHoverColor;
-        menuStyle.hoverTextColor = style.itemTextColor;
-        menuStyle.textColor = style.itemTextColor;
-        menuStyle.borderWidth = static_cast<int>(style.borderWidth);
-        menuStyle.itemHeight = static_cast<int>(style.itemHeight);
+        menuStyle.backgroundColor = acStyle.listBackgroundColor;
+        menuStyle.borderColor = acStyle.listBorderColor;
+        menuStyle.hoverColor = acStyle.itemHoverColor;
+        menuStyle.hoverTextColor = acStyle.itemTextColor;
+        menuStyle.textColor = acStyle.itemTextColor;
+        menuStyle.borderWidth = static_cast<int>(acStyle.borderWidth);
+        menuStyle.itemHeight = static_cast<int>(acStyle.itemHeight);
         menuStyle.borderRadius = 0;
         menuStyle.showShadow = false;
         menuStyle.paddingLeft = 8;
         menuStyle.paddingRight = 8;
         menuStyle.paddingTop = 0;
         menuStyle.paddingBottom = 0;
-        menuStyle.scrollbarStyle = style.scrollbarStyle;
+        menuStyle.scrollbarStyle = acStyle.scrollbarStyle;
         menuStyle.minWidth = GetBounds().width;
 
-        // Map font
-        menuStyle.font.fontFamily = style.fontFamily;
-        menuStyle.font.fontSize = style.fontSize;
+        menuStyle.font.fontFamily = acStyle.fontFamily;
+        menuStyle.font.fontSize = acStyle.fontSize;
 
         popupMenu->SetStyle(menuStyle);
     }
