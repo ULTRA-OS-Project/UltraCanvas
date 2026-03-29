@@ -350,7 +350,6 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTreeView::Render(IRenderContext *ctx) {
-        if (!IsVisible()) return;
         ctx->PushState();
         // Draw background / border
         UltraCanvasUIElement::Render(ctx);

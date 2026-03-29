@@ -329,28 +329,14 @@ namespace UltraCanvas {
         auto categoryContainer = CreateContainer("catcont", 0, 0, 0, 100, 100);
 
         mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 3, 0, 0, 1030, 840);
-        //mainContainer->SetBackgroundColor(Colors::White);
-        //mainContainer->SetBorders(1, Color(20, 20, 20, 255));
         mainContainer->SetBorderLeft(1, Colors::Gray);
-//        mainContainer->SetBorderBottom(10, Colors::Green);
-//        mainContainer->SetBorderTop(10, Colors::Red);
 
         // Create header container (inside main container)
         headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 4, 0, 0, 1028, 40);
-//        mainContainer->AddChild(headerContainer);
 
         // Create display container (below header)
         displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 5, 0, 40, 1028, 785);
         displayContainer->SetBackgroundColor(Colors::White);
-//        mainContainer->AddChild(displayContainer);
-
-//        // Create display container (right side)
-//        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 3, 370, 10, 1020, 800);
-//        ContainerStyle displayContainerStyle;
-//        displayContainerStyle.backgroundColor = Colors::White;
-//        displayContainerStyle.borderWidth = 1.0f;
-//        displayContainerStyle.borderColor = Color(200, 200, 200, 255);
-//        displayContainer->SetContainerStyle(displayContainerStyle);
 
         // Create status label (bottom left)
         statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 850, 850, 25);
@@ -368,14 +354,6 @@ namespace UltraCanvas {
         categoryTreeView->onNodeSelected = [this](TreeNode* node) {
             OnTreeNodeSelected(node);
         };
-
-        // Add elements to window
-//        mainWindow->AddChild(categoryTreeView);
-//        mainWindow->AddChild(legendContainer);  // Add legend container
-//        mainWindow->AddChild(mainContainer);
-//        mainWindow->AddChild(statusLabel);
-
-        //mainWindow->AddChild(descriptionLabel);
 
         auto categoryContainerLayout = CreateVBoxLayout(categoryContainer.get());
         categoryContainerLayout->AddUIElement(categoryTreeView, 1)->SetWidthMode(SizeMode::Fill);
@@ -562,7 +540,7 @@ namespace UltraCanvas {
                 .AddVariant("tableview", "Editable Cells");
 
         extendedBuilder.AddItem("listview", "List View", "Item lists with custom rendering",
-                                ImplementationStatus::NotImplemented,
+                                ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateListViewExamples(); })
                 .AddVariant("listview", "Simple List")
                 .AddVariant("listview", "Icon List")

@@ -317,16 +317,18 @@ namespace UltraCanvas {
             }
         }
 
+        void UpdateGeometry(IRenderContext *ctx) override {
+            // Update layout if needed
+            if (layoutDirty) {
+                UpdateLayout();
+            }
+        };
+
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override {
             if (!ctx || !IsVisible()) return;
 
             ctx->PushState();
-
-            // Update layout if needed
-            if (layoutDirty) {
-                UpdateLayout();
-            }
 
             // Render background (can be overridden)
             RenderBackground(ctx);
@@ -359,9 +361,7 @@ namespace UltraCanvas {
         bool OnEvent(const UCEvent& event) override {
             if (IsDisabled() || !IsVisible()) return false;
 
-            if (layoutDirty) {
-                UpdateLayout();
-            }
+            UpdateLayout();
 
             // Handle scrollbar events first
             if (HandleScrollbarEvents(event)) {

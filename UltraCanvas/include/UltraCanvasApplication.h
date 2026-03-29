@@ -63,10 +63,10 @@ namespace UltraCanvas {
         void PushEvent(const UCEvent& event);
         void WaitForEvents(int timeoutMs);
 
-        void DispatchEvent(const UCEvent &event);
-        bool DispatchEventToElement(UltraCanvasUIElement* elem, const UCEvent &event);
+        void DispatchEvent(const UCEvent& event);
+        bool DispatchEventToElement(UltraCanvasUIElement* elem, UCEvent event);
 
-        bool HandleEventWithBubbling(const UCEvent &event, UltraCanvasUIElement* elem);
+        bool HandleEventWithBubbling(UltraCanvasUIElement* elem, const UCEvent &event);
         void RegisterEventLoopRunCallback(std::function<void()> callback);
 
         static void InstallWindowEventFilter(UltraCanvasUIElement* elem, const std::vector<UCEventType>& interestedEvents);

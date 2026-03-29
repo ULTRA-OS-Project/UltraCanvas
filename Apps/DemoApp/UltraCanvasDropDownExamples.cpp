@@ -106,10 +106,10 @@ namespace UltraCanvas {
 
         // File types dropdown with icons
         auto fileTypesDropdown = std::make_shared<UltraCanvasDropdown>("FileTypesDropdown", 321, 30, currentY, 220, 30);
-        fileTypesDropdown->AddItem("Text Document", "txt", "./assets/icons/document.png");
-        fileTypesDropdown->AddItem("PDF Document", "pdf", "./assets/icons/pdf.png");
-        fileTypesDropdown->AddItem("Image File", "img", "./assets/icons/image.png");
-        fileTypesDropdown->AddItem("Video File", "vid", "./assets/icons/video.png");
+        fileTypesDropdown->AddItem("Text Document", "txt", GetResourcesDir() + "media/icons/document.png");
+        fileTypesDropdown->AddItem("PDF Document", "pdf", GetResourcesDir() + "media/icons/pdf.png");
+        fileTypesDropdown->AddItem("Image File", "img", GetResourcesDir() + "media/icons/image.png");
+        fileTypesDropdown->AddItem("Video File", "vid", GetResourcesDir() + "media/icons/video.png");
         fileTypesDropdown->SetSelectedIndex(0);
 
         auto fileTypesLabel = std::make_shared<UltraCanvasLabel>("FileTypesLabel", 322, 270, currentY + 5, 250, 20);
@@ -123,11 +123,11 @@ namespace UltraCanvas {
 
         // Actions dropdown with icons
         auto actionsDropdown = std::make_shared<UltraCanvasDropdown>("ActionsDropdown", 323, 30, currentY, 220, 30);
-        actionsDropdown->AddItem("New File", "new", "./assets/icons/new.png");
-        actionsDropdown->AddItem("Open File", "open", "./assets/icons/folder.png");
-        actionsDropdown->AddItem("Save File", "save", "./assets/icons/save.png");
-        actionsDropdown->AddItem("Print", "print", "./assets/icons/print.png");
-        actionsDropdown->AddItem("Settings", "settings", "./assets/icons/settings.png");
+        actionsDropdown->AddItem("New File", "new", GetResourcesDir() + "media/icons/new.png");
+        actionsDropdown->AddItem("Open File", "open", GetResourcesDir() + "media/icons/folder.png");
+        actionsDropdown->AddItem("Save File", "save", GetResourcesDir() + "media/icons/save.png");
+        actionsDropdown->AddItem("Print", "print", GetResourcesDir() + "media/icons/print.png");
+        actionsDropdown->AddItem("Settings", "settings", GetResourcesDir() + "media/icons/settings.png");
         actionsDropdown->SetSelectedIndex(0);
 
         auto actionsLabel = std::make_shared<UltraCanvasLabel>("ActionsLabel", 324, 270, currentY + 5, 250, 20);
@@ -149,26 +149,26 @@ namespace UltraCanvas {
         auto countriesDropdown = std::make_shared<UltraCanvasDropdown>("CountriesDropdown", 331, 30, currentY, 280, 30);
 
         // Add countries with their flag icons (ISO 3166-1 alpha-2 codes)
-        countriesDropdown->AddItem("United States", "US", "./assets/flags/US.png");
-        countriesDropdown->AddItem("United Kingdom", "GB", "./assets/flags/GB.png");
-        countriesDropdown->AddItem("Germany", "DE", "./assets/flags/DE.png");
-        countriesDropdown->AddItem("France", "FR", "./assets/flags/FR.png");
-        countriesDropdown->AddItem("Italy", "IT", "./assets/flags/IT.png");
-        countriesDropdown->AddItem("Spain", "ES", "./assets/flags/ES.png");
-        countriesDropdown->AddItem("Japan", "JP", "./assets/flags/JP.png");
-        countriesDropdown->AddItem("China", "CN", "./assets/flags/CN.png");
-        countriesDropdown->AddItem("India", "IN", "./assets/flags/IN.png");
-        countriesDropdown->AddItem("Brazil", "BR", "./assets/flags/BR.png");
-        countriesDropdown->AddItem("Canada", "CA", "./assets/flags/CA.png");
-        countriesDropdown->AddItem("Australia", "AU", "./assets/flags/AU.png");
-        countriesDropdown->AddItem("Mexico", "MX", "./assets/flags/MX.png");
-        countriesDropdown->AddItem("Russia", "RU", "./assets/flags/RU.png");
-        countriesDropdown->AddItem("South Korea", "KR", "./assets/flags/KR.png");
-        countriesDropdown->AddItem("Netherlands", "NL", "./assets/flags/NL.png");
-        countriesDropdown->AddItem("Sweden", "SE", "./assets/flags/SE.png");
-        countriesDropdown->AddItem("Switzerland", "CH", "./assets/flags/CH.png");
-        countriesDropdown->AddItem("Poland", "PL", "./assets/flags/PL.png");
-        countriesDropdown->AddItem("Belgium", "BE", "./assets/flags/BE.png");
+        countriesDropdown->AddItem("United States", "US", GetResourcesDir() + "media/flags/US.png");
+        countriesDropdown->AddItem("United Kingdom", "GB", GetResourcesDir() + "media/flags/GB.png");
+        countriesDropdown->AddItem("Germany", "DE", GetResourcesDir() + "media/flags/DE.png");
+        countriesDropdown->AddItem("France", "FR", GetResourcesDir() + "media/flags/FR.png");
+        countriesDropdown->AddItem("Italy", "IT", GetResourcesDir() + "media/flags/IT.png");
+        countriesDropdown->AddItem("Spain", "ES", GetResourcesDir() + "media/flags/ES.png");
+        countriesDropdown->AddItem("Japan", "JP", GetResourcesDir() + "media/flags/JP.png");
+        countriesDropdown->AddItem("China", "CN", GetResourcesDir() + "media/flags/CN.png");
+        countriesDropdown->AddItem("India", "IN", GetResourcesDir() + "media/flags/IN.png");
+        countriesDropdown->AddItem("Brazil", "BR", GetResourcesDir() + "media/flags/BR.png");
+        countriesDropdown->AddItem("Canada", "CA", GetResourcesDir() + "media/flags/CA.png");
+        countriesDropdown->AddItem("Australia", "AU", GetResourcesDir() + "media/flags/AU.png");
+        countriesDropdown->AddItem("Mexico", "MX", GetResourcesDir() + "media/flags/MX.png");
+        countriesDropdown->AddItem("Russia", "RU", GetResourcesDir() + "media/flags/RU.png");
+        countriesDropdown->AddItem("South Korea", "KR", GetResourcesDir() + "media/flags/KR.png");
+        countriesDropdown->AddItem("Netherlands", "NL", GetResourcesDir() + "media/flags/NL.png");
+        countriesDropdown->AddItem("Sweden", "SE", GetResourcesDir() + "media/flags/SE.png");
+        countriesDropdown->AddItem("Switzerland", "CH", GetResourcesDir() + "media/flags/CH.png");
+        countriesDropdown->AddItem("Poland", "PL", GetResourcesDir() + "media/flags/PL.png");
+        countriesDropdown->AddItem("Belgium", "BE", GetResourcesDir() + "media/flags/BE.png");
 
         countriesDropdown->SetSelectedIndex(0);
 
@@ -198,12 +198,12 @@ namespace UltraCanvas {
         // Programming languages multi-select
         auto languagesDropdown = std::make_shared<UltraCanvasDropdown>("LanguagesDropdown", 341, 30, currentY, 250, 30);
         languagesDropdown->SetMultiSelectEnabled(true);
-        languagesDropdown->AddItem("C++", "cpp", "./assets/icons/cpp.png");
-        languagesDropdown->AddItem("Python", "py", "./assets/icons/python.png");
-        languagesDropdown->AddItem("JavaScript", "js", "./assets/icons/javascript.png");
-        languagesDropdown->AddItem("Java", "java", "./assets/icons/java.png");
-        languagesDropdown->AddItem("C#", "cs", "./assets/icons/csharp.png");
-        languagesDropdown->AddItem("Go", "go", "./assets/icons/go.png");
+        languagesDropdown->AddItem("C++", "cpp", GetResourcesDir() + "media/icons/cpp.png");
+        languagesDropdown->AddItem("Python", "py", GetResourcesDir() + "media/icons/python.png");
+        languagesDropdown->AddItem("JavaScript", "js", GetResourcesDir() + "media/icons/javascript.png");
+        languagesDropdown->AddItem("Java", "java", GetResourcesDir() + "media/icons/java.png");
+        languagesDropdown->AddItem("C#", "cs", GetResourcesDir() + "media/icons/csharp.png");
+        languagesDropdown->AddItem("Go", "go", GetResourcesDir() + "media/icons/go.png");
 
         // Pre-select some items
         languagesDropdown->SetItemSelected(0, true); // C++
@@ -297,16 +297,16 @@ namespace UltraCanvas {
         // Travel destinations multi-select with flags
         auto travelDropdown = std::make_shared<UltraCanvasDropdown>("TravelDropdown", 351, 30, currentY, 280, 30);
         travelDropdown->SetMultiSelectEnabled(true);
-        travelDropdown->AddItem("France", "FR", "./assets/flags/FR.png");
-        travelDropdown->AddItem("Italy", "IT", "./assets/flags/IT.png");
-        travelDropdown->AddItem("Spain", "ES", "./assets/flags/ES.png");
-        travelDropdown->AddItem("Japan", "JP", "./assets/flags/JP.png");
-        travelDropdown->AddItem("Thailand", "TH", "./assets/flags/TH.png");
-        travelDropdown->AddItem("United States", "US", "./assets/flags/US.png");
-        travelDropdown->AddItem("United Kingdom", "GB", "./assets/flags/GB.png");
-        travelDropdown->AddItem("Australia", "AU", "./assets/flags/AU.png");
-        travelDropdown->AddItem("Greece", "GR", "./assets/flags/GR.png");
-        travelDropdown->AddItem("Switzerland", "CH", "./assets/flags/CH.png");
+        travelDropdown->AddItem("France", "FR", GetResourcesDir() + "media/flags/FR.png");
+        travelDropdown->AddItem("Italy", "IT", GetResourcesDir() + "media/flags/IT.png");
+        travelDropdown->AddItem("Spain", "ES", GetResourcesDir() + "media/flags/ES.png");
+        travelDropdown->AddItem("Japan", "JP", GetResourcesDir() + "media/flags/JP.png");
+        travelDropdown->AddItem("Thailand", "TH", GetResourcesDir() + "media/flags/TH.png");
+        travelDropdown->AddItem("United States", "US", GetResourcesDir() + "media/flags/US.png");
+        travelDropdown->AddItem("United Kingdom", "GB", GetResourcesDir() + "media/flags/GB.png");
+        travelDropdown->AddItem("Australia", "AU", GetResourcesDir() + "media/flags/AU.png");
+        travelDropdown->AddItem("Greece", "GR", GetResourcesDir() + "media/flags/GR.png");
+        travelDropdown->AddItem("Switzerland", "CH", GetResourcesDir() + "media/flags/CH.png");
 
         auto travelStatus = std::make_shared<UltraCanvasLabel>("TravelStatus", 352, 330, currentY + 5, 500, 60);
         travelStatus->SetText("Select your travel destinations");

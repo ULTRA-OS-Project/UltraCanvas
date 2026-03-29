@@ -18,7 +18,6 @@ namespace UltraCanvas {
                          ScrollbarOrientation orient)
             : UltraCanvasUIElement(id, uid, x, y, w, h)
             , orientation(orient) {
-        UpdateLayout();
         mouseCursor = (orient == ScrollbarOrientation::Vertical)
                   ? UCMouseCursor::SizeNS
                   : UCMouseCursor::SizeWE;        
@@ -87,14 +86,26 @@ namespace UltraCanvas {
         return false;
     }
 
+    void UltraCanvasScrollbar::UpdateGeometry(IRenderContext* ctx) {
+        if (layoutDirty) {
+            Rect2Di bounds = GetBounds();
+
+            if (IsVertical()) {
+                UpdateVerticalLayout(bounds);
+            } else {
+                UpdateHorizontalLayout(bounds);
+            }
+
+            UpdateThumbRect();
+            layoutDirty = false;
+        }
+        UltraCanvasUIElement::UpdateGeometry(ctx);
+    }
+
     void UltraCanvasScrollbar::Render(IRenderContext *ctx) {
         if (!ctx || !ShouldBeVisible()) return;
 
         ctx->PushState();
-
-        if (layoutDirty) {
-            UpdateLayout();
-        }
 
         // Render track
         RenderTrack(ctx);
@@ -119,9 +130,7 @@ namespace UltraCanvas {
     bool UltraCanvasScrollbar::OnEvent(const UCEvent &event) {
         if (IsDisabled() || !ShouldBeVisible()) return false;
 
-        if (layoutDirty) {
-            UpdateLayout();
-        }
+        UpdateGeometry(GetRenderContext());
 
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -142,19 +151,6 @@ namespace UltraCanvas {
             default:
                 return false;
         }
-    }
-
-    void UltraCanvasScrollbar::UpdateLayout() {
-        Rect2Di bounds = GetBounds();
-
-        if (IsVertical()) {
-            UpdateVerticalLayout(bounds);
-        } else {
-            UpdateHorizontalLayout(bounds);
-        }
-
-        UpdateThumbRect();
-        layoutDirty = false;
     }
 
     void UltraCanvasScrollbar::UpdateVerticalLayout(const Rect2Di &bounds) {

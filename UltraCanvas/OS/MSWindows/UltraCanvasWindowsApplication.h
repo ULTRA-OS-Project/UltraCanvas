@@ -72,7 +72,7 @@ namespace UltraCanvas {
     };
 
 // ===== WINDOWS APPLICATION CLASS =====
-    class UltraCanvasWindowsApplication : public UltraCanvasBaseApplication {
+    class UltraCanvasWindowsApplication : public UltraCanvasApplicationBase {
     private:
         static UltraCanvasWindowsApplication* instance;
 

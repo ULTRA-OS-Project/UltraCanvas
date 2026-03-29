@@ -61,10 +61,15 @@ namespace UltraCanvas {
         std::string iconPath;
     };
 
-//    struct OverlayElement {
-//        UltraCanvasUIElement* element;
-//        OverlayElementSettings settings;
-//    };
+    struct PopupElement {
+        UltraCanvasUIElement* element;
+        PopupElementSettings settings;
+    };
+
+    struct FilterFunction {
+        std::string id;
+        std::function<bool(const UCEvent&)> func;
+    };
 
 // ===== ENHANCED BASE WINDOW (INHERITS FROM CONTAINER) =====
     class UltraCanvasWindowBase : public UltraCanvasContainer {
@@ -77,10 +82,9 @@ namespace UltraCanvas {
         WindowState _state = WindowState::Normal;
         bool _created = false;
         bool _focused = false;
-        bool _needsRedraw = true;
         bool _needsResize = false;
 
-        std::unordered_map<UCEventType, std::unordered_set<UltraCanvasUIElement*>> eventFilters;
+        std::unordered_map<UCEventType, std::vector<FilterFunction>> eventFilters;
         bool HandleEventFilters(const UCEvent& ev);
 
         virtual bool CreateNative() = 0;
@@ -88,7 +92,7 @@ namespace UltraCanvas {
         virtual void DoResizeNative() = 0;
 
 
-        std::list<OverlayElement> overlayElements;
+        std::list<PopupElement> popupElements;
 
         UltraCanvasUIElement* _focusedElement = nullptr;  // Current focused element in this window
 
@@ -162,11 +166,13 @@ namespace UltraCanvas {
         virtual void Flush() = 0;
 
         // Overlay elements
-        static void AddToOverlays(UltraCanvasUIElement* element, const OverlayElementSettings& settings);
-        static void RemoveFromOverlays(UltraCanvasUIElement* element);
-        static void SetPendingOverlays(UltraCanvasUIElement* elem, UltraCanvasUIElement* win);
+        void OpenPopup(const Point2Di& pos, UltraCanvasUIElement& element, const PopupElementSettings& settings);
+        bool ClosePopup(UltraCanvasUIElement& element, ClosePopupReason reason=ClosePopupReason::Manual);
+        PopupElement* GetActivePopupElement();
 
-        UltraCanvasUIElement *FindElementAtPointInWindow(int x, int y, bool onlyHandleInputEvents);
+        // event filters
+        void InstallEventFilter(const std::string& uniqueFilterId, const std::function<bool(const UCEvent&)>& filterFunc, const std::vector<UCEventType>& interestedEvents);
+        void UnInstallWindowEventFilter(const std::string& uniqueFilterId);
 
         // ===== ENHANCED WINDOW PROPERTIES =====
         std::string GetWindowTitle() const { return config_.title; }
@@ -199,22 +205,13 @@ namespace UltraCanvas {
         const WindowConfig& GetConfig() const { return config_; }
 
         virtual bool OnEvent(const UCEvent& event) override;
-        void InstallEventFilerForElement(UltraCanvasUIElement* elem, const std::vector<UCEventType> eventTypes);
-        void UninstallEventFilerForElement(UltraCanvasUIElement* elem);
 
         // ===== ENHANCED RENDERING AND EVENTS =====
         virtual void Render(IRenderContext* ctx) override;
         virtual void RenderCustomContent(IRenderContext* ctx) {}
 
-        bool IsNeedsRedraw() const { return _needsRedraw; }
         bool IsNeedsResize() const { return _needsResize; }
 
-        void RequestRedraw() { _needsRedraw = true; }
-        void ClearRequestRedraw() { _needsRedraw = false; }
-
-//        void RequestFullRedraw() { useSelectiveRendering = false; _needsRedraw = true; }
-        void MarkElementDirty(UltraCanvasUIElement* element, bool isOverlay = false);
-//        bool IsSelectiveRenderingActive();
         virtual IRenderContext* GetRenderContext() const = 0;
 
         // ===== ENHANCED WINDOW CALLBACKS =====

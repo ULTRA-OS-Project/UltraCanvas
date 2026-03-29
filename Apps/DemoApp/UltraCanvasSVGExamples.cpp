@@ -82,7 +82,7 @@ namespace UltraCanvas {
             fullscreenWindow->AddChild(instructionLabel);
 
             // Setup keyboard event handler for ESC key
-            fullscreenWindow->SetEventCallback([this](const UCEvent& event) {
+            fullscreenWindow->eventCallback = [this](const UCEvent& event) {
                 if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClose)  {
                     if (fullscreenWindow) {
                         fullscreenWindow->RequestDelete();
@@ -91,7 +91,7 @@ namespace UltraCanvas {
                     return true;
                 }
                 return false;
-            });
+            };
 
             // Show the window
             fullscreenWindow->Show();
@@ -318,16 +318,16 @@ namespace UltraCanvas {
         // Information panel
         auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 905, 540, 360, 320, 320);
         infoPanel->SetBackgroundColor(Color(245, 245, 245, 255));
-        infoPanel->SetPadding(15);
+        infoPanel->SetPadding(10,15,10,15);
         infoPanel->SetBorders(1, Color(200, 200, 200, 255));
 
-        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 906, 10, 10, 250, 25);
+        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 906, 0, 0, 250, 25);
         infoTitle->SetText("SVG Features:");
         infoTitle->SetFontSize(14);
         infoTitle->SetFontWeight(FontWeight::Bold);
         infoPanel->AddChild(infoTitle);
 
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 907, 10, 40, 240, 230);
+        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 907, 0, 45, 240, 230);
         infoText->SetText(
                 "• Scalable Vector Graphics support\n"
                 "• Load from file or string\n"

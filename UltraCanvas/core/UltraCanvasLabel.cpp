@@ -170,8 +170,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLabel::CalculateLayout(IRenderContext *ctx) {
-        Rect2Di bounds = GetBounds();
         ctx->PushState();
+        Rect2Di bounds = GetBounds();
         ctx->SetFontStyle(style.fontStyle);
         ctx->SetTextIsMarkup(style.isMarkup);
         Size2Di textDimensions;
@@ -226,8 +226,8 @@ namespace UltraCanvas {
 //            textPosition = Point2Di(textX, textY);
 //        }
 
-        ctx->PopState();
         layoutDirty = false;
+        ctx->PopState();
     }
 
     // ===== EVENT HANDLING =====
@@ -275,14 +275,16 @@ namespace UltraCanvas {
         layoutDirty = true;
     }
 
-    void UltraCanvasLabel::Render(IRenderContext *ctx) {
-        if (!IsVisible()) return;
-
-        ctx->PushState();
-
+    void UltraCanvasLabel::UpdateGeometry(IRenderContext* ctx) {
+        // Update layout if needed
         if (layoutDirty) {
             CalculateLayout(ctx);
         }
+        UltraCanvasUIElement::UpdateGeometry(ctx);
+    }
+
+    void UltraCanvasLabel::Render(IRenderContext *ctx) {
+        ctx->PushState();
 
         UltraCanvasUIElement::Render(ctx);
 

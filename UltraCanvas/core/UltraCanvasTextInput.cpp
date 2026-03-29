@@ -49,7 +49,7 @@ namespace UltraCanvas {
         if (onTextChanged) onTextChanged(text);
     }
 
-    void UltraCanvasTextInput::SetText(const std::string &newText, bool callOnTextChanged) {
+    void UltraCanvasTextInput::SetText(const std::string &newText) {
         if (readOnly) return;
 
         SaveState();  // For undo
@@ -71,8 +71,6 @@ namespace UltraCanvas {
         }
 
         UpdateScrollOffset();
-
-        if (callOnTextChanged) TextChanged();
     }
 
     void UltraCanvasTextInput::SetInputType(TextInputType type) {
@@ -256,7 +254,7 @@ namespace UltraCanvas {
         // Draw text content
         if (!text.empty()) {
             RenderText(textArea, textColor, ctx);
-        } else if (!placeholderText.empty() && !IsFocused()) {
+        } else if (!placeholderText.empty() && (showPlaceholderAlways || !IsFocused())) {
             RenderPlaceholder(textArea, ctx);
         }
 

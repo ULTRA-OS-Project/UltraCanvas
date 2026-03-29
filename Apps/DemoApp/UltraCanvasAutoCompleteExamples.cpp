@@ -335,7 +335,7 @@ namespace UltraCanvas {
             debugOutput << "AutoComplete popup opened" << std::endl;
         };
 
-        interactiveAC->onPopupClosed = [eventLog]() {
+        interactiveAC->onAutocompletePopupClosed = [eventLog]() {
             eventLog->SetText("onPopupClosed");
             debugOutput << "AutoComplete popup closed" << std::endl;
         };

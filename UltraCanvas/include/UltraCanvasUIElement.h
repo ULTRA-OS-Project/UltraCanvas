@@ -27,30 +27,14 @@ namespace UltraCanvas {
     class UltraCanvasApplicationBase;
     class IRenderContext;
 
-// ===== OverlayElementSetting =====
-    struct OverlayElementSettings {
-        bool closeByEscapeKey = true;
-        bool closeByClickOutside = true;
-        int overlayZOrder = 0;
-        bool useAbsolutePosition = false;
-        bool handleInputEvents = true;
-    };
-
-    struct OverlayElement {
-        UltraCanvasUIElement* element;
-        OverlayElementSettings settings;
-    };
-
-
 // ===== ELEMENT STATE MANAGEMENT =====
     namespace OverlayZOrder {
         constexpr int Background = -1000;    // Background elements
         constexpr int Content = 0;           // Main content areas
         constexpr int Controls = 100;        // Standard UI controls
-        constexpr int Overlays = 500;        // Overlays, tooltips
+        constexpr int Overlays = 200;        // Overlays, tooltips
         constexpr int Menus = 1000;          // Menu bars
-        constexpr int Modals = 2000;         // Modal dialogs
-        constexpr int Popups = 2500;         // Context menus, popups
+        constexpr int Popups = 2000;         // Context menus, popups
         constexpr int Tooltips = 3000;       // Tooltips
     }
 
@@ -85,27 +69,35 @@ namespace UltraCanvas {
         }
     };
 
+// ===== OverlayElementSetting =====
+    struct PopupElementSettings {
+        bool closeByEscapeKey = true;
+        bool closeByClickOutside = true;
+        std::weak_ptr<UltraCanvasUIElement> popupOwner;
+    };
+
+    enum class ClosePopupReason {
+        Manual,
+        EscapeKey,
+        ClickOutside
+    };
 
 // ===== LEAF UI ELEMENT CLASS (NO CHILDREN) =====
     class UltraCanvasUIElement : public std::enable_shared_from_this<UltraCanvasUIElement>  {
     friend UltraCanvasWindowBase;
-    private:
-        // Event handling
-        std::function<bool(const UCEvent&)> eventCallback;
-
     protected:
         std::string identifier = "";
+        bool needsUpdateGeometry = true;
+        bool needsRedraw = true;
 
         // State properties
         bool visible = true;
+        bool isPopup = false;
 
-        int zIndex = 0;
+        int zOrder = 0;
 
         // Mouse interaction
         UCMouseCursor mouseCursor = UCMouseCursor::Default;
-
-        // Hierarchy
-//        long ParentObject = 0;
 
         std::string tooltip = "";
 
@@ -124,6 +116,11 @@ namespace UltraCanvas {
         Size2Di originalSize;
 
     public:
+        std::function<bool(const UCEvent&)> eventCallback;
+        std::function<bool(ClosePopupReason)> onPopupAboutToClose;
+        std::function<void(ClosePopupReason)> onPopupClosed;
+        std::function<void()> onPopupOpened;
+
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
         UltraCanvasUIElement(const std::string& idstr, long id,
                              int x, int y, int w, int h)
@@ -144,11 +141,8 @@ namespace UltraCanvas {
         virtual ~UltraCanvasUIElement();
 
         // ===== INCLUDE PROPERTY ACCESSORS =====
-// ===== STANDARD PROPERTY ACCESSORS (including relative coordinate support) =====
         const std::string& GetIdentifier() const { return identifier; }
         void SetIdentifier(const std::string& id) { identifier = id; }
-//        long GetIdentifierID() const { return properties.IdentifierID; }
-//        void SetIdentifierID(long id) { properties.IdentifierID = id; }
 
         const Rect2Di& GetBounds() const {
             return bounds;
@@ -174,22 +168,8 @@ namespace UltraCanvas {
             return bounds.Contains(px, py);
         }
 
-        virtual int GetXInWindow();
-//        void SetAbsoluteX(int x) {
-//            if (parent) {
-//                properties.x_pos = x - parent->GetAbsoluteX();
-//            } else {
-//                properties.x_pos = x;
-//            }
-//        }
-        virtual int GetYInWindow();
-//        void SetAbsoluteY(int y) {
-//            if (parent) {
-//                properties.y_pos = y - parent->GetAbsoluteY();
-//            } else {
-//                properties.y_pos = y;
-//            }
-//        }
+        int GetXInWindow();
+        int GetYInWindow();
 
         int GetWidth() const { return bounds.width; }
         virtual int GetPreferredWidth() { return originalSize.width; }
@@ -209,7 +189,9 @@ namespace UltraCanvas {
         void SetY(int y) { SetBounds(bounds.x, y, bounds.width, bounds.height); }
 
         void SetPosition(int x, int y) { SetBounds(x, y, bounds.width, bounds.height); }
+        void SetPosition(const Point2Di& pos) { SetBounds(pos.x, pos.y, bounds.width, bounds.height); }
         void SetSize(int w, int h) { SetBounds(bounds.x, bounds.y, w, h); }
+        void SetSize(const Size2Di& sz) { SetBounds(bounds.x, bounds.y, sz.width, sz.height); }
         virtual void SetOriginalSize(int w, int h);
         void SetBounds(int x, int y, int w, int h) {
             SetBounds(Rect2Di(x, y, w, h));
@@ -218,21 +200,27 @@ namespace UltraCanvas {
             SetBounds(Rect2Di(static_cast<int>(x), static_cast<int>(y), static_cast<int>(w), static_cast<int>(h)));
         }
         virtual void SetBounds(const Rect2Di& b) {
-            bounds = b;
+            if (bounds != b) {
+                bounds = b;
+                RequestUpdateGeometry();
+            }
         }
 
-        Point2Di GetPositionInWindow() {
-            return Point2Di(GetXInWindow(), GetYInWindow());
+        Point2Di GetPositionInWindow() const;
+        Rect2Di GetBoundsInWindow() const {
+            return GetBounds().SetPosition(GetPositionInWindow());
         }
 
         // ===== CONVENIENCE SETTERS - MARGIN =====
         void SetMargin(int all) {
             margin.left = margin.right = margin.top = margin.bottom = all;
+            RequestUpdateGeometry();
         }
 
         void SetMargin(int vertical, int horizontal) {
             margin.left = margin.right = horizontal;
             margin.top = margin.bottom = vertical;
+            RequestUpdateGeometry();
         }
 
         void SetMargin(int top, int right, int bottom, int left) {
@@ -240,16 +228,19 @@ namespace UltraCanvas {
             margin.top = top;
             margin.right = right;
             margin.bottom = bottom;
+            RequestUpdateGeometry();
         }
 
         // ===== CONVENIENCE SETTERS - PADDING =====
         void SetPadding(int all) {
             padding.left = padding.right = padding.top = padding.bottom = all;
+            RequestUpdateGeometry();
         }
 
         void SetPadding(int horizontal, int vertical) {
             padding.left = padding.right = horizontal;
             padding.top = padding.bottom = vertical;
+            RequestUpdateGeometry();
         }
 
         void SetPadding(int top, int right, int bottom, int left) {
@@ -257,6 +248,7 @@ namespace UltraCanvas {
             padding.top = top;
             padding.right = right;
             padding.bottom = bottom;
+            RequestUpdateGeometry();
         }
 
         // ===== CONVENIENCE SETTERS - BORDER WIDTH (all sides same) =====
@@ -291,6 +283,7 @@ namespace UltraCanvas {
                 borderLeft->color = color;
                 borderLeft->radius = borderRadius;
                 borderLeft->dashPattern = dash;
+                RequestUpdateGeometry();
             } else {
                 borderLeft = std::make_unique<ElementBorder>(width, color, borderRadius, dash);
             }
@@ -302,6 +295,7 @@ namespace UltraCanvas {
                 borderRight->color = color;
                 borderRight->radius = borderRadius;
                 borderRight->dashPattern = dash;
+                RequestUpdateGeometry();
             } else {
                 borderRight = std::make_unique<ElementBorder>(width, color, borderRadius, dash);
             }
@@ -313,7 +307,7 @@ namespace UltraCanvas {
                 borderTop->color = color;
                 borderTop->radius = borderRadius;
                 borderTop->dashPattern = dash;
-
+                RequestUpdateGeometry();
             } else {
                 borderTop = std::make_unique<ElementBorder>(width, color, borderRadius, dash);
             }
@@ -325,6 +319,7 @@ namespace UltraCanvas {
                 borderBottom->color = color;
                 borderBottom->radius = borderRadius;
                 borderBottom->dashPattern = dash;
+                RequestUpdateGeometry();
             } else {
                 borderBottom = std::make_unique<ElementBorder>(width, color, borderRadius, dash);
             }
@@ -434,8 +429,8 @@ namespace UltraCanvas {
         UCMouseCursor GetMouseCursor() const { return mouseCursor; }
         void SetMouseCursor(UCMouseCursor cur) { mouseCursor = cur; }
 
-        int GetZIndex() const { return zIndex; }
-        void SetZIndex(int index) { zIndex = index; }
+        int GetZOrder() const { return zOrder; }
+        void SetZIndex(int index) { zOrder = index; }
 
         const std::string& GetTooltip() const { return tooltip; }
         void SetTooltip(const std::string& tooltipStr) { tooltip = tooltipStr; }
@@ -500,19 +495,19 @@ namespace UltraCanvas {
         // ===== CORE VIRTUAL METHODS =====
         IRenderContext* GetRenderContext() const;
         virtual void Render(IRenderContext* ctx);
-        virtual void RenderOverlay(IRenderContext* ctx) { Render(ctx); };
+        virtual void UpdateGeometry(IRenderContext* ctx);
 
         // ===== EVENT HANDLING =====
         virtual bool OnEvent(const UCEvent& event);
-        virtual bool OnWindowEventFilter(const UCEvent& event) { return false; };
+        virtual bool OnEventFilter(const UCEvent& event) { return false; };
 
         void SetEventCallback(std::function<bool(const UCEvent&)> callback);
 
-        // actual bounds is for variable-sized elements like dropdowns, menus, popups
-        virtual Rect2Di GetOverlayBounds();
+        bool IsNeedsRedraw() const { return needsRedraw; }
+        bool IsNeedsUpdateGeometry() const { return needsUpdateGeometry; }
 
         void RequestRedraw();
-
+        void RequestUpdateGeometry();
 
         // ===== UTILITY METHODS =====
         UltraCanvasContainer* GetRootContainer();
@@ -527,8 +522,18 @@ namespace UltraCanvas {
         }
 
     protected:
-        virtual void OnRemovedFromOverlays();
+        virtual bool OnPopupAboutToClose(ClosePopupReason reason) {
+            if (onPopupAboutToClose) return onPopupAboutToClose(reason);
+            return true;
+        }
 
+        virtual void OnPopupClosed(ClosePopupReason reason) {
+            if (onPopupClosed) onPopupClosed(reason);
+        }
+
+        virtual void OnPopupOpened() {
+            if (onPopupOpened) onPopupOpened();
+        }
     };
 
 // ===== FACTORY SYSTEM =====

@@ -204,7 +204,8 @@ namespace UltraCanvas {
 
     void UltraCanvasTabbedContainer::InitializeOverflowDropdown() {
         overflowButton = std::make_shared<UltraCanvasButton>(
-                GetIdentifier() + "_overflow", 0, 0, 0, overflowDropdownWidth, tabHeight, "\xe2\x96\xbe");
+                GetIdentifier() + "_overflow", 0, 0, 0, overflowDropdownWidth, tabHeight, "");
+        overflowButton->SetIcon(GetResourcesDir()+"media/icons/arrow_down_solid.svg");
         AddChild(overflowButton);
         overflowButton->SetVisible(false);
 
@@ -217,13 +218,14 @@ namespace UltraCanvas {
                 GetIdentifier() + "_search", 0, 0, 0, 200, 28);
         searchAutoComplete->SetPlaceholder("Type to find the tab...");
         searchAutoComplete->SetMinCharsToTrigger(0);
+        searchAutoComplete->SetShowPlaceholderAlways(true);
         searchAutoComplete->SetCloseOnSelect(true);
-        searchAutoComplete->SetVisible(false);
-        AddChild(searchAutoComplete);
+        // searchAutoComplete->SetVisible(false);
+        // AddChild(searchAutoComplete);
 
         AutoCompleteStyle acStyle;
         acStyle.maxVisibleItems = 999;  // Maximize to window height
-        searchAutoComplete->SetStyle(acStyle);
+        searchAutoComplete->SetAutocompleteStyle(acStyle);
 
         searchAutoComplete->onItemSelected = [this](int index, const AutoCompleteItem& item) {
             int tabIndex = item.value.empty() ? index : std::stoi(item.value);
@@ -233,7 +235,7 @@ namespace UltraCanvas {
             HideSearchAutoComplete();
         };
 
-        searchAutoComplete->onPopupClosed = [this]() {
+        searchAutoComplete->onAutocompletePopupClosed = [this]() {
             HideSearchAutoComplete();
         };
     }
@@ -331,36 +333,31 @@ namespace UltraCanvas {
         // Position below the overflow button (container-relative coords)
         Rect2Di dropdownBounds = overflowButton->GetBounds();
 
-        int acX = dropdownBounds.x;
-        int acY = dropdownBounds.y + dropdownBounds.height;
-        int acWidth = std::max(200, dropdownBounds.width);
-
-        searchAutoComplete->SetBounds(Rect2Di(acX, acY, acWidth, 28));
-        searchAutoComplete->SetWindow(window);
-        searchAutoComplete->SetVisible(true);
-        searchAutoComplete->SetText("");
-        // Add to overlays so the text input renders above clipping
-        UltraCanvasWindowBase::AddToOverlays(searchAutoComplete.get(), {
-            .closeByEscapeKey = true,
-            .closeByClickOutside = true,
-            .overlayZOrder = OverlayZOrder::Overlays,
-            .useAbsolutePosition = false,
-            .handleInputEvents = true
-        });
-
-        // Give focus to trigger popup opening (minCharsToTrigger=0)
-        if (window) {
-            window->SetFocusedElement(searchAutoComplete.get());
+        // Width based on longest tab name: fontSize * maxLen + padding, capped by container width
+        int maxLen = 0;
+        for (auto& tab : tabs) {
+            int len = (int)tab->title.length();
+            if (len > maxLen) maxLen = len;
         }
+        auto acStyle = searchAutoComplete->GetAutoCompleteStyle();
+        int containerWidth = GetBounds().width;
+        int acWidth = std::min(containerWidth, std::max(200, static_cast<int>(acStyle.fontSize * maxLen + 12)));
+
+        searchAutoComplete->SetSize(acWidth, 28);
+        searchAutoComplete->SetText("");
+
+        Point2Di searchAutoCompletePos = dropdownBounds.TopLeft();
+        searchAutoCompletePos.y += dropdownBounds.height;
+        searchAutoCompletePos = overflowButton->ConvertContainerToWindowCoordinates(searchAutoCompletePos);
+        window->OpenPopup(searchAutoCompletePos, *searchAutoComplete, PopupElementSettings());
+        searchAutoComplete->SetFocus(true);
 
         dropdownSearchActive = true;
     }
 
     void UltraCanvasTabbedContainer::HideSearchAutoComplete() {
         if (!searchAutoComplete) return;
-        UltraCanvasWindowBase::RemoveFromOverlays(searchAutoComplete.get());
-        searchAutoComplete->ClosePopup();
-        searchAutoComplete->SetVisible(false);
+        window->ClosePopup(*searchAutoComplete);
         dropdownSearchActive = false;
         dropdownSearchText = "";
     }
@@ -380,9 +377,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTabbedContainer::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
-
         if (tabbarLayoutDirty) {
+            ctx->PushState();
             CalculateLayout();
             UpdateOverflowDropdown();
             CalculateLayout();
@@ -390,13 +386,13 @@ namespace UltraCanvas {
             PackTabBar();
             CalculateLayout();
             UpdateContentVisibility();
+            ctx->PopState();
             tabbarLayoutDirty = false;
         }
 
         ctx->PushState();
         ctx->Translate(bounds.x,
                        bounds.y);
-
         RenderContentArea(ctx);
         RenderTabBar(ctx);
         ctx->PopState();
@@ -767,7 +763,7 @@ namespace UltraCanvas {
                 if (onTabContextMenu) {
                     onTabContextMenu(clickedTab);
                 }
-                tabContextMenu->ShowAtWindow(event.x, event.y, GetWindow());
+                //tabContextMenu->ShowAtWindow(event.x, event.y, GetWindow());
                 return true;
             }
         }
@@ -1191,13 +1187,6 @@ namespace UltraCanvas {
 
         showScrollButtons = enableTabScrolling && (tabScrollOffset > 0 ||
                                                    tabScrollOffset + maxVisibleTabs < (int)tabs.size());
-
-        if (!showOverflowDropdown) {
-            overflowDropdownVisible = false;
-            if (overflowButton) {
-                overflowButton->SetVisible(false);
-            }
-        }
 
         for (int i = 0; i < (int)tabs.size(); i++) {
             PositionTabContent(i);

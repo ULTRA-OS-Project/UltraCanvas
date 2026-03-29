@@ -1,15 +1,16 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
-// Version: 2.0.0
-// Last Modified: 2025-10-30
-// Author: UltraCanvas Framework
+// Uses ListView popup for rendering dropdown items
 #pragma once
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
-#include "UltraCanvasScrollbar.h"
+#include "UltraCanvasListView.h"
+#include "UltraCanvasListModel.h"
+#include "UltraCanvasListDelegate.h"
+#include "UltraCanvasListSelection.h"
 #include <vector>
 #include <string>
 #include <functional>
@@ -19,6 +20,12 @@
 
 namespace UltraCanvas {
 
+// ===== DROPDOWN-SPECIFIC DATA ROLES =====
+    constexpr auto DropdownValueRole     = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 0);
+    constexpr auto DropdownEnabledRole   = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 1);
+    constexpr auto DropdownSeparatorRole = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 2);
+    constexpr auto DropdownSelectedRole  = static_cast<ListDataRole>(static_cast<int>(ListDataRole::UserRole) + 3);
+
 // ===== DROPDOWN ITEM DATA =====
     struct DropdownItem {
         std::string text;
@@ -26,7 +33,7 @@ namespace UltraCanvas {
         std::string iconPath;
         bool enabled = true;
         bool separator = false;
-        bool selected = false;  // NEW: for multi-selection support
+        bool selected = false;  // for multi-selection support
         void* userData = nullptr;
 
         DropdownItem() = default;
@@ -80,17 +87,47 @@ namespace UltraCanvas {
         float checkboxSize = 14.0f;
         float checkboxPadding = 6.0f;
 
-        // Shadow
-//        bool hasShadow = true;
-//        Color shadowColor = Color(0, 0, 0, 80);
-//        float shadowOffset = 2;
-
         // Font
         std::string fontFamily = "Sans";
         float fontSize = 12.0f;
 
-// Scrollbar style (NEW: configurable scrollbar)
+        // Scrollbar style
         ScrollbarStyle scrollbarStyle;
+    };
+
+// ===== DROPDOWN LIST MODEL (adapter over vector<DropdownItem>) =====
+    class DropdownListModel : public IListModel {
+    public:
+        void SetItems(const std::vector<DropdownItem>* itemsPtr) { items = itemsPtr; }
+        void DataChanged() { NotifyDataChanged(); }
+
+        int GetRowCount() const override;
+        int GetColumnCount() const override { return 1; }
+        ListDataValue GetData(const ListIndex& index, ListDataRole role) const override;
+        bool SetData(const ListIndex& index, ListDataRole role, const ListDataValue& value) override { return false; }
+
+    private:
+        const std::vector<DropdownItem>* items = nullptr;
+    };
+
+// ===== DROPDOWN ITEM DELEGATE =====
+    class DropdownItemDelegate : public IItemDelegate {
+    public:
+        void SetStyle(const DropdownStyle* s) { style = s; }
+        void SetMultiSelectEnabled(bool enabled) { multiSelectEnabled = enabled; }
+
+        void RenderItem(IRenderContext* ctx, const IListModel* model,
+                       int row, int column,
+                       const ListItemStyleOption& option) override;
+
+        int GetRowHeight(const IListModel* model, int row) const override;
+
+    private:
+        void RenderCheckbox(IRenderContext* ctx, bool checked, const Rect2Di& rect) const;
+        void RenderIcon(IRenderContext* ctx, const std::string& iconPath, const Rect2Di& rect) const;
+
+        const DropdownStyle* style = nullptr;
+        bool multiSelectEnabled = false;
     };
 
 // ===== DROPDOWN COMPONENT =====
@@ -103,31 +140,27 @@ namespace UltraCanvas {
         std::function<void()> onDropdownClosed;
         std::function<bool(const UCEvent&)> onKeyDown;
 
-        // NEW: Multi-selection callbacks
+        // Multi-selection callbacks
         std::function<void(const std::vector<int>&)> onMultiSelectionChanged;
         std::function<void(const std::vector<DropdownItem>&)> onSelectedItemsChanged;
 
     private:
         std::vector<DropdownItem> items;
         int selectedIndex = -1;
-        int hoveredIndex = -1;
         bool dropdownOpen = false;
         bool buttonPressed = false;
 
-        // NEW: Multi-selection support
+        // Multi-selection support
         bool multiSelectEnabled = false;
         std::set<int> selectedIndices;
 
         DropdownStyle style;
-        int dropdownHeight = 0;
-        int dropdownWidth = 0;
-        int maxDropdownHeight = 0;
-        bool needScrollbar = false;
-        bool needCalculateDimensions = false;
 
-        std::shared_ptr<UltraCanvasScrollbar> listScrollbar;
-        int scrollOffset = 0;
-        int effectiveVisibleItems = 0;  // Actual visible items (may differ from maxVisibleItems when clamped)
+        // ListView popup components
+        std::shared_ptr<UltraCanvasListView> popupListView;
+        DropdownListModel dropdownModel;
+        std::shared_ptr<DropdownItemDelegate> dropdownDelegate;
+
     public:
         UltraCanvasDropdown(const std::string& identifier, long id, long x, long y, long w, long h = 24);
 
@@ -153,7 +186,7 @@ namespace UltraCanvas {
 
         const DropdownItem* GetSelectedItem() const;
 
-        // NEW: Multi-selection management
+        // Multi-selection management
         void SetMultiSelectEnabled(bool enabled);
         bool IsMultiSelectEnabled() const { return multiSelectEnabled; }
 
@@ -166,12 +199,6 @@ namespace UltraCanvas {
         std::vector<int> GetSelectedIndices() const;
         std::vector<DropdownItem> GetSelectedItems() const;
         int GetSelectedCount() const { return static_cast<int>(selectedIndices.size()); }
-
-        Rect2Di GetOverlayBounds() override;
-
-        bool Contains(int px, int py) override {
-            return GetOverlayBounds().Contains(px, py);
-        }
 
         // ===== DROPDOWN STATE =====
         void OpenDropdown();
@@ -193,45 +220,30 @@ namespace UltraCanvas {
         void SetWindow(UltraCanvasWindowBase* win) override;
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override;
-        void RenderOverlay(IRenderContext* ctx) override;
+        void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
 
     private:
-        void CreateScrollbar();
-        void ApplyStyleToScrollbar();
-        void CalculateDropdownDimensions();
-        Rect2Di CalculatePopupPosition();
+        void CreatePopupListView();
+        void WireListViewCallbacks();
+        void ApplyStyleToListView();
+        void CalculateAndSetPopupSize();
+        Point2Di CalculatePopupPosition();
 
         void RenderButton(IRenderContext* ctx);
-
         void RenderDropdownArrow(const Rect2Di& buttonRect, const Color& color, IRenderContext* ctx);
 
-        void RenderDropdownItem(int itemIndex, const Rect2Di& listRect, int visualIndex, IRenderContext* ctx);
-
-        // NEW: Icon rendering
-        void RenderItemIcon(const std::string& iconPath, const Rect2Di& iconRect, IRenderContext* ctx);
-        // NEW: Checkbox rendering for multi-select
-        void RenderCheckbox(bool checked, const Rect2Di& checkboxRect, IRenderContext* ctx);
-        void RenderScrollbar(const Rect2Di& listRect, IRenderContext* ctx);
-
         std::string GetDisplayText() const;
-
-        void EnsureItemVisible(int index);
-
-        int GetItemAtPosition(int x, int y);
 
         // ===== EVENT HANDLERS =====
         bool HandleMouseDown(const UCEvent& event);
         bool HandleMouseUp(const UCEvent& event);
         bool HandleMouseMove(const UCEvent& event);
         void HandleMouseLeave(const UCEvent& event);
-        void HandleKeyDown(const UCEvent& event);
-        bool HandleMouseWheel(const UCEvent& event);
+        bool HandleKeyDown(const UCEvent& event);
         void HandleFocusLost();
-
-        void OnRemovedFromOverlays() override;
     };
 
 // ===== FACTORY FUNCTIONS =====

@@ -385,7 +385,6 @@ namespace UltraCanvas {
 
         // ===== RENDERING (REQUIRED OVERRIDE) =====
         void Render(IRenderContext* ctx) override {
-            if (!IsVisible()) return;
             ctx->PushState();
 
             UpdateSliderState();

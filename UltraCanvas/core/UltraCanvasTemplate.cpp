@@ -331,20 +331,17 @@ namespace UltraCanvas {
         RefreshLayout();
     }
 
+    void UltraCanvasTemplate::UpdateGeometry(IRenderContext* ctx) {
+        if (isDirty) {
+            ctx->PushState();
+            RebuildTemplate();
+            ctx->PopState();
+        }
+        UltraCanvasUIElement::UpdateGeometry(ctx);
+    }
+
 // ===== RENDERING =====
     void UltraCanvasTemplate::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
-
-        // Rebuild if necessary
-        if (isDirty) {
-            RebuildTemplate();
-        }
-
-        auto* ctx = GetRenderContext();
-        if (!ctx) return;
-
-        ULTRACANVAS_RENDER_SCOPE(ctx);
-
         // Draw template background
         DrawTemplateBackground();
 

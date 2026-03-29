@@ -340,7 +340,7 @@ namespace UltraCanvas {
             vertSplitBtn->onSecondaryClick = [mainButtonsContainer, vertSplitMenu]() {
                 auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
                 mainButtonsContainer->GetWindow()->AddChild(vertSplitMenu);
-                vertSplitMenu->ShowAt(ev.windowX, ev.windowY);
+                vertSplitMenu->OpenMenu(Point2Di(ev.windowX, ev.windowY), *mainButtonsContainer->GetWindow(), PopupElementSettings());
             };
             mainButtonsContainer->AddChild(vertSplitBtn);
 
@@ -402,7 +402,7 @@ namespace UltraCanvas {
             // Large Button
             auto largeBtn = CreateButton("LargeButton", 155, 500, yOffset, 150, 50, "Large");
             largeBtn->SetFont("Sans", 16, FontWeight::Bold);
-            largeBtn->SetPadding(20, 20, 10, 10);
+            largeBtn->SetPadding(10, 20, 10, 20);
             largeBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Large button clicked\nCustom size and padding");
             };

@@ -6,7 +6,6 @@
 
 #include "UltraCanvasDemo.h"
 //#include "UltraCanvasButton3Sections.h"
-#include "UltraCanvasFormulaEditor.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include <sstream>
 #include <random>
@@ -77,7 +76,7 @@ namespace UltraCanvas {
             if (ev.button == UCMouseButton::Right) {
                 // move menu to window container
 //                container->GetWindow()->AddChild(contextMenu);
-                contextMenu->ShowAtWindow(ev.windowX, ev.windowY, container->GetWindow());
+                contextMenu->OpenMenu(Point2Di(ev.windowX, ev.windowY), *container->GetWindow(), PopupElementSettings());
             }
         };
 
@@ -205,7 +204,8 @@ namespace UltraCanvas {
         }));
 
         darkMenuBtn->onClick = [darkMenu, darkMenuBtn, container]() {
-            darkMenu->ShowAtWindow(darkMenuBtn->GetXInWindow(), darkMenuBtn->GetYInWindow() + darkMenuBtn->GetHeight() + 1, container->GetWindow());
+            darkMenu->OpenMenu(Point2Di(darkMenuBtn->GetXInWindow(), darkMenuBtn->GetYInWindow() + darkMenuBtn->GetHeight() + 1),
+                               *container->GetWindow(), PopupElementSettings());
         };
 
         // Flat style menu
@@ -230,7 +230,8 @@ namespace UltraCanvas {
         }));
 
         flatMenuBtn->onClick = [flatMenu, flatMenuBtn, container]() {
-            flatMenu->ShowAtWindow(flatMenuBtn->GetXInWindow(), flatMenuBtn->GetYInWindow() + flatMenuBtn->GetHeight() + 1, container->GetWindow());
+            flatMenu->OpenMenu(Point2Di(flatMenuBtn->GetXInWindow(), flatMenuBtn->GetYInWindow() + flatMenuBtn->GetHeight() + 1),
+                               *container->GetWindow(), PopupElementSettings());
         };
 
         // Info label about menu features
@@ -293,7 +294,7 @@ namespace UltraCanvas {
             itemLabel->onClick = [itemMenu, itemLabel, container]() {
                 auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
                 if (ev.button == UCMouseButton::Right) {
-                    itemMenu->ShowAtWindow(ev.windowX, ev.windowY, container->GetWindow());
+                    itemMenu->OpenMenu(Point2Di (ev.windowX, ev.windowY), *container->GetWindow(), PopupElementSettings());
                 }
             };
 

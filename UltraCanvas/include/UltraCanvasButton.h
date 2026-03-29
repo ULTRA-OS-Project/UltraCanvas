@@ -100,11 +100,6 @@ namespace UltraCanvas {
         FontWeight fontWeight = FontWeight::Normal;
         TextAlignment textAlign = TextAlignment::Center;
 
-        // Layout
-        int paddingLeft = 8;
-        int paddingRight = 8;
-        int paddingTop = 4;
-        int paddingBottom = 4;
         int iconSpacing = 4;  // Space between icon and text
         float cornerRadius = 3.0f;
 
@@ -112,7 +107,6 @@ namespace UltraCanvas {
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
         Point2Di shadowOffset = Point2Di(1, 1);
-
         // Split button style
         SplitButtonStyle splitStyle;
     };
@@ -128,14 +122,11 @@ namespace UltraCanvas {
         // Icon properties
         int iconWidth = 24;
         int iconHeight = 24;
-        bool scaleIconToFit = false;
-        bool maintainIconAspectRatio = true;
 
         // State
         bool canToggled = false;
         bool canAcceptFocus = true;
         bool autoresize = false;
-        bool isNeedAutoresize = false;
 
         // Cached layout calculations
         Rect2Di iconRect;
@@ -144,7 +135,6 @@ namespace UltraCanvas {
         Rect2Di secondaryIconRect;  // For split button secondary icon (new)
         Rect2Di primarySectionRect;  // Primary section bounds
         Rect2Di secondarySectionRect;  // Secondary section bounds
-        bool layoutDirty = true;
 
     public:
         // ===== CONSTRUCTOR =====
@@ -186,8 +176,6 @@ namespace UltraCanvas {
         void SetIcon(const std::string& iconPath);
         void SetIconPosition(ButtonIconPosition position);
         void SetIconSize(int width, int height);
-        void SetIconScaleToFit(bool scale) { scaleIconToFit = scale; }
-        void SetMaintainAspectRatio(bool maintain) { maintainIconAspectRatio = maintain; }
         bool HasIcon() const { return icon != nullptr; }
 
         // ===== STYLING METHODS =====
@@ -206,7 +194,6 @@ namespace UltraCanvas {
                      FontWeight weight = FontWeight::Normal);
         void SetFontSize(float size);
         void SetTextAlign(TextAlignment align);
-        void SetPadding(int left, int right, int top, int bottom);
         void SetIconSpacing(int spacing);
         void SetCornerRadius(float radius);
         void SetShadow(bool enabled, const Color& color = Color(0, 0, 0, 64),
@@ -233,11 +220,9 @@ namespace UltraCanvas {
         std::function<void()> onHoverLeave;
 
         // ===== OVERRIDES =====
-        void SetBounds(const Rect2Di& b) override {
-            UltraCanvasUIElement::SetBounds(b);
-            layoutDirty = true;
-        }
         void Render(IRenderContext* ctx) override;
+        void UpdateGeometry(IRenderContext *ctx) override;
+
         bool OnEvent(const UCEvent& event) override;
         bool AcceptsFocus() const override { return canAcceptFocus; }
         void SetAcceptsFocus(bool accept) { canAcceptFocus = accept; }
@@ -250,7 +235,6 @@ namespace UltraCanvas {
         bool IsPointInSecondarySection(int x, int y) const;
 
         // ===== RENDERING HELPERS =====
-        void UpdateButtonState();
         void DrawIcon(IRenderContext* ctx);
         void DrawSecondaryIcon(IRenderContext* ctx);  // New method
         void DrawText(IRenderContext* ctx);
@@ -358,7 +342,7 @@ namespace UltraCanvas {
         }
 
         ButtonBuilder& SetPadding(int padding) {
-            button->SetPadding(padding, padding, padding/2, padding/2);
+            button->SetPadding(padding/2, padding, padding/2, padding);
             return *this;
         }
         ButtonBuilder& SetIconSpacing(int spacing) {
@@ -458,13 +442,6 @@ namespace UltraCanvas {
             style.pressedColor = Color(220, 220, 220, 180);
             style.borderWidth = 0.0f;
             style.hasShadow = false;
-            return style;
-        }
-
-        inline ButtonStyle IconOnlyStyle() {
-            ButtonStyle style = FlatStyle();
-            style.paddingLeft = style.paddingRight = 4;
-            style.paddingTop = style.paddingBottom = 4;
             return style;
         }
 

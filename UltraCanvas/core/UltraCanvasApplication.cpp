@@ -25,64 +25,35 @@
 
 
 namespace UltraCanvas {
-    std::unordered_map<UltraCanvasUIElement*, std::vector<UCEventType>> pendingUnassignedEventFilters;
 
-    void UltraCanvasApplicationBase::InstallWindowEventFilter(UltraCanvasUIElement* elem, const std::vector<UCEventType>& interestedEvents) {
-        if (!elem) return;
 
-        UltraCanvasWindowBase* win = elem->GetWindow();
-        if (win) {
-            for(auto et : interestedEvents) {
-                if (win->eventFilters.find(et) == win->eventFilters.end()) {
-                    win->eventFilters[et] = {};
-                }
-                win->eventFilters[et].insert(elem);
-            }
-        } else {
-            pendingUnassignedEventFilters[elem] = interestedEvents;
-        }
-    }
-
-    void UltraCanvasApplicationBase::UnInstallWindowEventFilter(UltraCanvasUIElement* elem) {
-        if (!elem) return;
-
-        auto win = elem->GetWindow();
-        pendingUnassignedEventFilters.erase(elem);
-        if (win && !win->eventFilters.empty()) {
-            for(auto &ef : win->eventFilters) {
-                auto &elems = ef.second;
-                elems.erase(elem);
-            }
-        }
-    }
-
-    void UltraCanvasApplicationBase::MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem) {
-        if (!elem) return;
-
-        std::vector<UCEventType> interestedEvents;
-        if (winFrom) {
-            if (!winFrom->eventFilters.empty()) {
-                for(auto &ef : winFrom->eventFilters) {
-                    auto &elems = ef.second;
-                    if (elems.find(elem) != elems.end()) {
-                        interestedEvents.push_back(ef.first);
-                        elems.erase(elem);
-                    }
-                }
-            }
-        } else {
-            if (!pendingUnassignedEventFilters.empty()) {
-                auto found = pendingUnassignedEventFilters.find(elem);
-                if (found != pendingUnassignedEventFilters.end()) {
-                    interestedEvents = found->second;
-                    pendingUnassignedEventFilters.erase(elem);
-                }
-            }
-        }
-        if (!interestedEvents.empty()) {
-            UltraCanvasApplicationBase::InstallWindowEventFilter(elem, interestedEvents);
-        }
-    }
+//    void UltraCanvasApplicationBase::MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem) {
+//        if (!elem) return;
+//
+//        std::vector<UCEventType> interestedEvents;
+//        if (winFrom) {
+//            if (!winFrom->eventFilters.empty()) {
+//                for(auto &ef : winFrom->eventFilters) {
+//                    auto &elems = ef.second;
+//                    if (elems.find(elem) != elems.end()) {
+//                        interestedEvents.push_back(ef.first);
+//                        elems.erase(elem);
+//                    }
+//                }
+//            }
+//        } else {
+//            if (!pendingUnassignedEventFilters.empty()) {
+//                auto found = pendingUnassignedEventFilters.find(elem);
+//                if (found != pendingUnassignedEventFilters.end()) {
+//                    interestedEvents = found->second;
+//                    pendingUnassignedEventFilters.erase(elem);
+//                }
+//            }
+//        }
+//        if (!interestedEvents.empty()) {
+//            UltraCanvasApplicationBase::InstallWindowEventFilter(elem, interestedEvents);
+//        }
+//    }
 
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {
         appName = app;
@@ -149,16 +120,18 @@ rescan_windows:
                     }
 //                    debugOutput << "window w=" << window << " nativeh=" << window->GetNativeHandle() << " visible=" << window->IsVisible() << " needredraw=" << window->IsNeedsRedraw() << " ctx=" << window->GetRenderContext() << std::endl;
                     if (window->IsVisible()) {
+                        auto ctx = window->GetRenderContext();
                         if (window->IsNeedsResize()) {
                             window->DoResize();
                         }
-                        if (window->IsNeedsRedraw()) {
-                            auto ctx = window->GetRenderContext();
-                            if (ctx) {
+                        if (ctx) {
+                            if (window->IsNeedsUpdateGeometry() || window->IsNeedsRedraw()) {
+                                window->UpdateGeometry(ctx);
+                            }
+                            if (window->IsNeedsRedraw()) {
 //                                debugOutput << "Redraw window w=" << window << " nativeh=" << window->GetNativeHandle() << std::endl;
                                 window->Render(ctx);
                                 window->Flush();
-                                window->ClearRequestRedraw();
                             }
                         }
                     }
@@ -317,7 +290,7 @@ rescan_windows:
         return isDoubleClick;
     }
 
-    void UltraCanvasApplicationBase::DispatchEvent(const UCEvent &event) {
+    void UltraCanvasApplicationBase::DispatchEvent(const UCEvent& event) {
         // Update modifier states
         if (event.IsKeyboardEvent()) {
             shiftHeld = event.shift;
@@ -363,10 +336,7 @@ rescan_windows:
             case UCEventType::MouseMove:
             case UCEventType::MouseUp:
                 if (capturedElement) {
-                    auto newEvent = event;
-                    newEvent.targetElement = capturedElement;
-                    capturedElement->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
-                    if (DispatchEventToElement(capturedElement, newEvent)) {
+                    if (DispatchEventToElement(capturedElement, event)) {
                         return;
                     }
                 }
@@ -404,13 +374,61 @@ rescan_windows:
         }
         // Dispatch other events to focused element
         if (targetWindow) {
-            UltraCanvasUIElement* pointerElem = nullptr;
-            if (event.IsMouseEvent()) { // change mouse cursor first
-                pointerElem = targetWindow->FindElementAtPointInWindow(event.x, event.y, true);
+            UltraCanvasUIElement* elementUnderPointer = nullptr;
+//            UltraCanvasUIElement* originalElementUnderPointer = nullptr;
 
-                if (pointerElem) {
-                    if (targetWindow->GetCurrentMouseCursor() != pointerElem->GetMouseCursor()) {
-                        targetWindow->SelectMouseCursor(pointerElem->GetMouseCursor());
+            PopupElement* popupElement = targetWindow->GetActivePopupElement();
+//            std::shared_ptr<UltraCanvasUIElement> popupOwner;
+            bool isPointerOutsidePopupElement = false;
+
+//            if (popupElement) {
+//                popupOwner = popupElement->settings.popUpOwner.lock();
+//            }
+
+            // Check if an element is the popup owner or a child of it
+//            auto isPopupOwnerOrChild = [&popupElement](UltraCanvasUIElement* elem) -> bool {
+//                if (!popupElement || !elem) return false;
+//                auto owner = popupElement->settings.popUpOwner.lock();
+//                if (!owner) return false;
+//                if (elem == owner.get()) return true;
+//                auto* ownerContainer = dynamic_cast<UltraCanvasContainer*>(owner.get());
+//                return ownerContainer && ownerContainer->HasChild(elem);
+//            };
+
+            if (event.IsMouseEvent() || event.IsDragEvent()) { // change mouse cursor first
+                elementUnderPointer = targetWindow->FindElementAtPoint(event.windowX, event.windowY);
+  //              originalElementUnderPointer = elementUnderPointer;
+                // set pointerElem to popup element if it points outside
+                if (popupElement) {
+                    if (elementUnderPointer) {
+                        if (elementUnderPointer != popupElement->element) {
+                            auto *popupContainer = dynamic_cast<UltraCanvasContainer *>(popupElement->element);
+                            if (!popupContainer || !popupContainer->HasChild(elementUnderPointer)) {
+                                auto popupOwner = popupElement->settings.popupOwner.lock();
+                                if (!popupOwner) {
+                                    isPointerOutsidePopupElement = true;
+                                } else {
+                                    if (popupOwner.get() != elementUnderPointer) {
+                                        auto* ownerContainer = dynamic_cast<UltraCanvasContainer*>(popupOwner.get());
+                                        if (!ownerContainer || !ownerContainer->HasChild(elementUnderPointer)) {
+                                            isPointerOutsidePopupElement = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        isPointerOutsidePopupElement = true;
+                    }
+
+                    if (isPointerOutsidePopupElement) {
+                        elementUnderPointer = popupElement->element;
+                    }
+                }
+                // change mouse cursor
+                if (elementUnderPointer) {
+                    if (targetWindow->GetCurrentMouseCursor() != elementUnderPointer->GetMouseCursor()) {
+                        targetWindow->SelectMouseCursor(elementUnderPointer->GetMouseCursor());
                     }
                 } else {
                     // if no element pointed then select window's cursor
@@ -420,126 +438,113 @@ rescan_windows:
                 }
             }
 
-            // close overlay elements handling
-            if (event.type == UCEventType::MouseDown || event.IsKeyboardEvent()) {
-                std::list<OverlayElement> overlayElementsCopy = targetWindow->overlayElements;
-                if (!overlayElementsCopy.empty()) {
-                    if (event.IsMouseEvent() && event.button != UCMouseButton::NoneButton) {
-                        bool overlayRemoved = false;
-                        for(auto it = overlayElementsCopy.begin(); it != overlayElementsCopy.end(); ++it) {
-                            if (it->settings.closeByClickOutside) {
-                                auto elem = it->element;
-
-                                int x = event.x, y = event.y;
-                                if (!it->settings.useAbsolutePosition) {
-                                    elem->ConvertWindowToParentContainerCoordinates(x, y);
-                                }
-                                if (!elem->Contains(x, y)) {
-                                    UltraCanvasWindowBase::RemoveFromOverlays(elem);
-                                    overlayRemoved = true;
-                                }
-                            }
-                        }
-                        if (overlayRemoved) {
-                            goto finish;
-                        }
-                    } else if (event.IsKeyboardEvent() && event.virtualKey == UCKeys::Escape) { // only last (topmost) popup closed by escape
-                        auto &elem = overlayElementsCopy.back();
-                        if (elem.settings.closeByEscapeKey) {
-                            UltraCanvasWindowBase::RemoveFromOverlays(elem.element);
-                            goto finish;
-                        }
-                    }
+            // close popup element handling first
+            if (popupElement) {
+                // THERE element->Contains() WHICH IS NOT THE SAME AS element->GetBounds().Contains(),
+                // THE element->Contains() MAY CHECK CHILD ELEMENTS TOO (SUBMENUS OR PARENT MENUS FOR EXAMPLE)
+                if (popupElement->settings.closeByClickOutside
+                    && event.type == UCEventType::MouseDown
+                    && event.button != UCMouseButton::NoneButton
+                    && isPointerOutsidePopupElement
+                    && !popupElement->element->Contains(event.windowX, event.windowY)) {
+                    targetWindow->ClosePopup(*popupElement->element, ClosePopupReason::ClickOutside);
+                    goto finish;
                 }
-            }
-
-            if (targetWindow->HandleEventFilters(event)) {
-                goto finish;
+                if (popupElement->settings.closeByEscapeKey
+                    && event.IsKeyboardEvent()
+                    && event.virtualKey == UCKeys::Escape) {
+                    targetWindow->ClosePopup(*popupElement->element, ClosePopupReason::EscapeKey);
+                    goto finish;
+                }
             }
 
             if (event.IsKeyboardEvent()) {
                 UltraCanvasUIElement* focused =  targetWindow->GetFocusedElement();
+                // sent event to popup directly if real focused element outside popup
+                if (popupElement && focused != popupElement->element) {
+                    UltraCanvasContainer* popupContainer = dynamic_cast<UltraCanvasContainer*>(popupElement->element);
+                    if (!popupContainer || !popupContainer->HasChild(focused)) {
+                        auto popupOwner = popupElement->settings.popupOwner.lock();
+                        if (!popupOwner) {
+                            focused = popupElement->element;
+                        } else if (popupOwner.get() != focused) {
+                            auto* ownerContainer = dynamic_cast<UltraCanvasContainer*>(popupOwner.get());
+                            if (!ownerContainer || !ownerContainer->HasChild(focused)) {
+                                focused = popupElement->element;
+                            }
+                        }
+                    }
+                }
                 if (focused) {
-                    HandleEventWithBubbling(event, focused);
+                    HandleEventWithBubbling(focused, event);
                     goto finish;
                 }
             }
 
-            if (event.type == UCEventType::MouseWheel) {
-                auto elem = targetWindow->FindElementAtPointInWindow(event.x, event.y, true);
-                if (elem) {
-                    HandleEventWithBubbling(event, elem);
-                    goto finish;
-                }
+            if (event.type == UCEventType::MouseWheel && elementUnderPointer) {
+                HandleEventWithBubbling(elementUnderPointer, event);
+                goto finish;
 
             }
             if (event.IsDragEvent()) {
-                auto elem = targetWindow->FindElementAtPointInWindow(event.x, event.y, true);
-                if (elem) {
-                    HandleEventWithBubbling(event, elem);
+                if (elementUnderPointer) {
+                    HandleEventWithBubbling(elementUnderPointer, event);
                 } else {
                     DispatchEventToElement(targetWindow, event);
                 }
                 goto finish;
             }
+
             if (event.IsMouseEvent()) {
-                if (hoveredElement && hoveredElement != pointerElem) {
-                    UCEvent leaveEvent = event;
-                    leaveEvent.type = UCEventType::MouseLeave;
-                    leaveEvent.x = -1;
-                    leaveEvent.y = -1;
-                    leaveEvent.targetElement = hoveredElement;
-                    DispatchEventToElement(hoveredElement, leaveEvent);
+                if (hoveredElement && hoveredElement != elementUnderPointer) {
+                    if (hoveredElement->GetWindow() == targetWindow && hoveredElement->IsVisible()) {
+                        UCEvent leaveEvent = event;
+                        leaveEvent.type = UCEventType::MouseLeave;
+                        leaveEvent.x = -1;
+                        leaveEvent.y = -1;
+                        DispatchEventToElement(hoveredElement, leaveEvent);
+                    }
                     UltraCanvasTooltipManager::HideTooltip();
                     hoveredElement = nullptr;
                 }
-                if (!pointerElem) {
+                if (!elementUnderPointer || elementUnderPointer == targetWindow) {
                     UltraCanvasTooltipManager::HideTooltip();
                 }
-                if (pointerElem) {
-                    int localX = event.x;
-                    int localY = event.y;
-                    pointerElem->ConvertWindowToParentContainerCoordinates(localX, localY);
-                    if (hoveredElement != pointerElem) {
-                        UCEvent enterEvent = event;
-                        enterEvent.targetElement = pointerElem;
+                if (elementUnderPointer) {
+                    if (hoveredElement != elementUnderPointer) {
+                        auto enterEvent = event.Clone();
                         enterEvent.type = UCEventType::MouseEnter;
-                        enterEvent.x = localX;
-                        enterEvent.y = localY;
-                        DispatchEventToElement(pointerElem, enterEvent);
-                        hoveredElement = pointerElem;
+                        DispatchEventToElement(elementUnderPointer, enterEvent);
+
+                        hoveredElement = elementUnderPointer;
                         // Show tooltip if element has one
-                        if (!pointerElem->GetTooltip().empty()) {
+                        if (!elementUnderPointer->GetTooltip().empty()) {
                             UltraCanvasTooltipManager::UpdateAndShowTooltip(
-                                targetWindow, pointerElem->GetTooltip(),
-                                Point2Di(event.windowX, event.windowY));
+                                    targetWindow, elementUnderPointer->GetTooltip(),
+                                    Point2Di(event.windowX, event.windowY));
                         }
                     }
-                    auto newEvent = event;
-                    newEvent.targetElement = pointerElem;
-                    newEvent.x = localX;
-                    newEvent.y = localY;
                     // Update tooltip position as mouse moves
-                    if (!pointerElem->GetTooltip().empty() &&
+                    if (!elementUnderPointer->GetTooltip().empty() &&
                         (UltraCanvasTooltipManager::IsVisible() || UltraCanvasTooltipManager::IsPending())) {
                         UltraCanvasTooltipManager::UpdateTooltipPosition(
                             Point2Di(event.windowX, event.windowY));
                     }
-                    if (DispatchEventToElement(pointerElem, newEvent)) {
+
+                    if (DispatchEventToElement(elementUnderPointer, event)) {
                         goto finish;
                     }
                 }
             }
 
             if (event.isCommandEvent()) {
-                HandleEventWithBubbling(event, event.targetElement);
+                HandleEventWithBubbling(event.targetElement, event);
                 goto finish;
             }
             DispatchEventToElement(targetWindow, event);
 
     finish:
             return;
-//            targetWindow->CleanupRemovedPopupElements();
 //            // Debug logging
 //            if (event.type != UCEventType::MouseMove) {
 //                debugOutput << "UltraCanvas: Event type " << static_cast<int>(event.type)
@@ -553,25 +558,15 @@ rescan_windows:
         }
     }
 
-    bool UltraCanvasApplicationBase::HandleEventWithBubbling(const UCEvent &event, UltraCanvasUIElement* elem) {
+    bool UltraCanvasApplicationBase::HandleEventWithBubbling(UltraCanvasUIElement *elem, const UCEvent &event) {
         if (!event.isCommandEvent()) {
-            auto newEvent = event;
-            newEvent.targetElement = elem;
-            if (event.IsMouseEvent() || event.IsDragEvent()) {
-                elem->ConvertWindowToParentContainerCoordinates(newEvent.x, newEvent.y);
-            }
-            if (DispatchEventToElement(elem, newEvent)) {
+            if (DispatchEventToElement(elem, event)) {
                 return true;
             }
         }
         auto parent = elem->GetParentContainer();
         while(parent) {
-            auto newParentEvent = event;
-            newParentEvent.targetElement = elem;
-            if (event.IsMouseEvent() || event.IsDragEvent()) {
-                parent->ConvertWindowToParentContainerCoordinates(newParentEvent.x, newParentEvent.y);
-            }
-            if (DispatchEventToElement(parent, newParentEvent)) {
+            if (DispatchEventToElement(parent, event)) {
                 return true;
             }
             parent = parent->GetParentContainer();
@@ -579,41 +574,6 @@ rescan_windows:
         return false;
     }
 
-
-//    bool UltraCanvasBaseApplication::HandleFocusedWindowChange(UltraCanvasWindow* window) {
-//        if (focusedWindow != window) {
-//            UltraCanvasWindow* previousFocusedWindow = focusedWindow;
-//
-//            // Update focused window first
-//            focusedWindow = window;
-//
-//            // Notify old window it lost focus
-//            if (previousFocusedWindow) {
-//                UCEvent blurEvent;
-//                blurEvent.type = UCEventType::WindowBlur;
-//                blurEvent.timestamp = std::chrono::steady_clock::now();
-//                blurEvent.targetWindow = static_cast<void*>(previousFocusedWindow);
-//                //blurEvent.nativeWindowHandle = previousFocusedWindow->GetXWindow();
-//                DispatchEventToElement(previousFocusedWindow, blurEvent);
-//
-//                debugOutput << "UltraCanvasBaseApplication: Window " << previousFocusedWindow  << " (native=" << (int)previousFocusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
-//            }
-//
-//            // Notify new window it gained focus
-//            if (focusedWindow) {
-//                UCEvent focusEvent;
-//                focusEvent.type = UCEventType::WindowFocus;
-//                focusEvent.timestamp = std::chrono::steady_clock::now();
-//                focusEvent.targetWindow = static_cast<void*>(focusedWindow);
-//                //focusEvent.nativeWindowHandle = focusedWindow->GetXWindow();
-//                DispatchEventToElement(focusedWindow, focusEvent);
-//
-//                debugOutput << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << (int)focusedWindow->GetNativeHandle() << ") gained focus" << std::endl;
-//            }
-//            return true;
-//        }
-//        return false;
-//    }
 
     void UltraCanvasApplicationBase::FocusNextElement() {
         if (focusedWindow) {
@@ -631,8 +591,27 @@ rescan_windows:
         eventLoopCallback = callback;
     }
 
-    bool UltraCanvasApplicationBase::DispatchEventToElement(UltraCanvasUIElement *elem, const UCEvent &event) {
+    bool UltraCanvasApplicationBase::DispatchEventToElement(UltraCanvasUIElement* elem, UCEvent event) {
+        event.targetElement = elem;
+        auto window = elem->GetWindow();
+        if (!window) {
+            debugOutput << "UltraCanvasApplicationBase::DispatchEventToElement window == null for elem=" << elem << std::ends;
+            return false;
+        }
+        if (event.IsMouseEvent() || event.IsDragEvent() || event.type == UCEventType::MouseEnter) {
+            if (elem->GetParentContainer() != window && elem != window) {
+                event.x = event.windowX;
+                event.y = event.windowY;
+                elem->ConvertWindowToParentContainerCoordinates(event.x, event.y);
+            }
+        }
+
         currentEvent = event;
+
+        if (window->HandleEventFilters(event)) {
+            return true;
+        }
+
         return elem->OnEvent(event);
     }
 

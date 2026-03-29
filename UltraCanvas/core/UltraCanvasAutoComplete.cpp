@@ -1,7 +1,7 @@
 // core/UltraCanvasAutoComplete.cpp
-// AutoComplete text input with popup suggestion list (inherits TextInput, composes Menu)
-// Version: 3.0.0
-// Last Modified: 2026-03-25
+// AutoComplete text input with popup suggestion list (inherits TextInput, uses ListView popup)
+// Version: 4.0.0
+// Last Modified: 2026-03-29
 // Author: UltraCanvas Framework
 #include "UltraCanvasAutoComplete.h"
 #include "UltraCanvasWindow.h"
@@ -15,11 +15,9 @@ namespace UltraCanvas {
                                                      long x, long y, long w, long h)
         : UltraCanvasTextInput(identifier, id, x, y, w, h) {
         SetShowValidationState(false);
-        CreatePopupMenu();
-        WireCallbacks();
+        CreatePopupListView();
+        WireListViewCallbacks();
     }
-
-    UltraCanvasAutoComplete::~UltraCanvasAutoComplete() = default;
 
     // ===== ITEM MANAGEMENT =====
 
@@ -46,14 +44,8 @@ namespace UltraCanvas {
         filteredItems.clear();
         selectedIndex = -1;
         if (popupOpen) {
-            ClosePopup();
+            CloseAutocompletePopup();
         }
-    }
-
-    // ===== TEXT ACCESS =====
-
-    void UltraCanvasAutoComplete::SetText(const std::string& text) {
-        UltraCanvasTextInput::SetText(text, false);
     }
 
     // ===== SELECTED ITEM =====
@@ -67,39 +59,53 @@ namespace UltraCanvas {
 
     // ===== POPUP STATE =====
 
-    void UltraCanvasAutoComplete::OpenPopup() {
+    void UltraCanvasAutoComplete::OpenAutocompletePopup() {
         if (!popupOpen && !filteredItems.empty()) {
             popupOpen = true;
-            PopulateMenuFromFiltered();
+            PopulateListFromFiltered();
 
             Point2Di pos = CalculatePopupPosition();
-            popupMenu->ShowAt(pos.x, pos.y, false, false);
+            popupListView->SetWidth(GetWidth());
+
+            PopupElementSettings settings;
+            settings.popupOwner = shared_from_this();
+//            if (isPopup) {
+//                settings.closeByEscapeKey = false;
+//                settings.closeByClickOutside = false;
+//            } else {
+                settings.closeByEscapeKey = true;
+                settings.closeByClickOutside = true;
+//            }
+
+            GetWindow()->OpenPopup(pos, *popupListView, settings);
 
             if (autoSelectFirst && !filteredItems.empty()) {
                 UCEvent downEvent;
                 downEvent.type = UCEventType::KeyDown;
                 downEvent.virtualKey = UCKeys::Down;
-                popupMenu->HandleEvent(downEvent);
+                popupListView->OnEvent(downEvent);
             }
 
-            if (onPopupOpened) onPopupOpened();
+            if (onAutocompletePopupOpened) onAutocompletePopupOpened();
             RequestRedraw();
         }
     }
 
-    void UltraCanvasAutoComplete::ClosePopup() {
+    void UltraCanvasAutoComplete::CloseAutocompletePopup() {
         if (popupOpen) {
             popupOpen = false;
-            popupMenu->Hide();
-            if (onPopupClosed) onPopupClosed();
+            if (GetWindow()) {
+                GetWindow()->ClosePopup(*popupListView);
+            }
+            if (onAutocompletePopupClosed) onAutocompletePopupClosed();
         }
     }
 
     // ===== STYLING =====
 
-    void UltraCanvasAutoComplete::SetStyle(const AutoCompleteStyle& newStyle) {
+    void UltraCanvasAutoComplete::SetAutocompleteStyle(const AutoCompleteStyle& newStyle) {
         acStyle = newStyle;
-        ApplyStyleToMenu();
+        ApplyStyleToListView();
         RequestRedraw();
     }
 
@@ -107,7 +113,7 @@ namespace UltraCanvas {
 
     void UltraCanvasAutoComplete::SetWindow(UltraCanvasWindowBase* win) {
         UltraCanvasTextInput::SetWindow(win);
-        if (popupMenu) popupMenu->SetWindow(win);
+        if (popupListView) popupListView->SetWindow(win);
     }
 
     // ===== TEXT CHANGED (VIRTUAL OVERRIDE) =====
@@ -118,12 +124,12 @@ namespace UltraCanvas {
 
         if (static_cast<int>(currentText.length()) >= minCharsToTrigger) {
             if (!filteredItems.empty()) {
-                OpenPopup();
-            } else {
-                ClosePopup();
+                OpenAutocompletePopup();
+//            } else {
+//                CloseAutocompletePopup();
             }
         } else {
-            ClosePopup();
+            CloseAutocompletePopup();
         }
 
         UltraCanvasTextInput::TextChanged();  // fires onTextChanged callback
@@ -142,10 +148,10 @@ namespace UltraCanvas {
                         case UCKeys::PageDown:
                         case UCKeys::PageUp:
                         case UCKeys::Return:
-                            return popupMenu->HandleEvent(event);
+                            return popupListView->OnEvent(event);
 
                         case UCKeys::Escape:
-                            ClosePopup();
+                            CloseAutocompletePopup();
                             return true;
 
                         default:
@@ -153,55 +159,29 @@ namespace UltraCanvas {
                     }
                 } else {
                     if (event.virtualKey == UCKeys::Down || event.virtualKey == UCKeys::PageDown) {
-                        OpenPopup();
+                        OpenAutocompletePopup();
                         return true;
                     }
                 }
                 return UltraCanvasTextInput::OnEvent(event);
 
-            // case UCEventType::MouseUp:
-            //     return HandleMouseUp(event);
-
-            // case UCEventType::MouseMove:
-            //     return HandleMouseMove(event);
-
-            // case UCEventType::MouseWheel:
-            //     if (popupOpen && popupMenu->Contains(event.x, event.y)) {
-            //         return popupMenu->HandleEvent(event);
-            //     }
-            //     return UltraCanvasTextInput::OnEvent(event);
-
             case UCEventType::FocusGained:
                 if (minCharsToTrigger == 0) {
                     FilterSuggestions(GetText());
                     if (!filteredItems.empty()) {
-                        OpenPopup();
+                        OpenAutocompletePopup();
                     }
                 }
                 return UltraCanvasTextInput::OnEvent(event);
 
             case UCEventType::FocusLost:
-                ClosePopup();
+                CloseAutocompletePopup();
                 return UltraCanvasTextInput::OnEvent(event);
 
             default:
                 return UltraCanvasTextInput::OnEvent(event);
         }
     }
-
-    // bool UltraCanvasAutoComplete::HandleMouseUp(const UCEvent& event) {
-    //     if (popupOpen && popupMenu->Contains(event.x, event.y)) {
-    //         return popupMenu->HandleEvent(event);
-    //     }
-    //     return UltraCanvasTextInput::OnEvent(event);
-    // }
-
-    // bool UltraCanvasAutoComplete::HandleMouseMove(const UCEvent& event) {
-    //     if (popupOpen) {
-    //         popupMenu->HandleEvent(event);
-    //     }
-    //     return UltraCanvasTextInput::OnEvent(event);
-    // }
 
     // ===== SELECTION =====
 
@@ -212,14 +192,17 @@ namespace UltraCanvas {
         selectedIndex = filteredIndex;
 
         // Set text without triggering re-filtering
-        UltraCanvasTextInput::SetText(item.text, false);
+        auto prevOnTextChanged = onTextChanged;
+        onTextChanged = nullptr;
+        SetText(item.text);
+        onTextChanged = prevOnTextChanged;
 
         if (onItemSelected) {
             onItemSelected(filteredIndex, item);
         }
 
         if (closeOnSelect) {
-            ClosePopup();
+            CloseAutocompletePopup();
         }
     }
 
@@ -239,17 +222,17 @@ namespace UltraCanvas {
 
         selectedIndex = -1;
 
-        // Re-populate menu if popup is open
+        // Re-populate list if popup is open
         if (popupOpen) {
-            PopulateMenuFromFiltered();
-            Point2Di pos = CalculatePopupPosition();
-            popupMenu->SetPosition(pos.x, pos.y);
+            PopulateListFromFiltered();
+//            Point2Di pos = CalculatePopupPosition();
+//            popupListView->SetPosition(pos.x, pos.y);
 
             if (autoSelectFirst && !filteredItems.empty()) {
                 UCEvent downEvent;
                 downEvent.type = UCEventType::KeyDown;
                 downEvent.virtualKey = UCKeys::Down;
-                popupMenu->HandleEvent(downEvent);
+                popupListView->OnEvent(downEvent);
             }
         }
     }
@@ -279,59 +262,88 @@ namespace UltraCanvas {
 
     // ===== PRIVATE SETUP =====
 
-    void UltraCanvasAutoComplete::CreatePopupMenu() {
-        popupMenu = std::make_shared<UltraCanvasMenu>(
-            GetIdentifier() + "_popup", 0, 0, 0, 200, 100);
-        popupMenu->SetMenuType(MenuType::PopupMenu);
-        ApplyStyleToMenu();
+    void UltraCanvasAutoComplete::CreatePopupListView() {
+        popupListView = std::make_shared<UltraCanvasListView>(
+            GetIdentifier() + "_popup_lv", 0, 0, 0, 200, 100);
+        popupListView->SetModel(&listModel);
+        popupListView->SetShowHeader(false);
+
+        auto delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
+        delegate->SetTextPadding(8);
+        popupListView->SetDelegate(delegate);
+
+        auto sel = std::make_shared<UltraCanvasSingleSelection>();
+        popupListView->SetSelection(sel);
+
+        ApplyStyleToListView();
     }
 
-    void UltraCanvasAutoComplete::WireCallbacks() {
-        popupMenu->OnMenuClosed([this]() {
-            ClosePopup();
-        });
+    void UltraCanvasAutoComplete::WireListViewCallbacks() {
+        popupListView->onItemActivated = [this](int row) {
+            SelectItem(row);
+        };
+
+        popupListView->onItemClicked = [this](int row) {
+            SelectItem(row);
+        };
+
+        popupListView->onPopupClosed = [this](ClosePopupReason /*reason*/) {
+            if (popupOpen) {
+                popupOpen = false;
+                if (onAutocompletePopupClosed) onAutocompletePopupClosed();
+            }
+        };
     }
 
-    void UltraCanvasAutoComplete::ApplyStyleToMenu() {
-        if (!popupMenu) return;
+    void UltraCanvasAutoComplete::ApplyStyleToListView() {
+        if (!popupListView) return;
 
-        MenuStyle menuStyle;
-        menuStyle.backgroundColor = acStyle.listBackgroundColor;
-        menuStyle.borderColor = acStyle.listBorderColor;
-        menuStyle.hoverColor = acStyle.itemHoverColor;
-        menuStyle.hoverTextColor = acStyle.itemTextColor;
-        menuStyle.textColor = acStyle.itemTextColor;
-        menuStyle.borderWidth = static_cast<int>(acStyle.borderWidth);
-        menuStyle.itemHeight = static_cast<int>(acStyle.itemHeight);
-        menuStyle.borderRadius = 0;
-        menuStyle.showShadow = false;
-        menuStyle.paddingLeft = 8;
-        menuStyle.paddingRight = 8;
-        menuStyle.paddingTop = 0;
-        menuStyle.paddingBottom = 0;
-        menuStyle.scrollbarStyle = acStyle.scrollbarStyle;
-        menuStyle.minWidth = GetBounds().width;
+        ListViewStyle lvStyle;
+        lvStyle.backgroundColor = acStyle.listBackgroundColor;
+        lvStyle.rowHeight = static_cast<int>(acStyle.itemHeight);
+        lvStyle.showHeader = false;
+        lvStyle.showGridLines = false;
+        lvStyle.alternateRowColors = false;
+        lvStyle.hoverBackgroundColor = acStyle.itemHoverColor;
+        lvStyle.selectionBackgroundColor = acStyle.itemHoverColor;
+        lvStyle.scrollbarStyle = acStyle.scrollbarStyle;
 
-        menuStyle.font.fontFamily = acStyle.fontFamily;
-        menuStyle.font.fontSize = acStyle.fontSize;
+        popupListView->SetStyle(lvStyle);
+        popupListView->SetBorders(static_cast<int>(acStyle.borderWidth), acStyle.listBorderColor);
 
-        popupMenu->SetStyle(menuStyle);
+        auto* delegate = dynamic_cast<UltraCanvasDefaultListDelegate*>(popupListView->GetDelegate());
+        if (delegate) {
+            delegate->SetFontSize(acStyle.fontSize);
+            delegate->SetTextColor(acStyle.itemTextColor);
+            delegate->SetSelectedTextColor(acStyle.itemTextColor);
+            delegate->SetTextPadding(8);
+            delegate->SetRowHeight(static_cast<int>(acStyle.itemHeight));
+        }
     }
 
-    void UltraCanvasAutoComplete::PopulateMenuFromFiltered() {
-        popupMenu->Clear();
-        for (int i = 0; i < static_cast<int>(filteredItems.size()); i++) {
-            int idx = i;
-            popupMenu->AddItem(MenuItemData::Action(
-                filteredItems[i].text,
-                [this, idx]() { SelectItem(idx); }
-            ));
+    void UltraCanvasAutoComplete::PopulateListFromFiltered() {
+        std::vector<ListItem> items;
+        items.reserve(filteredItems.size());
+        for (const auto& acItem : filteredItems) {
+            items.emplace_back(acItem.text);
+        }
+        listModel.SetItems(items);
+
+        CalculateAndSetPopupSize();
+    }
+
+    void UltraCanvasAutoComplete::CalculateAndSetPopupSize() {
+        int itemCount = static_cast<int>(filteredItems.size());
+        int visibleItems = std::min(itemCount, acStyle.maxVisibleItems);
+        int listHeight = visibleItems * static_cast<int>(acStyle.itemHeight);
+        listHeight += static_cast<int>(acStyle.borderWidth) * 2;
+
+        int listWidth = std::max(GetBounds().width, 100);
+        if (acStyle.maxPopupWidth > 0) {
+            listWidth = std::min(listWidth, acStyle.maxPopupWidth);
         }
 
-        // Update minWidth in case input bounds changed
-        MenuStyle menuStyle = popupMenu->GetStyle();
-        menuStyle.minWidth = GetBounds().width;
-        popupMenu->SetStyle(menuStyle);
+        popupListView->SetSize(listWidth, listHeight);
     }
 
 } // namespace UltraCanvas

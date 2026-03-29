@@ -539,19 +539,20 @@ public:
         
         return data;
     }
-    
-    // ===== RENDERING =====
-    void Render(IRenderContext* ctx) override {
-        if (!IsVisible()) return;
-        
-        ctx->PushState();
-        
+
+    void UpdateGeometry(IRenderContext *ctx) override {
         // Update scroll bounds if needed
         if (needsScrollUpdate) {
             UpdateScrollBounds();
             needsScrollUpdate = false;
         }
+    };
+
+    // ===== RENDERING =====
+    void Render(IRenderContext* ctx) override {
+        ctx->PushState();
         
+
         // Draw background
         ctx->DrawFilledRectangle(GetBounds(), Colors::White, 1.0f, gridLineColor);
         

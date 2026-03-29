@@ -624,8 +624,6 @@ namespace UltraCanvas {
 // ===== RENDERING =====
 
     void UltraCanvasToolbar::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
-
         ctx->PushState();
 
         // Render shadow if enabled (for Docked style)

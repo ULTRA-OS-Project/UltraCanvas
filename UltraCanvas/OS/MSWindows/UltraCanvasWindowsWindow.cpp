@@ -256,7 +256,7 @@ namespace UltraCanvas {
         DoResize();
         Render(GetRenderContext());
         Flush();
-        ClearRequestRedraw();
+        needsRedraw = false;
 
         debugOutput << "UltraCanvasWindowsWindow::HandleResizeEventWindows: nativeh=" << GetNativeHandle() << " updated successfully" << std::endl;
     }

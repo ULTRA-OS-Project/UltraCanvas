@@ -228,7 +228,7 @@ namespace UltraCanvas {
             }
 
             if (settings.showZIndex) {
-                debugText << "Z: " << element->GetZIndex();
+                debugText << "Z: " << element->GetZOrder();
                 if (settings.multilineText) debugText << "\n";
                 else debugText << " | ";
             }

@@ -1193,20 +1193,21 @@ namespace UltraCanvas {
         EnsureCursorVisible();
         RequestRedraw();
     }
-// ===== RENDERING METHODS =====
 
+// ===== RENDERING METHODS =====
     void UltraCanvasTextArea::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
+        ctx->PushState();
 
         if (isNeedRecalculateVisibleArea) {
+            ctx->PushState();
             if (editingMode == TextAreaEditingMode::Hex) {
                 CalculateHexLayout();
             } else {
                 CalculateVisibleArea();
             }
+            ctx->PopState();
         }
 
-        ctx->PushState();
         DrawBackground(ctx);
 
         if (editingMode == TextAreaEditingMode::Hex) {

@@ -63,7 +63,7 @@ namespace UltraCanvas {
     };
 
 // ===== MACOS APPLICATION CLASS =====
-    class UltraCanvasMacOSApplication : public UltraCanvasBaseApplication {
+    class UltraCanvasMacOSApplication : public UltraCanvasApplicationBase {
     private:
         static UltraCanvasMacOSApplication* instance;
 

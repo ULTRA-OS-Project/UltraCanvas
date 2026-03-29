@@ -1,42 +1,190 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
-// Version: 2.0.0
-// Last Modified: 2025-10-30
-// Author: UltraCanvas Framework
+// Uses ListView popup for rendering dropdown items
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasImage.h"
 
 namespace UltraCanvas {
-    const int scrollbarWidth = 10;
+
+    // ===== DROPDOWN LIST MODEL =====
+
+    int DropdownListModel::GetRowCount() const {
+        return items ? static_cast<int>(items->size()) : 0;
+    }
+
+    ListDataValue DropdownListModel::GetData(const ListIndex& index, ListDataRole role) const {
+        if (!items || index.row < 0 || index.row >= static_cast<int>(items->size()))
+            return std::monostate{};
+
+        const auto& item = (*items)[index.row];
+
+        if (role == ListDataRole::DisplayRole)    return item.text;
+        if (role == ListDataRole::DecorationRole) return item.iconPath;
+        if (role == DropdownValueRole)            return item.value;
+        if (role == DropdownEnabledRole)          return item.enabled ? 1 : 0;
+        if (role == DropdownSeparatorRole)        return item.separator ? 1 : 0;
+        if (role == DropdownSelectedRole)         return item.selected ? 1 : 0;
+
+        return std::monostate{};
+    }
+
+    // ===== DROPDOWN ITEM DELEGATE =====
+
+    void DropdownItemDelegate::RenderItem(IRenderContext* ctx, const IListModel* model,
+                                          int row, int column,
+                                          const ListItemStyleOption& option) {
+        if (!style || !model) return;
+
+        // Query item properties from model
+        auto sepVal = model->GetData({row, 0}, DropdownSeparatorRole);
+        bool isSeparator = (std::get_if<int>(&sepVal) && std::get<int>(sepVal) != 0);
+
+        auto enabledVal = model->GetData({row, 0}, DropdownEnabledRole);
+        bool isEnabled = !(std::get_if<int>(&enabledVal) && std::get<int>(enabledVal) == 0);
+
+        // For separator and disabled items, paint over hover/selection background
+        if (isSeparator || !isEnabled) {
+            if (option.isHovered || option.isSelected) {
+                ctx->SetFillPaint(style->listBackgroundColor);
+                ctx->FillRectangle(option.rect.x, option.rect.y,
+                                   option.rect.width, option.rect.height);
+            }
+        }
+
+        if (isSeparator) {
+            // Draw separator line centered vertically
+            int sepY = option.rect.y + option.rect.height / 2;
+            ctx->SetStrokePaint(style->listBorderColor);
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawLine(Point2Di(option.rect.x + 4, sepY),
+                         Point2Di(option.rect.x + option.rect.width - 4, sepY));
+            return;
+        }
+
+        // Determine text color
+        Color textColor = isEnabled ? style->normalTextColor : style->disabledTextColor;
+
+        ctx->SetFontFace(style->fontFamily, FontWeight::Normal, FontSlant::Normal);
+        ctx->SetFontSize(style->fontSize);
+        ctx->SetTextPaint(textColor);
+
+        int currentX = option.rect.x + 4;
+
+        // Render checkbox for multi-select
+        if (multiSelectEnabled) {
+            auto selVal = model->GetData({row, 0}, DropdownSelectedRole);
+            bool isChecked = (std::get_if<int>(&selVal) && std::get<int>(selVal) != 0);
+
+            Rect2Di checkboxRect(
+                currentX,
+                option.rect.y + (option.rect.height - static_cast<int>(style->checkboxSize)) / 2,
+                static_cast<int>(style->checkboxSize),
+                static_cast<int>(style->checkboxSize)
+            );
+            RenderCheckbox(ctx, isChecked, checkboxRect);
+            currentX += static_cast<int>(style->checkboxSize + style->checkboxPadding);
+        }
+
+        // Render icon if present
+        std::string iconPath = GetStringValue(model->GetData({row, 0}, ListDataRole::DecorationRole));
+        if (!iconPath.empty()) {
+            Rect2Di iconRect(
+                currentX,
+                option.rect.y + (option.rect.height - static_cast<int>(style->iconSize)) / 2,
+                static_cast<int>(style->iconSize),
+                static_cast<int>(style->iconSize)
+            );
+            RenderIcon(ctx, iconPath, iconRect);
+            currentX += static_cast<int>(style->iconSize + style->iconPadding);
+        }
+
+        // Render text
+        std::string text = GetStringValue(model->GetData({row, 0}, ListDataRole::DisplayRole));
+        if (!text.empty()) {
+            int textWidth, textHeight;
+            ctx->GetTextLineDimensions(text, textWidth, textHeight);
+            int textY = option.rect.y + (option.rect.height - textHeight) / 2;
+            ctx->DrawText(text, Point2Di(currentX, textY));
+        }
+    }
+
+    int DropdownItemDelegate::GetRowHeight(const IListModel* model, int row) const {
+        return style ? static_cast<int>(style->itemHeight) : 24;
+    }
+
+    void DropdownItemDelegate::RenderCheckbox(IRenderContext* ctx, bool checked, const Rect2Di& checkboxRect) const {
+        if (!style) return;
+
+        // Checkbox border
+        ctx->DrawFilledRectangle(checkboxRect, Colors::White, 1.0f, style->checkboxBorderColor);
+
+        if (checked) {
+            // Checked background
+            Rect2Di innerRect(
+                checkboxRect.x + 2, checkboxRect.y + 2,
+                checkboxRect.width - 4, checkboxRect.height - 4
+            );
+            ctx->DrawFilledRectangle(innerRect, style->checkboxCheckedColor, 0.0f, Colors::Transparent);
+
+            // Checkmark
+            ctx->SetStrokePaint(style->checkmarkColor);
+            ctx->SetStrokeWidth(2.0f);
+
+            int cx = checkboxRect.x + checkboxRect.width / 2;
+            int cy = checkboxRect.y + checkboxRect.height / 2;
+
+            ctx->DrawLine(
+                Point2Di(checkboxRect.x + 3, cy),
+                Point2Di(cx - 1, checkboxRect.y + checkboxRect.height - 4)
+            );
+            ctx->DrawLine(
+                Point2Di(cx - 1, checkboxRect.y + checkboxRect.height - 4),
+                Point2Di(checkboxRect.x + checkboxRect.width - 3, checkboxRect.y + 3)
+            );
+        }
+    }
+
+    void DropdownItemDelegate::RenderIcon(IRenderContext* ctx, const std::string& iconPath, const Rect2Di& iconRect) const {
+        if (iconPath.empty()) return;
+
+        auto icon = UCImage::Get(iconPath);
+        if (icon && icon->IsValid()) {
+            ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+        }
+    }
+
+    // ===== DROPDOWN CONSTRUCTOR =====
 
     UltraCanvasDropdown::UltraCanvasDropdown(const std::string &identifier, long id, long x, long y,
-                                             long w,
-                                             long h)
+                                             long w, long h)
             : UltraCanvasUIElement(identifier, id, x, y, w, h) {
         style.scrollbarStyle = ScrollbarStyle::DropDown();
-        CreateScrollbar();
+        CreatePopupListView();
+        WireListViewCallbacks();
     }
+
+    // ===== ITEM MANAGEMENT =====
 
     void UltraCanvasDropdown::AddItem(const std::string &text) {
         items.emplace_back(text);
-        needCalculateDimensions = true;
+        dropdownModel.DataChanged();
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text, const std::string &value) {
         items.emplace_back(text, value);
-        needCalculateDimensions = true;
+        dropdownModel.DataChanged();
     }
 
     void UltraCanvasDropdown::AddItem(const std::string &text, const std::string &value, const std::string &iconPath) {
         items.emplace_back(text, value, iconPath);
-        needCalculateDimensions = true;
+        dropdownModel.DataChanged();
     }
 
     void UltraCanvasDropdown::AddItem(const DropdownItem &item) {
         items.push_back(item);
-        needCalculateDimensions = true;
+        dropdownModel.DataChanged();
     }
 
     void UltraCanvasDropdown::AddSeparator() {
@@ -44,19 +192,14 @@ namespace UltraCanvas {
         separator.separator = true;
         separator.enabled = false;
         items.push_back(separator);
-        needCalculateDimensions = true;
+        dropdownModel.DataChanged();
     }
 
     void UltraCanvasDropdown::ClearItems() {
         items.clear();
         selectedIndex = -1;
-        hoveredIndex = -1;
-        scrollOffset = 0;
         selectedIndices.clear();
-        needCalculateDimensions = true;
-        if (listScrollbar) {
-            listScrollbar->SetScrollPosition(0);
-        }
+        dropdownModel.DataChanged();
     }
 
     void UltraCanvasDropdown::RemoveItem(int index) {
@@ -83,13 +226,14 @@ namespace UltraCanvas {
                 selectedIndices = newSelectedIndices;
             }
 
-            needCalculateDimensions = true;
+            dropdownModel.DataChanged();
         }
     }
 
+    // ===== SELECTION MANAGEMENT =====
+
     void UltraCanvasDropdown::SetSelectedIndex(int index, bool runNotifications) {
         if (multiSelectEnabled) {
-            // In multi-select mode, use SetItemSelected instead
             return;
         }
 
@@ -98,7 +242,6 @@ namespace UltraCanvas {
                 selectedIndex = index;
 
                 if (index >= 0) {
-                    EnsureItemVisible(index);                    
                     if (runNotifications && onSelectionChanged) {
                         onSelectionChanged(index, items[index]);
                     }
@@ -126,34 +269,33 @@ namespace UltraCanvas {
         return nullptr;
     }
 
-    // ===== NEW: Multi-selection methods =====
+    // ===== MULTI-SELECTION =====
 
     void UltraCanvasDropdown::SetMultiSelectEnabled(bool enabled) {
         if (multiSelectEnabled != enabled) {
             multiSelectEnabled = enabled;
 
             if (enabled) {
-                // Switch from single to multi-select
                 selectedIndices.clear();
                 if (selectedIndex >= 0) {
                     selectedIndices.insert(selectedIndex);
                     items[selectedIndex].selected = true;
                 }
             } else {
-                // Switch from multi to single-select
                 if (!selectedIndices.empty()) {
                     selectedIndex = *selectedIndices.begin();
                 } else {
                     selectedIndex = -1;
                 }
-
-                // Clear multi-select state
                 for (auto& item : items) {
                     item.selected = false;
                 }
                 selectedIndices.clear();
             }
 
+            // Update delegate and selection model
+            dropdownDelegate->SetMultiSelectEnabled(enabled);
+            dropdownModel.DataChanged();
             RequestRedraw();
         }
     }
@@ -182,6 +324,8 @@ namespace UltraCanvas {
         }
 
         if (changed) {
+            dropdownModel.DataChanged();
+
             if (onMultiSelectionChanged) {
                 std::vector<int> indices(selectedIndices.begin(), selectedIndices.end());
                 onMultiSelectionChanged(indices);
@@ -203,9 +347,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDropdown::SelectAll() {
-        if (!multiSelectEnabled) {
-            return;
-        }
+        if (!multiSelectEnabled) return;
 
         selectedIndices.clear();
         for (int i = 0; i < (int)items.size(); ++i) {
@@ -215,46 +357,42 @@ namespace UltraCanvas {
             }
         }
 
+        dropdownModel.DataChanged();
+
         if (onMultiSelectionChanged) {
             std::vector<int> indices(selectedIndices.begin(), selectedIndices.end());
             onMultiSelectionChanged(indices);
         }
-
         if (onSelectedItemsChanged) {
             onSelectedItemsChanged(GetSelectedItems());
         }
-
         RequestRedraw();
     }
 
     void UltraCanvasDropdown::DeselectAll() {
-        if (!multiSelectEnabled) {
-            return;
-        }
+        if (!multiSelectEnabled) return;
 
         selectedIndices.clear();
         for (auto& item : items) {
             item.selected = false;
         }
 
+        dropdownModel.DataChanged();
+
         if (onMultiSelectionChanged) {
             std::vector<int> empty;
             onMultiSelectionChanged(empty);
         }
-
         if (onSelectedItemsChanged) {
             std::vector<DropdownItem> empty;
             onSelectedItemsChanged(empty);
         }
-
         RequestRedraw();
     }
 
     std::vector<int> UltraCanvasDropdown::GetSelectedIndices() const {
         if (!multiSelectEnabled) {
-            if (selectedIndex >= 0) {
-                return {selectedIndex};
-            }
+            if (selectedIndex >= 0) return {selectedIndex};
             return {};
         }
         return std::vector<int>(selectedIndices.begin(), selectedIndices.end());
@@ -262,7 +400,6 @@ namespace UltraCanvas {
 
     std::vector<DropdownItem> UltraCanvasDropdown::GetSelectedItems() const {
         std::vector<DropdownItem> result;
-
         if (!multiSelectEnabled) {
             if (selectedIndex >= 0 && selectedIndex < (int)items.size()) {
                 result.push_back(items[selectedIndex]);
@@ -274,85 +411,56 @@ namespace UltraCanvas {
                 }
             }
         }
-
         return result;
     }
 
+    // ===== DROPDOWN OPEN / CLOSE =====
+
     void UltraCanvasDropdown::OpenDropdown() {
-        if (!dropdownOpen && !items.empty()) {
+        if (!isPopup && !items.empty() && window) {
             dropdownOpen = true;
-            CalculateDropdownDimensions();
+            dropdownModel.DataChanged();
+            CalculateAndSetPopupSize();
 
-            // Ensure selected item is visible when opening
-            if (selectedIndex >= 0) {
-                EnsureItemVisible(selectedIndex);
+            Point2Di pos = CalculatePopupPosition();
+
+            PopupElementSettings settings;
+            settings.popupOwner = shared_from_this();
+            settings.closeByEscapeKey = true;
+            settings.closeByClickOutside = true;
+
+            window->OpenPopup(pos, *popupListView, settings);
+
+            // Sync current selection to the ListView
+            if (!multiSelectEnabled && selectedIndex >= 0) {
+                auto* sel = popupListView->GetSelection();
+                if (sel) sel->Select(selectedIndex);
+                popupListView->EnsureRowVisible(selectedIndex);
             }
 
-            if (onDropdownOpened) {
-                onDropdownOpened();
-            }
-            UltraCanvasWindowBase::AddToOverlays(this, {
-                .closeByEscapeKey = true,
-                .closeByClickOutside = true,
-                .overlayZOrder = OverlayZOrder::Menus,
-                .useAbsolutePosition = false,
-                .handleInputEvents = true
-            });
+            if (onDropdownOpened) onDropdownOpened();
             RequestRedraw();
         }
     }
 
     void UltraCanvasDropdown::CloseDropdown() {
-        if (dropdownOpen) {
-            UltraCanvasWindowBase::RemoveFromOverlays(this);
+        if (window && popupListView) {
+            window->ClosePopup(*popupListView);
         }
     }
 
-    void UltraCanvasDropdown::OnRemovedFromOverlays() {
-        if (dropdownOpen) {
-            dropdownOpen = false;
-            hoveredIndex = -1;
-
-            // Fire callback after cleanup is complete, so reopening from the
-            // callback won't be undone by RemoveThisPopupElementFromWindow.
-            if (onDropdownClosed) {
-                onDropdownClosed();
-            }
-        }
-    }
+    // ===== STYLING =====
 
     void UltraCanvasDropdown::SetStyle(const DropdownStyle &newStyle) {
         style = newStyle;
-        ApplyStyleToScrollbar();
-        needCalculateDimensions = true;
+        ApplyStyleToListView();
         RequestRedraw();
     }
 
-    Rect2Di UltraCanvasDropdown::GetOverlayBounds() {
-        Rect2Di baseBounds = GetBounds();
+    // ===== POPUP SIZING AND POSITIONING =====
 
-        if (dropdownOpen) {
-            Rect2Di listRect = CalculatePopupPosition();
-
-            int minX = std::min(baseBounds.x, listRect.x);
-            int minY = std::min(baseBounds.y, listRect.y);
-            int maxX = std::max(baseBounds.x + baseBounds.width, listRect.x + listRect.width);
-            int maxY = std::max(baseBounds.y + baseBounds.height, listRect.y + listRect.height);
-
-            return Rect2Di(minX, minY, maxX - minX, maxY - minY);
-        }
-
-        return baseBounds;
-    }
-
-    void UltraCanvasDropdown::CalculateDropdownDimensions() {
-        if (items.empty()) {
-            dropdownHeight = 0;
-            dropdownWidth = 0;
-            needScrollbar = false;
-            needCalculateDimensions = false;
-            return;
-        }
+    void UltraCanvasDropdown::CalculateAndSetPopupSize() {
+        if (items.empty() || !popupListView) return;
 
         auto ctx = GetRenderContext();
         if (!ctx) return;
@@ -368,12 +476,9 @@ namespace UltraCanvas {
             int textWidth, textHeight;
             ctx->GetTextLineDimensions(item.text, textWidth, textHeight);
 
-            // Add icon width if present
             if (!item.iconPath.empty()) {
                 textWidth += static_cast<int>(style.iconSize + style.iconPadding * 2);
             }
-
-            // Add checkbox width if multi-select
             if (multiSelectEnabled) {
                 textWidth += static_cast<int>(style.checkboxSize + style.checkboxPadding * 2);
             }
@@ -381,143 +486,150 @@ namespace UltraCanvas {
             maxTextWidth = std::max(maxTextWidth, textWidth);
         }
 
-        int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
-
-        // Add padding
-        dropdownWidth = maxTextWidth + static_cast<int>(style.paddingLeft + style.paddingRight);
-
-        // Add scrollbar width if needed
-        needScrollbar = (style.maxVisibleItems != -1) && (static_cast<int>(items.size()) > style.maxVisibleItems);
-        if (needScrollbar) {
-            dropdownWidth += scrollbarWidth;
-        }
-
+        int dropdownWidth = maxTextWidth + static_cast<int>(style.paddingLeft + style.paddingRight);
         dropdownWidth = std::max(dropdownWidth, GetBounds().width);
         dropdownWidth = std::min(dropdownWidth, style.maxItemWidth);
 
         // Calculate height
         int itemCount = static_cast<int>(items.size());
-        int visibleItems;
+        int visibleItems = (style.maxVisibleItems == -1)
+            ? itemCount
+            : std::min(itemCount, style.maxVisibleItems);
 
-        if (style.maxVisibleItems == -1) {
-            // Show all items; scrollbar will be added if clamped by window bounds
-            visibleItems = itemCount;
-            needScrollbar = false;
-        } else {
-            visibleItems = std::min(itemCount, style.maxVisibleItems);
-        }
+        int dropdownHeight = static_cast<int>(visibleItems * style.itemHeight + style.borderWidth * 2);
 
-        effectiveVisibleItems = visibleItems;
-        maxDropdownHeight = static_cast<int>(visibleItems * style.itemHeight + 2);
-        dropdownHeight = maxDropdownHeight;
-
-        // Update scrollbar parameters
-        if (listScrollbar && needScrollbar) {
-            listScrollbar->SetViewportSize(visibleItems);
-            listScrollbar->SetContentSize(itemCount);
-        }
-
-        needCalculateDimensions = false;
+        popupListView->SetSize(dropdownWidth, dropdownHeight);
     }
 
-    Rect2Di UltraCanvasDropdown::CalculatePopupPosition() {
-        if (needCalculateDimensions) {
-            CalculateDropdownDimensions();
-        }
-        Point2Di globalPos = GetPosition();
+    Point2Di UltraCanvasDropdown::CalculatePopupPosition() {
+        Point2Di globalPos = GetPositionInWindow();
         Rect2Di buttonRect = GetBounds();
 
         int windowHeight = window ? window->GetHeight() : 9999;
         int windowWidth = window ? window->GetWidth() : 9999;
 
+        int popupWidth = popupListView->GetBounds().width;
+        int popupHeight = popupListView->GetBounds().height;
+
         // Calculate available space below and above the button
         int spaceBelow = windowHeight - (globalPos.y + buttonRect.height);
         int spaceAbove = globalPos.y;
 
-        int effectiveHeight = dropdownHeight;
+        int effectiveHeight = popupHeight;
         int listY;
 
         if (effectiveHeight <= spaceBelow) {
-            // Fits below — preferred position
+            // Fits below
             listY = globalPos.y + buttonRect.height;
         } else if (effectiveHeight <= spaceAbove) {
             // Fits above
             listY = globalPos.y - effectiveHeight;
         } else if (spaceBelow >= spaceAbove) {
-            // More space below — clamp height to available space
+            // More space below — clamp
             effectiveHeight = std::max(spaceBelow, static_cast<int>(style.itemHeight) + 2);
             listY = globalPos.y + buttonRect.height;
         } else {
-            // More space above — clamp height to available space
+            // More space above — clamp
             effectiveHeight = std::max(spaceAbove, static_cast<int>(style.itemHeight) + 2);
             listY = globalPos.y - effectiveHeight;
         }
 
-        Rect2Di listRect(globalPos.x, listY, dropdownWidth, effectiveHeight);
-
-        // Horizontal adjustment
-        if (listRect.x + listRect.width > windowWidth) {
-            listRect.x = windowWidth - dropdownWidth;
+        // Update popup size if clamped
+        if (effectiveHeight != popupHeight) {
+            popupListView->SetSize(popupWidth, effectiveHeight);
         }
 
-        return listRect;
+        int listX = globalPos.x;
+        // Horizontal adjustment
+        if (listX + popupWidth > windowWidth) {
+            listX = windowWidth - popupWidth;
+        }
+
+        return Point2Di(listX, listY);
     }
+
+    // ===== LISTVIEW SETUP =====
+
+    void UltraCanvasDropdown::CreatePopupListView() {
+        popupListView = std::make_shared<UltraCanvasListView>(
+            GetIdentifier() + "_popup_lv", 0, 0, 0, 200, 100);
+
+        dropdownModel.SetItems(&items);
+        popupListView->SetModel(&dropdownModel);
+        popupListView->SetShowHeader(false);
+
+        dropdownDelegate = std::make_shared<DropdownItemDelegate>();
+        dropdownDelegate->SetStyle(&style);
+        dropdownDelegate->SetMultiSelectEnabled(multiSelectEnabled);
+        popupListView->SetDelegate(dropdownDelegate);
+
+        auto sel = std::make_shared<UltraCanvasSingleSelection>();
+        popupListView->SetSelection(sel);
+
+        ApplyStyleToListView();
+    }
+
+    void UltraCanvasDropdown::WireListViewCallbacks() {
+        popupListView->onItemClicked = [this](int row) {
+            if (row < 0 || row >= (int)items.size()) return;
+            if (items[row].separator || !items[row].enabled) return;
+
+            if (multiSelectEnabled) {
+                SetItemSelected(row, !IsItemSelected(row));
+            } else {
+                SetSelectedIndex(row);
+                CloseDropdown();
+            }
+        };
+
+        popupListView->onItemHovered = [this](int row) {
+            if (row >= 0 && row < (int)items.size() && onItemHovered) {
+                onItemHovered(row, items[row]);
+            }
+        };
+
+        popupListView->onPopupClosed = [this](ClosePopupReason /*reason*/) {
+            dropdownOpen = false;
+            if (onDropdownClosed) onDropdownClosed();
+        };
+    }
+
+    void UltraCanvasDropdown::ApplyStyleToListView() {
+        if (!popupListView) return;
+
+        ListViewStyle lvStyle;
+        lvStyle.backgroundColor = style.listBackgroundColor;
+        lvStyle.rowHeight = static_cast<int>(style.itemHeight);
+        lvStyle.showHeader = false;
+        lvStyle.showGridLines = false;
+        lvStyle.alternateRowColors = false;
+        lvStyle.hoverBackgroundColor = style.itemHoverColor;
+        lvStyle.selectionBackgroundColor = style.itemSelectedColor;
+        lvStyle.scrollbarStyle = style.scrollbarStyle;
+
+        popupListView->SetStyle(lvStyle);
+        popupListView->SetBorders(static_cast<int>(style.borderWidth), style.listBorderColor);
+    }
+
+    // ===== GEOMETRY OVERRIDES =====
+
+    void UltraCanvasDropdown::UpdateGeometry(IRenderContext* ctx) {
+        UltraCanvasUIElement::UpdateGeometry(ctx);
+    }
+
+    void UltraCanvasDropdown::SetWindow(UltraCanvasWindowBase *win) {
+        UltraCanvasUIElement::SetWindow(win);
+        if (popupListView) {
+            popupListView->SetWindow(win);
+        }
+    }
+
+    // ===== RENDERING =====
 
     void UltraCanvasDropdown::Render(IRenderContext* ctx) {
         ctx->PushState();
         RenderButton(ctx);
         ctx->PopState();
-    }
-
-    void UltraCanvasDropdown::RenderOverlay(UltraCanvas::IRenderContext *ctx) {
-        if (!dropdownOpen || items.empty() || !ctx) return;
-
-        if (needCalculateDimensions) {
-            CalculateDropdownDimensions();
-        }
-
-        Rect2Di listRect = CalculatePopupPosition();
-
-        // Check if popup height was clamped (less than full dropdown height)
-        bool heightClamped = listRect.height < dropdownHeight;
-        bool showScrollbar = needScrollbar || heightClamped;
-
-        // Calculate how many items actually fit in the (potentially clamped) height
-        int fittingItems = std::max(1, (listRect.height - 2) / static_cast<int>(style.itemHeight));
-        int maxVis = (style.maxVisibleItems == -1) ? static_cast<int>(items.size()) : style.maxVisibleItems;
-        effectiveVisibleItems = heightClamped
-            ? std::min(fittingItems, static_cast<int>(items.size()))
-            : std::min(static_cast<int>(items.size()), maxVis);
-
-        // Update scrollbar when height is clamped or scrollbar is needed
-        if (showScrollbar && listScrollbar) {
-            listScrollbar->SetViewportSize(effectiveVisibleItems);
-            listScrollbar->SetContentSize(static_cast<int>(items.size()));
-        }
-
-        // Draw list background and border
-        ctx->DrawFilledRectangle(listRect, style.listBackgroundColor, style.borderWidth, style.listBorderColor);
-
-        // Set clipping for items
-        ctx->PushState();
-        int sbWidth = showScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
-        ctx->ClipRect(Rect2Di(listRect.x + 1, listRect.y + 1,
-                              listRect.width - 2 - sbWidth, listRect.height - 2));
-
-        // Render visible items
-        int startIndex = scrollOffset;
-        int endIndex = std::min(startIndex + effectiveVisibleItems, static_cast<int>(items.size()));
-
-        for (int i = startIndex; i < endIndex; i++) {
-            RenderDropdownItem(i, listRect, i - startIndex, ctx);
-        }
-
-        ctx->PopState();
-
-        // Render scrollbar if needed
-        if (showScrollbar) {
-            RenderScrollbar(listRect, ctx);
-        }
     }
 
     std::string UltraCanvasDropdown::GetDisplayText() const {
@@ -569,7 +681,6 @@ namespace UltraCanvas {
         std::string displayText = GetDisplayText();
 
         if (!displayText.empty()) {
-            // Clip text to button bounds so it doesn't overflow into adjacent elements
             ctx->PushState();
             int arrowSpace = static_cast<int>(style.arrowSize * 2 + 2);
             ctx->ClipRect(Rect2Di(buttonRect.x + 1, buttonRect.y,
@@ -582,7 +693,6 @@ namespace UltraCanvas {
             int textWidth, textHeight;
             ctx->GetTextLineDimensions(displayText, textWidth, textHeight);
 
-            // Calculate text position
             int textX = buttonRect.x + (int)style.paddingLeft;
             int textY = buttonRect.y + (buttonRect.height - textHeight) / 2;
 
@@ -591,12 +701,15 @@ namespace UltraCanvas {
                 const auto& item = items[selectedIndex];
                 if (!item.iconPath.empty()) {
                     Rect2Di iconRect(
-                            textX,
-                            buttonRect.y + (buttonRect.height - (int)style.iconSize) / 2,
-                            (int)style.iconSize,
-                            (int)style.iconSize
+                        textX,
+                        buttonRect.y + (buttonRect.height - (int)style.iconSize) / 2,
+                        (int)style.iconSize,
+                        (int)style.iconSize
                     );
-                    RenderItemIcon(item.iconPath, iconRect, ctx);
+                    auto icon = UCImage::Get(item.iconPath);
+                    if (icon && icon->IsValid()) {
+                        ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+                    }
                     textX += (int)(style.iconSize + style.iconPadding);
                 }
             }
@@ -626,382 +739,11 @@ namespace UltraCanvas {
         ctx->SetStrokePaint(color);
         ctx->SetStrokeWidth(1.0f);
 
-        // Draw down arrow using lines
         ctx->DrawLine(arrowX, arrowY, arrowCenterX, arrowBottom);
         ctx->DrawLine(arrowCenterX, arrowBottom, arrowX + style.arrowSize, arrowY);
     }
 
-    void UltraCanvasDropdown::RenderDropdownItem(int itemIndex, const Rect2Di &listRect, int visualIndex,
-                                                 IRenderContext *ctx) {
-        const DropdownItem& item = items[itemIndex];
-
-        float itemY = listRect.y + 1 + visualIndex * style.itemHeight;
-        Rect2Di itemRect(listRect.x + 1, itemY, listRect.width - 2, style.itemHeight - 2);
-
-        ctx->PushState();
-
-        if (item.separator) {
-            // Draw separator line
-            float sepY = itemY + style.itemHeight / 2;
-            ctx->SetStrokePaint(style.listBorderColor);
-            ctx->DrawLine(Point2Di(itemRect.x + 4, sepY), Point2Di(itemRect.x + itemRect.width - 4, sepY));
-            ctx->PopState();
-            return;
-        }
-
-        // Determine item colors
-        Color bgColor = Colors::Transparent;
-        Color textColor = item.enabled ? style.normalTextColor : style.disabledTextColor;
-
-        bool isSelected = IsItemSelected(itemIndex);
-
-        if (isSelected && !multiSelectEnabled) {
-            bgColor = style.itemSelectedColor;
-        } else if (itemIndex == hoveredIndex && item.enabled) {
-            bgColor = style.itemHoverColor;
-        }
-
-        // Draw item background
-        if (bgColor.a > 0) {
-            ctx->DrawFilledRectangle(itemRect, bgColor, 0.0f, Colors::Transparent);
-        }
-
-        // Set up text rendering
-        ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
-        ctx->SetFontSize(style.fontSize);
-        ctx->SetTextPaint(textColor);
-
-        int currentX = itemRect.x + 4;
-
-        // Render checkbox for multi-select
-        if (multiSelectEnabled) {
-            Rect2Di checkboxRect(
-                    currentX,
-                    itemRect.y + (itemRect.height - (int)style.checkboxSize) / 2,
-                    (int)style.checkboxSize,
-                    (int)style.checkboxSize
-            );
-            RenderCheckbox(isSelected, checkboxRect, ctx);
-            currentX += (int)(style.checkboxSize + style.checkboxPadding);
-        }
-
-        // Render icon if present
-        if (!item.iconPath.empty()) {
-            Rect2Di iconRect(
-                    currentX,
-                    itemRect.y + (itemRect.height - (int)style.iconSize) / 2,
-                    (int)style.iconSize,
-                    (int)style.iconSize
-            );
-            RenderItemIcon(item.iconPath, iconRect, ctx);
-            currentX += (int)(style.iconSize + style.iconPadding);
-        }
-
-        // Render text
-        int textWidth, textHeight;
-        ctx->GetTextLineDimensions(item.text, textWidth, textHeight);
-        int textY = itemRect.y + (itemRect.height - textHeight) / 2;
-        ctx->DrawText(item.text, Point2Di(currentX, textY));
-
-        ctx->PopState();
-    }
-
-    void UltraCanvasDropdown::RenderItemIcon(const std::string& iconPath, const Rect2Di& iconRect, IRenderContext* ctx) {
-        if (iconPath.empty()) {
-            return;
-        }
-
-        auto icon = UCImage::Get(iconPath);
-        if (icon && icon->IsValid()) {
-            ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
-        }
-    }
-
-    void UltraCanvasDropdown::RenderCheckbox(bool checked, const Rect2Di& checkboxRect, IRenderContext* ctx) {
-        // Draw checkbox border
-        ctx->DrawFilledRectangle(checkboxRect, Colors::White, 1.0f, style.checkboxBorderColor);
-
-        if (checked) {
-            // Draw checkmark background
-            Rect2Di innerRect(
-                    checkboxRect.x + 2,
-                    checkboxRect.y + 2,
-                    checkboxRect.width - 4,
-                    checkboxRect.height - 4
-            );
-            ctx->DrawFilledRectangle(innerRect, style.checkboxCheckedColor, 0.0f, Colors::Transparent);
-
-            // Draw checkmark
-            ctx->SetStrokePaint(style.checkmarkColor);
-            ctx->SetStrokeWidth(2.0f);
-
-            int cx = checkboxRect.x + checkboxRect.width / 2;
-            int cy = checkboxRect.y + checkboxRect.height / 2;
-
-            // Simple checkmark lines
-            ctx->DrawLine(
-                    Point2Di(checkboxRect.x + 3, cy),
-                    Point2Di(cx - 1, checkboxRect.y + checkboxRect.height - 4)
-            );
-            ctx->DrawLine(
-                    Point2Di(cx - 1, checkboxRect.y + checkboxRect.height - 4),
-                    Point2Di(checkboxRect.x + checkboxRect.width - 3, checkboxRect.y + 3)
-            );
-        }
-    }
-
-    void UltraCanvasDropdown::RenderScrollbar(const Rect2Di &listRect, IRenderContext *ctx) {
-        if (!listScrollbar) return;
-
-        int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
-        int scrollbarX = listRect.x + listRect.width - scrollbarWidth - 1;
-        int scrollbarY = listRect.y + 1;
-        int scrollbarHeight = listRect.height - 2;
-
-        listScrollbar->SetBounds(Rect2Di(scrollbarX, scrollbarY, scrollbarWidth, scrollbarHeight));
-        listScrollbar->SetScrollPosition(scrollOffset);
-
-        listScrollbar->Render(ctx);
-    }
-
-    void UltraCanvasDropdown::EnsureItemVisible(int index) {
-        int visItems = effectiveVisibleItems > 0 ? effectiveVisibleItems :
-                       (style.maxVisibleItems == -1 ? static_cast<int>(items.size()) : style.maxVisibleItems);
-        if (index < scrollOffset) {
-            scrollOffset = index;
-        } else if (index >= scrollOffset + visItems) {
-            scrollOffset = index - visItems + 1;
-        }
-        scrollOffset = std::max(0, std::min(scrollOffset,
-                                            static_cast<int>(items.size()) - visItems));
-
-        if (listScrollbar) {
-            listScrollbar->SetScrollPosition(scrollOffset);
-        }
-    }
-
-    int UltraCanvasDropdown::GetItemAtPosition(int x, int y) {
-        Rect2Di listRect = CalculatePopupPosition();
-
-        if (!listRect.Contains(x, y)) {
-            return -1;
-        }
-
-        // Check if in scrollbar area
-        if (needScrollbar) {
-            int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
-            if (x > listRect.x + listRect.width - scrollbarWidth) {
-                return -1;
-            }
-        }
-
-        int relativeY = y - listRect.y - 1;
-        int visualIndex = relativeY / static_cast<int>(style.itemHeight);
-        int itemIndex = scrollOffset + visualIndex;
-
-        if (itemIndex >= 0 && itemIndex < static_cast<int>(items.size())) {
-            return itemIndex;
-        }
-
-        return -1;
-    }
-
-    bool UltraCanvasDropdown::HandleMouseDown(const UCEvent &event) {
-        Point2Di mousePos(event.x, event.y);
-        Rect2Di buttonRect = GetBounds();
-
-        if (dropdownOpen) {
-            // Check scrollbar first
-            if (needScrollbar && listScrollbar && listScrollbar->Contains(event.x, event.y)) {
-                return listScrollbar->OnEvent(event);
-            }
-
-            int itemIndex = GetItemAtPosition(event.x, event.y);
-            if (itemIndex >= 0 && items[itemIndex].enabled && !items[itemIndex].separator) {
-                if (multiSelectEnabled) {
-                    SetItemSelected(itemIndex, !IsItemSelected(itemIndex));
-                } else {
-                    SetSelectedIndex(itemIndex);
-                    CloseDropdown();
-                }
-                return true;
-            }
-
-            // Click outside - close dropdown
-//            if (!GetOverlayBounds().Contains(mousePos)) {
-//                CloseDropdown();
-//                return false;
-//            }
-        }
-
-        if (buttonRect.Contains(mousePos)) {
-            buttonPressed = true;
-            if (dropdownOpen) {
-                CloseDropdown();
-            } else {
-                OpenDropdown();
-            }
-            return true;
-        }
-
-        return false;
-    }
-
-    bool UltraCanvasDropdown::HandleMouseUp(const UCEvent &event) {
-        buttonPressed = false;
-        if (dropdownOpen && listScrollbar && listScrollbar->IsDragging()) {
-            return listScrollbar->OnEvent(event);
-        }
-        return false;
-    }
-
-    bool UltraCanvasDropdown::HandleMouseMove(const UCEvent &event) {
-        // Update cursor based on which area the mouse is over
-        Rect2Di buttonRect = GetBounds();
-        if (buttonRect.Contains(event.x, event.y)) {
-            SetMouseCursor(UCMouseCursor::ContextMenu);
-        } else {
-            SetMouseCursor(UCMouseCursor::Default);
-        }
-        if (dropdownOpen) {
-            // Handle scrollbar dragging
-            if (listScrollbar && listScrollbar->IsDragging()) {
-                return listScrollbar->OnEvent(event);
-            }
-
-            int itemIndex = GetItemAtPosition(event.x, event.y);
-            if (itemIndex != hoveredIndex) {
-                hoveredIndex = itemIndex;
-                if (hoveredIndex >= 0 && onItemHovered) {
-                    onItemHovered(hoveredIndex, items[hoveredIndex]);
-                }
-                RequestRedraw();
-            }
-        }
-        return false;
-    }
-
-    void UltraCanvasDropdown::HandleMouseLeave(const UCEvent &event) {
-        if (hoveredIndex != -1) {
-            hoveredIndex = -1;
-            RequestRedraw();
-        }
-    }
-
-    void UltraCanvasDropdown::HandleKeyDown(const UCEvent &event) {
-        if (!dropdownOpen || items.empty()) {
-            return;
-        }
-
-        int newSelectedIndex = selectedIndex;
-
-        switch (event.virtualKey) {
-            case UCKeys::Up:
-                if (newSelectedIndex > 0) {
-                    newSelectedIndex--;
-                    while (newSelectedIndex >= 0 &&
-                           (items[newSelectedIndex].separator || !items[newSelectedIndex].enabled)) {
-                        newSelectedIndex--;
-                    }
-                }
-                break;
-
-            case UCKeys::Down:
-                if (newSelectedIndex < (int)items.size() - 1) {
-                    newSelectedIndex++;
-                    while (newSelectedIndex < (int)items.size() &&
-                           (items[newSelectedIndex].separator || !items[newSelectedIndex].enabled)) {
-                        newSelectedIndex++;
-                    }
-                }
-                break;
-
-            case UCKeys::Home:
-                newSelectedIndex = 0;
-                while (newSelectedIndex < (int)items.size() &&
-                       (items[newSelectedIndex].separator || !items[newSelectedIndex].enabled)) {
-                    newSelectedIndex++;
-                }
-                break;
-
-            case UCKeys::End:
-                newSelectedIndex = (int)items.size() - 1;
-                while (newSelectedIndex >= 0 &&
-                       (items[newSelectedIndex].separator || !items[newSelectedIndex].enabled)) {
-                    newSelectedIndex--;
-                }
-                break;
-
-            case UCKeys::Return:
-                if (multiSelectEnabled) {
-                    // Toggle selection
-                    if (selectedIndex >= 0) {
-                        bool currentlySelected = IsItemSelected(selectedIndex);
-                        SetItemSelected(selectedIndex, !currentlySelected);
-                    }
-                } else {
-                    // Close dropdown
-                    CloseDropdown();
-                }
-                return;
-
-            case UCKeys::Escape:
-                CloseDropdown();
-                return;
-
-            case UCKeys::Space:
-                if (multiSelectEnabled && selectedIndex >= 0) {
-                    bool currentlySelected = IsItemSelected(selectedIndex);
-                    SetItemSelected(selectedIndex, !currentlySelected);
-                }
-                return;
-
-            default:
-                return;
-        }
-
-        if (newSelectedIndex != selectedIndex && newSelectedIndex >= 0 && newSelectedIndex < (int)items.size()) {
-            if (!multiSelectEnabled) {
-                SetSelectedIndex(newSelectedIndex);
-            } else {
-                // In multi-select, arrow keys just move the focus, not selection
-                selectedIndex = newSelectedIndex;
-                EnsureItemVisible(selectedIndex);
-                RequestRedraw();
-            }
-        }
-    }
-
-    bool UltraCanvasDropdown::HandleMouseWheel(const UCEvent &event) {
-        if (!dropdownOpen) return false;
-
-        Rect2Di listRect = CalculatePopupPosition();
-        bool heightClamped = listRect.height < dropdownHeight;
-        if (!needScrollbar && !heightClamped) return false;
-
-        if (!listRect.Contains(event.x, event.y)) return false;
-
-        int fittingItems = heightClamped
-            ? std::max(1, (listRect.height - 2) / static_cast<int>(style.itemHeight))
-            : (style.maxVisibleItems == -1 ? static_cast<int>(items.size()) : style.maxVisibleItems);
-
-        int delta = event.wheelDelta > 0 ? -1 : 1;
-        int maxScroll = std::max(0, static_cast<int>(items.size()) - fittingItems);
-        scrollOffset = std::clamp(scrollOffset + delta, 0, maxScroll);
-
-        if (listScrollbar) {
-            listScrollbar->SetScrollPosition(scrollOffset);
-        }
-
-        RequestRedraw();
-        return true;
-    }
-
-    void UltraCanvasDropdown::HandleFocusLost() {
-        if (dropdownOpen && !multiSelectEnabled) {
-            CloseDropdown();
-        }
-    }
+    // ===== EVENT HANDLING =====
 
     bool UltraCanvasDropdown::OnEvent(const UCEvent &event) {
         switch (event.type) {
@@ -1020,11 +762,7 @@ namespace UltraCanvas {
 
             case UCEventType::KeyDown:
                 if (onKeyDown && onKeyDown(event)) return true;
-                HandleKeyDown(event);
-                return true;
-
-            case UCEventType::MouseWheel:
-                return HandleMouseWheel(event);
+                return HandleKeyDown(event);
 
             case UCEventType::FocusLost:
                 HandleFocusLost();
@@ -1035,31 +773,102 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasDropdown::CreateScrollbar() {
-        listScrollbar = std::make_shared<UltraCanvasScrollbar>(
-                GetIdentifier() + "_scroll", 0, 0, 0, 12, 100,
-                ScrollbarOrientation::Vertical);
+    bool UltraCanvasDropdown::HandleMouseDown(const UCEvent &event) {
+        Rect2Di buttonRect = GetBounds();
 
-        listScrollbar->onScrollChange = [this](int pos) {
-            int viewportItems = listScrollbar->GetViewportSize();
-            int maxScroll = std::max(0, static_cast<int>(items.size()) - viewportItems);
-            scrollOffset = std::clamp(pos, 0, maxScroll);
-            RequestRedraw();
-        };
+        if (buttonRect.Contains(event.x, event.y)) {
+            buttonPressed = true;
+            if (dropdownOpen) {
+                CloseDropdown();
+            } else {
+                OpenDropdown();
+            }
+            return true;
+        }
 
-        ApplyStyleToScrollbar();
+        return false;
     }
 
-    void UltraCanvasDropdown::ApplyStyleToScrollbar() {
-        if (listScrollbar) {
-            listScrollbar->SetStyle(style.scrollbarStyle);
+    bool UltraCanvasDropdown::HandleMouseUp(const UCEvent &event) {
+        buttonPressed = false;
+        return false;
+    }
+
+    bool UltraCanvasDropdown::HandleMouseMove(const UCEvent &event) {
+        Rect2Di buttonRect = GetBounds();
+        if (buttonRect.Contains(event.x, event.y)) {
+            SetMouseCursor(UCMouseCursor::ContextMenu);
+        } else {
+            SetMouseCursor(UCMouseCursor::Default);
+        }
+        return false;
+    }
+
+    void UltraCanvasDropdown::HandleMouseLeave(const UCEvent &event) {
+        // Nothing needed — ListView handles its own hover
+    }
+
+    bool UltraCanvasDropdown::HandleKeyDown(const UCEvent &event) {
+        if (!dropdownOpen || items.empty()) {
+            // Open on Down/Space when closed
+            if (event.virtualKey == UCKeys::Down || event.virtualKey == UCKeys::Space) {
+                OpenDropdown();
+                return true;
+            }
+            return false;
+        }
+
+        // Forward navigation keys to the ListView
+        switch (event.virtualKey) {
+            case UCKeys::Up:
+            case UCKeys::Down:
+            case UCKeys::PageUp:
+            case UCKeys::PageDown:
+            case UCKeys::Home:
+            case UCKeys::End:
+                return popupListView->OnEvent(event);
+
+            case UCKeys::Return: {
+                // Get the focused row from the ListView's selection
+                auto* sel = popupListView->GetSelection();
+                int focusedRow = sel ? sel->GetCurrentRow() : -1;
+
+                if (focusedRow >= 0 && focusedRow < (int)items.size() &&
+                    !items[focusedRow].separator && items[focusedRow].enabled) {
+                    if (multiSelectEnabled) {
+                        SetItemSelected(focusedRow, !IsItemSelected(focusedRow));
+                    } else {
+                        SetSelectedIndex(focusedRow);
+                        CloseDropdown();
+                    }
+                }
+                return true;
+            }
+
+            case UCKeys::Space:
+                if (multiSelectEnabled) {
+                    auto* sel = popupListView->GetSelection();
+                    int focusedRow = sel ? sel->GetCurrentRow() : -1;
+                    if (focusedRow >= 0 && focusedRow < (int)items.size() &&
+                        !items[focusedRow].separator && items[focusedRow].enabled) {
+                        SetItemSelected(focusedRow, !IsItemSelected(focusedRow));
+                    }
+                    return true;
+                }
+                return false;
+
+            case UCKeys::Escape:
+                CloseDropdown();
+                return true;
+
+            default:
+                return false;
         }
     }
 
-    void UltraCanvasDropdown::SetWindow(UltraCanvasWindowBase *win) {
-        UltraCanvasUIElement::SetWindow(win);
-        if (listScrollbar) {
-            listScrollbar->SetWindow(win);
+    void UltraCanvasDropdown::HandleFocusLost() {
+        if (dropdownOpen && !multiSelectEnabled) {
+            CloseDropdown();
         }
     }
 

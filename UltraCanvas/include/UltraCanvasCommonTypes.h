@@ -110,6 +110,9 @@ struct Rect2D {
     Rect2D(T px = 0, T py = 0, T w = 0, T h = 0)
         : x(px), y(py), width(w), height(h) {}
 
+    Rect2D(Point2D<T> pt, Size2D<T> sz)
+            : x(pt.x), y(pt.y), width(sz.width), height(sz.height) {}
+
     // Convenience methods
     T Left() const { return x; }
     T Right() const { return x + width; }
@@ -120,6 +123,10 @@ struct Rect2D {
     Point2D<T> BottomLeft() const { return Point2D<T>(x, y + height); }
     Point2D<T> BottomRight() const { return Point2D<T>(x + width, y + height); }
     Point2D<T> Center() const { return Point2D<T>(x + width / 2, y + height / 2); }
+    Size2D<T> Size() const { return Size2D<T>(width, height); };
+
+    Rect2D<T> SetPosition(Point2D<T> pt) const { return Rect2D<T>(pt.x, pt.y, width, height); }
+    Rect2D<T> SetSize(Size2D<T> sz) const { return Rect2D<T>(x, y, sz.width, sz.height); }
 
     bool Contains(const Point2D<T>& point) const {
         return point.x >= x && point.x <= x + width && point.y >= y && point.y <= y + height;

@@ -34,13 +34,6 @@ namespace UltraCanvas {
         Horizontal
     };
 
-    enum class MenuState {
-        Hidden,
-        Opening,
-        Visible,
-        Closing
-    };
-
     enum class MenuItemType {
         Action,
         Separator,
@@ -165,7 +158,6 @@ namespace UltraCanvas {
         // Menu properties
         MenuType menuType = MenuType::PopupMenu;
         MenuOrientation orientation = MenuOrientation::Vertical;
-        MenuState currentState = MenuState::Hidden;
         MenuStyle style;
 
         // Menu items
@@ -178,8 +170,7 @@ namespace UltraCanvas {
         bool keyboardNavigation = false;
         bool needCalculateSize = true;
 
-        bool closeByClickOutside = false;
-        bool closeByEscapeKey = false;
+        PopupElementSettings menuPopupSettings;
 
         // Submenu management
         std::shared_ptr<UltraCanvasMenu> activeSubmenu;
@@ -199,12 +190,12 @@ namespace UltraCanvas {
         float animationProgress = 0.0f;
 
         // Events
+    public:
         std::function<void()> onMenuOpened;
         std::function<void()> onMenuClosed;
         std::function<void(int)> onItemSelected;
         std::function<void(int)> onItemHovered;
 
-    public:
         // ===== CONSTRUCTORS =====
         UltraCanvasMenu(const std::string& identifier, long id, long x, long y, long w, long h)
                 : UltraCanvasUIElement(identifier, id, x, y, w, h) {
@@ -217,14 +208,10 @@ namespace UltraCanvas {
 
         // ===== CORE RENDERING =====
         void Render(IRenderContext* ctx) override;
-        void RenderOverlay(IRenderContext* ctx) override;
-        void OnRemovedFromOverlays() override;
-
-        bool OnEvent(const UCEvent& event) override;
-        bool OnWindowEventFilter(const UCEvent& event) override;
+        void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
-        bool HandleEvent(const UCEvent& event);
+        bool OnEvent(const UCEvent& event) override;
 
         // ===== MENU TYPE AND CONFIGURATION =====
         void SetMenuType(MenuType type);
@@ -255,24 +242,19 @@ namespace UltraCanvas {
 
         MenuItemData* GetItem(int index);
 
-        void Show(bool closeByClickOutside=true, bool closeByEscapeKey=true);
-        void Hide();
-        void Toggle();
+        void OpenMenu(const Point2Di& pos, UltraCanvasWindowBase& window, const PopupElementSettings& settings);
+        void CloseMenu();
 
         // Embedded mode: for composite components (e.g. AutoComplete) that
         // manage their own overlay lifecycle but use Menu for rendering/events.
         // void ShowAsEmbedded(int x, int y);
         // void HideAsEmbedded();
 
-        bool IsMenuVisible() const {
-            return currentState == MenuState::Visible || currentState == MenuState::Opening;
-        }
-
-        MenuState GetMenuState() const { return currentState; }
-
-        // ===== CONTEXT MENU HELPERS =====
-        void ShowAt(int x, int y, bool closeByClickOutside=true, bool closeByEscapeKey=true);
-        void ShowAtWindow(int x, int y, UltraCanvasWindowBase* win, bool closeByClickOutside=true, bool closeByEscapeKey=true);
+//        bool IsMenuVisible() const {
+//            return currentState == MenuState::Visible || currentState == MenuState::Opening;
+//        }
+//
+//        MenuState GetMenuState() const { return currentState; }
 
         // ===== SUBMENU MANAGEMENT =====
         void OpenSubmenu(int itemIndex);
@@ -286,11 +268,8 @@ namespace UltraCanvas {
 
         bool Contains(int x, int y) override;
 
-        // ===== EVENT CALLBACKS =====
-        void OnMenuOpened(std::function<void()> callback) { onMenuOpened = callback; }
-        void OnMenuClosed(std::function<void()> callback) { onMenuClosed = callback; }
-        void OnItemSelected(std::function<void(int)> callback) { onItemSelected = callback; }
-        void OnItemHovered(std::function<void(int)> callback) { onItemHovered = callback; }
+    protected:
+        void OnPopupClosed(ClosePopupReason reason) override;
 
     private:
         // ===== CALCULATION METHODS =====
@@ -302,7 +281,7 @@ namespace UltraCanvas {
 
 
         // ===== POSITIONING =====
-        void PositionSubmenu(std::shared_ptr<UltraCanvasMenu> submenu, int itemIndex);
+        Point2Di GetPositionSubmenu(const UltraCanvasMenu& submenu, int itemIndex);
 
         // ===== RENDERING HELPERS =====
         void RenderItem(int index, const MenuItemData& item, IRenderContext* ctx);
@@ -316,7 +295,7 @@ namespace UltraCanvas {
         // ===== UTILITY METHODS =====
         Color GetItemBackgroundColor(int index, const MenuItemData& item) const;
 
-        int GetItemAtPosition(int x, int y) const;
+        int GetItemUnderPointer(const UCEvent& ev) const;
 
         // ===== SCROLL SUPPORT =====
         void CreateMenuScrollbar();

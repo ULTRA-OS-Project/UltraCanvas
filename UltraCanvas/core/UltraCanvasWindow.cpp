@@ -17,14 +17,11 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
-    std::unordered_map<UltraCanvasUIElement*, OverlayElementSettings> pendingOverlayElements;
-
-
     UltraCanvasWindowBase::UltraCanvasWindowBase()
             : UltraCanvasContainer("Window", 0, 0, 0, 0, 0) {
         // Configure container for window behavior
         visible = false;
-        SetWindow(this);
+        window = this;
     }
 
 //    UltraCanvasWindowBase::~UltraCanvasWindowBase() {
@@ -60,7 +57,7 @@ namespace UltraCanvas {
         }
 
         // Request window redraw to update focus indicators
-        _needsRedraw = true;
+        needsRedraw = true;
 
         debugOutput << "Focus changed to: " << (element ? element->GetIdentifier() : "none") << std::endl;
     }
@@ -198,11 +195,35 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
+    void UltraCanvasWindowBase::InstallEventFilter(const std::string& uniqueFilterId, const std::function<bool(const UCEvent&)>& filterFunc, const std::vector<UCEventType>& interestedEvents) {
+        for(auto et : interestedEvents) {
+            if (eventFilters.find(et) == eventFilters.end()) {
+                eventFilters[et] = {};
+            }
+            eventFilters[et].emplace_back(FilterFunction{.id=uniqueFilterId, .func=filterFunc});
+        }
+    }
+
+    void UltraCanvasWindowBase::UnInstallWindowEventFilter(const std::string& uniqueFilterId) {
+        if (eventFilters.empty()) {
+            for(auto &ef : eventFilters) {
+                auto funcs = ef.second;
+                for(auto it = funcs.begin(); it != funcs.end(); ++it) {
+                    if (it->id == uniqueFilterId) {
+                        funcs.erase(it);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+
     bool UltraCanvasWindowBase::HandleEventFilters(const UCEvent &event) {
         auto found = eventFilters.find(event.type);
         if (found != eventFilters.end()) {
-            for(auto elem : found->second) {
-                if (elem->OnWindowEventFilter(event)) {
+            for(auto const &filterFunc : found->second) {
+                if (filterFunc.func(event)) {
                     return true;
                 }
             }
@@ -262,7 +283,7 @@ namespace UltraCanvas {
 
         if (onWindowResize) onWindowResize(config_.width, config_.height);
 
-        _needsRedraw = true;
+        needsRedraw = true;
     }
 
     void UltraCanvasWindowBase::HandleMoveEvent(int x, int y) {
@@ -285,138 +306,61 @@ namespace UltraCanvas {
                 if (onWindowBlur) onWindowBlur();
             }
         }
-        _needsRedraw = true;
+        needsRedraw = true;
     }
 
     void UltraCanvasWindowBase::Render(IRenderContext* ctx) {
         if (!visible || !_created) return;
         UltraCanvasContainer::Render(ctx);
 
-        RenderOverlayElements(ctx);
-
         RenderCustomContent(ctx);
     }
 
-    void UltraCanvasWindowBase::RenderOverlayElements(IRenderContext* ctx) {
-        // Render popups in z-order
-        for (auto it = overlayElements.begin(); it != overlayElements.end(); ++it) {
-            if (it->element && it->element->IsVisible()) {
-                ctx->PushState();
-                if (!it->settings.useAbsolutePosition) {
-                    int x = 0, y = 0;
-                    it->element->ConvertContainerToWindowCoordinates(x, y);
-                    ctx->Translate(x, y);
-                }
-                it->element->RenderOverlay(ctx);
-                ctx->PopState();
+    void UltraCanvasWindowBase::OpenPopup(const Point2Di& pos, UltraCanvasUIElement& elem, const PopupElementSettings& settings) {
+        for(auto it = popupElements.begin(); it != popupElements.end(); ++it) {
+            if (it->element == &elem) {
+                popupElements.erase(it);
+                break;
             }
         }
+        popupElements.push_back({&elem, settings});
+        AddChild(elem.shared_from_this());
+        elem.SetPosition(pos);
+        elem.SetVisible(true);
+        elem.zOrder = OverlayZOrder::Popups;
+        elem.isPopup = true;
+        RequestRedraw();
 
-        UltraCanvasTooltipManager::Render(ctx, this);
+        elem.OnPopupOpened();
     }
 
-    void UltraCanvasWindowBase::AddToOverlays(UltraCanvasUIElement *elem, const OverlayElementSettings& overlaySettings) {
-        UltraCanvasWindowBase *window = elem->GetWindow();
-        if (window) {
-            auto &overlayElements = window->overlayElements;
-
-            auto it = overlayElements.begin();
-            for(; it != overlayElements.end(); ++it) {
-                if (it->element == elem) {
-                    return; // already added
-                }
-                if (overlaySettings.overlayZOrder > it->settings.overlayZOrder) {
-                    break;
-                }
-            }
-            auto ovElem = OverlayElement {
-                    .element = elem,
-                    .settings = overlaySettings
-            };
-            overlayElements.insert(it, ovElem);
-
-            window->RequestRedraw();
-        } else {
-            pendingOverlayElements[elem] = overlaySettings;
-        }
-    }
-
-    void UltraCanvasWindowBase::RemoveFromOverlays(UltraCanvasUIElement* elem) {
-        UltraCanvasWindowBase *window = elem->GetWindow();
-        if (window) {
-            auto &overlayElements = window->overlayElements;
-            for(auto it = overlayElements.begin(); it != overlayElements.end(); it++) {
-                if (it->element == elem) {
-                    overlayElements.erase(it);
-                    elem->OnRemovedFromOverlays();
-                    window->RequestRedraw();
-                    return;
-                }
-            }
-        } else {
-            pendingOverlayElements.erase(elem);
-        }
-    }
-
-    void UltraCanvasWindowBase::SetPendingOverlays(UltraCanvasUIElement* elem, UltraCanvasUIElement* win) {
-        if (elem && win) {
-            auto found = pendingOverlayElements.find(elem);
-            if (found != pendingOverlayElements.end()) {
-                UltraCanvasWindowBase::AddToOverlays(elem, found->second);
-                pendingOverlayElements.erase(elem);
-            }
-        }
-    }
-
-    UltraCanvasUIElement *UltraCanvasWindowBase::FindElementAtPointInWindow(int x, int y, bool onlyHandleInputEvents) {
-        if (!overlayElements.empty()) {
-            int contentX = x  + horizontalScrollbar->GetScrollPosition();
-            int contentY = y + verticalScrollbar->GetScrollPosition();
-            // Check overlay elements in reverse order (topmost first) with proper clipping
-            for(auto it = overlayElements.rbegin(); it != overlayElements.rend(); ++it) {
-                if (!it->element || !it->element->IsVisible() || (onlyHandleInputEvents && ! it->settings.handleInputEvents)) {
-                    continue;
-                }
-                UltraCanvasUIElement* child = it->element;
-                Rect2Di overlayBounds = child->GetOverlayBounds();
-                if (!it->settings.useAbsolutePosition) {
-                    child->ConvertContainerToWindowCoordinates(overlayBounds.x, overlayBounds.y);
-                }
-                    // CRITICAL FIX: Check if content-relative coordinates are within child bounds
-                if (overlayBounds.Contains(contentX, contentY)) {
-                    // Check if child intersects with visible content area for clipping
-                    Rect2Di visibleChildBounds = GetVisibleChildBounds(overlayBounds);
-
-                    // Only return child if it's actually visible (not clipped)
-                    if (visibleChildBounds.width > 0 && visibleChildBounds.height > 0) {
-                        // Recursively check child containers with corrected coordinates
-                        auto childContainer = dynamic_cast<UltraCanvasContainer*>(child);
-                        if (childContainer) {
-                            // Pass child-relative coordinates to child container
-                            if (!it->settings.useAbsolutePosition) {
-                                child->ConvertWindowToParentContainerCoordinates(contentX, contentY);
-                            }
-                            UltraCanvasUIElement* hitElement = childContainer->FindElementAtPoint(contentX, contentY);
-                            if (hitElement) {
-                                return hitElement;
-                            }
-                        }
-                        return child;
+    bool UltraCanvasWindowBase::ClosePopup(UltraCanvasUIElement& elem, ClosePopupReason reason) {
+        if (elem.isPopup) {
+            for(auto it = popupElements.begin(); it != popupElements.end(); ++it) {
+                if (it->element == &elem) {
+                    if (elem.OnPopupAboutToClose(reason)) {
+                        popupElements.erase(it);
+                        elem.isPopup = false;
+                        elem.SetVisible(false);
+                        RemoveChild(elem.shared_from_this());
+                        elem.OnPopupClosed(reason);
+                        RequestRedraw();
+                        return true;
+                    } else {
+                        return false;
                     }
                 }
             }
         }
-        return UltraCanvasContainer::FindElementAtPoint(x, y);
+        return true;
     }
-    
-    void UltraCanvasWindowBase::MarkElementDirty(UltraCanvasUIElement* element, bool isOverlay) {
-//        if (selectiveRenderer) {
-////            if (isOverlay) {
-////                selectiveRenderer->SaveBackgroundForOverlay(element);
-////            }
-//            selectiveRenderer->MarkRegionDirty(element->GetActualBoundsInWindow(), isOverlay);
-//        }
-        _needsRedraw = true;
+
+    PopupElement* UltraCanvasWindowBase::GetActivePopupElement() {
+        if (!popupElements.empty()) {
+            return &popupElements.back();
+        } else {
+            return nullptr;
+        }
     }
 
     bool UltraCanvasWindowBase::Create(const WindowConfig& config) {

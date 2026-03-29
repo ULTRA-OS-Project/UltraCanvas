@@ -1,12 +1,12 @@
 // include/UltraCanvasAutoComplete.h
-// AutoComplete text input with popup suggestion list (inherits TextInput, composes Menu)
-// Version: 3.0.0
-// Last Modified: 2026-03-25
+// AutoComplete text input with popup suggestion list (inherits TextInput, uses ListView popup)
+// Version: 4.0.0
+// Last Modified: 2026-03-29
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasTextInput.h"
-#include "UltraCanvasMenu.h"
+#include "UltraCanvasListView.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
@@ -58,15 +58,16 @@ namespace UltraCanvas {
     public:
         // ===== CALLBACKS =====
         std::function<void(int, const AutoCompleteItem&)> onItemSelected;
-        std::function<void()> onPopupOpened;
-        std::function<void()> onPopupClosed;
+        std::function<void()> onAutocompletePopupOpened;
+        std::function<void()> onAutocompletePopupClosed;
 
         // Dynamic suggestion provider callback
         // Called with current text; should return filtered suggestions
         std::function<std::vector<AutoCompleteItem>(const std::string&)> onRequestSuggestions;
 
     private:
-        std::shared_ptr<UltraCanvasMenu> popupMenu;
+        std::shared_ptr<UltraCanvasListView> popupListView;
+        UltraCanvasSimpleListModel listModel;
 
         std::vector<AutoCompleteItem> allItems;         // Full static list
         std::vector<AutoCompleteItem> filteredItems;    // Currently displayed (post-filter)
@@ -83,7 +84,6 @@ namespace UltraCanvas {
         // ===== CONSTRUCTOR =====
         UltraCanvasAutoComplete(const std::string& identifier, long id,
                                 long x, long y, long w, long h = 28);
-        virtual ~UltraCanvasAutoComplete();
 
         // ===== ITEM MANAGEMENT (STATIC MODE) =====
         void AddItem(const std::string& text);
@@ -93,22 +93,17 @@ namespace UltraCanvas {
         void ClearItems();
         const std::vector<AutoCompleteItem>& GetAllItems() const { return allItems; }
 
-        // ===== TEXT ACCESS =====
-        using UltraCanvasTextInput::SetText;
-        void SetText(const std::string& text);  // Suppresses re-filtering
-
         // ===== SELECTED ITEM =====
         const AutoCompleteItem* GetSelectedItem() const;
         int GetSelectedIndex() const { return selectedIndex; }
 
         // ===== POPUP STATE =====
-        void OpenPopup();
-        void ClosePopup();
+        void OpenAutocompletePopup();
+        void CloseAutocompletePopup();
         bool IsPopupOpen() const { return popupOpen; }
 
         // ===== STYLING =====
-        using UltraCanvasTextInput::SetStyle;
-        void SetStyle(const AutoCompleteStyle& newStyle);
+        void SetAutocompleteStyle(const AutoCompleteStyle& newStyle);
         const AutoCompleteStyle& GetAutoCompleteStyle() const { return acStyle; }
 
         // ===== BEHAVIOR =====
@@ -131,20 +126,17 @@ namespace UltraCanvas {
         void TextChanged() override;
 
     private:
-        void CreatePopupMenu();
-        void WireCallbacks();
-        void ApplyStyleToMenu();
-        void PopulateMenuFromFiltered();
+        void CreatePopupListView();
+        void WireListViewCallbacks();
+        void ApplyStyleToListView();
+        void PopulateListFromFiltered();
+        void CalculateAndSetPopupSize();
 
         void FilterSuggestions(const std::string& query);
         bool MatchesFilter(const std::string& itemText, const std::string& query) const;
 
         Point2Di CalculatePopupPosition();
         void SelectItem(int filteredIndex);
-
-        // Event routing (popup-specific)
-        bool HandleMouseUp(const UCEvent& event);
-        bool HandleMouseMove(const UCEvent& event);
     };
 
 // ===== FACTORY FUNCTIONS =====

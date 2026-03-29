@@ -7,7 +7,6 @@
 #include "UltraCanvasDemo.h"
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 //#include "UltraCanvasButton3Sections.h"
-#include "UltraCanvasFormulaEditor.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include <sstream>
 #include <random>
@@ -100,26 +99,7 @@ namespace UltraCanvas {
         return container;
     }
 
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateListViewExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("ListViewExamples", 1200, 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("ListViewTitle", 1201, 10, 10, 300, 30);
-        title->SetText("List View Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto placeholder = std::make_shared<UltraCanvasLabel>("ListViewPlaceholder", 1202, 20, 50, 800, 400);
-        placeholder->SetText("List View Component - Not Implemented\n\nPlanned Features:\n• Vertical and horizontal lists\n• Icon and text display modes\n• Custom item templates\n• Virtual scrolling\n• Item selection and highlighting\n• Drag and drop reordering\n• Search and filtering\n• Group headers\n• Context menus");
-        placeholder->SetAlignment(TextAlignment::Left);
-        placeholder->SetBackgroundColor(Color(255, 200, 200, 100));
-//        placeholder->SetBorderStyle(BorderStyle::Dashed);
-        placeholder->SetBorders(2.0f);
-        placeholder->SetPadding(20.0f);
-        container->AddChild(placeholder);
-
-        return container;
-    }
+    // CreateListViewExamples() moved to UltraCanvasListViewExamples.cpp
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDialogExamples() {
         auto container = std::make_shared<UltraCanvasContainer>("DialogExamples", 1400, 0, 0, 1000, 600);

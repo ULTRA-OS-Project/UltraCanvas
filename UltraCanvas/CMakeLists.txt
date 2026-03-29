@@ -122,6 +122,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAutoComplete.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListDelegate.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListSelection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTabbedContainer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasButton.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabel.cpp
@@ -137,7 +141,6 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
-        # ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListView.cpp # not yet committed
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp

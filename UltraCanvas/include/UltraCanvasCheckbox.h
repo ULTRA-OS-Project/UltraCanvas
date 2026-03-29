@@ -142,6 +142,7 @@ namespace UltraCanvas {
 
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override;
+        void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
@@ -172,6 +173,7 @@ namespace UltraCanvas {
                 long x, long y,
                 const std::string& text = "",
                 bool checked = false);
+
     };
 
 // ===== RADIO BUTTON GROUP MANAGER =====

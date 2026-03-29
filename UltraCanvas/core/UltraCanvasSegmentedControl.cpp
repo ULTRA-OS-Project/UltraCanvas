@@ -112,17 +112,21 @@ namespace UltraCanvas {
         return width;
     }
 
+    void UltraCanvasSegmentedControl::UpdateGeometry(IRenderContext* ctx) {
+        // Update layout if needed
+        if (layoutDirty) {
+            ctx->PushState();
+            CalculateLayout(ctx);
+            ctx->PopState();
+        }
+        UltraCanvasUIElement::UpdateGeometry(ctx);
+    }
 // ===== RENDERING IMPLEMENTATION =====
 
     void UltraCanvasSegmentedControl::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
 
         ctx->PushState();
-
-        // Update layout if needed
-        if (layoutDirty) {
-            CalculateLayout(ctx);
-        }
 
         // Update animation
         if (style.enableAnimation && selectionAnimationProgress < 1.0f) {

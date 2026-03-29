@@ -22,16 +22,8 @@ namespace UltraCanvas {
 
 // ===== CONTAINER STYLES =====
     struct ContainerStyle {
-//        int scrollbarWidth = 16;
-//        Color scrollbarTrackColor = Color(240, 240, 240, 255);
-//        Color scrollbarThumbColor = Color(192, 192, 192, 255);
-//        Color scrollbarThumbHoverColor = Color(160, 160, 160, 255);
-//        Color scrollbarThumbPressedColor = Color(128, 128, 128, 255);
-
         // Scrolling behavior
         bool autoShowScrollbars = true;
-//        bool smoothScrolling = false;
-//        int scrollSpeed = 5;
         bool forceShowVerticalScrollbar = false;
         bool forceShowHorizontalScrollbar = false;
 
@@ -74,6 +66,8 @@ namespace UltraCanvas {
         void AddChild(std::shared_ptr<UltraCanvasUIElement> child);
         void RemoveChild(std::shared_ptr<UltraCanvasUIElement> child);
         void ClearChildren();
+        bool HasChild(UltraCanvasUIElement* elem);
+
         const std::vector<std::shared_ptr<UltraCanvasUIElement>> &GetChildren() const { return children; }
 
         size_t GetChildCount() const { return children.size(); }
@@ -81,11 +75,6 @@ namespace UltraCanvas {
         UltraCanvasUIElement *FindChildById(const std::string &id);
         UltraCanvasUIElement *FindElementAtPoint(int x, int y);
         UltraCanvasUIElement *FindElementAtPoint(const Point2Di &pos) { return FindElementAtPoint(pos.x, pos.y); }
-
-        void ConvertWindowToContainerCoordinates(int &x, int &y);
-
-//        virtual int GetXInWindow() override;
-//        virtual int GetYInWindow() override;
 
         // ===== ENHANCED SCROLLING FUNCTIONS =====
         bool ScrollByVertical(int delta);
@@ -137,6 +126,7 @@ namespace UltraCanvas {
 
         // ===== OVERRIDDEN ELEMENT METHODS =====
         void Render(IRenderContext *ctx) override;
+        void UpdateGeometry(IRenderContext *ctx) override;
 
         bool OnEvent(const UCEvent &event) override;
 
@@ -156,7 +146,7 @@ namespace UltraCanvas {
 
         void UpdateContentSize();
 
-        void UpdateScrollbarPositions();
+//        void UpdateScrollbarPositions();
 //        void UpdateScrollAnimation();
 //        void UpdateHoverStates(const UCEvent& event);
 
@@ -174,6 +164,8 @@ namespace UltraCanvas {
         // ===== RENDERING HELPERS =====
         void RenderScrollbars(IRenderContext *ctx);
         void RenderCorner(IRenderContext *ctx);
+
+        void SortChildrenByZOrder();
     };
 
 // ===== ENHANCED FACTORY FUNCTIONS =====

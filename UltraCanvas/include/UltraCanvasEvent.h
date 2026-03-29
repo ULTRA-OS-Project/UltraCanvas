@@ -300,7 +300,7 @@ namespace UltraCanvas {
         UltraCanvasUIElement *targetElement = nullptr;
 
         // Spatial coordinates
-        int x, y;                        // Mouse or touch coordinates
+        int x, y;                    // Mouse or touch coordinates
         int windowX, windowY;        // Global screen coordinates
         int globalX, globalY;        // Global screen coordinates
 
@@ -349,6 +349,10 @@ namespace UltraCanvas {
         };
 //        int customData1 = 0, customData2 = 0; // Additional data fields
 //        unsigned long nativeEvent = 0;      // Platform-specific event handle
+
+        UCEvent Clone() const {
+            return *this;
+        }
 
         // Utility methods
         bool IsMouseEvent() const {

@@ -147,17 +147,20 @@ namespace UltraCanvas {
         }
     }
 
-// ===== RENDERING =====
-    void UltraCanvasCheckbox::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
-
+    void UltraCanvasCheckbox::UpdateGeometry(IRenderContext* ctx) {
         if (layoutDirty) {
+            ctx->PushState();
             if (autoSize) {
                 CalculateAutoSize();
             }
             CalculateLayout();
+            ctx->PopState();
         }
+        UltraCanvasUIElement::UpdateGeometry(ctx);
+    }
 
+// ===== RENDERING =====
+    void UltraCanvasCheckbox::Render(IRenderContext* ctx) {
         ctx->PushState();
 
         // Draw based on style

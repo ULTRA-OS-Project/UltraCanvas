@@ -439,7 +439,7 @@ namespace UltraCanvas {
         infoTitle->SetFontSize(13);
         infoContainer->AddChild(infoTitle);
 
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 5062, 10, 40, 280, 200);
+        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 5062, 10,55, 280, 200);
         infoText->SetText(
                 "✓ CorelDRAW CDR format\n"
                 "✓ Corel Presentation Exchange CMX\n"

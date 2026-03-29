@@ -13,8 +13,6 @@ namespace UltraCanvas {
 
     // new here
     UltraCanvasUIElement::~UltraCanvasUIElement() {
-        UltraCanvasWindowBase::RemoveFromOverlays(this);
-        UltraCanvasApplicationBase::UnInstallWindowEventFilter(this);
     }
 
     void UltraCanvasUIElement::ConvertWindowToParentContainerCoordinates(int &x, int &y) {
@@ -54,8 +52,16 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasUIElement::RequestRedraw() {
-        if (window) {
-            window->MarkElementDirty(this);
+        needsRedraw = true;
+        if (window && this != window) {
+            window->RequestRedraw();
+        }
+    }
+
+    void UltraCanvasUIElement::RequestUpdateGeometry() {
+        needsUpdateGeometry = true;
+        if (window && this != window) {
+            window->RequestUpdateGeometry();
         }
     }
 
@@ -125,6 +131,7 @@ namespace UltraCanvas {
 //
 //        return totalY;
 //    }
+
     void UltraCanvasUIElement::Render(IRenderContext* ctx) {
         auto bnds = GetBounds();
         int leftWidth = GetBorderLeftWidth();
@@ -179,6 +186,22 @@ namespace UltraCanvas {
                 ctx->FillRectangle(bnds.x, bnds.y, bnds.width, bnds.height);
             }
         }
+        needsRedraw = false;
+    }
+
+    Point2Di UltraCanvasUIElement::GetPositionInWindow() const {
+        Point2Di pos;
+        if (parentContainer) {
+            auto pc = parentContainer;
+            while(pc) {
+                pos.x += (pc->GetContentRect().x - pc->GetHorizontalScrollPosition());
+                pos.y += (pc->GetContentRect().y - pc->GetVerticalScrollPosition());
+                pc = pc->parentContainer;
+            }
+        }
+        pos.x += bounds.x;
+        pos.y += bounds.y;
+        return pos;
     }
 
     int UltraCanvasUIElement::GetXInWindow() {
@@ -242,24 +265,15 @@ namespace UltraCanvas {
         if (parentContainer) {
             parentContainer->InvalidateLayout();
         }
-        if (window) {
-            SetFocus(false);
-            window->RequestRedraw();
-        }
+        SetFocus(false);
+        RequestUpdateGeometry();
     }
 
     void UltraCanvasUIElement::SetWindow(UltraCanvasWindowBase *win) {
         if (win == nullptr && window) {
             SetFocus(false);
         }
-        auto oldWindow = window;
         window = win;
-        if (oldWindow != nullptr || window != nullptr) {
-            UltraCanvasApplicationBase::MoveWindowEventFilters(oldWindow, this);
-        }
-        if (window) {
-            UltraCanvasWindowBase::SetPendingOverlays(this, win);
-        }
     }
 
     void UltraCanvasUIElement::SetOriginalSize(int w, int h) {
@@ -272,13 +286,6 @@ namespace UltraCanvas {
         }
     }
 
-    Rect2Di UltraCanvasUIElement::GetOverlayBounds() {
-        return GetBounds();
-    }
-
-    void UltraCanvasUIElement::OnRemovedFromOverlays() {
-    }
-
     void UltraCanvasUIElement::SetEventCallback(std::function<bool(const UCEvent &)> callback) {
         eventCallback = callback;
     }
@@ -288,5 +295,12 @@ namespace UltraCanvas {
             return eventCallback(event);
         }
         return false;
+    }
+
+    void UltraCanvasUIElement::UpdateGeometry(IRenderContext *ctx) {
+        if (needsUpdateGeometry) {
+            RequestRedraw();
+        }
+        needsUpdateGeometry = false;
     }
 }

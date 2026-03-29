@@ -325,6 +325,9 @@ private:
     bool isDragging;
     Point2Di dragStartPosition;
     
+    // ===== PLACEHOLDER =====
+    bool showPlaceholderAlways = false;  // Show placeholder even when focused (if text is empty)
+
     // ===== CLEAR BUTTON =====
     bool showClearButton = false;
     bool isClearButtonHovered = false;
@@ -339,7 +342,7 @@ public:
     virtual ~UltraCanvasTextInput() = default;
     
     // ===== TEXT MANAGEMENT =====
-    void SetText(const std::string& newText, bool callOnTextChanged = true);
+    void SetText(const std::string& newText);
     
     const std::string& GetText() const { return text; }
     const std::string& GetDisplayText() const { return displayText; }
@@ -388,6 +391,10 @@ public:
         showValidationState = show;
     }
 
+    // ===== PLACEHOLDER =====
+    void SetShowPlaceholderAlways(bool show) { showPlaceholderAlways = show; RequestRedraw(); }
+    bool IsShowPlaceholderAlways() const { return showPlaceholderAlways; }
+
     // ===== CLEAR BUTTON =====
     void SetShowClearButton(bool show) { showClearButton = show; RequestRedraw(); }
     bool IsShowClearButton() const { return showClearButton; }
@@ -396,7 +403,7 @@ public:
     void SetFormatter(const TextFormatter& textFormatter);
     
     const TextFormatter& GetFormatter() const { return formatter; }
-    
+   
     // ===== SELECTION AND CARET =====
     void SetSelection(size_t start, size_t end);
     

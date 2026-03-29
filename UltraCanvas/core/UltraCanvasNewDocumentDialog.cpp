@@ -375,8 +375,6 @@ namespace UltraCanvas {
 // ===== RENDERING =====
 
     void UltraCanvasNewDocumentDialog::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
-
         ctx->PushState();
 
         Rect2Di bounds = GetBounds();
@@ -400,7 +398,7 @@ namespace UltraCanvas {
         RenderButtons(ctx);
 
         UltraCanvasContainer::Render(ctx);
-        ctx->PushState();
+        ctx->PopState();
     }
 
     void UltraCanvasNewDocumentDialog::RenderTitle(IRenderContext* ctx) {
