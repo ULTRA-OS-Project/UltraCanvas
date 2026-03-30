@@ -300,9 +300,9 @@ namespace UltraCanvas {
         UltraCanvasUIElement *targetElement = nullptr;
 
         // Spatial coordinates
-        int x, y;                    // Mouse or touch coordinates
-        int windowX, windowY;        // Global screen coordinates
-        int globalX, globalY;        // Global screen coordinates
+        int x = 0, y = 0;                    // Mouse or touch coordinates
+        int windowX = 0, windowY = 0;        // Window-relative coordinates
+        int globalX = 0, globalY = 0;        // Global screen coordinates
 
         // Mouse/Touch specific
         UCMouseButton button = UCMouseButton::NoneButton;

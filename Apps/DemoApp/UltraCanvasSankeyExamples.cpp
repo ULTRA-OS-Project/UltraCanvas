@@ -329,10 +329,10 @@ namespace UltraCanvas {
 
         // ===== STATUS LABEL =====
         auto statusLabel = std::make_shared<UltraCanvasLabel>(
-                "SankeyStatus", 5003, 670, 10, 320, 60
+                "SankeyStatus", 5003, 740, 10, 310, 60
         );
         statusLabel->SetText("Hover over nodes and links to see details\nDrag nodes to adjust layout");
-        statusLabel->SetFontSize(11);
+        statusLabel->SetFontSize(10);
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(8.0f);

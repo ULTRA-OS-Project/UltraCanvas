@@ -233,7 +233,7 @@ namespace UltraCanvas {
         ctx->PushState();
 
         // Update caret blinking
-        UpdateCaretBlink();
+        //UpdateCaretBlink();
 
         // Get colors based on state
         Color backgroundColor = GetBackgroundColor();

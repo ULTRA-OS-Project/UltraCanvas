@@ -717,7 +717,7 @@ namespace UltraCanvas {
                              "Examples/UltraCanvasBasicChartsExamples.cpp",
                              "Docs/UltraCanvasAreaChartElement.md");
 
-        chartBuilder.AddItem("financialcharts", "Financial Chart", "Stock market OHLC and candlestick charts",
+        chartBuilder.AddItem("financialcharts", "Candlestick Chart", "Stock market OHLC and candlestick charts",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateFinancialChartExamples(); },
                              "Examples/UltraCanvasFinancialChartExamples.cpp",
@@ -1035,7 +1035,7 @@ namespace UltraCanvas {
             for (const std::string& itemId : items) {
                 const auto& demoItem = demoItems[itemId];
                 TreeNodeData itemData(itemId, demoItem->displayName);
-                itemData.leftIcon = TreeNodeIcon(GetResourcesDir() + "media/icons/component.png", 16, 16);
+                itemData.leftIcon = TreeNodeIcon(GetResourcesDir() + "media/icons/document.svg", 16, 16);
                 itemData.rightIcon = TreeNodeIcon(GetStatusIcon(demoItem->status), 12, 12);
                 categoryTreeView->AddNode(categoryData.nodeId, itemData);
             }

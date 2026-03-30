@@ -25,9 +25,7 @@ namespace UltraCanvas {
                 StartAnimation();
             }
 
-            hoveredIndex = -1;
-            keyboardIndex = -1;
-            keyboardNavigation = false;
+            activeIndex = -1;
             needCalculateSize = true;
             scrollOffsetPixels = 0;
             needsScrollbar = false;
@@ -72,10 +70,6 @@ namespace UltraCanvas {
                 }
             }
 
-            // Render keyboard navigation highlight
-            if (keyboardNavigation && keyboardIndex >= 0 && keyboardIndex < static_cast<int>(items.size())) {
-                RenderKeyboardHighlight(GetItemBounds(keyboardIndex), ctx);
-            }
         } else { // submenu or popup
 //            if (style.enableAnimations &&
 //                (currentState == MenuState::Opening || currentState == MenuState::Closing)) {
@@ -115,10 +109,6 @@ namespace UltraCanvas {
                 }
             }
 
-            if (keyboardNavigation && keyboardIndex >= 0 &&
-                keyboardIndex < static_cast<int>(items.size())) {
-                RenderKeyboardHighlight(GetItemBounds(keyboardIndex), ctx);
-            }
 
             ctx->PopState();  // releases the clip region
 
@@ -163,7 +153,7 @@ namespace UltraCanvas {
                 return HandleMouseWheel(event);
 
             case UCEventType::MouseLeave:
-                hoveredIndex = -1;
+                activeIndex = -1;
                 break;
 
             default:
@@ -515,7 +505,7 @@ namespace UltraCanvas {
         // Render text
         if (!item.label.empty()) {
             Color textColor = item.enabled ?
-                              (index == hoveredIndex ? style.hoverTextColor : style.textColor) :
+                              (index == activeIndex ? style.hoverTextColor : style.textColor) :
                               style.disabledTextColor;
 
             ctx->SetTextPaint(textColor);
@@ -710,11 +700,6 @@ namespace UltraCanvas {
         ctx->DrawImage(iconPath, position.x, position.y, style.iconSize, style.iconSize, ImageFitMode::Contain);
     }
 
-    void UltraCanvasMenu::RenderKeyboardHighlight(const Rect2Di &bounds, IRenderContext *ctx) {
-        ctx->SetStrokePaint(style.selectedColor);
-        ctx->SetStrokeWidth(2.0f);
-        ctx->DrawRectangle(bounds);
-    }
 
     void UltraCanvasMenu::RenderShadow(IRenderContext *ctx) {
         Rect2Di bounds = GetBounds();
@@ -793,23 +778,22 @@ namespace UltraCanvas {
 
         int newHoveredIndex = GetItemUnderPointer(event);
 
-        if (newHoveredIndex != hoveredIndex) {
-            hoveredIndex = newHoveredIndex;
-            keyboardNavigation = false;
+        if (newHoveredIndex != activeIndex) {
+            activeIndex = newHoveredIndex;
 
-            if (onItemHovered && hoveredIndex >= 0) {
-                onItemHovered(hoveredIndex);
+            if (onItemHovered && activeIndex >= 0) {
+                onItemHovered(activeIndex);
             }
             RequestRedraw();
 
             // Auto-open submenu on hover (with delay)
-            if (hoveredIndex >= 0 && hoveredIndex < static_cast<int>(items.size())) {
-                const MenuItemData &item = items[hoveredIndex];
+            if (activeIndex >= 0 && activeIndex < static_cast<int>(items.size())) {
+                const MenuItemData &item = items[activeIndex];
                 if (!item.subItems.empty()) {
                     // In a complete implementation, you'd add a timer for submenu delay
-                    OpenSubmenu(hoveredIndex);
+                    OpenSubmenu(activeIndex);
                 } else {
-                    if (activeSubmenu && activeSubmenu->parentItemIndex != hoveredIndex) {
+                    if (activeSubmenu && activeSubmenu->parentItemIndex != activeIndex) {
                         CloseActiveSubmenu();
                     }
                 }
@@ -858,18 +842,17 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMenu::HandleKeyDown(const UCEvent &event) {
-        keyboardNavigation = true;
 
         switch (event.virtualKey) {
             case UCKeys::Up:
                 NavigateUp();
-                EnsureKeyboardItemVisible();
+                EnsureActiveItemVisible();
                 RequestRedraw();
                 return true;
 
             case UCKeys::Down:
                 NavigateDown();
-                EnsureKeyboardItemVisible();
+                EnsureActiveItemVisible();
                 RequestRedraw();
                 return true;
 
@@ -893,8 +876,8 @@ namespace UltraCanvas {
 
             case UCKeys::Return:
             case UCKeys::Space:
-                if (keyboardIndex >= 0) {
-                    ExecuteItem(keyboardIndex);
+                if (activeIndex >= 0) {
+                    ExecuteItem(activeIndex);
                 }
                 RequestRedraw();
                 return true;
@@ -916,32 +899,31 @@ namespace UltraCanvas {
         if (items.empty()) return;
 
         do {
-            keyboardIndex = (keyboardIndex <= 0) ? static_cast<int>(items.size()) - 1 : keyboardIndex - 1;
-        } while (keyboardIndex >= 0 &&
-                 (!items[keyboardIndex].visible ||
-                  items[keyboardIndex].type == MenuItemType::Separator ||
-                  !items[keyboardIndex].enabled));
+            activeIndex = (activeIndex <= 0) ? static_cast<int>(items.size()) - 1 : activeIndex - 1;
+        } while (activeIndex >= 0 &&
+                 (!items[activeIndex].visible ||
+                  items[activeIndex].type == MenuItemType::Separator ||
+                  !items[activeIndex].enabled));
     }
 
     void UltraCanvasMenu::NavigateDown() {
         if (items.empty()) return;
 
         do {
-            keyboardIndex = (keyboardIndex >= static_cast<int>(items.size()) - 1) ? 0 : keyboardIndex + 1;
-        } while (keyboardIndex < static_cast<int>(items.size()) &&
-                 (!items[keyboardIndex].visible ||
-                  items[keyboardIndex].type == MenuItemType::Separator ||
-                  !items[keyboardIndex].enabled));
+            activeIndex = (activeIndex >= static_cast<int>(items.size()) - 1) ? 0 : activeIndex + 1;
+        } while (activeIndex < static_cast<int>(items.size()) &&
+                 (!items[activeIndex].visible ||
+                  items[activeIndex].type == MenuItemType::Separator ||
+                  !items[activeIndex].enabled));
     }
 
     void UltraCanvasMenu::OpenSubmenuFromKeyboard() {
-        if (keyboardIndex >= 0 && keyboardIndex < static_cast<int>(items.size())) {
-            const MenuItemData &item = items[keyboardIndex];
+        if (activeIndex >= 0 && activeIndex < static_cast<int>(items.size())) {
+            const MenuItemData &item = items[activeIndex];
             if (!item.subItems.empty()) {
-                OpenSubmenu(keyboardIndex);
+                OpenSubmenu(activeIndex);
                 if (activeSubmenu) {
-                    activeSubmenu->keyboardNavigation = true;
-                    activeSubmenu->keyboardIndex = 0;
+                    activeSubmenu->activeIndex = 0;
                 }
             }
         }
@@ -949,9 +931,6 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::CloseSubmenu() {
         CloseActiveSubmenu();
-        if (auto parent = parentMenu.lock()) {
-            parent->keyboardNavigation = true;
-        }
     }
 
     void UltraCanvasMenu::ExecuteItem(int index) {
@@ -1048,7 +1027,7 @@ namespace UltraCanvas {
     Color UltraCanvasMenu::GetItemBackgroundColor(int index, const MenuItemData &item) const {
         if (!item.enabled) return Colors::Transparent;
 
-        if (index == hoveredIndex || index == keyboardIndex) {
+        if (index == activeIndex) {
             return style.hoverColor;
         }
 
@@ -1135,18 +1114,18 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMenu::EnsureKeyboardItemVisible() {
-        if (!needsScrollbar || keyboardIndex < 0) return;
+    void UltraCanvasMenu::EnsureActiveItemVisible() {
+        if (!needsScrollbar || activeIndex < 0) return;
 
         // Calculate the Y position of the keyboard item relative to content start
         int itemY = 0;
-        for (int i = 0; i < keyboardIndex && i < static_cast<int>(items.size()); ++i) {
+        for (int i = 0; i < activeIndex && i < static_cast<int>(items.size()); ++i) {
             if (!items[i].visible) continue;
             itemY += (items[i].type == MenuItemType::Separator) ?
                      style.separatorHeight : style.itemHeight;
         }
 
-        int itemHeight = (items[keyboardIndex].type == MenuItemType::Separator) ?
+        int itemHeight = (items[activeIndex].type == MenuItemType::Separator) ?
                          style.separatorHeight : style.itemHeight;
 
         // Scroll up if item is above visible area

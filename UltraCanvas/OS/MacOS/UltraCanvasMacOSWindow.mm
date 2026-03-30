@@ -91,6 +91,11 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* cairoSurfa
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)isFlipped { return YES; }
 
+// Override to prevent default NSView behavior (system beep) for unhandled keys.
+// Key events are handled through the UltraCanvas event system at the application level.
+- (void)keyDown:(NSEvent *)event {}
+
+
 @end
 
 
@@ -129,13 +134,13 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* cairoSurfa
     if (ultraCanvasWindow) {
         ultraCanvasWindow->OnWindowWillClose();
     }
-    return YES;
+    return NO; // We handle closing ourselves via Close() -> DestroyNative()
 }
 
 - (void)windowWillClose:(NSNotification*)notification {
-    if (ultraCanvasWindow) {
-        ultraCanvasWindow->OnWindowWillClose();
-    }
+    // Do NOT call OnWindowWillClose() here - it is already called in windowShouldClose:.
+    // This also fires when DestroyNative() calls [nsWindow close], at which point
+    // the window is already being destroyed.
 }
 
 - (void)windowDidResize:(NSNotification*)notification {
@@ -202,6 +207,12 @@ namespace UltraCanvas {
 
             // Destroy Cairo surface
             DestroyCairoSurface();
+
+            // Detach delegate from window BEFORE closing or releasing it,
+            // otherwise [nsWindow close] fires windowWillClose: on a freed delegate
+            if (nsWindow) {
+                [nsWindow setDelegate:nil];
+            }
 
             // Release delegate
             if (windowDelegate) {
@@ -610,7 +621,7 @@ namespace UltraCanvas {
     }
 
     NativeWindowHandle UltraCanvasMacOSWindow::GetNativeHandle() const  {
-        return (NativeWindowHandle)(__bridge_retained void*)nsWindow;
+        return (NativeWindowHandle)(__bridge void*)nsWindow;
     };
 
     NSWindow* UltraCanvasMacOSWindow::GetNSWindowHandle() const {
@@ -659,11 +670,19 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidBecomeKey() {
-        // Focus handling is done via WindowFocus events dispatched through the event system
+        UCEvent event;
+        event.type = UCEventType::WindowFocus;
+        event.targetWindow = this;
+        event.nativeWindowHandle = GetNativeHandle();
+        UltraCanvasApplication::GetInstance()->PushEvent(event);
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidResignKey() {
-        // Focus handling is done via WindowBlur events dispatched through the event system
+        UCEvent event;
+        event.type = UCEventType::WindowBlur;
+        event.targetWindow = this;
+        event.nativeWindowHandle = GetNativeHandle();
+        UltraCanvasApplication::GetInstance()->PushEvent(event);
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidMiniaturize() {

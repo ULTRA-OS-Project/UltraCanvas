@@ -164,10 +164,8 @@ namespace UltraCanvas {
         std::vector<MenuItemData> items;
 
         // Navigation state
-        int hoveredIndex = -1;
+        int activeIndex = -1;
         int selectedIndex = -1;
-        int keyboardIndex = -1;
-        bool keyboardNavigation = false;
         bool needCalculateSize = true;
 
         PopupElementSettings menuPopupSettings;
@@ -289,7 +287,6 @@ namespace UltraCanvas {
         void RenderCheckbox(const MenuItemData& item, const Point2Di& position, IRenderContext* ctx);
         void RenderSubmenuArrow(const Point2Di& position, IRenderContext* ctx);
         void RenderIcon(const std::string& iconPath, const Point2Di& position, IRenderContext* ctx);
-        void RenderKeyboardHighlight(const Rect2Di& bounds, IRenderContext* ctx);
         void RenderShadow(IRenderContext* ctx);
 
         // ===== UTILITY METHODS =====
@@ -301,7 +298,7 @@ namespace UltraCanvas {
         void CreateMenuScrollbar();
         void ClampMenuToWindow();
         void ClampMenuToWindowHorizontal();
-        void EnsureKeyboardItemVisible();
+        void EnsureActiveItemVisible();
 
         // ===== EVENT HANDLERS =====
         bool HandleMouseMove(const UCEvent& event);

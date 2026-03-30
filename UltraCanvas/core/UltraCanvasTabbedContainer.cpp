@@ -216,7 +216,7 @@ namespace UltraCanvas {
         // Create AutoComplete for tab search
         searchAutoComplete = std::make_shared<UltraCanvasAutoComplete>(
                 GetIdentifier() + "_search", 0, 0, 0, 200, 28);
-        searchAutoComplete->SetPlaceholder("Type to find the tab...");
+        searchAutoComplete->SetPlaceholder("Search tabs...");
         searchAutoComplete->SetMinCharsToTrigger(0);
         searchAutoComplete->SetShowPlaceholderAlways(true);
         searchAutoComplete->SetCloseOnSelect(true);

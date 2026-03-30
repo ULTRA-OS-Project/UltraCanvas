@@ -190,18 +190,16 @@ namespace UltraCanvas {
 // ===== MAIN LOOP =====
     void UltraCanvasMacOSApplication::CollectAndProcessNativeEvents() {
         @autoreleasepool {
-            // Process Cocoa events
-            NSEvent *event = [nsApplication nextEventMatchingMask:NSEventMaskAny
-                                                        untilDate:[NSDate distantPast]
-                                                           inMode:NSDefaultRunLoopMode
-                                                          dequeue:YES];
-
-            if (event) {
+            // Drain all pending Cocoa events (matching Linux's while(XPending) pattern)
+            NSEvent *event;
+            while ((event = [nsApplication nextEventMatchingMask:NSEventMaskAny
+                                                       untilDate:[NSDate distantPast]
+                                                          inMode:NSDefaultRunLoopMode
+                                                         dequeue:YES]) != nil) {
                 ProcessCocoaEvent(event);
-
                 [nsApplication sendEvent:event];
-                [nsApplication updateWindows];
             }
+            [nsApplication updateWindows];
         }
     }
 
@@ -259,6 +257,25 @@ namespace UltraCanvas {
             windowHeight = [[nsWindow contentView] bounds].size.height;
         }
 
+        // Helper: set mouse coordinates and modifiers for all mouse events
+        // macOS uses bottom-left origin; UltraCanvas uses top-left origin
+        auto setMouseFields = [&](NSEvent* ev) {
+            NSPoint locInWindow = [ev locationInWindow];
+            event.x = event.windowX = (int)locInWindow.x;
+            event.y = event.windowY = (int)(windowHeight - locInWindow.y);
+            if (nsWindow) {
+                NSPoint screenPoint = [nsWindow convertPointToScreen:locInWindow];
+                NSRect screenFrame = [[NSScreen mainScreen] frame];
+                event.globalX = (int)screenPoint.x;
+                event.globalY = (int)(screenFrame.size.height - screenPoint.y);
+            }
+            NSUInteger flags = [ev modifierFlags];
+            event.ctrl = (flags & NSEventModifierFlagControl) != 0;
+            event.shift = (flags & NSEventModifierFlagShift) != 0;
+            event.alt = (flags & NSEventModifierFlagOption) != 0;
+            event.meta = (flags & NSEventModifierFlagCommand) != 0;
+        };
+
         // Convert event based on type
         switch (eventType) {
             case NSEventTypeLeftMouseDown:
@@ -266,8 +283,7 @@ namespace UltraCanvas {
             case NSEventTypeOtherMouseDown:
                 event.type = UCEventType::MouseDown;
                 event.button = ConvertNSEventMouseButton([nsEvent buttonNumber]);
-                event.x = [nsEvent locationInWindow].x;
-                event.y = windowHeight - [nsEvent locationInWindow].y;
+                setMouseFields(nsEvent);
                 break;
 
             case NSEventTypeLeftMouseUp:
@@ -275,8 +291,7 @@ namespace UltraCanvas {
             case NSEventTypeOtherMouseUp:
                 event.type = UCEventType::MouseUp;
                 event.button = ConvertNSEventMouseButton([nsEvent buttonNumber]);
-                event.x = [nsEvent locationInWindow].x;
-                event.y = windowHeight - [nsEvent locationInWindow].y;
+                setMouseFields(nsEvent);
                 break;
 
             case NSEventTypeMouseMoved:
@@ -284,35 +299,76 @@ namespace UltraCanvas {
             case NSEventTypeRightMouseDragged:
             case NSEventTypeOtherMouseDragged:
                 event.type = UCEventType::MouseMove;
-                event.x = [nsEvent locationInWindow].x;
-                event.y = windowHeight - [nsEvent locationInWindow].y;
+                setMouseFields(nsEvent);
                 break;
 
             case NSEventTypeScrollWheel:
                 event.type = UCEventType::MouseWheel;
                 event.wheelDelta = [nsEvent scrollingDeltaY];
-                event.x = [nsEvent locationInWindow].x;
-                event.y = windowHeight - [nsEvent locationInWindow].y;
+                setMouseFields(nsEvent);
                 break;
 
-            case NSEventTypeKeyDown:
+            case NSEventTypeKeyDown: {
                 event.type = UCEventType::KeyDown;
+                event.nativeKeyCode = [nsEvent keyCode];
                 event.virtualKey = ConvertNSEventKeyCode([nsEvent keyCode]);
-                event.text = [[nsEvent characters] UTF8String] ?: "";
+                NSString* chars = [nsEvent characters];
+                if (chars && [chars length] > 0) {
+                    event.text = [chars UTF8String];
+                    unichar ch = [chars characterAtIndex:0];
+                    event.character = (ch < 128) ? (char)ch : 0;
+                }
                 event.ctrl = ([nsEvent modifierFlags] & NSEventModifierFlagControl) != 0;
                 event.shift = ([nsEvent modifierFlags] & NSEventModifierFlagShift) != 0;
                 event.alt = ([nsEvent modifierFlags] & NSEventModifierFlagOption) != 0;
                 event.meta = ([nsEvent modifierFlags] & NSEventModifierFlagCommand) != 0;
                 break;
+            }
 
-            case NSEventTypeKeyUp:
+            case NSEventTypeKeyUp: {
                 event.type = UCEventType::KeyUp;
+                event.nativeKeyCode = [nsEvent keyCode];
                 event.virtualKey = ConvertNSEventKeyCode([nsEvent keyCode]);
+                NSString* chars = [nsEvent characters];
+                if (chars && [chars length] > 0) {
+                    event.text = [chars UTF8String];
+                    unichar ch = [chars characterAtIndex:0];
+                    event.character = (ch < 128) ? (char)ch : 0;
+                }
                 event.ctrl = ([nsEvent modifierFlags] & NSEventModifierFlagControl) != 0;
                 event.shift = ([nsEvent modifierFlags] & NSEventModifierFlagShift) != 0;
                 event.alt = ([nsEvent modifierFlags] & NSEventModifierFlagOption) != 0;
                 event.meta = ([nsEvent modifierFlags] & NSEventModifierFlagCommand) != 0;
                 break;
+            }
+
+            case NSEventTypeFlagsChanged: {
+                // Handle modifier-only key presses (Shift, Ctrl, Alt, Cmd)
+                NSUInteger flags = [nsEvent modifierFlags];
+                unsigned short keyCode = [nsEvent keyCode];
+                bool isDown = false;
+                switch (keyCode) {
+                    case 0x38: case 0x3C: // Left/Right Shift
+                        isDown = (flags & NSEventModifierFlagShift) != 0; break;
+                    case 0x3B: case 0x3E: // Left/Right Control
+                        isDown = (flags & NSEventModifierFlagControl) != 0; break;
+                    case 0x3A: case 0x3D: // Left/Right Option
+                        isDown = (flags & NSEventModifierFlagOption) != 0; break;
+                    case 0x37: case 0x36: // Left/Right Command
+                        isDown = (flags & NSEventModifierFlagCommand) != 0; break;
+                    default:
+                        event.type = UCEventType::NoneEvent;
+                        return event;
+                }
+                event.type = isDown ? UCEventType::KeyDown : UCEventType::KeyUp;
+                event.nativeKeyCode = keyCode;
+                event.virtualKey = ConvertNSEventKeyCode(keyCode);
+                event.ctrl = (flags & NSEventModifierFlagControl) != 0;
+                event.shift = (flags & NSEventModifierFlagShift) != 0;
+                event.alt = (flags & NSEventModifierFlagOption) != 0;
+                event.meta = (flags & NSEventModifierFlagCommand) != 0;
+                break;
+            }
 
             default:
                 event.type = UCEventType::NoneEvent;
@@ -399,6 +455,16 @@ namespace UltraCanvas {
             case 0x74: return UCKeys::PageUp;
             case 0x79: return UCKeys::PageDown;
             case 0x75: return UCKeys::Delete;
+
+                // Modifier keys
+            case 0x38: return UCKeys::LeftShift;
+            case 0x3C: return UCKeys::RightShift;
+            case 0x3B: return UCKeys::LeftCtrl;
+            case 0x3E: return UCKeys::RightCtrl;
+            case 0x3A: return UCKeys::LeftAlt;
+            case 0x3D: return UCKeys::RightAlt;
+            case 0x37: return UCKeys::LeftMeta;
+            case 0x36: return UCKeys::RightMeta;
 
             default: return UCKeys::Unknown;
         }

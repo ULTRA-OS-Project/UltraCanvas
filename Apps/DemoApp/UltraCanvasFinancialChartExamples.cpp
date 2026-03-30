@@ -246,6 +246,7 @@ namespace UltraCanvas {
         controlPanel->AddChild(tooltipsCheckbox);
 
         // ===== TIME PERIOD BUTTONS =====
+        /*
         auto periodLabel = std::make_shared<UltraCanvasLabel>("PeriodLabel", 1060, 20, 125, 100, 25);
         periodLabel->SetText("Time Period:");
         controlPanel->AddChild(periodLabel);
@@ -271,9 +272,10 @@ namespace UltraCanvas {
             controlPanel->AddChild(periodBtn);
             btnX += 70;
         }
-
+*/
+        /*
         // ===== ACTION BUTTONS =====
-        auto resetBtn = std::make_shared<UltraCanvasButton>("ResetBtn", 1080, 20, 165, 100, 35);
+        auto resetBtn = std::make_shared<UltraCanvasButton>("ResetBtn", 1080, 150, 165, 120, 35);
         resetBtn->SetText("Reset View");
         resetBtn->SetOnClick([chart]() {
 //            chart->ResetZoomAndPan();
@@ -281,7 +283,7 @@ namespace UltraCanvas {
         });
         controlPanel->AddChild(resetBtn);
 
-        auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 1081, 130, 165, 100, 35);
+        auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 1081, 280, 165, 120, 35);
         exportBtn->SetText("Export PNG");
         exportBtn->SetOnClick([chart]() {
             debugOutput << "Exporting chart to PNG..." << std::endl;
@@ -289,20 +291,20 @@ namespace UltraCanvas {
         });
         controlPanel->AddChild(exportBtn);
 
-        auto dataBtn = std::make_shared<UltraCanvasButton>("DataBtn", 1082, 240, 165, 100, 35);
+        auto dataBtn = std::make_shared<UltraCanvasButton>("DataBtn", 1082, 410, 165, 120, 35);
         dataBtn->SetText("Load CSV");
         dataBtn->SetOnClick([chart]() {
             debugOutput << "Loading data from CSV..." << std::endl;
             // In real app, this would open a file dialog to load CSV data
         });
         controlPanel->AddChild(dataBtn);
-
+*/
         // ===== COLOR CUSTOMIZATION =====
-        auto colorLabel = std::make_shared<UltraCanvasLabel>("ColorLabel", 1090, 20, 210, 100, 25);
+        auto colorLabel = std::make_shared<UltraCanvasLabel>("ColorLabel", 1090, 20, 210, 120, 25);
         colorLabel->SetText("Color Scheme:");
         controlPanel->AddChild(colorLabel);
 
-        auto greenRedBtn = std::make_shared<UltraCanvasButton>("GreenRedBtn", 1091, 130, 210, 80, 30);
+        auto greenRedBtn = std::make_shared<UltraCanvasButton>("GreenRedBtn", 1091, 150, 210, 120, 30);
         greenRedBtn->SetText("Green/Red");
         greenRedBtn->SetOnClick([chart]() {
             chart->SetBullishCandleColor(Color(0, 180, 0, 255));
@@ -311,7 +313,7 @@ namespace UltraCanvas {
         });
         controlPanel->AddChild(greenRedBtn);
 
-        auto blueOrangeBtn = std::make_shared<UltraCanvasButton>("BlueOrangeBtn", 1092, 220, 210, 90, 30);
+        auto blueOrangeBtn = std::make_shared<UltraCanvasButton>("BlueOrangeBtn", 1092, 280, 210, 120, 30);
         blueOrangeBtn->SetText("Blue/Orange");
         blueOrangeBtn->SetOnClick([chart]() {
             chart->SetBullishCandleColor(Color(0, 120, 200, 255));
@@ -320,7 +322,7 @@ namespace UltraCanvas {
         });
         controlPanel->AddChild(blueOrangeBtn);
 
-        auto monochrome = std::make_shared<UltraCanvasButton>("MonochromeBtn", 1093, 320, 210, 90, 30);
+        auto monochrome = std::make_shared<UltraCanvasButton>("MonochromeBtn", 1093, 410, 210, 120, 30);
         monochrome->SetText("Monochrome");
         monochrome->SetOnClick([chart]() {
             chart->SetBullishCandleColor(Color(255, 255, 255, 255));
@@ -330,6 +332,7 @@ namespace UltraCanvas {
         controlPanel->AddChild(monochrome);
 
         // ===== REAL-TIME UPDATE SIMULATION =====
+        /*
         auto updateLabel = std::make_shared<UltraCanvasLabel>("UpdateLabel", 1094, 20, 250, 150, 25);
         updateLabel->SetText("Live Updates:");
         controlPanel->AddChild(updateLabel);
@@ -346,7 +349,7 @@ namespace UltraCanvas {
             }
         };
         controlPanel->AddChild(liveToggle);
-
+*/
         container->AddChild(controlPanel);
     }
 

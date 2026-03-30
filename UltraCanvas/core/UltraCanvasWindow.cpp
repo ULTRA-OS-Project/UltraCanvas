@@ -314,6 +314,8 @@ namespace UltraCanvas {
         UltraCanvasContainer::Render(ctx);
 
         RenderCustomContent(ctx);
+
+        UltraCanvasTooltipManager::Render(ctx, this);
     }
 
     void UltraCanvasWindowBase::OpenPopup(const Point2Di& pos, UltraCanvasUIElement& elem, const PopupElementSettings& settings) {
@@ -407,7 +409,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWindowBase::Close() {
-        if (!_created || _state == WindowState::Closing) {
+        if (!_created || _state == WindowState::Closing
+            || _state == WindowState::DeleteRequested
+            || _state == WindowState::Deleted) {
             return;
         }
 

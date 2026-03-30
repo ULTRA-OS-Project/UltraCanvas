@@ -25,6 +25,8 @@ namespace UltraCanvas {
         Color headerTextColor = Colors::Black;
         Color gridLineColor = Color(220, 220, 220);
 
+        float headerFontSize = 10;
+
         int rowHeight = 24;
         int headerHeight = 26;
         bool showHeader = false;

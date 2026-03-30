@@ -744,7 +744,7 @@ namespace UltraCanvas {
         }
 
         // Draw label
-        ctx->SetFillPaint(style.textColor);
+        ctx->SetTextPaint(style.textColor);
         ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
         ctx->SetFontSize(style.fontSize);
 

@@ -258,7 +258,7 @@ namespace UltraCanvas {
         ctx->SetFillPaint(viewStyle.headerBackgroundColor);
         ctx->FillRectangle(headerRect.x, headerRect.y, headerRect.width, headerRect.height);
 
-        ctx->SetFontSize(12);
+        ctx->SetFontSize(viewStyle.headerFontSize);
         ctx->SetTextPaint(viewStyle.headerTextColor);
         ctx->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
         ctx->SetTextWrap(TextWrap::WrapNone);
