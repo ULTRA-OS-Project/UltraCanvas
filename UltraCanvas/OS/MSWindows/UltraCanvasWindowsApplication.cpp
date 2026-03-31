@@ -17,7 +17,6 @@
 namespace UltraCanvas {
 
     UltraCanvasWindowsApplication* UltraCanvasWindowsApplication::instance = nullptr;
-    const wchar_t* UltraCanvasWindowsApplication::WINDOW_CLASS_NAME = L"UltraCanvasWindowClass";
 
 // ===== CONSTRUCTOR =====
     UltraCanvasWindowsApplication::UltraCanvasWindowsApplication()
@@ -66,14 +65,22 @@ namespace UltraCanvas {
                 }
             }
 
-            // STEP 4: Register window class
+            // STEP 4: Build dynamic window class name from app name
+            mainWindowClassName = Utf8ToUtf16("UltraCanvas_" + appName + "_Main");
+
+            // STEP 5: Register main window class
             if (!RegisterWindowClass()) {
                 debugOutput << "UltraCanvas: Failed to register window class" << std::endl;
                 OleUninitialize();
                 return false;
             }
 
-            // STEP 5: Mark as initialized
+            // STEP 6: Pre-register common custom window classes
+            RegisterCustomWindowClass("Dialog");
+            RegisterCustomWindowClass("Tool");
+            RegisterCustomWindowClass("Popup");
+
+            // STEP 7: Mark as initialized
             initialized = true;
             running = false;
 
@@ -107,6 +114,13 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasWindowsApplication::RegisterWindowClass() {
+        // Try to load embedded app icon (resource ID 101, set by UltraCanvasAppIcon.cmake)
+        embeddedIconBig = LoadIcon(hInstance, MAKEINTRESOURCE(101));
+        if (!embeddedIconBig) {
+            embeddedIconBig = LoadIcon(nullptr, IDI_APPLICATION);
+        }
+        embeddedIconSmall = embeddedIconBig;
+
         WNDCLASSEXW wc = {};
         wc.cbSize = sizeof(WNDCLASSEXW);
         wc.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
@@ -114,12 +128,12 @@ namespace UltraCanvas {
         wc.cbClsExtra = 0;
         wc.cbWndExtra = 0;
         wc.hInstance = hInstance;
-        wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+        wc.hIcon = embeddedIconBig;
         wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
         wc.hbrBackground = nullptr;  // We handle all painting via Cairo
         wc.lpszMenuName = nullptr;
-        wc.lpszClassName = WINDOW_CLASS_NAME;
-        wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
+        wc.lpszClassName = mainWindowClassName.c_str();
+        wc.hIconSm = embeddedIconSmall;
 
         windowClassAtom = RegisterClassExW(&wc);
         if (!windowClassAtom) {
@@ -127,15 +141,72 @@ namespace UltraCanvas {
             return false;
         }
 
-        debugOutput << "UltraCanvas: Window class registered" << std::endl;
+        debugOutput << "UltraCanvas: Window class registered: "
+                    << Utf16ToUtf8(mainWindowClassName) << std::endl;
         return true;
     }
 
     void UltraCanvasWindowsApplication::UnregisterWindowClass() {
         if (windowClassAtom && hInstance) {
-            UnregisterClassW(WINDOW_CLASS_NAME, hInstance);
+            UnregisterClassW(mainWindowClassName.c_str(), hInstance);
             windowClassAtom = 0;
         }
+        // Unregister custom window classes
+        for (auto& [suffix, className] : customWindowClasses) {
+            UnregisterClassW(className.c_str(), hInstance);
+        }
+        customWindowClasses.clear();
+    }
+
+// ===== CUSTOM WINDOW CLASSES =====
+
+    std::wstring UltraCanvasWindowsApplication::RegisterCustomWindowClass(const std::string& suffix) {
+        // Check if already registered
+        auto it = customWindowClasses.find(suffix);
+        if (it != customWindowClasses.end()) {
+            return it->second;
+        }
+
+        // Build class name: "UltraCanvas_<appName>_<suffix>"
+        std::string className = "UltraCanvas_" + appName + "_" + suffix;
+        std::wstring wClassName = Utf8ToUtf16(className);
+
+        WNDCLASSEXW wc = {};
+        wc.cbSize = sizeof(WNDCLASSEXW);
+        wc.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
+        wc.lpfnWndProc = StaticWndProc;
+        wc.cbClsExtra = 0;
+        wc.cbWndExtra = 0;
+        wc.hInstance = hInstance;
+        wc.hIcon = embeddedIconBig ? embeddedIconBig : LoadIcon(nullptr, IDI_APPLICATION);
+        wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        wc.hbrBackground = nullptr;
+        wc.lpszMenuName = nullptr;
+        wc.lpszClassName = wClassName.c_str();
+        wc.hIconSm = wc.hIcon;
+
+        ATOM atom = RegisterClassExW(&wc);
+        if (!atom) {
+            debugOutput << "UltraCanvas: Failed to register custom window class: "
+                        << className << " error=" << GetLastError() << std::endl;
+            return L"";
+        }
+
+        customWindowClasses[suffix] = wClassName;
+        debugOutput << "UltraCanvas: Custom window class registered: " << className << std::endl;
+        return wClassName;
+    }
+
+    const wchar_t* UltraCanvasWindowsApplication::GetWindowClassName(const std::string& suffix) const {
+        if (suffix.empty() || suffix == "Main") {
+            return mainWindowClassName.c_str();
+        }
+        auto it = customWindowClasses.find(suffix);
+        if (it != customWindowClasses.end()) {
+            return it->second.c_str();
+        }
+        // Fallback to main class
+        return mainWindowClassName.c_str();
     }
 
 // ===== MAIN LOOP =====

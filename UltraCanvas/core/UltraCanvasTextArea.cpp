@@ -1605,6 +1605,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::DrawSearchHighlights(IRenderContext* context) {
         if (searchHighlights.empty()) return;
 
+        Color rowBandColor = {1, 228, 3, 20};       // #01e403 at 60% opacity
         Color highlightColor = {255, 255, 0, 100};
         int dlCount = GetDisplayLineCount();
         int visStartDL = std::max(0, firstVisibleLine - 1);
@@ -1614,6 +1615,30 @@ namespace UltraCanvas {
             firstVisibleLine < static_cast<int>(markdownLineYOffsets.size()))
             mdScrollBase = markdownLineYOffsets[firstVisibleLine];
 
+        // Pass 1: full-width green row bands behind matched lines
+        std::vector<bool> bandDrawn(visEndDL - visStartDL, false);
+        for (const auto& [startPos, endPos] : searchHighlights) {
+            auto [startLine, startCol] = GetLineColumnFromPosition(startPos);
+            auto [endLine, endCol] = GetLineColumnFromPosition(endPos);
+
+            for (int di = visStartDL; di < visEndDL; di++) {
+                int idx = di - visStartDL;
+                if (bandDrawn[idx]) continue;
+
+                int logLine = displayLines[di].logicalLine;
+                if (logLine < startLine || logLine > endLine) continue;
+
+                bandDrawn[idx] = true;
+                int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
+                if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
+                    lineY += markdownLineYOffsets[di] - mdScrollBase;
+
+                context->SetFillPaint(rowBandColor);
+                context->FillRectangle(visibleTextArea.x, lineY, visibleTextArea.width, computedLineHeight);
+            }
+        }
+
+        // Pass 2: per-match text highlights on top
         for (const auto& [startPos, endPos] : searchHighlights) {
             auto [startLine, startCol] = GetLineColumnFromPosition(startPos);
             auto [endLine, endCol] = GetLineColumnFromPosition(endPos);
@@ -2791,6 +2816,11 @@ namespace UltraCanvas {
         lastSearchCaseSensitive = caseSensitive;
         lastSearchPosition = cursorGraphemePosition;
         // FindNext();
+    }
+
+    void UltraCanvasTextArea::FindFirst() {
+        lastSearchPosition = -1;
+        FindNext();
     }
 
     void UltraCanvasTextArea::FindNext() {

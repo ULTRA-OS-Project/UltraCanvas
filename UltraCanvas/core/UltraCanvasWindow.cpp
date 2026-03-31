@@ -365,6 +365,16 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasWindowBase::CloseAllPopups() {
+        
+        for(auto it = popupElements.rbegin(); it != popupElements.rend(); ++it) {
+            if (it->element) {
+                ClosePopup(*it->element);
+            }
+        }
+        popupElements.clear();
+    }
+
     bool UltraCanvasWindowBase::Create(const WindowConfig& config) {
         config_ = config;
         return Create();
@@ -395,6 +405,8 @@ namespace UltraCanvas {
         if (!_created || _state == WindowState::Deleted) {
             return;
         }
+        CloseAllPopups();
+
         DestroyNative();
         _created = false;
         _state = WindowState::Deleted;
@@ -416,8 +428,9 @@ namespace UltraCanvas {
         }
 
         _state = WindowState::Closing;
-
         debugOutput << "UltraCanvas: Window close requested" << std::endl;
+
+        CloseAllPopups();
 
         if (onWindowClose) {
             onWindowClose();

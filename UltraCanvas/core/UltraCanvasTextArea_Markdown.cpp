@@ -3392,8 +3392,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                         visibleText = utf8_substr(token.text, localStart, localLen);
                     }
 
-                    context->SetFontWeight(GetStyleForTokenType(token.type).bold ?
-                                           FontWeight::Bold : FontWeight::Normal);
+                    context->SetFontWeight(FontWeight::Normal);
                     int tokenWidth = context->GetTextLineWidth(visibleText);
 
                     if (x + tokenWidth >= visibleTextArea.x &&

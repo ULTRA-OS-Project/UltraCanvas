@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 1.0.11
+    VERSION 1.0.12
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -52,6 +52,7 @@ option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires poppler)" OFF)
 
 include(FetchContent)
+include(cmake/UltraCanvasAppIcon.cmake)
 
 # ===== FIND REQUIRED PACKAGES =====
 find_package(PkgConfig REQUIRED)
@@ -243,8 +244,13 @@ if(BUILD_DEMO_APP)
     # Compile definitions
     target_compile_definitions(UltraCanvasDemo PRIVATE
         ULTRACANVAS_DEMO_VERSION="${PROJECT_VERSION}"
+        UCAPP_ICON_PATH="media/appicon/Demo.png"
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )
+
+    # Embed app icon in .exe (Windows only)
+    ultracanvas_embed_app_icon(UltraCanvasDemo
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/Demo.png")
     
     # Compiler warnings
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -334,8 +340,13 @@ endif()
     # Compile definitions
     target_compile_definitions(UltraCanvasTexter PRIVATE
             ULTRACANVAS_DEMO_VERSION="${PROJECT_VERSION}"
+            UCAPP_ICON_PATH="media/appicon/Texter.png"
             $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )
+
+    # Embed app icon in .exe (Windows only)
+    ultracanvas_embed_app_icon(UltraCanvasTexter
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/Texter.png")
 
     # Compiler warnings
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

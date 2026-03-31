@@ -253,15 +253,21 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::CloseMenutree() {
         auto parentMnu = parentMenu.lock();
-        if (!parentMnu || parentMnu->menuType == MenuType::Menubar) {
+        if (!parentMnu) {
             CloseMenu();
+        } else if (parentMnu->menuType == MenuType::Menubar) {
+            parentMnu->CloseActiveSubmenu();
         } else {
             auto mnu = parentMnu;
             while (parentMnu && parentMnu->menuType != MenuType::Menubar) {
                 mnu = parentMnu;
                 parentMnu = parentMnu->parentMenu.lock();
             }
-            mnu->CloseMenu();
+            if (parentMnu) {
+                parentMnu->CloseActiveSubmenu();
+            } else {
+                mnu->CloseMenu();
+            }
         }
     }
 
@@ -765,6 +771,16 @@ namespace UltraCanvas {
         scrollOffsetPixels = 0;
         needsScrollbar = false;
         if (onMenuClosed) onMenuClosed();
+
+        // Clear parent menu's reference to this submenu so it can be reopened
+        auto parentMnu = parentMenu.lock();
+        if (parentMnu && parentMnu->activeSubmenu.get() == this) {
+            auto it = std::find(parentMnu->childMenus.begin(), parentMnu->childMenus.end(), parentMnu->activeSubmenu);
+            if (it != parentMnu->childMenus.end()) {
+                parentMnu->childMenus.erase(it);
+            }
+            parentMnu->activeSubmenu.reset();
+        }
 
         UltraCanvasUIElement::OnPopupClosed(reason);
     }

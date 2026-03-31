@@ -38,6 +38,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel>       countLabel;     // "3 / 12" or "No results"
         std::shared_ptr<UltraCanvasButton>      prevButton;     // ↑
         std::shared_ptr<UltraCanvasButton>      nextButton;     // ↓
+        std::shared_ptr<UltraCanvasButton>      firstMatchButton; // ⤒
         std::shared_ptr<UltraCanvasButton>      settingsButton;      // ⚙ opens options menu
         std::shared_ptr<UltraCanvasMenu>        settingsMenu;        // popup with Case sensitive / Whole words checkboxes
         std::shared_ptr<UltraCanvasMenu>        searchHistoryMenu;   // popup with recent search terms
@@ -132,6 +133,7 @@ namespace UltraCanvas {
         // ===== CALLBACKS =====
         std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onFindNext;
         std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onFindPrevious;
+        std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onFindFirst;
         std::function<void(const std::string& find, const std::string& replace, bool cs, bool ww)> onReplace;
         std::function<void(const std::string& find, const std::string& replace, bool cs, bool ww)> onReplaceAll;
         std::function<void()> onClose;

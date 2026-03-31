@@ -645,25 +645,6 @@ namespace UltraCanvas {
                 .AddVariant("imageperformance", "Decompress + Draw Test")
                 .AddVariant("imageperformance", "Draw Only Test");
 
-//        bitmapBuilder.AddItem("gifimages", "GIF Images", "GIF Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("GIF"); });
-//        bitmapBuilder.AddItem("avifimages", "AVIF Images", "AVIF Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("AVIF"); });
-//        bitmapBuilder.AddItem("tiffimages", "TIFF Images", "TIFF Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("TIFF"); });
-//        bitmapBuilder.AddItem("webpimages", "WEBP Images", "WEBP Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("WEBP"); });
-//        bitmapBuilder.AddItem("qoiimages", "QOI Images", "QOI Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
-//        bitmapBuilder.AddItem("rawimages", "RAW Images", "RAW Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("RAW"); });
-
         // ===== VECTOR ELEMENTS =====
         auto vectorBuilder = DemoCategoryBuilder(this, DemoCategory::VectorElements);
 

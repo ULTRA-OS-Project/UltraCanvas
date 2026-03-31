@@ -18,6 +18,10 @@
 #include <memory>
 #include <iostream>
 #include <unordered_map>
+#ifdef _WIN32
+#include <stdlib.h>
+#include <windows.h>
+#endif
 #include <fmt/os.h>
 #include "UltraCanvasDebug.h"
 
@@ -116,6 +120,19 @@ namespace UltraCanvas {
 
 #ifdef HAS_LIBVIPS
     bool UCImageRaster::InitializeImageSubsysterm(const char *programName) {
+#ifdef _WIN32
+        std::string exeDir = GetExecutableDir();
+        auto setEnv = [&](const char *name, const std::string &val) {
+            SetEnvironmentVariableA(name, val.c_str());
+            _putenv_s(name, val.c_str());
+            debugOutput << "  ENV " << name << "=" << val << std::endl;
+        };
+        setEnv("MAGICK_HOME", exeDir);
+        setEnv("MAGICK_CONFIGURE_PATH",
+               exeDir + "\\etc\\ImageMagick-7;" + exeDir + "\\lib\\ImageMagick-7.1.2\\config-Q16HDRI");
+        setEnv("MAGICK_CODER_MODULE_PATH",
+               exeDir + "\\lib\\ImageMagick-7.1.2\\modules-Q16HDRI\\coders");
+#endif
         if (VIPS_INIT(programName ? programName : "UCImageSubsys") != 0) return false;
         vips_foreign_load_qoi_init_types();
         return true;

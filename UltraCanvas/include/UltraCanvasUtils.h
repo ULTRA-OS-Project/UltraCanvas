@@ -32,6 +32,8 @@ namespace UltraCanvas {
 
     std::string GetExecutableDir();
 
+    void OpenURL(const std::string& url);
+
     std::vector<uint8_t> Base64Decode(const std::string& input);
 
     inline std::string LTrimWhitespace(std::string s) {

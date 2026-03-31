@@ -90,7 +90,12 @@ namespace UltraCanvas {
         wchar_t highSurrogate = 0;
 
         // ===== WINDOW CLASS NAME =====
-        static const wchar_t* WINDOW_CLASS_NAME;
+        std::wstring mainWindowClassName;
+        std::unordered_map<std::string, std::wstring> customWindowClasses;
+
+        // ===== EMBEDDED ICON =====
+        HICON embeddedIconBig = nullptr;
+        HICON embeddedIconSmall = nullptr;
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
@@ -103,7 +108,11 @@ namespace UltraCanvas {
         // ===== WINDOWS-SPECIFIC METHODS =====
         HINSTANCE GetHInstance() const { return hInstance; }
         ATOM GetWindowClassAtom() const { return windowClassAtom; }
-        static const wchar_t* GetWindowClassName() { return WINDOW_CLASS_NAME; }
+        const wchar_t* GetWindowClassName() const { return mainWindowClassName.c_str(); }
+        const wchar_t* GetWindowClassName(const std::string& suffix) const;
+
+        /// Register a custom window class with suffix (e.g., "Dialog" -> "UltraCanvas_<app>_Dialog")
+        std::wstring RegisterCustomWindowClass(const std::string& suffix);
 
         void ProcessWindowMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

@@ -1443,20 +1443,20 @@ namespace UltraCanvas {
 
         switch (tabPosition) {
             case TabPosition::Top:
-                return Rect2Di(0, tabHeight, bounds.width, bounds.height - tabHeight);
+                return Rect2Di(0, tabHeight + contentTopPadding, bounds.width, bounds.height - tabHeight - contentTopPadding);
 
             case TabPosition::Bottom:
-                return Rect2Di(0, 0, bounds.width, bounds.height - tabHeight);
+                return Rect2Di(0, contentTopPadding, bounds.width, bounds.height - tabHeight - contentTopPadding);
 
             case TabPosition::Left:
                 verticalTabWidth = CalculateMaxTabWidth();
-                return Rect2Di(verticalTabWidth, 0, bounds.width - verticalTabWidth, bounds.height);
+                return Rect2Di(verticalTabWidth, contentTopPadding, bounds.width - verticalTabWidth, bounds.height - contentTopPadding);
 
             case TabPosition::Right:
-                return Rect2Di(0, 0, bounds.width - CalculateMaxTabWidth(), bounds.height);
+                return Rect2Di(0, contentTopPadding, bounds.width - CalculateMaxTabWidth(), bounds.height - contentTopPadding);
 
             default:
-                return Rect2Di(0, tabHeight, bounds.width, bounds.height - tabHeight);
+                return Rect2Di(0, tabHeight + contentTopPadding, bounds.width, bounds.height - tabHeight - contentTopPadding);
         }
     }
 

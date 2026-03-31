@@ -16,6 +16,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTextEditor.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSplashScreen.h"
 
 // OS-specific includes
 #ifdef _WIN32
@@ -335,7 +336,7 @@ bool InitializeSystem(UltraCanvasApplication& app, const std::string& appName) {
             HandleFatalError("Failed to initialize UltraCanvas application");
             return false;
         }
-        app.SetDefaultWindowIcon(GetResourcesDir()+"media/icons/texter/Texter_icon.png");
+        app.SetDefaultWindowIcon(GetResourcesDir()+"media/appicons/Texter.png");
 
         debugOutput << "✓ UltraCanvas framework initialized successfully" << std::endl;
     } catch (const std::exception& e) {
@@ -434,6 +435,16 @@ int main(int argc, char* argv[]) {
             editorConfig.defaultLanguage = language;
         }
 
+        // Show splash screen
+        UltraCanvasSplashScreen splash;
+        SplashScreenConfig splashConfig;
+        splashConfig.imagePath = GetResourcesDir() + "media/appicons/Texter.png";
+        splashConfig.title = "UltraTexter";
+        splashConfig.version = "1.0.12";
+        splashConfig.websiteURL = "https://www.ultraos.eu/";
+        splashConfig.websiteDisplay = "www.ultraos.eu";
+        //splash.Show(splashConfig);
+
         // Create window manager
         TexterWindowManager windowManager(&app, editorConfig, useDarkTheme);
         g_windowManager = &windowManager;
@@ -446,6 +457,9 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
         debugOutput << "✓ Main window created" << std::endl;
+
+        // Close splash screen now that main window is ready
+        //splash.Close();
 
         // Open file from command line
         if (!fileToOpen.empty()) {

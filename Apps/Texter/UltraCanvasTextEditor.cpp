@@ -1107,20 +1107,22 @@ namespace {
             mdToolbarW = markdownToolbarWidth;
         }
 
+        // ===== Search bar height =====
+        int searchBarH = (searchBar && searchBar->IsVisible()) ? searchBar->GetBarHeight() : 0;
+
         // ===== Tab container (fills remaining space minus status bar) =====
         if (tabContainer) {
             int reservedBottom = config.showStatusBar ? statusBarHeight : 0;
-            // Search bar overlays content — no space reservation needed
             int tabAreaHeight = h - yPos - reservedBottom;
             if (tabAreaHeight < 0) tabAreaHeight = 0;
             tabContainer->SetBounds(Rect2Di(mdToolbarW, yPos, w - mdToolbarW, tabAreaHeight));
+            tabContainer->SetContentTopPadding(searchBarH);
         }
 
-        // ===== Search bar (top overlay, below tab strip) =====
-        if (searchBar && searchBar->IsVisible()) {
-            int barH = searchBar->GetBarHeight();
-            int barY = yPos + tabBarHeight; // below tab labels, overlaying editor content
-            searchBar->SetBounds(Rect2Di(mdToolbarW, barY, w - mdToolbarW, barH));
+        // ===== Search bar (below tab strip, above content) =====
+        if (searchBarH > 0) {
+            int barY = yPos + tabBarHeight;
+            searchBar->SetBounds(Rect2Di(mdToolbarW, barY, w - mdToolbarW, searchBarH));
         }
 
         // ===== Status bar =====
@@ -2551,7 +2553,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         urlLabel->SetAlignment(TextAlignment::Center);
         urlLabel->SetMouseCursor(UCMouseCursor::Hand);
         urlLabel->onClick = []() {
-            system("xdg-open https://www.ultraos.eu/");
+            OpenURL("https://www.ultraos.eu/");
         };
         urlLabel->SetMargin(0, 0, 10, 20);
         mainLayout->AddUIElement(urlLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center);
@@ -2836,54 +2838,24 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 statusLabel->SetBackgroundColor(Color(40, 40, 40, 255));
                 statusLabel->SetTextColor(Color(200, 200, 200, 255));
             }
-            if (zoomDropdown) {
-                DropdownStyle zStyle = zoomDropdown->GetStyle();
-                zStyle.normalColor = Color(40, 40, 40, 255);
-                zStyle.hoverColor = Color(55, 55, 55, 255);
-                zStyle.normalTextColor = Color(200, 200, 200, 255);
-                zStyle.borderColor = Color(60, 60, 60, 255);
-                zStyle.listBackgroundColor = Color(45, 45, 45, 255);
-                zStyle.listBorderColor = Color(60, 60, 60, 255);
-                zStyle.itemHoverColor = Color(65, 65, 65, 255);
-                zStyle.itemSelectedColor = Color(55, 55, 55, 255);
-                zoomDropdown->SetStyle(zStyle);
-            }
-            if (eolDropdown) {
-                DropdownStyle eStyle = eolDropdown->GetStyle();
-                eStyle.normalColor = Color(40, 40, 40, 255);
-                eStyle.hoverColor = Color(55, 55, 55, 255);
-                eStyle.normalTextColor = Color(200, 200, 200, 255);
-                eStyle.borderColor = Color(60, 60, 60, 255);
-                eStyle.listBackgroundColor = Color(45, 45, 45, 255);
-                eStyle.listBorderColor = Color(60, 60, 60, 255);
-                eStyle.itemHoverColor = Color(65, 65, 65, 255);
-                eStyle.itemSelectedColor = Color(55, 55, 55, 255);
-                zoomDropdown->SetStyle(eStyle);
-            }
-            if (encodingDropdown) {
-                DropdownStyle eStyle = encodingDropdown->GetStyle();
-                eStyle.normalColor = Color(40, 40, 40, 255);
-                eStyle.hoverColor = Color(55, 55, 55, 255);
-                eStyle.normalTextColor = Color(200, 200, 200, 255);
-                eStyle.borderColor = Color(60, 60, 60, 255);
-                eStyle.listBackgroundColor = Color(45, 45, 45, 255);
-                eStyle.listBorderColor = Color(60, 60, 60, 255);
-                eStyle.itemHoverColor = Color(65, 65, 65, 255);
-                eStyle.itemSelectedColor = Color(55, 55, 55, 255);
-                encodingDropdown->SetStyle(eStyle);
-            }
-            if (languageDropdown) {
-                DropdownStyle lStyle = languageDropdown->GetStyle();
-                lStyle.normalColor = Color(40, 40, 40, 255);
-                lStyle.hoverColor = Color(55, 55, 55, 255);
-                lStyle.normalTextColor = Color(200, 200, 200, 255);
-                lStyle.borderColor = Color(60, 60, 60, 255);
-                lStyle.listBackgroundColor = Color(45, 45, 45, 255);
-                lStyle.listBorderColor = Color(60, 60, 60, 255);
-                lStyle.itemHoverColor = Color(65, 65, 65, 255);
-                lStyle.itemSelectedColor = Color(55, 55, 55, 255);
-                languageDropdown->SetStyle(lStyle);
-            }
+            auto applyDarkDropdownStyle = [](std::shared_ptr<UltraCanvasDropdown>& dd) {
+                if (!dd) return;
+                DropdownStyle s = dd->GetStyle();
+                s.normalColor = Color(40, 40, 40, 255);
+                s.hoverColor = Color(55, 55, 55, 255);
+                s.pressedColor = Color(50, 50, 50, 255);
+                s.normalTextColor = Color(200, 200, 200, 255);
+                s.borderColor = Color(60, 60, 60, 255);
+                s.listBackgroundColor = Color(45, 45, 45, 255);
+                s.listBorderColor = Color(60, 60, 60, 255);
+                s.itemHoverColor = Color(65, 65, 65, 255);
+                s.itemSelectedColor = Color(55, 55, 55, 255);
+                dd->SetStyle(s);
+            };
+            applyDarkDropdownStyle(zoomDropdown);
+            applyDarkDropdownStyle(eolDropdown);
+            applyDarkDropdownStyle(encodingDropdown);
+            applyDarkDropdownStyle(languageDropdown);
             if (toolbarContainer) {
                 toolbarContainer->SetBackgroundColor(Color(40, 40, 40, 255));
             }
@@ -2900,42 +2872,24 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
                 statusLabel->SetTextColor(Color(80, 80, 80, 255));
             }
-            if (zoomDropdown) {
-                DropdownStyle zStyle = zoomDropdown->GetStyle();
-                zStyle.normalColor = Color(240, 240, 240, 255);
-                zStyle.hoverColor = Color(225, 225, 225, 255);
-                zStyle.normalTextColor = Color(80, 80, 80, 255);
-                zStyle.borderColor = Color(200, 200, 200, 255);
-                zStyle.listBackgroundColor = Color(255, 255, 255, 255);
-                zStyle.listBorderColor = Color(200, 200, 200, 255);
-                zStyle.itemHoverColor = Color(230, 230, 230, 255);
-                zStyle.itemSelectedColor = Color(220, 220, 220, 255);
-                zoomDropdown->SetStyle(zStyle);
-            }
-            if (encodingDropdown) {
-                DropdownStyle eStyle = encodingDropdown->GetStyle();
-                eStyle.normalColor = Color(240, 240, 240, 255);
-                eStyle.hoverColor = Color(225, 225, 225, 255);
-                eStyle.normalTextColor = Color(80, 80, 80, 255);
-                eStyle.borderColor = Color(200, 200, 200, 255);
-                eStyle.listBackgroundColor = Color(255, 255, 255, 255);
-                eStyle.listBorderColor = Color(200, 200, 200, 255);
-                eStyle.itemHoverColor = Color(230, 230, 230, 255);
-                eStyle.itemSelectedColor = Color(220, 220, 220, 255);
-                encodingDropdown->SetStyle(eStyle);
-            }
-            if (languageDropdown) {
-                DropdownStyle lStyle = languageDropdown->GetStyle();
-                lStyle.normalColor = Color(240, 240, 240, 255);
-                lStyle.hoverColor = Color(225, 225, 225, 255);
-                lStyle.normalTextColor = Color(80, 80, 80, 255);
-                lStyle.borderColor = Color(200, 200, 200, 255);
-                lStyle.listBackgroundColor = Color(255, 255, 255, 255);
-                lStyle.listBorderColor = Color(200, 200, 200, 255);
-                lStyle.itemHoverColor = Color(230, 230, 230, 255);
-                lStyle.itemSelectedColor = Color(220, 220, 220, 255);
-                languageDropdown->SetStyle(lStyle);
-            }
+            auto applyLightDropdownStyle = [](std::shared_ptr<UltraCanvasDropdown>& dd) {
+                if (!dd) return;
+                DropdownStyle s = dd->GetStyle();
+                s.normalColor = Color(240, 240, 240, 255);
+                s.hoverColor = Color(225, 225, 225, 255);
+                s.pressedColor = Color(225, 235, 255, 255);
+                s.normalTextColor = Color(80, 80, 80, 255);
+                s.borderColor = Color(200, 200, 200, 255);
+                s.listBackgroundColor = Color(255, 255, 255, 255);
+                s.listBorderColor = Color(200, 200, 200, 255);
+                s.itemHoverColor = Color(230, 230, 230, 255);
+                s.itemSelectedColor = Color(220, 220, 220, 255);
+                dd->SetStyle(s);
+            };
+            applyLightDropdownStyle(zoomDropdown);
+            applyLightDropdownStyle(eolDropdown);
+            applyLightDropdownStyle(encodingDropdown);
+            applyLightDropdownStyle(languageDropdown);
             if (toolbarContainer) {
                 toolbarContainer->SetBackgroundColor(Color(240, 240, 240, 255));
             }
@@ -3433,7 +3387,19 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
+            doc->textArea->HighlightMatches(text);
             doc->textArea->FindNext();
+            int selPos = doc->textArea->GetSelectionMinGrapheme();
+            StartAsyncMatchCount(text, cs, selPos);
+        };
+
+        // ── Find First ──
+        searchBar->onFindFirst = [this](const std::string& text, bool cs, bool ww) {
+            auto doc = GetActiveDocument();
+            if (!doc || !doc->textArea) return;
+            doc->textArea->SetTextToFind(text, cs);
+            doc->textArea->HighlightMatches(text);
+            doc->textArea->FindFirst();
             int selPos = doc->textArea->GetSelectionMinGrapheme();
             StartAsyncMatchCount(text, cs, selPos);
         };
@@ -3443,6 +3409,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
+            doc->textArea->HighlightMatches(text);
             doc->textArea->FindPrevious();
             int selPos = doc->textArea->GetSelectionMinGrapheme();
             StartAsyncMatchCount(text, cs, selPos);
@@ -3454,6 +3421,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(find, cs);
             doc->textArea->ReplaceText(find, replace, false);
+            doc->textArea->HighlightMatches(find);
             int selPos = doc->textArea->GetSelectionMinGrapheme();
             StartAsyncMatchCount(find, cs, selPos);
         };
@@ -3464,6 +3432,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(find, cs);
             doc->textArea->ReplaceText(find, replace, true);
+            doc->textArea->HighlightMatches(find);
             StartAsyncMatchCount(find, cs, -1);
         };
 
@@ -3531,7 +3500,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::HideSearchBar() {
-        if (!searchBar || !searchBar->IsVisible()) return;
+        if (!searchBar) return;
         CancelAsyncMatchCount();
         searchBar->SetVisible(false);
 

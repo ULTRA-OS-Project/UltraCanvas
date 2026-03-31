@@ -76,6 +76,7 @@ namespace UltraCanvas {
     // ===== VIEW CONFIGURATION =====
     void UltraCanvasListView::SetStyle(const ListViewStyle& style) {
         viewStyle = style;
+        SetBackgroundColor(viewStyle.backgroundColor);
         if (verticalScrollbar) {
             verticalScrollbar->SetStyle(viewStyle.scrollbarStyle);
         }

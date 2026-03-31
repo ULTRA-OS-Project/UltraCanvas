@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.16)
 include(FetchContent)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "1.0.11")
+set(ULTRACANVAS_VERSION "1.0.12")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -143,6 +143,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp

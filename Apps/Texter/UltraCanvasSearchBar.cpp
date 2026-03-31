@@ -16,18 +16,18 @@ namespace UltraCanvas {
 //
 //  FIND mode  (height = RowHeight):
 //  ┌────────────────────────────────────────────────────────────────────────┐
-//  │ 🔍  [  search text ≤400  ]  3 / 12          ↓  ↑  ⚙  ✕             │
+//  │ 🔍  [  search text ≤400  ]  3 / 12  ↓  ↑  ⤒  ⚙            ✕       │
 //  └────────────────────────────────────────────────────────────────────────┘
 //
 //  REPLACE mode  (height = RowHeight*2 + 2):
 //  ┌────────────────────────────────────────────────────────────────────────┐
-//  │ 🔍  [  search text ≤400  ]  3 / 12          ↓  ↑  ⚙  ✕             │
+//  │ 🔍  [  search text ≤400  ]  3 / 12  ↓  ↑  ⤒  ⚙            ✕       │
 //  ├╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌┤
-//  │ ↺  [  replace text ≤400 ]          [Replace]  [Replace all]         │
+//  │ ↺  [  replace text ≤400 ]  [Replace]  [Replace all]                 │
 //  └────────────────────────────────────────────────────────────────────────┘
 //
-//  Left group: icon + input (≤400) + countLabel — left-aligned
-//  Right group: buttons — right-aligned
+//  Left group: icon + input (≤400) + countLabel + buttons — left-aligned
+//  Right group: ✕ close button only — right-aligned
 //  ⚙ opens popup menu with: ☑ Case sensitive / ☑ Whole words
 
     UltraCanvasSearchBar::UltraCanvasSearchBar(const std::string& id, long uid, int x, int y, int w)
@@ -70,9 +70,10 @@ namespace UltraCanvas {
 
     int UltraCanvasSearchBar::ComputeInputWidth() const {
         int w = GetWidth();
-        int rightButtonsWidth = 4 * (IconBtnSize + HSpacing); // ↓ ↑ ⚙ ✕
+        int rightButtonsWidth = 1 * (IconBtnSize + HSpacing); // ✕ only
         int fixedLeft = RowPadding + SearchIconW + HSpacing;
-        int fixedAfterInput = HSpacing + CountLabelW;
+        int fixedAfterInput = HSpacing + CountLabelW
+                            + 4 * (HSpacing + IconBtnSize); // ↓ ↑ ⤒ ⚙
         int available = w - fixedLeft - fixedAfterInput - rightButtonsWidth - RowPadding;
         return std::min(MaxInputWidth, std::max(80, available));
     }
@@ -101,28 +102,28 @@ namespace UltraCanvas {
 
         if (countLabel)
             countLabel->SetBounds(Rect2Di(x, inputY, CountLabelW, inputH));
+        x += CountLabelW + HSpacing;
 
-        // ── Find row: right group (right-aligned) ──
-        int rx = w - RowPadding;
+        // ── Find row: left group continued (nav + settings after count) ──
+        if (firstMatchButton)
+            firstMatchButton->SetBounds(Rect2Di(x, btnY, IconBtnSize, IconBtnSize));
+        x += IconBtnSize + HSpacing;
 
-        rx -= IconBtnSize;
+        if (nextButton)
+            nextButton->SetBounds(Rect2Di(x, btnY, IconBtnSize, IconBtnSize));
+        x += IconBtnSize + HSpacing;
+
+        if (prevButton)
+            prevButton->SetBounds(Rect2Di(x, btnY, IconBtnSize, IconBtnSize));
+        x += IconBtnSize + HSpacing;
+
+        if (settingsButton)
+            settingsButton->SetBounds(Rect2Di(x, btnY, IconBtnSize, IconBtnSize));
+
+        // ── Find row: right group (only close button) ──
+        int rx = w - RowPadding - IconBtnSize;
         if (closeButton)
             closeButton->SetBounds(Rect2Di(rx, btnY, IconBtnSize, IconBtnSize));
-        rx -= HSpacing;
-
-        rx -= IconBtnSize;
-        if (settingsButton)
-            settingsButton->SetBounds(Rect2Di(rx, btnY, IconBtnSize, IconBtnSize));
-        rx -= HSpacing;
-
-        rx -= IconBtnSize;
-        if (prevButton)
-            prevButton->SetBounds(Rect2Di(rx, btnY, IconBtnSize, IconBtnSize));
-        rx -= HSpacing;
-
-        rx -= IconBtnSize;
-        if (nextButton)
-            nextButton->SetBounds(Rect2Di(rx, btnY, IconBtnSize, IconBtnSize));
 
         // ── Replace row ──
         if (replaceRow) {
@@ -139,18 +140,15 @@ namespace UltraCanvas {
 
             if (replaceInput)
                 replaceInput->SetBounds(Rect2Di(rix, rInputY, inputW, inputH));
+            rix += inputW + HSpacing;
 
-            // Right-aligned replace buttons
-            int rrx = w - RowPadding;
-
-            rrx -= ReplaceBtnW;
-            if (replaceAllButton)
-                replaceAllButton->SetBounds(Rect2Di(rrx, rBtnY, ReplaceBtnW, IconBtnSize));
-            rrx -= HSpacing;
-
-            rrx -= ReplaceBtnW;
+            // Left-aligned replace buttons (after input)
             if (replaceButton)
-                replaceButton->SetBounds(Rect2Di(rrx, rBtnY, ReplaceBtnW, IconBtnSize));
+                replaceButton->SetBounds(Rect2Di(rix, rBtnY, ReplaceBtnW, IconBtnSize));
+            rix += ReplaceBtnW + HSpacing;
+
+            if (replaceAllButton)
+                replaceAllButton->SetBounds(Rect2Di(rix, rBtnY, ReplaceBtnW, IconBtnSize));
         }
     }
 
@@ -186,50 +184,55 @@ namespace UltraCanvas {
 
         // Match count label — right after input
         countLabel = std::make_shared<UltraCanvasLabel>("CountLabel", 6003, x, inputY, CountLabelW, inputH);
-        countLabel->SetText("");
+        countLabel->SetText("No results");
         countLabel->SetFontSize(10);
         countLabel->SetTextColor(Color(120, 120, 120, 255));
         countLabel->SetAlignment(TextAlignment::Left);
         AddChild(countLabel);
+        x += CountLabelW + HSpacing;
 
-        // Right-aligned buttons (positions will be corrected by UpdateLayout)
-        int rx = w - RowPadding;
+        // Nav + settings buttons — left-aligned after count label
+        firstMatchButton = std::make_shared<UltraCanvasButton>("FirstMatchBtn", 6006, x, btnY, IconBtnSize, IconBtnSize);
+        firstMatchButton->SetIcon(GetResourcesDir() + "media/icons/texter/arrow-up-to-bar.svg"); // ⤒
+        firstMatchButton->SetIconSize(18,18);
+        firstMatchButton->SetPadding(4,4,4,4);
+        firstMatchButton->SetTooltip("Go to First Match");
+        firstMatchButton->SetAcceptsFocus(false);
+        AddChild(firstMatchButton);
+        x += IconBtnSize + HSpacing;
 
-        rx -= IconBtnSize;
-        closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 6007, rx, btnY, IconBtnSize, IconBtnSize);
-        closeButton->SetText("\xe2\x9c\x95"); // ✕
-        closeButton->SetFontSize(11);
-        closeButton->SetTooltip("Close (Escape)");
-        closeButton->SetAcceptsFocus(false);
-        AddChild(closeButton);
-        rx -= HSpacing;
+        nextButton = std::make_shared<UltraCanvasButton>("NextBtn", 6004, x, btnY, IconBtnSize, IconBtnSize);
+        nextButton->SetText("\xe2\x86\x93"); // ↓
+        nextButton->SetFontSize(11);
+        nextButton->SetTooltip("Find Next (Enter)");
+        nextButton->SetAcceptsFocus(false);
+        AddChild(nextButton);
+        x += IconBtnSize + HSpacing;
 
-        rx -= IconBtnSize;
-        settingsButton = std::make_shared<UltraCanvasButton>("SettingsBtn", 6009, rx, btnY, IconBtnSize, IconBtnSize);
+        prevButton = std::make_shared<UltraCanvasButton>("PrevBtn", 6005, x, btnY, IconBtnSize, IconBtnSize);
+        prevButton->SetText("\xe2\x86\x91"); // ↑
+        prevButton->SetFontSize(11);
+        prevButton->SetTooltip("Find Previous (Shift+Enter)");
+        prevButton->SetAcceptsFocus(false);
+        AddChild(prevButton);
+        x += IconBtnSize + HSpacing;
+
+        settingsButton = std::make_shared<UltraCanvasButton>("SettingsBtn", 6009, x, btnY, IconBtnSize, IconBtnSize);
         settingsButton->SetIcon(GetResourcesDir() + "media/icons/texter/settings-sliders.svg");
         settingsButton->SetIconSize(18,18);
         settingsButton->SetPadding(4,4,4,4);
         settingsButton->SetTooltip("Search Options");
         settingsButton->SetAcceptsFocus(false);
         AddChild(settingsButton);
-        rx -= HSpacing;
 
-        rx -= IconBtnSize;
-        prevButton = std::make_shared<UltraCanvasButton>("PrevBtn", 6005, rx, btnY, IconBtnSize, IconBtnSize);
-        prevButton->SetText("\xe2\x86\x91"); // ↑
-        prevButton->SetFontSize(11);
-        prevButton->SetTooltip("Find Previous (Shift+Enter)");
-        prevButton->SetAcceptsFocus(false);
-        AddChild(prevButton);
-        rx -= HSpacing;
-
-        rx -= IconBtnSize;
-        nextButton = std::make_shared<UltraCanvasButton>("NextBtn", 6004, rx, btnY, IconBtnSize, IconBtnSize);
-        nextButton->SetText("\xe2\x86\x93"); // ↓
-        nextButton->SetFontSize(11);
-        nextButton->SetTooltip("Find Next (Enter)");
-        nextButton->SetAcceptsFocus(false);
-        AddChild(nextButton);
+        // Close button — right-aligned
+        int rx = w - RowPadding - IconBtnSize;
+        closeButton = std::make_shared<UltraCanvasButton>("CloseBtn", 6007, rx, btnY, IconBtnSize, IconBtnSize);
+        closeButton->SetText("\xe2\x9c\x95"); // ✕
+        closeButton->SetFontSize(11);
+        closeButton->SetTooltip("Close (Escape)");
+        closeButton->SetAcceptsFocus(false);
+        AddChild(closeButton);
     }
 
     // ── SETTINGS MENU ────────────────────────────────────────────────────────
@@ -288,26 +291,23 @@ namespace UltraCanvas {
         replaceInput->SetFontSize(11);
         replaceInput->SetShowClearButton(true);
         replaceRow->AddChild(replaceInput);
+        x += inputW + HSpacing;
 
-        // Right-aligned replace buttons (positions corrected by UpdateLayout)
-        int rx = w - RowPadding;
-
-        rx -= ReplaceBtnW;
-        replaceAllButton = std::make_shared<UltraCanvasButton>("ReplaceAllBtn", 6104,
-                                                               rx, btnY, ReplaceBtnW, IconBtnSize);
-        replaceAllButton->SetText("Replace all");
-        replaceAllButton->SetFontSize(11);
-        replaceAllButton->SetAcceptsFocus(false);
-        replaceRow->AddChild(replaceAllButton);
-        rx -= HSpacing;
-
-        rx -= ReplaceBtnW;
+        // Left-aligned replace buttons (after input)
         replaceButton = std::make_shared<UltraCanvasButton>("ReplaceBtn", 6103,
-                                                            rx, btnY, ReplaceBtnW, IconBtnSize);
+                                                            x, btnY, ReplaceBtnW, IconBtnSize);
         replaceButton->SetText("Replace");
         replaceButton->SetFontSize(11);
         replaceButton->SetAcceptsFocus(false);
         replaceRow->AddChild(replaceButton);
+        x += ReplaceBtnW + HSpacing;
+
+        replaceAllButton = std::make_shared<UltraCanvasButton>("ReplaceAllBtn", 6104,
+                                                               x, btnY, ReplaceBtnW, IconBtnSize);
+        replaceAllButton->SetText("Replace all");
+        replaceAllButton->SetFontSize(11);
+        replaceAllButton->SetAcceptsFocus(false);
+        replaceRow->AddChild(replaceAllButton);
 
         replaceRow->SetVisible(false);
         AddChild(replaceRow);
@@ -321,8 +321,9 @@ namespace UltraCanvas {
         searchInput->onTextChanged = [this](const std::string& text) {
             searchText = text;
             bool hasText = !text.empty();
-            if (nextButton)    nextButton->SetDisabled(!hasText);
-            if (prevButton)    prevButton->SetDisabled(!hasText);
+            if (nextButton)       nextButton->SetDisabled(!hasText);
+            if (prevButton)       prevButton->SetDisabled(!hasText);
+            if (firstMatchButton) firstMatchButton->SetDisabled(!hasText);
             if (!hasText && countLabel) countLabel->SetText("");
             if (onSearchTextChanged) onSearchTextChanged(text);
             // Live search as user types
@@ -359,6 +360,14 @@ namespace UltraCanvas {
             if (!searchText.empty() && onFindPrevious) {
                 AddToHistory(searchHistory, searchText);
                 onFindPrevious(searchText, caseSensitive, wholeWord);
+            }
+        };
+
+        // ⤒ Go to First Match
+        firstMatchButton->onClick = [this]() {
+            if (!searchText.empty() && onFindFirst) {
+                AddToHistory(searchHistory, searchText);
+                onFindFirst(searchText, caseSensitive, wholeWord);
             }
         };
 
@@ -401,8 +410,9 @@ namespace UltraCanvas {
         }
 
         // Disable nav buttons initially
-        if (nextButton) nextButton->SetDisabled(true);
-        if (prevButton) prevButton->SetDisabled(true);
+        if (nextButton)       nextButton->SetDisabled(true);
+        if (prevButton)       prevButton->SetDisabled(true);
+        if (firstMatchButton) firstMatchButton->SetDisabled(true);
     }
 
     // ── MODE ─────────────────────────────────────────────────────────────────
@@ -531,6 +541,7 @@ namespace UltraCanvas {
         applyBtnDark(searchIconButton);
         applyBtnDark(nextButton);
         applyBtnDark(prevButton);
+        applyBtnDark(firstMatchButton);
         applyBtnDark(settingsButton);
         applyBtnDark(closeButton);
         applyBtnDark(replaceIconButton);
@@ -568,6 +579,7 @@ namespace UltraCanvas {
         applyBtnLight(searchIconButton);
         applyBtnLight(nextButton);
         applyBtnLight(prevButton);
+        applyBtnLight(firstMatchButton);
         applyBtnLight(settingsButton);
         applyBtnLight(closeButton);
         applyBtnLight(replaceIconButton);

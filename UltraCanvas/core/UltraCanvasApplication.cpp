@@ -70,9 +70,23 @@ namespace UltraCanvas {
             if (std::filesystem::exists(iconPath)) {
                 SetDefaultWindowIcon(iconPath);
                 debugOutput << "UltraCanvas: Default window icon set to: " << iconPath << std::endl;
-            } else {
+            }
+#ifdef UCAPP_ICON_PATH
+            else {
+                // Fallback to app-specific icon defined at build time
+                std::string appIconPath = GetResourcesDir() + UCAPP_ICON_PATH;
+                if (std::filesystem::exists(appIconPath)) {
+                    SetDefaultWindowIcon(appIconPath);
+                    debugOutput << "UltraCanvas: App icon set to: " << appIconPath << std::endl;
+                } else {
+                    debugOutput << "UltraCanvas: App icon not found at: " << appIconPath << std::endl;
+                }
+            }
+#else
+            else {
                 debugOutput << "UltraCanvas: Default icon not found at: " << iconPath << std::endl;
             }
+#endif
 
             return true;
         } else {

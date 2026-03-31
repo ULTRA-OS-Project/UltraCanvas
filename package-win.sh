@@ -39,18 +39,59 @@ for EXE_PATH in $DIST_DIR/*.exe ; do
   done
 done
 
-# Also collect DLLs needed by the DLLs themselves (transitive deps)
-# Run ldd on each copied DLL to catch anything missed
-for dll in "$DIST_DIR"/*.dll; do
-    if [ -f "$dll" ]; then
-        ldd "$dll" 2>/dev/null | grep -i '/mingw64/' | awk '{print $3}' | sort -u | while read -r dep; do
-            dep_name=$(basename "$dep")
-            if [ -f "$dep" ] && [ ! -f "$DIST_DIR/$dep_name" ]; then
-                cp "$dep" "$DIST_DIR/"
-                echo "  $dep_name (transitive)"
-            fi
-        done
+# Copy libvips modules (only the ones we need and can bundle)
+VIPS_MODULE_DIR=$(ls -d /mingw64/lib/vips-modules-* 2>/dev/null | head -1)
+if [ -d "$VIPS_MODULE_DIR" ]; then
+    VIPS_MOD_DEST="$DIST_DIR/lib/$(basename "$VIPS_MODULE_DIR")"
+    mkdir -p "$VIPS_MOD_DEST"
+    # vips-heif: HEIF/AVIF support, vips-magick: ImageMagick bridge (BMP, etc.)
+    for mod in vips-heif.dll vips-magick.dll; do
+        [ -f "$VIPS_MODULE_DIR/$mod" ] && cp "$VIPS_MODULE_DIR/$mod" "$VIPS_MOD_DEST/"
+    done
+    echo "  Copied vips modules: vips-heif, vips-magick"
+fi
+
+# Copy libheif codec plugins (AOM for AVIF, x265 for HEIC, etc.)
+if [ -d "/mingw64/lib/libheif" ]; then
+    mkdir -p "$DIST_DIR/lib/libheif"
+    cp /mingw64/lib/libheif/*.dll "$DIST_DIR/lib/libheif/" 2>/dev/null || true
+    echo "  Copied libheif codec plugins"
+fi
+
+# Copy ImageMagick BMP coder module and config
+cp /mingw64/bin/libMagickCore*.dll "$DIST_DIR/" 2>/dev/null
+
+IM_LIB_DIR=$(ls -d /mingw64/lib/ImageMagick-* 2>/dev/null | head -1)
+if [ -d "$IM_LIB_DIR" ]; then
+    IM_BASENAME=$(basename "$IM_LIB_DIR")
+    CODERS_DEST="$DIST_DIR/lib/$IM_BASENAME/modules-Q16HDRI/coders"
+    mkdir -p "$CODERS_DEST"
+    # Only copy the BMP coder (dll + la)
+    cp "$IM_LIB_DIR/modules-Q16HDRI/coders/bmp.dll" "$CODERS_DEST/" 2>/dev/null || true
+    cp "$IM_LIB_DIR/modules-Q16HDRI/coders/bmp.la"  "$CODERS_DEST/" 2>/dev/null || true
+    if [ -d "$IM_LIB_DIR/config-Q16HDRI" ]; then
+        cp -r "$IM_LIB_DIR/config-Q16HDRI" "$DIST_DIR/lib/$IM_BASENAME/"
     fi
+    echo "  Copied ImageMagick BMP coder from $IM_BASENAME"
+fi
+# Copy ImageMagick configuration XMLs
+IM_ETC_DIR=$(ls -d /mingw64/etc/ImageMagick-* 2>/dev/null | head -1)
+if [ -d "$IM_ETC_DIR" ]; then
+    mkdir -p "$DIST_DIR/etc/$(basename "$IM_ETC_DIR")"
+    cp "$IM_ETC_DIR"/*.xml "$DIST_DIR/etc/$(basename "$IM_ETC_DIR")/"
+    echo "  Copied ImageMagick config XMLs"
+fi
+
+# Also collect DLLs needed by the DLLs themselves (transitive deps)
+# Run ldd on ALL copied DLLs including those in subdirectories (vips modules, IM coders)
+find "$DIST_DIR" -name '*.dll' | while read -r dll; do
+    ldd "$dll" 2>/dev/null | grep -i '/mingw64/' | awk '{print $3}' | sort -u | while read -r dep; do
+        dep_name=$(basename "$dep")
+        if [ -f "$dep" ] && [ ! -f "$DIST_DIR/$dep_name" ]; then
+            cp "$dep" "$DIST_DIR/"
+            echo "  $dep_name (transitive from $(basename "$dll"))"
+        fi
+    done
 done
 
 # Copy GLib schema files if they exist (needed by some GTK/GLib apps)

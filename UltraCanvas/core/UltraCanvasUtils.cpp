@@ -7,6 +7,7 @@
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
 #include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM macros
+#include <shellapi.h>  // ShellExecuteA
 #include "UltraCanvasDebug.h"
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -20,7 +21,7 @@
 #include <string>
 
 namespace UltraCanvas {
-    const char* versionString = "1.0.11";
+    const char* versionString = "1.0.12";
 
     std::string ToLowerCase(const std::string &str) {
         std::string result = str;
@@ -476,5 +477,15 @@ namespace UltraCanvas {
             }
         }
         return ".";
+    }
+
+    void OpenURL(const std::string& url) {
+#if defined(_WIN32) || defined(_WIN64)
+        ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+        system(("open \"" + url + "\"").c_str());
+#else
+        system(("xdg-open \"" + url + "\"").c_str());
+#endif
     }
 }

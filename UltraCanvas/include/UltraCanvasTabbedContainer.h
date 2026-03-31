@@ -112,6 +112,7 @@ namespace UltraCanvas {
         int tabSpacing = 0;
         int tabPadding = 12;
         bool tabbarLayoutDirty = true;
+        int contentTopPadding = 0;
 
         // ===== TAB STYLING =====
         float tabCornerRadius = 8.0f;
@@ -230,6 +231,8 @@ namespace UltraCanvas {
         float GetTabCornerRadius() const { return tabCornerRadius; }
         void SetTabElevation(float elevation) { tabElevation = elevation; InvalidateTabbar(); }
         float GetTabElevation() const { return tabElevation; }
+        void SetContentTopPadding(int padding) { if (contentTopPadding != padding) { contentTopPadding = padding; InvalidateTabbar(); } }
+        int GetContentTopPadding() const { return contentTopPadding; }
         void SetIconSize(int size) { iconSize = size; InvalidateTabbar(); }
         int GetIconSize() const { return iconSize; }
         bool CalcBadgeDimensions(TabData* tabData);

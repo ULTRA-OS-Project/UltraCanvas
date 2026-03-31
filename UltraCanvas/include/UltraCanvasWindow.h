@@ -59,6 +59,10 @@ namespace UltraCanvas {
 
         // Window icon (empty = use application default)
         std::string iconPath;
+
+        // Window class suffix (Windows only; empty = use "Main" default class)
+        // Examples: "Dialog", "Tool", "Popup"
+        std::string windowClassSuffix;
     };
 
     struct PopupElement {
@@ -169,6 +173,7 @@ namespace UltraCanvas {
         void OpenPopup(const Point2Di& pos, UltraCanvasUIElement& element, const PopupElementSettings& settings);
         bool ClosePopup(UltraCanvasUIElement& element, ClosePopupReason reason=ClosePopupReason::Manual);
         PopupElement* GetActivePopupElement();
+        void CloseAllPopups();
 
         // event filters
         void InstallEventFilter(const std::string& uniqueFilterId, const std::function<bool(const UCEvent&)>& filterFunc, const std::vector<UCEventType>& interestedEvents);

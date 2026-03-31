@@ -186,9 +186,17 @@ namespace UltraCanvas {
             parentHwnd = reinterpret_cast<HWND>(config_.parentWindow->GetNativeHandle());
         }
 
+        // Determine window class to use
+        const wchar_t* windowClass;
+        if (!config_.windowClassSuffix.empty()) {
+            windowClass = app->GetWindowClassName(config_.windowClassSuffix);
+        } else {
+            windowClass = app->GetWindowClassName();
+        }
+
         hwnd = CreateWindowExW(
             exStyle,
-            UltraCanvasWindowsApplication::GetWindowClassName(),
+            windowClass,
             wTitle.c_str(),
             style,
             winX, winY, winWidth, winHeight,
