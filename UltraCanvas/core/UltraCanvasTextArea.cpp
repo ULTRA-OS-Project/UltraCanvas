@@ -1698,6 +1698,11 @@ namespace UltraCanvas {
                 case UCEventType::MouseDown:
                     return HandleHexMouseDown(event);
                 case UCEventType::MouseUp:
+                    if (isDraggingVerticalThumb) {
+                        isDraggingVerticalThumb = false;
+                        UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
+                        return true;
+                    }
                     if (hexIsSelectingWithMouse) {
                         hexIsSelectingWithMouse = false;
                         hexSelectionAnchor = -1;
@@ -2017,7 +2022,7 @@ namespace UltraCanvas {
     bool UltraCanvasTextArea::HandleMouseWheel(const UCEvent& event) {
         if (!Contains(event.x, event.y)) return false;
 
-        int scrollAmount = 3;
+        int scrollAmount = 1;
 
         if (editingMode == TextAreaEditingMode::Hex) {
             if (event.wheelDelta > 0) {
@@ -2814,8 +2819,11 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::SetTextToFind(const std::string& searchText, bool caseSensitive) {
         lastSearchText = searchText;
         lastSearchCaseSensitive = caseSensitive;
-        lastSearchPosition = cursorGraphemePosition;
-        // FindNext();
+        if (editingMode == TextAreaEditingMode::Hex) {
+            lastSearchPosition = hexCursorByteOffset;
+        } else {
+            lastSearchPosition = cursorGraphemePosition;
+        }
     }
 
     void UltraCanvasTextArea::FindFirst() {
@@ -2825,6 +2833,31 @@ namespace UltraCanvas {
 
     void UltraCanvasTextArea::FindNext() {
         if (lastSearchText.empty()) return;
+
+        if (editingMode == TextAreaEditingMode::Hex) {
+            std::string haystack(hexBuffer.begin(), hexBuffer.end());
+            std::string needle = lastSearchText;
+            if (!lastSearchCaseSensitive) {
+                std::transform(haystack.begin(), haystack.end(), haystack.begin(), ::tolower);
+                std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+            }
+            size_t startFrom = (lastSearchPosition >= 0) ? lastSearchPosition + 1 : 0;
+            size_t found = haystack.find(needle, startFrom);
+            if (found == std::string::npos && lastSearchPosition > 0) {
+                found = haystack.find(needle, 0);
+            }
+            if (found != std::string::npos) {
+                int pos = static_cast<int>(found);
+                int len = static_cast<int>(lastSearchText.size());
+                hexSelectionStart = pos;
+                hexSelectionEnd = pos + len;
+                hexCursorByteOffset = pos;
+                lastSearchPosition = pos;
+                HexEnsureCursorVisible();
+                RequestRedraw();
+            }
+            return;
+        }
 
         int foundPos = utf8_find(textContent, lastSearchText, lastSearchPosition + 1, lastSearchCaseSensitive);
 
@@ -2848,6 +2881,36 @@ namespace UltraCanvas {
 
     void UltraCanvasTextArea::FindPrevious() {
         if (lastSearchText.empty()) return;
+
+        if (editingMode == TextAreaEditingMode::Hex) {
+            std::string haystack(hexBuffer.begin(), hexBuffer.end());
+            std::string needle = lastSearchText;
+            if (!lastSearchCaseSensitive) {
+                std::transform(haystack.begin(), haystack.end(), haystack.begin(), ::tolower);
+                std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+            }
+            size_t found = std::string::npos;
+            if (lastSearchPosition > 0) {
+                found = haystack.rfind(needle, lastSearchPosition - 1);
+            }
+            if (found == std::string::npos) {
+                found = haystack.rfind(needle);
+                if (found != std::string::npos && static_cast<int>(found) == lastSearchPosition) {
+                    return; // Only one match, already selected
+                }
+            }
+            if (found != std::string::npos) {
+                int pos = static_cast<int>(found);
+                int len = static_cast<int>(lastSearchText.size());
+                hexSelectionStart = pos;
+                hexSelectionEnd = pos + len;
+                hexCursorByteOffset = pos;
+                lastSearchPosition = pos;
+                HexEnsureCursorVisible();
+                RequestRedraw();
+            }
+            return;
+        }
 
         int foundPos = -1;
 
@@ -2920,6 +2983,23 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::HighlightMatches(const std::string& searchText) {
         searchHighlights.clear();
         if (searchText.empty()) {
+            RequestRedraw();
+            return;
+        }
+
+        if (editingMode == TextAreaEditingMode::Hex) {
+            std::string haystack(hexBuffer.begin(), hexBuffer.end());
+            std::string needle = searchText;
+            if (!lastSearchCaseSensitive) {
+                std::transform(haystack.begin(), haystack.end(), haystack.begin(), ::tolower);
+                std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+            }
+            int searchLen = static_cast<int>(searchText.size());
+            size_t pos = 0;
+            while ((pos = haystack.find(needle, pos)) != std::string::npos) {
+                searchHighlights.push_back({static_cast<int>(pos), static_cast<int>(pos) + searchLen});
+                pos += searchLen;
+            }
             RequestRedraw();
             return;
         }
@@ -3117,6 +3197,22 @@ namespace UltraCanvas {
     int UltraCanvasTextArea::CountMatches(const std::string& searchText, bool caseSensitive) const {
         if (searchText.empty()) return 0;
 
+        if (editingMode == TextAreaEditingMode::Hex) {
+            std::string haystack(hexBuffer.begin(), hexBuffer.end());
+            std::string needle = searchText;
+            if (!caseSensitive) {
+                std::transform(haystack.begin(), haystack.end(), haystack.begin(), ::tolower);
+                std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+            }
+            int count = 0;
+            size_t pos = 0;
+            while ((pos = haystack.find(needle, pos)) != std::string::npos) {
+                count++;
+                pos += needle.size();
+            }
+            return count;
+        }
+
         int count = 0;
         int pos = 0;
         int searchLen = utf8_length(searchText);
@@ -3129,7 +3225,29 @@ namespace UltraCanvas {
     }
 
     int UltraCanvasTextArea::GetCurrentMatchIndex(const std::string& searchText, bool caseSensitive) const {
-        if (searchText.empty() || !HasSelection()) return 0;
+        if (searchText.empty()) return 0;
+
+        if (editingMode == TextAreaEditingMode::Hex) {
+            if (hexSelectionStart < 0 || hexSelectionEnd < 0) return 0;
+            int currentPos = std::min(hexSelectionStart, hexSelectionEnd);
+
+            std::string haystack(hexBuffer.begin(), hexBuffer.end());
+            std::string needle = searchText;
+            if (!caseSensitive) {
+                std::transform(haystack.begin(), haystack.end(), haystack.begin(), ::tolower);
+                std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+            }
+            int index = 0;
+            size_t pos = 0;
+            while ((pos = haystack.find(needle, pos)) != std::string::npos) {
+                index++;
+                if (static_cast<int>(pos) == currentPos) return index;
+                pos += needle.size();
+            }
+            return 0;
+        }
+
+        if (!HasSelection()) return 0;
 
         // The current match is the one at selectionStartGrapheme
         int currentPos = std::min(selectionStartGrapheme, selectionEndGrapheme);

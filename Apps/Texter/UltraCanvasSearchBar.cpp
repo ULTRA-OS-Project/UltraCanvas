@@ -184,7 +184,7 @@ namespace UltraCanvas {
 
         // Match count label — right after input
         countLabel = std::make_shared<UltraCanvasLabel>("CountLabel", 6003, x, inputY, CountLabelW, inputH);
-        countLabel->SetText("No results");
+        countLabel->SetText("");
         countLabel->SetFontSize(10);
         countLabel->SetTextColor(Color(120, 120, 120, 255));
         countLabel->SetAlignment(TextAlignment::Left);
@@ -474,7 +474,7 @@ namespace UltraCanvas {
         }
 
         if (totalMatches == 0) {
-            countLabel->SetText("No results");
+            countLabel->SetText("");
             countLabel->SetTextColor(Color(200, 60, 60, 255));
         } else if (currentIndex > 0) {
             countLabel->SetText(std::to_string(currentIndex) + " / " + std::to_string(totalMatches));

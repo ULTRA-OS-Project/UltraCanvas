@@ -195,6 +195,9 @@ namespace UltraCanvas {
         // ===== TAB CONTEXT MENU =====
         std::shared_ptr<UltraCanvasMenu> tabContextMenu;
 
+        // ===== RECENT FILES TOOLBAR POPUP =====
+        std::shared_ptr<UltraCanvasMenu> recentFilesPopupMenu;
+
         // ===== HEADING SUB-TOOLBAR =====
         std::shared_ptr<UltraCanvasToolbar> headingSubToolbar;
 
@@ -232,6 +235,7 @@ namespace UltraCanvas {
         void AddToRecentFiles(const std::string& filePath);
         void RemoveFromRecentFiles(const std::string& filePath);
         void RebuildRecentFilesSubmenu();
+        void ShowRecentFilesPopup();
         void LoadRecentFiles();
         void SaveRecentFiles();
 
@@ -289,9 +293,11 @@ namespace UltraCanvas {
         std::string FormatPathTooltip(const std::string& filePath);
 
         // ===== AUTOSAVE =====
-        void PerformAutosave();
         void AutosaveDocument(int docIndex);
-        void CheckForCrashRecovery();
+        void RestoreSessionAndRecoverBackups();
+        void RecoverBackupIntoDocument(int docIndex, const std::string& backupPath,
+                                       const std::string& content, const std::string& encoding,
+                                       const std::string& language);
         void OfferRecoveryForBackup(const std::string& backupPath);
 
         // ===== MENU HANDLERS =====
@@ -436,6 +442,14 @@ namespace UltraCanvas {
          * @brief Close all tabs
          */
         void CloseAllTabs();
+
+        /**
+         * @brief Save open file paths to session file for restore on next launch
+         */
+        void SaveSession();
+
+
+        void PerformAutosave(bool force = false);
 
         /**
          * @brief Get the current file path of active document

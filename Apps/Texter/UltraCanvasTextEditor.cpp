@@ -286,25 +286,50 @@ namespace {
         // Snapshot the document text for the background thread
         auto doc = GetActiveDocument();
         if (!doc || !doc->textArea) return;
-        std::string textSnapshot = doc->textArea->GetText();
+        bool isHexMode = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
+        std::string textSnapshot;
+        if (isHexMode) {
+            auto bytes = doc->textArea->GetRawBytes();
+            textSnapshot.assign(bytes.begin(), bytes.end());
+        } else {
+            textSnapshot = doc->textArea->GetText();
+        }
 
         matchCountCancel.store(false);
         matchCountReady.store(false);
 
         matchCountThread = std::thread(
-            [this, textSnapshot = std::move(textSnapshot), searchText, caseSensitive, selectionPos]() {
+            [this, textSnapshot = std::move(textSnapshot), searchText, caseSensitive, selectionPos, isHexMode]() {
                 int count = 0;
                 int currentIndex = 0;
-                int pos = 0;
-                int searchLen = utf8_length(searchText);
-
-                while ((pos = utf8_find(textSnapshot, searchText, pos, caseSensitive)) >= 0) {
-                    if (matchCountCancel.load()) return;
-                    count++;
-                    if (pos == selectionPos) {
-                        currentIndex = count;
+                debugOutput << "Count matches thread started" << std::endl;
+                if (isHexMode) {
+                    std::string haystack = textSnapshot;
+                    std::string needle = searchText;
+                    if (!caseSensitive) {
+                        std::transform(haystack.begin(), haystack.end(), haystack.begin(), ::tolower);
+                        std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
                     }
-                    pos += searchLen;
+                    size_t pos = 0;
+                    while ((pos = haystack.find(needle, pos)) != std::string::npos) {
+                        if (matchCountCancel.load()) return;
+                        count++;
+                        if (static_cast<int>(pos) == selectionPos) {
+                            currentIndex = count;
+                        }
+                        pos += needle.size();
+                    }
+                } else {
+                    int pos = 0;
+                    int searchLen = utf8_length(searchText);
+                    while ((pos = utf8_find(textSnapshot, searchText, pos, caseSensitive)) >= 0) {
+                        if (matchCountCancel.load()) return;
+                        count++;
+                        if (pos == selectionPos) {
+                            currentIndex = count;
+                        }
+                        pos += searchLen;
+                    }
                 }
 
                 if (matchCountCancel.load()) return;
@@ -315,7 +340,7 @@ namespace {
                     pendingMatchCurrent = currentIndex;
                 }
                 matchCountReady.store(true);
-                
+
                 UCEvent ev;
                 ev.targetElement = this;
                 ev.type = UCEventType::Redraw;
@@ -380,8 +405,8 @@ namespace {
         // Create initial empty document
         CreateNewDocument();
 
-        // Check for crash recovery (do this after first document is created)
-        CheckForCrashRecovery();
+        // Restore session files and recover any autosave backups
+        RestoreSessionAndRecoverBackups();
 
         UpdateTitle();
     }
@@ -541,6 +566,7 @@ namespace {
                 .AddButton("new", "", GetResourcesDir() + "media/icons/texter/add-document.svg", [this]() { OnFileNew(); })
                 .AddButton("open", "", GetResourcesDir() + "media/icons/texter/folder-open.svg", [this]() { OnFileOpen(); })
                 .AddButton("save", "", GetResourcesDir() + "media/icons/texter/save.svg", [this]() { OnFileSave(); })
+                .AddButton("recent", "", GetResourcesDir() + "media/icons/texter/clock-five.svg", [this]() { ShowRecentFilesPopup(); })
                 .AddSeparator()
                 .AddButton("copy", "", GetResourcesDir() + "media/icons/texter/copy.svg", [this]() { OnEditCopy(); })
                 .AddButton("cut", "", GetResourcesDir() + "media/icons/texter/scissors.svg", [this]() { OnEditCut(); })
@@ -560,6 +586,7 @@ namespace {
                 { "new",     "New File (Ctrl+N)"          },
                 { "open",    "Open File... (Ctrl+O)"       },
                 { "save",    "Save (Ctrl+S)"               },
+                { "recent",  "Recent Files"                },
                 { "cut",     "Cut (Ctrl+X)"                },
                 { "copy",    "Copy (Ctrl+C)"               },
                 { "paste",   "Paste (Ctrl+V)"              },
@@ -1832,8 +1859,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
 // ===== AUTOSAVE =====
 
-    void UltraCanvasTextEditor::PerformAutosave() {
-        if (!autosaveManager.ShouldAutosave()) {
+    void UltraCanvasTextEditor::PerformAutosave(bool force) {
+        if (!force && !autosaveManager.ShouldAutosave()) {
             return;
         }
 
@@ -1868,14 +1895,35 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
-    void UltraCanvasTextEditor::CheckForCrashRecovery() {
-        if (hasCheckedForBackups) {
-            return;
-        }
-
+    void UltraCanvasTextEditor::RestoreSessionAndRecoverBackups() {
         hasCheckedForBackups = true;
 
-        // Find existing backups in current location
+        // --- Phase 1: Restore session files ---
+        int savedActiveIndex = 0;
+        std::vector<std::string> sessionPaths = configFile.LoadSessionFiles(savedActiveIndex);
+
+        int sessionOpened = 0;
+        for (const auto& path : sessionPaths) {
+            if (std::filesystem::exists(path)) {
+                if (OpenDocumentFromPath(path) >= 0) {
+                    sessionOpened++;
+                }
+            }
+        }
+
+        // Close the initial empty Untitled document if session restored files
+        if (sessionOpened > 0 && !documents.empty()
+            && documents[0]->isNewFile && !documents[0]->isModified) {
+            CloseDocument(0);
+        }
+
+        // Restore active tab from session
+        if (sessionOpened > 0 && savedActiveIndex >= 0
+            && savedActiveIndex < static_cast<int>(documents.size())) {
+            SwitchToDocument(savedActiveIndex);
+        }
+
+        // --- Phase 2: Find autosave backups ---
         std::vector<std::string> backups = autosaveManager.FindExistingBackups();
 
         // Also check legacy location (/tmp/) for migration
@@ -1902,9 +1950,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             } catch (...) {}
         }
 
-        if (backups.empty()) {
-            return;
-        }
+        if (backups.empty()) return;
 
         // Show recovery dialog
         std::string message = "Found " + std::to_string(backups.size()) +
@@ -1918,12 +1964,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 DialogButtons::YesNo,
                 [this, backups](DialogResult result) {
                     if (result == DialogResult::Yes) {
-                        // Recover all backups
                         for (const auto& backupPath : backups) {
                             OfferRecoveryForBackup(backupPath);
                         }
                     } else {
-                        // Clean up backups
                         for (const auto& backupPath : backups) {
                             autosaveManager.DeleteBackup(backupPath);
                         }
@@ -1933,33 +1977,15 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         );
     }
 
-    void UltraCanvasTextEditor::OfferRecoveryForBackup(const std::string& backupPath) {
-        std::string content, originalPath, encoding, language;
-        if (!autosaveManager.LoadBackup(backupPath, content, originalPath, encoding, language)) {
-            return;
-        }
-
-        // Determine display name from original path or fallback to "Recovered"
-        std::string displayName;
-        if (!originalPath.empty()) {
-            std::filesystem::path p(originalPath);
-            displayName = p.filename().string();
-        } else {
-            displayName = "Recovered";
-        }
-
-        // Create new document with recovered content
-        int docIndex = CreateNewDocument(displayName);
+    void UltraCanvasTextEditor::RecoverBackupIntoDocument(
+            int docIndex, const std::string& backupPath,
+            const std::string& content, const std::string& encoding,
+            const std::string& language) {
         auto doc = documents[docIndex];
         doc->textArea->SetText(content, false);
         doc->isModified = true;
-        doc->autosaveBackupPath = backupPath; // Keep backup until saved
+        doc->autosaveBackupPath = backupPath;
 
-        // Restore original file metadata
-        if (!originalPath.empty()) {
-            doc->filePath = originalPath;
-            doc->isNewFile = false;
-        }
         if (!encoding.empty()) {
             doc->encoding = encoding;
         }
@@ -1978,6 +2004,43 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         UpdateEncodingDropdown();
         UpdateLanguageDropdown();
         UpdateMarkdownToolbarVisibility();
+    }
+
+    void UltraCanvasTextEditor::OfferRecoveryForBackup(const std::string& backupPath) {
+        std::string content, originalPath, encoding, language;
+        if (!autosaveManager.LoadBackup(backupPath, content, originalPath, encoding, language)) {
+            return;
+        }
+
+        // If this file is already open from session restore, replace its content
+        if (!originalPath.empty()) {
+            for (size_t i = 0; i < documents.size(); i++) {
+                if (documents[i]->filePath == originalPath) {
+                    RecoverBackupIntoDocument(static_cast<int>(i), backupPath,
+                                              content, encoding, language);
+                    return;
+                }
+            }
+        }
+
+        // No matching session tab — create a new document
+        std::string displayName;
+        if (!originalPath.empty()) {
+            std::filesystem::path p(originalPath);
+            displayName = p.filename().string();
+        } else {
+            displayName = "Recovered";
+        }
+
+        int docIndex = CreateNewDocument(displayName);
+        auto doc = documents[docIndex];
+
+        if (!originalPath.empty()) {
+            doc->filePath = originalPath;
+            doc->isNewFile = false;
+        }
+
+        RecoverBackupIntoDocument(docIndex, backupPath, content, encoding, language);
     }
 
 // ===== MARKDOWN TOOLBAR =====
@@ -3088,7 +3151,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::Render(IRenderContext* ctx) {
         // Poll for async match count results
-        debugOutput << "UltraCanvasTextEditor::Render" << std::endl;
+        //debugOutput << "UltraCanvasTextEditor::Render" << std::endl;
         if (matchCountReady.load()) {
             debugOutput << "UltraCanvasTextEditor::Render Update Matches" << std::endl;
             matchCountReady.store(false);
@@ -3389,7 +3452,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->textArea->SetTextToFind(text, cs);
             doc->textArea->HighlightMatches(text);
             doc->textArea->FindNext();
-            int selPos = doc->textArea->GetSelectionMinGrapheme();
+            bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
+            int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
             StartAsyncMatchCount(text, cs, selPos);
         };
 
@@ -3400,7 +3464,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->textArea->SetTextToFind(text, cs);
             doc->textArea->HighlightMatches(text);
             doc->textArea->FindFirst();
-            int selPos = doc->textArea->GetSelectionMinGrapheme();
+            bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
+            int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
             StartAsyncMatchCount(text, cs, selPos);
         };
 
@@ -3411,7 +3476,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->textArea->SetTextToFind(text, cs);
             doc->textArea->HighlightMatches(text);
             doc->textArea->FindPrevious();
-            int selPos = doc->textArea->GetSelectionMinGrapheme();
+            bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
+            int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
             StartAsyncMatchCount(text, cs, selPos);
         };
 
@@ -3422,7 +3488,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->textArea->SetTextToFind(find, cs);
             doc->textArea->ReplaceText(find, replace, false);
             doc->textArea->HighlightMatches(find);
-            int selPos = doc->textArea->GetSelectionMinGrapheme();
+            bool hex = doc->textArea->GetEditingMode() == TextAreaEditingMode::Hex;
+            int selPos = hex ? doc->textArea->GetHexCursorByteOffset() : doc->textArea->GetSelectionMinGrapheme();
             StartAsyncMatchCount(find, cs, selPos);
         };
 
@@ -3848,6 +3915,71 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         fileMenuItem->subItems[recentFilesMenuIndex].subItems = recentItems;
     }
 
+    void UltraCanvasTextEditor::ShowRecentFilesPopup() {
+        auto* win = GetWindow();
+        if (!win) return;
+
+        // Lazy-create the popup menu (allocated once, reused)
+        if (!recentFilesPopupMenu) {
+            recentFilesPopupMenu = std::make_shared<UltraCanvasMenu>(
+                "RecentFilesPopup", 0, 0, 0, 300, 100);
+            recentFilesPopupMenu->SetMenuType(MenuType::PopupMenu);
+        }
+
+        // Clear and rebuild with current recent files
+        recentFilesPopupMenu->Clear();
+
+        if (recentFiles.empty()) {
+            MenuItemData emptyItem;
+            emptyItem.type = MenuItemType::Action;
+            emptyItem.label = "(No recent files)";
+            emptyItem.enabled = false;
+            recentFilesPopupMenu->AddItem(emptyItem);
+        } else {
+            int displayCount = std::min(static_cast<int>(recentFiles.size()),
+                                        config.maxRecentFiles);
+            for (int i = 0; i < displayCount; i++) {
+                const std::string& fullPath = recentFiles[i];
+                std::filesystem::path p(fullPath);
+                std::string displayName = p.filename().string();
+                std::string label = std::to_string(i + 1) + ". " + displayName;
+
+                std::string pathCopy = fullPath;
+                recentFilesPopupMenu->AddItem(
+                    MenuItemData::Action(label, [this, pathCopy]() {
+                        if (std::filesystem::exists(pathCopy)) {
+                            OpenDocumentFromPath(pathCopy);
+                        } else {
+                            RemoveFromRecentFiles(pathCopy);
+                            debugOutput << "Recent file no longer exists: "
+                                        << pathCopy << std::endl;
+                        }
+                    })
+                );
+            }
+
+            recentFilesPopupMenu->AddItem(MenuItemData::Separator());
+            recentFilesPopupMenu->AddItem(
+                MenuItemData::Action("Clear Recent Files", [this]() {
+                    recentFiles.clear();
+                    SaveRecentFiles();
+                    RebuildRecentFilesSubmenu();
+                })
+            );
+        }
+
+        // Position below the toolbar button and open
+        auto item = toolbar->GetItem("recent");
+        if (!item) return;
+        auto btn = item->GetWidget();
+        if (!btn) return;
+
+        recentFilesPopupMenu->OpenMenu(
+            Point2Di(btn->GetXInWindow(),
+                     btn->GetYInWindow() + btn->GetHeight() + 1),
+            *win, PopupElementSettings());
+    }
+
     void UltraCanvasTextEditor::LoadRecentFiles() {
         recentFiles = configFile.LoadRecentFiles();
 
@@ -3898,4 +4030,25 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SetBool("showMarkdownToolbar", config.showMarkdownToolbar);
         configFile.Save();
     }
+
+// -------------------------------------------------------------------------
+// 4d: Session Save/Restore
+// -------------------------------------------------------------------------
+
+    void UltraCanvasTextEditor::SaveSession() {
+        std::vector<std::string> paths;
+        int activeAmongSaved = 0;
+
+        for (size_t i = 0; i < documents.size(); i++) {
+            if (!documents[i]->filePath.empty()) {
+                if (static_cast<int>(i) == activeDocumentIndex) {
+                    activeAmongSaved = static_cast<int>(paths.size());
+                }
+                paths.push_back(documents[i]->filePath);
+            }
+        }
+
+        configFile.SaveSessionFiles(paths, activeAmongSaved);
+    }
+
 } // namespace UltraCanvas

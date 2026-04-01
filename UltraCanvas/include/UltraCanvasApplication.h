@@ -53,7 +53,7 @@ namespace UltraCanvas {
         bool altHeld = false;
         bool metaHeld = false;
 
-    public:
+    public:        
         UltraCanvasApplicationBase() = default;
 
         void RegisterWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
@@ -102,8 +102,8 @@ namespace UltraCanvas {
 
         void Run();
         bool Initialize(const std::string& app);
-        void Shutdown();
-        void RequestExit();
+        bool RequestExit();
+        virtual void Exit();
 
         bool IsInitialized() const { return initialized; }
         bool IsRunning() const { return running; }
@@ -111,7 +111,9 @@ namespace UltraCanvas {
 //        bool HandleFocusedWindowChange(UltraCanvasWindow* window);
         virtual bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor ptr) = 0;
         virtual bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor ptr, const char* filename, int hotspotX, int hotspotY) = 0;
-
+        
+        std::function<bool()> onApplicationExitRequest;
+        std::function<void()> onApplicationExit;
     protected:
         virtual bool InitializeNative() = 0;
         virtual void ShutdownNative() = 0;

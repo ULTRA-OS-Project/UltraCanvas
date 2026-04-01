@@ -328,14 +328,17 @@ namespace UltraCanvas {
         Show();
     }
 
-    void UltraCanvasModalDialog::RequestClose() {
-        if (!_created || _state == WindowState::Closing) {
-            return;
+    bool UltraCanvasModalDialog::RequestClose() {
+        if (!_created || _state == WindowState::Closing 
+            || _state == WindowState::DeleteRequested
+            || _state == WindowState::Deleted) {
+            return false;
         }
 
         if (!onClosing || onClosing(result)) {
-            Close();
+            return UltraCanvasWindow::RequestClose();
         }
+        return false;
     }
 
     void UltraCanvasModalDialog::Close() {

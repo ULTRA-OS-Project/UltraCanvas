@@ -89,7 +89,7 @@ namespace UltraCanvas {
 
         // Font
         std::string fontFamily = "Sans";
-        float fontSize = 12.0f;
+        float fontSize = 11.0f;
 
         // Scrollbar style
         ScrollbarStyle scrollbarStyle;

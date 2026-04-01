@@ -375,7 +375,7 @@ build_app_bundle \
     "UltraCanvasTexter" \
     "UltraCanvas Texter" \
     "com.cloverleaf.UltraCanvasTexter" \
-    "media/icons/texter/Texter_icon.png" \
+    "media/appicon/Texter.png" \
     "public.app-category.productivity" \
     "$TEXTER_DOC_TYPES"
 
@@ -384,7 +384,7 @@ build_app_bundle \
     "UltraCanvasDemo" \
     "UltraCanvas Demo" \
     "com.cloverleaf.UltraCanvasDemo" \
-    "appimage/ucdemoapp.appimage.png" \
+    "media/appicon/Demo.png" \
     "public.app-category.developer-tools" \
     ""
 

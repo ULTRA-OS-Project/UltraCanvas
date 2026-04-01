@@ -159,7 +159,9 @@ private:
         win->SetWindowCloseCallback([this, weakTw]() {
             auto tw = weakTw.lock();
             if (!tw) return;
-
+            tw->editor->PerformAutosave(true);
+            tw->editor->SaveSession();
+            
             auto it = std::find(windows.begin(), windows.end(), tw);
             if (it != windows.end()) {
                 windows.erase(it);

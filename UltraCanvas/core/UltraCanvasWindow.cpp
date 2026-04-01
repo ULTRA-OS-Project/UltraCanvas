@@ -416,8 +416,18 @@ namespace UltraCanvas {
         _state = WindowState::DeleteRequested;
     }
 
-    void UltraCanvasWindowBase::RequestClose() {
-        Close();
+    bool UltraCanvasWindowBase::RequestClose() {
+        if (!_created || _state == WindowState::Closing 
+            || _state == WindowState::DeleteRequested
+            || _state == WindowState::Deleted) {
+            return false;
+        }
+        if (!onWindowCloseRequest || onWindowCloseRequest()) {        
+            Close();
+            return true;
+        } else {
+            return false;
+        }
     }
 
     void UltraCanvasWindowBase::Close() {

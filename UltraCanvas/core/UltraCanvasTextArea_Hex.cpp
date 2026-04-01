@@ -161,6 +161,10 @@ namespace UltraCanvas {
         DrawHexBytes(ctx);
         DrawHexAscii(ctx);
 
+        if (!searchHighlights.empty()) {
+            DrawHexSearchHighlights(ctx);
+        }
+
         if (hexSelectionStart >= 0 && hexSelectionEnd >= 0 && hexSelectionStart != hexSelectionEnd) {
             DrawHexSelection(ctx);
         }
@@ -291,6 +295,65 @@ namespace UltraCanvas {
             int asciiX = hexAsciiPanelStartX + startCol * hexAsciiCharWidth;
             int asciiW = (endCol - startCol) * hexAsciiCharWidth;
             ctx->FillRectangle(asciiX, y, asciiW, hexRowHeight);
+        }
+    }
+
+    void UltraCanvasTextArea::DrawHexSearchHighlights(IRenderContext* ctx) {
+        if (searchHighlights.empty()) return;
+
+        int bufSize = static_cast<int>(hexBuffer.size());
+        if (bufSize == 0) return;
+
+        Color rowBandColor = {1, 228, 3, 20};
+        Color highlightColor = {255, 255, 0, 100};
+
+        int endRow = std::min(hexTotalRows, hexFirstVisibleRow + hexMaxVisibleRows + 1);
+
+        // Pass 1: green row bands behind matched rows
+        std::vector<bool> bandDrawn(hexMaxVisibleRows + 1, false);
+        for (const auto& [matchStart, matchEnd] : searchHighlights) {
+            int firstRow = matchStart / hexBytesPerRow;
+            int lastRow  = (matchEnd - 1) / hexBytesPerRow;
+
+            for (int row = std::max(firstRow, hexFirstVisibleRow); row <= std::min(lastRow, endRow - 1); row++) {
+                int displayRow = row - hexFirstVisibleRow;
+                if (displayRow < 0 || displayRow >= static_cast<int>(bandDrawn.size()) || bandDrawn[displayRow]) continue;
+                bandDrawn[displayRow] = true;
+                int y = hexVisibleArea.y + displayRow * hexRowHeight;
+                ctx->SetFillPaint(rowBandColor);
+                ctx->FillRectangle(hexVisibleArea.x, y, hexVisibleArea.width, hexRowHeight);
+            }
+        }
+
+        // Pass 2: yellow highlights on matched bytes in hex and ASCII panels
+        ctx->SetFillPaint(highlightColor);
+        for (const auto& [matchStart, matchEnd] : searchHighlights) {
+            int clampedStart = std::max(0, matchStart);
+            int clampedEnd   = std::min(matchEnd, bufSize);
+            if (clampedStart >= clampedEnd) continue;
+
+            for (int row = hexFirstVisibleRow; row < endRow; row++) {
+                int rowStart = row * hexBytesPerRow;
+                int rowEnd   = std::min(rowStart + hexBytesPerRow, bufSize);
+
+                int overlapStart = std::max(clampedStart, rowStart);
+                int overlapEnd   = std::min(clampedEnd, rowEnd);
+                if (overlapStart >= overlapEnd) continue;
+
+                int y = hexVisibleArea.y + (row - hexFirstVisibleRow) * hexRowHeight;
+                int startCol = overlapStart - rowStart;
+                int endCol   = overlapEnd - rowStart;
+
+                // Hex panel highlight
+                int hexX = hexPanelStartX + startCol * hexByteWidth;
+                int hexW = (endCol - startCol) * hexByteWidth;
+                ctx->FillRectangle(hexX, y, hexW, hexRowHeight);
+
+                // ASCII panel highlight
+                int asciiX = hexAsciiPanelStartX + startCol * hexAsciiCharWidth;
+                int asciiW = (endCol - startCol) * hexAsciiCharWidth;
+                ctx->FillRectangle(asciiX, y, asciiW, hexRowHeight);
+            }
         }
     }
 

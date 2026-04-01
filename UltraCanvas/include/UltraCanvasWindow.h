@@ -104,6 +104,7 @@ namespace UltraCanvas {
 
         // Window-specific callbacks
         std::function<void()> onWindowClose;
+        std::function<bool()> onWindowCloseRequest;
         std::function<void(int, int)> onWindowResize;
         std::function<void(int, int)> onWindowMove;
         std::function<void()> onWindowMinimize;
@@ -121,7 +122,7 @@ namespace UltraCanvas {
         // Window lifecycle
         bool Create(const WindowConfig& config);
         virtual bool Create();
-        virtual void RequestClose();
+        virtual bool RequestClose();
         virtual void Close();
         void RequestDelete();
         void Destroy();

@@ -573,6 +573,7 @@ namespace UltraCanvas {
         void DrawHexAscii(IRenderContext* ctx);
         void DrawHexSelection(IRenderContext* ctx);
         void DrawHexCrossHighlight(IRenderContext* ctx);
+        void DrawHexSearchHighlights(IRenderContext* ctx);
         void DrawHexCursor(IRenderContext* ctx);
         void DrawHexCurrentRowHighlight(IRenderContext* ctx);
         void CalculateHexLayout();

@@ -95,10 +95,6 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasApplicationBase::Shutdown() {
-        UCImage::ShutdownImageSubsysterm();
-    }
-
     void UltraCanvasApplicationBase::Run() {
         debugOutput << "UltraCanvasBaseApplication::Run Starting app" << std::endl;
         if (!initialized) {
@@ -188,14 +184,37 @@ rescan_windows:
             }
         }
 
+        if (onApplicationExit) {
+            onApplicationExit();
+        }
+
         initialized = false;
         debugOutput << "UltraCanvas: main loop completed, shutting down.." << std::endl;
+        
         ShutdownClipboard();
         ShutdownNative();
+
+        UCImage::ShutdownImageSubsysterm();
     }
 
-    void UltraCanvasApplicationBase::RequestExit() {
-        debugOutput << "UltraCanvas: Linux application exit requested" << std::endl;
+    bool UltraCanvasApplicationBase::RequestExit() {
+        debugOutput << "UltraCanvas: application exit requested" << std::endl;
+        if (onApplicationExitRequest) {
+            if (onApplicationExitRequest()) {
+                Exit();
+                return true;
+            } else {
+                debugOutput << "UltraCanvas: application exit requested denied" << std::endl;
+                return false;
+            }
+        } else {
+            Exit();
+            return true;
+        }
+    }
+
+    void UltraCanvasApplicationBase::Exit() {
+        debugOutput << "UltraCanvas: application exit (set running=false)" << std::endl;
         running = false;
     }
 

@@ -29,6 +29,7 @@ namespace UltraCanvas {
             configDir = GetConfigDirectory();
             configPath = configDir + "/config.ini";
             recentFilesPath = configDir + "/recent_files.txt";
+            sessionPath = configDir + "/session.txt";
         }
 
         // ===== CONFIG DIRECTORY =====
@@ -224,10 +225,50 @@ namespace UltraCanvas {
             }
         }
 
+        // ===== SESSION FILES =====
+
+        /// Save open file paths for session restore
+        bool SaveSessionFiles(const std::vector<std::string>& paths, int activeIndex) {
+            if (!EnsureConfigDirectory()) return false;
+
+            std::ofstream file(sessionPath);
+            if (!file.is_open()) return false;
+
+            file << activeIndex << std::endl;
+            for (const auto& path : paths) {
+                file << path << std::endl;
+            }
+            return true;
+        }
+
+        /// Load previously saved session file paths
+        std::vector<std::string> LoadSessionFiles(int& activeIndex) {
+            std::vector<std::string> paths;
+            activeIndex = 0;
+
+            std::ifstream file(sessionPath);
+            if (!file.is_open()) return paths;
+
+            std::string line;
+            // First line is the active tab index
+            if (std::getline(file, line)) {
+                try { activeIndex = std::stoi(line); }
+                catch (...) { activeIndex = 0; }
+            }
+            // Remaining lines are file paths
+            while (std::getline(file, line)) {
+                if (!line.empty()) {
+                    paths.push_back(line);
+                }
+            }
+            return paths;
+        }
+
     private:
         std::string configDir;
         std::string configPath;
         std::string recentFilesPath;
+        std::string sessionPath;
         std::map<std::string, std::string> settings;
 
         static std::string TrimWhitespace(const std::string& str) {

@@ -663,7 +663,7 @@ namespace UltraCanvas {
 #endif
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         vectorBuilder.AddItem("xarimages", "XAR Images", "XAR Image display and manipulation",
-                              ImplementationStatus::FullyImplemented,
+                              ImplementationStatus::PartiallyImplemented,
                               [this]() { return CreateXARVectorExamples(); });
 #endif
 

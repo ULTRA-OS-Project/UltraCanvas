@@ -47,7 +47,7 @@ namespace UltraCanvas {
 
         // Font (for popup items; TextInput has its own font style)
         std::string fontFamily = "Sans";
-        float fontSize = 12.0f;
+        float fontSize = 11.0f;
 
         // Scrollbar
         ScrollbarStyle scrollbarStyle = ScrollbarStyle::DropDown();
