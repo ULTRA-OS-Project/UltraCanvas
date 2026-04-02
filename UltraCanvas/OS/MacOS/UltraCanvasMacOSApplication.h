@@ -108,6 +108,9 @@ namespace UltraCanvas {
         std::mutex cocoaMutex;
         std::thread::id mainThreadId;
 
+        // Wakeup mechanism for cross-thread signaling
+        void* wakeupSource = nullptr;  // CFRunLoopSourceRef
+
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasMacOSApplication();
@@ -157,6 +160,9 @@ namespace UltraCanvas {
         void ReleaseMouseNative() override;
 
         void CollectAndProcessNativeEvents() override;
+        void WakeUpEventLoop() override;
+        void InitializeWakeUp() override;
+        void ShutdownWakeUp() override;
         NSCursor* LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY);
 
     private:

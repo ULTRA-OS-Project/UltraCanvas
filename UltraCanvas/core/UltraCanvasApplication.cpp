@@ -116,6 +116,10 @@ namespace UltraCanvas {
 
                 // Process all pending events
                 ProcessEvents();
+
+                // Fire expired timers
+                ProcessTimers();
+
                 // Check for visible windows, delete/cleanup windows
 rescan_windows:
                 for (auto it = windows.begin(); it != windows.end(); it++) {
@@ -152,6 +156,15 @@ rescan_windows:
                     debugOutput << "UltraCanvas: No windows, exiting..." << std::endl;
                     break;
                 }
+                
+                // Clean up stale modal windows (expired weak_ptrs)
+                activeModalWindows.erase(
+                    std::remove_if(activeModalWindows.begin(), activeModalWindows.end(),
+                        [](const std::weak_ptr<UltraCanvasWindowBase>& w) {
+                            return w.expired();
+                        }),
+                    activeModalWindows.end()
+                );
 
                 // Update and render all windows
                 if (clipbrd) {
@@ -219,9 +232,12 @@ rescan_windows:
     }
 
     void UltraCanvasApplicationBase::PushEvent(const UCEvent& event) {
-        std::lock_guard<std::mutex> lock(eventQueueMutex);
-        eventQueue.push(event);
+        {
+            std::lock_guard<std::mutex> lock(eventQueueMutex);
+            eventQueue.push(event);
+        }
         eventCondition.notify_one();
+        WakeUpEventLoop();
     }
 
     bool UltraCanvasApplicationBase::PopEvent(UCEvent& event) {
@@ -263,10 +279,16 @@ rescan_windows:
         if (window && window->GetNativeHandle() != 0) {
             windows.push_back(window);
             debugOutput << "UltraCanvas: Window registered with Native ID: " << window->GetNativeHandle() << std::endl;
+
+            // Auto-register modal windows
+            if (window->GetConfig().modal) {
+                RegisterModalWindow(window);
+            }
         }
     }
 
     void UltraCanvasApplicationBase::CleanupWindowReferences(UltraCanvasWindowBase* win) {
+        UnregisterModalWindow(win);
         if (focusedWindow == win) {
             focusedWindow = nullptr;
         }
@@ -280,6 +302,70 @@ rescan_windows:
             draggedElement = nullptr;
         }
         debugOutput << "UltraCanvas: window found and unregistered successfully" << std::endl;
+    }
+
+    // ===== MODAL WINDOW MANAGEMENT =====
+    UltraCanvasWindowBase* UltraCanvasApplicationBase::GetCurrentModalWindow() {
+        for (auto it = activeModalWindows.rbegin(); it != activeModalWindows.rend(); ++it) {
+            auto locked = it->lock();
+            if (!locked) continue;
+            if (!locked->IsVisible()) continue;
+            auto state = locked->GetState();
+            if (state == WindowState::Closing || state == WindowState::DeleteRequested || state == WindowState::Deleted) continue;
+            return locked.get();
+        }
+        return nullptr;
+    }
+
+    bool UltraCanvasApplicationBase::HasActiveModalWindow() {
+        return GetCurrentModalWindow() != nullptr;
+    }
+
+    bool UltraCanvasApplicationBase::HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow* targetWindow) {
+        auto* modalWindow = GetCurrentModalWindow();
+        if (!modalWindow) return false;
+
+        switch (event.type) {
+            case UCEventType::MouseDown:
+            case UCEventType::MouseUp:
+            case UCEventType::MouseMove:
+            case UCEventType::MouseWheel:
+            case UCEventType::MouseDoubleClick:
+            case UCEventType::MouseEnter:
+            case UCEventType::MouseLeave:
+            case UCEventType::KeyDown:
+            case UCEventType::KeyUp:
+            case UCEventType::TextInput:
+            case UCEventType::Shortcut:
+                if (targetWindow != modalWindow) return true;
+                break;
+            case UCEventType::WindowFocus:
+                if (targetWindow && targetWindow != modalWindow) {
+                    modalWindow->RaiseAndFocus();
+                    return true;
+                }
+                break;
+            default:
+                return false;
+        }
+        return false;
+    }
+
+    void UltraCanvasApplicationBase::RegisterModalWindow(const std::shared_ptr<UltraCanvasWindowBase>& window) {
+        if (window) {
+            activeModalWindows.push_back(window);
+        }
+    }
+
+    void UltraCanvasApplicationBase::UnregisterModalWindow(UltraCanvasWindowBase* window) {
+        activeModalWindows.erase(
+            std::remove_if(activeModalWindows.begin(), activeModalWindows.end(),
+                [window](const std::weak_ptr<UltraCanvasWindowBase>& w) {
+                    auto locked = w.lock();
+                    return !locked || locked.get() == window;
+                }),
+            activeModalWindows.end()
+        );
     }
 
     UltraCanvasWindow* UltraCanvasApplicationBase::FindWindow(NativeWindowHandle nativeHandle) {
@@ -360,7 +446,7 @@ rescan_windows:
             }
         }
         // block some events if modal window active
-        if (UltraCanvasDialogManager::HandleModalEvents(event, targetWindow)) {
+        if (HandleModalWindowEvents(event, targetWindow)) {
             return;
         }
 
@@ -658,5 +744,106 @@ rescan_windows:
             capturedElement = nullptr;
         }
         ReleaseMouseNative();
+    }
+
+    // ===== TIMER SYSTEM =====
+
+    TimerId UltraCanvasApplicationBase::StartTimer(std::chrono::milliseconds interval, bool periodic,
+                                                    std::function<void(TimerId)> callback) {
+        std::lock_guard<std::mutex> lock(timersMutex_);
+        UltraCanvasTimer timer;
+        timer.id = nextTimerId_++;
+        timer.interval = interval;
+        timer.periodic = periodic;
+        timer.active = true;
+        timer.nextFire = std::chrono::steady_clock::now() + interval;
+        timer.callback = std::move(callback);
+        timers_.push_back(std::move(timer));
+        WakeUpEventLoop();
+        return timers_.back().id;
+    }
+
+    void UltraCanvasApplicationBase::StopTimer(TimerId id) {
+        std::lock_guard<std::mutex> lock(timersMutex_);
+        for (auto& timer : timers_) {
+            if (timer.id == id) {
+                timer.active = false;
+                return;
+            }
+        }
+    }
+
+    void UltraCanvasApplicationBase::ProcessTimers() {
+        auto now = std::chrono::steady_clock::now();
+
+        // Snapshot the current timer count so timers added during callbacks are not processed this round
+        size_t count;
+        {
+            std::lock_guard<std::mutex> lock(timersMutex_);
+            count = timers_.size();
+        }
+
+        for (size_t i = 0; i < count; ++i) {
+            // Re-check bounds in case timers were removed
+            if (i >= timers_.size()) break;
+
+            auto& timer = timers_[i];
+            if (!timer.active) continue;
+            if (timer.nextFire > now) continue;
+
+            // Fire the timer
+            if (timer.callback) {
+                timer.callback(timer.id);
+            } else {
+                UCEvent timerEvent;
+                timerEvent.type = UCEventType::Timer;
+                timerEvent.userDataInt = static_cast<int>(timer.id);
+                // Push directly to queue without calling WakeUpEventLoop (we're already on the main thread)
+                {
+                    std::lock_guard<std::mutex> lock(eventQueueMutex);
+                    eventQueue.push(timerEvent);
+                }
+            }
+
+            // Advance or deactivate
+            if (timer.periodic && timer.active) {
+                timer.nextFire += timer.interval;
+                // If we fell behind, skip to next future fire time
+                if (timer.nextFire <= now) {
+                    auto elapsed = now - timer.nextFire;
+                    auto periods = elapsed / timer.interval + 1;
+                    timer.nextFire += timer.interval * periods;
+                }
+            } else {
+                timer.active = false;
+            }
+        }
+
+        // Clean up inactive timers
+        {
+            std::lock_guard<std::mutex> lock(timersMutex_);
+            timers_.erase(
+                std::remove_if(timers_.begin(), timers_.end(),
+                               [](const UltraCanvasTimer& t) { return !t.active; }),
+                timers_.end());
+        }
+    }
+
+    std::chrono::milliseconds UltraCanvasApplicationBase::GetTimeUntilNextTimer() const {
+        std::lock_guard<std::mutex> lock(timersMutex_);
+        auto earliest = std::chrono::steady_clock::time_point::max();
+        for (const auto& timer : timers_) {
+            if (timer.active && timer.nextFire < earliest) {
+                earliest = timer.nextFire;
+            }
+        }
+        if (earliest == std::chrono::steady_clock::time_point::max()) {
+            return std::chrono::milliseconds::max(); // No active timers
+        }
+        auto now = std::chrono::steady_clock::now();
+        if (earliest <= now) {
+            return std::chrono::milliseconds(0);
+        }
+        return std::chrono::duration_cast<std::chrono::milliseconds>(earliest - now);
     }
 }

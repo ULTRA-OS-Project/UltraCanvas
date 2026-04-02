@@ -352,10 +352,8 @@ namespace {
 
 // ===== CONSTRUCTOR =====
     UltraCanvasTextEditor::UltraCanvasTextEditor(
-            const std::string& identifier, long id,
-            int x, int y, int width, int height,
             const TextEditorConfig& cfg)
-            : UltraCanvasContainer(identifier, id, x, y, width, height)
+            : UltraCanvasWindow()
             , config(cfg)
             , isDarkTheme(cfg.darkTheme)
             , isDocumentClosing(false)
@@ -368,11 +366,8 @@ namespace {
             , statusBarHeight(22)
             , tabBarHeight(26)
     {
-
         LoadConfig();
         toolbarHeight = config.showToolbar ? 40 : 0;
-
-        SetBackgroundColor(Color(240, 240, 240, 255));
 
         // Configure autosave
         autosaveManager.SetEnabled(config.enableAutosave);
@@ -405,8 +400,22 @@ namespace {
         // Create initial empty document
         CreateNewDocument();
 
-        // Restore session files and recover any autosave backups
-        RestoreSessionAndRecoverBackups();
+        // Handle close request internally (prompt for unsaved changes)
+        onWindowCloseRequest = [this]() -> bool {
+            if (HasAnyUnsavedChanges()) {
+                ConfirmCloseWithUnsavedChanges([this](bool shouldClose) {
+                    if (shouldClose) {
+                        PerformAutosave(true);
+                        SaveSession();
+                        Close();
+                    }
+                });
+                return false;  // Don't close yet — the callback handles it
+            }
+            PerformAutosave(true);
+            SaveSession();
+            return true;  // Allow close
+        };
 
         UpdateTitle();
     }
@@ -1104,7 +1113,7 @@ namespace {
         // Components are positioned in their setup methods
     }
     void UltraCanvasTextEditor::SetBounds(const Rect2Di& b) {
-        UltraCanvasContainer::SetBounds(b);
+        UltraCanvasWindow::SetBounds(b);
         UpdateChildLayout();
     }
 
@@ -1322,8 +1331,8 @@ namespace {
 
                     // Update active document index
                     if (documents.empty()) {
-                        if (canCloseEmptyWindow && canCloseEmptyWindow() && onQuitRequest) {
-                            onQuitRequest();
+                        if (canCloseEmptyWindow && canCloseEmptyWindow()) {
+                            Close();
                             return;
                         }
                         CreateNewDocument();
@@ -1350,12 +1359,12 @@ namespace {
             tabContainer->RemoveTab(index);
 
             if (documents.empty()) {
-                if (canCloseEmptyWindow && canCloseEmptyWindow() && onQuitRequest) {
+                if (canCloseEmptyWindow && canCloseEmptyWindow()) {
                     if (onTabClosed) {
                         onTabClosed(index);
                     }
                     isDocumentClosing = false;
-                    onQuitRequest();
+                    Close();
                     return;
                 }
                 CreateNewDocument();
@@ -1461,11 +1470,7 @@ namespace {
         UpdateLanguageDropdown();
         UpdateMarkdownToolbarVisibility();
         UpdateMenuStates();
-
-        // Notify callback
-        if (onTabChanged) {
-            onTabChanged(index);
-        }
+        UpdateTitle();
     }
 
     DocumentTab* UltraCanvasTextEditor::GetActiveDocument() {
@@ -1495,11 +1500,6 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             UpdateTabTitle(index);
             UpdateTabBadge(index);
             UpdateTitle();
- 
-            if (onModifiedChange) {
-                onModifiedChange(modified, index);
-            }
- 
         }
         // Refresh toolbar state when the active document's modified flag changes
         if (index == activeDocumentIndex) {
@@ -1648,10 +1648,6 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             // Track directory and recent files
             lastOpenedDirectory = p.parent_path().string();
             AddToRecentFiles(filePath);
-
-            if (onFileLoaded) {
-                onFileLoaded(filePath, docIndex);
-            }
 
             return true;
 
@@ -1869,6 +1865,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 AutosaveDocument(static_cast<int>(i));
             }
         }
+        autosaveManager.ResetTimer();
     }
 
     void UltraCanvasTextEditor::AutosaveDocument(int docIndex) {
@@ -2236,8 +2233,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 activeDocumentIndex = -1;
                 isDocumentClosing = false;
 
-                if (canCloseEmptyWindow && canCloseEmptyWindow() && onQuitRequest) {
-                    onQuitRequest();
+                if (canCloseEmptyWindow && canCloseEmptyWindow()) {
+                    Close();
                     return;
                 }
                 CreateNewDocument();
@@ -2247,11 +2244,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::OnFileQuit() {
-        ConfirmCloseWithUnsavedChanges([this](bool shouldContinue) {
-            if (shouldContinue && onQuitRequest) {
-                onQuitRequest();
-            }
-        });
+        RequestClose();
     }
 
     void UltraCanvasTextEditor::OnEditUndo() {
@@ -2857,8 +2850,15 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::UpdateTitle() {
-        // Title is typically managed by the parent window
-        // This is a placeholder for future implementation
+        std::string title = config.title;
+        std::string filePath = GetActiveFilePath();
+        if (!filePath.empty()) {
+            title += " - " + filePath;
+        }
+        if (HasUnsavedChanges()) {
+            title += " *";
+        }
+        SetWindowTitle(title);
     }
 
 // ===== THEME MANAGEMENT =====
@@ -3122,17 +3122,58 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 DialogButtons::YesNoCancel,
                 [this, modifiedDocs, onComplete](DialogResult result) {
                     if (result == DialogResult::Yes) {
+                        // First, save all documents that already have a file path
                         bool allSaved = true;
+                        std::vector<int> unsavedNewDocs;
                         for (int idx : modifiedDocs) {
                             if (!documents[idx]->filePath.empty()) {
                                 if (!SaveDocument(idx)) {
                                     allSaved = false;
                                 }
+                            } else {
+                                unsavedNewDocs.push_back(idx);
                             }
                         }
-                        if (onComplete) {
-                            onComplete(allSaved);
+
+                        if (unsavedNewDocs.empty()) {
+                            if (onComplete) {
+                                onComplete(allSaved);
+                            }
+                            return;
                         }
+
+                        // Chain Save As dialogs for new documents one at a time
+                        auto remaining = std::make_shared<std::vector<int>>(unsavedNewDocs);
+                        auto savedFlag = std::make_shared<bool>(allSaved);
+                        std::function<void()> saveNext;
+                        saveNext = [this, remaining, savedFlag, onComplete, saveNext]() {
+                            if (remaining->empty()) {
+                                if (onComplete) {
+                                    onComplete(*savedFlag);
+                                }
+                                return;
+                            }
+                            int idx = remaining->front();
+                            remaining->erase(remaining->begin());
+                            auto doc = documents[idx];
+                            UltraCanvasDialogManager::ShowSaveFileDialog(
+                                    "Save File",
+                                    config.fileFilters,
+                                    "",
+                                    doc->fileName,
+                                    [this, idx, remaining, savedFlag, onComplete, saveNext](DialogResult saveResult, const std::string& filePath) {
+                                        if (saveResult == DialogResult::OK && !filePath.empty()) {
+                                            if (!SaveDocumentAs(idx, filePath)) {
+                                                *savedFlag = false;
+                                            }
+                                        }
+                                        // Continue to next unsaved document (skip if user cancelled this one)
+                                        saveNext();
+                                    },
+                                    GetWindow()
+                            );
+                        };
+                        saveNext();
                     } else if (result == DialogResult::No) {
                         if (onComplete) {
                             onComplete(true);
@@ -3170,7 +3211,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             PerformAutosave();
         }
 
-        UltraCanvasContainer::Render(ctx);
+        UltraCanvasWindow::Render(ctx);
 
         if (isDragOverActive) {
             RenderDropOverlay(ctx);
@@ -3250,7 +3291,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 break;
         }
 
-        return UltraCanvasContainer::OnEvent(event);
+        return UltraCanvasWindow::OnEvent(event);
     }
 
     int UltraCanvasTextEditor::OpenFile(const std::string& filePath) {
@@ -3585,37 +3626,41 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
 // ===== FACTORY FUNCTIONS =====
 
-    std::shared_ptr<UltraCanvasTextEditor> CreateTextEditor(
-            const std::string& identifier,
-            long id,
-            int x, int y,
-            int width, int height)
-    {
-        return std::make_shared<UltraCanvasTextEditor>(
-                identifier, id, x, y, width, height, TextEditorConfig());
+    static bool InitTextEditorWindow(std::shared_ptr<UltraCanvasTextEditor>& editor, const TextEditorConfig& cfg) {
+        WindowConfig windowConfig;
+        windowConfig.title = cfg.title;
+        windowConfig.width = cfg.width;
+        windowConfig.height = cfg.height;
+        windowConfig.backgroundColor = cfg.darkTheme ? Color(30, 30, 30) : Color(240, 240, 240);
+        windowConfig.deleteOnClose = true;
+        if (!editor->Create(windowConfig)) {
+            return false;
+        }
+        editor->SetBackgroundColor(cfg.darkTheme ? Color(30, 30, 30, 255) : Color(240, 240, 240, 255));
+        editor->Show();
+        editor->RestoreSessionAndRecoverBackups();
+        return true;
     }
 
     std::shared_ptr<UltraCanvasTextEditor> CreateTextEditor(
-            const std::string& identifier,
-            long id,
-            int x, int y,
-            int width, int height,
             const TextEditorConfig& config)
     {
-        return std::make_shared<UltraCanvasTextEditor>(
-                identifier, id, x, y, width, height, config);
+        auto editor = std::make_shared<UltraCanvasTextEditor>(config);
+        if (!InitTextEditorWindow(editor, config)) {
+            return nullptr;
+        }
+        return editor;
     }
 
-    std::shared_ptr<UltraCanvasTextEditor> CreateDarkTextEditor(
-            const std::string& identifier,
-            long id,
-            int x, int y,
-            int width, int height)
+    std::shared_ptr<UltraCanvasTextEditor> CreateDarkTextEditor()
     {
         TextEditorConfig config;
         config.darkTheme = true;
-        return std::make_shared<UltraCanvasTextEditor>(
-                identifier, id, x, y, width, height, config);
+        auto editor = std::make_shared<UltraCanvasTextEditor>(config);
+        if (!InitTextEditorWindow(editor, config)) {
+            return nullptr;
+        }
+        return editor;
     }
 
     void UltraCanvasTextEditor::HandleDragEnter(const UCEvent& event) {

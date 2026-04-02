@@ -54,6 +54,11 @@ public:
     bool InitializeNative() override;
     void RunNative() override;
     void Exit() override;
+
+    // Wakeup stubs (WASM event loop is driven by the browser)
+    void WakeUpEventLoop() override {}
+    void InitializeWakeUp() override {}
+    void ShutdownWakeUp() override {}
     
     // ===== FRAME RATE CONTROL =====
     void SetTargetFPS(int fps);

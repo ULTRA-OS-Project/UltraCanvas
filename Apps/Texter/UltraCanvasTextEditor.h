@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "UltraCanvasContainer.h"
+#include "UltraCanvasWindow.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasToolbar.h"
@@ -140,6 +140,7 @@ namespace UltraCanvas {
         std::string GetDirectory() const;
 
         bool ShouldAutosave() const;
+        void ResetTimer() { lastAutosaveTime = std::chrono::steady_clock::now(); }
         std::string CreateBackupPath(const std::string& originalPath, int tabIndex);
         bool SaveBackup(const std::string& backupPath, const std::string& content,
                         const std::string& originalPath = "",
@@ -173,7 +174,7 @@ namespace UltraCanvas {
  * editor->OpenFile("/path/to/file.cpp");
  * window->AddChild(editor);
  */
-    class UltraCanvasTextEditor : public UltraCanvasContainer {
+    class UltraCanvasTextEditor : public UltraCanvasWindow {
     private:
         std::string version = "1.0.12";
         // ===== CONFIGURATION =====
@@ -294,7 +295,6 @@ namespace UltraCanvas {
 
         // ===== AUTOSAVE =====
         void AutosaveDocument(int docIndex);
-        void RestoreSessionAndRecoverBackups();
         void RecoverBackupIntoDocument(int docIndex, const std::string& backupPath,
                                        const std::string& content, const std::string& encoding,
                                        const std::string& language);
@@ -387,11 +387,12 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasTextEditor(const std::string& identifier, long id,
-                              int x, int y, int width, int height,
-                              const TextEditorConfig& config = TextEditorConfig());
+        UltraCanvasTextEditor(const TextEditorConfig& config = TextEditorConfig());
 
         virtual ~UltraCanvasTextEditor();
+
+        // Post-construction initialization (called after window is shown)
+        void RestoreSessionAndRecoverBackups();
 
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override;
@@ -603,36 +604,11 @@ namespace UltraCanvas {
         // ===== CALLBACKS =====
 
         /**
-         * @brief Callback when quit is requested
-         */
-        std::function<void()> onQuitRequest;
-
-        /**
-         * @brief Callback when file is loaded
-         * @param filePath Path of loaded file
-         * @param tabIndex Tab index where file was loaded
-         */
-        std::function<void(const std::string& filePath, int tabIndex)> onFileLoaded;
-
-        /**
          * @brief Callback when file is saved
          * @param filePath Path where file was saved
          * @param tabIndex Tab index of saved file
          */
         std::function<void(const std::string& filePath, int tabIndex)> onFileSaved;
-
-        /**
-         * @brief Callback when document modified state changes
-         * @param modified true if document has unsaved changes
-         * @param tabIndex Tab index of modified document
-         */
-        std::function<void(bool modified, int tabIndex)> onModifiedChange;
-
-        /**
-         * @brief Callback when active tab changes
-         * @param tabIndex New active tab index
-         */
-        std::function<void(int tabIndex)> onTabChanged;
 
         /**
          * @brief Callback when tab is closed
@@ -679,22 +655,8 @@ namespace UltraCanvas {
 // ===== FACTORY FUNCTIONS =====
 
     std::shared_ptr<UltraCanvasTextEditor> CreateTextEditor(
-            const std::string& identifier,
-            long id,
-            int x, int y,
-            int width, int height);
+            const TextEditorConfig& config = TextEditorConfig());
 
-    std::shared_ptr<UltraCanvasTextEditor> CreateTextEditor(
-            const std::string& identifier,
-            long id,
-            int x, int y,
-            int width, int height,
-            const TextEditorConfig& config);
-
-    std::shared_ptr<UltraCanvasTextEditor> CreateDarkTextEditor(
-            const std::string& identifier,
-            long id,
-            int x, int y,
-            int width, int height);
+    std::shared_ptr<UltraCanvasTextEditor> CreateDarkTextEditor();
 
 } // namespace UltraCanvas

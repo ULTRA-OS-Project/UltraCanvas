@@ -7,9 +7,13 @@
 
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasTimer.h"
 #include <string>
 #include <memory>
 #include <functional>
+#include <chrono>
+
+namespace UltraCanvas { class UltraCanvasApplicationBase; }
 
 namespace UltraCanvas {
 
@@ -21,6 +25,7 @@ namespace UltraCanvas {
         std::string websiteDisplay;
         int width = 400;
         int height = 300;
+        std::chrono::milliseconds showTimeout{0};  // Auto-close after this duration (0 = no timeout)
         Color backgroundColor = Color(255, 255, 255);
     };
 
@@ -33,10 +38,11 @@ namespace UltraCanvas {
         void Close();
         bool IsVisible() const;
 
-        std::function<void()> onClosed;
+        std::function<void()> onSplashClosed;
 
     private:
         std::shared_ptr<UltraCanvasWindow> window;
+        TimerId timeoutTimerId = InvalidTimerId;
     };
 
 }

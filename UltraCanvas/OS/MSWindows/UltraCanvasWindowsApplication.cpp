@@ -80,7 +80,10 @@ namespace UltraCanvas {
             RegisterCustomWindowClass("Tool");
             RegisterCustomWindowClass("Popup");
 
-            // STEP 7: Mark as initialized
+            // STEP 7: Initialize wakeup mechanism for cross-thread signaling
+            InitializeWakeUp();
+
+            // STEP 8: Mark as initialized
             initialized = true;
             running = false;
 
@@ -95,6 +98,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWindowsApplication::ShutdownNative() {
+        // Clean up wakeup mechanism
+        ShutdownWakeUp();
+
         // Clean up cached cursors
         for (auto& [key, cursor] : cursors) {
             if (cursor) {
@@ -213,7 +219,7 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowsApplication::CollectAndProcessNativeEvents() {
         MSG msg;
-        // Process all pending messages (non-blocking)
+        // 1. Drain all pending messages (non-blocking)
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
                 running = false;
@@ -223,9 +229,43 @@ namespace UltraCanvas {
             DispatchMessageW(&msg);
         }
 
-        // If no more messages, wait for events with ~60fps timeout
-        // Equivalent to Linux's select() with 16ms timeout
-        MsgWaitForMultipleObjectsEx(0, nullptr, 16, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        // 2. Compute wait timeout from timer system
+        auto timeout = GetTimeUntilNextTimer();
+        DWORD waitMs = (timeout == std::chrono::milliseconds::max())
+                       ? INFINITE
+                       : static_cast<DWORD>(timeout.count());
+
+        // 3. Wait for messages, wakeup event, or timer expiry
+        if (wakeupEvent) {
+            MsgWaitForMultipleObjectsEx(1, &wakeupEvent, waitMs, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        } else {
+            MsgWaitForMultipleObjectsEx(0, nullptr, waitMs, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        }
+        // WAIT_OBJECT_0     = wakeupEvent signaled (auto-reset clears it)
+        // WAIT_OBJECT_0 + 1 = Win32 message available
+        // WAIT_TIMEOUT      = timer expired
+        // All cases: return to main loop which calls ProcessTimers + ProcessEvents
+    }
+
+    // ===== WAKEUP MECHANISM =====
+    void UltraCanvasWindowsApplication::InitializeWakeUp() {
+        wakeupEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (!wakeupEvent) {
+            debugOutput << "UltraCanvas: Failed to create wakeup event" << std::endl;
+        }
+    }
+
+    void UltraCanvasWindowsApplication::ShutdownWakeUp() {
+        if (wakeupEvent) {
+            CloseHandle(wakeupEvent);
+            wakeupEvent = nullptr;
+        }
+    }
+
+    void UltraCanvasWindowsApplication::WakeUpEventLoop() {
+        if (wakeupEvent) {
+            SetEvent(wakeupEvent);
+        }
     }
 
 // ===== WNDPROC =====

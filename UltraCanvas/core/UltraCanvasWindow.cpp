@@ -440,6 +440,10 @@ namespace UltraCanvas {
         _state = WindowState::Closing;
         debugOutput << "UltraCanvas: Window close requested" << std::endl;
 
+        if (config_.modal) {
+            UltraCanvasApplication::GetInstance()->UnregisterModalWindow(this);
+        }
+
         CloseAllPopups();
 
         if (onWindowClose) {

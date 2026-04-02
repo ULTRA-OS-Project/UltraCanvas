@@ -4,6 +4,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSplashScreen.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasBoxLayout.h"
@@ -30,6 +31,7 @@ namespace UltraCanvas {
         wc.closable = true;
         wc.deleteOnClose = true;
         wc.alwaysOnTop = true;
+        wc.modal = true;
         wc.backgroundColor = config.backgroundColor;
 
         window = std::make_shared<UltraCanvasWindow>();
@@ -101,7 +103,28 @@ namespace UltraCanvas {
             return false;
         };
 
+        // Fire onSplashClosed when the window is closed (by any means)
+        window->onWindowClose = [this]() {
+            if (timeoutTimerId != InvalidTimerId) {
+                UltraCanvasApplication::GetInstance()->StopTimer(timeoutTimerId);
+                timeoutTimerId = InvalidTimerId;
+            }
+            window.reset();
+            if (onSplashClosed) {
+                onSplashClosed();
+            }
+        };
+
         window->Show();
+
+        // Start auto-close timer if a timeout was specified
+        if (config.showTimeout.count() > 0) {
+            timeoutTimerId = UltraCanvasApplication::GetInstance()->StartTimer(
+                config.showTimeout, false, [this](TimerId) {
+                    timeoutTimerId = InvalidTimerId;
+                    Close();
+                });
+        }
     }
 
     void UltraCanvasSplashScreen::Close() {
@@ -110,14 +133,9 @@ namespace UltraCanvas {
         auto w = window;
         window.reset();
         w->Close();
-
-        if (onClosed) {
-            onClosed();
-        }
     }
 
     bool UltraCanvasSplashScreen::IsVisible() const {
         return window != nullptr;
     }
-
 }

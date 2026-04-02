@@ -11,6 +11,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasTimer.h"
 #include <vector>
 #include <algorithm>
 #include <functional>
@@ -30,7 +31,13 @@ namespace UltraCanvas {
         std::mutex eventQueueMutex;
         std::condition_variable eventCondition;
 
+        // Timer system
+        std::vector<UltraCanvasTimer> timers_;
+        mutable std::mutex timersMutex_;
+        TimerId nextTimerId_ = 1;
+
         std::vector<std::shared_ptr<UltraCanvasWindowBase>> windows;
+        std::vector<std::weak_ptr<UltraCanvasWindowBase>> activeModalWindows;
 
         UltraCanvasWindow* focusedWindow = nullptr;
         UltraCanvasUIElement* hoveredElement = nullptr;
@@ -58,6 +65,13 @@ namespace UltraCanvas {
 
         void RegisterWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
 
+        // Modal window management
+        bool HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow* targetWindow);
+        bool HasActiveModalWindow();
+        UltraCanvasWindowBase* GetCurrentModalWindow();
+        void RegisterModalWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
+        void UnregisterModalWindow(UltraCanvasWindowBase* window);
+
         void ProcessEvents();
         bool PopEvent(UCEvent& event);
         void PushEvent(const UCEvent& event);
@@ -68,6 +82,11 @@ namespace UltraCanvas {
 
         bool HandleEventWithBubbling(UltraCanvasUIElement* elem, const UCEvent &event);
         void RegisterEventLoopRunCallback(std::function<void()> callback);
+
+        // Timer API - timers fire on the main thread
+        TimerId StartTimer(std::chrono::milliseconds interval, bool periodic,
+                           std::function<void(TimerId)> callback = nullptr);
+        void StopTimer(TimerId id);
 
         static void InstallWindowEventFilter(UltraCanvasUIElement* elem, const std::vector<UCEventType>& interestedEvents);
         static void UnInstallWindowEventFilter(UltraCanvasUIElement* elem);
@@ -126,6 +145,15 @@ namespace UltraCanvas {
         bool IsDoubleClick(const UCEvent &event);
         void CleanupWindowReferences(UltraCanvasWindowBase* window);
         virtual void CollectAndProcessNativeEvents() = 0;
+
+        // Timer processing - called from Run() each iteration
+        void ProcessTimers();
+        std::chrono::milliseconds GetTimeUntilNextTimer() const;
+
+        // Platform-specific wakeup mechanism for cross-thread signaling
+        virtual void WakeUpEventLoop() = 0;
+        virtual void InitializeWakeUp() = 0;
+        virtual void ShutdownWakeUp() = 0;
 
     };
 }

@@ -83,6 +83,9 @@ namespace UltraCanvas {
         // ===== CURSOR CACHE =====
         std::unordered_map<UCMouseCursor, HCURSOR> cursors;
 
+        // Wakeup mechanism for cross-thread signaling
+        HANDLE wakeupEvent = nullptr;
+
         // ===== DOUBLE-CLICK TRACKING =====
         MouseClickInfo mouseClickInfo;
 
@@ -147,6 +150,9 @@ namespace UltraCanvas {
         void CaptureMouseNative() override;
         void ReleaseMouseNative() override;
         void CollectAndProcessNativeEvents() override;
+        void WakeUpEventLoop() override;
+        void InitializeWakeUp() override;
+        void ShutdownWakeUp() override;
 
     private:
         // ===== INTERNAL INITIALIZATION =====

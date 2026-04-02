@@ -63,6 +63,9 @@ namespace UltraCanvas {
             // STEP 5: Start event thread
             //StartEventThread();
 
+            // STEP 6: Initialize wakeup mechanism for cross-thread signaling
+            InitializeWakeUp();
+
             initialized = true;
 
             debugOutput << "UltraCanvas: macOS Application initialized successfully" << std::endl;
@@ -173,6 +176,8 @@ namespace UltraCanvas {
     void UltraCanvasMacOSApplication::ShutdownNative() {
         debugOutput << "UltraCanvas: Shutting down macOS Application..." << std::endl;
 
+        ShutdownWakeUp();
+
         vips_shutdown();
 
         //StopEventThread();
@@ -190,7 +195,7 @@ namespace UltraCanvas {
 // ===== MAIN LOOP =====
     void UltraCanvasMacOSApplication::CollectAndProcessNativeEvents() {
         @autoreleasepool {
-            // Drain all pending Cocoa events (matching Linux's while(XPending) pattern)
+            // 1. Drain all pending Cocoa events (non-blocking)
             NSEvent *event;
             while ((event = [nsApplication nextEventMatchingMask:NSEventMaskAny
                                                        untilDate:[NSDate distantPast]
@@ -200,6 +205,64 @@ namespace UltraCanvas {
                 [nsApplication sendEvent:event];
             }
             [nsApplication updateWindows];
+
+            // 2. Compute wait timeout from timer system
+            auto timeout = GetTimeUntilNextTimer();
+
+            // 3. Block until next event, wakeup signal, or timer expiry
+            CFTimeInterval waitSeconds;
+            if (timeout == std::chrono::milliseconds::max()) {
+                waitSeconds = 1e10;  // Effectively infinite (CFRunLoop treats very large values as indefinite)
+            } else {
+                waitSeconds = timeout.count() / 1000.0;
+                if (waitSeconds < 0) waitSeconds = 0;
+            }
+
+            // CFRunLoopRunInMode returns when: event arrives, wakeup source fires, or timeout
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, waitSeconds, true);
+
+            // 4. Drain any new events that arrived during wait
+            while ((event = [nsApplication nextEventMatchingMask:NSEventMaskAny
+                                                       untilDate:[NSDate distantPast]
+                                                          inMode:NSDefaultRunLoopMode
+                                                         dequeue:YES]) != nil) {
+                ProcessCocoaEvent(event);
+                [nsApplication sendEvent:event];
+            }
+            [nsApplication updateWindows];
+        }
+    }
+
+    // ===== WAKEUP MECHANISM =====
+    static void WakeUpSourceCallback(void* /*info*/) {
+        // No-op: the purpose is just to wake CFRunLoopRunInMode
+    }
+
+    void UltraCanvasMacOSApplication::InitializeWakeUp() {
+        CFRunLoopSourceContext ctx = {};
+        ctx.perform = WakeUpSourceCallback;
+        CFRunLoopSourceRef source = CFRunLoopSourceCreate(kCFAllocatorDefault, 0, &ctx);
+        if (source) {
+            CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopDefaultMode);
+            wakeupSource = source;
+        } else {
+            debugOutput << "UltraCanvas: Failed to create CFRunLoopSource for wakeup" << std::endl;
+        }
+    }
+
+    void UltraCanvasMacOSApplication::ShutdownWakeUp() {
+        if (wakeupSource) {
+            CFRunLoopSourceRef source = (CFRunLoopSourceRef)wakeupSource;
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, kCFRunLoopDefaultMode);
+            CFRelease(source);
+            wakeupSource = nullptr;
+        }
+    }
+
+    void UltraCanvasMacOSApplication::WakeUpEventLoop() {
+        if (wakeupSource) {
+            CFRunLoopSourceSignal((CFRunLoopSourceRef)wakeupSource);
+            CFRunLoopWakeUp(CFRunLoopGetMain());
         }
     }
 

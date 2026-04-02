@@ -102,6 +102,8 @@ namespace UltraCanvas {
 
         UCMouseCursor currentMouseCursor = UCMouseCursor::Default;
 
+
+    public:
         // Window-specific callbacks
         std::function<void()> onWindowClose;
         std::function<bool()> onWindowCloseRequest;
@@ -115,7 +117,6 @@ namespace UltraCanvas {
         std::function<void()> onWindowShow;
         std::function<void()> onWindowHide;
 
-    public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowBase();
 

@@ -10,6 +10,8 @@
 #include <iostream>
 #include <algorithm>
 #include <sys/select.h>
+#include <sys/eventfd.h>
+#include <unistd.h>
 #include <PixelFX/PixelFX.h>
 #include <errno.h>
 #include <clocale>  // For setlocale
@@ -62,7 +64,10 @@ namespace UltraCanvas {
                 debugOutput << "UltraCanvas: Failed to initialize XIM (non-critical, falling back to basic input)" << std::endl;
             }
 
-            // STEP 5: Mark as initialized
+            // STEP 5: Initialize wakeup mechanism for cross-thread signaling
+            InitializeWakeUp();
+
+            // STEP 6: Mark as initialized
             initialized = true;
             running = false;
 
@@ -77,6 +82,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLinuxApplication::ShutdownNative() {
+        // Clean up wakeup mechanism
+        ShutdownWakeUp();
+
         // Clean up XIM
         ShutdownXIM();
 
@@ -202,33 +210,83 @@ namespace UltraCanvas {
 // ===== MAIN LOOP =====
 
     void UltraCanvasLinuxApplication::CollectAndProcessNativeEvents() {
-        if (XPending(display) > 0) {
-            while (XPending(display) > 0) {
-                XEvent xEvent;
-                XNextEvent(display, &xEvent);
-
-                // Let XIM filter events first (for input method processing)
-                if (xim && XFilterEvent(&xEvent, None)) {
-                    continue;  // Event was consumed by input method
-                }
-
-                ProcessXEvent(xEvent);
+        // 1. Drain all pending X11 events (non-blocking)
+        while (XPending(display) > 0) {
+            XEvent xEvent;
+            XNextEvent(display, &xEvent);
+            if (xim && XFilterEvent(&xEvent, None)) {
+                continue;
             }
-        } else {
-            // Wait for events with timeout
-            struct timeval timeout;
-            timeout.tv_sec = 0;
-            timeout.tv_usec = 16666; // ~60 FPS
+            ProcessXEvent(xEvent);
+        }
 
-            fd_set readfds;
-            FD_ZERO(&readfds);
-            FD_SET(ConnectionNumber(display), &readfds);
+        // 2. Compute wait timeout from timer system
+        auto timeout = GetTimeUntilNextTimer();
 
-            int result = select(ConnectionNumber(display) + 1, &readfds, nullptr, nullptr, &timeout);
+        // 3. Build select() fd_set with X11 fd and wakeup fd
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        int x11Fd = ConnectionNumber(display);
+        FD_SET(x11Fd, &readfds);
+        int maxFd = x11Fd;
+        if (wakeupFd >= 0) {
+            FD_SET(wakeupFd, &readfds);
+            if (wakeupFd > maxFd) maxFd = wakeupFd;
+        }
 
-            if (result < 0 && errno != EINTR) {
-                debugOutput << "CollectAndProcessNativeEvents: select() error" << std::endl;
+        // 4. Set up timeout (nullptr = infinite wait)
+        struct timeval tv;
+        struct timeval* tvPtr = nullptr;
+        if (timeout != std::chrono::milliseconds::max()) {
+            auto us = std::chrono::duration_cast<std::chrono::microseconds>(timeout);
+            tv.tv_sec = static_cast<long>(us.count() / 1'000'000);
+            tv.tv_usec = static_cast<long>(us.count() % 1'000'000);
+            tvPtr = &tv;
+        }
+
+        // 5. Wait for OS events, wakeup signal, or timer expiry
+        int result = select(maxFd + 1, &readfds, nullptr, nullptr, tvPtr);
+
+        if (result < 0 && errno != EINTR) {
+            debugOutput << "CollectAndProcessNativeEvents: select() error" << std::endl;
+        }
+
+        // 6. Drain wakeup fd if signaled
+        if (result > 0 && wakeupFd >= 0 && FD_ISSET(wakeupFd, &readfds)) {
+            uint64_t val;
+            (void)read(wakeupFd, &val, sizeof(val));
+        }
+
+        // 7. Drain any new X11 events that arrived during wait
+        while (XPending(display) > 0) {
+            XEvent xEvent;
+            XNextEvent(display, &xEvent);
+            if (xim && XFilterEvent(&xEvent, None)) {
+                continue;
             }
+            ProcessXEvent(xEvent);
+        }
+    }
+
+    // ===== WAKEUP MECHANISM =====
+    void UltraCanvasLinuxApplication::InitializeWakeUp() {
+        wakeupFd = eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+        if (wakeupFd < 0) {
+            debugOutput << "UltraCanvas: Failed to create eventfd for wakeup" << std::endl;
+        }
+    }
+
+    void UltraCanvasLinuxApplication::ShutdownWakeUp() {
+        if (wakeupFd >= 0) {
+            close(wakeupFd);
+            wakeupFd = -1;
+        }
+    }
+
+    void UltraCanvasLinuxApplication::WakeUpEventLoop() {
+        if (wakeupFd >= 0) {
+            uint64_t val = 1;
+            (void)write(wakeupFd, &val, sizeof(val));
         }
     }
 

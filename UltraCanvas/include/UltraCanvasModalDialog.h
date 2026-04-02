@@ -465,7 +465,6 @@ namespace UltraCanvas {
     private:
         // Static member declarations only - definitions in .cpp
         static std::vector<std::shared_ptr<UltraCanvasModalDialog>> activeDialogs;
-        static std::shared_ptr<UltraCanvasModalDialog> currentModal;
         static bool enabled;
         static bool useNativeDialogs;  // When true, use native OS dialogs instead of internal
         static DialogConfig defaultConfig;
@@ -473,18 +472,6 @@ namespace UltraCanvas {
         static FileDialogConfig defaultFileConfig;
 
     public:
-        // ===== MODAL EVENT BLOCKING =====
-        // Call this from UltraCanvasBaseApplication::DispatchEvent BEFORE routing events.
-        // Returns true if the event should be blocked (a modal is active and event
-        // targets a different window).
-        static bool HandleModalEvents(const UCEvent& event, UltraCanvasWindow* targetWindow);
-
-        // Check if there is an active modal window
-        static bool HasActiveModal();
-
-        // Get the current modal window (for event routing)
-        static UltraCanvasWindowBase* GetModalWindow();
-
         // ===== ASYNC CALLBACK-BASED DIALOGS (RECOMMENDED) =====
         // These methods show dialogs non-blocking and deliver results via callbacks.
 
@@ -590,7 +577,6 @@ namespace UltraCanvas {
         // ===== INTERNAL HELPERS =====
         static void RegisterDialog(std::shared_ptr<UltraCanvasModalDialog> dialog);
         static void UnregisterDialog(std::shared_ptr<UltraCanvasModalDialog> dialog);
-        static void SetCurrentModal(std::shared_ptr<UltraCanvasModalDialog> dialog);
         static std::shared_ptr<UltraCanvasModalDialog> CreateMessageDialog(const std::string& message, const std::string& title,
                                                                            DialogType type, DialogButtons buttons);
         static std::shared_ptr<UltraCanvasInputDialog> CreateInputDialog(const InputDialogConfig& config);

@@ -17,7 +17,6 @@ namespace UltraCanvas {
 
 // ===== STATIC MEMBER DEFINITIONS =====
     std::vector<std::shared_ptr<UltraCanvasModalDialog>> UltraCanvasDialogManager::activeDialogs;
-    std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::currentModal = nullptr;
     bool UltraCanvasDialogManager::enabled = true;
     bool UltraCanvasDialogManager::useNativeDialogs = false;  // Default to internal dialogs
     DialogConfig UltraCanvasDialogManager::defaultConfig;
@@ -1248,56 +1247,6 @@ namespace UltraCanvas {
 
 // ===== DIALOG MANAGER IMPLEMENTATION =====
 
-// ===== MODAL EVENT BLOCKING =====
-    bool UltraCanvasDialogManager::HandleModalEvents(const UCEvent& event, UltraCanvasWindow* targetWindow) {
-        if (!enabled || !currentModal) return false;
-
-        // Get the modal window
-        UltraCanvasWindowBase* modalWindow = currentModal.get();
-        if (!modalWindow || !modalWindow->IsVisible()) return false;
-
-
-        // Block input events going to other windows when modal is active
-        switch (event.type) {
-            case UCEventType::MouseDown:
-            case UCEventType::MouseUp:
-            case UCEventType::MouseMove:
-            case UCEventType::MouseWheel:
-            case UCEventType::MouseDoubleClick:
-            case UCEventType::MouseEnter:
-            case UCEventType::MouseLeave:
-            case UCEventType::KeyDown:
-            case UCEventType::KeyUp:
-            case UCEventType::TextInput:
-            case UCEventType::Shortcut:
-                // Block these events from reaching non-modal windows
-                if (targetWindow != modalWindow) return true;
-                break;
-
-            case UCEventType::WindowFocus:
-                if (targetWindow && targetWindow != modalWindow) {
-                    modalWindow->RaiseAndFocus();
-                    return true;
-                }
-                break;
-//            case UCEventType::WindowBlur:
-            default:
-                return false;
-        }
-        return false;
-    }
-
-    bool UltraCanvasDialogManager::HasActiveModal() {
-        return enabled && currentModal && currentModal->IsVisible();
-    }
-
-    UltraCanvasWindowBase* UltraCanvasDialogManager::GetModalWindow() {
-        if (HasActiveModal()) {
-            return currentModal.get();
-        }
-        return nullptr;
-    }
-
 // ===== ASYNC CALLBACK-BASED DIALOGS =====
     void UltraCanvasDialogManager::ShowMessage(const std::string& message, const std::string& title,
                                                DialogType type, DialogButtons buttons,
@@ -1553,11 +1502,17 @@ namespace UltraCanvas {
             }
         }
         activeDialogs.clear();
-        currentModal.reset();
     }
 
     std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::GetCurrentModalDialog() {
-        return currentModal;
+        auto* app = UltraCanvasApplication::GetInstance();
+        auto* modalWin = app ? app->GetCurrentModalWindow() : nullptr;
+        if (modalWin) {
+            for (auto& dialog : activeDialogs) {
+                if (dialog.get() == modalWin) return dialog;
+            }
+        }
+        return nullptr;
     }
 
     std::vector<std::shared_ptr<UltraCanvasModalDialog>> UltraCanvasDialogManager::GetActiveDialogs() {
@@ -1622,11 +1577,6 @@ namespace UltraCanvas {
                                }),
                 activeDialogs.end()
         );
-
-        // Update current modal reference
-        if (currentModal && !currentModal->IsVisible()) {
-            currentModal.reset();
-        }
     }
 
     std::string UltraCanvasDialogManager::DialogResultToString(DialogResult result) {
@@ -1694,9 +1644,6 @@ namespace UltraCanvas {
     void UltraCanvasDialogManager::RegisterDialog(std::shared_ptr<UltraCanvasModalDialog> dialog) {
         if (dialog) {
             activeDialogs.push_back(dialog);
-            if (dialog->IsModalDialog()) {
-                SetCurrentModal(dialog);
-            }
         }
     }
 
@@ -1705,14 +1652,6 @@ namespace UltraCanvas {
         if (it != activeDialogs.end()) {
             activeDialogs.erase(it);
         }
-
-        if (currentModal == dialog) {
-            currentModal.reset();
-        }
-    }
-
-    void UltraCanvasDialogManager::SetCurrentModal(std::shared_ptr<UltraCanvasModalDialog> dialog) {
-        currentModal = dialog;
     }
 
     std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::CreateMessageDialog(

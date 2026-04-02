@@ -73,6 +73,9 @@ namespace UltraCanvas {
 
         bool eventThreadRunning;
         std::thread eventThread;
+
+        // Wakeup mechanism for cross-thread signaling
+        int wakeupFd = -1;
  
         // ===== X INPUT METHOD (XIM) FOR UTF-8 SUPPORT =====
         XIM xim;                    // X Input Method handle
@@ -173,6 +176,9 @@ namespace UltraCanvas {
         void CaptureMouseNative() override;
         void ReleaseMouseNative() override;
         void CollectAndProcessNativeEvents() override;
+        void WakeUpEventLoop() override;
+        void InitializeWakeUp() override;
+        void ShutdownWakeUp() override;
 
         Cursor LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY);
 

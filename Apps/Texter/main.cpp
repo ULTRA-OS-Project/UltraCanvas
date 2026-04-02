@@ -6,16 +6,15 @@
 
 #include <iostream>
 #include <memory>
+#include <chrono>
 #include <exception>
 #include <string>
 #include <vector>
 #include <algorithm>
 
 // UltraCanvas Core Headers
-#include "UltraCanvasWindow.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTextEditor.h"
-#include "UltraCanvasModalDialog.h"
 #include "UltraCanvasSplashScreen.h"
 
 // OS-specific includes
@@ -39,166 +38,91 @@ class TexterWindowManager;
 static UltraCanvasApplication* g_app = nullptr;
 static TexterWindowManager* g_windowManager = nullptr;
 
-// ===== TEXTER WINDOW =====
-struct TexterWindow {
-    std::shared_ptr<UltraCanvasWindow> window;
-    std::shared_ptr<UltraCanvasTextEditor> editor;
-};
-
 // ===== WINDOW MANAGER =====
 class TexterWindowManager {
 private:
     UltraCanvasApplication* app;
-    std::vector<std::shared_ptr<TexterWindow>> windows;
+    std::vector<std::shared_ptr<UltraCanvasTextEditor>> editors;
     TextEditorConfig baseConfig;
     bool useDarkTheme;
-    int nextWindowId = 0;
 
-    void WireWindowCallbacks(std::shared_ptr<TexterWindow> tw) {
-        auto* editor = tw->editor.get();
-        auto* win = tw->window.get();
-        std::weak_ptr<TexterWindow> weakTw = tw;
-
-        // Quit request: close this window
-        editor->onQuitRequest = [win]() {
-            win->Close();
-        };
+    void WireEditorCallbacks(std::shared_ptr<UltraCanvasTextEditor> editor) {
+        auto* editorPtr = editor.get();
+        std::weak_ptr<UltraCanvasTextEditor> weakEditor = editor;
 
         // Allow auto-close when last document is closed and other windows exist
-        editor->canCloseEmptyWindow = [this]() {
-            return static_cast<int>(windows.size()) > 1;
+        editorPtr->canCloseEmptyWindow = [this]() {
+            return static_cast<int>(editors.size()) > 1;
         };
 
         // New Window menu item
-        editor->onNewWindowRequest = [this]() {
+        editorPtr->onNewWindowRequest = [this]() {
             CreateNewWindow();
         };
 
         // Tab dragged out: move to target window or create a new one
-        editor->onTabDraggedOut = [this, editor](std::shared_ptr<DocumentTab> doc, int screenX, int screenY) {
-            // Check if drop landed on another TexterWindow
-            auto target = FindWindowAtScreenPoint(screenX, screenY, editor);
+        editorPtr->onTabDraggedOut = [this, editorPtr](std::shared_ptr<DocumentTab> doc, int screenX, int screenY) {
+            auto target = FindEditorAtScreenPoint(screenX, screenY, editorPtr);
             if (target) {
-                // Drag-in: move the tab to the target window
-                target->editor->AcceptDocument(doc);
-                UpdateWindowTitle(target.get());
+                target->AcceptDocument(doc);
             } else {
-                // No target window at drop point — create a new one
                 CreateWindowWithDocument(doc, screenX, screenY);
             }
 
-            // Close source window if it has no more documents
-            if (editor->GetDocumentCount() == 0) {
-                for (auto& tw : windows) {
-                    if (tw->editor.get() == editor) {
-                        tw->window->Close();
-                        break;
-                    }
-                }
+            if (editorPtr->GetDocumentCount() == 0) {
+                editorPtr->Close();
             }
         };
 
         // Theme toggled: sync to all other windows
-        editor->onThemeChanged = [this, editor](bool isDark) {
+        editorPtr->onThemeChanged = [this, editorPtr](bool isDark) {
             useDarkTheme = isDark;
-            for (auto& tw : windows) {
-                if (tw->editor.get() == editor) continue;
+            for (auto& ed : editors) {
+                if (ed.get() == editorPtr) continue;
                 if (isDark) {
-                    tw->editor->ApplyDarkTheme();
+                    ed->ApplyDarkTheme();
                 } else {
-                    tw->editor->ApplyLightTheme();
+                    ed->ApplyLightTheme();
                 }
-                tw->window->SetBackgroundColor(
-                    isDark ? Color(30, 30, 30) : Color(240, 240, 240));
-                tw->window->RequestRedraw();
+                ed->RequestRedraw();
             }
-        };
-
-        // File loaded: update window title
-        editor->onFileLoaded = [win](const std::string& path, int tabIndex) {
-            win->SetWindowTitle("UltraTexter - " + path);
-        };
-
-        // Modified state changed: update window title
-        editor->onModifiedChange = [win, editor](bool modified, int tabIndex) {
-            std::string title = "UltraTexter";
-            std::string filePath = editor->GetActiveFilePath();
-            if (!filePath.empty()) {
-                title += " - " + filePath;
-            }
-            if (modified) {
-                title += " *";
-            }
-            win->SetWindowTitle(title);
-        };
-
-        // Tab changed: update window title
-        editor->onTabChanged = [win, editor](int tabIndex) {
-            std::string title = "UltraTexter";
-            std::string filePath = editor->GetActiveFilePath();
-            if (!filePath.empty()) {
-                title += " - " + filePath;
-            }
-            if (editor->HasUnsavedChanges()) {
-                title += " *";
-            }
-            win->SetWindowTitle(title);
         };
 
         // File saved
-        editor->onFileSaved = [](const std::string& path, int tabIndex) {
+        editorPtr->onFileSaved = [](const std::string& path, int tabIndex) {
             debugOutput << "File saved: " << path << std::endl;
         };
 
-        // Window resize: sync editor size
-        win->SetWindowResizeCallback([editor](int width, int height) {
-            editor->SetSize(width, height);
-        });
-
         // Window close: remove from manager
-        win->SetWindowCloseCallback([this, weakTw]() {
-            auto tw = weakTw.lock();
-            if (!tw) return;
-            tw->editor->PerformAutosave(true);
-            tw->editor->SaveSession();
-            
-            auto it = std::find(windows.begin(), windows.end(), tw);
-            if (it != windows.end()) {
-                windows.erase(it);
+        editorPtr->SetWindowCloseCallback([this, weakEditor]() {
+            auto ed = weakEditor.lock();
+            if (!ed) return;
+
+            auto it = std::find(editors.begin(), editors.end(), ed);
+            if (it != editors.end()) {
+                editors.erase(it);
             }
         });
     }
 
-    // Find which TexterWindow (if any) is at the given screen coordinates,
-    // excluding the source editor's window.
-    std::shared_ptr<TexterWindow> FindWindowAtScreenPoint(int screenX, int screenY,
-                                                           UltraCanvasTextEditor* exclude) {
-        for (auto& tw : windows) {
-            if (tw->editor.get() == exclude) continue;
+    // Find which editor window (if any) is at the given screen coordinates,
+    // excluding the source editor.
+    std::shared_ptr<UltraCanvasTextEditor> FindEditorAtScreenPoint(int screenX, int screenY,
+                                                                    UltraCanvasTextEditor* exclude) {
+        for (auto& ed : editors) {
+            if (ed.get() == exclude) continue;
 
             int wx, wy;
-            tw->window->GetScreenPosition(wx, wy);
-            int ww = tw->window->GetWidth();
-            int wh = tw->window->GetHeight();
+            ed->GetScreenPosition(wx, wy);
+            int ww = ed->GetWidth();
+            int wh = ed->GetHeight();
 
             if (screenX >= wx && screenX < wx + ww &&
                 screenY >= wy && screenY < wy + wh) {
-                return tw;
+                return ed;
             }
         }
         return nullptr;
-    }
-
-    void UpdateWindowTitle(TexterWindow* tw) {
-        std::string title = "UltraTexter";
-        std::string filePath = tw->editor->GetActiveFilePath();
-        if (!filePath.empty()) {
-            title += " - " + filePath;
-        }
-        if (tw->editor->HasUnsavedChanges()) {
-            title += " *";
-        }
-        tw->window->SetWindowTitle(title);
     }
 
 public:
@@ -206,73 +130,42 @@ public:
                         const TextEditorConfig& config, bool dark)
         : app(appPtr), baseConfig(config), useDarkTheme(dark) {}
 
-    std::shared_ptr<TexterWindow> CreateNewWindow(int screenX = -1, int screenY = -1) {
-        auto tw = std::make_shared<TexterWindow>();
+    std::shared_ptr<UltraCanvasTextEditor> CreateNewWindow(int screenX = -1, int screenY = -1) {
+        auto editor = CreateTextEditor(baseConfig);
 
-        // Create window
-        tw->window = std::make_shared<UltraCanvasWindow>();
-
-        WindowConfig windowConfig;
-        windowConfig.title = "UltraTexter";
-        windowConfig.width = 1200;
-        windowConfig.height = 800;
-        windowConfig.backgroundColor = useDarkTheme ? Color(30, 30, 30) : Color(240, 240, 240);
-        windowConfig.deleteOnClose = true;
-
-        if (!tw->window->Create(windowConfig)) {
-            debugOutput << "Failed to create window" << std::endl;
-            return nullptr;
-        }
-
-        // Create editor
-        int windowId = nextWindowId++;
-        tw->editor = CreateTextEditor(
-            "Editor_" + std::to_string(windowId),
-            windowId,
-            0, 0,
-            windowConfig.width,
-            windowConfig.height,
-            baseConfig
-        );
-
-        if (!tw->editor) {
-            debugOutput << "Failed to create text editor" << std::endl;
+        if (!editor) {
+            debugOutput << "Failed to create text editor window" << std::endl;
             return nullptr;
         }
 
         // Apply theme
         if (useDarkTheme) {
-            tw->editor->ApplyDarkTheme();
+            editor->ApplyDarkTheme();
         }
 
         // Wire callbacks
-        WireWindowCallbacks(tw);
+        WireEditorCallbacks(editor);
 
-        // Add editor to window and show
-        tw->window->AddChild(tw->editor);
-        tw->window->Show();
-
-        windows.push_back(tw);
-        return tw;
+        editors.push_back(editor);
+        return editor;
     }
 
-    std::shared_ptr<TexterWindow> CreateWindowWithDocument(
+    std::shared_ptr<UltraCanvasTextEditor> CreateWindowWithDocument(
             std::shared_ptr<DocumentTab> doc, int screenX, int screenY) {
-        auto tw = CreateNewWindow(screenX, screenY);
-        if (!tw) return nullptr;
+        auto editor = CreateNewWindow(screenX, screenY);
+        if (!editor) return nullptr;
 
         // The constructor created an empty "Untitled" tab — extract it
         // so only the transferred document remains
-        auto emptyDoc = tw->editor->ExtractDocument(0);
+        auto emptyDoc = editor->ExtractDocument(0);
 
         // Accept the transferred document
-        tw->editor->AcceptDocument(doc);
+        editor->AcceptDocument(doc);
 
-        UpdateWindowTitle(tw.get());
-        return tw;
+        return editor;
     }
 
-    int GetWindowCount() const { return static_cast<int>(windows.size()); }
+    int GetWindowCount() const { return static_cast<int>(editors.size()); }
 };
 
 // ===== ERROR HANDLING =====
@@ -440,11 +333,14 @@ int main(int argc, char* argv[]) {
         // Show splash screen
         UltraCanvasSplashScreen splash;
         SplashScreenConfig splashConfig;
+        splashConfig.width = 500;
+        splashConfig.height = 500;
         splashConfig.imagePath = GetResourcesDir() + "media/appicons/Texter.png";
         splashConfig.title = "UltraTexter";
         splashConfig.version = "1.0.12";
         splashConfig.websiteURL = "https://www.ultraos.eu/";
         splashConfig.websiteDisplay = "www.ultraos.eu";
+        splashConfig.showTimeout = std::chrono::milliseconds(3000);
         //splash.Show(splashConfig);
 
         // Create window manager
@@ -466,7 +362,7 @@ int main(int argc, char* argv[]) {
         // Open file from command line
         if (!fileToOpen.empty()) {
             debugOutput << "Opening file: " << fileToOpen << std::endl;
-            if (firstWindow->editor->OpenFile(fileToOpen)) {
+            if (firstWindow->OpenFile(fileToOpen)) {
                 debugOutput << "✓ File loaded successfully" << std::endl;
             } else {
                 debugOutput << "Warning: Failed to load file: " << fileToOpen << std::endl;
