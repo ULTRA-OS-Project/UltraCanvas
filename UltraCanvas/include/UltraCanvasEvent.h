@@ -40,7 +40,6 @@ namespace UltraCanvas {
         // Window Events
         WindowCloseRequest,
         WindowClosing,
-        WindowDelete,
         WindowResize,
         WindowMove,
         WindowMinimize,
@@ -400,22 +399,7 @@ namespace UltraCanvas {
             return GetAge() < 0.1f && (type == UCEventType::KeyDown || type == UCEventType::KeyChar);
         }
 
-        std::string ToString() const {
-            std::string result = "UCEvent{type=";
-            result += std::to_string(static_cast<int>(type));
-            if (IsMouseEvent()) {
-                result += ",pos=(" + std::to_string(x) + "," + std::to_string(y) + ")";
-                result += ",btn=" + std::to_string(static_cast<int>(button));
-            }
-            if (IsKeyboardEvent()) {
-                result += ",nativeKey=" + std::to_string(nativeKeyCode);
-                if (character > 0) {
-                    result += ",char='" + std::string(1, character) + "'";
-                }
-            }
-            result += "}";
-            return result;
-        }
+        std::string ToString() const;
     };
 
 }

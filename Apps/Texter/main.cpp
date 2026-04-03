@@ -356,7 +356,7 @@ int main(int argc, char* argv[]) {
         splash.onSplashClosed = [firstWindow]() {
             firstWindow->RestoreSessionAndRecoverBackups();
         };
-        splash.Show(splashConfig);
+        splash.Show(splashConfig, firstWindow.get());
 
 
         debugOutput << "✓ Main window created" << std::endl;

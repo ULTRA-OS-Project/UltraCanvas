@@ -85,7 +85,6 @@ namespace UltraCanvas {
         WindowConfig config_;
         WindowState _state = WindowState::Normal;
         bool _created = false;
-        bool _focused = false;
         bool _needsResize = false;
 
         std::unordered_map<UCEventType, std::vector<FilterFunction>> eventFilters = {};
@@ -113,8 +112,6 @@ namespace UltraCanvas {
         std::function<void()> onWindowMinimize;
         std::function<void()> onWindowMaximize;
         std::function<void()> onWindowRestore;
-        std::function<void()> onWindowFocus;
-        std::function<void()> onWindowBlur;
         std::function<void()> onWindowShow;
         std::function<void()> onWindowHide;
 
@@ -151,7 +148,7 @@ namespace UltraCanvas {
         virtual void GetScreenSize(int& width, int& height) const = 0;
 
 // ===== FOCUS MANAGEMENT PUBLIC INTERFACE =====
-        bool IsWindowFocused() const { return _focused; }
+        bool IsWindowFocused() const;
         // Set focus to a specific element in this window
         virtual void SetFocusedElement(UltraCanvasUIElement* element);
         // Get the currently focused element in this window
@@ -210,6 +207,8 @@ namespace UltraCanvas {
         bool IsMaximized() const { return _state == WindowState::Maximized; }
         bool IsFullscreen() const { return _state == WindowState::Fullscreen; }
 
+        UltraCanvasWindowBase* GetParentWindow();
+
         WindowState GetState() const { return _state; }
 
         const WindowConfig& GetConfig() const { return config_; }
@@ -231,8 +230,6 @@ namespace UltraCanvas {
         void SetWindowMinimizeCallback(std::function<void()> callback) { onWindowMinimize = callback; }
         void SetWindowMaximizeCallback(std::function<void()> callback) { onWindowMaximize = callback; }
         void SetWindowRestoreCallback(std::function<void()> callback) { onWindowRestore = callback; }
-        void SetWindowBlurCallback(std::function<void()> callback) { onWindowBlur = callback; }
-        void SetWindowFocusCallback(std::function<void()> callback) { onWindowFocus = callback; }
 
         // ===== UTILITY METHODS =====
         void CenterOnScreen();

@@ -34,7 +34,7 @@ namespace UltraCanvas {
         UltraCanvasSplashScreen() = default;
         ~UltraCanvasSplashScreen();
 
-        void Show(const SplashScreenConfig& config);
+        void Show(const SplashScreenConfig& config, UltraCanvasWindowBase* parentWin = nullptr);
         void Close();
         bool IsVisible() const;
 

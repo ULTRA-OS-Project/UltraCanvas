@@ -1220,6 +1220,7 @@ namespace {
         doc->filePath = "";
         doc->language = config.defaultLanguage;
         doc->isModified = false;
+        doc->isSaved = false;
         doc->isNewFile = true;
         
         // New files are always plain text — never inherit hex mode from the
@@ -1429,15 +1430,11 @@ namespace {
         // Add tab to TabbedContainer
         int tabIndex = tabContainer->AddTab(doc->fileName, doc->textArea);
 
-        // Propagate modified state
-        if (doc->isModified) {
-            tabContainer->SetTabModified(tabIndex, true);
-        }
-
         // Activate the new tab
         activeDocumentIndex = docIndex;
         tabContainer->SetActiveTab(tabIndex);
 
+        UpdateTabBadge(docIndex);
         UpdateTabTitle(docIndex);
         UpdateStatusBar();
         UpdateEncodingDropdown();
@@ -1461,6 +1458,7 @@ namespace {
         // Update tab selection only if needed (prevents recursive callback)
         if (needsTabSwitch) {
             tabContainer->SetActiveTab(index);
+            documents[activeDocumentIndex]->textArea->SetFocus(true);
         }
 
         // Update status bar and dropdowns
@@ -1507,6 +1505,28 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
+    std::string UltraCanvasTextEditor::FormatFullTabTooltip(int index) {
+        auto& doc = documents[index];
+        std::string tooltipText;
+        if (doc->isNewFile) {
+            tooltipText = "Never saved";   // ● red  (colour is visual only — text says it)
+        } else if (doc->isModified) {
+            tooltipText = "Unsaved";  // ● orange
+        } else if (doc->isSaved) {
+            tooltipText = "Saved";            // ● green
+        }
+        if (!doc->filePath.empty()) {
+            if (!tooltipText.empty()) {
+                tooltipText += "\n" + utf8_strreplace(doc->filePath, " ", "\u00A0");
+            } else {
+                tooltipText = utf8_strreplace(doc->filePath, " ", "\u00A0");
+            }
+        } else {
+            tooltipText = doc->fileName;
+        }
+        return tooltipText;
+    }
+
     void UltraCanvasTextEditor::UpdateTabTitle(int index) {
         if (index < 0 || index >= static_cast<int>(documents.size())) {
             return;
@@ -1517,7 +1537,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         tabContainer->SetTabTitle(index, title);
 
-        tabContainer->SetTabTooltip(index, utf8_strreplace(doc->filePath, " ", "\u00A0"));
+        tabContainer->SetTabTooltip(index, FormatFullTabTooltip(index));
         //tabContainer->SetTabTooltip(index, doc->filePath);
     }
 
@@ -1527,9 +1547,20 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         auto doc = documents[index];
-
-        // Show "●" badge for modified documents
-        tabContainer->SetTabModified(index, doc->isModified);
+        bool showMarker = true;
+        if (doc->isNewFile) {
+            // Never been saved — orange marker
+            tabContainer->SetTabMarkerColor(index, Color(255, 165, 0, 255));
+        } else if (doc->isModified) {
+            // Modified since last save — red marker
+            tabContainer->SetTabMarkerColor(index, Color(195, 30, 3, 255));
+        } else if (doc->isSaved){
+            // Saved and clean — green marker
+            tabContainer->SetTabMarkerColor(index, Color(40, 167, 69, 255));
+        } else {
+            showMarker = false;
+        }
+        tabContainer->SetTabShowMarker(index, showMarker);
     }
 
 // ===== FILE OPERATIONS =====
@@ -1796,6 +1827,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->textArea->SetDocumentFilePath(filePath);
             bool wasNewFile = doc->isNewFile;
             doc->isNewFile = false;
+            doc->isSaved = true;
             doc->lastSaveTime = std::chrono::steady_clock::now();
 
             // Update filename
@@ -3795,69 +3827,6 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // restore state
         ctx->PopState();
-    }
-
-
-    std::string UltraCanvasTextEditor::FormatPathTooltip(const std::string& filePath) {
-
-        if (filePath.empty()) return filePath;
-
-        // Split path into segments at every '/' or '\'
-        std::vector<std::string> segments;
-        std::string current;
-
-        for (size_t i = 0; i < filePath.size(); ++i) {
-            char c = filePath[i];
-            if (c == '/' || c == '\\') {
-                if (!current.empty()) {
-                    segments.push_back(current);
-                    current.clear();
-                }
-            } else {
-                current += c;
-            }
-        }
-        if (!current.empty()) {
-            segments.push_back(current);
-        }
-
-        if (segments.empty()) return filePath;
-
-        // Reconstruct with " /\n" as separator.
-        // Special case: Windows drive root "C:" — render as "C:\" on same line
-        // as the first real segment, so we don't get a lone "C:" on line 1.
-        std::string result;
-
-        // Detect Windows drive: first segment is exactly 2 chars and ends with ':'
-        size_t startIdx = 0;
-        if (segments[0].size() == 2 && segments[0][1] == ':') {
-            // e.g. "C:" — combine with first real segment on one line
-            result = segments[0] + ":\\";
-            if (segments.size() > 1) {
-                result += segments[1];
-                startIdx = 2;
-            } else {
-                startIdx = 1;
-            }
-        } else {
-            // Unix/relative path — start with first segment normally
-            result = segments[0];
-            startIdx = 1;
-        }
-
-        // Append remaining segments, each on its own line separated by " /"
-        std::string tmpline = result;
-        for (size_t i = startIdx; i < segments.size(); ++i) {
-            result += "/";
-            if (utf8_length(tmpline) > 40) {
-                result += "\n";
-                tmpline = "";
-            }
-            tmpline += segments[i];
-            result += segments[i];
-        }
-
-        return result;
     }
 
     //  Recent Files Management Methods

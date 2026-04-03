@@ -131,7 +131,6 @@ rescan_windows:
                         if (window->onWindowDelete) {
                             window->onWindowDelete();
                         }
-
                         CleanupWindowReferences(window);
                         windows.erase(it);
                         goto rescan_windows;
@@ -295,6 +294,17 @@ rescan_windows:
         UnregisterModalWindow(win);
         if (focusedWindow == win) {
             focusedWindow = nullptr;
+
+            // if (win->IsFocused()) {
+            //     auto parentWin = win->GetParentWindow();
+            //     if (parentWin && parentWin->IsVisible()) {
+            //         auto parentWinState = parentWin->GetState();
+            //         if ( parentWinState == WindowState::Normal || parentWinState == WindowState::Maximized || parentWinState == WindowState::Fullscreen) {
+            //             parentWin->RaiseAndFocus();
+            //             focusedWindow = (UltraCanvasWindow*)parentWin;
+            //         }
+            //     }
+            // }
         }
         if (capturedElement && capturedElement->GetWindow() == win) {
             capturedElement = nullptr;
@@ -362,14 +372,28 @@ rescan_windows:
     }
 
     void UltraCanvasApplicationBase::UnregisterModalWindow(UltraCanvasWindowBase* window) {
-        activeModalWindows.erase(
-            std::remove_if(activeModalWindows.begin(), activeModalWindows.end(),
-                [window](const std::weak_ptr<UltraCanvasWindowBase>& w) {
-                    auto locked = w.lock();
-                    return !locked || locked.get() == window;
-                }),
-            activeModalWindows.end()
+        std::erase_if(activeModalWindows, 
+            [window](const std::weak_ptr<UltraCanvasWindowBase>& w) {
+                auto locked = w.lock();
+                return !locked || locked.get() == window;
+            }
         );
+    }
+
+    void UltraCanvasApplicationBase::UnregisterWindow(UltraCanvasWindowBase* window) {
+        std::erase_if(windows, 
+            [window](const std::shared_ptr<UltraCanvasWindowBase>& w) {
+                return w.get() == window;
+            }
+        );
+    }
+    
+    bool UltraCanvasApplicationBase::IsWindowRegistered(UltraCanvasWindowBase* window) {
+        return (std::find_if(windows.begin(), windows.end(), 
+            [window](const std::shared_ptr<UltraCanvasWindowBase>& w) {
+                return w.get() == window;
+            }
+        ) != windows.end());
     }
 
     UltraCanvasWindow* UltraCanvasApplicationBase::FindWindow(NativeWindowHandle nativeHandle) {
@@ -438,7 +462,7 @@ rescan_windows:
             if (std::find_if(windows.begin(), windows.end(), [targetWindow](auto const &item) {
                 return item.get() == targetWindow;
             }) == windows.end()) {
-                debugOutput << "UltraCanvasApplicationBase::DispatchEvent stale event for already deleted window ev.type=" << (int)event.type << " win="<<targetWindow << std::endl;
+                debugOutput << "UltraCanvasApplicationBase::DispatchEvent stale event for already deleted window ev=" << event.ToString() << " win="<<targetWindow << std::endl;
                 return;
             }
         }
@@ -455,10 +479,24 @@ rescan_windows:
                 targetWindow = focusedWindow;
             }
         }
+
         // block some events if modal window active
         if (HandleModalWindowEvents(event, targetWindow)) {
             return;
         }
+
+       if (event.type == UCEventType::MouseDown) {
+           if (targetWindow && event.type == UCEventType::MouseDown && focusedWindow != targetWindow) {
+               debugOutput << "Window clicked but not focused, set focus. target=" << targetWindow << " focused=" << focusedWindow << std::endl;
+               if (focusedWindow) {
+                   UCEvent ev{.type = UCEventType::WindowBlur};
+                   DispatchEventToElement(focusedWindow, event);
+               }
+               UCEvent ev{.type = UCEventType::WindowFocus};
+               DispatchEventToElement(targetWindow, event);
+               focusedWindow = targetWindow;
+           }
+       }
 
         // Handle different event types
         switch (event.type) {
@@ -478,7 +516,7 @@ rescan_windows:
                 }
                 break;
             case UCEventType::WindowFocus:
-                if (targetWindow) {
+                if (targetWindow && focusedWindow != targetWindow) {
                     // Update focused window
                     DispatchEventToElement(targetWindow, event);
                     focusedWindow = targetWindow;
@@ -682,7 +720,7 @@ rescan_windows:
 //                          << " focused=" << (targetWindow == focusedWindow ? "yes" : "no") << std::endl;
         } else {
             // No target window found - this might be normal for some system events
-            debugOutput << "UltraCanvas: Warning - Event type " << static_cast<int>(event.type)
+            debugOutput << "UltraCanvas: Warning - Event " << event.ToString()
                       << " has no target window (Native Window: " << std::hex << event.nativeWindowHandle << std::dec << ")" << std::endl;
         }
     }
@@ -726,6 +764,9 @@ rescan_windows:
         if (!window) {
             debugOutput << "UltraCanvasApplicationBase::DispatchEventToElement window == null for elem=" << elem << std::ends;
             return false;
+        }
+        if (event.type != UCEventType::MouseMove) {
+            debugOutput << "DispatchEventToElement ev=" << event.ToString() << " target elem=" << elem << " target win=" << elem->GetWindow() << " focused=" << focusedWindow << std::endl;
         }
         if (event.IsMouseEvent() || event.IsDragEvent() || event.type == UCEventType::MouseEnter) {
             if (elem->GetParentContainer() != window && elem != window) {

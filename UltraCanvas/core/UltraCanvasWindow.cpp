@@ -31,6 +31,10 @@ namespace UltraCanvas {
 
     // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
 
+    bool UltraCanvasWindowBase::IsWindowFocused() const {
+        return UltraCanvasApplication::GetInstance()->GetFocusedWindow() == this;
+    }
+
     void UltraCanvasWindowBase::SetFocusedElement(UltraCanvasUIElement* element) {
         // Don't do anything if already focused
         if (_focusedElement == element) {
@@ -245,14 +249,6 @@ namespace UltraCanvas {
                 HandleMoveEvent(event.x, event.y);
                 return true;
 
-            case UCEventType::WindowFocus:
-                HandleFocusEvent(true);
-                return true;
-
-            case UCEventType::WindowBlur:
-                HandleFocusEvent(false);
-                return true;
-
             default:
                 return false;
         }
@@ -292,21 +288,6 @@ namespace UltraCanvas {
         // position must be always 0,0
         //UltraCanvasContainer::SetPosition(x, y);
         if (onWindowMove) onWindowMove(x, y);
-    }
-
-    void UltraCanvasWindowBase::HandleFocusEvent(bool focused) {
-        if (focused) {
-            if (!_focused) {
-                _focused = true;
-                if (onWindowFocus) onWindowFocus();
-            }
-        } else {
-            if (_focused) {
-                _focused = false;
-                if (onWindowBlur) onWindowBlur();
-            }
-        }
-        needsRedraw = true;
     }
 
     void UltraCanvasWindowBase::Render(IRenderContext* ctx) {
@@ -449,7 +430,6 @@ namespace UltraCanvas {
         if (config_.deleteOnClose) {
             RequestDelete();
         }
-
         if (onWindowClosing) {
             onWindowClosing();
         } else {
@@ -495,6 +475,13 @@ namespace UltraCanvas {
 //            }
 //        }
 //    }
+
+    UltraCanvasWindowBase* UltraCanvasWindowBase::GetParentWindow() {
+        if (config_.parentWindow && !UltraCanvasApplication::GetInstance()->IsWindowRegistered(config_.parentWindow)) {
+            config_.parentWindow = nullptr;
+        }
+        return config_.parentWindow;
+    }
 
     void UltraCanvasWindowBase::CenterOnScreen() {
         int screenWidth = 0, screenHeight = 0;

@@ -64,6 +64,8 @@ namespace UltraCanvas {
         UltraCanvasApplicationBase() = default;
 
         void RegisterWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
+        bool IsWindowRegistered(UltraCanvasWindowBase* window);
+        void UnregisterWindow(UltraCanvasWindowBase* window);
 
         // Modal window management
         bool HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow* targetWindow);

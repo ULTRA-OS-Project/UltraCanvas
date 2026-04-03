@@ -73,7 +73,8 @@ namespace UltraCanvas {
         bool closable = true;
         bool hasIcon = false;
         bool showBadge = false;
-        bool modified = false;              // Tab has unsaved changes
+        bool showMarker = false;            // Show dot marker on tab
+        Color markerColor = Colors::Transparent;  // Per-tab marker color (transparent = use container default)
         Color textColor = Colors::Black;
         Color backgroundColor = Color(240, 240, 240);
         Color badgeBackgroundColor = Color(220, 50, 50);
@@ -88,7 +89,7 @@ namespace UltraCanvas {
         std::string title;
         std::shared_ptr<UltraCanvasUIElement> content;
         std::string iconPath;
-        bool modified = false;
+        bool showMarker = false;
         bool closable = true;
         void* userData = nullptr;     // Application-defined data (e.g., DocumentTab*)
     };
@@ -282,8 +283,10 @@ namespace UltraCanvas {
         bool IsTabBadgeVisible(int index) const;
 
         // ===== TAB MODIFIED MARKER =====
-        void SetTabModified(int index, bool modified);
-        bool IsTabModified(int index) const;
+        void SetTabShowMarker(int index, bool show);
+        bool IsTabShowMarker(int index) const;
+        void SetTabMarkerColor(int index, const Color& color);
+        Color GetTabMarkerColor(int index) const;
         void SetModifiedMarkerColor(const Color& color) { modifiedMarkerColor = color; InvalidateTabbar(); }
         Color GetModifiedMarkerColor() const { return modifiedMarkerColor; }
         void SetModifiedMarkerRadius(int radius) { modifiedMarkerRadius = radius; InvalidateTabbar(); }

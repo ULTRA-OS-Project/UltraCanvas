@@ -1016,6 +1016,19 @@ namespace UltraCanvas {
 //              }
 //              break;
 
+            case UCKeys::Tab:
+                if (event.ctrl && tabs.size() > 1) {
+                    int newIndex;
+                    if (event.shift) {
+                        newIndex = (activeTabIndex > 0) ? activeTabIndex - 1 : (int)tabs.size() - 1;
+                    } else {
+                        newIndex = (activeTabIndex < (int)tabs.size() - 1) ? activeTabIndex + 1 : 0;
+                    }
+                    SetActiveTab(newIndex);
+                    return true;
+                }
+                break;
+
             default:
                 break;
         }
@@ -1855,8 +1868,8 @@ namespace UltraCanvas {
             RenderTabBadge(index, ctx);
         }
 
-        if (tab->modified && ShouldShowCloseButton(tab)) {
-            // Modified tab: show close button on hover, otherwise show dot marker
+        if (tab->showMarker && ShouldShowCloseButton(tab)) {
+            // Tab with marker: show close button on hover, otherwise show dot marker
             if (index == hoveredCloseButtonIndex) {
                 RenderCloseButton(index, ctx);
             } else {
@@ -1875,27 +1888,43 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
-     void UltraCanvasTabbedContainer::SetTabModified(int index, bool modified) {
+     void UltraCanvasTabbedContainer::SetTabShowMarker(int index, bool show) {
         if (index >= 0 && index < (int)tabs.size()) {
-            if (tabs[index]->modified != modified) {
-                tabs[index]->modified = modified;
+            if (tabs[index]->showMarker != show) {
+                tabs[index]->showMarker = show;
                 InvalidateTabbar();
             }
         }
     }
 
-    bool UltraCanvasTabbedContainer::IsTabModified(int index) const {
+    bool UltraCanvasTabbedContainer::IsTabShowMarker(int index) const {
         if (index >= 0 && index < (int)tabs.size()) {
-            return tabs[index]->modified;
+            return tabs[index]->showMarker;
         }
         return false;
+    }
+
+    void UltraCanvasTabbedContainer::SetTabMarkerColor(int index, const Color& color) {
+        if (index >= 0 && index < (int)tabs.size()) {
+            if (tabs[index]->markerColor != color) {
+                tabs[index]->markerColor = color;
+                InvalidateTabbar();
+            }
+        }
+    }
+
+    Color UltraCanvasTabbedContainer::GetTabMarkerColor(int index) const {
+        if (index >= 0 && index < (int)tabs.size()) {
+            return tabs[index]->markerColor;
+        }
+        return Colors::Transparent;
     }
 
     void UltraCanvasTabbedContainer::RenderModifiedMarker(int index, IRenderContext* ctx) {
         if (index < 0 || index >= (int)tabs.size()) return;
 
         TabData* tab = tabs[index].get();
-        if (!tab->modified) return;
+        if (!tab->showMarker) return;
 
         // Position: replace the close button with the modified dot
         int dotX = 0;
@@ -1911,10 +1940,12 @@ namespace UltraCanvas {
             dotY = tabBounds.y + tabBounds.height / 2;
         }
 
+        // Use per-tab color if set, otherwise fall back to container default
+        Color color = (tab->markerColor.a > 0) ? tab->markerColor : modifiedMarkerColor;
         ctx->DrawFilledCircle(
             Point2Di(dotX, dotY),
             static_cast<float>(modifiedMarkerRadius),
-            modifiedMarkerColor
+            color
         );
     }
 
@@ -2033,7 +2064,7 @@ namespace UltraCanvas {
             if (!data.iconPath.empty()) {
                 SetTabIcon(newIndex, data.iconPath);
             }
-            SetTabModified(newIndex, data.modified);
+            SetTabShowMarker(newIndex, data.showMarker);
 
             if (newIndex >= 0 && newIndex < (int)tabs.size()) {
                 tabs[newIndex]->closable = data.closable;
@@ -2063,7 +2094,7 @@ namespace UltraCanvas {
             data.title = tabs[index]->title;
             data.content = tabs[index]->content;
             data.iconPath = tabs[index]->iconPath;
-            data.modified = tabs[index]->modified;
+            data.showMarker = tabs[index]->showMarker;
             data.closable = tabs[index]->closable;
             data.userData = tabs[index]->userData;
         }

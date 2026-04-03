@@ -16,7 +16,7 @@ namespace UltraCanvas {
         Close();
     }
 
-    void UltraCanvasSplashScreen::Show(const SplashScreenConfig& config) {
+    void UltraCanvasSplashScreen::Show(const SplashScreenConfig& config, UltraCanvasWindowBase* parentWin) {
         if (window) return;
 
         // Create borderless window
@@ -32,6 +32,7 @@ namespace UltraCanvas {
         wc.deleteOnClose = true;
         wc.alwaysOnTop = true;
         wc.modal = true;
+        wc.parentWindow = parentWin;
         wc.backgroundColor = config.backgroundColor;
 
         window = std::make_shared<UltraCanvasWindow>();
@@ -44,6 +45,7 @@ namespace UltraCanvas {
         auto layout = CreateVBoxLayout(window.get());
         layout->SetSpacing(4);
         window->SetPadding(20);
+        window->SetBorders(1, Colors::Black);
 
         layout->AddStretch(1);
 

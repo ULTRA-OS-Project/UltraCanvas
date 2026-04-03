@@ -2125,9 +2125,13 @@ namespace UltraCanvas {
                 EnsureCursorVisible();
                 break;
             case UCKeys::Tab:
-                if (HasSelection()) DeleteSelection();
-                InsertTab();
-                EnsureCursorVisible();
+                if (!event.alt && !event.ctrl && !event.shift) {
+                    if (HasSelection()) DeleteSelection();
+                    InsertTab();
+                    EnsureCursorVisible();
+                } else {
+                    handled = false;
+                }
                 break;
             case UCKeys::A:
                 if (!event.shift && event.ctrl && !event.alt) {

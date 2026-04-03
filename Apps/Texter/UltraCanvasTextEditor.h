@@ -91,6 +91,7 @@ namespace UltraCanvas {
         std::string fileName;              // Display name
         std::shared_ptr<UltraCanvasTextArea> textArea;  // Text editor component
         std::string language;              // Syntax highlighting language
+        bool isSaved;                      // Has unsaved changes
         bool isModified;                   // Has unsaved changes
         bool isNewFile;                    // Never been saved
         std::string autosaveBackupPath;    // Path to autosave backup
@@ -105,6 +106,7 @@ namespace UltraCanvas {
         DocumentTab()
                 : documentId(-1)
                 , isModified(false)
+                , isSaved(false)
                 , isNewFile(true)
                 , encoding("UTF-8")
                 , hasBOM(false)
@@ -291,7 +293,7 @@ namespace UltraCanvas {
         bool SaveDocumentAs(int docIndex, const std::string& filePath);
         bool IsBinaryFile(const std::vector<uint8_t>& rawBytes, const std::string& extension) const;
 
-        std::string FormatPathTooltip(const std::string& filePath);
+        std::string FormatFullTabTooltip(int docIndex);
 
         // ===== AUTOSAVE =====
         void AutosaveDocument(int docIndex);
