@@ -28,7 +28,7 @@ namespace UltraCanvas {
         wc.resizable = false;
         wc.minimizable = false;
         wc.maximizable = false;
-        wc.closable = true;
+        wc.closable = false;
         wc.deleteOnClose = true;
         wc.alwaysOnTop = true;
         wc.modal = true;
@@ -49,7 +49,7 @@ namespace UltraCanvas {
 
         // Logo image
         if (!config.imagePath.empty()) {
-            auto logo = std::make_shared<UltraCanvasImageElement>("SplashLogo", 0, 0, 0, 128, 128);
+            auto logo = std::make_shared<UltraCanvasImageElement>("SplashLogo", 0, 0, 0, 250, 250);
             logo->LoadFromFile(config.imagePath);
             logo->SetFitMode(ImageFitMode::Contain);
             logo->SetMargin(0, 0, 12, 0);
@@ -103,8 +103,8 @@ namespace UltraCanvas {
             return false;
         };
 
-        // Fire onSplashClosed when the window is closed (by any means)
-        window->onWindowClose = [this]() {
+        // Fire onSplashClosed when the window is closed and deleted (by any means)
+        window->onWindowDelete = [this]() {
             if (timeoutTimerId != InvalidTimerId) {
                 UltraCanvasApplication::GetInstance()->StopTimer(timeoutTimerId);
                 timeoutTimerId = InvalidTimerId;
@@ -116,6 +116,7 @@ namespace UltraCanvas {
         };
 
         window->Show();
+        window->CenterOnScreen();
 
         // Start auto-close timer if a timeout was specified
         if (config.showTimeout.count() > 0) {

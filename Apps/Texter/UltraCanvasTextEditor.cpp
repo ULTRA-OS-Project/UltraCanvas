@@ -3638,7 +3638,6 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
         editor->SetBackgroundColor(cfg.darkTheme ? Color(30, 30, 30, 255) : Color(240, 240, 240, 255));
         editor->Show();
-        editor->RestoreSessionAndRecoverBackups();
         return true;
     }
 

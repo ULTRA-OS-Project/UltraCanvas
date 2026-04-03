@@ -95,7 +95,7 @@ namespace UltraCanvas {
             // ESC key handler
             fullscreenWindow->SetEventCallback([this](const UCEvent& event) {
                 if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) ||
-                    event.type == UCEventType::WindowClose) {
+                    event.type == UCEventType::WindowClosing) {
                     if (fullscreenWindow) {
                         fullscreenWindow->RequestDelete();
                         fullscreenWindow.reset();

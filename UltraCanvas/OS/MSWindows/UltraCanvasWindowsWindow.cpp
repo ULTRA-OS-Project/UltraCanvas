@@ -724,4 +724,16 @@ namespace UltraCanvas {
             y = config_.y;
         }
     }
+
+    void UltraCanvasWindowsWindow::GetScreenSize(int& width, int& height) const {
+        if (hwnd) {
+            MONITORINFO mi = {sizeof(mi)};
+            GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi);
+            width = mi.rcMonitor.right - mi.rcMonitor.left;
+            height = mi.rcMonitor.bottom - mi.rcMonitor.top;
+        } else {
+            width = GetSystemMetrics(SM_CXSCREEN);
+            height = GetSystemMetrics(SM_CYSCREEN);
+        }
+    }
 } // namespace UltraCanvas

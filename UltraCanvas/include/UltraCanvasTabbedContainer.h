@@ -140,6 +140,7 @@ namespace UltraCanvas {
         Color contentAreaColor = Color(255, 255, 255);
         Color badgeTextColor = Colors::White;
         Color tabSeparatorColor = Color(200, 200, 200);
+        Color navButtonBackgroundColor = Color(220, 220, 220);
 
         Color modifiedMarkerColor = Color(195, 30, 3);    // #C31E03
         int modifiedMarkerRadius = 4;
@@ -312,6 +313,7 @@ namespace UltraCanvas {
         void RenderScrollButtons(IRenderContext* ctx);
         void RenderContentArea(IRenderContext* ctx);
         void RenderNewTabButton(IRenderContext* ctx);
+        void RenderOverflowButton(IRenderContext* ctx);
 
         // ===== V2.0.0: DRAG VISUAL FEEDBACK RENDERING =====
         void RenderDragInsertionIndicator(IRenderContext* ctx);

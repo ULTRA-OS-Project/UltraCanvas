@@ -90,6 +90,7 @@ namespace UltraCanvas {
         void Flush() override;
         NativeWindowHandle GetNativeHandle() const override;
         void GetScreenPosition(int& x, int& y) const override;
+        void GetScreenSize(int& width, int& height) const override;
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }
 
         // ===== WINDOWS-SPECIFIC METHODS =====

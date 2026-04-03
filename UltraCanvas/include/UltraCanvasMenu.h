@@ -41,7 +41,8 @@ namespace UltraCanvas {
         Radio,
         Submenu,
         Input,
-        Custom
+        Custom,
+        Header
     };
 
 // ===== MENU ITEM DATA =====
@@ -87,6 +88,7 @@ namespace UltraCanvas {
         static MenuItemData ActionWithShortcut(const std::string& label, const std::string& itemShortcut, const FontStyle& font, std::function<void()> callback);
         static MenuItemData ActionWithShortcut(const std::string& label, const std::string& itemShortcut, const std::string& iconPath, const FontStyle& font, std::function<void()> callback);
         static MenuItemData Separator();
+        static MenuItemData Header(const std::string& label);
         static MenuItemData Checkbox(const std::string& label, bool checked, std::function<void(bool)> callback);
         static MenuItemData Checkbox(const std::string& label, bool checked, const FontStyle& font, std::function<void(bool)> callback);
         static MenuItemData Radio(const std::string& label, int group, bool checked, std::function<void(bool)> callback);
@@ -112,6 +114,7 @@ namespace UltraCanvas {
         Color textColor = Colors::Black;
         Color shortcutColor = Color(100, 100, 100, 255);
         Color disabledTextColor = Color(150, 150, 150);
+        Color headerTextColor = Color(100, 100, 100);
 
         // Typography
         FontStyle font;
@@ -284,6 +287,7 @@ namespace UltraCanvas {
         // ===== RENDERING HELPERS =====
         void RenderItem(int index, const MenuItemData& item, IRenderContext* ctx);
         void RenderSeparator(const Rect2Di& bounds, IRenderContext* ctx);
+        void RenderHeader(const MenuItemData& item, const Rect2Di& bounds, IRenderContext* ctx);
         void RenderCheckbox(const MenuItemData& item, const Point2Di& position, IRenderContext* ctx);
         void RenderSubmenuArrow(const Point2Di& position, IRenderContext* ctx);
         void RenderIcon(const std::string& iconPath, const Point2Di& position, IRenderContext* ctx);
@@ -388,6 +392,11 @@ namespace UltraCanvas {
             return *this;
         }
 
+        MenuBuilder& AddHeader(const std::string& label) {
+            menu->AddItem(MenuItemData::Header(label));
+            return *this;
+        }
+
         MenuBuilder& AddCheckbox(const std::string& label, bool checked, std::function<void(bool)> callback) {
             menu->AddItem(MenuItemData::Checkbox(label, checked, callback));
             return *this;
@@ -415,6 +424,7 @@ namespace UltraCanvas {
         style.disabledTextColor = Color(150, 150, 150, 255);
         style.shortcutColor = Color(100, 100, 100, 255);
         style.separatorColor = Color(220, 220, 220, 255);
+        style.headerTextColor = Color(100, 100, 100, 255);
 
         // FIXED: Proper default height for menu items
         style.itemHeight = 24;  // Reduced from whatever was causing 44px
@@ -445,6 +455,7 @@ namespace UltraCanvas {
         style.textColor = Colors::White;
         style.hoverTextColor = Colors::White;
         style.hoverColor = Color(85, 85, 85);
+        style.headerTextColor = Color(180, 180, 180);
         return style;
     }
 
@@ -539,6 +550,14 @@ namespace UltraCanvas {
     inline MenuItemData MenuItemData::Separator() {
         MenuItemData item;
         item.type = MenuItemType::Separator;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Header(const std::string& label) {
+        MenuItemData item;
+        item.type = MenuItemType::Header;
+        item.label = label;
+        item.enabled = false;
         return item;
     }
 

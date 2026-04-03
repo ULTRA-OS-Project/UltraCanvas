@@ -202,16 +202,19 @@ namespace UltraCanvas {
         x += IconBtnSize + HSpacing;
 
         nextButton = std::make_shared<UltraCanvasButton>("NextBtn", 6004, x, btnY, IconBtnSize, IconBtnSize);
-        nextButton->SetText("\xe2\x86\x93"); // ↓
-        nextButton->SetFontSize(11);
+        nextButton->SetText(""); // ↓
+        nextButton->SetIcon(GetResourcesDir() + "media/icons/texter/arrow-down.svg"); // ⤒
+        nextButton->SetIconSize(18,18);
+        nextButton->SetPadding(4,4,4,4);
         nextButton->SetTooltip("Find Next (Enter)");
         nextButton->SetAcceptsFocus(false);
         AddChild(nextButton);
         x += IconBtnSize + HSpacing;
 
         prevButton = std::make_shared<UltraCanvasButton>("PrevBtn", 6005, x, btnY, IconBtnSize, IconBtnSize);
-        prevButton->SetText("\xe2\x86\x91"); // ↑
-        prevButton->SetFontSize(11);
+        prevButton->SetIcon(GetResourcesDir() + "media/icons/texter/arrow-up.svg"); // ⤒
+        prevButton->SetIconSize(18,18);
+        prevButton->SetPadding(4,4,4,4);
         prevButton->SetTooltip("Find Previous (Shift+Enter)");
         prevButton->SetAcceptsFocus(false);
         AddChild(prevButton);
@@ -241,6 +244,8 @@ namespace UltraCanvas {
         settingsMenu = std::make_shared<UltraCanvasMenu>("SearchSettingsMenu", 6010, 0, 0, 200, 100);
         settingsMenu->SetMenuType(MenuType::PopupMenu);
 
+        settingsMenu->AddItem(MenuItemData::Header("Options"));
+        settingsMenu->AddItem(MenuItemData::Separator());
         settingsMenu->AddItem(MenuItemData::Checkbox("Case sensitive", caseSensitive, [this](bool checked) {
             caseSensitive = checked;
             if (!searchText.empty() && onFindNext) {

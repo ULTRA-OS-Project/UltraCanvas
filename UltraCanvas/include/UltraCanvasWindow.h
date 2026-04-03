@@ -20,7 +20,7 @@ namespace UltraCanvas {
 
 // ===== WINDOW CONFIGURATION =====
     enum class WindowType {
-        Standard, Dialog, Popup, Tool, Splash,
+        Standard, Dialog, Popup, Tool, 
         Fullscreen, Borderless, Overlay
     };
 
@@ -40,7 +40,6 @@ namespace UltraCanvas {
         bool minimizable = true;
         bool maximizable = true;
         bool closable = true;
-        bool deleteOnClose = false;
         bool alwaysOnTop = false;
 
         Color backgroundColor = Colors::WindowBackground;
@@ -52,6 +51,7 @@ namespace UltraCanvas {
 
         UltraCanvasWindowBase* parentWindow = nullptr;
         bool modal = false;
+        bool deleteOnClose = false;
 
         // Container-specific window settings
         bool enableWindowScrolling = false;
@@ -88,7 +88,7 @@ namespace UltraCanvas {
         bool _focused = false;
         bool _needsResize = false;
 
-        std::unordered_map<UCEventType, std::vector<FilterFunction>> eventFilters;
+        std::unordered_map<UCEventType, std::vector<FilterFunction>> eventFilters = {};
         bool HandleEventFilters(const UCEvent& ev);
 
         virtual bool CreateNative() = 0;
@@ -96,7 +96,7 @@ namespace UltraCanvas {
         virtual void DoResizeNative() = 0;
 
 
-        std::list<PopupElement> popupElements;
+        std::list<PopupElement> popupElements = {};
 
         UltraCanvasUIElement* _focusedElement = nullptr;  // Current focused element in this window
 
@@ -105,8 +105,9 @@ namespace UltraCanvas {
 
     public:
         // Window-specific callbacks
-        std::function<void()> onWindowClose;
         std::function<bool()> onWindowCloseRequest;
+        std::function<void()> onWindowClosing;
+        std::function<void()> onWindowDelete;
         std::function<void(int, int)> onWindowResize;
         std::function<void(int, int)> onWindowMove;
         std::function<void()> onWindowMinimize;
@@ -147,6 +148,8 @@ namespace UltraCanvas {
         virtual void Restore() = 0;
         virtual void SetFullscreen(bool fullscreen) = 0;
         virtual void SetResizable(bool resizable) = 0;
+        virtual void GetScreenSize(int& width, int& height) const = 0;
+
 // ===== FOCUS MANAGEMENT PUBLIC INTERFACE =====
         bool IsWindowFocused() const { return _focused; }
         // Set focus to a specific element in this window
@@ -222,7 +225,7 @@ namespace UltraCanvas {
         virtual IRenderContext* GetRenderContext() const = 0;
 
         // ===== ENHANCED WINDOW CALLBACKS =====
-        void SetWindowCloseCallback(std::function<void()> callback) { onWindowClose = callback; }
+        void SetWindowCloseCallback(std::function<void()> callback) { onWindowDelete = callback; }
         void SetWindowResizeCallback(std::function<void(int, int)> callback) { onWindowResize = callback; }
         void SetWindowMoveCallback(std::function<void(int, int)> callback) { onWindowMove = callback; }
         void SetWindowMinimizeCallback(std::function<void()> callback) { onWindowMinimize = callback; }

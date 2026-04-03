@@ -292,12 +292,16 @@ namespace UltraCanvas {
             );
 
             // Window style mask
-            NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
-                                          NSWindowStyleMaskClosable |
-                                          NSWindowStyleMaskMiniaturizable;
-
-            if (config_.resizable) {
-                styleMask |= NSWindowStyleMaskResizable;
+            NSWindowStyleMask styleMask;
+            if (config_.type == WindowType::Borderless) {
+                styleMask = NSWindowStyleMaskBorderless;
+            } else {
+                styleMask = NSWindowStyleMaskTitled |
+                            NSWindowStyleMaskClosable |
+                            NSWindowStyleMaskMiniaturizable;
+                if (config_.resizable) {
+                    styleMask |= NSWindowStyleMaskResizable;
+                }
             }
 
             // Create window
@@ -627,6 +631,14 @@ namespace UltraCanvas {
     NSWindow* UltraCanvasMacOSWindow::GetNSWindowHandle() const {
         return (NSWindow*)nsWindow;
     };
+
+    void UltraCanvasMacOSWindow::GetScreenSize(int& width, int& height) const {
+        @autoreleasepool {
+            NSRect screenFrame = [[NSScreen mainScreen] frame];
+            width = static_cast<int>(screenFrame.size.width);
+            height = static_cast<int>(screenFrame.size.height);
+        }
+    }
 
     // ===== WINDOW DELEGATE CALLBACKS =====
     void UltraCanvasMacOSWindow::OnWindowWillClose() {

@@ -128,6 +128,10 @@ rescan_windows:
                         window->Destroy();
                     }
                     if (window->GetState() == WindowState::Deleted) {
+                        if (window->onWindowDelete) {
+                            window->onWindowDelete();
+                        }
+
                         CleanupWindowReferences(window);
                         windows.erase(it);
                         goto rescan_windows;
@@ -431,6 +435,12 @@ rescan_windows:
         // First priority: Use the window information stored in the event
         if (event.targetWindow != nullptr) {
             targetWindow = static_cast<UltraCanvasWindow*>(event.targetWindow);
+            if (std::find_if(windows.begin(), windows.end(), [targetWindow](auto const &item) {
+                return item.get() == targetWindow;
+            }) == windows.end()) {
+                debugOutput << "UltraCanvasApplicationBase::DispatchEvent stale event for already deleted window ev.type=" << (int)event.type << " win="<<targetWindow << std::endl;
+                return;
+            }
         }
             // Fallback: Try to find window by native handle
         else if (event.nativeWindowHandle != 0) {

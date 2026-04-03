@@ -70,6 +70,7 @@ namespace UltraCanvas {
         virtual void Flush() override;
         virtual NativeWindowHandle GetNativeHandle() const override;
         virtual void GetScreenPosition(int& x, int& y) const override;
+        void GetScreenSize(int& width, int& height) const override;
         UltraCanvasLinuxDragDrop& GetDragDropHandler() { return dragDropHandler; }
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }
 //        virtual void ProcessEvents() override;

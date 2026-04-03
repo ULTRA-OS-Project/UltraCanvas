@@ -38,10 +38,11 @@ namespace UltraCanvas {
         Shortcut,
 
         // Window Events
+        WindowCloseRequest,
+        WindowClosing,
+        WindowDelete,
         WindowResize,
         WindowMove,
-        WindowClose,
-        WindowCloseRequest,
         WindowMinimize,
         WindowFocus,
         WindowBlur,

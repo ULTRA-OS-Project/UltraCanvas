@@ -87,6 +87,7 @@ namespace UltraCanvas {
         void SetFullscreen(bool fullscreen) override;
         void Flush() override;
         NativeWindowHandle GetNativeHandle() const override;
+        void GetScreenSize(int& width, int& height) const override;
         NSWindow* GetNSWindowHandle() const;
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }
         void RaiseAndFocus() override;

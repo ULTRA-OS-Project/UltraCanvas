@@ -155,7 +155,7 @@ namespace UltraCanvas {
 
             // Icon Right
             auto iconRightBtn = CreateButton("IconRight", 133, 260, yOffset, 120, 35, "Next");
-            iconRightBtn->SetIcon(GetResourcesDir() + "media/icons/arrow-right.png");
+            iconRightBtn->SetIcon(GetResourcesDir() + "media/icons/arrow-chevron-right.png");
             iconRightBtn->SetIconPosition(ButtonIconPosition::Right);
             iconRightBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Next button clicked\nIcon positioned on the right");
@@ -497,7 +497,7 @@ namespace UltraCanvas {
                     .SetIcon(GetResourcesDir() + "media/icons/build.png")
                     .SetIconSpacing(6)
                     .SetSplitEnabled(true)
-                    .SetSplitSecondaryIcon(GetResourcesDir() + "media/icons/arrow-right.png")
+                    .SetSplitSecondaryIcon(GetResourcesDir() + "media/icons/arrow-chevron-right.png")
                     .SetSplitIconSize(24,24)
 //                    .SetSplitSecondaryText("→")
                     .SetSplitRatio(0.8)

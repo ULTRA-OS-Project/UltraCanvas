@@ -482,6 +482,12 @@ namespace UltraCanvas {
             return;
         }
 
+        // Handle header
+        if (item.type == MenuItemType::Header) {
+            RenderHeader(item, itemBounds, ctx);
+            return;
+        }
+
         ctx->SetFontStyle(item.font.value_or(style.font));
 
         Point2Di textSize = ctx->GetTextDimension(item.label);
@@ -653,6 +659,20 @@ namespace UltraCanvas {
         ctx->SetStrokePaint(style.separatorColor);
         ctx->SetStrokeWidth(1.0f);
         ctx->DrawLine(Point2Di(startX, centerY), Point2Di(endX, centerY));
+    }
+
+    void UltraCanvasMenu::RenderHeader(const MenuItemData &item, const Rect2Di &bounds, IRenderContext *ctx) {
+        FontStyle headerFont = item.font.value_or(style.font);
+        headerFont.fontWeight = FontWeight::Bold;
+        ctx->SetFontStyle(headerFont);
+
+        Point2Di textSize = ctx->GetTextDimension(item.label);
+        int fontHeight = textSize.y;
+        int textX = bounds.x + style.paddingLeft;
+        int textY = bounds.y + (bounds.height - fontHeight) / 2;
+
+        ctx->SetTextPaint(style.headerTextColor);
+        ctx->DrawText(item.label, Point2Di(textX, textY));
     }
 
     void UltraCanvasMenu::RenderCheckbox(const MenuItemData &item, const Point2Di &position, IRenderContext *ctx) {
@@ -919,6 +939,7 @@ namespace UltraCanvas {
         } while (activeIndex >= 0 &&
                  (!items[activeIndex].visible ||
                   items[activeIndex].type == MenuItemType::Separator ||
+                  items[activeIndex].type == MenuItemType::Header ||
                   !items[activeIndex].enabled));
     }
 
@@ -930,6 +951,7 @@ namespace UltraCanvas {
         } while (activeIndex < static_cast<int>(items.size()) &&
                  (!items[activeIndex].visible ||
                   items[activeIndex].type == MenuItemType::Separator ||
+                  items[activeIndex].type == MenuItemType::Header ||
                   !items[activeIndex].enabled));
     }
 
@@ -1041,7 +1063,7 @@ namespace UltraCanvas {
     }
 
     Color UltraCanvasMenu::GetItemBackgroundColor(int index, const MenuItemData &item) const {
-        if (!item.enabled) return Colors::Transparent;
+        if (!item.enabled || item.type == MenuItemType::Header) return Colors::Transparent;
 
         if (index == activeIndex) {
             return style.hoverColor;

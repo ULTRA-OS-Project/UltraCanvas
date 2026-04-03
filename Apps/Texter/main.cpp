@@ -330,19 +330,6 @@ int main(int argc, char* argv[]) {
             editorConfig.defaultLanguage = language;
         }
 
-        // Show splash screen
-        UltraCanvasSplashScreen splash;
-        SplashScreenConfig splashConfig;
-        splashConfig.width = 500;
-        splashConfig.height = 500;
-        splashConfig.imagePath = GetResourcesDir() + "media/appicons/Texter.png";
-        splashConfig.title = "UltraTexter";
-        splashConfig.version = "1.0.12";
-        splashConfig.websiteURL = "https://www.ultraos.eu/";
-        splashConfig.websiteDisplay = "www.ultraos.eu";
-        splashConfig.showTimeout = std::chrono::milliseconds(3000);
-        //splash.Show(splashConfig);
-
         // Create window manager
         TexterWindowManager windowManager(&app, editorConfig, useDarkTheme);
         g_windowManager = &windowManager;
@@ -354,6 +341,24 @@ int main(int argc, char* argv[]) {
             HandleFatalError("Failed to create main window");
             return EXIT_FAILURE;
         }
+
+        // Show splash screen
+        UltraCanvasSplashScreen splash;
+        SplashScreenConfig splashConfig;
+        splashConfig.width = 500;
+        splashConfig.height = 500;
+        splashConfig.imagePath = GetResourcesDir() + "media/appicon/Texter.png";
+        splashConfig.title = "UltraTexter";
+        splashConfig.version = "1.0.12";
+        splashConfig.websiteURL = "https://www.ultraos.eu/";
+        splashConfig.websiteDisplay = "www.ultraos.eu";
+        splashConfig.showTimeout = std::chrono::milliseconds(2000);
+        splash.onSplashClosed = [firstWindow]() {
+            firstWindow->RestoreSessionAndRecoverBackups();
+        };
+        splash.Show(splashConfig);
+
+
         debugOutput << "✓ Main window created" << std::endl;
 
         // Close splash screen now that main window is ready

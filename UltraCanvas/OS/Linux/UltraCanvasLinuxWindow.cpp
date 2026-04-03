@@ -143,6 +143,22 @@ namespace UltraCanvas {
         SetWindowTitle(config_.title);
         SetWindowHints();
 
+        // Apply borderless style if requested (remove window decorations)
+        if (config_.type == WindowType::Borderless) {
+            struct {
+                unsigned long flags;
+                unsigned long functions;
+                unsigned long decorations;
+                long inputMode;
+                unsigned long status;
+            } motifHints = {2, 0, 0, 0, 0};  // flags=MWM_HINTS_DECORATIONS, decorations=0
+
+            Atom motifWmHints = XInternAtom(display, "_MOTIF_WM_HINTS", False);
+            XChangeProperty(display, xWindow, motifWmHints, motifWmHints, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(&motifHints), 5);
+        }
+
         // Set WM protocols
         Atom wmDeleteWindow = XInternAtom(display, "WM_DELETE_WINDOW", False);
         if (wmDeleteWindow != None) {
@@ -715,6 +731,19 @@ namespace UltraCanvas {
         XTranslateCoordinates(app->GetDisplay(), xWindow,
                               DefaultRootWindow(app->GetDisplay()),
                               0, 0, &outX, &outY, &child);
+    }
+
+    void UltraCanvasLinuxWindow::GetScreenSize(int& width, int& height) const {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (app && app->GetDisplay()) {
+            Display* display = app->GetDisplay();
+            int screen = app->GetScreen();
+            width = XDisplayWidth(display, screen);
+            height = XDisplayHeight(display, screen);
+        } else {
+            width = 0;
+            height = 0;
+        }
     }
 
 // ===== MOUSE POINTER CONTROL =====

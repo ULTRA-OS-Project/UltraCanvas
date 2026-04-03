@@ -446,17 +446,17 @@ namespace UltraCanvas {
 
         CloseAllPopups();
 
-        if (onWindowClose) {
-            onWindowClose();
-        } else {
-            UCEvent ev;
-            ev.type = UCEventType::WindowClose;
-            ev.targetWindow = this;
-            UltraCanvasApplication::GetInstance()->PushEvent(ev);
-        }
-
         if (config_.deleteOnClose) {
             RequestDelete();
+        }
+
+        if (onWindowClosing) {
+            onWindowClosing();
+        } else {
+            UCEvent ev;
+            ev.type = UCEventType::WindowClosing;
+            ev.targetWindow = this;
+            UltraCanvasApplication::GetInstance()->PushEvent(ev);
         }
     }
 
@@ -495,6 +495,29 @@ namespace UltraCanvas {
 //            }
 //        }
 //    }
+
+    void UltraCanvasWindowBase::CenterOnScreen() {
+        int screenWidth = 0, screenHeight = 0;
+        GetScreenSize(screenWidth, screenHeight);
+        if (screenWidth > 0 && screenHeight > 0) {
+            int x = (screenWidth - config_.width) / 2;
+            int y = (screenHeight - config_.height) / 2;
+            SetWindowPosition(x, y);
+        }
+    }
+
+    void UltraCanvasWindowBase::CenterOnParent(UltraCanvasWindowBase* parent) {
+        if (!parent) {
+            CenterOnScreen();
+            return;
+        }
+        int parentX = 0, parentY = 0, parentW = 0, parentH = 0;
+        parent->GetWindowPosition(parentX, parentY);
+        parent->GetWindowSize(parentW, parentH);
+        int x = parentX + (parentW - config_.width) / 2;
+        int y = parentY + (parentH - config_.height) / 2;
+        SetWindowPosition(x, y);
+    }
 
     std::shared_ptr<UltraCanvasWindow> CreateWindow() {
         auto win = std::make_shared<UltraCanvasWindow>();

@@ -633,6 +633,7 @@ namespace UltraCanvas {
         ctx->SetTextPaint(textColor);
         ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
         ctx->SetFontSize(style.fontSize);
+        ctx->SetTextIsMarkup(true);
 
         // Get text dimensions
         int textWidth, textHeight;

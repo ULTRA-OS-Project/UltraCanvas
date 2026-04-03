@@ -208,6 +208,7 @@ namespace UltraCanvas {
         overflowButton->SetIcon(GetResourcesDir()+"media/icons/arrow_down_solid.svg");
         AddChild(overflowButton);
         overflowButton->SetVisible(false);
+        overflowButton->SetBorder(0, Colors::Transparent);
 
         overflowButton->onClick = [this]() {
             ShowSearchAutoComplete();
@@ -441,7 +442,7 @@ namespace UltraCanvas {
 
         ctx->PushState();
         if (overflowDropdownVisible && overflowButton) {
-            overflowButton->Render(ctx);
+            RenderOverflowButton(ctx);
         }
 
          // V2.0.0: Draw drag insertion indicator
@@ -545,8 +546,10 @@ namespace UltraCanvas {
                     // Prev button after overflow button, next button at right edge
                     Rect2Di prevBtn(prevBtnX, tabBarBounds.y, 24, tabBarBounds.height);
                     Rect2Di nextBtn(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
-                    ctx->DrawFilledRectangle(prevBtn, Color(220, 220, 220), 1.0, tabBorderColor);
-                    ctx->DrawFilledRectangle(nextBtn, Color(220, 220, 220), 1.0, tabBorderColor);
+                    ctx->DrawFilledRectangle(prevBtn, navButtonBackgroundColor, 0.0, Colors::Transparent);
+                    ctx->DrawFilledRectangle(nextBtn, navButtonBackgroundColor, 0.0, Colors::Transparent);
+//                    ctx->DrawFilledRectangle(prevBtn, Color(220, 220, 220), 1.0, tabBorderColor);
+//                    ctx->DrawFilledRectangle(nextBtn, Color(220, 220, 220), 1.0, tabBorderColor);
                     // Left arrow
                     { Point2Di c(prevBtn.x + prevBtn.width / 2, prevBtn.y + prevBtn.height / 2); int s = 3;
                       ctx->ClearPath(); ctx->MoveTo(c.x - s, c.y); ctx->LineTo(c.x + s, c.y - (s+s)); ctx->LineTo(c.x + s, c.y + (s+s));
@@ -560,7 +563,7 @@ namespace UltraCanvas {
                     Rect2Di btn = canGoPrev
                         ? Rect2Di(prevBtnX, tabBarBounds.y, 24, tabBarBounds.height)
                         : Rect2Di(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
-                    ctx->DrawFilledRectangle(btn, Color(220, 220, 220), 1.0, tabBorderColor);
+                    ctx->DrawFilledRectangle(btn, navButtonBackgroundColor, 0.0, Colors::Transparent);
                     Point2Di c(btn.x + btn.width / 2, btn.y + btn.height / 2); int s = 3;
                     ctx->ClearPath();
                     if (canGoPrev) {
@@ -586,8 +589,8 @@ namespace UltraCanvas {
                     // Prev button after overflow, next button at bottom
                     Rect2Di prevBtn(tabBarBounds.x, prevBtnY, tabBarBounds.width, 24);
                     Rect2Di nextBtn(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 24, tabBarBounds.width, 24);
-                    ctx->DrawFilledRectangle(prevBtn, Color(220, 220, 220), 1.0, tabBorderColor);
-                    ctx->DrawFilledRectangle(nextBtn, Color(220, 220, 220), 1.0, tabBorderColor);
+                    ctx->DrawFilledRectangle(prevBtn, navButtonBackgroundColor, 0.0, Colors::Transparent);
+                    ctx->DrawFilledRectangle(nextBtn, navButtonBackgroundColor, 0.0, Colors::Transparent);
                     // Up arrow
                     { Point2Di c(prevBtn.x + prevBtn.width / 2, prevBtn.y + prevBtn.height / 2); int s = 3;
                       ctx->ClearPath(); ctx->MoveTo(c.x, c.y - s); ctx->LineTo(c.x + (s+s), c.y + s); ctx->LineTo(c.x - (s+s), c.y + s);
@@ -601,7 +604,7 @@ namespace UltraCanvas {
                     Rect2Di btn = canGoPrev
                         ? Rect2Di(tabBarBounds.x, prevBtnY, tabBarBounds.width, 24)
                         : Rect2Di(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 24, tabBarBounds.width, 24);
-                    ctx->DrawFilledRectangle(btn, Color(220, 220, 220), 1.0, tabBorderColor);
+                    ctx->DrawFilledRectangle(btn, navButtonBackgroundColor, 0.0, Colors::Transparent);
                     Point2Di c(btn.x + btn.width / 2, btn.y + btn.height / 2); int s = 3;
                     ctx->ClearPath();
                     if (canGoPrev) {
@@ -665,6 +668,43 @@ namespace UltraCanvas {
         ctx->SetStrokePaint(newTabButtonIconColor);
         ctx->DrawLine(Point2Di(center.x - size/2, center.y), Point2Di(center.x + size/2, center.y));
         ctx->DrawLine(Point2Di(center.x, center.y - size/2), Point2Di(center.x, center.y + size/2));
+    }
+
+    void UltraCanvasTabbedContainer::RenderOverflowButton(IRenderContext* ctx) {
+        if (!overflowButton) return;
+
+        Rect2Di btnBounds = overflowButton->GetBounds();
+        int bx = btnBounds.x, by = btnBounds.y;
+        int bw = btnBounds.width, bh = btnBounds.height;
+
+        // Background - use hover color from the button's state
+        Color bgColor = overflowButton->IsHovered() ? hoveredTabColor : navButtonBackgroundColor;
+        if (bgColor.a > 0) {
+            ctx->DrawFilledRectangle(btnBounds, bgColor);
+        }
+
+        // Draw ▼ arrow in upper half
+        ctx->SetFillPaint(inactiveTabTextColor);
+        ctx->SetStrokePaint(inactiveTabTextColor);
+        ctx->SetStrokeWidth(1);
+        int cx = bx + bw / 2;
+        int cy = by + bh / 3;
+        int s = 3;
+        ctx->ClearPath();
+        ctx->MoveTo(cx, cy + s);
+        ctx->LineTo(cx - (s + s), cy - s);
+        ctx->LineTo(cx + (s + s), cy - s);
+        ctx->ClosePath();
+        ctx->FillPathPreserve();
+        ctx->Stroke();
+
+        // Draw tab count in lower half
+        std::string countText = std::to_string((int)tabs.size());
+        ctx->SetFontSize(9);
+        ctx->SetTextPaint(inactiveTabTextColor);
+        ctx->SetTextAlignment(TextAlignment::Center);
+        ctx->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
+        ctx->DrawTextInRect(countText, bx, by + bh / 2, bw, bh / 2);
     }
 
     bool UltraCanvasTabbedContainer::OnEvent(const UCEvent &event) {

@@ -270,7 +270,7 @@ namespace UltraCanvas {
                     }
                     break;
 
-                case UCEventType::WindowClose:
+                case UCEventType::WindowClosing:
                     CloseViewer();
                     return true;
 

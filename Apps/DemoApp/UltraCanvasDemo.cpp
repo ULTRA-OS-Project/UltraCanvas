@@ -232,7 +232,7 @@ namespace UltraCanvas {
         textArea->SetFontSize(10);
 
         sourceWindow->SetEventCallback([this](const UCEvent& event) {
-            if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClose) {
+            if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClosing) {
                 sourceWindow->RequestDelete();
                 sourceWindow.reset();
                 return true;
@@ -263,7 +263,7 @@ namespace UltraCanvas {
         markDownTextArea->SetMarkdownText(content);
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
-            if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClose) {
+            if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClosing) {
                 ((UltraCanvasWindow *)event.targetWindow)->RequestDelete();
                 docWindow.reset();
                 return true;
