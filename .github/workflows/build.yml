@@ -80,7 +80,8 @@ jobs:
             mingw-w64-x86_64-libvips
             mingw-w64-x86_64-fmt
             mingw-w64-x86_64-imagemagick
-            mingw-w64-x86_64-libheif            
+            mingw-w64-x86_64-libheif
+            zip
             
       # ===== macOS / Linux: system package manager =====
       - name: Install dependencies (macOS/Linux)
