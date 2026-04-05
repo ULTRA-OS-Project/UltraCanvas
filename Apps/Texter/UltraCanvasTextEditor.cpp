@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.0.6
-// Last Modified: 2026-02-02
+// Version: 2.0.7
+// Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <ctime>
 #include <cstdlib>
+#include <cstring>
 #include <unordered_set>
 #include <fmt/os.h>
 #include "UltraCanvasDebug.h"
@@ -1216,6 +1217,111 @@ namespace {
 
 // ===== DOCUMENT MANAGEMENT =====
 
+    std::string UltraCanvasTextEditor::SuggestFileNameFromFirstLine(const std::string& firstLine) const {
+        // Max length of the returned stem (excluding any extension the caller appends).
+        constexpr size_t kMaxLen = 40;
+
+        auto isSpace = [](unsigned char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
+
+        // Step 1: trim leading/trailing whitespace.
+        size_t begin = 0;
+        size_t end = firstLine.size();
+        while (begin < end && isSpace(static_cast<unsigned char>(firstLine[begin]))) ++begin;
+        while (end > begin && isSpace(static_cast<unsigned char>(firstLine[end - 1]))) --end;
+        std::string s = firstLine.substr(begin, end - begin);
+        if (s.empty()) return "";
+
+        // Step 2: strip a single leading comment marker, then re-trim.
+        // Order matters: check the longer markers before their prefixes.
+        static const char* const kMarkers[] = {
+            "<!--", "/*", "//", "--", "##", "#", ";;", ";", "*"
+        };
+        for (const char* marker : kMarkers) {
+            size_t mlen = std::strlen(marker);
+            if (s.size() >= mlen && s.compare(0, mlen, marker) == 0) {
+                s.erase(0, mlen);
+                break;
+            }
+        }
+        // Re-trim after marker strip.
+        begin = 0;
+        end = s.size();
+        while (begin < end && isSpace(static_cast<unsigned char>(s[begin]))) ++begin;
+        while (end > begin && isSpace(static_cast<unsigned char>(s[end - 1]))) --end;
+        s = s.substr(begin, end - begin);
+        if (s.empty()) return "";
+
+        // Step 3: walk characters — replace unsafe/control chars with '_',
+        // keep printable ASCII and high-bit bytes (UTF-8 continuation) intact.
+        // Also convert whitespace to '_' so Step 4 can collapse them.
+        std::string out;
+        out.reserve(s.size());
+        for (unsigned char c : s) {
+            if (c < 0x20 || c == 0x7F) {
+                out.push_back('_');
+            } else if (c == '<' || c == '>' || c == ':' || c == '"' ||
+                       c == '/' || c == '\\' || c == '|' || c == '?' || c == '*') {
+                out.push_back('_');
+            } else if (c == ' ' || c == '\t') {
+                out.push_back('_');
+            } else {
+                out.push_back(static_cast<char>(c));
+            }
+        }
+
+        // Avoid hidden-file leading dot on Unix.
+        if (!out.empty() && out.front() == '.') {
+            out.front() = '_';
+        }
+
+        // Step 4: collapse runs of '_' into a single '_'.
+        {
+            std::string collapsed;
+            collapsed.reserve(out.size());
+            bool prevUnderscore = false;
+            for (char c : out) {
+                if (c == '_') {
+                    if (!prevUnderscore) collapsed.push_back('_');
+                    prevUnderscore = true;
+                } else {
+                    collapsed.push_back(c);
+                    prevUnderscore = false;
+                }
+            }
+            out.swap(collapsed);
+        }
+
+        // Step 5: trim trailing '_', '.' and whitespace (Windows disallows trailing '.' / space).
+        while (!out.empty()) {
+            char c = out.back();
+            if (c == '_' || c == '.' || c == ' ' || c == '\t') {
+                out.pop_back();
+            } else {
+                break;
+            }
+        }
+        // Also trim a leading underscore left over from the collapse step.
+        if (!out.empty() && out.front() == '_') {
+            out.erase(0, 1);
+        }
+        if (out.empty()) return "";
+
+        // Step 6: truncate to kMaxLen, preferring a word boundary in the last 10 bytes.
+        if (out.size() > kMaxLen) {
+            out.resize(kMaxLen);
+            size_t lastUnderscore = out.find_last_of('_');
+            if (lastUnderscore != std::string::npos && lastUnderscore + 10 >= kMaxLen && lastUnderscore > 0) {
+                out.resize(lastUnderscore);
+            }
+            // Re-trim trailing separators after truncation.
+            while (!out.empty() && (out.back() == '_' || out.back() == '.')) {
+                out.pop_back();
+            }
+        }
+
+        return out;
+    }
+
     std::string UltraCanvasTextEditor::GenerateUniqueDocumentName(const std::string& base) const {
         std::unordered_set<std::string> taken;
         taken.reserve(documents.size());
@@ -2227,7 +2333,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         std::string defaultName = doc->fileName;
 
-        if (defaultName.find("Untitled") == 0) {
+        if (doc->isNewFile) {
 
             // Map language name → canonical first extension
             // Ordered by most common use; matches the extensions in fileFilters.
@@ -2271,7 +2377,25 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 }
             }
 
-            defaultName = "untitled." + ext;
+            // Prefer a fresh suggestion derived from the current first line;
+            // fall back to whatever the tab is currently showing; finally to
+            // the literal "untitled" when nothing useful exists yet.
+            std::string stem;
+            if (doc->textArea && doc->textArea->GetLineCount() > 0) {
+                stem = SuggestFileNameFromFirstLine(doc->textArea->GetLine(0));
+            }
+            if (stem.empty()) {
+                // doc->fileName is still "UntitledN" when the user hasn't
+                // typed anything worth suggesting; strip the number so we
+                // don't end up with "Untitled3.cpp".
+                if (doc->fileName.rfind("Untitled", 0) == 0) {
+                    stem = "untitled";
+                } else {
+                    stem = doc->fileName;
+                }
+            }
+
+            defaultName = stem + "." + ext;
         }
 
         UltraCanvasDialogManager::ShowSaveFileDialog(
@@ -3107,6 +3231,25 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 //     documents[currentIndex]->originalRawBytes.shrink_to_fit();
                 // }
                 SetDocumentModified(currentIndex, true);
+
+                // For brand-new unsaved documents, keep the tab title in sync with
+                // the first line of content so the user can see a meaningful name
+                // before they ever hit Save As. Intentionally sticky: if the first
+                // line later becomes empty we keep the last suggestion to avoid
+                // jitter.
+                auto d = documents[currentIndex];
+                if (d->isNewFile && d->filePath.empty() && d->textArea &&
+                    d->textArea->GetLineCount() > 0) {
+                    std::string suggestion =
+                        SuggestFileNameFromFirstLine(d->textArea->GetLine(0));
+                    if (!suggestion.empty() && suggestion != d->fileName) {
+                        d->fileName = suggestion;
+                        UpdateTabTitle(currentIndex);
+                        if (currentIndex == activeDocumentIndex) {
+                            UpdateTitle();
+                        }
+                    }
+                }
             }
             UpdateStatusBar();
         };

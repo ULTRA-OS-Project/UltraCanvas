@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
-// Version: 2.0.5
-// Last Modified: 2026-02-02
+// Version: 2.0.6
+// Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -456,6 +456,14 @@ namespace UltraCanvas {
          * Returns base + N, where N is the smallest positive integer for which the name is unused.
          */
         std::string GenerateUniqueDocumentName(const std::string& base) const;
+
+        /**
+         * @brief Build a sanitized filename stem (no extension) from a single line of text.
+         * Strips common comment markers, replaces filesystem-unsafe characters, collapses
+         * whitespace, and truncates to a reasonable length. Returns an empty string if the
+         * line has no usable content; callers treat that as "no suggestion".
+         */
+        std::string SuggestFileNameFromFirstLine(const std::string& firstLine) const;
 
 
         void PerformAutosave(bool force = false);
