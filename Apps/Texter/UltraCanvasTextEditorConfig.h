@@ -1,6 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditorConfig.h
 // Persistent configuration file manager for UltraTexter
-// Version: 1.0.0
+// Version: 1.0.1
 // Last Modified: 2026-02-26
 // Author: UltraCanvas Framework
 #pragma once
@@ -227,41 +227,109 @@ namespace UltraCanvas {
 
         // ===== SESSION FILES =====
 
-        /// Save open file paths for session restore
-        bool SaveSessionFiles(const std::vector<std::string>& paths, int activeIndex) {
+        /// A single document entry in the persisted session.
+        /// For saved files only filePath is required; display name is re-derived on load.
+        /// For unsaved tabs that carry content, backupPath points at the autosave file
+        /// and displayName carries the tab title.
+        struct SessionDocument {
+            std::string filePath;      // Absolute path on disk, or empty for unsaved tabs
+            std::string displayName;   // Tab title — only persisted when filePath is empty
+            std::string backupPath;    // Autosave backup path — only when wasModified
+            std::string language;
+            std::string encoding;
+            int eolType = 0;
+            bool isNewFile = true;
+            bool wasModified = false;
+        };
+
+        /// Persist all open documents and the active tab index.
+        bool SaveSession(const std::vector<SessionDocument>& docs, int activeIndex) {
             if (!EnsureConfigDirectory()) return false;
 
             std::ofstream file(sessionPath);
-            if (!file.is_open()) return false;
-
-            file << activeIndex << std::endl;
-            for (const auto& path : paths) {
-                file << path << std::endl;
+            if (!file.is_open()) {
+                debugOutput << "UltraTexter: SaveSession failed to open " << sessionPath << std::endl;
+                return false;
             }
+
+            file << "ACTIVE=" << activeIndex << std::endl;
+            for (const auto& d : docs) {
+                file << std::endl << "[DOCUMENT]" << std::endl;
+                file << "FILE_PATH=" << d.filePath << std::endl;
+                file << "DISPLAY_NAME=" << d.displayName << std::endl;
+                file << "BACKUP_PATH=" << d.backupPath << std::endl;
+                file << "LANGUAGE=" << d.language << std::endl;
+                file << "ENCODING=" << d.encoding << std::endl;
+                file << "EOL_TYPE=" << d.eolType << std::endl;
+                file << "IS_NEW_FILE=" << (d.isNewFile ? "true" : "false") << std::endl;
+                file << "WAS_MODIFIED=" << (d.wasModified ? "true" : "false") << std::endl;
+            }
+            debugOutput << "UltraTexter: SaveSession wrote " << docs.size()
+                        << " document(s), active=" << activeIndex << std::endl;
             return true;
         }
 
-        /// Load previously saved session file paths
-        std::vector<std::string> LoadSessionFiles(int& activeIndex) {
-            std::vector<std::string> paths;
+        /// Load the persisted session. Returns document entries in tab order.
+        std::vector<SessionDocument> LoadSession(int& activeIndex) {
+            std::vector<SessionDocument> docs;
             activeIndex = 0;
 
             std::ifstream file(sessionPath);
-            if (!file.is_open()) return paths;
+            if (!file.is_open()) return docs;
+
+            SessionDocument current;
+            bool inDoc = false;
+
+            auto flush = [&]() {
+                if (inDoc) {
+                    docs.push_back(current);
+                    current = SessionDocument{};
+                    inDoc = false;
+                }
+            };
 
             std::string line;
-            // First line is the active tab index
-            if (std::getline(file, line)) {
-                try { activeIndex = std::stoi(line); }
-                catch (...) { activeIndex = 0; }
-            }
-            // Remaining lines are file paths
             while (std::getline(file, line)) {
-                if (!line.empty()) {
-                    paths.push_back(line);
+                // Strip trailing \r for files written on Windows
+                if (!line.empty() && line.back() == '\r') line.pop_back();
+                if (line.empty()) continue;
+
+                if (line == "[DOCUMENT]") {
+                    flush();
+                    inDoc = true;
+                    continue;
                 }
+
+                size_t eq = line.find('=');
+                if (eq == std::string::npos) continue;
+                std::string key = TrimWhitespace(line.substr(0, eq));
+                std::string value = line.substr(eq + 1); // keep value untrimmed — paths may have leading spaces
+
+                if (!inDoc) {
+                    if (key == "ACTIVE") {
+                        try { activeIndex = std::stoi(value); }
+                        catch (...) { activeIndex = 0; }
+                    }
+                    continue;
+                }
+
+                if      (key == "FILE_PATH")    current.filePath = value;
+                else if (key == "DISPLAY_NAME") current.displayName = value;
+                else if (key == "BACKUP_PATH")  current.backupPath = value;
+                else if (key == "LANGUAGE")     current.language = value;
+                else if (key == "ENCODING")     current.encoding = value;
+                else if (key == "EOL_TYPE") {
+                    try { current.eolType = std::stoi(value); }
+                    catch (...) { current.eolType = 0; }
+                }
+                else if (key == "IS_NEW_FILE")  current.isNewFile  = (value == "true" || value == "1");
+                else if (key == "WAS_MODIFIED") current.wasModified = (value == "true" || value == "1");
             }
-            return paths;
+            flush();
+
+            debugOutput << "UltraTexter: LoadSession read " << docs.size()
+                        << " document(s), active=" << activeIndex << std::endl;
+            return docs;
         }
 
     private:

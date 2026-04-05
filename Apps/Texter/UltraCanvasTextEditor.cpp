@@ -1,7 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.0.5
-// Version: 2.0.5
+// Version: 2.0.6
 // Last Modified: 2026-02-02
 // Author: UltraCanvas Framework
 
@@ -26,6 +25,7 @@
 #include <filesystem>
 #include <ctime>
 #include <cstdlib>
+#include <unordered_set>
 #include <fmt/os.h>
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasUtilsUtf8.h"
@@ -404,9 +404,13 @@ namespace {
         onWindowClosing = [this]() -> bool {
             if (HasAnyUnsavedChanges()) {
                 ConfirmCloseWithUnsavedChanges([this](bool shouldClose) {
+                    // Always persist autosave + session, even if the user
+                    // cancelled a Save As dialog mid-chain. If the process
+                    // is force-killed later, the next launch will still
+                    // restore every open tab.
+                    PerformAutosave(true);
+                    SaveSession();
                     if (shouldClose) {
-                        PerformAutosave(true);
-                        SaveSession();
                         PerformClose();
                     }
                 });
@@ -1212,11 +1216,25 @@ namespace {
 
 // ===== DOCUMENT MANAGEMENT =====
 
+    std::string UltraCanvasTextEditor::GenerateUniqueDocumentName(const std::string& base) const {
+        std::unordered_set<std::string> taken;
+        taken.reserve(documents.size());
+        for (const auto& d : documents) {
+            if (d) taken.insert(d->fileName);
+        }
+        for (int i = 1; ; ++i) {
+            std::string candidate = base + std::to_string(i);
+            if (taken.find(candidate) == taken.end()) {
+                return candidate;
+            }
+        }
+    }
+
     int UltraCanvasTextEditor::CreateNewDocument(const std::string& fileName) {
         // Create new document tab
         auto doc = std::make_shared<DocumentTab>();
         doc->documentId = nextDocumentId++;
-        doc->fileName = fileName.empty() ? ("Untitled" + std::to_string(documents.size() + 1)) : fileName;
+        doc->fileName = fileName.empty() ? GenerateUniqueDocumentName("Untitled") : fileName;
         doc->filePath = "";
         doc->language = config.defaultLanguage;
         doc->isModified = false;
@@ -1927,22 +1945,65 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     void UltraCanvasTextEditor::RestoreSessionAndRecoverBackups() {
         hasCheckedForBackups = true;
 
-        // --- Phase 1: Restore session files ---
+        // --- Phase 1: Restore session documents ---
         int savedActiveIndex = 0;
-        std::vector<std::string> sessionPaths = configFile.LoadSessionFiles(savedActiveIndex);
+        auto sessionDocs = configFile.LoadSession(savedActiveIndex);
 
         int sessionOpened = 0;
-        for (const auto& path : sessionPaths) {
-            if (std::filesystem::exists(path)) {
-                if (OpenDocumentFromPath(path) >= 0) {
-                    sessionOpened++;
+        std::unordered_set<std::string> referencedBackups;
+
+        for (const auto& sd : sessionDocs) {
+            int docIndex = -1;
+
+            if (!sd.filePath.empty()) {
+                // Saved file — reopen from disk
+                if (!std::filesystem::exists(sd.filePath)) {
+                    debugOutput << "UltraTexter: session file no longer exists: "
+                                << sd.filePath << std::endl;
+                    continue;
                 }
+                docIndex = OpenDocumentFromPath(sd.filePath);
+                if (docIndex < 0) continue;
+
+                // If the user had unsaved edits on top of this file, overlay them
+                if (sd.wasModified && !sd.backupPath.empty()
+                    && std::filesystem::exists(sd.backupPath)) {
+                    std::string content, origPath, enc, lang;
+                    if (autosaveManager.LoadBackup(sd.backupPath, content, origPath, enc, lang)) {
+                        RecoverBackupIntoDocument(docIndex, sd.backupPath, content, enc, lang);
+                        referencedBackups.insert(sd.backupPath);
+                    }
+                }
+            } else {
+                // Unsaved tab — must have a backup to carry any content forward
+                if (sd.backupPath.empty() || !std::filesystem::exists(sd.backupPath)) {
+                    continue;
+                }
+                std::string content, origPath, enc, lang;
+                if (!autosaveManager.LoadBackup(sd.backupPath, content, origPath, enc, lang)) {
+                    continue;
+                }
+                // Use the stored display name (e.g. "Recovered1", "Untitled3")
+                // or fall back to a fresh unique Recovered name.
+                std::string name = !sd.displayName.empty()
+                                   ? sd.displayName
+                                   : GenerateUniqueDocumentName("Recovered");
+                docIndex = CreateNewDocument(name);
+                RecoverBackupIntoDocument(docIndex, sd.backupPath,
+                                          content,
+                                          !enc.empty() ? enc : sd.encoding,
+                                          !lang.empty() ? lang : sd.language);
+                referencedBackups.insert(sd.backupPath);
             }
+
+            if (docIndex >= 0) sessionOpened++;
         }
 
-        // Close the initial empty Untitled document if session restored files
+        // Close the initial empty Untitled document if session restored anything
         if (sessionOpened > 0 && !documents.empty()
-            && documents[0]->isNewFile && !documents[0]->isModified) {
+            && documents[0]->isNewFile && !documents[0]->isModified
+            && documents[0]->filePath.empty()
+            && documents[0]->autosaveBackupPath.empty()) {
             CloseDocument(0);
         }
 
@@ -1952,8 +2013,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             SwitchToDocument(savedActiveIndex);
         }
 
-        // --- Phase 2: Find autosave backups ---
-        std::vector<std::string> backups = autosaveManager.FindExistingBackups();
+        // --- Phase 2: Find orphan autosave backups (crash recovery only) ---
+        std::vector<std::string> allBackups = autosaveManager.FindExistingBackups();
 
         // Also check legacy location (/tmp/) for migration
         std::string legacyDir = "/tmp/UltraTexter/Autosave/";
@@ -1971,12 +2032,22 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                         if (entry.is_regular_file()) {
                             std::string filename = entry.path().filename().string();
                             if (filename.find(".autosave") != std::string::npos) {
-                                backups.push_back(entry.path().string());
+                                allBackups.push_back(entry.path().string());
                             }
                         }
                     }
                 }
             } catch (...) {}
+        }
+
+        // Filter out backups that were already restored via the session —
+        // only truly orphan backups (from a crash) trigger the recovery dialog.
+        std::vector<std::string> backups;
+        backups.reserve(allBackups.size());
+        for (const auto& b : allBackups) {
+            if (referencedBackups.find(b) == referencedBackups.end()) {
+                backups.push_back(b);
+            }
         }
 
         if (backups.empty()) return;
@@ -2058,7 +2129,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             std::filesystem::path p(originalPath);
             displayName = p.filename().string();
         } else {
-            displayName = "Recovered";
+            displayName = GenerateUniqueDocumentName("Recovered");
         }
 
         int docIndex = CreateNewDocument(displayName);
@@ -4049,19 +4120,42 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 // -------------------------------------------------------------------------
 
     void UltraCanvasTextEditor::SaveSession() {
-        std::vector<std::string> paths;
+        std::vector<TextEditorConfigFile::SessionDocument> entries;
         int activeAmongSaved = 0;
 
         for (size_t i = 0; i < documents.size(); i++) {
-            if (!documents[i]->filePath.empty()) {
-                if (static_cast<int>(i) == activeDocumentIndex) {
-                    activeAmongSaved = static_cast<int>(paths.size());
-                }
-                paths.push_back(documents[i]->filePath);
+            const auto& doc = documents[i];
+            if (!doc) continue;
+
+            // Skip untouched empty unsaved tabs — nothing to restore
+            if (doc->filePath.empty() && doc->autosaveBackupPath.empty()) {
+                continue;
             }
+
+            TextEditorConfigFile::SessionDocument entry;
+            entry.filePath    = doc->filePath;
+            entry.displayName = doc->filePath.empty() ? doc->fileName : std::string();
+            // Only persist a backup reference when it will actually be meaningful
+            // on restore (i.e. the document has content the user hasn't saved to disk).
+            if (doc->isModified && !doc->autosaveBackupPath.empty()) {
+                entry.backupPath = doc->autosaveBackupPath;
+            } else if (doc->filePath.empty() && !doc->autosaveBackupPath.empty()) {
+                // Unsaved tab with a backup (e.g. recovered) — always carry it forward
+                entry.backupPath = doc->autosaveBackupPath;
+            }
+            entry.language    = doc->language;
+            entry.encoding    = doc->encoding;
+            entry.eolType     = static_cast<int>(doc->eolType);
+            entry.isNewFile   = doc->isNewFile;
+            entry.wasModified = doc->isModified;
+
+            if (static_cast<int>(i) == activeDocumentIndex) {
+                activeAmongSaved = static_cast<int>(entries.size());
+            }
+            entries.push_back(std::move(entry));
         }
 
-        configFile.SaveSessionFiles(paths, activeAmongSaved);
+        configFile.SaveSession(entries, activeAmongSaved);
     }
 
 } // namespace UltraCanvas

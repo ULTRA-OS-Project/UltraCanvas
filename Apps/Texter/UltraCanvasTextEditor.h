@@ -178,7 +178,7 @@ namespace UltraCanvas {
  */
     class UltraCanvasTextEditor : public UltraCanvasWindow {
     private:
-        std::string version = "1.0.12";
+        std::string version = "1.0.14";
         // ===== CONFIGURATION =====
         TextEditorConfig config;
         bool isDarkTheme;
@@ -450,6 +450,12 @@ namespace UltraCanvas {
          * @brief Save open file paths to session file for restore on next launch
          */
         void SaveSession();
+
+        /**
+         * @brief Generate a display name that does not collide with any existing document's fileName.
+         * Returns base + N, where N is the smallest positive integer for which the name is unused.
+         */
+        std::string GenerateUniqueDocumentName(const std::string& base) const;
 
 
         void PerformAutosave(bool force = false);
