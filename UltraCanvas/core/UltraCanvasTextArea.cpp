@@ -1371,7 +1371,7 @@ namespace UltraCanvas {
                           bounds.x + computedLineNumbersWidth, bounds.y + bounds.height);
 
         context->SetFontFace(style.fontStyle.fontFamily, style.fontStyle.fontWeight, style.fontStyle.fontSlant);
-        context->SetFontSize(style.fontStyle.fontSize - 2);
+        context->SetFontSize(style.fontStyle.fontSize);
 
         // Clip to gutter area
         Rect2Di lineNumberClipRect = {bounds.x, visibleTextArea.y,
@@ -1395,6 +1395,16 @@ namespace UltraCanvas {
             // Adjust for markdown Y offsets if applicable
             if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
                 numY += markdownLineYOffsets[di] - mdScrollBase;
+            
+            if (IsFocused() && dl.logicalLine == currentLineIndex) {
+                context->SetFillPaint(Color(255, 128, 128, 255));   // #FF8080
+                context->FillRectangle(bounds.x, numY, computedLineNumbersWidth, computedLineHeight);
+                context->SetTextPaint(style.fontColor);
+                context->SetFontWeight(FontWeight::Bold);
+            } else {
+                context->SetTextPaint(style.lineNumbersColor);
+                context->SetFontWeight(FontWeight::Normal);
+            }
 
             if (dl.logicalLine == currentLineIndex) {
                 context->SetTextPaint(style.fontColor);
@@ -1476,7 +1486,7 @@ namespace UltraCanvas {
         context->SetFillPaint(style.backgroundColor);
         context->FillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
 
-        if (highlightCurrentLine) {
+        if (highlightCurrentLine && IsFocused()) {
             int visStartDL = firstVisibleLine - 1;
             int visEndDL = firstVisibleLine + maxVisibleLines;
             int highlightX = style.showLineNumbers ? bounds.x + computedLineNumbersWidth : bounds.x;

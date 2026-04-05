@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.cpp
 // Complete Windows window implementation with Cairo rendering
-// Version: 1.0.0
-// Last Modified: 2026-03-06
+// Version: 1.0.1
+// Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasWindow.h"
@@ -732,6 +732,24 @@ namespace UltraCanvas {
             width = mi.rcMonitor.right - mi.rcMonitor.left;
             height = mi.rcMonitor.bottom - mi.rcMonitor.top;
         } else {
+            width = GetSystemMetrics(SM_CXSCREEN);
+            height = GetSystemMetrics(SM_CYSCREEN);
+        }
+    }
+
+    void UltraCanvasWindowsWindow::GetScreenBounds(int& x, int& y, int& width, int& height) const {
+        MONITORINFO mi = {sizeof(mi)};
+        HMONITOR monitor = hwnd
+            ? MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)
+            : MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+        if (GetMonitorInfoW(monitor, &mi)) {
+            x = mi.rcMonitor.left;
+            y = mi.rcMonitor.top;
+            width = mi.rcMonitor.right - mi.rcMonitor.left;
+            height = mi.rcMonitor.bottom - mi.rcMonitor.top;
+        } else {
+            x = 0;
+            y = 0;
             width = GetSystemMetrics(SM_CXSCREEN);
             height = GetSystemMetrics(SM_CYSCREEN);
         }

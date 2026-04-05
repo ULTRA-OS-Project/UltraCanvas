@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.0.1
-// Last Modified: 2025-12-05
+// Version: 2.0.2
+// Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -637,6 +637,26 @@ namespace UltraCanvas {
             NSRect screenFrame = [[NSScreen mainScreen] frame];
             width = static_cast<int>(screenFrame.size.width);
             height = static_cast<int>(screenFrame.size.height);
+        }
+    }
+
+    void UltraCanvasMacOSWindow::GetScreenBounds(int& x, int& y, int& width, int& height) const {
+        @autoreleasepool {
+            NSScreen* screen = nil;
+            if (nsWindow) {
+                screen = [nsWindow screen];  // Screen the window currently resides on
+            }
+            if (!screen) {
+                screen = [NSScreen mainScreen];
+            }
+            NSRect frame = [screen frame];
+            // NSScreen frames are already in the unified multi-monitor coordinate
+            // space used by NSWindow's setFrameOrigin (which SetWindowPosition calls
+            // directly), so no y-flip conversion is needed here.
+            x = static_cast<int>(frame.origin.x);
+            y = static_cast<int>(frame.origin.y);
+            width = static_cast<int>(frame.size.width);
+            height = static_cast<int>(frame.size.height);
         }
     }
 

@@ -1,7 +1,7 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
-// Version: 2.0.0
-// Last Modified: 2025-08-24
+// Version: 2.0.1
+// Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -108,6 +108,8 @@ namespace UltraCanvas {
         std::function<void()> onWindowClosed;
         std::function<void(int, int)> onWindowResize;
         std::function<void(int, int)> onWindowMove;
+        std::function<void()> onWindowFocus;
+        std::function<void()> onWindowBlur;
         std::function<void()> onWindowMinimize;
         std::function<void()> onWindowMaximize;
         std::function<void()> onWindowRestore;
@@ -143,6 +145,15 @@ namespace UltraCanvas {
         virtual void SetFullscreen(bool fullscreen) = 0;
         virtual void SetResizable(bool resizable) = 0;
         virtual void GetScreenSize(int& width, int& height) const = 0;
+
+        // Full bounds of the screen/monitor most relevant to this window (origin x/y
+        // plus width/height, in the same coordinate space that SetWindowPosition uses).
+        // When the native window exists, returns the monitor it currently resides on;
+        // otherwise returns the primary monitor. Default implementation delegates to
+        // GetScreenSize with a (0,0) origin, which is correct on single-monitor setups
+        // but ignores secondary-monitor offsets — backends should override this when
+        // they can query per-monitor bounds.
+        virtual void GetScreenBounds(int& x, int& y, int& width, int& height) const;
 
 // ===== FOCUS MANAGEMENT PUBLIC INTERFACE =====
         bool IsWindowFocused() const;
@@ -223,6 +234,10 @@ namespace UltraCanvas {
         // ===== UTILITY METHODS =====
         void CenterOnScreen();
         void CenterOnParent(UltraCanvasWindowBase* parent);
+        // Center this window on the screen/monitor that the given reference window
+        // currently resides on (not centered on the reference window itself).
+        // Falls back to CenterOnScreen() when referenceWindow is null.
+        void CenterOnScreenOfWindow(UltraCanvasWindowBase* referenceWindow);
 
         // Method chaining for fluent interface
         UltraCanvasWindowBase& Title(const std::string& title) {

@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.h
 // macOS window implementation with Cocoa/Cairo support
-// Version: 2.0.0
-// Last Modified: 2025-01-18
+// Version: 2.0.1
+// Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -88,6 +88,7 @@ namespace UltraCanvas {
         void Flush() override;
         NativeWindowHandle GetNativeHandle() const override;
         void GetScreenSize(int& width, int& height) const override;
+        void GetScreenBounds(int& x, int& y, int& width, int& height) const override;
         NSWindow* GetNSWindowHandle() const;
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }
         void RaiseAndFocus() override;

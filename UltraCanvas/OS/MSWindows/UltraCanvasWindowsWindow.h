@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsWindow.h
 // Windows platform window implementation for UltraCanvas Framework
-// Version: 1.0.0
-// Last Modified: 2026-03-06
+// Version: 1.0.1
+// Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -91,6 +91,7 @@ namespace UltraCanvas {
         NativeWindowHandle GetNativeHandle() const override;
         void GetScreenPosition(int& x, int& y) const override;
         void GetScreenSize(int& width, int& height) const override;
+        void GetScreenBounds(int& x, int& y, int& width, int& height) const override;
         IRenderContext* GetRenderContext() const override { return renderContext.get(); }
 
         // ===== WINDOWS-SPECIFIC METHODS =====

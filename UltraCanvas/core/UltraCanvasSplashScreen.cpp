@@ -1,6 +1,7 @@
 // core/UltraCanvasSplashScreen.cpp
 // Reusable splash screen component
-// Version: 1.0.0
+// Version: 1.0.1
+// Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSplashScreen.h"
@@ -118,7 +119,10 @@ namespace UltraCanvas {
         };
 
         window->Show();
-        window->CenterOnScreen();
+        // Center on the parent window so the splash stays on the same monitor as
+        // the main window in multi-monitor setups. CenterOnParent falls back to
+        // CenterOnScreen when parentWin is null.
+        window->CenterOnScreenOfWindow(parentWin);
 
         // Start auto-close timer if a timeout was specified
         if (config.showTimeout.count() > 0) {

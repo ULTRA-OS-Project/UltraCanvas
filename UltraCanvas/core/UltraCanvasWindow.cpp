@@ -1,7 +1,7 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
-// Version: 1.2.0
-// Last Modified: 2025-07-15
+// Version: 1.2.1
+// Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 
 #include "../include/UltraCanvasWindow.h"
@@ -237,6 +237,18 @@ namespace UltraCanvas {
 
     bool UltraCanvasWindowBase::HandleWindowEvent(const UCEvent &event) {
         switch (event.type) {
+            case UCEventType::WindowBlur:
+                if (onWindowBlur) {
+                    onWindowBlur();
+                }
+                RequestRedraw();
+                return true;
+            case UCEventType::WindowFocus:
+                if (onWindowFocus) {
+                    onWindowFocus();
+                }
+                RequestRedraw();
+                return true;
             case UCEventType::WindowCloseRequest:
                 Close();
                 return true;
@@ -464,12 +476,18 @@ namespace UltraCanvas {
         return config_.parentWindow;
     }
 
+    void UltraCanvasWindowBase::GetScreenBounds(int& x, int& y, int& width, int& height) const {
+        x = 0;
+        y = 0;
+        GetScreenSize(width, height);
+    }
+
     void UltraCanvasWindowBase::CenterOnScreen() {
-        int screenWidth = 0, screenHeight = 0;
-        GetScreenSize(screenWidth, screenHeight);
-        if (screenWidth > 0 && screenHeight > 0) {
-            int x = (screenWidth - config_.width) / 2;
-            int y = (screenHeight - config_.height) / 2;
+        int sx = 0, sy = 0, sw = 0, sh = 0;
+        GetScreenBounds(sx, sy, sw, sh);
+        if (sw > 0 && sh > 0) {
+            int x = sx + (sw - config_.width) / 2;
+            int y = sy + (sh - config_.height) / 2;
             SetWindowPosition(x, y);
         }
     }
@@ -485,6 +503,20 @@ namespace UltraCanvas {
         int x = parentX + (parentW - config_.width) / 2;
         int y = parentY + (parentH - config_.height) / 2;
         SetWindowPosition(x, y);
+    }
+
+    void UltraCanvasWindowBase::CenterOnScreenOfWindow(UltraCanvasWindowBase* referenceWindow) {
+        if (!referenceWindow) {
+            CenterOnScreen();
+            return;
+        }
+        int sx = 0, sy = 0, sw = 0, sh = 0;
+        referenceWindow->GetScreenBounds(sx, sy, sw, sh);
+        if (sw > 0 && sh > 0) {
+            int x = sx + (sw - config_.width) / 2;
+            int y = sy + (sh - config_.height) / 2;
+            SetWindowPosition(x, y);
+        }
     }
 
     std::shared_ptr<UltraCanvasWindow> CreateWindow() {
