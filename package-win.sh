@@ -2,14 +2,26 @@
 # package-win.sh - Build and create a standalone Windows distribution with all required DLLs
 # Run from MSYS2 MinGW64 shell after building the project
 #
+# Usage:
+#   ./package-win.sh [--no-sign] [package-name.zip]
+#     --no-sign   Skip Authenticode signing of the EXEs
+#
 set -e
+
+DO_SIGN=true
+PACKAGE_ZIP=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --no-sign) DO_SIGN=false; shift ;;
+        *)         PACKAGE_ZIP="$1"; shift ;;
+    esac
+done
 
 VERSION=`date +%Y.%m.%d`
 MINGW_BIN="/mingw64/bin"
 DIST_DIR="dist"
-PACKAGE_ZIP="$1"
 
-if [ "$1" == "" ]; then
+if [ -z "$PACKAGE_ZIP" ]; then
   PACKAGE_ZIP="UCDemo-$VERSION.zip"
 fi
 
@@ -21,8 +33,12 @@ mkdir -p "$DIST_DIR"
 cp ./build/bin/UltraCanvas*.exe "$DIST_DIR/"
 echo "Copied EXE"
 
-powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode Sign -ExePath dist/UltraCanvasTexter.exe
-powershell -ExecutionPolicy Bypass -File SignUltraDemo.ps1 -Mode Sign -ExePath dist/UltraCanvasDemo.exe
+if $DO_SIGN; then
+    powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode Sign -ExePath dist/UltraCanvasTexter.exe
+    powershell -ExecutionPolicy Bypass -File SignUltraDemo.ps1 -Mode Sign -ExePath dist/UltraCanvasDemo.exe
+else
+    echo "Skipping code signing (--no-sign)"
+fi
 
 # Collect all required DLLs using ldd, filtering to only MSYS2/MinGW DLLs
 echo ""

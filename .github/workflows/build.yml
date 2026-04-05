@@ -22,14 +22,14 @@ jobs:
             install_deps: |
               brew install cmake pkg-config
               brew install cairo pango harfbuzz vips glib freetype tinyxml2
-              brew install jsoncpp fmt
+              brew install jsoncpp
               brew install libcdr librevenge
           - os: macos-latest
             arch_label: arm64
             install_deps: |
               brew install cmake pkg-config
               brew install cairo pango harfbuzz vips glib freetype tinyxml2
-              brew install jsoncpp fmt
+              brew install jsoncpp
               brew install libcdr librevenge
           - os: ubuntu-latest
             arch_label: x86_64
@@ -111,7 +111,7 @@ jobs:
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
-        run: ./package-win.sh
+        run: ./package-win.sh --no-sign
 
       - name: Package (macOS)
         if: runner.os == 'macOS'

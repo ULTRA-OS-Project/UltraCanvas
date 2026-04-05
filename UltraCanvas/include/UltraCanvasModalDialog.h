@@ -420,9 +420,7 @@ namespace UltraCanvas {
         void RemoveDialogElement(std::shared_ptr<UltraCanvasUIElement> element);
         void ClearDialogElements();
 
-        bool RequestClose() override;
-
-        void Close() override;
+        void PerformClose() override;
 
         // ===== RENDERING OVERRIDE =====
         // NOTE: With layout-based architecture, RenderCustomContent delegates

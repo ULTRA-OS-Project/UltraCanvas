@@ -106,7 +106,7 @@ namespace UltraCanvas {
         };
 
         // Fire onSplashClosed when the window is closed and deleted (by any means)
-        window->onWindowDelete = [this]() {
+        window->onWindowClosed = [this]() {
             if (timeoutTimerId != InvalidTimerId) {
                 UltraCanvasApplication::GetInstance()->StopTimer(timeoutTimerId);
                 timeoutTimerId = InvalidTimerId;
@@ -135,7 +135,7 @@ namespace UltraCanvas {
 
         auto w = window;
         window.reset();
-        w->Close();
+        w->PerformClose();
     }
 
     bool UltraCanvasSplashScreen::IsVisible() const {

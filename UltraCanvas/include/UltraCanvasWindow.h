@@ -25,7 +25,7 @@ namespace UltraCanvas {
     };
 
     enum class WindowState {
-        Normal, Minimized, Maximized, Fullscreen, Hidden, Closing, DeleteRequested, Deleted
+        Normal, Minimized, Maximized, Fullscreen, Hidden, Closing, Closed
     };
 
     struct WindowConfig {
@@ -104,9 +104,8 @@ namespace UltraCanvas {
 
     public:
         // Window-specific callbacks
-        std::function<bool()> onWindowCloseRequest;
-        std::function<void()> onWindowClosing;
-        std::function<void()> onWindowDelete;
+        std::function<bool()> onWindowClosing;
+        std::function<void()> onWindowClosed;
         std::function<void(int, int)> onWindowResize;
         std::function<void(int, int)> onWindowMove;
         std::function<void()> onWindowMinimize;
@@ -121,10 +120,8 @@ namespace UltraCanvas {
         // Window lifecycle
         bool Create(const WindowConfig& config);
         virtual bool Create();
-        virtual bool RequestClose();
-        virtual void Close();
-        void RequestDelete();
-        void Destroy();
+        virtual bool Close();
+        virtual void PerformClose();
 
         UCMouseCursor GetCurrentMouseCursor() { return currentMouseCursor; };
         bool SelectMouseCursor(UCMouseCursor ptr);
@@ -222,14 +219,6 @@ namespace UltraCanvas {
         bool IsNeedsResize() const { return _needsResize; }
 
         virtual IRenderContext* GetRenderContext() const = 0;
-
-        // ===== ENHANCED WINDOW CALLBACKS =====
-        void SetWindowCloseCallback(std::function<void()> callback) { onWindowDelete = callback; }
-        void SetWindowResizeCallback(std::function<void(int, int)> callback) { onWindowResize = callback; }
-        void SetWindowMoveCallback(std::function<void(int, int)> callback) { onWindowMove = callback; }
-        void SetWindowMinimizeCallback(std::function<void()> callback) { onWindowMinimize = callback; }
-        void SetWindowMaximizeCallback(std::function<void()> callback) { onWindowMaximize = callback; }
-        void SetWindowRestoreCallback(std::function<void()> callback) { onWindowRestore = callback; }
 
         // ===== UTILITY METHODS =====
         void CenterOnScreen();

@@ -70,7 +70,7 @@ private:
             }
 
             if (editorPtr->GetDocumentCount() == 0) {
-                editorPtr->Close();
+                editorPtr->PerformClose();
             }
         };
 
@@ -94,7 +94,7 @@ private:
         };
 
         // Window close: remove from manager
-        editorPtr->SetWindowCloseCallback([this, weakEditor]() {
+        editorPtr->onWindowClosed = [this, weakEditor]() {
             auto ed = weakEditor.lock();
             if (!ed) return;
 
@@ -102,7 +102,7 @@ private:
             if (it != editors.end()) {
                 editors.erase(it);
             }
-        });
+        };
     }
 
     // Find which editor window (if any) is at the given screen coordinates,

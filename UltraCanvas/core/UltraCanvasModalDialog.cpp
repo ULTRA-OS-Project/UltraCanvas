@@ -327,33 +327,21 @@ namespace UltraCanvas {
         Show();
     }
 
-    bool UltraCanvasModalDialog::RequestClose() {
-        if (!_created || _state == WindowState::Closing 
-            || _state == WindowState::DeleteRequested
-            || _state == WindowState::Deleted) {
-            return false;
-        }
+    void UltraCanvasModalDialog::PerformClose() {
+        // Unregister from dialog manager
+        UltraCanvasDialogManager::UnregisterDialog(
+                std::dynamic_pointer_cast<UltraCanvasModalDialog>(shared_from_this()));
 
-        if (!onClosing || onClosing(result)) {
-            return UltraCanvasWindow::RequestClose();
-        }
-        return false;
-    }
-
-    void UltraCanvasModalDialog::Close() {
-        UltraCanvasWindow::Close();
+        UltraCanvasWindow::PerformClose();
 
         if (onResult) {
             onResult(result);
         }
-        // Unregister from dialog manager
-        UltraCanvasDialogManager::UnregisterDialog(
-                std::dynamic_pointer_cast<UltraCanvasModalDialog>(shared_from_this()));
     }
 
     void UltraCanvasModalDialog::CloseDialog(DialogResult dialogResult) {
         result = dialogResult;
-        RequestClose();
+        Close();
     }
 
     bool UltraCanvasModalDialog::OnEvent(const UCEvent& event) {

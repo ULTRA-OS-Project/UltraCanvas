@@ -238,7 +238,7 @@ namespace UltraCanvas {
     bool UltraCanvasWindowBase::HandleWindowEvent(const UCEvent &event) {
         switch (event.type) {
             case UCEventType::WindowCloseRequest:
-                RequestClose();
+                Close();
                 return true;
 
             case UCEventType::WindowResize:
@@ -247,6 +247,10 @@ namespace UltraCanvas {
 
             case UCEventType::WindowMove:
                 HandleMoveEvent(event.x, event.y);
+                return true;
+
+            case UCEventType::WindowRepaint:
+                needsRedraw = true;
                 return true;
 
             default:
@@ -382,61 +386,38 @@ namespace UltraCanvas {
         return _created;
     }
 
-    void UltraCanvasWindowBase::Destroy() {
-        if (!_created || _state == WindowState::Deleted) {
-            return;
-        }
-        CloseAllPopups();
-
-        DestroyNative();
-        _created = false;
-        _state = WindowState::Deleted;
-    }
-
-    void UltraCanvasWindowBase::RequestDelete() {
-        _state = WindowState::DeleteRequested;
-    }
-
-    bool UltraCanvasWindowBase::RequestClose() {
+    bool UltraCanvasWindowBase::Close() {
         if (!_created || _state == WindowState::Closing 
-            || _state == WindowState::DeleteRequested
-            || _state == WindowState::Deleted) {
+            || _state == WindowState::Closed) {
             return false;
         }
-        if (!onWindowCloseRequest || onWindowCloseRequest()) {        
-            Close();
+        debugOutput << "UltraCanvas: Window close requested this=" << this << std::endl;
+        if (!onWindowClosing || onWindowClosing()) {
+            PerformClose();
             return true;
         } else {
             return false;
         }
     }
 
-    void UltraCanvasWindowBase::Close() {
+    void UltraCanvasWindowBase::PerformClose() {
         if (!_created || _state == WindowState::Closing
-            || _state == WindowState::DeleteRequested
-            || _state == WindowState::Deleted) {
+            || _state == WindowState::Closed) {
             return;
         }
-
+        debugOutput << "UltraCanvas: Window perform close this=" << this << std::endl;
         _state = WindowState::Closing;
-        debugOutput << "UltraCanvas: Window close requested" << std::endl;
-
-        if (config_.modal) {
-            UltraCanvasApplication::GetInstance()->UnregisterModalWindow(this);
-        }
 
         CloseAllPopups();
 
-        if (config_.deleteOnClose) {
-            RequestDelete();
-        }
-        if (onWindowClosing) {
-            onWindowClosing();
-        } else {
-            UCEvent ev;
-            ev.type = UCEventType::WindowClosing;
-            ev.targetWindow = this;
-            UltraCanvasApplication::GetInstance()->PushEvent(ev);
+        UltraCanvasApplication::GetInstance()->CleanupWindowReferences(this);
+
+        DestroyNative();
+        _created = false;
+        _state = WindowState::Closed;
+
+        if (onWindowClosed) {
+            onWindowClosed();
         }
     }
 

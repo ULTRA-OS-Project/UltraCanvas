@@ -120,21 +120,14 @@ namespace UltraCanvas {
                 // Fire expired timers
                 ProcessTimers();
 
+
+                std::erase_if(windows, [](const auto &w) {
+                    return (w->GetState() == WindowState::Closed && w->GetConfig().deleteOnClose);
+                });
                 // Check for visible windows, delete/cleanup windows
-rescan_windows:
+
                 for (auto it = windows.begin(); it != windows.end(); it++) {
                     auto window = it->get();
-                    if (window->GetState() == WindowState::DeleteRequested) {
-                        window->Destroy();
-                    }
-                    if (window->GetState() == WindowState::Deleted) {
-                        if (window->onWindowDelete) {
-                            window->onWindowDelete();
-                        }
-                        CleanupWindowReferences(window);
-                        windows.erase(it);
-                        goto rescan_windows;
-                    }
 //                    debugOutput << "window w=" << window << " nativeh=" << window->GetNativeHandle() << " visible=" << window->IsVisible() << " needredraw=" << window->IsNeedsRedraw() << " ctx=" << window->GetRenderContext() << std::endl;
                     if (window->IsVisible()) {
                         auto ctx = window->GetRenderContext();
@@ -193,7 +186,7 @@ rescan_windows:
         while (!windows.empty()) {
             try {
                 auto window = windows.back();
-                window->Destroy();
+                window->PerformClose();
                 windows.pop_back();
             } catch (const std::exception& e) {
                 debugOutput << "UltraCanvas: Exception destroying window: " << e.what() << std::endl;
@@ -325,7 +318,7 @@ rescan_windows:
             if (!locked) continue;
             if (!locked->IsVisible()) continue;
             auto state = locked->GetState();
-            if (state == WindowState::Closing || state == WindowState::DeleteRequested || state == WindowState::Deleted) continue;
+            if (state == WindowState::Closing || state == WindowState::Closed) continue;
             return locked.get();
         }
         return nullptr;
@@ -528,14 +521,6 @@ rescan_windows:
                     debugOutput << "UltraCanvasBaseApplication: Window " << focusedWindow << " (native=" << focusedWindow->GetNativeHandle() << ") lost focus" << std::endl;
                     DispatchEventToElement(targetWindow, event);
                     focusedWindow = nullptr;
-                }
-                return;
-
-            case UCEventType::Redraw:
-                if (event.targetElement) {
-                    event.targetElement->RequestRedraw();
-                } else if (targetWindow) {
-                    targetWindow->RequestRedraw();
                 }
                 return;
         }

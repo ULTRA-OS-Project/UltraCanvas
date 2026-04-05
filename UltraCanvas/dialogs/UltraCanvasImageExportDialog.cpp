@@ -779,7 +779,7 @@ namespace UltraCanvas {
         // ----- Footer buttons -----
         cancelButton->onClick = [this]() {
             if (onCancel) onCancel();
-            Close();
+            PerformClose();
         };
 
         saveButton->onClick = [this]() {
@@ -790,7 +790,7 @@ namespace UltraCanvas {
                 std::string outFilename = fmt::format("{}.{}", GetFileName(), ImageFormatInfo::GetExtension(options.format));
                 ExportVImage(sourceImage, outFilename, options);
             }
-            Close();
+            PerformClose();
         };
     }
 

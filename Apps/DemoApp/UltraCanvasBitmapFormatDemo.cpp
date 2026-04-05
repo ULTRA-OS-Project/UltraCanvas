@@ -270,10 +270,6 @@ namespace UltraCanvas {
                     }
                     break;
 
-                case UCEventType::WindowClosing:
-                    CloseViewer();
-                    return true;
-
                 default:
                     break;
             }
@@ -326,7 +322,7 @@ namespace UltraCanvas {
 
         void CloseViewer() {
             if (viewerWindow) {
-                viewerWindow->RequestDelete();
+                viewerWindow->Close();
                 viewerWindow.reset();
             }
         }

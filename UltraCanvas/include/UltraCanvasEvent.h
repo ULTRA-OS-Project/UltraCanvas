@@ -39,7 +39,6 @@ namespace UltraCanvas {
 
         // Window Events
         WindowCloseRequest,
-        WindowClosing,
         WindowResize,
         WindowMove,
         WindowMinimize,

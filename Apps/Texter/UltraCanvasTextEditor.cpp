@@ -401,13 +401,13 @@ namespace {
         CreateNewDocument();
 
         // Handle close request internally (prompt for unsaved changes)
-        onWindowCloseRequest = [this]() -> bool {
+        onWindowClosing = [this]() -> bool {
             if (HasAnyUnsavedChanges()) {
                 ConfirmCloseWithUnsavedChanges([this](bool shouldClose) {
                     if (shouldClose) {
                         PerformAutosave(true);
                         SaveSession();
-                        Close();
+                        PerformClose();
                     }
                 });
                 return false;  // Don't close yet — the callback handles it
@@ -1333,7 +1333,7 @@ namespace {
                     // Update active document index
                     if (documents.empty()) {
                         if (canCloseEmptyWindow && canCloseEmptyWindow()) {
-                            Close();
+                            PerformClose();
                             return;
                         }
                         CreateNewDocument();
@@ -1365,7 +1365,7 @@ namespace {
                         onTabClosed(index);
                     }
                     isDocumentClosing = false;
-                    Close();
+                    PerformClose();
                     return;
                 }
                 CreateNewDocument();
@@ -2266,7 +2266,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 isDocumentClosing = false;
 
                 if (canCloseEmptyWindow && canCloseEmptyWindow()) {
-                    Close();
+                    PerformClose();
                     return;
                 }
                 CreateNewDocument();
@@ -2276,7 +2276,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::OnFileQuit() {
-        RequestClose();
+        Close();
     }
 
     void UltraCanvasTextEditor::OnEditUndo() {

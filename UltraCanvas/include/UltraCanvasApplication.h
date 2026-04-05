@@ -20,7 +20,10 @@
 #include <queue>
 
 namespace UltraCanvas {
+    class UltraCanvasWindowBase;
+
     class UltraCanvasApplicationBase {
+    friend UltraCanvasWindowBase;
     protected:
         bool volatile running = false;
         bool volatile initialized = false;

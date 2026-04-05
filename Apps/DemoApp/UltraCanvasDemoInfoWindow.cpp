@@ -233,10 +233,6 @@ namespace UltraCanvas {
             return;
         }
 
-        infoWindow->SetWindowCloseCallback([this]() {
-            CloseInfoWindow();
-        });
-
         // Set callback to handle OK button
         infoWindow->SetOkCallback([this]() {
             CloseInfoWindow();
@@ -251,10 +247,11 @@ namespace UltraCanvas {
     void UltraCanvasDemoApplication::CloseInfoWindow() {
         debugOutput << "Closing info window..." << std::endl;
 
-        if (infoWindow) {
-            infoWindow->RequestDelete();
-            infoWindow.reset();
+        if (!infoWindow || !infoWindow->Close()) {
+            return;
         }
+
+        infoWindow.reset();
 
         // Focus back to main window
         if (mainWindow) {

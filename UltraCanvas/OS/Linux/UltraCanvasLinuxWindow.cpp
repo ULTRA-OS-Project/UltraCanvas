@@ -504,6 +504,7 @@ namespace UltraCanvas {
         if (onWindowShow) {
             onWindowShow();
         }
+        RequestRedraw();
     }
 
     void UltraCanvasLinuxWindow::Hide() {
