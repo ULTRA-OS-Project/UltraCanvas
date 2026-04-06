@@ -1,7 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
-// Version: 1.0.0
-// Last Modified: 2025-01-07
+// Version: 1.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -54,6 +54,20 @@ namespace UltraCanvas {
 //            UltraCanvasApplicationBase::InstallWindowEventFilter(elem, interestedEvents);
 //        }
 //    }
+
+    FontStyle UltraCanvasApplicationBase::GetSystemFontStyle() {
+        if (!cachedSystemFontStyle_.has_value()) {
+            cachedSystemFontStyle_ = DetectSystemFontStyleNative();
+        }
+        return cachedSystemFontStyle_.value();
+    }
+
+    FontStyle UltraCanvasApplicationBase::GetDefaultMonospacedFontStyle() {
+        if (!cachedMonospacedFontStyle_.has_value()) {
+            cachedMonospacedFontStyle_ = DetectMonospacedFontStyleNative();
+        }
+        return cachedMonospacedFontStyle_.value();
+    }
 
     bool UltraCanvasApplicationBase::Initialize(const std::string& app) {
         appName = app;

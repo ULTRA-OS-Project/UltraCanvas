@@ -88,7 +88,7 @@ namespace UltraCanvas {
         float checkboxPadding = 6.0f;
 
         // Font
-        std::string fontFamily = "Sans";
+        std::string fontFamily;
         float fontSize = 11.0f;
 
         // Scrollbar style

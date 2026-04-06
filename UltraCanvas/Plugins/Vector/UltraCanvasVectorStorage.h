@@ -256,7 +256,7 @@ namespace UltraCanvas {
 // ===== TEXT (Uses FontWeight, FontSlant from RenderContext.h) =====
 
         struct VectorTextStyle {
-            std::string FontFamily = "Sans";
+            std::string FontFamily;
             float FontSize = 12.0f;
             FontWeight Weight = FontWeight::Normal;
             FontSlant Slant = FontSlant::Normal;

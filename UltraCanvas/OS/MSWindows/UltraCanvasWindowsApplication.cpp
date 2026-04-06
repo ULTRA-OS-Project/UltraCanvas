@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
-// Version: 1.0.0
-// Last Modified: 2026-03-06
+// Version: 1.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -766,4 +766,92 @@ namespace UltraCanvas {
         return result;
     }
 
+    FontStyle UltraCanvasWindowsApplication::DetectSystemFontStyleNative() {
+        FontStyle result;
+
+        NONCLIENTMETRICSW ncm = {};
+        ncm.cbSize = sizeof(NONCLIENTMETRICSW);
+
+        if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0)) {
+            std::wstring wfontName(ncm.lfMessageFont.lfFaceName);
+            result.fontFamily = Utf16ToUtf8(wfontName);
+
+            // lfHeight is negative for character height in logical units
+            int height = ncm.lfMessageFont.lfHeight;
+            if (height < 0) height = -height;
+            result.fontSize = static_cast<float>(height) * 72.0f / 96.0f;
+            if (result.fontSize <= 0) result.fontSize = 12.0f;
+
+//            if (ncm.lfMessageFont.lfWeight >= FW_BOLD) {
+//                result.fontWeight = FontWeight::Bold;
+//            }
+//            if (ncm.lfMessageFont.lfItalic) {
+//                result.fontSlant = FontSlant::Italic;
+//            }
+        } else {
+            result.fontFamily = "Segoe UI";
+            result.fontSize = 12.0f;
+        }
+
+        return result;
+    }
+
+    FontStyle UltraCanvasWindowsApplication::DetectMonospacedFontStyleNative() {
+        FontStyle result;
+
+        NONCLIENTMETRICSW ncm = {};
+        ncm.cbSize = sizeof(NONCLIENTMETRICSW);
+
+        if (SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0)) {
+            // Use the status font size as reference for monospaced font
+            int height = ncm.lfStatusFont.lfHeight;
+            if (height < 0) height = -height;
+            result.fontSize = static_cast<float>(height) * 72.0f / 96.0f;
+            if (result.fontSize <= 0) result.fontSize = 12.0f;
+        }
+
+        // Try Consolas first (Vista+, universally available)
+        // Then Cascadia Mono (Windows 10/11 with Terminal installed)
+        // Courier New as last resort — always present, but ugly
+        static const char *candidates[] = {
+                "Cascadia Mono", "Cascadia Code",
+                "Consolas", "Lucida Console",
+                "Courier New", nullptr
+        };
+
+        PangoFontMap *fontMap = pango_cairo_font_map_get_default();
+        if (!fontMap) {
+            result.fontFamily = "Courier New";
+            return result;
+        }
+
+        PangoContext* ctx = pango_font_map_create_context(fontMap);
+        if (!ctx) {
+            result.fontFamily = "Courier New";
+            return result;
+        }
+
+        for (int i = 0; candidates[i]; ++i) {
+            PangoFontDescription *desc =
+                    pango_font_description_from_string(candidates[i]);
+            PangoFont *font = pango_font_map_load_font(
+                    fontMap, ctx, desc);
+
+            pango_font_description_free(desc);
+
+            if (font) {
+                result.fontFamily = candidates[i];
+                g_object_unref(font);
+                break;
+            } else {
+                g_object_unref(font);
+            }
+        }
+        g_object_unref(ctx);
+
+        if (result.fontFamily.empty()) {
+            result.fontFamily = "Courier New"; // fallback
+        }
+        return result;
+    }
 } // namespace UltraCanvas

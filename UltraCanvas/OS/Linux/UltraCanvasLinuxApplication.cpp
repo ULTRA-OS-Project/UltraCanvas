@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
-// Version: 1.4.0 - Added XIM support for UTF-8/international character input
-// Last Modified: 2025-01-30
+// Version: 1.5.0 - Added system font detection via Pango
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -843,6 +843,90 @@ namespace UltraCanvas {
 
     void UltraCanvasLinuxApplication::LogXError(const std::string& context, int errorCode) {
         debugOutput << "UltraCanvas X11 Error in " << context << ": code " << errorCode << std::endl;
+    }
+
+    FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() {
+        FontStyle result;
+
+        PangoFontMap* fontMap = pango_cairo_font_map_get_default();
+        if (!fontMap) {
+            result.fontFamily = "Sans";
+            return result;
+        }
+
+        PangoContext* ctx = pango_font_map_create_context(fontMap);
+        if (!ctx) {
+            result.fontFamily = "Sans";
+            return result;
+        }
+
+        PangoFontDescription* desc = pango_font_description_from_string("sans");
+        PangoFont* font = pango_font_map_load_font(fontMap, ctx, desc);
+
+        if (font) {
+            PangoFontDescription* resolvedDesc = pango_font_describe(font);
+            if (resolvedDesc) {
+                const char* family = pango_font_description_get_family(resolvedDesc);
+                if (family) {
+                    result.fontFamily = family;
+                }
+                float size = static_cast<float>(pango_font_description_get_size(resolvedDesc)) / PANGO_SCALE;
+                if (size > 0) result.fontSize = size;
+                pango_font_description_free(resolvedDesc);
+            }
+            g_object_unref(font);
+        }
+
+        pango_font_description_free(desc);
+        g_object_unref(ctx);
+
+        if (result.fontFamily.empty()) {
+            result.fontFamily = "Sans";
+        }
+
+        return result;
+    }
+
+    FontStyle UltraCanvasLinuxApplication::DetectMonospacedFontStyleNative() {
+        FontStyle result;
+
+        PangoFontMap* fontMap = pango_cairo_font_map_get_default();
+        if (!fontMap) {
+            result.fontFamily = "monospace";
+            return result;
+        }
+
+        PangoContext* ctx = pango_font_map_create_context(fontMap);
+        if (!ctx) {
+            result.fontFamily = "monospace";
+            return result;
+        }
+
+        PangoFontDescription* desc = pango_font_description_from_string("monospace");
+        PangoFont* font = pango_font_map_load_font(fontMap, ctx, desc);
+
+        if (font) {
+            PangoFontDescription* resolvedDesc = pango_font_describe(font);
+            if (resolvedDesc) {
+                const char* family = pango_font_description_get_family(resolvedDesc);
+                if (family) {
+                    result.fontFamily = family;
+                }
+                float size = static_cast<float>(pango_font_description_get_size(resolvedDesc)) / PANGO_SCALE;
+                if (size > 0) result.fontSize = size;
+                pango_font_description_free(resolvedDesc);
+            }
+            g_object_unref(font);
+        }
+
+        pango_font_description_free(desc);
+        g_object_unref(ctx);
+
+        if (result.fontFamily.empty()) {
+            result.fontFamily = "monospace";
+        }
+
+        return result;
     }
 
 } // namespace UltraCanvas

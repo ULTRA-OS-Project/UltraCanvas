@@ -252,7 +252,7 @@ namespace UltraCanvas {
         // Draw error message
         if (!loadedImage->errorMessage.empty()) {
             ctx->SetTextPaint(Colors::Red);
-            ctx->SetFontStyle({.fontFamily="Sans", .fontSize=10});
+            ctx->SetFontStyle({.fontSize=10});
 
             Rect2Di textRect = GetBounds();
             textRect.y += GetHeight() / 2 + 10;

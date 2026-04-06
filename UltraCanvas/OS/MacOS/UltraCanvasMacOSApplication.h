@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.h
 // Complete macOS platform implementation for UltraCanvas Framework using Cairo
-// Version: 2.0.0
-// Last Modified: 2025-01-18
+// Version: 2.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -163,6 +163,8 @@ namespace UltraCanvas {
         void WakeUpEventLoop() override;
         void InitializeWakeUp() override;
         void ShutdownWakeUp() override;
+        FontStyle DetectSystemFontStyleNative() override;
+        FontStyle DetectMonospacedFontStyleNative() override;
         NSCursor* LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY);
 
     private:

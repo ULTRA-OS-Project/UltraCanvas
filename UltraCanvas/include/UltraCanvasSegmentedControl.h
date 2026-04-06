@@ -76,7 +76,7 @@ namespace UltraCanvas {
         int segmentSpacing = 0;  // Space between segments (usually 0 for bordered style)
 
         // Typography
-        std::string fontFamily = "Sans";
+        std::string fontFamily;
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
 

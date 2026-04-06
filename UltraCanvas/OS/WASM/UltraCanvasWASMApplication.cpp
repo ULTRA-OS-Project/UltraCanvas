@@ -1,7 +1,7 @@
 // OS/WASM/UltraCanvasWASMApplication.cpp
 // WebAssembly platform application implementation
-// Version: 1.0.0
-// Last Modified: 2025-01-27
+// Version: 1.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWASMApplication.h"
@@ -259,6 +259,20 @@ void UltraCanvasWASMApplication::OnPageHidden() {
 void UltraCanvasWASMApplication::OnPageUnload() {
     debugOutput << "[WASM] Page unloading - cleaning up" << std::endl;
     Exit();
+}
+
+FontStyle UltraCanvasWASMApplication::DetectSystemFontStyleNative() {
+    FontStyle result;
+    result.fontFamily = "system-ui";
+    result.fontSize = 14.0f;
+    return result;
+}
+
+FontStyle UltraCanvasWASMApplication::DetectMonospacedFontStyleNative() {
+    FontStyle result;
+    result.fontFamily = "monospace";
+    result.fontSize = 14.0f;
+    return result;
 }
 
 } // namespace UltraCanvas

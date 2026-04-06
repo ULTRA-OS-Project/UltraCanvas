@@ -53,7 +53,7 @@ namespace UltraCanvas {
 
         // Create title label
         auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 1001, 20, 10, 960, 30);
-        titleLabel->SetText("Financial Chart Components - Stock Market Data Visualization");
+        titleLabel->SetText("Candlestick Chart Components - Stock Market Data Visualization");
         titleLabel->SetFontSize(18);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetAlignment(TextAlignment::Center);

@@ -99,7 +99,7 @@ namespace UltraCanvas {
         std::string name;
 
         // Font properties
-        std::string fontFamily = "Sans";
+        std::string fontFamily;
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
         FontSlant fontSlant = FontSlant::Normal;
@@ -141,7 +141,7 @@ namespace UltraCanvas {
         std::string strokeGradientId;
 
         // Font properties
-        std::string fontFamily = "Sans";
+        std::string fontFamily;
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
         FontSlant fontSlant = FontSlant::Normal;

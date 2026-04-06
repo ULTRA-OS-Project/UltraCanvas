@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
-// Version: 2.0.0
-// Last Modified: 2025-01-18
+// Version: 2.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSApplication.h"
@@ -573,4 +573,63 @@ namespace UltraCanvas {
     bool UltraCanvasMacOSApplication::IsMainThread() const {
         return std::this_thread::get_id() == mainThreadId;
     }
+// ===== SYSTEM FONT DETECTION =====
+    FontStyle UltraCanvasMacOSApplication::DetectSystemFontStyleNative() {
+        FontStyle result;
+
+        @autoreleasepool {
+            NSFont* sysFont = [NSFont systemFontOfSize:0];
+            if (sysFont) {
+                result.fontFamily = [[sysFont familyName] UTF8String];
+                result.fontSize = static_cast<float>([sysFont pointSize]);
+                if (result.fontSize <= 0) result.fontSize = 12.0f;
+
+//                NSFontTraitMask traits = [[NSFontManager sharedFontManager]
+//                                          traitsOfFont:sysFont];
+//                if (traits & NSBoldFontMask) {
+//                    result.fontWeight = FontWeight::Bold;
+//                }
+//                if (traits & NSItalicFontMask) {
+//                    result.fontSlant = FontSlant::Italic;
+//                }
+            }
+
+            // Private system font names (e.g. ".AppleSystemUIFont", ".SF NS")
+            // cannot be resolved by Pango/Cairo - fall back to Helvetica Neue
+            if (result.fontFamily.empty() || result.fontFamily[0] == '.') {
+                result.fontFamily = "Helvetica Neue";
+                if (result.fontSize <= 0) result.fontSize = 12.0f;
+            }
+        }
+
+        return result;
+    }
+
+    FontStyle UltraCanvasMacOSApplication::DetectMonospacedFontStyleNative() {
+        FontStyle result;
+
+        @autoreleasepool {
+            NSFont* monoFont = nil;
+
+            // Available on macOS 10.15+
+            if (@available(macOS 10.15, *)) {
+                monoFont = [NSFont monospacedSystemFontOfSize:0 weight:NSFontWeightRegular];
+            }
+
+            if (monoFont) {
+                result.fontFamily = [[monoFont familyName] UTF8String];
+                result.fontSize = static_cast<float>([monoFont pointSize]);
+                if (result.fontSize <= 0) result.fontSize = 12.0f;
+            }
+
+            // Private font names cannot be resolved by Pango/Cairo
+            if (result.fontFamily.empty() || result.fontFamily[0] == '.') {
+                result.fontFamily = "Menlo";
+                if (result.fontSize <= 0) result.fontSize = 12.0f;
+            }
+        }
+
+        return result;
+    }
+
 } // namespace UltraCanvas

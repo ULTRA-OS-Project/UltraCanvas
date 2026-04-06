@@ -1,7 +1,7 @@
 // OS/WASM/UltraCanvasWASMApplication.h
 // WebAssembly platform application implementation
-// Version: 1.0.0
-// Last Modified: 2025-01-27
+// Version: 1.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -76,6 +76,10 @@ public:
     
     // ===== STATIC INSTANCE ACCESS =====
     static UltraCanvasWASMApplication* GetInstance() { return instance; }
+
+protected:
+    FontStyle DetectSystemFontStyleNative() override;
+    FontStyle DetectMonospacedFontStyleNative() override;
 };
 
 } // namespace UltraCanvas

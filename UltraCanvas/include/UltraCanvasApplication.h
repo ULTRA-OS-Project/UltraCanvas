@@ -1,7 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.0.0
-// Last Modified: 2025-01-07
+// Version: 1.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -18,6 +18,7 @@
 #include <iostream>
 #include <chrono>
 #include <queue>
+#include <optional>
 
 namespace UltraCanvas {
     class UltraCanvasWindowBase;
@@ -55,6 +56,10 @@ namespace UltraCanvas {
         std::chrono::steady_clock::time_point lastClickTime;
         const float DOUBLE_CLICK_TIME = 0;
         const int DOUBLE_CLICK_DISTANCE = 0;
+
+        // Cached system font styles
+        std::optional<FontStyle> cachedSystemFontStyle_;
+        std::optional<FontStyle> cachedMonospacedFontStyle_;
 
         // Keyboard state
         bool keyStates[256];
@@ -120,6 +125,10 @@ namespace UltraCanvas {
         void CaptureMouse(UltraCanvasUIElement* element);
         void ReleaseMouse(UltraCanvasUIElement* element);
 
+        // System font detection
+        FontStyle GetSystemFontStyle();
+        FontStyle GetDefaultMonospacedFontStyle();
+
         // Application icon
         void SetDefaultWindowIcon(const std::string& iconPath) { defaultWindowIconPath = iconPath; }
         std::string GetDefaultWindowIcon() const { return defaultWindowIconPath; }
@@ -154,6 +163,10 @@ namespace UltraCanvas {
         // Timer processing - called from Run() each iteration
         void ProcessTimers();
         std::chrono::milliseconds GetTimeUntilNextTimer() const;
+
+        // Platform-specific system font detection
+        virtual FontStyle DetectSystemFontStyleNative() = 0;
+        virtual FontStyle DetectMonospacedFontStyleNative() = 0;
 
         // Platform-specific wakeup mechanism for cross-thread signaling
         virtual void WakeUpEventLoop() = 0;

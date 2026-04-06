@@ -1,10 +1,11 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.2 - Fixed null pointer crashes and Pango initialization
-// Last Modified: 2025-07-14
+// Version: 1.0.3 - System font resolution for empty fontFamily
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #include "RenderContextCairo.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasUtils.h"
 #include <cstring>
 #include <cmath>
@@ -987,8 +988,16 @@ namespace UltraCanvas {
                 return nullptr;
             }
 
-            // Use default font if family is empty
-            const char *fontFamily = style.fontFamily.empty() ? "Sans" : style.fontFamily.c_str();
+            // Use system default font if family is empty
+            const char *fontFamily;
+            if (style.fontFamily.empty()) {
+                std::string resolvedFamily;
+                auto* app = UltraCanvasApplication::GetInstance();
+                resolvedFamily = app ? app->GetSystemFontStyle().fontFamily : "Sans";
+                fontFamily = resolvedFamily.c_str();
+            } else {
+                fontFamily = style.fontFamily.c_str();
+            }
             pango_font_description_set_family(desc, fontFamily);
 
             // Ensure reasonable font size

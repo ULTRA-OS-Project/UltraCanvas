@@ -7,6 +7,7 @@
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasSyntaxTokenizer.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
@@ -52,17 +53,12 @@ namespace UltraCanvas {
     UltraCanvasTextArea::~UltraCanvasTextArea() = default;
 
 // Initialize default style
-    void UltraCanvasTextArea::ApplyDefaultStyle() {      
-#ifdef _WIN32
-        style.fontStyle.fontFamily = "Arial";
-        style.fixedFontStyle.fontFamily = "Courier New";
-#elif __APPLE__        
-        style.fontStyle.fontFamily = "DejaVu Sans";
-        style.fixedFontStyle.fontFamily = "DejaVu Sans Mono";
-#else
-        style.fontStyle.fontFamily = "Sans";
-        style.fixedFontStyle.fontFamily = "Courier New";
-#endif
+    void UltraCanvasTextArea::ApplyDefaultStyle() {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (app) {
+            style.fontStyle.fontFamily = app->GetSystemFontStyle().fontFamily;
+            style.fixedFontStyle.fontFamily = app->GetDefaultMonospacedFontStyle().fontFamily;
+        }
         style.fontStyle.fontSize = 11;
         style.fixedFontStyle.fontSize = 11;
         style.fontColor = {0, 0, 0, 255};

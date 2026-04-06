@@ -46,7 +46,7 @@ namespace UltraCanvas {
         int maxPopupWidth = 400;
 
         // Font (for popup items; TextInput has its own font style)
-        std::string fontFamily = "Sans";
+        std::string fontFamily;
         float fontSize = 11.0f;
 
         // Scrollbar

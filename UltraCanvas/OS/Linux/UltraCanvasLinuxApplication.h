@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.h
 // Complete Linux platform implementation for UltraCanvas Framework
-// Version: 1.2.0
-// Last Modified: 2025-07-15
+// Version: 1.3.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -179,6 +179,8 @@ namespace UltraCanvas {
         void WakeUpEventLoop() override;
         void InitializeWakeUp() override;
         void ShutdownWakeUp() override;
+        FontStyle DetectSystemFontStyleNative() override;
+        FontStyle DetectMonospacedFontStyleNative() override;
 
         Cursor LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY);
 

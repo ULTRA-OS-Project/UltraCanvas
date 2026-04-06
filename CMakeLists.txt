@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 1.0.14
+    VERSION 1.0.15
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )

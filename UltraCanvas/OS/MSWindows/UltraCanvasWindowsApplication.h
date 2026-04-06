@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.h
 // Windows platform implementation for UltraCanvas Framework
-// Version: 1.0.0
-// Last Modified: 2026-03-06
+// Version: 1.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -153,6 +153,8 @@ namespace UltraCanvas {
         void WakeUpEventLoop() override;
         void InitializeWakeUp() override;
         void ShutdownWakeUp() override;
+        FontStyle DetectSystemFontStyleNative() override;
+        FontStyle DetectMonospacedFontStyleNative() override;
 
     private:
         // ===== INTERNAL INITIALIZATION =====
