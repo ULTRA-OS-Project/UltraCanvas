@@ -1,8 +1,8 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
-// Version: 2.4.2
-// Last Modified: 2026-05-26
+// Version: 2.4.3
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -3418,9 +3418,95 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         context->SetFontSize(style.fontStyle.fontSize);
         context->SetFontFamily(style.fontStyle.fontFamily);
 
-        // --- Code block content (block-level: render only on first segment) ---
+        // --- Code block content ---
         if (isInsideCodeBlock[logLine]) {
-            if (!isFirstSegment) continue;
+            if (!isFirstSegment && !isCodeBlockDelimiter[logLine]) {
+                // Wrapped continuation segment: draw code block background + borders
+                context->SetFillPaint(mdStyle.codeBlockBackgroundColor);
+                context->SetStrokePaint(mdStyle.codeBlockBorderColor);
+                context->SetStrokeWidth(0.5);
+                context->FillRectangle(x, textY, visibleTextArea.width, computedLineHeight);
+                context->DrawLine(x, textY, x, textY + computedLineHeight);
+                context->DrawLine(x + visibleTextArea.width, textY, x + visibleTextArea.width, textY + computedLineHeight);
+
+                context->SetFontFamily(mdStyle.codeFont);
+                context->SetFontWeight(FontWeight::Normal);
+                context->SetFontSlant(FontSlant::Normal);
+
+                const std::string& lang = codeBlockLanguage[logLine];
+                if (!lang.empty() && codeBlockTokenizer) {
+                    // Syntax-highlighted wrap: tokenize full line, clip to segment range
+                    auto tokens = codeBlockTokenizer->TokenizeLine(line);
+                    int tokenStartGrapheme = 0;
+                    int tokenX = x + 4;
+                    for (const auto& token : tokens) {
+                        int tokenLen = static_cast<int>(utf8_length(token.text));
+                        int tokenEndGrapheme = tokenStartGrapheme + tokenLen;
+
+                        int overlapStart = std::max(tokenStartGrapheme, dl.startGrapheme);
+                        int overlapEnd = std::min(tokenEndGrapheme, dl.endGrapheme);
+
+                        if (overlapStart < overlapEnd) {
+                            std::string visibleText;
+                            if (overlapStart == tokenStartGrapheme && overlapEnd == tokenEndGrapheme) {
+                                visibleText = token.text;
+                            } else {
+                                int localStart = overlapStart - tokenStartGrapheme;
+                                int localLen = overlapEnd - overlapStart;
+                                visibleText = utf8_substr(token.text, localStart, localLen);
+                            }
+
+                            Color tokenColor = mdStyle.codeBlockTextColor;
+                            bool tokenBold = false;
+                            switch (token.type) {
+                                case TokenType::Keyword:
+                                case TokenType::Preprocessor:
+                                    tokenColor = mdStyle.codeBlockKeywordColor;
+                                    tokenBold = true;
+                                    break;
+                                case TokenType::String:
+                                case TokenType::Character:
+                                    tokenColor = mdStyle.codeBlockStringColor;
+                                    break;
+                                case TokenType::Comment:
+                                    tokenColor = mdStyle.codeBlockCommentColor;
+                                    break;
+                                case TokenType::Number:
+                                    tokenColor = mdStyle.codeBlockNumberColor;
+                                    break;
+                                case TokenType::Function:
+                                case TokenType::Type:
+                                case TokenType::Builtin:
+                                    tokenColor = mdStyle.codeBlockKeywordColor;
+                                    break;
+                                default:
+                                    break;
+                            }
+
+                            context->SetFontWeight(tokenBold ? FontWeight::Bold : FontWeight::Normal);
+                            context->SetTextPaint(tokenColor);
+                            int tokenWidth = context->GetTextLineWidth(visibleText);
+                            context->DrawText(visibleText, tokenX, textY);
+                            tokenX += tokenWidth;
+                        }
+
+                        tokenStartGrapheme = tokenEndGrapheme;
+                        if (tokenStartGrapheme >= dl.endGrapheme) break;
+                    }
+                } else {
+                    // Plain monospace wrap
+                    int segLen = dl.endGrapheme - dl.startGrapheme;
+                    std::string codeSegment = utf8_substr(line, dl.startGrapheme, segLen);
+                    context->SetTextPaint(mdStyle.codeBlockTextColor);
+                    context->DrawText(codeSegment, x + 4, textY);
+                }
+
+                context->SetFontFamily(style.fontStyle.fontFamily);
+                context->SetFontWeight(FontWeight::Normal);
+                continue;
+            }
+
+            if (!isFirstSegment) continue; // delimiter lines don't wrap
 
             std::string trimmed = TrimWhitespace(line);
 
@@ -3568,11 +3654,39 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             continue;
         }
         if (!isFirstSegment && TrimWhitespace(lines[logLine])[0] == '>') {
-            // Continuation of a blockquote: render with indent
-            int quoteIndent = mdStyle.quoteBarWidth + mdStyle.quoteIndent;
+            // Continuation of a blockquote wrap: render with full blockquote styling
+            const std::string& origLine = lines[logLine];
+            int depth = 0;
+            size_t cp = 0;
+            while (cp < origLine.length() && origLine[cp] == ' ') cp++;
+            while (cp < origLine.length() && origLine[cp] == '>') {
+                depth++;
+                cp++;
+                if (cp < origLine.length() && origLine[cp] == ' ') cp++;
+            }
+            if (depth < 1) depth = 1;
+
+            int barStride = mdStyle.quoteNestingStep;
+
+            // Background
+            context->SetFillPaint(mdStyle.quoteBackgroundColor);
+            context->FillRectangle(x, textY, visibleTextArea.width, computedLineHeight);
+
+            // Vertical bars
+            for (int d = 0; d < depth; d++) {
+                int barX = x + d * barStride;
+                context->SetFillPaint(mdStyle.quoteBarColor);
+                context->FillRectangle(barX, textY, mdStyle.quoteBarWidth, computedLineHeight);
+            }
+
+            // Italic text with quote color
+            int textX = x + (depth - 1) * barStride + mdStyle.quoteIndent;
+            context->SetFontSlant(FontSlant::Italic);
+            context->SetTextPaint(mdStyle.quoteTextColor);
             MarkdownInlineRenderer::RenderMarkdownLine(
-                    context, segment, x + quoteIndent, textY, computedLineHeight,
+                    context, segment, textX, textY, computedLineHeight,
                     style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
+            context->SetFontSlant(FontSlant::Normal);
             continue;
         }
 
@@ -3630,25 +3744,6 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             int defIndent = mdStyle.listIndent + 10;
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, trimmed, x + defIndent, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
-            continue;
-        }
-        if (!isFirstSegment && TrimWhitespace(lines[logLine])[0] == '>') {
-            // Continuation of a blockquote wrap: match text indent of first segment
-            // Count depth of the original logical line to align correctly
-            const std::string& origLine = lines[logLine];
-            int contDepth = 0;
-            size_t cp = 0;
-            while (cp < origLine.length() && origLine[cp] == ' ') cp++;
-            while (cp < origLine.length() && origLine[cp] == '>') {
-                contDepth++;
-                cp++;
-                if (cp < origLine.length() && origLine[cp] == ' ') cp++;
-            }
-            if (contDepth < 1) contDepth = 1;
-            int contTextX = x + (contDepth - 1) * mdStyle.quoteNestingStep + mdStyle.quoteIndent;
-            MarkdownInlineRenderer::RenderMarkdownLine(
-                    context, segment, contTextX, textY, computedLineHeight,
                     style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
             continue;
         }
