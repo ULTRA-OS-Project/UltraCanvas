@@ -1,7 +1,7 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.3 - System font resolution for empty fontFamily
-// Last Modified: 2026-04-06
+// Version: 1.0.4 - Configurable text rendering options
+// Last Modified: 2026-04-07
 // Author: UltraCanvas Framework
 
 #include "RenderContextCairo.h"
@@ -22,6 +22,67 @@ namespace UltraCanvas {
     static UCCache<TextSurfaceEntry> g_TextSurfacesCache(50 * 1024 * 1024);
     // 20 MB cache for pre-measured text dimensions
     static UCCache<TextDimensionsEntry> g_TextDimensionsCache(20 * 1024 * 1024);
+
+    // Configurable text rendering font options (global, matching cache scope)
+    static cairo_antialias_t g_TextAntialias = CAIRO_ANTIALIAS_GRAY;
+    static cairo_hint_style_t g_TextHintStyle = CAIRO_HINT_STYLE_MEDIUM;
+    static cairo_hint_metrics_t g_TextHintMetrics = CAIRO_HINT_METRICS_DEFAULT;
+
+    std::vector<RenderContextCairo*> RenderContextCairo::g_Instances;
+
+    void RenderContextCairo::ApplyPangoFontOptions() {
+        cairo_font_options_t *opts = cairo_font_options_create();
+        cairo_font_options_set_antialias(opts, g_TextAntialias);
+        cairo_font_options_set_hint_style(opts, g_TextHintStyle);
+        cairo_font_options_set_hint_metrics(opts, g_TextHintMetrics);
+        pango_cairo_context_set_font_options(pangoContext, opts);
+        cairo_font_options_destroy(opts);
+    }
+
+    void RenderContextCairo::SetTextAntialias(cairo_antialias_t mode) {
+        if (g_TextAntialias != mode) {
+            g_TextAntialias = mode;
+            g_TextSurfacesCache.ClearCache();
+            g_TextDimensionsCache.ClearCache();
+            for (auto* instance : g_Instances) {
+                instance->ApplyPangoFontOptions();
+            }
+        }
+    }
+
+    cairo_antialias_t RenderContextCairo::GetTextAntialias() {
+        return g_TextAntialias;
+    }
+
+    void RenderContextCairo::SetTextHintStyle(cairo_hint_style_t style) {
+        if (g_TextHintStyle != style) {
+            g_TextHintStyle = style;
+            g_TextSurfacesCache.ClearCache();
+            g_TextDimensionsCache.ClearCache();
+            for (auto* instance : g_Instances) {
+                instance->ApplyPangoFontOptions();
+            }
+        }
+    }
+
+    cairo_hint_style_t RenderContextCairo::GetTextHintStyle() {
+        return g_TextHintStyle;
+    }
+
+    void RenderContextCairo::SetTextHintMetrics(cairo_hint_metrics_t metrics) {
+        if (g_TextHintMetrics != metrics) {
+            g_TextHintMetrics = metrics;
+            g_TextSurfacesCache.ClearCache();
+            g_TextDimensionsCache.ClearCache();
+            for (auto* instance : g_Instances) {
+                instance->ApplyPangoFontOptions();
+            }
+        }
+    }
+
+    cairo_hint_metrics_t RenderContextCairo::GetTextHintMetrics() {
+        return g_TextHintMetrics;
+    }
 
     // ===== TEXT SURFACE CACHING IMPLEMENTATION =====
     void ApplySourceToCairo(cairo_t* cairo, const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern) {
@@ -56,7 +117,10 @@ namespace UltraCanvas {
                   << static_cast<int>(currentState.textStyle.wrap)
                   << currentState.textSourceColor.ToARGB()
                   << static_cast<int>(currentState.textStyle.lineHeight * 100)
-                  << (currentState.textStyle.isMarkup ? "1" : "0") << "|"
+                  << (currentState.textStyle.isMarkup ? "1" : "0")
+                  << static_cast<int>(g_TextAntialias)
+                  << static_cast<int>(g_TextHintStyle)
+                  << static_cast<int>(g_TextHintMetrics) << "|"
                   << text.substr(0,300);
 
         return keyStream.str();
@@ -91,15 +155,9 @@ namespace UltraCanvas {
             }
 
             // Get actual text dimensions
-//            int textSurfaceWidth, textSurfaceHeight;
             PangoRectangle inkLayoutRect, logicalLayoutRect;
             pango_layout_get_pixel_extents(layout, &inkLayoutRect, &logicalLayoutRect);
 
-            // Determine surface dimensions
-//            int surfaceWidth = (rectWidth > 0) ? rectWidth : textWidth;
-//            int surfaceHeight = (rectHeight > 0) ? rectHeight : textHeight;
-
-            // Ensure minimum dimensions
             if (logicalLayoutRect.width <= 0 || logicalLayoutRect.height <= 0) {
                 debugOutput << "ERROR: MakeTextSurface - Surface dimensions zero, width=" << surfaceWidth << ", height=" << surfaceHeight << std::endl;
                 pango_font_description_free(desc);
@@ -270,11 +328,9 @@ namespace UltraCanvas {
             // Associate Pango context with Cairo context
             pango_cairo_context_set_resolution(pangoContext, 96.0);  // Standard DPI
 
-            // Get and set font options from Cairo
-            cairo_font_options_t *fontOptions = cairo_font_options_create();
-            cairo_get_font_options(targetContext, fontOptions);
-            pango_cairo_context_set_font_options(pangoContext, fontOptions);
-            cairo_font_options_destroy(fontOptions);
+            // Apply configurable text rendering font options
+            ApplyPangoFontOptions();
+            g_Instances.push_back(this);
 
             debugOutput << "RenderContextCairo: Pango initialization complete" << std::endl;
 
@@ -301,6 +357,8 @@ namespace UltraCanvas {
     RenderContextCairo::~RenderContextCairo() {
         debugOutput << "RenderContextCairo: Destroying..." << std::endl;
         destroying = true;
+
+        g_Instances.erase(std::remove(g_Instances.begin(), g_Instances.end(), this), g_Instances.end());
 
         // Clear the state stack to prevent any pending cairo operations
         stateStack.clear();
@@ -766,8 +824,6 @@ namespace UltraCanvas {
             // Use cached surface - just blit it to the target
             cairo_save(cairo);
 
-//            cairo_translate(cairo, x, y);
-            // Apply global alpha if needed
             cairo_set_source_surface(cairo, cachedSurface->surface, x, y);
 
             if (currentState.globalAlpha < 1.0f) {
@@ -1813,11 +1869,7 @@ namespace UltraCanvas {
         // Re-associate Pango context with new Cairo context
         if (pangoContext) {
             pango_cairo_context_set_resolution(pangoContext, 96.0);
-
-            cairo_font_options_t *fontOptions = cairo_font_options_create();
-            cairo_get_font_options(cairo, fontOptions);
-            pango_cairo_context_set_font_options(pangoContext, fontOptions);
-            cairo_font_options_destroy(fontOptions);
+            ApplyPangoFontOptions();
         }
 
         // Reset state

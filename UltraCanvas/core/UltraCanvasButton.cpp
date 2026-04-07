@@ -634,26 +634,14 @@ namespace UltraCanvas {
         ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
         ctx->SetFontSize(style.fontSize);
         ctx->SetTextIsMarkup(true);
+        ctx->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
+        ctx->SetTextAlignment(TextAlignment::Center);
 
-        // Get text dimensions
-        int textWidth, textHeight;
-
-        ctx->GetTextLineDimensions(text, textWidth, textHeight);
-        Point2Df textPos;
-        if (style.textAlign == TextAlignment::Center) {
-            textPos.x = textRect.x + (textRect.width - textWidth) / 2;
-        } else if (style.textAlign == TextAlignment::Right) {
-            textPos.x = textRect.x + textRect.width - textWidth;
-        } else {
-            textPos.x = textRect.x;
-        }
-        textPos.y = textRect.y + (textRect.height - textHeight) / 2;
         if (GetPrimaryState() == ElementState::Pressed) {
-            textPos.y ++;
-            textPos.x ++;
+            ctx->DrawTextInRect(text, textRect.x+1, textRect.y+1, textRect.width, textRect.height);
+        } else {
+            ctx->DrawTextInRect(text, textRect.x, textRect.y, textRect.width, textRect.height);
         }
-        //ctx->DrawRectangle((int)textPos.x, (int)textPos.y, textWidth, textHeight);
-        ctx->DrawText(text, textPos);
     }
 
     void UltraCanvasButton::DrawSplitButton(IRenderContext* ctx) {

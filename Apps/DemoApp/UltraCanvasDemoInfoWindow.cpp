@@ -27,7 +27,7 @@ namespace UltraCanvas {
         WindowConfig config;
         config.title = "UltraCanvas Demo - Information";
         config.width = 630;
-        config.height = 615;
+        config.height = 625;
         config.resizable = false;
         config.type = WindowType::Dialog;
         config.modal = true;
@@ -150,7 +150,7 @@ namespace UltraCanvas {
 
         // link ultraos.eu
         auto openUltraosCallback = []() {
-            system("xdg-open https://www.ultraos.eu");
+            OpenURL("https://www.ultraos.eu");
         };
         infoLabel1_1 = std::make_shared<UltraCanvasLabel>();
         infoLabel1_1->SetText("URL <span color=\"blue\">www.ultraos.eu</span>");
@@ -163,9 +163,6 @@ namespace UltraCanvas {
         layout->AddUIElement(infoLabel1_1);
 
         // link ULTRA OS Github
-        auto openGitHubCallback = []() {
-            system("xdg-open https://github.com/ULTRA-OS-Project/UltraCanvas");
-        };
         infoLabel1_2 = std::make_shared<UltraCanvasLabel>();
         infoLabel1_2->SetText("Github: <span color=\"blue\">github.com/ULTRA-OS-Project/UltraCanvas</span>");
         infoLabel1_2->SetFontSize(10);
@@ -173,6 +170,9 @@ namespace UltraCanvas {
         infoLabel1_2->SetAutoResize(true);
         infoLabel1_2->SetMargin(2,20);
         infoLabel1_2->SetTextIsMarkup(true);
+        auto openGitHubCallback = []() {
+            OpenURL("https://github.com/ULTRA-OS-Project/UltraCanvas");
+        };
         infoLabel1_2->onClick = openGitHubCallback;
         layout->AddUIElement(infoLabel1_2);
 

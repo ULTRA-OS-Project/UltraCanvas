@@ -349,7 +349,7 @@ int main(int argc, char* argv[]) {
         splashConfig.height = 500;
         splashConfig.imagePath = GetResourcesDir() + "media/appicon/Texter.png";
         splashConfig.title = "UltraTexter";
-        splashConfig.version = "1.0.12";
+        splashConfig.version = UltraCanvasTextEditor::version;
         splashConfig.websiteURL = "https://www.ultraos.eu/";
         splashConfig.websiteDisplay = "www.ultraos.eu";
         splashConfig.showTimeout = std::chrono::milliseconds(2000);

@@ -226,7 +226,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(splitBtn);
 
             // Badge Style (Sponsors)
-            auto sponsorBtn = CreateButton("SponsorButton", 142, 160, yOffset, 140, 35, "sponsors");
+            auto sponsorBtn = CreateButton("SponsorButton", 142, 160, yOffset, 140, 35, "Sponsors");
             sponsorBtn->SetStyle(ButtonStyles::BadgeButtonStyle());
             sponsorBtn->SetSplitSecondaryText("31");
             sponsorBtn->SetSplitColors(
@@ -260,7 +260,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(patreonBtn);
 
             // Badge Style (Liberapay)
-            auto liberapayBtn = CreateButton("LiberapayButton", 144, 460, yOffset, 140, 35, "liberapay");
+            auto liberapayBtn = CreateButton("LiberapayButton", 144, 460, yOffset, 140, 35, "Liberapay");
             liberapayBtn->SetSplitEnabled(true);
             liberapayBtn->SetSplitSecondaryText("5");
             liberapayBtn->SetSplitColors(

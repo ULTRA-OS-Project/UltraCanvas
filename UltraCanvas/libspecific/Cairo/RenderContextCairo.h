@@ -1,7 +1,7 @@
 // libspecific/Cairo/RenderContextCairo.h
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.2
-// Last Modified: 2025-01-07
+// Version: 1.0.3 - Configurable text rendering options
+// Last Modified: 2026-04-07
 // Author: UltraCanvas Framework
 //
 
@@ -104,6 +104,8 @@ namespace UltraCanvas {
 
         PangoFontDescription *CreatePangoFont(const FontStyle &style);
         PangoLayout * CreatePangoLayout(PangoFontDescription *desc, int w=0, int h=0);
+
+        static std::vector<RenderContextCairo*> g_Instances;
 
         // Add a flag to track if we're being destroyed
         bool destroying = false;
@@ -265,6 +267,15 @@ namespace UltraCanvas {
         void SwapBuffers();
 
         void *GetNativeContext() override;
+
+        // ===== CONFIGURABLE TEXT RENDERING OPTIONS =====
+        static void SetTextAntialias(cairo_antialias_t mode);
+        static cairo_antialias_t GetTextAntialias();
+        static void SetTextHintStyle(cairo_hint_style_t style);
+        static cairo_hint_style_t GetTextHintStyle();
+        static void SetTextHintMetrics(cairo_hint_metrics_t metrics);
+        static cairo_hint_metrics_t GetTextHintMetrics();
+        void ApplyPangoFontOptions();
 
         // ===== CAIRO-SPECIFIC METHODS =====
         void SetCairoColor(const Color &color);

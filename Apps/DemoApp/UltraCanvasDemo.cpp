@@ -296,7 +296,6 @@ namespace UltraCanvas {
         config.height = 880;
         config.resizable = true;
         config.type = WindowType::Standard;
-        config.deleteOnClose = true;
 
         mainWindow = CreateWindow(config);
         debugOutput << "Creating Main window.." << std::endl;
@@ -944,6 +943,11 @@ namespace UltraCanvas {
                              ImplementationStatus::NotImplemented,
                              [this]() { return CreatePartiallyImplementedExamples(""); });
 
+        toolsBuilder.AddItem("textrenderingsettings", "Text Rendering",
+                             "Configure text antialiasing, hinting style, and hint metrics",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateTextRenderingSettingsExamples(); },
+                             "Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp");
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",

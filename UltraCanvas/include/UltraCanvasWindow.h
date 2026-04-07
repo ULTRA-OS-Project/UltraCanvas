@@ -51,7 +51,7 @@ namespace UltraCanvas {
 
         UltraCanvasWindowBase* parentWindow = nullptr;
         bool modal = false;
-        bool deleteOnClose = false;
+        bool deleteOnClose = true;
 
         // Container-specific window settings
         bool enableWindowScrolling = false;

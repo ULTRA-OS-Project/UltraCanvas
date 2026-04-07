@@ -64,9 +64,9 @@ FILE="$SCRIPT_DIR/UltraCanvas/core/UltraCanvasUtils.cpp"
 sed -i "s/\(versionString = \"\)[^\"]*\"/\1$UC_VERSION\"/" "$FILE"
 echo "  Updated $FILE"
 
-# --- Apps/Texter/UltraCanvasTextEditor.h: std::string TEXTER_VERSION = "..." ---
-FILE="$SCRIPT_DIR/Apps/Texter/UltraCanvasTextEditor.h"
-sed -i "s/\(std::string version = \"\)[^\"]*\"/\1$TEXTER_VERSION\"/" "$FILE"
+# --- Apps/Texter/UltraCanvasTextEditor.cpp: std::string TEXTER_VERSION = "..." ---
+FILE="$SCRIPT_DIR/Apps/Texter/UltraCanvasTextEditor.cpp"
+sed -i "s/\(std::string UltraCanvasTextEditor::version = \"\)[^\"]*\"/\1$TEXTER_VERSION\"/" "$FILE"
 echo "  Updated $FILE"
 
 # --- Apps/Texter/UltraTexter.manifest: TEXTER_VERSION="x.y.z.0" ---

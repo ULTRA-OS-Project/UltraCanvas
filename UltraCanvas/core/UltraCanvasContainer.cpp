@@ -31,6 +31,13 @@ namespace UltraCanvas {
 
     void UltraCanvasContainer::UpdateGeometry(IRenderContext* ctx) {
         // Update layout if needed
+
+        for (const auto &child: children) {
+            //if (!child || !child->IsVisible()) continue;
+            // Apply scroll offset to child rendering
+            child->UpdateGeometry(ctx);
+        }
+
         if (IsLayoutDirty()) {
             SortChildrenByZOrder();
             if (layout) {
@@ -41,11 +48,12 @@ namespace UltraCanvas {
             //UpdateScrollbarPositions();
             layoutDirty = false;
         }
+        if (verticalScrollbar->IsVisible()) {
+            verticalScrollbar->UpdateGeometry(ctx);
+        }
 
-        for (const auto &child: children) {
-            //if (!child || !child->IsVisible()) continue;
-            // Apply scroll offset to child rendering
-            child->UpdateGeometry(ctx);
+        if (horizontalScrollbar->IsVisible()) {
+            horizontalScrollbar->UpdateGeometry(ctx);
         }
 
         UltraCanvasUIElement::UpdateGeometry(ctx);
