@@ -486,6 +486,7 @@ namespace UltraCanvas {
             debugOutput << "SwitchToSurface: Invalid context" << std::endl;
         }
         ResetState();
+        pango_cairo_update_context(cairo, pangoContext);
     }
 
 // ===== STATE MANAGEMENT =====
@@ -1868,7 +1869,8 @@ namespace UltraCanvas {
 
         // Re-associate Pango context with new Cairo context
         if (pangoContext) {
-            pango_cairo_context_set_resolution(pangoContext, 96.0);
+            pango_cairo_update_context(cairo, pangoContext);
+            //pango_cairo_context_set_resolution(pangoContext, 96.0);
             ApplyPangoFontOptions();
         }
 

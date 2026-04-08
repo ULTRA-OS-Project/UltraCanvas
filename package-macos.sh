@@ -37,11 +37,11 @@ done
 
 # ── Version and environment ──────────────────────────────────────────────────
 
-if [ ! -f "$SCRIPT_DIR/VERSION" ]; then
+if [ ! -f "$SCRIPT_DIR/UltraCanvas/VERSION" ]; then
     echo "Error: VERSION file not found"
     exit 1
 fi
-VERSION=$(cat "$SCRIPT_DIR/VERSION" | tr -d '[:space:]')
+VERSION=$(cat "$SCRIPT_DIR/UltraCanvas/VERSION" | tr -d '[:space:]')
 
 if ! command -v brew &>/dev/null; then
     echo "Error: Homebrew is required"

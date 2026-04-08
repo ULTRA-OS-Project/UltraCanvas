@@ -212,6 +212,7 @@ file(GLOB ULTRACANVAS_CHARTS_SOURCES
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UCTextLayout.cpp
 )
 if(LIBVIPS_FOUND)
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES

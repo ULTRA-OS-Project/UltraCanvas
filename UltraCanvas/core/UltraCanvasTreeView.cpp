@@ -349,6 +349,13 @@ namespace UltraCanvas {
         return false;
     }
 
+    void UltraCanvasTreeView::UpdateGeometry(IRenderContext *ctx) {
+        UltraCanvasUIElement::UpdateGeometry(ctx);
+        if (verticalScrollbar && verticalScrollbar->IsVisible()) {
+            verticalScrollbar->UpdateGeometry(ctx);
+        }
+    }
+
     void UltraCanvasTreeView::Render(IRenderContext *ctx) {
         ctx->PushState();
         // Draw background / border

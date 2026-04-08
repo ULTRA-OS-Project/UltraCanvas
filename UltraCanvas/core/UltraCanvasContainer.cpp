@@ -1,11 +1,12 @@
 // UltraCanvasContainer.cpp
 // Container component with scrollbars and child element management - ENHANCED
-// Version: 2.0.0
-// Last Modified: 2025-08-24
+// Version: 2.0.1
+// Last Modified: 2026-04-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLayout.h"
 #include "UltraCanvasElementDebug.h"
@@ -30,24 +31,22 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::UpdateGeometry(IRenderContext* ctx) {
-        // Update layout if needed
-
-        for (const auto &child: children) {
-            //if (!child || !child->IsVisible()) continue;
-            // Apply scroll offset to child rendering
-            child->UpdateGeometry(ctx);
-        }
-
+        // Perform layout BEFORE children's UpdateGeometry so that children
+        // get their correct bounds from the parent layout before they
+        // process their own nested layouts (fixes first-frame positioning)
         if (IsLayoutDirty()) {
             SortChildrenByZOrder();
             if (layout) {
                 layout->PerformLayout();
             }
             UpdateScrollability();
-
-            //UpdateScrollbarPositions();
             layoutDirty = false;
         }
+
+        for (const auto &child: children) {
+            child->UpdateGeometry(ctx);
+        }
+        
         if (verticalScrollbar->IsVisible()) {
             verticalScrollbar->UpdateGeometry(ctx);
         }

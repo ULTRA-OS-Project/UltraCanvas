@@ -134,6 +134,7 @@ namespace UltraCanvas {
     };
 
 
+
 // ===== UNIFIED RENDERING INTERFACE =====
     class IRenderContext {
     public:

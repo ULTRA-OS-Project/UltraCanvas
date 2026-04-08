@@ -255,6 +255,7 @@ namespace UltraCanvas {
 
             case UCEventType::WindowResize:
                 HandleResizeEvent(event.width, event.height);
+                RequestRedraw();
                 return true;
 
             case UCEventType::WindowMove:
@@ -262,6 +263,7 @@ namespace UltraCanvas {
                 return true;
 
             case UCEventType::WindowRepaint:
+            case UCEventType::Redraw:
                 needsRedraw = true;
                 return true;
 

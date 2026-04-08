@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.0.2
-// Last Modified: 2026-04-05
+// Version: 2.0.3
+// Last Modified: 2026-04-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -429,10 +429,6 @@ namespace UltraCanvas {
         @autoreleasepool {
             [nsWindow makeKeyAndOrderFront:nil];
 
-    //        [nsWindow makeKey];
-
-            [[nsWindow contentView] setNeedsDisplay:YES];
-
             // Ensure the window is not miniaturized
             if ([nsWindow isMiniaturized]) {
                 [nsWindow deminiaturize:nil];
@@ -443,6 +439,7 @@ namespace UltraCanvas {
         if (onWindowShow) {
             onWindowShow();
         }
+        RequestRedraw();
     }
 
     void UltraCanvasMacOSWindow::Hide() {
@@ -587,11 +584,11 @@ namespace UltraCanvas {
             @autoreleasepool {
                 NSSize size = NSMakeSize(width, height);
                 [nsWindow setContentSize:size];
-                DoResizeNative();
+                _needsResize = true;
             }
+        } else {
+            UltraCanvasWindowBase::SetSize(width, height);
         }
-
-        UltraCanvasWindowBase::SetSize(width, height);
     }
 
     void UltraCanvasMacOSWindow::SetFullscreen(bool fullscreen) {
@@ -678,11 +675,10 @@ namespace UltraCanvas {
                 config_.width = newWidth;
                 config_.height = newHeight;
 
-                DoResizeNative();
+                DoResize();
 
-                if (onWindowResize) {
-                    onWindowResize(newWidth, newHeight);
-                }
+                Render(GetRenderContext());
+                Flush();
             }
         }
     }

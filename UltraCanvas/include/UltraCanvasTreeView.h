@@ -223,6 +223,7 @@ public:
     
     // ===== RENDERING =====
     void Render(IRenderContext* ctx) override;
+    void UpdateGeometry(IRenderContext* ctx) override;
 
     void SetBounds(const Rect2Di& bounds) override;
 

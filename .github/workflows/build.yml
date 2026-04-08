@@ -14,16 +14,9 @@ jobs:
         # NOTE: macos-13 is the last GitHub-hosted Intel (x86_64) macOS runner.
         # When GitHub deprecates it, options are: drop Intel builds, use
         # self-hosted runners, or cross-compile universal binaries.
-        os: [macos-13, macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
         build_type: [Release]
         include:
-          - os: macos-13
-            arch_label: x86_64
-            install_deps: |
-              brew install cmake pkg-config
-              brew install cairo pango harfbuzz vips glib freetype tinyxml2
-              brew install jsoncpp
-              brew install libcdr librevenge
           - os: macos-latest
             arch_label: arm64
             install_deps: |
