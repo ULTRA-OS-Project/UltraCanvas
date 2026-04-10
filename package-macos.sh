@@ -7,9 +7,17 @@
 #   --build-dir DIR    Build directory (default: build)
 #   --output-dir DIR   Output directory (default: dist-macos)
 #   --dmg              Also create a DMG disk image
-#   --no-sign          Skip ad-hoc code signing
+#   --no-sign          Skip code signing
+#   --notarize         Submit signed bundles to Apple notary service and staple
+#                      (requires APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD env vars)
+#
+# Environment variables:
+#   APPLE_SIGN_ID        Override the default code-signing identity
+#   APPLE_ID             Apple ID email (for --notarize)
+#   APPLE_TEAM_ID        Apple Developer Team ID (for --notarize)
+#   APPLE_APP_PASSWORD   App-specific password (for --notarize)
 
-set -e
+set -e -x
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 
@@ -17,7 +25,10 @@ BUILD_DIR="build"
 OUTPUT_DIR="dist-macos"
 CREATE_DMG=false
 DO_SIGN=true
+NOTARIZE=false
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENTITLEMENTS_PATH="MacOS/entitlements.plist"
+IDENTITY="${APPLE_SIGN_ID:-Developer ID Application: Cloverleaf RISCOS Computer UG (haftungsbeschrankt) (29638T25M9)}"
 
 # ── Argument parsing ─────────────────────────────────────────────────────────
 
@@ -27,8 +38,9 @@ while [[ $# -gt 0 ]]; do
         --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
         --dmg)        CREATE_DMG=true; shift ;;
         --no-sign)    DO_SIGN=false; shift ;;
+        --notarize)   NOTARIZE=true; shift ;;
         -h|--help)
-            sed -n '2,11p' "$0" | sed 's/^# \?//'
+            sed -n '2,18p' "$0" | sed 's/^# \?//'
             exit 0
             ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -55,6 +67,7 @@ echo "  Build dir:       $BUILD_DIR"
 echo "  Output dir:      $OUTPUT_DIR"
 echo "  Homebrew prefix: $HOMEBREW_PREFIX"
 echo "  Code signing:    $DO_SIGN"
+echo "  Notarize:        $NOTARIZE"
 echo "  Create DMG:      $CREATE_DMG"
 echo ""
 
@@ -75,6 +88,21 @@ fi
 if $CREATE_DMG && ! command -v hdiutil &>/dev/null; then
     echo "Error: hdiutil not found (required for --dmg)."
     exit 1
+fi
+
+if $NOTARIZE; then
+    if ! $DO_SIGN; then
+        echo "Error: --notarize requires signing (do not combine with --no-sign)"
+        exit 1
+    fi
+    if ! command -v xcrun &>/dev/null; then
+        echo "Error: xcrun not found (required for --notarize)"
+        exit 1
+    fi
+    if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ] || [ -z "${APPLE_APP_PASSWORD:-}" ]; then
+        echo "Error: --notarize requires APPLE_ID, APPLE_TEAM_ID, and APPLE_APP_PASSWORD env vars"
+        exit 1
+    fi
 fi
 
 # ── Helper: Generate .icns from PNG ──────────────────────────────────────────
@@ -270,17 +298,44 @@ codesign_bundle() {
     # Sign frameworks first (inside-out)
     for dylib in "$app_bundle/Contents/Frameworks/"*.dylib; do
         if [ -f "$dylib" ]; then
-            codesign --force --sign - "$dylib" 2>/dev/null
+            codesign --force --verify --verbose --sign "$IDENTITY" --options runtime "$dylib" 2>/dev/null
         fi
     done
 
     # Sign the executable
-    codesign --force --sign - "$app_bundle/Contents/MacOS/"* 2>/dev/null
+    codesign --force --verify --verbose --sign "$IDENTITY" "$app_bundle/Contents/MacOS/"* 2>/dev/null
 
     # Sign the whole bundle
-    codesign --force --deep --sign - "$app_bundle" 2>/dev/null
+    codesign --force --verify --verbose --deep --sign "$IDENTITY" --entitlements "$ENTITLEMENTS_PATH"  "$app_bundle" 2>/dev/null
 
     echo "  Bundle signed"
+}
+
+# ── Helper: Notarize bundle ──────────────────────────────────────────────────
+
+notarize_bundle() {
+    local app_bundle="$1"
+    local zip_path="${app_bundle%.app}-notarize.zip"
+
+    echo "  Creating zip for notarization..."
+    /usr/bin/ditto -c -k --keepParent "$app_bundle" "$zip_path"
+
+    echo "  Submitting to Apple notary service (this may take a few minutes)..."
+    xcrun notarytool submit "$zip_path" \
+        --apple-id "$APPLE_ID" \
+        --team-id "$APPLE_TEAM_ID" \
+        --password "$APPLE_APP_PASSWORD" \
+        --wait
+
+    rm -f "$zip_path"
+
+    echo "  Stapling notarization ticket..."
+    xcrun stapler staple "$app_bundle"
+
+    echo "  Verifying stapled bundle..."
+    xcrun stapler validate "$app_bundle"
+
+    echo "  Notarized: $(basename "$app_bundle")"
 }
 
 # ── Build one app bundle ─────────────────────────────────────────────────────
@@ -338,6 +393,11 @@ build_app_bundle() {
     # Code sign
     if $DO_SIGN; then
         codesign_bundle "$app_dir"
+    fi
+
+    # Notarize and staple
+    if $NOTARIZE; then
+        notarize_bundle "$app_dir"
     fi
 
     local bundle_size

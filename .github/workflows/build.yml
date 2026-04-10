@@ -107,9 +107,47 @@ jobs:
         if: runner.os == 'Windows'
         run: ./package-win.sh --no-sign
 
+      - name: Import code signing certificate (macOS)
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}
+        run: |
+          # Decode base64 .p12 from the secret
+          echo "$MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
+
+          # Create + unlock a temporary keychain (avoids touching the runner's login keychain)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $RUNNER_TEMP/build.keychain
+          security set-keychain-settings -lut 21600 $RUNNER_TEMP/build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $RUNNER_TEMP/build.keychain
+
+          # Import the cert and grant codesign access without UI prompts
+          security import $RUNNER_TEMP/certificate.p12 \
+            -k $RUNNER_TEMP/build.keychain \
+            -P "$MACOS_CERTIFICATE_PWD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" $RUNNER_TEMP/build.keychain
+
+          # Make the temp keychain searchable for codesign (prepend to existing search list)
+          security list-keychains -d user -s $RUNNER_TEMP/build.keychain $(security list-keychains -d user | sed s/\"//g)
+
+          rm $RUNNER_TEMP/certificate.p12
+
       - name: Package (macOS)
         if: runner.os == 'macOS'
-        run: ./package-macos.sh --no-sign
+        env:
+          APPLE_SIGN_ID: ${{ secrets.APPLE_SIGN_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: ./package-macos.sh --notarize
+
+      - name: Cleanup keychain (macOS)
+        if: always() && runner.os == 'macOS'
+        run: |
+          security delete-keychain $RUNNER_TEMP/build.keychain || true
 
       - name: Upload build artifacts (Windows)
         if: runner.os == 'Windows'
