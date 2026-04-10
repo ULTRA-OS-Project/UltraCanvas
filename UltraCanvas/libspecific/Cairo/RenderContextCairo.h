@@ -141,9 +141,9 @@ namespace UltraCanvas {
         // Clipping
 //        void SetClipRect(float x, float y, float w, float h) override;
         void ClearClipRect() override;
-        void ClipRect(double x, double y, double w, double h) override;
+        void ClipRect(const Rect2Df& rect) override;
         void ClipRoundedRectangle(
-                double x, double y, double width, double height,
+                const Rect2Df& rect,
                 double borderTopLeftRadius, double borderTopRightRadius,
                 double borderBottomRightRadius, double borderBottomLeftRadius) override;
         void ClipPath() override;
@@ -162,17 +162,17 @@ namespace UltraCanvas {
         // === Text Methods ===
         void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) override;
         void SetFontFamily(const std::string& family) override;
-        void SetFontSize(float size) override;
+        void SetFontSize(double size) override;
         void SetFontWeight(FontWeight fw) override;
         void SetFontSlant(FontSlant fs) override;
         void SetTextAlignment(TextAlignment align) override;
         void SetTextVerticalAlignment(VerticalAlignment align) override;
         void SetTextIsMarkup(bool isMarkup) override;
-        void SetTextLineHeight(float height) override;
+        void SetTextLineHeight(double height) override;
         void SetTextWrap(TextWrap wrap) override;
 
-        void SetAlpha(float alpha) override;
-        float GetAlpha() const override;
+        void SetAlpha(double alpha) override;
+        double GetAlpha() const override;
         std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(double cx1, double cy1, double r1,
                                                                    double cx2, double cy2, double r2,
                                                                    const std::vector<GradientStop>& stops) override;
@@ -188,7 +188,7 @@ namespace UltraCanvas {
         void SetCurrentPaint(std::shared_ptr<IPaintPattern> pattern) override;
 
         // Basic drawing
-        void DrawLine(double x, double y, double x1, double y1) override;
+        void DrawLine(const Point2Df& from, const Point2Df& to) override;
         void DrawRectangle(double x, double y, double w, double h) override;
         void FillRectangle(double x, double y, double w, double h) override;
         void DrawRoundedRectangle(const Rect2Df & rect, double radius) override;
@@ -235,8 +235,8 @@ namespace UltraCanvas {
         void GetPathExtents(double &x, double &y, double &width, double &height) override;
         void StrokePathPreserve() override;
         void FillPathPreserve() override;
-        void FillText(const std::string& text, float x, float y) override;
-        void StrokeText(const std::string& text, float x, float y) override;
+        void FillText(const std::string& text, double x, double y) override;
+        void StrokeText(const std::string& text, double x, double y) override;
         void Fill() override;
         void Stroke() override;
 
@@ -253,7 +253,7 @@ namespace UltraCanvas {
 
         // Image rendering
         void DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Df &srcRect, const Rect2Df &destRect) override;
-        void DrawPixmap(UCPixmap& pixmap, float x, float y, float w, float h, ImageFitMode fitMode) override;
+        void DrawPixmap(UCPixmap &pixmap, double x, double y, double w, double h, ImageFitMode fitMode) override;
 
         // ===== ENHANCED IMAGE RENDERING METHODS =====
 //        void DrawImageWithFilter(const std::string &imagePath, float x, float y, float w, float h,

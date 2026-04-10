@@ -105,7 +105,7 @@ namespace UltraCanvas {
 
     struct FontStyle {
         std::string fontFamily;             // Empty = use system default font
-        float fontSize = 12.0f;
+        double fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
         FontSlant fontSlant = FontSlant::Normal;
     };
@@ -113,8 +113,8 @@ namespace UltraCanvas {
     struct TextStyle {
         TextAlignment alignment = TextAlignment::Left;
         VerticalAlignment verticalAlignment = VerticalAlignment::Top;
-        float lineHeight = 1.2f;
-        float letterSpacing = 0.0f;
+        double lineHeight = 1.2f;
+        double letterSpacing = 0.0f;
         int indent = 0;
         TextWrap wrap = TextWrap::WrapWordChar;
         bool isMarkup = false;
@@ -125,9 +125,9 @@ namespace UltraCanvas {
         FontStyle fontStyle;
         TextStyle textStyle;
         Point2Df translation;
-        float rotation = 0.0f;
+        double rotation = 0.0f;
         Point2Df scale = Point2Df(1.0f, 1.0f);
-        float globalAlpha = 1.0f;
+        double globalAlpha = 1.0f;
 
         std::shared_ptr<IPaintPattern> fillSourcePattern = nullptr;
         std::shared_ptr<IPaintPattern> strokeSourcePattern = nullptr;
@@ -160,18 +160,17 @@ namespace UltraCanvas {
         virtual void ResetTransform() = 0;
 
         // ===== CLIPPING =====
-//        virtual void SetClipRect(float x, float y, float w, float h) = 0;
         virtual void ClearClipRect() = 0;
-        virtual void ClipRect(double x, double y, double w, double h) = 0;
+        virtual void ClipRect(const Rect2Df& rect) = 0;
         virtual void ClipPath() = 0;
         virtual void ClipRoundedRectangle(
-                double x, double y, double width, double height,
+                const Rect2Df& rect,
                 double borderTopLeftRadius, double borderTopRightRadius,
                 double borderBottomRightRadius, double borderBottomLeftRadius) = 0;
 //        virtual Rect2Df GetClipRect() const = 0;
 
         // ===== BASIC SHAPES =====
-        virtual void DrawLine(double x, double y, double x1, double y1) = 0;
+        virtual void DrawLine(const Point2Df& from, const Point2Df& to) = 0;
         virtual void DrawRectangle(double x, double y, double w, double h) = 0;
         virtual void FillRectangle(double x, double y, double w, double h) = 0;
         virtual void DrawRoundedRectangle(const Rect2Df & rect, double radius) = 0;
@@ -242,8 +241,8 @@ namespace UltraCanvas {
 
         // ===== STYLE MANAGEMENT =====
 //        virtual void SetDrawingStyle(const DrawingStyle& style) = 0;
-        virtual void SetAlpha(float alpha) = 0;
-        virtual float GetAlpha() const = 0;
+        virtual void SetAlpha(double alpha) = 0;
+        virtual double GetAlpha() const = 0;
 //        virtual const DrawingStyle& GetDrawingStyle() const = 0;
 
         // === Style Methods ===
@@ -265,10 +264,10 @@ namespace UltraCanvas {
 
         virtual void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) = 0;
         virtual void SetFontFamily(const std::string& family) = 0;
-        virtual void SetFontSize(float size) = 0;
+        virtual void SetFontSize(double size) = 0;
         virtual void SetFontWeight(FontWeight fw) = 0;
         virtual void SetFontSlant(FontSlant fs) = 0;
-        virtual void SetTextLineHeight(float height) = 0;
+        virtual void SetTextLineHeight(double height) = 0;
         virtual void SetTextWrap(TextWrap wrap) = 0;
 
         void SetFontStyle(const FontStyle& style) {
@@ -282,8 +281,8 @@ namespace UltraCanvas {
         virtual void SetTextVerticalAlignment(VerticalAlignment align) = 0;
         virtual void SetTextIsMarkup(bool isMarkup) = 0;
 
-        virtual void FillText(const std::string& text, float x, float y) = 0;
-        virtual void StrokeText(const std::string& text, float x, float y) = 0;
+        virtual void FillText(const std::string& text, double x, double y) = 0;
+        virtual void StrokeText(const std::string& text, double x, double y) = 0;
 
         // === Transform Methods ===
 
@@ -308,7 +307,7 @@ namespace UltraCanvas {
 
         // ===== IMAGE RENDERING =====
         virtual void DrawPartOfPixmap(UCPixmap& pixmap, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
-        virtual void DrawPixmap(UCPixmap& pixmap, float x, float y, float w, float h, ImageFitMode fitMode) = 0;
+        virtual void DrawPixmap(UCPixmap& pixmap, double x, double y, double w, double h, ImageFitMode fitMode) = 0;
 
 //        virtual bool IsImageFormatSupported(const std::string& filePath) = 0;
 //        virtual bool GetImageDimensions(const std::string& imagePath, int& w, int& h) = 0;
@@ -329,26 +328,9 @@ namespace UltraCanvas {
         // ===== UTILITY FUNCTIONS =====
         virtual void* GetNativeContext() = 0;
 
-        void DrawLine(const Point2Df& start, const Point2Df& end) {
-            DrawLine(start.x, start.y, end.x, end.y);
-        }
-
-        void DrawLine(const Point2Di& start, const Point2Di& end) {
-            DrawLine(static_cast<float>(start.x), static_cast<float>(start.y), static_cast<float>(end.x), static_cast<float>(end.y));
-        }
-
         void DrawLine(const Point2Df& start, const Point2Df& end, const Color &col) {
-            DrawLine(start.x, start.y, end.x, end.y);
-        }
-
-        void DrawLine(float start_x, float start_y, float end_x, float end_y, const Color &col) {
             SetStrokePaint(col);
-            DrawLine(start_x, start_y, end_x, end_y);
-        }
-
-        void DrawLine(int start_x, int start_y, int end_x, int end_y, const Color &col) {
-            SetStrokePaint(col);
-            DrawLine(static_cast<float>(start_x), static_cast<float>(start_y), static_cast<float>(end_x), static_cast<float>(end_y));
+            DrawLine(start, end);
         }
 
         void DrawRectangle(int x, int y, int w, int h) {
@@ -364,7 +346,7 @@ namespace UltraCanvas {
 
 
         void FillRectangle(int x, int y, int w, int h) {
-            FillRectangle(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
+            FillRectangle(static_cast<double>(x), static_cast<double>(y), static_cast<double>(w), static_cast<double>(h));
         }
 
         void FillRectangle(const Rect2Df& rect) {
@@ -429,16 +411,6 @@ namespace UltraCanvas {
 //        void SetClipRect(const Rect2Di& rect) {
 //            SetClipRect(rect.x, rect.y, rect.width, rect.height);
 //        }
-
-        void ClipRect(int x, int y, int w, int h) {
-            ClipRect(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
-        }
-        void ClipRect(const Rect2Df& rect) {
-            ClipRect(rect.x, rect.y, rect.width, rect.height);
-        }
-        void ClipRect(const Rect2Di& rect) {
-            ClipRect(rect.x, rect.y, rect.width, rect.height);
-        }
 
         Point2Di GetTextDimension(const std::string& text) {
             Point2Di p = {0, 0};

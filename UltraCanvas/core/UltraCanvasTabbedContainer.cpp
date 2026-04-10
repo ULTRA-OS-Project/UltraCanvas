@@ -512,10 +512,10 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(isActiveTab ? 1.0f : 2.0f);
         ctx->SetLineCap(LineCap::Round);
         ctx->SetStrokePaint(buttonColor);
-        ctx->DrawLine(Point2Di(center.x - halfSize, center.y - halfSize),
-                      Point2Di(center.x + halfSize, center.y + halfSize));
-        ctx->DrawLine(Point2Di(center.x + halfSize, center.y - halfSize),
-                      Point2Di(center.x - halfSize, center.y + halfSize));
+        ctx->DrawLine(Point2Df(center.x - halfSize, center.y - halfSize),
+                      Point2Df(center.x + halfSize, center.y + halfSize));
+        ctx->DrawLine(Point2Df(center.x + halfSize, center.y - halfSize),
+                      Point2Df(center.x - halfSize, center.y + halfSize));
         ctx->SetStrokeWidth(1.0f); // Restore default   
     }
 
@@ -666,16 +666,16 @@ namespace UltraCanvas {
         int size = 8;
 
         ctx->SetStrokePaint(newTabButtonIconColor);
-        ctx->DrawLine(Point2Di(center.x - size/2, center.y), Point2Di(center.x + size/2, center.y));
-        ctx->DrawLine(Point2Di(center.x, center.y - size/2), Point2Di(center.x, center.y + size/2));
+        ctx->DrawLine(Point2Df(center.x - size/2, center.y), Point2Df(center.x + size/2, center.y));
+        ctx->DrawLine(Point2Df(center.x, center.y - size/2), Point2Df(center.x, center.y + size/2));
     }
 
     void UltraCanvasTabbedContainer::RenderOverflowButton(IRenderContext* ctx) {
         if (!overflowButton) return;
 
         Rect2Di btnBounds = overflowButton->GetBounds();
-        int bx = btnBounds.x, by = btnBounds.y;
-        int bw = btnBounds.width, bh = btnBounds.height;
+        double bx = btnBounds.x, by = btnBounds.y;
+        double bw = btnBounds.width, bh = btnBounds.height;
 
         // Background - use hover color from the button's state
         Color bgColor = overflowButton->IsHovered() ? hoveredTabColor : navButtonBackgroundColor;

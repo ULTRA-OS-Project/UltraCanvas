@@ -243,9 +243,9 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
             float y = center.y + i * gridSize / 2;
 
             // Vertical lines
-            ctx->DrawLine(x, center.y - gridSize, x, center.y + gridSize);
+            ctx->DrawLine({x, center.y - gridSize}, { x, center.y + gridSize});
             // Horizontal lines
-            ctx->DrawLine(center.x - gridSize, y, center.x + gridSize, y);
+            ctx->DrawLine({center.x - gridSize, y}, { center.x + gridSize, y});
         }
 
         // Draw original coordinate system (red)
@@ -253,9 +253,9 @@ cairo_t* UltraCanvasCairoDebugExtension::GetCurrentCairoContext() {
         ctx->SetStrokeWidth(2.0f);
 
         // Original X axis
-        ctx->DrawLine(center.x - gridSize / 2, center.y, center.x + gridSize / 2, center.y);
+        ctx->DrawLine({center.x - gridSize / 2, center.y}, { center.x + gridSize / 2, center.y});
         // Original Y axis
-        ctx->DrawLine(center.x, center.y - gridSize / 2, center.x, center.y + gridSize / 2);
+        ctx->DrawLine({center.x, center.y - gridSize / 2}, { center.x, center.y + gridSize / 2});
 
         // Draw transformed coordinate system (green)
         ctx->PaintWidthColorColor(100, 255, 100, 200));

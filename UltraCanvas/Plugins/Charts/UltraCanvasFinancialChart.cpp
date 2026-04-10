@@ -110,7 +110,7 @@ namespace UltraCanvas {
             ctx->SetFontSize(16.0f);
 
             // Calculate center position (simplified)
-            double titleX = GetX() + GetWidth() / 2 - static_cast<int>(chartTitle.length()) * 5;
+            int titleX = GetX() + GetWidth() / 2 - chartTitle.length() * 5;
             ctx->DrawText(chartTitle, {titleX, GetY()});
         }
     }
@@ -206,14 +206,14 @@ namespace UltraCanvas {
         int numVerticalLines = 8;
         for (int i = 1; i < numVerticalLines; ++i) {
             float x = priceRenderArea.x + (i * priceRenderArea.width / numVerticalLines);
-            ctx->DrawLine(x, priceRenderArea.y, x, priceRenderArea.GetBottom());
+            ctx->DrawLine({x, priceRenderArea.y}, { x, priceRenderArea.GetBottom()});
         }
 
         // Horizontal grid lines for price area
         int numHorizontalLines = 6;
         for (int i = 1; i < numHorizontalLines; ++i) {
             float y = priceRenderArea.y + (i * priceRenderArea.height / numHorizontalLines);
-            ctx->DrawLine(priceRenderArea.x, y, priceRenderArea.GetRight(), y);
+            ctx->DrawLine({priceRenderArea.x, y}, { priceRenderArea.GetRight(), y});
         }
     }
 
@@ -239,12 +239,12 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(2.0f);
 
         // Draw X-axis (bottom of price chart)
-        ctx->DrawLine(priceRenderArea.x, priceRenderArea.GetBottom(),
-                      priceRenderArea.GetRight(), priceRenderArea.GetBottom());
+        ctx->DrawLine({priceRenderArea.x, priceRenderArea.GetBottom()}, {
+                      priceRenderArea.GetRight(), priceRenderArea.GetBottom()});
 
         // Draw Y-axis (left of price chart)
-        ctx->DrawLine(priceRenderArea.x, priceRenderArea.y,
-                      priceRenderArea.x, priceRenderArea.GetBottom());
+        ctx->DrawLine({priceRenderArea.x, priceRenderArea.y}, {
+                      priceRenderArea.x, priceRenderArea.GetBottom()});
 
         // Draw price Y-axis labels
         ctx->SetStrokeWidth(1.0f);
@@ -258,7 +258,7 @@ namespace UltraCanvas {
             float y = priceRenderArea.GetBottom() - (i * priceRenderArea.height / numPriceLabels);
 
             // Draw tick mark
-            ctx->DrawLine(priceRenderArea.x - 5, y, priceRenderArea.x, y);
+            ctx->DrawLine({priceRenderArea.x - 5, y}, { priceRenderArea.x, y});
 
             // Format and draw price label
             std::ostringstream priceLabel;
@@ -279,7 +279,7 @@ namespace UltraCanvas {
             float x = priceRenderArea.x + (dataIndex + 0.5f) * (priceRenderArea.width / pointCount);
 
             // Draw tick mark
-            ctx->DrawLine(x, priceRenderArea.GetBottom(), x, priceRenderArea.GetBottom() + 8);
+            ctx->DrawLine({x, priceRenderArea.GetBottom()}, { x, priceRenderArea.GetBottom() + 8});
 
             // Draw date label
             std::string dateLabel = financialPoint.date;
@@ -314,14 +314,14 @@ namespace UltraCanvas {
         int numVerticalLines = 8;
         for (int i = 1; i < numVerticalLines; ++i) {
             float x = volumeRenderArea.x + (i * volumeRenderArea.width / numVerticalLines);
-            ctx->DrawLine(x, volumeRenderArea.y, x, volumeRenderArea.GetBottom());
+            ctx->DrawLine({x, volumeRenderArea.y}, { x, volumeRenderArea.GetBottom()});
         }
 
         // Horizontal grid lines for volume area
         int numVolumeLines = 4;
         for (int i = 1; i < numVolumeLines; ++i) {
             float y = volumeRenderArea.y + (i * volumeRenderArea.height / numVolumeLines);
-            ctx->DrawLine(volumeRenderArea.x, y, volumeRenderArea.GetRight(), y);
+            ctx->DrawLine({volumeRenderArea.x, y}, { volumeRenderArea.GetRight(), y});
         }
     }
 
@@ -344,12 +344,12 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(2.0f);
 
         // Draw X-axis (bottom of volume chart)
-        ctx->DrawLine(volumeRenderArea.x, volumeRenderArea.GetBottom(),
-                      volumeRenderArea.GetRight(), volumeRenderArea.GetBottom());
+        ctx->DrawLine({volumeRenderArea.x, volumeRenderArea.GetBottom()}, {
+                      volumeRenderArea.GetRight(), volumeRenderArea.GetBottom()});
 
         // Draw Y-axis (left of volume chart)
-        ctx->DrawLine(volumeRenderArea.x, volumeRenderArea.y,
-                      volumeRenderArea.x, volumeRenderArea.GetBottom());
+        ctx->DrawLine({volumeRenderArea.x, volumeRenderArea.y}, {
+                      volumeRenderArea.x, volumeRenderArea.GetBottom()});
 
         // Draw volume Y-axis labels
         ctx->SetStrokeWidth(1.0f);
@@ -362,7 +362,7 @@ namespace UltraCanvas {
             float y = volumeRenderArea.GetBottom() - (i * volumeRenderArea.height / numVolumeLabels);
 
             // Draw tick mark
-            ctx->DrawLine(volumeRenderArea.x - 5, y, volumeRenderArea.x, y);
+            ctx->DrawLine({volumeRenderArea.x - 5, y}, { volumeRenderArea.x, y});
 
             // Format and draw volume label
             std::string label = FormatVolumeValue(volumeValue);
@@ -382,7 +382,7 @@ namespace UltraCanvas {
             float x = volumeRenderArea.x + (dataIndex + 0.5f) * (volumeRenderArea.width / pointCount);
 
             // Draw tick mark
-            ctx->DrawLine(x, volumeRenderArea.GetBottom(), x, volumeRenderArea.GetBottom() + 8);
+            ctx->DrawLine({x, volumeRenderArea.GetBottom()}, { x, volumeRenderArea.GetBottom() + 8});
 
             // Draw date label
             std::string dateLabel = financialPoint.date;
@@ -536,14 +536,14 @@ namespace UltraCanvas {
         int numVerticalLines = 10;
         for (int i = 1; i < numVerticalLines; ++i) {
             float x = priceRenderArea.x + (i * priceRenderArea.width / numVerticalLines);
-            ctx->DrawLine(x, priceRenderArea.y, x, priceRenderArea.GetBottom());
+            ctx->DrawLine({x, priceRenderArea.y}, { x, priceRenderArea.GetBottom()});
         }
 
         // Horizontal grid lines for price area
         int numHorizontalLines = 8;
         for (int i = 1; i < numHorizontalLines; ++i) {
             float y = priceRenderArea.y + (i * priceRenderArea.height / numHorizontalLines);
-            ctx->DrawLine(priceRenderArea.x, y, priceRenderArea.GetRight(), y);
+            ctx->DrawLine({priceRenderArea.x, y}, { priceRenderArea.GetRight(), y});
         }
     }
 
@@ -672,7 +672,7 @@ namespace UltraCanvas {
             float x2 = volumeRenderArea.x + (i + 1 + 0.5f) * barSpacing;
             float y2 = volumeRenderArea.GetBottom() - (volumeAvg2 / maxVolume) * volumeRenderArea.height;
 
-            ctx->DrawLine(x1, y1, x2, y2);
+            ctx->DrawLine({x1, y1}, { x2, y2});
         }
     }
 
@@ -726,7 +726,7 @@ namespace UltraCanvas {
             float x2 = priceRenderArea.x + (i + 1 + 0.5f) * candleSpacing;
             float y2 = priceRenderArea.GetBottom() - ((priceAvg2 - minPrice) / priceRange) * priceRenderArea.height;
 
-            ctx->DrawLine(x1, y1, x2, y2);
+            ctx->DrawLine({x1, y1}, { x2, y2});
         }
     }
 
@@ -743,7 +743,7 @@ namespace UltraCanvas {
         // Draw wick (high-low line)
         ctx->SetStrokePaint(wickLineColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(x, highY, x, lowY);
+        ctx->DrawLine({x, highY}, { x, lowY});
 
         // Draw candle body
         bool isBullish = point.close > point.open;
@@ -782,13 +782,13 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(2.0f);
 
         // Draw main vertical line (high-low)
-        ctx->DrawLine(x, highY, x, lowY);
+        ctx->DrawLine({x, highY}, { x, lowY});
 
         // Draw open tick (left side)
-        ctx->DrawLine(x - candleWidth/4, openY, x, openY);
+        ctx->DrawLine({x - candleWidth/4, openY}, { x, openY});
 
         // Draw close tick (right side)
-        ctx->DrawLine(x, closeY, x + candleWidth/4, closeY);
+        ctx->DrawLine({x, closeY}, { x + candleWidth/4, closeY});
     }
 
     FinancialChartDataPoint UltraCanvasFinancialChartElement::GetFinancialPointAtPosition(const Point2Di &mousePos) const {

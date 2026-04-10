@@ -559,7 +559,7 @@ namespace UltraCanvas {
         lines.push_back(currentLine);
 
         double lineHeight = style.fontStyle.fontSize * 1.4f;
-        double currentBaselineY = startPos.y; // startPos.y is baseline
+        int currentBaselineY = startPos.y; // startPos.y is baseline
 
         for (const auto& line : lines) {
             if (currentBaselineY > area.y + area.height + lineHeight) break;

@@ -58,8 +58,8 @@ namespace UltraCanvas {
             int sepY = option.rect.y + option.rect.height / 2;
             ctx->SetStrokePaint(style->listBorderColor);
             ctx->SetStrokeWidth(1.0f);
-            ctx->DrawLine(Point2Di(option.rect.x + 4, sepY),
-                         Point2Di(option.rect.x + option.rect.width - 4, sepY));
+            ctx->DrawLine(Point2Df(option.rect.x + 4, sepY),
+                         Point2Df(option.rect.x + option.rect.width - 4, sepY));
             return;
         }
 
@@ -136,12 +136,12 @@ namespace UltraCanvas {
             int cy = checkboxRect.y + checkboxRect.height / 2;
 
             ctx->DrawLine(
-                Point2Di(checkboxRect.x + 3, cy),
-                Point2Di(cx - 1, checkboxRect.y + checkboxRect.height - 4)
+                Point2Df(checkboxRect.x + 3, cy),
+                Point2Df(cx - 1, checkboxRect.y + checkboxRect.height - 4)
             );
             ctx->DrawLine(
-                Point2Di(cx - 1, checkboxRect.y + checkboxRect.height - 4),
-                Point2Di(checkboxRect.x + checkboxRect.width - 3, checkboxRect.y + 3)
+                Point2Df(cx - 1, checkboxRect.y + checkboxRect.height - 4),
+                Point2Df(checkboxRect.x + checkboxRect.width - 3, checkboxRect.y + 3)
             );
         }
     }
@@ -739,8 +739,8 @@ namespace UltraCanvas {
         ctx->SetStrokePaint(color);
         ctx->SetStrokeWidth(1.0f);
 
-        ctx->DrawLine(arrowX, arrowY, arrowCenterX, arrowBottom);
-        ctx->DrawLine(arrowCenterX, arrowBottom, arrowX + style.arrowSize, arrowY);
+        ctx->DrawLine({arrowX, arrowY}, {arrowCenterX, arrowBottom});
+        ctx->DrawLine({arrowCenterX, arrowBottom}, {arrowX + style.arrowSize, arrowY});
     }
 
     // ===== EVENT HANDLING =====

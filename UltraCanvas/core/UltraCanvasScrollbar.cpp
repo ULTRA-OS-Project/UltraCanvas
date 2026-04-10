@@ -260,30 +260,30 @@ namespace UltraCanvas {
         if (IsVertical()) {
             if (isUpOrLeft) {
                 // Up arrow
-                ctx->DrawLine(Point2Di(cx - arrowSize, cy + arrowSize / 2),
-                              Point2Di(cx, cy - arrowSize / 2));
-                ctx->DrawLine(Point2Di(cx, cy - arrowSize / 2),
-                              Point2Di(cx + arrowSize, cy + arrowSize / 2));
+                ctx->DrawLine(Point2Df(cx - arrowSize, cy + arrowSize / 2),
+                              Point2Df(cx, cy - arrowSize / 2));
+                ctx->DrawLine(Point2Df(cx, cy - arrowSize / 2),
+                              Point2Df(cx + arrowSize, cy + arrowSize / 2));
             } else {
                 // Down arrow
-                ctx->DrawLine(Point2Di(cx - arrowSize, cy - arrowSize / 2),
-                              Point2Di(cx, cy + arrowSize / 2));
-                ctx->DrawLine(Point2Di(cx, cy + arrowSize / 2),
-                              Point2Di(cx + arrowSize, cy - arrowSize / 2));
+                ctx->DrawLine(Point2Df(cx - arrowSize, cy - arrowSize / 2),
+                              Point2Df(cx, cy + arrowSize / 2));
+                ctx->DrawLine(Point2Df(cx, cy + arrowSize / 2),
+                              Point2Df(cx + arrowSize, cy - arrowSize / 2));
             }
         } else {
             if (isUpOrLeft) {
                 // Left arrow
-                ctx->DrawLine(Point2Di(cx + arrowSize / 2, cy - arrowSize),
-                              Point2Di(cx - arrowSize / 2, cy));
-                ctx->DrawLine(Point2Di(cx - arrowSize / 2, cy),
-                              Point2Di(cx + arrowSize / 2, cy + arrowSize));
+                ctx->DrawLine(Point2Df(cx + arrowSize / 2, cy - arrowSize),
+                              Point2Df(cx - arrowSize / 2, cy));
+                ctx->DrawLine(Point2Df(cx - arrowSize / 2, cy),
+                              Point2Df(cx + arrowSize / 2, cy + arrowSize));
             } else {
                 // Right arrow
-                ctx->DrawLine(Point2Di(cx - arrowSize / 2, cy - arrowSize),
-                              Point2Di(cx + arrowSize / 2, cy));
-                ctx->DrawLine(Point2Di(cx + arrowSize / 2, cy),
-                              Point2Di(cx - arrowSize / 2, cy + arrowSize));
+                ctx->DrawLine(Point2Df(cx - arrowSize / 2, cy - arrowSize),
+                              Point2Df(cx + arrowSize / 2, cy));
+                ctx->DrawLine(Point2Df(cx + arrowSize / 2, cy),
+                              Point2Df(cx - arrowSize / 2, cy + arrowSize));
             }
         }
     }

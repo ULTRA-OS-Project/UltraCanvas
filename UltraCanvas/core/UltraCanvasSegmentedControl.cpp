@@ -167,8 +167,8 @@ namespace UltraCanvas {
             for (size_t i = 1; i < segmentRects.size(); i++) {
                 int x = segmentRects[i].x;
                 ctx->DrawLine(
-                        x, bounds.y + style.borderWidth,
-                        x, bounds.y + bounds.height - style.borderWidth
+                        {x, bounds.y + style.borderWidth},
+                        {x, bounds.y + bounds.height - style.borderWidth}
                 );
             }
         }

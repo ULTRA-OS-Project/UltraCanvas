@@ -200,7 +200,7 @@ namespace UltraCanvas {
         int separatorX = bounds.x + style.padding + hexAddressWidth - 4;
         ctx->SetStrokePaint(style.borderColor);
         ctx->SetStrokeWidth(1);
-        ctx->DrawLine(separatorX, hexVisibleArea.y, separatorX, hexVisibleArea.y + hexVisibleArea.height);
+        ctx->DrawLine({separatorX, hexVisibleArea.y}, {separatorX, hexVisibleArea.y + hexVisibleArea.height});
 
         ctx->SetTextPaint(style.lineNumbersColor);
 
@@ -209,7 +209,7 @@ namespace UltraCanvas {
             double y = hexVisibleArea.y + (row - hexFirstVisibleRow) * hexRowHeight;
             int address = row * hexBytesPerRow;
             std::string addrStr = HexFormatAddress(address);
-            ctx->DrawText(addrStr, {hexVisibleArea.x, y});
+            ctx->DrawText(addrStr, {static_cast<double>(hexVisibleArea.x), y});
         }
     }
 
@@ -241,7 +241,7 @@ namespace UltraCanvas {
         int separatorX = hexAsciiPanelStartX - hexAsciiCharWidth;
         ctx->SetStrokePaint(style.borderColor);
         ctx->SetStrokeWidth(1);
-        ctx->DrawLine(separatorX, hexVisibleArea.y, separatorX, hexVisibleArea.y + hexVisibleArea.height);
+        ctx->DrawLine({separatorX, hexVisibleArea.y}, {separatorX, hexVisibleArea.y + hexVisibleArea.height});
 
         ctx->SetTextPaint(style.fontColor);
 
@@ -379,7 +379,7 @@ namespace UltraCanvas {
             // Line cursor in ASCII panel
             int x = hexAsciiPanelStartX + col * hexAsciiCharWidth;
             ctx->SetStrokeWidth(2);
-            ctx->DrawLine(x, y, x, y + hexRowHeight, style.cursorColor);
+            ctx->DrawLine({x, y}, {x, y + hexRowHeight}, style.cursorColor);
         } else {
             // Block cursor in hex panel on current nibble
             int charW = hexByteWidth / 3; // Width of one hex digit
@@ -388,7 +388,7 @@ namespace UltraCanvas {
             ctx->FillRectangle(x, y, charW, hexRowHeight);
             // Also draw line cursor
             ctx->SetStrokeWidth(2);
-            ctx->DrawLine(x, y, x, y + hexRowHeight, style.cursorColor);
+            ctx->DrawLine({x, y}, {x, y + hexRowHeight}, style.cursorColor);
         }
 
         ctx->PopState();

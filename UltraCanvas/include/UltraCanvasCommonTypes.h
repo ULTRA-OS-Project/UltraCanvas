@@ -59,6 +59,9 @@ struct Point2D {
 
     Point2D(T px = 0, T py = 0) : x(px), y(py) {}
 
+    template <typename U>
+    Point2D(U px = 0, U py = 0) : x(static_cast<T>(px)), y(static_cast<T>(py)) {}
+
     // Cross-type converting constructor (e.g. Point2Df from Point2Di)
     template <typename U>
     Point2D(const Point2D<U>& other)
@@ -111,6 +114,9 @@ struct Size2D {
 
     Size2D(T w = 0, T h = 0) : width(w), height(h) {}
 
+    template <typename U>
+    Size2D(U w = 0, U h = 0) : width(static_cast<T>(w)), height(static_cast<T>(h)) {}
+
     // Cross-type converting constructor (e.g. Size2Df from Size2Di)
     template <typename U>
     Size2D(const Size2D<U>& other)
@@ -134,6 +140,10 @@ struct Rect2D {
 
     Rect2D(T px = 0, T py = 0, T w = 0, T h = 0)
         : x(px), y(py), width(w), height(h) {}
+
+    template <typename U>
+    Rect2D(U px = 0, U py = 0, U w = 0, U h = 0)
+            : x(static_cast<T>(px)), y(static_cast<T>(py)), width(static_cast<T>(w)), height(static_cast<T>(h)) {}
 
     Rect2D(Point2D<T> pt, Size2D<T> sz)
             : x(pt.x), y(pt.y), width(sz.width), height(sz.height) {}

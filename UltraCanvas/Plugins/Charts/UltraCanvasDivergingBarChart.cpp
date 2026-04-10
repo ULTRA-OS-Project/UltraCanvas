@@ -200,7 +200,7 @@ namespace UltraCanvas {
         float currentValue = gridInterval;
         while (currentValue < maxNegativeValue) {
             float x = centerX - (currentValue / maxNegativeValue) * (cachedPlotArea.width / 2 - centerGap/2);
-            ctx->DrawLine(x, cachedPlotArea.y, x, cachedPlotArea.y + cachedPlotArea.height);
+            ctx->DrawLine({x, cachedPlotArea.y}, { x, cachedPlotArea.y + cachedPlotArea.height});
             currentValue += gridInterval;
         }
 
@@ -208,7 +208,7 @@ namespace UltraCanvas {
         currentValue = gridInterval;
         while (currentValue < maxPositiveValue) {
             float x = centerX + (currentValue / maxPositiveValue) * (cachedPlotArea.width / 2 - centerGap/2);
-            ctx->DrawLine(x, cachedPlotArea.y, x, cachedPlotArea.y + cachedPlotArea.height);
+            ctx->DrawLine({x, cachedPlotArea.y}, { x, cachedPlotArea.y + cachedPlotArea.height});
             currentValue += gridInterval;
         }
 
@@ -218,7 +218,7 @@ namespace UltraCanvas {
             float rowHeight = cachedPlotArea.height / divergingDataSource->GetPointCount();
             for (size_t i = 1; i < divergingDataSource->GetPointCount(); ++i) {
                 float y = cachedPlotArea.y + i * rowHeight;
-                ctx->DrawLine(cachedPlotArea.x, y, cachedPlotArea.x + cachedPlotArea.width, y);
+                ctx->DrawLine({cachedPlotArea.x, y}, { cachedPlotArea.x + cachedPlotArea.width, y});
             }
         }
     }
@@ -228,7 +228,7 @@ namespace UltraCanvas {
 
         ctx->SetStrokePaint(centerLineColor);
         ctx->SetStrokeWidth(centerLineWidth);
-        ctx->DrawLine(centerX, cachedPlotArea.y, centerX, cachedPlotArea.y + cachedPlotArea.height);
+        ctx->DrawLine({centerX, cachedPlotArea.y}, { centerX, cachedPlotArea.y + cachedPlotArea.height});
     }
 
     void UltraCanvasDivergingBarChart::RenderPopulationPyramid(IRenderContext *ctx, float animScale) {

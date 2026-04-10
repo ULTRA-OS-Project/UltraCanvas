@@ -843,11 +843,8 @@ namespace UltraCanvas {
 
         ctx->SetStrokePaint(style.horizontalRuleColor);
         ctx->SetStrokeWidth(style.horizontalRuleHeight);
-        ctx->DrawLine(
-                adjustedBounds.x,
-                adjustedBounds.y + adjustedBounds.height / 2,
-                adjustedBounds.x + adjustedBounds.width,
-                adjustedBounds.y + adjustedBounds.height / 2
+        ctx->DrawLine({adjustedBounds.x, adjustedBounds.y + adjustedBounds.height / 2},
+                      { adjustedBounds.x + adjustedBounds.width, adjustedBounds.y + adjustedBounds.height / 2}
         );
         ctx->Stroke();
     }
@@ -869,8 +866,8 @@ namespace UltraCanvas {
             int w, h;
             ctx->GetTextLineDimensions(element->text, w, h);
             ctx->SetStrokeWidth(1.0f);
-            ctx->DrawLine(position.x, position.y + h,
-                          position.x + w, position.y + h, linkColor);
+            ctx->DrawLine({position.x, position.y + h},
+                          {position.x + w, position.y + h}, linkColor);
         }
     }
 

@@ -37,8 +37,8 @@ namespace UltraCanvas {
         } else {
             // Draw straight line segments
             for (size_t i = 1; i < linePoints.size(); ++i) {
-                ctx->DrawLine(linePoints[i-1].x, linePoints[i-1].y,
-                              linePoints[i].x, linePoints[i].y);
+                ctx->DrawLine({linePoints[i-1].x, linePoints[i-1].y},
+                              {linePoints[i].x, linePoints[i].y});
             }
         }
 
@@ -59,7 +59,7 @@ namespace UltraCanvas {
         if (points.size() < 3) {
             // Not enough points for smoothing
             for (size_t i = 1; i < points.size(); ++i) {
-                ctx->DrawLine(points[i-1].x, points[i-1].y, points[i].x, points[i].y);
+                ctx->DrawLine(points[i-1], points[i]);
             }
             return;
         }
@@ -91,7 +91,7 @@ namespace UltraCanvas {
                                   (-p0.y + 3*p1.y - 3*p2.y + p3.y) * t3);
 
                 Point2Df currentPoint(x, y);
-                ctx->DrawLine(prevPoint.x, prevPoint.y, currentPoint.x, currentPoint.y);
+                ctx->DrawLine(prevPoint, currentPoint);
                 prevPoint = currentPoint;
             }
         }
@@ -423,8 +423,8 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(lineWidth);
 
         for (size_t i = 1; i < smoothedAreaPoints.size() - 2; ++i) {
-            ctx->DrawLine(smoothedAreaPoints[i-1].x, smoothedAreaPoints[i-1].y,
-                          smoothedAreaPoints[i].x, smoothedAreaPoints[i].y);
+            ctx->DrawLine(smoothedAreaPoints[i-1],
+                          smoothedAreaPoints[i]);
         }
 
         // Draw data points if enabled

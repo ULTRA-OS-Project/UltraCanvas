@@ -397,10 +397,10 @@ namespace UltraCanvas {
 //        debugOutput << "RenderContextCairo::ClearClipRect - clip region cleared successfully" << std::endl;
     }
 
-    void RenderContextCairo::ClipRect(double x, double y, double w, double h) {
+    void RenderContextCairo::ClipRect(const Rect2Df& rect) {
 //        debugOutput << "RenderContextCairo::ClipRect - setting clip to "
 //                  << x << "," << y << " " << w << "x" << h << std::endl;
-        cairo_rectangle(cairo, x, y, w, h);
+        cairo_rectangle(cairo, rect.x, rect.y, rect.width, rect.height);
         cairo_clip(cairo);
     }
 
@@ -409,10 +409,11 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::ClipRoundedRectangle(
-            double x, double y, double width, double height,
+            const Rect2Df& rect,
             double borderTopLeftRadius, double borderTopRightRadius,
             double borderBottomRightRadius, double borderBottomLeftRadius) {
         // Clamp radii to prevent overlapping
+        double x = rect.x, y = rect.y, width = rect.width, height = rect.height;
         double maxRadiusX = width / 2.0;
         double maxRadiusY = height / 2.0;
 
@@ -559,14 +560,14 @@ namespace UltraCanvas {
         Stroke();
     }
 
-    void RenderContextCairo::DrawLine(double start_x, double start_y, double end_x, double end_y) {
+    void RenderContextCairo::DrawLine(const Point2Df& from, const Point2Df& to) {
 //        debugOutput << "RenderContextCairo::DrawLine" << std::endl;
 
         // *** Apply stroke style ***
         //ApplyStrokeStyle(currentState.style);
 
-        cairo_move_to(cairo, start_x, start_y);
-        cairo_line_to(cairo, end_x, end_y);
+        cairo_move_to(cairo, from.x, from.y);
+        cairo_line_to(cairo, to.x, to.y);
         Stroke();
     }
 
@@ -809,7 +810,7 @@ namespace UltraCanvas {
         return currentState.textStyle;
     }
 
-    float RenderContextCairo::GetAlpha() const {
+    double RenderContextCairo::GetAlpha() const {
         return currentState.globalAlpha;
     }
 
@@ -1174,7 +1175,7 @@ namespace UltraCanvas {
                 SetStrokePaint(borderTopColor);
             }
             float yPos = y + borderTopWidth / 2.0;
-            DrawLine(x + topLeftRadius, yPos, x + width - topRightRadius, yPos);
+            DrawLine({x + topLeftRadius, yPos}, {x + width - topRightRadius, yPos});
 //            drawBorderSide(x + topLeftRadius, yPos,
 //                           x + width - topRightRadius, yPos,
 //                           borderTopWidth, borderTopColor, borderTopPattern);
@@ -1189,8 +1190,8 @@ namespace UltraCanvas {
                 SetStrokePaint(borderRightColor);
             }
             float xPos = x + width - borderRightWidth / 2.0;
-            DrawLine(xPos, y + topRightRadius,
-                     xPos, y + height - bottomRightRadius);
+            DrawLine({xPos, y + topRightRadius},
+                     {xPos, y + height - bottomRightRadius});
         }
 
         // Bottom border
@@ -1202,8 +1203,8 @@ namespace UltraCanvas {
                 SetStrokePaint(borderBottomColor);
             }
             float yPos = y + height - borderBottomWidth / 2.0;
-            DrawLine(x + bottomLeftRadius, yPos,
-                     x + width - bottomRightRadius, yPos);
+            DrawLine({x + bottomLeftRadius, yPos},
+                     {x + width - bottomRightRadius, yPos});
         }
 
         // Left border
@@ -1215,8 +1216,8 @@ namespace UltraCanvas {
             } else {
                 SetStrokePaint(borderLeftColor);
             }
-            DrawLine(xPos, y + topLeftRadius,
-                     xPos, y + height - bottomLeftRadius);
+            DrawLine({xPos, y + topLeftRadius},
+                     {xPos, y + height - bottomLeftRadius});
         }
 
         // Draw rounded corners with borders
@@ -1398,11 +1399,11 @@ namespace UltraCanvas {
         }
     }
 
-    void RenderContextCairo::SetTextLineHeight(float height) {
+    void RenderContextCairo::SetTextLineHeight(double height) {
         currentState.textStyle.lineHeight = height;
     }
 
-    void RenderContextCairo::SetAlpha(float alpha) {
+    void RenderContextCairo::SetAlpha(double alpha) {
         // Get current source and modify alpha
         double r, g, b, a;
         cairo_pattern_t* pattern = cairo_get_source(cairo);
@@ -1422,7 +1423,7 @@ namespace UltraCanvas {
         SetFontFace(family, currentState.fontStyle.fontWeight, currentState.fontStyle.fontSlant);
     }
 
-    void RenderContextCairo::SetFontSize(float size) {
+    void RenderContextCairo::SetFontSize(double size) {
         cairo_set_font_size(cairo, size);
         currentState.fontStyle.fontSize = size;
     }
@@ -1447,7 +1448,7 @@ namespace UltraCanvas {
         currentState.textStyle.isMarkup = isMarkup;
     }
 
-    void RenderContextCairo::FillText(const std::string& text, float x, float y) {
+    void RenderContextCairo::FillText(const std::string& text, double x, double y) {
         ApplyFillSource();
         cairo_select_font_face(cairo, currentState.fontStyle.fontFamily.c_str(),
                                currentState.fontStyle.fontSlant == FontSlant::Oblique ? CAIRO_FONT_SLANT_OBLIQUE : (currentState.fontStyle.fontSlant == FontSlant::Italic ? CAIRO_FONT_SLANT_ITALIC : CAIRO_FONT_SLANT_NORMAL),
@@ -1457,7 +1458,7 @@ namespace UltraCanvas {
         cairo_show_text(cairo, text.c_str());
     }
 
-    void RenderContextCairo::StrokeText(const std::string& text, float x, float y) {
+    void RenderContextCairo::StrokeText(const std::string& text, double x, double y) {
         ApplyStrokeSource();
         cairo_select_font_face(cairo, currentState.fontStyle.fontFamily.c_str(),
                                currentState.fontStyle.fontSlant == FontSlant::Oblique ? CAIRO_FONT_SLANT_OBLIQUE : (currentState.fontStyle.fontSlant == FontSlant::Italic ? CAIRO_FONT_SLANT_ITALIC : CAIRO_FONT_SLANT_NORMAL),
@@ -1467,22 +1468,22 @@ namespace UltraCanvas {
         cairo_stroke(cairo);
     }
 
-    void RenderContextCairo::DrawPixmap(UCPixmapCairo& pixmap, float x, float y, float w, float h, ImageFitMode fitMode) {
+    void RenderContextCairo::DrawPixmap(UCPixmap &pixmap, double x, double y, double w, double h, ImageFitMode fitMode) {
         try {
             // Load the image
             // Save current cairo state
-            float pixWidth = static_cast<float>(pixmap.GetWidth());
-            float pixHeight = static_cast<float>(pixmap.GetHeight());
+            double pixWidth = static_cast<double>(pixmap.GetWidth());
+            double pixHeight = static_cast<double>(pixmap.GetHeight());
             if (!w) {
                 w = pixWidth;
             }
             if (!h) {
                 h = pixHeight;
             }
-            float scaleX = 1;
-            float scaleY = 1;
-            float offsetX = 0;
-            float offsetY = 0;
+            double scaleX = 1;
+            double scaleY = 1;
+            double offsetX = 0;
+            double offsetY = 0;
             // Calculate scaling factors
             if (pixHeight != h || pixWidth != w) {
                 switch (fitMode) {

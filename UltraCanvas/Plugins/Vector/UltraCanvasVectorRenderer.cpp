@@ -195,7 +195,7 @@ namespace UltraCanvas {
     void VectorRenderer::RenderLine(const VectorLine &line) {
         if (!line.Style.Stroke.has_value()) return;
         ApplyStroke(line.Style.Stroke.value());
-        ctx->DrawLine(line.Start.x, line.Start.y, line.End.x, line.End.y);
+        ctx->DrawLine(line.Start, line.End);
     }
 
     void VectorRenderer::RenderPolyline(const VectorPolyline &polyline) {

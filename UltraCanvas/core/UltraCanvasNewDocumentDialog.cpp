@@ -436,7 +436,7 @@ namespace UltraCanvas {
         ctx->DrawRectangle(listBounds);
 
         ctx->PushState();
-        ctx->ClipRect(listBounds.x, listBounds.y, listBounds.width - 14, listBounds.height);
+        ctx->ClipRect({listBounds.x, listBounds.y, listBounds.width - 14, listBounds.height});
 
         int y = listBounds.y;
         int startIndex = scrollOffset;

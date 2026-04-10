@@ -98,7 +98,7 @@ namespace UltraCanvas {
             ctx->PushState();
             int bw = static_cast<int>(style.borderWidth);
             int sbWidth = needsScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
-            ctx->ClipRect(Rect2Di(bounds.x + bw,
+            ctx->ClipRect(Rect2Df(bounds.x + bw,
                                   bounds.y + bw,
                                   bounds.width - bw * 2 - sbWidth,
                                   bounds.height - bw * 2));
@@ -658,7 +658,7 @@ namespace UltraCanvas {
 
         ctx->SetStrokePaint(style.separatorColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(Point2Di(startX, centerY), Point2Di(endX, centerY));
+        ctx->DrawLine(Point2Df(startX, centerY), Point2Df(endX, centerY));
     }
 
     void UltraCanvasMenu::RenderHeader(const MenuItemData &item, const Rect2Di &bounds, IRenderContext *ctx) {
@@ -686,16 +686,16 @@ namespace UltraCanvas {
 
             if (item.type == MenuItemType::Checkbox) {
                 // Draw checkmark
-                Point2Di p1(position.x + 3, position.y + style.iconSize / 2);
-                Point2Di p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
-                Point2Di p3(position.x + style.iconSize - 3, position.y + 3);
+                Point2Df p1(position.x + 3, position.y + style.iconSize / 2);
+                Point2Df p2(position.x + style.iconSize / 2, position.y + style.iconSize - 3);
+                Point2Df p3(position.x + style.iconSize - 3, position.y + 3);
                 ctx->DrawLine(p1, p2);
                 ctx->DrawLine(p2, p3);
             } else {
                 // Draw radio dot
-                Point2Df center = {position.x + style.iconSize / 2,
-                                    position.y + style.iconSize / 2};
-                ctx->DrawCircle(center, style.iconSize / 4);
+                Point2Df center = {position.x + static_cast<double>(style.iconSize) / 2.0,
+                                    position.y + static_cast<double>(style.iconSize) / 2.0};
+                ctx->DrawCircle(center, static_cast<double>(style.iconSize) / 4.0);
             }
         }
     }

@@ -168,28 +168,28 @@ namespace UltraCanvas {
             ctx->SetStrokeWidth(1.0f);
 
             // Top-left corner
-            ctx->DrawLine(Point2Di(bounds.x, bounds.y),
-                     Point2Di(bounds.x + markerSize, bounds.y));
-            ctx->DrawLine(Point2Di(bounds.x, bounds.y),
-                     Point2Di(bounds.x, bounds.y + markerSize));
+            ctx->DrawLine(Point2Df(bounds.x, bounds.y),
+                     Point2Df(bounds.x + markerSize, bounds.y));
+            ctx->DrawLine(Point2Df(bounds.x, bounds.y),
+                     Point2Df(bounds.x, bounds.y + markerSize));
 
             // Top-right corner
-            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y),
-                     Point2Di(bounds.x + bounds.width - markerSize, bounds.y));
-            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y),
-                     Point2Di(bounds.x + bounds.width, bounds.y + markerSize));
+            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y),
+                     Point2Df(bounds.x + bounds.width - markerSize, bounds.y));
+            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y),
+                     Point2Df(bounds.x + bounds.width, bounds.y + markerSize));
 
             // Bottom-left corner
-            ctx->DrawLine(Point2Di(bounds.x, bounds.y + bounds.height),
-                     Point2Di(bounds.x + markerSize, bounds.y + bounds.height));
-            ctx->DrawLine(Point2Di(bounds.x, bounds.y + bounds.height),
-                     Point2Di(bounds.x, bounds.y + bounds.height - markerSize));
+            ctx->DrawLine(Point2Df(bounds.x, bounds.y + bounds.height),
+                     Point2Df(bounds.x + markerSize, bounds.y + bounds.height));
+            ctx->DrawLine(Point2Df(bounds.x, bounds.y + bounds.height),
+                     Point2Df(bounds.x, bounds.y + bounds.height - markerSize));
 
             // Bottom-right corner
-            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y + bounds.height),
-                     Point2Di(bounds.x + bounds.width - markerSize, bounds.y + bounds.height));
-            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y + bounds.height),
-                     Point2Di(bounds.x + bounds.width, bounds.y + bounds.height - markerSize));
+            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y + bounds.height),
+                     Point2Df(bounds.x + bounds.width - markerSize, bounds.y + bounds.height));
+            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y + bounds.height),
+                     Point2Df(bounds.x + bounds.width, bounds.y + bounds.height - markerSize));
 
             ctx->PopState();
         }

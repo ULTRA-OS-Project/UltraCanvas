@@ -231,7 +231,7 @@ namespace UltraCanvas {
         auto contentRect = GetContentRect();
 
         // Clip to content area
-        ctx->ClipRect(contentRect.x, contentRect.y, contentRect.width, contentRect.height);
+        ctx->ClipRect(contentRect);
 
         // Draw column header (multi-column mode only)
         if (viewStyle.showHeader && model) {
@@ -274,7 +274,7 @@ namespace UltraCanvas {
             // Grid line between columns
             if (viewStyle.showGridLines && col < colCount - 1) {
                 ctx->SetStrokePaint(viewStyle.gridLineColor);
-                ctx->DrawLine(colX + colDef.width, headerRect.y, colX + colDef.width, headerRect.Bottom());
+                ctx->DrawLine({colX + colDef.width, headerRect.y}, {colX + colDef.width, headerRect.Bottom()});
             }
 
             colX += colDef.width;
@@ -282,7 +282,7 @@ namespace UltraCanvas {
 
         // Bottom border of header
         ctx->SetStrokePaint(viewStyle.gridLineColor);
-        ctx->DrawLine(headerRect.x, headerRect.Bottom(), headerRect.Right(), headerRect.Bottom());
+        ctx->DrawLine(headerRect.BottomLeft(), headerRect.BottomRight());
     }
 
     void UltraCanvasListView::RenderRows(IRenderContext* ctx, const Rect2Di& contentRect) {
@@ -359,15 +359,15 @@ namespace UltraCanvas {
                     opt.columnAlignment = colDef.alignment;
 
                     ctx->PushState();
-                    ctx->ClipRect(colX, rowY, colDef.width, viewStyle.rowHeight);
+                    ctx->ClipRect({colX, rowY, colDef.width, viewStyle.rowHeight});
                     delegate->RenderItem(ctx, model, row, col, opt);
                     ctx->PopState();
 
                     // Grid line between columns
                     if (viewStyle.showGridLines && col < colCount - 1) {
                         ctx->SetStrokePaint(viewStyle.gridLineColor);
-                        ctx->DrawLine(colX + colDef.width, rowY,
-                                     colX + colDef.width, rowY + viewStyle.rowHeight);
+                        ctx->DrawLine({colX + colDef.width, rowY},
+                                      {colX + colDef.width, rowY + viewStyle.rowHeight});
                     }
 
                     colX += colDef.width;

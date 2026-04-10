@@ -354,12 +354,12 @@ namespace UltraCanvas {
         if (scrollSettings.horizontal != TemplateScrollMode::Off ||
             scrollSettings.vertical != TemplateScrollMode::Off) {
             ctx->PushState();
-            ctx->ClipRect(
-                    static_cast<float>(GetX()) + appearance.paddingLeft,
-                    static_cast<float>(GetY()) + appearance.paddingTop,
-                    static_cast<float>(GetWidth()) - appearance.paddingLeft - appearance.paddingRight,
-                    static_cast<float>(GetHeight()) - appearance.paddingTop - appearance.paddingBottom
-            );
+            ctx->ClipRect({
+                                  GetX() + appearance.paddingLeft,
+                                  GetY() + appearance.paddingTop,
+                                  GetWidth() - appearance.paddingLeft - appearance.paddingRight,
+                                  GetHeight() - appearance.paddingTop - appearance.paddingBottom
+                          });
         }
 
         // Render container children (the template elements)
@@ -769,10 +769,10 @@ namespace UltraCanvas {
             for (int i = -2; i <= 2; ++i) {
                 if (dragHandle.position == LayoutDockSide::Top || dragHandle.position == LayoutDockSide::Bottom) {
                     float lineX = centerX + i * 6;
-                    ctx->DrawLine(lineX, handleRect.y + 2, lineX, handleRect.y + handleRect.height - 2);
+                    ctx->DrawLine({lineX, handleRect.y + 2}, {lineX, handleRect.y + handleRect.height - 2});
                 } else {
                     float lineY = centerY + i * 6;
-                    ctx->DrawLine(handleRect.x + 2, lineY, handleRect.x + handleRect.width - 2, lineY);
+                    ctx->DrawLine({handleRect.x + 2, lineY}, {handleRect.x + handleRect.width - 2, lineY});
                 }
             }
         } else if (dragHandle.gripPattern == "bars") {

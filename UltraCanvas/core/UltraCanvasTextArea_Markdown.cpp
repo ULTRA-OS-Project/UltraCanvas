@@ -1419,7 +1419,8 @@ struct MarkdownInlineRenderer {
 
                 // Draw subtle background
                 ctx->SetFillPaint(mdStyle.mathBackgroundColor);
-                ctx->FillRoundedRectangle({currentX - 2, y + 1, textWidth + 4, lineHeight - 2}, 3);
+                ctx->FillRoundedRectangle(Rect2Df(currentX - 2, y + 1,
+                                           textWidth + 4, lineHeight - 2), 3);
 
                 // Draw math text in italic
                 ctx->SetFontSlant(FontSlant::Italic);
@@ -1446,7 +1447,7 @@ struct MarkdownInlineRenderer {
                     int underlineY = y + lineHeight - 3;
                     ctx->SetStrokePaint(mdStyle.linkColor);
                     ctx->SetStrokeWidth(1.0f);
-                    ctx->DrawLine(currentX, underlineY, currentX + textWidth, underlineY);
+                    ctx->DrawLine({currentX, underlineY}, { currentX + textWidth, underlineY});
                 }
 
                 // Store hit rect
@@ -1473,7 +1474,7 @@ struct MarkdownInlineRenderer {
 
                 int textWidth = ctx->GetTextLineWidth(elem.text);
                 double subY = y + lineHeight * 0.3; // Lower position
-                ctx->DrawText(elem.text, {currentX, subY});
+                ctx->DrawText(elem.text, {static_cast<double>(currentX), subY});
 
                 ctx->SetFontSize(origSize);
                 currentX += textWidth;
@@ -1491,7 +1492,7 @@ struct MarkdownInlineRenderer {
 
                 int textWidth = ctx->GetTextLineWidth(elem.text);
                 double supY = y - lineHeight * 0.15f; // Higher position
-                ctx->DrawText(elem.text, {currentX, supY});
+                ctx->DrawText(elem.text, {static_cast<double>(currentX), supY});
 
                 ctx->SetFontSize(origSize);
                 currentX += textWidth;
@@ -1522,7 +1523,7 @@ struct MarkdownInlineRenderer {
                     int underlineY = y + lineHeight - 3;
                     ctx->SetStrokePaint(mdStyle.linkColor);
                     ctx->SetStrokeWidth(1.0f);
-                    ctx->DrawLine(currentX, underlineY, currentX + textWidth, underlineY);
+                    ctx->DrawLine({currentX, underlineY}, { currentX + textWidth, underlineY});
                 }
 
                 // Store hit rect for click
@@ -1559,16 +1560,8 @@ struct MarkdownInlineRenderer {
                 int underlineY = y + lineHeight - 2;
                 ctx->SetStrokePaint(mdStyle.abbreviationUnderlineColor);
                 ctx->SetStrokeWidth(1.0f);
-                float dashLen = mdStyle.abbreviationUnderlineDashLength;
-                float gapLen = mdStyle.abbreviationUnderlineGapLength;
-                float drawX = static_cast<float>(currentX);
-                float endX = static_cast<float>(currentX + textWidth);
-                while (drawX < endX) {
-                    float segEnd = std::min(drawX + dashLen, endX);
-                    ctx->DrawLine(static_cast<int>(drawX), underlineY,
-                                  static_cast<int>(segEnd), underlineY);
-                    drawX = segEnd + gapLen;
-                }
+                ctx->SetLineDash(UCDashPattern({mdStyle.abbreviationUnderlineDashLength,mdStyle.abbreviationUnderlineGapLength}));
+                ctx->DrawLine({currentX, underlineY}, {currentX + textWidth, underlineY});
 
                 // Store hit rect for hover tooltip
                 if (hitRects) {
@@ -1594,7 +1587,7 @@ struct MarkdownInlineRenderer {
 
                 int textWidth = ctx->GetTextLineWidth(elem.text);
                 double supY = y - lineHeight * 0.15;
-                ctx->DrawText(elem.text, {currentX, supY});
+                ctx->DrawText(elem.text, {static_cast<double>(currentX), supY});
 
                 // Store hit rect for hover tooltip
                 if (hitRects && !elem.footnoteContent.empty()) {
@@ -1650,7 +1643,7 @@ struct MarkdownInlineRenderer {
                 int strikeY = y + lineHeight / 2;
                 ctx->SetStrokePaint(mdStyle.strikethroughColor);
                 ctx->SetStrokeWidth(1.0f);
-                ctx->DrawLine(currentX, strikeY, currentX + textWidth, strikeY);
+                ctx->DrawLine({currentX, strikeY}, { currentX + textWidth, strikeY});
             }
 
             // --- Restore font if code changed it ---
@@ -1879,8 +1872,8 @@ struct MarkdownInlineRenderer {
                 ctx->SetStrokeWidth(2.0f);
                 int cx = cbX + cbSize / 2;
                 int cy = cbY + cbSize / 2;
-                ctx->DrawLine(cbX + 3, cy, cx - 1, cbY + cbSize - 3);
-                ctx->DrawLine(cx - 1, cbY + cbSize - 3, cbX + cbSize - 3, cbY + 3);
+                ctx->DrawLine({cbX + 3, cy}, { cx - 1, cbY + cbSize - 3});
+                ctx->DrawLine({cx - 1, cbY + cbSize - 3}, { cbX + cbSize - 3, cbY + 3});
             }
 
             bulletX += cbSize + 6;
@@ -1971,8 +1964,8 @@ struct MarkdownInlineRenderer {
         ctx->FillRectangle(x, y, width, lineHeight);
 
         // Draw left/right border accent
-        ctx->DrawLine(x, y, x, y + lineHeight);
-        ctx->DrawLine(x + width, y, x + width, y + lineHeight);
+        ctx->DrawLine({x, y}, { x, y + lineHeight});
+        ctx->DrawLine({x + width, y}, { x + width, y + lineHeight});
 
         // Draw code text in monospace
         ctx->SetFontFamily(mdStyle.codeFont);
@@ -2004,8 +1997,8 @@ struct MarkdownInlineRenderer {
         ctx->FillRectangle(x, y, width, lineHeight);
 
         // Draw left/right border accent
-        ctx->DrawLine(x, y, x, y + lineHeight);
-        ctx->DrawLine(x + width, y, x + width, y + lineHeight);
+        ctx->DrawLine({x, y}, { x, y + lineHeight});
+        ctx->DrawLine({x + width, y}, { x + width, y + lineHeight});
 
         // Set monospace font
         ctx->SetFontFamily(mdStyle.codeFont);
@@ -2095,9 +2088,9 @@ struct MarkdownInlineRenderer {
         ctx->SetStrokePaint(mdStyle.codeBlockBorderColor);
         ctx->SetStrokeWidth(0.5);
         ctx->FillRectangle(x, bgY, width, bgHeight);
-        ctx->DrawLine(x, isOpeningFence ? bgY : bgY + bgHeight, x + width, isOpeningFence ? bgY : bgY + bgHeight);
-        ctx->DrawLine(x, bgY, x, bgY + bgHeight);
-        ctx->DrawLine(x + width, bgY, x + width, bgY + bgHeight);
+        ctx->DrawLine({x, isOpeningFence ? bgY : bgY + bgHeight}, { x + width, isOpeningFence ? bgY : bgY + bgHeight});
+        ctx->DrawLine({x, bgY}, { x, bgY + bgHeight});
+        ctx->DrawLine({x + width, bgY}, { x + width, bgY + bgHeight});
     }
 
     // ---------------------------------------------------------------
@@ -2110,7 +2103,7 @@ struct MarkdownInlineRenderer {
         int ruleY = y + lineHeight / 2;
         ctx->SetStrokePaint(mdStyle.horizontalRuleColor);
         ctx->SetStrokeWidth(mdStyle.horizontalRuleHeight);
-        ctx->DrawLine(x, ruleY, x + width, ruleY);
+        ctx->DrawLine({x, ruleY}, { x + width, ruleY});
     }
 
     // ---------------------------------------------------------------
@@ -2583,13 +2576,13 @@ struct MarkdownInlineRenderer {
         // Draw top border line (for all rows)
         ctx->SetStrokePaint(mdStyle.tableBorderColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(x, y, x + totalTableWidth, y);
+        ctx->DrawLine({x, y}, { x + totalTableWidth, y});
 
         // Draw bottom border line
         // For header rows: DON'T draw bottom border — the separator line handles it
         // For data rows: draw bottom border
         if (!isHeaderRow) {
-            ctx->DrawLine(x, y + rowHeight, x + totalTableWidth, y + rowHeight);
+            ctx->DrawLine({x, y + rowHeight}, { x + totalTableWidth, y + rowHeight});
         }
 
         // Draw cells
@@ -2606,7 +2599,7 @@ struct MarkdownInlineRenderer {
             // Draw vertical separator
             ctx->SetStrokePaint(mdStyle.tableBorderColor);
             ctx->SetStrokeWidth(1.0f);
-            ctx->DrawLine(cellX, y, cellX, y + rowHeight);
+            ctx->DrawLine({cellX, y}, { cellX, y + rowHeight});
 
             // Determine text alignment for this column
             TextAlignment align = TextAlignment::Left;
@@ -2655,7 +2648,7 @@ struct MarkdownInlineRenderer {
         // Draw right border of last column
         ctx->SetStrokePaint(mdStyle.tableBorderColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(cellX, y, cellX, y + rowHeight);
+        ctx->DrawLine({cellX, y}, { cellX, y + rowHeight});
 
         // Reset font
         ctx->SetFontWeight(FontWeight::Normal);
@@ -2688,12 +2681,12 @@ struct MarkdownInlineRenderer {
         // Draw bottom border of the unified header block
         ctx->SetStrokePaint(mdStyle.tableBorderColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(x, y + lineHeight, x + totalTableWidth, y + lineHeight);
+        ctx->DrawLine({x, y + lineHeight}, { x + totalTableWidth, y + lineHeight});
 
         // Draw vertical cell borders (extending header's vertical separators)
         int cellX = x;
         // Left border
-        ctx->DrawLine(cellX, y, cellX, y + lineHeight);
+        ctx->DrawLine({cellX, y}, { cellX, y + lineHeight});
 
         for (int col = 0; col < columnCount; col++) {
             int cellWidth = 0;
@@ -2705,7 +2698,7 @@ struct MarkdownInlineRenderer {
             cellX += cellWidth;
 
             // Draw right border of each column
-            ctx->DrawLine(cellX, y, cellX, y + lineHeight);
+            ctx->DrawLine({cellX, y}, { cellX, y + lineHeight});
         }
     }
 };
@@ -2760,7 +2753,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
     // (the tokenizer itself persists as a class member to avoid expensive reconstruction)
 
     context->PushState();
-    context->ClipRect(Rect2Di(visibleTextArea.x - 2, visibleTextArea.y, visibleTextArea.width + 2, visibleTextArea.height));
+    context->ClipRect(Rect2Df(visibleTextArea.x - 2, visibleTextArea.y, visibleTextArea.width + 2, visibleTextArea.height));
     context->SetFontStyle(style.fontStyle);
 
     // Get current line index where cursor is located
@@ -3426,8 +3419,8 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                 context->SetStrokePaint(mdStyle.codeBlockBorderColor);
                 context->SetStrokeWidth(0.5);
                 context->FillRectangle(x, textY, visibleTextArea.width, computedLineHeight);
-                context->DrawLine(x, textY, x, textY + computedLineHeight);
-                context->DrawLine(x + visibleTextArea.width, textY, x + visibleTextArea.width, textY + computedLineHeight);
+                context->DrawLine({x, textY}, { x, textY + computedLineHeight});
+                context->DrawLine({x + visibleTextArea.width, textY}, { x + visibleTextArea.width, textY + computedLineHeight});
 
                 context->SetFontFamily(mdStyle.codeFont);
                 context->SetFontWeight(FontWeight::Normal);

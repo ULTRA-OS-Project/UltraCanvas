@@ -3993,20 +3993,20 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         int bracketLen = 40; // Length of each corner bracket arm
 
         // Top-left corner
-        ctx->DrawLine(zoneX, zoneY, zoneX + bracketLen, zoneY);
-        ctx->DrawLine(zoneX, zoneY, zoneX, zoneY + bracketLen);
+        ctx->DrawLine({zoneX, zoneY}, { zoneX + bracketLen, zoneY});
+        ctx->DrawLine({zoneX, zoneY}, { zoneX, zoneY + bracketLen});
 
         // Top-right corner
-        ctx->DrawLine(zoneX + zoneW, zoneY, zoneX + zoneW - bracketLen, zoneY);
-        ctx->DrawLine(zoneX + zoneW, zoneY, zoneX + zoneW, zoneY + bracketLen);
+        ctx->DrawLine({zoneX + zoneW, zoneY}, {zoneX + zoneW - bracketLen, zoneY});
+        ctx->DrawLine({zoneX + zoneW, zoneY}, {zoneX + zoneW, zoneY + bracketLen});
 
         // Bottom-left corner
-        ctx->DrawLine(zoneX, zoneY + zoneH, zoneX + bracketLen, zoneY + zoneH);
-        ctx->DrawLine(zoneX, zoneY + zoneH, zoneX, zoneY + zoneH - bracketLen);
+        ctx->DrawLine({zoneX, zoneY + zoneH}, {zoneX + bracketLen, zoneY + zoneH});
+        ctx->DrawLine({zoneX, zoneY + zoneH}, {zoneX, zoneY + zoneH - bracketLen});
 
         // Bottom-right corner
-        ctx->DrawLine(zoneX + zoneW, zoneY + zoneH, zoneX + zoneW - bracketLen, zoneY + zoneH);
-        ctx->DrawLine(zoneX + zoneW, zoneY + zoneH, zoneX + zoneW, zoneY + zoneH - bracketLen);
+        ctx->DrawLine({zoneX + zoneW, zoneY + zoneH}, {zoneX + zoneW - bracketLen, zoneY + zoneH});
+        ctx->DrawLine({zoneX + zoneW, zoneY + zoneH}, {zoneX + zoneW, zoneY + zoneH - bracketLen});
 
         // Central icon — document/file icon using simple drawing
         int iconCenterX = w / 2;

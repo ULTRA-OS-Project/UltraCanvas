@@ -713,13 +713,13 @@ namespace UltraCanvas {
             if (split.horizontal) {
                 int separatorX = primarySectionRect.x + primarySectionRect.width;
                 if (GetPrimaryState() == ElementState::Pressed) separatorX += 1;
-                ctx->DrawLine(Point2Di(separatorX, drawBounds.y),
-                              Point2Di(separatorX, drawBounds.y + drawBounds.height));
+                ctx->DrawLine(Point2Df(separatorX, drawBounds.y),
+                              Point2Df(separatorX, drawBounds.y + drawBounds.height));
             } else {
                 int separatorY = primarySectionRect.y + primarySectionRect.height;
                 if (GetPrimaryState() == ElementState::Pressed) separatorY += 1;
-                ctx->DrawLine(Point2Di(drawBounds.x, separatorY),
-                              Point2Di(drawBounds.x + drawBounds.width, separatorY));
+                ctx->DrawLine(Point2Df(drawBounds.x, separatorY),
+                              Point2Df(drawBounds.x + drawBounds.width, separatorY));
             }
         }
 

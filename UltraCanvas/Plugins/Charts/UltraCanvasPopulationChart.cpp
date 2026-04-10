@@ -354,13 +354,13 @@ namespace UltraCanvas {
 
             // Left side grid line
             int leftX = centerX - pixelPos;
-            ctx->DrawLine(leftX, chartPaddingTop,
-                          leftX, GetHeight() - chartPaddingBottom);
+            ctx->DrawLine({leftX, chartPaddingTop},
+                          {leftX, GetHeight() - chartPaddingBottom});
 
             // Right side grid line
             int rightX = centerX + pixelPos;
-            ctx->DrawLine(rightX, chartPaddingTop,
-                          rightX, GetHeight() - chartPaddingBottom);
+            ctx->DrawLine({rightX, chartPaddingTop},
+                          {rightX, GetHeight() - chartPaddingBottom});
         }
     }
 
@@ -417,8 +417,8 @@ namespace UltraCanvas {
     void UltraCanvasPopulationChart::RenderCenterLine(IRenderContext* ctx) {
         ctx->SetStrokePaint(axisColor);
         ctx->SetStrokeWidth(2.0f);
-        ctx->DrawLine(centerX, chartPaddingTop,
-                      centerX, GetHeight() - chartPaddingBottom);
+        ctx->DrawLine({centerX, chartPaddingTop},
+                      {centerX, GetHeight() - chartPaddingBottom});
     }
 
     void UltraCanvasPopulationChart::RenderLegend(IRenderContext* ctx) {

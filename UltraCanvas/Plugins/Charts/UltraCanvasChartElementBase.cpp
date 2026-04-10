@@ -149,14 +149,14 @@ namespace UltraCanvas {
         int numVerticalLines = 10;
         for (int i = 1; i < numVerticalLines; ++i) {
             float x = cachedPlotArea.x + (i * cachedPlotArea.width / numVerticalLines);
-            ctx->DrawLine(x, cachedPlotArea.y, x, cachedPlotArea.y + cachedPlotArea.height);
+            ctx->DrawLine({x, cachedPlotArea.y}, { x, cachedPlotArea.y + cachedPlotArea.height});
         }
 
         // Horizontal grid lines using existing DrawLine
         int numHorizontalLines = 8;
         for (int i = 1; i < numHorizontalLines; ++i) {
             float y = cachedPlotArea.y + (i * cachedPlotArea.height / numHorizontalLines);
-            ctx->DrawLine(cachedPlotArea.x, y, cachedPlotArea.x + cachedPlotArea.width, y);
+            ctx->DrawLine({cachedPlotArea.x, y}, { cachedPlotArea.x + cachedPlotArea.width, y});
         }
     }
 
@@ -168,12 +168,12 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(1.0f);
 
         // Draw X-axis using existing DrawLine
-        ctx->DrawLine(cachedPlotArea.x, cachedPlotArea.y + cachedPlotArea.height,
-                      cachedPlotArea.x + cachedPlotArea.width, cachedPlotArea.y + cachedPlotArea.height);
+        ctx->DrawLine({cachedPlotArea.x, cachedPlotArea.y + cachedPlotArea.height}, {
+                      cachedPlotArea.x + cachedPlotArea.width, cachedPlotArea.y + cachedPlotArea.height});
 
         // Draw Y-axis using existing DrawLine
-        ctx->DrawLine(cachedPlotArea.x, cachedPlotArea.y,
-                      cachedPlotArea.x, cachedPlotArea.y + cachedPlotArea.height);
+        ctx->DrawLine({cachedPlotArea.x, cachedPlotArea.y}, {
+                      cachedPlotArea.x, cachedPlotArea.y + cachedPlotArea.height});
 
         // Draw basic tick marks and labels
         RenderAxisLabels(ctx);
@@ -196,7 +196,7 @@ namespace UltraCanvas {
 //            float tickX = cachedPlotArea.x;
 //
 //            // Draw tick mark using existing DrawLine
-//            ctx->DrawLine(tickX - 5, y, tickX, y);
+//            ctx->DrawLine({tickX - 5, y}, { tickX, y});
 //
 //            // Draw label using existing DrawText
 //            double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
@@ -242,7 +242,7 @@ namespace UltraCanvas {
                 float tickY = cachedPlotArea.y + cachedPlotArea.height;
 
                 // Draw tick mark
-                ctx->DrawLine(x, tickY, x, tickY + 5);
+                ctx->DrawLine({x, tickY}, { x, tickY + 5});
 
                 // Draw label (use label if available, otherwise fall back to x value)
                 std::string label = point.label;
@@ -271,7 +271,7 @@ namespace UltraCanvas {
                 double tickY = cachedPlotArea.y + cachedPlotArea.height;
 
                 // Draw tick mark
-                ctx->DrawLine(x, tickY, x, tickY + 5);
+                ctx->DrawLine({x, tickY}, { x, tickY + 5});
 
                 // Draw label
                 double labelValue = cachedDataBounds.minX + (i * (cachedDataBounds.maxX - cachedDataBounds.minX) / numXTicks);
@@ -295,7 +295,7 @@ namespace UltraCanvas {
             double tickX = cachedPlotArea.x;
 
             // Draw tick mark using existing DrawLine
-            ctx->DrawLine(tickX - 5, y, tickX, y);
+            ctx->DrawLine({tickX - 5, y}, { tickX, y});
 
             // Draw label using existing DrawText
             double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);

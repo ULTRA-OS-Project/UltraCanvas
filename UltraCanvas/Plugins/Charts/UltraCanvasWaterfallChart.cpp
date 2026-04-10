@@ -108,7 +108,7 @@ namespace UltraCanvas {
                       (i * cachedPlotArea.height / numYTicks);
 
             // Draw tick mark
-            ctx->DrawLine(cachedPlotArea.x - 5, y, cachedPlotArea.x, y);
+            ctx->DrawLine({cachedPlotArea.x - 5, y}, {cachedPlotArea.x, y});
 
             // Draw label
             std::string label = FormatValue(value);
@@ -417,7 +417,7 @@ namespace UltraCanvas {
     void UltraCanvasWaterfallChartElement::DrawConnectionLine(IRenderContext* ctx, float x1, float y1, float x2, float y2) {
         switch (connectionStyle) {
             case ConnectionStyle::Solid:
-                ctx->DrawLine(x1, y1, x2, y2);
+                ctx->DrawLine({x1, y1}, {x2, y2});
                 break;
 
             case ConnectionStyle::Dotted:
@@ -436,7 +436,7 @@ namespace UltraCanvas {
                     float endX = x1 + t2 * (x2 - x1);
                     float endY = y1 + t2 * (y2 - y1);
 
-                    ctx->DrawLine(startX, startY, endX, endY);
+                    ctx->DrawLine({startX, startY}, {endX, endY});
                 }
             }
                 break;
@@ -457,7 +457,7 @@ namespace UltraCanvas {
                     float endX = x1 + t2 * (x2 - x1);
                     float endY = y1 + t2 * (y2 - y1);
 
-                    ctx->DrawLine(startX, startY, endX, endY);
+                    ctx->DrawLine({startX, startY}, {endX, endY});
                 }
             }
                 break;

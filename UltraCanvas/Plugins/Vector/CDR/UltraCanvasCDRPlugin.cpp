@@ -1321,8 +1321,8 @@ namespace UltraCanvas {
 
                 // Draw X pattern to indicate broken image
                 ctx->SetStrokePaint(Color(180, 180, 180, 255));
-                ctx->DrawLine(drawX, drawY, drawX + imgW, drawY + imgH);
-                ctx->DrawLine(drawX + imgW, drawY, drawX, drawY + imgH);
+                ctx->DrawLine({drawX, drawY}, {drawX + imgW, drawY + imgH});
+                ctx->DrawLine({drawX + imgW, drawY}, {drawX, drawY + imgH});
             }
 
             ctx->PopState();
@@ -1823,8 +1823,7 @@ namespace UltraCanvas {
 
         // Clip to element bounds
         Rect2Di contentRect = GetContentRect();
-        ctx->ClipRect(static_cast<float>(contentRect.x), static_cast<float>(contentRect.y),
-                      static_cast<float>(contentRect.width), static_cast<float>(contentRect.height));
+        ctx->ClipRect(contentRect);
 
         if (!cdrRenderer.IsLoaded()) {
             RenderPlaceholder(ctx, "No CDR document loaded");

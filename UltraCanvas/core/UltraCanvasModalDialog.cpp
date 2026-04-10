@@ -871,7 +871,7 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(1.0f);
         ctx->DrawRectangle(fileListRect);
 
-        ctx->ClipRect(Rect2D(fileListRect.x, fileListRect.y, fileListRect.width, fileListRect.height));
+        ctx->ClipRect(fileListRect);
 
         ctx->SetFontSize(12.0f);
         int currentY = fileListRect.y + 2;

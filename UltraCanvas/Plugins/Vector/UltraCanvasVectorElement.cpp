@@ -187,7 +187,7 @@ namespace UltraCanvas {
         auto bounds = GetBounds();
 
         ctx->PushState();
-        ctx->ClipRect(bounds.x, bounds.y, bounds.width, bounds.height);
+        ctx->ClipRect(bounds);
 
         RenderBackground(ctx);
 
