@@ -313,8 +313,8 @@ private:
     float caretBlinkTimer;
     
     // ===== SCROLLING (for long text) =====
-    float scrollOffset;
-    float maxScrollOffset;
+    int scrollOffset;
+    int maxScrollOffset;
     
     // ===== UNDO/REDO =====
     std::vector<TextInputState> undoStack;
@@ -477,7 +477,7 @@ private:
     float GetCaretXPosition();
     float GetCaretYPosition();
 
-    Rect2Df GetTextArea() const;
+    Rect2Di GetTextArea() const;
     
     Color GetBackgroundColor() const {
         return style.backgroundColor;

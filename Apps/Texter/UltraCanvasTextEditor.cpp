@@ -1,6 +1,6 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.0.7
+// Version: 2.0.8
 // Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 
@@ -1816,25 +1816,40 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     bool UltraCanvasTextEditor::IsBinaryFile(const std::vector<uint8_t>& rawBytes, const std::string& extension) const {
         // Known binary file extensions
         static const std::vector<std::string> binaryExtensions = {
-            // Executables and libraries
-            "exe", "dll", "so", "dylib", "bin", "o", "obj", "a", "lib", "elf",
-            // Images
-            "png", "jpg", "jpeg", "gif", "bmp", "ico", "tiff", "tif", "webp",
-            "psd", "raw", "cr2", "nef", "svg", "heic", "heif", "jxl", "avif",
-            // Audio
-            "mp3", "wav", "flac", "aac", "ogg", "wma", "m4a", "opus", "aiff",
-            // Video
-            "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
-            // Archives
-            "zip", "tar", "gz", "bz2", "xz", "7z", "rar", "zst", "lz4",
-            // Documents (binary formats)
-            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods",
-            // Fonts
-            "ttf", "otf", "woff", "woff2", "eot",
-            // Database
-            "db", "sqlite", "sqlite3",
-            // Other binary
-            "class", "pyc", "pyo", "wasm", "deb", "rpm", "iso", "img", "dmg"
+                // Executables and libraries (Windows)
+                "exe", "dll", "obj", "lib", "pdb", "cab", "msi",
+                // Executables and libraries (Linux)
+                "so", "o", "a", "elf", "ko", "deb", "rpm",
+                // Executables and libraries (macOS)
+                "dylib", "pkg",
+                // Executables and libraries (cross-platform)
+                "bin", "wasm",
+                // Mobile packages
+                "apk", "ipa",
+                // Images (binary raster/raw — NOT svg which is XML text)
+                "png", "jpg", "jpeg", "gif", "bmp", "ico", "tiff", "tif", "webp",
+                "psd", "raw", "cr2", "nef", "arw", "dng", "heic", "heif", "jxl", "avif",
+                "hdr", "exr", "tga",
+                // Audio
+                "mp3", "wav", "flac", "aac", "ogg", "wma", "m4a", "opus", "aiff",
+                // Video
+                "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
+                // Archives
+                "zip", "tar", "gz", "bz2", "xz", "7z", "rar", "zst", "lz4",
+                // Documents (binary formats — NOT rtf/html/odt source which is text/xml)
+                "pdf", "doc", "xls", "ppt",
+                // Office Open XML (ZIP-based binary containers)
+                "docx", "xlsx", "pptx", "odt", "ods",
+                // Fonts
+                "ttf", "otf", "woff", "woff2", "eot",
+                // Database
+                "db", "sqlite", "sqlite3",
+                // Disk images
+                "iso", "img", "dmg",
+                // Compiled/bytecode
+                "class", "pyc", "pyo",
+                // Network capture
+                "pcap", "pcapng"
         };
 
         // Check extension first
@@ -2814,7 +2829,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         descLabel->SetFontSize(11);
         descLabel->SetTextColor(Color(60, 60, 60));
         descLabel->SetAlignment(TextAlignment::Left);
-        descLabel->SetWordWrap(true);
+        descLabel->SetWrap(TextWrap::WrapWord);
         descLabel->SetAutoResize(true);
         descLabel->SetMargin(0, 20, 8, 20);
         mainLayout->AddUIElement(descLabel)->SetWidthMode(SizeMode::Fill);
@@ -2942,13 +2957,6 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
  
         std::string lang = item.value;
         if (lang == doc->language) return;
- 
-        // Binary files cannot be re-interpreted as text — block the switch and
-        // restore the dropdown to "Hex/Binary" so the UI stays consistent
-        if (doc->textArea->IsHexMode()) {
-            UpdateLanguageDropdown(); // snaps dropdown back to Hex/Binary
-            return;
-        }
  
         if (lang == "Hex/Binary") {
             doc->textArea->SetEditingMode(TextAreaEditingMode::Hex);

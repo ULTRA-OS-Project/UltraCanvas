@@ -254,8 +254,8 @@ namespace UltraCanvas {
             ctx->SetTextPaint(Colors::Red);
             ctx->SetFontStyle({.fontSize=10});
 
-            Rect2Di textRect = GetBounds();
-            textRect.y += GetHeight() / 2 + 10;
+            Rect2Df textRect = GetBounds();
+            textRect.y += static_cast<double>(GetHeight()) / 2.0f + 10;
             textRect.height = 20;
 
             ctx->DrawTextInRect(loadedImage->errorMessage, textRect);

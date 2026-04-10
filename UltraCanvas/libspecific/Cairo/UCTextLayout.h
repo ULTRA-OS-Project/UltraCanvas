@@ -21,87 +21,86 @@ namespace UltraCanvas {
 
     // ===== ENUMS =====
 
-    enum class UCEllipsizeMode {
-        EllipsizeNone,
-        EllipsizeStart,
-        EllipsizeMiddle,
-        EllipsizeEnd
-    };
-
-    enum class UCUnderlineType {
-        UnderlineNone,
-        UnderlineSingle,
-        UnderlineDouble,
-        UnderlineLow,
-        UnderlineError
-    };
-
-    enum class UCFontVariant {
-        VariantNormal,
-        VariantSmallCaps
-    };
-
-    enum class UCFontStretch {
-        UltraCondensed,
-        ExtraCondensed,
-        Condensed,
-        SemiCondensed,
-        Normal,
-        SemiExpanded,
-        Expanded,
-        ExtraExpanded,
-        UltraExpanded
-    };
-
-    // ===== RESULT STRUCTS =====
-
-    struct UCTextExtents {
-        Rect2Di ink;
-        Rect2Di logical;
-    };
-
-    struct UCTextHitResult {
-        int index;
-        int trailing;
-        bool inside;
-    };
-
-    struct UCCursorPos {
-        Rect2Di strongPos;
-        Rect2Di weakPos;
-    };
-
-    struct UCLineXResult {
-        int line;
-        int xPos;
-    };
-
-    struct UCCursorMoveResult {
-        int newIndex;
-        int newTrailing;
-    };
+//    enum class EllipsizeMode {
+//        EllipsizeNone,
+//        EllipsizeStart,
+//        EllipsizeMiddle,
+//        EllipsizeEnd
+//    };
+//
+//    enum class UCUnderlineType {
+//        UnderlineNone,
+//        UnderlineSingle,
+//        UnderlineDouble,
+//        UnderlineLow,
+//        UnderlineError
+//    };
+//
+//    enum class UCFontVariant {
+//        VariantNormal,
+//        VariantSmallCaps
+//    };
+//
+//    enum class UCFontStretch {
+//        UltraCondensed,
+//        ExtraCondensed,
+//        Condensed,
+//        SemiCondensed,
+//        Normal,
+//        SemiExpanded,
+//        Expanded,
+//        ExtraExpanded,
+//        UltraExpanded
+//    };
+//
+//    // ===== RESULT STRUCTS =====
+//
+//    struct UCTextExtents {
+//        Rect2Di ink;
+//        Rect2Di logical;
+//    };
+//
+//    struct UCTextHitResult {
+//        int index;
+//        int trailing;
+//        bool inside;
+//    };
+//
+//    struct UCCursorPos {
+//        Rect2Di strongPos;
+//        Rect2Di weakPos;
+//    };
+//
+//    struct UCLineXResult {
+//        int line;
+//        int xPos;
+//    };
+//
+//    struct UCCursorMoveResult {
+//        int newIndex;
+//        int newTrailing;
+//    };
 
     // ===== LAYOUT ITERATOR =====
-
-    struct PangoLayoutIterDeleter {
-        void operator()(PangoLayoutIter* iter) const {
-            if (iter) pango_layout_iter_free(iter);
-        }
-    };
-    using UCTextLayoutIter = std::unique_ptr<PangoLayoutIter, PangoLayoutIterDeleter>;
+//
+//    struct PangoLayoutIterDeleter {
+//        void operator()(PangoLayoutIter* iter) const {
+//            if (iter) pango_layout_iter_free(iter);
+//        }
+//    };
+//    using UCTextLayoutIter = std::unique_ptr<PangoLayoutIter, PangoLayoutIterDeleter>;
 
     // ===== UCTextAttribute =====
 
-    class UCTextAttribute {
+    class UCTextAttribute : public ITextAttribute {
     private:
         PangoAttribute* attr = nullptr;
 
-        explicit UCTextAttribute(PangoAttribute* a) : attr(a) {}
-
     public:
+        explicit UCTextAttribute(PangoAttribute* a) : attr(a) {}
         UCTextAttribute() = default;
 
-        ~UCTextAttribute();
+        ~UCTextAttribute() override;
 
         // Move-only
         UCTextAttribute(UCTextAttribute&& other) noexcept;
@@ -109,201 +108,148 @@ namespace UltraCanvas {
         UCTextAttribute(const UCTextAttribute&) = delete;
         UCTextAttribute& operator=(const UCTextAttribute&) = delete;
 
-        void SetRange(int startIndex, int endIndex);
-        PangoAttribute* Release();
-        bool IsValid() const;
-
-        // ===== FACTORY METHODS =====
-
-        // Font description (from UltraCanvas FontStyle)
-        static UCTextAttribute CreateFontDesc(const FontStyle& fontStyle);
-        // Font description (from raw PangoFontDescription)
-        static UCTextAttribute CreateFontDescFromPango(const PangoFontDescription* desc);
-
-        // Font family
-        static UCTextAttribute CreateFamily(const std::string& family);
-
-        // Font size in points (internally converted to Pango units)
-        static UCTextAttribute CreateSize(float sizeInPoints);
-
-        // Absolute font size in pixels (internally converted to Pango units)
-        static UCTextAttribute CreateAbsoluteSize(float sizeInPixels);
-
-        // Weight
-        static UCTextAttribute CreateWeight(FontWeight weight);
-
-        // Style / slant
-        static UCTextAttribute CreateStyle(FontSlant slant);
-
-        // Variant
-        static UCTextAttribute CreateVariant(UCFontVariant variant);
-
-        // Stretch
-        static UCTextAttribute CreateStretch(UCFontStretch stretch);
-
-        // Underline
-        static UCTextAttribute CreateUnderline(UCUnderlineType type);
-        static UCTextAttribute CreateUnderlineColor(const Color& color);
-
-        // Strikethrough
-        static UCTextAttribute CreateStrikethrough(bool enabled);
-        static UCTextAttribute CreateStrikethroughColor(const Color& color);
-
-        // Colors
-        static UCTextAttribute CreateForeground(const Color& color);
-        static UCTextAttribute CreateBackground(const Color& color);
-
-        // Alpha (0-65535)
-        static UCTextAttribute CreateForegroundAlpha(uint16_t alpha);
-        static UCTextAttribute CreateBackgroundAlpha(uint16_t alpha);
-
-        // Letter spacing in pixels (internally converted to Pango units)
-        static UCTextAttribute CreateLetterSpacing(int spacingInPixels);
-
-        // Rise (superscript/subscript displacement) in pixels
-        static UCTextAttribute CreateRise(int riseInPixels);
-
-        // Scale factor (e.g. 0.5 for half, 2.0 for double)
-        static UCTextAttribute CreateScale(double scaleFactor);
-
-        // Fallback font
-        static UCTextAttribute CreateFallback(bool enable);
-
-        // Language tag (e.g. "en-US")
-        static UCTextAttribute CreateLanguage(const std::string& lang);
+        ITextAttribute& SetRange(int startIndex, int endIndex) override;
+        TextAttributeType GetType() override;
+        void* Release() override;
     };
 
     // ===== UCTextAttributeList =====
 
-    class UCTextAttributeList {
-    private:
-        PangoAttrList* attrList = nullptr;
-
-    public:
-        UCTextAttributeList();
-        ~UCTextAttributeList();
-
-        // Move-only
-        UCTextAttributeList(UCTextAttributeList&& other) noexcept;
-        UCTextAttributeList& operator=(UCTextAttributeList&& other) noexcept;
-        UCTextAttributeList(const UCTextAttributeList&) = delete;
-        UCTextAttributeList& operator=(const UCTextAttributeList&) = delete;
-
-        // Insert attribute (takes ownership from UCTextAttribute)
-        void Insert(UCTextAttribute& attr);
-        void InsertBefore(UCTextAttribute& attr);
-        void Change(UCTextAttribute& attr);
-
-        PangoAttrList* GetHandle() const;
-        bool IsValid() const;
-
-        // Serialize to string representation
-        std::string ToString() const;
-        // Create from string representation (replaces current list)
-        static UCTextAttributeList FromString(const std::string& str);
-        // Filter attributes, returns a new list containing attributes for which
-        // the predicate returns true. Filtered attributes are removed from this list.
-        UCTextAttributeList Filter(std::function<bool(const PangoAttribute*)> predicate);
-    };
+//    class UCTextAttributeList {
+//    private:
+//        PangoAttrList* attrList = nullptr;
+//
+//    public:
+//        UCTextAttributeList();
+//        ~UCTextAttributeList();
+//
+//        // Move-only
+//        UCTextAttributeList(UCTextAttributeList&& other) noexcept;
+//        UCTextAttributeList& operator=(UCTextAttributeList&& other) noexcept;
+//        UCTextAttributeList(const UCTextAttributeList&) = delete;
+//        UCTextAttributeList& operator=(const UCTextAttributeList&) = delete;
+//
+//        // Insert attribute (takes ownership from UCTextAttribute)
+//        void Insert(UCTextAttribute& attr);
+//        void InsertBefore(UCTextAttribute& attr);
+//        void Change(UCTextAttribute& attr);
+//
+//        PangoAttrList* GetHandle() const;
+//        bool IsValid() const;
+//
+//        // Serialize to string representation
+//        std::string ToString() const;
+//        // Create from string representation (replaces current list)
+//        static UCTextAttributeList FromString(const std::string& str);
+//        // Filter attributes, returns a new list containing attributes for which
+//        // the predicate returns true. Filtered attributes are removed from this list.
+//        UCTextAttributeList Filter(std::function<bool(const PangoAttribute*)> predicate);
+//    };
 
     // ===== UCTextLayout =====
 
-    class UCTextLayout {
+    class UCTextLayout : public ITextLayout {
     private:
         PangoLayout* layout = nullptr;
-
+        PangoAttrList *attrsList = nullptr;
+        int explicitHeight = 0;
+        VerticalAlignment valign = VerticalAlignment::Top;
+        UCTextExtents extents;
+        bool extentsValid = false;
     public:
-        explicit UCTextLayout(PangoContext* pangoContext);
-        ~UCTextLayout();
+        explicit UCTextLayout(PangoContext* ctx);
+        ~UCTextLayout() override;
 
         // Move-only
-        UCTextLayout(UCTextLayout&& other) noexcept;
-        UCTextLayout& operator=(UCTextLayout&& other) noexcept;
+//        UCTextLayout(UCTextLayout&& other) noexcept;
+//        UCTextLayout& operator=(UCTextLayout&& other) noexcept;
+
         UCTextLayout(const UCTextLayout&) = delete;
         UCTextLayout& operator=(const UCTextLayout&) = delete;
 
-        bool IsValid() const;
-        PangoLayout* GetHandle() const;
-
-        void Update(const IRenderContext& ctx);
+        bool IsValid() const override;
+        void* GetHandle() const override;
 
         // ===== TEXT CONTENT =====
-        void SetText(const std::string& text);
-        std::string GetText() const;
-        void SetMarkup(const std::string& markup);
+        void SetText(const std::string& text) override;
+        std::string GetText() const override;
+        void SetMarkup(const std::string& markup) override;
 
         // ===== FONT =====
-        void SetFontDescription(const FontStyle& fontStyle);
-        void SetFontDescriptionFromPango(const PangoFontDescription* desc);
+        void SetFontStyle(const FontStyle& fontStyle) override;
+//        void SetFontDescriptionFromPango(const PangoFontDescription* desc) override;
 
         // ===== DIMENSIONS (pixel API) =====
-        void SetWidth(int widthPixels);       // -1 to unset
-        int GetWidth() const;
-        void SetHeight(int heightPixels);     // -1 to unset
-        int GetHeight() const;
+        void SetExplicitWidth(int widthPixels) override;       // -1 to unset
+        int GetExplicitWidth() const override;
+        void SetExplicitHeight(int heightPixels) override;     // -1 to unset
+        int GetExplicitHeight() const override;
 
         // ===== ALIGNMENT & JUSTIFICATION =====
-        void SetAlignment(TextAlignment align);
-        TextAlignment GetAlignment() const;
-        void SetJustify(bool justify);
-        bool GetJustify() const;
+        void SetAlignment(TextAlignment align) override;
+        TextAlignment GetAlignment() const override;
+        void SetVerticalAlignment(VerticalAlignment align) override;
+        VerticalAlignment GetVerticalAlignment() override { return valign; };
 
         // ===== WRAPPING & ELLIPSIZATION =====
-        void SetWrap(TextWrap wrap);
-        TextWrap GetWrap() const;
-        void SetEllipsize(UCEllipsizeMode mode);
-        UCEllipsizeMode GetEllipsize() const;
+        void SetWrap(TextWrap wrap) override;
+        TextWrap GetWrap() const override;
+        void SetEllipsize(EllipsizeMode mode) override;
+        EllipsizeMode GetEllipsize() const override;
 
         // ===== SPACING & INDENTATION (pixels) =====
-        void SetIndent(int indentPixels);
-        int GetIndent() const;
-        void SetLineSpacing(float factor);
-        float GetLineSpacing() const;
-        void SetSpacing(int spacingPixels);   // Inter-paragraph spacing
-        int GetSpacing() const;
+        void SetIndent(int indentPixels) override;
+        int GetIndent() const override;
+        void SetLineSpacing(float factor) override;
+        float GetLineSpacing() const override;
+        void SetSpacing(int spacingPixels) override;   // Inter-paragraph spacing
+        int GetSpacing() const override;
 
         // ===== MODE =====
-        void SetSingleParagraphMode(bool single);
-        bool GetSingleParagraphMode() const;
-        void SetAutoDir(bool autoDir);
-        bool GetAutoDir() const;
+        void SetSingleParagraphMode(bool single) override;
+        bool GetSingleParagraphMode() const override;
+        void SetAutoDir(bool autoDir) override;
+        bool GetAutoDir() const override;
 
         // ===== ATTRIBUTES =====
-        void SetAttributes(const UCTextAttributeList& attrs);
-        PangoAttrList* GetAttributesHandle() const;
+//        void SetAttributes(const UCTextAttributeList& attrs) override;
+//        PangoAttrList* GetAttributesHandle() const override;
+        void InsertAttribute(std::unique_ptr<ITextAttribute> attr) override;
+        void ChangeAttribute(std::unique_ptr<ITextAttribute> attr) override;
+        void SetAttributesFromString(const std::string& str) override;
+        void RemoveAllAttributes() override;
 
         // ===== TABS =====
-        void SetTabs(PangoTabArray* tabs);
-        PangoTabArray* GetTabs() const;
+//        void SetTabs(PangoTabArray* tabs) override;
+//        PangoTabArray* GetTabs() const override;
 
         // ===== MEASUREMENT =====
-        UCTextExtents GetPixelExtents() const;
-        Size2Di GetPixelSize() const;
-        void GetSize(int& widthPangoUnits, int& heightPangoUnits) const;
-        int GetBaseline() const;
-        int GetBaselinePangoUnits() const;
-        int GetLineCount() const;
+        UCTextExtents GetLayoutExtents() override;
+        int GetLayoutVerticalOffset() override;
+
+        int GetBaseline() const override;
+        int GetLineCount() const override;
 
         // ===== HIT TESTING & POSITION =====
-        UCTextHitResult XYToIndex(int pixelX, int pixelY) const;
-        Rect2Di IndexToPos(int byteIndex) const;
-        UCLineXResult IndexToLineX(int byteIndex, bool trailing) const;
-        UCCursorPos GetCursorPos(int byteIndex) const;
+        UCTextHitResult XYToIndex(int pixelX, int pixelY) const override;
+        Rect2Di IndexToPos(int byteIndex) const override;
+        UCLineXResult IndexToLineX(int byteIndex, bool trailing) const override;
+        UCCursorPos GetCursorPos(int byteIndex) const override;
         UCCursorMoveResult MoveCursorVisually(bool strongCursor, int oldIndex,
-                                              int oldTrailing, int direction) const;
+                                              int oldTrailing, int direction) const override;
 
         // ===== LINE ACCESS =====
-        PangoLayoutLine* GetLine(int lineIndex) const;
-        PangoLayoutLine* GetLineReadonly(int lineIndex) const;
-        GSList* GetLines() const;
-        GSList* GetLinesReadonly() const;
-
-        // ===== ITERATOR =====
-        UCTextLayoutIter GetIter() const;
-
-        // ===== RENDERING =====
-        void Show(cairo_t* cr) const;
-        void ShowAt(cairo_t* cr, float x, float y) const;
+//        PangoLayoutLine* GetLine(int lineIndex) const override;
+//        PangoLayoutLine* GetLineReadonly(int lineIndex) const override;
+//        GSList* GetLines() const override;
+//        GSList* GetLinesReadonly() const override;
+//
+//        // ===== ITERATOR =====
+//        UCTextLayoutIter GetIter() const override;
+//
+//        // ===== RENDERING =====
+//        void Show(IRenderContext* ctx) const override;
+//        void ShowAt(IRenderContext* ctx, float x, float y) const override;
     };
 
 } // namespace UltraCanvas

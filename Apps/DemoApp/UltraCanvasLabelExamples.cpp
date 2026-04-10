@@ -17,7 +17,7 @@ namespace UltraCanvas {
         container->SetPadding(0,0,10,0);
 
         // Title
-        auto title = std::make_shared<UltraCanvasLabel>("LabelTitle", 501, 10, 10, 300, 30);
+        auto title = std::make_shared<UltraCanvasLabel>("LabelTitle", 501, 10, 10, 300, 25);
         title->SetText("Label Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
@@ -41,27 +41,27 @@ namespace UltraCanvas {
         successLabel->SetText("✓ Success");
         successLabel->SetBackgroundColor(Color(200, 255, 200, 255));
         successLabel->SetTextColor(Color(0, 150, 0, 255));
-        successLabel->SetAlignment(TextAlignment::Center, TextVerticalAlignment::Middle);
+        successLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         container->AddChild(successLabel);
 
         auto warningLabel = std::make_shared<UltraCanvasLabel>("WarningLabel", 505, 180, 140, 150, 25);
         warningLabel->SetText("⚠ Warning");
         warningLabel->SetBackgroundColor(Color(255, 255, 200, 255));
         warningLabel->SetTextColor(Color(200, 150, 0, 255));
-        warningLabel->SetAlignment(TextAlignment::Center, TextVerticalAlignment::Middle);
+        warningLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         container->AddChild(warningLabel);
 
         auto errorLabel = std::make_shared<UltraCanvasLabel>("ErrorLabel", 506, 340, 140, 150, 25);
         errorLabel->SetText("✗ Error");
         errorLabel->SetBackgroundColor(Color(255, 200, 200, 255));
         errorLabel->SetTextColor(Color(200, 0, 0, 255));
-        errorLabel->SetAlignment(TextAlignment::Center, TextVerticalAlignment::Middle);
+        errorLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
         container->AddChild(errorLabel);
 
         // Multi-line Label
         auto multiLabel = std::make_shared<UltraCanvasLabel>("MultiLabel", 507, 20, 190, 450, 80);
         multiLabel->SetText("This is a multi-line label that demonstrates\nhow text wrapping works with longer content.\nIt supports multiple lines and proper alignment.");
-        multiLabel->SetWordWrap(true);
+        multiLabel->SetWrap(TextWrap::WrapWord);
         multiLabel->SetAlignment(TextAlignment::Left);
         multiLabel->SetBackgroundColor(Color(245, 245, 245, 255));
 //        multiLabel->SetBorderStyle(BorderStyle::Solid);

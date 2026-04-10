@@ -127,20 +127,20 @@ namespace UltraCanvas {
         Point2Df c = MillipointsToPixels(centre, scale);
         Point2Df major = MillipointsToPixels(majorAxis, scale);
         Point2Df minor = MillipointsToPixels(minorAxis, scale);
-        float halfWidth = std::sqrt(major.x*major.x + major.y*major.y);
-        float halfHeight = std::sqrt(minor.x*minor.x + minor.y*minor.y);
-        float x = c.x - halfWidth, y = c.y - halfHeight, w = halfWidth*2, h = halfHeight*2;
+        double halfWidth = std::sqrt(major.x*major.x + major.y*major.y);
+        double halfHeight = std::sqrt(minor.x*minor.x + minor.y*minor.y);
+        Rect2Df rect = {c.x - halfWidth, c.y - halfHeight, halfWidth*2, halfHeight*2};
 
         if (hasFill) {
             ctx->SetFillPaint(fill.startColor);
-            if (cornerRadius > 0) ctx->FillRoundedRectangle(x, y, w, h, cornerRadius*scale);
-            else ctx->FillRectangle(x, y, w, h);
+            if (cornerRadius > 0) ctx->FillRoundedRectangle(rect, cornerRadius*scale);
+            else ctx->FillRectangle(rect);
         }
         if (hasLine) {
             ctx->SetStrokePaint(line.color);
             ctx->SetStrokeWidth(line.GetWidthInPixels() * scale);
-            if (cornerRadius > 0) ctx->DrawRoundedRectangle(x, y, w, h, cornerRadius*scale);
-            else ctx->DrawRectangle(x, y, w, h);
+            if (cornerRadius > 0) ctx->DrawRoundedRectangle(rect, cornerRadius*scale);
+            else ctx->DrawRectangle(rect);
         }
         ctx->PopState();
         XARNode::Render(ctx, scale);
@@ -157,8 +157,8 @@ namespace UltraCanvas {
         float radiusX = std::sqrt(major.x*major.x + major.y*major.y);
         float radiusY = std::sqrt(minor.x*minor.x + minor.y*minor.y);
 
-        if (hasFill) { ctx->SetFillPaint(fill.startColor); ctx->FillEllipse(c.x, c.y, radiusX, radiusY); }
-        if (hasLine) { ctx->SetStrokePaint(line.color); ctx->SetStrokeWidth(line.GetWidthInPixels()*scale); ctx->DrawEllipse(c.x, c.y, radiusX, radiusY); }
+        if (hasFill) { ctx->SetFillPaint(fill.startColor); ctx->FillEllipse({c.x, c.y, radiusX, radiusY}); }
+        if (hasLine) { ctx->SetStrokePaint(line.color); ctx->SetStrokeWidth(line.GetWidthInPixels()*scale); ctx->DrawEllipse({c.x, c.y, radiusX, radiusY}); }
         ctx->PopState();
         XARNode::Render(ctx, scale);
     }

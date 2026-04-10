@@ -693,9 +693,9 @@ namespace UltraCanvas {
                 ctx->DrawLine(p2, p3);
             } else {
                 // Draw radio dot
-                int centerX = position.x + style.iconSize / 2;
-                int centerY = position.y + style.iconSize / 2;
-                ctx->DrawCircle(Point2Di(centerX, centerY), style.iconSize / 4);
+                Point2Df center = {position.x + style.iconSize / 2,
+                                    position.y + style.iconSize / 2};
+                ctx->DrawCircle(center, style.iconSize / 4);
             }
         }
     }

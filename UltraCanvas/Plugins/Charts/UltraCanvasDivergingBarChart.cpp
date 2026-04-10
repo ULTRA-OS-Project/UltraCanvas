@@ -496,7 +496,7 @@ namespace UltraCanvas {
             const auto& point = divergingDataSource->GetDivergingPoint(rowIdx);
 
             // Draw label at center
-            ctx->DrawText(point.rowLabel, cachedPlotArea.x + cachedPlotArea.width + 7, y);
+            ctx->DrawText(point.rowLabel, {cachedPlotArea.x + cachedPlotArea.width + 7, y});
         }
     }
 
@@ -535,13 +535,13 @@ namespace UltraCanvas {
         TextStyle st = ctx->GetTextStyle();
         st.alignment = TextAlignment::Left;
         ctx->SetTextStyle(st);
-        ctx->DrawTextInRect(leftLabel, cachedPlotArea.x, y, cachedPlotArea.width / 2 - 10, 20);
+        ctx->DrawTextInRect(leftLabel, {cachedPlotArea.x, y, cachedPlotArea.width / 2 - 10, 20});
         st.alignment = TextAlignment::Center;
         ctx->SetTextStyle(st);
-        ctx->DrawTextInRect("0", centerX - 10, y, 20, 20);
+        ctx->DrawTextInRect("0", {centerX - 10, y, 20, 20});
         st.alignment = TextAlignment::Right;
         ctx->SetTextStyle(st);
-        ctx->DrawTextInRect(rightLabel, centerX + 10, y, cachedPlotArea.width / 2 - 10, 20);
+        ctx->DrawTextInRect(rightLabel, {centerX + 10, y, cachedPlotArea.width / 2 - 10, 20});
 
         // Draw intermediate labels for better scale understanding
         int numIntermediateLabels = 2;
@@ -557,7 +557,7 @@ namespace UltraCanvas {
             } else {
                 snprintf(leftIntermediate, sizeof(leftIntermediate), "-%.0f", leftValue);
             }
-            ctx->DrawTextInRect(leftIntermediate, leftX, y, cachedPlotArea.width / 2, 20);
+            ctx->DrawTextInRect(leftIntermediate, {leftX, y, cachedPlotArea.width / 2, 20});
 
             // Right side intermediate labels
             float rightValue = maxPositiveRounded * fraction;
@@ -568,11 +568,11 @@ namespace UltraCanvas {
             } else {
                 snprintf(rightIntermediate, sizeof(rightIntermediate), "%.0f", rightValue);
             }
-            ctx->DrawTextInRect(rightIntermediate, rightX, y, cachedPlotArea.width / 2, 20);
+            ctx->DrawTextInRect(rightIntermediate, {rightX, y, cachedPlotArea.width / 2, 20});
         }
 
         // Draw axis title
-        ctx->DrawTextInRect("Frequency", centerX, y + 20, cachedPlotArea.width / 2, 20);
+        ctx->DrawTextInRect("Frequency", {centerX, y + 20, cachedPlotArea.width / 2, 20});
     }
 
     float UltraCanvasDivergingBarChart::GetNiceRoundNumber(float value) {

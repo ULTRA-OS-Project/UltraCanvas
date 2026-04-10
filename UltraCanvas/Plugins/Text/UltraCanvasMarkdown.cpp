@@ -775,7 +775,7 @@ namespace UltraCanvas {
         int lineY = textPos.y;
 
         while (std::getline(stream, line)) {
-            ctx->DrawText(line, textPos.x, lineY);
+            ctx->DrawText(line, {textPos.x, lineY});
             lineY += static_cast<float>(style.codeFontSize) * style.lineHeight * 1.2;
         }
     }
@@ -819,11 +819,11 @@ namespace UltraCanvas {
         if (element->ordered) {
             // Draw the actual item number from element->level
             std::string numberText = std::to_string(element->orderNumber) + ".";
-            ctx->DrawText(numberText, bulletPos.x, bulletPos.y);
+            ctx->DrawText(numberText, bulletPos);
         } else {
             // Draw bullet
             ctx->SetTextPaint(style.bulletColor);
-            ctx->DrawText(style.bulletCharacter, bulletPos.x, bulletPos.y);
+            ctx->DrawText(style.bulletCharacter, bulletPos);
         }
 
         // Draw text with proper indent
@@ -887,7 +887,7 @@ namespace UltraCanvas {
                                                 float lineHeight) {
         if (text.empty()) return;
 
-        ctx->DrawTextInRect(text, bounds.x, bounds.y, bounds.width, bounds.height);
+        ctx->DrawTextInRect(text, bounds);
     }
 
     void UltraCanvasMarkdownDisplay::UpdateScrollbarGeometry(const Rect2Di &bounds) {

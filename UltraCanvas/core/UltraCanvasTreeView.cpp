@@ -544,8 +544,8 @@ namespace UltraCanvas {
         Color nodeTextColor = node->data.textColor != Colors::Black ? node->data.textColor : textColor;
         ctx->SetFontSize(12);
         ctx->SetTextPaint(nodeTextColor);
-        ctx->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
-        ctx->DrawTextInRect(node->data.text, textX, nodeY, nodeWidth - textX, rowHeight);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(node->data.text, Rect2Df(textX, nodeY, nodeWidth - textX, rowHeight));
 
         // Draw right icon
         if (node->data.rightIcon.visible && !node->data.rightIcon.iconPath.empty()) {

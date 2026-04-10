@@ -282,7 +282,7 @@ namespace UltraCanvas {
 //            infoText->SetFontSize(11);
 //            infoText->SetTextColor(Color(50, 50, 50, 255));
 //            infoText->SetAlignment(TextAlignment::Left);
-//            infoText->SetWordWrap(true);
+//            infoText->SetWrap(TextWrap::WrapWord);
 //            infoText->SetBackgroundColor(Color(248, 248, 248, 255));
 //            infoText->SetBorders(1.0f);
 //            infoText->SetPadding(12.0f);

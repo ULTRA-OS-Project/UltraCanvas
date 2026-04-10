@@ -264,7 +264,7 @@ namespace UltraCanvas {
         description->SetText("PNG (Portable Network Graphics) is a lossless image format that supports transparency. "
                              "It's ideal for logos, screenshots, and images with sharp edges or text. "
                              "PNG uses lossless compression, preserving all image data while reducing file size.");
-        description->SetWordWrap(true);
+        description->SetWrap(TextWrap::WrapWord);
         description->SetFontSize(12);
         description->SetAlignment(TextAlignment::Left);
         container->AddChild(description);
@@ -407,7 +407,7 @@ namespace UltraCanvas {
         description->SetText("JPEG (Joint Photographic Experts Group) is a lossy compression format optimized for photographs. "
                              "It achieves small file sizes by selectively discarding image data that's less noticeable to the human eye. "
                              "JPEG is ideal for photos and complex images with gradients but not for images with sharp edges or text.");
-        description->SetWordWrap(true);
+        description->SetWrap(TextWrap::WrapWord);
         description->SetFontSize(12);
         description->SetAlignment(TextAlignment::Left);
         container->AddChild(description);

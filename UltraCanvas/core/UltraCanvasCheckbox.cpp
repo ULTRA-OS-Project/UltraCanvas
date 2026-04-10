@@ -265,8 +265,8 @@ namespace UltraCanvas {
         ctx->SetTextPaint(textColor);
 
         // Draw text aligned to the middle of the text rect
-        float textY = textRect.y + (textRect.height - ctx->GetTextLineHeight(text)) / 2.0f;
-        ctx->DrawText(text, textRect.x, textY);
+        double textY = textRect.y + (textRect.height - ctx->GetTextLineHeight(text)) / 2.0f;
+        ctx->DrawText(text, Point2Df(textRect.x, textY));
     }
 
     void UltraCanvasCheckbox::DrawFocusRing(IRenderContext* ctx) {

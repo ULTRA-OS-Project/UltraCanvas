@@ -32,7 +32,7 @@ namespace UltraCanvas {
         desc->SetText(text);
         desc->SetTextColor(Color(80, 80, 80, 255));
         desc->SetFontSize(12);
-        desc->SetWordWrap(true);
+        desc->SetWrap(TextWrap::WrapWord);
         desc->SetAutoResize(true);
         return desc;
     }

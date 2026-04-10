@@ -793,20 +793,20 @@ namespace UltraCanvas {
         auto* ctx = GetRenderContext();
         if (!ctx) return;
 
-        float x = static_cast<float>(GetX());
-        float y = static_cast<float>(GetY());
-        float w = static_cast<float>(GetWidth());
-        float h = static_cast<float>(GetHeight());
+        double x = static_cast<double>(GetX());
+        double y = static_cast<double>(GetY());
+        double w = static_cast<double>(GetWidth());
+        double h = static_cast<double>(GetHeight());
 
         // Draw shadow if enabled
         if (appearance.hasShadow) {
             ctx->SetFillPaint(appearance.shadowColor);
             if (appearance.cornerRadius > 0) {
-                ctx->FillRoundedRectangle(
-                        x + appearance.shadowOffset.x,
-                        y + appearance.shadowOffset.y,
-                        w, h, appearance.cornerRadius
-                );
+                ctx->FillRoundedRectangle({
+                                                  x + appearance.shadowOffset.x,
+                                                  y + appearance.shadowOffset.y,
+                                                  w, h, appearance.cornerRadius
+                                          });
             } else {
                 ctx->FillRectangle(
                         x + appearance.shadowOffset.x,
@@ -820,7 +820,7 @@ namespace UltraCanvas {
         if (appearance.backgroundColor.a > 0) {
             ctx->SetFillPaint(appearance.backgroundColor);
             if (appearance.cornerRadius > 0) {
-                ctx->FillRoundedRectangle(x, y, w, h, appearance.cornerRadius);
+                ctx->FillRoundedRectangle({x, y, w, h}, appearance.cornerRadius);
             } else {
                 ctx->FillRectangle(x, y, w, h);
             }

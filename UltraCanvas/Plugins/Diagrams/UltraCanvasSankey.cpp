@@ -756,7 +756,7 @@ namespace UltraCanvas {
         if (node.depth == 0) {
             // Left-aligned labels for source nodes
             float labelX = node.x - 8;
-            ctx->DrawText(node.label, labelX - textWidth, labelY);
+            ctx->DrawText(node.label, {labelX - textWidth, labelY});
         } else {
             // Check if this is a terminal node (no outgoing links)
             bool isTerminal = true;
@@ -769,17 +769,16 @@ namespace UltraCanvas {
 
             if (isTerminal) {
                 // Right-aligned labels for terminal nodes
-                float labelX = node.x + nodeWidth + 8;
-                ctx->DrawText(node.label, labelX, labelY);
+                double labelX = node.x + nodeWidth + 8;
+                ctx->DrawText(node.label, {labelX, labelY});
             } else {
                 // For intermediate nodes, position based on alignment preference
                 if (alignment == SankeyAlignment::Left) {
-                    float labelX = node.x - 8;
-                    float textWidth = ctx->GetTextLineWidth(node.label);
-                    ctx->DrawText(node.label, labelX - textWidth, labelY);
+                    double labelX = node.x - 8;
+                    ctx->DrawText(node.label, {labelX - textWidth, labelY});
                 } else {
-                    float labelX = node.x + nodeWidth + 8;
-                    ctx->DrawText(node.label, labelX, labelY);
+                    double labelX = node.x + nodeWidth + 8;
+                    ctx->DrawText(node.label, {labelX, labelY});
                 }
             }
         }

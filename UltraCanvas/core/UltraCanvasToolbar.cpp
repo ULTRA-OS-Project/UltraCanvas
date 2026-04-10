@@ -756,12 +756,13 @@ namespace UltraCanvas {
 
         // Draw shadow
         ctx->SetFillPaint(appearance.shadowColor);
-        ctx->FillRoundedRectangle(
-                bounds.x + appearance.shadowOffset.x,
-                bounds.y + appearance.shadowOffset.y,
-                bounds.width,
-                bounds.height,
-                static_cast<int>(GetBorderTopWidth())
+        ctx->FillRoundedRectangle({
+                                          bounds.x + appearance.shadowOffset.x,
+                                          bounds.y + appearance.shadowOffset.y,
+                                          bounds.width,
+                                          bounds.height
+                                  },
+                GetBorderTopWidth()
         );
     }
 

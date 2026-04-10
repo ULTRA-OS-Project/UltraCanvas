@@ -1406,7 +1406,7 @@ struct MarkdownInlineRenderer {
                     ctx->SetFontWeight(FontWeight::Normal);
                     ctx->SetFontSlant(FontSlant::Italic);
                     ctx->SetTextPaint(mdStyle.imagePlaceholderTextColor);
-                    ctx->DrawText(elem.altText, currentX, y);
+                    ctx->DrawText(elem.altText, {currentX, y});
                     currentX += ctx->GetTextLineWidth(elem.altText) + 2;
                     ctx->SetFontSlant(FontSlant::Normal);
                 }
@@ -1419,13 +1419,13 @@ struct MarkdownInlineRenderer {
 
                 // Draw subtle background
                 ctx->SetFillPaint(mdStyle.mathBackgroundColor);
-                ctx->FillRoundedRectangle(currentX - 2, y + 1, textWidth + 4, lineHeight - 2, 3);
+                ctx->FillRoundedRectangle({currentX - 2, y + 1, textWidth + 4, lineHeight - 2}, 3);
 
                 // Draw math text in italic
                 ctx->SetFontSlant(FontSlant::Italic);
                 ctx->SetFontWeight(FontWeight::Normal);
                 ctx->SetTextPaint(mdStyle.mathTextColor);
-                ctx->DrawText(elem.text, currentX, y);
+                ctx->DrawText(elem.text, {currentX, y});
 
                 ctx->SetFontSlant(FontSlant::Normal);
                 currentX += textWidth;
@@ -1439,7 +1439,7 @@ struct MarkdownInlineRenderer {
                 ctx->SetTextPaint(mdStyle.linkColor);
                 int textWidth = ctx->GetTextLineWidth(elem.text);
 
-                ctx->DrawText(elem.text, currentX, y);
+                ctx->DrawText(elem.text, {currentX, y});
 
                 // Draw underline
                 if (mdStyle.linkUnderline) {
@@ -1464,16 +1464,16 @@ struct MarkdownInlineRenderer {
 
             // --- Subscript element: rendered smaller and lower ---
             if (elem.isSubscript) {
-                float origSize = style.fontStyle.fontSize;
-                float subSize = origSize * 0.7f;
+                double origSize = style.fontStyle.fontSize;
+                double subSize = origSize * 0.7;
                 ctx->SetFontSize(subSize);
                 ctx->SetFontWeight(FontWeight::Normal);
                 ctx->SetFontSlant(FontSlant::Normal);
                 ctx->SetTextPaint(style.fontColor);
 
                 int textWidth = ctx->GetTextLineWidth(elem.text);
-                int subY = y + static_cast<int>(lineHeight * 0.3f); // Lower position
-                ctx->DrawText(elem.text, currentX, subY);
+                double subY = y + lineHeight * 0.3; // Lower position
+                ctx->DrawText(elem.text, {currentX, subY});
 
                 ctx->SetFontSize(origSize);
                 currentX += textWidth;
@@ -1482,16 +1482,16 @@ struct MarkdownInlineRenderer {
 
             // --- Superscript element: rendered smaller and higher ---
             if (elem.isSuperscript) {
-                float origSize = style.fontStyle.fontSize;
-                float supSize = origSize * 0.7f;
+                double origSize = style.fontStyle.fontSize;
+                double supSize = origSize * 0.7;
                 ctx->SetFontSize(supSize);
                 ctx->SetFontWeight(FontWeight::Normal);
                 ctx->SetFontSlant(FontSlant::Normal);
                 ctx->SetTextPaint(style.fontColor);
 
                 int textWidth = ctx->GetTextLineWidth(elem.text);
-                int supY = y - static_cast<int>(lineHeight * 0.15f); // Higher position
-                ctx->DrawText(elem.text, currentX, supY);
+                double supY = y - lineHeight * 0.15f; // Higher position
+                ctx->DrawText(elem.text, {currentX, supY});
 
                 ctx->SetFontSize(origSize);
                 currentX += textWidth;
@@ -1503,7 +1503,7 @@ struct MarkdownInlineRenderer {
                 ctx->SetFontWeight(FontWeight::Normal);
                 ctx->SetFontSlant(FontSlant::Normal);
                 ctx->SetTextPaint(style.fontColor);
-                ctx->DrawText(elem.text, currentX, y);
+                ctx->DrawText(elem.text, {currentX, y});
                 currentX += ctx->GetTextLineWidth(elem.text);
                 continue;
             }
@@ -1515,7 +1515,7 @@ struct MarkdownInlineRenderer {
                 ctx->SetTextPaint(mdStyle.linkColor);
                 int textWidth = ctx->GetTextLineWidth(elem.text);
 
-                ctx->DrawText(elem.text, currentX, y);
+                ctx->DrawText(elem.text, {currentX, y});
 
                 // Draw underline
                 if (mdStyle.linkUnderline) {
@@ -1549,11 +1549,11 @@ struct MarkdownInlineRenderer {
 
                 // Draw gray background
                 ctx->SetFillPaint(mdStyle.abbreviationBackground);
-                ctx->FillRoundedRectangle(currentX - 1, y + 1, textWidth + 2, lineHeight - 2, 2);
+                ctx->FillRoundedRectangle({currentX - 1, y + 1, textWidth + 2, lineHeight - 2}, 2);
 
                 // Draw text
                 ctx->SetTextPaint(style.fontColor);
-                ctx->DrawText(elem.text, currentX, y);
+                ctx->DrawText(elem.text, {currentX, y});
 
                 // Draw dotted underline
                 int underlineY = y + lineHeight - 2;
@@ -1585,16 +1585,16 @@ struct MarkdownInlineRenderer {
 
             // --- Footnote element: superscript colored reference ---
             if (elem.isFootnote) {
-                float origSize = style.fontStyle.fontSize;
-                float supSize = origSize * 0.7f;
+                double origSize = style.fontStyle.fontSize;
+                double supSize = origSize * 0.7f;
                 ctx->SetFontSize(supSize);
                 ctx->SetFontWeight(FontWeight::Normal);
                 ctx->SetFontSlant(FontSlant::Normal);
                 ctx->SetTextPaint(mdStyle.footnoteRefColor);
 
                 int textWidth = ctx->GetTextLineWidth(elem.text);
-                int supY = y - static_cast<int>(lineHeight * 0.15f);
-                ctx->DrawText(elem.text, currentX, supY);
+                double supY = y - lineHeight * 0.15;
+                ctx->DrawText(elem.text, {currentX, supY});
 
                 // Store hit rect for hover tooltip
                 if (hitRects && !elem.footnoteContent.empty()) {
@@ -1638,12 +1638,12 @@ struct MarkdownInlineRenderer {
             // --- Code background ---
             if (elem.isCode) {
                 ctx->SetFillPaint(mdStyle.codeBackgroundColor);
-                ctx->FillRoundedRectangle(currentX - 2, y + 1, textWidth + 4, lineHeight - 2, 3);
+                ctx->FillRoundedRectangle({currentX - 2, y + 1, textWidth + 4, lineHeight - 2}, 3);
             }
 
             // --- Draw the text ---
             ctx->SetTextPaint(elem.isStrikethrough ? mdStyle.strikethroughColor : color);
-            ctx->DrawText(elem.text, currentX, y);
+            ctx->DrawText(elem.text, {currentX, y});
 
             // --- Strikethrough line ---
             if (elem.isStrikethrough) {
@@ -1760,7 +1760,7 @@ struct MarkdownInlineRenderer {
                 } else {
                     ctx->SetFillPaint(Color(200, 200, 210, 100));
                 }
-                ctx->FillRoundedRectangle(iconX - 2, iconY - 2, iconSize + 4, iconSize + 4, 4);
+                ctx->FillRoundedRectangle({iconX - 2, iconY - 2, iconSize + 4, iconSize + 4}, 4);
 
                 // Draw the undo SVG icon
                 std::string iconPath = GetResourcesDir() + "media/icons/texter/undo.svg";
@@ -1889,7 +1889,7 @@ struct MarkdownInlineRenderer {
             std::string numberStr = std::to_string(orderNumber) + ".";
             ctx->SetFontWeight(FontWeight::Normal);
             ctx->SetTextPaint(mdStyle.bulletColor);
-            ctx->DrawText(numberStr, bulletX, y);
+            ctx->DrawText(numberStr, {bulletX, y});
             int numWidth = ctx->GetTextLineWidth(numberStr);
             bulletX += numWidth + 4;
         } else {
@@ -1899,7 +1899,7 @@ struct MarkdownInlineRenderer {
             const std::string& bulletChar = mdStyle.nestedBulletCharacters[clampedLevel];
             ctx->SetFontWeight(FontWeight::Normal);
             ctx->SetTextPaint(mdStyle.bulletColor);
-            ctx->DrawText(bulletChar, bulletX, y);
+            ctx->DrawText(bulletChar, {bulletX, y});
             bulletX += ctx->GetTextLineWidth(bulletChar) + 4;
         }
         // --- Draw item text with inline formatting ---
@@ -1979,7 +1979,7 @@ struct MarkdownInlineRenderer {
         ctx->SetFontWeight(FontWeight::Normal);
         ctx->SetFontSlant(FontSlant::Normal);
         ctx->SetTextPaint(mdStyle.codeBlockTextColor);
-        ctx->DrawText(line, x + 4, y);
+        ctx->DrawText(line, {x + 4, y});
 
         // Restore font
         ctx->SetFontFamily(style.fontStyle.fontFamily);
@@ -2058,13 +2058,13 @@ struct MarkdownInlineRenderer {
                 ctx->SetTextPaint(tokenColor);
 
                 int tokenWidth = ctx->GetTextLineWidth(token.text);
-                ctx->DrawText(token.text, tokenX, y);
+                ctx->DrawText(token.text, {tokenX, y});
                 tokenX += tokenWidth;
             }
         } else {
             // Fallback: render as plain monospace
             ctx->SetTextPaint(mdStyle.codeBlockTextColor);
-            ctx->DrawText(line, x + 4, y);
+            ctx->DrawText(line, {x + 4, y});
         }
 
         // Restore font
@@ -3399,7 +3399,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                         x <= visibleTextArea.x + visibleTextArea.width) {
                         TokenStyle tokenStyle = GetStyleForTokenType(token.type);
                         context->SetTextPaint(tokenStyle.color);
-                        context->DrawText(visibleText, x, textY);
+                        context->DrawText(visibleText, {x, textY});
                     }
                     x += tokenWidth;
                 }
@@ -3486,7 +3486,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                             context->SetFontWeight(tokenBold ? FontWeight::Bold : FontWeight::Normal);
                             context->SetTextPaint(tokenColor);
                             int tokenWidth = context->GetTextLineWidth(visibleText);
-                            context->DrawText(visibleText, tokenX, textY);
+                            context->DrawText(visibleText, {tokenX, textY});
                             tokenX += tokenWidth;
                         }
 
@@ -3498,7 +3498,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                     int segLen = dl.endGrapheme - dl.startGrapheme;
                     std::string codeSegment = utf8_substr(line, dl.startGrapheme, segLen);
                     context->SetTextPaint(mdStyle.codeBlockTextColor);
-                    context->DrawText(codeSegment, x + 4, textY);
+                    context->DrawText(codeSegment, {x + 4, textY});
                 }
 
                 context->SetFontFamily(style.fontStyle.fontFamily);

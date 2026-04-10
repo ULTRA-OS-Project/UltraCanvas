@@ -110,8 +110,8 @@ namespace UltraCanvas {
             ctx->SetFontSize(16.0f);
 
             // Calculate center position (simplified)
-            int titleX = GetX() + GetWidth() / 2 - static_cast<int>(chartTitle.length()) * 5;
-            ctx->DrawText(chartTitle, titleX, GetY());
+            double titleX = GetX() + GetWidth() / 2 - static_cast<int>(chartTitle.length()) * 5;
+            ctx->DrawText(chartTitle, {titleX, GetY()});
         }
     }
 
@@ -266,7 +266,7 @@ namespace UltraCanvas {
 
             int textWidth, textHeight;
             ctx->GetTextLineDimensions(priceLabel.str(), textWidth, textHeight);
-            ctx->DrawText(priceLabel.str(), priceRenderArea.x - textWidth - 8, y - textHeight/2);
+            ctx->DrawText(priceLabel.str(), {priceRenderArea.x - textWidth - 8, y - textHeight/2});
         }
 
         // Draw shared X-axis labels (dates) for price chart
@@ -289,7 +289,7 @@ namespace UltraCanvas {
 
             int textWidth, textHeight;
             ctx->GetTextLineDimensions(dateLabel, textWidth, textHeight);
-            ctx->DrawText(dateLabel, x - textWidth/2, priceRenderArea.GetBottom() + 12);
+            ctx->DrawText(dateLabel, {x - textWidth/2, priceRenderArea.GetBottom() + 12});
         }
     }
 
@@ -369,7 +369,7 @@ namespace UltraCanvas {
 
             int textWidth, textHeight;
             ctx->GetTextLineDimensions(label, textWidth, textHeight);
-            ctx->DrawText(label, volumeRenderArea.x - textWidth - 8, y - textHeight/2);
+            ctx->DrawText(label, {volumeRenderArea.x - textWidth - 8, y - textHeight/2});
         }
 
         // Draw shared X-axis labels (dates) for volume chart - same as price chart
@@ -392,7 +392,7 @@ namespace UltraCanvas {
 
             int textWidth, textHeight;
             ctx->GetTextLineDimensions(dateLabel, textWidth, textHeight);
-            ctx->DrawText(dateLabel, x - textWidth/2, volumeRenderArea.GetBottom() + 12);
+            ctx->DrawText(dateLabel, {x - textWidth/2, volumeRenderArea.GetBottom() + 12});
         }
     }
 
@@ -428,14 +428,14 @@ namespace UltraCanvas {
             ctx->GetTextLineDimensions(label, textWidth, textHeight);
 
             // Draw label to the left of the volume area
-            ctx->DrawText(label, volumeRenderArea.x - textWidth - 5, y - textHeight/2);
+            ctx->DrawText(label, {volumeRenderArea.x - textWidth - 5, y - textHeight/2});
         }
 
         // Draw "Volume" label vertically on the left
         ctx->SetFontSize(12.0f);
         int labelWidth, labelHeight;
         ctx->GetTextLineDimensions("Volume", labelWidth, labelHeight);
-        ctx->DrawText("Volume", volumeRenderArea.x - 40, volumeRenderArea.GetCenter().y - labelHeight/2);
+        ctx->DrawText("Volume", {volumeRenderArea.x - 40, volumeRenderArea.GetCenter().y - labelHeight/2});
     }
 
     std::string UltraCanvasFinancialChartElement::FormatVolumeValue(double volume) {

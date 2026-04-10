@@ -175,7 +175,7 @@ namespace UltraCanvas {
             if (backgroundColor.a > 0) {
                 ctx->SetFillPaint(backgroundColor);
             }
-            ctx->DrawRoundedRectangleWidthBorders(bnds.x, bnds.y, bnds.width, bnds.height, backgroundColor.a > 0,
+            ctx->DrawRoundedRectangleWidthBorders(bnds, backgroundColor.a > 0,
                                                   leftWidth, rightWidth, topWidth, bottomWidth,
                                                   leftColor, rightColor, topColor, bottomColor,
                                                   leftRadius, rightRadius, topRadius, bottomRadius,
@@ -277,8 +277,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasUIElement::SetOriginalSize(int w, int h) {
-        originalSize.width = w;
-        originalSize.height = h;
+        explicitSize.width = w;
+        explicitSize.height = h;
         if (parentContainer) {
             parentContainer->InvalidateLayout();
         } else {

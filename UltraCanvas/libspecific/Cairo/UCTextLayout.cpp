@@ -45,21 +45,21 @@ namespace UltraCanvas {
         }
     }
 
-    static PangoEllipsizeMode ToPangoEllipsize(UCEllipsizeMode mode) {
+    static PangoEllipsizeMode ToPangoEllipsize(EllipsizeMode mode) {
         switch (mode) {
-            case UCEllipsizeMode::EllipsizeStart:  return PANGO_ELLIPSIZE_START;
-            case UCEllipsizeMode::EllipsizeMiddle: return PANGO_ELLIPSIZE_MIDDLE;
-            case UCEllipsizeMode::EllipsizeEnd:    return PANGO_ELLIPSIZE_END;
+            case EllipsizeMode::EllipsizeStart:  return PANGO_ELLIPSIZE_START;
+            case EllipsizeMode::EllipsizeMiddle: return PANGO_ELLIPSIZE_MIDDLE;
+            case EllipsizeMode::EllipsizeEnd:    return PANGO_ELLIPSIZE_END;
             default:                               return PANGO_ELLIPSIZE_NONE;
         }
     }
 
-    static UCEllipsizeMode FromPangoEllipsize(PangoEllipsizeMode mode) {
+    static EllipsizeMode FromPangoEllipsize(PangoEllipsizeMode mode) {
         switch (mode) {
-            case PANGO_ELLIPSIZE_START:  return UCEllipsizeMode::EllipsizeStart;
-            case PANGO_ELLIPSIZE_MIDDLE: return UCEllipsizeMode::EllipsizeMiddle;
-            case PANGO_ELLIPSIZE_END:    return UCEllipsizeMode::EllipsizeEnd;
-            default:                     return UCEllipsizeMode::EllipsizeNone;
+            case PANGO_ELLIPSIZE_START:  return EllipsizeMode::EllipsizeStart;
+            case PANGO_ELLIPSIZE_MIDDLE: return EllipsizeMode::EllipsizeMiddle;
+            case PANGO_ELLIPSIZE_END:    return EllipsizeMode::EllipsizeEnd;
+            default:                     return EllipsizeMode::EllipsizeNone;
         }
     }
 
@@ -163,261 +163,269 @@ namespace UltraCanvas {
         return *this;
     }
 
-    void UCTextAttribute::SetRange(int startIndex, int endIndex) {
+    ITextAttribute& UCTextAttribute::SetRange(int startIndex, int endIndex) {
         if (attr) {
             attr->start_index = static_cast<guint>(startIndex);
             attr->end_index = static_cast<guint>(endIndex);
         }
+        return *this;
     }
 
-    PangoAttribute* UCTextAttribute::Release() {
+    void* UCTextAttribute::Release() {
         PangoAttribute* released = attr;
         attr = nullptr;
         return released;
     }
 
-    bool UCTextAttribute::IsValid() const {
-        return attr != nullptr;
+    TextAttributeType UCTextAttribute::GetType() {
+        if (attr) {
+            return static_cast<TextAttributeType>(attr->klass->type);
+        }
+        return TextAttributeType::INVALID;
     }
+
 
     // --- Factory methods ---
+    namespace TextAttributeFactory {
+        std::unique_ptr<ITextAttribute> CreateFontStyle(const FontStyle &fontStyle) {
+            PangoFontDescription *desc = CreatePangoFontDesc(fontStyle);
+            if (!desc) return std::make_unique<UCTextAttribute>(nullptr);
+            PangoAttribute *a = pango_attr_font_desc_new(desc);
+            pango_font_description_free(desc);
+            return std::make_unique<UCTextAttribute>(a);
+        }
 
-    UCTextAttribute UCTextAttribute::CreateFontDesc(const FontStyle& fontStyle) {
-        PangoFontDescription* desc = CreatePangoFontDesc(fontStyle);
-        if (!desc) return UCTextAttribute(nullptr);
-        PangoAttribute* a = pango_attr_font_desc_new(desc);
-        pango_font_description_free(desc);
-        return UCTextAttribute(a);
-    }
+        std::unique_ptr<ITextAttribute> CreateFontDescFromPango(const PangoFontDescription *desc) {
+            if (!desc) return std::make_unique<UCTextAttribute>(nullptr);
+            return std::make_unique<UCTextAttribute>(pango_attr_font_desc_new(desc));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateFontDescFromPango(const PangoFontDescription* desc) {
-        if (!desc) return UCTextAttribute(nullptr);
-        return UCTextAttribute(pango_attr_font_desc_new(desc));
-    }
+        std::unique_ptr<ITextAttribute> CreateFamily(const std::string &family) {
+            return std::make_unique<UCTextAttribute>(pango_attr_family_new(family.c_str()));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateFamily(const std::string& family) {
-        return UCTextAttribute(pango_attr_family_new(family.c_str()));
-    }
+        std::unique_ptr<ITextAttribute> CreateSize(float sizeInPoints) {
+            return std::make_unique<UCTextAttribute>(pango_attr_size_new(static_cast<int>(sizeInPoints * PANGO_SCALE)));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateSize(float sizeInPoints) {
-        return UCTextAttribute(pango_attr_size_new(static_cast<int>(sizeInPoints * PANGO_SCALE)));
-    }
+        std::unique_ptr<ITextAttribute> CreateAbsoluteSize(float sizeInPixels) {
+            return std::make_unique<UCTextAttribute>(pango_attr_size_new_absolute(static_cast<int>(sizeInPixels * PANGO_SCALE)));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateAbsoluteSize(float sizeInPixels) {
-        return UCTextAttribute(pango_attr_size_new_absolute(static_cast<int>(sizeInPixels * PANGO_SCALE)));
-    }
+        std::unique_ptr<ITextAttribute> CreateWeight(FontWeight weight) {
+            return std::make_unique<UCTextAttribute>(pango_attr_weight_new(ToPangoWeight(weight)));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateWeight(FontWeight weight) {
-        return UCTextAttribute(pango_attr_weight_new(ToPangoWeight(weight)));
-    }
+        std::unique_ptr<ITextAttribute> CreateStyle(FontSlant slant) {
+            return std::make_unique<UCTextAttribute>(pango_attr_style_new(ToPangoStyle(slant)));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateStyle(FontSlant slant) {
-        return UCTextAttribute(pango_attr_style_new(ToPangoStyle(slant)));
-    }
+        std::unique_ptr<ITextAttribute> CreateVariant(UCFontVariant variant) {
+            return std::make_unique<UCTextAttribute>(pango_attr_variant_new(ToPangoVariant(variant)));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateVariant(UCFontVariant variant) {
-        return UCTextAttribute(pango_attr_variant_new(ToPangoVariant(variant)));
-    }
+        std::unique_ptr<ITextAttribute> CreateStretch(UCFontStretch stretch) {
+            return std::make_unique<UCTextAttribute>(pango_attr_stretch_new(ToPangoStretch(stretch)));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateStretch(UCFontStretch stretch) {
-        return UCTextAttribute(pango_attr_stretch_new(ToPangoStretch(stretch)));
-    }
+        std::unique_ptr<ITextAttribute> CreateUnderline(UCUnderlineType type) {
+            return std::make_unique<UCTextAttribute>(pango_attr_underline_new(ToPangoUnderline(type)));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateUnderline(UCUnderlineType type) {
-        return UCTextAttribute(pango_attr_underline_new(ToPangoUnderline(type)));
-    }
+        std::unique_ptr<ITextAttribute> CreateUnderlineColor(const Color &color) {
+            return std::make_unique<UCTextAttribute>(pango_attr_underline_color_new(
+                    ColorToPango(color.r), ColorToPango(color.g), ColorToPango(color.b)));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateUnderlineColor(const Color& color) {
-        return UCTextAttribute(pango_attr_underline_color_new(
-            ColorToPango(color.r), ColorToPango(color.g), ColorToPango(color.b)));
-    }
+        std::unique_ptr<ITextAttribute> CreateStrikethrough(bool enabled) {
+            return std::make_unique<UCTextAttribute>(pango_attr_strikethrough_new(enabled ? TRUE : FALSE));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateStrikethrough(bool enabled) {
-        return UCTextAttribute(pango_attr_strikethrough_new(enabled ? TRUE : FALSE));
-    }
+        std::unique_ptr<ITextAttribute> CreateStrikethroughColor(const Color &color) {
+            return std::make_unique<UCTextAttribute>(pango_attr_strikethrough_color_new(
+                    ColorToPango(color.r), ColorToPango(color.g), ColorToPango(color.b)));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateStrikethroughColor(const Color& color) {
-        return UCTextAttribute(pango_attr_strikethrough_color_new(
-            ColorToPango(color.r), ColorToPango(color.g), ColorToPango(color.b)));
-    }
+        std::unique_ptr<ITextAttribute> CreateForeground(const Color &color) {
+            return std::make_unique<UCTextAttribute>(pango_attr_foreground_new(
+                    ColorToPango(color.r), ColorToPango(color.g), ColorToPango(color.b)));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateForeground(const Color& color) {
-        return UCTextAttribute(pango_attr_foreground_new(
-            ColorToPango(color.r), ColorToPango(color.g), ColorToPango(color.b)));
-    }
+        std::unique_ptr<ITextAttribute> CreateBackground(const Color &color) {
+            return std::make_unique<UCTextAttribute>(pango_attr_background_new(
+                    ColorToPango(color.r), ColorToPango(color.g), ColorToPango(color.b)));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateBackground(const Color& color) {
-        return UCTextAttribute(pango_attr_background_new(
-            ColorToPango(color.r), ColorToPango(color.g), ColorToPango(color.b)));
-    }
+        std::unique_ptr<ITextAttribute> CreateForegroundAlpha(uint16_t alpha) {
+            return std::make_unique<UCTextAttribute>(pango_attr_foreground_alpha_new(alpha));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateForegroundAlpha(uint16_t alpha) {
-        return UCTextAttribute(pango_attr_foreground_alpha_new(alpha));
-    }
+        std::unique_ptr<ITextAttribute> CreateBackgroundAlpha(uint16_t alpha) {
+            return std::make_unique<UCTextAttribute>(pango_attr_background_alpha_new(alpha));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateBackgroundAlpha(uint16_t alpha) {
-        return UCTextAttribute(pango_attr_background_alpha_new(alpha));
-    }
+        std::unique_ptr<ITextAttribute> CreateLetterSpacing(int spacingInPixels) {
+            return std::make_unique<UCTextAttribute>(pango_attr_letter_spacing_new(spacingInPixels * PANGO_SCALE));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateLetterSpacing(int spacingInPixels) {
-        return UCTextAttribute(pango_attr_letter_spacing_new(spacingInPixels * PANGO_SCALE));
-    }
+        std::unique_ptr<ITextAttribute> CreateRise(int riseInPixels) {
+            return std::make_unique<UCTextAttribute>(pango_attr_rise_new(riseInPixels * PANGO_SCALE));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateRise(int riseInPixels) {
-        return UCTextAttribute(pango_attr_rise_new(riseInPixels * PANGO_SCALE));
-    }
+        std::unique_ptr<ITextAttribute> CreateScale(double scaleFactor) {
+            return std::make_unique<UCTextAttribute>(pango_attr_scale_new(scaleFactor));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateScale(double scaleFactor) {
-        return UCTextAttribute(pango_attr_scale_new(scaleFactor));
-    }
+        std::unique_ptr<ITextAttribute> CreateFallback(bool enable) {
+            return std::make_unique<UCTextAttribute>(pango_attr_fallback_new(enable ? TRUE : FALSE));
+        }
 
-    UCTextAttribute UCTextAttribute::CreateFallback(bool enable) {
-        return UCTextAttribute(pango_attr_fallback_new(enable ? TRUE : FALSE));
-    }
-
-    UCTextAttribute UCTextAttribute::CreateLanguage(const std::string& lang) {
-        PangoLanguage* language = pango_language_from_string(lang.c_str());
-        return UCTextAttribute(pango_attr_language_new(language));
+        std::unique_ptr<ITextAttribute> CreateLanguage(const std::string &lang) {
+            PangoLanguage *language = pango_language_from_string(lang.c_str());
+            return std::make_unique<UCTextAttribute>(pango_attr_language_new(language));
+        }
     }
 
     // =========================================================================
     // UCTextAttributeList
     // =========================================================================
 
-    UCTextAttributeList::UCTextAttributeList() {
-        attrList = pango_attr_list_new();
-    }
-
-    UCTextAttributeList::~UCTextAttributeList() {
-        if (attrList) {
-            pango_attr_list_unref(attrList);
-        }
-    }
-
-    UCTextAttributeList::UCTextAttributeList(UCTextAttributeList&& other) noexcept
-        : attrList(other.attrList) {
-        other.attrList = nullptr;
-    }
-
-    UCTextAttributeList& UCTextAttributeList::operator=(UCTextAttributeList&& other) noexcept {
-        if (this != &other) {
-            if (attrList) pango_attr_list_unref(attrList);
-            attrList = other.attrList;
-            other.attrList = nullptr;
-        }
-        return *this;
-    }
-
-    void UCTextAttributeList::Insert(UCTextAttribute& attr) {
-        if (attrList) {
-            PangoAttribute* raw = attr.Release();
-            if (raw) pango_attr_list_insert(attrList, raw);
-        }
-    }
-
-    void UCTextAttributeList::InsertBefore(UCTextAttribute& attr) {
-        if (attrList) {
-            PangoAttribute* raw = attr.Release();
-            if (raw) pango_attr_list_insert_before(attrList, raw);
-        }
-    }
-
-    void UCTextAttributeList::Change(UCTextAttribute& attr) {
-        if (attrList) {
-            PangoAttribute* raw = attr.Release();
-            if (raw) pango_attr_list_change(attrList, raw);
-        }
-    }
-
-    PangoAttrList* UCTextAttributeList::GetHandle() const {
-        return attrList;
-    }
-
-    bool UCTextAttributeList::IsValid() const {
-        return attrList != nullptr;
-    }
-
-    std::string UCTextAttributeList::ToString() const {
-        if (!attrList) return {};
-        char* str = pango_attr_list_to_string(attrList);
-        if (!str) return {};
-        std::string result(str);
-        g_free(str);
-        return result;
-    }
-
-    UCTextAttributeList UCTextAttributeList::FromString(const std::string& str) {
-        UCTextAttributeList list;
-        if (list.attrList) {
-            pango_attr_list_unref(list.attrList);
-        }
-        list.attrList = pango_attr_list_from_string(str.c_str());
-        return list;
-    }
-
-    // Trampoline for pango_attr_list_filter: forwards to the std::function stored in user_data
-    static gboolean AttrFilterFunc(PangoAttribute* attr, gpointer user_data) {
-        auto* predicate = static_cast<std::function<bool(const PangoAttribute*)>*>(user_data);
-        return (*predicate)(attr) ? TRUE : FALSE;
-    }
-
-    UCTextAttributeList UCTextAttributeList::Filter(std::function<bool(const PangoAttribute*)> predicate) {
-        UCTextAttributeList result;
-        if (!attrList) return result;
-        if (result.attrList) {
-            pango_attr_list_unref(result.attrList);
-        }
-        result.attrList = pango_attr_list_filter(attrList, AttrFilterFunc, &predicate);
-        return result;
-    }
+//    UCTextAttributeList::UCTextAttributeList() {
+//        attrList = pango_attr_list_new();
+//    }
+//
+//    UCTextAttributeList::~UCTextAttributeList() {
+//        if (attrList) {
+//            pango_attr_list_unref(attrList);
+//        }
+//    }
+//
+//    UCTextAttributeList::UCTextAttributeList(UCTextAttributeList&& other) noexcept
+//        : attrList(other.attrList) {
+//        other.attrList = nullptr;
+//    }
+//
+//    UCTextAttributeList& UCTextAttributeList::operator=(UCTextAttributeList&& other) noexcept {
+//        if (this != &other) {
+//            if (attrList) pango_attr_list_unref(attrList);
+//            attrList = other.attrList;
+//            other.attrList = nullptr;
+//        }
+//        return *this;
+//    }
+//
+//    void UCTextAttributeList::Insert(UCTextAttribute& attr) {
+//        if (attrList) {
+//            PangoAttribute* raw = attr.Release();
+//            if (raw) pango_attr_list_insert(attrList, raw);
+//        }
+//    }
+//
+//    void UCTextAttributeList::InsertBefore(UCTextAttribute& attr) {
+//        if (attrList) {
+//            PangoAttribute* raw = attr.Release();
+//            if (raw) pango_attr_list_insert_before(attrList, raw);
+//        }
+//    }
+//
+//    void UCTextAttributeList::Change(UCTextAttribute& attr) {
+//        if (attrList) {
+//            PangoAttribute* raw = attr.Release();
+//            if (raw) pango_attr_list_change(attrList, raw);
+//        }
+//    }
+//
+//    PangoAttrList* UCTextAttributeList::GetHandle() const {
+//        return attrList;
+//    }
+//
+//    bool UCTextAttributeList::IsValid() const {
+//        return attrList != nullptr;
+//    }
+//
+//    std::string UCTextAttributeList::ToString() const {
+//        if (!attrList) return {};
+//        char* str = pango_attr_list_to_string(attrList);
+//        if (!str) return {};
+//        std::string result(str);
+//        g_free(str);
+//        return result;
+//    }
+//
+//    UCTextAttributeList UCTextAttributeList::FromString(const std::string& str) {
+//        UCTextAttributeList list;
+//        if (list.attrList) {
+//            pango_attr_list_unref(list.attrList);
+//        }
+//        list.attrList = pango_attr_list_from_string(str.c_str());
+//        return list;
+//    }
+//
+//    // Trampoline for pango_attr_list_filter: forwards to the std::function stored in user_data
+//    static gboolean AttrFilterFunc(PangoAttribute* attr, gpointer user_data) {
+//        auto* predicate = static_cast<std::function<bool(const PangoAttribute*)>*>(user_data);
+//        return (*predicate)(attr) ? TRUE : FALSE;
+//    }
+//
+//    UCTextAttributeList UCTextAttributeList::Filter(std::function<bool(const PangoAttribute*)> predicate) {
+//        UCTextAttributeList result;
+//        if (!attrList) return result;
+//        if (result.attrList) {
+//            pango_attr_list_unref(result.attrList);
+//        }
+//        result.attrList = pango_attr_list_filter(attrList, AttrFilterFunc, &predicate);
+//        return result;
+//    }
 
     // =========================================================================
     // UCTextLayout
     // =========================================================================
 
-    UCTextLayout::UCTextLayout(PangoContext* pangoContext) {
-        if (pangoContext) {
-            layout = pango_layout_new(pangoContext);
+    UCTextLayout::UCTextLayout(PangoContext *pangoCtx) {
+        if (pangoCtx) {
+            layout = pango_layout_new(pangoCtx);
         }
         if (!layout) {
-            debugOutput << "ERROR: UCTextLayout - Failed to create Pango layout" << std::endl;
+            throw std::runtime_error("ERROR: UCTextLayout - Failed to create Pango layout");
         }
     }
 
     UCTextLayout::~UCTextLayout() {
+        if (attrsList) {
+            pango_attr_list_unref(attrsList);
+        }
         if (layout) {
             g_object_unref(layout);
         }
     }
 
-    UCTextLayout::UCTextLayout(UCTextLayout&& other) noexcept
-        : layout(other.layout) {
-        other.layout = nullptr;
-    }
-
-    UCTextLayout& UCTextLayout::operator=(UCTextLayout&& other) noexcept {
-        if (this != &other) {
-            if (layout) g_object_unref(layout);
-            layout = other.layout;
-            other.layout = nullptr;
-        }
-        return *this;
-    }
+//    UCTextLayout::UCTextLayout(UCTextLayout&& other) noexcept
+//        : layout(other.layout) {
+//        other.layout = nullptr;
+//    }
+//
+//    UCTextLayout& UCTextLayout::operator=(UCTextLayout&& other) noexcept {
+//        if (this != &other) {
+//            if (layout) g_object_unref(layout);
+//            layout = other.layout;
+//            other.layout = nullptr;
+//        }
+//        return *this;
+//    }
 
     bool UCTextLayout::IsValid() const {
         return layout != nullptr;
     }
 
-    PangoLayout* UCTextLayout::GetHandle() const {
+    void* UCTextLayout::GetHandle() const {
         return layout;
     }
 
     // ===== TEXT CONTENT =====
 
     void UCTextLayout::SetText(const std::string& text) {
-        if (layout) {
-            pango_layout_set_text(layout, text.c_str(), static_cast<int>(text.length()));
-        }
+        extentsValid = false;
+        pango_layout_set_text(layout, text.c_str(), static_cast<int>(text.length()));
     }
 
     std::string UCTextLayout::GetText() const {
@@ -427,58 +435,69 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::SetMarkup(const std::string& markup) {
-        if (layout) {
-            pango_layout_set_markup(layout, markup.c_str(), static_cast<int>(markup.length()));
-        }
+        extentsValid = false;
+        pango_layout_set_markup(layout, markup.c_str(), static_cast<int>(markup.length()));
     }
 
     // ===== FONT =====
 
-    void UCTextLayout::SetFontDescription(const FontStyle& fontStyle) {
-        if (!layout) return;
+    void UCTextLayout::SetFontStyle(const FontStyle& fontStyle) {
         PangoFontDescription* desc = CreatePangoFontDesc(fontStyle);
         if (desc) {
+            extentsValid = false;
             pango_layout_set_font_description(layout, desc);
             pango_font_description_free(desc);
         }
     }
 
-    void UCTextLayout::SetFontDescriptionFromPango(const PangoFontDescription* desc) {
-        if (layout && desc) {
-            pango_layout_set_font_description(layout, desc);
-        }
-    }
+//    void UCTextLayout::SetFontDescriptionFromPango(const PangoFontDescription* desc) {
+//        if (desc) {
+//            pango_layout_set_font_description(layout, desc);
+//        }
+//    }
 
     // ===== DIMENSIONS =====
 
-    void UCTextLayout::SetWidth(int widthPixels) {
-        if (layout) {
-            pango_layout_set_width(layout, (widthPixels < 0) ? -1 : widthPixels * PANGO_SCALE);
-        }
+    void UCTextLayout::SetExplicitWidth(int widthPixels) {
+        extentsValid = false;
+        pango_layout_set_width(layout, (widthPixels < 0) ? -1 : widthPixels * PANGO_SCALE);
     }
 
-    int UCTextLayout::GetWidth() const {
+    int UCTextLayout::GetExplicitWidth() const {
         if (!layout) return -1;
         int w = pango_layout_get_width(layout);
         return (w < 0) ? -1 : w / PANGO_SCALE;
     }
 
-    void UCTextLayout::SetHeight(int heightPixels) {
-        if (layout) {
-            pango_layout_set_height(layout, (heightPixels < 0) ? -1 : heightPixels * PANGO_SCALE);
-        }
+    void UCTextLayout::SetExplicitHeight(int heightPixels) {
+        extentsValid = false;
+        explicitHeight = heightPixels;
+        pango_layout_set_height(layout, (heightPixels < 0) ? -1 : heightPixels * PANGO_SCALE);
     }
 
-    int UCTextLayout::GetHeight() const {
+    int UCTextLayout::GetExplicitHeight() const {
         if (!layout) return -1;
         int h = pango_layout_get_height(layout);
         return (h < 0) ? -1 : h / PANGO_SCALE;
     }
 
+    int UCTextLayout::GetLayoutVerticalOffset()  {
+        auto ext = GetLayoutExtents();
+        int offset = -ext.logical.y;
+        if (explicitHeight > 0 && explicitHeight > ext.logical.height) {
+            if (valign == VerticalAlignment::Middle) {
+                offset = static_cast<int>(round(static_cast<float>(explicitHeight - ext.logical.height) / 2.0f)) - ext.logical.y;
+            } else if (valign == VerticalAlignment::Bottom) {
+                offset = explicitHeight - ext.logical.height - ext.logical.y;
+            }
+        }
+        return offset;
+    }
+
     // ===== ALIGNMENT & JUSTIFICATION =====
 
     void UCTextLayout::SetAlignment(TextAlignment align) {
-        if (!layout) return;
+        extentsValid = false;
         if (align == TextAlignment::Justify) {
             pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
             pango_layout_set_justify(layout, TRUE);
@@ -496,21 +515,14 @@ namespace UltraCanvas {
         return FromPangoAlignment(pango_layout_get_alignment(layout));
     }
 
-    void UCTextLayout::SetJustify(bool justify) {
-        if (layout) {
-            pango_layout_set_justify(layout, justify ? TRUE : FALSE);
-        }
-    }
-
-    bool UCTextLayout::GetJustify() const {
-        if (!layout) return false;
-        return pango_layout_get_justify(layout) != FALSE;
+    void UCTextLayout::SetVerticalAlignment(VerticalAlignment align) {
+        valign = align;
     }
 
     // ===== WRAPPING & ELLIPSIZATION =====
 
     void UCTextLayout::SetWrap(TextWrap wrap) {
-        if (!layout) return;
+        extentsValid = false;
         if (wrap == TextWrap::WrapNone) {
             pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
         } else {
@@ -528,23 +540,21 @@ namespace UltraCanvas {
         return FromPangoWrap(pango_layout_get_wrap(layout));
     }
 
-    void UCTextLayout::SetEllipsize(UCEllipsizeMode mode) {
-        if (layout) {
-            pango_layout_set_ellipsize(layout, ToPangoEllipsize(mode));
-        }
+    void UCTextLayout::SetEllipsize(EllipsizeMode mode) {
+        extentsValid = false;
+        pango_layout_set_ellipsize(layout, ToPangoEllipsize(mode));
     }
 
-    UCEllipsizeMode UCTextLayout::GetEllipsize() const {
-        if (!layout) return UCEllipsizeMode::EllipsizeNone;
+    EllipsizeMode UCTextLayout::GetEllipsize() const {
+        if (!layout) return EllipsizeMode::EllipsizeNone;
         return FromPangoEllipsize(pango_layout_get_ellipsize(layout));
     }
 
     // ===== SPACING & INDENTATION =====
 
     void UCTextLayout::SetIndent(int indentPixels) {
-        if (layout) {
-            pango_layout_set_indent(layout, indentPixels * PANGO_SCALE);
-        }
+        extentsValid = false;
+        pango_layout_set_indent(layout, indentPixels * PANGO_SCALE);
     }
 
     int UCTextLayout::GetIndent() const {
@@ -553,9 +563,8 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::SetLineSpacing(float factor) {
-        if (layout) {
-            pango_layout_set_line_spacing(layout, factor);
-        }
+        extentsValid = false;
+        pango_layout_set_line_spacing(layout, factor);
     }
 
     float UCTextLayout::GetLineSpacing() const {
@@ -564,9 +573,8 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::SetSpacing(int spacingPixels) {
-        if (layout) {
-            pango_layout_set_spacing(layout, spacingPixels * PANGO_SCALE);
-        }
+        extentsValid = false;
+        pango_layout_set_spacing(layout, spacingPixels * PANGO_SCALE);
     }
 
     int UCTextLayout::GetSpacing() const {
@@ -577,9 +585,8 @@ namespace UltraCanvas {
     // ===== MODE =====
 
     void UCTextLayout::SetSingleParagraphMode(bool single) {
-        if (layout) {
-            pango_layout_set_single_paragraph_mode(layout, single ? TRUE : FALSE);
-        }
+        extentsValid = false;
+        pango_layout_set_single_paragraph_mode(layout, single ? TRUE : FALSE);
     }
 
     bool UCTextLayout::GetSingleParagraphMode() const {
@@ -588,9 +595,8 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::SetAutoDir(bool autoDir) {
-        if (layout) {
-            pango_layout_set_auto_dir(layout, autoDir ? TRUE : FALSE);
-        }
+        extentsValid = false;
+        pango_layout_set_auto_dir(layout, autoDir ? TRUE : FALSE);
     }
 
     bool UCTextLayout::GetAutoDir() const {
@@ -600,70 +606,98 @@ namespace UltraCanvas {
 
     // ===== ATTRIBUTES =====
 
-    void UCTextLayout::SetAttributes(const UCTextAttributeList& attrs) {
-        if (layout && attrs.IsValid()) {
-            pango_layout_set_attributes(layout, attrs.GetHandle());
+    void UCTextLayout::InsertAttribute(std::unique_ptr<ITextAttribute> attr) {
+        auto atr = static_cast<PangoAttribute *>(attr->Release());
+        if (!attrsList) {
+            attrsList = pango_attr_list_new();
+            pango_layout_set_attributes(layout, attrsList);
         }
+        pango_attr_list_insert(attrsList, atr);
+        extentsValid = false;
     }
 
-    PangoAttrList* UCTextLayout::GetAttributesHandle() const {
-        if (!layout) return nullptr;
-        return pango_layout_get_attributes(layout);
+    void UCTextLayout::ChangeAttribute(std::unique_ptr<ITextAttribute> attr) {
+        auto atr = static_cast<PangoAttribute *>(attr->Release());
+        if (!attrsList) {
+            attrsList = pango_attr_list_new();
+            pango_layout_set_attributes(layout, attrsList);
+        }
+        pango_attr_list_change(attrsList, atr);
+        extentsValid = false;
     }
+
+    void UCTextLayout::SetAttributesFromString(const std::string& str) {
+        if (attrsList) {
+            pango_attr_list_unref(attrsList);
+        }
+        attrsList = pango_attr_list_from_string(str.c_str());
+        pango_layout_set_attributes(layout, attrsList);
+        extentsValid = false;
+    }
+
+    void UCTextLayout::RemoveAllAttributes() {
+        pango_attr_list_unref(attrsList);
+        attrsList = nullptr;
+        pango_layout_set_attributes(layout, nullptr);
+        extentsValid = false;
+    }
+
+//    void UCTextLayout::SetAttributes(const UCTextAttributeList& attrs) {
+//        if (layout && attrs.IsValid()) {
+//            pango_layout_set_attributes(layout, attrs.GetHandle());
+//        }
+//    }
+//
+//    PangoAttrList* UCTextLayout::GetAttributesHandle() const {
+//        if (!layout) return nullptr;
+//        return pango_layout_get_attributes(layout);
+//    }
 
     // ===== TABS =====
 
-    void UCTextLayout::SetTabs(PangoTabArray* tabs) {
-        if (layout) {
-            pango_layout_set_tabs(layout, tabs);
-        }
-    }
-
-    PangoTabArray* UCTextLayout::GetTabs() const {
-        if (!layout) return nullptr;
-        return pango_layout_get_tabs(layout);
-    }
+//    void UCTextLayout::SetTabs(PangoTabArray* tabs) {
+//        if (layout) {
+//            pango_layout_set_tabs(layout, tabs);
+//        }
+//    }
+//
+//    PangoTabArray* UCTextLayout::GetTabs() const {
+//        if (!layout) return nullptr;
+//        return pango_layout_get_tabs(layout);
+//    }
 
     // ===== MEASUREMENT =====
 
-    UCTextExtents UCTextLayout::GetPixelExtents() const {
-        UCTextExtents result{};
-        if (!layout) return result;
-        PangoRectangle ink, logical;
-        pango_layout_get_pixel_extents(layout, &ink, &logical);
-        result.ink = Rect2Di(ink.x, ink.y, ink.width, ink.height);
-        result.logical = Rect2Di(logical.x, logical.y, logical.width, logical.height);
-        return result;
-    }
-
-    Size2Di UCTextLayout::GetPixelSize() const {
-        if (!layout) return {};
-        int w, h;
-        pango_layout_get_pixel_size(layout, &w, &h);
-        return Size2Di(w, h);
-    }
-
-    void UCTextLayout::GetSize(int& widthPangoUnits, int& heightPangoUnits) const {
-        if (!layout) {
-            widthPangoUnits = 0;
-            heightPangoUnits = 0;
-            return;
+    UCTextExtents UCTextLayout::GetLayoutExtents() {
+        if (!extentsValid) {
+            PangoRectangle ink, logical;
+            pango_layout_get_pixel_extents(layout, &ink, &logical);
+            extents.ink = Rect2Di(ink.x, ink.y, ink.width, ink.height);
+            extents.logical = Rect2Di(logical.x, logical.y, logical.width, logical.height);
+            extentsValid = true;
         }
-        pango_layout_get_size(layout, &widthPangoUnits, &heightPangoUnits);
+        return extents;
     }
+
+//    void UCTextLayout::GetSize(int& widthPangoUnits, int& heightPangoUnits) const {
+//        if (!layout) {
+//            widthPangoUnits = 0;
+//            heightPangoUnits = 0;
+//            return;
+//        }
+//        pango_layout_get_size(layout, &widthPangoUnits, &heightPangoUnits);
+//    }
 
     int UCTextLayout::GetBaseline() const {
-        if (!layout) return 0;
         return pango_layout_get_baseline(layout) / PANGO_SCALE;
     }
 
-    int UCTextLayout::GetBaselinePangoUnits() const {
-        if (!layout) return 0;
-        return pango_layout_get_baseline(layout);
-    }
+//    int UCTextLayout::GetBaselinePangoUnits() const {
+//        if (!layout) return 0;
+//        return pango_layout_get_baseline(layout);
+//    }
 
     int UCTextLayout::GetLineCount() const {
-        if (!layout) return 0;
         return pango_layout_get_line_count(layout);
     }
 
@@ -725,50 +759,50 @@ namespace UltraCanvas {
 
     // ===== LINE ACCESS =====
 
-    PangoLayoutLine* UCTextLayout::GetLine(int lineIndex) const {
-        if (!layout) return nullptr;
-        return pango_layout_get_line(layout, lineIndex);
-    }
-
-    PangoLayoutLine* UCTextLayout::GetLineReadonly(int lineIndex) const {
-        if (!layout) return nullptr;
-        return pango_layout_get_line_readonly(layout, lineIndex);
-    }
-
-    GSList* UCTextLayout::GetLines() const {
-        if (!layout) return nullptr;
-        return pango_layout_get_lines(layout);
-    }
-
-    GSList* UCTextLayout::GetLinesReadonly() const {
-        if (!layout) return nullptr;
-        return pango_layout_get_lines_readonly(layout);
-    }
-
-    // ===== ITERATOR =====
-
-    UCTextLayoutIter UCTextLayout::GetIter() const {
-        if (!layout) return UCTextLayoutIter(nullptr);
-        return UCTextLayoutIter(pango_layout_get_iter(layout));
-    }
-
-    // ===== RENDERING =====
-
-    void UCTextLayout::Show(cairo_t* cr) const {
-        if (layout && cr) {
-            pango_cairo_update_layout(cr, layout);
-            pango_cairo_show_layout(cr, layout);
-        }
-    }
-
-    void UCTextLayout::ShowAt(cairo_t* cr, float x, float y) const {
-        if (layout && cr) {
-            cairo_save(cr);
-            cairo_move_to(cr, x, y);
-            pango_cairo_update_layout(cr, layout);
-            pango_cairo_show_layout(cr, layout);
-            cairo_restore(cr);
-        }
-    }
+//    PangoLayoutLine* UCTextLayout::GetLine(int lineIndex) const {
+//        if (!layout) return nullptr;
+//        return pango_layout_get_line(layout, lineIndex);
+//    }
+//
+//    PangoLayoutLine* UCTextLayout::GetLineReadonly(int lineIndex) const {
+//        if (!layout) return nullptr;
+//        return pango_layout_get_line_readonly(layout, lineIndex);
+//    }
+//
+//    GSList* UCTextLayout::GetLines() const {
+//        if (!layout) return nullptr;
+//        return pango_layout_get_lines(layout);
+//    }
+//
+//    GSList* UCTextLayout::GetLinesReadonly() const {
+//        if (!layout) return nullptr;
+//        return pango_layout_get_lines_readonly(layout);
+//    }
+//
+//    // ===== ITERATOR =====
+//
+//    UCTextLayoutIter UCTextLayout::GetIter() const {
+//        if (!layout) return UCTextLayoutIter(nullptr);
+//        return UCTextLayoutIter(pango_layout_get_iter(layout));
+//    }
+//
+//    // ===== RENDERING =====
+//
+//    void UCTextLayout::Show(cairo_t* cr) const {
+//        if (layout && cr) {
+//            pango_cairo_update_layout(cr, layout);
+//            pango_cairo_show_layout(cr, layout);
+//        }
+//    }
+//
+//    void UCTextLayout::ShowAt(cairo_t* cr, float x, float y) const {
+//        if (layout && cr) {
+//            cairo_save(cr);
+//            cairo_move_to(cr, x, y);
+//            pango_cairo_update_layout(cr, layout);
+//            pango_cairo_show_layout(cr, layout);
+//            cairo_restore(cr);
+//        }
+//    }
 
 } // namespace UltraCanvas

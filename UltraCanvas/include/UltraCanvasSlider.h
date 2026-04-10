@@ -636,9 +636,9 @@ namespace UltraCanvas {
             switch (style.handleShape) {
                 case SliderHandleShape::Circle: {
                     // Draw filled circle
-                    ctx->FillCircle(position.x, position.y, handleRadius);
+                    ctx->FillCircle(position, handleRadius);
                     // Draw border
-                    ctx->DrawCircle(position.x, position.y, handleRadius);
+                    ctx->DrawCircle(position, handleRadius);
                     break;
                 }
 
@@ -688,8 +688,8 @@ namespace UltraCanvas {
 
                 default:
                     // Fallback to circle
-                    ctx->FillCircle(position.x, position.y, handleRadius);
-                    ctx->DrawCircle(position.x, position.y, handleRadius);
+                    ctx->FillCircle(position, handleRadius);
+                    ctx->DrawCircle(position, handleRadius);
                     break;
             }
             //ctx->DrawFilledRectangle(handleRect, handleColor, style.borderWidth, style.handleBorderColor, handleRadius);
@@ -712,7 +712,7 @@ namespace UltraCanvas {
                     ctx->DrawFilledRectangle(tooltipRect, Color(255, 255, 220, 230), 1.0, Color(128, 128, 128));
                 }
 
-                ctx->DrawText(text, textPos.x, textPos.y);
+                ctx->DrawText(text, textPos);
             } else {
                 // Range mode - display both values
                 std::string lowerText = FormatValue(lowerValue);
@@ -721,29 +721,29 @@ namespace UltraCanvas {
                 ctx->SetTextPaint(IsDisabled() ? style.disabledTextColor : style.textColor);
 
                 bool isVertical = (orientation == SliderOrientation::Vertical);
-                Point2Di lowerHandlePos = GetHandlePosition(bounds, isVertical, lowerValue);
-                Point2Di upperHandlePos = GetHandlePosition(bounds, isVertical, upperValue);
+                Point2Df lowerHandlePos = GetHandlePosition(bounds, isVertical, lowerValue);
+                Point2Df upperHandlePos = GetHandlePosition(bounds, isVertical, upperValue);
 
                 // Draw lower value
                 ctx->SetFontStyle(style.fontStyle);
-                Point2Di lowerTextSize = ctx->GetTextDimension(lowerText);
-                Point2Di lowerTextPos;
+                Point2Df lowerTextSize = ctx->GetTextDimension(lowerText);
+                Point2Df lowerTextPos;
                 if (isVertical) {
-                    lowerTextPos = Point2Di(bounds.x + bounds.width + 8, lowerHandlePos.y - lowerTextSize.y / 2);
+                    lowerTextPos = Point2Df(bounds.x + bounds.width + 8, lowerHandlePos.y - lowerTextSize.y / 2);
                 } else {
-                    lowerTextPos = Point2Di(lowerHandlePos.x - lowerTextSize.x / 2, bounds.y - lowerTextSize.y / 2 - 4);
+                    lowerTextPos = Point2Df(lowerHandlePos.x - lowerTextSize.x / 2, bounds.y - lowerTextSize.y / 2 - 4);
                 }
-                ctx->DrawText(lowerText, lowerTextPos.x, lowerTextPos.y);
+                ctx->DrawText(lowerText, lowerTextPos);
 
                 // Draw upper value
-                Point2Di upperTextSize = ctx->GetTextDimension(upperText);
-                Point2Di upperTextPos;
+                Point2Df upperTextSize = ctx->GetTextDimension(upperText);
+                Point2Df upperTextPos;
                 if (isVertical) {
-                    upperTextPos = Point2Di(bounds.x + bounds.width + 8, upperHandlePos.y - upperTextSize.y / 2);
+                    upperTextPos = Point2Df(bounds.x + bounds.width + 8, upperHandlePos.y - upperTextSize.y / 2);
                 } else {
-                    upperTextPos = Point2Di(upperHandlePos.x - upperTextSize.x / 2, bounds.y - upperTextSize.y / 2 - 4);
+                    upperTextPos = Point2Df(upperHandlePos.x - upperTextSize.x / 2, bounds.y - upperTextSize.y / 2 - 4);
                 }
-                ctx->DrawText(upperText, upperTextPos.x, upperTextPos.y);
+                ctx->DrawText(upperText, upperTextPos);
             }
         }
 

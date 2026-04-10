@@ -300,16 +300,16 @@ namespace UltraCanvas {
         ctx->SetFontSize(titleFontSize);
 
         if (!chartTitle.empty()) {
-            int titleWidth = ctx->GetTextLineWidth(chartTitle);
-            int titleX = (GetWidth() - titleWidth) / 2;
-            ctx->DrawText(chartTitle, titleX, 5);
+            double titleWidth = ctx->GetTextLineWidth(chartTitle);
+            double titleX = (GetWidth() - titleWidth) / 2;
+            ctx->DrawText(chartTitle, Point2Df(titleX, 5));
         }
 
         if (!chartSubtitle.empty()) {
             ctx->SetFontSize(fontSize);
-            int subtitleWidth = ctx->GetTextLineWidth(chartSubtitle);
-            int subtitleX = (GetWidth() - subtitleWidth) / 2;
-            ctx->DrawText(chartSubtitle, subtitleX, 30);
+            double subtitleWidth = ctx->GetTextLineWidth(chartSubtitle);
+            double subtitleX = (GetWidth() - subtitleWidth) / 2;
+            ctx->DrawText(chartSubtitle, {subtitleX, 30});
         }
     }
 
@@ -407,11 +407,11 @@ namespace UltraCanvas {
         // Draw age label in center
         int labelWidth, labelHeight;
         ctx->GetTextLineDimensions(group.AgeLabel, labelWidth, labelHeight);
-        int labelX = centerX - labelWidth / 2;
-        int labelY = yPosition + barHeight / 2 - labelHeight / 2;
+        double labelX = centerX - labelWidth / 2;
+        double labelY = yPosition + barHeight / 2 - labelHeight / 2;
         ctx->SetTextPaint(textColor);
         ctx->SetFontSize(fontSize);
-        ctx->DrawText(group.AgeLabel, labelX, labelY);
+        ctx->DrawText(group.AgeLabel, {labelX, labelY});
     }
 
     void UltraCanvasPopulationChart::RenderCenterLine(IRenderContext* ctx) {
@@ -439,7 +439,7 @@ namespace UltraCanvas {
 
             // Draw label
             ctx->SetTextPaint(textColor);
-            ctx->DrawText(item.Label, legendX + 20, legendY);
+            ctx->DrawText(item.Label, {legendX + 20, legendY});
 
             legendY += itemHeight;
         }
@@ -467,14 +467,14 @@ namespace UltraCanvas {
                                                   const std::string& label, int y) {
         ctx->SetTextPaint(textColor);
         ctx->SetFontSize(fontSize);
-        ctx->DrawText(label, chartPaddingLeft - 50, y);
+        ctx->DrawText(label, {chartPaddingLeft - 50, y});
     }
 
     void UltraCanvasPopulationChart::DrawAxisValue(IRenderContext* ctx, double value,
                                                    int x, int y) {
         std::string valueStr = PopulationChartUtils::FormatPopulation(value);
         int textWidth = ctx->GetTextLineWidth(valueStr);
-        ctx->DrawText(valueStr, x - textWidth / 2, y);
+        ctx->DrawText(valueStr, {x - textWidth / 2, y});
     }
 
 // ===== EVENT HANDLING =====

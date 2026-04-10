@@ -31,7 +31,7 @@ namespace UltraCanvas {
 
         auto description = std::make_shared<UltraCanvasLabel>("TextRenderDesc", 3602, 20, currentY, 960, 40);
         description->SetText("Configure Cairo text antialiasing, font hinting style, and hint metrics. Changes apply globally and take effect immediately.");
-        description->SetWordWrap(true);
+        description->SetWrap(TextWrap::WrapWord);
         description->SetTextColor(Color(80, 80, 80, 255));
         mainContainer->AddChild(description);
         currentY += 45;
@@ -166,7 +166,7 @@ namespace UltraCanvas {
                 "SampleText" + sample.label, sampleId++, 80, currentY, 900, static_cast<long>(sample.fontSize * 2.5));
             textLabel->SetText(sample.text);
             textLabel->SetFontSize(sample.fontSize);
-            textLabel->SetWordWrap(true);
+            textLabel->SetWrap(TextWrap::WrapWord);
             mainContainer->AddChild(textLabel);
 
             sampleLabels.push_back(textLabel);
@@ -211,7 +211,7 @@ namespace UltraCanvas {
             textLabel->SetText(sample.text);
             textLabel->SetFontSize(sample.fontSize);
             textLabel->SetFontWeight(FontWeight::Bold);
-            textLabel->SetWordWrap(true);
+            textLabel->SetWrap(TextWrap::WrapWord);
             mainContainer->AddChild(textLabel);
 
             sampleLabels.push_back(textLabel);

@@ -51,7 +51,7 @@ namespace UltraCanvas {
         // Description
         auto description = std::make_shared<UltraCanvasLabel>("ACDesc", 802, 20, currentY, 960, 40);
         description->SetText("AutoComplete examples showcasing static items, dynamic providers, scrollable lists, and event handling");
-        description->SetWordWrap(true);
+        description->SetWrap(TextWrap::WrapWord);
         description->SetTextColor(Color(80, 80, 80, 255));
         mainContainer->AddChild(description);
 
@@ -161,7 +161,7 @@ namespace UltraCanvas {
 
         auto dynamicStatusLabel = std::make_shared<UltraCanvasLabel>("DynamicACStatus", 832, 330, currentY + 5, 500, 40);
         dynamicStatusLabel->SetText("Uses onRequestSuggestions callback to generate results dynamically");
-        dynamicStatusLabel->SetWordWrap(true);
+        dynamicStatusLabel->SetWrap(TextWrap::WrapWord);
         dynamicStatusLabel->SetFontSize(12);
         dynamicStatusLabel->SetTextColor(Color(0, 100, 0, 255));
 
@@ -313,7 +313,7 @@ namespace UltraCanvas {
 
         auto eventLog = std::make_shared<UltraCanvasLabel>("ACEventLog", 852, 300, currentY, 500, 80);
         eventLog->SetText("Event log: No events yet");
-        eventLog->SetWordWrap(true);
+        eventLog->SetWrap(TextWrap::WrapWord);
         eventLog->SetFontSize(11);
         eventLog->SetBackgroundColor(Color(245, 245, 245, 255));
         eventLog->SetBorders(1.0f);

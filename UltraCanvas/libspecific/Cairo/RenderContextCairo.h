@@ -133,32 +133,32 @@ namespace UltraCanvas {
         void ResetState() override;
 
         // Transformation
-        void Translate(float x, float y) override;
-        void Rotate(float angle) override;
-        void Scale(float sx, float sy) override;
-        void SetTransform(float a, float b, float c, float d, float e, float f) override;
-        void Transform(float a, float b, float c, float d, float e, float f) override;
+        void Translate(double x, double y) override;
+        void Rotate(double angle) override;
+        void Scale(double sx, double sy) override;
+        void SetTransform(double a, double b, double c, double d, double e, double f) override;
+        void Transform(double a, double b, double c, double d, double e, double f) override;
         void ResetTransform() override;
 
         // Clipping
 //        void SetClipRect(float x, float y, float w, float h) override;
         void ClearClipRect() override;
-        void ClipRect(float x, float y, float w, float h) override;
+        void ClipRect(double x, double y, double w, double h) override;
         void ClipRoundedRectangle(
-                float x, float y, float width, float height,
-                float borderTopLeftRadius, float borderTopRightRadius,
-                float borderBottomRightRadius, float borderBottomLeftRadius) override;
+                double x, double y, double width, double height,
+                double borderTopLeftRadius, double borderTopRightRadius,
+                double borderBottomRightRadius, double borderBottomLeftRadius) override;
         void ClipPath() override;
 
         // Style management
         //void SetDrawingStyle(const DrawingStyle &style) override;
         void SetTextStyle(const TextStyle &style) override;
         const TextStyle &GetTextStyle() const override;
-        void SetStrokeWidth(float width) override;
+        void SetStrokeWidth(double width) override;
         //void SetLineWidth(float width) override;
         void SetLineCap(LineCap cap) override;
         void SetLineJoin(LineJoin join) override;
-        void SetMiterLimit(float limit)  override;
+        void SetMiterLimit(double limit)  override;
         void SetLineDash(const UCDashPattern& pattern) override;
 
         // === Text Methods ===
@@ -168,17 +168,17 @@ namespace UltraCanvas {
         void SetFontWeight(FontWeight fw) override;
         void SetFontSlant(FontSlant fs) override;
         void SetTextAlignment(TextAlignment align) override;
-        void SetTextVerticalAlignment(TextVerticalAlignment align) override;
+        void SetTextVerticalAlignment(VerticalAlignment align) override;
         void SetTextIsMarkup(bool isMarkup) override;
         void SetTextLineHeight(float height) override;
         void SetTextWrap(TextWrap wrap) override;
 
         void SetAlpha(float alpha) override;
         float GetAlpha() const override;
-        std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(float cx1, float cy1, float r1,
-                                                                   float cx2, float cy2, float r2,
+        std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(double cx1, double cy1, double r1,
+                                                                   double cx2, double cy2, double r2,
                                                                    const std::vector<GradientStop>& stops) override;
-        std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
+        std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(double x1, double y1, double x2, double y2,
                                                                    const std::vector<GradientStop>& stops) override;
         void SetFillPaint(std::shared_ptr<IPaintPattern> pattern) override;
         void SetFillPaint(const Color& color) override;
@@ -186,31 +186,33 @@ namespace UltraCanvas {
         void SetStrokePaint(const Color& color) override;
         void SetTextPaint(std::shared_ptr<IPaintPattern> pattern) override;
         void SetTextPaint(const Color& color) override;
+        void SetCurrentPaint(const Color& color) override;
+        void SetCurrentPaint(std::shared_ptr<IPaintPattern> pattern) override;
 
         // Basic drawing
-        void DrawLine(float x, float y, float x1, float y1) override;
-        void DrawRectangle(float x, float y, float w, float h) override;
-        void FillRectangle(float x, float y, float w, float h) override;
-        void DrawRoundedRectangle(float x, float y, float w, float h, float radius) override;
-        void FillRoundedRectangle(float x, float y, float w, float h, float radius) override;
-        void DrawRoundedRectangleWidthBorders(float x, float y, float width, float height,
-                                                     bool fill,
-                                                     float borderLeftWidth, float borderRightWidth,
-                                                     float borderTopWidth, float borderBottomWidth,
-                                                     const Color& borderLeftColor, const Color& borderRightColor,
-                                                     const Color& borderTopColor, const Color& borderBottomColor,
-                                                     float borderTopLeftRadius, float borderTopRightRadius,
-                                                     float borderBottomRightRadius, float borderBottomLeftRadius,
-                                                     const UCDashPattern& borderLeftPattern,
-                                                     const UCDashPattern& borderRightPattern,
-                                                     const UCDashPattern& borderTopPattern,
-                                                     const UCDashPattern& borderBottomPattern) override;
-        void DrawCircle(float x, float y, float radius) override;
-        void FillCircle(float x, float y, float radius) override;
-        void DrawEllipse(float x, float y, float w, float h) override;
-        void FillEllipse(float x, float y, float w, float h) override;
-        void DrawArc(float x, float y, float radius, float startAngle, float endAngle) override;
-        void FillArc(float x, float y, float radius, float startAngle, float endAngle) override;
+        void DrawLine(double x, double y, double x1, double y1) override;
+        void DrawRectangle(double x, double y, double w, double h) override;
+        void FillRectangle(double x, double y, double w, double h) override;
+        void DrawRoundedRectangle(const Rect2Df & rect, double radius) override;
+        void FillRoundedRectangle(const Rect2Df & rect, double radius) override;
+        void DrawRoundedRectangleWidthBorders(const Rect2Df & rect,
+                                              bool fill,
+                                              double borderLeftWidth, double borderRightWidth,
+                                              double borderTopWidth, double borderBottomWidth,
+                                              const Color& borderLeftColor, const Color& borderRightColor,
+                                              const Color& borderTopColor, const Color& borderBottomColor,
+                                              double borderTopLeftRadius, double borderTopRightRadius,
+                                              double borderBottomRightRadius, double borderBottomLeftRadius,
+                                              const UCDashPattern& borderLeftPattern,
+                                              const UCDashPattern& borderRightPattern,
+                                              const UCDashPattern& borderTopPattern,
+                                              const UCDashPattern& borderBottomPattern) override;
+        void DrawCircle(const Point2Df& center, double radius) override;
+        void FillCircle(const Point2Df& center, double radius) override;
+        void DrawEllipse(const Rect2Df& rect) override;
+        void FillEllipse(const Rect2Df& rect) override;
+        void DrawArc(double x, double y, double radius, double startAngle, double endAngle) override;
+        void FillArc(double x, double y, double radius, double startAngle, double endAngle) override;
         void DrawBezierCurve(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2, const Point2Df &end) override;
         void DrawLinePath(const std::vector<Point2Df> &points, bool closePath) override;
         void FillLinePath(const std::vector<Point2Df> &points) override;
@@ -218,21 +220,21 @@ namespace UltraCanvas {
         // path functions
         void ClearPath() override;
         void ClosePath() override;
-        void MoveTo(float x, float y) override;
-        void RelMoveTo(float x, float y) override;
-        void LineTo(float x, float y) override;
-        void RelLineTo(float x, float y) override;
-        void QuadraticCurveTo(float cpx, float cpy, float x, float y) override;
-        void BezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y) override;
-        void RelBezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y) override;
-        void Arc(float cx, float cy, float radius, float startAngle, float endAngle) override;
-        void ArcTo(float x1, float y1, float x2, float y2, float radius) override;
-        void Ellipse(float cx, float cy, float rx, float ry, float rotation) override;
-        void Rect(float x, float y, float width, float height) override;
-        void RoundedRect(float x, float y, float width, float height, float radius) override;
-        void Circle(float x, float y, float radius) override;
+        void MoveTo(double x, double y) override;
+        void RelMoveTo(double x, double y) override;
+        void LineTo(double x, double y) override;
+        void RelLineTo(double x, double y) override;
+        void QuadraticCurveTo(double cpx, double cpy, double x, double y) override;
+        void BezierCurveTo(double cp1x, double cp1y, double cp2x, double cp2y, double x, double y) override;
+        void RelBezierCurveTo(double cp1x, double cp1y, double cp2x, double cp2y, double x, double y) override;
+        void Arc(double cx, double cy, double radius, double startAngle, double endAngle) override;
+        void ArcTo(double x1, double y1, double x2, double y2, double radius) override;
+        void Ellipse(double cx, double cy, double rx, double ry, double rotation) override;
+        void Rect(double x, double y, double width, double height) override;
+        void RoundedRect(double x, double y, double width, double height, double radius) override;
+        void Circle(double x, double y, double radius) override;
 
-        void GetPathExtents(float &x, float &y, float &width, float &height) override;
+        void GetPathExtents(double &x, double &y, double &width, double &height) override;
         void StrokePathPreserve() override;
         void FillPathPreserve() override;
         void FillText(const std::string& text, float x, float y) override;
@@ -241,8 +243,10 @@ namespace UltraCanvas {
         void Stroke() override;
 
         // Text rendering
-        void DrawText(const std::string &text, float x, float y) override;
-        void DrawTextInRect(const std::string &text, float x, float y, float w, float h) override;
+        std::unique_ptr<ITextLayout> CreateTextLayout(const std::string& text, bool isMarkup) override;
+        void DrawTextLayout(ITextLayout& layout, double x, double y) override;
+        void DrawText(const std::string &text, const Point2Df &pos) override;
+        void DrawTextInRect(const std::string &text, const Rect2Df &rect) override;
         bool GetTextLineDimensions(const std::string &text, int &w, int &h) override;
         bool GetTextDimensions(const std::string &text, int width, int height, int &retWidth, int &retHeight) override;
         int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) override;

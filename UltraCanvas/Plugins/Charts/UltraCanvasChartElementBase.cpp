@@ -134,8 +134,8 @@ namespace UltraCanvas {
             ctx->SetFontSize(16.0f);
 
             // Calculate center position (simplified)
-            int titleX = GetX() + GetWidth() / 2 - static_cast<int>(chartTitle.length()) * 5;
-            ctx->DrawText(chartTitle, titleX, GetY());
+            double titleX = GetX() + static_cast<double>(GetWidth()) / 2 - chartTitle.length() * 5;
+            ctx->DrawText(chartTitle, Point2Df(titleX, GetY()));
         }
     }
 
@@ -255,20 +255,20 @@ namespace UltraCanvas {
                     ctx->PushState();
                     ctx->Translate(x, tickY + 8);
                     ctx->Rotate(xAxisLabelRotation * M_PI / 180.0f);
-                    ctx->DrawText(label, 0, 0);
+                    ctx->DrawText(label, {0, 0});
                     ctx->PopState();
                 } else {
                     int txtW, txtH;
                     ctx->GetTextLineDimensions(label, txtW, txtH);
-                    ctx->DrawText(label, x - txtW / 2, tickY + 8);
+                    ctx->DrawText(label, {x - txtW / 2, tickY + 8});
                 }
             }
         } else {
             // Use numeric values with actual data coordinates
             int numXTicks = 8;
             for (int i = 0; i <= numXTicks; ++i) {
-                float x = cachedPlotArea.x + (i * cachedPlotArea.width / numXTicks);
-                float tickY = cachedPlotArea.y + cachedPlotArea.height;
+                double x = cachedPlotArea.x + (i * cachedPlotArea.width / numXTicks);
+                double tickY = cachedPlotArea.y + cachedPlotArea.height;
 
                 // Draw tick mark
                 ctx->DrawLine(x, tickY, x, tickY + 5);
@@ -281,18 +281,18 @@ namespace UltraCanvas {
                     ctx->PushState();
                     ctx->Translate(x, tickY + 8);
                     ctx->Rotate(xAxisLabelRotation * M_PI / 180.0f);
-                    ctx->DrawText(label, 0, 0);
+                    ctx->DrawText(label, {0, 0});
                     ctx->PopState();
                 } else {
-                    ctx->DrawText(label, x - 4, tickY + 8);
+                    ctx->DrawText(label, Point2Df (x - 4, tickY + 8));
                 }
             }
         }
 
         int numYTicks = 6, txtW, txtH;
         for (int i = 0; i <= numYTicks; ++i) {
-            float y = cachedPlotArea.y + cachedPlotArea.height - (i * cachedPlotArea.height / numYTicks);
-            float tickX = cachedPlotArea.x;
+            double y = cachedPlotArea.y + cachedPlotArea.height - (i * cachedPlotArea.height / numYTicks);
+            double tickX = cachedPlotArea.x;
 
             // Draw tick mark using existing DrawLine
             ctx->DrawLine(tickX - 5, y, tickX, y);
@@ -301,7 +301,7 @@ namespace UltraCanvas {
             double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
             std::string label = FormatAxisLabel(labelValue);
             ctx->GetTextLineDimensions(label, txtW, txtH);
-            ctx->DrawText(label, tickX - txtW - 8, y - (txtH / 2));
+            ctx->DrawText(label, Point2Df (tickX - txtW - 8, y - (static_cast<double>(txtH) / 2)));
         }
     }
 
@@ -333,20 +333,20 @@ namespace UltraCanvas {
                 ctx->PushState();
                 ctx->Translate(labelPos.x, labelPos.y);
                 ctx->Rotate(-45 * M_PI / 180.0f);
-                ctx->DrawText(valueText, 0, 0);
+                ctx->DrawText(valueText, {0, 0});
                 ctx->PopState();
             } else if (valueLabelRotation != 0.0f) {
                 // Manual rotation
                 ctx->PushState();
                 ctx->Translate(labelPos.x, labelPos.y);
                 ctx->Rotate(valueLabelRotation * M_PI / 180.0f);
-                ctx->DrawText(valueText, 0, 0);
+                ctx->DrawText(valueText, {0, 0});
                 ctx->PopState();
             } else {
                 // No rotation - center the text
                 int txtW, txtH;
                 ctx->GetTextLineDimensions(valueText, txtW, txtH);
-                ctx->DrawText(valueText, static_cast<int>(labelPos.x - txtW/2), static_cast<int>(labelPos.y));
+                ctx->DrawText(valueText, {labelPos.x - txtW/2, labelPos.y});
             }
         }
     }
@@ -405,7 +405,7 @@ namespace UltraCanvas {
         // Use existing IRenderContext drawing functions
         ctx->SetStrokePaint(Color(255, 0, 0, 255)); // Red selection indicator
         ctx->SetStrokeWidth(2.0f);
-        ctx->DrawCircle(screenPos.x, screenPos.y, indicatorSize);
+        ctx->DrawCircle(screenPos, indicatorSize);
     }
 
     void UltraCanvasChartElementBase::DrawEmptyState(IRenderContext* ctx) {
@@ -418,10 +418,10 @@ namespace UltraCanvas {
 
         std::string emptyText = "No data to display";
         // Calculate center position (simplified)
-        int textX = GetX() + GetWidth() / 2 - 60;
-        int textY = GetY() + GetHeight() / 2;
+        double textX = static_cast<double>(GetX() + GetWidth()) / 2 - 60;
+        double textY = static_cast<double>(GetY() + GetHeight()) / 2;
 
-        ctx->DrawText(emptyText, textX, textY);
+        ctx->DrawText(emptyText, {textX, textY});
     }
 
     bool UltraCanvasChartElementBase::HandleMouseMove(const UCEvent& event) {

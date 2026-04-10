@@ -280,7 +280,7 @@ namespace UltraCanvas {
             Point2Di textSize = ctx->GetTextDimension(text);
 
             // Calculate text position (top-left corner of element, with padding)
-            Point2Di textPos = Point2Di(bounds.x + settings.textPadding,
+            Point2Df textPos = Point2Df(bounds.x + settings.textPadding,
                                       bounds.y - textSize.y - settings.textPadding);
 
             // Ensure text stays within screen bounds

@@ -46,7 +46,7 @@ namespace UltraCanvas {
         if (showDataPoints) {
             ctx->SetFillPaint(pointColor);
             for (const auto& screenPos : linePoints) {
-                ctx->FillCircle(screenPos.x, screenPos.y, pointRadius);
+                ctx->FillCircle(screenPos, pointRadius);
             }
         }
 
@@ -255,7 +255,7 @@ namespace UltraCanvas {
             // Draw point based on shape
             switch (pointShape) {
                 case PointShape::Circle:
-                    ctx->FillCircle(screenPos.x, screenPos.y, pointSize);
+                    ctx->FillCircle(screenPos, pointSize);
                     break;
 
                 case PointShape::Square: {
@@ -398,8 +398,8 @@ namespace UltraCanvas {
         // Fill the area
         if (enableGradientFill) {
             // Create gradient
-            float minY = areaPoints[0].y;
-            float maxY = areaPoints[0].y;
+            double minY = areaPoints[0].y;
+            double maxY = areaPoints[0].y;
 
             for (const auto& point : areaPoints) {
                 minY = std::min(minY, point.y);
@@ -431,7 +431,7 @@ namespace UltraCanvas {
         if (showDataPoints) {
             ctx->SetFillPaint(pointColor);
             for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
-                ctx->FillCircle(areaPoints[i].x, areaPoints[i].y, pointRadius);
+                ctx->FillCircle(areaPoints[i], pointRadius);
             }
         }
 

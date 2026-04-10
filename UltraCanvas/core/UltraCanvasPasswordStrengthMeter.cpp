@@ -159,13 +159,13 @@ namespace UltraCanvas {
 
         // Draw background bar
         ctx->SetFillPaint(config.backgroundColor);
-        ctx->FillRoundedRectangle(bounds.x, barY, bounds.width, barHeight, config.borderRadius);
+        ctx->FillRoundedRectangle({bounds.x, barY, bounds.width, barHeight}, config.borderRadius);
 
         // Draw strength bar
         int fillWidth = static_cast<int>(bounds.width * (displayedStrength / 100.0f));
         if (fillWidth > 0) {
             ctx->SetFillPaint(currentColor);
-            ctx->FillRoundedRectangle(bounds.x, barY, fillWidth, barHeight, config.borderRadius);
+            ctx->FillRoundedRectangle({bounds.x, barY, fillWidth, barHeight}, config.borderRadius);
         }
 
         // Draw label
@@ -175,19 +175,19 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPasswordStrengthMeter::DrawCircularStyle(IRenderContext *ctx, const Rect2Di &bounds) {
-        int centerX = bounds.x + bounds.width / 2;
-        int centerY = bounds.y + bounds.height / 2;
-        int radius = std::min(bounds.width, bounds.height) / 2 - 5;
+        double centerX = bounds.x + bounds.width / 2;
+        double centerY = bounds.y + bounds.height / 2;
+        double radius = std::min(bounds.width, bounds.height) / 2 - 5;
 
         // Draw background circle
         ctx->SetStrokePaint(config.backgroundColor);
         ctx->SetStrokeWidth(8.0f);
-        ctx->DrawCircle(centerX, centerY, radius);
+        ctx->DrawCircle({centerX, centerY}, radius);
 
         // Draw strength arc
         if (displayedStrength > 0) {
             ctx->SetStrokePaint(currentColor);
-            float angle = (displayedStrength / 100.0f) * 360.0f;
+            double angle = (displayedStrength / 100.0f) * 360.0f;
             ctx->Arc(centerX, centerY, radius, (M_PI / 180) * -90.0f, M_PI / 180 * (-90.0f + angle));
             ctx->Stroke();
         }
@@ -200,7 +200,7 @@ namespace UltraCanvas {
             std::string percentText = std::to_string(static_cast<int>(currentStrength)) + "%";
             int textWidth, textHeight;
             ctx->GetTextLineDimensions(percentText, textWidth, textHeight);
-            ctx->DrawText(percentText, centerX - textWidth / 2, centerY - textHeight / 2);
+            ctx->DrawText(percentText, Point2Df(centerX - textWidth / 2, centerY - textHeight / 2));
         }
 
         // Draw label below
@@ -208,7 +208,7 @@ namespace UltraCanvas {
             ctx->SetFontSize(10);
             ctx->SetFontWeight(FontWeight::Normal);
             int labelWidth = ctx->GetTextLineWidth(strengthLabel);
-            ctx->DrawText(strengthLabel, centerX - labelWidth / 2, centerY + radius + 5);
+            ctx->DrawText(strengthLabel, Point2Df(centerX - labelWidth / 2, centerY + radius + 5));
         }
     }
 
@@ -227,7 +227,7 @@ namespace UltraCanvas {
 
         if (!displayText.empty()) {
             int textWidth = ctx->GetTextLineWidth(displayText);
-            ctx->DrawText(displayText, bounds.x + (bounds.width - textWidth) / 2, y);
+            ctx->DrawText(displayText, Point2Df (bounds.x + static_cast<double>(bounds.width - textWidth) / 2.0, y));
         }
     }
 }

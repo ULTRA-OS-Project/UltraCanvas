@@ -377,7 +377,7 @@ namespace UltraCanvas {
                 "through electricity generation to end consumers (residential, commercial, industrial)."
         );
         energyDesc->SetFontSize(11);
-        energyDesc->SetWordWrap(true);
+        energyDesc->SetWrap(TextWrap::WrapWord);
         energyContainer->AddChild(energyDesc);
 
         // Control panel
@@ -544,7 +544,7 @@ namespace UltraCanvas {
                 "to conversion or exit points."
         );
         webDesc->SetFontSize(11);
-        webDesc->SetWordWrap(true);
+        webDesc->SetWrap(TextWrap::WrapWord);
         webContainer->AddChild(webDesc);
 
         // Web traffic Sankey diagram
@@ -781,7 +781,7 @@ namespace UltraCanvas {
                 "and interaction responsiveness with varying numbers of nodes and links."
         );
         perfDesc->SetFontSize(11);
-        perfDesc->SetWordWrap(true);
+        perfDesc->SetWrap(TextWrap::WrapWord);
         perfContainer->AddChild(perfDesc);
 
         // Performance controls

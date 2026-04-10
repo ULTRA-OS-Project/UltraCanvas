@@ -113,7 +113,7 @@ namespace UltraCanvas {
         Color backgroundColor = Colors::Transparent;
 
         Rect2Di bounds;
-        Size2Di originalSize;
+        Size2Di explicitSize;
 
     public:
         std::function<bool(const UCEvent&)> eventCallback;
@@ -126,7 +126,7 @@ namespace UltraCanvas {
                              int x, int y, int w, int h)
                 : identifier(idstr),
                   bounds(x, y, w, h),
-                  originalSize(w, h) {
+                  explicitSize(w, h) {
             stateFlags.Reset();
         }
 
@@ -134,7 +134,7 @@ namespace UltraCanvas {
                              int w = 0, int h = 0)
                 : identifier(idstr),
                   bounds(0, 0, w, h),
-                  originalSize(w, h) {
+                  explicitSize(w, h) {
             stateFlags.Reset();
         }
 
@@ -157,7 +157,7 @@ namespace UltraCanvas {
         }
 
         Size2Di GetOriginalSize() {
-            return Size2Di(originalSize);
+            return Size2Di(explicitSize);
         }
 
         bool Contains(const Point2Di& point) {
@@ -172,13 +172,13 @@ namespace UltraCanvas {
         int GetYInWindow();
 
         int GetWidth() const { return bounds.width; }
-        virtual int GetPreferredWidth() { return originalSize.width; }
+        virtual int GetPreferredWidth() { return explicitSize.width; }
         virtual int GetMinWidth() const { return 0; }
         virtual int GetMaxWidth() const { return 10000; }
         void SetWidth(int w) { SetBounds(bounds.x, bounds.y, w, bounds.height); }
 
         int GetHeight() const { return bounds.height; }
-        virtual int GetPreferredHeight() { return originalSize.height; }
+        virtual int GetPreferredHeight() { return explicitSize.height; }
         virtual int GetMinHeight() const { return 0; }
         virtual int GetMaxHeight() const { return 10000; }
         void SetHeight(int h) { SetBounds(bounds.x, bounds.y, bounds.width, h); }

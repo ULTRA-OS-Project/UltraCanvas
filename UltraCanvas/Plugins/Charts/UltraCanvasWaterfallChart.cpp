@@ -114,7 +114,7 @@ namespace UltraCanvas {
             std::string label = FormatValue(value);
             int textWidth, textHeight;
             ctx->GetTextLineDimensions(label, textWidth, textHeight);
-            ctx->DrawText(label, cachedPlotArea.x - textWidth - 8, y - textHeight/2);
+            ctx->DrawText(label, {cachedPlotArea.x - textWidth - 8, y - textHeight/2});
         }
 
         // X-axis labels are drawn in DrawValueLabels() for each bar
@@ -318,28 +318,27 @@ namespace UltraCanvas {
         for (size_t i = 0; i < pointCount; ++i) {
             if (i < renderCache.barX.size()) {
                 DrawSingleBar(ctx,
-                              renderCache.barX[i],
+                              {renderCache.barX[i],
                               renderCache.barY[i],
                               renderCache.barWidth,
-                              renderCache.barHeight[i],
+                              renderCache.barHeight[i]},
                               renderCache.barColors[i]);
             }
         }
     }
 
-    void UltraCanvasWaterfallChartElement::DrawSingleBar(IRenderContext* ctx, float x, float y,
-                                                         float width, float height, const Color& fillColor, bool hasBorder) {
-        if (!ctx || height <= 0) return;
+    void UltraCanvasWaterfallChartElement::DrawSingleBar(IRenderContext* ctx, const Rect2Df& rect, const Color& fillColor, bool hasBorder) {
+        if (!ctx || rect.height <= 0) return;
 
         switch (barStyle) {
             case BarStyle::Standard:
                 ctx->SetFillPaint(fillColor);
-                ctx->FillRectangle(x, y, width, height);
+                ctx->FillRectangle(rect);
                 break;
 
             case BarStyle::Rounded:
                 ctx->SetFillPaint(fillColor);
-                ctx->FillRoundedRectangle(x, y, width, height, 4.0f);
+                ctx->FillRoundedRectangle(rect, 4.0f);
                 break;
 
             case BarStyle::Gradient:
@@ -350,11 +349,11 @@ namespace UltraCanvas {
                         std::min(255, static_cast<int>(fillColor.b * 1.2f)),
                         fillColor.a
                 );
-                ctx->SetFillPaint(ctx->CreateLinearGradientPattern(x,y, x, x + height, {
+                ctx->SetFillPaint(ctx->CreateLinearGradientPattern(rect.x,rect.y, rect.x, rect.x + rect.height, {
                         GradientStop(0, lighterColor),
                         GradientStop(1, fillColor),
                 }));
-                ctx->FillRectangle(x, y, width, height);
+                ctx->FillRectangle(rect);
                 break;
         }
 
@@ -364,9 +363,9 @@ namespace UltraCanvas {
             ctx->SetStrokeWidth(barBorderWidth);
 
             if (barStyle == BarStyle::Rounded) {
-                ctx->DrawRoundedRectangle(x, y, width, height, 4.0f);
+                ctx->DrawRoundedRectangle(rect, 4.0f);
             } else {
-                ctx->DrawRectangle(x, y, width, height);
+                ctx->DrawRectangle(rect);
             }
         }
     }
@@ -503,7 +502,7 @@ namespace UltraCanvas {
                                renderCache.barY[i] - (textHeight + 3):
                                renderCache.barY[i] + renderCache.barHeight[i] + 1;
 
-                ctx->DrawText(valueText, barCenterX - textWidth/2, labelY);
+                ctx->DrawText(valueText, {barCenterX - textWidth/2, labelY});
             }
 
             if (showCumulativeLabels) {
@@ -513,7 +512,7 @@ namespace UltraCanvas {
                 ctx->GetTextLineDimensions(cumulativeText, textWidth, textHeight);
 
                 float labelY = renderCache.barY[i] + renderCache.barHeight[i]/2 - textHeight/2;
-                ctx->DrawText(cumulativeText, barCenterX - textWidth/2, labelY);
+                ctx->DrawText(cumulativeText, {barCenterX - textWidth/2, labelY});
             }
 
             // Draw category label on X-axis
@@ -521,7 +520,7 @@ namespace UltraCanvas {
                 int textWidth, textHeight;
                 ctx->GetTextLineDimensions(point.label, textWidth, textHeight);
                 float labelY = cachedPlotArea.GetBottom() + 5;
-                ctx->DrawText(point.label, barCenterX - textWidth/2, labelY);
+                ctx->DrawText(point.label, {barCenterX - textWidth/2, labelY});
             }
         }
     }

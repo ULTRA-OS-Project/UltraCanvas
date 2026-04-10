@@ -39,7 +39,7 @@ namespace UltraCanvas {
             ctx->SetFontSize(fontSize);
             ctx->SetTextWrap(TextWrap::WrapNone);
             ctx->SetTextAlignment(option.columnAlignment);
-            ctx->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
 
             if (option.isSelected) {
                 ctx->SetTextPaint(selectedTextColor);
@@ -47,9 +47,7 @@ namespace UltraCanvas {
                 ctx->SetTextPaint(textColor);
             }
 
-            ctx->DrawTextInRect(text,
-                static_cast<float>(textX), static_cast<float>(cellY),
-                static_cast<float>(availableWidth), static_cast<float>(cellH));
+            ctx->DrawTextInRect(text, Rect2Df(textX, cellY, availableWidth, cellH));
         }
     }
 

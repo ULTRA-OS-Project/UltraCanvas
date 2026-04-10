@@ -95,6 +95,8 @@ namespace UltraCanvas {
         Color disabledIconColor = Color(255, 255, 255, 128);  // Semi-transparent
 
         // Text styling
+        FontStyle fontStyle;
+
         std::string fontFamily;
         float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;

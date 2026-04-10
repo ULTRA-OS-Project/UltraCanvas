@@ -634,13 +634,13 @@ namespace UltraCanvas {
         ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
         ctx->SetFontSize(style.fontSize);
         ctx->SetTextIsMarkup(true);
-        ctx->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->SetTextAlignment(TextAlignment::Center);
 
         if (GetPrimaryState() == ElementState::Pressed) {
-            ctx->DrawTextInRect(text, textRect.x+1, textRect.y+1, textRect.width, textRect.height);
+            ctx->DrawTextInRect(text, Rect2Df(textRect.x+1, textRect.y+1, textRect.width, textRect.height));
         } else {
-            ctx->DrawTextInRect(text, textRect.x, textRect.y, textRect.width, textRect.height);
+            ctx->DrawTextInRect(text, textRect);
         }
     }
 

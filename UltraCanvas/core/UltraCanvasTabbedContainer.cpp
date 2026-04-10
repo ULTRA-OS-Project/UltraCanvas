@@ -493,8 +493,8 @@ namespace UltraCanvas {
         //      int txtW, txtH;
 //        ctx->GetTextLineDimensions(badgeText, txtW, txtH);
         ctx->SetTextAlignment(TextAlignment::Center);
-        ctx->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
-        ctx->DrawTextInRect(tab->badgeText, Rect2Di(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight));
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(tab->badgeText, Rect2Df(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight));
         ctx->PopState();
     }
 
@@ -687,8 +687,8 @@ namespace UltraCanvas {
         ctx->SetFillPaint(inactiveTabTextColor);
         ctx->SetStrokePaint(inactiveTabTextColor);
         ctx->SetStrokeWidth(1);
-        int cx = bx + bw / 2;
-        int cy = by + bh / 3;
+        double cx = bx + bw / 2;
+        double cy = by + bh / 3;
         int s = 3;
         ctx->ClearPath();
         ctx->MoveTo(cx, cy + s);
@@ -703,8 +703,8 @@ namespace UltraCanvas {
         ctx->SetFontSize(9);
         ctx->SetTextPaint(inactiveTabTextColor);
         ctx->SetTextAlignment(TextAlignment::Center);
-        ctx->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
-        ctx->DrawTextInRect(countText, bx, by + bh / 2, bw, bh / 2);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(countText, {bx, by + bh / 2, bw, bh / 2});
     }
 
     bool UltraCanvasTabbedContainer::OnEvent(const UCEvent &event) {
@@ -2016,13 +2016,11 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(1.0f);
         if (tabCornerRadius > 0) {
             ctx->DrawRoundedRectangle(
-                    Rect2Di(ghostX, ghostY, tabBounds.width, tabBounds.height),
+                    {ghostX, ghostY, tabBounds.width, tabBounds.height},
                     tabCornerRadius
             );
         } else {
-            ctx->DrawRectangle(
-                    Rect2Di(ghostX, ghostY, tabBounds.width, tabBounds.height)
-            );
+            ctx->DrawRectangle(ghostX, ghostY, tabBounds.width, tabBounds.height);
         }
 
         // Tab title text on ghost

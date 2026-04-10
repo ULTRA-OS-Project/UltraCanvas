@@ -564,7 +564,7 @@ namespace UltraCanvas {
         }
         
         // Draw the event bar with rounded corners
-        DrawingSurface->DrawRoundedRectangle(startX, yPosition, endX - startX, adjustedBarHeight,
+        DrawingSurface->DrawRoundedRectangle({startX, yPosition, endX - startX, adjustedBarHeight},
                                            event.EventColor, 5);
         
         // Add subtle gradient effect for better visual appeal

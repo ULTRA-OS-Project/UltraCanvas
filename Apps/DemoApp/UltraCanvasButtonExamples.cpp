@@ -39,6 +39,7 @@ namespace UltraCanvas {
             statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
             statusLabel->SetBorders(1.0f);
             statusLabel->SetPadding(8.0f);
+            statusLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
             mainButtonsContainer->AddChild(statusLabel);
 
             int yOffset = 90;

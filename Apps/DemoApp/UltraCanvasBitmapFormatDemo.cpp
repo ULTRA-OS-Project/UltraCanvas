@@ -1099,7 +1099,7 @@ namespace UltraCanvas {
         aboutDesc->SetText(info.aboutDescription);
         aboutDesc->SetFontSize(10);
         aboutDesc->SetTextColor(Color(71, 85, 105, 255));
-        aboutDesc->SetWordWrap(true);
+        aboutDesc->SetWrap(TextWrap::WrapWord);
         aboutDesc->SetAlignment(TextAlignment::Left);
         aboutDescCont->AddChild(aboutDesc);
         aboutCard->AddChild(aboutDescCont);

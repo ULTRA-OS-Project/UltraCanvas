@@ -292,7 +292,7 @@ namespace UltraCanvas {
         void DrawValueLabels(IRenderContext* ctx);
         void DrawStartingBar(IRenderContext* ctx);
 
-        void DrawSingleBar(IRenderContext* ctx, float x, float y, float width, float height,
+        void DrawSingleBar(IRenderContext* ctx, const Rect2Df& rect,
                            const Color& fillColor, bool hasBorder = true);
         void DrawConnectionLine(IRenderContext* ctx, float x1, float y1, float x2, float y2);
 

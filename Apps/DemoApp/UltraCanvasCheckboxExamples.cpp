@@ -48,7 +48,7 @@ namespace UltraCanvas {
         // Description
         auto description = std::make_shared<UltraCanvasLabel>("CheckboxDescription", 3002, 20, 45, 960, 40);
         description->SetText("Demonstrates various checkbox styles, states, and configurations");
-        description->SetWordWrap(true);
+        description->SetWrap(TextWrap::WrapWord);
         description->SetTextColor(Color(80, 80, 80, 255));
         mainContainer->AddChild(description);
 
@@ -440,7 +440,7 @@ namespace UltraCanvas {
         // Feature status display
         auto featureStatus = std::make_shared<UltraCanvasLabel>("FeatureStatus", 3074, 450, currentY + 45, 380, 60);
         featureStatus->SetText("Selected Features:\nNone");
-        featureStatus->SetWordWrap(true);
+        featureStatus->SetWrap(TextWrap::WrapWord);
         featureStatus->SetBackgroundColor(Color(255, 255, 255, 255));
         featureStatus->SetBorders(1.0f, Color(200, 200, 200, 255));
         featureStatus->SetPadding(5.0f);
@@ -494,7 +494,7 @@ namespace UltraCanvas {
         auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 3076, 10, 10, 940, 40);
         infoText->SetText("ℹ️ This demo showcases the UltraCanvasCheckbox component with various styles and configurations. "
                           "Click checkboxes to see console output. Try the interactive controls to manipulate checkbox states programmatically.");
-        infoText->SetWordWrap(true);
+        infoText->SetWrap(TextWrap::WrapWord);
         infoText->SetTextColor(Color(50, 50, 50, 255));
         infoPanel->AddChild(infoText);
 

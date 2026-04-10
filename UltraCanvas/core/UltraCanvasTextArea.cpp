@@ -1274,7 +1274,7 @@ namespace UltraCanvas {
             if (!wordWrap) {
                 x -= horizontalScrollOffset;
             }
-            context->DrawText(segment, x, y);
+            context->DrawText(segment, {x, y});
         }
         context->PopState();
     }
@@ -1339,7 +1339,7 @@ namespace UltraCanvas {
                         x <= visibleTextArea.x + visibleTextArea.width) {
                         TokenStyle tokenStyle = GetStyleForTokenType(token.type);
                         context->SetTextPaint(tokenStyle.color);
-                        context->DrawText(visibleText, x, textY);
+                        context->DrawText(visibleText, {x, textY});
                     }
                     x += tokenWidth;
                 }
@@ -1413,8 +1413,7 @@ namespace UltraCanvas {
 
             // Only show line number on the first display line of each logical line
             if (dl.startGrapheme == 0) {
-                context->DrawTextInRect(std::to_string(dl.logicalLine + 1),
-                                        bounds.x, numY, computedLineNumbersWidth - 4, computedLineHeight);
+                context->DrawTextInRect(std::to_string(dl.logicalLine + 1), {bounds.x, numY, computedLineNumbersWidth - 4, computedLineHeight});
             }
         }
         context->PopState();

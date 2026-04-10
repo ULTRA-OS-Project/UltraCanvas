@@ -1,7 +1,7 @@
 // include/UltraCanvasCommonTypes.h
 // Unified common types and structures for UltraCanvas Framework
-// Version: 2.0.0
-// Last Modified: 2024-12-19
+// Version: 2.1.0
+// Last Modified: 2026-04-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -59,6 +59,19 @@ struct Point2D {
 
     Point2D(T px = 0, T py = 0) : x(px), y(py) {}
 
+    // Cross-type converting constructor (e.g. Point2Df from Point2Di)
+    template <typename U>
+    Point2D(const Point2D<U>& other)
+        : x(static_cast<T>(other.x)), y(static_cast<T>(other.y)) {}
+
+    // Cross-type assignment (e.g. Point2Df = Point2Di)
+    template <typename U>
+    Point2D& operator=(const Point2D<U>& other) {
+        x = static_cast<T>(other.x);
+        y = static_cast<T>(other.y);
+        return *this;
+    }
+
     // Operators
     Point2D operator+(const Point2D& other) const { return Point2D(x + other.x, y + other.y); }
     Point2D operator-(const Point2D& other) const { return Point2D(x - other.x, y - other.y); }
@@ -88,9 +101,8 @@ struct Point2D {
     }
 };
 
-typedef struct Point2D<float> Point2Df;
+typedef struct Point2D<double> Point2Df;
 typedef struct Point2D<int> Point2Di;
-typedef struct Point2D<long> Point2Dl;
 
 
 template <typename T>
@@ -98,10 +110,23 @@ struct Size2D {
     T width, height;
 
     Size2D(T w = 0, T h = 0) : width(w), height(h) {}
+
+    // Cross-type converting constructor (e.g. Size2Df from Size2Di)
+    template <typename U>
+    Size2D(const Size2D<U>& other)
+        : width(static_cast<T>(other.width)), height(static_cast<T>(other.height)) {}
+
+    // Cross-type assignment (e.g. Size2Df = Size2Di)
+    template <typename U>
+    Size2D& operator=(const Size2D<U>& other) {
+        width = static_cast<T>(other.width);
+        height = static_cast<T>(other.height);
+        return *this;
+    }
 };
-typedef struct Size2D<float> Size2Df;
+
+typedef struct Size2D<double> Size2Df;
 typedef struct Size2D<int> Size2Di;
-typedef struct Size2D<long> Size2Dl;
 
 template <typename T>
 struct Rect2D {
@@ -112,6 +137,24 @@ struct Rect2D {
 
     Rect2D(Point2D<T> pt, Size2D<T> sz)
             : x(pt.x), y(pt.y), width(sz.width), height(sz.height) {}
+
+    // Cross-type converting constructor (e.g. Rect2Df from Rect2Di)
+    template <typename U>
+    Rect2D(const Rect2D<U>& other)
+        : x(static_cast<T>(other.x)),
+          y(static_cast<T>(other.y)),
+          width(static_cast<T>(other.width)),
+          height(static_cast<T>(other.height)) {}
+
+    // Cross-type assignment (e.g. Rect2Df = Rect2Di)
+    template <typename U>
+    Rect2D& operator=(const Rect2D<U>& other) {
+        x = static_cast<T>(other.x);
+        y = static_cast<T>(other.y);
+        width = static_cast<T>(other.width);
+        height = static_cast<T>(other.height);
+        return *this;
+    }
 
     // Convenience methods
     T Left() const { return x; }
@@ -190,9 +233,8 @@ struct Rect2D {
     }
 };
 
-typedef struct Rect2D<float> Rect2Df;
+typedef struct Rect2D<double> Rect2Df;
 typedef struct Rect2D<int> Rect2Di;
-typedef struct Rect2D<long> Rect2Dl;
 
 struct UCMargins {
     int left = 0;
@@ -422,11 +464,10 @@ enum class TextAlignment {
     Justify
 };
 
-enum class TextVerticalAlignment {
+enum class VerticalAlignment {
     Top = 0,
     Middle = 1,
-    Bottom = 2,
-    Baseline = 3
+    Bottom = 2
 };
 
 enum class Direction {

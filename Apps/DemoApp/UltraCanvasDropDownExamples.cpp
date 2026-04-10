@@ -51,7 +51,7 @@ namespace UltraCanvas {
         // Description
         auto description = std::make_shared<UltraCanvasLabel>("DropdownDesc", 302, 20, currentY, 960, 40);
         description->SetText("Comprehensive dropdown examples showcasing icons, multi-selection, and various configurations");
-        description->SetWordWrap(true);
+        description->SetWrap(TextWrap::WrapWord);
         description->SetTextColor(Color(80, 80, 80, 255));
         mainContainer->AddChild(description);
 
@@ -211,7 +211,7 @@ namespace UltraCanvas {
 
         auto languagesStatus = std::make_shared<UltraCanvasLabel>("LanguagesStatus", 342, 300, currentY + 5, 400, 60);
         languagesStatus->SetText("Selected: C++, Python");
-        languagesStatus->SetWordWrap(true);
+        languagesStatus->SetWrap(TextWrap::WrapWord);
         languagesStatus->SetFontSize(12);
         languagesStatus->SetTextColor(Color(0, 100, 0, 255));
 
@@ -310,7 +310,7 @@ namespace UltraCanvas {
 
         auto travelStatus = std::make_shared<UltraCanvasLabel>("TravelStatus", 352, 330, currentY + 5, 500, 60);
         travelStatus->SetText("Select your travel destinations");
-        travelStatus->SetWordWrap(true);
+        travelStatus->SetWrap(TextWrap::WrapWord);
         travelStatus->SetFontSize(12);
         travelStatus->SetBackgroundColor(Color(250, 250, 250, 255));
         travelStatus->SetBorders(1, Color(200, 200, 200, 255));
@@ -358,7 +358,7 @@ namespace UltraCanvas {
 
         auto eventLog = std::make_shared<UltraCanvasLabel>("EventLog", 372, 300, currentY, 500, 80);
         eventLog->SetText("Event log: No events yet");
-        eventLog->SetWordWrap(true);
+        eventLog->SetWrap(TextWrap::WrapWord);
         eventLog->SetFontSize(11);
         eventLog->SetBackgroundColor(Color(245, 245, 245, 255));
         eventLog->SetBorders(1.0f);

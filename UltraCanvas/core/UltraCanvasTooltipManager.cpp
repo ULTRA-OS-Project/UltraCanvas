@@ -322,16 +322,16 @@ namespace UltraCanvas {
         ctx->SetFontFace(style.fontFamily, style.fontWeight, style.fontStyle);
         ctx->SetFontSize(style.fontSize);
 
-                float textX = tooltipPosition.x + style.paddingLeft;
-        float textY = tooltipPosition.y + style.paddingTop;
-        float lineHeight = (tooltipSize.y - style.paddingTop - style.paddingBottom) / wrappedLines.size();
+        double textX = tooltipPosition.x + style.paddingLeft;
+        double textY = tooltipPosition.y + style.paddingTop;
+        double lineHeight = (tooltipSize.y - style.paddingTop - style.paddingBottom) / wrappedLines.size();
         for (const std::string& line : wrappedLines) {
             if (line == "\n") {
                 textY += lineHeight;
                 continue;
             }
 
-            ctx->DrawText(line, textX, textY);
+            ctx->DrawText(line, Point2Df(textX, textY));
             textY += lineHeight;
         }
     }

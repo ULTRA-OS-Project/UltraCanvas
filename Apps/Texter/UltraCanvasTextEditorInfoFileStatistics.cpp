@@ -231,7 +231,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         value->SetFontSize(11);
         value->SetTextColor(Color(30, 30, 30));
         value->SetAlignment(TextAlignment::Left);
-        value->SetWordWrap(true);
+        value->SetWrap(TextWrap::WrapWord);
         value->SetAutoResize(true);
 
         grid->AddUIElement(label, row, 0);

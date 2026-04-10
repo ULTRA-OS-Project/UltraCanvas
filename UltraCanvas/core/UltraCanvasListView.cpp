@@ -261,7 +261,7 @@ namespace UltraCanvas {
 
         ctx->SetFontSize(viewStyle.headerFontSize);
         ctx->SetTextPaint(viewStyle.headerTextColor);
-        ctx->SetTextVerticalAlignment(TextVerticalAlignment::Middle);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->SetTextWrap(TextWrap::WrapNone);
 
         int colX = headerRect.x;
@@ -269,9 +269,7 @@ namespace UltraCanvas {
         for (int col = 0; col < colCount; col++) {
             auto colDef = model->GetColumnDef(col);
             ctx->SetTextAlignment(colDef.alignment);
-            ctx->DrawTextInRect(colDef.title,
-                static_cast<float>(colX + 4), static_cast<float>(headerRect.y),
-                static_cast<float>(colDef.width - 8), static_cast<float>(headerRect.height));
+            ctx->DrawTextInRect(colDef.title, Rect2Df(colX + 4, headerRect.y, colDef.width - 8, headerRect.height));
 
             // Grid line between columns
             if (viewStyle.showGridLines && col < colCount - 1) {

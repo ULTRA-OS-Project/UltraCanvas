@@ -44,7 +44,7 @@ namespace UltraCanvas {
                 "Measure image decompression and rendering performance. Select an image and test mode, "
                 "then click 'Start Test' to run a 10-second benchmark counting how many times the image can be processed.");
         description->SetFontSize(12);
-        description->SetWordWrap(true);
+        description->SetWrap(TextWrap::WrapWord);
         description->SetTextColor(Color(80, 80, 80, 255));
         mainContainer->AddChild(description);
         currentY += 60;
@@ -193,7 +193,7 @@ namespace UltraCanvas {
                 "• Decompress, Draw:           Uses cached file data, decompresses and renders (tests CPU + GPU, no disk I/O)\n"
                 "• Draw cached pixmap only: Uses pre-decompressed, prepared Cairo image surfaces, only renders image (tests GPU/rendering)");
         modeDescLabel->SetFontSize(11);
-        modeDescLabel->SetWordWrap(true);
+        modeDescLabel->SetWrap(TextWrap::WrapWord);
         modeDescLabel->SetTextColor(Color(80, 80, 80, 255));
         modeDescLabel->SetBackgroundColor(Color(252, 252, 252, 255));
         modeDescLabel->SetBorders(1.0f, Color(220, 220, 220, 255));

@@ -64,7 +64,7 @@ struct LabelStyle {
     
     // Text crossAlignment
     TextAlignment horizontalAlign = TextAlignment::Left;
-    TextVerticalAlignment verticalAlign = TextVerticalAlignment::Middle;
+    VerticalAlignment verticalAlign = VerticalAlignment::Middle;
     
     // Padding
     float paddingLeft = 4.0f;
@@ -172,7 +172,7 @@ Sets the border color.
 
 ```cpp
 void SetCrossAlignment(TextAlignment horizontal, 
-                  TextVerticalAlignment vertical = TextVerticalAlignment::Middle)
+                  VerticalAlignment vertical = VerticalAlignment::Middle)
 ```
 Sets horizontal and vertical text crossAlignment.
 

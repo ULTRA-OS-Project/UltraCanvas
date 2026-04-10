@@ -144,7 +144,7 @@ namespace UltraCanvas {
         additionalInfo->SetFontSize(10);
         additionalInfo->SetAlignment(TextAlignment::Center);
         additionalInfo->SetTextColor(Color(100, 100, 100, 255));
-        additionalInfo->SetWordWrap(true);
+        additionalInfo->SetWrap(TextWrap::WrapWord);
         additionalInfo->SetMargin(10,20);
         layout->AddUIElement(additionalInfo)->SetWidthMode(SizeMode::Fill);
 

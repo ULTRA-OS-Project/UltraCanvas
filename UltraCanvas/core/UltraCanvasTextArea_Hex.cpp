@@ -206,10 +206,10 @@ namespace UltraCanvas {
 
         int endRow = std::min(hexTotalRows, hexFirstVisibleRow + hexMaxVisibleRows + 1);
         for (int row = hexFirstVisibleRow; row < endRow; row++) {
-            int y = hexVisibleArea.y + (row - hexFirstVisibleRow) * hexRowHeight;
+            double y = hexVisibleArea.y + (row - hexFirstVisibleRow) * hexRowHeight;
             int address = row * hexBytesPerRow;
             std::string addrStr = HexFormatAddress(address);
-            ctx->DrawText(addrStr, hexVisibleArea.x, y);
+            ctx->DrawText(addrStr, {hexVisibleArea.x, y});
         }
     }
 
@@ -228,7 +228,7 @@ namespace UltraCanvas {
                 int col = i - rowStart;
                 int x = hexPanelStartX + col * hexByteWidth;
                 std::string byteStr = HexFormatByte(hexBuffer[i]);
-                ctx->DrawText(byteStr, x, y);
+                ctx->DrawText(byteStr, {x, y});
             }
         }
     }
@@ -256,7 +256,7 @@ namespace UltraCanvas {
             for (int i = rowStart; i < rowEnd; i++) {
                 asciiStr += HexPrintableChar(hexBuffer[i]);
             }
-            ctx->DrawText(asciiStr, hexAsciiPanelStartX, y);
+            ctx->DrawText(asciiStr, {hexAsciiPanelStartX, y});
         }
     }
 

@@ -322,7 +322,7 @@ namespace UltraCanvas {
         auto ctx = GetRenderContext();
         if (!ctx) return;
 
-        Rect2Df textArea = GetTextArea();
+        Rect2Di textArea = GetTextArea();
         float caretX = GetCaretXPosition();
 
         // Add some padding around caret for better UX
@@ -336,7 +336,7 @@ namespace UltraCanvas {
         }
 
         // Ensure we don't scroll past the beginning
-        scrollOffset = std::max(0.0f, scrollOffset);
+        scrollOffset = std::max(0, scrollOffset);
 
         // For multiline, check current line width
         if (inputType == TextInputType::Multiline) {
@@ -356,8 +356,8 @@ namespace UltraCanvas {
             // Set text style for measurement
             ctx->SetFontStyle(style.fontStyle);
 
-            float lineWidth = ctx->GetTextLineWidth(currentLine);
-            float maxScroll = std::max(0.0f, lineWidth - textArea.width + style.paddingRight);
+            int lineWidth = ctx->GetTextLineWidth(currentLine);
+            int maxScroll = std::max(0, lineWidth - textArea.width + style.paddingRight);
             scrollOffset = std::min(scrollOffset, maxScroll);
         } else {
             // Single line: check against total text width
@@ -366,8 +366,8 @@ namespace UltraCanvas {
             // Set text style for measurement
             ctx->SetFontStyle(style.fontStyle);
 
-            float totalTextWidth = ctx->GetTextLineWidth(displayText);
-            float maxScroll = std::max(0.0f, totalTextWidth - textArea.width + style.paddingRight);
+            int totalTextWidth = ctx->GetTextLineWidth(displayText);
+            int maxScroll = std::max(0, totalTextWidth - textArea.width + style.paddingRight);
             scrollOffset = std::min(scrollOffset, maxScroll);
         }
         RequestRedraw();
@@ -395,7 +395,7 @@ namespace UltraCanvas {
         return Rect2Di(btnX, btnY, clearButtonSize, clearButtonSize);
     }
 
-    Rect2Df UltraCanvasTextInput::GetTextArea() const {
+    Rect2Di UltraCanvasTextInput::GetTextArea() const {
         Rect2Di bounds = GetBounds();
         int rightReduction = style.paddingRight;
 
@@ -407,7 +407,7 @@ namespace UltraCanvas {
             rightReduction += clearButtonSize + 4;
         }
 
-        return Rect2Df(
+        return Rect2Di(
                 bounds.x + style.paddingLeft,
                 bounds.y + style.paddingTop,
                 bounds.width - style.paddingLeft - rightReduction,
@@ -425,7 +425,7 @@ namespace UltraCanvas {
         TextStyle textStyle;
         ctx->SetFontStyle(style.fontStyle);
         textStyle.alignment = style.textAlignment;
-        textStyle.verticalAlignement = TextVerticalAlignment::Middle;
+        textStyle.verticalAlignment = VerticalAlignment::Middle;
         ctx->SetTextStyle(textStyle);
         ctx->SetTextPaint(color);
 
@@ -435,12 +435,12 @@ namespace UltraCanvas {
             RenderMultilineText(area, renderText, textPos, ctx);
         } else {
             // Match the baseline calculation used in GetCaretYPosition
-            float lineHeight = ctx->GetTextLineHeight(renderText);
-            float centeredY = area.y + (area.height - lineHeight) / 2.0f;
+            double lineHeight = ctx->GetTextLineHeight(renderText);
+            double centeredY = area.y + (area.height - lineHeight) / 2.0f;
             //float baselineY = centeredY + (style.fontSize * 0.8f);
-            float baselineY = centeredY;
+            double baselineY = centeredY;
 
-            Point2Di textPos(area.x - scrollOffset, baselineY);
+            Point2Df textPos(area.x - scrollOffset, baselineY);
             ctx->DrawText(renderText, textPos);
         }
     }
@@ -448,7 +448,7 @@ namespace UltraCanvas {
     void UltraCanvasTextInput::RenderPlaceholder(const Rect2Df &area, IRenderContext* ctx) {
         ctx->SetTextAlignment(style.textAlignment);
         ctx->SetTextVerticalAlignment((inputType == TextInputType::Multiline) ?
-            TextVerticalAlignment::Top : TextVerticalAlignment::Middle);
+            VerticalAlignment::Top : VerticalAlignment::Middle);
         ctx->SetFontStyle(style.fontStyle);
         ctx->SetTextPaint(style.placeholderColor);
 
@@ -467,18 +467,18 @@ namespace UltraCanvas {
         std::string textBeforeSelection = displayText.substr(0, selectionStart);
         std::string selectedText = displayText.substr(selectionStart, selectionEnd - selectionStart);
 
-        float selStartX = area.x + ctx->GetTextLineWidth(textBeforeSelection);
-        float selWidth = ctx->GetTextLineWidth(selectedText);
+        double selStartX = area.x + ctx->GetTextLineWidth(textBeforeSelection);
+        double selWidth = ctx->GetTextLineWidth(selectedText);
 
         // Calculate proper selection height based on font metrics
-        float ascender = style.fontStyle.fontSize * 0.8f;
-        float descender = style.fontStyle.fontSize * 0.2f;
-        float selectionHeight = ascender + descender;
-        float selectionY = area.y + (area.height - selectionHeight) / 2.0f;
+        double ascender = style.fontStyle.fontSize * 0.8f;
+        double descender = style.fontStyle.fontSize * 0.2f;
+        double selectionHeight = ascender + descender;
+        double selectionY = area.y + (area.height - selectionHeight) / 2.0f;
 
         // Ensure selection is within visible area
-        float visibleStartX = std::max(selStartX, area.x);
-        float visibleEndX = std::min(selStartX + selWidth, area.x + area.width);
+        double visibleStartX = std::max(selStartX, area.x);
+        double visibleEndX = std::min(selStartX + selWidth, area.x + area.width);
 
         if (visibleEndX > visibleStartX) {
             Rect2Df selectionRect(visibleStartX, selectionY, visibleEndX - visibleStartX, selectionHeight);
@@ -558,13 +558,13 @@ namespace UltraCanvas {
         }
         lines.push_back(currentLine);
 
-        float lineHeight = style.fontStyle.fontSize * 1.4f;
-        float currentBaselineY = startPos.y; // startPos.y is baseline
+        double lineHeight = style.fontStyle.fontSize * 1.4f;
+        double currentBaselineY = startPos.y; // startPos.y is baseline
 
         for (const auto& line : lines) {
             if (currentBaselineY > area.y + area.height + lineHeight) break;
             if (currentBaselineY >= area.y - lineHeight) {
-                ctx->DrawText(line, Point2Di(startPos.x, currentBaselineY));
+                ctx->DrawText(line, {startPos.x, currentBaselineY});
             }
             currentBaselineY += lineHeight;
         }

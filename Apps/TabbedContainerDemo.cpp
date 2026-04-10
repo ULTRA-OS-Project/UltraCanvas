@@ -42,7 +42,7 @@ public:
         contentLabel = std::make_shared<UltraCanvasLabel>("content", 0, 10, 50, 380, 60);
         contentLabel->SetText(content);
         contentLabel->SetTextColor(Colors::Black);
-        contentLabel->SetWordWrap(true);
+        contentLabel->SetWrap(TextWrap::WrapWord);
         AddChild(contentLabel);
 
         // Interactive text area
@@ -101,7 +101,7 @@ public:
         statusLabel = std::make_shared<UltraCanvasLabel>("status", 0, 10, 180, 380, 60);
         statusLabel->SetText("Click any button to see interaction feedback...");
         statusLabel->SetTextColor(Color(100, 100, 100));
-        statusLabel->SetWordWrap(true);
+        statusLabel->SetWrap(TextWrap::WrapWord);
         AddChild(statusLabel);
     }
 };
@@ -125,7 +125,7 @@ public:
         infoLabel = std::make_shared<UltraCanvasLabel>("info", 0, 10, 50, 380, 240);
         infoLabel->SetText(info);
         infoLabel->SetTextColor(Colors::Black);
-        infoLabel->SetWordWrap(true);
+        infoLabel->SetWrap(TextWrap::WrapWord);
         AddChild(infoLabel);
     }
 };

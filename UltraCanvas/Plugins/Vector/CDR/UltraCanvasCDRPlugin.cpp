@@ -156,7 +156,7 @@ namespace UltraCanvas {
 
     void UltraCanvasCDRPainterImpl::FillAndStroke(IRenderContext* ctx, const CDRStyleState& style) {
         // Get path bounds for gradient calculation
-        float bx = 0, by = 0, bw = 0, bh = 0;
+        double bx = 0, by = 0, bw = 0, bh = 0;
         ctx->GetPathExtents(bx, by, bw, bh);
         Rect2Df bounds(bx, by, bw, bh);
 

@@ -101,7 +101,7 @@ namespace UltraCanvas {
         messageLabel->SetText(dialogConfig.message);
         messageLabel->SetFontSize(style.messageFontSize);
         messageLabel->SetTextColor(style.messageTextColor);
-        messageLabel->SetWordWrap(true);
+        messageLabel->SetWrap(TextWrap::WrapWord);
         messageLabel->SetAutoResize(true);
 
         messageLayout->AddUIElement(messageLabel)->SetWidthMode(SizeMode::Fill);
@@ -111,7 +111,7 @@ namespace UltraCanvas {
         detailsLabel->SetText(dialogConfig.details);
         detailsLabel->SetFontSize(style.detailsFontSize);
         detailsLabel->SetTextColor(style.detailsTextColor);
-        detailsLabel->SetWordWrap(true);
+        messageLabel->SetWrap(TextWrap::WrapWord);
         detailsLabel->SetAutoResize(true);
         detailsLabel->SetVisible(!dialogConfig.details.empty());
 
