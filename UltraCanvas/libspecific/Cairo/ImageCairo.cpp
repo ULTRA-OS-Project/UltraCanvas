@@ -28,14 +28,28 @@
 #define HAS_PIXMAPS_CACHE 1
 
 namespace UltraCanvas {
-    typedef UCCache<UCPixmapCairo> UCPixmapsCache;
+    struct UCPixmapCairoCacheEntry {
+        std::shared_ptr<UCPixmapCairo> payload;
+        std::chrono::steady_clock::time_point lastAccess;
+        size_t GetEntrySize() {
+            return payload->GetWidth() * payload->GetHeight() * 4 + sizeof(UCPixmapCairoCacheEntry) + sizeof(UCPixmapCairo);
+        }
+    };
+
+    struct UCImageRasterCacheEntry {
+        std::shared_ptr<UCImageRaster> payload;
+        std::chrono::steady_clock::time_point lastAccess;
+        size_t GetEntrySize() {
+            return payload->GetDataSize() + sizeof(UCPixmapCairoCacheEntry) + sizeof(UCImageRaster);
+        }
+    };
+
 #if HAS_PIXMAPS_CACHE
-    UCPixmapsCache g_PixmapsCache(50 * 1024 * 1024);
+    UCCache<UCPixmapCairo, UCPixmapCairoCacheEntry> g_PixmapsCache(50 * 1024 * 1024);
 #else
-    UCPixmapsCache g_PixmapsCache(0);
+    UCCache<UCPixmapCairo, UCPixmapCairoCacheEntry> g_PixmapsCache(0);
 #endif
-    typedef UCCache<UCImageRaster> UCImagesCache;
-    UCImagesCache g_ImagesCache(50 * 1024 * 1024);
+    UCCache<UCImageRaster, UCImageRasterCacheEntry> g_ImagesCache(50 * 1024 * 1024);
 
 
     UCPixmapCairo::UCPixmapCairo(cairo_surface_t *surf) {
@@ -111,10 +125,6 @@ namespace UltraCanvas {
 
     uint32_t* UCPixmapCairo::GetPixelData() {
         return pixelsPtr;
-    }
-
-    size_t UCPixmapCairo::GetDataSize() {
-        return width * height * 4;
     }
 
 

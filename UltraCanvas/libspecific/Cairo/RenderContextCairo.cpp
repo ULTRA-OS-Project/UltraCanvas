@@ -18,11 +18,17 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
-// ===== GLOBAL TEXT SURFACE CACHE =====
-    // 50 MB cache for pre-rendered text surfaces
-    static UCCache<TextSurfaceEntry> g_TextSurfacesCache(50 * 1024 * 1024);
-    // 20 MB cache for pre-measured text dimensions
-    static UCCache<TextDimensionsEntry> g_TextDimensionsCache(20 * 1024 * 1024);
+// ===== GLOBAL TEXT LAYOUTS CACHE =====
+
+    // 20 MB cache for text layouts
+    struct UCTextLayoutCacheEntry {
+        std::shared_ptr<UCTextLayout> payload;
+        std::chrono::steady_clock::time_point lastAccess;
+        size_t GetEntrySize() {
+            return sizeof(UCTextLayoutCacheEntry) + sizeof(UCTextLayout) + 256;
+        }
+    };
+    static UCCache<UCTextLayout, UCTextLayoutCacheEntry> g_TextLayoutsCache(20 * 1024 * 1024);
 
     // Configurable text rendering font options (global, matching cache scope)
     static cairo_antialias_t g_TextAntialias = CAIRO_ANTIALIAS_GRAY;
@@ -44,8 +50,9 @@ namespace UltraCanvas {
     void RenderContextCairo::SetTextAntialias(cairo_antialias_t mode) {
         if (g_TextAntialias != mode) {
             g_TextAntialias = mode;
-            g_TextSurfacesCache.ClearCache();
-            g_TextDimensionsCache.ClearCache();
+//            g_TextSurfacesCache.ClearCache();
+//            g_TextDimensionsCache.ClearCache();
+            g_TextLayoutsCache.ClearCache();
             for (auto* instance : g_Instances) {
                 instance->ApplyPangoFontOptions();
             }
@@ -59,8 +66,9 @@ namespace UltraCanvas {
     void RenderContextCairo::SetTextHintStyle(cairo_hint_style_t style) {
         if (g_TextHintStyle != style) {
             g_TextHintStyle = style;
-            g_TextSurfacesCache.ClearCache();
-            g_TextDimensionsCache.ClearCache();
+//            g_TextSurfacesCache.ClearCache();
+//            g_TextDimensionsCache.ClearCache();
+            g_TextLayoutsCache.ClearCache();
             for (auto* instance : g_Instances) {
                 instance->ApplyPangoFontOptions();
             }
@@ -74,8 +82,9 @@ namespace UltraCanvas {
     void RenderContextCairo::SetTextHintMetrics(cairo_hint_metrics_t metrics) {
         if (g_TextHintMetrics != metrics) {
             g_TextHintMetrics = metrics;
-            g_TextSurfacesCache.ClearCache();
-            g_TextDimensionsCache.ClearCache();
+//            g_TextSurfacesCache.ClearCache();
+//            g_TextDimensionsCache.ClearCache
+            g_TextLayoutsCache.ClearCache();
             for (auto* instance : g_Instances) {
                 instance->ApplyPangoFontOptions();
             }
@@ -117,192 +126,17 @@ namespace UltraCanvas {
                   << static_cast<int>(currentState.textStyle.verticalAlignment)
                   << currentState.textStyle.indent
                   << static_cast<int>(currentState.textStyle.wrap)
-                  << currentState.textSourceColor.ToARGB()
+//                  << currentState.textSourceColor.ToARGB()
                   << static_cast<int>(currentState.textStyle.lineHeight * 100)
                   << (currentState.textStyle.isMarkup ? "1" : "0")
-                  << static_cast<int>(g_TextAntialias)
-                  << static_cast<int>(g_TextHintStyle)
-                  << static_cast<int>(g_TextHintMetrics) << "|"
+//                  << static_cast<int>(g_TextAntialias)
+//                  << static_cast<int>(g_TextHintStyle)
+//                  << static_cast<int>(g_TextHintMetrics) << "|"
                   << text.substr(0,300);
 
         return keyStream.str();
     }
 
-    std::shared_ptr<TextSurfaceEntry> RenderContextCairo::MakeTextSurface(const std::string& text, int rectWidth, int rectHeight) {
-        if (text.empty() || !pangoContext) {
-            return nullptr;
-        }
-
-        try {
-            // Create Pango font description
-            PangoFontDescription* desc = CreatePangoFont(currentState.fontStyle);
-            if (!desc) {
-                debugOutput << "ERROR: MakeTextSurface - Failed to create Pango font description" << std::endl;
-                return nullptr;
-            }
-
-            // Create Pango layout
-            PangoLayout* layout = CreatePangoLayout(desc, rectWidth, rectHeight);
-            if (!layout) {
-                pango_font_description_free(desc);
-                debugOutput << "ERROR: MakeTextSurface - Failed to create Pango layout" << std::endl;
-                return nullptr;
-            }
-
-            // Set text content (markup or plain text)
-            if (currentState.textStyle.isMarkup) {
-                pango_layout_set_markup(layout, text.c_str(), -1);
-            } else {
-                pango_layout_set_text(layout, text.c_str(), -1);
-            }
-
-            // Get actual text dimensions
-            PangoRectangle inkLayoutRect, logicalLayoutRect;
-            pango_layout_get_pixel_extents(layout, &inkLayoutRect, &logicalLayoutRect);
-
-            if (logicalLayoutRect.width <= 0 || logicalLayoutRect.height <= 0) {
-                debugOutput << "ERROR: MakeTextSurface - Surface dimensions zero, width=" << surfaceWidth << ", height=" << surfaceHeight << std::endl;
-                pango_font_description_free(desc);
-                g_object_unref(layout);
-                return nullptr;
-            }
-
-            // Create Cairo image surface for the text
-            cairo_surface_t* textSurface = cairo_image_surface_create(
-                    CAIRO_FORMAT_ARGB32, logicalLayoutRect.width, logicalLayoutRect.height);
-
-            if (cairo_surface_status(textSurface) != CAIRO_STATUS_SUCCESS) {
-                debugOutput << "ERROR: MakeTextSurface - Failed to create Cairo surface" << std::endl;
-                pango_font_description_free(desc);
-                g_object_unref(layout);
-                return nullptr;
-            }
-
-            // Create Cairo context for the text surface
-            cairo_t* textCairo = cairo_create(textSurface);
-            if (cairo_status(textCairo) != CAIRO_STATUS_SUCCESS) {
-                debugOutput << "ERROR: MakeTextSurface - Failed to create Cairo context" << std::endl;
-                cairo_surface_destroy(textSurface);
-                pango_font_description_free(desc);
-                g_object_unref(layout);
-                return nullptr;
-            }
-
-            // Clear the surface with transparent background
-            cairo_set_source_rgba(textCairo, 0, 0, 0, 0);
-            cairo_set_operator(textCairo, CAIRO_OPERATOR_SOURCE);
-            cairo_paint(textCairo);
-            cairo_set_operator(textCairo, CAIRO_OPERATOR_OVER);
-
-            // Calculate vertical position for alignment
-//            float yOffset = 0;
-//            if (rectHeight > 0 && currentState.textStyle.verticalAlignement == TextVerticalAlignment::Middle) {
-//                yOffset = (rectHeight - textHeight) / 2.0f;
-//                if (yOffset < 0) yOffset = 0;
-//            }
-            ApplySourceToCairo(textCairo, currentState.textSourceColor, currentState.textSourcePattern);
-            // Set text color
-//
-//            // Position and render text
-            if (logicalLayoutRect.x != 0 || logicalLayoutRect.y != 0) {
-                cairo_move_to(textCairo, -logicalLayoutRect.x, -logicalLayoutRect.y);
-            }
-            pango_cairo_show_layout(textCairo, layout);
-
-            // Flush the surface
-            cairo_surface_flush(textSurface);
-
-            // Cleanup temporary resources
-            cairo_destroy(textCairo);
-            pango_font_description_free(desc);
-            g_object_unref(layout);
-
-            // Create and return the cache entry
-            auto entry = std::make_shared<TextSurfaceEntry>(textSurface, logicalLayoutRect.width, logicalLayoutRect.height);
-            return entry;
-
-        } catch (const std::exception& e) {
-            debugOutput << "ERROR: MakeTextSurface - Exception: " << e.what() << std::endl;
-            return nullptr;
-        } catch (...) {
-            debugOutput << "ERROR: MakeTextSurface - Unknown exception" << std::endl;
-            return nullptr;
-        }
-    }
-
-    std::shared_ptr<TextSurfaceEntry> RenderContextCairo::GetTextSurface(const std::string& text, int rectWidth, int rectHeight) {
-        if (text.empty()) {
-            return nullptr;
-        }
-
-        // Generate cache key
-        std::string cacheKey = GenerateTextCacheKey(text, rectWidth, rectHeight);
-
-        // Try to get from cache first
-        auto cached = g_TextSurfacesCache.GetFromCache(cacheKey);
-        if (cached) {
-            return cached;
-        }
-
-        // Not in cache - create new surface
-        auto newEntry = MakeTextSurface(text, rectWidth, rectHeight);
-        if (newEntry) {
-            // Add to cache
-            g_TextSurfacesCache.AddToCache(cacheKey, newEntry);
-        }
-
-        return newEntry;
-    }
-
-
-    std::shared_ptr<TextDimensionsEntry> RenderContextCairo::MeasureTextDimensions(const std::string& text, int rectWidth, int rectHeight) {
-        if (text.empty() || !pangoContext) {
-            return nullptr;
-        }
-
-        try {
-            // Create Pango font description
-            PangoFontDescription* desc = CreatePangoFont(currentState.fontStyle);
-            if (!desc) {
-                debugOutput << "ERROR: MeasureTextDimensions - Failed to create Pango font description" << std::endl;
-                return nullptr;
-            }
-
-            // Create Pango layout
-            PangoLayout* layout = CreatePangoLayout(desc, rectWidth, rectHeight);
-            if (!layout) {
-                pango_font_description_free(desc);
-                debugOutput << "ERROR: MeasureTextDimensions - Failed to create Pango layout" << std::endl;
-                return nullptr;
-            }
-
-            // Set text content (markup or plain text)
-            if (currentState.textStyle.isMarkup) {
-                pango_layout_set_markup(layout, text.c_str(), -1);
-            } else {
-                pango_layout_set_text(layout, text.c_str(), -1);
-            }
-
-            // Get actual text dimensions
-            PangoRectangle inkLayoutRect, logicalLayoutRect;
-            pango_layout_get_pixel_extents(layout, &inkLayoutRect, &logicalLayoutRect);
-
-            // Cleanup temporary resources
-            pango_font_description_free(desc);
-            g_object_unref(layout);
-
-            // Create and return the cache entry
-            auto entry = std::make_shared<TextDimensionsEntry>(logicalLayoutRect.width, logicalLayoutRect.height);
-            return entry;
-
-        } catch (const std::exception& e) {
-            debugOutput << "ERROR: MeasureTextDimensions - Exception: " << e.what() << std::endl;
-            return nullptr;
-        } catch (...) {
-            debugOutput << "ERROR: MeasureTextDimensions - Unknown exception" << std::endl;
-            return nullptr;
-        }
-    }
 
     RenderContextCairo::RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering)
         : targetSurface(nullptr), surfaceWidth(0), surfaceHeight(0), stagingSurface(nullptr), pangoContext(nullptr), cairo(nullptr), targetContext(nullptr), destroying(false) {
@@ -795,17 +629,6 @@ namespace UltraCanvas {
         return layout;
     }
 
-//    GetTextSurfaceEntry(const std::string &text, float w, float h,
-//                        const std::string& fontFamily, float fontSize, FontWeight fw, FontSlant fs,
-//                        TextAlignment halign, TextVerticalAlignment valign, TextWrap wrap,
-//                        Color& textColor, float lineHeight, bool isMarkup) {
-//        char key[400];
-//        snprintf(key, sizeof(key), "%dx%d-%s-%f-%d%d%d%d%d#%x-%f-%d-%s", w, h,
-//                 fontFamily.c_str(), fontSize, fw, fs, halign, valign, wrap, textColor.ToARGB(), lineHeight, isMarkup, text.c_str());
-//
-//    }
-
-
     // ===== TEXT RENDERING =====
     std::unique_ptr<ITextLayout> RenderContextCairo::CreateTextLayout(const std::string& text, bool isMarkup) {
         auto ctx = std::make_unique<UCTextLayout>(pangoContext);
@@ -819,8 +642,48 @@ namespace UltraCanvas {
         return std::move(ctx);
     }
 
-    void RenderContextCairo::DrawTextLayout(ITextLayout& layout, double x, double y) {
-        cairo_move_to(cairo, x, y + layout.GetLayoutVerticalOffset());
+    std::shared_ptr<ITextLayout> RenderContextCairo::GetOrCreateTextLayout(const std::string& text, int rectWidth, int rectHeight, bool isMarkup) {
+        if (text.empty()) {
+            return nullptr;
+        }
+
+        // Generate cache key
+        std::string cacheKey = GenerateTextCacheKey(text, rectWidth, rectHeight);
+
+        // Try to get from cache first
+        auto cached = g_TextLayoutsCache.GetFromCache(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        // Not in cache - create new surface
+        auto newLayout = std::make_shared<UCTextLayout>(pangoContext);
+        if (newLayout) {
+            newLayout->SetFontStyle(currentState.fontStyle);
+            newLayout->SetAlignment(currentState.textStyle.alignment);
+            newLayout->SetWrap(currentState.textStyle.wrap);
+            newLayout->SetVerticalAlignment(currentState.textStyle.verticalAlignment);
+            // Fixme! Need to set line height
+            if (rectWidth) {
+                newLayout->SetExplicitWidth(rectWidth);
+            }
+            if (rectHeight) {
+                newLayout->SetExplicitHeight(rectHeight);
+            }
+            if (isMarkup) {
+                newLayout->SetMarkup(text);
+            } else {
+                newLayout->SetText(text);
+            }
+            // Add to cache
+            g_TextLayoutsCache.AddToCache(cacheKey, newLayout);
+        }
+        return newLayout;
+    }
+
+
+    void RenderContextCairo::DrawTextLayout(ITextLayout &layout, const Point2Df &pos) {
+        cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
         pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
     }
 
@@ -829,140 +692,42 @@ namespace UltraCanvas {
         if (text.empty()) {
             return; // Nothing to draw
         }
-
-        auto cachedSurface = GetTextSurface(text, 0, 0);
-
-        if (cachedSurface && cachedSurface->surface) {
-            // Use cached surface - just blit it to the target
-            cairo_save(cairo);
-
-            cairo_set_source_surface(cairo, cachedSurface->surface, pos.x, pos.y);
-
-            if (currentState.globalAlpha < 1.0f) {
-                cairo_paint_with_alpha(cairo, currentState.globalAlpha);
-            } else {
-                cairo_paint(cairo);
-            }
-
-            cairo_restore(cairo);
+        auto layout = GetOrCreateTextLayout(text, 0, 0, false);
+        if (layout) {
+            ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
+            DrawTextLayout(*layout, pos);
         } else {
-            debugOutput << "RenderContextCairo::DrawText: No text source surface" << std::endl;
+            debugOutput << "RenderContextCairo::DrawText: No text layout" << std::endl;
         }
+
     }
 
     void RenderContextCairo::DrawTextInRect(const std::string &text, const Rect2Df &rect) {
-        if (text.empty()) return;
-
-        auto cachedSurface = GetTextSurface(text, rect.width, rect.height);
-
-        if (cachedSurface && cachedSurface->surface) {
-            // Use cached surface - just blit it to the target
-            cairo_save(cairo);
-            auto y = rect.y;
-            auto x = rect.x;
-            switch (currentState.textStyle.verticalAlignment) {
-                case VerticalAlignment::Middle:
-                    y = y + ((rect.height - cachedSurface->height) / 2);
-                    break;
-                case VerticalAlignment::Bottom:
-                    y = y + (rect.height - cachedSurface->height);
-                    break;
-                default:
-                    break;
-            }
-
-            switch (currentState.textStyle.alignment) {
-                case TextAlignment::Center:
-                    if (cachedSurface->width < rect.width) {
-                        x = x + ((rect.width - cachedSurface->width) / 2);
-                    }
-                    break;
-                case TextAlignment::Right:
-                    x = x + rect.width - cachedSurface->width;
-                    break;
-                default:
-                    break;
-            }
-
-
-//            cairo_translate(cairo, x, y);
-            cairo_set_source_surface(cairo, cachedSurface->surface, x, y);
-            // Apply global alpha if needed
-            if (currentState.globalAlpha < 1.0f) {
-                cairo_paint_with_alpha(cairo, currentState.globalAlpha);
-            } else {
-                cairo_paint(cairo);
-            }
-            cairo_restore(cairo);
-        } else {
-            debugOutput << "RenderContextCairo::DrawText: No text source surface" << std::endl;
+        if (text.empty()) {
+            return; // Nothing to draw
         }
-
+        auto layout = GetOrCreateTextLayout(text, rect.width, rect.height, false);
+        if (layout) {
+            ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
+            DrawTextLayout(*layout, rect.TopLeft());
+        } else {
+            debugOutput << "RenderContextCairo::DrawTextInRect: No text layout" << std::endl;
+        }
     }
 
     bool RenderContextCairo::GetTextDimensions(const std::string &text, int rectWidth, int rectHeight, int& retWidth, int &retHeight) {
         retWidth = 0;
         retHeight = 0;
-        if (!pangoContext || text.empty()) {
+        if (text.empty()) {
             return false;
         }
-
-        // Generate cache key
-        std::string cacheKey = GenerateTextCacheKey(text, rectWidth, rectHeight);
-
-        // Try to get from cache first
-        auto cached = g_TextDimensionsCache.GetFromCache(cacheKey);
-        if (cached) {
-            retWidth = cached->width;
-            retHeight = cached->height;
-            return true;
+        auto layout = GetOrCreateTextLayout(text, rectWidth, rectHeight, false);
+        if (layout) {
+            auto sz = layout->GetLayoutSize();
+            retWidth = sz.width;
+            retHeight = sz.height;
         }
-
-        // Not in cache - create new surface
-        auto newEntry = MeasureTextDimensions(text, rectWidth, rectHeight);
-        if (newEntry) {
-            // Add to cache
-            g_TextDimensionsCache.AddToCache(cacheKey, newEntry);
-            retWidth = newEntry->width;
-            retHeight = newEntry->height;
-            return true;
-        }
-
-        debugOutput << "RenderContextCairo::GetTextDimensions: Error in measuring text dimensions, text=" << text << std::endl;
-        return false;
-
-//        try {
-//            PangoFontDescription *desc = CreatePangoFont(currentState.fontStyle);
-//            if (!desc) {
-//                debugOutput << "ERROR: Failed to create Pango font description" << std::endl;
-//                return false;
-//            }
-//            PangoLayout *layout = CreatePangoLayout(desc, rectWidth, rectHeight);
-//            if (!layout) {
-//                pango_font_description_free(desc);
-//                debugOutput << "ERROR: Failed to create Pango layout" << std::endl;
-//                return false;
-//            }
-//            if (currentState.textStyle.isMarkup) {
-//                pango_layout_set_markup(layout, text.c_str(), -1);
-//            } else {
-//                pango_layout_set_text(layout, text.c_str(), -1);
-//            }
-//
-//            int width, height;
-//            pango_layout_get_pixel_size(layout, &width, &height);
-//
-//            pango_font_description_free(desc);
-//            g_object_unref(layout);
-//
-//            retWidth = width;
-//            retHeight = height;
-//            return true;
-//
-//        } catch (...) {
-//            debugOutput << "ERROR: Exception in GetTextLineDimensions" << std::endl;
-//            return false;
-//        }
+        return true;
     }
 
     bool RenderContextCairo::GetTextLineDimensions(const std::string &text, int &w, int &h) {

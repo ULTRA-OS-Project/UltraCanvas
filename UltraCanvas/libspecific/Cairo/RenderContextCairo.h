@@ -70,6 +70,7 @@ namespace UltraCanvas {
         }
     };
 
+
     class RenderContextCairo : public IRenderContext {
     private:
         std::mutex cairoMutex;
@@ -114,9 +115,6 @@ namespace UltraCanvas {
         void SwitchToSurface(cairo_surface_t* s);
 
         std::string GenerateTextCacheKey(const std::string& text, int rectWidth, int rectHeight);
-        std::shared_ptr<TextSurfaceEntry> MakeTextSurface(const std::string& text, int rectWidth, int rectHeight);
-        std::shared_ptr<TextSurfaceEntry> GetTextSurface(const std::string& text, int rectWidth, int rectHeight);
-        std::shared_ptr<TextDimensionsEntry> MeasureTextDimensions(const std::string& text, int rectWidth, int rectHeight);
 
     public:
         RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering);
@@ -244,7 +242,9 @@ namespace UltraCanvas {
 
         // Text rendering
         std::unique_ptr<ITextLayout> CreateTextLayout(const std::string& text, bool isMarkup) override;
-        void DrawTextLayout(ITextLayout& layout, double x, double y) override;
+        std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, int rectWidth, int rectHeight, bool isMarkup) override;
+
+        void DrawTextLayout(ITextLayout &layout, const Point2Df &pos) override;
         void DrawText(const std::string &text, const Point2Df &pos) override;
         void DrawTextInRect(const std::string &text, const Rect2Df &rect) override;
         bool GetTextLineDimensions(const std::string &text, int &w, int &h) override;

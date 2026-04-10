@@ -258,7 +258,9 @@ namespace UltraCanvas {
         std::unique_ptr<ITextLayout> CreateTextLayout() {
             return CreateTextLayout("", false);
         };
-        virtual void DrawTextLayout(ITextLayout& layout, double x, double y) = 0;
+        virtual std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, int rectWidth, int rectHeight, bool isMarkup) = 0;
+
+        virtual void DrawTextLayout(ITextLayout &layout, const Point2Df &pos) = 0;
 
 
         virtual void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) = 0;

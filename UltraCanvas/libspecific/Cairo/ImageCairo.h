@@ -50,9 +50,7 @@ namespace UltraCanvas {
         void Flush() override;
         void MarkDirty() override;
         void Clear() override;
-        size_t GetDataSize();
     };
-
 
     class UCImageRaster {
     private:

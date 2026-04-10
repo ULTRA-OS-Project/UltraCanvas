@@ -270,11 +270,11 @@ namespace UltraCanvas {
             if (style.hasShadow) {
                 ctx->SetCurrentPaint(style.shadowColor);
                 //textLayout->ChangeAttribute(TextAttributeFactory::CreateForeground(style.shadowColor));
-                ctx->DrawTextLayout(*textLayout.get(), crect.x + style.shadowOffset.x, crect.y + style.shadowOffset.y);
+                ctx->DrawTextLayout(*textLayout, {crect.x + style.shadowOffset.x, crect.y + style.shadowOffset.y});
             }
 //            textLayout->ChangeAttribute(TextAttributeFactory::CreateForeground(style.textColor));
             ctx->SetCurrentPaint(style.textColor);
-            ctx->DrawTextLayout(*textLayout.get(), crect.x, crect.y);
+            ctx->DrawTextLayout(*textLayout, crect.TopLeft());
         }
 
 //        Rect2Di bounds = GetBounds();

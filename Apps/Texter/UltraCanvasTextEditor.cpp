@@ -4046,7 +4046,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         std::string dropText = "Drop files to open in new tabs";
         int textWidth = ctx->GetTextLineWidth(dropText);
-        ctx->DrawText(dropText, iconCenterX - textWidth / 2, iconCenterY + iconH / 2 + 16);
+        ctx->DrawText(dropText, {iconCenterX - textWidth / 2, iconCenterY + iconH / 2 + 16});
 
         // restore state
         ctx->PopState();
