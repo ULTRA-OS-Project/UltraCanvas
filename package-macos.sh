@@ -17,7 +17,7 @@
 #   APPLE_TEAM_ID        Apple Developer Team ID (for --notarize)
 #   APPLE_APP_PASSWORD   App-specific password (for --notarize)
 
-set -e -x
+set -e -x -o pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 
@@ -295,18 +295,24 @@ codesign_bundle() {
 
     echo "  Signing bundle..."
 
-    # Sign frameworks first (inside-out)
+    # Sign frameworks first (inside-out), with hardened runtime + secure timestamp
     for dylib in "$app_bundle/Contents/Frameworks/"*.dylib; do
         if [ -f "$dylib" ]; then
-            codesign --force --verify --verbose --sign "$IDENTITY" --options runtime "$dylib" 2>/dev/null
+            codesign --force --timestamp --options runtime \
+                --sign "$IDENTITY" "$dylib"
         fi
     done
 
-    # Sign the executable
-    codesign --force --verify --verbose --sign "$IDENTITY" "$app_bundle/Contents/MacOS/"* 2>/dev/null
+    # Sign the main executable with hardened runtime + secure timestamp
+    codesign --force --timestamp --options runtime \
+        --sign "$IDENTITY" "$app_bundle/Contents/MacOS/"*
 
-    # Sign the whole bundle
-    codesign --force --verify --verbose --deep --sign "$IDENTITY" --entitlements "$ENTITLEMENTS_PATH"  "$app_bundle" 2>/dev/null
+    # Sign the outer bundle with hardened runtime, secure timestamp, and entitlements
+    codesign --force --timestamp --options runtime \
+        --sign "$IDENTITY" --entitlements "$ENTITLEMENTS_PATH" "$app_bundle"
+
+    # Verify the final bundle
+    codesign --verify --verbose=4 --strict "$app_bundle"
 
     echo "  Bundle signed"
 }
@@ -316,18 +322,39 @@ codesign_bundle() {
 notarize_bundle() {
     local app_bundle="$1"
     local zip_path="${app_bundle%.app}-notarize.zip"
+    local submit_log
+    submit_log=$(mktemp)
 
     echo "  Creating zip for notarization..."
     /usr/bin/ditto -c -k --keepParent "$app_bundle" "$zip_path"
 
     echo "  Submitting to Apple notary service (this may take a few minutes)..."
+    # Tee to a temp file so we keep live progress output AND can parse the result
     xcrun notarytool submit "$zip_path" \
         --apple-id "$APPLE_ID" \
         --team-id "$APPLE_TEAM_ID" \
         --password "$APPLE_APP_PASSWORD" \
-        --wait
+        --wait 2>&1 | tee "$submit_log"
 
     rm -f "$zip_path"
+
+    # Parse the submission ID and final status from the captured output
+    local submission_id status
+    submission_id=$(awk '/^  id:/ {print $2; exit}' "$submit_log")
+    status=$(awk '/^  status:/ {print $2}' "$submit_log" | tail -n 1)
+    rm -f "$submit_log"
+
+    if [ "$status" != "Accepted" ]; then
+        echo "  ERROR: Notarization status is '$status' (expected 'Accepted')"
+        if [ -n "$submission_id" ]; then
+            echo "  Fetching notarization log for submission $submission_id..."
+            xcrun notarytool log "$submission_id" \
+                --apple-id "$APPLE_ID" \
+                --team-id "$APPLE_TEAM_ID" \
+                --password "$APPLE_APP_PASSWORD" || true
+        fi
+        exit 1
+    fi
 
     echo "  Stapling notarization ticket..."
     xcrun stapler staple "$app_bundle"
