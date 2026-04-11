@@ -198,17 +198,38 @@ bundle_dylibs() {
 
     echo "  Bundling dynamic libraries..."
 
-    # Collect all dylibs using breadth-first traversal
+    # Collect all dylibs using breadth-first traversal. Each queue entry is
+    # "source_dir|current_path":
+    #   source_dir   - directory the binary *originated* from on the host
+    #                  (used to resolve @loader_path references)
+    #   current_path - where we actually read the binary from (exe in MacOS/
+    #                  or a copy in Frameworks/). Mach-O load commands are
+    #                  preserved byte-for-byte by cp -L, so otool reads are
+    #                  identical to the original.
     # Use a file-based queue since macOS ships with Bash 3.2 (no associative arrays)
     local queue_file
     queue_file=$(mktemp)
-    echo "$exe_path" > "$queue_file"
+    echo "$(dirname "$exe_path")|$exe_path" > "$queue_file"
     local count=0
 
     while [ -s "$queue_file" ]; do
-        local current
-        current=$(head -1 "$queue_file")
+        local entry
+        entry=$(head -1 "$queue_file")
         sed -i '' '1d' "$queue_file"
+
+        local source_dir="${entry%%|*}"
+        local current="${entry#*|}"
+
+        # LC_RPATH entries from the binary, for resolving @rpath/... deps.
+        # otool -l output format:
+        #     cmd LC_RPATH
+        # cmdsize NN
+        #    path /opt/homebrew/opt/openexr/lib (offset 12)
+        local rpaths
+        rpaths=$(otool -l "$current" 2>/dev/null | awk '
+            /cmd LC_RPATH/ {in_rpath=1; next}
+            in_rpath && $1 == "path" {print $2; in_rpath=0}
+        ')
 
         local deps
         deps=$(otool -L "$current" 2>/dev/null | tail -n +2 | awk '{print $1}')
@@ -216,13 +237,8 @@ bundle_dylibs() {
         for dep in $deps; do
             # Skip system libraries
             case "$dep" in
-                /System/*|/usr/lib/*|/usr/X11/*|@*) continue ;;
-            esac
-
-            # Only bundle Homebrew libraries
-            case "$dep" in
-                ${HOMEBREW_PREFIX}/*|/opt/homebrew/*|/usr/local/*) ;;
-                *) continue ;;
+                /System/*|/usr/lib/*|/usr/X11/*) continue ;;
+                @executable_path/*) continue ;;
             esac
 
             local dep_basename
@@ -233,15 +249,71 @@ bundle_dylibs() {
                 continue
             fi
 
+            # Resolve the reference to an actual host filesystem path.
+            local dep_source=""
+            case "$dep" in
+                @rpath/*)
+                    local rel="${dep#@rpath/}"
+                    # Try each LC_RPATH entry from the referring binary
+                    local rpath resolved_rpath
+                    for rpath in $rpaths; do
+                        case "$rpath" in
+                            @loader_path/*)
+                                resolved_rpath="$source_dir/${rpath#@loader_path/}"
+                                ;;
+                            @executable_path/*)
+                                continue
+                                ;;
+                            *)
+                                resolved_rpath="$rpath"
+                                ;;
+                        esac
+                        if [ -f "$resolved_rpath/$rel" ]; then
+                            dep_source="$resolved_rpath/$rel"
+                            break
+                        fi
+                    done
+                    # Fall back to $HOMEBREW_PREFIX/lib (homebrew symlinks
+                    # all kegs here, so this catches libs like libIlmThread
+                    # that OpenEXR references via @rpath).
+                    if [ -z "$dep_source" ] && [ -f "$HOMEBREW_PREFIX/lib/$rel" ]; then
+                        dep_source="$HOMEBREW_PREFIX/lib/$rel"
+                    fi
+                    ;;
+                @loader_path/*)
+                    local rel="${dep#@loader_path/}"
+                    if [ -f "$source_dir/$rel" ]; then
+                        dep_source="$source_dir/$rel"
+                    fi
+                    ;;
+                /*)
+                    dep_source="$dep"
+                    ;;
+            esac
+
+            if [ -z "$dep_source" ] || [ ! -f "$dep_source" ]; then
+                echo "  Warning: could not resolve $dep (from $(basename "$current"))"
+                continue
+            fi
+
+            # Only bundle Homebrew libraries
+            case "$dep_source" in
+                ${HOMEBREW_PREFIX}/*|/opt/homebrew/*|/usr/local/*) ;;
+                *) continue ;;
+            esac
+
             # Resolve symlinks and copy
             local resolved_dep
-            resolved_dep=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$dep" 2>/dev/null || echo "$dep")
+            resolved_dep=$(python3 -c "import os,sys; print(os.path.realpath(sys.argv[1]))" "$dep_source" 2>/dev/null || echo "$dep_source")
 
             if [ -f "$resolved_dep" ]; then
                 cp -L "$resolved_dep" "$frameworks_dir/$dep_basename"
                 chmod 644 "$frameworks_dir/$dep_basename"
                 count=$((count + 1))
-                echo "$frameworks_dir/$dep_basename" >> "$queue_file"
+                # Queue the copy for BFS. source_dir is the real host
+                # directory so @loader_path deps resolve against siblings
+                # on disk, not the (empty) Frameworks dir.
+                echo "$(dirname "$resolved_dep")|$frameworks_dir/$dep_basename" >> "$queue_file"
             fi
         done
     done
