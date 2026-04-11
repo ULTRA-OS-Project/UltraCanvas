@@ -257,7 +257,7 @@ namespace UltraCanvas {
 
         // Header background
         ctx->SetFillPaint(viewStyle.headerBackgroundColor);
-        ctx->FillRectangle(headerRect.x, headerRect.y, headerRect.width, headerRect.height);
+        ctx->FillRectangle(headerRect);
 
         ctx->SetFontSize(viewStyle.headerFontSize);
         ctx->SetTextPaint(viewStyle.headerTextColor);
@@ -308,7 +308,7 @@ namespace UltraCanvas {
             // Alternate row background
             if (viewStyle.alternateRowColors && row % 2 == 1) {
                 ctx->SetFillPaint(viewStyle.alternateRowColor);
-                ctx->FillRectangle(viewport.x, rowY, viewport.width, viewStyle.rowHeight);
+                ctx->FillRectangle(Rect2Df(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
             }
 
             bool isSelected = selection && selection->IsSelected(row);
@@ -318,10 +318,10 @@ namespace UltraCanvas {
             // Draw full-row selection/hover background (before any column clipping)
             if (isSelected) {
                 ctx->SetFillPaint(viewStyle.selectionBackgroundColor);
-                ctx->FillRectangle(viewport.x, rowY, viewport.width, viewStyle.rowHeight);
+                ctx->FillRectangle(Rect2Df(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
             } else if (isHovered) {
                 ctx->SetFillPaint(viewStyle.hoverBackgroundColor);
-                ctx->FillRectangle(viewport.x, rowY, viewport.width, viewStyle.rowHeight);
+                ctx->FillRectangle(Rect2Df(viewport.x, rowY, viewport.width, viewStyle.rowHeight));
             }
 
             if (colCount <= 1) {

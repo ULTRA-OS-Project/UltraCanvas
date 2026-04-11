@@ -1,7 +1,7 @@
 // libspecific/Cairo/RenderContextCairo.h
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.3 - Configurable text rendering options
-// Last Modified: 2026-04-07
+// Version: 1.0.5 - Rect-based DrawPixmap/DrawMask
+// Last Modified: 2026-04-11
 // Author: UltraCanvas Framework
 //
 
@@ -189,8 +189,8 @@ namespace UltraCanvas {
 
         // Basic drawing
         void DrawLine(const Point2Df& from, const Point2Df& to) override;
-        void DrawRectangle(double x, double y, double w, double h) override;
-        void FillRectangle(double x, double y, double w, double h) override;
+        void DrawRectangle(const Rect2Df& rect) override;
+        void FillRectangle(const Rect2Df& rect) override;
         void DrawRoundedRectangle(const Rect2Df & rect, double radius) override;
         void FillRoundedRectangle(const Rect2Df & rect, double radius) override;
         void DrawRoundedRectangleWidthBorders(const Rect2Df & rect,
@@ -253,7 +253,8 @@ namespace UltraCanvas {
 
         // Image rendering
         void DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Df &srcRect, const Rect2Df &destRect) override;
-        void DrawPixmap(UCPixmap &pixmap, double x, double y, double w, double h, ImageFitMode fitMode) override;
+        void DrawPixmap(UCPixmap& pixmap, const Rect2Df& rect, ImageFitMode fitMode) override;
+        void DrawMask(const Color& drawColor, UCPixmap& mask, const Rect2Df& rect, ImageFitMode fitMode) override;
 
         // ===== ENHANCED IMAGE RENDERING METHODS =====
 //        void DrawImageWithFilter(const std::string &imagePath, float x, float y, float w, float h,

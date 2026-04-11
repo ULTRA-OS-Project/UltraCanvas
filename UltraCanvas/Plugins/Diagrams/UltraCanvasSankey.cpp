@@ -247,7 +247,7 @@ namespace UltraCanvas {
         // Draw background if enabled
         if (style.hasBackground) {
             ctx->SetFillPaint(style.backgroundColor);
-            ctx->FillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
+            ctx->FillRectangle(bounds);
         }
 
         // Draw links
@@ -734,13 +734,13 @@ namespace UltraCanvas {
     void UltraCanvasSankeyDiagram::DrawNode(IRenderContext *ctx, const SankeyNode &node) {
         // Draw node rectangle
         ctx->SetFillPaint(node.color);
-        ctx->FillRectangle(node.x, node.y, nodeWidth, node.height);
+        ctx->FillRectangle(Rect2Df(node.x, node.y, nodeWidth, node.height));
 
         // Draw node border
         if (style.nodeStrokeWidth > 0) {
             ctx->SetStrokePaint(style.nodeStrokeColor);
             ctx->SetStrokeWidth(style.nodeStrokeWidth);
-            ctx->DrawRectangle(node.x, node.y, nodeWidth, node.height);
+            ctx->DrawRectangle(Rect2Df(node.x, node.y, nodeWidth, node.height));
         }
 
         // Draw label

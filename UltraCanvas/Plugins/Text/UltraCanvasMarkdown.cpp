@@ -785,13 +785,12 @@ namespace UltraCanvas {
 
         // Draw background
         ctx->SetFillPaint(style.quoteBackgroundColor);
-        ctx->FillRectangle(adjustedBounds.x, adjustedBounds.y,
-                           adjustedBounds.width, adjustedBounds.height);
+        ctx->FillRectangle(adjustedBounds);
 
         // Draw left bar
         ctx->SetFillPaint(style.quoteBarColor);
-        ctx->FillRectangle(adjustedBounds.x, adjustedBounds.y,
-                           static_cast<int>(style.quoteBarWidth), adjustedBounds.height);
+        ctx->FillRectangle(Rect2Df(adjustedBounds.x, adjustedBounds.y,
+                           static_cast<int>(style.quoteBarWidth), adjustedBounds.height));
 
         // Draw text
         ctx->SetFontSize(style.fontSize);

@@ -351,6 +351,7 @@ namespace UltraCanvas {
         // ===== THEME =====
         void ApplyThemeToDocument(int docIndex);
         void ApplyThemeToAllDocuments();
+        void ApplyHeadingButtonStyles(bool dark);
 
         // ===== CALLBACKS =====
         void SetupDocumentCallbacks(int docIndex);

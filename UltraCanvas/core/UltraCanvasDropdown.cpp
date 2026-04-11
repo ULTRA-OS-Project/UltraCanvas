@@ -48,8 +48,7 @@ namespace UltraCanvas {
         if (isSeparator || !isEnabled) {
             if (option.isHovered || option.isSelected) {
                 ctx->SetFillPaint(style->listBackgroundColor);
-                ctx->FillRectangle(option.rect.x, option.rect.y,
-                                   option.rect.width, option.rect.height);
+                ctx->FillRectangle(option.rect);
             }
         }
 

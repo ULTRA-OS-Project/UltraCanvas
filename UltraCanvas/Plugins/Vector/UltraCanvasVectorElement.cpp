@@ -208,7 +208,7 @@ namespace UltraCanvas {
         if (options.BackgroundColor.a > 0) {
             auto bounds = GetBounds();
             ctx->SetFillPaint(options.BackgroundColor);
-            ctx->FillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
+            ctx->FillRectangle(bounds);
         }
     }
 
@@ -239,13 +239,13 @@ namespace UltraCanvas {
         auto bounds = GetBounds();
         ctx->SetStrokePaint(options.BorderColor);
         ctx->SetStrokeWidth(options.BorderWidth);
-        ctx->DrawRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
+        ctx->DrawRectangle(bounds);
     }
 
     void UltraCanvasVectorElement::RenderDebugInfo(IRenderContext* ctx) {
         auto bounds = GetBounds();
         ctx->SetFillPaint(Color(0, 0, 0, 180));
-        ctx->FillRectangle(bounds.x + 5, bounds.y + 5, 150, 60);
+        ctx->FillRectangle(Rect2Df(bounds.x + 5, bounds.y + 5, 150, 60));
         ctx->SetTextPaint(Colors::White);
         ctx->SetFontSize(10);
         ctx->DrawText("Zoom: " + std::to_string(static_cast<int>(zoomLevel * 100)) + "%", bounds.x + 10, bounds.y + 20);

@@ -183,7 +183,7 @@ namespace UltraCanvas {
         } else {
             if (backgroundColor.a > 0) {
                 ctx->SetFillPaint(backgroundColor);
-                ctx->FillRectangle(bnds.x, bnds.y, bnds.width, bnds.height);
+                ctx->FillRectangle(bnds);
             }
         }
         needsRedraw = false;

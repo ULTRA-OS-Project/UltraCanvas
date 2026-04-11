@@ -397,15 +397,15 @@ void UltraCanvasWASMRenderContext::DrawLine(float x1, float y1, float x2, float 
     }, canvasId.c_str(), x1, y1, x2, y2);
 }
 
-void UltraCanvasWASMRenderContext::DrawRectangle(float x, float y, float width, float height) {
+void UltraCanvasWASMRenderContext::DrawRectangle(const Rect2Df& rect) {
     ApplyDrawingStyle();
-    
+
     EM_ASM({
         const ctx = Module.canvasContexts[UTF8ToString($0)];
         if (ctx) {
             ctx.strokeRect($1, $2, $3, $4);
         }
-    }, canvasId.c_str(), x, y, width, height);
+    }, canvasId.c_str(), rect.x, rect.y, rect.width, rect.height);
 }
 
 void UltraCanvasWASMRenderContext::DrawFilledRectangle(float x, float y, float width, float height) {

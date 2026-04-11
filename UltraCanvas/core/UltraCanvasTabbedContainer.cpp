@@ -468,7 +468,7 @@ namespace UltraCanvas {
         int iconX = tabBounds.x + tabPadding;
         int iconY = tabBounds.y + (tabBounds.height - iconSize) / 2;
 
-        ctx->DrawImage(tab->iconPath, iconX, iconY, iconSize, iconSize, ImageFitMode::Contain);
+        ctx->DrawImage(tab->iconPath, Rect2Df(iconX, iconY, iconSize, iconSize), ImageFitMode::Contain);
     }
 
     void UltraCanvasTabbedContainer::RenderTabBadge(int index, IRenderContext *ctx) {
@@ -2020,7 +2020,7 @@ namespace UltraCanvas {
                     tabCornerRadius
             );
         } else {
-            ctx->DrawRectangle(ghostX, ghostY, tabBounds.width, tabBounds.height);
+            ctx->DrawRectangle(Rect2Df(ghostX, ghostY, tabBounds.width, tabBounds.height));
         }
 
         // Tab title text on ghost

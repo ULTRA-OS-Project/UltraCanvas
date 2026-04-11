@@ -1,7 +1,7 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
-// Version: 2.2.0
-// Last Modified: 2025-07-11
+// Version: 2.4.0
+// Last Modified: 2026-04-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -171,8 +171,8 @@ namespace UltraCanvas {
 
         // ===== BASIC SHAPES =====
         virtual void DrawLine(const Point2Df& from, const Point2Df& to) = 0;
-        virtual void DrawRectangle(double x, double y, double w, double h) = 0;
-        virtual void FillRectangle(double x, double y, double w, double h) = 0;
+        virtual void DrawRectangle(const Rect2Df& rect) = 0;
+        virtual void FillRectangle(const Rect2Df& rect) = 0;
         virtual void DrawRoundedRectangle(const Rect2Df & rect, double radius) = 0;
         virtual void FillRoundedRectangle(const Rect2Df & rect, double radius) = 0;
         virtual void DrawRoundedRectangleWidthBorders(const Rect2Df & rect,
@@ -307,7 +307,9 @@ namespace UltraCanvas {
 
         // ===== IMAGE RENDERING =====
         virtual void DrawPartOfPixmap(UCPixmap& pixmap, const Rect2Df& srcRect, const Rect2Df& destRect) = 0;
-        virtual void DrawPixmap(UCPixmap& pixmap, double x, double y, double w, double h, ImageFitMode fitMode) = 0;
+        virtual void DrawPixmap(UCPixmap& pixmap, const Rect2Df& rect, ImageFitMode fitMode) = 0;
+        // DrawMasked used mainly for B/W icons to replace non-transparent areas by specfied color
+        virtual void DrawMask(const Color& drawColor, UCPixmap& mask, const Rect2Df& rect, ImageFitMode fitMode) = 0;
 
 //        virtual bool IsImageFormatSupported(const std::string& filePath) = 0;
 //        virtual bool GetImageDimensions(const std::string& imagePath, int& w, int& h) = 0;
@@ -333,70 +335,73 @@ namespace UltraCanvas {
             DrawLine(start, end);
         }
 
-        void DrawRectangle(int x, int y, int w, int h) {
-            DrawRectangle(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
-        }
-        void DrawRectangle(const Rect2Df& rect) {
-            DrawRectangle(rect.x, rect.y, rect.width, rect.height);
-        }
-
-        void DrawRectangle(const Rect2Di& rect) {
-            DrawRectangle(rect.x, rect.y, rect.width, rect.height);
-        }
-
-
-        void FillRectangle(int x, int y, int w, int h) {
-            FillRectangle(static_cast<double>(x), static_cast<double>(y), static_cast<double>(w), static_cast<double>(h));
-        }
-
-        void FillRectangle(const Rect2Df& rect) {
-            FillRectangle(rect.x, rect.y, rect.width, rect.height);
-        }
-
-        void FillRectangle(const Rect2Di& rect) {
-            FillRectangle(rect.x, rect.y, rect.width, rect.height);
-        }
-
-        void DrawPixmap(UCPixmap& pixmap, float x, float y) {
-            DrawPixmap(pixmap, x,y, pixmap.GetWidth(), pixmap.GetHeight(), ImageFitMode::NoScale);
-        };
-        void DrawImage(UCImage& image, float x, float y) {
-            auto pixmap = image.GetPixmap();
+        void DrawImage(UCImage& img, const Point2Df& pos) {
+            auto pixmap = img.GetPixmap();
             if (pixmap) {
-                DrawPixmap(*pixmap.get(), x,y);
-            }
-        };
-        void DrawImage(UCImage& image, float x, float y, float w, float h, ImageFitMode fitMode) {
-            auto pixmap = image.GetPixmap(w, h, fitMode);
-            if (pixmap) {
-                DrawPixmap(*pixmap.get(), x, y, w, h, fitMode);
+                DrawPixmap(*pixmap,
+                    Rect2Df(pos.x, pos.y, pixmap->GetWidth(), pixmap->GetHeight()),
+                    ImageFitMode::NoScale);
             }
         }
-        void DrawImage(UCImage& image, const Rect2Di& rect, ImageFitMode fitMode) {
-            DrawImage(image, rect.x, rect.y, rect.width, rect.height, fitMode);
-        }
-        void DrawImage(UCImage& image, const Rect2Df& rect, ImageFitMode fitMode) {
-            DrawImage(image, rect.x, rect.y, rect.width, rect.height, fitMode);
-        }
-        void DrawImage(const std::string& imagePath, float x, float y) {
+
+        void DrawImage(const std::string& imagePath, const Point2Df& pos) {
             auto img = UCImage::Get(imagePath);
-            DrawImage(*img.get(), x, y);
+            if (img) {
+                DrawImage(*img, pos);
+            }
         }
 
-        void DrawImage(const std::string &imagePath, float x, float y, float w, float h, ImageFitMode fitMode) {
+        void DrawImage(UCImage& img, const Rect2Df& rect, ImageFitMode fitMode) {
+            auto pixmap = img.GetPixmap(static_cast<int>(rect.width),
+                                        static_cast<int>(rect.height), fitMode);
+            if (pixmap) {
+                DrawPixmap(*pixmap, rect, fitMode);
+            }
+        }
+        void DrawImage(const std::string& imagePath, const Rect2Df& rect, ImageFitMode fitMode) {
             auto img = UCImage::Get(imagePath);
-            DrawImage(*img.get(), x, y, w, h, fitMode);
-        };
-        void DrawImage(const std::string& imagePath, const Point2Df& position) {
-            DrawImage(imagePath, position.x, position.y);
+            if (img) {
+                DrawImage(*img, rect, fitMode);
+            }
         }
-        void DrawImage(const std::string& imagePath, const Point2Di& position) {
-            DrawImage(imagePath, position.x, position.y);
+
+        void DrawMask(const Color& drawColor, UCImage& img, const Point2Df& pos) {
+            auto pixmap = img.GetPixmap();
+            if (pixmap) {
+                DrawMask(drawColor, *pixmap, 
+                    Rect2Df(pos.x, pos.y, pixmap->GetWidth(), pixmap->GetHeight()),
+                    ImageFitMode::NoScale);
+            }
         }
+
+        void DrawMask(const Color& drawColor, const std::string& imagePath, const Point2Df& pos) {
+            auto img = UCImage::Get(imagePath);
+            if (img) {
+                DrawMask(drawColor, *img, pos);
+            }
+        }
+        
+        void DrawMask(const Color& drawColor, UCImage& img, const Rect2Df& rect, ImageFitMode fitMode) {
+            auto pixmap = img.GetPixmap(static_cast<int>(rect.width),
+                                        static_cast<int>(rect.height), fitMode);
+            if (pixmap) {
+                DrawMask(drawColor, *pixmap.get(), rect, fitMode);
+            }
+        }
+
+        void DrawMask(const Color& drawColor, const std::string& imagePath, const Rect2Df& rect, ImageFitMode fitMode) {
+            auto img = UCImage::Get(imagePath);
+            if (img) {
+                DrawMask(drawColor, *img, rect, fitMode);
+            }
+        }
+        
         void DrawPartOfImage(const std::string& imagePath, const Rect2Df& srcRect, const Rect2Df& destRect) {
+        
             auto img = UCImage::Get(imagePath);
             DrawPartOfImage(*img.get(), srcRect, destRect);
         }
+        
         void DrawPartOfImage(UCImage& img, const Rect2Df& srcRect, const Rect2Df& destRect) {
             auto pixmap = img.GetPixmap();
             DrawPartOfPixmap(*pixmap.get(), srcRect, destRect);
@@ -450,13 +455,6 @@ namespace UltraCanvas {
             }
             ClearPath();
             PopState();
-        }
-
-        void DrawFilledRectangle(const Rect2Di& rect, const Color& fillColor,
-                                float borderWidth = 0.0f,
-                                const Color& borderColor = Colors::Transparent,
-                                float borderRadius = 0.0f) {
-            DrawFilledRectangle(Rect2Df(rect.x, rect.y, rect.width, rect.height), fillColor, borderWidth, borderColor, borderRadius);
         }
 
         void DrawFilledCircle(const Point2Df& center, float radius, const Color& fillColor, const Color& borderColor = Colors::Transparent, float borderWidth = 1.0f) {

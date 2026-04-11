@@ -145,7 +145,7 @@ struct MenuStyle {
     // Colors
     Color backgroundColor;      // Menu background
     Color borderColor;         // Border color
-    Color hoverColor;          // Hover highlight
+    Color hoverBackgroundColor;          // Hover highlight
     Color hoverTextColor;      // Text color when hovered
     Color pressedColor;        // Pressed state color
     Color selectedColor;       // Selected item background
@@ -400,7 +400,7 @@ viewMenu->AddItem(MenuItemData::Submenu("Zoom", {
 MenuStyle customStyle;
 customStyle.backgroundColor = Color(40, 44, 52);
 customStyle.textColor = Color(171, 178, 191);
-customStyle.hoverColor = Color(50, 54, 62);
+customStyle.hoverBackgroundColor = Color(50, 54, 62);
 customStyle.hoverTextColor = Colors::White;
 customStyle.borderColor = Color(30, 34, 42);
 customStyle.fontSize = 14.0f;

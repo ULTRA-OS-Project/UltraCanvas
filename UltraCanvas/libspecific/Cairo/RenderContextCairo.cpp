@@ -1,7 +1,7 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.4 - Configurable text rendering options
-// Last Modified: 2026-04-07
+// Version: 1.0.6 - Rect-based DrawPixmap/DrawMask
+// Last Modified: 2026-04-11
 // Author: UltraCanvas Framework
 
 #include "RenderContextCairo.h"
@@ -492,25 +492,25 @@ namespace UltraCanvas {
     }
 
 // ===== BASIC DRAWING =====
-    void RenderContextCairo::FillRectangle(double x, double y, double w, double h) {
+    void RenderContextCairo::FillRectangle(const Rect2Df& rect) {
 //        debugOutput << "RenderContextCairo::FillRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply fill style explicitly ***
         //ApplyFillStyle(currentState.style);
 
-        cairo_rectangle(cairo, x, y, w, h);
+        cairo_rectangle(cairo, rect.x, rect.y, rect.width, rect.height);
         Fill();
 
 //        debugOutput << "RenderContextCairo::FillRectangle: Complete" << std::endl;
     }
 
-    void RenderContextCairo::DrawRectangle(double x, double y, double w, double h) {
+    void RenderContextCairo::DrawRectangle(const Rect2Df& rect) {
 //        debugOutput << "RenderContextCairo::DrawRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply stroke style explicitly ***
         //ApplyStrokeStyle(currentState.style);
 
-        cairo_rectangle(cairo, x, y, w, h);
+        cairo_rectangle(cairo, rect.x, rect.y, rect.width, rect.height);
         Stroke();
 
 //        debugOutput << "RenderContextCairo::DrawRectangle: Complete" << std::endl;
@@ -1468,105 +1468,114 @@ namespace UltraCanvas {
         cairo_stroke(cairo);
     }
 
-    void RenderContextCairo::DrawPixmap(UCPixmap &pixmap, double x, double y, double w, double h, ImageFitMode fitMode) {
-        try {
-            // Load the image
-            // Save current cairo state
-            double pixWidth = static_cast<double>(pixmap.GetWidth());
-            double pixHeight = static_cast<double>(pixmap.GetHeight());
-            if (!w) {
-                w = pixWidth;
-            }
-            if (!h) {
-                h = pixHeight;
-            }
-            double scaleX = 1;
-            double scaleY = 1;
-            double offsetX = 0;
-            double offsetY = 0;
-            // Calculate scaling factors
-            if (pixHeight != h || pixWidth != w) {
-                switch (fitMode) {
-                    case ImageFitMode::Contain:
-                        scaleX = w / pixWidth;
-                        scaleY = h / pixHeight;
+    void DrawPixmapOrMask(cairo_t* cairo, UCPixmap &pixmap, double x, double y, double w, double h, ImageFitMode fitMode, double alpha, bool drawMasked, const Color& c) {
+        double pixWidth = static_cast<double>(pixmap.GetWidth());
+        double pixHeight = static_cast<double>(pixmap.GetHeight());
+        if (!w) {
+            w = pixWidth;
+        }
+        if (!h) {
+            h = pixHeight;
+        }
+        double scaleX = 1;
+        double scaleY = 1;
+        double offsetX = 0;
+        double offsetY = 0;
+        // Calculate scaling factors
+        if (pixHeight != h || pixWidth != w) {
+            switch (fitMode) {
+                case ImageFitMode::Contain:
+                    scaleX = w / pixWidth;
+                    scaleY = h / pixHeight;
 
-                        if (scaleX < scaleY) {
-                            scaleY = scaleX;
-                            offsetY = (h - (pixHeight * scaleY)) / 2;
-                        } else {
-                            scaleX = scaleY;
-                            offsetX = (w - (pixWidth * scaleX)) / 2;
-                        }
-                        break;
-                    case ImageFitMode::Cover:
-                        scaleX = w / pixWidth;
-                        scaleY = h / pixHeight;
-
-                        if (scaleX < scaleY) {
-                            scaleX = scaleY;
-                            offsetX = (w - (pixWidth * scaleX)) / 2;
-                        } else {
-                            scaleY = scaleX;
-                            offsetY = (h - (pixHeight * scaleY)) / 2;
-                        }
-                        break;
-                    case ImageFitMode::NoScale:
-                        offsetX = (w - pixWidth) / 2;
-                        offsetY = (h - pixHeight) / 2;
-                        break;
-                    case ImageFitMode::Fill:
-                        scaleX = w / pixWidth;
-                        scaleY = h / pixHeight;
-                        break;
-                    case ImageFitMode::ScaleDown:
-                        scaleX = w / pixWidth;
-                        scaleY = h / pixHeight;
-                        if (scaleX < scaleY) {
-                            if (scaleX > 1) {
-                                scaleX = 1;
-                            }
-                            scaleY = scaleX;
-                        } else {
-                            if (scaleY > 1) {
-                                scaleY = 1;
-                            }
-                            scaleX = scaleY;
-                        }
+                    if (scaleX < scaleY) {
+                        scaleY = scaleX;
                         offsetY = (h - (pixHeight * scaleY)) / 2;
+                    } else {
+                        scaleX = scaleY;
                         offsetX = (w - (pixWidth * scaleX)) / 2;
-                        break;
-                    default:
-                        break;
-                }
+                    }
+                    break;
+                case ImageFitMode::Cover:
+                    scaleX = w / pixWidth;
+                    scaleY = h / pixHeight;
+
+                    if (scaleX < scaleY) {
+                        scaleX = scaleY;
+                        offsetX = (w - (pixWidth * scaleX)) / 2;
+                    } else {
+                        scaleY = scaleX;
+                        offsetY = (h - (pixHeight * scaleY)) / 2;
+                    }
+                    break;
+                case ImageFitMode::NoScale:
+                    offsetX = (w - pixWidth) / 2;
+                    offsetY = (h - pixHeight) / 2;
+                    break;
+                case ImageFitMode::Fill:
+                    scaleX = w / pixWidth;
+                    scaleY = h / pixHeight;
+                    break;
+                case ImageFitMode::ScaleDown:
+                    scaleX = w / pixWidth;
+                    scaleY = h / pixHeight;
+                    if (scaleX < scaleY) {
+                        if (scaleX > 1) {
+                            scaleX = 1;
+                        }
+                        scaleY = scaleX;
+                    } else {
+                        if (scaleY > 1) {
+                            scaleY = 1;
+                        }
+                        scaleX = scaleY;
+                    }
+                    offsetY = (h - (pixHeight * scaleY)) / 2;
+                    offsetX = (w - (pixWidth * scaleX)) / 2;
+                    break;
+                default:
+                    break;
             }
+        }
 
-            // Apply transformations
-            cairo_save(cairo);
-            cairo_rectangle(cairo, x, y, w, h);
-            cairo_clip(cairo);
+        // Apply transformations
+        cairo_save(cairo);
+        cairo_rectangle(cairo, x, y, w, h);
+        cairo_clip(cairo);
 
-            cairo_translate(cairo, x + offsetX, y + offsetY);
-            // Apply clipping to ensure we don't draw outside the destination rectangle
+        cairo_translate(cairo, x + offsetX, y + offsetY);
+        // Apply clipping to ensure we don't draw outside the destination rectangle
 
-            if (scaleX != 1.0 || scaleY != 1.0) {
-                cairo_scale(cairo, scaleX, scaleY);
-            }
+        if (scaleX != 1.0 || scaleY != 1.0) {
+            cairo_scale(cairo, scaleX, scaleY);
+        }
 
-            // Set the image as source and paint
+        // Set the image as source and paint
+        if (drawMasked) {
+            cairo_set_source_rgb(cairo, 1.0, 1.0, 1.0);
+            cairo_set_operator(cairo, CAIRO_OPERATOR_DIFFERENCE);
+            cairo_mask_surface(cairo, pixmap.GetSurface(), 0, 0);
+        } else {
             cairo_set_source_surface(cairo, pixmap.GetSurface(), 0, 0);
-
-            if (currentState.globalAlpha < 1.0f) {
-                cairo_paint_with_alpha(cairo, currentState.globalAlpha);
+            if (alpha < 1.0f) {
+                cairo_paint_with_alpha(cairo, alpha);
             } else {
                 cairo_paint(cairo);
             }
-
-            // Restore cairo state
-            cairo_restore(cairo);
-        } catch (const std::exception &e) {
-            debugOutput << "RenderContextCairo::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
+
+        // Restore cairo state
+        cairo_restore(cairo);
+    }
+
+    void RenderContextCairo::DrawPixmap(UCPixmap& pixmap, const Rect2Df& rect, ImageFitMode fitMode) {
+        DrawPixmapOrMask(cairo, pixmap, rect.x, rect.y, rect.width, rect.height, fitMode,
+                         currentState.globalAlpha, false, Colors::Transparent);
+    }
+
+    void RenderContextCairo::DrawMask(const Color& c, UCPixmap& mask, const Rect2Df& rect, ImageFitMode fitMode) {
+        DrawPixmapOrMask(cairo, mask, rect.x, rect.y, rect.width, rect.height, fitMode,
+                         currentState.globalAlpha, true, c);
     }
 
     void RenderContextCairo::DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Df &srcRect, const Rect2Df &destRect) {

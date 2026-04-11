@@ -63,13 +63,13 @@ namespace UltraCanvas {
         Color disabledTextColor = Colors::TextDisabled;
 
         Color borderColor = Colors::ButtonShadow;
-        float borderWidth = 1.0f;
+        double borderWidth = 1.0f;
 
         Color separatorColor = Color(200, 200, 200, 255);
-        float separatorWidth = 1.0f;
+        double separatorWidth = 1.0f;
 
         // Layout
-        float cornerRadius = 5.0f;
+        double cornerRadius = 5.0f;
         int paddingHorizontal = 10;
         int paddingVertical = 6;
         int iconSpacing = 6;
@@ -77,12 +77,12 @@ namespace UltraCanvas {
 
         // Typography
         std::string fontFamily;
-        float fontSize = 12.0f;
+        double fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
 
         // Animation
         bool enableAnimation = false;
-        float animationDuration = 0.15f;
+        double animationDuration = 0.15f;
 
         // Icons
         int iconSize = 16;

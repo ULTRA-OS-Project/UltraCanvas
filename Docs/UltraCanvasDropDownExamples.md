@@ -55,9 +55,9 @@ struct DropdownItem {
 struct DropdownStyle {
     // Button appearance
     Color normalColor = Colors::White;
-    Color hoverColor;
+    Color hoverBackgroundColor;
     Color pressedColor;
-    Color disabledColor;
+    Color disabledBackgroundColor;
     Color borderColor;
     Color focusBorderColor;
     
@@ -319,7 +319,7 @@ dropdown->AddItem("Exit");
 // Create custom style
 DropdownStyle customStyle;
 customStyle.normalColor = Color(250, 250, 250);
-customStyle.hoverColor = Color(230, 240, 255);
+customStyle.hoverBackgroundColor = Color(230, 240, 255);
 customStyle.itemHeight = 32.0f;
 customStyle.fontSize = 14.0f;
 customStyle.maxVisibleItems = 10;

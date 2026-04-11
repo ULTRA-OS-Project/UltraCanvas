@@ -46,7 +46,7 @@ namespace UltraCanvas {
 
         if (document.BackgroundColor.has_value()) {
             ctx->SetFillPaint(document.BackgroundColor.value());
-            ctx->FillRectangle(document.ViewBox.x, document.ViewBox.y, document.ViewBox.width, document.ViewBox.height);
+            ctx->FillRectangle(document.ViewBox);
         }
 
         for (const auto &layer: document.Layers) {
@@ -269,7 +269,8 @@ namespace UltraCanvas {
 
     void VectorRenderer::RenderImage(const VectorImage &image) {
         if (!image.Source.empty())
-            ctx->DrawImage(image.Source, image.Bounds.x, image.Bounds.y, image.Bounds.width, image.Bounds.height,
+            ctx->DrawImage(image.Source,
+                           Rect2Df(image.Bounds.x, image.Bounds.y, image.Bounds.width, image.Bounds.height),
                            ImageFitMode::Contain);
     }
 
@@ -467,7 +468,7 @@ namespace UltraCanvas {
         ctx->PushState();
         ctx->SetStrokePaint(options.DebugColor);
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(b.x, b.y, b.width, b.height);
+        ctx->DrawRectangle(b);
         ctx->PopState();
     }
 

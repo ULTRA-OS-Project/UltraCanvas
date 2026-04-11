@@ -167,8 +167,8 @@ namespace UltraCanvas {
             for (size_t i = 1; i < segmentRects.size(); i++) {
                 int x = segmentRects[i].x;
                 ctx->DrawLine(
-                        {x, bounds.y + style.borderWidth},
-                        {x, bounds.y + bounds.height - style.borderWidth}
+                        {static_cast<double>(x), bounds.y + style.borderWidth},
+                        {static_cast<double>(x), bounds.y + bounds.height - style.borderWidth}
                 );
             }
         }
@@ -269,7 +269,7 @@ namespace UltraCanvas {
                 ctx->Fill();
             } else {
                 // Middle segments - no rounding
-                ctx->FillRectangle(rect.x, rect.y, rect.width, rect.height);
+                ctx->FillRectangle(rect);
             }
         }
 
@@ -302,7 +302,7 @@ namespace UltraCanvas {
         if (segment.HasIcon()) {
             int iconX = contentX;
             int iconY = contentY - style.iconSize / 2;
-            ctx->DrawImage(segment.iconPath, iconX, iconY, style.iconSize, style.iconSize, ImageFitMode::Contain);
+            ctx->DrawImage(segment.iconPath, Rect2Df(iconX, iconY, style.iconSize, style.iconSize), ImageFitMode::Contain);
             contentX += style.iconSize + style.iconSpacing;
         }
 

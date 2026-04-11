@@ -381,7 +381,7 @@ namespace UltraCanvas {
 
         // Shadow
         ctx->SetFillPaint(Color(0, 0, 0, 40));
-        ctx->FillRectangle(bounds.x + 4, bounds.y + 4, bounds.width, bounds.height);
+        ctx->FillRectangle(Rect2Df(bounds.x + 4, bounds.y + 4, bounds.width, bounds.height));
 
         // Background
         ctx->SetFillPaint(style.backgroundColor);

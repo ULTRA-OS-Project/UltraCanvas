@@ -163,6 +163,7 @@ namespace UltraCanvas {
             imgDataSize = 0;
         }
     }
+    
     std::shared_ptr<UCImageRaster> UCImageRaster::Get(const std::string &imagePath) {
         std::shared_ptr<UCImageRaster> im = g_ImagesCache.GetFromCache(imagePath);
         if (!im) {

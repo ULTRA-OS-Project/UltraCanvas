@@ -167,13 +167,13 @@ namespace UltraCanvas {
 
                 // Draw the bar
                 ctx->SetFillPaint(barColor);
-                ctx->FillRectangle(barX, barY, actualBarWidth, barHeight);
+                ctx->FillRectangle(Rect2Df(barX, barY, actualBarWidth, barHeight));
 
                 // Draw border if enabled
                 if (barBorderWidth > 0) {
                     ctx->SetStrokePaint(barBorderColor);
                     ctx->SetStrokeWidth(barBorderWidth);
-                    ctx->DrawRectangle(barX, barY, actualBarWidth, barHeight);
+                    ctx->DrawRectangle(Rect2Df(barX, barY, actualBarWidth, barHeight));
                 }
             } else {
                 // Use original numeric positioning
@@ -194,12 +194,12 @@ namespace UltraCanvas {
                 }
 
                 ctx->SetFillPaint(barColor);
-                ctx->FillRectangle(barX, topPos.y, actualBarWidth, barHeight);
+                ctx->FillRectangle(Rect2Df(barX, topPos.y, actualBarWidth, barHeight));
 
                 if (barBorderWidth > 0) {
                     ctx->SetStrokePaint(barBorderColor);
                     ctx->SetStrokeWidth(barBorderWidth);
-                    ctx->DrawRectangle(barX, topPos.y, actualBarWidth, barHeight);
+                    ctx->DrawRectangle(Rect2Df(barX, topPos.y, actualBarWidth, barHeight));
                 }
             }
         }
@@ -260,8 +260,8 @@ namespace UltraCanvas {
 
                 case PointShape::Square: {
                     float halfSize = pointSize;
-                    ctx->FillRectangle(screenPos.x - halfSize, screenPos.y - halfSize,
-                                       halfSize * 2, halfSize * 2);
+                    ctx->FillRectangle(Rect2Df(screenPos.x - halfSize, screenPos.y - halfSize,
+                                       halfSize * 2, halfSize * 2));
                     break;
                 }
 

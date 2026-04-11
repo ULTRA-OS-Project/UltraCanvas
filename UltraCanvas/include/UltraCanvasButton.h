@@ -1,7 +1,7 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
-// Version: 2.3.1
-// Last Modified: 2025-01-15
+// Version: 2.3.2
+// Last Modified: 2026-04-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -41,7 +41,7 @@ namespace UltraCanvas {
         bool horizontal = true;
 
         // Section proportions (0.0 to 1.0)
-        float primaryRatio = 0.75f;
+        double primaryRatio = 0.75f;
 
         // Secondary section text
         std::string secondaryText;
@@ -86,24 +86,20 @@ namespace UltraCanvas {
         Color disabledTextColor = Colors::TextDisabled;
 
         Color borderColor = Colors::ButtonShadow;
-        float borderWidth = 1.0f;
-
-        // Icon colors (tinting)
-        Color normalIconColor = Colors::White;  // White = no tinting
-        Color hoverIconColor = Colors::White;
-        Color pressedIconColor = Colors::White;
-        Color disabledIconColor = Color(255, 255, 255, 128);  // Semi-transparent
+        double borderWidth = 1.0f;
 
         // Text styling
         FontStyle fontStyle;
 
         std::string fontFamily;
-        float fontSize = 12.0f;
+        double fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
         TextAlignment textAlign = TextAlignment::Center;
 
         int iconSpacing = 4;  // Space between icon and text
-        float cornerRadius = 3.0f;
+        double cornerRadius = 3.0f;
+
+        bool useIconAsMask = false;
 
         // Effects
         bool hasShadow = false;
@@ -178,6 +174,8 @@ namespace UltraCanvas {
         void SetIcon(const std::string& iconPath);
         void SetIconPosition(ButtonIconPosition position);
         void SetIconSize(int width, int height);
+        void SetUseIconAsMask(bool useAsMask);
+        void SetIconMaskColor(const Color& c);
         bool HasIcon() const { return icon != nullptr; }
 
         // ===== STYLING METHODS =====
@@ -189,8 +187,6 @@ namespace UltraCanvas {
                            const Color& pressed, const Color& disabled);
         void SetTextColors(const Color& normal, const Color& hover);
         void SetTextColors(const Color& normal);
-        void SetIconColors(const Color& normal, const Color& hover,
-                           const Color& pressed, const Color& disabled);
         void SetBorder(float width, const Color& color);
         void SetFont(const std::string& family, float size,
                      FontWeight weight = FontWeight::Normal);
@@ -241,7 +237,7 @@ namespace UltraCanvas {
         void DrawSecondaryIcon(IRenderContext* ctx);  // New method
         void DrawText(IRenderContext* ctx);
         void DrawSplitButton(IRenderContext* ctx);
-        void GetCurrentColors(Color& bgColor, Color& textColor, Color& iconColor) const;
+        void GetCurrentColors(Color& bgColor, Color& textColor) const;
         void GetSplitColors(Color& primaryBg, Color& primaryText, Color& secondaryBg, Color& secondaryText);
         void GetSecondaryIconColor(Color& iconColor) const;  // New method
         void Click(const UCEvent& event);  // Helper for click handling

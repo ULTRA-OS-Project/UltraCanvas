@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.0.8
-// Last Modified: 2026-04-05
+// Version: 2.0.9
+// Last Modified: 2026-04-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -64,6 +64,27 @@ namespace {
         }
         return "/tmp/TextEditor/";
 #endif
+    }
+
+    // Build a Flat-style ToolbarAppearance tinted for either light or dark mode.
+    // NOTE: Icons in media/icons/texter/*.svg are drawn as-is — icon tinting is a
+    // framework TODO (see UltraCanvas/core/UltraCanvasButton.cpp DrawIcon). Existing
+    // dark-ink icons will render dark-on-dark in dark mode until that is addressed,
+    // either by shipping a light-variant icon set or implementing tinting.
+    ToolbarAppearance BuildToolbarAppearance(bool dark) {
+        if (!dark) {
+            return ToolbarAppearance::Flat();
+        }
+        ToolbarAppearance app;
+        app.style = ToolbarStyle::Flat;
+        app.hasShadow = false;
+        app.foregroundColor = Colors::White; // matches toolbarContainer dark fg
+        app.backgroundColor = Color(40,  40,  40,  255); // matches toolbarContainer dark bg
+        app.separatorColor  = Color(60,  60,  60,  255); // aligns with dropdown borderColor
+        app.hoverBackgroundColor      = Color(65, 65, 65, 255);
+        app.activeBackgroundColor     = Color(80, 80, 80, 255);
+        app.disabledBackgroundColor   = Color(55, 55, 55, 255);
+        return app;
     }
 } // anonymous namespace
 
@@ -745,24 +766,11 @@ namespace {
             .AddButton("md-h5", "H5", "", [this]() { InsertMarkdownSnippet("##### ", "", "Heading"); headingSubToolbar->SetVisible(false); })
             .Build();
 
-        // Style buttons with decreasing font sizes to reflect heading hierarchy
-        struct { const char* id; float fontSize; FontWeight weight; } headingStyles[] = {
-            {"md-h1", 16.0f, FontWeight::Bold},
-            {"md-h2", 14.0f, FontWeight::Bold},
-            {"md-h3", 12.0f, FontWeight::Normal},
-            {"md-h4", 11.0f, FontWeight::Normal},
-            {"md-h5", 10.0f, FontWeight::Normal},
-        };
-        for (auto& s : headingStyles) {
-            auto item = headingSubToolbar->GetItem(s.id);
-            if (item) {
-                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
-                if (btn) {
-                    btn->SetFont("", s.fontSize, s.weight);
-                    btn->SetAcceptsFocus(false);
-                }
-            }
-        }
+        // Style buttons with decreasing font sizes to reflect heading hierarchy.
+        // Shared helper is reused by ApplyThemeToAllDocuments() so theme toggles
+        // can reassert these fonts (UltraCanvasToolbarButton::UpdateAppearance()
+        // clobbers fontSize on every SetAppearance call).
+        ApplyHeadingButtonStyles(isDarkTheme);
         headingSubToolbar->SetVisible(false);
 
         markdownToolbar->SetVisible(false);
@@ -3099,6 +3107,28 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
 // ===== THEME MANAGEMENT =====
 
+    void UltraCanvasTextEditor::ApplyHeadingButtonStyles(bool dark) {
+        if (!headingSubToolbar) return;
+        struct { const char* id; float fontSize; FontWeight weight; } headingStyles[] = {
+            {"md-h1", 16.0f, FontWeight::Bold},
+            {"md-h2", 14.0f, FontWeight::Bold},
+            {"md-h3", 12.0f, FontWeight::Normal},
+            {"md-h4", 11.0f, FontWeight::Normal},
+            {"md-h5", 10.0f, FontWeight::Normal},
+        };
+        Color textColor     = dark ? Color(220, 220, 220, 255) : Color( 40,  40,  40, 255);
+        Color disabledColor = dark ? Color(110, 110, 110, 255) : Color(150, 150, 150, 255);
+        for (auto& s : headingStyles) {
+            auto item = headingSubToolbar->GetItem(s.id);
+            if (!item) continue;
+            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(item->GetWidget());
+            if (!btn) continue;
+            btn->SetFont("", s.fontSize, s.weight);
+            btn->SetTextColors(textColor, textColor, textColor, disabledColor);
+            btn->SetAcceptsFocus(false);
+        }
+    }
+
     void UltraCanvasTextEditor::ApplyThemeToDocument(int docIndex) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
             return;
@@ -3158,6 +3188,15 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (toolbarContainer) {
                 toolbarContainer->SetBackgroundColor(Color(40, 40, 40, 255));
             }
+            {
+                ToolbarAppearance app = BuildToolbarAppearance(true);
+                if (toolbar)           toolbar->SetAppearance(app);
+                if (markdownToolbar)   markdownToolbar->SetAppearance(app);
+                if (headingSubToolbar) headingSubToolbar->SetAppearance(app);
+                // Re-assert heading font sizes/colors AFTER SetAppearance, which
+                // otherwise clobbers fontSize via UltraCanvasToolbarButton::UpdateAppearance.
+                ApplyHeadingButtonStyles(true);
+            }
             if (tabContainer) {
                 tabContainer->tabBarColor        = Color(40, 40, 40, 255);
                 tabContainer->activeTabColor     = Color(60, 60, 60, 255);
@@ -3191,6 +3230,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             applyLightDropdownStyle(languageDropdown);
             if (toolbarContainer) {
                 toolbarContainer->SetBackgroundColor(Color(240, 240, 240, 255));
+            }
+            {
+                ToolbarAppearance app = BuildToolbarAppearance(false);
+                if (toolbar)           toolbar->SetAppearance(app);
+                if (markdownToolbar)   markdownToolbar->SetAppearance(app);
+                if (headingSubToolbar) headingSubToolbar->SetAppearance(app);
+                // Re-assert heading font sizes/colors AFTER SetAppearance (see dark branch).
+                ApplyHeadingButtonStyles(false);
             }
             if (tabContainer) {
                 tabContainer->tabBarColor = Color(240, 240, 240, 255);
@@ -3975,7 +4022,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         ctx->PushState();
         // Dark translucent background
         ctx->SetFillPaint(Color(0, 0, 0, 100));
-        ctx->FillRectangle(0, 0, w, h);
+        ctx->FillRectangle(Rect2Df(0, 0, w, h));
 
         // Central drop zone indicator
         int zoneMargin = 40;
@@ -4016,17 +4063,17 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // Document body
         ctx->SetFillPaint(accentColor);
-        ctx->FillRectangle(iconCenterX - iconW / 2, iconCenterY - iconH / 2,
-                        iconW, iconH);
+        ctx->FillRectangle(Rect2Df(iconCenterX - iconW / 2, iconCenterY - iconH / 2,
+                        iconW, iconH));
 
         // Document fold corner (top-right triangle overlay)
         int foldSize = 12;
         Color bgColor = isDarkTheme ? Color(0, 0, 0, 100) : Color(0, 0, 0, 100);
         ctx->SetFillPaint(bgColor);
         // Approximate triangle with a small rectangle overlay at top-right
-        ctx->FillRectangle(iconCenterX + iconW / 2 - foldSize,
+        ctx->FillRectangle(Rect2Df(iconCenterX + iconW / 2 - foldSize,
                         iconCenterY - iconH / 2,
-                        foldSize, foldSize);
+                        foldSize, foldSize));
 
         // Lines on document (simulate text)
         Color lineColor = isDarkTheme ? Color(30, 30, 30, 180) : Color(255, 255, 255, 180);
@@ -4034,7 +4081,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         int lineY = iconCenterY - iconH / 2 + 18;
         for (int i = 0; i < 4; i++) {
             int lineW = (i == 3) ? iconW - 20 : iconW - 12;
-            ctx->FillRectangle(iconCenterX - iconW / 2 + 6, lineY, lineW, 2);
+            ctx->FillRectangle(Rect2Df(iconCenterX - iconW / 2 + 6, lineY, lineW, 2));
             lineY += 8;
         }
 

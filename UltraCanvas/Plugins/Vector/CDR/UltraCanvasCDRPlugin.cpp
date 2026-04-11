@@ -1301,9 +1301,9 @@ namespace UltraCanvas {
             if (image && image->IsValid()) {
                 if (hasTransform) {
                     // Draw at origin since we translated
-                    ctx->DrawImage(*image, 0, 0, imgW, imgH, ImageFitMode::Fill);
+                    ctx->DrawImage(*image, Rect2Df(0, 0, imgW, imgH), ImageFitMode::Fill);
                 } else {
-                    ctx->DrawImage(*image, imgX, imgY, imgW, imgH, ImageFitMode::Fill);
+                    ctx->DrawImage(*image, Rect2Df(imgX, imgY, imgW, imgH), ImageFitMode::Fill);
                 }
             } else {
                 // Fallback placeholder if image loading fails

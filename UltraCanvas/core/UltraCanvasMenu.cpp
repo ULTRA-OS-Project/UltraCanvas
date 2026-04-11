@@ -723,15 +723,15 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::RenderIcon(const std::string &iconPath, const Point2Di &position, IRenderContext *ctx) {
         // Would implement icon rendering based on file type
-        ctx->DrawImage(iconPath, position.x, position.y, style.iconSize, style.iconSize, ImageFitMode::Contain);
+        ctx->DrawImage(iconPath, Rect2Df(position.x, position.y, style.iconSize, style.iconSize), ImageFitMode::Contain);
     }
 
 
     void UltraCanvasMenu::RenderShadow(IRenderContext *ctx) {
         Rect2Di bounds = GetBounds();
         ctx->SetStrokePaint(style.shadowColor);
-        ctx->DrawRectangle(bounds.x + style.shadowOffset.x, bounds.y + style.shadowOffset.y, bounds.width,
-                           bounds.height);
+        ctx->DrawRectangle(Rect2Df(bounds.x + style.shadowOffset.x, bounds.y + style.shadowOffset.y, bounds.width,
+                           bounds.height));
     }
 
     int UltraCanvasMenu::GetItemUnderPointer(const UCEvent & ev) const {

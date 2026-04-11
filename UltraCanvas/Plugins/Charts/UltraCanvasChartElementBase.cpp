@@ -111,12 +111,12 @@ namespace UltraCanvas {
 
         // Draw plot area background using existing functions
         ctx->SetFillPaint(plotAreaColor);
-        ctx->FillRectangle(cachedPlotArea.x, cachedPlotArea.y, cachedPlotArea.width, cachedPlotArea.height);
+        ctx->FillRectangle(cachedPlotArea.ToRect2D());
 
         // Draw plot area border using existing functions
         ctx->SetStrokePaint(Color(180, 180, 180, 255));
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(cachedPlotArea.x, cachedPlotArea.y, cachedPlotArea.width, cachedPlotArea.height);
+        ctx->DrawRectangle(cachedPlotArea.ToRect2D());
 
         // Draw grid if enabled using existing functions
         if (showGrid) {
@@ -411,7 +411,7 @@ namespace UltraCanvas {
     void UltraCanvasChartElementBase::DrawEmptyState(IRenderContext* ctx) {
         // Use existing IRenderContext functions
         ctx->SetFillPaint(Color(240, 240, 240, 255));
-        ctx->FillRectangle(GetX(), GetY(), GetWidth(), GetHeight());
+        ctx->FillRectangle(Rect2Df(GetX(), GetY(), GetWidth(), GetHeight()));
 
         ctx->SetTextPaint(Color(128, 128, 128, 255));
         ctx->SetFontSize(14.0f);

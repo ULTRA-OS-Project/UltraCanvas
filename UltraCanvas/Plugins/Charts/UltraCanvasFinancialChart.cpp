@@ -102,7 +102,7 @@ namespace UltraCanvas {
 
         // Draw overall background using existing functions
         ctx->SetFillPaint(backgroundColor);
-        ctx->FillRectangle(GetX(), GetY(), GetWidth(), GetHeight());
+        ctx->FillRectangle(Rect2Df(GetX(), GetY(), GetWidth(), GetHeight()));
 
         // Draw title using existing functions
         if (!chartTitle.empty()) {
@@ -187,15 +187,13 @@ namespace UltraCanvas {
 
     void UltraCanvasFinancialChartElement::DrawPriceChartBackground(IRenderContext *ctx) {
         ctx->SetFillPaint(plotAreaColor);
-        ctx->FillRectangle(priceRenderArea.x, priceRenderArea.y,
-                           priceRenderArea.width, priceRenderArea.height);
+        ctx->FillRectangle(priceRenderArea.ToRect2D());
     }
 
     void UltraCanvasFinancialChartElement::DrawPriceChartBorder(IRenderContext *ctx) {
         ctx->SetStrokePaint(Color(150, 150, 150, 255));
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(priceRenderArea.x, priceRenderArea.y,
-                           priceRenderArea.width, priceRenderArea.height);
+        ctx->DrawRectangle(priceRenderArea.ToRect2D());
     }
 
     void UltraCanvasFinancialChartElement::DrawPriceChartGrid(IRenderContext *ctx) {
@@ -295,15 +293,13 @@ namespace UltraCanvas {
 
     void UltraCanvasFinancialChartElement::DrawVolumeChartBackground(IRenderContext *ctx) {
         ctx->SetFillPaint(volumeChartBackgroundColor);
-        ctx->FillRectangle(volumeRenderArea.x, volumeRenderArea.y,
-                           volumeRenderArea.width, volumeRenderArea.height);
+        ctx->FillRectangle(volumeRenderArea.ToRect2D());
     }
 
     void UltraCanvasFinancialChartElement::DrawVolumeChartBorder(IRenderContext *ctx) {
         ctx->SetStrokePaint(volumeChartBorderColor);
         ctx->SetStrokeWidth(1.5f);
-        ctx->DrawRectangle(volumeRenderArea.x, volumeRenderArea.y,
-                           volumeRenderArea.width, volumeRenderArea.height);
+        ctx->DrawRectangle(volumeRenderArea.ToRect2D());
     }
 
     void UltraCanvasFinancialChartElement::DrawVolumeGrid(IRenderContext *ctx) {
@@ -621,7 +617,7 @@ namespace UltraCanvas {
                 float barHeight = (financialPoint.volume / maxVolume) * volumeRenderArea.height;
                 float y = volumeRenderArea.GetBottom() - barHeight;
 
-                ctx->FillRectangle(x - actualBarWidth/2, y, actualBarWidth, barHeight);
+                ctx->FillRectangle(Rect2Df(x - actualBarWidth/2, y, actualBarWidth, barHeight));
             }
         }
     }
@@ -759,9 +755,9 @@ namespace UltraCanvas {
         if (bodyHeight < 1.0f) bodyHeight = 1.0f; // Minimum visible height
 
         if (isBullish) {
-            ctx->FillRectangle(x - candleWidth/2, bodyTop, candleWidth, bodyHeight);
+            ctx->FillRectangle(Rect2Df(x - candleWidth/2, bodyTop, candleWidth, bodyHeight));
         } else {
-            ctx->DrawRectangle(x - candleWidth/2, bodyTop, candleWidth, bodyHeight);
+            ctx->DrawRectangle(Rect2Df(x - candleWidth/2, bodyTop, candleWidth, bodyHeight));
         }
     }
 

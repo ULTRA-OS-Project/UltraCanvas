@@ -1,7 +1,7 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
-// Version: 2.3.1
-// Last Modified: 2025-01-15
+// Version: 2.3.2
+// Last Modified: 2026-04-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
@@ -109,7 +109,12 @@ namespace UltraCanvas {
         iconHeight = height;
         RequestUpdateGeometry();
     }
-
+    
+    void UltraCanvasButton::SetUseIconAsMask(bool useAsMask) {
+        style.useIconAsMask = useAsMask;
+        RequestRedraw();
+    }
+    
 // ===== STYLING METHODS =====
     void UltraCanvasButton::SetColors(const Color& normal, const Color& hover,
                                       const Color& pressed, const Color& disabled) {
@@ -158,15 +163,6 @@ namespace UltraCanvas {
         style.hoverTextColor = normal.Darken(0.1);
         style.pressedTextColor = normal.Darken(0.2);
         style.disabledTextColor = normal.Lighten(0.3);
-        RequestRedraw();
-    }
-
-    void UltraCanvasButton::SetIconColors(const Color& normal, const Color& hover,
-                                          const Color& pressed, const Color& disabled) {
-        style.normalIconColor = normal;
-        style.hoverIconColor = hover;
-        style.pressedIconColor = pressed;
-        style.disabledIconColor = disabled;
         RequestRedraw();
     }
 
@@ -508,27 +504,23 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING HELPERS =====
-    void UltraCanvasButton::GetCurrentColors(Color& bgColor, Color& textColor, Color& iconColor) const {
+    void UltraCanvasButton::GetCurrentColors(Color& bgColor, Color& textColor) const {
         switch (GetPrimaryState()) {
             case ElementState::Hovered:
                 bgColor = style.hoverColor;
                 textColor = style.hoverTextColor;
-                iconColor = style.hoverIconColor;
                 break;
             case ElementState::Pressed:
                 bgColor = style.pressedColor;
                 textColor = style.pressedTextColor;
-                iconColor = style.pressedIconColor;
                 break;
             case ElementState::Disabled:
                 bgColor = style.disabledColor;
                 textColor = style.disabledTextColor;
-                iconColor = style.disabledIconColor;
                 break;
             default:
                 bgColor = style.normalColor;
                 textColor = style.normalTextColor;
-                iconColor = style.normalIconColor;
                 break;
         }
     }
@@ -536,8 +528,7 @@ namespace UltraCanvas {
     void UltraCanvasButton::GetSplitColors(Color& primaryBg, Color& primaryText,
                                            Color& secondaryBg, Color& secondaryText)  {
         // Primary section uses normal button colors
-        Color picon;
-        GetCurrentColors(primaryBg, primaryText, picon);
+        GetCurrentColors(primaryBg, primaryText);
 
         // Secondary section colors based on state
         const SplitButtonStyle& split = style.splitStyle;
@@ -583,22 +574,25 @@ namespace UltraCanvas {
     void UltraCanvasButton::DrawIcon(IRenderContext* ctx) {
         if (!HasIcon() || iconRect.width <= 0) return;
 
-        Color bgColor, textColor, iconColor;
-        GetCurrentColors(bgColor, textColor, iconColor);
-
-        // Apply icon tinting if needed
-        if (iconColor != Colors::White) {
-            // TODO: Apply color tinting to icon
-        }
+        Color bgColor, textColor;
+        GetCurrentColors(bgColor, textColor);
 
         // Dim icon when disabled
         if (GetPrimaryState() == ElementState::Disabled) {
             ctx->PushState();
             ctx->SetAlpha(0.35f);
-            ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+            if (style.useIconAsMask) {
+                ctx->DrawMask(textColor, *icon.get(), iconRect, ImageFitMode::Contain);
+            } else {
+                ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+            }
             ctx->PopState();
         } else {
-            ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+            if (style.useIconAsMask) {
+                ctx->DrawMask(textColor, *icon.get(), iconRect, ImageFitMode::Contain);
+            } else {
+                ctx->DrawImage(*icon.get(), iconRect, ImageFitMode::Contain);
+            }
         }
     }
 
@@ -617,18 +611,26 @@ namespace UltraCanvas {
         if (GetPrimaryState() == ElementState::Disabled) {
             ctx->PushState();
             ctx->SetAlpha(0.35f);
-            ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+            if (style.useIconAsMask) {
+                ctx->DrawMask(iconColor, *style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+            } else {
+                ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+            }
             ctx->PopState();
         } else {
-            ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+            if (style.useIconAsMask) {
+                ctx->DrawMask(iconColor, *style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+            } else {
+                ctx->DrawImage(*style.splitStyle.secondaryIcon.get(), secondaryIconRect, ImageFitMode::Contain);
+            }
         }
     }
 
     void UltraCanvasButton::DrawText(IRenderContext* ctx) {
         if (text.empty() || textRect.width <= 0) return;
 
-        Color bgColor, textColor, iconColor;
-        GetCurrentColors(bgColor, textColor, iconColor);
+        Color bgColor, textColor;
+        GetCurrentColors(bgColor, textColor);
 
         ctx->SetTextPaint(textColor);
         ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
@@ -813,8 +815,8 @@ namespace UltraCanvas {
             DrawSplitButton(ctx);
         } else {
             // Regular button rendering
-            Color bgColor, textColor, iconColor;
-            GetCurrentColors(bgColor, textColor, iconColor);
+            Color bgColor, textColor;
+            GetCurrentColors(bgColor, textColor);
 
             Rect2Di bounds = GetBounds();
 

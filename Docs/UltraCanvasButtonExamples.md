@@ -169,9 +169,9 @@ The ButtonStyle structure contains appearance settings:
 struct ButtonStyle {
     // Colors for different states
     Color normalColor;
-    Color hoverColor;
+    Color hoverBackgroundColor;
     Color pressedColor;
-    Color disabledColor;
+    Color disabledBackgroundColor;
     
     // Text colors for different states
     Color normalTextColor;

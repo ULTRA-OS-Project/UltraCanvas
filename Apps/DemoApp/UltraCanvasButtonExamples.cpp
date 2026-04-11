@@ -183,7 +183,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(iconTopBtn);
 
             // Icon Bottom
-            auto iconBottomBtn = CreateButton("IconBottom", 136, 480, yOffset, 90, 62, "Download");
+            auto iconBottomBtn = CreateButton("IconBottom", 136, 480, yOffset, 100, 62, "Download");
             iconBottomBtn->SetIcon(GetResourcesDir() + "media/icons/download_34px.png");
             iconBottomBtn->SetIconPosition(ButtonIconPosition::Bottom);
             iconBottomBtn->SetIconSize(41,34);
@@ -192,7 +192,7 @@ namespace UltraCanvas {
             };
             mainButtonsContainer->AddChild(iconBottomBtn);
 
-            auto iconRightBtn2 = CreateButton("IconRight", 133, 580, yOffset, 250, 35, "Continue with UltraCanvas");
+            auto iconRightBtn2 = CreateButton("IconRight", 133, 590, yOffset, 260, 35, "Continue with UltraCanvas");
             iconRightBtn2->SetIcon(GetResourcesDir() + "media/icons/ultracanvas_20px.png");
             iconRightBtn2->SetIconSize(20, 20);
             iconRightBtn2->SetIconPosition(ButtonIconPosition::Left);

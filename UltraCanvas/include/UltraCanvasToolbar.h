@@ -116,12 +116,17 @@ namespace UltraCanvas {
     struct ToolbarAppearance {
         // Colors
         ToolbarStyle style = ToolbarStyle::Standard;
-
+        
+        Color foregroundColor = Colors::Black;
         Color backgroundColor = Color(245, 245, 245, 255);
         Color separatorColor = Color(200, 200, 200, 255);
-        Color hoverColor = Color(225, 235, 255, 255);
-        Color activeColor = Color(204, 228, 247, 255);
-        Color disabledColor = Color(220, 220, 220, 255);
+        Color hoverBackgroundColor = Color(225, 235, 255, 255);
+        Color activeBackgroundColor = Color(204, 228, 247, 255);
+        Color disabledBackgroundColor = Color(220, 220, 220, 255);
+
+//        Color hoverForegroundColor = Colors::Black;
+//        Color activeForegroundColor = Colors::Black;
+//        Color disabledForegroundColor = Color(80,80,80, 255);
 
         // Spacing
         float itemSpacing = 4.0f;
@@ -158,7 +163,7 @@ namespace UltraCanvas {
             app.style = ToolbarStyle::Flat;
             app.hasShadow = false;
             app.backgroundColor = Color(240, 240, 240, 255);
-            app.hoverColor = Color(220, 220, 255);
+            app.hoverBackgroundColor = Color(220, 220, 255);
             return app;
         }
 

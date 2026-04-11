@@ -26,8 +26,9 @@ namespace UltraCanvas {
         std::string iconPath = GetStringValue(model->GetData(idx, ListDataRole::DecorationRole));
         if (!iconPath.empty()) {
             int iconY = cellY + (cellH - iconSize) / 2;
-            ctx->DrawImage(iconPath, static_cast<float>(textX), static_cast<float>(iconY),
-                          static_cast<float>(iconSize), static_cast<float>(iconSize),
+            ctx->DrawImage(iconPath,
+                          Rect2Df(static_cast<float>(textX), static_cast<float>(iconY),
+                                  static_cast<float>(iconSize), static_cast<float>(iconSize)),
                           ImageFitMode::Contain);
             textX += iconSize + iconSpacing;
             availableWidth -= (iconSize + iconSpacing);

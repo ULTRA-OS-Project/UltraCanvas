@@ -1371,10 +1371,10 @@ struct MarkdownInlineRenderer {
 
                 // Draw image placeholder/thumbnail
                 ctx->SetFillPaint(mdStyle.imagePlaceholderBackground);
-                ctx->FillRectangle(currentX, imgY, imgSize, imgSize);
+                ctx->FillRectangle(Rect2Df(currentX, imgY, imgSize, imgSize));
                 ctx->SetStrokePaint(mdStyle.imagePlaceholderBorderColor);
                 ctx->SetStrokeWidth(1.0f);
-                ctx->DrawRectangle(currentX, imgY, imgSize, imgSize);
+                ctx->DrawRectangle(Rect2Df(currentX, imgY, imgSize, imgSize));
 
                 // Draw small icon indicator in center
                 int iconCenterX = currentX + imgSize / 2;
@@ -1625,7 +1625,7 @@ struct MarkdownInlineRenderer {
             // --- Highlight background ---
             if (elem.isHighlight) {
                 ctx->SetFillPaint(mdStyle.highlightBackground);
-                ctx->FillRectangle(currentX - 1, y, textWidth + 2, lineHeight);
+                ctx->FillRectangle(Rect2Df(currentX - 1, y, textWidth + 2, lineHeight));
             }
 
             // --- Code background ---
@@ -1757,8 +1757,9 @@ struct MarkdownInlineRenderer {
 
                 // Draw the undo SVG icon
                 std::string iconPath = GetResourcesDir() + "media/icons/texter/undo.svg";
-                ctx->DrawImage(iconPath, static_cast<float>(iconX), static_cast<float>(iconY),
-                               static_cast<float>(iconSize), static_cast<float>(iconSize),
+                ctx->DrawImage(iconPath,
+                               Rect2Df(static_cast<float>(iconX), static_cast<float>(iconY),
+                                       static_cast<float>(iconSize), static_cast<float>(iconSize)),
                                ImageFitMode::Contain);
 
                 // Register hit rect for click/hover interaction
@@ -1860,12 +1861,12 @@ struct MarkdownInlineRenderer {
 
             ctx->SetStrokePaint(mdStyle.checkboxBorderColor);
             ctx->SetStrokeWidth(1.0f);
-            ctx->DrawRectangle(cbX, cbY, cbSize, cbSize);
+            ctx->DrawRectangle(Rect2Df(cbX, cbY, cbSize, cbSize));
 
             if (isTaskChecked) {
                 // Fill checkbox
                 ctx->SetFillPaint(mdStyle.checkboxCheckedColor);
-                ctx->FillRectangle(cbX + 1, cbY + 1, cbSize - 2, cbSize - 2);
+                ctx->FillRectangle(Rect2Df(cbX + 1, cbY + 1, cbSize - 2, cbSize - 2));
 
                 // Draw checkmark
                 ctx->SetStrokePaint(mdStyle.checkboxCheckmarkColor);
@@ -1932,13 +1933,13 @@ struct MarkdownInlineRenderer {
 
         // Full background covers from x to x+width for all nesting levels
         ctx->SetFillPaint(mdStyle.quoteBackgroundColor);
-        ctx->FillRectangle(x, y, width, lineHeight);
+        ctx->FillRectangle(Rect2Df(x, y, width, lineHeight));
 
         // Draw one vertical bar per nesting level, each offset by barStride
         for (int d = 0; d < depth; d++) {
             int barX = x + d * barStride;
             ctx->SetFillPaint(mdStyle.quoteBarColor);
-            ctx->FillRectangle(barX, y, mdStyle.quoteBarWidth, lineHeight);
+            ctx->FillRectangle(Rect2Df(barX, y, mdStyle.quoteBarWidth, lineHeight));
         }
 
         // Text starts after the outermost bar + gap + per-level indent
@@ -1961,7 +1962,7 @@ struct MarkdownInlineRenderer {
         ctx->SetFillPaint(mdStyle.codeBlockBackgroundColor);
         ctx->SetStrokePaint(mdStyle.codeBlockBorderColor);
         ctx->SetStrokeWidth(0.5);
-        ctx->FillRectangle(x, y, width, lineHeight);
+        ctx->FillRectangle(Rect2Df(x, y, width, lineHeight));
 
         // Draw left/right border accent
         ctx->DrawLine({x, y}, { x, y + lineHeight});
@@ -1994,7 +1995,7 @@ struct MarkdownInlineRenderer {
         ctx->SetFillPaint(mdStyle.codeBlockBackgroundColor);
         ctx->SetStrokePaint(mdStyle.codeBlockBorderColor);
         ctx->SetStrokeWidth(0.5);
-        ctx->FillRectangle(x, y, width, lineHeight);
+        ctx->FillRectangle(Rect2Df(x, y, width, lineHeight));
 
         // Draw left/right border accent
         ctx->DrawLine({x, y}, { x, y + lineHeight});
@@ -2087,7 +2088,7 @@ struct MarkdownInlineRenderer {
         ctx->SetFillPaint(mdStyle.codeBlockBackgroundColor);
         ctx->SetStrokePaint(mdStyle.codeBlockBorderColor);
         ctx->SetStrokeWidth(0.5);
-        ctx->FillRectangle(x, bgY, width, bgHeight);
+        ctx->FillRectangle(Rect2Df(x, bgY, width, bgHeight));
         ctx->DrawLine({x, isOpeningFence ? bgY : bgY + bgHeight}, { x + width, isOpeningFence ? bgY : bgY + bgHeight});
         ctx->DrawLine({x, bgY}, { x, bgY + bgHeight});
         ctx->DrawLine({x + width, bgY}, { x + width, bgY + bgHeight});
@@ -2570,7 +2571,7 @@ struct MarkdownInlineRenderer {
         // Draw header background
         if (isHeaderRow) {
             ctx->SetFillPaint(mdStyle.tableHeaderBackground);
-            ctx->FillRectangle(x, y, totalTableWidth, rowHeight);
+            ctx->FillRectangle(Rect2Df(x, y, totalTableWidth, rowHeight));
         }
 
         // Draw top border line (for all rows)
@@ -2676,7 +2677,7 @@ struct MarkdownInlineRenderer {
 
         // Fill separator area with header background color (visual continuation)
         ctx->SetFillPaint(mdStyle.tableHeaderBackground);
-        ctx->FillRectangle(x, y, totalTableWidth, lineHeight);
+        ctx->FillRectangle(Rect2Df(x, y, totalTableWidth, lineHeight));
 
         // Draw bottom border of the unified header block
         ctx->SetStrokePaint(mdStyle.tableBorderColor);
@@ -3418,7 +3419,7 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                 context->SetFillPaint(mdStyle.codeBlockBackgroundColor);
                 context->SetStrokePaint(mdStyle.codeBlockBorderColor);
                 context->SetStrokeWidth(0.5);
-                context->FillRectangle(x, textY, visibleTextArea.width, computedLineHeight);
+                context->FillRectangle(Rect2Df(x, textY, visibleTextArea.width, computedLineHeight));
                 context->DrawLine({x, textY}, { x, textY + computedLineHeight});
                 context->DrawLine({x + visibleTextArea.width, textY}, { x + visibleTextArea.width, textY + computedLineHeight});
 
@@ -3663,13 +3664,13 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
 
             // Background
             context->SetFillPaint(mdStyle.quoteBackgroundColor);
-            context->FillRectangle(x, textY, visibleTextArea.width, computedLineHeight);
+            context->FillRectangle(Rect2Df(x, textY, visibleTextArea.width, computedLineHeight));
 
             // Vertical bars
             for (int d = 0; d < depth; d++) {
                 int barX = x + d * barStride;
                 context->SetFillPaint(mdStyle.quoteBarColor);
-                context->FillRectangle(barX, textY, mdStyle.quoteBarWidth, computedLineHeight);
+                context->FillRectangle(Rect2Df(barX, textY, mdStyle.quoteBarWidth, computedLineHeight));
             }
 
             // Italic text with quote color

@@ -288,7 +288,7 @@ namespace UltraCanvas {
 
     void UltraCanvasPopulationChart::RenderBackground(IRenderContext* ctx) {
         ctx->SetFillPaint(backgroundColor);
-        ctx->FillRectangle(0, 0, GetWidth(), GetHeight());
+        ctx->FillRectangle(Rect2Df(0, 0, GetWidth(), GetHeight()));
     }
 
     void UltraCanvasPopulationChart::RenderTitle(IRenderContext* ctx) {
@@ -435,7 +435,7 @@ namespace UltraCanvas {
         for (const auto& item : legendItems) {
             // Draw color box
             ctx->SetFillPaint(item.ItemColor);
-            ctx->FillRectangle(legendX, legendY, 15, 15);
+            ctx->FillRectangle(Rect2Df(legendX, legendY, 15, 15));
 
             // Draw label
             ctx->SetTextPaint(textColor);
@@ -455,12 +455,12 @@ namespace UltraCanvas {
                                                        int width, int height,
                                                        const Color& color, bool rightSide) {
         ctx->SetFillPaint(color);
-        ctx->FillRectangle(x, y, width, height);
+        ctx->FillRectangle(Rect2Df(x, y, width, height));
 
         // Draw subtle border
         ctx->SetStrokePaint(Color(color.r * 0.8, color.g * 0.8, color.b * 0.8));
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(x, y, width, height);
+        ctx->DrawRectangle(Rect2Df(x, y, width, height));
     }
 
     void UltraCanvasPopulationChart::DrawAgeLabel(IRenderContext* ctx,

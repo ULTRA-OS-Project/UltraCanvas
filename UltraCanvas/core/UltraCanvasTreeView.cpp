@@ -535,8 +535,9 @@ namespace UltraCanvas {
         // Draw left icon
         if (node->data.leftIcon.visible && !node->data.leftIcon.iconPath.empty()) {
             ctx->DrawImage(node->data.leftIcon.iconPath.c_str(),
-                           textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
-                           node->data.leftIcon.width, node->data.leftIcon.height, ImageFitMode::Contain);
+                           Rect2Df(textX, nodeY + (rowHeight - node->data.leftIcon.height) / 2,
+                                   node->data.leftIcon.width, node->data.leftIcon.height),
+                           ImageFitMode::Contain);
             textX += node->data.leftIcon.width + iconSpacing;
         }
 
@@ -552,8 +553,9 @@ namespace UltraCanvas {
             int rightIconX = contentRect.Right() - node->data.rightIcon.width - textPadding - sbWidth;
 
             ctx->DrawImage(node->data.rightIcon.iconPath.c_str(),
-                           rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
-                           node->data.rightIcon.width, node->data.rightIcon.height, ImageFitMode::Contain);
+                           Rect2Df(rightIconX, nodeY + (rowHeight - node->data.rightIcon.height) / 2,
+                                   node->data.rightIcon.width, node->data.rightIcon.height),
+                           ImageFitMode::Contain);
         }
 
         currentY += rowHeight;

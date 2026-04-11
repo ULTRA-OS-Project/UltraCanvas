@@ -1358,7 +1358,7 @@ namespace UltraCanvas {
 
         // Draw gutter background using computed width
         context->SetFillPaint(style.lineNumbersBackgroundColor);
-        context->FillRectangle(bounds.x, bounds.y, computedLineNumbersWidth, bounds.height);
+        context->FillRectangle(Rect2Df(bounds.x, bounds.y, computedLineNumbersWidth, bounds.height));
 
         // Draw separator line at the right edge of the gutter
         context->SetStrokePaint(style.borderColor);
@@ -1394,7 +1394,7 @@ namespace UltraCanvas {
             
             if (IsFocused() && dl.logicalLine == currentLineIndex) {
                 context->SetFillPaint(Color(255, 128, 128, 255));   // #FF8080
-                context->FillRectangle(bounds.x, numY, computedLineNumbersWidth, computedLineHeight);
+                context->FillRectangle(Rect2Df(bounds.x, numY, computedLineNumbersWidth, computedLineHeight));
                 context->SetTextPaint(style.fontColor);
                 context->SetFontWeight(FontWeight::Bold);
             } else {
@@ -1472,14 +1472,14 @@ namespace UltraCanvas {
             int selWidth = MeasureTextWidth(selectedSegment);
 
             context->SetFillPaint(style.selectionColor);
-            context->FillRectangle(selX, lineY, selWidth, computedLineHeight);
+            context->FillRectangle(Rect2Df(selX, lineY, selWidth, computedLineHeight));
         }
     }
 
     void UltraCanvasTextArea::DrawBackground(IRenderContext* context) {
         auto bounds = GetBounds();
         context->SetFillPaint(style.backgroundColor);
-        context->FillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
+        context->FillRectangle(bounds);
 
         if (highlightCurrentLine && IsFocused()) {
             int visStartDL = firstVisibleLine - 1;
@@ -1502,9 +1502,9 @@ namespace UltraCanvas {
                     int lineY = visibleTextArea.y + (di - firstVisibleLine) * computedLineHeight;
                     if (editingMode == TextAreaEditingMode::MarkdownHybrid && di < static_cast<int>(markdownLineYOffsets.size()))
                         lineY += markdownLineYOffsets[di] - mdScrollBase;
-                    context->FillRectangle(highlightX, lineY,
+                    context->FillRectangle(Rect2Df(highlightX, lineY,
                             bounds.width - (style.showLineNumbers ? computedLineNumbersWidth : 0),
-                            computedLineHeight);
+                            computedLineHeight));
                 }
             }
             context->PopState();
@@ -1573,12 +1573,12 @@ namespace UltraCanvas {
             }
 
             context->SetFillPaint(style.scrollbarTrackColor);
-            context->FillRectangle(scrollbarX, bounds.y, 15, scrollbarHeight);
+            context->FillRectangle(Rect2Df(scrollbarX, bounds.y, 15, scrollbarHeight));
 
             verticalScrollThumb = {scrollbarX, thumbY, 15, thumbHeight};
 
             context->SetFillPaint(style.scrollbarColor);
-            context->FillRectangle(scrollbarX + 2, thumbY + 2, 11, thumbHeight - 4);
+            context->FillRectangle(Rect2Df(scrollbarX + 2, thumbY + 2, 11, thumbHeight - 4));
         }
 
         if (IsNeedHorizontalScrollbar()) {
@@ -1598,12 +1598,12 @@ namespace UltraCanvas {
             }
 
             context->SetFillPaint(style.scrollbarTrackColor);
-            context->FillRectangle(static_cast<float>(bounds.x), scrollbarY, scrollbarWidth, 15.0f);
+            context->FillRectangle(Rect2Df(static_cast<float>(bounds.x), scrollbarY, scrollbarWidth, 15.0f));
 
             horizontalScrollThumb = {static_cast<int>(thumbX), static_cast<int>(scrollbarY), static_cast<int>(thumbWidth), 15};
 
             context->SetFillPaint(style.scrollbarColor);
-            context->FillRectangle(thumbX + 2, scrollbarY + 2, thumbWidth - 4, 11.0f);
+            context->FillRectangle(Rect2Df(thumbX + 2, scrollbarY + 2, thumbWidth - 4, 11.0f));
         }
     }
 
@@ -1639,7 +1639,7 @@ namespace UltraCanvas {
                     lineY += markdownLineYOffsets[di] - mdScrollBase;
 
                 context->SetFillPaint(rowBandColor);
-                context->FillRectangle(visibleTextArea.x, lineY, visibleTextArea.width, computedLineHeight);
+                context->FillRectangle(Rect2Df(visibleTextArea.x, lineY, visibleTextArea.width, computedLineHeight));
             }
         }
 
@@ -1680,7 +1680,7 @@ namespace UltraCanvas {
                 int hlWidth = MeasureTextWidth(hlText);
 
                 context->SetFillPaint(highlightColor);
-                context->FillRectangle(hlX, lineY, hlWidth, computedLineHeight);
+                context->FillRectangle(Rect2Df(hlX, lineY, hlWidth, computedLineHeight));
             }
         }
     }
