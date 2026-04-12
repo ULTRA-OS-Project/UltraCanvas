@@ -711,6 +711,7 @@ namespace UltraCanvas {
         virtual void ChangeAttribute(std::unique_ptr<ITextAttribute> attr) = 0;
         virtual void SetAttributesFromString(const std::string& str) = 0;
         virtual void RemoveAllAttributes() = 0;
+        virtual void UpdateAttributesAccordingToText(int textBytePos, int addedTextBytes, int removedTextBytes) = 0;
 //        virtual void FilterOutAttributes(std::function<bool(const PangoAttribute*)> predicate) = 0;
 
         // ===== TABS =====

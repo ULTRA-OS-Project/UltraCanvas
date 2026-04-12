@@ -454,7 +454,7 @@ namespace UltraCanvas {
         bool needFirstVisibleLineFixup = false; // Set after SetWordWrap toggle
         int currentLineIndex;
         int tabSize = 4;
-
+ 
         // Style
         TextAreaStyle style;
 

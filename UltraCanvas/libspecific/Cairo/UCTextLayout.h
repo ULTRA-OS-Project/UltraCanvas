@@ -218,6 +218,7 @@ namespace UltraCanvas {
         void ChangeAttribute(std::unique_ptr<ITextAttribute> attr) override;
         void SetAttributesFromString(const std::string& str) override;
         void RemoveAllAttributes() override;
+        void UpdateAttributesAccordingToText(int textBytePos, int addedTextBytes, int removedTextBytes) override;
 
         // ===== TABS =====
         void ResetTabs() override;

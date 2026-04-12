@@ -634,6 +634,12 @@ namespace UltraCanvas {
         pango_layout_set_attributes(layout, attrsList);
         extentsValid = false;
     }
+    
+    void UCTextLayout::UpdateAttributesAccordingToText(int textBytePos, int addedTextBytes, int removedTextBytes) {
+        if (attrsList) {
+            pango_attr_list_update(attrsList, textBytePos, addedTextBytes, removedTextBytes);
+        }
+    }
 
     void UCTextLayout::RemoveAllAttributes() {
         pango_attr_list_unref(attrsList);
