@@ -113,11 +113,11 @@ namespace UltraCanvas {
         }
     }
 
-    std::string RenderContextCairo::GenerateTextCacheKey(const std::string& text, int rectWidth, int rectHeight) {
+    std::string RenderContextCairo::GenerateTextCacheKey(const std::string& text, const Size2Di &sz) {
         // Generate a unique cache key based on all parameters that affect text rendering
         std::ostringstream keyStream;
 
-        keyStream << rectWidth << "x" << rectHeight << "|"
+        keyStream << sz.width << "x" << sz.height << "|"
                   << currentState.fontStyle.fontFamily
                   << static_cast<int>(currentState.fontStyle.fontSize*10)
                   << static_cast<int>(currentState.fontStyle.fontWeight)
@@ -643,13 +643,13 @@ namespace UltraCanvas {
         return std::move(ctx);
     }
 
-    std::shared_ptr<ITextLayout> RenderContextCairo::GetOrCreateTextLayout(const std::string& text, int rectWidth, int rectHeight, bool isMarkup) {
+    std::shared_ptr<ITextLayout> RenderContextCairo::GetOrCreateTextLayout(const std::string& text, const Size2Di& sz, bool isMarkup) {
         if (text.empty()) {
             return nullptr;
         }
 
         // Generate cache key
-        std::string cacheKey = GenerateTextCacheKey(text, rectWidth, rectHeight);
+        std::string cacheKey = GenerateTextCacheKey(text, sz);
 
         // Try to get from cache first
         auto cached = g_TextLayoutsCache.GetFromCache(cacheKey);
@@ -665,11 +665,11 @@ namespace UltraCanvas {
             newLayout->SetWrap(currentState.textStyle.wrap);
             newLayout->SetVerticalAlignment(currentState.textStyle.verticalAlignment);
             // Fixme! Need to set line height
-            if (rectWidth) {
-                newLayout->SetExplicitWidth(rectWidth);
+            if (sz.width) {
+                newLayout->SetExplicitWidth(sz.width);
             }
-            if (rectHeight) {
-                newLayout->SetExplicitHeight(rectHeight);
+            if (sz.height) {
+                newLayout->SetExplicitHeight(sz.height);
             }
             if (isMarkup) {
                 newLayout->SetMarkup(text);
@@ -693,7 +693,7 @@ namespace UltraCanvas {
         if (text.empty()) {
             return; // Nothing to draw
         }
-        auto layout = GetOrCreateTextLayout(text, 0, 0, false);
+        auto layout = GetOrCreateTextLayout(text, {0, 0}, false);
         if (layout) {
             ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
             DrawTextLayout(*layout, pos);
@@ -707,7 +707,7 @@ namespace UltraCanvas {
         if (text.empty()) {
             return; // Nothing to draw
         }
-        auto layout = GetOrCreateTextLayout(text, rect.width, rect.height, false);
+        auto layout = GetOrCreateTextLayout(text, rect.Size(), false);
         if (layout) {
             ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
             DrawTextLayout(*layout, rect.TopLeft());
@@ -716,25 +716,16 @@ namespace UltraCanvas {
         }
     }
 
-    bool RenderContextCairo::GetTextDimensions(const std::string &text, int rectWidth, int rectHeight, int& retWidth, int &retHeight) {
-        retWidth = 0;
-        retHeight = 0;
+    Size2Di RenderContextCairo::GetTextDimensions(const std::string &text, const Size2Di& sz) {
         if (text.empty()) {
-            return false;
+            return {0,0};
         }
-        auto layout = GetOrCreateTextLayout(text, rectWidth, rectHeight, false);
+        auto layout = GetOrCreateTextLayout(text, sz, false);
         if (layout) {
-            auto sz = layout->GetLayoutSize();
-            retWidth = sz.width;
-            retHeight = sz.height;
+            return layout->GetLayoutSize();
         }
-        return true;
+        return {0,0};
     }
-
-    bool RenderContextCairo::GetTextLineDimensions(const std::string &text, int &w, int &h) {
-        return GetTextDimensions(text, 0, 0, w, h);
-    }
-
 
     int RenderContextCairo::GetTextIndexForXY(const std::string &text, int x, int y, int w, int h) {
         int index = 0, trailing;
@@ -1262,13 +1253,13 @@ namespace UltraCanvas {
         cairo_arc(cairo, x, y, radius, 0, 2 * M_PI);
     }
 
-    void RenderContextCairo::GetPathExtents(double &x, double &y, double &width, double &height) {
-        double x2, y2, x1, y1;
-        cairo_path_extents(cairo, &x1, &y1, &x2, &y2);
-        x = x1;
-        y = y1;
-        width = std::abs(x2 - x1);
-        height = std::abs(y2 - y1);
+    Rect2Df RenderContextCairo::GetPathExtents() {
+        Rect2Df result;
+        Point2Df p2;
+        cairo_path_extents(cairo, &result.x, &result.y, &p2.x, &p2.y);
+        result.width = std::abs(p2.x - result.x);
+        result.height = std::abs(p2.y - result.y);
+        return result;
     }
 
 // Cached Gradient Pattern Methods

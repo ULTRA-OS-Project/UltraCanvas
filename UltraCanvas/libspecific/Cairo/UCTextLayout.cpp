@@ -655,20 +655,47 @@ namespace UltraCanvas {
 
     // ===== TABS =====
 
-//    void UCTextLayout::SetTabs(PangoTabArray* tabs) {
-//        if (layout) {
-//            pango_layout_set_tabs(layout, tabs);
-//        }
-//    }
-//
-//    PangoTabArray* UCTextLayout::GetTabs() const {
-//        if (!layout) return nullptr;
-//        return pango_layout_get_tabs(layout);
-//    }
+    void UCTextLayout::ResetTabs() {
+        if (layout) {
+            pango_layout_set_tabs(layout, nullptr);
+        }
+    }
+
+    void UCTextLayout::SetTabs(const std::vector<UCLayoutTabPos>& tabs) {
+        if (layout) {
+            if (tabs.empty()) {
+                pango_layout_set_tabs(layout, nullptr);
+            } else {
+                PangoTabArray *tabArray = pango_tab_array_new(tabs.size(), true);
+                for(int i = 0; i < tabs.size(); i++) {
+                    pango_tab_array_set_tab(tabArray, i, static_cast<PangoTabAlign>(tabs[i].align), tabs[i].xPos);
+                }
+                pango_layout_set_tabs(layout, tabArray);
+                pango_tab_array_free(tabArray);
+            }
+        }
+    }
+
+    std::vector<UCLayoutTabPos> UCTextLayout::GetTabs() {
+        std::vector<UCLayoutTabPos> tabs;
+        if (!layout) return tabs;
+
+        PangoTabArray *tabArray = pango_layout_get_tabs(layout);
+        if (!tabArray) return tabs;
+
+        gint tabsSize = pango_tab_array_get_size(tabArray);
+        for(gint i = 0; i < tabsSize; i++) {
+            UCLayoutTabPos tab;
+            pango_tab_array_get_tab(tabArray, i, reinterpret_cast<PangoTabAlign *>(&tab.align), &tab.xPos);
+            tabs.push_back(tab);
+        }
+        pango_tab_array_free(tabArray);
+        return tabs;
+    }
 
     // ===== MEASUREMENT =====
 
-    UCTextExtents UCTextLayout::GetLayoutExtents() {
+    UCLayoutExtents UCTextLayout::GetLayoutExtents() {
         if (!extentsValid) {
             PangoRectangle ink, logical;
             pango_layout_get_pixel_extents(layout, &ink, &logical);
@@ -703,8 +730,8 @@ namespace UltraCanvas {
 
     // ===== HIT TESTING & POSITION =====
 
-    UCTextHitResult UCTextLayout::XYToIndex(int pixelX, int pixelY) const {
-        UCTextHitResult result{-1, 0, false};
+    UCLayoutHitResult UCTextLayout::XYToIndex(int pixelX, int pixelY) const {
+        UCLayoutHitResult result{-1, 0, false};
         if (!layout) return result;
         int index, trailing;
         gboolean inside = pango_layout_xy_to_index(layout,
@@ -723,8 +750,8 @@ namespace UltraCanvas {
                        pos.width / PANGO_SCALE, pos.height / PANGO_SCALE);
     }
 
-    UCLineXResult UCTextLayout::IndexToLineX(int byteIndex, bool trailing) const {
-        UCLineXResult result{0, 0};
+    UCLayoutLineXPos UCTextLayout::IndexToLineX(int byteIndex, bool trailing) const {
+        UCLayoutLineXPos result{0, 0};
         if (!layout) return result;
         int line, xPos;
         pango_layout_index_to_line_x(layout, byteIndex, trailing ? TRUE : FALSE, &line, &xPos);

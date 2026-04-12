@@ -354,12 +354,11 @@ namespace UltraCanvas {
 
         ctx->SetFontFace(visualStyle.fontFamily, visualStyle.fontWeight, FontSlant::Normal);
         ctx->SetFontSize(visualStyle.fontSize);
-        int textWidth, textHeight;
-        ctx->GetTextLineDimensions(text, textWidth, textHeight);
+        Size2Di textSize = ctx->GetTextLineDimensions(text);
 
         // Calculate total width needed
-        float totalWidth = 8.0f + visualStyle.boxSize + visualStyle.textSpacing + textWidth + 8.0f;
-        float totalHeight = std::max(visualStyle.boxSize + 8.0f, static_cast<float>(textHeight + 8));
+        float totalWidth = 8.0f + visualStyle.boxSize + visualStyle.textSpacing + textSize.width + 8.0f;
+        float totalHeight = std::max(visualStyle.boxSize + 8.0f, static_cast<float>(textSize.height + 8));
 
         SetSize(static_cast<int>(totalWidth), static_cast<int>(totalHeight));
     }

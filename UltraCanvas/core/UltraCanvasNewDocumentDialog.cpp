@@ -495,10 +495,9 @@ namespace UltraCanvas {
         if (!docType.category.empty()) {
             ctx->SetFontSize(10);
             ctx->SetTextPaint(style.categoryTextColor);
-            int catWidth = 0, catHeight = 0;
-            ctx->GetTextLineDimensions(docType.category, catWidth, catHeight);
+            Size2Di catSize = ctx->GetTextLineDimensions(docType.category);
             ctx->DrawText(docType.category,
-                          Point2Di(itemBounds.x + itemBounds.width - catWidth - 8, itemBounds.y + 17));
+                          Point2Di(itemBounds.x + itemBounds.width - catSize.width - 8, itemBounds.y + 17));
         }
 
         if (isSelected) {

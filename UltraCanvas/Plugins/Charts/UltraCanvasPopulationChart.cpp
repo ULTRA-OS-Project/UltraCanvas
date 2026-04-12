@@ -405,10 +405,9 @@ namespace UltraCanvas {
                               femaleSurplusColor, true);
         }
         // Draw age label in center
-        int labelWidth, labelHeight;
-        ctx->GetTextLineDimensions(group.AgeLabel, labelWidth, labelHeight);
-        double labelX = centerX - labelWidth / 2;
-        double labelY = yPosition + barHeight / 2 - labelHeight / 2;
+        Size2Di labelSize = ctx->GetTextLineDimensions(group.AgeLabel);
+        double labelX = centerX - labelSize.width / 2;
+        double labelY = yPosition + barHeight / 2 - labelSize.height / 2;
         ctx->SetTextPaint(textColor);
         ctx->SetFontSize(fontSize);
         ctx->DrawText(group.AgeLabel, {labelX, labelY});

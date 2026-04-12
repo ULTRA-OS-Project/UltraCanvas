@@ -226,10 +226,9 @@ namespace UltraCanvas {
         if (!text.empty()) {
             ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
             ctx->SetFontSize(style.fontSize);
-            int textWidth, textHeight;
-            ctx->GetTextLineDimensions(text, textWidth, textHeight);
-            newWidth += textWidth;
-            newHeight = std::max(newHeight, textHeight + padding.top + padding.bottom);
+            Size2Di textSize = ctx->GetTextLineDimensions(text);
+            newWidth += textSize.width;
+            newHeight = std::max(newHeight, textSize.height + padding.top + padding.bottom);
         }
 
         // Add split button secondary section dimensions
@@ -239,10 +238,9 @@ namespace UltraCanvas {
 
             // Calculate secondary text dimensions
             if (!split.secondaryText.empty()) {
-                int secTextWidth, secTextHeight;
-                ctx->GetTextLineDimensions(split.secondaryText, secTextWidth, secTextHeight);
-                secWidth += secTextWidth;
-                secHeight = std::max(secHeight, secTextHeight);
+                Size2Di secTextSize = ctx->GetTextLineDimensions(split.secondaryText);
+                secWidth += secTextSize.width;
+                secHeight = std::max(secHeight, secTextSize.height);
             }
 
             // Calculate secondary icon dimensions
@@ -357,10 +355,9 @@ namespace UltraCanvas {
                 auto ctx = GetRenderContext();
 
                 if (!split.secondaryText.empty()) {
-                    int textWidth, textHeight;
                     ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-                    ctx->GetTextLineDimensions(split.secondaryText, textWidth, textHeight);
-                    contentWidth += textWidth;
+                    Size2Di textSize = ctx->GetTextLineDimensions(split.secondaryText);
+                    contentWidth += textSize.width;
                 }
 
                 if (HasSecondaryIcon()) {
@@ -734,16 +731,15 @@ namespace UltraCanvas {
             ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
             ctx->SetFontSize(style.fontSize);
 
-            int textWidth, textHeight;
-            ctx->GetTextLineDimensions(text, textWidth, textHeight);
+            Size2Di textSize = ctx->GetTextLineDimensions(text);
 
             Point2Df primaryTextPos;
             if (HasIcon() && (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
                 primaryTextPos.x = textRect.x;
-                primaryTextPos.y = textRect.y + (textRect.height - textHeight) / 2;
+                primaryTextPos.y = textRect.y + (textRect.height - textSize.height) / 2;
             } else {
-                primaryTextPos.x = textRect.x + (textRect.width - textWidth) / 2;
-                primaryTextPos.y = textRect.y + (textRect.height - textHeight) / 2;
+                primaryTextPos.x = textRect.x + (textRect.width - textSize.width) / 2;
+                primaryTextPos.y = textRect.y + (textRect.height - textSize.height) / 2;
             }
 
             if (GetPrimaryState() == ElementState::Pressed) {
@@ -763,8 +759,7 @@ namespace UltraCanvas {
             ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
             ctx->SetFontSize(style.fontSize * 0.9f);  // Slightly smaller font
 
-            int textWidth, textHeight;
-            ctx->GetTextLineDimensions(split.secondaryText, textWidth, textHeight);
+            Size2Di textSize = ctx->GetTextLineDimensions(split.secondaryText);
 
             Point2Df secondaryTextPos;
 
@@ -772,11 +767,11 @@ namespace UltraCanvas {
             if (HasSecondaryIcon() && split.horizontal) {
                 // Text position already calculated in layout
                 secondaryTextPos.x = secondaryTextRect.x;
-                secondaryTextPos.y = secondaryTextRect.y + (secondaryTextRect.height - textHeight) / 2;
+                secondaryTextPos.y = secondaryTextRect.y + (secondaryTextRect.height - textSize.height) / 2;
             } else {
                 // Center text if no icon
-                secondaryTextPos.x = secondaryTextRect.x + (secondaryTextRect.width - textWidth) / 2;
-                secondaryTextPos.y = secondaryTextRect.y + (secondaryTextRect.height - textHeight) / 2;
+                secondaryTextPos.x = secondaryTextRect.x + (secondaryTextRect.width - textSize.width) / 2;
+                secondaryTextPos.y = secondaryTextRect.y + (secondaryTextRect.height - textSize.height) / 2;
             }
 
             if (GetPrimaryState() == ElementState::Pressed) {

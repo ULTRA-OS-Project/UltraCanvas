@@ -161,14 +161,14 @@ namespace UltraCanvas {
 
         void UpdateMaxPosition();
 
-        float GetThumbRatio() const {
+        double GetThumbRatio() const {
             if (contentSize <= 0) return 1.0f;
-            return std::min(1.0f, static_cast<float>(viewportSize) / static_cast<float>(contentSize));
+            return std::min(1.0, static_cast<double>(viewportSize) / static_cast<double>(contentSize));
         }
 
-        float GetScrollRatio() const {
+        double GetScrollRatio() const {
             if (maxPosition <= 0) return 0.0f;
-            return static_cast<float>(position) / static_cast<float>(maxPosition);
+            return static_cast<double>(position) / static_cast<double>(maxPosition);
         }
 
         bool IsScrollable() const {

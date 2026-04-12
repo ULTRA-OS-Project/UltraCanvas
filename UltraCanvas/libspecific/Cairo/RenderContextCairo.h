@@ -114,7 +114,7 @@ namespace UltraCanvas {
         bool CreateStagingSurface();
         void SwitchToSurface(cairo_surface_t* s);
 
-        std::string GenerateTextCacheKey(const std::string& text, int rectWidth, int rectHeight);
+        std::string GenerateTextCacheKey(const std::string& text, const Size2Di &sz);
 
     public:
         RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering);
@@ -232,7 +232,7 @@ namespace UltraCanvas {
         void RoundedRect(double x, double y, double width, double height, double radius) override;
         void Circle(double x, double y, double radius) override;
 
-        void GetPathExtents(double &x, double &y, double &width, double &height) override;
+        Rect2Df GetPathExtents() override;
         void StrokePathPreserve() override;
         void FillPathPreserve() override;
         void FillText(const std::string& text, double x, double y) override;
@@ -242,13 +242,12 @@ namespace UltraCanvas {
 
         // Text rendering
         std::unique_ptr<ITextLayout> CreateTextLayout(const std::string& text, bool isMarkup) override;
-        std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, int rectWidth, int rectHeight, bool isMarkup) override;
+        std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, const Size2Di& sz, bool isMarkup) override;
 
         void DrawTextLayout(ITextLayout &layout, const Point2Df &pos) override;
         void DrawText(const std::string &text, const Point2Df &pos) override;
         void DrawTextInRect(const std::string &text, const Rect2Df &rect) override;
-        bool GetTextLineDimensions(const std::string &text, int &w, int &h) override;
-        bool GetTextDimensions(const std::string &text, int width, int height, int &retWidth, int &retHeight) override;
+        Size2Di GetTextDimensions(const std::string &text, const Size2Di& explicitSize) override;
         int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) override;
 
         // Image rendering

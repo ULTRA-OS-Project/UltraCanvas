@@ -258,9 +258,8 @@ namespace UltraCanvas {
                     ctx->DrawText(label, {0, 0});
                     ctx->PopState();
                 } else {
-                    int txtW, txtH;
-                    ctx->GetTextLineDimensions(label, txtW, txtH);
-                    ctx->DrawText(label, {x - txtW / 2, tickY + 8});
+                    Size2Di txtSize = ctx->GetTextLineDimensions(label);
+                    ctx->DrawText(label, {x - txtSize.width / 2, tickY + 8});
                 }
             }
         } else {
@@ -289,7 +288,7 @@ namespace UltraCanvas {
             }
         }
 
-        int numYTicks = 6, txtW, txtH;
+        int numYTicks = 6;
         for (int i = 0; i <= numYTicks; ++i) {
             double y = cachedPlotArea.y + cachedPlotArea.height - (i * cachedPlotArea.height / numYTicks);
             double tickX = cachedPlotArea.x;
@@ -300,8 +299,8 @@ namespace UltraCanvas {
             // Draw label using existing DrawText
             double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
             std::string label = FormatAxisLabel(labelValue);
-            ctx->GetTextLineDimensions(label, txtW, txtH);
-            ctx->DrawText(label, Point2Df (tickX - txtW - 8, y - (static_cast<double>(txtH) / 2)));
+            Size2Di txtSize = ctx->GetTextLineDimensions(label);
+            ctx->DrawText(label, Point2Df (tickX - txtSize.width - 8, y - (static_cast<double>(txtSize.height) / 2)));
         }
     }
 
@@ -344,9 +343,8 @@ namespace UltraCanvas {
                 ctx->PopState();
             } else {
                 // No rotation - center the text
-                int txtW, txtH;
-                ctx->GetTextLineDimensions(valueText, txtW, txtH);
-                ctx->DrawText(valueText, {labelPos.x - txtW/2, labelPos.y});
+                Size2Di txtSize = ctx->GetTextLineDimensions(valueText);
+                ctx->DrawText(valueText, {labelPos.x - txtSize.width/2, labelPos.y});
             }
         }
     }

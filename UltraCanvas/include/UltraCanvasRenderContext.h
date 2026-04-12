@@ -217,7 +217,7 @@ namespace UltraCanvas {
 
         virtual void FillPathPreserve() = 0;
         virtual void StrokePathPreserve() = 0;
-        virtual void GetPathExtents(double &x, double &y, double &width, double &height) = 0;
+        virtual Rect2Df GetPathExtents() = 0;
 
         // === Gradient Methods ===
         virtual std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(double x1, double y1, double x2, double y2,
@@ -257,7 +257,7 @@ namespace UltraCanvas {
         std::unique_ptr<ITextLayout> CreateTextLayout() {
             return CreateTextLayout("", false);
         };
-        virtual std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, int rectWidth, int rectHeight, bool isMarkup) = 0;
+        virtual std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, const Size2Di& sz, bool isMarkup) = 0;
 
         virtual void DrawTextLayout(ITextLayout &layout, const Point2Df &pos) = 0;
 
@@ -289,19 +289,10 @@ namespace UltraCanvas {
         // ===== TEXT RENDERING =====
         virtual void DrawText(const std::string &text, const Point2Df &pos) = 0;
         virtual void DrawTextInRect(const std::string &text, const Rect2Df &rect) = 0;
-        virtual bool GetTextLineDimensions(const std::string& text, int& w, int& h) = 0;
-        virtual bool GetTextDimensions(const std::string &text, int rectWidth, int rectHeight, int& retWidth, int &retHeight) = 0;
-
-        int GetTextLineWidth(const std::string& text) {
-            int w, h;
-            GetTextLineDimensions(text, w, h);
-            return w;
-        };
-        int GetTextLineHeight(const std::string& text) {
-            int w, h;
-            GetTextLineDimensions(text, w, h);
-            return h;
-        };
+        virtual Size2Di GetTextDimensions(const std::string &text, const Size2Di& explicitSize) = 0;
+        Size2Di GetTextLineDimensions(const std::string& text) { return GetTextDimensions(text, {0, 0}); };
+        int GetTextLineWidth(const std::string& text) { return GetTextLineDimensions(text).width; };
+        int GetTextLineHeight(const std::string& text) { return GetTextLineDimensions(text).height; };
 
         virtual int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) = 0;
 
@@ -311,21 +302,7 @@ namespace UltraCanvas {
         // DrawMasked used mainly for B/W icons to replace non-transparent areas by specfied color
         virtual void DrawMask(const Color& drawColor, UCPixmap& mask, const Rect2Df& rect, ImageFitMode fitMode) = 0;
 
-//        virtual bool IsImageFormatSupported(const std::string& filePath) = 0;
-//        virtual bool GetImageDimensions(const std::string& imagePath, int& w, int& h) = 0;
-
-        // ===== PIXEL OPERATIONS =====
-//        virtual void SetPixel(const Point2Df& point, const Color& color) = 0;
-//        virtual Color GetPixel(const Point2Df& point) = 0;
         virtual void Clear(const Color& color) = 0;
-//        virtual bool PaintPixelBuffer(int x, int y, int width, int height, uint32_t* pixels) = 0;
-//        bool PaintPixelBuffer(int x, int y, IPixelBuffer& pxBuf) {
-//            return PaintPixelBuffer(x, y, pxBuf.GetWidth(), pxBuf.GetHeight(), pxBuf.GetPixelData());
-//        };
-//        virtual IPixelBuffer* SavePixelRegion(const Rect2Di& region) = 0;
-//        virtual bool RestorePixelRegion(const Rect2Di& region, IPixelBuffer* buf) = 0;
-//        virtual bool SaveRegionAsImage(const Rect2Di& region, const std::string& filename) = 0;
-
 
         // ===== UTILITY FUNCTIONS =====
         virtual void* GetNativeContext() = 0;
@@ -407,28 +384,16 @@ namespace UltraCanvas {
             DrawPartOfPixmap(*pixmap.get(), srcRect, destRect);
         }
 
-//        void SetClipRect(int x, int y, int w, int h) {
-//            SetClipRect(static_cast<float>(x), static_cast<float>(y), static_cast<float>(w), static_cast<float>(h));
-//        }
-//        void SetClipRect(const Rect2Df& rect) {
-//            SetClipRect(rect.x, rect.y, rect.width, rect.height);
-//        }
-//        void SetClipRect(const Rect2Di& rect) {
-//            SetClipRect(rect.x, rect.y, rect.width, rect.height);
-//        }
-
         Point2Di GetTextDimension(const std::string& text) {
-            Point2Di p = {0, 0};
-            GetTextLineDimensions(text, p.x, p.y);
-            return p;
+            Size2Di sz = GetTextLineDimensions(text);
+            return Point2Di(sz.width, sz.height);
         }
 
         Point2Df CalculateCenteredTextPosition(const std::string& text, const Rect2Df& bounds) {
-            int txt_w, txt_h;
-            GetTextLineDimensions(text, txt_w, txt_h);
+            Size2Di sz = GetTextLineDimensions(text);
             return Point2Df(
-                    bounds.x + (bounds.width - static_cast<float>(txt_w)) / 2,     // Center horizontally
-                    bounds.y + (bounds.height - static_cast<float>(txt_h)) / 2   // Center vertically (baseline adjusted)
+                    bounds.x + (bounds.width - static_cast<float>(sz.width)) / 2,     // Center horizontally
+                    bounds.y + (bounds.height - static_cast<float>(sz.height)) / 2   // Center vertically (baseline adjusted)
             );
         }
 
@@ -476,21 +441,6 @@ namespace UltraCanvas {
 
         void DrawFilledCircle(const Point2Di& center, float radius, const Color& fillColor) {
             DrawFilledCircle(Point2Df(center.x, center.y), radius, fillColor);
-        }
-
-// Draw text with background
-        void DrawTextWithBackground(const std::string& text, const Point2Df& position,
-                                           const Color& textColor, const Color& backgroundColor = Colors::Transparent) {
-            PushState();
-            if (backgroundColor.a > 0) {
-                int txt_w, txt_h;
-                GetTextLineDimensions(text, txt_w, txt_h);
-                DrawFilledRectangle(Rect2Df(position.x, position.y, txt_w, txt_h), backgroundColor);
-            }
-
-            SetTextPaint(textColor);
-            DrawText(text, position);
-            PopState();
         }
 
     };
@@ -562,14 +512,21 @@ namespace UltraCanvas {
         FONT_SCALE = 37,        /* PangoAttrInt */
     };
 
+    enum class UCLayoutTabAlignment {
+        TabLeft = 0,
+        TabRight = 1,
+        TabCenter = 2,
+        TabDecimal = 3
+    };
+
     // ===== RESULT STRUCTS =====
 
-    struct UCTextExtents {
+    struct UCLayoutExtents {
         Rect2Di ink;
         Rect2Di logical;
     };
 
-    struct UCTextHitResult {
+    struct UCLayoutHitResult {
         int index;
         int trailing;
         bool inside;
@@ -580,7 +537,7 @@ namespace UltraCanvas {
         Rect2Di weakPos;
     };
 
-    struct UCLineXResult {
+    struct UCLayoutLineXPos {
         int line;
         int xPos;
     };
@@ -588,6 +545,11 @@ namespace UltraCanvas {
     struct UCCursorMoveResult {
         int newIndex;
         int newTrailing;
+    };
+
+    struct UCLayoutTabPos {
+        UCLayoutTabAlignment align = UCLayoutTabAlignment::TabLeft;
+        int xPos = 0;
     };
 
     // ===== UCTextAttribute =====
@@ -752,11 +714,12 @@ namespace UltraCanvas {
 //        virtual void FilterOutAttributes(std::function<bool(const PangoAttribute*)> predicate) = 0;
 
         // ===== TABS =====
-//        void SetTabs(PangoTabArray* tabs) = 0;
-//        PangoTabArray* GetTabs() const = 0;
+        virtual void ResetTabs() = 0;
+        virtual void SetTabs(const std::vector<UCLayoutTabPos>& tabs) = 0;
+        virtual std::vector<UCLayoutTabPos> GetTabs() = 0;
 
         // ===== MEASUREMENT =====
-        virtual UCTextExtents GetLayoutExtents() = 0;
+        virtual UCLayoutExtents GetLayoutExtents() = 0;
         Size2Di GetLayoutSize() { return GetLayoutExtents().logical.Size(); }
         int GetLayoutWidth() { return GetLayoutExtents().logical.width; }
         int GetLayoutHeight() { return GetLayoutExtents().logical.height; }
@@ -768,9 +731,9 @@ namespace UltraCanvas {
         virtual int GetLineCount() const = 0;
 
         // ===== HIT TESTING & POSITION =====
-        virtual UCTextHitResult XYToIndex(int pixelX, int pixelY) const = 0;
+        virtual UCLayoutHitResult XYToIndex(int pixelX, int pixelY) const = 0;
         virtual Rect2Di IndexToPos(int byteIndex) const = 0;
-        virtual UCLineXResult IndexToLineX(int byteIndex, bool trailing) const = 0;
+        virtual UCLayoutLineXPos IndexToLineX(int byteIndex, bool trailing) const = 0;
         virtual UCCursorPos GetCursorPos(int byteIndex) const = 0;
         virtual UCCursorMoveResult MoveCursorVisually(bool strongCursor, int oldIndex,
                                               int oldTrailing, int direction) const = 0;
@@ -784,8 +747,5 @@ namespace UltraCanvas {
         // ===== ITERATOR =====
 //        UCTextLayoutIter GetIter() const = 0;
 
-        // ===== RENDERING =====
-//        void Show(IRenderContext* ctx) const = 0;
-//        void ShowAt(IRenderContext* ctx, float x, float y) const = 0;
     };
 } // namespace UltraCanvas

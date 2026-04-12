@@ -198,9 +198,8 @@ namespace UltraCanvas {
             ctx->SetFontSize(14);
             ctx->SetFontWeight(FontWeight::Bold);
             std::string percentText = std::to_string(static_cast<int>(currentStrength)) + "%";
-            int textWidth, textHeight;
-            ctx->GetTextLineDimensions(percentText, textWidth, textHeight);
-            ctx->DrawText(percentText, Point2Df(centerX - textWidth / 2, centerY - textHeight / 2));
+            Size2Di textSize = ctx->GetTextLineDimensions(percentText);
+            ctx->DrawText(percentText, Point2Df(centerX - textSize.width / 2, centerY - textSize.height / 2));
         }
 
         // Draw label below

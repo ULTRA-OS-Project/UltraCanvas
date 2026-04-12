@@ -748,15 +748,14 @@ namespace UltraCanvas {
         ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
         ctx->SetFontSize(style.fontSize);
 
-        int textWidth, textHeight;
-        ctx->GetTextLineDimensions(node.label, textWidth, textHeight);
-        float labelY = node.y + node.height / 2.0f - static_cast<float>(textHeight)/2;
+        Size2Di textSize = ctx->GetTextLineDimensions(node.label);
+        float labelY = node.y + node.height / 2.0f - static_cast<float>(textSize.height)/2;
 
         // Position label based on node depth
         if (node.depth == 0) {
             // Left-aligned labels for source nodes
             float labelX = node.x - 8;
-            ctx->DrawText(node.label, {labelX - textWidth, labelY});
+            ctx->DrawText(node.label, {labelX - textSize.width, labelY});
         } else {
             // Check if this is a terminal node (no outgoing links)
             bool isTerminal = true;
@@ -775,7 +774,7 @@ namespace UltraCanvas {
                 // For intermediate nodes, position based on alignment preference
                 if (alignment == SankeyAlignment::Left) {
                     double labelX = node.x - 8;
-                    ctx->DrawText(node.label, {labelX - textWidth, labelY});
+                    ctx->DrawText(node.label, {labelX - textSize.width, labelY});
                 } else {
                     double labelX = node.x + nodeWidth + 8;
                     ctx->DrawText(node.label, {labelX, labelY});

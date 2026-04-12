@@ -578,9 +578,8 @@ namespace UltraCanvas {
             case MarkdownElementType::Header: {
                 int level = std::clamp(element->level - 1, 0, 5);
                 ctx->SetFontSize(style.headerSizes[level]);
-                int w, h;
-                ctx->GetTextLineDimensions(element->text, w, h);
-                return h + 10.0f;
+                Size2Di sz = ctx->GetTextLineDimensions(element->text);
+                return sz.height + 10.0f;
             }
 
             case MarkdownElementType::Paragraph: {
@@ -671,9 +670,8 @@ namespace UltraCanvas {
     UltraCanvasMarkdownDisplay::CalculateWrappedTextHeight(IRenderContext *ctx, const std::string &text, int maxWidth) {
         if (text.empty()) return 0;
 
-        int w, h;
-        ctx->GetTextDimensions(text, maxWidth, 0, w, h);
-        return h;
+        Size2Di sz = ctx->GetTextDimensions(text, {maxWidth, 0});
+        return sz.height;
     }
 
     Rect2Di UltraCanvasMarkdownDisplay::GetAdjustedBounds(const Rect2Di &bounds) {
@@ -862,11 +860,10 @@ namespace UltraCanvas {
         ctx->DrawText(element->text, position);
 
         if (style.linkUnderline) {
-            int w, h;
-            ctx->GetTextLineDimensions(element->text, w, h);
+            Size2Di sz = ctx->GetTextLineDimensions(element->text);
             ctx->SetStrokeWidth(1.0f);
-            ctx->DrawLine({position.x, position.y + h},
-                          {position.x + w, position.y + h}, linkColor);
+            ctx->DrawLine({position.x, position.y + sz.height},
+                          {position.x + sz.width, position.y + sz.height}, linkColor);
         }
     }
 

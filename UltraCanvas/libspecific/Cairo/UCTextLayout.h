@@ -154,7 +154,7 @@ namespace UltraCanvas {
         PangoAttrList *attrsList = nullptr;
         int explicitHeight = 0;
         VerticalAlignment valign = VerticalAlignment::Top;
-        UCTextExtents extents;
+        UCLayoutExtents extents;
         bool extentsValid = false;
     public:
         explicit UCTextLayout(PangoContext* ctx);
@@ -220,20 +220,21 @@ namespace UltraCanvas {
         void RemoveAllAttributes() override;
 
         // ===== TABS =====
-//        void SetTabs(PangoTabArray* tabs) override;
-//        PangoTabArray* GetTabs() const override;
+        void ResetTabs() override;
+        void SetTabs(const std::vector<UCLayoutTabPos>& tabs) override;
+        std::vector<UCLayoutTabPos> GetTabs() override;
 
         // ===== MEASUREMENT =====
-        UCTextExtents GetLayoutExtents() override;
+        UCLayoutExtents GetLayoutExtents() override;
         int GetLayoutVerticalOffset() override;
 
         int GetBaseline() const override;
         int GetLineCount() const override;
 
         // ===== HIT TESTING & POSITION =====
-        UCTextHitResult XYToIndex(int pixelX, int pixelY) const override;
+        UCLayoutHitResult XYToIndex(int pixelX, int pixelY) const override;
         Rect2Di IndexToPos(int byteIndex) const override;
-        UCLineXResult IndexToLineX(int byteIndex, bool trailing) const override;
+        UCLayoutLineXPos IndexToLineX(int byteIndex, bool trailing) const override;
         UCCursorPos GetCursorPos(int byteIndex) const override;
         UCCursorMoveResult MoveCursorVisually(bool strongCursor, int oldIndex,
                                               int oldTrailing, int direction) const override;

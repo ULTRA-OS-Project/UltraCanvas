@@ -102,9 +102,8 @@ namespace UltraCanvas {
         // Render text
         std::string text = GetStringValue(model->GetData({row, 0}, ListDataRole::DisplayRole));
         if (!text.empty()) {
-            int textWidth, textHeight;
-            ctx->GetTextLineDimensions(text, textWidth, textHeight);
-            int textY = option.rect.y + (option.rect.height - textHeight) / 2;
+            Size2Di textSize = ctx->GetTextLineDimensions(text);
+            int textY = option.rect.y + (option.rect.height - textSize.height) / 2;
             ctx->DrawText(text, Point2Di(currentX, textY));
         }
     }
@@ -472,8 +471,8 @@ namespace UltraCanvas {
         for (const auto& item : items) {
             if (item.separator) continue;
 
-            int textWidth, textHeight;
-            ctx->GetTextLineDimensions(item.text, textWidth, textHeight);
+            Size2Di textSize = ctx->GetTextLineDimensions(item.text);
+            int textWidth = textSize.width;
 
             if (!item.iconPath.empty()) {
                 textWidth += static_cast<int>(style.iconSize + style.iconPadding * 2);
@@ -689,11 +688,10 @@ namespace UltraCanvas {
             ctx->SetFontSize(style.fontSize);
             ctx->SetTextPaint(textColor);
 
-            int textWidth, textHeight;
-            ctx->GetTextLineDimensions(displayText, textWidth, textHeight);
+            Size2Di textSize = ctx->GetTextLineDimensions(displayText);
 
             int textX = buttonRect.x + (int)style.paddingLeft;
-            int textY = buttonRect.y + (buttonRect.height - textHeight) / 2;
+            int textY = buttonRect.y + (buttonRect.height - textSize.height) / 2;
 
             // Render icon if single selection and item has icon
             if (!multiSelectEnabled && selectedIndex >= 0 && selectedIndex < (int)items.size()) {

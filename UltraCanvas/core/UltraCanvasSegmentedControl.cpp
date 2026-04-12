@@ -104,9 +104,8 @@ namespace UltraCanvas {
             ctx->SetFontSize(style.fontSize);
             ctx->SetTextIsMarkup(true);
 
-            int textWidth = 0, textHeight = 0;
-            ctx->GetTextLineDimensions(segment.text, textWidth, textHeight);
-            width += textWidth;
+            Size2Di textSize = ctx->GetTextLineDimensions(segment.text);
+            width += textSize.width;
         }
 
         return width;
@@ -314,10 +313,9 @@ namespace UltraCanvas {
             ctx->SetTextAlignment(segment.alignment);
             ctx->SetTextWrap(TextWrap::WrapNone);
             ctx->SetTextIsMarkup(true);
-            int textWidth = 0, textHeight = 0;
-            ctx->GetTextLineDimensions(segment.text, textWidth, textHeight);
+            Size2Di textSize = ctx->GetTextLineDimensions(segment.text);
 
-            Rect2Df textRect(contentX, contentY - textHeight / 2, rect.width - ((contentX - rect.x) + style.paddingHorizontal), textHeight);
+            Rect2Df textRect(contentX, contentY - textSize.height / 2, rect.width - ((contentX - rect.x) + style.paddingHorizontal), textSize.height);
             ctx->DrawTextInRect(segment.text, textRect);
         }
     }

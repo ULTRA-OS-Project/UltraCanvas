@@ -1056,9 +1056,8 @@ namespace UltraCanvas {
         auto ctx = GetRenderContext();
         if (ctx) {
             ctx->SetFontSize(fontSize);
-            int textWidth, textHeight;
-            ctx->GetTextLineDimensions(tab->title, textWidth, textHeight);
-            width += textWidth;
+            Size2Di textSize = ctx->GetTextLineDimensions(tab->title);
+            width += textSize.width;
         } else {
             width += (int)tab->title.length() * 8;
         }
@@ -1080,17 +1079,16 @@ namespace UltraCanvas {
         if (!ctx) return text;
 
         ctx->SetFontSize(fontSize);
-        int textWidth, textHeight;
-        ctx->GetTextLineDimensions(text, textWidth, textHeight);
+        Size2Di textSize = ctx->GetTextLineDimensions(text);
 
-        if (textWidth <= maxWidth) {
+        if (textSize.width <= maxWidth) {
             return text;
         }
 
         std::string truncated = text;
-        while (textWidth > maxWidth - 20 && truncated.length() > 1) {
+        while (textSize.width > maxWidth - 20 && truncated.length() > 1) {
             truncated.pop_back();
-            ctx->GetTextLineDimensions(truncated + "...", textWidth, textHeight);
+            textSize = ctx->GetTextLineDimensions(truncated + "...");
         }
 
         return truncated + "...";
@@ -1455,8 +1453,9 @@ namespace UltraCanvas {
         if (!tab->badgeText.empty()) {
             auto ctx = GetRenderContext();
             ctx->SetFontSize(9);
-            ctx->GetTextLineDimensions(tab->badgeText, tab->badgeWidth, tab->badgeHeight);
-            tab->badgeWidth = std::max(tab->badgeWidth, 12);
+            Size2Di sz = ctx->GetTextLineDimensions(tab->badgeText);
+            tab->badgeWidth = std::max(sz.width, 12);
+            tab->badgeHeight = sz.height;
             tab->badgeWidth += 6;
             tab->badgeHeight += 6;
             return true;
@@ -1668,11 +1667,11 @@ namespace UltraCanvas {
                     // Browser-style rounded tabs with custom path
                     ctx->ClearPath();
 
-                    float x = static_cast<float>(tabBounds.x);
-                    float y = static_cast<float>(tabBounds.y);
-                    float w = static_cast<float>(tabBounds.width);
-                    float h = static_cast<float>(tabBounds.height);
-                    float radius = tabCornerRadius;
+                    double x = static_cast<double>(tabBounds.x);
+                    double y = static_cast<double>(tabBounds.y);
+                    double w = static_cast<double>(tabBounds.width);
+                    double h = static_cast<double>(tabBounds.height);
+                    double radius = tabCornerRadius;
 
                     // Adjust based on tab position
                     switch (tabPosition) {
@@ -1856,12 +1855,11 @@ namespace UltraCanvas {
 
             ctx->SetTextPaint(textColor);
             ctx->SetFontSize(fontSize);
-            int txtW, txtH;
-            ctx->GetTextLineDimensions(displayText, txtW, txtH);
-            int textY = tabBounds.y + (tabBounds.height - txtH) / 2;
+            Size2Di txtSize = ctx->GetTextLineDimensions(displayText);
+            int textY = tabBounds.y + (tabBounds.height - txtSize.height) / 2;
             ctx->DrawText(displayText, Point2Di(xOffset, textY));
 
-            xOffset += txtW + iconPadding;
+            xOffset += txtSize.width + iconPadding;
         }
 
         if (tab->showBadge) {
@@ -2031,10 +2029,9 @@ namespace UltraCanvas {
         ctx->SetFontWeight(FontWeight::Normal);
 
         std::string title = tabs[draggingTabIndex]->title;
-        int textWidth, textHeight;
-        ctx->GetTextLineDimensions(title, textWidth, textHeight);
-        int textX = ghostX + (tabBounds.width - textWidth) / 2;
-        int textY = ghostY + (tabBounds.height - textHeight) / 2;
+        Size2Di textSize = ctx->GetTextLineDimensions(title);
+        int textX = ghostX + (tabBounds.width - textSize.width) / 2;
+        int textY = ghostY + (tabBounds.height - textSize.height) / 2;
         ctx->DrawText(title, Point2Di(textX, textY));
 
         // Restore stroke width

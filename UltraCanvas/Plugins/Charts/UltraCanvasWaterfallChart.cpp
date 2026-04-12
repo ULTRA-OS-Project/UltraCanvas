@@ -112,9 +112,8 @@ namespace UltraCanvas {
 
             // Draw label
             std::string label = FormatValue(value);
-            int textWidth, textHeight;
-            ctx->GetTextLineDimensions(label, textWidth, textHeight);
-            ctx->DrawText(label, {cachedPlotArea.x - textWidth - 8, y - textHeight/2});
+            Size2Di textSize = ctx->GetTextLineDimensions(label);
+            ctx->DrawText(label, {cachedPlotArea.x - textSize.width - 8, y - textSize.height/2});
         }
 
         // X-axis labels are drawn in DrawValueLabels() for each bar
@@ -495,32 +494,29 @@ namespace UltraCanvas {
                 } else {
                     valueText = FormatValue(point.value);
                 }
-                int textWidth, textHeight;
-                ctx->GetTextLineDimensions(valueText, textWidth, textHeight);
+                Size2Di textSize = ctx->GetTextLineDimensions(valueText);
 
                 float labelY = (point.value >= 0) ?
-                               renderCache.barY[i] - (textHeight + 3):
+                               renderCache.barY[i] - (textSize.height + 3):
                                renderCache.barY[i] + renderCache.barHeight[i] + 1;
 
-                ctx->DrawText(valueText, {barCenterX - textWidth/2, labelY});
+                ctx->DrawText(valueText, {barCenterX - textSize.width/2, labelY});
             }
 
             if (showCumulativeLabels) {
                 // Show the cumulative value
                 std::string cumulativeText = FormatValue(point.cumulativeValue);
-                int textWidth, textHeight;
-                ctx->GetTextLineDimensions(cumulativeText, textWidth, textHeight);
+                Size2Di textSize = ctx->GetTextLineDimensions(cumulativeText);
 
-                float labelY = renderCache.barY[i] + renderCache.barHeight[i]/2 - textHeight/2;
-                ctx->DrawText(cumulativeText, {barCenterX - textWidth/2, labelY});
+                float labelY = renderCache.barY[i] + renderCache.barHeight[i]/2 - textSize.height/2;
+                ctx->DrawText(cumulativeText, {barCenterX - textSize.width/2, labelY});
             }
 
             // Draw category label on X-axis
             if (!point.label.empty()) {
-                int textWidth, textHeight;
-                ctx->GetTextLineDimensions(point.label, textWidth, textHeight);
+                Size2Di textSize = ctx->GetTextLineDimensions(point.label);
                 float labelY = cachedPlotArea.GetBottom() + 5;
-                ctx->DrawText(point.label, {barCenterX - textWidth/2, labelY});
+                ctx->DrawText(point.label, {barCenterX - textSize.width/2, labelY});
             }
         }
     }
