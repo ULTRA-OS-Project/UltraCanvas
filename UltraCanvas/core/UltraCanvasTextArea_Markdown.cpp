@@ -1,8 +1,8 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
-// Version: 2.4.3
-// Last Modified: 2026-04-06
+// Version: 2.5.0
+// Last Modified: 2026-04-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -35,7 +35,7 @@ struct MarkdownHybridStyle {
     };
 
     // Header font size multipliers (relative to base font size)
-    std::array<float, 6> headerSizeMultipliers = {2.0f, 1.5f, 1.3f, 1.2f, 1.1f, 1.0f};
+    std::array<float, 6> headerSizeMultipliers = {1.8f, 1.5f, 1.3f, 1.2f, 1.1f, 1.0f};
 
     // Code styling
     Color codeTextColor = Color(200, 50, 50);
@@ -1341,7 +1341,9 @@ struct MarkdownInlineRenderer {
     }
 
     // ---------------------------------------------------------------
-    // INLINE LINE RENDERER — renders parsed inline elements
+    // INLINE LINE RENDERER — uses ITextLayout with ITextAttribute
+    // Builds concatenated display text from parsed elements, applies
+    // Pango attributes for styling, handles non-text decorations manually
     // ---------------------------------------------------------------
 
     static int RenderMarkdownLine(IRenderContext* ctx, const std::string& line,
@@ -1350,7 +1352,13 @@ struct MarkdownInlineRenderer {
                                   const MarkdownHybridStyle& mdStyle,
                                   std::vector<MarkdownHitRect>* hitRects = nullptr,
                                   const std::unordered_map<std::string, std::string>* abbreviations = nullptr,
-                                  const std::unordered_map<std::string, std::string>* footnotes = nullptr) {
+                                  const std::unordered_map<std::string, std::string>* footnotes = nullptr,
+                                  const FontStyle* baseFontStyle = nullptr,
+                                  const Color* baseColor = nullptr,
+                                  int availableWidth = -1) {
+        // Use caller-provided font/color or fall back to style defaults
+        const FontStyle& layoutFont = baseFontStyle ? *baseFontStyle : style.fontStyle;
+        const Color& defaultColor = baseColor ? *baseColor : style.fontColor;
 
         std::vector<MarkdownInlineElement> elements = ParseInlineMarkdown(line);
         if (abbreviations && !abbreviations->empty()) {
@@ -1359,306 +1367,279 @@ struct MarkdownInlineRenderer {
         if (footnotes && !footnotes->empty()) {
             elements = ApplyFootnotes(elements, *footnotes);
         }
-        int currentX = x;
+
+        // Build concatenated display text with PANGO_ATTR_SHAPE placeholders for images.
+        // For each image we insert a space (1 byte) and attach a shape attribute that
+        // reserves the image's visual width. After rendering the layout, we use
+        // IndexToPos on the placeholder byte to find the image's pixel position and
+        // draw the image there.
+        struct ElementRange {
+            const MarkdownInlineElement* elem;
+            int startByte;
+            int endByte;
+            int imgSize;          // reserved width for images (includes alt text)
+            std::string altText;  // extracted alt text for images (drawn after layout)
+        };
+
+        std::string displayText;
+        std::vector<ElementRange> ranges;
+        ranges.reserve(elements.size());
 
         for (const auto& elem : elements) {
-            if (elem.text.empty() && !elem.isImage) continue;
-
-            // --- Image element ---
             if (elem.isImage) {
+                // Compute reserved width: icon + 4px gap + italic alt text width + 2px
                 int imgSize = lineHeight - 2;
-                int imgY = y + 1;
-
-                // Draw image placeholder/thumbnail
-                ctx->SetFillPaint(mdStyle.imagePlaceholderBackground);
-                ctx->FillRectangle(Rect2Df(currentX, imgY, imgSize, imgSize));
-                ctx->SetStrokePaint(mdStyle.imagePlaceholderBorderColor);
-                ctx->SetStrokeWidth(1.0f);
-                ctx->DrawRectangle(Rect2Df(currentX, imgY, imgSize, imgSize));
-
-                // Draw small icon indicator in center
-                int iconCenterX = currentX + imgSize / 2;
-                int iconCenterY = imgY + imgSize / 2;
-                int iconR = std::max(2, imgSize / 6);
-                ctx->SetFillPaint(mdStyle.imagePlaceholderTextColor);
-                // Mountain icon: small triangle
-                ctx->ClearPath();
-                ctx->MoveTo(currentX + 2, imgY + imgSize - 2);
-                ctx->LineTo(iconCenterX, imgY + 3);
-                ctx->LineTo(currentX + imgSize - 2, imgY + imgSize - 2);
-                ctx->ClosePath();
-                ctx->Fill();
-
-                // Store hit rect for click interaction
-                if (hitRects) {
-                    MarkdownHitRect hr;
-                    hr.bounds = {currentX, imgY, imgSize, imgSize};
-                    hr.url = elem.url;
-                    hr.altText = elem.altText;
-                    hr.isImage = true;
-                    hitRects->push_back(hr);
-                }
-
-                currentX += imgSize + 4;
-
-                // Draw alt text after image icon
+                int reservedW = imgSize + 4;
                 if (!elem.altText.empty()) {
-                    ctx->SetFontWeight(FontWeight::Normal);
+                    // Measure alt text in italic
+                    ctx->PushState();
+                    ctx->SetFontStyle(layoutFont);
                     ctx->SetFontSlant(FontSlant::Italic);
-                    ctx->SetTextPaint(mdStyle.imagePlaceholderTextColor);
-                    ctx->DrawText(elem.altText, {currentX, y});
-                    currentX += ctx->GetTextLineWidth(elem.altText) + 2;
-                    ctx->SetFontSlant(FontSlant::Normal);
+                    reservedW += ctx->GetTextLineWidth(elem.altText) + 2;
+                    ctx->PopState();
                 }
+
+                int startByte = static_cast<int>(displayText.size());
+                displayText += ' ';  // 1-byte placeholder
+                int endByte = static_cast<int>(displayText.size());
+                ranges.push_back({&elem, startByte, endByte, reservedW, elem.altText});
+                continue;
+            }
+            if (elem.text.empty()) continue;
+
+            int startByte = static_cast<int>(displayText.size());
+            displayText += elem.text;
+            int endByte = static_cast<int>(displayText.size());
+            ranges.push_back({&elem, startByte, endByte, 0, ""});
+        }
+
+        // Nothing to render
+        if (displayText.empty()) return 0;
+
+        // Create the layout for the entire line
+        auto layout = ctx->CreateTextLayout(displayText, false);
+        layout->SetFontStyle(layoutFont);
+        if (availableWidth > 0) {
+            layout->SetExplicitWidth(availableWidth);
+            layout->SetWrap(TextWrap::WrapWordChar);
+        }
+
+        // Insert attributes for each element
+        for (const auto& r : ranges) {
+            const auto& elem = *r.elem;
+            int startByte = r.startByte;
+            int endByte = r.endByte;
+
+            // Image: reserve space via shape attribute
+            if (elem.isImage) {
+                auto shapeAttr = TextAttributeFactory::CreateShapeSpacer(r.imgSize);
+                shapeAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(shapeAttr));
                 continue;
             }
 
-            // --- Math element ($..$ or $$..$$) ---
+            // Bold
+            if (elem.isBold) {
+                auto attr = TextAttributeFactory::CreateWeight(FontWeight::Bold);
+                attr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(attr));
+            }
+            // Italic (also for math)
+            if (elem.isItalic || elem.isMath) {
+                auto attr = TextAttributeFactory::CreateStyle(FontSlant::Italic);
+                attr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(attr));
+            }
+            // Code spans: different font family + color + background
+            if (elem.isCode) {
+                auto famAttr = TextAttributeFactory::CreateFamily(mdStyle.codeFont);
+                famAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(famAttr));
+                auto fgAttr = TextAttributeFactory::CreateForeground(mdStyle.codeTextColor);
+                fgAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(fgAttr));
+                auto bgAttr = TextAttributeFactory::CreateBackground(mdStyle.codeBackgroundColor);
+                bgAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(bgAttr));
+            }
+            // Links and auto-links
+            if (elem.isLink || elem.isAutoLink) {
+                auto fgAttr = TextAttributeFactory::CreateForeground(mdStyle.linkColor);
+                fgAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(fgAttr));
+                if (mdStyle.linkUnderline) {
+                    auto ulAttr = TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle);
+                    ulAttr->SetRange(startByte, endByte);
+                    layout->InsertAttribute(std::move(ulAttr));
+                    auto ulcAttr = TextAttributeFactory::CreateUnderlineColor(mdStyle.linkColor);
+                    ulcAttr->SetRange(startByte, endByte);
+                    layout->InsertAttribute(std::move(ulcAttr));
+                }
+            }
+            // Strikethrough
+            if (elem.isStrikethrough) {
+                auto stAttr = TextAttributeFactory::CreateStrikethrough(true);
+                stAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(stAttr));
+                auto stcAttr = TextAttributeFactory::CreateStrikethroughColor(mdStyle.strikethroughColor);
+                stcAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(stcAttr));
+                auto fgAttr = TextAttributeFactory::CreateForeground(mdStyle.strikethroughColor);
+                fgAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(fgAttr));
+            }
+            // Math text color
             if (elem.isMath) {
-                int textWidth = ctx->GetTextLineWidth(elem.text);
-
-                // Draw subtle background
-                ctx->SetFillPaint(mdStyle.mathBackgroundColor);
-                ctx->FillRoundedRectangle(Rect2Df(currentX - 2, y + 1,
-                                           textWidth + 4, lineHeight - 2), 3);
-
-                // Draw math text in italic
-                ctx->SetFontSlant(FontSlant::Italic);
-                ctx->SetFontWeight(FontWeight::Normal);
-                ctx->SetTextPaint(mdStyle.mathTextColor);
-                ctx->DrawText(elem.text, {currentX, y});
-
-                ctx->SetFontSlant(FontSlant::Normal);
-                currentX += textWidth;
-                continue;
+                auto fgAttr = TextAttributeFactory::CreateForeground(mdStyle.mathTextColor);
+                fgAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(fgAttr));
             }
-
-            // --- Link element ---
-            if (elem.isLink) {
-                ctx->SetFontWeight(FontWeight::Normal);
-                ctx->SetFontSlant(FontSlant::Normal);
-                ctx->SetTextPaint(mdStyle.linkColor);
-                int textWidth = ctx->GetTextLineWidth(elem.text);
-
-                ctx->DrawText(elem.text, {currentX, y});
-
-                // Draw underline
-                if (mdStyle.linkUnderline) {
-                    int underlineY = y + lineHeight - 3;
-                    ctx->SetStrokePaint(mdStyle.linkColor);
-                    ctx->SetStrokeWidth(1.0f);
-                    ctx->DrawLine({currentX, underlineY}, { currentX + textWidth, underlineY});
-                }
-
-                // Store hit rect
-                if (hitRects) {
-                    MarkdownHitRect hr;
-                    hr.bounds = {currentX, y, textWidth, lineHeight};
-                    hr.url = elem.url;
-                    hr.isImage = false;
-                    hitRects->push_back(hr);
-                }
-
-                currentX += textWidth;
-                continue;
+            // Highlight background
+            if (elem.isHighlight) {
+                auto bgAttr = TextAttributeFactory::CreateBackground(mdStyle.highlightBackground);
+                bgAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(bgAttr));
             }
-
-            // --- Subscript element: rendered smaller and lower ---
+            // Subscript
             if (elem.isSubscript) {
-                double origSize = style.fontStyle.fontSize;
-                double subSize = origSize * 0.7;
-                ctx->SetFontSize(subSize);
-                ctx->SetFontWeight(FontWeight::Normal);
-                ctx->SetFontSlant(FontSlant::Normal);
-                ctx->SetTextPaint(style.fontColor);
-
-                int textWidth = ctx->GetTextLineWidth(elem.text);
-                double subY = y + lineHeight * 0.3; // Lower position
-                ctx->DrawText(elem.text, {static_cast<double>(currentX), subY});
-
-                ctx->SetFontSize(origSize);
-                currentX += textWidth;
-                continue;
+                auto scaleAttr = TextAttributeFactory::CreateScale(0.7);
+                scaleAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(scaleAttr));
+                auto riseAttr = TextAttributeFactory::CreateRise(static_cast<int>(-lineHeight * 0.15));
+                riseAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(riseAttr));
             }
-
-            // --- Superscript element: rendered smaller and higher ---
+            // Superscript
             if (elem.isSuperscript) {
-                double origSize = style.fontStyle.fontSize;
-                double supSize = origSize * 0.7;
-                ctx->SetFontSize(supSize);
-                ctx->SetFontWeight(FontWeight::Normal);
-                ctx->SetFontSlant(FontSlant::Normal);
-                ctx->SetTextPaint(style.fontColor);
-
-                int textWidth = ctx->GetTextLineWidth(elem.text);
-                double supY = y - lineHeight * 0.15f; // Higher position
-                ctx->DrawText(elem.text, {static_cast<double>(currentX), supY});
-
-                ctx->SetFontSize(origSize);
-                currentX += textWidth;
-                continue;
+                auto scaleAttr = TextAttributeFactory::CreateScale(0.7);
+                scaleAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(scaleAttr));
+                auto riseAttr = TextAttributeFactory::CreateRise(static_cast<int>(lineHeight * 0.25));
+                riseAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(riseAttr));
             }
-
-            // --- Emoji element: rendered at normal size ---
-            if (elem.isEmoji) {
-                ctx->SetFontWeight(FontWeight::Normal);
-                ctx->SetFontSlant(FontSlant::Normal);
-                ctx->SetTextPaint(style.fontColor);
-                ctx->DrawText(elem.text, {currentX, y});
-                currentX += ctx->GetTextLineWidth(elem.text);
-                continue;
+            // Footnote: superscript + colored
+            if (elem.isFootnote) {
+                auto scaleAttr = TextAttributeFactory::CreateScale(0.7);
+                scaleAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(scaleAttr));
+                auto riseAttr = TextAttributeFactory::CreateRise(static_cast<int>(lineHeight * 0.25));
+                riseAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(riseAttr));
+                auto fgAttr = TextAttributeFactory::CreateForeground(mdStyle.footnoteRefColor);
+                fgAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(fgAttr));
             }
+        }
 
-            // --- Auto-linked URL: rendered as a clickable link ---
-            if (elem.isAutoLink) {
-                ctx->SetFontWeight(FontWeight::Normal);
-                ctx->SetFontSlant(FontSlant::Normal);
-                ctx->SetTextPaint(mdStyle.linkColor);
-                int textWidth = ctx->GetTextLineWidth(elem.text);
-
-                ctx->DrawText(elem.text, {currentX, y});
-
-                // Draw underline
-                if (mdStyle.linkUnderline) {
-                    int underlineY = y + lineHeight - 3;
-                    ctx->SetStrokePaint(mdStyle.linkColor);
-                    ctx->SetStrokeWidth(1.0f);
-                    ctx->DrawLine({currentX, underlineY}, { currentX + textWidth, underlineY});
-                }
-
-                // Store hit rect for click
-                if (hitRects) {
-                    MarkdownHitRect hr;
-                    hr.bounds = {currentX, y, textWidth, lineHeight};
-                    hr.url = elem.url;
-                    hr.isImage = false;
-                    hitRects->push_back(hr);
-                }
-
-                currentX += textWidth;
-                continue;
+        // Draw math and abbreviation backgrounds (rounded rects, need manual drawing)
+        for (const auto& r : ranges) {
+            const auto& elem = *r.elem;
+            if (elem.isMath) {
+                Rect2Di startPos = layout->IndexToPos(r.startByte);
+                Rect2Di endPos = layout->IndexToPos(r.endByte);
+                int mathX = x + startPos.x;
+                int mathW = endPos.x - startPos.x;
+                ctx->SetFillPaint(mdStyle.mathBackgroundColor);
+                ctx->FillRoundedRectangle(Rect2Df(mathX - 2, y + 1, mathW + 4, lineHeight - 2), 3);
             }
-
-            // --- Abbreviation element: gray background + dotted underline ---
             if (elem.isAbbreviation) {
-                FontWeight weight = elem.isBold ? FontWeight::Bold : FontWeight::Normal;
-                FontSlant slant = elem.isItalic ? FontSlant::Italic : FontSlant::Normal;
-                ctx->SetFontWeight(weight);
-                ctx->SetFontSlant(slant);
-
-                int textWidth = ctx->GetTextLineWidth(elem.text);
-
-                // Draw gray background
+                Rect2Di startPos = layout->IndexToPos(r.startByte);
+                Rect2Di endPos = layout->IndexToPos(r.endByte);
+                int abbrX = x + startPos.x;
+                int abbrW = endPos.x - startPos.x;
                 ctx->SetFillPaint(mdStyle.abbreviationBackground);
-                ctx->FillRoundedRectangle({currentX - 1, y + 1, textWidth + 2, lineHeight - 2}, 2);
+                ctx->FillRoundedRectangle(Rect2Df(abbrX - 1, y + 1, abbrW + 2, lineHeight - 2), 2);
+            }
+        }
 
-                // Draw text
-                ctx->SetTextPaint(style.fontColor);
-                ctx->DrawText(elem.text, {currentX, y});
+        // Draw the layout text (spacers leave blank space at image positions)
+        ctx->SetCurrentPaint(defaultColor);
+        ctx->DrawTextLayout(*layout, {x, y});
 
-                // Draw dotted underline
+        // Draw abbreviation dotted underlines (after text)
+        for (const auto& r : ranges) {
+            const auto& elem = *r.elem;
+            if (elem.isAbbreviation) {
+                Rect2Di startPos = layout->IndexToPos(r.startByte);
+                Rect2Di endPos = layout->IndexToPos(r.endByte);
+                int abbrX = x + startPos.x;
+                int abbrW = endPos.x - startPos.x;
                 int underlineY = y + lineHeight - 2;
                 ctx->SetStrokePaint(mdStyle.abbreviationUnderlineColor);
                 ctx->SetStrokeWidth(1.0f);
-                ctx->SetLineDash(UCDashPattern({mdStyle.abbreviationUnderlineDashLength,mdStyle.abbreviationUnderlineGapLength}));
-                ctx->DrawLine({currentX, underlineY}, {currentX + textWidth, underlineY});
+                ctx->SetLineDash(UCDashPattern({mdStyle.abbreviationUnderlineDashLength, mdStyle.abbreviationUnderlineGapLength}));
+                ctx->DrawLine({abbrX, underlineY}, {abbrX + abbrW, underlineY});
+                ctx->SetLineDash(UCDashPattern()); // reset dash
+            }
+        }
 
-                // Store hit rect for hover tooltip
-                if (hitRects) {
+        // Draw images into the reserved shape-spacer slots
+        for (const auto& r : ranges) {
+            const auto& elem = *r.elem;
+            if (!elem.isImage) continue;
+            Rect2Di pos = layout->IndexToPos(r.startByte);
+            int imgX = x + pos.x;
+            int imgSize = lineHeight - 2;
+            int imgY = y + 1;
+            ctx->SetFillPaint(mdStyle.imagePlaceholderBackground);
+            ctx->FillRectangle(Rect2Df(imgX, imgY, imgSize, imgSize));
+            ctx->SetStrokePaint(mdStyle.imagePlaceholderBorderColor);
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawRectangle(Rect2Df(imgX, imgY, imgSize, imgSize));
+            // Mountain icon
+            ctx->SetFillPaint(mdStyle.imagePlaceholderTextColor);
+            ctx->ClearPath();
+            ctx->MoveTo(imgX + 2, imgY + imgSize - 2);
+            ctx->LineTo(imgX + imgSize / 2, imgY + 3);
+            ctx->LineTo(imgX + imgSize - 2, imgY + imgSize - 2);
+            ctx->ClosePath();
+            ctx->Fill();
+            if (hitRects) {
+                hitRects->push_back({{imgX, imgY, imgSize, imgSize}, elem.url, elem.altText, true});
+            }
+            // Alt text (italic) next to the icon
+            if (!r.altText.empty()) {
+                ctx->PushState();
+                ctx->SetFontStyle(layoutFont);
+                ctx->SetFontSlant(FontSlant::Italic);
+                ctx->SetCurrentPaint(mdStyle.imagePlaceholderTextColor);
+                ctx->DrawText(r.altText, {imgX + imgSize + 4, y});
+                ctx->PopState();
+            }
+        }
+
+        // Collect hit rects for links, footnotes, abbreviations
+        if (hitRects) {
+            for (const auto& r : ranges) {
+                const auto& elem = *r.elem;
+                if (elem.isImage) continue; // already handled above
+                Rect2Di startPos = layout->IndexToPos(r.startByte);
+                Rect2Di endPos = layout->IndexToPos(r.endByte);
+                int elemX = x + startPos.x;
+                int elemW = endPos.x - startPos.x;
+
+                if (elem.isLink || elem.isAutoLink) {
+                    hitRects->push_back({{elemX, y, elemW, lineHeight}, elem.url, ""});
+                }
+                if (elem.isFootnote && !elem.footnoteContent.empty()) {
+                    MarkdownHitRect fnHr;
+                    fnHr.bounds = {elemX, y, elemW, lineHeight};
+                    fnHr.altText = elem.footnoteContent;
+                    fnHr.isFootnote = true;
+                    hitRects->push_back(fnHr);
+                }
+                if (elem.isAbbreviation) {
                     MarkdownHitRect hr;
-                    hr.bounds = {currentX, y, textWidth, lineHeight};
+                    hr.bounds = {elemX, y, elemW, lineHeight};
                     hr.altText = elem.abbreviationExpansion;
                     hr.isAbbreviation = true;
                     hitRects->push_back(hr);
                 }
-
-                currentX += textWidth;
-                continue;
             }
-
-            // --- Footnote element: superscript colored reference ---
-            if (elem.isFootnote) {
-                double origSize = style.fontStyle.fontSize;
-                double supSize = origSize * 0.7f;
-                ctx->SetFontSize(supSize);
-                ctx->SetFontWeight(FontWeight::Normal);
-                ctx->SetFontSlant(FontSlant::Normal);
-                ctx->SetTextPaint(mdStyle.footnoteRefColor);
-
-                int textWidth = ctx->GetTextLineWidth(elem.text);
-                double supY = y - lineHeight * 0.15;
-                ctx->DrawText(elem.text, {static_cast<double>(currentX), supY});
-
-                // Store hit rect for hover tooltip
-                if (hitRects && !elem.footnoteContent.empty()) {
-                    MarkdownHitRect hr;
-                    hr.bounds = {currentX, y, textWidth, lineHeight};
-                    hr.altText = elem.footnoteContent;
-                    hr.isFootnote = true;
-                    hitRects->push_back(hr);
-                }
-
-                ctx->SetFontSize(origSize);
-                currentX += textWidth;
-                continue;
-            }
-
-            // --- Determine formatting ---
-            FontWeight weight = elem.isBold ? FontWeight::Bold : FontWeight::Normal;
-            FontSlant slant = elem.isItalic ? FontSlant::Italic : FontSlant::Normal;
-            Color color = style.fontColor;
-
-            if (elem.isCode) {
-                color = mdStyle.codeTextColor;
-            }
-
-            ctx->SetFontWeight(weight);
-            ctx->SetFontSlant(slant);
-
-            // --- Set code font BEFORE measuring so width is correct ---
-            if (elem.isCode) {
-                ctx->SetFontFamily(mdStyle.codeFont);
-            }
-
-            int textWidth = ctx->GetTextLineWidth(elem.text);
-
-            // --- Highlight background ---
-            if (elem.isHighlight) {
-                ctx->SetFillPaint(mdStyle.highlightBackground);
-                ctx->FillRectangle(Rect2Df(currentX - 1, y, textWidth + 2, lineHeight));
-            }
-
-            // --- Code background ---
-            if (elem.isCode) {
-                ctx->SetFillPaint(mdStyle.codeBackgroundColor);
-                ctx->FillRoundedRectangle({currentX - 2, y + 1, textWidth + 4, lineHeight - 2}, 3);
-            }
-
-            // --- Draw the text ---
-            ctx->SetTextPaint(elem.isStrikethrough ? mdStyle.strikethroughColor : color);
-            ctx->DrawText(elem.text, {currentX, y});
-
-            // --- Strikethrough line ---
-            if (elem.isStrikethrough) {
-                int strikeY = y + lineHeight / 2;
-                ctx->SetStrokePaint(mdStyle.strikethroughColor);
-                ctx->SetStrokeWidth(1.0f);
-                ctx->DrawLine({currentX, strikeY}, { currentX + textWidth, strikeY});
-            }
-
-            // --- Restore font if code changed it ---
-            if (elem.isCode) {
-                ctx->SetFontFamily(style.fontStyle.fontFamily);
-            }
-
-            currentX += textWidth;
         }
 
-        // Reset font state
-        ctx->SetFontWeight(FontWeight::Normal);
-        ctx->SetFontSlant(FontSlant::Normal);
-
-        return currentX - x; // Return total width rendered
+        return layout->GetLayoutWidth();
     }
 
     // ---------------------------------------------------------------
@@ -1716,16 +1697,21 @@ struct MarkdownInlineRenderer {
         float maxFontSize = static_cast<float>(lineHeight) * levelCeilMultipliers[levelIndex];
         headerFontSize = std::min(headerFontSize, maxFontSize);
 
-        ctx->SetFontSize(headerFontSize);
-        ctx->SetFontWeight(FontWeight::Bold);
-        ctx->SetTextPaint(mdStyle.headerColors[levelIndex]);
+        // Build header font style
+        FontStyle headerFont = style.fontStyle;
+        headerFont.fontSize = headerFontSize;
+        headerFont.fontWeight = FontWeight::Bold;
+        Color headerColor = mdStyle.headerColors[levelIndex];
 
         // Vertically center the header text within the fixed line height
+        ctx->SetFontSize(headerFontSize);
+        ctx->SetFontWeight(FontWeight::Bold);
         int textHeight = ctx->GetTextLineHeight(headerText.empty() ? "M" : headerText);
         int centeredY = y + (lineHeight - textHeight) / 2;
 
         // Render inline markdown within header text (links, bold, etc.)
-        int renderedWidth = RenderMarkdownLine(ctx, headerText, x, centeredY, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes);
+        int renderedWidth = RenderMarkdownLine(ctx, headerText, x, centeredY, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes,
+                                               &headerFont, &headerColor);
 
         // Render backlink icon if exactly 1 internal link points to this header's anchor
         if (anchorBacklinks && !anchorBacklinks->empty()) {
@@ -1790,7 +1776,8 @@ struct MarkdownInlineRenderer {
                                        std::vector<MarkdownHitRect>* hitRects = nullptr,
                                        int orderNumberOverride = -1,
                                        const std::unordered_map<std::string, std::string>* abbreviations = nullptr,
-                                       const std::unordered_map<std::string, std::string>* footnotes = nullptr) {
+                                       const std::unordered_map<std::string, std::string>* footnotes = nullptr,
+                                       int availableWidth = -1) {
         size_t pos = 0;
 
         // Count leading whitespace for nesting depth
@@ -1899,14 +1886,17 @@ struct MarkdownInlineRenderer {
         // --- Draw item text with inline formatting ---
         // Checked and unchecked task items both render with normal inline formatting
         // The checkbox itself indicates completion — no strikethrough needed
-        RenderMarkdownLine(ctx, itemText, bulletX, y, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes);
+        int itemAvailWidth = (availableWidth > 0) ? std::max(1, availableWidth - (bulletX - x)) : -1;
+        RenderMarkdownLine(ctx, itemText, bulletX, y, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes,
+                           nullptr, nullptr, itemAvailWidth);
     }
 
     // ---------------------------------------------------------------
     // BLOCKQUOTE RENDERER
     // ---------------------------------------------------------------
 
-    static void RenderMarkdownBlockquote(IRenderContext* ctx, const std::string& line,
+    // Returns total rendered height (may span multiple lineHeight rows if text wraps)
+    static int RenderMarkdownBlockquote(IRenderContext* ctx, const std::string& line,
                                          int x, int y, int lineHeight, int width,
                                          const TextAreaStyle& style,
                                          const MarkdownHybridStyle& mdStyle,
@@ -1928,26 +1918,43 @@ struct MarkdownInlineRenderer {
         std::string quoteText = (pos < trimmed.length()) ? trimmed.substr(pos) : "";
 
         // Each nesting level adds one bar + a fixed horizontal step
-        // barStride = distance from one bar's left edge to the next level's bar left edge
         int barStride = mdStyle.quoteNestingStep;
-
-        // Full background covers from x to x+width for all nesting levels
-        ctx->SetFillPaint(mdStyle.quoteBackgroundColor);
-        ctx->FillRectangle(Rect2Df(x, y, width, lineHeight));
-
-        // Draw one vertical bar per nesting level, each offset by barStride
-        for (int d = 0; d < depth; d++) {
-            int barX = x + d * barStride;
-            ctx->SetFillPaint(mdStyle.quoteBarColor);
-            ctx->FillRectangle(Rect2Df(barX, y, mdStyle.quoteBarWidth, lineHeight));
-        }
 
         // Text starts after the outermost bar + gap + per-level indent
         int textX = x + (depth - 1) * barStride + mdStyle.quoteIndent;
-        ctx->SetFontSlant(FontSlant::Italic);
-        ctx->SetTextPaint(mdStyle.quoteTextColor);
-        RenderMarkdownLine(ctx, quoteText, textX, y, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes);
-        ctx->SetFontSlant(FontSlant::Normal);
+        int textAvailWidth = std::max(1, (x + width) - textX - mdStyle.quoteIndent);
+
+        FontStyle quoteFont = style.fontStyle;
+        quoteFont.fontSlant = FontSlant::Italic;
+
+        // Pre-measure wrapped height so bg/bars can extend across all wrapped rows
+        int wrappedLineCount = 1;
+        if (!quoteText.empty()) {
+            auto measureLayout = ctx->CreateTextLayout(quoteText, false);
+            measureLayout->SetFontStyle(quoteFont);
+            measureLayout->SetExplicitWidth(textAvailWidth);
+            measureLayout->SetWrap(TextWrap::WrapWordChar);
+            wrappedLineCount = std::max(1, measureLayout->GetLineCount());
+        }
+        int totalHeight = wrappedLineCount * lineHeight;
+
+        // Full background covers from x to x+width for all wrapped rows
+        ctx->SetFillPaint(mdStyle.quoteBackgroundColor);
+        ctx->FillRectangle(Rect2Df(x, y, width, totalHeight));
+
+        // Draw one vertical bar per nesting level for the full height
+        for (int d = 0; d < depth; d++) {
+            int barX = x + d * barStride;
+            ctx->SetFillPaint(mdStyle.quoteBarColor);
+            ctx->FillRectangle(Rect2Df(barX, y, mdStyle.quoteBarWidth, totalHeight));
+        }
+
+        // Render the quote text with Pango-wrapped layout (single call handles all wrapped rows)
+        Color quoteColor = mdStyle.quoteTextColor;
+        RenderMarkdownLine(ctx, quoteText, textX, y, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes,
+                           &quoteFont, &quoteColor, textAvailWidth);
+
+        return totalHeight;
     }
 
     // ---------------------------------------------------------------
@@ -1968,15 +1975,14 @@ struct MarkdownInlineRenderer {
         ctx->DrawLine({x, y}, { x, y + lineHeight});
         ctx->DrawLine({x + width, y}, { x + width, y + lineHeight});
 
-        // Draw code text in monospace
-        ctx->SetFontFamily(mdStyle.codeFont);
-        ctx->SetFontWeight(FontWeight::Normal);
-        ctx->SetFontSlant(FontSlant::Normal);
-        ctx->SetTextPaint(mdStyle.codeBlockTextColor);
-        ctx->DrawText(line, {x + 4, y});
+        // Create layout with monospace font
+        FontStyle codeFont = style.fontStyle;
+        codeFont.fontFamily = mdStyle.codeFont;
+        auto layout = ctx->CreateTextLayout(line, false);
+        layout->SetFontStyle(codeFont);
 
-        // Restore font
-        ctx->SetFontFamily(style.fontStyle.fontFamily);
+        ctx->SetTextPaint(mdStyle.codeBlockTextColor);
+        ctx->DrawTextLayout(*layout, {x + 4, y});
     }
 
     // ---------------------------------------------------------------
@@ -2001,21 +2007,21 @@ struct MarkdownInlineRenderer {
         ctx->DrawLine({x, y}, { x, y + lineHeight});
         ctx->DrawLine({x + width, y}, { x + width, y + lineHeight});
 
-        // Set monospace font
-        ctx->SetFontFamily(mdStyle.codeFont);
-        ctx->SetFontWeight(FontWeight::Normal);
-        ctx->SetFontSlant(FontSlant::Normal);
+        // Create layout with monospace font
+        FontStyle codeFont = style.fontStyle;
+        codeFont.fontFamily = mdStyle.codeFont;
+
+        auto layout = ctx->CreateTextLayout(line, false);
+        layout->SetFontStyle(codeFont);
 
         if (tokenizer) {
-            // Tokenize the line and render each token with its color
-            // IMPORTANT: We use code-block-specific colors instead of the TextArea
-            // theme colors, because the TextArea theme may be dark-on-light or
-            // light-on-dark and the code block background is always a specific color
             auto tokens = tokenizer->TokenizeLine(line);
-            int tokenX = x + 4;
+            int currentByte = 0;
 
             for (const auto& token : tokens) {
-                // Map token types to code-block-specific colors
+                int startByte = currentByte;
+                int endByte = currentByte + static_cast<int>(token.text.size());
+
                 Color tokenColor = mdStyle.codeBlockTextColor;
                 bool tokenBold = false;
 
@@ -2040,31 +2046,25 @@ struct MarkdownInlineRenderer {
                     case TokenType::Builtin:
                         tokenColor = mdStyle.codeBlockKeywordColor;
                         break;
-                    case TokenType::Operator:
-                        tokenColor = mdStyle.codeBlockTextColor;
-                        break;
                     default:
-                        tokenColor = mdStyle.codeBlockTextColor;
                         break;
                 }
 
-                ctx->SetFontWeight(tokenBold ? FontWeight::Bold : FontWeight::Normal);
-                ctx->SetTextPaint(tokenColor);
+                auto fgAttr = TextAttributeFactory::CreateForeground(tokenColor);
+                fgAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(fgAttr));
 
-                int tokenWidth = ctx->GetTextLineWidth(token.text);
-                ctx->DrawText(token.text, {tokenX, y});
-                tokenX += tokenWidth;
+                if (tokenBold) {
+                    auto wAttr = TextAttributeFactory::CreateWeight(FontWeight::Bold);
+                    wAttr->SetRange(startByte, endByte);
+                    layout->InsertAttribute(std::move(wAttr));
+                }
+                currentByte = endByte;
             }
-        } else {
-            // Fallback: render as plain monospace
-            ctx->SetTextPaint(mdStyle.codeBlockTextColor);
-            ctx->DrawText(line, {x + 4, y});
         }
 
-        // Restore font
-        ctx->SetFontFamily(style.fontStyle.fontFamily);
-        ctx->SetFontWeight(FontWeight::Normal);
-        ctx->SetFontSlant(FontSlant::Normal);
+        ctx->SetTextPaint(mdStyle.codeBlockTextColor);
+        ctx->DrawTextLayout(*layout, {x + 4, y});
     }
 
     // ---------------------------------------------------------------
@@ -2612,10 +2612,10 @@ struct MarkdownInlineRenderer {
                 }
             }
 
-            // Set font weight for header
-            ctx->SetFontWeight(isHeaderRow ?
-                               FontWeight::Bold : FontWeight::Normal);
-            ctx->SetTextPaint(style.fontColor);
+            // Build cell font style (bold for header rows)
+            FontStyle cellFont = style.fontStyle;
+            if (isHeaderRow) cellFont.fontWeight = FontWeight::Bold;
+            ctx->SetFontWeight(isHeaderRow ? FontWeight::Bold : FontWeight::Normal);
 
             // Wrap cell text and render each wrapped line
             const std::string& cellText = parsed.cells[col];
@@ -2640,7 +2640,8 @@ struct MarkdownInlineRenderer {
                 }
 
                 // Render cell content with inline markdown
-                RenderMarkdownLine(ctx, wrappedLines[wl], textX, lineY, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes);
+                RenderMarkdownLine(ctx, wrappedLines[wl], textX, lineY, lineHeight, style, mdStyle, hitRects, abbreviations, footnotes,
+                                   &cellFont);
             }
 
             cellX += cellWidth;
@@ -3015,6 +3016,44 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         }
     }
 
+    // --- Pre-compute blockquote heights (for Y-offset tracking like tables) ---
+    // Blockquote lines render with internal Pango wrapping at a narrower width, so their
+    // visual height can exceed computedLineHeight. We measure each blockquote line here
+    // and use the height to push down subsequent display lines via markdownLineYOffsets.
+    std::vector<int> blockquoteHeights(lines.size(), computedLineHeight);
+    {
+        FontStyle quoteFont = style.fontStyle;
+        quoteFont.fontSlant = FontSlant::Italic;
+        for (size_t i = 0; i < lines.size(); i++) {
+            if (isInsideCodeBlock[i]) continue;
+            std::string trimmed = TrimWhitespace(lines[i]);
+            if (trimmed.empty() || trimmed[0] != '>') continue;
+
+            // Parse depth and extract quote text
+            size_t pos = 0;
+            int depth = 0;
+            while (pos < trimmed.length() && trimmed[pos] == ' ') pos++;
+            while (pos < trimmed.length() && trimmed[pos] == '>') {
+                depth++;
+                pos++;
+                if (pos < trimmed.length() && trimmed[pos] == ' ') pos++;
+            }
+            std::string quoteText = (pos < trimmed.length()) ? trimmed.substr(pos) : "";
+            if (quoteText.empty()) continue;
+
+            int barStride = mdStyle.quoteNestingStep;
+            int textAvailWidth = std::max(1,
+                visibleTextArea.width - (depth - 1) * barStride - mdStyle.quoteIndent * 2);
+
+            auto measure = context->CreateTextLayout(quoteText, false);
+            measure->SetFontStyle(quoteFont);
+            measure->SetExplicitWidth(textAvailWidth);
+            measure->SetWrap(TextWrap::WrapWordChar);
+            int wrappedLines = std::max(1, measure->GetLineCount());
+            blockquoteHeights[i] = wrappedLines * computedLineHeight;
+        }
+    }
+
     // --- Pre-scan: compute ordered list numbering per CommonMark spec ---
     // First item's literal number sets the start; subsequent items increment by 1
     std::vector<int> orderedListNumber(lines.size(), -1);
@@ -3289,7 +3328,8 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         }
     }
 
-    // Build cumulative Y offsets for display lines affected by multi-line table rows
+    // Build cumulative Y offsets for display lines affected by multi-line block elements
+    // (table rows and wrapping blockquotes)
     {
         int dlCount = GetDisplayLineCount();
         markdownLineYOffsets.assign(dlCount, 0);
@@ -3298,7 +3338,12 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             markdownLineYOffsets[di] = cumulativeOffset;
             int logLine = displayLines[di].logicalLine;
             if (logLine >= 0 && logLine < static_cast<int>(lines.size())) {
-                int extraHeight = tableRowHeights[logLine] - computedLineHeight;
+                // Skip extra height for the cursor line: it's rendered as raw markdown
+                // with Pango wrapping (multiple displayLine entries already provide the space).
+                if (logLine == cursorLine) continue;
+                // Use the larger of table or blockquote height for this line
+                int blockHeight = std::max(tableRowHeights[logLine], blockquoteHeights[logLine]);
+                int extraHeight = blockHeight - computedLineHeight;
                 if (extraHeight > 0 && displayLines[di].startGrapheme == 0) {
                     cumulativeOffset += extraHeight;
                 }
@@ -3360,47 +3405,41 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         bool isFirstSegment = (dl.startGrapheme == 0);
 
         // --- CURRENT LINE: Show raw markdown with syntax highlighting ---
-        // Use token-clipping approach (like DrawHighlightedText) to handle wrapped segments
+        // Use per-logical-line layout with syntax token attributes
         if (logLine == cursorLine) {
-            if (logLine != lastTokenizedLogicalLine) {
-                cachedTokens = syntaxTokenizer->TokenizeLine(line);
-                lastTokenizedLogicalLine = logLine;
-            }
+            // Only draw once per logical line (layout handles wrapping)
+            if (logLine == lastTokenizedLogicalLine) continue;
+            lastTokenizedLogicalLine = logLine;
 
-            int tokenStartGrapheme = 0;
+            // Build a temporary syntax-highlighted layout for the cursor line
+            auto cursorLayout = context->CreateTextLayout(line, false);
+            cursorLayout->SetFontStyle(style.fontStyle);
+            if (wordWrap && visibleTextArea.width > 0) {
+                cursorLayout->SetExplicitWidth(visibleTextArea.width);
+                cursorLayout->SetWrap(TextWrap::WrapWordChar);
+            }
+            cursorLayout->SetLineSpacing(style.lineHeight);
+
+            // Apply syntax token attributes
+            cachedTokens = syntaxTokenizer->TokenizeLine(line);
+            int currentByte = 0;
             for (const auto& token : cachedTokens) {
-                int tokenLen = static_cast<int>(utf8_length(token.text));
-                int tokenEndGrapheme = tokenStartGrapheme + tokenLen;
-
-                // Check overlap with this display line's grapheme range
-                int overlapStart = std::max(tokenStartGrapheme, dl.startGrapheme);
-                int overlapEnd = std::min(tokenEndGrapheme, dl.endGrapheme);
-
-                if (overlapStart < overlapEnd) {
-                    std::string visibleText;
-                    if (overlapStart == tokenStartGrapheme && overlapEnd == tokenEndGrapheme) {
-                        visibleText = token.text;
-                    } else {
-                        int localStart = overlapStart - tokenStartGrapheme;
-                        int localLen = overlapEnd - overlapStart;
-                        visibleText = utf8_substr(token.text, localStart, localLen);
-                    }
-
-                    context->SetFontWeight(FontWeight::Normal);
-                    int tokenWidth = context->GetTextLineWidth(visibleText);
-
-                    if (x + tokenWidth >= visibleTextArea.x &&
-                        x <= visibleTextArea.x + visibleTextArea.width) {
-                        TokenStyle tokenStyle = GetStyleForTokenType(token.type);
-                        context->SetTextPaint(tokenStyle.color);
-                        context->DrawText(visibleText, {x, textY});
-                    }
-                    x += tokenWidth;
+                int startByte = currentByte;
+                int endByte = currentByte + static_cast<int>(token.text.size());
+                TokenStyle tokenStyle = GetStyleForTokenType(token.type);
+                auto fgAttr = TextAttributeFactory::CreateForeground(tokenStyle.color);
+                fgAttr->SetRange(startByte, endByte);
+                cursorLayout->InsertAttribute(std::move(fgAttr));
+                if (tokenStyle.bold) {
+                    auto wAttr = TextAttributeFactory::CreateWeight(FontWeight::Bold);
+                    wAttr->SetRange(startByte, endByte);
+                    cursorLayout->InsertAttribute(std::move(wAttr));
                 }
-
-                tokenStartGrapheme = tokenEndGrapheme;
-                if (tokenStartGrapheme >= dl.endGrapheme) break;
+                currentByte = endByte;
             }
+
+            context->SetTextPaint(style.fontColor);
+            context->DrawTextLayout(*cursorLayout, {x, textY});
             continue;
         }
 
@@ -3423,80 +3462,64 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                 context->DrawLine({x, textY}, { x, textY + computedLineHeight});
                 context->DrawLine({x + visibleTextArea.width, textY}, { x + visibleTextArea.width, textY + computedLineHeight});
 
-                context->SetFontFamily(mdStyle.codeFont);
-                context->SetFontWeight(FontWeight::Normal);
-                context->SetFontSlant(FontSlant::Normal);
+                // Draw wrapped segment text using layout
+                int segLen = dl.endGrapheme - dl.startGrapheme;
+                std::string codeSegment = utf8_substr(line, dl.startGrapheme, segLen);
+
+                FontStyle codeFont = style.fontStyle;
+                codeFont.fontFamily = mdStyle.codeFont;
+                auto segLayout = context->CreateTextLayout(codeSegment, false);
+                segLayout->SetFontStyle(codeFont);
 
                 const std::string& lang = codeBlockLanguage[logLine];
                 if (!lang.empty() && codeBlockTokenizer) {
-                    // Syntax-highlighted wrap: tokenize full line, clip to segment range
-                    auto tokens = codeBlockTokenizer->TokenizeLine(line);
-                    int tokenStartGrapheme = 0;
-                    int tokenX = x + 4;
+                    auto tokens = codeBlockTokenizer->TokenizeLine(codeSegment);
+                    int currentByte = 0;
                     for (const auto& token : tokens) {
-                        int tokenLen = static_cast<int>(utf8_length(token.text));
-                        int tokenEndGrapheme = tokenStartGrapheme + tokenLen;
+                        int startByte = currentByte;
+                        int endByte = currentByte + static_cast<int>(token.text.size());
 
-                        int overlapStart = std::max(tokenStartGrapheme, dl.startGrapheme);
-                        int overlapEnd = std::min(tokenEndGrapheme, dl.endGrapheme);
-
-                        if (overlapStart < overlapEnd) {
-                            std::string visibleText;
-                            if (overlapStart == tokenStartGrapheme && overlapEnd == tokenEndGrapheme) {
-                                visibleText = token.text;
-                            } else {
-                                int localStart = overlapStart - tokenStartGrapheme;
-                                int localLen = overlapEnd - overlapStart;
-                                visibleText = utf8_substr(token.text, localStart, localLen);
-                            }
-
-                            Color tokenColor = mdStyle.codeBlockTextColor;
-                            bool tokenBold = false;
-                            switch (token.type) {
-                                case TokenType::Keyword:
-                                case TokenType::Preprocessor:
-                                    tokenColor = mdStyle.codeBlockKeywordColor;
-                                    tokenBold = true;
-                                    break;
-                                case TokenType::String:
-                                case TokenType::Character:
-                                    tokenColor = mdStyle.codeBlockStringColor;
-                                    break;
-                                case TokenType::Comment:
-                                    tokenColor = mdStyle.codeBlockCommentColor;
-                                    break;
-                                case TokenType::Number:
-                                    tokenColor = mdStyle.codeBlockNumberColor;
-                                    break;
-                                case TokenType::Function:
-                                case TokenType::Type:
-                                case TokenType::Builtin:
-                                    tokenColor = mdStyle.codeBlockKeywordColor;
-                                    break;
-                                default:
-                                    break;
-                            }
-
-                            context->SetFontWeight(tokenBold ? FontWeight::Bold : FontWeight::Normal);
-                            context->SetTextPaint(tokenColor);
-                            int tokenWidth = context->GetTextLineWidth(visibleText);
-                            context->DrawText(visibleText, {tokenX, textY});
-                            tokenX += tokenWidth;
+                        Color tokenColor = mdStyle.codeBlockTextColor;
+                        bool tokenBold = false;
+                        switch (token.type) {
+                            case TokenType::Keyword:
+                            case TokenType::Preprocessor:
+                                tokenColor = mdStyle.codeBlockKeywordColor;
+                                tokenBold = true;
+                                break;
+                            case TokenType::String:
+                            case TokenType::Character:
+                                tokenColor = mdStyle.codeBlockStringColor;
+                                break;
+                            case TokenType::Comment:
+                                tokenColor = mdStyle.codeBlockCommentColor;
+                                break;
+                            case TokenType::Number:
+                                tokenColor = mdStyle.codeBlockNumberColor;
+                                break;
+                            case TokenType::Function:
+                            case TokenType::Type:
+                            case TokenType::Builtin:
+                                tokenColor = mdStyle.codeBlockKeywordColor;
+                                break;
+                            default:
+                                break;
                         }
 
-                        tokenStartGrapheme = tokenEndGrapheme;
-                        if (tokenStartGrapheme >= dl.endGrapheme) break;
+                        auto fgAttr = TextAttributeFactory::CreateForeground(tokenColor);
+                        fgAttr->SetRange(startByte, endByte);
+                        segLayout->InsertAttribute(std::move(fgAttr));
+                        if (tokenBold) {
+                            auto wAttr = TextAttributeFactory::CreateWeight(FontWeight::Bold);
+                            wAttr->SetRange(startByte, endByte);
+                            segLayout->InsertAttribute(std::move(wAttr));
+                        }
+                        currentByte = endByte;
                     }
-                } else {
-                    // Plain monospace wrap
-                    int segLen = dl.endGrapheme - dl.startGrapheme;
-                    std::string codeSegment = utf8_substr(line, dl.startGrapheme, segLen);
-                    context->SetTextPaint(mdStyle.codeBlockTextColor);
-                    context->DrawText(codeSegment, {x + 4, textY});
                 }
 
-                context->SetFontFamily(style.fontStyle.fontFamily);
-                context->SetFontWeight(FontWeight::Normal);
+                context->SetTextPaint(mdStyle.codeBlockTextColor);
+                context->DrawTextLayout(*segLayout, {x + 4, textY});
                 continue;
             }
 
@@ -3675,12 +3698,14 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
 
             // Italic text with quote color
             int textX = x + (depth - 1) * barStride + mdStyle.quoteIndent;
-            context->SetFontSlant(FontSlant::Italic);
-            context->SetTextPaint(mdStyle.quoteTextColor);
+            int quoteAvail = std::max(1, (x + visibleTextArea.width) - textX - mdStyle.quoteIndent);
+            FontStyle quoteContFont = style.fontStyle;
+            quoteContFont.fontSlant = FontSlant::Italic;
+            Color quoteContColor = mdStyle.quoteTextColor;
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, segment, textX, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
-            context->SetFontSlant(FontSlant::Normal);
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes,
+                    &quoteContFont, &quoteContColor, quoteAvail);
             continue;
         }
 
@@ -3689,14 +3714,17 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             MarkdownInlineRenderer::RenderMarkdownListItem(
                     context, segment, x, textY, computedLineHeight,
                     style, mdStyle, &markdownHitRects,
-                    orderedListNumber[logLine], &markdownAbbreviations, &markdownFootnotes);
+                    orderedListNumber[logLine], &markdownAbbreviations, &markdownFootnotes,
+                    visibleTextArea.width);
             continue;
         }
         if (!isFirstSegment && IsMarkdownListItem(TrimWhitespace(lines[logLine]))) {
             // Continuation of a list item: render with indent
+            int contAvail = std::max(1, visibleTextArea.width - mdStyle.listIndent);
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, segment, x + mdStyle.listIndent, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes,
+                    nullptr, nullptr, contAvail);
             continue;
         }
 
@@ -3707,7 +3735,8 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
             std::string boldSegment = "**" + segment + "**";
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, boldSegment, x, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes,
+                    nullptr, nullptr, visibleTextArea.width);
             continue;
         }
 
@@ -3726,9 +3755,11 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
                     defText = defText.substr(textStart);
             }
 
+            int defAvail = std::max(1, visibleTextArea.width - defIndent);
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, defText, x + defIndent, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes,
+                    nullptr, nullptr, defAvail);
             continue;
         }
 
@@ -3736,15 +3767,18 @@ void UltraCanvasTextArea::DrawMarkdownHybridText(IRenderContext* context) {
         if (isFirstSegment && logLine < static_cast<int>(isDefinitionContinuationLine.size()) &&
             isDefinitionContinuationLine[logLine] && logLine != cursorLine) {
             int defIndent = mdStyle.listIndent + 10;
+            int defAvail = std::max(1, visibleTextArea.width - defIndent);
             MarkdownInlineRenderer::RenderMarkdownLine(
                     context, trimmed, x + defIndent, textY, computedLineHeight,
-                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
+                    style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes,
+                    nullptr, nullptr, defAvail);
             continue;
         }
         // --- Regular text with inline formatting ---
         MarkdownInlineRenderer::RenderMarkdownLine(
                 context, segment, x, textY, computedLineHeight,
-                style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes);
+                style, mdStyle, &markdownHitRects, &markdownAbbreviations, &markdownFootnotes,
+                nullptr, nullptr, visibleTextArea.width);
     }
 
     context->PopState();

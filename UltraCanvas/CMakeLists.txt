@@ -102,6 +102,7 @@ set(ULTRACANVAS_PLATFORM ${ULTRACANVAS_PLATFORM} PARENT_SCOPE)
 set(ULTRACANVAS_CORE_SOURCES
         # Platform-specific sources
         #${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasString.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCommonTypes.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEvent.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasConfig.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtils.cpp

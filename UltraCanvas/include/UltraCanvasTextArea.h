@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.1.0
-// Last Modified: 2026-02-02
+// Version: 3.2.0
+// Last Modified: 2026-04-12
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -49,6 +49,7 @@ namespace UltraCanvas {
         TokenStyle(const Color &c, bool b = false, bool i = false, bool u = false)
                 : color(c), bold(b), italic(i), underline(u) {}
     };
+
 
 // Text area style structure
     struct TextAreaStyle {
@@ -118,7 +119,60 @@ namespace UltraCanvas {
         Hex             // Hex editor mode
     };
 
-// Text area control with integrated syntax highlighting and full UTF-8 support
+    // line layouts
+    struct LineColumnIndex {
+        int lineIndex; // line index in lineLayout/lines vectors
+        int columnIndex; // codepoint index in line, should point to real line position not layout text position.
+    };
+
+    enum LineLayoutType {
+        PlainLine,
+        Blockquote,
+        CodeblockStart,
+        CodeblockEnd,
+        CodeblockContent,
+        UnorderedListItem,
+        OrderedListItem,
+        DefinitionTerm,
+        DefinitionContinuation,
+        TableHederRow,
+        TableSeparatorRow,
+        TableRow
+    };
+
+    struct LineLayoutBase {
+        LineLayoutType layoutType = LineLayoutType::PlainLine;
+        Rect2Di bounds = {0,0,0,0};
+        std::vector<MarkdownHitRect> hitRects; // bounds inside layout
+        std::unique_ptr<ITextLayout> layout;
+        Point2Di layoutShift = {0, 0}; // for MD mode some elements render text layout shifted to right or bottom
+        int layoutTextStartIndex = 0; // for MD mode some part of real line text is not displayed (it is part of markup)
+        virtual ~LineLayoutBase() {};
+    };
+
+    struct OrderedListItemLayout : LineLayoutBase {
+        int orderedItemNumber = 0;
+        int listDepth = 0;
+    };
+    struct UnorderedListItemLayout : LineLayoutBase {
+        int listDepth = 0;
+    };
+
+    struct BlockquoteLayout : LineLayoutBase {
+        int quoteLevel = 0;
+    };
+
+    struct CodeLayout : LineLayoutBase {
+        std::string codeblockLanguage;
+    };
+
+    struct TableLineLayout : LineLayoutBase {
+        int tableColumnCount = 0;
+        bool lastTableRow = false;
+        std::vector<std::unique_ptr<LineLayoutBase>> cellsLayouts;
+    };
+
+    // Text area control with integrated syntax highlighting and full UTF-8 support
     class UltraCanvasTextArea : public UltraCanvasUIElement {
     public:
         // Constructor and destructor
@@ -369,20 +423,15 @@ namespace UltraCanvas {
         
         // Helper methods - updated for UTF-8 support
         int GetPositionFromLineColumn(int line, int graphemeColumn) const;
-        std::pair<int, int> GetLineColumnFromPoint(int x, int y) const;
         void CalculateVisibleArea();
         void RecalculateDisplayLines();
         int CalculateLineNumbersWidth(IRenderContext* ctx);
         int GetDisplayLineForCursor(int logicalLine, int graphemeCol) const;
         int GetDisplayLineCount() const;
         void RebuildText();
-        int GetMaxLineLength() const;
-        int GetVisibleCharactersPerLine() const;
         const TokenStyle& GetStyleForTokenType(TokenType type) const;
 
         // UTF-8 conversion helpers
-        size_t GraphemeToByteOffset(int lineIndex, int graphemeColumn) const;
-        int ByteToGraphemeColumn(int lineIndex, size_t byteOffset) const;
         int GetLineGraphemeCount(int lineIndex) const;
 
         // Mouse-to-text position helper
@@ -397,10 +446,29 @@ namespace UltraCanvas {
         // State management
         void SaveState();
 
+
+        // parse the line text and create/update line layout
+        void UpdateLineLayoutsToPosition(IRenderContext* ctx, int bottomVisiblePos);
+
+        // parse the line text and create line layout
+        std::unique_ptr<LineLayoutBase> MakeLineLayout(IRenderContext* ctx, int lineIndex, TextAreaEditingMode edMode);
+
+        // handle cursor position
+        Rect2Di LineColumnToCursorPos(const LineColumnIndex& idx);
+        LineColumnIndex PosToLineColumn(const Point2Di& pos);
+        LineLayoutBase *GetLineLayoutForPos(const Point2Di& pos);
+
+        void RenderLineLayout(IRenderContext *ctx, int lineIndex);
+
     private:
         // Text data - std::string with GLib g_utf8_* for UTF-8 handling
         std::string textContent;
         std::vector<std::string> lines;
+
+        std::vector<std::unique_ptr<LineLayoutBase>> lineLayouts; // cached layouts for each line
+        LineColumnIndex cursorPosition; // cursor position for lineIndex and codepoint index in Line
+        LineColumnIndex selectionStart;
+        LineColumnIndex selectionEnd;
 
         // Word wrap display line mapping
         struct DisplayLine {
@@ -464,6 +532,18 @@ namespace UltraCanvas {
         // Cached syntax tokenizer for markdown code block highlighting
         std::unique_ptr<SyntaxTokenizer> codeBlockTokenizer;
         std::string codeBlockTokenizerLang;
+
+        // Per-logical-line layout cache (fully styled, drawn directly when valid)
+        std::vector<std::shared_ptr<ITextLayout>> lineLayouts_;
+        int lastCursorLine_ = -1;
+        int cachedWrapWidth_ = 0;
+
+        void InvalidateAllLineLayouts();
+        void InvalidateLineLayout(int logicalLine);
+        void InsertLineLayoutEntry(int logicalLine);  // insert nullptr at index (new line)
+        void RemoveLineLayoutEntry(int logicalLine);  // erase entry (line deleted/merged)
+        std::shared_ptr<ITextLayout> BuildLineLayout(IRenderContext* ctx, int logicalLine);
+        void EnsureLineLayoutsSize();
 
         // Search state
         std::string lastSearchText;

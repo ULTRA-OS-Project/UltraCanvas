@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.1.2
-// Last Modified: 2026-02-04
+// Version: 3.2.0
+// Last Modified: 2026-04-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -162,20 +162,12 @@ namespace UltraCanvas {
 // ===== UTF-8 HELPER METHODS =====
 
     // Convert grapheme column to byte offset within a line
-    size_t UltraCanvasTextArea::GraphemeToByteOffset(int lineIndex, int graphemeColumn) const {
-        if (lineIndex < 0 || lineIndex >= static_cast<int>(lines.size())) {
-            return 0;
-        }
-        return utf8_cp_to_byte(lines[lineIndex], graphemeColumn);
-    }
-
-    // Convert byte offset to grapheme column within a line
-    int UltraCanvasTextArea::ByteToGraphemeColumn(int lineIndex, size_t byteOffset) const {
-        if (lineIndex < 0 || lineIndex >= static_cast<int>(lines.size())) {
-            return 0;
-        }
-        return static_cast<int>(utf8_byte_to_cp(lines[lineIndex], byteOffset));
-    }
+//    size_t UltraCanvasTextArea::GraphemeToByteOffset(int lineIndex, int graphemeColumn) const {
+//        if (lineIndex < 0 || lineIndex >= static_cast<int>(lines.size())) {
+//            return 0;
+//        }
+//        return utf8_cp_to_byte(lines[lineIndex], graphemeColumn);
+//    }
 
     // Get grapheme count for a line
     int UltraCanvasTextArea::GetLineGraphemeCount(int lineIndex) const {
@@ -343,6 +335,9 @@ namespace UltraCanvas {
         }
 
         InvalidateGraphemeCache();
+        // Full text replacement: invalidate all layouts and resize cache vector
+        lineLayouts_.clear();
+        lineLayouts_.resize(lines.size());
         cursorGraphemePosition = 0;
         currentLineIndex = 0;
         selectionStartGrapheme = -1;
@@ -370,9 +365,11 @@ namespace UltraCanvas {
         }
 
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
+        int startLine = line;
 
         if (lines.empty()) {
             lines.push_back(std::string());
+            InsertLineLayoutEntry(0);
         }
 
         const char* p = textToInsert.c_str();
@@ -384,6 +381,7 @@ namespace UltraCanvas {
                 std::string currentLine = lines[line];
                 lines[line] = utf8_substr(currentLine, 0, col);
                 lines.insert(lines.begin() + line + 1, utf8_substr(currentLine, col));
+                InsertLineLayoutEntry(line + 1);
                 line++;
                 col = 0;
                 p += isCRLF ? 2 : 1;
@@ -394,6 +392,11 @@ namespace UltraCanvas {
                 col++;
                 p = next;
             }
+        }
+
+        // Invalidate modified lines (startLine through line, all of which had edits)
+        for (int i = startLine; i <= line && i < static_cast<int>(lines.size()); i++) {
+            InvalidateLineLayout(i);
         }
 
         cursorGraphemePosition = GetPositionFromLineColumn(line, col);
@@ -416,6 +419,7 @@ namespace UltraCanvas {
         auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
         if (lines.empty()) {
             lines.push_back(std::string());
+            InsertLineLayoutEntry(0);
         }
         if (line < static_cast<int>(lines.size())) {
             if (ch == '\n' || ch == '\r') {
@@ -423,12 +427,15 @@ namespace UltraCanvas {
                 std::string currentLine = lines[line];
                 lines[line] = utf8_substr(currentLine, 0, col);
                 lines.insert(lines.begin() + line + 1, utf8_substr(currentLine, col));
+                InvalidateLineLayout(line);           // line was split
+                InsertLineLayoutEntry(line + 1);      // new line inserted
                 currentLineIndex = line + 1;
                 cursorGraphemePosition++;
             } else {
                 // Insert character (single byte, treated as 1 grapheme for ASCII)
                 std::string charStr(1, ch);
                 utf8_insert(lines[line], col, charStr);
+                InvalidateLineLayout(line);
                 cursorGraphemePosition++;
             }
             InvalidateGraphemeCache();
@@ -444,12 +451,15 @@ namespace UltraCanvas {
 
         if (lines.empty()) {
             lines.push_back(std::string());
+            InsertLineLayoutEntry(0);
         }
 
         // Split current line at cursor position
         std::string currentLine = lines[line];
         lines[line] = utf8_substr(currentLine, 0, col);
         lines.insert(lines.begin() + line + 1, utf8_substr(currentLine, col));
+        InvalidateLineLayout(line);
+        InsertLineLayoutEntry(line + 1);
 
         // Move cursor to beginning of new line
         cursorGraphemePosition = GetPositionFromLineColumn(line + 1, 0);
@@ -478,12 +488,15 @@ namespace UltraCanvas {
         if (col > 0) {
             // Delete one grapheme from current line
             utf8_erase(lines[line], col - 1, 1);
+            InvalidateLineLayout(line);
             cursorGraphemePosition--;
         } else if (line > 0) {
             // Merge with previous line
             int prevLineLength = static_cast<int>(utf8_length(lines[line - 1]));
             lines[line - 1].append(lines[line]);
             lines.erase(lines.begin() + line);
+            InvalidateLineLayout(line - 1);  // prev line changed
+            RemoveLineLayoutEntry(line);     // current line removed
             currentLineIndex = line - 1;
             cursorGraphemePosition = GetPositionFromLineColumn(currentLineIndex, prevLineLength);
         }
@@ -504,10 +517,13 @@ namespace UltraCanvas {
             if (col < lineLen) {
                 // Delete one grapheme from current line
                 utf8_erase(lines[line], col, 1);
+                InvalidateLineLayout(line);
             } else if (line < static_cast<int>(lines.size()) - 1) {
                 // Merge with next line
                 lines[line].append(lines[line + 1]);
                 lines.erase(lines.begin() + line + 1);
+                InvalidateLineLayout(line);          // current line changed
+                RemoveLineLayoutEntry(line + 1);     // next line removed
             }
 
             InvalidateGraphemeCache();
@@ -528,12 +544,18 @@ namespace UltraCanvas {
         if (startLine == endLine) {
             // Delete within same line (grapheme-based)
             utf8_erase(lines[startLine], startCol, endCol - startCol);
+            InvalidateLineLayout(startLine);
         } else {
             // Delete across multiple lines
             std::string newLine = utf8_substr(lines[startLine], 0, startCol);
             newLine.append(utf8_substr(lines[endLine], endCol));
             lines[startLine] = newLine;
             lines.erase(lines.begin() + startLine + 1, lines.begin() + endLine + 1);
+            InvalidateLineLayout(startLine);
+            // Remove layout entries for deleted lines (startLine+1 .. endLine)
+            for (int i = endLine; i > startLine; i--) {
+                RemoveLineLayoutEntry(i);
+            }
         }
 
         cursorGraphemePosition = startPos;
@@ -547,43 +569,98 @@ namespace UltraCanvas {
 // ===== CURSOR MOVEMENT METHODS (Grapheme-aware) =====
 
     void UltraCanvasTextArea::MoveCursorLeft(bool selecting) {
-        if (cursorGraphemePosition > 0) {
-            cursorGraphemePosition--;
-            auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
-            currentLineIndex = line;
+        if (cursorGraphemePosition <= 0) return;
 
-            if (selecting) {
-                if (selectionStartGrapheme < 0) selectionStartGrapheme = cursorGraphemePosition + 1;
-                selectionEndGrapheme = cursorGraphemePosition;
-            } else {
-                selectionStartGrapheme = -1;
-                selectionEndGrapheme = -1;
+        int oldPos = cursorGraphemePosition;
+        auto [line, col] = GetLineColumnFromPosition(oldPos);
+
+        // Try layout-based cursor movement for correct bidi/complex-script handling
+        auto ctx = GetRenderContext();
+        if (ctx && line >= 0 && line < static_cast<int>(lines.size())) {
+            EnsureLineLayoutsSize();
+            if (!lineLayouts_[line]) BuildLineLayout(ctx, line);
+            auto& layout = lineLayouts_[line];
+            if (layout && col > 0) {
+                int curByte = static_cast<int>(utf8_cp_to_byte(lines[line], col));
+                auto result = layout->MoveCursorVisually(true, curByte, 0, -1);
+                if (result.newIndex >= 0 && result.newIndex <= static_cast<int>(lines[line].size())) {
+                    // newTrailing indicates cursor is at trailing edge of the grapheme at newIndex
+                    int newCol = utf8_byte_to_cp(lines[line], result.newIndex) + result.newTrailing;
+                    cursorGraphemePosition = GetPositionFromLineColumn(line, newCol);
+                    currentLineIndex = line;
+                    goto done;
+                }
             }
-            RequestRedraw();
-            if (onCursorPositionChanged) {
-                onCursorPositionChanged(line, col);
-            }
+        }
+
+        // Fallback: grapheme-based movement (handles line wrap to previous line)
+        cursorGraphemePosition--;
+        {
+            auto [l, c] = GetLineColumnFromPosition(cursorGraphemePosition);
+            currentLineIndex = l;
+        }
+
+    done:
+        if (selecting) {
+            if (selectionStartGrapheme < 0) selectionStartGrapheme = oldPos;
+            selectionEndGrapheme = cursorGraphemePosition;
+        } else {
+            selectionStartGrapheme = -1;
+            selectionEndGrapheme = -1;
+        }
+        RequestRedraw();
+        if (onCursorPositionChanged) {
+            auto [l, c] = GetLineColumnFromPosition(cursorGraphemePosition);
+            onCursorPositionChanged(l, c);
         }
     }
 
     void UltraCanvasTextArea::MoveCursorRight(bool selecting) {
         int totalGraphemes = GetTotalGraphemeCount();
-        if (cursorGraphemePosition < totalGraphemes) {
-            cursorGraphemePosition++;
-            auto [line, col] = GetLineColumnFromPosition(cursorGraphemePosition);
-            currentLineIndex = line;
+        if (cursorGraphemePosition >= totalGraphemes) return;
 
-            if (selecting) {
-                if (selectionStartGrapheme < 0) selectionStartGrapheme = cursorGraphemePosition - 1;
-                selectionEndGrapheme = cursorGraphemePosition;
-            } else {
-                selectionStartGrapheme = -1;
-                selectionEndGrapheme = -1;
+        int oldPos = cursorGraphemePosition;
+        auto [line, col] = GetLineColumnFromPosition(oldPos);
+
+        // Try layout-based cursor movement
+        auto ctx = GetRenderContext();
+        if (ctx && line >= 0 && line < static_cast<int>(lines.size())) {
+            EnsureLineLayoutsSize();
+            if (!lineLayouts_[line]) BuildLineLayout(ctx, line);
+            auto& layout = lineLayouts_[line];
+            int lineGraphemes = static_cast<int>(utf8_length(lines[line]));
+            if (layout && col < lineGraphemes) {
+                int curByte = static_cast<int>(utf8_cp_to_byte(lines[line], col));
+                auto result = layout->MoveCursorVisually(true, curByte, 0, 1);
+                if (result.newIndex >= 0 && result.newIndex <= static_cast<int>(lines[line].size())) {
+                    // newTrailing indicates cursor is at trailing edge of the grapheme at newIndex
+                    int newCol = utf8_byte_to_cp(lines[line], result.newIndex) + result.newTrailing;
+                    cursorGraphemePosition = GetPositionFromLineColumn(line, newCol);
+                    currentLineIndex = line;
+                    goto done;
+                }
             }
-            RequestRedraw();
-            if (onCursorPositionChanged) {
-                onCursorPositionChanged(line, col);
-            }
+        }
+
+        // Fallback: grapheme-based movement (handles line wrap to next line)
+        cursorGraphemePosition++;
+        {
+            auto [l, c] = GetLineColumnFromPosition(cursorGraphemePosition);
+            currentLineIndex = l;
+        }
+
+    done:
+        if (selecting) {
+            if (selectionStartGrapheme < 0) selectionStartGrapheme = oldPos;
+            selectionEndGrapheme = cursorGraphemePosition;
+        } else {
+            selectionStartGrapheme = -1;
+            selectionEndGrapheme = -1;
+        }
+        RequestRedraw();
+        if (onCursorPositionChanged) {
+            auto [l, c] = GetLineColumnFromPosition(cursorGraphemePosition);
+            onCursorPositionChanged(l, c);
         }
     }
 
@@ -1177,6 +1254,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::SetLine(int lineIndex, const std::string& text) {
         if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
             lines[lineIndex] = text;
+            InvalidateLineLayout(lineIndex);
             InvalidateGraphemeCache();
             RebuildText();
         }
@@ -1193,6 +1271,24 @@ namespace UltraCanvas {
 // ===== RENDERING METHODS =====
     void UltraCanvasTextArea::Render(IRenderContext* ctx) {
         ctx->PushState();
+
+        // In markdown mode with word wrap, if the cursor moves to/from a block-level
+        // line (table, blockquote), display lines need to be recalculated because
+        // such lines have special wrap behavior depending on whether they are the cursor line.
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid && wordWrap) {
+            auto [cLine, cCol] = GetLineColumnFromPosition(cursorGraphemePosition);
+            if (cLine != lastCursorLine_) {
+                auto isBlockLine = [&](int ln) {
+                    if (ln < 0 || ln >= static_cast<int>(lines.size())) return false;
+                    std::string trimmed = TrimWhitespace(lines[ln]);
+                    return !trimmed.empty() && (trimmed[0] == '|' || trimmed[0] == '>');
+                };
+                if (isBlockLine(cLine) || isBlockLine(lastCursorLine_)) {
+                    isNeedRecalculateVisibleArea = true;
+                }
+                lastCursorLine_ = cLine;
+            }
+        }
 
         if (isNeedRecalculateVisibleArea) {
             ctx->PushState();
@@ -1248,33 +1344,41 @@ namespace UltraCanvas {
 
     void UltraCanvasTextArea::DrawPlainText(IRenderContext* context) {
         context->PushState();
-        context->SetFontStyle(style.fontStyle);
         context->SetTextPaint(style.fontColor);
         context->ClipRect(visibleTextArea);
+
+        EnsureLineLayoutsSize();
 
         int dlCount = GetDisplayLineCount();
         int startDL = std::max(0, firstVisibleLine - 1);
         int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
         int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
 
+        int lastLogLine = -1;
         for (int di = startDL; di < endDL; di++) {
             const auto& dl = displayLines[di];
-            int y = baseY + (di - startDL) * computedLineHeight;
-            int segLen = dl.endGrapheme - dl.startGrapheme;
-            if (segLen <= 0) continue;
+            int logLine = dl.logicalLine;
 
-            std::string segment;
-            if (dl.startGrapheme == 0 && dl.endGrapheme == GetLineGraphemeCount(dl.logicalLine)) {
-                segment = lines[dl.logicalLine]; // full line, no substr needed
-            } else {
-                segment = utf8_substr(lines[dl.logicalLine], dl.startGrapheme, segLen);
+            // Draw each logical line only once (Pango renders all wrapped lines)
+            if (logLine == lastLogLine) continue;
+            lastLogLine = logLine;
+
+            // Get or build cached layout
+            if (!lineLayouts_[logLine]) {
+                BuildLineLayout(context, logLine);
             }
+            auto& layout = lineLayouts_[logLine];
+            if (!layout) continue;
 
+            // Find the first display line index for this logical line
+            int firstDLForLine = di;
             int x = visibleTextArea.x;
             if (!wordWrap) {
                 x -= horizontalScrollOffset;
             }
-            context->DrawText(segment, {x, y});
+            int y = baseY + (firstDLForLine - startDL) * computedLineHeight;
+
+            context->DrawTextLayout(*layout, {x, y});
         }
         context->PopState();
     }
@@ -1283,72 +1387,38 @@ namespace UltraCanvas {
         if (!syntaxTokenizer) return;
         context->PushState();
         context->ClipRect(visibleTextArea);
-        context->SetFontStyle(style.fontStyle);
+        context->SetTextPaint(style.fontColor);
+
+        EnsureLineLayoutsSize();
 
         int dlCount = GetDisplayLineCount();
         int startDL = std::max(0, firstVisibleLine - 1);
         int endDL = std::min(dlCount, firstVisibleLine + maxVisibleLines + 1);
         int baseY = visibleTextArea.y - (firstVisibleLine - startDL) * computedLineHeight;
 
-        // Cache tokenized lines to avoid re-tokenizing the same logical line
-        int lastTokenizedLogicalLine = -1;
-        std::vector<SyntaxTokenizer::Token> cachedTokens;
-
+        int lastLogLine = -1;
         for (int di = startDL; di < endDL; di++) {
             const auto& dl = displayLines[di];
-            int textY = baseY + (di - startDL) * computedLineHeight;
+            int logLine = dl.logicalLine;
 
-            const std::string& fullLine = lines[dl.logicalLine];
-            if (fullLine.empty()) continue;
+            // Draw each logical line only once (Pango renders all wrapped lines)
+            if (logLine == lastLogLine) continue;
+            lastLogLine = logLine;
 
-            // Tokenize logical line (cache to avoid re-tokenizing for wrapped segments)
-            if (dl.logicalLine != lastTokenizedLogicalLine) {
-                cachedTokens = syntaxTokenizer->TokenizeLine(fullLine);
-                lastTokenizedLogicalLine = dl.logicalLine;
+            if (lines[logLine].empty()) continue;
+
+            // Get or build cached layout (BuildLineLayout applies syntax token attributes)
+            if (!lineLayouts_[logLine]) {
+                BuildLineLayout(context, logLine);
             }
+            auto& layout = lineLayouts_[logLine];
+            if (!layout) continue;
 
             int x = visibleTextArea.x;
             if (!wordWrap) x -= horizontalScrollOffset;
+            int y = baseY + (di - startDL) * computedLineHeight;
 
-            // Walk tokens, tracking grapheme position within the logical line
-            int tokenStartGrapheme = 0;
-            for (const auto& token : cachedTokens) {
-                int tokenLen = static_cast<int>(utf8_length(token.text));
-                int tokenEndGrapheme = tokenStartGrapheme + tokenLen;
-
-                // Check overlap with this display line's grapheme range
-                int overlapStart = std::max(tokenStartGrapheme, dl.startGrapheme);
-                int overlapEnd = std::min(tokenEndGrapheme, dl.endGrapheme);
-
-                if (overlapStart < overlapEnd) {
-                    // Extract the visible portion of this token
-                    std::string visibleText;
-                    if (overlapStart == tokenStartGrapheme && overlapEnd == tokenEndGrapheme) {
-                        visibleText = token.text;
-                    } else {
-                        int localStart = overlapStart - tokenStartGrapheme;
-                        int localLen = overlapEnd - overlapStart;
-                        visibleText = utf8_substr(token.text, localStart, localLen);
-                    }
-
-                    context->SetFontWeight(GetStyleForTokenType(token.type).bold ?
-                                           FontWeight::Bold : FontWeight::Normal);
-                    int tokenWidth = context->GetTextLineWidth(visibleText);
-
-                    if (x + tokenWidth >= visibleTextArea.x &&
-                        x <= visibleTextArea.x + visibleTextArea.width) {
-                        TokenStyle tokenStyle = GetStyleForTokenType(token.type);
-                        context->SetTextPaint(tokenStyle.color);
-                        context->DrawText(visibleText, {x, textY});
-                    }
-                    x += tokenWidth;
-                }
-
-                tokenStartGrapheme = tokenEndGrapheme;
-
-                // Early exit if we've passed the display line's range
-                if (tokenStartGrapheme >= dl.endGrapheme) break;
-            }
+            context->DrawTextLayout(*layout, {x, y});
         }
         context->PopState();
     }
@@ -2307,6 +2377,12 @@ namespace UltraCanvas {
             }
         }
 
+        // Invalidate layouts if wrap width changed
+        if (cachedWrapWidth_ != visibleTextArea.width) {
+            cachedWrapWidth_ = visibleTextArea.width;
+            InvalidateAllLineLayouts();
+        }
+
         RecalculateDisplayLines();
 
         if (!needVerticalScrollbar && IsNeedVerticalScrollbar()) {
@@ -2343,8 +2419,95 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    // ===== LINE LAYOUT CACHE =====
+
+    void UltraCanvasTextArea::InvalidateAllLineLayouts() {
+        for (auto& layout : lineLayouts_) {
+            layout = nullptr;
+        }
+    }
+
+    void UltraCanvasTextArea::InvalidateLineLayout(int logicalLine) {
+        if (logicalLine >= 0 && logicalLine < static_cast<int>(lineLayouts_.size())) {
+            lineLayouts_[logicalLine] = nullptr;
+        }
+    }
+
+    void UltraCanvasTextArea::InsertLineLayoutEntry(int logicalLine) {
+        if (logicalLine < 0) return;
+        if (logicalLine > static_cast<int>(lineLayouts_.size())) {
+            lineLayouts_.resize(logicalLine);
+        }
+        lineLayouts_.insert(lineLayouts_.begin() + logicalLine, nullptr);
+    }
+
+    void UltraCanvasTextArea::RemoveLineLayoutEntry(int logicalLine) {
+        if (logicalLine >= 0 && logicalLine < static_cast<int>(lineLayouts_.size())) {
+            lineLayouts_.erase(lineLayouts_.begin() + logicalLine);
+        }
+    }
+
+    void UltraCanvasTextArea::EnsureLineLayoutsSize() {
+        if (static_cast<int>(lineLayouts_.size()) != static_cast<int>(lines.size())) {
+            lineLayouts_.resize(lines.size());
+        }
+    }
+
+    std::shared_ptr<ITextLayout> UltraCanvasTextArea::BuildLineLayout(IRenderContext* ctx, int logicalLine) {
+        if (logicalLine < 0 || logicalLine >= static_cast<int>(lines.size())) return nullptr;
+
+        auto layout = ctx->CreateTextLayout(lines[logicalLine], false);
+        layout->SetFontStyle(style.fontStyle);
+        layout->SetWrap(TextWrap::WrapWordChar);
+        layout->SetLineSpacing(style.lineHeight);
+
+        if (wordWrap && visibleTextArea.width > 0) {
+            layout->SetExplicitWidth(visibleTextArea.width);
+        }
+
+        // Apply syntax highlighting attributes if tokenizer is available
+        if (syntaxTokenizer && editingMode != TextAreaEditingMode::MarkdownHybrid) {
+            const std::string& line = lines[logicalLine];
+            auto tokens = syntaxTokenizer->TokenizeLine(line);
+            int currentByte = 0;
+            for (const auto& token : tokens) {
+                int startByte = currentByte;
+                int endByte = currentByte + static_cast<int>(token.text.size());
+                TokenStyle tokenStyle = GetStyleForTokenType(token.type);
+
+                auto fgAttr = TextAttributeFactory::CreateForeground(tokenStyle.color);
+                fgAttr->SetRange(startByte, endByte);
+                layout->InsertAttribute(std::move(fgAttr));
+
+                if (tokenStyle.bold) {
+                    auto wAttr = TextAttributeFactory::CreateWeight(FontWeight::Bold);
+                    wAttr->SetRange(startByte, endByte);
+                    layout->InsertAttribute(std::move(wAttr));
+                }
+                if (tokenStyle.italic) {
+                    auto sAttr = TextAttributeFactory::CreateStyle(FontSlant::Italic);
+                    sAttr->SetRange(startByte, endByte);
+                    layout->InsertAttribute(std::move(sAttr));
+                }
+                if (tokenStyle.underline) {
+                    auto uAttr = TextAttributeFactory::CreateUnderline(UCUnderlineType::UnderlineSingle);
+                    uAttr->SetRange(startByte, endByte);
+                    layout->InsertAttribute(std::move(uAttr));
+                }
+                currentByte = endByte;
+            }
+        }
+        // Markdown styling is handled separately in the markdown rendering path
+
+        auto shared = std::shared_ptr<ITextLayout>(std::move(layout));
+        EnsureLineLayoutsSize();
+        lineLayouts_[logicalLine] = shared;
+        return shared;
+    }
+
     void UltraCanvasTextArea::RecalculateDisplayLines() {
         displayLines.clear();
+        EnsureLineLayoutsSize();
 
         if (!wordWrap) {
             // 1:1 mapping: each logical line is one display line
@@ -2354,10 +2517,9 @@ namespace UltraCanvas {
             return;
         }
 
-        // Word wrap mode: wrap long lines
+        // Word wrap mode: derive display lines from Pango layout line breaks
         int wrapWidth = visibleTextArea.width;
         if (wrapWidth <= 0) {
-            // Fallback: 1:1 mapping
             for (int i = 0; i < static_cast<int>(lines.size()); i++) {
                 displayLines.push_back({i, 0, GetLineGraphemeCount(i)});
             }
@@ -2372,9 +2534,14 @@ namespace UltraCanvas {
             return;
         }
 
-        context->PushState();
-        context->SetFontStyle(style.fontStyle);
-        context->SetFontWeight(FontWeight::Normal);
+        // In markdown mode, the cursor line is rendered as raw markdown (with Pango wrapping),
+        // while non-cursor table rows are rendered as block-level tables (no wrapping).
+        // So the table-no-wrap rule applies only to non-cursor lines.
+        int currentCursorLine = -1;
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid) {
+            auto [cLine, cCol] = GetLineColumnFromPosition(cursorGraphemePosition);
+            currentCursorLine = cLine;
+        }
 
         for (int logLine = 0; logLine < static_cast<int>(lines.size()); logLine++) {
             const std::string& line = lines[logLine];
@@ -2386,75 +2553,42 @@ namespace UltraCanvas {
                 continue;
             }
 
-            // In markdown mode, don't wrap table rows (lines starting with |)
-            if (editingMode == TextAreaEditingMode::MarkdownHybrid) {
+            // In markdown mode, don't wrap block-level lines with custom internal wrapping
+            // (table rows, blockquotes). These render as block elements with their own
+            // width-constrained layout; markdownLineYOffsets handles vertical spacing.
+            // EXCEPT for the cursor line, which is rendered as raw markdown with Pango wrapping.
+            if (editingMode == TextAreaEditingMode::MarkdownHybrid && logLine != currentCursorLine) {
                 std::string trimmed = TrimWhitespace(line);
-                if (!trimmed.empty() && trimmed[0] == '|') {
+                if (!trimmed.empty() && (trimmed[0] == '|' || trimmed[0] == '>')) {
                     displayLines.push_back({logLine, 0, lineGraphemeCount});
                     continue;
                 }
             }
 
-            int lineWidth = context->GetTextLineWidth(line);
-            if (lineWidth <= wrapWidth) {
-                // Line fits: single display line
+            // Get or build the layout for this line (includes wrap width)
+            if (!lineLayouts_[logLine]) {
+                BuildLineLayout(context, logLine);
+            }
+            auto& layout = lineLayouts_[logLine];
+            if (!layout) {
                 displayLines.push_back({logLine, 0, lineGraphemeCount});
                 continue;
             }
 
-            // Line needs wrapping
-            int startG = 0;
-            while (startG < lineGraphemeCount) {
-                int remaining = lineGraphemeCount - startG;
-
-                // Check if the rest fits
-                std::string restSegment = utf8_substr(line, startG, remaining);
-                int restWidth = context->GetTextLineWidth(restSegment);
-                if (restWidth <= wrapWidth) {
-                    displayLines.push_back({logLine, startG, lineGraphemeCount});
-                    break;
+            // Query Pango's line breaks
+            auto lineRanges = layout->GetLineByteRanges();
+            if (lineRanges.size() <= 1) {
+                // Single line or no wrapping needed
+                displayLines.push_back({logLine, 0, lineGraphemeCount});
+            } else {
+                // Multiple wrapped lines: convert byte ranges to grapheme ranges
+                for (const auto& range : lineRanges) {
+                    int startGrapheme = utf8_byte_to_cp(line, range.startByte);
+                    int endGrapheme = utf8_byte_to_cp(line, range.startByte + range.lengthBytes);
+                    displayLines.push_back({logLine, startGrapheme, endGrapheme});
                 }
-
-                // Binary search for max graphemes that fit in wrapWidth
-                int lo = 1, hi = remaining;
-                int bestFit = 1; // At minimum, one grapheme per display line
-
-                while (lo <= hi) {
-                    int mid = (lo + hi) / 2;
-                    std::string segment = utf8_substr(line, startG, mid);
-                    int segWidth = context->GetTextLineWidth(segment);
-
-                    if (segWidth <= wrapWidth) {
-                        bestFit = mid;
-                        lo = mid + 1;
-                    } else {
-                        hi = mid - 1;
-                    }
-                }
-
-                int breakAt = startG + bestFit;
-
-                // If we didn't consume the entire remaining line, try word boundary
-                if (breakAt < lineGraphemeCount && bestFit > 1) {
-                    int wordBreak = -1;
-                    for (int g = breakAt - 1; g > startG; g--) {
-                        gunichar cp = utf8_get_cp(line, g);
-                        if (cp == ' ' || cp == '\t' || cp == '-') {
-                            wordBreak = g + 1; // break after the space/hyphen
-                            break;
-                        }
-                    }
-                    if (wordBreak > startG) {
-                        breakAt = wordBreak;
-                    }
-                }
-
-                displayLines.push_back({logLine, startG, breakAt});
-                startG = breakAt;
             }
         }
-
-        context->PopState();
 
         // Fix up firstVisibleLine after SetWordWrap toggle:
         // Convert from logical line index to display line index
@@ -3121,8 +3255,9 @@ namespace UltraCanvas {
         
         for (int i = startLine; i <= endLine; i++) {
             lines[i].insert(0, indent);
+            InvalidateLineLayout(i);
         }
-        
+
         InvalidateGraphemeCache();
         RebuildText();
     }
@@ -3148,9 +3283,10 @@ namespace UltraCanvas {
             if (spacesToRemove > 0) {
                 // Leading whitespace is ASCII, so byte erase at 0 is safe
                 lines[i].erase(0, spacesToRemove);
+                InvalidateLineLayout(i);
             }
         }
-        
+
         InvalidateGraphemeCache();
         RebuildText();
     }
@@ -3329,8 +3465,115 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    // Line Layouts
+    LineLayoutBase *UltraCanvasTextArea::GetLineLayoutForPos(const Point2Di& pos) {
+        for(auto const& ll : lineLayouts) {
+            if (!ll || ll->bounds.y > pos.y) break;
+            if (ll->bounds.Contains(pos)) return ll.get();
+        }
+        return nullptr;
+    }
 
-// ===== FACTORY FUNCTIONS =====
+
+    Rect2Di UltraCanvasTextArea::LineColumnToCursorPos(const LineColumnIndex& idx) {
+        auto line = lineLayouts[idx.lineIndex].get();
+        if (line && line->layout) {
+            int byteIndex;
+                // for plain line get text directly from lines[]
+            auto  LayoutColumn = std::max(0, idx.columnIndex - line->layoutTextStartIndex);
+            byteIndex = static_cast<int>(utf8_cp_to_byte(lines[idx.lineIndex], LayoutColumn));
+            auto cursorPos = line->layout->GetCursorPos(byteIndex).strongPos;
+            cursorPos.x += line->bounds.x + line->layoutShift.x;
+            cursorPos.y += line->bounds.y + line->layoutShift.y;
+            return cursorPos;
+        }
+        return Rect2Di::INVALID();
+    }
+
+    LineColumnIndex UltraCanvasTextArea::PosToLineColumn(const Point2Di& pos) {
+        int lineIndex = 0;
+        for(auto const& ll : lineLayouts) {
+            if (!ll || ll->bounds.y > pos.y) break;
+
+            if (ll->bounds.Contains(pos)) {
+                auto layoutPos = pos;
+                layoutPos.x -= (bounds.x + ll->layoutShift.x);
+                layoutPos.y -= (bounds.y + ll->layoutShift.y);
+                auto layoutIndex = ll->layout->XYToIndex(layoutPos.x, layoutPos.y);
+                if (layoutIndex.inside) {
+                    return {lineIndex, layoutIndex.index + ll->layoutTextStartIndex};
+                } else {
+                    return {lineIndex, 0};
+                }
+            }
+            lineIndex++;
+        }
+        return {-1, -1};
+    }
+
+    void UltraCanvasTextArea::UpdateLineLayoutsToPosition(IRenderContext* ctx, int bottomVisiblePos) {
+        lineLayouts.resize(lines.size());
+        int prevLineBottomPos = 0;
+        for(int i = 0; i < lines.size(); i++) {
+            if (!lineLayouts[i]) {
+                if (cursorPosition.lineIndex == i) {
+                    lineLayouts[i] = MakeLineLayout(ctx, i, TextAreaEditingMode::PlainText);
+                } else {
+                    lineLayouts[i] = MakeLineLayout(ctx, i, editingMode);
+                }
+            }
+            lineLayouts[i]->bounds.y = prevLineBottomPos;
+            prevLineBottomPos += lineLayouts[i]->bounds.height;
+
+            if (prevLineBottomPos > bottomVisiblePos) break;
+        }
+    }
+
+    std::unique_ptr<LineLayoutBase> UltraCanvasTextArea::MakeLineLayout(IRenderContext* ctx, int lineIndex, TextAreaEditingMode edMode) {
+        auto txt = lines[lineIndex];
+        LineLayoutBase *lineLayout = nullptr;
+        if (edMode == TextAreaEditingMode::PlainText) {
+            lineLayout = new LineLayoutBase();
+            // Fixme! need to apply syntax highlighting
+            lineLayout->layout = ctx->CreateTextLayout(txt, false);
+            if (wordWrap) {
+                lineLayout->layout->SetExplicitWidth(visibleTextArea.width);
+                lineLayout->layout->SetWrap(TextWrap::WrapWord);
+            }
+            lineLayout->bounds.width = lineLayout->layout->GetLayoutWidth();
+            lineLayout->bounds.height = lineLayout->layout->GetLayoutHeight();
+        } else if (edMode == TextAreaEditingMode::MarkdownHybrid) {
+            // parse line and make specific layouts
+        }
+
+        return std::unique_ptr<LineLayoutBase>(lineLayout);
+    }
+
+    void UltraCanvasTextArea::RenderLineLayout(IRenderContext *ctx, int lineIndex) {
+        auto line = lineLayouts[lineIndex].get();
+        if (line && line->layout) {
+            switch (line->layoutType) {
+                case LineLayoutType::PlainLine:
+                    ctx->DrawTextLayout(*line->layout, line->bounds.TopLeft());
+                    return;
+                case LineLayoutType::UnorderedListItem: {
+                    auto listItem = dynamic_cast<UnorderedListItemLayout*>(line);
+                    if (listItem) {
+                        // Implement RenderUnorderedListItem(IRenderContext *ctx, int lineIndex, const UnorderedListItemLayout& listItem);
+                    }
+                    /*
+                    auto renderPos = line->bounds.TopLeft();
+                    renderPos.x += (listItem->listDepth - 1) * mdStyle.quoteNestingStep + mdStyle.quoteIndentl
+                    ctx->DrawTextLayout(*line->layout, renderPos);
+                    */
+                }
+                // fixme! implement special rendering for other line types
+            }
+        }
+    }
+
+
+    // ===== FACTORY FUNCTIONS =====
     std::shared_ptr<UltraCanvasTextArea> CreateMarkdownEditor(
             const std::string& name, int id, int x, int y, int width, int height) {
         
@@ -3389,5 +3632,4 @@ namespace UltraCanvas {
         editor->ApplyCodeStyle("XML");
         return editor;
     }
-
 } // namespace UltraCanvas

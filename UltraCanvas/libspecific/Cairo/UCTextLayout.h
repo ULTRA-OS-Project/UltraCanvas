@@ -1,7 +1,7 @@
 // libspecific/Cairo/UCTextLayout.h
 // Pango text layout wrapper for UltraCanvas Framework
-// Version: 1.0.0
-// Last Modified: 2026-04-07
+// Version: 1.1.0
+// Last Modified: 2026-04-12
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -241,17 +241,7 @@ namespace UltraCanvas {
                                               int oldTrailing, int direction) const override;
 
         // ===== LINE ACCESS =====
-//        PangoLayoutLine* GetLine(int lineIndex) const override;
-//        PangoLayoutLine* GetLineReadonly(int lineIndex) const override;
-//        GSList* GetLines() const override;
-//        GSList* GetLinesReadonly() const override;
-//
-//        // ===== ITERATOR =====
-//        UCTextLayoutIter GetIter() const override;
-//
-//        // ===== RENDERING =====
-//        void Show(IRenderContext* ctx) const override;
-//        void ShowAt(IRenderContext* ctx, float x, float y) const override;
+        std::vector<LayoutLineRange> GetLineByteRanges() const override;
     };
 
 } // namespace UltraCanvas

@@ -1,7 +1,7 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
-// Version: 2.4.0
-// Last Modified: 2026-04-11
+// Version: 2.5.0
+// Last Modified: 2026-04-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -552,6 +552,11 @@ namespace UltraCanvas {
         int xPos = 0;
     };
 
+    struct LayoutLineRange {
+        int startByte;   // byte offset within layout text
+        int lengthBytes; // length in bytes
+    };
+
     // ===== UCTextAttribute =====
 
     class ITextAttribute {
@@ -619,6 +624,12 @@ namespace UltraCanvas {
 
         // Language tag (e.g. "en-US")
         std::unique_ptr<ITextAttribute> CreateLanguage(const std::string& lang);
+
+        // spacer (width in pixels)
+        std::unique_ptr<ITextAttribute> CreateShapeSpacer(double width);
+
+        // absolute line height, may be used with CreateShapeSpacer to preserve space
+        std::unique_ptr<ITextAttribute> CreateAbsoluteLineHeight(double lineHeight);
     };
 
     // ===== UCTextAttributeList =====
@@ -740,10 +751,7 @@ namespace UltraCanvas {
                                               int oldTrailing, int direction) const = 0;
 
         // ===== LINE ACCESS =====
-//        PangoLayoutLine* GetLine(int lineIndex) const = 0;
-//        PangoLayoutLine* GetLineReadonly(int lineIndex) const = 0;
-//        GSList* GetLines() const = 0;
-//        GSList* GetLinesReadonly() const = 0;
+        virtual std::vector<LayoutLineRange> GetLineByteRanges() const = 0;
 
         // ===== ITERATOR =====
 //        UCTextLayoutIter GetIter() const = 0;

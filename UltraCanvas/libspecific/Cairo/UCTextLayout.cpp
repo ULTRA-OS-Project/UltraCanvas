@@ -1,7 +1,7 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
-// Version: 1.0.0
-// Last Modified: 2026-04-07
+// Version: 1.1.0
+// Last Modified: 2026-04-12
 // Author: UltraCanvas Framework
 
 #include "UCTextLayout.h"
@@ -276,6 +276,7 @@ namespace UltraCanvas {
             return std::make_unique<UCTextAttribute>(pango_attr_scale_new(scaleFactor));
         }
 
+
         std::unique_ptr<ITextAttribute> CreateFallback(bool enable) {
             return std::make_unique<UCTextAttribute>(pango_attr_fallback_new(enable ? TRUE : FALSE));
         }
@@ -283,6 +284,16 @@ namespace UltraCanvas {
         std::unique_ptr<ITextAttribute> CreateLanguage(const std::string &lang) {
             PangoLanguage *language = pango_language_from_string(lang.c_str());
             return std::make_unique<UCTextAttribute>(pango_attr_language_new(language));
+        }
+
+        std::unique_ptr<ITextAttribute> CreateShapeSpacer(double width) {
+            PangoRectangle logical_rect = {0,0,static_cast<int>(width * PANGO_SCALE),0};
+            PangoRectangle ink_rect = {0,0,0,0};
+            return std::make_unique<UCTextAttribute>(pango_attr_shape_new(&ink_rect, &logical_rect));
+        }
+
+        std::unique_ptr<ITextAttribute> CreateAbsoluteLineHeight(double lineHeight) {
+            return std::make_unique<UCTextAttribute>(pango_attr_line_height_new_absolute(static_cast<int>(lineHeight * PANGO_SCALE)));
         }
     }
 
@@ -792,50 +803,18 @@ namespace UltraCanvas {
 
     // ===== LINE ACCESS =====
 
-//    PangoLayoutLine* UCTextLayout::GetLine(int lineIndex) const {
-//        if (!layout) return nullptr;
-//        return pango_layout_get_line(layout, lineIndex);
-//    }
-//
-//    PangoLayoutLine* UCTextLayout::GetLineReadonly(int lineIndex) const {
-//        if (!layout) return nullptr;
-//        return pango_layout_get_line_readonly(layout, lineIndex);
-//    }
-//
-//    GSList* UCTextLayout::GetLines() const {
-//        if (!layout) return nullptr;
-//        return pango_layout_get_lines(layout);
-//    }
-//
-//    GSList* UCTextLayout::GetLinesReadonly() const {
-//        if (!layout) return nullptr;
-//        return pango_layout_get_lines_readonly(layout);
-//    }
-//
-//    // ===== ITERATOR =====
-//
-//    UCTextLayoutIter UCTextLayout::GetIter() const {
-//        if (!layout) return UCTextLayoutIter(nullptr);
-//        return UCTextLayoutIter(pango_layout_get_iter(layout));
-//    }
-//
-//    // ===== RENDERING =====
-//
-//    void UCTextLayout::Show(cairo_t* cr) const {
-//        if (layout && cr) {
-//            pango_cairo_update_layout(cr, layout);
-//            pango_cairo_show_layout(cr, layout);
-//        }
-//    }
-//
-//    void UCTextLayout::ShowAt(cairo_t* cr, float x, float y) const {
-//        if (layout && cr) {
-//            cairo_save(cr);
-//            cairo_move_to(cr, x, y);
-//            pango_cairo_update_layout(cr, layout);
-//            pango_cairo_show_layout(cr, layout);
-//            cairo_restore(cr);
-//        }
-//    }
+    std::vector<LayoutLineRange> UCTextLayout::GetLineByteRanges() const {
+        std::vector<LayoutLineRange> ranges;
+        if (!layout) return ranges;
+        int lineCount = pango_layout_get_line_count(layout);
+        ranges.reserve(lineCount);
+        for (int i = 0; i < lineCount; i++) {
+            PangoLayoutLine* line = pango_layout_get_line_readonly(layout, i);
+            if (line) {
+                ranges.push_back({line->start_index, line->length});
+            }
+        }
+        return ranges;
+    }
 
 } // namespace UltraCanvas

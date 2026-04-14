@@ -129,6 +129,14 @@ struct Size2D {
         height = static_cast<T>(other.height);
         return *this;
     }
+
+    bool IsValid() {
+        return (width >= 0 && height >= 0);
+    }
+
+    constexpr Size2D INVALID() {
+        return {-1, -1};
+    }
 };
 
 typedef struct Size2D<double> Size2Df;
@@ -181,6 +189,9 @@ struct Rect2D {
     Rect2D<T> SetPosition(Point2D<T> pt) const { return Rect2D<T>(pt.x, pt.y, width, height); }
     Rect2D<T> SetSize(Size2D<T> sz) const { return Rect2D<T>(x, y, sz.width, sz.height); }
 
+    bool IsValid() {
+        return (width >= 0 && height >= 0);
+    }
     bool Contains(const Point2D<T>& point) const {
         return point.x >= x && point.x <= x + width && point.y >= y && point.y <= y + height;
     }
@@ -241,6 +252,10 @@ struct Rect2D {
     bool operator!=(const Rect2D& other) const {
         return !(*this == other);
     }
+
+    static constexpr Rect2D INVALID() {
+        return {-1, -1, -1, -1};
+    };
 };
 
 typedef struct Rect2D<double> Rect2Df;
