@@ -1,7 +1,7 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 1.9.1
-// Last Modified: 2026-02-07
+// Version: 1.9.2
+// Last Modified: 2026-04-16
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -26,6 +26,24 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::SetBounds(const Rect2Di& b) {
         UltraCanvasContainer::SetBounds(b);
         InvalidateTabbar();
+    }
+
+    // Run the tabbar layout pass BEFORE children's UpdateGeometry so that
+    // content widgets (e.g. UltraCanvasTextArea) see their correct bounds when
+    // they compute their own nested layouts — mirrors the pattern in
+    // UltraCanvasContainer::UpdateGeometry that "fixes first-frame positioning".
+    void UltraCanvasTabbedContainer::UpdateGeometry(IRenderContext* ctx) {
+        if (tabbarLayoutDirty) {
+            CalculateLayout();
+            UpdateOverflowDropdown();
+            CalculateLayout();
+            EnsureTabVisible(activeTabIndex);
+            PackTabBar();
+            CalculateLayout();
+            UpdateContentVisibility();
+            tabbarLayoutDirty = false;
+        }
+        UltraCanvasContainer::UpdateGeometry(ctx);
     }
 
     void UltraCanvasTabbedContainer::SetTabHeight(int th) {
@@ -378,8 +396,11 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTabbedContainer::Render(IRenderContext* ctx) {
+        // Safety net: UpdateGeometry normally consumes tabbarLayoutDirty,
+        // but something may invalidate between UpdateGeometry and Render in
+        // the same frame (e.g. scrollbar visibility toggles). Re-run the
+        // layout here so content bounds stay in sync before we draw.
         if (tabbarLayoutDirty) {
-            ctx->PushState();
             CalculateLayout();
             UpdateOverflowDropdown();
             CalculateLayout();
@@ -387,7 +408,6 @@ namespace UltraCanvas {
             PackTabBar();
             CalculateLayout();
             UpdateContentVisibility();
-            ctx->PopState();
             tabbarLayoutDirty = false;
         }
 

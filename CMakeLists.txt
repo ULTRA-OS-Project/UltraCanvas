@@ -434,6 +434,8 @@ endif()
 
 add_custom_target(copy_assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/media ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/media
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/Docs ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/Docs
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_LIST_DIR}/Apps/DemoApp ${CMAKE_CURRENT_BINARY_DIR}/share/UltraCanvas/DemoApp
 )
 add_dependencies(UltraCanvasTexter copy_assets)
 add_dependencies(UltraCanvasDemo copy_assets)

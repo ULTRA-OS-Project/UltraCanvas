@@ -1160,7 +1160,7 @@ namespace UltraCanvas {
         // Top border
         if (borderTopWidth > 0) {
             SetStrokeWidth(borderTopWidth);
-            if (!borderRightPattern.dashes.empty()) {
+            if (!borderTopPattern.dashes.empty()) {
                 SetLineDash(borderTopPattern);
             } else {
                 SetStrokePaint(borderTopColor);
@@ -1217,7 +1217,7 @@ namespace UltraCanvas {
             double avgWidth = (borderLeftWidth + borderTopWidth) / 2.0;
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            Arc(x + topLeftRadius, y + topLeftRadius, topLeftRadius,
+            DrawArc(x + topLeftRadius, y + topLeftRadius, topLeftRadius,
                 M_PI, 3 * M_PI / 2);
         }
         if (topRightRadius > 0) {
@@ -1225,7 +1225,7 @@ namespace UltraCanvas {
             double avgWidth = (borderTopWidth + borderRightWidth) / 2.0;
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            Arc(x + width - topRightRadius, y + topRightRadius, topRightRadius,
+            DrawArc(x + width - topRightRadius, y + topRightRadius, topRightRadius,
                 3 * M_PI / 2, 2 * M_PI);
         }
 
@@ -1234,7 +1234,7 @@ namespace UltraCanvas {
             double avgWidth = (borderRightWidth +  borderBottomWidth) / 2.0;
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            Arc(x + width - bottomRightRadius, y + height - bottomRightRadius,
+            DrawArc(x + width - bottomRightRadius, y + height - bottomRightRadius,
                 bottomRightRadius, 0, M_PI / 2);
         }
 
@@ -1243,7 +1243,7 @@ namespace UltraCanvas {
             double avgWidth = (borderBottomWidth + borderLeftWidth) / 2.0;
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            Arc(x + bottomLeftRadius, y + height - bottomLeftRadius, bottomLeftRadius,
+            DrawArc(x + bottomLeftRadius, y + height - bottomLeftRadius, bottomLeftRadius,
                 M_PI / 2, M_PI);
         }
         PopState();

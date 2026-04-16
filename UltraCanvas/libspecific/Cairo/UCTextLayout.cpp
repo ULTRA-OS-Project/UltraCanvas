@@ -435,7 +435,7 @@ namespace UltraCanvas {
     // ===== TEXT CONTENT =====
 
     void UCTextLayout::SetText(const std::string& text) {
-        extentsValid = false;
+        extentsDirty = true;
         pango_layout_set_text(layout, text.c_str(), static_cast<int>(text.length()));
     }
 
@@ -446,7 +446,7 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::SetMarkup(const std::string& markup) {
-        extentsValid = false;
+        extentsDirty = true;
         pango_layout_set_markup(layout, markup.c_str(), static_cast<int>(markup.length()));
     }
 
@@ -455,7 +455,7 @@ namespace UltraCanvas {
     void UCTextLayout::SetFontStyle(const FontStyle& fontStyle) {
         PangoFontDescription* desc = CreatePangoFontDesc(fontStyle);
         if (desc) {
-            extentsValid = false;
+            extentsDirty = true;
             pango_layout_set_font_description(layout, desc);
             pango_font_description_free(desc);
         }
@@ -470,7 +470,7 @@ namespace UltraCanvas {
     // ===== DIMENSIONS =====
 
     void UCTextLayout::SetExplicitWidth(int widthPixels) {
-        extentsValid = false;
+        extentsDirty = true;
         pango_layout_set_width(layout, (widthPixels < 0) ? -1 : widthPixels * PANGO_SCALE);
     }
 
@@ -481,7 +481,7 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::SetExplicitHeight(int heightPixels) {
-        extentsValid = false;
+        extentsDirty = true;
         explicitHeight = heightPixels;
         pango_layout_set_height(layout, (heightPixels < 0) ? -1 : heightPixels * PANGO_SCALE);
     }
@@ -508,7 +508,7 @@ namespace UltraCanvas {
     // ===== ALIGNMENT & JUSTIFICATION =====
 
     void UCTextLayout::SetAlignment(TextAlignment align) {
-        extentsValid = false;
+        extentsDirty = true;
         if (align == TextAlignment::Justify) {
             pango_layout_set_alignment(layout, PANGO_ALIGN_LEFT);
             pango_layout_set_justify(layout, TRUE);
@@ -533,7 +533,7 @@ namespace UltraCanvas {
     // ===== WRAPPING & ELLIPSIZATION =====
 
     void UCTextLayout::SetWrap(TextWrap wrap) {
-        extentsValid = false;
+        extentsDirty = true;
         if (wrap == TextWrap::WrapNone) {
             pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
         } else {
@@ -552,7 +552,7 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::SetEllipsize(EllipsizeMode mode) {
-        extentsValid = false;
+        extentsDirty = true;
         pango_layout_set_ellipsize(layout, ToPangoEllipsize(mode));
     }
 
@@ -564,7 +564,7 @@ namespace UltraCanvas {
     // ===== SPACING & INDENTATION =====
 
     void UCTextLayout::SetIndent(int indentPixels) {
-        extentsValid = false;
+        extentsDirty = true;
         pango_layout_set_indent(layout, indentPixels * PANGO_SCALE);
     }
 
@@ -574,7 +574,7 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::SetLineSpacing(float factor) {
-        extentsValid = false;
+        extentsDirty = true;
         pango_layout_set_line_spacing(layout, factor);
     }
 
@@ -584,7 +584,7 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::SetSpacing(int spacingPixels) {
-        extentsValid = false;
+        extentsDirty = true;
         pango_layout_set_spacing(layout, spacingPixels * PANGO_SCALE);
     }
 
@@ -596,7 +596,7 @@ namespace UltraCanvas {
     // ===== MODE =====
 
     void UCTextLayout::SetSingleParagraphMode(bool single) {
-        extentsValid = false;
+        extentsDirty = true;
         pango_layout_set_single_paragraph_mode(layout, single ? TRUE : FALSE);
     }
 
@@ -606,7 +606,7 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::SetAutoDir(bool autoDir) {
-        extentsValid = false;
+        extentsDirty = true;
         pango_layout_set_auto_dir(layout, autoDir ? TRUE : FALSE);
     }
 
@@ -624,7 +624,8 @@ namespace UltraCanvas {
             pango_layout_set_attributes(layout, attrsList);
         }
         pango_attr_list_insert(attrsList, atr);
-        extentsValid = false;
+        pango_layout_context_changed(layout);
+        extentsDirty = true;
     }
 
     void UCTextLayout::ChangeAttribute(std::unique_ptr<ITextAttribute> attr) {
@@ -634,7 +635,8 @@ namespace UltraCanvas {
             pango_layout_set_attributes(layout, attrsList);
         }
         pango_attr_list_change(attrsList, atr);
-        extentsValid = false;
+        pango_layout_context_changed(layout);
+        extentsDirty = true;
     }
 
     void UCTextLayout::SetAttributesFromString(const std::string& str) {
@@ -643,12 +645,21 @@ namespace UltraCanvas {
         }
         attrsList = pango_attr_list_from_string(str.c_str());
         pango_layout_set_attributes(layout, attrsList);
-        extentsValid = false;
+        extentsDirty = true;
+    }
+
+    std::string UCTextLayout::GetAttributesAsString() {
+        auto alist = pango_layout_get_attributes(layout);
+        char* attrsStr = pango_attr_list_to_string(alist);
+        std::string result = attrsStr;
+        g_free(attrsStr);
+        return result;
     }
     
     void UCTextLayout::UpdateAttributesAccordingToText(int textBytePos, int addedTextBytes, int removedTextBytes) {
         if (attrsList) {
             pango_attr_list_update(attrsList, textBytePos, addedTextBytes, removedTextBytes);
+            pango_layout_context_changed(layout);
         }
     }
 
@@ -656,7 +667,7 @@ namespace UltraCanvas {
         pango_attr_list_unref(attrsList);
         attrsList = nullptr;
         pango_layout_set_attributes(layout, nullptr);
-        extentsValid = false;
+        extentsDirty = true;
     }
 
 //    void UCTextLayout::SetAttributes(const UCTextAttributeList& attrs) {
@@ -675,6 +686,7 @@ namespace UltraCanvas {
     void UCTextLayout::ResetTabs() {
         if (layout) {
             pango_layout_set_tabs(layout, nullptr);
+            extentsDirty = true;
         }
     }
 
@@ -713,12 +725,12 @@ namespace UltraCanvas {
     // ===== MEASUREMENT =====
 
     UCLayoutExtents UCTextLayout::GetLayoutExtents() {
-        if (!extentsValid) {
+        if (extentsDirty) {
             PangoRectangle ink, logical;
             pango_layout_get_pixel_extents(layout, &ink, &logical);
             extents.ink = Rect2Di(ink.x, ink.y, ink.width, ink.height);
             extents.logical = Rect2Di(logical.x, logical.y, logical.width, logical.height);
-            extentsValid = true;
+            extentsDirty = true;
         }
         return extents;
     }

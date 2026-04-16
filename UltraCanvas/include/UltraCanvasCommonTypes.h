@@ -253,9 +253,7 @@ struct Rect2D {
         return !(*this == other);
     }
 
-    static constexpr Rect2D INVALID() {
-        return {-1, -1, -1, -1};
-    };
+    inline static Rect2D INVALID = {-1, -1, -1, -1};
 };
 
 typedef struct Rect2D<double> Rect2Df;
@@ -450,13 +448,14 @@ inline Color HSV(float h, float s, float v, uint8_t a = 255) {
 }
 
 struct UCDashPattern {
-    std::vector<double> dashes;
-    double offset;
+    std::vector<double> dashes = {};
+    double offset = 0;
     UCDashPattern() : offset(0.0) {}
     UCDashPattern(const std::vector<double>& d, double o = 0.0)
             : dashes(d), offset(o) {}
+    
+    static UCDashPattern EMPTY;
 };
-
 // ===== MOUSE POINTER TYPES =====
 enum class UCMouseCursor {
     Default = 0,        // Standard arrow

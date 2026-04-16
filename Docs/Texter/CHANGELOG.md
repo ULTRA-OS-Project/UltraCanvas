@@ -5,3 +5,6 @@
 
 2026-04-06 1.0.15
 - Fix markdown word-wrap rendering for blockquotes and code blocks
+
+2016-04-16 1.0.16
+- Full rework of display and rendering the text. Use Pango layout to format text. Allow to use variable height lines

@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.0.9
-// Last Modified: 2026-04-11
+// Version: 2.0.10
+// Last Modified: 2026-04-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -29,6 +29,7 @@
 #include <unordered_set>
 #include <fmt/os.h>
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
@@ -567,6 +568,12 @@ namespace {
                 .AddSubmenu("Info", {
                         MenuItemData::Action("File Statistics", [this]() {
                          OnInfoFileStatistics();
+                        }),
+                        MenuItemData::Action("Changes", [this]() {
+                            OpenDocumentFromPath(GetResourcesDir() + "/Docs/Texter/CHANGELOG.md");
+                        }),
+                        MenuItemData::Action("Feedback", [this]() {
+                            OpenURL("https://ultraos.eu/feedback?app=texter&purpose=bugreport");
                         }),
                         MenuItemData::Separator(),
                         MenuItemData::Action("About UltraTexter", [this]() {

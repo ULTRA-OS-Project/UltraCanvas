@@ -155,7 +155,7 @@ namespace UltraCanvas {
         int explicitHeight = 0;
         VerticalAlignment valign = VerticalAlignment::Top;
         UCLayoutExtents extents;
-        bool extentsValid = false;
+        bool extentsDirty = true;
     public:
         explicit UCTextLayout(PangoContext* ctx);
         ~UCTextLayout() override;
@@ -217,6 +217,7 @@ namespace UltraCanvas {
         void InsertAttribute(std::unique_ptr<ITextAttribute> attr) override;
         void ChangeAttribute(std::unique_ptr<ITextAttribute> attr) override;
         void SetAttributesFromString(const std::string& str) override;
+        std::string GetAttributesAsString() override;
         void RemoveAllAttributes() override;
         void UpdateAttributesAccordingToText(int textBytePos, int addedTextBytes, int removedTextBytes) override;
 

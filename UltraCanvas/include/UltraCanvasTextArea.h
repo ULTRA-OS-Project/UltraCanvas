@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.2.0
-// Last Modified: 2026-04-12
+// Version: 3.2.2
+// Last Modified: 2026-04-16
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -121,12 +121,19 @@ namespace UltraCanvas {
 
     // line layouts
     struct LineColumnIndex {
-        int lineIndex; // line index in lineLayout/lines vectors
-        int columnIndex; // codepoint index in line, should point to real line position not layout text position.
+        int lineIndex = -1; // line index in lineLayout/lines vectors
+        int columnIndex = -1; // codepoint index in line, should point to real line position not layout text position.
+        bool IsValid() const {
+            return (lineIndex >=0 && columnIndex >= 0);
+        }
+        static LineColumnIndex const INVALID;
     };
+    constexpr LineColumnIndex const LineColumnIndex::INVALID = {-1, -1};
 
     enum LineLayoutType {
         PlainLine,
+        MarkDownLine,
+        HorizontalLine,
         Blockquote,
         CodeblockStart,
         CodeblockEnd,
@@ -164,12 +171,26 @@ namespace UltraCanvas {
 
     struct CodeLayout : LineLayoutBase {
         std::string codeblockLanguage;
+        bool isIndentedCode = false;    // true: indented (4-space / tab) block, not fenced
     };
 
     struct TableLineLayout : LineLayoutBase {
         int tableColumnCount = 0;
         bool lastTableRow = false;
+        // Per-column alignment parsed from the separator row's `|:---|:--:|---:|` markers.
+        // Populated on the separator row itself; NormalizeTableGroupWidths copies it to all
+        // other rows in the group so every row can render with the correct alignment.
+        std::vector<TextAlignment> columnAlignments;
         std::vector<std::unique_ptr<LineLayoutBase>> cellsLayouts;
+    };
+
+    // Inline styling run emitted by the markdown/plain-text parser and consumed by MakeLineLayout
+    // to drive ITextLayout attribute insertion. All offsets are codepoint indices in the VISIBLE
+    // layout text (i.e. after layoutTextStartIndex has stripped markup prefix characters).
+    struct TextStyleSpan {
+        int startCp = 0;
+        int endCp = 0;
+        TokenStyle style;
     };
 
     // Text area control with integrated syntax highlighting and full UTF-8 support
@@ -182,6 +203,10 @@ namespace UltraCanvas {
         bool AcceptsFocus() const override { return true; }
         // Render method
         virtual void Render(IRenderContext* ctx) override;
+
+        // Drives the per-line layout cache (UpdateLineLayouts) so layouts are ready
+        // before Render runs. Called by the framework when RequestUpdateGeometry() has been set.
+        virtual void UpdateGeometry(IRenderContext* ctx) override;
 
         // Override SetBounds to trigger layout recalculation on resize
         void SetBounds(const Rect2Di& b) override {
@@ -208,9 +233,6 @@ namespace UltraCanvas {
         void DeleteSelection();
         void Clear() { SetText(""); }
 
-        // Legacy single-byte insert (for ASCII only)
-        void InsertCharacter(char ch);
-
         // Cursor movement - now grapheme-aware
         void MoveCursorLeft(bool selecting = false);
         void MoveCursorRight(bool selecting = false);
@@ -225,7 +247,10 @@ namespace UltraCanvas {
         void MoveCursorPageDown(bool selecting = false);
         void MoveCursorPageUp(bool selecting = false);
         void SetCursorPosition(int graphemePosition);
-        int GetCursorPosition() const { return cursorGraphemePosition; }
+        int GetCursorPosition() const {
+            return (cursorPosition.lineIndex < 0) ? 0
+                : GetPositionFromLineColumn(cursorPosition.lineIndex, cursorPosition.columnIndex);
+        }
 
         // Selection - grapheme-based positions
         void SelectAll();
@@ -251,7 +276,6 @@ namespace UltraCanvas {
         std::vector<std::string> GetSupportedLanguages();
 
         void SetSyntaxTheme(const std::string& theme);
-        void UpdateSyntaxHighlighting();
 
         // Theme application
         void ApplyDarkTheme();
@@ -400,10 +424,8 @@ namespace UltraCanvas {
         void DrawBorder(IRenderContext* context);
         void DrawLineNumbers(IRenderContext* context);
         void DrawText(IRenderContext* context);
-        void DrawPlainText(IRenderContext* context);
-        void DrawHighlightedText(IRenderContext* context);
-        void DrawSelection(IRenderContext* context);
-        void DrawSearchHighlights(IRenderContext* context);
+        // Legacy text draw methods removed in Step 8 — rendering goes through RenderLineLayout
+        // driven from Render(). Selection is baked into each layout via background attributes.
         void DrawCursor(IRenderContext* context);
         void DrawScrollbars(IRenderContext* context);
         void DrawAutoComplete(IRenderContext* context);
@@ -424,18 +446,12 @@ namespace UltraCanvas {
         // Helper methods - updated for UTF-8 support
         int GetPositionFromLineColumn(int line, int graphemeColumn) const;
         void CalculateVisibleArea();
-        void RecalculateDisplayLines();
         int CalculateLineNumbersWidth(IRenderContext* ctx);
-        int GetDisplayLineForCursor(int logicalLine, int graphemeCol) const;
-        int GetDisplayLineCount() const;
         void RebuildText();
         const TokenStyle& GetStyleForTokenType(TokenType type) const;
 
         // UTF-8 conversion helpers
         int GetLineGraphemeCount(int lineIndex) const;
-
-        // Mouse-to-text position helper
-        int GetGraphemePositionFromPoint(int mouseX, int mouseY, int& outLine, int& outCol) const;
 
         // Initialization
         void ApplyDefaultStyle();
@@ -448,17 +464,65 @@ namespace UltraCanvas {
 
 
         // parse the line text and create/update line layout
-        void UpdateLineLayoutsToPosition(IRenderContext* ctx, int bottomVisiblePos);
+        void UpdateLineLayouts(IRenderContext* ctx);
 
         // parse the line text and create line layout
-        std::unique_ptr<LineLayoutBase> MakeLineLayout(IRenderContext* ctx, int lineIndex, TextAreaEditingMode edMode);
+        std::unique_ptr<LineLayoutBase> MakeLineLayout(IRenderContext* ctx, int lineIndex);
+        // parse the plain line text and setup line layout
+        std::unique_ptr<LineLayoutBase> MakePlainLineLayout(IRenderContext* ctx, int lineIndex);
+
+        // MakeLineLayout dispatches here for MarkdownHybrid lines. Inspects lineLayouts[lineIndex-1]
+        // for state like open fenced-code-block and returns the appropriate derived LineLayoutBase.
+        std::unique_ptr<LineLayoutBase> MakeMarkdownLineLayout(IRenderContext* ctx, int lineIndex);
+
+        // Doc-wide pre-scan: populates markdownAbbreviations, markdownFootnotes, markdownAnchors,
+        // and markdownAnchorBacklinks. Run lazily when markdownIndexDirty is true — which
+        // RebuildText() and SetText() both raise.
+        void RebuildMarkdownIndex();
+        bool markdownIndexDirty = true;
+
+        // Normalize per-column widths across every row of a contiguous table span. Each cell's
+        // natural width is measured by temporarily clearing its wrap, then per-column maxes are
+        // collected; if the total fits the available width the leftover is distributed evenly,
+        // otherwise columns shrink proportionally. Row heights are re-measured after rewrap.
+        void NormalizeTableGroupWidths(int startLine, int endLine);
+
+        // Inline markdown run (produced by ParseInlineMarkdownRuns) — byte offsets are within the
+        // *visible* (markup-stripped) text, not the raw line.
+        struct InlineRun {
+            enum Kind { Bold, Italic, Code, Strike, Subscript, Superscript, Math, Link, Image, Footnote };
+            int startByte = 0;
+            int endByte   = 0;
+            Kind kind = Bold;
+            std::string url;    // link target (footnote: label after `^`)
+            std::string alt;    // image alt text
+        };
+        // Walk rawLine emitting visible text (markup stripped) and a list of styling runs in
+        // visible-text byte coords. Handles **bold**, *italic* / _italic_, `code`, ~~strike~~,
+        // ~subscript~, ^superscript^, `$math$` (LaTeX command → Unicode substitution),
+        // [text](url), ![alt](url), [^footnote], `:shortcode:` emoji, ASCII emoticons
+        // (`:-)`, `;)`, `8-)`, `<3`, …), and backslash escapes. Sub/superscript content must
+        // be non-empty and contain no whitespace. No nested inline.
+        static void ParseInlineMarkdownRuns(const std::string& rawLine,
+                                            std::string& visibleText,
+                                            std::vector<InlineRun>& runs);
+
+        // Apply inline-run attributes (bold/italic/code/strike/link/image/footnote) to `layout`
+        // and record link/image/footnote hit rects on `outHitRects`. Also scans `visibleText`
+        // for known abbreviations (from markdownAbbreviations) and adds underline + hit rects
+        // for each match. Byte offsets in `runs` and `layout` must both refer to `visibleText`.
+        void ApplyInlineRunsAndAbbreviations(ITextLayout* layout,
+                                             const std::string& visibleText,
+                                             const std::vector<InlineRun>& runs,
+                                             std::vector<MarkdownHitRect>& outHitRects);
 
         // handle cursor position
         Rect2Di LineColumnToCursorPos(const LineColumnIndex& idx);
         LineColumnIndex PosToLineColumn(const Point2Di& pos);
         LineLayoutBase *GetLineLayoutForPos(const Point2Di& pos);
+        LineLayoutBase *GetActualLineLayout(int idx);
 
-        void RenderLineLayout(IRenderContext *ctx, int lineIndex);
+        void RenderLineLayout(IRenderContext *ctx, LineLayoutBase* line);
 
     private:
         // Text data - std::string with GLib g_utf8_* for UTF-8 handling
@@ -466,30 +530,28 @@ namespace UltraCanvas {
         std::vector<std::string> lines;
 
         std::vector<std::unique_ptr<LineLayoutBase>> lineLayouts; // cached layouts for each line
-        LineColumnIndex cursorPosition; // cursor position for lineIndex and codepoint index in Line
+        int lineLayoutsWrapWidth = -1; // width the cached layouts were built against; -1 = no cache
+        LineColumnIndex cursorPosition = {0,0}; // cursor position for lineIndex and codepoint index in Line
         LineColumnIndex selectionStart;
         LineColumnIndex selectionEnd;
+        // Last selection state observed by ReconcileLayoutState — used to invalidate
+        // lines whose selection membership changed so MakeLineLayout reapplies background attrs.
+        LineColumnIndex lastAppliedSelectionStart = {-1, -1};
+        LineColumnIndex lastAppliedSelectionEnd = {-1, -1};
 
-        // Word wrap display line mapping
-        struct DisplayLine {
-            int logicalLine;    // index into lines[]
-            int startGrapheme;  // start grapheme offset within logical line
-            int endGrapheme;    // end grapheme offset (exclusive)
-        };
-        std::vector<DisplayLine> displayLines;
+        // MarkdownHybrid current line. When the cursor enters a line, this line gets text
+        // and used in rendering and measuring
+        std::unique_ptr<LineLayoutBase> currentLine;
 
-        // Cursor and selection - grapheme-based positions
-        int cursorGraphemePosition;            // Cursor position in graphemes from start
-        int selectionStartGrapheme;            // Selection start in graphemes (-1 if no selection)
-        int selectionEndGrapheme;              // Selection end in graphemes (-1 if no selection)
+        // Cursor / selection state is LineColumnIndex (codepoint-based); see fields above.
         int computedLineHeight = 12;
         int computedLineNumbersWidth = 40;
 
         // Scrolling
         int horizontalScrollOffset;
         int verticalScrollOffset;
-        int firstVisibleLine;
-        int maxVisibleLines;
+        // firstVisibleLine / maxVisibleLines removed in Step 8b — pixel-based verticalScrollOffset
+        // is now the authoritative scroll state.
         int maxLineWidth;
         Rect2Di visibleTextArea;
         Rect2Di horizontalScrollThumb;
@@ -500,7 +562,7 @@ namespace UltraCanvas {
 
         // Mouse text selection state
         bool isSelectingText = false;
-        int selectionAnchorGrapheme = -1;
+        LineColumnIndex selectionAnchor = {-1, -1};
 
         // Click counting for double/triple click detection
         int clickCount = 0;
@@ -519,7 +581,7 @@ namespace UltraCanvas {
         bool isReadOnly;
         bool wordWrap;
         bool highlightCurrentLine;
-        bool needFirstVisibleLineFixup = false; // Set after SetWordWrap toggle
+        // needFirstVisibleLineFixup removed in Step 8b (pixel scroll has no analogous fixup).
         int currentLineIndex;
         int tabSize = 4;
  
@@ -533,17 +595,31 @@ namespace UltraCanvas {
         std::unique_ptr<SyntaxTokenizer> codeBlockTokenizer;
         std::string codeBlockTokenizerLang;
 
-        // Per-logical-line layout cache (fully styled, drawn directly when valid)
-        std::vector<std::shared_ptr<ITextLayout>> lineLayouts_;
-        int lastCursorLine_ = -1;
-        int cachedWrapWidth_ = 0;
-
         void InvalidateAllLineLayouts();
         void InvalidateLineLayout(int logicalLine);
+        void InvalidateLineLayoutsFrom(int fromLine);
         void InsertLineLayoutEntry(int logicalLine);  // insert nullptr at index (new line)
         void RemoveLineLayoutEntry(int logicalLine);  // erase entry (line deleted/merged)
-        std::shared_ptr<ITextLayout> BuildLineLayout(IRenderContext* ctx, int logicalLine);
-        void EnsureLineLayoutsSize();
+
+        // Selection rendering via Pango background-color attributes on each affected layout.
+        // ApplyLineSelectionBackground is called from MakeLineLayout after layout construction;
+        // it inserts a background-color attribute on the byte range of this line that falls
+        // inside the current selection. When selection changes, ReconcileLayoutState
+        // invalidates the union of old+new selected line ranges so MakeLineLayout runs again.
+        void ApplyLineSelectionBackground(LineLayoutBase* ll, int lineIndex);
+        // Kept as no-op stubs — attribute application happens during rebuild, not in-place patching.
+        void ApplySelectionAttributes();
+        void ClearSelectionAttributes(int logicalLine);
+
+        // Called at the top of UpdateLineLayouts each frame. Detects cursor-line
+        // changes (to swap in/out MarkdownHybrid raw-editing mode) and selection-range changes
+        // (to rebuild affected line layouts with fresh background-color attributes).
+        void ReconcileLayoutState();
+
+        // If editedLine holds a stash, move it back into lineLayouts[editedLineIndex] when
+        // the raw text hasn't changed, or discard it otherwise (forcing a rebuild). Called on
+        // cursor-line change and on focus loss.
+        void RestoreEditedLine();
 
         // Search state
         std::string lastSearchText;
@@ -553,12 +629,12 @@ namespace UltraCanvas {
         // Search highlights (grapheme positions: start, end)
         std::vector<std::pair<int, int>> searchHighlights;
 
-        // Undo/Redo stacks
+        // Undo/Redo stacks. Positions are stored as LineColumnIndex (authoritative since Step 8b).
         struct TextState {
             std::string text;
-            int cursorGraphemePosition;
-            int selectionStartGrapheme;
-            int selectionEndGrapheme;
+            LineColumnIndex cursorPosition{0, 0};
+            LineColumnIndex selectionStart{-1, -1};
+            LineColumnIndex selectionEnd{-1, -1};
         };
         std::vector<TextState> undoStack;
         std::vector<TextState> redoStack;
@@ -629,8 +705,15 @@ namespace UltraCanvas {
          * Renders current line as syntax-highlighted raw text,
          * and all other lines as formatted markdown.
          */
-        void DrawMarkdownHybridText(IRenderContext* context);
+        // DrawMarkdownHybridText removed in Step 8 — MD block rendering runs through
+        // MakeMarkdownLineLayout + RenderLineLayout.
         
+        // Iterates each cached LineLayoutBase's hitRects (layout-local) and translates them to
+        // screen coords to perform hit-testing at the given screen position. Returns a pointer
+        // to the matching rect or nullptr. The pointer is only valid until the layout cache is
+        // invalidated, so callers should use it immediately and not store it.
+        const MarkdownHitRect* FindHitRectAtScreenPos(int mouseX, int mouseY) const;
+
         /**
          * @brief Check if a line is a markdown list item
          * @param line Line to check
@@ -694,8 +777,8 @@ namespace UltraCanvas {
     private:
         // Editing mode (PlainText, MarkdownHybrid, Hex)
         TextAreaEditingMode editingMode = TextAreaEditingMode::PlainText;
-        // Markdown clickable hit regions (rebuilt each render frame)
-        std::vector<MarkdownHitRect> markdownHitRects;
+        // Clickable hit regions now live on each LineLayoutBase's `hitRects` vector in layout-local
+        // coords. FindHitRectAtScreenPos translates + tests them. Legacy markdownHitRects removed.
         // Abbreviation definitions: abbreviation -> expansion text
         std::unordered_map<std::string, std::string> markdownAbbreviations;
         // Per-logical-line flag: true if line is an abbreviation definition (hidden from rendering)

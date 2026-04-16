@@ -1,7 +1,7 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
-// Version: 2.0.0
-// Last Modified: 2026-03-04
+// Version: 2.0.1
+// Last Modified: 2026-04-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -304,6 +304,7 @@ namespace UltraCanvas {
 
         // ===== LAYOUT =====
         void SetBounds(const Rect2Di& b) override;
+        void UpdateGeometry(IRenderContext* ctx) override;
 
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override;
