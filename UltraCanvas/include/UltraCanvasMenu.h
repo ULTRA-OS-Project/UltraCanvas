@@ -20,6 +20,24 @@
 #include <algorithm>
 #include <optional>
 
+// ===== PLATFORM SHORTCUT FORMATTER =====
+// Each OS backend provides GetDisplayShortcut(). On non-macOS platforms
+// the fallback header returns the string unchanged — zero runtime cost.
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+  #if TARGET_OS_MAC && !TARGET_OS_IPHONE
+    #include "../OS/MacOS/UltraCanvasMacOSShortcutFormat.h"
+  #endif
+#endif
+
+#ifndef ULTRACANVAS_PLATFORM_SHORTCUT_DEFINED
+// Fallback for Linux, Windows, iOS, Android, WASM — pass-through
+namespace UltraCanvas {
+    inline std::string GetDisplayShortcut(const std::string& s) { return s; }
+}
+#define ULTRACANVAS_PLATFORM_SHORTCUT_DEFINED
+#endif
+
 namespace UltraCanvas {
     class UltraCanvasWindowBase;
 // ===== MENU TYPES AND ENUMS =====

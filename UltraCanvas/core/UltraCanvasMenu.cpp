@@ -526,10 +526,11 @@ namespace UltraCanvas {
 
         // Render shortcut (for vertical menus)
         if (!item.shortcut.empty() && orientation == MenuOrientation::Vertical) {
+            std::string displayShortcut = GetDisplayShortcut(item.shortcut);
             int shortcutX = itemBounds.x + itemBounds.width - style.paddingRight -
-                            ctx->GetTextLineWidth(item.shortcut.c_str());
+                            ctx->GetTextLineWidth(displayShortcut.c_str());
             ctx->SetTextPaint(style.shortcutColor);
-            ctx->DrawText(item.shortcut, Point2Di(shortcutX, textY));
+            ctx->DrawText(displayShortcut, Point2Di(shortcutX, textY));
         }
 
         // Render submenu arrow (for vertical menus)
@@ -593,7 +594,8 @@ namespace UltraCanvas {
         if (orientation == MenuOrientation::Vertical) {
             // Shortcut width
             if (!item.shortcut.empty()) {
-                width += style.shortcutSpacing + ctx->GetTextLineWidth(item.shortcut.c_str());
+                std::string displayShortcut = GetDisplayShortcut(item.shortcut);
+                width += style.shortcutSpacing + ctx->GetTextLineWidth(displayShortcut);
             }
 
             // Submenu arrow

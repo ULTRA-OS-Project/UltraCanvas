@@ -1,6 +1,6 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.2.3
+// Version: 3.2.4
 // Last Modified: 2026-04-16
 // Author: UltraCanvas Framework
 
@@ -2722,10 +2722,6 @@ namespace {
             std::vector<MarkdownHitRect>& outHitRects)
     {
         if (!layout) return;
-        const Color mdLinkColor(0, 102, 204);
-        const Color mdCodeTextColor(200, 50, 50);
-        const Color mdCodeBgColor(245, 245, 245);
-        const Color mdMathColor(0, 120, 60);
 
         for (const auto& run : runs) {
             if (run.startByte >= run.endByte) continue;
@@ -2746,10 +2742,10 @@ namespace {
                     auto fs = TextAttributeFactory::CreateFontStyle(style.fixedFontStyle);
                     fs->SetRange(run.startByte, run.endByte);
                     layout->InsertAttribute(std::move(fs));
-                    auto fg = TextAttributeFactory::CreateForeground(mdCodeTextColor);
+                    auto fg = TextAttributeFactory::CreateForeground(markdownStyle.codeTextColor);
                     fg->SetRange(run.startByte, run.endByte);
                     layout->InsertAttribute(std::move(fg));
-                    auto bg = TextAttributeFactory::CreateBackground(mdCodeBgColor);
+                    auto bg = TextAttributeFactory::CreateBackground(markdownStyle.codeBackgroundColor);
                     bg->SetRange(run.startByte, run.endByte);
                     layout->InsertAttribute(std::move(bg));
                     break;
@@ -2788,7 +2784,7 @@ namespace {
                     auto italic = TextAttributeFactory::CreateStyle(FontSlant::Italic);
                     italic->SetRange(run.startByte, run.endByte);
                     layout->InsertAttribute(std::move(italic));
-                    auto fg = TextAttributeFactory::CreateForeground(mdMathColor);
+                    auto fg = TextAttributeFactory::CreateForeground(markdownStyle.mathTextColor);
                     fg->SetRange(run.startByte, run.endByte);
                     layout->InsertAttribute(std::move(fg));
                     break;
@@ -2796,7 +2792,10 @@ namespace {
                 case InlineRun::Link:
                 case InlineRun::Image:
                 case InlineRun::Footnote: {
-                    auto fg = TextAttributeFactory::CreateForeground(mdLinkColor);
+                    const Color& runColor = (run.kind == InlineRun::Footnote)
+                        ? markdownStyle.footnoteRefColor
+                        : markdownStyle.linkColor;
+                    auto fg = TextAttributeFactory::CreateForeground(runColor);
                     fg->SetRange(run.startByte, run.endByte);
                     layout->InsertAttribute(std::move(fg));
                     if (run.kind != InlineRun::Footnote) {
@@ -3142,6 +3141,7 @@ namespace {
         style.tokenStyles.builtinStyle.color = {0x4c, 0xbb, 0xc9, 255};
         style.tokenStyles.defaultStyle.color = {210, 210, 210, 255};
 
+        SetMarkdownStyle(MarkdownHybridStyle::DarkMode());
         RequestRedraw();
     }
     void UltraCanvasTextArea::ApplyLightTheme() {
@@ -3169,6 +3169,8 @@ namespace {
         style.tokenStyles.constantStyle.color = {0, 0, 128, 255};
         style.tokenStyles.preprocessorStyle.color = {64, 128, 128, 255};
         style.tokenStyles.builtinStyle.color = {128, 0, 255, 255};
+
+        SetMarkdownStyle(MarkdownHybridStyle::Default());
     }
 
     void UltraCanvasTextArea::ApplyCustomTheme(const TextAreaStyle& customStyle) {
@@ -4075,16 +4077,18 @@ namespace {
         const std::string& rawLine = lines[lineIndex];
         std::string trimmed = TrimWhitespace(rawLine);
 
-        // Pixel constants mirroring MarkdownHybridStyle defaults in UltraCanvasTextArea_Markdown.cpp.
-        constexpr int quoteIndent = 26;
-        constexpr int quoteNestingStep = 20;
-        constexpr int listIndent = 20;
+        // Pixel constants sourced from markdownStyle (instead of duplicated literals)
+        // so SetMarkdownStyle() can adjust indents/header sizes consistently between
+        // layout-build and render paths.
+        const int quoteIndent      = markdownStyle.quoteIndent;
+        const int quoteNestingStep = markdownStyle.quoteNestingStep;
+        const int listIndent       = markdownStyle.listIndent;
         // Horizontal rule height — minimum so the line-number gutter has room for the
         // row's number without bleeding into the neighbors.
         int hrHeight = computedLineHeight > 0
                     ? computedLineHeight
                     : static_cast<int>(style.fontStyle.fontSize * 1.2f);
-        constexpr float headerMultipliers[6] = {1.8f, 1.5f, 1.3f, 1.2f, 1.1f, 1.0f};
+        const auto& headerMultipliers = markdownStyle.headerSizeMultipliers;
 
         // Shared layout configuration applied to every non-null ITextLayout we return.
         auto configureLayout = [&](ITextLayout* layout, int shiftX) {
@@ -4616,14 +4620,15 @@ namespace {
     void UltraCanvasTextArea::RenderLineLayout(IRenderContext *ctx, LineLayoutBase* line) {
         if (!line) return;
 
-        // Style constants mirroring MarkdownHybridStyle defaults.
-        const int quoteBarWidth = 3;
-        const int quoteNestingStep = 20;
-        const int listIndentPx = 20;
-        const Color quoteBarColor(200, 200, 200);
-        const Color codeBgColor(248, 248, 248);
-        const Color hrColor(200, 200, 200);
-        const Color markerColor(80, 80, 80);
+        // All style values sourced from markdownStyle so callers can customize via
+        // SetMarkdownStyle() / GetMarkdownStyleMutable().
+        const int quoteBarWidth    = markdownStyle.quoteBarWidth;
+        const int quoteNestingStep = markdownStyle.quoteNestingStep;
+        const int listIndentPx     = markdownStyle.listIndent;
+        const Color& quoteBarColor = markdownStyle.quoteBarColor;
+        const Color& codeBgColor   = markdownStyle.codeBlockBackgroundColor;
+        const Color& hrColor       = markdownStyle.horizontalRuleColor;
+        const Color& markerColor   = markdownStyle.bulletColor;
 
         // bounds.x/y are content-relative (top of text area, before scroll). verticalScrollOffset
         // is the pixel Y-offset into the content that corresponds to the top of visibleTextArea.
@@ -4684,24 +4689,25 @@ namespace {
                 double borderBottom = (line->layoutType == LineLayoutType::CodeblockEnd) ? 1 : 0;
                 double y = (line->layoutType == LineLayoutType::CodeblockStart) ? (posOrigin.y + line->bounds.height / 2 + 2) : posOrigin.y;
                 ctx->SetFillPaint(codeBgColor);
+                const Color& cbBorder = markdownStyle.codeBlockBorderColor;
                 ctx->DrawRoundedRectangleWidthBorders(
                     Rect2Df(visibleTextArea.x,
                             y,
                             visibleTextArea.width,
                             line->bounds.height),
-                    true, 
+                    true,
                     1, 1, borderTop, borderBottom,
-                    Colors::LightGray, Colors::LightGray,
-                    Colors::LightGray, Colors::LightGray,
+                    cbBorder, cbBorder,
+                    cbBorder, cbBorder,
                     0,0,0,0,
-                    UCDashPattern::EMPTY, UCDashPattern::EMPTY, 
+                    UCDashPattern::EMPTY, UCDashPattern::EMPTY,
                     UCDashPattern::EMPTY, UCDashPattern::EMPTY
                 );
                 if (line->layoutType == LineLayoutType::CodeblockStart) {
                     auto cl = dynamic_cast<CodeLayout*>(line);
                     if (cl && !cl->codeblockLanguage.empty()) {
                         ctx->PushState();
-                        ctx->SetTextPaint(Color(100, 100, 100));
+                        ctx->SetTextPaint(markdownStyle.codeBlockLanguageLabelColor);
                         auto cblangLayout = ctx->CreateTextLayout(" "+cl->codeblockLanguage+" ", false);
                         cblangLayout->SetFontStyle(style.fixedFontStyle);
                         cblangLayout->InsertAttribute(TextAttributeFactory::CreateBackground(codeBgColor));
@@ -4712,19 +4718,20 @@ namespace {
                         ctx->PopState();
                     }
                 } else {
-                    drawLayout();
+                    ctx->SetCurrentPaint(markdownStyle.codeTextColor);
+                    ctx->DrawTextLayout(*line->layout,
+                        Point2Df(static_cast<float>(layoutOrigin.x),
+                                static_cast<float>(layoutOrigin.y)));
                 }
                 return;
             }
             case LineLayoutType::UnorderedListItem: {
                 auto ul = dynamic_cast<UnorderedListItemLayout*>(line);
                 int depth = ul ? ul->listDepth : 1;
-                static const char* const bullets[3] = {
-                    "\xe2\x80\xa2",  // U+2022 BULLET
-                    "\xe2\x97\xa6",  // U+25E6 WHITE BULLET
-                    "\xe2\x96\xaa"   // U+25AA BLACK SMALL SQUARE
-                };
-                const char* bullet = bullets[std::min(std::max(depth - 1, 0), 2)];
+                const auto& bullets = markdownStyle.nestedBulletCharacters;
+                int bulletIdx = std::min(std::max(depth - 1, 0),
+                                         static_cast<int>(bullets.size()) - 1);
+                const std::string& bullet = bullets[bulletIdx];
                 int markerX = posOrigin.x + (depth - 1) * listIndentPx;
                 ctx->PushState();
                 ctx->SetFontStyle(style.fontStyle);
@@ -4755,8 +4762,8 @@ namespace {
             case LineLayoutType::TableRow: {
                 auto tbl = dynamic_cast<TableLineLayout*>(line);
                 if (!tbl) { drawLayout(); return; }
-                const Color tableBorderColor(200, 200, 200);
-                const Color tableHeaderBg(240, 240, 240);
+                const Color& tableBorderColor = markdownStyle.tableBorderColor;
+                const Color& tableHeaderBg    = markdownStyle.tableHeaderBackground;
 
                 // Header row background tint.
                 if (line->layoutType == LineLayoutType::TableHederRow) {
@@ -4789,7 +4796,7 @@ namespace {
                 // Vertical dividers between columns. Each cell's right edge (in layout-local
                 // coords) is `cell->bounds.x + cell->bounds.width + cellPadding`; we place a
                 // divider there for every cell except the last.
-                constexpr int cellPadding = 4;
+                const int cellPadding = static_cast<int>(markdownStyle.tableCellPadding);
                 for (size_t c = 0; c + 1 < tbl->cellsLayouts.size(); c++) {
                     const auto& cell = tbl->cellsLayouts[c];
                     if (!cell) continue;

@@ -228,6 +228,7 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
     ${ULTRACANVAS_TEXT_SOURCES}
     ${ULTRACANVAS_CHARTS_SOURCES}
+        OS/MacOS/UltraCanvasMacOSShortcutFormat.h
         #        dialogs/PixelFXExportDialog.cpp
 #        dialogs/PixelFXExportDialog.h
 )

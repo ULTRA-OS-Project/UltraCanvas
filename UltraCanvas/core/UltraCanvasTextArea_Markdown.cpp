@@ -1,8 +1,8 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
-// Version: 2.5.0
-// Last Modified: 2026-04-12
+// Version: 2.5.1
+// Last Modified: 2026-04-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -23,147 +23,10 @@
 
 namespace UltraCanvas {
 
-// ===== MARKDOWN HYBRID STYLE CONFIGURATION =====
-// Configurable styling for markdown rendering within TextArea
-// Mirrors relevant properties from MarkdownStyle in UltraCanvasMarkdown.h
-
-struct MarkdownHybridStyle {
-    // Header colors per level (H1-H6)
-    std::array<Color, 6> headerColors = {
-            Color(20, 20, 20), Color(30, 30, 30), Color(40, 40, 40),
-            Color(50, 50, 50), Color(60, 60, 60), Color(70, 70, 70)
-    };
-
-    // Header font size multipliers (relative to base font size)
-    std::array<float, 6> headerSizeMultipliers = {1.8f, 1.5f, 1.3f, 1.2f, 1.1f, 1.0f};
-
-    // Code styling
-    Color codeTextColor = Color(200, 50, 50);
-    Color codeBackgroundColor = Color(245, 245, 245);
-    Color codeBlockBackgroundColor = Color(248, 248, 248);
-    Color codeBlockBorderColor = Color(120, 120, 120);
-    Color codeBlockTextColor = Color(50, 50, 50);       // Default text color inside code blocks
-    Color codeBlockCommentColor = Color(106, 153, 85);   // Green for comments in code blocks
-    Color codeBlockKeywordColor = Color(0, 0, 200);      // Blue for keywords in code blocks
-    Color codeBlockStringColor = Color(163, 21, 21);     // Red for strings in code blocks
-    Color codeBlockNumberColor = Color(9, 134, 88);      // Green for numbers in code blocks
-    std::string codeFont = "Courier New";
-
-    // Link styling
-    Color linkColor = Color(0, 102, 204);
-    Color linkHoverColor = Color(0, 80, 160);
-    bool linkUnderline = true;
-
-    // List styling
-    int listIndent = 20;
-    std::string bulletCharacter = "\xe2\x80\xa2"; // UTF-8 bullet • (kept for compatibility)
-    // Nested bullet characters per nesting level (0=•, 1=◦, 2=▪, deeper levels repeat ▪)
-    std::array<std::string, 3> nestedBulletCharacters = {
-        "\xe2\x80\xa2",         // level 0: • (U+2022 BULLET)
-        "\xe2\x97\xa6",         // level 1: ◦ (U+25E6 WHITE BULLET)
-        "\xe2\x96\xaa"          // level 2: ▪ (U+25AA BLACK SMALL SQUARE)
-    };
-    Color bulletColor = Color(80, 80, 80);
-
-    // Quote styling
-    Color quoteBarColor = Color(200, 200, 200);
-    Color quoteBackgroundColor = Color(250, 250, 250);
-    Color quoteTextColor = Color(100, 100, 100);
-    int quoteBarWidth = 3;          // Thin bar — matches reference visual
-    int quoteBarGap = 10;           // Gap between bar and text (new)
-    int quoteIndent = 26;           // Total indent from bar left edge to text
-    int quoteNestingStep = 20;      // Horizontal step per nesting level
-    
-    // Horizontal rule
-    Color horizontalRuleColor = Color(200, 200, 200);
-    float horizontalRuleHeight = 2.0f;
-    // Vertical inset for block backgrounds (code blocks, blockquotes)
-    // Top border starts this many pixels lower on the first line of a block,
-    // bottom border ends this many pixels earlier on the last line.
-    int blockVerticalInset = 5;
-
-    // Table styling
-    Color tableBorderColor = Color(200, 200, 200);
-    Color tableHeaderBackground = Color(240, 240, 240);
-    float tableCellPadding = 4.0f;
-
-    // Strikethrough
-    Color strikethroughColor = Color(120, 120, 120);
-
-    // Highlight
-    Color highlightBackground = Color(255, 255, 0, 100);
-
-    // Abbreviation styling
-    Color abbreviationBackground = Color(230, 230, 230, 120);
-    Color abbreviationUnderlineColor = Color(150, 150, 150);
-    float abbreviationUnderlineDashLength = 2.0f;
-    float abbreviationUnderlineGapLength = 2.0f;
-
-    // Footnote reference styling
-    Color footnoteRefColor = Color(0, 102, 204);
-
-    // Task list checkbox
-    Color checkboxBorderColor = Color(150, 150, 150);
-    Color checkboxCheckedColor = Color(0, 120, 215);
-    Color checkboxCheckmarkColor = Color(255, 255, 255);
-    int checkboxSize = 12;
-
-    // Image placeholder
-    Color imagePlaceholderBackground = Color(230, 230, 240);
-    Color imagePlaceholderBorderColor = Color(180, 180, 200);
-    Color imagePlaceholderTextColor = Color(100, 100, 140);
-
-    // Math formula styling
-    Color mathTextColor = Color(0, 120, 60);
-    Color mathBackgroundColor = Color(240, 248, 240, 180);
-
-    static MarkdownHybridStyle Default() {
-        return MarkdownHybridStyle();
-    }
-
-    static MarkdownHybridStyle DarkMode() {
-        MarkdownHybridStyle s;
-        s.headerColors = {
-                Color(240, 240, 240), Color(220, 220, 240), Color(200, 200, 220),
-                Color(190, 190, 210), Color(180, 180, 200), Color(170, 170, 190)
-        };
-        s.codeTextColor = Color(255, 150, 150);
-        s.codeBackgroundColor = Color(50, 50, 50);
-        s.codeBlockBackgroundColor = Color(40, 40, 40);
-        s.codeBlockBorderColor = Color(80, 80, 80);
-        s.codeBlockTextColor = Color(210, 210, 210);
-        s.codeBlockCommentColor = Color(106, 153, 85);
-        s.codeBlockKeywordColor = Color(86, 156, 214);
-        s.codeBlockStringColor = Color(206, 145, 120);
-        s.codeBlockNumberColor = Color(181, 206, 168);
-        s.linkColor = Color(100, 180, 255);
-        s.linkHoverColor = Color(150, 200, 255);
-        s.quoteBarColor = Color(100, 100, 100);
-        s.quoteBackgroundColor = Color(40, 40, 40);
-        s.quoteTextColor = Color(170, 170, 170);
-        s.horizontalRuleColor = Color(100, 100, 100);
-        s.tableBorderColor = Color(80, 80, 80);
-        s.tableHeaderBackground = Color(50, 50, 50);
-        s.strikethroughColor = Color(170, 170, 170);
-        s.highlightBackground = Color(100, 100, 0, 100);
-        s.bulletColor = Color(170, 170, 170);
-        s.checkboxBorderColor = Color(120, 120, 120);
-        s.imagePlaceholderBackground = Color(50, 50, 60);
-        s.imagePlaceholderBorderColor = Color(80, 80, 100);
-        s.imagePlaceholderTextColor = Color(140, 140, 170);
-        s.mathTextColor = Color(100, 220, 140);
-        s.mathBackgroundColor = Color(30, 50, 35, 150);
-        s.abbreviationBackground = Color(70, 70, 80, 120);
-        s.abbreviationUnderlineColor = Color(140, 140, 160);
-        s.footnoteRefColor = Color(100, 180, 255);
-        s.nestedBulletCharacters = {
-            "\xe2\x80\xa2",     // level 0: •
-            "\xe2\x97\xa6",     // level 1: ◦
-            "\xe2\x96\xaa"      // level 2: ▪
-        };        
-        return s;
-    }
-};
+// MarkdownHybridStyle is now declared in UltraCanvasTextArea.h so the live-layout
+// render path (RenderLineLayout) can share the same struct. This file consumes
+// it via `const MarkdownHybridStyle& mdStyle` parameters on the static
+// RenderMarkdown* helpers below.
 
 
 // ===== MARKDOWN INLINE ELEMENT =====
