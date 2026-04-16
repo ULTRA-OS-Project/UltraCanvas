@@ -1,8 +1,8 @@
 // OS/MacOS/UltraCanvasMacOSShortcutFormat.h
 // macOS shortcut symbol formatter — converts canonical shortcut strings
 // (e.g. "Ctrl+Shift+Z") to macOS Unicode glyph notation (e.g. "⇧⌘Z")
-// Version: 1.0.0
-// Last Modified: 2026-04-12
+// Version: 1.0.1
+// Last Modified: 2026-04-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -55,19 +55,19 @@ namespace UltraCanvas {
         std::string lowerKey = key;
         std::transform(lowerKey.begin(), lowerKey.end(), lowerKey.begin(), ::tolower);
 
-        if      (lowerKey == "return" || lowerKey == "enter")     keyGlyph = u8"\u21a9"; // ↩
-        else if (lowerKey == "backspace" || lowerKey == "delete")  keyGlyph = u8"\u232b"; // ⌫
-        else if (lowerKey == "tab")                                keyGlyph = u8"\u21e5"; // ⇥
-        else if (lowerKey == "escape" || lowerKey == "esc")        keyGlyph = u8"\u238b"; // ⎋
-        else if (lowerKey == "space")                              keyGlyph = u8"\u2423"; // ␣
-        else if (lowerKey == "up")                                 keyGlyph = u8"\u2191"; // ↑
-        else if (lowerKey == "down")                               keyGlyph = u8"\u2193"; // ↓
-        else if (lowerKey == "left")                               keyGlyph = u8"\u2190"; // ←
-        else if (lowerKey == "right")                              keyGlyph = u8"\u2192"; // →
-        else if (lowerKey == "pageup")                             keyGlyph = u8"\u21de"; // ⇞
-        else if (lowerKey == "pagedown")                           keyGlyph = u8"\u21df"; // ⇟
-        else if (lowerKey == "home")                               keyGlyph = u8"\u2196"; // ↖
-        else if (lowerKey == "end")                                keyGlyph = u8"\u2198"; // ↘
+        if      (lowerKey == "return" || lowerKey == "enter")     keyGlyph = "\xe2\x86\xa9"; // ↩ U+21A9
+        else if (lowerKey == "backspace" || lowerKey == "delete")  keyGlyph = "\xe2\x8c\xab"; // ⌫ U+232B
+        else if (lowerKey == "tab")                                keyGlyph = "\xe2\x87\xa5"; // ⇥ U+21E5
+        else if (lowerKey == "escape" || lowerKey == "esc")        keyGlyph = "\xe2\x8e\x8b"; // ⎋ U+238B
+        else if (lowerKey == "space")                              keyGlyph = "\xe2\x90\xa3"; // ␣ U+2423
+        else if (lowerKey == "up")                                 keyGlyph = "\xe2\x86\x91"; // ↑ U+2191
+        else if (lowerKey == "down")                               keyGlyph = "\xe2\x86\x93"; // ↓ U+2193
+        else if (lowerKey == "left")                               keyGlyph = "\xe2\x86\x90"; // ← U+2190
+        else if (lowerKey == "right")                              keyGlyph = "\xe2\x86\x92"; // → U+2192
+        else if (lowerKey == "pageup")                             keyGlyph = "\xe2\x87\x9e"; // ⇞ U+21DE
+        else if (lowerKey == "pagedown")                           keyGlyph = "\xe2\x87\x9f"; // ⇟ U+21DF
+        else if (lowerKey == "home")                               keyGlyph = "\xe2\x86\x96"; // ↖ U+2196
+        else if (lowerKey == "end")                                keyGlyph = "\xe2\x86\x98"; // ↘ U+2198
         else if (key.size() == 1) {
             // Single character — uppercase it (macOS convention)
             keyGlyph = std::string(1, static_cast<char>(::toupper(key[0])));
@@ -78,10 +78,10 @@ namespace UltraCanvas {
 
         // Build result: ⌃⌥⇧⌘ + key  (no separators — Apple HIG)
         std::string result;
-        if (hasCtrl)  result += u8"\u2303"; // ⌃
-        if (hasAlt)   result += u8"\u2325"; // ⌥
-        if (hasShift) result += u8"\u21e7"; // ⇧
-        if (hasMeta)  result += u8"\u2318"; // ⌘
+        if (hasCtrl)  result += "\xe2\x8c\x83"; // ⌃ U+2303
+        if (hasAlt)   result += "\xe2\x8c\xa5"; // ⌥ U+2325
+        if (hasShift) result += "\xe2\x87\xa7"; // ⇧ U+21E7
+        if (hasMeta)  result += "\xe2\x8c\x98"; // ⌘ U+2318
         result += keyGlyph;
 
         return result;
