@@ -579,13 +579,8 @@ namespace UltraCanvas {
         void DrawBackground(IRenderContext* context);
         void DrawBorder(IRenderContext* context);
         void DrawLineNumbers(IRenderContext* context);
-        void DrawText(IRenderContext* context);
-        // Legacy text draw methods removed in Step 8 — rendering goes through RenderLineLayout
-        // driven from Render(). Selection is baked into each layout via background attributes.
         void DrawCursor(IRenderContext* context);
         void DrawScrollbars(IRenderContext* context);
-        void DrawAutoComplete(IRenderContext* context);
-        void DrawMarkers(IRenderContext* context);
 
         // Event handlers
         bool HandleMouseDown(const UCEvent& event);
@@ -593,7 +588,6 @@ namespace UltraCanvas {
         bool HandleMouseTripleClick(const UCEvent& event);
         bool HandleMouseMove(const UCEvent& event);
         bool HandleMouseUp(const UCEvent &event);
-        bool HandleMouseDrag(const UCEvent& event);
         bool HandleMouseWheel(const UCEvent& event);
         bool HandleKeyDown(const UCEvent& event);
 
@@ -606,15 +600,11 @@ namespace UltraCanvas {
         void RebuildText();
         const TokenStyle& GetStyleForTokenType(TokenType type) const;
 
-        // UTF-8 conversion helpers
-        int GetLineGraphemeCount(int lineIndex) const;
-
         // Initialization
         void ApplyDefaultStyle();
         bool IsNeedVerticalScrollbar();
         bool IsNeedHorizontalScrollbar();
-        int GetMaxLineWidth();
-        
+
         // State management
         void SaveState();
 
@@ -738,7 +728,6 @@ namespace UltraCanvas {
         bool wordWrap;
         bool highlightCurrentLine;
         // needFirstVisibleLineFixup removed in Step 8b (pixel scroll has no analogous fixup).
-        int currentLineIndex;
         int tabSize = 4;
  
         // Style
@@ -812,11 +801,6 @@ namespace UltraCanvas {
         };
         std::vector<Marker> markers;
         
-        // Cache for total grapheme count
-        mutable int cachedTotalGraphemes = -1;
-        void InvalidateGraphemeCache() { cachedTotalGraphemes = -1; }
-        int GetTotalGraphemeCount() const;
-
     public:
         // Markdown interaction callbacks
         using MarkdownLinkClickCallback = std::function<void(const std::string& url)>;
@@ -996,26 +980,4 @@ namespace UltraCanvas {
         std::vector<HexState> hexRedoStack;
 
     };
-
-// Factory functions for quick creation
-    std::shared_ptr<UltraCanvasTextArea> CreateCodeEditor(
-            const std::string& name, int id, int x, int y, int width, int height,
-            const std::string& language = "C++");
-
-    std::shared_ptr<UltraCanvasTextArea> CreateDarkCodeEditor(
-            const std::string& name, int id, int x, int y, int width, int height,
-            const std::string& language = "C++");
-
-    std::shared_ptr<UltraCanvasTextArea> CreatePlainTextEditor(
-            const std::string& name, int id, int x, int y, int width, int height);
-
-    std::shared_ptr<UltraCanvasTextArea> CreateMarkdownEditor(
-            const std::string& name, int id, int x, int y, int width, int height);
-
-    std::shared_ptr<UltraCanvasTextArea> CreateJSONEditor(
-            const std::string& name, int id, int x, int y, int width, int height);
-
-    std::shared_ptr<UltraCanvasTextArea> CreateXMLEditor(
-            const std::string& name, int id, int x, int y, int width, int height);
-
 } // namespace UltraCanvas

@@ -40,6 +40,7 @@ namespace UltraCanvas {
         AVIF,
         SVG,
         BMP,
+        QOI,
         ICO
     };
 
@@ -56,6 +57,7 @@ namespace UltraCanvas {
         HEIF,
         AVIF,
         BMP,
+        QOI,
         ICO
     };
 

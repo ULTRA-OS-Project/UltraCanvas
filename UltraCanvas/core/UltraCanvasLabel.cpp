@@ -263,6 +263,8 @@ namespace UltraCanvas {
     void UltraCanvasLabel::Render(IRenderContext *ctx) {
         ctx->PushState();
 
+        UpdateGeometry(ctx);
+
         UltraCanvasUIElement::Render(ctx);
 
         if (!text.empty()) {
