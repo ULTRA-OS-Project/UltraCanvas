@@ -56,6 +56,7 @@ namespace UltraCanvas {
         auto button = std::make_shared<UltraCanvasButton>(
                 "btn_" + id, 0, 0, 0, 32, 32
         );
+        button->SetAutoResize(true);
         button->SetText(text);
 
         if (!iconPath.empty()) {

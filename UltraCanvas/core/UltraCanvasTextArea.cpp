@@ -3157,7 +3157,9 @@ namespace UltraCanvas {
             case LineLayoutType::TableSeparatorRow:
             case LineLayoutType::TableRow: {
                 auto tbl = dynamic_cast<TableLineLayout*>(line);
-                if (!tbl) { drawLayout(); return; }
+                if (!tbl) {
+                    drawLayout(); return;
+                }
                 const Color& tableBorderColor = markdownStyle.tableBorderColor;
                 const Color& tableHeaderBg    = markdownStyle.tableHeaderBackground;
 
@@ -3183,6 +3185,7 @@ namespace UltraCanvas {
                     // Render each cell at its layout-local origin.
                     for (const auto& cell : tbl->cellsLayouts) {
                         if (!cell || !cell->layout) continue;
+                        ctx->SetCurrentPaint(style.fontColor);
                         ctx->DrawTextLayout(*cell->layout,
                             Point2Df(static_cast<float>(posOrigin.x + cell->bounds.x),
                                      static_cast<float>(posOrigin.y + cell->bounds.y)));
@@ -3205,13 +3208,6 @@ namespace UltraCanvas {
                         );
                 }
                 if (line->layoutType != LineLayoutType::TableSeparatorRow) {
-                    // Top border on every row + bottom border on the last row.
-//                    ctx->DrawLine(
-//                            Point2Df(static_cast<float>(boundsOrigin.x),
-//                                     static_cast<float>(boundsOrigin.y)),
-//                            Point2Df(static_cast<float>(boundsOrigin.x + tbl->bounds.width),
-//                                     static_cast<float>(boundsOrigin.y)),
-//                            tableBorderColor);
                     if (tbl->lastTableRow) {
                         int by = posOrigin.y + tbl->bounds.height;
                         ctx->DrawLine(
