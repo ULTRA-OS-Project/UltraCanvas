@@ -1,7 +1,7 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.2.5
-// Last Modified: 2025-01-08
+// Version: 1.3.0
+// Last Modified: 2026-04-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -79,8 +79,11 @@ namespace UltraCanvas {
         std::function<void(bool)> onToggle;
         std::function<void(const std::string&)> onTextInput;
 
-        // Submenu items
+        // Submenu items — either static (subItems) or lambda-provided (subItemsProvider).
+        // If subItemsProvider is set, it is invoked each time the submenu opens,
+        // and the returned vector is used instead of subItems.
         std::vector<MenuItemData> subItems;
+        std::function<std::vector<MenuItemData>()> subItemsProvider;
 
         // Per-item font override (uses parent menu font if nullopt)
         std::optional<FontStyle> font;
@@ -115,8 +118,14 @@ namespace UltraCanvas {
         static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const std::vector<MenuItemData>& items);
         static MenuItemData Submenu(const std::string& label, const FontStyle& font, const std::vector<MenuItemData>& items);
         static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const FontStyle& font, const std::vector<MenuItemData>& items);
+        static MenuItemData Submenu(const std::string& label, std::function<std::vector<MenuItemData>()> provider);
+        static MenuItemData Submenu(const std::string& label, const std::string& iconPath, std::function<std::vector<MenuItemData>()> provider);
+        static MenuItemData Submenu(const std::string& label, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider);
+        static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider);
         static MenuItemData Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback);
         static MenuItemData Input(const std::string& label, const std::string& placeholder, const FontStyle& font, std::function<void(const std::string&)> callback);
+
+        bool HasSubmenu() const { return type == MenuItemType::Submenu; }
     };
 
 // ===== MENU STYLING =====
@@ -425,6 +434,11 @@ namespace UltraCanvas {
             return *this;
         }
 
+        MenuBuilder& AddSubmenu(const std::string& label, std::function<std::vector<MenuItemData>()> provider) {
+            menu->AddItem(MenuItemData::Submenu(label, std::move(provider)));
+            return *this;
+        }
+
         std::shared_ptr<UltraCanvasMenu> Build() {
             return menu;
         }
@@ -652,6 +666,42 @@ namespace UltraCanvas {
         item.iconPath = iconPath;
         item.font = font;
         item.subItems = items;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, std::function<std::vector<MenuItemData>()> provider) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.subItemsProvider = std::move(provider);
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, const std::string& iconPath, std::function<std::vector<MenuItemData>()> provider) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.iconPath = iconPath;
+        item.subItemsProvider = std::move(provider);
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.font = font;
+        item.subItemsProvider = std::move(provider);
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, const std::string& iconPath, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.iconPath = iconPath;
+        item.font = font;
+        item.subItemsProvider = std::move(provider);
         return item;
     }
 

@@ -3094,14 +3094,17 @@ namespace UltraCanvas {
 
                 double borderTop = (line->layoutType == LineLayoutType::CodeblockStart) ? 1 : 0;
                 double borderBottom = (line->layoutType == LineLayoutType::CodeblockEnd) ? 1 : 0;
-                double y = (line->layoutType == LineLayoutType::CodeblockStart) ? (posOrigin.y + line->bounds.height / 2 + 2) : posOrigin.y;
+                double y = (line->layoutType == LineLayoutType::CodeblockStart)
+                        ? (posOrigin.y + line->bounds.height / 2 + 2) : posOrigin.y;
+                double h = (line->layoutType == LineLayoutType::CodeblockEnd || line->layoutType == LineLayoutType::CodeblockStart)
+                        ? line->bounds.height / 2 : line->bounds.height;
                 ctx->SetFillPaint(codeBgColor);
                 const Color& cbBorder = markdownStyle.codeBlockBorderColor;
                 ctx->DrawRoundedRectangleWidthBorders(
                     Rect2Df(visibleTextArea.x,
                             y,
                             visibleTextArea.width,
-                            line->bounds.height),
+                            h),
                     true,
                     1, 1, borderTop, borderBottom,
                     cbBorder, cbBorder,
@@ -3110,21 +3113,7 @@ namespace UltraCanvas {
                     UCDashPattern::EMPTY, UCDashPattern::EMPTY,
                     UCDashPattern::EMPTY, UCDashPattern::EMPTY
                 );
-                if (line->layoutType == LineLayoutType::CodeblockStart) {
-                    auto cl = dynamic_cast<CodeLayout*>(line);
-                    if (cl && !cl->codeblockLanguage.empty()) {
-                        ctx->PushState();
-                        ctx->SetTextPaint(markdownStyle.codeBlockLanguageLabelColor);
-                        auto cblangLayout = ctx->CreateTextLayout(" "+cl->codeblockLanguage+" ", false);
-                        cblangLayout->SetFontStyle(style.fixedFontStyle);
-                        cblangLayout->InsertAttribute(TextAttributeFactory::CreateBackground(codeBgColor));
-                        ctx->DrawTextLayout(*cblangLayout.get(),
-                                            Point2Df(posOrigin.x + 4,
-                                                     posOrigin.y)
-                        );
-                        ctx->PopState();
-                    }
-                } else {
+                if (line->layout) {
                     ctx->SetCurrentPaint(markdownStyle.codeTextColor);
                     ctx->DrawTextLayout(*line->layout,
                         Point2Df(static_cast<float>(layoutOrigin.x),

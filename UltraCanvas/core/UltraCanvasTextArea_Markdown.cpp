@@ -1155,10 +1155,16 @@ namespace UltraCanvas {
             std::string lang = trimmed.substr(3);
             while (!lang.empty() && std::isspace(static_cast<unsigned char>(lang.back()))) lang.pop_back();
             cl->codeblockLanguage = lang;
-            cl->layout = ctx->CreateTextLayout("", false);
-            cl->layout->SetFontStyle(style.fixedFontStyle);
+            if (!lang.empty()) {
+                cl->layout = ctx->CreateTextLayout(" "+lang+" ", false);
+                cl->layout->SetFontStyle(style.fixedFontStyle);
+                cl->layout->InsertAttribute(TextAttributeFactory::CreateBackground(markdownStyle.codeBackgroundColor));
+                cl->layoutShift = {5,0};
+                cl->bounds.height = std::max(1, cl->layout->GetLayoutHeight());
+            } else {
+                cl->bounds.height = computedLineHeight;
+            }
             cl->bounds.width = visibleTextArea.width > 0 ? visibleTextArea.width : 0;
-            cl->bounds.height = std::max(1, cl->layout->GetLayoutHeight());
             return cl;
         }
 

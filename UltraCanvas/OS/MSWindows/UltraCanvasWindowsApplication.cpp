@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
-// Version: 1.1.0
-// Last Modified: 2026-04-06
+// Version: 1.1.1
+// Last Modified: 2026-04-17
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -593,11 +593,11 @@ namespace UltraCanvas {
 //                return;
 //            }
 
-            case WM_PAINT: {
-                event.type = UCEventType::WindowRepaint;
-                PushEvent(event);
-                return;
-            }
+            // WM_PAINT intentionally not converted to a UCEvent here.
+            // HandleMessage() does BeginPaint/BlitSurfaceToHDC/EndPaint to
+            // reblit the cached Cairo surface. Pushing a WindowRepaint event
+            // would set needsRedraw and retrigger Flush()->InvalidateRect in
+            // a tight loop (burns ~50% CPU at idle).
 
             case WM_CLOSE: {
                 event.type = UCEventType::WindowCloseRequest;

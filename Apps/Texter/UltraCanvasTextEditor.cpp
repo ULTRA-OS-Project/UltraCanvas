@@ -468,7 +468,48 @@ namespace {
                         MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", GetResourcesDir() + "media/icons/texter/folder-open.svg", [this]() {
                             OnFileOpen();
                         }),
-                        MenuItemData::Submenu("Recent Files", GetResourcesDir() + "media/icons/texter/clock-five.svg",  {}),  // Empty — populated dynamically
+                        MenuItemData::Submenu("Recent Files", GetResourcesDir() + "media/icons/texter/clock-five.svg",
+                            [this]() -> std::vector<MenuItemData> {
+                                std::vector<MenuItemData> recentItems;
+                                if (recentFiles.empty()) {
+                                    MenuItemData emptyItem;
+                                    emptyItem.type = MenuItemType::Action;
+                                    emptyItem.label = "(No recent files)";
+                                    emptyItem.enabled = false;
+                                    recentItems.push_back(emptyItem);
+                                } else {
+                                    int displayCount = std::min(static_cast<int>(recentFiles.size()),
+                                                                config.maxRecentFiles);
+                                    for (int i = 0; i < displayCount; i++) {
+                                        const std::string& fullPath = recentFiles[i];
+                                        std::filesystem::path p(fullPath);
+                                        std::string displayName = p.filename().string();
+                                        std::string label = std::to_string(i + 1) + ". " + displayName;
+                                        std::string iconPath = IsFileCurrentlyOpen(fullPath)
+                                            ? GetResourcesDir() + "media/icons/texter/circle-empty.svg"
+                                            : std::string("-");
+                                        std::string pathCopy = fullPath;
+                                        recentItems.push_back(
+                                            MenuItemData::Action(label, iconPath, [this, pathCopy]() {
+                                                if (std::filesystem::exists(pathCopy)) {
+                                                    OpenDocumentFromPath(pathCopy);
+                                                } else {
+                                                    RemoveFromRecentFiles(pathCopy);
+                                                    debugOutput << "Recent file no longer exists: " << pathCopy << std::endl;
+                                                }
+                                            })
+                                        );
+                                    }
+                                    recentItems.push_back(MenuItemData::Separator());
+                                    recentItems.push_back(
+                                        MenuItemData::Action("Clear Recent Files", GetResourcesDir()+"media/icons/texter/square-minus.svg", [this]() {
+                                            recentFiles.clear();
+                                            SaveRecentFiles();
+                                        })
+                                    );
+                                }
+                                return recentItems;
+                            }),
                         MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("Save", "Ctrl+S", GetResourcesDir() + "media/icons/texter/save.svg", [this]() {
                             OnFileSave();
@@ -583,13 +624,9 @@ namespace {
 
                 .Build();
 
-        // Store the index of "Recent Files" within the File menu items
-        // It's at position 3 (0=New, 1=New Window, 2=Open, 3=Recent Files)
-        recentFilesMenuIndex = 3;
-
-        // Load and populate recent files
+        // Load recent files — the "Recent Files" submenu regenerates its items
+        // via a lambda each time it is opened (see AddSubmenu above).
         LoadRecentFiles();
-        RebuildRecentFilesSubmenu();
 
         MenuStyle menuStyle = MenuStyle::Default();
         menuStyle.font.fontSize = 11.0f;
@@ -1485,7 +1522,6 @@ namespace {
                     if (onTabClosed) {
                         onTabClosed(index);
                     }
-
                     UpdateStatusBar();
                 }
                 isDocumentClosing = false;
@@ -4125,9 +4161,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             recentFiles.resize(maxFiles);
         }
 
-        // Persist and update menu
+        // Persist — the menubar submenu regenerates on next open via its lambda.
         SaveRecentFiles();
-        RebuildRecentFilesSubmenu();
     }
 
     void UltraCanvasTextEditor::RemoveFromRecentFiles(const std::string& filePath) {
@@ -4135,74 +4170,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (it != recentFiles.end()) {
             recentFiles.erase(it);
             SaveRecentFiles();
-            RebuildRecentFilesSubmenu();
         }
-    }
-
-    void UltraCanvasTextEditor::RebuildRecentFilesSubmenu() {
-        if (!menuBar || recentFilesMenuIndex < 0) return;
-
-        // Get the File menu (first submenu in the menubar)
-        // The menubar items[0] is "File" which has subItems
-        auto* fileMenuItem = menuBar->GetItem(0);
-        if (!fileMenuItem || recentFilesMenuIndex >= static_cast<int>(fileMenuItem->subItems.size())) {
-            return;
-        }
-
-        // Build the submenu items from the recent files list
-        std::vector<MenuItemData> recentItems;
-
-        if (recentFiles.empty()) {
-            // Show a disabled "(No recent files)" entry
-            MenuItemData emptyItem;
-            emptyItem.type = MenuItemType::Action;
-            emptyItem.label = "(No recent files)";
-            emptyItem.enabled = false;
-            recentItems.push_back(emptyItem);
-        } else {
-            // Add each recent file as an action item
-            int displayCount = std::min(static_cast<int>(recentFiles.size()),
-                                        config.maxRecentFiles);
-
-            for (int i = 0; i < displayCount; i++) {
-                const std::string& fullPath = recentFiles[i];
-
-                // Show just the filename for the label, with full path as tooltip
-                std::filesystem::path p(fullPath);
-                std::string displayName = p.filename().string();
-
-                // Add numbering for quick access: "1. filename.txt"
-                std::string label = std::to_string(i + 1) + ". " + displayName;
-
-                // Capture by value for the lambda
-                std::string pathCopy = fullPath;
-                recentItems.push_back(
-                        MenuItemData::Action(label, [this, pathCopy]() {
-                            // Check if file still exists before opening
-                            if (std::filesystem::exists(pathCopy)) {
-                                OpenDocumentFromPath(pathCopy);
-                            } else {
-                                // File no longer exists — remove from list and notify
-                                RemoveFromRecentFiles(pathCopy);
-                                debugOutput << "Recent file no longer exists: " << pathCopy << std::endl;
-                            }
-                        })
-                );
-            }
-
-            // Add separator + "Clear Recent Files" at the bottom
-            recentItems.push_back(MenuItemData::Separator());
-            recentItems.push_back(
-                    MenuItemData::Action("Clear Recent Files", [this]() {
-                        recentFiles.clear();
-                        SaveRecentFiles();
-                        RebuildRecentFilesSubmenu();
-                    })
-            );
-        }
-
-        // Update the submenu in-place
-        fileMenuItem->subItems[recentFilesMenuIndex].subItems = recentItems;
     }
 
     void UltraCanvasTextEditor::ShowRecentFilesPopup() {
@@ -4234,9 +4202,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 std::string displayName = p.filename().string();
                 std::string label = std::to_string(i + 1) + ". " + displayName;
 
+                std::string iconPath = IsFileCurrentlyOpen(fullPath)
+                    ? GetResourcesDir() + "media/icons/texter/circle-empty.svg"
+                    : std::string("-"); // "-" means empty icon (just reserve space)
+
                 std::string pathCopy = fullPath;
                 recentFilesPopupMenu->AddItem(
-                    MenuItemData::Action(label, [this, pathCopy]() {
+                    MenuItemData::Action(label, iconPath, [this, pathCopy]() {
                         if (std::filesystem::exists(pathCopy)) {
                             OpenDocumentFromPath(pathCopy);
                         } else {
@@ -4250,11 +4222,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             recentFilesPopupMenu->AddItem(MenuItemData::Separator());
             recentFilesPopupMenu->AddItem(
-                MenuItemData::Action("Clear Recent Files", [this]() {
-                    recentFiles.clear();
-                    SaveRecentFiles();
-                    RebuildRecentFilesSubmenu();
-                })
+                MenuItemData::Action("Clear Recent Files", 
+                    GetResourcesDir() + "media/icons/texter/square-minus.svg", 
+                    [this]() {
+                        recentFiles.clear();
+                        SaveRecentFiles();
+                    }
+                )
             );
         }
 
@@ -4283,6 +4257,12 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SaveRecentFiles(recentFiles);
     }
 
+    bool UltraCanvasTextEditor::IsFileCurrentlyOpen(const std::string& filePath) const {
+        for (const auto& doc : documents) {
+            if (doc && doc->filePath == filePath) return true;
+        }
+        return false;
+    }
 
 // -------------------------------------------------------------------------
 // 4c: Config File Load/Save
@@ -4298,7 +4278,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.wordWrap = configFile.GetBool("wordWrap", config.wordWrap);
         config.defaultFontSize = configFile.GetInt("defaultFontSize", config.defaultFontSize);
         config.fontZoomPercent = configFile.GetInt("fontZoomPercent", 100);
-        config.maxRecentFiles = configFile.GetInt("maxRecentFiles", config.maxRecentFiles);
+        // config.maxRecentFiles = configFile.GetInt("maxRecentFiles", config.maxRecentFiles);
         config.enableAutosave = configFile.GetBool("enableAutosave", config.enableAutosave);
         config.autosaveIntervalSeconds = configFile.GetInt("autosaveInterval", config.autosaveIntervalSeconds);
         config.defaultLanguage = configFile.GetString("defaultLanguage", config.defaultLanguage);
@@ -4312,7 +4292,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SetBool("wordWrap", config.wordWrap);
         configFile.SetInt("defaultFontSize", config.defaultFontSize);
         configFile.SetInt("fontZoomPercent", config.fontZoomPercent);
-        configFile.SetInt("maxRecentFiles", config.maxRecentFiles);
+        // configFile.SetInt("maxRecentFiles", config.maxRecentFiles);
         configFile.SetBool("enableAutosave", config.enableAutosave);
         configFile.SetInt("autosaveInterval", config.autosaveIntervalSeconds);
         configFile.SetString("defaultLanguage", config.defaultLanguage);

@@ -1,7 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
-// Version: 1.2.6
-// Last Modified: 2026-02-05
+// Version: 1.3.0
+// Last Modified: 2026-04-17
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -195,7 +195,7 @@ namespace UltraCanvas {
         if (activeSubmenu && activeSubmenu->parentItemIndex == itemIndex) return;
 
         const MenuItemData &item = items[itemIndex];
-        if (item.subItems.empty()) return;
+        if (item.subItems.empty() && !item.subItemsProvider) return;
 
         // Close existing submenu
         CloseActiveSubmenu();
@@ -212,8 +212,12 @@ namespace UltraCanvas {
         activeSubmenu->parentMenu = std::static_pointer_cast<UltraCanvasMenu>(shared_from_this());
         activeSubmenu->parentItemIndex = itemIndex;
 
-        // Add items to submenu
-        for (const auto &subItem: item.subItems) {
+        // Add items to submenu — if a provider lambda is set, invoke it fresh on every open.
+        std::vector<MenuItemData> providedItems;
+        const std::vector<MenuItemData> &sourceItems =
+                item.subItemsProvider ? (providedItems = item.subItemsProvider(), providedItems)
+                                      : item.subItems;
+        for (const auto &subItem: sourceItems) {
             activeSubmenu->AddItem(subItem);
         }
 
@@ -407,7 +411,7 @@ namespace UltraCanvas {
                 }
 
                 // Check for submenu arrow column
-                if (!item.subItems.empty()) {
+                if (item.HasSubmenu()) {
                     hasAnySubmenu = true;
                 }
 
@@ -510,7 +514,9 @@ namespace UltraCanvas {
         // Render icon
         if (!item.iconPath.empty()) {
             int iconY = itemBounds.y + (itemBounds.height - style.iconSize) / 2;
-            RenderIcon(item.iconPath, Point2Di(currentX, iconY), ctx);
+            if (item.iconPath != "-") {
+                RenderIcon(item.iconPath, Point2Di(currentX, iconY), ctx);
+            }
             currentX += style.iconSize + style.iconSpacing;
         }
 
@@ -534,7 +540,7 @@ namespace UltraCanvas {
         }
 
         // Render submenu arrow (for vertical menus)
-        if (!item.subItems.empty() && orientation == MenuOrientation::Vertical) {
+        if (item.HasSubmenu() && orientation == MenuOrientation::Vertical) {
             RenderSubmenuArrow(Point2Di(itemBounds.x + itemBounds.width - style.paddingRight - 2,
                                         itemBounds.y + itemBounds.height / 2), ctx);
         }
@@ -599,7 +605,7 @@ namespace UltraCanvas {
             }
 
             // Submenu arrow
-            if (!item.subItems.empty()) {
+            if (item.HasSubmenu()) {
                 width += 20;  // Arrow space
             }
 
@@ -827,7 +833,7 @@ namespace UltraCanvas {
             // Auto-open submenu on hover (with delay)
             if (activeIndex >= 0 && activeIndex < static_cast<int>(items.size())) {
                 const MenuItemData &item = items[activeIndex];
-                if (!item.subItems.empty()) {
+                if (item.HasSubmenu()) {
                     // In a complete implementation, you'd add a timer for submenu delay
                     OpenSubmenu(activeIndex);
                 } else {
@@ -960,7 +966,7 @@ namespace UltraCanvas {
     void UltraCanvasMenu::OpenSubmenuFromKeyboard() {
         if (activeIndex >= 0 && activeIndex < static_cast<int>(items.size())) {
             const MenuItemData &item = items[activeIndex];
-            if (!item.subItems.empty()) {
+            if (item.HasSubmenu()) {
                 OpenSubmenu(activeIndex);
                 if (activeSubmenu) {
                     activeSubmenu->activeIndex = 0;
@@ -995,7 +1001,10 @@ namespace UltraCanvas {
 
             case MenuItemType::Checkbox: {
                 item.checked = !item.checked;
-                // Propagate checked state back to parent menu's subItems
+                // Propagate checked state back to parent menu's subItems.
+                // Note: for lambda-provided submenus (subItemsProvider), the submenu is
+                // regenerated on every open — checked state does not persist here and
+                // must be sourced from the caller's own model via the lambda.
                 if (auto parent = parentMenu.lock()) {
                     if (parentItemIndex >= 0) {
                         auto &subItems = parent->items[parentItemIndex].subItems;

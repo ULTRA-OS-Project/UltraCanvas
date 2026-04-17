@@ -55,7 +55,7 @@ namespace UltraCanvas {
         bool enableAutosave = true;
 
         bool showRecentFiles = true;       // Show Recent Files submenu in File menu
-        int maxRecentFiles = 10;           // Max files shown in Recent Files submenu (configurable)
+        int maxRecentFiles = 30;           // Max files shown in Recent Files submenu (configurable)
 
 
         // Editor settings
@@ -230,16 +230,15 @@ namespace UltraCanvas {
 
         // ===== RECENT FILES =====
         std::vector<std::string> recentFiles;      // Ordered list (newest first)
-        int recentFilesMenuIndex = -1;             // Index of "Recent Files" item in File menu
         TextEditorConfigFile configFile;           // Persistent config file manager
 
         // Recent files methods
         void AddToRecentFiles(const std::string& filePath);
         void RemoveFromRecentFiles(const std::string& filePath);
-        void RebuildRecentFilesSubmenu();
         void ShowRecentFilesPopup();
         void LoadRecentFiles();
         void SaveRecentFiles();
+        bool IsFileCurrentlyOpen(const std::string& filePath) const;
 
         // Config file methods
         void LoadConfig();
