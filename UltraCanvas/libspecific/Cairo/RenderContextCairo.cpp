@@ -671,6 +671,9 @@ namespace UltraCanvas {
             if (sz.height) {
                 newLayout->SetExplicitHeight(sz.height);
             }
+            if (sz.width && sz.height) {
+                newLayout->SetEllipsize(EllipsizeMode::EllipsizeEnd);
+            }
             if (isMarkup) {
                 newLayout->SetMarkup(text);
             } else {
@@ -684,6 +687,8 @@ namespace UltraCanvas {
 
 
     void RenderContextCairo::DrawTextLayout(ITextLayout &layout, const Point2Df &pos) {
+        auto extents = layout.GetLayoutExtents();
+        debugOutput << "RenderContextCairo::DrawTextLayout txt=" << layout.GetText() << " pos=" << pos.x << "," << pos.y << " offset=" << layout.GetLayoutVerticalOffset() <<  " extents=" << extents.logical.x << "," << extents.logical.y << " " << extents.logical.width << "x" << extents.logical.height << " ink=" << extents.ink.x << "," << extents.ink.y << " " << extents.ink.width << "x" << extents.ink.height << std::endl;
         cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
         pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
     }

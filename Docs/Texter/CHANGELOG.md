@@ -2,7 +2,7 @@
 - Change design of Recent files menu. Increase max recent files to 30
 - Migrate Texter's Recent Files submenu to the new API. The submenu now regenerates itself on every open from the recentFiles list.
 - Fix Texter zoom shortcuts
-- 
+
 2016-04-16 1.0.16
 - Full rework of display and rendering the text. Use Pango layout to format text. Allow to use variable height lines
 

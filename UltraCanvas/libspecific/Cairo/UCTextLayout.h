@@ -156,6 +156,7 @@ namespace UltraCanvas {
         VerticalAlignment valign = VerticalAlignment::Top;
         UCLayoutExtents extents;
         bool extentsDirty = true;
+        int cachedAscentPx = 0;
     public:
         explicit UCTextLayout(PangoContext* ctx);
         ~UCTextLayout() override;

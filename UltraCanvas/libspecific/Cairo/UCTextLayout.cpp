@@ -494,10 +494,23 @@ namespace UltraCanvas {
 
     int UCTextLayout::GetLayoutVerticalOffset()  {
         auto ext = GetLayoutExtents();
+
         int offset = -ext.logical.y;
         if (explicitHeight > 0 && explicitHeight > ext.logical.height) {
+            // Pango splits the font's external line-leading half above and half below
+            // the baseline. The top half (layoutBaseline - ascent) is padding that
+            // varies across platforms — on Linux fonts it's typically 0, on Windows
+            // fonts it's non-zero — and would push visible text down if we naively
+            // centered the whole logical box. Subtract it for Middle alignment so the
+            // visible body is centered consistently.
+            int topLeadingPad = 0;
+            if (cachedAscentPx > 0) {
+                const int layoutBaseline = pango_layout_get_baseline(layout) / PANGO_SCALE;
+                const int pad = layoutBaseline - cachedAscentPx;
+                if (pad > 0) topLeadingPad = pad;
+            }
             if (valign == VerticalAlignment::Middle) {
-                offset = static_cast<int>(round(static_cast<float>(explicitHeight - ext.logical.height) / 2.0f)) - ext.logical.y;
+                offset = (explicitHeight - ext.logical.height) / 2 - ext.logical.y - topLeadingPad;
             } else if (valign == VerticalAlignment::Bottom) {
                 offset = explicitHeight - ext.logical.height - ext.logical.y;
             }
@@ -730,7 +743,14 @@ namespace UltraCanvas {
             pango_layout_get_pixel_extents(layout, &ink, &logical);
             extents.ink = Rect2Di(ink.x, ink.y, ink.width, ink.height);
             extents.logical = Rect2Di(logical.x, logical.y, logical.width, logical.height);
-            extentsDirty = true;
+
+            PangoContext* ctx = pango_layout_get_context(layout);
+            const PangoFontDescription* desc = pango_layout_get_font_description(layout);
+            PangoFontMetrics* metrics = pango_context_get_metrics(ctx, desc, nullptr);
+            cachedAscentPx = pango_font_metrics_get_ascent(metrics) / PANGO_SCALE;
+            pango_font_metrics_unref(metrics);
+
+            extentsDirty = false;
         }
         return extents;
     }

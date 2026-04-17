@@ -636,6 +636,7 @@ namespace UltraCanvas {
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->SetTextAlignment(TextAlignment::Center);
 
+        debugOutput << "btn draw text=" << text << " rect=" << textRect.x << "," << textRect.y << " " << textRect.width << "x" << textRect.height << std::endl;
         if (GetPrimaryState() == ElementState::Pressed) {
             ctx->DrawTextInRect(text, Rect2Df(textRect.x+1, textRect.y+1, textRect.width, textRect.height));
         } else {
