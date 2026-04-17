@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
-// Version: 2.1.0
-// Last Modified: 2026-04-06
+// Version: 2.1.1 - Fix main-row digit keys (were mapped to NumPad); add punctuation & real numpad mappings
+// Last Modified: 2026-04-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSApplication.h"
@@ -473,17 +473,49 @@ namespace UltraCanvas {
             case 0x10: return UCKeys::Y;
             case 0x06: return UCKeys::Z;
 
-                // Numbers
-            case 0x1D: return UCKeys::NumPad0;
-            case 0x12: return UCKeys::NumPad1;
-            case 0x13: return UCKeys::NumPad2;
-            case 0x14: return UCKeys::NumPad3;
-            case 0x15: return UCKeys::NumPad4;
-            case 0x17: return UCKeys::NumPad5;
-            case 0x16: return UCKeys::NumPad6;
-            case 0x1A: return UCKeys::NumPad7;
-            case 0x1C: return UCKeys::NumPad8;
-            case 0x19: return UCKeys::NumPad9;
+                // Main-row number keys (kVK_ANSI_0..9)
+            case 0x1D: return UCKeys::Key0;
+            case 0x12: return UCKeys::Key1;
+            case 0x13: return UCKeys::Key2;
+            case 0x14: return UCKeys::Key3;
+            case 0x15: return UCKeys::Key4;
+            case 0x17: return UCKeys::Key5;
+            case 0x16: return UCKeys::Key6;
+            case 0x1A: return UCKeys::Key7;
+            case 0x1C: return UCKeys::Key8;
+            case 0x19: return UCKeys::Key9;
+
+                // Main-row punctuation / symbols
+            case 0x18: return UCKeys::Equal;          // kVK_ANSI_Equal
+            case 0x1B: return UCKeys::Minus;          // kVK_ANSI_Minus
+            case 0x1E: return UCKeys::RightBracket;   // kVK_ANSI_RightBracket
+            case 0x21: return UCKeys::LeftBracket;    // kVK_ANSI_LeftBracket
+            case 0x27: return UCKeys::Quote;          // kVK_ANSI_Quote
+            case 0x29: return UCKeys::Semicolon;      // kVK_ANSI_Semicolon
+            case 0x2A: return UCKeys::Backslash;      // kVK_ANSI_Backslash
+            case 0x2B: return UCKeys::Comma;          // kVK_ANSI_Comma
+            case 0x2C: return UCKeys::Slash;          // kVK_ANSI_Slash
+            case 0x2F: return UCKeys::Period;         // kVK_ANSI_Period
+            case 0x32: return UCKeys::Grave;          // kVK_ANSI_Grave
+
+                // Numeric keypad (kVK_ANSI_Keypad*)
+            case 0x52: return UCKeys::NumPad0;
+            case 0x53: return UCKeys::NumPad1;
+            case 0x54: return UCKeys::NumPad2;
+            case 0x55: return UCKeys::NumPad3;
+            case 0x56: return UCKeys::NumPad4;
+            case 0x57: return UCKeys::NumPad5;
+            case 0x58: return UCKeys::NumPad6;
+            case 0x59: return UCKeys::NumPad7;
+            case 0x5B: return UCKeys::NumPad8;
+            case 0x5C: return UCKeys::NumPad9;
+            case 0x41: return UCKeys::NumPadDecimal;
+            case 0x43: return UCKeys::NumPadMultiply;
+            case 0x45: return UCKeys::NumPadPlus;
+            case 0x4B: return UCKeys::NumPadDivide;
+            case 0x4C: return UCKeys::NumPadEnter;
+            case 0x4E: return UCKeys::NumPadMinus;
+            case 0x47: return UCKeys::NumLock;        // kVK_ANSI_KeypadClear
 
                 // Function keys
             case 0x7A: return UCKeys::F1;

@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.0.10
-// Last Modified: 2026-04-16
+// Version: 2.0.11 - Fix Ctrl+= / Ctrl+Shift+= zoom shortcut; wire Ctrl+0 reset zoom
+// Last Modified: 2026-04-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -3608,12 +3608,16 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                         return true;
                     }
                 }
-                if (event.ctrl && (event.virtualKey == UCKeys::Plus || event.virtualKey == UCKeys::NumPadPlus)) {
+                if (event.ctrl && (event.virtualKey == UCKeys::Equal || event.virtualKey == UCKeys::Plus || event.virtualKey == UCKeys::NumPadPlus)) {
                     OnViewIncreaseFontSize();
                     return true;
                 }
                 if (event.ctrl && (event.virtualKey == UCKeys::Minus || event.virtualKey == UCKeys::NumPadMinus)) {
                     OnViewDecreaseFontSize();
+                    return true;
+                }
+                if (event.ctrl && (event.virtualKey == UCKeys::Key0 || event.virtualKey == UCKeys::NumPad0)) {
+                    OnViewResetFontSize();
                     return true;
                 }
                 break;

@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
-// Version: 1.5.0 - Added system font detection via Pango
-// Last Modified: 2026-04-06
+// Version: 1.5.1 - Added explicit XK mappings for main-row digits and ASCII punctuation
+// Last Modified: 2026-04-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -687,6 +687,52 @@ namespace UltraCanvas {
             case XK_Alt_R: return UCKeys::RightAlt;
             case XK_Super_L: return UCKeys::LeftMeta;
             case XK_Super_R: return UCKeys::RightMeta;
+
+                // Number row (main row 0-9)
+            case XK_0: return UCKeys::Key0;
+            case XK_1: return UCKeys::Key1;
+            case XK_2: return UCKeys::Key2;
+            case XK_3: return UCKeys::Key3;
+            case XK_4: return UCKeys::Key4;
+            case XK_5: return UCKeys::Key5;
+            case XK_6: return UCKeys::Key6;
+            case XK_7: return UCKeys::Key7;
+            case XK_8: return UCKeys::Key8;
+            case XK_9: return UCKeys::Key9;
+
+                // ASCII punctuation / symbols (main row)
+            case XK_equal: return UCKeys::Equal;
+            case XK_plus: return UCKeys::Plus;
+            case XK_minus: return UCKeys::Minus;
+            case XK_underscore: return UCKeys::Underscore;
+            case XK_comma: return UCKeys::Comma;
+            case XK_period: return UCKeys::Period;
+            case XK_slash: return UCKeys::Slash;
+            case XK_backslash: return UCKeys::Backslash;
+            case XK_semicolon: return UCKeys::Semicolon;
+            case XK_colon: return UCKeys::Colon;
+            case XK_apostrophe: return UCKeys::Quote;
+            case XK_quotedbl: return UCKeys::DoubleQuote;
+            case XK_grave: return UCKeys::Grave;
+            case XK_asciitilde: return UCKeys::Tilde;
+            case XK_bracketleft: return UCKeys::LeftBracket;
+            case XK_bracketright: return UCKeys::RightBracket;
+            case XK_braceleft: return UCKeys::LeftBrace;
+            case XK_braceright: return UCKeys::RightBrace;
+            case XK_parenleft: return UCKeys::LeftParen;
+            case XK_parenright: return UCKeys::RightParen;
+            case XK_bar: return UCKeys::Pipe;
+            case XK_less: return UCKeys::Less;
+            case XK_greater: return UCKeys::Greater;
+            case XK_question: return UCKeys::Question;
+            case XK_exclam: return UCKeys::Exclamation;
+            case XK_at: return UCKeys::At;
+            case XK_numbersign: return UCKeys::Hash;
+            case XK_dollar: return UCKeys::Dollar;
+            case XK_percent: return UCKeys::Percent;
+            case XK_asciicircum: return UCKeys::Caret;
+            case XK_ampersand: return UCKeys::Ampersand;
+            case XK_asterisk: return UCKeys::Asterisk;
 
                 // Number pad
             case XK_Num_Lock: return UCKeys::NumLock;
