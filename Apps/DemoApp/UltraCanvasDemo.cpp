@@ -868,6 +868,13 @@ namespace UltraCanvas {
                 .AddVariant("models3d", "3DM Models")
                 .AddVariant("models3d", "OBJ Models");
 
+#ifdef ULTRACANVAS_ENABLE_GL
+        graphics3DBuilder.AddItem("glsurface", "OpenGL Surface", "Hardware-accelerated OpenGL 3D rendering surface",
+                                  ImplementationStatus::FullyImplemented,
+                                  [this]() { return CreateGLSurfaceExamples(); },
+                                  "Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp");
+#endif
+
         // ===== VIDEO ELEMENTS =====
         auto videoBuilder = DemoCategoryBuilder(this, DemoCategory::VideoElements);
 

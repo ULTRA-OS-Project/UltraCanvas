@@ -118,6 +118,11 @@ if(BUILD_DEMO_APP)
         )
     endif()
 
+    # Only include GL examples if GL support is enabled
+    if(ULTRACANVAS_ENABLE_GL)
+        list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp)
+    endif()
+
     # Only include plugin examples if the plugins are actually built
     foreach(PLUGIN_TARGET ${ULTRACANVAS_PLUGIN_TARGETS})
         if(PLUGIN_TARGET MATCHES "CDR")
@@ -247,6 +252,7 @@ if(BUILD_DEMO_APP)
         ULTRACANVAS_DEMO_VERSION="${PROJECT_VERSION}"
         UCAPP_ICON_PATH="media/appicon/Demo.png"
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
+        $<$<BOOL:${ULTRACANVAS_ENABLE_GL}>:ULTRACANVAS_ENABLE_GL=1>
     )
 
     # Embed app icon in .exe (Windows only)

@@ -27,6 +27,13 @@ else()
     option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
 endif ()
 
+# OpenGL surface support (Linux only)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
+else()
+    set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+endif()
+
 # ===== DETECT PLATFORM =====
 if(WIN32)
     set(ULTRACANVAS_PLATFORM "Windows")
@@ -83,12 +90,31 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     pkg_check_modules(X11 REQUIRED x11 xcursor)
     find_package(OpenGL REQUIRED)
     pkg_check_modules(GTK3 REQUIRED gtk+-3.0 gtk+-unix-print-3.0)
+
+    # OpenGL/EGL support for GL surfaces
+    if(ULTRACANVAS_ENABLE_GL)
+        pkg_check_modules(EGL egl)
+        if(EGL_FOUND)
+            set(ULTRACANVAS_HAS_EGL TRUE)
+            message(STATUS "  EGL: ${EGL_VERSION} (primary GL context backend)")
+        else()
+            message(STATUS "  EGL: NOT FOUND (will use GLX fallback)")
+        endif()
+        # GLX is always available with OpenGL on Linux
+        set(ULTRACANVAS_HAS_GLX TRUE)
+    endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     # Windows SDK provides most dependencies
+    if(ULTRACANVAS_ENABLE_GL)
+        set(ULTRACANVAS_HAS_WGL TRUE)
+    endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
     find_library(QUARTZ_FRAMEWORK QuartzCore REQUIRED)
     find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
+    if(ULTRACANVAS_ENABLE_GL)
+        set(ULTRACANVAS_HAS_CGL TRUE)
+    endif()
 endif()
 
 # ===== DEFINE INCLUDE DIRECTORY =====
@@ -191,6 +217,11 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     file(GLOB ULTRACANVAS_OBJCPP_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.mm
     )
+    if(NOT ULTRACANVAS_ENABLE_GL)
+        list(REMOVE_ITEM ULTRACANVAS_OBJCPP_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManagerCGL_MacOS.mm
+        )
+    endif()
     list(APPEND ULTRACANVAS_PLATFORM_SOURCES ${ULTRACANVAS_OBJCPP_SOURCES})
 
     set_source_files_properties(
@@ -219,6 +250,38 @@ if(LIBVIPS_FOUND)
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
     )
+endif()
+
+# OpenGL surface sources
+if(ULTRACANVAS_ENABLE_GL)
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGLSurface.cpp
+    )
+    list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/GL/GLContextManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/GL/GLFramebuffer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/GL/ICompositeStrategy.cpp
+    )
+
+    # Platform-specific GL context managers
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        if(ULTRACANVAS_HAS_EGL)
+            list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/GLContextManagerEGL_Linux.cpp
+            )
+        endif()
+        if(ULTRACANVAS_HAS_GLX)
+            list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/GLContextManagerGLX_Linux.cpp
+            )
+        endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        if(ULTRACANVAS_HAS_CGL)
+            list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/GLContextManagerCGL_MacOS.mm
+            )
+        endif()
+    endif()
 endif()
 
 # Combine all core sources
@@ -278,6 +341,27 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
         ${OPENGL_INCLUDE_DIRS}
         ${GTK3_INCLUDE_DIRS}
     )
+    if(ULTRACANVAS_ENABLE_GL AND EGL_FOUND)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+            ${EGL_INCLUDE_DIRS}
+        )
+    endif()
+endif()
+
+# ===== LINK LIBRARIES =====
+target_link_libraries(${ULTRACANVAS_LIB_NAME}
+    PUBLIC
+        ${CAIRO_LIBRARIES}
+        ${PANGO_LIBRARIES}
+        ${FREETYPE_LIBRARIES}
+        ${LIBVIPS_LIBRARIES}
+        ${GLIB_LIBRARIES}
+        ${TINYXML2_LIBRARIES}
+        ${GTK3_INCLUDE_DIRS}
+)
+
+# Platform-specific libraries
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${X11_LIBRARIES}
             ${GTK3_LIBRARIES}
@@ -285,6 +369,17 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
             pthread
             dl
     )
+    # Link OpenGL/EGL for GL surfaces
+    if(ULTRACANVAS_ENABLE_GL)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${OPENGL_LIBRARIES}
+        )
+        if(EGL_FOUND)
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+                ${EGL_LIBRARIES}
+            )
+        endif()
+    endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             gdi32
@@ -298,12 +393,22 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             imm32
             dwmapi
     )
+    if(ULTRACANVAS_ENABLE_GL)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            opengl32
+        )
+    endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${COCOA_FRAMEWORK}
             ${QUARTZ_FRAMEWORK}
             #        ${OPENGL_FRAMEWORK}
     )
+    if(ULTRACANVAS_ENABLE_GL)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${OPENGL_FRAMEWORK}
+        )
+    endif()
 endif()
 
 # ===== LINK LIBRARIES =====
@@ -337,6 +442,23 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
     PRIVATE
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
 )
+
+# GL surface compile definitions
+if(ULTRACANVAS_ENABLE_GL)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_ENABLE_GL=1)
+    if(ULTRACANVAS_HAS_EGL)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_EGL=1)
+    endif()
+    if(ULTRACANVAS_HAS_GLX)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_GLX=1)
+    endif()
+    if(ULTRACANVAS_HAS_CGL)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_CGL=1)
+    endif()
+    if(ULTRACANVAS_HAS_WGL)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_WGL=1)
+    endif()
+endif()
 
 # Warning flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -486,5 +608,22 @@ if(LIBVIPS_FOUND)
 endif()
 # message(STATUS "  libgrapheme: 3.0.0 (bundled, Unicode 17.0.0)")
 message(STATUS "  Plugins: ${ULTRACANVAS_PLUGIN_TARGETS}")
+if(ULTRACANVAS_ENABLE_GL)
+    message(STATUS "  OpenGL Surface: ENABLED")
+    if(ULTRACANVAS_HAS_EGL)
+        message(STATUS "    - EGL backend: YES")
+    endif()
+    if(ULTRACANVAS_HAS_GLX)
+        message(STATUS "    - GLX backend: YES")
+    endif()
+    if(ULTRACANVAS_HAS_CGL)
+        message(STATUS "    - CGL backend: YES")
+    endif()
+    if(ULTRACANVAS_HAS_WGL)
+        message(STATUS "    - WGL backend: YES")
+    endif()
+else()
+    message(STATUS "  OpenGL Surface: DISABLED")
+endif()
 message(STATUS "========================================")
 message(STATUS "")

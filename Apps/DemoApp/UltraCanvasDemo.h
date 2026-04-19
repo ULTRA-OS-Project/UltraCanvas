@@ -237,6 +237,9 @@ namespace UltraCanvas {
 
         std::shared_ptr<UltraCanvasUIElement> CreateVectorExamples();
         std::shared_ptr<UltraCanvasUIElement> Create3DExamples();
+#ifdef ULTRACANVAS_ENABLE_GL
+        std::shared_ptr<UltraCanvasUIElement> CreateGLSurfaceExamples();
+#endif
         std::shared_ptr<UltraCanvasUIElement> CreateVideoExamples();
 
         // Document Elements
