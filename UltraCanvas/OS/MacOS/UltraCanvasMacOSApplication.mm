@@ -608,9 +608,6 @@ namespace UltraCanvas {
 // ===== SYSTEM FONT DETECTION =====
     FontStyle UltraCanvasMacOSApplication::DetectSystemFontStyleNative() {
         FontStyle result;
-        result.fontFamily = "Sans";
-        result.fontSize = 12.0;
-        return;
 
         @autoreleasepool {
             NSFont* sysFont = [NSFont systemFontOfSize:0];
