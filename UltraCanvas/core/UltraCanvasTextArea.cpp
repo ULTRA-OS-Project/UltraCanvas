@@ -708,7 +708,7 @@ namespace UltraCanvas {
         if (wordWrap) {
             Rect2Di curRect = LineColumnToCursorPos(cursorPosition);
             if (curRect.IsValid()) {
-                LineColumnIndex hit = PosToLineColumn({visibleTextArea.x, curRect.y});
+                LineColumnIndex hit = PosToLineColumn({visibleTextArea.x, curRect.y + 3});
                 if (hit.lineIndex == line) targetCol = hit.columnIndex;
             }
         }
@@ -736,8 +736,8 @@ namespace UltraCanvas {
             if (wordWrap) {
                 Rect2Di curRect = LineColumnToCursorPos(cursorPosition);
                 if (curRect.IsValid()) {
-                    int farRight = visibleTextArea.x + visibleTextArea.width + 100000;
-                    LineColumnIndex hit = PosToLineColumn({farRight, curRect.y});
+                    int farRight = 0x7fffffff / 1024;
+                    LineColumnIndex hit = PosToLineColumn({farRight, curRect.y + 3});
                     if (hit.lineIndex == line) targetCol = hit.columnIndex;
                 }
             }
