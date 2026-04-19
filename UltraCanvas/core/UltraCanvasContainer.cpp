@@ -44,7 +44,10 @@ namespace UltraCanvas {
         }
 
         for (const auto &child: children) {
-            child->UpdateGeometry(ctx);
+            // fixme! check this in future when will need to implement feature like visibility:hidden
+            if (child->IsVisible()) {
+                child->UpdateGeometry(ctx);
+            }
         }
         
         if (verticalScrollbar->IsVisible()) {
