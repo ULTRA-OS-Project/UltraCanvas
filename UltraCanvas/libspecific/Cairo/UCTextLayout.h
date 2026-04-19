@@ -152,11 +152,12 @@ namespace UltraCanvas {
     private:
         PangoLayout* layout = nullptr;
         PangoAttrList *attrsList = nullptr;
-        int explicitHeight = 0;
+        double explicitHeight = 0;
         VerticalAlignment valign = VerticalAlignment::Top;
         UCLayoutExtents extents;
         bool extentsDirty = true;
-        int cachedAscentPx = 0;
+        double cachedAscentPU = 0;
+        double cachedDescentPU = 0;
     public:
         explicit UCTextLayout(PangoContext* ctx);
         ~UCTextLayout() override;
@@ -181,10 +182,10 @@ namespace UltraCanvas {
 //        void SetFontDescriptionFromPango(const PangoFontDescription* desc) override;
 
         // ===== DIMENSIONS (pixel API) =====
-        void SetExplicitWidth(int widthPixels) override;       // -1 to unset
-        int GetExplicitWidth() const override;
-        void SetExplicitHeight(int heightPixels) override;     // -1 to unset
-        int GetExplicitHeight() const override;
+        void SetExplicitWidth(double widthPixels) override;       // -1 to unset
+        double GetExplicitWidth() const override;
+        void SetExplicitHeight(double heightPixels) override;     // -1 to unset
+        double GetExplicitHeight() const override;
 
         // ===== ALIGNMENT & JUSTIFICATION =====
         void SetAlignment(TextAlignment align) override;
@@ -229,9 +230,9 @@ namespace UltraCanvas {
 
         // ===== MEASUREMENT =====
         UCLayoutExtents GetLayoutExtents() override;
-        int GetLayoutVerticalOffset() override;
+        double GetLayoutVerticalOffset() override;
 
-        int GetBaseline() const override;
+        double GetBaseline() const override;
         int GetLineCount() const override;
 
         // ===== HIT TESTING & POSITION =====

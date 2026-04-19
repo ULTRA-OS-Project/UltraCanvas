@@ -31,7 +31,7 @@ namespace UltraCanvas {
     static UCCache<UCTextLayout, UCTextLayoutCacheEntry> g_TextLayoutsCache(20 * 1024 * 1024);
 
     // Configurable text rendering font options (global, matching cache scope)
-    static cairo_antialias_t g_TextAntialias = CAIRO_ANTIALIAS_GRAY;
+    static cairo_antialias_t g_TextAntialias = CAIRO_ANTIALIAS_SUBPIXEL;
     static cairo_hint_style_t g_TextHintStyle = CAIRO_HINT_STYLE_MEDIUM;
     static cairo_hint_metrics_t g_TextHintMetrics = CAIRO_HINT_METRICS_DEFAULT;
 
@@ -688,7 +688,7 @@ namespace UltraCanvas {
 
     void RenderContextCairo::DrawTextLayout(ITextLayout &layout, const Point2Df &pos) {
         auto extents = layout.GetLayoutExtents();
-        debugOutput << "RenderContextCairo::DrawTextLayout txt=" << layout.GetText() << " pos=" << pos.x << "," << pos.y << " offset=" << layout.GetLayoutVerticalOffset() <<  " extents=" << extents.logical.x << "," << extents.logical.y << " " << extents.logical.width << "x" << extents.logical.height << " ink=" << extents.ink.x << "," << extents.ink.y << " " << extents.ink.width << "x" << extents.ink.height << std::endl;
+//        debugOutput << "RenderContextCairo::DrawTextLayout txt=" << layout.GetText() << " pos=" << pos.x << "," << pos.y << " offset=" << layout.GetLayoutVerticalOffset() <<  " extents=" << extents.logical.x << "," << extents.logical.y << " " << extents.logical.width << "x" << extents.logical.height << " ink=" << extents.ink.x << "," << extents.ink.y << " " << extents.ink.width << "x" << extents.ink.height << std::endl;
         cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
         pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
     }

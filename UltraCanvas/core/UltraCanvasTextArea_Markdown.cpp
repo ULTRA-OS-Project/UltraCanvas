@@ -937,7 +937,7 @@ namespace UltraCanvas {
         }
 
         // Measure: per-column max of natural width (unwrapped) across all non-separator rows.
-        std::vector<int> colNatural(colCount, 0);
+        std::vector<double> colNatural(colCount, 0);
         for (int i = startLine; i <= endLine; i++) {
             auto* tbl = dynamic_cast<TableLineLayout*>(lineLayouts[i].get());
             if (!tbl || tbl->layoutType == LineLayoutType::TableSeparatorRow) continue;
@@ -984,7 +984,7 @@ namespace UltraCanvas {
             bool isSep = (tbl->layoutType == LineLayoutType::TableSeparatorRow);
             tbl->columnAlignments = alignments;
             int x = 0;
-            int maxCellHeight = 0;
+            double maxCellHeight = 0;
             for (int c = 0; c < colCount; c++) {
                 if (c >= (int)tbl->cellsLayouts.size()) { x += colWidth[c]; continue; }
                 auto& cell = tbl->cellsLayouts[c];
@@ -1143,7 +1143,7 @@ namespace UltraCanvas {
             }
 
             cl->bounds.width = cl->layout->GetLayoutWidth() + style.padding * 2;
-            cl->bounds.height = std::max(1, cl->layout->GetLayoutHeight());
+            cl->bounds.height = std::max(1.0, cl->layout->GetLayoutHeight());
             cl->layoutShift.x = style.padding;
             return cl;
         }
@@ -1160,7 +1160,7 @@ namespace UltraCanvas {
                 cl->layout->SetFontStyle(style.fixedFontStyle);
                 cl->layout->InsertAttribute(TextAttributeFactory::CreateBackground(markdownStyle.codeBackgroundColor));
                 cl->layoutShift = {5,0};
-                cl->bounds.height = std::max(1, cl->layout->GetLayoutHeight());
+                cl->bounds.height = std::max(1.0, cl->layout->GetLayoutHeight());
             } else {
                 cl->bounds.height = computedLineHeight;
             }
@@ -1537,7 +1537,7 @@ namespace UltraCanvas {
                 cl->layoutTextStartIndex = utf8_byte_to_cp(rawLine, indentBytes);
                 cl->layoutShift.x = style.padding;
                 cl->bounds.width  = cl->layout->GetLayoutWidth() + style.padding * 2;
-                cl->bounds.height = std::max(1, cl->layout->GetLayoutHeight());
+                cl->bounds.height = std::max(1.0, cl->layout->GetLayoutHeight());
                 return cl;
             }
         }

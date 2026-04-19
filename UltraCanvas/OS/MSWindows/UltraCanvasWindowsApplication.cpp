@@ -768,7 +768,9 @@ namespace UltraCanvas {
 
     FontStyle UltraCanvasWindowsApplication::DetectSystemFontStyleNative() {
         FontStyle result;
-
+        result.fontFamily = "Sans";
+        result.fontSize = 12.0f;
+        return result;
         NONCLIENTMETRICSW ncm = {};
         ncm.cbSize = sizeof(NONCLIENTMETRICSW);
 

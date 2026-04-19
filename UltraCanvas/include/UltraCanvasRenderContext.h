@@ -522,8 +522,8 @@ namespace UltraCanvas {
     // ===== RESULT STRUCTS =====
 
     struct UCLayoutExtents {
-        Rect2Di ink;
-        Rect2Di logical;
+        Rect2Df ink;
+        Rect2Df logical;
     };
 
     struct UCLayoutHitResult {
@@ -677,10 +677,10 @@ namespace UltraCanvas {
         virtual void* GetHandle() const = 0;
 
         // ===== DIMENSIONS (pixel API) =====
-        virtual void SetExplicitWidth(int widthPixels) = 0;       // -1 to unset
-        virtual void SetExplicitHeight(int heightPixels) = 0;     // -1 to unset
-        virtual int GetExplicitWidth() const = 0;       // -1 to unset
-        virtual int GetExplicitHeight() const = 0;     // -1 to unset
+        virtual void SetExplicitWidth(double widthPixels) = 0;       // -1 to unset
+        virtual void SetExplicitHeight(double heightPixels) = 0;     // -1 to unset
+        virtual double GetExplicitWidth() const = 0;       // -1 to unset
+        virtual double GetExplicitHeight() const = 0;     // -1 to unset
         //virtual int GetLayoutVerticalOffset() const  = 0;
 
         // ===== TEXT CONTENT =====
@@ -733,13 +733,13 @@ namespace UltraCanvas {
 
         // ===== MEASUREMENT =====
         virtual UCLayoutExtents GetLayoutExtents() = 0;
-        Size2Di GetLayoutSize() { return GetLayoutExtents().logical.Size(); }
-        int GetLayoutWidth() { return GetLayoutExtents().logical.width; }
-        int GetLayoutHeight() { return GetLayoutExtents().logical.height; }
-        virtual int GetLayoutVerticalOffset() = 0;
+        Size2Df GetLayoutSize() { return GetLayoutExtents().logical.Size(); }
+        double GetLayoutWidth() { return GetLayoutExtents().logical.width; }
+        double GetLayoutHeight() { return GetLayoutExtents().logical.height; }
+        virtual double GetLayoutVerticalOffset() = 0;
 
 //        void GetSize(int& widthPangoUnits, int& heightPangoUnits) const = 0;
-        virtual int GetBaseline() const = 0;
+        virtual double GetBaseline() const = 0;
 //        int GetBaselinePangoUnits() const = 0;
         virtual int GetLineCount() const = 0;
 

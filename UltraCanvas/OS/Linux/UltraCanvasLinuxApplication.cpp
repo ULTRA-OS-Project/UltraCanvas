@@ -893,7 +893,10 @@ namespace UltraCanvas {
 
     FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() {
         FontStyle result;
-
+        result.fontFamily = "Sans";
+        result.fontSize = 12.0;
+        return result;
+/*
         PangoFontMap* fontMap = pango_cairo_font_map_get_default();
         if (!fontMap) {
             result.fontFamily = "Sans";
@@ -931,6 +934,7 @@ namespace UltraCanvas {
         }
 
         return result;
+*/
     }
 
     FontStyle UltraCanvasLinuxApplication::DetectMonospacedFontStyleNative() {

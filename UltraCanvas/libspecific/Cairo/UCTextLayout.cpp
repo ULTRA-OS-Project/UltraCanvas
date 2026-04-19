@@ -8,6 +8,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
 
+#define PANGO_SCALE_D static_cast<double>(PANGO_SCALE)
 namespace UltraCanvas {
 
     // ===== HELPER CONVERSION FUNCTIONS =====
@@ -469,51 +470,66 @@ namespace UltraCanvas {
 
     // ===== DIMENSIONS =====
 
-    void UCTextLayout::SetExplicitWidth(int widthPixels) {
+    void UCTextLayout::SetExplicitWidth(double widthPixels) {
         extentsDirty = true;
         pango_layout_set_width(layout, (widthPixels < 0) ? -1 : widthPixels * PANGO_SCALE);
     }
 
-    int UCTextLayout::GetExplicitWidth() const {
+    double UCTextLayout::GetExplicitWidth() const {
         if (!layout) return -1;
         int w = pango_layout_get_width(layout);
-        return (w < 0) ? -1 : w / PANGO_SCALE;
+        return (w < 0) ? -1 : w / PANGO_SCALE_D;
     }
 
-    void UCTextLayout::SetExplicitHeight(int heightPixels) {
+    void UCTextLayout::SetExplicitHeight(double heightPixels) {
         extentsDirty = true;
         explicitHeight = heightPixels;
         pango_layout_set_height(layout, (heightPixels < 0) ? -1 : heightPixels * PANGO_SCALE);
     }
 
-    int UCTextLayout::GetExplicitHeight() const {
+    double UCTextLayout::GetExplicitHeight() const {
         if (!layout) return -1;
         int h = pango_layout_get_height(layout);
-        return (h < 0) ? -1 : h / PANGO_SCALE;
+        return (h < 0) ? -1 : h / PANGO_SCALE_D;
     }
 
-    int UCTextLayout::GetLayoutVerticalOffset()  {
+    double UCTextLayout::GetLayoutVerticalOffset()  {
         auto ext = GetLayoutExtents();
 
-        int offset = -ext.logical.y;
-        if (explicitHeight > 0 && explicitHeight > ext.logical.height) {
+        double offset = -ext.logical.y;
+        if (explicitHeight > 0) {
             // Pango splits the font's external line-leading half above and half below
-            // the baseline. The top half (layoutBaseline - ascent) is padding that
-            // varies across platforms — on Linux fonts it's typically 0, on Windows
-            // fonts it's non-zero — and would push visible text down if we naively
-            // centered the whole logical box. Subtract it for Middle alignment so the
-            // visible body is centered consistently.
+            // the baseline. The top half (baseline - ascent) is platform/font-specific
+            // padding that would push visible text down if we naively centered the
+            // whole logical box. Subtract it for Middle alignment so visible text is
+            // centered consistently. Subtraction is done in Pango units (then rounded
+            // to the nearest pixel) because truncating each operand to int pixels
+            // before subtracting loses the sub-pixel offset that Pango itself honours
+            // when placing glyphs — which regressed centering on e.g. Segoe UI 12pt.
+/*
             int topLeadingPad = 0;
-            if (cachedAscentPx > 0) {
-                const int layoutBaseline = pango_layout_get_baseline(layout) / PANGO_SCALE;
-                const int pad = layoutBaseline - cachedAscentPx;
-                if (pad > 0) topLeadingPad = pad;
+            if (cachedAscentPU > 0) {
+                const double layoutBaselinePU = pango_layout_get_baseline(layout);
+                const double padPU = layoutBaselinePU - cachedAscentPU;
+                if (padPU > 0) {
+                    topLeadingPad = (padPU + PANGO_SCALE_D / 2.0) / PANGO_SCALE_D;
+                }
             }
+*/
             if (valign == VerticalAlignment::Middle) {
-                offset = (explicitHeight - ext.logical.height) / 2 - ext.logical.y - topLeadingPad;
+//                offset = (explicitHeight - ext.logical.height) / 2 - ext.logical.y - topLeadingPad;
+                offset = (explicitHeight - ext.logical.height) / 2 - ext.logical.y;
             } else if (valign == VerticalAlignment::Bottom) {
                 offset = explicitHeight - ext.logical.height - ext.logical.y;
             }
+
+//            debugOutput << "UCTextLayout::GetLayoutVerticalOffset"
+//                        << " H=" << explicitHeight
+//                        << " logical.h=" << ext.logical.height
+//                        << " ascentPU=" << cachedAscentPU
+//                        << " baselinePU=" << pango_layout_get_baseline(layout)
+//                        << " topLeadingPad=" << topLeadingPad
+//                        << " offset=" << offset << std::endl;
         }
         return offset;
     }
@@ -740,14 +756,15 @@ namespace UltraCanvas {
     UCLayoutExtents UCTextLayout::GetLayoutExtents() {
         if (extentsDirty) {
             PangoRectangle ink, logical;
-            pango_layout_get_pixel_extents(layout, &ink, &logical);
-            extents.ink = Rect2Di(ink.x, ink.y, ink.width, ink.height);
-            extents.logical = Rect2Di(logical.x, logical.y, logical.width, logical.height);
+            pango_layout_get_extents(layout, &ink, &logical);
+            extents.ink = Rect2Df(ink.x / PANGO_SCALE_D, ink.y / PANGO_SCALE_D, ink.width / PANGO_SCALE_D, ink.height / PANGO_SCALE_D);
+            extents.logical = Rect2Df(logical.x / PANGO_SCALE_D, logical.y / PANGO_SCALE_D, logical.width / PANGO_SCALE_D, logical.height / PANGO_SCALE_D);
 
             PangoContext* ctx = pango_layout_get_context(layout);
             const PangoFontDescription* desc = pango_layout_get_font_description(layout);
             PangoFontMetrics* metrics = pango_context_get_metrics(ctx, desc, nullptr);
-            cachedAscentPx = pango_font_metrics_get_ascent(metrics) / PANGO_SCALE;
+            cachedAscentPU = pango_font_metrics_get_ascent(metrics);
+            cachedDescentPU = pango_font_metrics_get_descent(metrics);
             pango_font_metrics_unref(metrics);
 
             extentsDirty = false;
@@ -764,8 +781,8 @@ namespace UltraCanvas {
 //        pango_layout_get_size(layout, &widthPangoUnits, &heightPangoUnits);
 //    }
 
-    int UCTextLayout::GetBaseline() const {
-        return pango_layout_get_baseline(layout) / PANGO_SCALE;
+    double UCTextLayout::GetBaseline() const {
+        return pango_layout_get_baseline(layout) / PANGO_SCALE_D;
     }
 
 //    int UCTextLayout::GetBaselinePangoUnits() const {

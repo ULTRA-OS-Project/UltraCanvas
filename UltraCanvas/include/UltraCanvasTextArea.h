@@ -295,10 +295,10 @@ namespace UltraCanvas {
 
     struct LineLayoutBase {
         LineLayoutType layoutType = LineLayoutType::PlainLine;
-        Rect2Di bounds = {0,0,0,0};
+        Rect2Df bounds = {0,0,0,0};
         std::vector<MarkdownHitRect> hitRects; // bounds inside layout
         std::unique_ptr<ITextLayout> layout;
-        Point2Di layoutShift = {0, 0}; // for MD mode some elements render text layout shifted to right or bottom
+        Point2Df layoutShift = {0, 0}; // for MD mode some elements render text layout shifted to right or bottom
         int layoutTextStartIndex = 0; // for MD mode some part of real line text is not displayed (it is part of markup)
         virtual ~LineLayoutBase() {};
     };
