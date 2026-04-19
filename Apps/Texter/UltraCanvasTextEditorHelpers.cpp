@@ -138,7 +138,7 @@ namespace UltraCanvas {
             std::weak_ptr<UltraCanvasToolbar> weakStatusBar = statusBar;
 
             // Update position on cursor move
-            editor->SetOnCursorPositionChanged([weakStatusBar](int line, int col) {
+            editor->SetOnCursorPositionChanged([weakStatusBar](const LineColumnIndex& pos) {
                 auto sb = weakStatusBar.lock();
                 if (!sb) return;
 
@@ -147,8 +147,8 @@ namespace UltraCanvas {
                     auto widget = item->GetWidget();
                     auto posLabel = std::dynamic_pointer_cast<UltraCanvasLabel>(widget);
                     if (posLabel) {
-                        posLabel->SetText("Ln " + std::to_string(line + 1) +
-                                          ", Col " + std::to_string(col + 1));
+                        posLabel->SetText("Ln " + std::to_string(pos.lineIndex + 1) +
+                                          ", Col " + std::to_string(pos.columnIndex + 1));
                     }
                 }
             });
@@ -170,7 +170,7 @@ namespace UltraCanvas {
 
             // Update selection count
             std::weak_ptr<UltraCanvasTextArea> weakEditor = editor;
-            editor->SetOnSelectionChanged([weakStatusBar, weakEditor](int start, int end) {
+            editor->SetOnSelectionChanged([weakStatusBar, weakEditor]() {
                 auto sb = weakStatusBar.lock();
                 auto ed = weakEditor.lock();
                 if (!sb || !ed) return;
@@ -180,9 +180,9 @@ namespace UltraCanvas {
                     auto widget = item->GetWidget();
                     auto selLabel = std::dynamic_pointer_cast<UltraCanvasLabel>(widget);
                     if (selLabel) {
-                        if (start != end && start >= 0 && end >= 0) {
-                            int charCount = std::abs(end - start);
-                            selLabel->SetText(std::to_string(charCount) + " sel");
+                        if (ed->HasSelection()) {
+                            auto selStr = ed->GetSelectedText();
+                            selLabel->SetText(std::to_string(selStr.size()) + " sel");
                         } else {
                             selLabel->SetText("");
                         }
@@ -191,7 +191,8 @@ namespace UltraCanvas {
             });
 
             // Set initial position from current cursor
-            auto [currentLine, currentCol] = editor->GetLineColumnFromPosition(editor->GetCursorPosition());
+            auto currentLine = editor->GetCurrentLine();
+            auto currentCol = editor->GetCurrentColumn();
             auto posItem = statusBar->GetItem("position");
             if (posItem) {
                 auto widget = posItem->GetWidget();

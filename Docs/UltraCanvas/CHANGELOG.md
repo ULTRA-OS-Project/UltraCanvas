@@ -1,3 +1,7 @@
+2026-04-16 1.0.18
+- Revert back to the Sans font for Windows insetad of detecting default font. It detected the "Segoe UI" and this shit font can't be vertically centerted without special patches especially for that font, it always shifted down a little (even in browsers)
+- Fixed bug with high CPU usage and slow cursor movement on the big files with very long lines.
+
 2026-04-16 1.0.17
 - Add on-the-fly submenu regeneration to UltraCanvasMenu
 - Fix Windows high CPU usage when app is idle.

@@ -2348,13 +2348,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->textArea->InsertText(prefix + selectedText + suffix);
         } else {
             // Insert snippet with sample text, then select the sample
-            int cursorPos = doc->textArea->GetCursorPosition();
+            auto cursorPos = doc->textArea->GetCursorPosition();
             doc->textArea->InsertText(prefix + sampleText + suffix);
 
             // Select just the sample text so user can type to replace it
-            int selStart = cursorPos + static_cast<int>(prefix.size());
-            int selEnd = selStart + static_cast<int>(sampleText.size());
-            doc->textArea->SetSelection(selStart, selEnd);
+            auto selEnd = cursorPos;
+            selEnd.columnIndex += static_cast<int>(sampleText.size());
+            doc->textArea->SetSelection(cursorPos, selEnd);
         }
     }
 
@@ -3354,12 +3354,12 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         };
 
         // Cursor position changed callback
-        doc->textArea->onCursorPositionChanged = [this](int line, int col) {
+        doc->textArea->onCursorPositionChanged = [this](const LineColumnIndex& pos) {
             UpdateStatusBar();
         };
 
         // Selection changed callback
-        doc->textArea->onSelectionChanged = [this](int start, int end) {
+        doc->textArea->onSelectionChanged = [this]() {
             UpdateStatusBar();
         };
 

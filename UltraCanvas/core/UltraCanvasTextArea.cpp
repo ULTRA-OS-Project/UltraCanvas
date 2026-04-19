@@ -217,7 +217,7 @@ namespace UltraCanvas {
         lineLayouts.clear();
         lineLayouts.resize(lines.size());
         markdownIndexDirty = true;
-        cursorPosition = {0, 0};
+        SetCursorPosition({0, 0});
         currentLine.reset();
         selectionStart = LineColumnIndex::INVALID;
         selectionEnd   = LineColumnIndex::INVALID;
@@ -280,7 +280,7 @@ namespace UltraCanvas {
             InvalidateLineLayout(i);
         }
 
-        cursorPosition = {line, col};
+        SetCursorPosition({line, col});
 
         RebuildText();
     }
@@ -311,7 +311,7 @@ namespace UltraCanvas {
         InvalidateLineLayout(line);
         InsertLineLayoutEntry(line + 1);
 
-        cursorPosition = {line + 1, 0};
+        SetCursorPosition({line + 1, 0});
 
         RebuildText();
     }
@@ -337,14 +337,14 @@ namespace UltraCanvas {
         if (col > 0) {
             utf8_erase(lines[line], col - 1, 1);
             InvalidateLineLayout(line);
-            cursorPosition = {line, col - 1};
+            SetCursorPosition({line, col - 1});
         } else if (line > 0) {
             int prevLineLength = static_cast<int>(utf8_length(lines[line - 1]));
             lines[line - 1].append(lines[line]);
             lines.erase(lines.begin() + line);
             InvalidateLineLayout(line - 1);
             RemoveLineLayoutEntry(line);
-            cursorPosition = {line - 1, prevLineLength};
+            SetCursorPosition({line - 1, prevLineLength});
         }
 
         RebuildText();
@@ -401,7 +401,7 @@ namespace UltraCanvas {
             }
         }
 
-        cursorPosition = {startLine, startCol};
+        SetCursorPosition({startLine, startCol});
         selectionStart = LineColumnIndex::INVALID;
         selectionEnd   = LineColumnIndex::INVALID;
 
@@ -417,28 +417,10 @@ namespace UltraCanvas {
         int col  = cursorPosition.columnIndex;
 
         // Try layout-based cursor movement (correct bidi/complex-script handling).
-        //auto ctx = GetRenderContext();
-        bool moved = false;
-        if (line >= 0 && line < static_cast<int>(lines.size()) && currentLine) {
-            ITextLayout* layout = currentLine->layout.get();
-            if (layout && col > 0) {
-                int curByte = static_cast<int>(utf8_cp_to_byte(lines[line], col));
-                auto result = layout->MoveCursorVisually(true, curByte, 0, -1);
-                if (result.newIndex >= 0 && result.newIndex <= static_cast<int>(lines[line].size())) {
-                    int newCol = utf8_byte_to_cp(lines[line], result.newIndex) + result.newTrailing;
-                    cursorPosition = {line, newCol};
-                    moved = true;
-                }
-            }
-        }
-
-        // Fallback: codepoint-based movement, wrapping to previous line if at col 0.
-        if (!moved) {
-            if (col > 0) {
-                cursorPosition = {line, col - 1};
-            } else if (line > 0) {
-                cursorPosition = {line - 1, utf8_length(lines[line - 1])};
-            }
+        if (col > 0) {
+            SetCursorPosition({line, col - 1});
+        } else if (line > 0) {
+            SetCursorPosition({line - 1, utf8_length(lines[line - 1])});
         }
 
         if (selecting) {
@@ -450,7 +432,7 @@ namespace UltraCanvas {
         }
         RequestRedraw();
         if (onCursorPositionChanged) {
-            onCursorPositionChanged(cursorPosition.lineIndex, cursorPosition.columnIndex);
+            onCursorPositionChanged(cursorPosition);
         }
     }
 
@@ -465,29 +447,11 @@ namespace UltraCanvas {
         int line = cursorPosition.lineIndex;
         int col  = cursorPosition.columnIndex;
 
-        auto ctx = GetRenderContext();
-        bool moved = false;
-        if (ctx && line >= 0 && line < static_cast<int>(lines.size()) && currentLine) {
-            ITextLayout* layout = currentLine->layout.get();
-            int lineCps = static_cast<int>(utf8_length(lines[line]));
-            if (layout && col < lineCps) {
-                int curByte = static_cast<int>(utf8_cp_to_byte(lines[line], col));
-                auto result = layout->MoveCursorVisually(true, curByte, 0, 1);
-                if (result.newIndex >= 0 && result.newIndex <= static_cast<int>(lines[line].size())) {
-                    int newCol = utf8_byte_to_cp(lines[line], result.newIndex) + result.newTrailing;
-                    cursorPosition = {line, newCol};
-                    moved = true;
-                }
-            }
-        }
-
-        if (!moved) {
-            int lineCps = utf8_length(lines[line]);
-            if (col < lineCps) {
-                cursorPosition = {line, col + 1};
-            } else if (line + 1 < totalLines) {
-                cursorPosition = {line + 1, 0};
-            }
+        int lineCps = utf8_length(lines[line]);
+        if (col < lineCps) {
+            SetCursorPosition({line, col + 1});
+        } else if (line + 1 < totalLines) {
+            SetCursorPosition({line + 1, 0});
         }
 
         if (selecting) {
@@ -499,7 +463,7 @@ namespace UltraCanvas {
         }
         RequestRedraw();
         if (onCursorPositionChanged) {
-            onCursorPositionChanged(cursorPosition.lineIndex, cursorPosition.columnIndex);
+            onCursorPositionChanged(cursorPosition);
         }
     }
 
@@ -513,7 +477,6 @@ namespace UltraCanvas {
         if (curRect.IsValid()) {
             int targetX = curRect.x;
             int targetY = curRect.y - 2;
-            if (targetY < visibleTextArea.y) targetY = visibleTextArea.y;
             LineColumnIndex hit = PosToLineColumn({targetX, targetY});
             if (hit.lineIndex >= 0 &&
                 (hit.lineIndex < cursorPosition.lineIndex ||
@@ -531,7 +494,7 @@ namespace UltraCanvas {
         } else {
             return;
         }
-        cursorPosition = newPos;
+        SetCursorPosition(newPos);
         if (selecting) {
             if (selectionStart.lineIndex < 0) selectionStart = oldPos;
             selectionEnd = cursorPosition;
@@ -541,7 +504,7 @@ namespace UltraCanvas {
         }
         RequestRedraw();
         if (onCursorPositionChanged) {
-            onCursorPositionChanged(newPos.lineIndex, newPos.columnIndex);
+            onCursorPositionChanged(newPos);
         }
     }
 
@@ -569,7 +532,7 @@ namespace UltraCanvas {
         } else {
             return;
         }
-        cursorPosition = newPos;
+        SetCursorPosition(newPos);
         if (selecting) {
             if (selectionStart.lineIndex < 0) selectionStart = oldPos;
             selectionEnd = cursorPosition;
@@ -579,7 +542,7 @@ namespace UltraCanvas {
         }
         RequestRedraw();
         if (onCursorPositionChanged) {
-            onCursorPositionChanged(newPos.lineIndex, newPos.columnIndex);
+            onCursorPositionChanged(newPos);
         }
     }
 
@@ -618,7 +581,7 @@ namespace UltraCanvas {
             }
         }
 
-        cursorPosition = {line, col};
+        SetCursorPosition({line, col});
 
         if (selecting) {
             if (selectionStart.lineIndex < 0) selectionStart = oldPos;
@@ -627,8 +590,9 @@ namespace UltraCanvas {
             selectionStart = LineColumnIndex::INVALID;
             selectionEnd   = LineColumnIndex::INVALID;
         }
+
         RequestRedraw();
-        if (onCursorPositionChanged) onCursorPositionChanged(line, col);
+        if (onCursorPositionChanged) onCursorPositionChanged(cursorPosition);
     }
 
     void UltraCanvasTextArea::MoveCursorWordRight(bool selecting) {
@@ -667,7 +631,7 @@ namespace UltraCanvas {
             }
         }
 
-        cursorPosition = {line, col};
+        SetCursorPosition({line, col});
 
         if (selecting) {
             if (selectionStart.lineIndex < 0) selectionStart = oldPos;
@@ -676,8 +640,9 @@ namespace UltraCanvas {
             selectionStart = LineColumnIndex::INVALID;
             selectionEnd   = LineColumnIndex::INVALID;
         }
+
         RequestRedraw();
-        if (onCursorPositionChanged) onCursorPositionChanged(line, col);
+        if (onCursorPositionChanged) onCursorPositionChanged(cursorPosition);
     }
 
     void UltraCanvasTextArea::MoveCursorPageUp(bool selecting) {
@@ -695,7 +660,7 @@ namespace UltraCanvas {
         } else {
             return;
         }
-        cursorPosition = newPos;
+        SetCursorPosition(newPos);
         if (selecting) {
             if (selectionStart.lineIndex < 0) selectionStart = oldPos;
             selectionEnd = cursorPosition;
@@ -703,8 +668,9 @@ namespace UltraCanvas {
             selectionStart = LineColumnIndex::INVALID;
             selectionEnd   = LineColumnIndex::INVALID;
         }
+
         RequestRedraw();
-        if (onCursorPositionChanged) onCursorPositionChanged(newPos.lineIndex, newPos.columnIndex);
+        if (onCursorPositionChanged) onCursorPositionChanged(newPos);
     }
 
     void UltraCanvasTextArea::MoveCursorPageDown(bool selecting) {
@@ -722,7 +688,8 @@ namespace UltraCanvas {
         } else {
             return;
         }
-        cursorPosition = newPos;
+
+        SetCursorPosition(newPos);
         if (selecting) {
             if (selectionStart.lineIndex < 0) selectionStart = oldPos;
             selectionEnd = cursorPosition;
@@ -730,8 +697,8 @@ namespace UltraCanvas {
             selectionStart = LineColumnIndex::INVALID;
             selectionEnd   = LineColumnIndex::INVALID;
         }
-        RequestRedraw();
-        if (onCursorPositionChanged) onCursorPositionChanged(newPos.lineIndex, newPos.columnIndex);
+
+        if (onCursorPositionChanged) onCursorPositionChanged(newPos);
     }
 
     void UltraCanvasTextArea::MoveCursorToLineStart(bool selecting) {
@@ -745,7 +712,7 @@ namespace UltraCanvas {
                 if (hit.lineIndex == line) targetCol = hit.columnIndex;
             }
         }
-        cursorPosition = {line, targetCol};
+        SetCursorPosition({line, targetCol});
         if (selecting) {
             if (selectionStart.lineIndex < 0) selectionStart = oldPos;
             selectionEnd = cursorPosition;
@@ -753,9 +720,10 @@ namespace UltraCanvas {
             selectionStart = LineColumnIndex::INVALID;
             selectionEnd   = LineColumnIndex::INVALID;
         }
+
         RequestRedraw();
         if (onCursorPositionChanged) {
-            onCursorPositionChanged(line, targetCol);
+            onCursorPositionChanged(cursorPosition);
         }
     }
 
@@ -773,7 +741,7 @@ namespace UltraCanvas {
                     if (hit.lineIndex == line) targetCol = hit.columnIndex;
                 }
             }
-            cursorPosition = {line, targetCol};
+            SetCursorPosition({line, targetCol});
             if (selecting) {
                 if (selectionStart.lineIndex < 0) selectionStart = oldPos;
                 selectionEnd = cursorPosition;
@@ -781,14 +749,15 @@ namespace UltraCanvas {
                 selectionStart = LineColumnIndex::INVALID;
                 selectionEnd   = LineColumnIndex::INVALID;
             }
+
             RequestRedraw();
-            if (onCursorPositionChanged) onCursorPositionChanged(line, targetCol);
+            if (onCursorPositionChanged) onCursorPositionChanged(cursorPosition);
         }
     }
 
     void UltraCanvasTextArea::MoveCursorToStart(bool selecting) {
         LineColumnIndex oldPos = cursorPosition;
-        cursorPosition = {0, 0};
+        SetCursorPosition({0, 0});
         if (selecting) {
             if (selectionStart.lineIndex < 0) selectionStart = oldPos;
             selectionEnd = cursorPosition;
@@ -796,15 +765,15 @@ namespace UltraCanvas {
             selectionStart = LineColumnIndex::INVALID;
             selectionEnd   = LineColumnIndex::INVALID;
         }
-        RequestRedraw();
-        if (onCursorPositionChanged) onCursorPositionChanged(0, 0);
+
+        if (onCursorPositionChanged) onCursorPositionChanged({0, 0});
     }
 
     void UltraCanvasTextArea::MoveCursorToEnd(bool selecting) {
         LineColumnIndex oldPos = cursorPosition;
         int toLine = std::max(static_cast<int>(lines.size()) - 1, 0);
         int lineLength = utf8_length(lines[toLine]);
-        cursorPosition = {toLine, lineLength};
+        SetCursorPosition({toLine, lineLength});
         if (selecting) {
             if (selectionStart.lineIndex < 0) selectionStart = oldPos;
             selectionEnd = cursorPosition;
@@ -812,8 +781,8 @@ namespace UltraCanvas {
             selectionStart = LineColumnIndex::INVALID;
             selectionEnd   = LineColumnIndex::INVALID;
         }
-        RequestRedraw();
-        if (onCursorPositionChanged) onCursorPositionChanged(toLine, lineLength);
+
+        if (onCursorPositionChanged) onCursorPositionChanged(cursorPosition);
     }
 
 // ===== SELECTION METHODS =====
@@ -827,7 +796,8 @@ namespace UltraCanvas {
         selectionStart = {0, 0};
         int last = (int)lines.size() - 1;
         selectionEnd  = {last, utf8_length(lines[last])};
-        cursorPosition = selectionEnd;
+        SetCursorPosition(selectionEnd);
+
         RequestRedraw();
     }
 
@@ -835,7 +805,7 @@ namespace UltraCanvas {
         if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
             selectionStart = {lineIndex, 0};
             selectionEnd   = {lineIndex, utf8_length(lines[lineIndex])};
-            cursorPosition = selectionEnd;
+            SetCursorPosition(selectionEnd);
             RequestRedraw();
         }
     }
@@ -864,8 +834,7 @@ namespace UltraCanvas {
 
         selectionStart = {line, wordStart};
         selectionEnd   = {line, wordEnd};
-        cursorPosition = selectionEnd;
-        RequestRedraw();
+        SetCursorPosition(selectionEnd);
     }
 
     // Public API: arguments are flat codepoint positions.
@@ -975,9 +944,7 @@ namespace UltraCanvas {
 
     void UltraCanvasTextArea::GoToLine(int lineNumber) {
         int lineIndex = std::max(0, std::min(lineNumber, static_cast<int>(lines.size()) - 1));
-        cursorPosition = {lineIndex, 0};
-        EnsureCursorVisible();
-        RequestRedraw();
+        SetCursorPosition({lineIndex, 0});
     }
 
 // ===== RENDERING METHODS =====
@@ -988,6 +955,11 @@ namespace UltraCanvas {
         // if layouts are already built; calling here guards against frames where the framework
         // skipped the geometry pass.
         UpdateGeometry(ctx);
+
+        if (isCursorMoved) {
+            EnsureCursorVisible();
+            isCursorMoved = false;
+        }
 
         DrawBackground(ctx);
 
@@ -1333,7 +1305,7 @@ namespace UltraCanvas {
         }
 
         // --- Single click ---
-        cursorPosition = {clickedLine, clickedCol};
+        SetCursorPosition({clickedLine, clickedCol});
 
         if (event.shift && selectionStart.lineIndex >= 0) {
             selectionEnd = cursorPosition;
@@ -1356,7 +1328,7 @@ namespace UltraCanvas {
 
         LineColumnIndex clicked = PosToLineColumn({event.x, event.y});
         if (clicked.lineIndex < 0) return true;
-        cursorPosition = clicked;
+        SetCursorPosition(clicked);
 
         SelectWord();
         selectionAnchor = selectionStart;
@@ -1458,17 +1430,15 @@ namespace UltraCanvas {
 
             selectionStart = selectionAnchor;
             selectionEnd   = drag;
-            cursorPosition = selectionEnd;
+            SetCursorPosition(selectionEnd);
 
             if (event.y < visibleTextArea.y)                             ScrollUp(1);
             else if (event.y > visibleTextArea.y + visibleTextArea.height) ScrollDown(1);
             if (event.x < visibleTextArea.x)                             ScrollLeft(1);
             else if (event.x > visibleTextArea.x + visibleTextArea.width) ScrollRight(1);
 
-            RequestRedraw();
             if (onSelectionChanged) {
-                onSelectionChanged(GetPositionFromLineColumn(selectionStart.lineIndex, selectionStart.columnIndex),
-                                   GetPositionFromLineColumn(selectionEnd.lineIndex,   selectionEnd.columnIndex));
+                onSelectionChanged();
             }
             return true;
         }
@@ -1543,7 +1513,6 @@ namespace UltraCanvas {
                 } else {
                     MoveCursorLeft(event.shift);
                 }
-                EnsureCursorVisible();
                 break;
             case UCKeys::Right:
                 if (event.ctrl && !event.alt) {
@@ -1551,7 +1520,6 @@ namespace UltraCanvas {
                 } else {
                     MoveCursorRight(event.shift);
                 }
-                EnsureCursorVisible();
                 break;
             case UCKeys::Up:
                 if (event.ctrl && !event.alt) {
@@ -1559,7 +1527,6 @@ namespace UltraCanvas {
                 } else {
                     MoveCursorUp(event.shift);
                 }
-                EnsureCursorVisible();
                 break;
             case UCKeys::Down:
                 if (event.ctrl && !event.alt) {
@@ -1567,7 +1534,6 @@ namespace UltraCanvas {
                 } else {
                     MoveCursorDown(event.shift);
                 }
-                EnsureCursorVisible();
                 break;
             case UCKeys::Home:
                 if (event.ctrl) {
@@ -1575,7 +1541,6 @@ namespace UltraCanvas {
                 } else {
                     MoveCursorToLineStart(event.shift);
                 }
-                EnsureCursorVisible();
                 break;
             case UCKeys::End:
                 if (event.ctrl) {
@@ -1583,20 +1548,16 @@ namespace UltraCanvas {
                 } else {
                     MoveCursorToLineEnd(event.shift);
                 }
-                EnsureCursorVisible();
                 break;
             case UCKeys::PageUp:
                 MoveCursorPageUp(event.shift);
-                EnsureCursorVisible();
                 break;
             case UCKeys::PageDown:
                 MoveCursorPageDown(event.shift);
-                EnsureCursorVisible();
                 break;
             case UCKeys::Backspace:
                 if (HasSelection()) DeleteSelection();
                 else DeleteCharacterBackward();
-                EnsureCursorVisible();
                 break;
             case UCKeys::Delete:
                 if (!event.shift && event.ctrl && !event.alt) {
@@ -1606,18 +1567,15 @@ namespace UltraCanvas {
                 } else {
                     DeleteCharacterForward();
                 }
-                EnsureCursorVisible();
                 break;
             case UCKeys::Enter:
                 if (HasSelection()) DeleteSelection();
                 InsertNewLine();
-                EnsureCursorVisible();
                 break;
             case UCKeys::Tab:
                 if (!event.alt && !event.ctrl && !event.shift) {
                     if (HasSelection()) DeleteSelection();
                     InsertTab();
-                    EnsureCursorVisible();
                 } else {
                     handled = false;
                 }
@@ -1645,15 +1603,14 @@ namespace UltraCanvas {
                 break;
             case UCKeys::V:
                 if (!event.shift && event.ctrl && !event.alt) { 
-                    PasteClipboard(); 
-                    EnsureCursorVisible(); 
+                    PasteClipboard();
                 } else {
                     handled = false;
                 }
                 break;
             case UCKeys::Insert:
                 if (event.shift && !event.ctrl && !event.alt) { 
-                    PasteClipboard(); EnsureCursorVisible(); 
+                    PasteClipboard();
                 } else if (!event.shift && event.ctrl && !event.alt) {
                     CopySelection();
                 } else {
@@ -1664,11 +1621,12 @@ namespace UltraCanvas {
                 if (event.ctrl) {
                     if (event.shift) Redo();
                     else Undo();
-                    EnsureCursorVisible();
                 } else handled = false;
                 break;
             case UCKeys::Y:
-                if (event.ctrl) { Redo(); EnsureCursorVisible(); }
+                if (event.ctrl) {
+                    Redo();
+                }
                 else handled = false;
                 break;
             case UCKeys::Escape:
@@ -1690,7 +1648,6 @@ namespace UltraCanvas {
                     DeleteSelection();
                 }
                 InsertText(event.text);
-                EnsureCursorVisible();
                 handled = true;
             }
         }
@@ -1701,28 +1658,33 @@ namespace UltraCanvas {
 // ===== HELPER METHODS =====
 
     void UltraCanvasTextArea::EnsureCursorVisible() {
-        // Prefer lineLayouts[cursorPosition.lineIndex] over currentLine: the latter is only
-        // refreshed for the new cursor line inside UpdateLineLayouts (next render), so after
-        // a jump (FindNext, SetCursorPosition, Go To Line) it still points to the previous
-        // line's layout and would scroll to the wrong y.
-        int lineTop = 0;
-        int lineHeight = 0;
-        int li = cursorPosition.lineIndex;
-        if (li >= 0 && li < static_cast<int>(lineLayouts.size()) && lineLayouts[li]) {
-            lineTop = lineLayouts[li]->bounds.y;
-            lineHeight = lineLayouts[li]->bounds.height;
-        } else if (currentLine) {
-            lineTop = currentLine->bounds.y;
-            lineHeight = currentLine->bounds.height;
-        } else {
-            return;
-        }
-        int lineBottom = lineTop + lineHeight;
+        int cursorContentTop = 0;
+        int cursorContentBottom = 0;
+        int cursorX = 0;
 
-        if (lineTop < verticalScrollOffset) {
-            verticalScrollOffset = lineTop;
-        } else if (lineBottom > verticalScrollOffset + visibleTextArea.height) {
-            verticalScrollOffset = lineBottom - visibleTextArea.height;
+        Rect2Di cursorRect = LineColumnToCursorPos(cursorPosition);
+        if (cursorRect.IsValid()) {
+            // LineColumnToCursorPos returns screen coords; convert back to content coords.
+            cursorContentTop = cursorRect.y - visibleTextArea.y + verticalScrollOffset;
+            cursorContentBottom = cursorContentTop + cursorRect.height;
+            cursorX = cursorRect.x - visibleTextArea.x + horizontalScrollOffset;
+        } else {
+            int li = cursorPosition.lineIndex;
+            if (li >= 0 && li < static_cast<int>(lineLayouts.size()) && lineLayouts[li]) {
+                cursorContentTop = lineLayouts[li]->bounds.y;
+                cursorContentBottom = cursorContentTop + lineLayouts[li]->bounds.height;
+            } else if (currentLine) {
+                cursorContentTop = currentLine->bounds.y;
+                cursorContentBottom = cursorContentTop + currentLine->bounds.height;
+            } else {
+                return;
+            }
+        }
+
+        if (cursorContentTop < verticalScrollOffset) {
+            verticalScrollOffset = cursorContentTop;
+        } else if (cursorContentBottom > verticalScrollOffset + visibleTextArea.height) {
+            verticalScrollOffset = cursorContentBottom - visibleTextArea.height;
         }
         if (verticalScrollOffset < 0) verticalScrollOffset = 0;
 
@@ -1731,8 +1693,6 @@ namespace UltraCanvas {
             int line = cursorPosition.lineIndex;
             int col  = cursorPosition.columnIndex;
             if (col > 0 && line < static_cast<int>(lines.size())) {
-                std::string textToCursor = utf8_substr(lines[line], 0, col);
-                int cursorX = MeasureTextWidth(textToCursor);
                 int visibleWidth = visibleTextArea.width;
                 if (cursorX < horizontalScrollOffset) {
                     horizontalScrollOffset = cursorX;
@@ -2092,7 +2052,7 @@ namespace UltraCanvas {
         undoStack.pop_back();
 
         SetText(previousState.text);
-        cursorPosition   = previousState.cursorPosition;
+        SetCursorPosition(previousState.cursorPosition);
         selectionStart   = previousState.selectionStart;
         selectionEnd     = previousState.selectionEnd;
         RequestRedraw();
@@ -2113,7 +2073,7 @@ namespace UltraCanvas {
         redoStack.pop_back();
 
         SetText(nextState.text);
-        cursorPosition   = nextState.cursorPosition;
+        SetCursorPosition(nextState.cursorPosition);
         selectionStart   = nextState.selectionStart;
         selectionEnd     = nextState.selectionEnd;
         RequestRedraw();
@@ -2319,9 +2279,8 @@ namespace UltraCanvas {
             auto [eLine, eCol] = GetLineColumnFromPosition(foundPos + searchLen);
             selectionStart = {sLine, sCol};
             selectionEnd   = {eLine, eCol};
-            cursorPosition = selectionEnd;
+            SetCursorPosition(selectionEnd);
             lastSearchPosition = foundPos;
-            EnsureCursorVisible();
             RequestRedraw();
         }
     }
@@ -2382,9 +2341,8 @@ namespace UltraCanvas {
             auto [eLine, eCol] = GetLineColumnFromPosition(foundPos + searchLen);
             selectionStart = {sLine, sCol};
             selectionEnd   = {eLine, eCol};
-            cursorPosition = selectionStart;
+            SetCursorPosition(selectionStart);
             lastSearchPosition = foundPos;
-            EnsureCursorVisible();
             RequestRedraw();
         }
     }
@@ -2729,7 +2687,7 @@ namespace UltraCanvas {
             lines = utf8_split_lines(textContent);
             if (lines.empty()) lines.push_back(std::string());
 
-            cursorPosition = {0, 0};
+            SetCursorPosition({0, 0});
             selectionStart = LineColumnIndex::INVALID;
             selectionEnd   = LineColumnIndex::INVALID;
             hexUndoStack.clear();

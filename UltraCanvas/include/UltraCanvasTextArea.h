@@ -392,10 +392,13 @@ namespace UltraCanvas {
         void MoveCursorToEnd(bool selecting = false);
         void MoveCursorPageDown(bool selecting = false);
         void MoveCursorPageUp(bool selecting = false);
-        void SetCursorPosition(int graphemePosition);
-        int GetCursorPosition() const {
-            return (cursorPosition.lineIndex < 0) ? 0
-                : GetPositionFromLineColumn(cursorPosition.lineIndex, cursorPosition.columnIndex);
+        LineColumnIndex GetCursorPosition() {
+            return cursorPosition;
+        }
+        void SetCursorPosition(const LineColumnIndex& pos, bool selecting = false) {
+            cursorPosition = pos;
+            isCursorMoved = true;
+            RequestRedraw();
         }
 
         // Selection - grapheme-based positions
@@ -403,6 +406,11 @@ namespace UltraCanvas {
         void SelectLine(int lineIndex);
         void SelectWord();
         void SetSelection(int startGrapheme, int endGrapheme);
+        void SetSelection(const LineColumnIndex& start, const LineColumnIndex& end) {
+            selectionStart = start;
+            selectionEnd = end;
+            RequestRedraw();
+        }
         void ClearSelection();
         bool HasSelection() const;
         std::string GetSelectedText() const;
@@ -530,10 +538,11 @@ namespace UltraCanvas {
         void EnsureCursorVisible();
         void SetFirstVisibleLine(int line);
 
+
         // Callbacks
         using TextChangedCallback = std::function<void(const std::string&)>;
-        using CursorPositionChangedCallback = std::function<void(int line, int column)>;
-        using SelectionChangedCallback = std::function<void(int start, int end)>;
+        using CursorPositionChangedCallback = std::function<void(const LineColumnIndex& pos)>;
+        using SelectionChangedCallback = std::function<void()>;
 
         void SetOnTextChanged(TextChangedCallback callback) { onTextChanged = callback; }
         void SetOnCursorPositionChanged(CursorPositionChangedCallback callback) { onCursorPositionChanged = callback; }
@@ -705,6 +714,8 @@ namespace UltraCanvas {
         Point2Di dragStartOffset;
         bool isDraggingHorizontalThumb = false;
         bool isDraggingVerticalThumb = false;
+        bool isCursorMoved = false;
+        bool isTextChanged = false;
 
         // Mouse text selection state
         bool isSelectingText = false;

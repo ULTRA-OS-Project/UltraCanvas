@@ -469,8 +469,8 @@ namespace UltraCanvas {
         RequestRedraw();
 
         if (onCursorPositionChanged) {
-            onCursorPositionChanged(HexGetRowForByte(hexCursorByteOffset),
-                                    HexGetColumnForByte(hexCursorByteOffset));
+            onCursorPositionChanged({HexGetRowForByte(hexCursorByteOffset),
+                                    HexGetColumnForByte(hexCursorByteOffset)});
         }
         return true;
     }
@@ -512,7 +512,7 @@ namespace UltraCanvas {
             RequestRedraw();
 
             if (onSelectionChanged) {
-                onSelectionChanged(hexSelectionStart, hexSelectionEnd);
+                onSelectionChanged();
             }
             return true;
         }
@@ -779,10 +779,10 @@ namespace UltraCanvas {
             }
         }
 
-        if (handled && onCursorPositionChanged) {
-            onCursorPositionChanged(HexGetRowForByte(hexCursorByteOffset),
-                                    HexGetColumnForByte(hexCursorByteOffset));
-        }
+//        if (handled && onCursorPositionChanged) {
+//            onCursorPositionChanged(HexGetRowForByte(hexCursorByteOffset),
+//                                    HexGetColumnForByte(hexCursorByteOffset));
+//        }
 
         return handled;
     }
