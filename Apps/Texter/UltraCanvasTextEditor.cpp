@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.0.11 - Fix Ctrl+= / Ctrl+Shift+= zoom shortcut; wire Ctrl+0 reset zoom
-// Last Modified: 2026-04-17
+// Version: 2.0.12 - Fix save-all-on-close chain: only one Save As dialog was shown for multiple unsaved new docs
+// Last Modified: 2026-04-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -34,7 +34,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "1.0.17";
+    std::string UltraCanvasTextEditor::version = "1.0.18";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -1635,8 +1635,18 @@ namespace {
         // Update tab selection only if needed (prevents recursive callback)
         if (needsTabSwitch) {
             tabContainer->SetActiveTab(index);
-            documents[activeDocumentIndex]->textArea->SetFocus(true);
         }
+
+        auto doc = GetActiveDocument();
+        bool doSetFocus = true;
+        if (doc && doc->textArea && doc->textArea->IsMarkdownHybridMode()) {
+            auto cursorPos = doc->textArea->GetCursorPosition();
+            if (cursorPos.columnIndex <= 0 && cursorPos.lineIndex <= 0) {
+                doc->textArea->SetCursorPosition(LineColumnIndex::INVALID);
+                doSetFocus = false;
+            }
+        }
+        doc->textArea->SetFocus(doSetFocus);
 
         // Update status bar and dropdowns
         UpdateStatusBar();
@@ -1857,6 +1867,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             lastOpenedDirectory = p.parent_path().string();
             AddToRecentFiles(filePath);
 
+            if (doc->textArea && doc->textArea->IsMarkdownHybridMode()) {
+                doc->textArea->SetCursorPosition(LineColumnIndex::INVALID);
+            }
             return true;
 
         } catch (const std::exception& e) {
@@ -3488,11 +3501,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                             return;
                         }
 
-                        // Chain Save As dialogs for new documents one at a time
+                        // Chain Save As dialogs for new documents one at a time.
+                        // saveNext lives in a shared_ptr so the async dialog callback can
+                        // recurse into it after the enclosing scope has returned.
                         auto remaining = std::make_shared<std::vector<int>>(unsavedNewDocs);
                         auto savedFlag = std::make_shared<bool>(allSaved);
-                        std::function<void()> saveNext;
-                        saveNext = [this, remaining, savedFlag, onComplete, saveNext]() {
+                        auto saveNext = std::make_shared<std::function<void()>>();
+                        *saveNext = [this, remaining, savedFlag, onComplete, saveNext]() {
                             if (remaining->empty()) {
                                 if (onComplete) {
                                     onComplete(*savedFlag);
@@ -3514,12 +3529,12 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                                             }
                                         }
                                         // Continue to next unsaved document (skip if user cancelled this one)
-                                        saveNext();
+                                        (*saveNext)();
                                     },
                                     GetWindow()
                             );
                         };
-                        saveNext();
+                        (*saveNext)();
                     } else if (result == DialogResult::No) {
                         if (onComplete) {
                             onComplete(true);

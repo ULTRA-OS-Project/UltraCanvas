@@ -353,9 +353,6 @@ int main(int argc, char* argv[]) {
         splashConfig.websiteURL = "https://www.ultraos.eu/";
         splashConfig.websiteDisplay = "www.ultraos.eu";
         splashConfig.showTimeout = std::chrono::milliseconds(2000);
-        splash.onSplashClosed = [firstWindow]() {
-            firstWindow->RestoreSessionAndRecoverBackups();
-        };
         splash.Show(splashConfig, firstWindow.get());
 
 
@@ -363,6 +360,9 @@ int main(int argc, char* argv[]) {
 
         // Close splash screen now that main window is ready
         //splash.Close();
+        g_app->StartTimer(std::chrono::milliseconds(10), false, [firstWindow](TimerId t) {
+            firstWindow->RestoreSessionAndRecoverBackups();
+        });
 
         // Open file from command line
         if (!fileToOpen.empty()) {

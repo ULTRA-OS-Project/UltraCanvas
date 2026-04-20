@@ -1096,9 +1096,9 @@ namespace UltraCanvas {
             if (IsFocused() && i == cursorPosition.lineIndex) {
                 Rect2Di cursorRect = LineColumnToCursorPos(cursorPosition);
                 context->SetFillPaint(Color(255, 128, 128, 255));
-                context->FillRectangle(Rect2Df(bounds.x, cursorRect.y, gutterW, cursorRect.height));
+                context->FillRectangle(Rect2Df(bounds.x+1, cursorRect.y, gutterW, cursorRect.height));
                 context->SetTextPaint(style.fontColor);
-                context->SetFontWeight(FontWeight::Bold);
+                context->SetFontWeight(FontWeight::Normal);
             } else {
                 context->SetTextPaint(style.lineNumbersColor);
                 context->SetFontWeight(FontWeight::Normal);
@@ -2682,10 +2682,7 @@ namespace UltraCanvas {
     int UltraCanvasTextArea::CalculateLineNumbersWidth(IRenderContext* ctx) {
         if (!style.showLineNumbers) return 0;
 
-        // Calculate the maximum line number we need to display:
-        // current line count + 50 lines of headroom so the gutter doesn't
-        // constantly resize as the user types near the threshold
-        int maxLineNumber = static_cast<int>(lines.size()) + 50;
+        int maxLineNumber = static_cast<int>(lines.size());
 
         // Count digits needed
         int digits = 1;

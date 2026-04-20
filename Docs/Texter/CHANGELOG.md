@@ -1,3 +1,9 @@
+2016-04-17 1.0.18
+- Many updates in UltraCanvasTextarea
+- Disable focus on TextArea in Markdown mode on file load and on tab switch if cursor at 0,0 position
+- Do RestoreSessionAndRecoverBackups immediately without waiting splash screen to close.
+- Fixed save all files on exit.
+
 2016-04-17 1.0.17
 - Change design of Recent files menu. Increase max recent files to 30
 - Migrate Texter's Recent Files submenu to the new API. The submenu now regenerates itself on every open from the recentFiles list.
