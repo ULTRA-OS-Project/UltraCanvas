@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.2.6
-// Last Modified: 2026-04-16
+// Version: 3.3.0
+// Last Modified: 2026-04-20
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -18,6 +18,9 @@
 
 namespace UltraCanvas {
 // Constructor
+    constexpr int lineShardSoftLimit = 4000;
+    constexpr int lineShardHardLimit = 12000;
+
     UltraCanvasTextArea::UltraCanvasTextArea(const std::string& name, int id, int x, int y,
                                              int width, int height)
             : UltraCanvasUIElement(name, id, x, y, width, height),
@@ -154,36 +157,39 @@ namespace UltraCanvas {
 
 // ===== POSITION CONVERSION =====
 
-    // Convert grapheme position to line/column (both in graphemes)
+    // Convert grapheme position to line/column (both in graphemes). Terminal segments
+    // contribute visibleLen + 1 (the \n is one grapheme); continuation segments
+    // contribute only their visible length (no boundary between them).
     std::pair<int, int> UltraCanvasTextArea::GetLineColumnFromPosition(int graphemePosition) const {
         int line = 0;
         int col = 0;
         int currentPos = 0;
 
         for (size_t i = 0; i < lines.size(); i++) {
-            int lineLength = static_cast<int>(utf8_length(lines[i]));
-            if (currentPos + lineLength >= graphemePosition) {
+            int vis = GetLineVisibleLength(static_cast<int>(i));
+            int span = vis + (LineHasNewline(static_cast<int>(i)) ? 1 : 0);
+            if (currentPos + vis >= graphemePosition) {
                 line = static_cast<int>(i);
                 col = graphemePosition - currentPos;
-                break;
+                return {line, col};
             }
-            currentPos += lineLength + 1; // +1 for newline (counts as 1 grapheme)
+            currentPos += span;
             line = static_cast<int>(i);
         }
-
         return {line, col};
     }
 
-    // Convert line/column (in graphemes) to grapheme position
+    // Convert line/column (in graphemes) to absolute grapheme position.
     int UltraCanvasTextArea::GetPositionFromLineColumn(int line, int graphemeColumn) const {
         int position = 0;
 
         for (int i = 0; i < line && i < static_cast<int>(lines.size()); i++) {
-            position += static_cast<int>(utf8_length(lines[i])) + 1; // +1 for newline
+            int vis = GetLineVisibleLength(i);
+            position += vis + (LineHasNewline(i) ? 1 : 0);
         }
 
         if (line < static_cast<int>(lines.size())) {
-            position += std::min(graphemeColumn, static_cast<int>(utf8_length(lines[line])));
+            position += std::min(graphemeColumn, GetLineVisibleLength(line));
         }
 
         return position;
@@ -192,26 +198,23 @@ namespace UltraCanvas {
 // ===== TEXT MANIPULATION METHODS =====
 
     void UltraCanvasTextArea::SetText(const std::string& newText, bool runNotifications) {
-        // Detect and set line ending type from content
+        // Detect and set line ending type from content (used only for save-side conversion)
         LineEndingType detectedEOL = DetectLineEnding(newText);
         bool eolChanged = (detectedEOL != lineEndingType);
         lineEndingType = detectedEOL;
 
-        // Split into lines, handling all EOL types
-        lines = utf8_split_lines(newText);
+        // Normalize to LF, keep \n inside terminal segments, shard long logical lines.
+        lines = utf8_split_lines_sharded(newText, lineShardSoftLimit, lineShardHardLimit);
         if (lines.empty()) {
             lines.push_back(std::string());
         }
 
-        // Rebuild textContent with the detected line ending
+        // textContent is the verbatim concatenation of all segments.
         textContent.clear();
-        std::string eolSeq = LineEndingSequence(lineEndingType);
-        for (size_t i = 0; i < lines.size(); i++) {
-            textContent.append(lines[i]);
-            if (i < lines.size() - 1) {
-                textContent.append(eolSeq);
-            }
-        }
+        size_t total = 0;
+        for (const auto& l : lines) total += l.size();
+        textContent.reserve(total);
+        for (const auto& l : lines) textContent.append(l);
 
         // Full text replacement: invalidate the layout cache + MD index.
         lineLayouts.clear();
@@ -252,17 +255,25 @@ namespace UltraCanvas {
             InsertLineLayoutEntry(0);
             line = 0;
             col  = 0;
-
         }
+
+        // Ensure cursor sits inside the visible portion, not at/after the trailing \n.
+        if (col > GetLineVisibleLength(line)) col = GetLineVisibleLength(line);
 
         const char* p   = textToInsert.c_str();
         const char* end = p + textToInsert.size();
         while (p < end) {
             if (*p == '\r' || *p == '\n') {
                 bool isCRLF = (*p == '\r' && p + 1 < end && *(p + 1) == '\n');
-                std::string currentLine = lines[line];
-                lines[line] = utf8_substr(currentLine, 0, col);
-                lines.insert(lines.begin() + line + 1, utf8_substr(currentLine, col));
+                int vis = GetLineVisibleLength(line);
+                bool wasTerminal = LineHasNewline(line);
+                std::string cur = lines[line];
+                std::string left  = utf8_substr(cur, 0, col);
+                std::string right = utf8_substr(cur, col, vis - col);
+                if (wasTerminal) right.append("\n");
+                left.append("\n");
+                lines[line] = std::move(left);
+                lines.insert(lines.begin() + line + 1, std::move(right));
                 InsertLineLayoutEntry(line + 1);
                 line++;
                 col = 0;
@@ -276,11 +287,19 @@ namespace UltraCanvas {
             }
         }
 
-        for (int i = startLine; i <= line && i < static_cast<int>(lines.size()); i++) {
+        // Remember cursor as absolute grapheme position, then re-shard touched range
+        // (which may insert new entries and shift line indices), then resolve cursor.
+        int cursorAbs = GetPositionFromLineColumn(line, col);
+
+        for (int i = startLine; i <= line && i < static_cast<int>(lines.size()); ) {
             InvalidateLineLayout(i);
+            int added = ReshardSegment(i);
+            line += added;
+            i += 1 + added;
         }
 
-        SetCursorPosition({line, col});
+        auto lc = GetLineColumnFromPosition(cursorAbs);
+        SetCursorPosition({lc.first, lc.second});
 
         RebuildText();
     }
@@ -305,9 +324,17 @@ namespace UltraCanvas {
             col  = 0;
         }
 
-        std::string currentLine = lines[line];
-        lines[line] = utf8_substr(currentLine, 0, col);
-        lines.insert(lines.begin() + line + 1, utf8_substr(currentLine, col));
+        int vis = GetLineVisibleLength(line);
+        if (col > vis) col = vis;
+        bool wasTerminal = LineHasNewline(line);
+
+        std::string cur = lines[line];
+        std::string left  = utf8_substr(cur, 0, col);
+        std::string right = utf8_substr(cur, col, vis - col);
+        if (wasTerminal) right.append("\n");
+        left.append("\n");
+        lines[line] = std::move(left);
+        lines.insert(lines.begin() + line + 1, std::move(right));
         InvalidateLineLayout(line);
         InsertLineLayoutEntry(line + 1);
 
@@ -332,19 +359,25 @@ namespace UltraCanvas {
         SaveState();
         int line = cursorPosition.lineIndex;
         int col  = cursorPosition.columnIndex;
-        bool needsRebuild = false;
 
         if (col > 0) {
             utf8_erase(lines[line], col - 1, 1);
             InvalidateLineLayout(line);
             SetCursorPosition({line, col - 1});
         } else if (line > 0) {
-            int prevLineLength = static_cast<int>(utf8_length(lines[line - 1]));
+            int prevVis = GetLineVisibleLength(line - 1);
+            bool prevTerminal = LineHasNewline(line - 1);
+            if (prevTerminal) {
+                // Strip \n from previous segment (the "deleted" character)
+                lines[line - 1].pop_back();
+            }
+            // Current segment carries its own \n forward if it is terminal.
             lines[line - 1].append(lines[line]);
             lines.erase(lines.begin() + line);
             InvalidateLineLayout(line - 1);
             RemoveLineLayoutEntry(line);
-            SetCursorPosition({line - 1, prevLineLength});
+            SetCursorPosition({line - 1, prevVis});
+            ReshardSegment(line - 1);
         }
 
         RebuildText();
@@ -359,15 +392,19 @@ namespace UltraCanvas {
         int col  = cursorPosition.columnIndex;
 
         if (line < static_cast<int>(lines.size())) {
-            int lineLen = static_cast<int>(utf8_length(lines[line]));
-            if (col < lineLen) {
+            int vis = GetLineVisibleLength(line);
+            if (col < vis) {
                 utf8_erase(lines[line], col, 1);
                 InvalidateLineLayout(line);
             } else if (line < static_cast<int>(lines.size()) - 1) {
+                if (LineHasNewline(line)) {
+                    lines[line].pop_back();  // strip \n (the "deleted" character)
+                }
                 lines[line].append(lines[line + 1]);
                 lines.erase(lines.begin() + line + 1);
                 InvalidateLineLayout(line);
                 RemoveLineLayoutEntry(line + 1);
+                ReshardSegment(line);
             }
 
             RebuildText();
@@ -387,13 +424,21 @@ namespace UltraCanvas {
         int startLine = a.lineIndex, startCol = a.columnIndex;
         int endLine   = b.lineIndex, endCol   = b.columnIndex;
 
+        int sv = GetLineVisibleLength(startLine);
+        int ev = GetLineVisibleLength(endLine);
+        if (startCol > sv) startCol = sv;
+        if (endCol > ev) endCol = ev;
+
         if (startLine == endLine) {
             utf8_erase(lines[startLine], startCol, endCol - startCol);
             InvalidateLineLayout(startLine);
         } else {
+            bool endTerminal = LineHasNewline(endLine);
             std::string newLine = utf8_substr(lines[startLine], 0, startCol);
-            newLine.append(utf8_substr(lines[endLine], endCol));
-            lines[startLine] = newLine;
+            std::string tail = utf8_substr(lines[endLine], endCol, ev - endCol);
+            if (endTerminal) tail.append("\n");
+            newLine.append(tail);
+            lines[startLine] = std::move(newLine);
             lines.erase(lines.begin() + startLine + 1, lines.begin() + endLine + 1);
             InvalidateLineLayout(startLine);
             for (int i = endLine; i > startLine; i--) {
@@ -405,6 +450,7 @@ namespace UltraCanvas {
         selectionStart = LineColumnIndex::INVALID;
         selectionEnd   = LineColumnIndex::INVALID;
 
+        ReshardSegment(startLine);
         RebuildText();
     }
 // ===== CURSOR MOVEMENT METHODS (Grapheme-aware) =====
@@ -420,7 +466,7 @@ namespace UltraCanvas {
         if (col > 0) {
             SetCursorPosition({line, col - 1});
         } else if (line > 0) {
-            SetCursorPosition({line - 1, utf8_length(lines[line - 1])});
+            SetCursorPosition({line - 1, GetLineVisibleLength(line - 1)});
         }
 
         if (selecting) {
@@ -439,7 +485,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::MoveCursorRight(bool selecting) {
         int totalLines = (int)lines.size();
         if (cursorPosition.lineIndex >= totalLines - 1 &&
-            (totalLines == 0 || cursorPosition.columnIndex >= utf8_length(lines[cursorPosition.lineIndex]))) {
+            (totalLines == 0 || cursorPosition.columnIndex >= GetLineVisibleLength(cursorPosition.lineIndex))) {
             return;
         }
 
@@ -447,7 +493,7 @@ namespace UltraCanvas {
         int line = cursorPosition.lineIndex;
         int col  = cursorPosition.columnIndex;
 
-        int lineCps = utf8_length(lines[line]);
+        int lineCps = GetLineVisibleLength(line);
         if (col < lineCps) {
             SetCursorPosition({line, col + 1});
         } else if (line + 1 < totalLines) {
@@ -485,12 +531,12 @@ namespace UltraCanvas {
             } else if (cursorPosition.lineIndex > 0) {
                 newPos.lineIndex = cursorPosition.lineIndex - 1;
                 newPos.columnIndex = std::min(cursorPosition.columnIndex,
-                                              utf8_length(lines[newPos.lineIndex]));
+                                              GetLineVisibleLength(newPos.lineIndex));
             }
         } else if (cursorPosition.lineIndex > 0) {
             newPos.lineIndex = cursorPosition.lineIndex - 1;
             newPos.columnIndex = std::min(cursorPosition.columnIndex,
-                                          utf8_length(lines[newPos.lineIndex]));
+                                          GetLineVisibleLength(newPos.lineIndex));
         } else {
             return;
         }
@@ -523,12 +569,12 @@ namespace UltraCanvas {
             } else if (cursorPosition.lineIndex < (int)lines.size() - 1) {
                 newPos.lineIndex = cursorPosition.lineIndex + 1;
                 newPos.columnIndex = std::min(cursorPosition.columnIndex,
-                                              utf8_length(lines[newPos.lineIndex]));
+                                              GetLineVisibleLength(newPos.lineIndex));
             }
         } else if (cursorPosition.lineIndex < (int)lines.size() - 1) {
             newPos.lineIndex = cursorPosition.lineIndex + 1;
             newPos.columnIndex = std::min(cursorPosition.columnIndex,
-                                          utf8_length(lines[newPos.lineIndex]));
+                                          GetLineVisibleLength(newPos.lineIndex));
         } else {
             return;
         }
@@ -556,7 +602,7 @@ namespace UltraCanvas {
         if (col == 0) {
             if (line > 0) {
                 line--;
-                col = utf8_length(lines[line]);
+                col = GetLineVisibleLength(line);
             } else {
                 if (selecting) {
                     if (selectionStart.lineIndex < 0) selectionStart = cursorPosition;
@@ -602,7 +648,7 @@ namespace UltraCanvas {
 
         LineColumnIndex oldPos = cursorPosition;
         const std::string& currentLine = lines[line];
-        int lineLen = utf8_length(currentLine);
+        int lineLen = GetLineVisibleLength(line);
 
         if (col >= lineLen) {
             if (line + 1 < static_cast<int>(lines.size())) {
@@ -656,7 +702,7 @@ namespace UltraCanvas {
         } else if (cursorPosition.lineIndex > 0) {
             newPos.lineIndex  = std::max(0, cursorPosition.lineIndex - 10);
             newPos.columnIndex = std::min(cursorPosition.columnIndex,
-                                          utf8_length(lines[newPos.lineIndex]));
+                                          GetLineVisibleLength(newPos.lineIndex));
         } else {
             return;
         }
@@ -684,7 +730,7 @@ namespace UltraCanvas {
         } else if (cursorPosition.lineIndex < (int)lines.size() - 1) {
             newPos.lineIndex  = std::min((int)lines.size() - 1, cursorPosition.lineIndex + 10);
             newPos.columnIndex = std::min(cursorPosition.columnIndex,
-                                          utf8_length(lines[newPos.lineIndex]));
+                                          GetLineVisibleLength(newPos.lineIndex));
         } else {
             return;
         }
@@ -732,13 +778,14 @@ namespace UltraCanvas {
         LineColumnIndex oldPos = cursorPosition;
 
         if (line < static_cast<int>(lines.size())) {
-            int targetCol = utf8_length(lines[line]);
+            int vis = GetLineVisibleLength(line);
+            int targetCol = vis;
             if (wordWrap) {
                 Rect2Di curRect = LineColumnToCursorPos(cursorPosition);
                 if (curRect.IsValid()) {
                     int farRight = 0x7fffffff / 1024;
                     LineColumnIndex hit = PosToLineColumn({farRight, curRect.y + 3});
-                    if (hit.lineIndex == line) targetCol = hit.columnIndex;
+                    if (hit.lineIndex == line) targetCol = std::min(hit.columnIndex, vis);
                 }
             }
             SetCursorPosition({line, targetCol});
@@ -772,7 +819,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::MoveCursorToEnd(bool selecting) {
         LineColumnIndex oldPos = cursorPosition;
         int toLine = std::max(static_cast<int>(lines.size()) - 1, 0);
-        int lineLength = utf8_length(lines[toLine]);
+        int lineLength = GetLineVisibleLength(toLine);
         SetCursorPosition({toLine, lineLength});
         if (selecting) {
             if (selectionStart.lineIndex < 0) selectionStart = oldPos;
@@ -795,7 +842,7 @@ namespace UltraCanvas {
         }
         selectionStart = {0, 0};
         int last = (int)lines.size() - 1;
-        selectionEnd  = {last, utf8_length(lines[last])};
+        selectionEnd  = {last, GetLineVisibleLength(last)};
         SetCursorPosition(selectionEnd);
 
         RequestRedraw();
@@ -804,7 +851,7 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::SelectLine(int lineIndex) {
         if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
             selectionStart = {lineIndex, 0};
-            selectionEnd   = {lineIndex, utf8_length(lines[lineIndex])};
+            selectionEnd   = {lineIndex, GetLineVisibleLength(lineIndex)};
             SetCursorPosition(selectionEnd);
             RequestRedraw();
         }
@@ -816,7 +863,7 @@ namespace UltraCanvas {
         if (line >= static_cast<int>(lines.size())) return;
 
         const std::string& currentLine = lines[line];
-        int lineLen = utf8_length(currentLine);
+        int lineLen = GetLineVisibleLength(line);
         if (lineLen == 0) return;
 
         int wordStart = col;
@@ -874,14 +921,16 @@ namespace UltraCanvas {
         int startLine = a.lineIndex, startCol = a.columnIndex;
         int endLine   = b.lineIndex, endCol   = b.columnIndex;
 
-        std::string eolSeq = LineEndingSequence(lineEndingType);
         std::string result;
         for (int i = startLine; i <= endLine && i < static_cast<int>(lines.size()); i++) {
-            int colStart = (i == startLine) ? startCol : 0;
-            int colEnd = (i == endLine) ? endCol : static_cast<int>(utf8_length(lines[i]));
+            int vis = GetLineVisibleLength(i);
+            int colStart = (i == startLine) ? std::min(startCol, vis) : 0;
+            int colEnd   = (i == endLine)   ? std::min(endCol, vis)   : vis;
             result.append(utf8_substr(lines[i], colStart, colEnd - colStart));
-            if (i < endLine) {
-                result.append(eolSeq);
+            // Only emit \n between terminal segments. Continuation segments flow directly
+            // into the next piece, so the copied text spans shard boundaries seamlessly.
+            if (i < endLine && LineHasNewline(i)) {
+                result.append("\n");
             }
         }
         return result;
@@ -928,16 +977,18 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasTextArea::GetLine(int lineIndex) const {
-        if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
-            return lines[lineIndex];
-        }
-        return std::string();
+        // Callers shouldn't see the internal \n marker.
+        return GetLineContent(lineIndex);
     }
 
     void UltraCanvasTextArea::SetLine(int lineIndex, const std::string& text) {
         if (lineIndex >= 0 && lineIndex < static_cast<int>(lines.size())) {
+            bool wasTerminal = LineHasNewline(lineIndex);
             lines[lineIndex] = text;
+            // Preserve this segment's terminal/continuation status.
+            if (wasTerminal) lines[lineIndex].append("\n");
             InvalidateLineLayout(lineIndex);
+            ReshardSegment(lineIndex);
             RebuildText();
         }
     }
@@ -1036,24 +1087,26 @@ namespace UltraCanvas {
         int viewportBottom = viewportTop + visibleTextArea.height;
         for (int i = 0; i < (int)lineLayouts.size(); i++) {
             const auto& ll = GetActualLineLayout(i);
-            if (!ll) continue;
+            if (!ll || !ll->layout) continue;
             int lineTop    = ll->bounds.y;
             int lineBottom = lineTop + ll->bounds.height;
             if (lineBottom < viewportTop) continue;
             if (lineTop    > viewportBottom) break;
-
             int numY = visibleTextArea.y + lineTop - verticalScrollOffset;
             if (IsFocused() && i == cursorPosition.lineIndex) {
+                Rect2Di cursorRect = LineColumnToCursorPos(cursorPosition);
                 context->SetFillPaint(Color(255, 128, 128, 255));
-                context->FillRectangle(Rect2Df(bounds.x, numY, gutterW, ll->bounds.height));
+                context->FillRectangle(Rect2Df(bounds.x, cursorRect.y, gutterW, cursorRect.height));
                 context->SetTextPaint(style.fontColor);
                 context->SetFontWeight(FontWeight::Bold);
             } else {
                 context->SetTextPaint(style.lineNumbersColor);
                 context->SetFontWeight(FontWeight::Normal);
             }
-            context->DrawTextInRect(std::to_string(i + 1),
-                Rect2Df(bounds.x, numY, gutterW - 4, ll->bounds.height));
+            if (ll->logicalLineNumber) {
+                context->DrawTextInRect(std::to_string(ll->logicalLineNumber),
+                                        Rect2Df(bounds.x, numY, gutterW - 4, ll->bounds.height));
+            }
         }
         context->PopState();
     }
@@ -1735,8 +1788,11 @@ namespace UltraCanvas {
             maxLineWidth = visibleTextArea.width;
         } else {
             maxLineWidth = 0;
-            for (const auto& line : lines) {
-                maxLineWidth = std::max(maxLineWidth, ctx->GetTextLineWidth(line));
+            for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+                // Don't measure the trailing \n — it wouldn't add width, but Pango may
+                // treat it as a mandatory break and return a misleading result.
+                maxLineWidth = std::max(maxLineWidth,
+                                        ctx->GetTextLineWidth(std::string(GetLineContentView(i))));
             }
         }
         ctx->PopState();
@@ -1812,6 +1868,74 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== SEGMENT HELPERS =====
+
+    bool UltraCanvasTextArea::LineHasNewline(int i) const {
+        if (i < 0 || i >= static_cast<int>(lines.size())) return false;
+        const std::string& s = lines[i];
+        return !s.empty() && s.back() == '\n';
+    }
+
+    int UltraCanvasTextArea::GetLineVisibleLength(int i) const {
+        if (i < 0 || i >= static_cast<int>(lines.size())) return 0;
+        int n = utf8_length(lines[i]);
+        return LineHasNewline(i) ? n - 1 : n;
+    }
+
+    std::string UltraCanvasTextArea::GetLineContent(int i) const {
+        if (i < 0 || i >= static_cast<int>(lines.size())) return {};
+        const std::string& s = lines[i];
+        if (!s.empty() && s.back() == '\n') {
+            return s.substr(0, s.size() - 1);
+        }
+        return s;
+    }
+
+    std::string_view UltraCanvasTextArea::GetLineContentView(int i) const {
+        if (i < 0 || i >= static_cast<int>(lines.size())) return {};
+        const std::string& s = lines[i];
+        size_t sz = s.size();
+        if (sz > 0 && s[sz - 1] == '\n') sz--;
+        return std::string_view(s.data(), sz);
+    }
+
+    int UltraCanvasTextArea::ReshardSegment(int i) {
+        if (i < 0 || i >= static_cast<int>(lines.size())) return 0;
+
+        if (GetLineVisibleLength(i) <= lineShardHardLimit) return 0;
+
+        bool wasTerminal = LineHasNewline(i);
+        std::string body = wasTerminal
+            ? lines[i].substr(0, lines[i].size() - 1)
+            : lines[i];
+
+        std::vector<std::string> shards = utf8_split_lines_sharded(body, lineShardSoftLimit, lineShardHardLimit);
+        if (shards.empty()) shards.emplace_back();
+        if (wasTerminal) shards.back().append("\n");
+
+        lines[i] = std::move(shards[0]);
+        InvalidateLineLayout(i);
+        for (int k = 1; k < static_cast<int>(shards.size()); k++) {
+            lines.insert(lines.begin() + i + k, std::move(shards[k]));
+            InsertLineLayoutEntry(i + k);
+        }
+        return static_cast<int>(shards.size()) - 1;
+    }
+
+    std::string UltraCanvasTextArea::GetTextForSave() const {
+        if (lineEndingType == LineEndingType::LF) {
+            return textContent;  // already normalized
+        }
+        std::string eol = LineEndingSequence(lineEndingType);
+        std::string out;
+        out.reserve(textContent.size() + 32);
+        for (char c : textContent) {
+            if (c == '\n') out.append(eol);
+            else out.push_back(c);
+        }
+        return out;
+    }
+
     // Step 6 (pending): wire selection-background attributes.
     void UltraCanvasTextArea::ApplySelectionAttributes() {
     }
@@ -1871,7 +1995,7 @@ namespace UltraCanvas {
         if (lineIndex < a.lineIndex || lineIndex > b.lineIndex) return;
         if (a.lineIndex == b.lineIndex && a.columnIndex == b.columnIndex) return;
 
-        int realLineCpCount = utf8_length(lines[lineIndex]);
+        int realLineCpCount = GetLineVisibleLength(lineIndex);
         int startCp = (lineIndex == a.lineIndex) ? a.columnIndex : 0;
         int endCp   = (lineIndex == b.lineIndex) ? b.columnIndex : realLineCpCount;
 
@@ -1902,13 +2026,10 @@ namespace UltraCanvas {
 
     void UltraCanvasTextArea::RebuildText() {
         textContent.clear();
-        std::string eolSeq = LineEndingSequence(lineEndingType);
-        for (size_t i = 0; i < lines.size(); i++) {
-            textContent.append(lines[i]);
-            if (i < lines.size() - 1) {
-                textContent.append(eolSeq);
-            }
-        }
+        size_t total = 0;
+        for (const auto& l : lines) total += l.size();
+        textContent.reserve(total);
+        for (const auto& l : lines) textContent.append(l);
         markdownIndexDirty = true;
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
@@ -2095,6 +2216,7 @@ namespace UltraCanvas {
         if (on && !syntaxTokenizer) {
             syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
         }
+        InvalidateAllLineLayouts();
         RequestRedraw();
     }
 
@@ -2104,6 +2226,7 @@ namespace UltraCanvas {
                 syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
             }
             syntaxTokenizer->SetLanguage(language);
+            InvalidateAllLineLayouts();
             RequestRedraw();
         }
     }
@@ -2114,6 +2237,7 @@ namespace UltraCanvas {
         }
         auto result = syntaxTokenizer->SetLanguageByExtension(extension);
         if (style.highlightSyntax) {
+            InvalidateAllLineLayouts();
             RequestRedraw();
         }
         return result;
@@ -2515,9 +2639,12 @@ namespace UltraCanvas {
 
         SaveState();
         std::string indent(tabSize, ' ');
-        for (int i = startLine; i <= endLine; i++) {
+        for (int i = startLine; i <= endLine; ) {
             lines[i].insert(0, indent);
             InvalidateLineLayout(i);
+            int added = ReshardSegment(i);
+            endLine += added;
+            i += 1 + added;
         }
         RebuildText();
     }
@@ -2534,7 +2661,7 @@ namespace UltraCanvas {
         
         for (int i = startLine; i <= endLine; i++) {
             int spacesToRemove = 0;
-            for (int j = 0; j < tabSize && j < utf8_length(lines[i]); j++) {
+            for (int j = 0; j < tabSize && j < GetLineVisibleLength(i); j++) {
                 std::string ch = utf8_char_at(lines[i], j);
                 if (ch == " " || ch == "\t") {
                     spacesToRemove++;
@@ -2803,7 +2930,7 @@ namespace UltraCanvas {
         // Past the last line — land at the end of the document.
         if (!lineLayouts.empty() && lineLayouts.back()) {
             int last = (int)lineLayouts.size() - 1;
-            return {last, utf8_length(lines[last])};
+            return {last, GetLineVisibleLength(last)};
         }
         return LineColumnIndex::INVALID;
     }
@@ -2854,13 +2981,23 @@ namespace UltraCanvas {
         int groupStart = -1;
         auto isTableRowByText = [&](int idx) -> bool {
             if (idx < 0 || idx >= (int)lines.size()) return false;
-            std::string t = TrimWhitespace(lines[idx]);
+            std::string t = TrimWhitespace(GetLineContent(idx));
             return !t.empty() && t[0] == '|';
         };
-
+        int prevLogicalLineNumber = 0;
+        int currentLogicalLineNumber = 1;
         for(int i = 0; i < (int)lines.size(); i++) {
             if (!lineLayouts[i]) {
                 lineLayouts[i] = MakeLineLayout(ctx, i);
+            }
+            if (prevLogicalLineNumber != currentLogicalLineNumber) {
+                lineLayouts[i]->logicalLineNumber = currentLogicalLineNumber;
+                prevLogicalLineNumber = currentLogicalLineNumber;
+            } else {
+                lineLayouts[i]->logicalLineNumber = 0;
+            }
+            if (LineHasNewline(i)) {
+                currentLogicalLineNumber++;
             }
             bool inTable = isTableRowByText(i);
             if (inTable) {
@@ -2873,6 +3010,7 @@ namespace UltraCanvas {
 
         if (cursorPosition.lineIndex >= 0) {
             currentLine = MakePlainLineLayout(ctx, cursorPosition.lineIndex);
+            currentLine->logicalLineNumber = lineLayouts[cursorPosition.lineIndex]->logicalLineNumber;
         } else {
             currentLine.reset();
         }
@@ -2921,19 +3059,22 @@ namespace UltraCanvas {
 
     std::unique_ptr<LineLayoutBase> UltraCanvasTextArea::MakePlainLineLayout(IRenderContext* ctx, int lineIndex) {
         auto ll = std::make_unique<LineLayoutBase>();
-        const std::string& txt = lines[lineIndex];
+        // Content without the trailing \n — Pango must never see the line terminator,
+        // or it would generate a phantom wrapped line under the segment.
+        std::string txt = GetLineContent(lineIndex);
 
         ll->layoutType = LineLayoutType::PlainLine;
         ll->layout = ctx->CreateTextLayout(txt, false);
         ll->layout->SetFontStyle(style.fontStyle);
-        ll->layout->SetLineSpacing(style.lineHeight);
+        //ll->layout->SetLineSpacing(style.lineHeight);
         if (wordWrap && visibleTextArea.width > 0) {
             ll->layout->SetExplicitWidth(visibleTextArea.width);
             ll->layout->SetWrap(TextWrap::WrapWordChar);
         }
 
         if (style.highlightSyntax && syntaxTokenizer) {
-            auto tokens = syntaxTokenizer->TokenizeLine(txt);
+            auto tokens = syntaxTokenizer->TokenizeLine(txt);  // txt is already content-only
+
             int currentByte = 0;
             for (const auto& token : tokens) {
                 int startByte = currentByte;

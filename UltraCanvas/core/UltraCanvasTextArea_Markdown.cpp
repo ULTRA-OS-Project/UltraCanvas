@@ -443,7 +443,7 @@ namespace UltraCanvas {
         std::unordered_map<std::string, std::vector<int>> anchorRefs;
 
         for (int i = 0; i < (int)lines.size(); i++) {
-            const std::string& line = lines[i];
+            std::string line = GetLineContent(i);
             std::string trimmed = TrimWhitespace(line);
             if (trimmed.empty()) continue;
 
@@ -1020,7 +1020,8 @@ namespace UltraCanvas {
     // from lineLayouts[lineIndex-1]'s type — callers must invalidate subsequent lines when a
     // structural edit changes fence/list/quote state (Step 8 will tighten this).
     std::unique_ptr<LineLayoutBase> UltraCanvasTextArea::MakeMarkdownLineLayout(IRenderContext* ctx, int lineIndex) {
-        const std::string& rawLine = lines[lineIndex];
+        // Strip trailing \n so neither Pango layouts nor markdown parsing see the line terminator.
+        std::string rawLine = GetLineContent(lineIndex);
         std::string trimmed = TrimWhitespace(rawLine);
 
         // Pixel constants sourced from markdownStyle (instead of duplicated literals)
@@ -1311,9 +1312,9 @@ namespace UltraCanvas {
             if (isTableRowLine(trimmed)) {
                 bool thisIsSep = isSeparatorRow(trimmed);
                 std::string nextTrim = (lineIndex + 1 < (int)lines.size())
-                                       ? TrimWhitespace(lines[lineIndex + 1]) : std::string();
+                                       ? TrimWhitespace(GetLineContent(lineIndex + 1)) : std::string();
                 std::string prevTrim = (lineIndex > 0)
-                                       ? TrimWhitespace(lines[lineIndex - 1]) : std::string();
+                                       ? TrimWhitespace(GetLineContent(lineIndex - 1)) : std::string();
                 bool nextIsSep = isSeparatorRow(nextTrim);
                 bool prevIsTable = isTableRowLine(prevTrim);
                 bool nextIsTable = isTableRowLine(nextTrim);
@@ -1505,7 +1506,7 @@ namespace UltraCanvas {
             bool atLeast4Cols = indentCols >= 4;
             bool prevBlocks = false;
             if (prevLayout) {
-                std::string prevTrim = TrimWhitespace(lines[lineIndex - 1]);
+                std::string prevTrim = TrimWhitespace(GetLineContent(lineIndex - 1));
                 if (!prevTrim.empty()) {
                     switch (prevLayout->layoutType) {
                         case LineLayoutType::MarkDownLine:
@@ -1546,7 +1547,7 @@ namespace UltraCanvas {
         // line. The term is rendered bold. We look ahead at most a few lines.
         if (!trimmed.empty()) {
             for (int ahead = lineIndex + 1; ahead < (int)lines.size(); ahead++) {
-                std::string nextTrim = TrimWhitespace(lines[ahead]);
+                std::string nextTrim = TrimWhitespace(GetLineContent(ahead));
                 if (nextTrim.empty()) continue;
                 if (nextTrim.size() >= 2 && nextTrim[0] == ':' && nextTrim[1] == ' ') {
                     auto dt = std::make_unique<LineLayoutBase>();

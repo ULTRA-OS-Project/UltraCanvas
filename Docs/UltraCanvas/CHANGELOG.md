@@ -1,6 +1,17 @@
-2026-04-16 1.0.19
+2026-04-20 1.0.20
+- Shard very long lines to speed up TextArea on big files.
+  Lines longer than 4000 codepoints are split at a break char
+  (space/tab/punct) or force-split at 12000 during SetText.
+  Known problems: 
+    if line has no break chars (very rare case) it will splitted at 12000 char boundary,
+    attempt to glue that lines (backspace or delete) will cause reshard (resplit) again
+    and it will splitted at same boundary, visually it will looks like delete/backspace did not work 
+- Show current line marker (red box) for cursor position
+- Calculate and show real logical line numbers for split lines. 
+
+2026-04-17 1.0.19
 - UpdateGeometry for visible childs in container only
-- 
+  
 2026-04-16 1.0.18
 - Revert back to the Sans font for Windows insetad of detecting default font. It detected the "Segoe UI" and this shit font can't be vertically centerted without special patches especially for that font, it always shifted down a little (even in browsers)
 - Fixed bug with high CPU usage and slow cursor movement on the big files with very long lines.

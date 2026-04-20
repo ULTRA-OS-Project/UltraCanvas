@@ -125,4 +125,74 @@ namespace UltraCanvas {
         }
         return result;
     }
+
+    // Shard a logical-line body (no terminator) into pieces <= hardLimit codepoints.
+    // Emits all pieces except the last into 'out'; returns the remaining tail so the
+    // caller can decide whether to append the terminal '\n' to it.
+    static std::string shard_logical_line(std::string body,
+                                          std::vector<std::string>& out,
+                                          int softLimit, int hardLimit) {
+        while (true) {
+            int n = utf8_length(body);
+            if (n <= hardLimit) return body;
+
+            size_t softByte = utf8_cp_to_byte(body, softLimit);
+            size_t hardByte = utf8_cp_to_byte(body, hardLimit);
+            int splitCp = -1;
+            size_t splitByte = 0;
+
+            const char* base = body.c_str();
+            const char* p = base + softByte;
+            const char* end = base + hardByte;
+            int cpIdx = softLimit;
+            while (p < end) {
+                gunichar cp = g_utf8_get_char(p);
+                if (utf8_is_break_char_cp(cp)) {
+                    splitCp = cpIdx;
+                    splitByte = static_cast<size_t>(p - base);
+                    break;
+                }
+                p = g_utf8_next_char(p);
+                cpIdx++;
+            }
+
+            size_t cutByte;
+            if (splitCp >= 0) {
+                const char* afterBreak = g_utf8_next_char(base + splitByte);
+                cutByte = static_cast<size_t>(afterBreak - base);
+            } else {
+                cutByte = hardByte;
+            }
+
+            out.push_back(body.substr(0, cutByte));
+            body.erase(0, cutByte);
+        }
+    }
+
+    std::vector<std::string> utf8_split_lines_sharded(const std::string& s,
+                                                      int softLimit, int hardLimit) {
+        std::vector<std::string> result;
+        size_t start = 0;
+        size_t len = s.size();
+        while (start <= len) {
+            size_t pos = start;
+            while (pos < len && s[pos] != '\r' && s[pos] != '\n') {
+                pos++;
+            }
+            std::string body = s.substr(start, pos - start);
+            bool terminal = (pos < len);
+
+            std::string tail = shard_logical_line(std::move(body), result, softLimit, hardLimit);
+            if (terminal) tail.append("\n");
+            result.push_back(std::move(tail));
+
+            if (pos >= len) break;
+            if (s[pos] == '\r' && pos + 1 < len && s[pos + 1] == '\n') {
+                start = pos + 2;
+            } else {
+                start = pos + 1;
+            }
+        }
+        return result;
+    }
 }

@@ -75,4 +75,21 @@ namespace UltraCanvas {
 
     // Split text into lines, handling all EOL styles: \r\n, \n, \r
     std::vector<std::string> utf8_split_lines(const std::string& s);
+
+    // Break-char predicate for long-line sharding (space, tab, punctuation).
+    inline bool utf8_is_break_char_cp(gunichar cp) {
+        return cp == ' ' || cp == '\t' || cp == ',' || cp == ':' || cp == '*' || cp == '+';
+    }
+
+    // Split text into segments:
+    //  - \r\n and \r are normalized to \n
+    //  - A segment that ends with a real source-line newline keeps the \n at its end
+    //  - A logical line longer than hardLimit codepoints is split into multiple
+    //    continuation segments (no trailing \n). The sharder scans codepoints
+    //    [softLimit..hardLimit) for a break char (space/tab/punctuation) and
+    //    splits just after it; if none found, force-splits at hardLimit.
+    //  - Concatenating the result verbatim reproduces the normalized text.
+    std::vector<std::string> utf8_split_lines_sharded(const std::string& s,
+                                                      int softLimit = 4000,
+                                                      int hardLimit = 8000);
 }

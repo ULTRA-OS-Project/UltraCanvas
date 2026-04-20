@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.2.4
-// Last Modified: 2026-04-16
+// Version: 3.3.0
+// Last Modified: 2026-04-20
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -11,6 +11,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
 #include <string>
+#include <string_view>
 #include <vector>
 #include <array>
 #include <functional>
@@ -300,6 +301,7 @@ namespace UltraCanvas {
         std::unique_ptr<ITextLayout> layout;
         Point2Df layoutShift = {0, 0}; // for MD mode some elements render text layout shifted to right or bottom
         int layoutTextStartIndex = 0; // for MD mode some part of real line text is not displayed (it is part of markup)
+        int logicalLineNumber = 0;
         virtual ~LineLayoutBase() {};
     };
 
@@ -370,6 +372,9 @@ namespace UltraCanvas {
         // Text manipulation - now UTF-8 aware
         void SetText(const std::string& text, bool runNotifications = true);
         std::string GetText() const;
+        // Text with internal \n converted to the detected lineEndingType sequence
+        // (for file save / external export). GetText() itself returns normalized LF.
+        std::string GetTextForSave() const;
         void InsertText(const std::string& text);
         void InsertCodepoint(char32_t codepoint);
         void InsertNewLine();
@@ -757,6 +762,20 @@ namespace UltraCanvas {
         void InvalidateLineLayoutsFrom(int fromLine);
         void InsertLineLayoutEntry(int logicalLine);  // insert nullptr at index (new line)
         void RemoveLineLayoutEntry(int logicalLine);  // erase entry (line deleted/merged)
+
+        // --- Segment helpers ---------------------------------------------------
+        // Each entry in 'lines' is either a "terminal" segment ending with '\n'
+        // (represents a real source-line break) or a "continuation" segment with
+        // no trailing '\n' (artificial shard of a long line). textContent is the
+        // simple concatenation of all segments.
+        bool LineHasNewline(int lineIndex) const;
+        int GetLineVisibleLength(int lineIndex) const;  // utf8 length minus trailing \n
+        std::string GetLineContent(int lineIndex) const;
+        std::string_view GetLineContentView(int lineIndex) const;
+        // Re-shard a single entry to honor the <= hardLimit invariant. Inserts extra
+        // continuation segments after 'lineIndex' if needed; updates lineLayouts
+        // accordingly. Returns the number of NEW entries inserted (0 if unchanged).
+        int ReshardSegment(int lineIndex);
 
         // Selection rendering via Pango background-color attributes on each affected layout.
         // ApplyLineSelectionBackground is called from MakeLineLayout after layout construction;

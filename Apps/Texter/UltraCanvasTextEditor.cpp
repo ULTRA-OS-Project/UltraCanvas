@@ -1971,7 +1971,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                            static_cast<std::streamsize>(rawBytes.size()));
                 file.close();
             } else {
-                std::string utf8Text = doc->textArea->GetText();
+                std::string utf8Text = doc->textArea->GetTextForSave();
 
                 // Convert from UTF-8 to document encoding
                 std::vector<uint8_t> outputBytes;
