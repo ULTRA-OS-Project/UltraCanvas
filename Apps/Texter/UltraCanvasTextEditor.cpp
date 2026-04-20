@@ -16,6 +16,7 @@
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasClipboard.h"
+#include "UltraCanvasUtils.h"
 //#include "UltraCanvasDialogManager.h"
 #include <fstream>
 #include <sstream>
@@ -2861,7 +2862,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         mainLayout->AddUIElement(titleLabel)->SetWidthMode(SizeMode::Fill);
 
         // Version
-        auto versionLabel = std::make_shared<UltraCanvasLabel>("AboutVersion", 300, 20, "Version " + version);
+        auto versionLabel = std::make_shared<UltraCanvasLabel>("AboutVersion", 300, 40, "Version " + version + "\nUltraCanvas version " + versionString);
         versionLabel->SetFontSize(11);
         versionLabel->SetTextColor(Color(100, 100, 100));
         versionLabel->SetAlignment(TextAlignment::Center);
