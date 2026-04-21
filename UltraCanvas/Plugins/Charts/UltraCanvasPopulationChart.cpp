@@ -265,12 +265,6 @@ namespace UltraCanvas {
             }
         }
 
-        int absX = GetX();
-        int absY = GetY();
-
-        ctx->PushState();
-        ctx->Translate(absX, absY);
-
         RenderBackground(ctx);
         RenderTitle(ctx);
         RenderGrid(ctx);
@@ -282,8 +276,6 @@ namespace UltraCanvas {
         if (showLegend) {
             RenderLegend(ctx);
         }
-
-        ctx->PopState();
     }
 
     void UltraCanvasPopulationChart::RenderBackground(IRenderContext* ctx) {
@@ -487,7 +479,7 @@ namespace UltraCanvas {
         }
 
         if (event.type == UCEventType::MouseMove) {
-            int newHoveredIndex = GetAgeGroupIndexAt(event.x, event.y);
+            int newHoveredIndex = GetAgeGroupIndexAt(event.pointer.x, event.pointer.y);
 
             if (newHoveredIndex != hoveredGroupIndex) {
                 hoveredGroupIndex = newHoveredIndex;

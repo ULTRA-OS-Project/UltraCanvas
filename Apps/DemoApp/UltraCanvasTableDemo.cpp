@@ -186,7 +186,7 @@ namespace UltraCanvas {
             auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
             this->GetWindow()->AddChild(itemMenu);
             //Point2Di pos(itemLabel->GetXInWindow() + 50, itemLabel->GetYInWindow() + itemLabel->GetHeight());
-            itemMenu->ShowAt(ev.windowX, ev.windowY);
+            itemMenu->ShowAt(ev.pointerWindow.x, ev.pointerWindow.y);
         }
 
         void SetupEventHandlers() {

@@ -1000,8 +1000,6 @@ namespace UltraCanvas {
 
 // ===== RENDERING METHODS =====
     void UltraCanvasTextArea::Render(IRenderContext* ctx) {
-        ctx->PushState();
-
         // UpdateGeometry runs CalculateVisibleArea + UpdateLineLayouts. It's idempotent
         // if layouts are already built; calling here guards against frames where the framework
         // skipped the geometry pass.
@@ -1048,11 +1046,10 @@ namespace UltraCanvas {
 
         DrawBorder(ctx);
         DrawScrollbars(ctx);
-        ctx->PopState();
     }
 
     void UltraCanvasTextArea::DrawBorder(IRenderContext* context) {
-        auto bounds = GetBounds();
+        auto bounds = GetElementLocalBounds();
         if (style.borderWidth > 0) {
             context->DrawFilledRectangle(bounds, Colors::Transparent, style.borderWidth, style.borderColor);
         }
@@ -1062,7 +1059,7 @@ namespace UltraCanvas {
     // RenderLineLayout driven from Render().
 
     void UltraCanvasTextArea::DrawLineNumbers(IRenderContext* context) {
-        auto bounds = GetBounds();
+        auto bounds = GetElementLocalBounds();
         int gutterW = computedLineNumbersWidth;
 
         context->SetFillPaint(style.lineNumbersBackgroundColor);
@@ -1115,7 +1112,7 @@ namespace UltraCanvas {
     // attribute inside each line's ITextLayout (applied in ApplyLineSelectionBackground).
 
     void UltraCanvasTextArea::DrawBackground(IRenderContext* context) {
-        auto bounds = GetBounds();
+        auto bounds = GetElementLocalBounds();
         context->SetFillPaint(style.backgroundColor);
         context->FillRectangle(bounds);
 
@@ -1151,7 +1148,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::DrawScrollbars(IRenderContext* context) {
-        auto bounds = GetBounds();
+        auto bounds = GetElementLocalBounds();
 
         if (IsNeedVerticalScrollbar()) {
             int scrollbarX = bounds.x + bounds.width - 15;
@@ -1292,19 +1289,25 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextArea::HandleMouseDown(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
         // Scrollbar thumb dragging takes priority
-        if (IsNeedVerticalScrollbar() && verticalScrollThumb.Contains(event.x, event.y)) {
+        // dragStartOffset is the pixel offset between the pointer and the thumb origin,
+        // stored as (global pointer) - (local thumb coordinate) so the drag math in
+        // HandleMouseMove (which mixes global pointer and local bounds) stays consistent.
+        if (IsNeedVerticalScrollbar() && verticalScrollThumb.Contains(event.pointer)) {
             isDraggingVerticalThumb = true;
-            dragStartOffset.y = event.globalY - verticalScrollThumb.y;
+            // local_thumb_y = pointerGlobal.y - GetYInWindow() - (pointer.y - verticalScrollThumb.y)
+            // We want newThumbY = pointerGlobal.y - dragStartOffset.y - GetYInWindow().
+            // Solve: dragStartOffset.y = pointerGlobal.y - GetYInWindow() - verticalScrollThumb.y
+            dragStartOffset.y = event.pointerGlobal.y - GetYInWindow() - verticalScrollThumb.y;
             UltraCanvasApplication::GetInstance()->CaptureMouse(this);
             return true;
         }
 
-        if (IsNeedHorizontalScrollbar() && horizontalScrollThumb.Contains(event.x, event.y)) {
+        if (IsNeedHorizontalScrollbar() && horizontalScrollThumb.Contains(event.pointer)) {
             isDraggingHorizontalThumb = true;
-            dragStartOffset.x = event.globalX - horizontalScrollThumb.x;
+            dragStartOffset.x = event.pointerGlobal.x - GetXInWindow() - horizontalScrollThumb.x;
             UltraCanvasApplication::GetInstance()->CaptureMouse(this);
             return true;
         }
@@ -1312,15 +1315,15 @@ namespace UltraCanvas {
         SetFocus(true);
 
         // --- Markdown link/image click: intercept before cursor move ---
-        if (editingMode == TextAreaEditingMode::MarkdownHybrid && HandleMarkdownClick(event.x, event.y)) {
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid && HandleMarkdownClick(event.pointer.x, event.pointer.y)) {
             return true;
         }
 
         // --- Click counting for single / double / triple click ---
         auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastClickTime).count();
-        int dx = std::abs(event.x - lastClickX);
-        int dy = std::abs(event.y - lastClickY);
+        int dx = std::abs(event.pointer.x - lastClickX);
+        int dy = std::abs(event.pointer.y - lastClickY);
 
         if (elapsed <= MultiClickTimeThresholdMs &&
             dx <= MultiClickDistanceThreshold &&
@@ -1331,11 +1334,11 @@ namespace UltraCanvas {
         }
 
         lastClickTime = now;
-        lastClickX = event.x;
-        lastClickY = event.y;
+        lastClickX = event.pointer.x;
+        lastClickY = event.pointer.y;
 
         // --- Compute clicked text position ---
-        LineColumnIndex clicked = PosToLineColumn({event.x, event.y});
+        LineColumnIndex clicked = PosToLineColumn({event.pointer.x, event.pointer.y});
         int clickedLine = std::max(0, clicked.lineIndex);
         int clickedCol  = std::max(0, clicked.columnIndex);
 
@@ -1377,9 +1380,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextArea::HandleMouseDoubleClick(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
-        LineColumnIndex clicked = PosToLineColumn({event.x, event.y});
+        LineColumnIndex clicked = PosToLineColumn({event.pointer.x, event.pointer.y});
         if (clicked.lineIndex < 0) return true;
         SetCursorPosition(clicked);
 
@@ -1392,9 +1395,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextArea::HandleMouseTripleClick(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
-        LineColumnIndex clicked = PosToLineColumn({event.x, event.y});
+        LineColumnIndex clicked = PosToLineColumn({event.pointer.x, event.pointer.y});
         if (clicked.lineIndex < 0) return true;
         SelectLine(clicked.lineIndex);
         selectionAnchor = selectionStart;
@@ -1406,7 +1409,7 @@ namespace UltraCanvas {
     bool UltraCanvasTextArea::HandleMouseMove(const UCEvent& event) {
         // Scrollbar thumb dragging (pixel-based).
         if (isDraggingVerticalThumb) {
-            auto bounds = GetBounds();
+            auto bounds = GetElementLocalBounds();
             int scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
             int thumbHeight = verticalScrollThumb.height;
             int maxThumbY = scrollbarHeight - thumbHeight;
@@ -1419,7 +1422,8 @@ namespace UltraCanvas {
             }
             int viewportH = visibleTextArea.height;
 
-            int newThumbY = event.globalY - dragStartOffset.y - bounds.y;
+            // Result is in element-local space; dragStartOffset was computed accordingly.
+            int newThumbY = event.pointerGlobal.y - dragStartOffset.y - GetYInWindow();
             newThumbY = std::max(0, std::min(newThumbY, maxThumbY));
 
             if (maxThumbY > 0 && contentHeight > viewportH) {
@@ -1433,12 +1437,12 @@ namespace UltraCanvas {
         }
 
         if (isDraggingHorizontalThumb) {
-            auto bounds = GetBounds();
+            auto bounds = GetElementLocalBounds();
             float scrollbarWidth = static_cast<float>(bounds.width - (IsNeedVerticalScrollbar() ? 15 : 0));
             float thumbWidth = static_cast<float>(horizontalScrollThumb.width);
             float maxThumbX = scrollbarWidth - thumbWidth;
 
-            float newThumbX = static_cast<float>(event.globalX - dragStartOffset.x - bounds.x);
+            float newThumbX = static_cast<float>(event.pointerGlobal.x - dragStartOffset.x - GetXInWindow());
             newThumbX = std::max(0.0f, std::min(newThumbX, maxThumbX));
 
             if (maxThumbX > 0 && maxLineWidth > visibleTextArea.width) {
@@ -1451,18 +1455,18 @@ namespace UltraCanvas {
             return true;
         }
 
-        // --- Scrollbar hover cursor ---
+        // --- Scrollbar hover cursor --- (element-local coordinates)
         if (!isSelectingText) {
-            auto bounds = GetBounds();
+            auto bounds = GetElementLocalBounds();
             if (IsNeedVerticalScrollbar() &&
-                event.x >= bounds.x + bounds.width - 15 && event.x <= bounds.x + bounds.width &&
-                event.y >= bounds.y && event.y <= bounds.y + bounds.height) {
+                event.pointer.x >= bounds.width - 15 && event.pointer.x <= bounds.width &&
+                event.pointer.y >= 0 && event.pointer.y <= bounds.height) {
                 SetMouseCursor(UCMouseCursor::SizeNS);
                 return true;
             }
             if (IsNeedHorizontalScrollbar() &&
-                event.y >= bounds.y + bounds.height - 15 && event.y <= bounds.y + bounds.height &&
-                event.x >= bounds.x && event.x <= bounds.x + bounds.width) {
+                event.pointer.y >= bounds.height - 15 && event.pointer.y <= bounds.height &&
+                event.pointer.x >= 0 && event.pointer.x <= bounds.width) {
                 SetMouseCursor(UCMouseCursor::SizeWE);
                 return true;
             }
@@ -1471,24 +1475,24 @@ namespace UltraCanvas {
 
         // --- Markdown hover: update cursor for links/images ---
         if (editingMode == TextAreaEditingMode::MarkdownHybrid && !isSelectingText) {
-            if (!HandleMarkdownHover(event.x, event.y)) {
+            if (!HandleMarkdownHover(event.pointer.x, event.pointer.y)) {
                 SetMouseCursor(UCMouseCursor::Text);
             }
         }
 
         // --- Text drag selection ---
         if (isSelectingText && selectionAnchor.lineIndex >= 0) {
-            LineColumnIndex drag = PosToLineColumn({event.x, event.y});
+            LineColumnIndex drag = PosToLineColumn({event.pointer.x, event.pointer.y});
             if (drag.lineIndex < 0) return true;
 
             selectionStart = selectionAnchor;
             selectionEnd   = drag;
             SetCursorPosition(selectionEnd);
 
-            if (event.y < visibleTextArea.y)                             ScrollUp(1);
-            else if (event.y > visibleTextArea.y + visibleTextArea.height) ScrollDown(1);
-            if (event.x < visibleTextArea.x)                             ScrollLeft(1);
-            else if (event.x > visibleTextArea.x + visibleTextArea.width) ScrollRight(1);
+            if (event.pointer.y < visibleTextArea.y)                             ScrollUp(1);
+            else if (event.pointer.y > visibleTextArea.y + visibleTextArea.height) ScrollDown(1);
+            if (event.pointer.x < visibleTextArea.x)                             ScrollLeft(1);
+            else if (event.pointer.x > visibleTextArea.x + visibleTextArea.width) ScrollRight(1);
 
             if (onSelectionChanged) {
                 onSelectionChanged();
@@ -1532,7 +1536,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextArea::HandleMouseWheel(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
         int scrollAmount = 1;
 
@@ -1767,8 +1771,9 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::CalculateVisibleArea() {
         auto ctx = GetRenderContext();
         if (!ctx) return;
-        
-        visibleTextArea = GetBounds();
+
+        // visibleTextArea is in element-local space (ctx is translated to element origin)
+        visibleTextArea = GetElementLocalBounds();
         visibleTextArea.x += style.padding;
         visibleTextArea.y += style.padding;
         visibleTextArea.width -= style.padding * 2;

@@ -74,8 +74,8 @@ namespace UltraCanvas {
             event.type = UCEventType::Drop;
             event.targetWindow = this;
             event.nativeWindowHandle = hwnd;
-            event.x = event.windowX = x;
-            event.y = event.windowY = y;
+            event.pointerWindow = { x, y };
+            event.pointer = event.pointerWindow;
             event.droppedFiles = paths;
             event.dragMimeType = "text/uri-list";
             std::string joined;
@@ -92,8 +92,8 @@ namespace UltraCanvas {
             event.type = UCEventType::DragEnter;
             event.targetWindow = this;
             event.nativeWindowHandle = hwnd;
-            event.x = event.windowX = x;
-            event.y = event.windowY = y;
+            event.pointerWindow = { x, y };
+            event.pointer = event.pointerWindow;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
         };
 
@@ -102,8 +102,8 @@ namespace UltraCanvas {
             event.type = UCEventType::DragLeave;
             event.targetWindow = this;
             event.nativeWindowHandle = hwnd;
-            event.x = event.windowX = x;
-            event.y = event.windowY = y;
+            event.pointerWindow = { x, y };
+            event.pointer = event.pointerWindow;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
         };
 
@@ -112,8 +112,8 @@ namespace UltraCanvas {
             event.type = UCEventType::DragOver;
             event.targetWindow = this;
             event.nativeWindowHandle = hwnd;
-            event.x = event.windowX = x;
-            event.y = event.windowY = y;
+            event.pointerWindow = { x, y };
+            event.pointer = event.pointerWindow;
             UltraCanvasWindowsApplication::GetInstance()->PushEvent(event);
         };
 

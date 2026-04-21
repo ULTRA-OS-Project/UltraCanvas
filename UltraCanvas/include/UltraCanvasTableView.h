@@ -871,32 +871,33 @@ private:
         if (resizingColumn >= 0) {
             ctx->PaintWidthColorfocusColor);
             ctx->SetStrokeWidth(2.0f);
-            
-            int x = GetX() + GetColumnOffset(resizingColumn + 1) - scrollOffsetX;
-            ctx->DrawLine(Point2D(x, GetY()), Point2D(x, GetY() + GetHeight()));
+
+            // Element-local coordinates (ctx translated to element origin)
+            int x = GetColumnOffset(resizingColumn + 1) - scrollOffsetX;
+            ctx->DrawLine(Point2D(x, 0), Point2D(x, GetHeight()));
         }
     }
-    
+
     void HandleMouseDown(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) return;
-        
-        // Check for column resize
-        if (CheckColumnResize(event.x, event.y)) return;
-        
+        if (!Contains(event.pointer)) return;
+
+        // Check for column resize (event.pointer is element-local)
+        if (CheckColumnResize(event.pointer.x, event.pointer.y)) return;
+
         // Check header click
-        if (showHeader && event.y < GetY() + headerHeight) {
-            HandleHeaderClick(event.x);
+        if (showHeader && event.pointer.y < headerHeight) {
+            HandleHeaderClick(event.pointer.x);
             return;
         }
-        
+
         // Check cell click
-        HandleCellClick(event.x, event.y);
+        HandleCellClick(event.pointer.x, event.pointer.y);
     }
     
     void HandleMouseMove(const UCEvent& event) {
         if (resizingColumn >= 0) {
             // Handle column resize
-            int deltaX = event.x - resizeStartX;
+            int deltaX = event.pointer.x - resizeStartX;
             int newWidth = resizeStartWidth + deltaX;
             SetColumnWidth(resizingColumn, newWidth);
         }
@@ -907,9 +908,9 @@ private:
     }
     
     void HandleDoubleClick(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) return;
+        if (!Contains(event.pointer)) return;
         
-        auto cellPos = GetCellFromPosition(event.x, event.y);
+        auto cellPos = GetCellFromPosition(event.pointer.x, event.pointer.y);
         if (cellPos.first >= 0 && cellPos.second >= 0) {
             StartEditing(cellPos.first, cellPos.second);
             

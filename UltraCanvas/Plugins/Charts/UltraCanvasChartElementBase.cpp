@@ -17,8 +17,6 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasChartElementBase::Render(IRenderContext* ctx) {
-        // Get render interface
-        ctx->PushState();
         // Check if we have data
         if (!dataSource || dataSource->GetPointCount() == 0) {
             DrawEmptyState(ctx);
@@ -33,9 +31,6 @@ namespace UltraCanvas {
             UpdateAnimation();
         }
 
-        // Set clipping to element bounds using existing functions
-        ctx->ClipRect(GetBounds());
-
         // Draw common background
         RenderCommonBackground(ctx);
 
@@ -47,8 +42,6 @@ namespace UltraCanvas {
             DrawSelectionIndicators(ctx);
         }
 
-        // Clear clipping using existing functions
-        ctx->PopState();
     }
 
     bool UltraCanvasChartElementBase::OnEvent(const UCEvent& event) {
@@ -107,7 +100,7 @@ namespace UltraCanvas {
         if (!ctx) return;
 
         // Draw overall background using existing functions
-        ctx->DrawFilledRectangle(GetBounds(), backgroundColor);
+        ctx->DrawFilledRectangle(GetElementLocalBounds(), backgroundColor);
 
         // Draw plot area background using existing functions
         ctx->SetFillPaint(plotAreaColor);
@@ -134,8 +127,8 @@ namespace UltraCanvas {
             ctx->SetFontSize(16.0f);
 
             // Calculate center position (simplified)
-            double titleX = GetX() + static_cast<double>(GetWidth()) / 2 - chartTitle.length() * 5;
-            ctx->DrawText(chartTitle, Point2Df(titleX, GetY()));
+            double titleX = static_cast<double>(GetWidth()) / 2 - chartTitle.length() * 5;
+            ctx->DrawText(chartTitle, Point2Df(titleX, 0));
         }
     }
 
@@ -409,21 +402,21 @@ namespace UltraCanvas {
     void UltraCanvasChartElementBase::DrawEmptyState(IRenderContext* ctx) {
         // Use existing IRenderContext functions
         ctx->SetFillPaint(Color(240, 240, 240, 255));
-        ctx->FillRectangle(Rect2Df(GetX(), GetY(), GetWidth(), GetHeight()));
+        ctx->FillRectangle(GetElementLocalBounds());
 
         ctx->SetTextPaint(Color(128, 128, 128, 255));
         ctx->SetFontSize(14.0f);
 
         std::string emptyText = "No data to display";
         // Calculate center position (simplified)
-        double textX = static_cast<double>(GetX() + GetWidth()) / 2 - 60;
-        double textY = static_cast<double>(GetY() + GetHeight()) / 2;
+        double textX = static_cast<double>(GetWidth()) / 2 - 60;
+        double textY = static_cast<double>(GetHeight()) / 2;
 
         ctx->DrawText(emptyText, {textX, textY});
     }
 
     bool UltraCanvasChartElementBase::HandleMouseMove(const UCEvent& event) {
-        Point2Di mousePos(event.x, event.y);
+        Point2Di mousePos(event.pointer.x, event.pointer.y);
         lastMousePos = mousePos;
 
         // Call derived class for chart-specific handling
@@ -441,7 +434,7 @@ namespace UltraCanvas {
     bool UltraCanvasChartElementBase::HandleMouseDown(const UCEvent& event) {
         if (event.button == UCMouseButton::Left) { // Left mouse button
             isDragging = true;
-            lastMousePos = Point2Di(event.x, event.y);
+            lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
             return true;
         }
         return false;

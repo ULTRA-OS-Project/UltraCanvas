@@ -228,19 +228,12 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
-
-        ctx->PushState();
-
-        // Update caret blinking
-        //UpdateCaretBlink();
-
         // Get colors based on state
         Color backgroundColor = GetBackgroundColor();
         Color borderColor = GetBorderColor();
         Color textColor = GetTextColor();
 
-        Rect2Di bounds = GetBounds();
+        Rect2Di bounds = GetElementLocalBounds();
 
         // Draw background
         ctx->DrawFilledRectangle(bounds, backgroundColor, style.borderWidth, style.borderColor);
@@ -277,8 +270,6 @@ namespace UltraCanvas {
 
         // Draw clear button
         RenderClearButton(ctx);
-
-        ctx->PopState();
     }
 
     bool UltraCanvasTextInput::OnEvent(const UCEvent &event) {
@@ -380,7 +371,8 @@ namespace UltraCanvas {
     Rect2Di UltraCanvasTextInput::GetClearButtonBounds() const {
         if (!IsClearButtonVisible()) return Rect2Di(0, 0, 0, 0);
 
-        Rect2Di bounds = GetBounds();
+        // Returns element-local coordinates
+        Rect2Di bounds = GetElementLocalBounds();
 
         int rightOffset = style.paddingRight;
         if (showValidationState &&
@@ -389,14 +381,15 @@ namespace UltraCanvas {
             rightOffset += 20;
         }
 
-        int btnX = bounds.x + bounds.width - rightOffset - clearButtonSize - 2;
-        int btnY = bounds.y + (bounds.height - clearButtonSize) / 2;
+        int btnX = bounds.width - rightOffset - clearButtonSize - 2;
+        int btnY = (bounds.height - clearButtonSize) / 2;
 
         return Rect2Di(btnX, btnY, clearButtonSize, clearButtonSize);
     }
 
     Rect2Di UltraCanvasTextInput::GetTextArea() const {
-        Rect2Di bounds = GetBounds();
+        // Returns element-local coordinates
+        Rect2Di bounds = GetElementLocalBounds();
         int rightReduction = style.paddingRight;
 
         if (showValidationState && (lastValidationResult.state == ValidationState::Valid || lastValidationResult.state != ValidationState::Invalid)) {
@@ -408,8 +401,8 @@ namespace UltraCanvas {
         }
 
         return Rect2Di(
-                bounds.x + style.paddingLeft,
-                bounds.y + style.paddingTop,
+                style.paddingLeft,
+                style.paddingTop,
                 bounds.width - style.paddingLeft - rightReduction,
                 bounds.height - style.paddingTop - style.paddingBottom
         );
@@ -527,8 +520,8 @@ namespace UltraCanvas {
         float caretStartY = GetCaretYPosition();
         float caretEndY = caretStartY + lineHeight;
 
-        // Only hide if completely outside control bounds
-        Rect2Di controlBounds = GetBounds();
+        // Only hide if completely outside control bounds (element-local)
+        Rect2Di controlBounds = GetElementLocalBounds();
         if (caretX < controlBounds.x - 10 || caretX > controlBounds.x + controlBounds.width + 10) {
             return;
         }
@@ -786,12 +779,12 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextInput::HandleMouseDown(const UCEvent &event) {
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
         // Check clear button click first
         if (IsClearButtonVisible()) {
             Rect2Di clearBounds = GetClearButtonBounds();
-            if (clearBounds.Contains(event.x, event.y)) {
+            if (clearBounds.Contains(event.pointer)) {
                 SaveState();
                 text.clear();
                 caretPosition = 0;
@@ -808,7 +801,7 @@ namespace UltraCanvas {
 
         SetFocus(true);
 
-        Point2Di clickPoint(event.x, event.y);
+        Point2Di clickPoint(event.pointer.x, event.pointer.y);
         size_t clickPosition = GetTextPositionFromPoint(clickPoint);
 
         if (event.shift && hasSelection) {
@@ -828,7 +821,7 @@ namespace UltraCanvas {
         if (IsClearButtonVisible()) {
             Rect2Di clearBounds = GetClearButtonBounds();
             bool wasHovered = isClearButtonHovered;
-            isClearButtonHovered = clearBounds.Contains(event.x, event.y);
+            isClearButtonHovered = clearBounds.Contains(event.pointer);
             if (wasHovered != isClearButtonHovered) {
                 SetMouseCursor(isClearButtonHovered ? UCMouseCursor::Arrow : UCMouseCursor::Text);
                 RequestRedraw();
@@ -840,7 +833,7 @@ namespace UltraCanvas {
 
         if (!isDragging) return false;
 
-        Point2Di currentPoint(event.x, event.y);
+        Point2Di currentPoint(event.pointer.x, event.pointer.y);
         size_t currentPosition = GetTextPositionFromPoint(currentPoint);
         size_t startPosition = GetTextPositionFromPoint(dragStartPosition);
 

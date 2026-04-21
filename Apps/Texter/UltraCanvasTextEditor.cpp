@@ -753,9 +753,8 @@ namespace {
                                 auto item = markdownToolbar->GetItem("md-heading");
                                 if (item && item->GetWidget()) {
                                     auto btn = item->GetWidget();
-                                    auto pos = btn->GetPositionInWindow();
-                                    int btnW = btn->GetWidth();
-                                    headingSubToolbar->SetBounds(Rect2Di(pos.x + btnW, pos.y, 200, 36));
+                                    auto pos = btn->MapFromLocal({btn->GetWidth(),0});
+                                    headingSubToolbar->SetBounds(Rect2Di(pos.x, pos.y, 200, 36));
                                 }
                             }
                             headingSubToolbar->SetVisible(true);
@@ -4033,8 +4032,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::HandleDragOver(const UCEvent& event) {
-        dragOverX = event.x;
-        dragOverY = event.y;
+        dragOverX = event.pointer.x;
+        dragOverY = event.pointer.y;
         // Redraw to update the overlay position (drop indicator follows cursor)
         RequestRedraw();
     }

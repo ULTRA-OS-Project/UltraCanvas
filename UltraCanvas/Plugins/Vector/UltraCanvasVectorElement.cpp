@@ -257,8 +257,8 @@ namespace UltraCanvas {
         auto bounds = GetBounds();
         if (event.type == UCEventType::MouseMove || event.type == UCEventType::MouseDown ||
             event.type == UCEventType::MouseUp || event.type == UCEventType::MouseWheel) {
-            if (event.x < bounds.x || event.x > bounds.x + bounds.width ||
-                event.y < bounds.y || event.y > bounds.y + bounds.height) return false;
+            if (event.pointer.x < bounds.x || event.pointer.x > bounds.x + bounds.width ||
+                event.pointer.y < bounds.y || event.pointer.y > bounds.y + bounds.height) return false;
         }
 
         switch (event.type) {
@@ -275,11 +275,11 @@ namespace UltraCanvas {
         if (options.InteractionMode == VectorInteractionMode::Pan ||
             options.InteractionMode == VectorInteractionMode::PanZoom) {
             isPanning = true;
-            lastMousePos = {event.x, event.y};
+            lastMousePos = {event.pointer.x, event.pointer.y};
             return true;
         }
         if (options.InteractionMode == VectorInteractionMode::Select) {
-            std::string hit = HitTest(event.x, event.y);
+            std::string hit = HitTest(event.pointer.x, event.pointer.y);
             SelectElement(hit);
             return true;
         }
@@ -293,14 +293,14 @@ namespace UltraCanvas {
 
     bool UltraCanvasVectorElement::HandleMouseMove(const UCEvent& event) {
         if (isPanning) {
-            int dx = event.x - lastMousePos.x;
-            int dy = event.y - lastMousePos.y;
+            int dx = event.pointer.x - lastMousePos.x;
+            int dy = event.pointer.y - lastMousePos.y;
             Pan(static_cast<float>(dx), static_cast<float>(dy));
-            lastMousePos = {event.x, event.y};
+            lastMousePos = {event.pointer.x, event.pointer.y};
             return true;
         }
         if (options.InteractionMode == VectorInteractionMode::Select) {
-            std::string hit = HitTest(event.x, event.y);
+            std::string hit = HitTest(event.pointer.x, event.pointer.y);
             if (hit != hoveredElementId) { hoveredElementId = hit; RequestRedraw(); }
         }
         return false;
@@ -311,8 +311,8 @@ namespace UltraCanvas {
         if (options.InteractionMode == VectorInteractionMode::Zoom ||
             options.InteractionMode == VectorInteractionMode::PanZoom) {
             auto bounds = GetBounds();
-            float mouseX = event.x - bounds.x;
-            float mouseY = event.y - bounds.y;
+            float mouseX = event.pointer.x - bounds.x;
+            float mouseY = event.pointer.y - bounds.y;
 
             float oldZoom = zoomLevel;
             float newZoom = zoomLevel + (event.wheelDelta > 0 ? options.ZoomStep : -options.ZoomStep);

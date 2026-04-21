@@ -1,7 +1,7 @@
 // include/UltraCanvasEvent.h - Enhanced Version
 // Event system for UltraCanvas Framework with Linux optimizations
-// Version: 2.1.0
-// Last Modified: 2024-12-30
+// Version: 2.2.0
+// Last Modified: 2026-04-21
 // Author: UltraCanvas Framework
 
 #ifndef ULTRA_CANVAS_EVENT_H
@@ -299,9 +299,9 @@ namespace UltraCanvas {
         UltraCanvasUIElement *targetElement = nullptr;
 
         // Spatial coordinates
-        int x = 0, y = 0;                    // Mouse or touch coordinates
-        int windowX = 0, windowY = 0;        // Window-relative coordinates
-        int globalX = 0, globalY = 0;        // Global screen coordinates
+        Point2Di pointer;                    // Mouse or touch coordinates
+        Point2Di pointerWindow;              // Window-relative coordinates
+        Point2Di pointerGlobal;              // Global screen coordinates
 
         // Mouse/Touch specific
         UCMouseButton button = UCMouseButton::NoneButton;

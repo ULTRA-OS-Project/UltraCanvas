@@ -287,7 +287,7 @@ namespace UltraCanvas {
         }
 
         // Regular button layout calculation
-        Rect2Di bounds = GetBounds();
+        Rect2Di bounds = GetElementLocalBounds();
         int contentX = bounds.x + padding.left;
         int contentY = bounds.y + padding.top;
         int contentWidth = bounds.width - padding.left - padding.right;
@@ -342,7 +342,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasButton::CalculateSplitLayout() {
-        Rect2Di bounds = GetBounds();
+        Rect2Di bounds = GetElementLocalBounds();
         const SplitButtonStyle& split = style.splitStyle;
 
         if (split.horizontal) {
@@ -646,7 +646,9 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::DrawSplitButton(IRenderContext* ctx) {
         const SplitButtonStyle& split = style.splitStyle;
-        Rect2Di bounds = GetBounds();
+        Rect2Di bounds = GetElementLocalBounds();
+        bounds.width -= style.shadowOffset.x;
+        bounds.height -= style.shadowOffset.y;
 
         // Get colors for both sections
         Color primaryBg, primaryText, secondaryBg, secondaryText;
@@ -662,29 +664,16 @@ namespace UltraCanvas {
                                      Colors::Transparent, style.cornerRadius);
         }
 
-        // Adjust bounds for pressed effect
         Rect2Di drawBounds = bounds;
-//        if (GetPrimaryState() == ElementState::Pressed) {
-//            drawBounds.x += 1;
-//            drawBounds.y += 1;
-//        }
 
         // Draw primary and secondary sections
         if (split.horizontal) {
             // Draw primary section
             Rect2Di primaryDraw = primarySectionRect;
-//            if (GetPrimaryState() == ElementState::Pressed) {
-//                primaryDraw.x += 1;
-//                primaryDraw.y += 1;
-//            }
             ctx->DrawFilledRectangle(primaryDraw, primaryBg, 0, Colors::Transparent, 0);
 
             // Draw secondary section
             Rect2Di secondaryDraw = secondarySectionRect;
-//            if (GetPrimaryState() == ElementState::Pressed) {
-//                secondaryDraw.x += 1;
-//                secondaryDraw.y += 1;
-//            }
             ctx->DrawFilledRectangle(secondaryDraw, secondaryBg, 0, Colors::Transparent, 0);
         } else {
             // Vertical split
@@ -697,10 +686,6 @@ namespace UltraCanvas {
                                      style.cornerRadius);
 
             Rect2Di secondaryDraw = secondarySectionRect;
-//            if (GetPrimaryState() == ElementState::Pressed) {
-//                secondaryDraw.x += 1;
-//                secondaryDraw.y += 1;
-//            }
             ctx->DrawFilledRectangle(secondaryDraw, secondaryBg, 0, Colors::Transparent,
                                      style.cornerRadius);
         }
@@ -805,8 +790,6 @@ namespace UltraCanvas {
 
 // ===== MAIN RENDER METHOD =====
     void UltraCanvasButton::Render(IRenderContext* ctx) {
-        ctx->PushState();
-
         if (style.splitStyle.enabled) {
             DrawSplitButton(ctx);
         } else {
@@ -814,7 +797,9 @@ namespace UltraCanvas {
             Color bgColor, textColor;
             GetCurrentColors(bgColor, textColor);
 
-            Rect2Di bounds = GetBounds();
+            Rect2Di bounds = GetElementLocalBounds();
+            bounds.width -= style.shadowOffset.x;
+            bounds.height -= style.shadowOffset.y;
 
             // Draw shadow if enabled and not pressed
             if (style.hasShadow && GetPrimaryState() != ElementState::Pressed) {
@@ -835,14 +820,13 @@ namespace UltraCanvas {
             DrawText(ctx);
         }
         needsRedraw = false;
-        ctx->PopState();
     }
 
 // ===== CLICK HELPER =====
     void UltraCanvasButton::Click(const UCEvent& event) {
         if (style.splitStyle.enabled) {
             // Determine which section was clicked
-            if (IsPointInSecondarySection(event.x, event.y)) {
+            if (IsPointInSecondarySection(event.pointer.x, event.pointer.y)) {
                 if (onSecondaryClick) onSecondaryClick();
             } else {
                 if (onClick) onClick();
@@ -859,7 +843,7 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::MouseDown:
-                if (Contains(event.x, event.y)) {
+                if (Contains(event.pointer)) {
                     if (IsPressed() && canToggled) {
                         SetPressed(false);
                     } else {
@@ -877,7 +861,7 @@ namespace UltraCanvas {
 
             case UCEventType::MouseUp:
                 if (IsPressed() && !canToggled) {
-                    bool wasInside = Contains(event.x, event.y);
+                    bool wasInside = Contains(event.pointer);
                     SetPressed(false);
                     if (onRelease) onRelease();
                     if (wasInside) {
@@ -890,7 +874,7 @@ namespace UltraCanvas {
 
             case UCEventType::MouseMove:
                 if (!IsPressed()) {
-                    bool inside = Contains(event.x, event.y);
+                    bool inside = Contains(event.pointer);
                     SetHovered(inside);
                 }
                 return false;

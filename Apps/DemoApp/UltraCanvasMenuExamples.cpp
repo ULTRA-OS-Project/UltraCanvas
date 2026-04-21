@@ -76,7 +76,7 @@ namespace UltraCanvas {
             if (ev.button == UCMouseButton::Right) {
                 // move menu to window container
 //                container->GetWindow()->AddChild(contextMenu);
-                contextMenu->OpenMenu(Point2Di(ev.windowX, ev.windowY), *container->GetWindow(), PopupElementSettings());
+                contextMenu->OpenMenu(ev.pointerWindow, *container->GetWindow(), PopupElementSettings());
             }
         };
 
@@ -294,7 +294,7 @@ namespace UltraCanvas {
             itemLabel->onClick = [itemMenu, itemLabel, container]() {
                 auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
                 if (ev.button == UCMouseButton::Right) {
-                    itemMenu->OpenMenu(Point2Di (ev.windowX, ev.windowY), *container->GetWindow(), PopupElementSettings());
+                    itemMenu->OpenMenu(ev.pointerWindow, *container->GetWindow(), PopupElementSettings());
                 }
             };
 

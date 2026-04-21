@@ -248,7 +248,9 @@ namespace UltraCanvas {
             auto allElements = GetAllElementsFlattened(elements);
 
             for (auto* element : allElements) {
-                if (element && element->IsVisible() && element->Contains(point)) {
+                // `point` here is expressed in window-space, so use ContainsInWindow()
+                // which hit-tests the element's window-space bounds.
+                if (element && element->IsVisible() && element->ContainsInWindow(point)) {
                     hitElements.push_back(element);
                 }
             }

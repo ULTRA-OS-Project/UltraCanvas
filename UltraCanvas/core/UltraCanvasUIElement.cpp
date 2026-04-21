@@ -15,39 +15,37 @@ namespace UltraCanvas {
     UltraCanvasUIElement::~UltraCanvasUIElement() {
     }
 
-    void UltraCanvasUIElement::ConvertWindowToParentContainerCoordinates(int &x, int &y) {
+    Point2Di UltraCanvasUIElement::MapFromLocal(const Point2Di &localPos, UltraCanvasContainer* mapToParent) {
+        Point2Di pos = localPos;
         if (parentContainer) {
             auto pc = parentContainer;
             while(pc) {
                 Rect2Di contentArea = pc->GetContentRect();
-                x = x - contentArea.x + pc->GetHorizontalScrollPosition();
-                y = y - contentArea.y + pc->GetVerticalScrollPosition();
+                pos.x = pos.x + contentArea.x - pc->GetHorizontalScrollPosition();
+                pos.y = pos.y + contentArea.y - pc->GetVerticalScrollPosition();
+                if (pc == mapToParent) break;
                 pc = pc->GetParentContainer();
             }
+            pos.x += bounds.x;
+            pos.y += bounds.y;
         }
-    }
-
-    Point2Di UltraCanvasUIElement::ConvertWindowToParentContainerCoordinates(const Point2Di &globalPos) {
-        Point2Di pos = globalPos;
-        ConvertWindowToParentContainerCoordinates(pos.x, pos.y);
         return pos;
     }
 
-    void UltraCanvasUIElement::ConvertContainerToWindowCoordinates(int &x, int &y) {
+    Point2Di UltraCanvasUIElement::MapToLocal(const Point2Di &globalPos, UltraCanvasContainer* mapFromParent) {
+        Point2Di pos = globalPos;
         if (parentContainer) {
             auto pc = parentContainer;
             while(pc) {
                 Rect2Di contentArea = pc->GetContentRect();
-                x = x + contentArea.x - pc->GetHorizontalScrollPosition();
-                y = y + contentArea.y - pc->GetVerticalScrollPosition();
+                pos.x = pos.x - contentArea.x + pc->GetHorizontalScrollPosition();
+                pos.y = pos.y - contentArea.y + pc->GetVerticalScrollPosition();
+                if (pc == mapFromParent) break;
                 pc = pc->GetParentContainer();
             }
+            pos.x -= bounds.x;
+            pos.y -= bounds.y;
         }
-    }
-
-    Point2Di UltraCanvasUIElement::ConvertContainerToWindowCoordinates(const Point2Di &localPos) {
-        Point2Di pos = localPos;
-        ConvertContainerToWindowCoordinates(pos.x, pos.y);
         return pos;
     }
 
@@ -133,7 +131,7 @@ namespace UltraCanvas {
 //    }
 
     void UltraCanvasUIElement::Render(IRenderContext* ctx) {
-        auto bnds = GetBounds();
+        auto bnds = GetElementLocalBounds();
         int leftWidth = GetBorderLeftWidth();
         int rightWidth = GetBorderRightWidth();
         int topWidth = GetBorderTopWidth();

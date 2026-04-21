@@ -377,11 +377,11 @@ namespace UltraCanvas {
     void UltraCanvasNewDocumentDialog::Render(IRenderContext* ctx) {
         ctx->PushState();
 
-        Rect2Di bounds = GetBounds();
+        Rect2Di bounds = GetElementLocalBounds();
 
-        // Shadow
+        // Shadow (element-local)
         ctx->SetFillPaint(Color(0, 0, 0, 40));
-        ctx->FillRectangle(Rect2Df(bounds.x + 4, bounds.y + 4, bounds.width, bounds.height));
+        ctx->FillRectangle(Rect2Df(4, 4, bounds.width, bounds.height));
 
         // Background
         ctx->SetFillPaint(style.backgroundColor);
@@ -617,16 +617,16 @@ namespace UltraCanvas {
         Rect2Di titleBounds = GetTitleBounds();
         int closeX = titleBounds.x + titleBounds.width - 24;
         int closeY = titleBounds.y;
-        if (event.x >= closeX && event.x <= closeX + 20 &&
-            event.y >= closeY && event.y <= closeY + 24) {
+        if (event.pointer.x >= closeX && event.pointer.x <= closeX + 20 &&
+            event.pointer.y >= closeY && event.pointer.y <= closeY + 24) {
             OnCancelClicked();
             return true;
         }
 
-        if (listBounds.Contains(event.x, event.y)) {
+        if (listBounds.Contains(event.pointer)) {
             currentFocus = FocusArea::List;
 
-            int clickedIndex = scrollOffset + (event.y - listBounds.y) / style.itemHeight;
+            int clickedIndex = scrollOffset + (event.pointer.y - listBounds.y) / style.itemHeight;
             if (clickedIndex >= 0 && clickedIndex < (int)filteredIndices.size()) {
                 SelectItem(clickedIndex);
             }
@@ -642,8 +642,8 @@ namespace UltraCanvas {
         int oldHovered = hoveredIndex;
         hoveredIndex = -1;
 
-        if (listBounds.Contains(event.x, event.y)) {
-            int hoverIdx = scrollOffset + (event.y - listBounds.y) / style.itemHeight;
+        if (listBounds.Contains(event.pointer)) {
+            int hoverIdx = scrollOffset + (event.pointer.y - listBounds.y) / style.itemHeight;
             if (hoverIdx >= 0 && hoverIdx < (int)filteredIndices.size()) {
                 hoveredIndex = hoverIdx;
             }
@@ -652,8 +652,8 @@ namespace UltraCanvas {
         Rect2Di createBounds = GetCreateButtonBounds();
         Rect2Di cancelBounds = GetCancelButtonBounds();
 
-        createButtonHovered = createBounds.Contains(event.x, event.y);
-        cancelButtonHovered = cancelBounds.Contains(event.x, event.y);
+        createButtonHovered = createBounds.Contains(event.pointer);
+        cancelButtonHovered = cancelBounds.Contains(event.pointer);
 
         if (hoveredIndex != oldHovered) {
             RequestRedraw();
@@ -665,7 +665,7 @@ namespace UltraCanvas {
     bool UltraCanvasNewDocumentDialog::HandleMouseWheel(const UCEvent& event) {
         Rect2Di listBounds = GetDocumentListBounds();
 
-        if (listBounds.Contains(event.x, event.y)) {
+        if (listBounds.Contains(event.pointer)) {
             int delta = event.wheelDelta > 0 ? -1 : 1;
             int newOffset = scrollOffset + delta;
 

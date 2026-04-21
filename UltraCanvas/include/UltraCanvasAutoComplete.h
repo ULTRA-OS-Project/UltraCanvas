@@ -135,7 +135,6 @@ namespace UltraCanvas {
         void FilterSuggestions(const std::string& query);
         bool MatchesFilter(const std::string& itemText, const std::string& query) const;
 
-        Point2Di CalculatePopupPosition();
         void SelectItem(int filteredIndex);
     };
 

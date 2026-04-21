@@ -28,24 +28,24 @@ namespace UltraCanvas {
         auto ctx = GetRenderContext();
         if (!ctx) return;
 
-        // Calculate checkbox box position (left-aligned with padding)
+        // Calculate checkbox box position (left-aligned with padding) in element-local space
         float padding = 4.0f;
-        boxRect.x = GetX() + padding;
-        boxRect.y = GetY() + (GetHeight() - visualStyle.boxSize) / 2.0f;
+        boxRect.x = padding;
+        boxRect.y = (GetHeight() - visualStyle.boxSize) / 2.0f;
         boxRect.width = visualStyle.boxSize;
         boxRect.height = visualStyle.boxSize;
 
-        // Calculate text position
+        // Calculate text position (element-local)
         if (!text.empty()) {
             textRect.x = boxRect.x + boxRect.width + visualStyle.textSpacing;
-            textRect.y = GetY();
-            textRect.width = GetWidth() - (textRect.x - GetX()) - padding;
+            textRect.y = 0;
+            textRect.width = GetWidth() - textRect.x - padding;
             textRect.height = GetHeight();
         }
 
-        // Calculate total bounds for hit testing
-        totalBounds.x = GetX();
-        totalBounds.y = GetY();
+        // Calculate total bounds for hit testing (element-local)
+        totalBounds.x = 0;
+        totalBounds.y = 0;
         totalBounds.width = GetWidth();
         totalBounds.height = GetHeight();
 
@@ -295,14 +295,14 @@ namespace UltraCanvas {
         bool handled = false;
         switch (event.type) {
             case UCEventType::MouseDown:
-                if (totalBounds.Contains(event.x, event.y)) {
+                if (totalBounds.Contains(event.pointer)) {
                     SetPressed(true);
                     handled = true;
                 }
                 break;
 
             case UCEventType::MouseUp:
-                if (IsPressed() && totalBounds.Contains(event.x, event.y)) {
+                if (IsPressed() && totalBounds.Contains(event.pointer)) {
                     Toggle();
                     handled = true;
                 }
@@ -310,7 +310,7 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::MouseMove:
-                SetHovered(totalBounds.Contains(event.x, event.y));
+                SetHovered(totalBounds.Contains(event.pointer));
                 break;
 
             case UCEventType::MouseEnter:

@@ -388,7 +388,7 @@ namespace UltraCanvas {
             ctx->PushState();
 
             UpdateSliderState();
-            Rect2Di bounds = GetBounds();
+            Rect2Di bounds = GetElementLocalBounds();
 
             // ===== RENDER BASED ON STYLE =====
             if (isRangeMode || sliderStyle == SliderStyle::Range) {
@@ -866,11 +866,11 @@ namespace UltraCanvas {
 
         // ===== EVENT HANDLERS =====
         bool HandleMouseDown(const UCEvent& event) {
-            Point2Di mousePos(event.x, event.y);
+            Point2Di mousePos(event.pointer.x, event.pointer.y);
 
             if (!Contains(mousePos)) return false;
 
-            Rect2Di bounds = GetBounds();
+            Rect2Di bounds = GetElementLocalBounds();
 
             if (isRangeMode) {
                 // Determine which handle was clicked
@@ -910,7 +910,7 @@ namespace UltraCanvas {
         }
 
         bool HandleMouseMove(const UCEvent& event) {
-            Point2Di mousePos(event.x, event.y);
+            Point2Di mousePos(event.pointer.x, event.pointer.y);
 
             if (isDragging) {
                 UpdateValueFromPosition(mousePos);
@@ -919,7 +919,7 @@ namespace UltraCanvas {
 
             // Update hover state for handles in range mode
             if (isRangeMode && Contains(mousePos)) {
-                Rect2Di bounds = GetBounds();
+                Rect2Di bounds = GetElementLocalBounds();
                 hoveredHandle = GetHandleAt(mousePos, bounds);
                 RequestRedraw();
             }
@@ -1031,7 +1031,7 @@ namespace UltraCanvas {
         }
 
         void UpdateValueFromPosition(const Point2Di& pos) {
-            Rect2Di bounds = GetBounds();
+            Rect2Di bounds = GetElementLocalBounds();
             float newValue;
 
             if (orientation == SliderOrientation::Vertical) {

@@ -213,12 +213,12 @@ namespace UltraCanvas {
         // Apply global alpha
         ctx->SetAlpha(opacity);
 
-        // Apply transformations
+        // Apply transformations (ctx is already translated to element origin)
         if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
             ctx->PushState();
 
-            // Translate to center for rotation
-            Point2Di center = Point2Di(GetX() + GetWidth() / 2.0f, GetY() + GetHeight() / 2.0f);
+            // Translate to center for rotation (element-local center)
+            Point2Di center = Point2Di(GetWidth() / 2.0f, GetHeight() / 2.0f);
             ctx->Translate(center.x, center.y);
 
             // Apply transformations
@@ -230,15 +230,15 @@ namespace UltraCanvas {
             ctx->Translate(-center.x, -center.y);
         }
 
-        // Draw the image using unified rendering
+        // Draw the image using unified rendering (element-local bounds)
         if (loadedImage->IsValid()) {
             // Load from file path
-            ctx->DrawImage(*loadedImage.get(), GetBounds(), fitMode);
+            ctx->DrawImage(*loadedImage.get(), GetElementLocalBounds(), fitMode);
         } else {
             // For memory-loaded images, we'd need to save to a temporary file
             // or extend the rendering interface to support raw data
             // For now, draw a placeholder
-            DrawImagePlaceholder(GetBounds(), "IMG");
+            DrawImagePlaceholder(GetElementLocalBounds(), "IMG");
         }
 
         if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
@@ -247,14 +247,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageElement::DrawErrorPlaceholder(IRenderContext *ctx) {
-        DrawImagePlaceholder(GetBounds(), "ERR", errorColor);
+        DrawImagePlaceholder(GetElementLocalBounds(), "ERR", errorColor);
 
-        // Draw error message
+        // Draw error message (element-local coordinates)
         if (!loadedImage->errorMessage.empty()) {
             ctx->SetTextPaint(Colors::Red);
             ctx->SetFontStyle({.fontSize=10});
 
-            Rect2Df textRect = GetBounds();
+            Rect2Df textRect = GetElementLocalBounds();
             textRect.y += static_cast<double>(GetHeight()) / 2.0f + 10;
             textRect.height = 20;
 
@@ -263,7 +263,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageElement::DrawLoadingPlaceholder(IRenderContext *ctx) {
-        DrawImagePlaceholder(GetBounds(), "...", Color(220, 220, 220));
+        DrawImagePlaceholder(GetElementLocalBounds(), "...", Color(220, 220, 220));
     }
 
     void
@@ -351,7 +351,7 @@ namespace UltraCanvas {
 //    }
 
     void UltraCanvasImageElement::HandleMouseDown(const UCEvent &event) {
-        if (!Contains(event.x, event.y)) return;
+        if (!Contains(event.pointer)) return;
 
         if (clickable && onClick) {
             onClick();
@@ -359,13 +359,13 @@ namespace UltraCanvas {
 
         if (draggable) {
             isDragging = true;
-            dragStartPos = Point2Di(event.x, event.y);
+            dragStartPos = Point2Di(event.pointer.x, event.pointer.y);
         }
     }
 
     void UltraCanvasImageElement::HandleMouseMove(const UCEvent &event) {
         if (isDragging && draggable) {
-            Point2Di currentPos(event.x, event.y);
+            Point2Di currentPos(event.pointer.x, event.pointer.y);
             Point2Di delta = currentPos - dragStartPos;
 
             // Update position

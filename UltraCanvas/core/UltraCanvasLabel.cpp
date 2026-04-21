@@ -189,7 +189,7 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::MouseDown:
-                if (Contains(event.x, event.y)) {
+                if (Contains(event.pointer)) {
                     SetFocus(true);
                     if (onClick) {
                         onClick();
@@ -199,7 +199,7 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::MouseMove:
-                if (Contains(event.x, event.y)) {
+                if (Contains(event.pointer)) {
                     if (!IsHovered()) {
                         SetHovered(true);
                         if (onHoverEnter) {
@@ -261,55 +261,23 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasLabel::Render(IRenderContext *ctx) {
-        ctx->PushState();
-
         UpdateGeometry(ctx);
 
         UltraCanvasUIElement::Render(ctx);
 
         if (!text.empty()) {
-            auto crect = GetContentRect();
+            // Element-local content rect: ctx is already translated to element origin
+            int contentX = GetBorderLeftWidth() + padding.left;
+            int contentY = GetBorderTopWidth() + padding.top;
             if (style.hasShadow) {
                 ctx->SetCurrentPaint(style.shadowColor);
                 //textLayout->ChangeAttribute(TextAttributeFactory::CreateForeground(style.shadowColor));
-                ctx->DrawTextLayout(*textLayout, {crect.x + style.shadowOffset.x, crect.y + style.shadowOffset.y});
+                ctx->DrawTextLayout(*textLayout, {contentX + style.shadowOffset.x, contentY + style.shadowOffset.y});
             }
 //            textLayout->ChangeAttribute(TextAttributeFactory::CreateForeground(style.textColor));
             ctx->SetCurrentPaint(style.textColor);
-            ctx->DrawTextLayout(*textLayout, crect.TopLeft());
+            ctx->DrawTextLayout(*textLayout, Point2Di(contentX, contentY));
         }
-
-//        Rect2Di bounds = GetBounds();
-//        // Draw text
-//        ctx->SetTextIsMarkup(style.isMarkup);
-//        if (!text.empty()) {
-//            // Draw shadow if enabled
-//            ctx->SetTextWrap(style.wordWrap ? TextWrap::WrapWordChar : TextWrap::WrapNone);
-//            if (style.hasShadow) {
-//                ctx->SetTextPaint(style.shadowColor);
-//                ctx->SetFontStyle(style.fontStyle);
-//                Rect2Di shadowRect = textArea;
-//                shadowRect.x += style.shadowOffset.x,
-//                        shadowRect.y += style.shadowOffset.y;
-//                ctx->DrawTextInRect(text, shadowRect);
-//            }
-//
-//            // Draw main text
-//            ctx->SetTextPaint(style.textColor);
-//            ctx->SetFontStyle(style.fontStyle);
-//            ctx->SetTextAlignment(style.horizontalAlign);
-//            ctx->SetTextVerticalAlignment(style.verticalAlign);
-//            ctx->DrawTextInRect(text, textArea);
-//        }
-
-        // Draw selection/focus indicator if needed
-//        if (IsFocused()) {
-//            ctx->SetStrokePaint(Color(0, 120, 215, 200));
-//            ctx->SetStrokeWidth(2.0f);
-//            ctx->DrawRectangle(bounds);
-//        }
-
-        ctx->PopState();
     }
 
 

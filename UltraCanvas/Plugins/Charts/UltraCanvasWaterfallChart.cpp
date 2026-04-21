@@ -571,7 +571,7 @@ namespace UltraCanvas {
             auto mpos = mousePos;
             mpos.x += 10;
             mpos.y -= 30;
-            ConvertContainerToWindowCoordinates(mpos.x, mpos.y);
+            mpos = MapFromLocal(mpos, nullptr);
             // Generate and show tooltip
             std::string tooltipContent = GenerateWaterfallTooltip(barIndex);
             if (!tooltipContent.empty()) {

@@ -932,14 +932,14 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMarkdownDisplay::HandleMouseDown(const UCEvent &event) {
-        Point2Di mousePos(event.x, event.y);
+        Point2Di mousePos(event.pointer.x, event.pointer.y);
 
         // Check if clicking on scrollbar
         if (contentHeight > GetHeight()) {
             // Check if clicking on thumb
             if (scrollbarThumbRect.Contains(mousePos)) {
                 isDraggingThumb = true;
-                dragStartY = event.globalY;
+                dragStartY = event.pointerGlobal.y;
                 dragStartScrollOffset = verticalScrollOffset;
                 UltraCanvasApplication::GetInstance()->CaptureMouse(this);
                 return true;
@@ -960,7 +960,7 @@ namespace UltraCanvas {
 
         // Check for link clicks
         if (event.button == UCMouseButton::Left) {
-            auto element = FindElementAtPosition(event.x, event.y);
+            auto element = FindElementAtPosition(event.pointer.x, event.pointer.y);
             if (element && element->clickable) {
                 clickedElement = element;
                 return true;
@@ -971,11 +971,11 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMarkdownDisplay::HandleMouseMove(const UCEvent &event) {
-        Point2Di mousePos(event.x, event.y);
+        Point2Di mousePos(event.pointer.x, event.pointer.y);
 
         // Handle thumb dragging
         if (isDraggingThumb) {
-            int deltaY = event.globalY - dragStartY;
+            int deltaY = event.pointerGlobal.y - dragStartY;
 
             // Calculate scroll offset based on drag distance
             int maxScroll = std::max(0, contentHeight - GetHeight());
@@ -996,7 +996,7 @@ namespace UltraCanvas {
         isHoveringScrollbar = scrollbarTrackRect.Contains(mousePos);
 
         // Update element hover for links
-        auto element = FindElementAtPosition(event.x, event.y);
+        auto element = FindElementAtPosition(event.pointer.x, event.pointer.y);
         if (element != hoveredElement) {
             hoveredElement = element;
             // Could trigger redraw for hover effects
@@ -1018,7 +1018,7 @@ namespace UltraCanvas {
 
         // Handle link clicks
         if (clickedElement && clickedElement->clickable) {
-            if (clickedElement == FindElementAtPosition(event.x, event.y)) {
+            if (clickedElement == FindElementAtPosition(event.pointer.x, event.pointer.y)) {
                 if (onLinkClicked) {
                     onLinkClicked(clickedElement->url);
                 }

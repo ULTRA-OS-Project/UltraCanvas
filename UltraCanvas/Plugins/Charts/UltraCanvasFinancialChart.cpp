@@ -448,7 +448,7 @@ namespace UltraCanvas {
         if (inPriceArea || inVolumeArea) {
             auto financialPoint = GetFinancialPointAtPosition(mousePos);
             std::string tooltipContent = GenerateFinancialTooltip(financialPoint);
-            auto windowMousePos = ConvertContainerToWindowCoordinates(mousePos);
+            auto windowMousePos = MapFromLocal(mousePos, nullptr);
             UltraCanvasTooltipManager::UpdateAndShowTooltip(window, tooltipContent, windowMousePos);
             return true;
         } else {

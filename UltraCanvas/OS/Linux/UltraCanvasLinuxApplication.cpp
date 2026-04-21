@@ -462,10 +462,9 @@ namespace UltraCanvas {
                 // ===== FIXED X11 WHEEL EVENTS MAPPING =====
                 unsigned int xButton = xEvent.xbutton.button;
 
-                event.x = event.windowX = xEvent.xbutton.x;
-                event.y = event.windowY = xEvent.xbutton.y;
-                event.globalX = xEvent.xbutton.x_root;
-                event.globalY = xEvent.xbutton.y_root;
+                event.pointerWindow = { xEvent.xbutton.x, xEvent.xbutton.y };
+                event.pointer = event.pointerWindow;
+                event.pointerGlobal = { xEvent.xbutton.x_root, xEvent.xbutton.y_root };
                 event.shift = (xEvent.xbutton.state & ShiftMask) != 0;
                 event.ctrl = (xEvent.xbutton.state & ControlMask) != 0;
                 event.alt = (xEvent.xbutton.state & Mod1Mask) != 0;
@@ -539,10 +538,9 @@ namespace UltraCanvas {
 
             case MotionNotify: {
                 event.type = UCEventType::MouseMove;
-                event.x = event.windowX = xEvent.xmotion.x;
-                event.y = event.windowY = xEvent.xmotion.y;
-                event.globalX = xEvent.xmotion.x_root;
-                event.globalY = xEvent.xmotion.y_root;
+                event.pointerWindow = { xEvent.xmotion.x, xEvent.xmotion.y };
+                event.pointer = event.pointerWindow;
+                event.pointerGlobal = { xEvent.xmotion.x_root, xEvent.xmotion.y_root };
                 event.shift = (xEvent.xmotion.state & ShiftMask) != 0;
                 event.ctrl = (xEvent.xmotion.state & ControlMask) != 0;
                 event.alt = (xEvent.xmotion.state & Mod1Mask) != 0;
@@ -554,16 +552,16 @@ namespace UltraCanvas {
                 event.type = UCEventType::WindowResize;
                 event.width = xEvent.xconfigure.width;
                 event.height = xEvent.xconfigure.height;
-                event.x = event.windowX = xEvent.xconfigure.x;
-                event.y = event.windowY = xEvent.xconfigure.y;
+                event.pointerWindow = { xEvent.xconfigure.x, xEvent.xconfigure.y };
+                event.pointer = event.pointerWindow;
                 break;
             }
 
             case Expose: {
                 event.type = UCEventType::WindowRepaint;
                 if (xEvent.xexpose.count == 0) {
-                    event.x = event.windowX = xEvent.xexpose.x;
-                    event.y = event.windowY = xEvent.xexpose.y;
+                    event.pointerWindow = { xEvent.xexpose.x, xEvent.xexpose.y };
+                    event.pointer = event.pointerWindow;
                     event.width = xEvent.xexpose.width;
                     event.height = xEvent.xexpose.height;
                 } else {
@@ -616,19 +614,17 @@ namespace UltraCanvas {
 
             case EnterNotify: {
                 event.type = UCEventType::MouseEnter;
-                event.x = event.windowX = xEvent.xcrossing.x;
-                event.y = event.windowY = xEvent.xcrossing.y;
-                event.globalX = xEvent.xcrossing.x_root;
-                event.globalY = xEvent.xcrossing.y_root;
+                event.pointerWindow = { xEvent.xcrossing.x, xEvent.xcrossing.y };
+                event.pointer = event.pointerWindow;
+                event.pointerGlobal = { xEvent.xcrossing.x_root, xEvent.xcrossing.y_root };
                 break;
             }
 
             case LeaveNotify: {
                 event.type = UCEventType::MouseLeave;
-                event.x = event.windowX = xEvent.xcrossing.x;
-                event.y = event.windowY = xEvent.xcrossing.y;
-                event.globalX = xEvent.xcrossing.x_root;
-                event.globalY = xEvent.xcrossing.y_root;
+                event.pointerWindow = { xEvent.xcrossing.x, xEvent.xcrossing.y };
+                event.pointer = event.pointerWindow;
+                event.pointerGlobal = { xEvent.xcrossing.x_root, xEvent.xcrossing.y_root };
                 break;
             }
 

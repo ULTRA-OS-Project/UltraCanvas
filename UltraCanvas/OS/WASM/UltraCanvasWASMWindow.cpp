@@ -468,21 +468,20 @@ UCEvent UltraCanvasWASMWindow::ConvertMouseEvent(int eventType, const Emscripten
     ucEvent.mouseButton = ConvertMouseButton(event->button);
     
     // Set position (canvas-relative)
-    ucEvent.x = static_cast<int>(event->targetX);
-    ucEvent.y = static_cast<int>(event->targetY);
-    
+    ucEvent.pointer = { static_cast<int>(event->targetX), static_cast<int>(event->targetY) };
+
     // Set modifiers
     ucEvent.shiftKey = event->shiftKey;
     ucEvent.ctrlKey = event->ctrlKey;
     ucEvent.altKey = event->altKey;
     ucEvent.metaKey = event->metaKey;
-    
+
     // Track mouse movement
     if (eventType == EMSCRIPTEN_EVENT_MOUSEMOVE) {
-        ucEvent.deltaX = ucEvent.x - lastMouseX;
-        ucEvent.deltaY = ucEvent.y - lastMouseY;
-        lastMouseX = ucEvent.x;
-        lastMouseY = ucEvent.y;
+        ucEvent.deltaX = ucEvent.pointer.x - lastMouseX;
+        ucEvent.deltaY = ucEvent.pointer.y - lastMouseY;
+        lastMouseX = ucEvent.pointer.x;
+        lastMouseY = ucEvent.pointer.y;
     }
     
     return ucEvent;
@@ -530,8 +529,7 @@ UCEvent UltraCanvasWASMWindow::ConvertWheelEvent(const EmscriptenWheelEvent* eve
     ucEvent.wheelDelta = -static_cast<int>(event->deltaY);
     
     // Set position
-    ucEvent.x = static_cast<int>(event->mouse.targetX);
-    ucEvent.y = static_cast<int>(event->mouse.targetY);
+    ucEvent.pointer = { static_cast<int>(event->mouse.targetX), static_cast<int>(event->mouse.targetY) };
     
     // Set modifiers
     ucEvent.shiftKey = event->mouse.shiftKey;
@@ -571,8 +569,7 @@ UCEvent UltraCanvasWASMWindow::ConvertTouchEvent(int eventType, const Emscripten
         }
         
         // Set position
-        ucEvent.x = static_cast<int>(touch.targetX);
-        ucEvent.y = static_cast<int>(touch.targetY);
+        ucEvent.pointer = { static_cast<int>(touch.targetX), static_cast<int>(touch.targetY) };
     }
     
     return ucEvent;

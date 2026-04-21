@@ -655,7 +655,7 @@ namespace UltraCanvas {
             float value = point.categoryValues.at(hoveredCategory);
             tooltipText += std::to_string(static_cast<int>(value));
         }
-        auto mouseGlobalPos = ConvertContainerToWindowCoordinates(mousePos);
+        auto mouseGlobalPos = MapFromLocal(mousePos, nullptr);
         // Show tooltip using tooltip manager
         UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, mouseGlobalPos);
     }

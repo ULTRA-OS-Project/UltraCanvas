@@ -259,7 +259,7 @@ namespace UltraCanvas {
                 return true;
 
             case UCEventType::WindowMove:
-                HandleMoveEvent(event.x, event.y);
+                HandleMoveEvent(event.pointer.x, event.pointer.y);
                 return true;
 
             case UCEventType::WindowRepaint:

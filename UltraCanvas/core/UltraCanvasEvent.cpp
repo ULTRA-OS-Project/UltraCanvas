@@ -1,7 +1,7 @@
 // core/UltraCanvasEvent.cpp - Enhanced Version
 // Event system for UltraCanvas Framework with Linux optimizations
-// Version: 2.1.0
-// Last Modified: 2024-12-30
+// Version: 2.2.0
+// Last Modified: 2026-04-21
 // Author: UltraCanvas Framework
 #include "UltraCanvasEvent.h"
 namespace UltraCanvas {
@@ -74,7 +74,7 @@ namespace UltraCanvas {
         std::string result = "UCEvent{type=";
         result += eventTypeNames[static_cast<int>(type)];
         if (IsMouseEvent()) {
-            result += ",pos=(" + std::to_string(x) + "," + std::to_string(y) + ")";
+            result += ",pos=(" + std::to_string(pointer.x) + "," + std::to_string(pointer.y) + ")";
             result += ",btn=" + std::to_string(static_cast<int>(button));
         }
         if (IsKeyboardEvent()) {

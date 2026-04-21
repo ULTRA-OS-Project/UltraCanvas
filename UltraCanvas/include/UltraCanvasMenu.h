@@ -294,7 +294,7 @@ namespace UltraCanvas {
         int GetItemX(int index) const;
         int GetItemY(int index) const;
 
-        bool Contains(int x, int y) override;
+        bool ContainsInWindow(const Point2Di& point) override;
 
     protected:
         void OnPopupClosed(ClosePopupReason reason) override;

@@ -399,12 +399,11 @@ namespace UltraCanvas {
             case WM_LBUTTONDOWN: {
                 event.type = UCEventType::MouseDown;
                 event.button = UCMouseButton::Left;
-                event.x = event.windowX = GET_X_LPARAM(lParam);
-                event.y = event.windowY = GET_Y_LPARAM(lParam);
-                POINT pt = {event.x, event.y};
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
                 ClientToScreen(hwnd, &pt);
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
                 PushEvent(event);
                 return;
@@ -413,12 +412,11 @@ namespace UltraCanvas {
             case WM_RBUTTONDOWN: {
                 event.type = UCEventType::MouseDown;
                 event.button = UCMouseButton::Right;
-                event.x = event.windowX = GET_X_LPARAM(lParam);
-                event.y = event.windowY = GET_Y_LPARAM(lParam);
-                POINT pt = {event.x, event.y};
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
                 ClientToScreen(hwnd, &pt);
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
                 PushEvent(event);
                 return;
@@ -427,12 +425,11 @@ namespace UltraCanvas {
             case WM_MBUTTONDOWN: {
                 event.type = UCEventType::MouseDown;
                 event.button = UCMouseButton::Middle;
-                event.x = event.windowX = GET_X_LPARAM(lParam);
-                event.y = event.windowY = GET_Y_LPARAM(lParam);
-                POINT pt = {event.x, event.y};
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
                 ClientToScreen(hwnd, &pt);
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
                 PushEvent(event);
                 return;
@@ -441,12 +438,11 @@ namespace UltraCanvas {
             case WM_LBUTTONUP: {
                 event.type = UCEventType::MouseUp;
                 event.button = UCMouseButton::Left;
-                event.x = event.windowX = GET_X_LPARAM(lParam);
-                event.y = event.windowY = GET_Y_LPARAM(lParam);
-                POINT pt = {event.x, event.y};
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
                 ClientToScreen(hwnd, &pt);
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
                 PushEvent(event);
                 return;
@@ -455,12 +451,11 @@ namespace UltraCanvas {
             case WM_RBUTTONUP: {
                 event.type = UCEventType::MouseUp;
                 event.button = UCMouseButton::Right;
-                event.x = event.windowX = GET_X_LPARAM(lParam);
-                event.y = event.windowY = GET_Y_LPARAM(lParam);
-                POINT pt = {event.x, event.y};
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
                 ClientToScreen(hwnd, &pt);
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
                 PushEvent(event);
                 return;
@@ -469,12 +464,11 @@ namespace UltraCanvas {
             case WM_MBUTTONUP: {
                 event.type = UCEventType::MouseUp;
                 event.button = UCMouseButton::Middle;
-                event.x = event.windowX = GET_X_LPARAM(lParam);
-                event.y = event.windowY = GET_Y_LPARAM(lParam);
-                POINT pt = {event.x, event.y};
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
                 ClientToScreen(hwnd, &pt);
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
                 PushEvent(event);
                 return;
@@ -484,12 +478,11 @@ namespace UltraCanvas {
             case WM_LBUTTONDBLCLK: {
                 event.type = UCEventType::MouseDoubleClick;
                 event.button = UCMouseButton::Left;
-                event.x = event.windowX = GET_X_LPARAM(lParam);
-                event.y = event.windowY = GET_Y_LPARAM(lParam);
-                POINT pt = {event.x, event.y};
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
                 ClientToScreen(hwnd, &pt);
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
                 PushEvent(event);
                 return;
@@ -498,12 +491,11 @@ namespace UltraCanvas {
             case WM_RBUTTONDBLCLK: {
                 event.type = UCEventType::MouseDoubleClick;
                 event.button = UCMouseButton::Right;
-                event.x = event.windowX = GET_X_LPARAM(lParam);
-                event.y = event.windowY = GET_Y_LPARAM(lParam);
-                POINT pt = {event.x, event.y};
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
                 ClientToScreen(hwnd, &pt);
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
                 PushEvent(event);
                 return;
@@ -512,12 +504,11 @@ namespace UltraCanvas {
             case WM_MBUTTONDBLCLK: {
                 event.type = UCEventType::MouseDoubleClick;
                 event.button = UCMouseButton::Middle;
-                event.x = event.windowX = GET_X_LPARAM(lParam);
-                event.y = event.windowY = GET_Y_LPARAM(lParam);
-                POINT pt = {event.x, event.y};
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
                 ClientToScreen(hwnd, &pt);
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
                 PushEvent(event);
                 return;
@@ -526,12 +517,11 @@ namespace UltraCanvas {
             // ===== MOUSE MOVE =====
             case WM_MOUSEMOVE: {
                 event.type = UCEventType::MouseMove;
-                event.x = event.windowX = GET_X_LPARAM(lParam);
-                event.y = event.windowY = GET_Y_LPARAM(lParam);
-                POINT pt = {event.x, event.y};
+                event.pointerWindow = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                event.pointer = event.pointerWindow;
+                POINT pt = { event.pointer.x, event.pointer.y };
                 ClientToScreen(hwnd, &pt);
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 fillModifiers();
                 PushEvent(event);
                 return;
@@ -547,11 +537,10 @@ namespace UltraCanvas {
 
                 // WM_MOUSEWHEEL coordinates are in screen space
                 POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 ScreenToClient(hwnd, &pt);
-                event.x = event.windowX = pt.x;
-                event.y = event.windowY = pt.y;
+                event.pointerWindow = { pt.x, pt.y };
+                event.pointer = event.pointerWindow;
                 fillModifiers();
                 PushEvent(event);
                 return;
@@ -563,11 +552,10 @@ namespace UltraCanvas {
                 event.wheelDelta = (rawDelta > 0) ? 5 : -5;
 
                 POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-                event.globalX = pt.x;
-                event.globalY = pt.y;
+                event.pointerGlobal = { pt.x, pt.y };
                 ScreenToClient(hwnd, &pt);
-                event.x = event.windowX = pt.x;
-                event.y = event.windowY = pt.y;
+                event.pointerWindow = { pt.x, pt.y };
+                event.pointer = event.pointerWindow;
                 fillModifiers();
                 PushEvent(event);
                 return;

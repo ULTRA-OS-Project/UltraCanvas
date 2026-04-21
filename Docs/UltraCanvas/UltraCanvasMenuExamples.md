@@ -363,7 +363,7 @@ contextMenu->AddItem(MenuItemData::Checkbox("Show Grid", true, [](bool checked) 
 // Show on right-click
 element->OnMouseDown([contextMenu](const UCEvent& event) {
     if (event.button == MouseButton::Right) {
-        contextMenu->ShowAt(event.x, event.y);
+        contextMenu->ShowAt(event.pointer.x, event.pointer.y);
         return true;
     }
     return false;

@@ -104,7 +104,7 @@ namespace UltraCanvas {
         // Effects
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
-        Point2Di shadowOffset = Point2Di(1, 1);
+        Point2Di shadowOffset = Point2Di(0, 0);
         // Split button style
         SplitButtonStyle splitStyle;
     };

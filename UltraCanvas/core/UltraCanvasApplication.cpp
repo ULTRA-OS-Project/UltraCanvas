@@ -429,8 +429,8 @@ namespace UltraCanvas {
 
         bool isDoubleClick = false;
         if (timeDiff <= DOUBLE_CLICK_TIME) {
-            int dx = event.x - lastMouseEvent.x;
-            int dy = event.y - lastMouseEvent.y;
+            int dx = event.pointer.x - lastMouseEvent.pointer.x;
+            int dy = event.pointer.y - lastMouseEvent.pointer.y;
             int distance = static_cast<int>(std::sqrt(dx * dx + dy * dy));
 
             if (distance <= DOUBLE_CLICK_DISTANCE) {
@@ -562,7 +562,7 @@ namespace UltraCanvas {
 //            };
 
             if (event.IsMouseEvent() || event.IsDragEvent()) { // change mouse cursor first
-                elementUnderPointer = targetWindow->FindElementAtPoint(event.windowX, event.windowY);
+                elementUnderPointer = targetWindow->FindElementAtPoint(event.pointerWindow);
   //              originalElementUnderPointer = elementUnderPointer;
                 // set pointerElem to popup element if it points outside
                 if (popupElement) {
@@ -612,7 +612,7 @@ namespace UltraCanvas {
                     && event.type == UCEventType::MouseDown
                     && event.button != UCMouseButton::NoneButton
                     && isPointerOutsidePopupElement
-                    && !popupElement->element->Contains(event.windowX, event.windowY)) {
+                    && !popupElement->element->ContainsInWindow(event.pointerWindow)) {
                     targetWindow->ClosePopup(*popupElement->element, ClosePopupReason::ClickOutside);
                     goto finish;
                 }
@@ -666,8 +666,7 @@ namespace UltraCanvas {
                     if (hoveredElement->GetWindow() == targetWindow && hoveredElement->IsVisible()) {
                         UCEvent leaveEvent = event;
                         leaveEvent.type = UCEventType::MouseLeave;
-                        leaveEvent.x = -1;
-                        leaveEvent.y = -1;
+                        leaveEvent.pointer = { -1, -1 };
                         DispatchEventToElement(hoveredElement, leaveEvent);
                     }
                     UltraCanvasTooltipManager::HideTooltip();
@@ -687,14 +686,14 @@ namespace UltraCanvas {
                         if (!elementUnderPointer->GetTooltip().empty()) {
                             UltraCanvasTooltipManager::UpdateAndShowTooltip(
                                     targetWindow, elementUnderPointer->GetTooltip(),
-                                    Point2Di(event.windowX, event.windowY));
+                                    event.pointerWindow);
                         }
                     }
                     // Update tooltip position as mouse moves
                     if (!elementUnderPointer->GetTooltip().empty() &&
                         (UltraCanvasTooltipManager::IsVisible() || UltraCanvasTooltipManager::IsPending())) {
                         UltraCanvasTooltipManager::UpdateTooltipPosition(
-                            Point2Di(event.windowX, event.windowY));
+                            event.pointerWindow);
                     }
 
                     if (DispatchEventToElement(elementUnderPointer, event)) {
@@ -768,11 +767,7 @@ namespace UltraCanvas {
             debugOutput << "DispatchEventToElement ev=" << event.ToString() << " target elem=" << elem << " target win=" << elem->GetWindow() << " focused=" << focusedWindow << std::endl;
         }
         if (event.IsMouseEvent() || event.IsDragEvent() || event.type == UCEventType::MouseEnter) {
-            if (elem->GetParentContainer() != window && elem != window) {
-                event.x = event.windowX;
-                event.y = event.windowY;
-                elem->ConvertWindowToParentContainerCoordinates(event.x, event.y);
-            }
+            event.pointer = elem->MapToLocal(event.pointerWindow, nullptr);
         }
 
         currentEvent = event;

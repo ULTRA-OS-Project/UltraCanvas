@@ -246,7 +246,7 @@ namespace UltraCanvas {
                 case UCEventType::MouseDown:
                     if (event.button == UCMouseButton::Left || event.button == UCMouseButton::Middle) {
                         isPanning = true;
-                        lastMousePos = Point2Di(event.x, event.y);
+                        lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
                         return true;
                     }
                     break;
@@ -260,11 +260,11 @@ namespace UltraCanvas {
 
                 case UCEventType::MouseMove:
                     if (isPanning) {
-                        int deltaX = event.x - lastMousePos.x;
-                        int deltaY = event.y - lastMousePos.y;
+                        int deltaX = event.pointer.x - lastMousePos.x;
+                        int deltaY = event.pointer.y - lastMousePos.y;
                         panOffset.x += deltaX;
                         panOffset.y += deltaY;
-                        lastMousePos = Point2Di(event.x, event.y);
+                        lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
                         UpdateImagePosition();
                         return true;
                     }

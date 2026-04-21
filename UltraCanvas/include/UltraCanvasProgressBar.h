@@ -364,7 +364,7 @@ private:
     
     // ===== RENDERING HELPERS =====
     void RenderStandardProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetElementLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -386,7 +386,7 @@ private:
     }
     
     void RenderRoundedProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetElementLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -408,7 +408,7 @@ private:
     }
     
     void RenderCircularProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetElementLocalBounds();
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         float radius = std::min(bounds.width, bounds.height) / 2 - borderWidth;
         
@@ -439,7 +439,7 @@ private:
     }
     
     void RenderRingProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetElementLocalBounds();
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         float outerRadius = std::min(bounds.width, bounds.height) / 2 - borderWidth;
         float innerRadius = outerRadius - thickness;
@@ -467,7 +467,7 @@ private:
     }
     
     void RenderGradientProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetElementLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -499,7 +499,7 @@ private:
     }
     
     void RenderStripedProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetElementLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -526,7 +526,7 @@ private:
     }
     
     void RenderPulseProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetElementLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -599,7 +599,7 @@ private:
     }
     
     void RenderText() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetElementLocalBounds();
         std::string text = GetFormattedText();
         
         ctx->PaintWidthColortextColor);
@@ -669,13 +669,13 @@ private:
     
     // ===== EVENT HANDLERS =====
     void HandleMouseDown(const UCEvent& event) {
-        if (Contains(event.x, event.y)) {
-            // Click to set progress based on position (optional feature)
+        if (Contains(event.pointer)) {
+            // Click to set progress based on position (event.pointer is element-local)
             if (orientation == ProgressOrientation::Horizontal) {
-                float clickRatio = static_cast<float>(event.x - GetX()) / GetWidth();
+                float clickRatio = static_cast<float>(event.pointer.x) / GetWidth();
                 SetPercentage(clickRatio);
             } else {
-                float clickRatio = 1.0f - static_cast<float>(event.y - GetY()) / GetHeight();
+                float clickRatio = 1.0f - static_cast<float>(event.pointer.y) / GetHeight();
                 SetPercentage(clickRatio);
             }
         }

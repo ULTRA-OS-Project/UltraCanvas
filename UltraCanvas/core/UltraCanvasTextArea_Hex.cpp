@@ -434,12 +434,12 @@ namespace UltraCanvas {
 // ===== HEX EVENT HANDLING =====
 
     bool UltraCanvasTextArea::HandleHexMouseDown(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
         // Scrollbar thumb dragging takes priority
-        if (IsNeedVerticalScrollbar() && verticalScrollThumb.Contains(event.x, event.y)) {
+        if (IsNeedVerticalScrollbar() && verticalScrollThumb.Contains(event.pointer)) {
             isDraggingVerticalThumb = true;
-            dragStartOffset.y = event.globalY - verticalScrollThumb.y;
+            dragStartOffset.y = event.pointerGlobal.y - verticalScrollThumb.y;
             UltraCanvasApplication::GetInstance()->CaptureMouse(this);
             return true;
         }
@@ -448,7 +448,7 @@ namespace UltraCanvas {
 
         if (hexBuffer.empty()) return true;
 
-        auto [byteOff, panel] = HexHitTestPoint(event.x, event.y);
+        auto [byteOff, panel] = HexHitTestPoint(event.pointer.x, event.pointer.y);
 
         if (event.shift && hexSelectionStart >= 0) {
             // Shift-click: extend selection
@@ -483,7 +483,7 @@ namespace UltraCanvas {
             int thumbHeight = verticalScrollThumb.height;
             int maxThumbY = scrollbarHeight - thumbHeight;
 
-            int newThumbY = event.globalY - dragStartOffset.y - bounds.y;
+            int newThumbY = event.pointerGlobal.y - dragStartOffset.y - bounds.y;
             newThumbY = std::max(0, std::min(newThumbY, maxThumbY));
 
             if (maxThumbY > 0 && hexTotalRows > hexMaxVisibleRows) {
@@ -496,15 +496,15 @@ namespace UltraCanvas {
         }
 
         if (hexIsSelectingWithMouse && hexSelectionAnchor >= 0 && !hexBuffer.empty()) {
-            auto [byteOff, panel] = HexHitTestPoint(event.x, event.y);
+            auto [byteOff, panel] = HexHitTestPoint(event.pointer.x, event.pointer.y);
             hexSelectionStart = hexSelectionAnchor;
             hexSelectionEnd = byteOff;
             hexCursorByteOffset = byteOff;
 
             // Auto-scroll near edges
-            if (event.y < hexVisibleArea.y) {
+            if (event.pointer.y < hexVisibleArea.y) {
                 hexFirstVisibleRow = std::max(0, hexFirstVisibleRow - 1);
-            } else if (event.y > hexVisibleArea.y + hexVisibleArea.height) {
+            } else if (event.pointer.y > hexVisibleArea.y + hexVisibleArea.height) {
                 int maxFirstRow = std::max(0, hexTotalRows - hexMaxVisibleRows);
                 hexFirstVisibleRow = std::min(maxFirstRow, hexFirstVisibleRow + 1);
             }

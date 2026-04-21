@@ -137,7 +137,7 @@ namespace UltraCanvas {
         std::ofstream file(filePath);
         if (!file.is_open()) return false;
 
-        auto bounds = GetBounds();
+        auto bounds = GetElementLocalBounds();
         file << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
         file << "<svg xmlns=\"http://www.w3.org/2000/svg\" ";
         file << "width=\"" << bounds.width << "\" ";
@@ -238,7 +238,7 @@ namespace UltraCanvas {
     void UltraCanvasSankeyDiagram::Render(IRenderContext* ctx) {
         if (!IsVisible()) return;
 
-        auto bounds = GetBounds();
+        auto bounds = GetElementLocalBounds();
 
         if (needsLayout) {
             PerformLayout();
@@ -273,11 +273,6 @@ namespace UltraCanvas {
                 hoveredNodeId.clear();
                 hoveredLinkIndex = -1;
                 UltraCanvasTooltipManager::HideTooltip();
-//                auto mouseGlobalPos = ConvertContainerToWindowCoordinates(mousePos);
-//                // Show tooltip using tooltip manager
-//                UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, mouseGlobalPos);
-//
-//                RequestRedraw();
                 return true;
             default:
                 break;
@@ -408,7 +403,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSankeyDiagram::ComputeNodeBreadths() {
-        auto bounds = GetBounds();
+        auto bounds = GetElementLocalBounds();
 
         // Find max depth
         int maxDepth = 0;
@@ -639,7 +634,7 @@ namespace UltraCanvas {
 
                 if (weightSum > 0) {
                     float newY = targetY / weightSum - node.height / 2.0f;
-                    auto bounds = GetBounds();
+                    auto bounds = GetElementLocalBounds();
                     node.y = std::clamp(newY,
                                         bounds.y + nodePadding,
                                         bounds.y + bounds.height - node.height - nodePadding);
@@ -685,7 +680,7 @@ namespace UltraCanvas {
 
                 if (weightSum > 0) {
                     float newY = targetY / weightSum - node.height / 2.0f;
-                    auto bounds = GetBounds();
+                    auto bounds = GetElementLocalBounds();
                     node.y = std::clamp(newY,
                                         bounds.y + nodePadding,
                                         bounds.y + bounds.height - node.height - nodePadding);
@@ -719,7 +714,7 @@ namespace UltraCanvas {
         }
 
         // Ensure nodes stay within bounds
-        auto bounds = GetBounds();
+        auto bounds = GetElementLocalBounds();
         float maxY = bounds.y + bounds.height - nodePadding;
 
         for (auto it = sortedIds.rbegin(); it != sortedIds.rend(); ++it) {
@@ -820,14 +815,14 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasSankeyDiagram::HandleMouseMove(const UCEvent &event) {
-        Point2D mousePos(event.x, event.y);
+        Point2D mousePos(event.pointer.x, event.pointer.y);
 
         // Check for dragging
         if (!draggedNodeId.empty()) {
             auto nodeIt = nodes.find(draggedNodeId);
             if (nodeIt != nodes.end()) {
                 nodeIt->second.y = mousePos.y - dragOffset.y;
-                auto bounds = GetBounds();
+                auto bounds = GetElementLocalBounds();
                 nodeIt->second.y = std::clamp(nodeIt->second.y,
                                               bounds.y + nodePadding,
                                               bounds.y + bounds.height - nodeIt->second.height - nodePadding);
@@ -848,9 +843,9 @@ namespace UltraCanvas {
                     char buf[1000];
                     snprintf(buf, sizeof(buf), "%s\nValue: %.2f", node.label.c_str(), node.value);
                     std::string tooltipText = buf;
-                    auto mouseGlobalPos = ConvertContainerToWindowCoordinates(mousePos);
+                    auto mouseGlobalPos = MapFromLocal(mousePos, nullptr);
                     // Show tooltip using tooltip manager
-//                    UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, {event.windowX, event.windowY});
+//                    UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, {event.pointerWindow.x, event.pointerWindow.y});
                     UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, mouseGlobalPos);
                 }
                 break;
@@ -871,7 +866,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasSankeyDiagram::HandleMouseDown(const UCEvent &event) {
-        Point2D mousePos(event.x, event.y);
+        Point2D mousePos(event.pointer.x, event.pointer.y);
 
         // Check if clicking on a node
         for (const auto& [id, node] : nodes) {

@@ -792,22 +792,23 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFileDialog::CalculateFileDialogLayout() {
-        Rect2Di bounds = GetBounds();
+        // All rects are stored in element-local space
+        Rect2Di bounds = GetElementLocalBounds();
 
-        pathBarRect = Rect2Di(bounds.x + 10, bounds.y + 10, bounds.width - 20, pathBarHeight);
+        pathBarRect = Rect2Di(10, 10, bounds.width - 20, pathBarHeight);
 
         int topOffset = pathBarHeight + 20;
         int bottomOffset = buttonHeight + filterHeight + 70;
-        fileListRect = Rect2Di(bounds.x + 10, bounds.y + topOffset,
+        fileListRect = Rect2Di(10, topOffset,
                                bounds.width - 20, bounds.height - topOffset - bottomOffset);
 
         maxVisibleItems = fileListRect.height / itemHeight;
 
-        int fileNameY = bounds.y + bounds.height - buttonHeight - filterHeight - 55;
-        fileNameInputRect = Rect2Di(bounds.x + 90, fileNameY, bounds.width - 110, 22);
+        int fileNameY = bounds.height - buttonHeight - filterHeight - 55;
+        fileNameInputRect = Rect2Di(90, fileNameY, bounds.width - 110, 22);
 
-        int filterY = bounds.y + bounds.height - buttonHeight - filterHeight - 25;
-        filterSelectorRect = Rect2Di(bounds.x + 90, filterY, bounds.width - 110, filterHeight);
+        int filterY = bounds.height - buttonHeight - filterHeight - 25;
+        filterSelectorRect = Rect2Di(90, filterY, bounds.width - 110, filterHeight);
     }
 
     Rect2Di UltraCanvasFileDialog::GetPathBarBounds() const {
@@ -986,7 +987,7 @@ namespace UltraCanvas {
         switch (event.type) {
             case UCEventType::MouseDown:
                 if (event.button == UCMouseButton::Left) {
-                    Point2Di eventPos(event.x, event.y);
+                    Point2Di eventPos(event.pointer.x, event.pointer.y);
 
                     if (fileListRect.Contains(eventPos)) {
                         HandleFileListClick(event);
@@ -1001,15 +1002,15 @@ namespace UltraCanvas {
                 break;
 
             case UCEventType::MouseDoubleClick:
-                if (fileListRect.Contains(Point2Di(event.x, event.y))) {
+                if (fileListRect.Contains(event.pointer)) {
                     HandleFileListDoubleClick(event);
                     return true;
                 }
                 break;
 
             case UCEventType::MouseMove:
-                if (fileListRect.Contains(Point2Di(event.x, event.y))) {
-                    int newHoverIndex = scrollOffset + (event.y - fileListRect.y) / itemHeight;
+                if (fileListRect.Contains(event.pointer)) {
+                    int newHoverIndex = scrollOffset + (event.pointer.y - fileListRect.y) / itemHeight;
                     int totalItems = static_cast<int>(directoryList.size() + fileList.size());
                     hoverItemIndex = (newHoverIndex < totalItems) ? newHoverIndex : -1;
                 } else {
@@ -1039,7 +1040,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFileDialog::HandleFileListClick(const UCEvent& event) {
-        int clickedIndex = scrollOffset + (event.y - fileListRect.y) / itemHeight;
+        int clickedIndex = scrollOffset + (event.pointer.y - fileListRect.y) / itemHeight;
         int totalItems = static_cast<int>(directoryList.size() + fileList.size());
 
         if (clickedIndex >= totalItems) return;
@@ -1118,7 +1119,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFileDialog::HandleMouseWheel(const UCEvent& event) {
-        if (fileListRect.Contains(Point2Di(event.x, event.y))) {
+        if (fileListRect.Contains(event.pointer)) {
             int totalItems = static_cast<int>(directoryList.size() + fileList.size());
             scrollOffset = std::max(0, std::min(totalItems - maxVisibleItems,
                                                 scrollOffset - event.wheelDelta));

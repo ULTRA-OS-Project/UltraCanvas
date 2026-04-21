@@ -126,7 +126,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasPasswordRuleLegend::Render(IRenderContext* ctx) {
-        Rect2Di bounds = GetBounds();
+        Rect2Di bounds = GetElementLocalBounds();
 
         // Update from linked input if connected
         if (linkedInput) {

@@ -73,8 +73,7 @@ namespace UltraCanvas {
         size_t GetChildCount() const { return children.size(); }
 
         UltraCanvasUIElement *FindChildById(const std::string &id);
-        UltraCanvasUIElement *FindElementAtPoint(int x, int y);
-        UltraCanvasUIElement *FindElementAtPoint(const Point2Di &pos) { return FindElementAtPoint(pos.x, pos.y); }
+        UltraCanvasUIElement *FindElementAtPoint(const Point2Di &pos);
 
         // ===== ENHANCED SCROLLING FUNCTIONS =====
         bool ScrollByVertical(int delta);
@@ -98,7 +97,9 @@ namespace UltraCanvas {
 
         void SetBounds(const Rect2Di &bounds) override;
 
-        Rect2Di GetContentArea(); // zero based rectanble without container offset
+        Rect2Di GetContentArea(); // zero based rectangle without container offset
+
+        static Rect2Di GetChildRect(UltraCanvasUIElement& elem); // get rect of child element in parent coordinates
 
         void SetContainerStyle(const ContainerStyle &newStyle);
         const ContainerStyle &GetContainerStyle() const { return style; }

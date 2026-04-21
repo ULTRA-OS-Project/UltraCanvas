@@ -280,7 +280,7 @@ namespace UltraCanvas {
                     pixmap = UCImage::Get(imagePath)->GetPixmap(img->GetWidth(), img->GetHeight(), ImageFitMode::NoScale);
                 }
 
-                ctx->DrawPixmap(*pixmap, Rect2Df(imageElement->GetXInWindow(), imageElement->GetYInWindow(), pixmap->GetWidth(), pixmap->GetHeight()), ImageFitMode::NoScale);
+                ctx->DrawPixmap(*pixmap, Rect2Df(imageElement->GetPositionInWindow(), pixmap->GetSize()), ImageFitMode::NoScale);
                 iterationCount++;
 
                 // Update UI every 1 second

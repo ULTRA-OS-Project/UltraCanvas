@@ -169,7 +169,7 @@ private:
                     if (ev.targetElement) {
                         UltraCanvasTooltipManager::UpdateAndShowTooltip(ev.targetElement->GetWindow(),
                                                                         "Test tooltip text",
-                                                                        Point2Di(ev.windowX, ev.windowY));
+                                                                        Point2Di(ev.pointerWindow.x, ev.pointerWindow.y));
                     }
                 },[](const UCEvent& ev) {
                     UltraCanvasTooltipManager::HideTooltip();

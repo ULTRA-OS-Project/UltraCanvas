@@ -140,9 +140,9 @@ void UltraCanvasGLSurface::Render(IRenderContext* ctx) {
     // Initialize GL on first render
     if (!initialized_) {
         if (!InitializeGL()) {
-            // Draw error indicator
+            // Draw error indicator (element-local coordinates)
             ctx->SetFillPaint(Color(200, 50, 50, 255));
-            Rect2Di b = GetBounds();
+            Rect2Di b = GetElementLocalBounds();
             ctx->FillRectangle(Rect2Df{static_cast<float>(b.x), static_cast<float>(b.y),
                               static_cast<float>(b.width), static_cast<float>(b.height)});
             return;
@@ -387,7 +387,8 @@ void UltraCanvasGLSurface::CompositeToSurface(IRenderContext* ctx, bool readback
         return;
     }
 
-    Rect2Di b = GetBounds();
+    // Composite to element-local origin (ctx is already translated to element origin)
+    Rect2Di b = GetElementLocalBounds();
     compositeStrategy_->Composite(*framebuffer_, ctx, b.x, b.y, b.width, b.height, readback);
 
     if (readback) {

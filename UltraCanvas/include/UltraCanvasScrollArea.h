@@ -370,7 +370,7 @@ namespace UltraCanvas {
 
             // Handle wheel scrolling in viewport
             if (event.type == UCEventType::MouseWheel) {
-                if (viewportRect.Contains(Point2Di(event.x, event.y))) {
+                if (viewportRect.Contains(event.pointer)) {
                     return HandleWheelScroll(event);
                 }
             }
@@ -414,7 +414,8 @@ namespace UltraCanvas {
 
         // ===== LAYOUT MANAGEMENT =====
         void UpdateLayout() {
-            Rect2Di bounds = GetBounds();
+            // All rects are in element-local space
+            Rect2Di bounds = GetElementLocalBounds();
             int sbSize = config.scrollbarStyle.trackSize;
 
             bool needsVertical = false;
@@ -424,8 +425,8 @@ namespace UltraCanvas {
             // Max 3 iterations — typically converges in 1-2
             for (int iteration = 0; iteration < 3; ++iteration) {
                 // Calculate viewport rect given current scrollbar needs
-                int left = bounds.x;
-                int top = bounds.y;
+                int left = 0;
+                int top = 0;
                 int vpWidth = bounds.width;
                 int vpHeight = bounds.height;
 
@@ -477,18 +478,18 @@ namespace UltraCanvas {
             UpdateScrollbarVisibility();
             SyncScrollbarsFromState();
 
-            // Position scrollbars
+            // Position scrollbars (element-local coordinates)
             if (verticalScrollbar && needsVertical) {
                 int sbX = config.verticalScrollbarOnRight ?
-                          (bounds.x + bounds.width - sbSize) : bounds.x;
-                verticalScrollbar->SetPosition(sbX, bounds.y);
+                          (bounds.width - sbSize) : 0;
+                verticalScrollbar->SetPosition(sbX, 0);
                 verticalScrollbar->SetSize(sbSize, viewportRect.height);
                 verticalScrollbar->SetScrollDimensions(viewportRect.height, scrollState.contentHeight);
             }
             if (horizontalScrollbar && needsHorizontal) {
                 int sbY = config.horizontalScrollbarOnBottom ?
-                          (bounds.y + bounds.height - sbSize) : bounds.y;
-                horizontalScrollbar->SetPosition(bounds.x, sbY);
+                          (bounds.height - sbSize) : 0;
+                horizontalScrollbar->SetPosition(0, sbY);
                 horizontalScrollbar->SetSize(viewportRect.width, sbSize);
                 horizontalScrollbar->SetScrollDimensions(viewportRect.width, scrollState.contentWidth);
             }
@@ -496,9 +497,9 @@ namespace UltraCanvas {
             // Corner rect
             if (needsVertical && needsHorizontal) {
                 int cornerX = config.verticalScrollbarOnRight ?
-                              (bounds.x + bounds.width - sbSize) : bounds.x;
+                              (bounds.width - sbSize) : 0;
                 int cornerY = config.horizontalScrollbarOnBottom ?
-                              (bounds.y + bounds.height - sbSize) : bounds.y;
+                              (bounds.height - sbSize) : 0;
                 cornerRect = Rect2Di(cornerX, cornerY, sbSize, sbSize);
             } else {
                 cornerRect = Rect2Di(0, 0, 0, 0);
@@ -565,11 +566,19 @@ namespace UltraCanvas {
 
         // ===== RENDERING HELPERS =====
         void RenderScrollbars(IRenderContext* ctx) {
+            auto renderSb = [&](UltraCanvasScrollbar* sb) {
+                if (!sb) return;
+                ctx->PushState();
+                auto sbB = sb->GetBounds();
+                ctx->Translate(Point2Di(sbB.x, sbB.y));
+                sb->Render(ctx);
+                ctx->PopState();
+            };
             if (verticalScrollbar && scrollState.showVerticalScrollbar) {
-                verticalScrollbar->Render(ctx);
+                renderSb(verticalScrollbar.get());
             }
             if (horizontalScrollbar && scrollState.showHorizontalScrollbar) {
-                horizontalScrollbar->Render(ctx);
+                renderSb(horizontalScrollbar.get());
             }
         }
 
@@ -583,11 +592,20 @@ namespace UltraCanvas {
         bool HandleScrollbarEvents(const UCEvent& event) {
             bool handled = false;
 
+            auto dispatchToSb = [&](UltraCanvasScrollbar* sb) -> bool {
+                if (!sb) return false;
+                UCEvent localEvent = event;
+                auto sbB = sb->GetBounds();
+                localEvent.pointer = event.pointer - sbB.TopLeft();
+                return sb->OnEvent(localEvent);
+            };
+
             // Check vertical scrollbar
             if (verticalScrollbar && scrollState.showVerticalScrollbar) {
-                if (verticalScrollbar->Contains(event.x, event.y) ||
+                auto sbB = verticalScrollbar->GetBounds();
+                if (sbB.Contains(event.pointer) ||
                     verticalScrollbar->IsDragging()) {
-                    if (verticalScrollbar->OnEvent(event)) {
+                    if (dispatchToSb(verticalScrollbar.get())) {
                         handled = true;
                     }
                 }
@@ -595,9 +613,10 @@ namespace UltraCanvas {
 
             // Check horizontal scrollbar
             if (!handled && horizontalScrollbar && scrollState.showHorizontalScrollbar) {
-                if (horizontalScrollbar->Contains(event.x, event.y) ||
+                auto sbB = horizontalScrollbar->GetBounds();
+                if (sbB.Contains(event.pointer) ||
                     horizontalScrollbar->IsDragging()) {
-                    if (horizontalScrollbar->OnEvent(event)) {
+                    if (dispatchToSb(horizontalScrollbar.get())) {
                         handled = true;
                     }
                 }

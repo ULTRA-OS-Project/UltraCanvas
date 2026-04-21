@@ -58,8 +58,8 @@ namespace UltraCanvas {
         // FIX: Simplified visibility check - if not visible at all, don't render
         if (menuType == MenuType::Menubar) {
 
-            // Render background
-            Rect2Di bounds = GetBounds();
+            // Render background in element-local space
+            Rect2Di bounds = GetElementLocalBounds();
             ctx->DrawFilledRectangle(bounds, style.backgroundColor, style.borderWidth, style.borderColor);
 
             // Draw border
@@ -82,7 +82,7 @@ namespace UltraCanvas {
                 RenderShadow(ctx);
             }
 
-            Rect2Di bounds = GetBounds();
+            Rect2Di bounds = GetElementLocalBounds();
 
             // FIX 1: Ensure background is painted with fully opaque solid color
             // so no underlying window content bleeds through the menu body or border.
@@ -98,8 +98,8 @@ namespace UltraCanvas {
             ctx->PushState();
             int bw = static_cast<int>(style.borderWidth);
             int sbWidth = needsScrollbar ? static_cast<int>(style.scrollbarStyle.trackSize) : 0;
-            ctx->ClipRect(Rect2Df(bounds.x + bw,
-                                  bounds.y + bw,
+            ctx->ClipRect(Rect2Df(bw,
+                                  bw,
                                   bounds.width - bw * 2 - sbWidth,
                                   bounds.height - bw * 2));
 
@@ -112,16 +112,21 @@ namespace UltraCanvas {
 
             ctx->PopState();  // releases the clip region
 
-            // Render scrollbar for overflow menus
+            // Render scrollbar for overflow menus (bounds stored in menu-local space;
+            // translate ctx so the scrollbar can draw from (0,0) as per element-local convention)
             if (needsScrollbar && menuScrollbar) {
                 int scrollbarWidth = static_cast<int>(style.scrollbarStyle.trackSize);
                 menuScrollbar->SetBounds(Rect2Di(
-                        bounds.x + bounds.width - scrollbarWidth - bw,
-                        bounds.y + bw,
+                        bounds.width - scrollbarWidth - bw,
+                        bw,
                         scrollbarWidth,
                         bounds.height - bw * 2));
                 menuScrollbar->SetScrollPosition(scrollOffsetPixels);
+                ctx->PushState();
+                auto sbB = menuScrollbar->GetBounds();
+                ctx->Translate(Point2Di(sbB.x, sbB.y));
                 menuScrollbar->Render(ctx);
+                ctx->PopState();
             }
         }
     }
@@ -306,7 +311,7 @@ namespace UltraCanvas {
         return y;
     }
 
-    bool UltraCanvasMenu::Contains(int x, int y) {
+    bool UltraCanvasMenu::ContainsInWindow(const Point2Di& point) {
         if (menuType == MenuType::PopupMenu || menuType == MenuType::SubmenuMenu) {
             // Only check bounds if menu is actually visible
             if (!IsVisible()) {
@@ -314,21 +319,21 @@ namespace UltraCanvas {
             }
         }
 
-        if (GetBounds().Contains(x, y)) {
+        if (GetBoundsInWindow().Contains(point)) {
             return true;
         }
 
         // look bottom on tree
         auto mnu = activeSubmenu;
         while (mnu) {
-            if (mnu->GetBounds().Contains(x, y)) return true;
+            if (mnu->GetBoundsInWindow().Contains(point)) return true;
             mnu = mnu->activeSubmenu;
         }
 
         // look top on tree
         mnu = parentMenu.lock();
         while (mnu) {
-            if (mnu->GetBoundsInWindow().Contains(x, y)) return true;
+            if (mnu->GetBoundsInWindow().Contains(point)) return true;
             mnu = mnu->parentMenu.lock();
         }
 
@@ -547,10 +552,11 @@ namespace UltraCanvas {
     }
 
     Rect2Di UltraCanvasMenu::GetItemBounds(int index) const {
+        // Returns element-local coordinates (ctx is translated to element origin at render time)
         Rect2Di bounds;
 
         if (orientation == MenuOrientation::Horizontal) {
-            int currentX = GetX();
+            int currentX = 0;
 
             for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
                 if (items[i].visible) {
@@ -559,11 +565,11 @@ namespace UltraCanvas {
             }
 
             bounds.x = currentX;
-            bounds.y = GetY();
+            bounds.y = 0;
             bounds.width = CalculateItemWidth(items[index]) + style.paddingLeft + style.paddingRight;
             bounds.height = style.itemHeight;
         } else {
-            int currentY = GetY() - scrollOffsetPixels;
+            int currentY = -scrollOffsetPixels;
 
             for (int i = 0; i < index && i < static_cast<int>(items.size()); ++i) {
                 if (items[i].visible) {
@@ -572,7 +578,7 @@ namespace UltraCanvas {
                 }
             }
 
-            bounds.x = GetX();
+            bounds.x = 0;
             bounds.y = currentY;
             bounds.width = GetWidth();
             bounds.height = (items[index].type == MenuItemType::Separator) ?
@@ -736,16 +742,17 @@ namespace UltraCanvas {
 
 
     void UltraCanvasMenu::RenderShadow(IRenderContext *ctx) {
-        Rect2Di bounds = GetBounds();
+        // Draw in element-local coordinates (ctx is translated to element origin)
+        Rect2Di bounds = GetElementLocalBounds();
         ctx->SetStrokePaint(style.shadowColor);
-        ctx->DrawRectangle(Rect2Df(bounds.x + style.shadowOffset.x, bounds.y + style.shadowOffset.y, bounds.width,
+        ctx->DrawRectangle(Rect2Df(style.shadowOffset.x, style.shadowOffset.y, bounds.width,
                            bounds.height));
     }
 
     int UltraCanvasMenu::GetItemUnderPointer(const UCEvent & ev) const {
         // Check if position is within menu bounds
         Rect2Di bnds = GetBoundsInWindow();
-        if (!bnds.Contains(ev.windowX, ev.windowY)) {
+        if (!bnds.Contains(ev.pointerWindow)) {
             return -1;
         }
 
@@ -762,7 +769,7 @@ namespace UltraCanvas {
                     itemWidth += style.iconSpacing;
                 }
 
-                if (ev.windowX >= currentX && ev.windowX < currentX + itemWidth) {
+                if (ev.pointerWindow.x >= currentX && ev.pointerWindow.x < currentX + itemWidth) {
                     return i;
                 }
 
@@ -778,7 +785,7 @@ namespace UltraCanvas {
                 int itemHeight = items[i].type == MenuItemType::Separator ?
                                  style.separatorHeight : style.itemHeight;
 
-                if (ev.windowY >= currentY && ev.windowY < currentY + itemHeight) {
+                if (ev.pointerWindow.y >= currentY && ev.pointerWindow.y < currentY + itemHeight) {
                     return i;
                 }
 
@@ -815,9 +822,12 @@ namespace UltraCanvas {
 
 
     bool UltraCanvasMenu::HandleMouseMove(const UCEvent &event) {
-        // Forward to scrollbar if dragging
+        // Forward to scrollbar if dragging (translate pointer to scrollbar-local)
         if (menuScrollbar && menuScrollbar->IsDragging()) {
-            return menuScrollbar->OnEvent(event);
+            UCEvent localEvent = event;
+            auto sbB = menuScrollbar->GetBounds();
+            localEvent.pointer = event.pointer - sbB.TopLeft();
+            return menuScrollbar->OnEvent(localEvent);
         }
 
         int newHoveredIndex = GetItemUnderPointer(event);
@@ -855,9 +865,14 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMenu::HandleMouseDown(const UCEvent &event) {
-        // Forward to scrollbar if clicking on it
-        if (needsScrollbar && menuScrollbar && menuScrollbar->Contains(event.x, event.y)) {
-            return menuScrollbar->OnEvent(event);
+        // Forward to scrollbar if clicking on it (pointer is menu-local; translate to scrollbar-local)
+        if (needsScrollbar && menuScrollbar) {
+            auto sbB = menuScrollbar->GetBounds();
+            if (sbB.Contains(event.pointer)) {
+                UCEvent localEvent = event;
+                localEvent.pointer = event.pointer - sbB.TopLeft();
+                return menuScrollbar->OnEvent(localEvent);
+            }
         }
 
         int clickedIndex = GetItemUnderPointer(event);
@@ -870,9 +885,12 @@ namespace UltraCanvas {
 
     bool UltraCanvasMenu::HandleMouseUp(const UCEvent &event) {
         if (menuScrollbar && menuScrollbar->IsDragging()) {
-            return menuScrollbar->OnEvent(event);
+            UCEvent localEvent = event;
+            auto sbB = menuScrollbar->GetBounds();
+            localEvent.pointer = event.pointer - sbB.TopLeft();
+            return menuScrollbar->OnEvent(localEvent);
         }
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
         int clickedIndex = GetItemUnderPointer(event);
 
@@ -1196,7 +1214,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasMenu::HandleMouseWheel(const UCEvent &event) {
         if (!needsScrollbar) return false;
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
         int delta = event.wheelDelta > 0 ? -style.itemHeight : style.itemHeight;
         int maxScroll = std::max(0, totalContentHeight - clampedMenuHeight);

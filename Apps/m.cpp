@@ -113,7 +113,7 @@ public:
         // Only log important events to reduce noise
         if (event.type == UCEventType::MouseDown || event.type == UCEventType::KeyDown) {
             debugOutput << "CROSS-PLATFORM EVENT: type=" << static_cast<int>(event.type)
-                      << " pos=(" << event.x << "," << event.y << ")" << std::endl;
+                      << " pos=(" << event.pointer.x << "," << event.pointer.y << ")" << std::endl;
         }
 
         // Handle window-level events using cross-platform approach

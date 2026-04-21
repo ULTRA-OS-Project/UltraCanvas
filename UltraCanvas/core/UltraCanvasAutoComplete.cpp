@@ -64,7 +64,7 @@ namespace UltraCanvas {
             popupOpen = true;
             PopulateListFromFiltered();
 
-            Point2Di pos = CalculatePopupPosition();
+            Point2Di pos = MapFromLocal({0, GetHeight()});
             popupListView->SetWidth(GetWidth());
 
             PopupElementSettings settings;
@@ -249,15 +249,6 @@ namespace UltraCanvas {
         };
 
         return toLower(itemText).find(toLower(query)) != std::string::npos;
-    }
-
-    // ===== POPUP POSITIONING =====
-
-    Point2Di UltraCanvasAutoComplete::CalculatePopupPosition() {
-        Point2Di globalPos = GetPositionInWindow();
-        Rect2Di inputRect = GetBounds();
-
-        return Point2Di(globalPos.x, globalPos.y + inputRect.height);
     }
 
     // ===== PRIVATE SETUP =====

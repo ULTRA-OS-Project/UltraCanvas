@@ -317,8 +317,11 @@ namespace UltraCanvas {
         if (IsDisabled() || !IsVisible()) return false;
 
         if (verticalScrollbar->IsVisible()) {
-            if (verticalScrollbar->Contains(event.x, event.y) || verticalScrollbar->IsDragging()) {
-                if (verticalScrollbar->OnEvent(event)) {
+            auto sbB = verticalScrollbar->GetBounds();
+            if (sbB.Contains(event.pointer) || verticalScrollbar->IsDragging()) {
+                UCEvent localEvent = event;
+                localEvent.pointer = event.pointer - sbB.TopLeft();
+                if (verticalScrollbar->OnEvent(localEvent)) {
                     return true;
                 }
             }
@@ -357,20 +360,23 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTreeView::Render(IRenderContext *ctx) {
-        ctx->PushState();
         // Draw background / border
         UltraCanvasUIElement::Render(ctx);
-        auto contentRect = GetContentRect();
+        // Build local-space content rect (ctx is translated to element origin)
+        Rect2Di contentRect = GetContentRect();
         if (rootNode) {
             int currentY = contentRect.y - scrollOffsetY;
             RenderNode(ctx, rootNode.get(), currentY, 0, contentRect);
         }
 
-        // Draw scrollbar if needed
+        // Draw scrollbar if needed (translate to scrollbar's bounds origin)
         if (verticalScrollbar->IsVisible()) {
+            ctx->PushState();
+            auto sbB = verticalScrollbar->GetBounds();
+            ctx->Translate(sbB.TopLeft());
             verticalScrollbar->Render(ctx);
+            ctx->PopState();
         }
-        ctx->PopState();
     }
 
     void UltraCanvasTreeView::UpdateScrollbars() {
@@ -389,12 +395,15 @@ namespace UltraCanvas {
         verticalScrollbar->SetVisible(hasVerticalScrollbar);
 
         if (hasVerticalScrollbar) {
-            // Position scrollbar
-            auto contentRect = GetPaddingRect();
+            // Position scrollbar in element-local space
+            int localPaddingX = GetBorderLeftWidth();
+            int localPaddingY = GetBorderTopWidth();
+            int paddingW = GetWidth() - GetTotalBorderHorizontal();
+            int paddingH = GetHeight() - GetTotalBorderVertical();
             int scrollbarWidth = verticalScrollbar->GetStyle().trackSize;
-            int sbX = contentRect.x + contentRect.width - scrollbarWidth;
-            int sbY = contentRect.y;
-            int sbHeight = contentRect.height;
+            int sbX = localPaddingX + paddingW - scrollbarWidth;
+            int sbY = localPaddingY;
+            int sbHeight = paddingH;
 
             verticalScrollbar->SetPosition(sbX, sbY);
             verticalScrollbar->SetSize(scrollbarWidth, sbHeight);
@@ -447,7 +456,9 @@ namespace UltraCanvas {
     TreeNode *UltraCanvasTreeView::GetNodeAtY(int y) {
         if (!rootNode) return nullptr;
 
-        int relativeY = y - GetY() + scrollOffsetY;
+        // y is element-local now; subtract local content offset + add scroll
+        int localContentY = GetBorderTopWidth() + padding.top;
+        int relativeY = y - localContentY + scrollOffsetY;
         int nodeIndex = relativeY / rowHeight;
 
         if (nodeIndex < 0) return nullptr;
@@ -587,24 +598,26 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTreeView::HandleMouseDown(const UCEvent &event) {
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
-//        lastMousePos = Point2Di(event.x, event.y);
+//        lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
 
         // Check if clicking on scrollbar
-//        if (hasVerticalScrollbar && event.x >= GetX() + GetWidth() - scrollbarWidth) {
+//        if (hasVerticalScrollbar && event.pointer.x >= GetX() + GetWidth() - scrollbarWidth) {
 //            isDragging = true;
 //            UltraCanvasApplication::GetInstance()->CaptureMouse(this);
 //            return true;
 //        }
 
-        TreeNode *clickedNode = GetNodeAtY(event.y);
+        TreeNode *clickedNode = GetNodeAtY(event.pointer.y);
         if (clickedNode) {
-            int nodeX = GetX() + clickedNode->level * indentSize;
+            // nodeX in element-local space
+            int localContentX = GetBorderLeftWidth() + padding.left;
+            int nodeX = localContentX + clickedNode->level * indentSize;
 
             // Check if clicking on expand/collapse button
             if (showExpandButtons && clickedNode->HasChildren() &&
-                event.x >= nodeX && event.x <= nodeX + 17) {
+                event.pointer.x >= nodeX && event.pointer.x <= nodeX + 17) {
                 clickedNode->Toggle();
                 UpdateScrollbars();
 
@@ -642,16 +655,16 @@ namespace UltraCanvas {
     bool UltraCanvasTreeView::HandleMouseMove(const UCEvent &event) {
 //        if (isDragging && hasVerticalScrollbar) {
 //            // Handle scrollbar dragging
-//            float deltaY = event.y - lastMousePos.y;
+//            float deltaY = event.pointer.y - lastMousePos.y;
 //            scrollOffsetY += deltaY;
 //            ClampScrollOffset();
-//            lastMousePos = Point2Di(event.x, event.y);
+//            lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
 //            RequestRedraw();
 //            return true;
 //        }
 
         // Update hover state
-        TreeNode *newHovered = GetNodeAtY(event.y);
+        TreeNode *newHovered = GetNodeAtY(event.pointer.y);
         if (newHovered != hoveredNode) {
             if (hoveredNode) hoveredNode->hovered = false;
             hoveredNode = newHovered;
@@ -670,8 +683,8 @@ namespace UltraCanvas {
 //        }
 
         // Handle right-click context menu
-        if (event.x > 0) { // Assuming right-click has positive x
-            TreeNode *rightClickedNode = GetNodeAtY(event.y);
+        if (event.pointer.x > 0) { // Assuming right-click has positive x
+            TreeNode *rightClickedNode = GetNodeAtY(event.pointer.y);
             if (rightClickedNode && onNodeRightClicked) {
                 onNodeRightClicked(rightClickedNode);
                 return true;
@@ -681,7 +694,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTreeView::HandleMouseDoubleClick(const UCEvent &event) {
-        TreeNode *doubleClickedNode = GetNodeAtY(event.y);
+        TreeNode *doubleClickedNode = GetNodeAtY(event.pointer.y);
         if (doubleClickedNode) {
             if (doubleClickedNode->HasChildren()) {
                 doubleClickedNode->Toggle();

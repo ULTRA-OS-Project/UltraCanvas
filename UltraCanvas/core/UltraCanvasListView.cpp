@@ -157,7 +157,8 @@ namespace UltraCanvas {
 
         int headerOff = GetHeaderOffset();
         int rowsContentHeight = model->GetRowCount() * viewStyle.rowHeight;
-        int rowsViewportHeight = GetContentRect().height - headerOff;
+        int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
+        int rowsViewportHeight = crHeight - headerOff;
 
         maxScrollY = std::max(0, rowsContentHeight - rowsViewportHeight);
         bool hasVerticalScrollbar = maxScrollY > 0;
@@ -165,11 +166,15 @@ namespace UltraCanvas {
         verticalScrollbar->SetVisible(hasVerticalScrollbar);
 
         if (hasVerticalScrollbar) {
-            auto paddingRect = GetPaddingRect();
+            // Scrollbar bounds in element-local space (within listview padding rect)
+            int localPaddingX = GetBorderLeftWidth();
+            int localPaddingY = GetBorderTopWidth();
+            int paddingW = GetWidth() - GetTotalBorderHorizontal();
+            int paddingH = GetHeight() - GetTotalBorderVertical();
             int scrollbarWidth = verticalScrollbar->GetStyle().trackSize;
-            int sbX = paddingRect.x + paddingRect.width - scrollbarWidth;
-            int sbY = paddingRect.y + headerOff;
-            int sbHeight = paddingRect.height - headerOff;
+            int sbX = localPaddingX + paddingW - scrollbarWidth;
+            int sbY = localPaddingY + headerOff;
+            int sbHeight = paddingH - headerOff;
 
             verticalScrollbar->SetPosition(sbX, sbY);
             verticalScrollbar->SetSize(scrollbarWidth, sbHeight);
@@ -200,10 +205,14 @@ namespace UltraCanvas {
     }
 
     Rect2Di UltraCanvasListView::GetViewportRect() const {
-        auto cr = GetContentRect();
+        // Returns element-local coordinates (ctx is translated to element origin)
+        int localContentX = GetBorderLeftWidth() + padding.left;
+        int localContentY = GetBorderTopWidth() + padding.top;
+        int crWidth = GetWidth() - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
+        int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
         int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetStyle().trackSize : 0;
         int headerOff = GetHeaderOffset();
-        return Rect2Di(cr.x, cr.y + headerOff, cr.width - sbWidth, cr.height - headerOff);
+        return Rect2Di(localContentX, localContentY + headerOff, crWidth - sbWidth, crHeight - headerOff);
     }
 
     int UltraCanvasListView::GetRowAtY(int y) const {
@@ -224,11 +233,15 @@ namespace UltraCanvas {
     // ===== RENDERING =====
 
     void UltraCanvasListView::Render(IRenderContext* ctx) {
-        ctx->PushState();
-
         // Draw background and border
         UltraCanvasUIElement::Render(ctx);
-        auto contentRect = GetContentRect();
+
+        // Element-local content rect (ctx is translated to element origin)
+        int localContentX = GetBorderLeftWidth() + padding.left;
+        int localContentY = GetBorderTopWidth() + padding.top;
+        int crWidth = GetWidth() - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
+        int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
+        Rect2Di contentRect(localContentX, localContentY, crWidth, crHeight);
 
         // Clip to content area
         ctx->ClipRect(contentRect);
@@ -241,12 +254,15 @@ namespace UltraCanvas {
         // Draw visible rows
         RenderRows(ctx, contentRect);
 
-        // Draw scrollbar on top
+        // Draw scrollbar on top (bounds are stored in element-local space;
+        // translate ctx so scrollbar can draw from (0,0))
         if (verticalScrollbar->IsVisible()) {
+            ctx->PushState();
+            auto sbB = verticalScrollbar->GetBounds();
+            ctx->Translate(Point2Di(sbB.x, sbB.y));
             verticalScrollbar->Render(ctx);
+            ctx->PopState();
         }
-
-        ctx->PopState();
     }
 
     void UltraCanvasListView::RenderHeader(IRenderContext* ctx, const Rect2Di& contentRect) {
@@ -381,10 +397,13 @@ namespace UltraCanvas {
     bool UltraCanvasListView::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
 
-        // Scrollbar gets events first
+        // Scrollbar gets events first (translate pointer from listview-local to scrollbar-local)
         if (verticalScrollbar->IsVisible()) {
-            if (verticalScrollbar->Contains(event.x, event.y) || verticalScrollbar->IsDragging()) {
-                if (verticalScrollbar->OnEvent(event)) {
+            auto sbB = verticalScrollbar->GetBounds();
+            if (sbB.Contains(event.pointer) || verticalScrollbar->IsDragging()) {
+                UCEvent localEvent = event;
+                localEvent.pointer = event.pointer - sbB.TopLeft();
+                if (verticalScrollbar->OnEvent(localEvent)) {
                     return true;
                 }
             }
@@ -410,11 +429,11 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasListView::HandleMouseDown(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
         SetFocus(true);
 
-        int row = GetRowAtY(event.y);
+        int row = GetRowAtY(event.pointer.y);
         if (row < 0) {
             if (selection) selection->Clear();
             focusedRow = -1;
@@ -446,7 +465,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasListView::HandleMouseMove(const UCEvent& event) {
-        int newHovered = Contains(event.x, event.y) ? GetRowAtY(event.y) : -1;
+        int newHovered = Contains(event.pointer) ? GetRowAtY(event.pointer.y) : -1;
         if (newHovered != hoveredRow) {
             hoveredRow = newHovered;
             if (onItemHovered && hoveredRow >= 0) onItemHovered(hoveredRow);
@@ -461,7 +480,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasListView::HandleMouseDoubleClick(const UCEvent& event) {
-        int row = GetRowAtY(event.y);
+        int row = GetRowAtY(event.pointer.y);
         if (row >= 0) {
             if (onItemDoubleClicked) onItemDoubleClicked(row);
             RequestRedraw();

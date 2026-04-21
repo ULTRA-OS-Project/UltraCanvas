@@ -19,7 +19,8 @@ namespace UltraCanvas {
             return;
         }
 
-        Rect2Di bounds = GetBounds();
+        // Build segment rects in element-local space
+        Rect2Di bounds = GetElementLocalBounds();
         int availableWidth = bounds.width;
 
         // Account for overall border
@@ -123,10 +124,6 @@ namespace UltraCanvas {
 // ===== RENDERING IMPLEMENTATION =====
 
     void UltraCanvasSegmentedControl::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
-
-        ctx->PushState();
-
         // Update animation
         if (style.enableAnimation && selectionAnimationProgress < 1.0f) {
             UpdateAnimation();
@@ -134,12 +131,10 @@ namespace UltraCanvas {
 
         // Render based on style
         RenderSegments(ctx);
-
-        ctx->PopState();
     }
 
     void UltraCanvasSegmentedControl::RenderSegments(IRenderContext* ctx) {
-        Rect2Di bounds = GetBounds();
+        Rect2Di bounds = GetElementLocalBounds();
 
         // Draw outer border
         ctx->SetStrokePaint(style.borderColor);
@@ -368,9 +363,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasSegmentedControl::HandleMouseDown(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
-        int index = GetSegmentAtPosition(event.x, event.y);
+        int index = GetSegmentAtPosition(event.pointer.x, event.pointer.y);
         if (index >= 0 && segments[index].enabled) {
             pressedIndex = index;
             RequestRedraw();
@@ -382,7 +377,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasSegmentedControl::HandleMouseUp(const UCEvent &event) {
         if (pressedIndex >= 0) {
-            int index = GetSegmentAtPosition(event.x, event.y);
+            int index = GetSegmentAtPosition(event.pointer.x, event.pointer.y);
 
             if (index == pressedIndex && segments[index].enabled) {
                 // Handle click based on selection mode
@@ -419,7 +414,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasSegmentedControl::HandleMouseMove(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) {
+        if (!Contains(event.pointer)) {
             if (hoveredIndex != -1) {
                 hoveredIndex = -1;
                 RequestRedraw();
@@ -427,7 +422,7 @@ namespace UltraCanvas {
             return false;
         }
 
-        int index = GetSegmentAtPosition(event.x, event.y);
+        int index = GetSegmentAtPosition(event.pointer.x, event.pointer.y);
         if (index != hoveredIndex) {
             hoveredIndex = index;
 

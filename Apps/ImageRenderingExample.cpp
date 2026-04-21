@@ -255,7 +255,7 @@ public:
 
     virtual bool OnEvent(const UCEvent& event) override {
         debugOutput << "*** ImageDemoWindow::OnEvent() called, type: " << (int)event.type
-                  << " pos: (" << event.x << "," << event.y << ") ***" << std::endl;
+                  << " pos: (" << event.pointer.x << "," << event.pointer.y << ") ***" << std::endl;
 
         // Handle keyboard shortcuts
         if (event.type == UCEventType::KeyDown) {

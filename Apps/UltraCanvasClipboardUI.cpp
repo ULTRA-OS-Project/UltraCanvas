@@ -200,16 +200,16 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasClipboardItem::OnEvent(const UCEvent& event) {
-        lastMousePos = Point2D(event.x, event.y);
+        lastMousePos = Point2D(event.pointer.x, event.pointer.y);
 
         if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
-            if (copyButtonRect.Contains(Point2D(event.x, event.y))) {
+            if (copyButtonRect.Contains(event.pointer)) {
                 if (onCopyRequested) onCopyRequested(entry);
-            } else if (saveButtonRect.Contains(Point2D(event.x, event.y))) {
+            } else if (saveButtonRect.Contains(event.pointer)) {
                 if (onSaveRequested) onSaveRequested(entry);
-            } else if (deleteButtonRect.Contains(Point2D(event.x, event.y))) {
+            } else if (deleteButtonRect.Contains(event.pointer)) {
                 if (onDeleteRequested) onDeleteRequested(entry);
-            } else if (GetBounds().Contains(Point2D(event.x, event.y))) {
+            } else if (GetBounds().Contains(event.pointer)) {
                 isSelected = !isSelected;
                 if (onSelectionChanged) onSelectionChanged(isSelected);
             }

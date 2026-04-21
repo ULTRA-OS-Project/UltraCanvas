@@ -501,7 +501,7 @@ namespace UltraCanvas {
 
     Point2Di UltraCanvasDropdown::CalculatePopupPosition() {
         Point2Di globalPos = GetPositionInWindow();
-        Rect2Di buttonRect = GetBounds();
+        Size2Di buttonSize = GetSize();
 
         int windowHeight = window ? window->GetHeight() : 9999;
         int windowWidth = window ? window->GetWidth() : 9999;
@@ -510,7 +510,7 @@ namespace UltraCanvas {
         int popupHeight = popupListView->GetBounds().height;
 
         // Calculate available space below and above the button
-        int spaceBelow = windowHeight - (globalPos.y + buttonRect.height);
+        int spaceBelow = windowHeight - (globalPos.y + buttonSize.height);
         int spaceAbove = globalPos.y;
 
         int effectiveHeight = popupHeight;
@@ -518,14 +518,14 @@ namespace UltraCanvas {
 
         if (effectiveHeight <= spaceBelow) {
             // Fits below
-            listY = globalPos.y + buttonRect.height;
+            listY = globalPos.y + buttonSize.height;
         } else if (effectiveHeight <= spaceAbove) {
             // Fits above
             listY = globalPos.y - effectiveHeight;
         } else if (spaceBelow >= spaceAbove) {
             // More space below — clamp
             effectiveHeight = std::max(spaceBelow, static_cast<int>(style.itemHeight) + 2);
-            listY = globalPos.y + buttonRect.height;
+            listY = globalPos.y + buttonSize.height;
         } else {
             // More space above — clamp
             effectiveHeight = std::max(spaceAbove, static_cast<int>(style.itemHeight) + 2);
@@ -625,9 +625,7 @@ namespace UltraCanvas {
     // ===== RENDERING =====
 
     void UltraCanvasDropdown::Render(IRenderContext* ctx) {
-        ctx->PushState();
         RenderButton(ctx);
-        ctx->PopState();
     }
 
     std::string UltraCanvasDropdown::GetDisplayText() const {
@@ -652,7 +650,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDropdown::RenderButton(IRenderContext *ctx) {
-        Rect2Di buttonRect = GetBounds();
+        Rect2Di buttonRect = GetElementLocalBounds();
 
         // Determine button state colors
         Color bgColor = style.normalColor;
@@ -771,9 +769,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasDropdown::HandleMouseDown(const UCEvent &event) {
-        Rect2Di buttonRect = GetBounds();
+        Rect2Di buttonRect = GetElementLocalBounds();
 
-        if (buttonRect.Contains(event.x, event.y)) {
+        if (buttonRect.Contains(event.pointer)) {
             buttonPressed = true;
             if (dropdownOpen) {
                 CloseDropdown();
@@ -792,8 +790,8 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasDropdown::HandleMouseMove(const UCEvent &event) {
-        Rect2Di buttonRect = GetBounds();
-        if (buttonRect.Contains(event.x, event.y)) {
+        Rect2Di buttonRect = GetElementLocalBounds();
+        if (buttonRect.Contains(event.pointer)) {
             SetMouseCursor(UCMouseCursor::ContextMenu);
         } else {
             SetMouseCursor(UCMouseCursor::Default);

@@ -88,7 +88,7 @@ namespace UltraCanvas {
 
     void UltraCanvasScrollbar::UpdateGeometry(IRenderContext* ctx) {
         if (layoutDirty) {
-            Rect2Di bounds = GetBounds();
+            Rect2Di bounds = GetElementLocalBounds();
 
             if (IsVertical()) {
                 UpdateVerticalLayout(bounds);
@@ -289,13 +289,13 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasScrollbar::HandleMouseDown(const UCEvent &event) {
-        Point2Di mousePos(event.x, event.y);
+        Point2Di mousePos(event.pointer.x, event.pointer.y);
 
         // Check thumb first
         if (thumbRect.Contains(mousePos)) {
             interactionState.thumbPressed = true;
             interactionState.isDragging = true;
-            interactionState.dragStartMousePos = IsVertical() ? event.globalY : event.globalX;
+            interactionState.dragStartMousePos = IsVertical() ? event.pointerGlobal.y : event.pointerGlobal.x;
             interactionState.dragStartScrollPos = scrollState.position;
 
             // Capture mouse
@@ -375,11 +375,11 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasScrollbar::HandleMouseMove(const UCEvent &event) {
-        Point2Di mousePos(event.x, event.y);
+        Point2Di mousePos(event.pointer.x, event.pointer.y);
 
         // Handle dragging
         if (interactionState.isDragging) {
-            int currentPos = IsVertical() ? event.globalY : event.globalX;
+            int currentPos = IsVertical() ? event.pointerGlobal.y : event.pointerGlobal.x;
             int delta = currentPos - interactionState.dragStartMousePos;
 
             // Convert pixel delta to scroll delta
@@ -421,7 +421,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasScrollbar::HandleMouseWheel(const UCEvent &event) {
-        //if (!Contains(event.x, event.y)) return false;
+        //if (!Contains(event.pointer)) return false;
         if (IsVertical()) {
             ScrollByWheel(event.wheelDelta);
             return true;

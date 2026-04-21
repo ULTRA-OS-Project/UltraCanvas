@@ -365,9 +365,8 @@ namespace UltraCanvas {
         searchAutoComplete->SetSize(acWidth, 28);
         searchAutoComplete->SetText("");
 
-        Point2Di searchAutoCompletePos = dropdownBounds.TopLeft();
-        searchAutoCompletePos.y += dropdownBounds.height;
-        searchAutoCompletePos = overflowButton->ConvertContainerToWindowCoordinates(searchAutoCompletePos);
+        Point2Di searchAutoCompletePos(0, dropdownBounds.height);
+        searchAutoCompletePos = overflowButton->MapFromLocal(searchAutoCompletePos, nullptr);
         window->OpenPopup(searchAutoCompletePos, *searchAutoComplete, PopupElementSettings());
         searchAutoComplete->SetFocus(true);
 
@@ -412,8 +411,7 @@ namespace UltraCanvas {
         }
 
         ctx->PushState();
-        ctx->Translate(bounds.x,
-                       bounds.y);
+        // ctx is already translated to element origin by the parent container.
         RenderContentArea(ctx);
         RenderTabBar(ctx);
         ctx->PopState();
@@ -421,7 +419,6 @@ namespace UltraCanvas {
          // V2.0.0: Draw dragged tab ghost overlay (on top of everything)
          if (isDraggingTab && draggingTabIndex >= 0) {
              ctx->PushState();
-             ctx->Translate(bounds.x, bounds.y);
              RenderDraggedTabGhost(ctx);
              ctx->PopState();
          }
@@ -665,7 +662,12 @@ namespace UltraCanvas {
         if (activeTabIndex >= 0 && activeTabIndex < (int)tabs.size()) {
             auto content = tabs[activeTabIndex]->content.get();
             if (content && content->IsVisible()) {
+                // Translate to child's origin — content widgets now draw from (0,0) in their local space
+                ctx->PushState();
+                auto cb = content->GetBounds();
+                ctx->Translate(Point2Di(cb.x, cb.y));
                 content->Render(ctx);
+                ctx->PopState();
             }
         }
 
@@ -757,8 +759,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTabbedContainer::HandleMouseDown(const UCEvent &event) {
-        int x = event.x - bounds.x;
-        int y = event.y - bounds.y;
+        // event.pointer is already in element-local space
+        int x = event.pointer.x;
+        int y = event.pointer.y;
         Rect2Di tabBarBounds = GetTabBarBounds();
 
         if (!tabBarBounds.Contains(x, y)) return false;
@@ -823,7 +826,7 @@ namespace UltraCanvas {
                 if (onTabContextMenu) {
                     onTabContextMenu(clickedTab);
                 }
-                //tabContextMenu->ShowAtWindow(event.x, event.y, GetWindow());
+                //tabContextMenu->ShowAtWindow(event.pointer.x, event.pointer.y, GetWindow());
                 return true;
             }
         }
@@ -831,7 +834,7 @@ namespace UltraCanvas {
             if ((allowTabReordering || allowTabDragOut) && event.button == UCMouseButton::Left) {
                 draggingTabIndex = clickedTab;
                 dragStartPosition = Point2Di(x, y);
-                dragGlobalAnchor = Point2Di(event.globalX, event.globalY);
+                dragGlobalAnchor = Point2Di(event.pointerGlobal.x, event.pointerGlobal.y);
                 isDraggingTab = false;
                 UltraCanvasApplication::GetInstance()->CaptureMouse(this);
             }
@@ -855,7 +858,7 @@ namespace UltraCanvas {
                 dragInsertionIndex = -1;
                 dragOutTriggered = false;
 
-                onTabDragOut(tabIdx, event.globalX, event.globalY);
+                onTabDragOut(tabIdx, event.pointerGlobal.x, event.pointerGlobal.y);
                 RequestRedraw();
                 return true;
             }
@@ -871,14 +874,15 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTabbedContainer::HandleMouseMove(const UCEvent &event) {
-        int x = event.x - bounds.x;
-        int y = event.y - bounds.y;
+        // event.pointer is already in element-local space
+        int x = event.pointer.x;
+        int y = event.pointer.y;
 
         // When dragging with mouse capture, use global coordinate deltas
         // so coords stay correct even when mouse moves to another window
         if (draggingTabIndex >= 0) {
-            x = dragStartPosition.x + (event.globalX - dragGlobalAnchor.x);
-            y = dragStartPosition.y + (event.globalY - dragGlobalAnchor.y);
+            x = dragStartPosition.x + (event.pointerGlobal.x - dragGlobalAnchor.x);
+            y = dragStartPosition.y + (event.pointerGlobal.y - dragGlobalAnchor.y);
         }
 
         Rect2Di tabBarBounds = GetTabBarBounds();
@@ -895,7 +899,7 @@ namespace UltraCanvas {
                 if (hoveredTabIndex >= 0 && !tabs[hoveredTabIndex]->tooltip.empty()) {
                     UltraCanvasTooltipManager::UpdateAndShowTooltip(
                         GetWindow(), tabs[hoveredTabIndex]->tooltip,
-                        Point2Di(event.windowX, event.windowY));
+                        Point2Di(event.pointerWindow.x, event.pointerWindow.y));
                 } else {
                     UltraCanvasTooltipManager::HideTooltip();
                 }

@@ -341,7 +341,7 @@ namespace UltraCanvas {
             vertSplitBtn->onSecondaryClick = [mainButtonsContainer, vertSplitMenu]() {
                 auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
                 mainButtonsContainer->GetWindow()->AddChild(vertSplitMenu);
-                vertSplitMenu->OpenMenu(Point2Di(ev.windowX, ev.windowY), *mainButtonsContainer->GetWindow(), PopupElementSettings());
+                vertSplitMenu->OpenMenu(Point2Di(ev.pointerWindow.x, ev.pointerWindow.y), *mainButtonsContainer->GetWindow(), PopupElementSettings());
             };
             mainButtonsContainer->AddChild(vertSplitBtn);
 
@@ -393,7 +393,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(customColorBtn);
 
             // Shadow Button
-            auto shadowBtn = CreateButton("ShadowButton", 154, 370, yOffset, 120, 35, "Shadow");
+            auto shadowBtn = CreateButton("ShadowButton", 154, 370, yOffset, 120, 38, "Shadow");
             shadowBtn->SetShadow(true, Color(0, 0, 0, 128), Point2Di(3, 3));
             shadowBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Shadow button clicked\nCustom shadow effect applied");

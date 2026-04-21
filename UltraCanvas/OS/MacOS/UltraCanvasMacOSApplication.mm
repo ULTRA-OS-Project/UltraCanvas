@@ -324,13 +324,12 @@ namespace UltraCanvas {
         // macOS uses bottom-left origin; UltraCanvas uses top-left origin
         auto setMouseFields = [&](NSEvent* ev) {
             NSPoint locInWindow = [ev locationInWindow];
-            event.x = event.windowX = (int)locInWindow.x;
-            event.y = event.windowY = (int)(windowHeight - locInWindow.y);
+            event.pointerWindow = { (int)locInWindow.x, (int)(windowHeight - locInWindow.y) };
+            event.pointer = event.pointerWindow;
             if (nsWindow) {
                 NSPoint screenPoint = [nsWindow convertPointToScreen:locInWindow];
                 NSRect screenFrame = [[NSScreen mainScreen] frame];
-                event.globalX = (int)screenPoint.x;
-                event.globalY = (int)(screenFrame.size.height - screenPoint.y);
+                event.pointerGlobal = { (int)screenPoint.x, (int)(screenFrame.size.height - screenPoint.y) };
             }
             NSUInteger flags = [ev modifierFlags];
             event.ctrl = (flags & NSEventModifierFlagControl) != 0;

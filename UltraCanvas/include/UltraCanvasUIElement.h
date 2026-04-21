@@ -148,6 +148,10 @@ namespace UltraCanvas {
             return bounds;
         }
 
+        Rect2Di GetElementLocalBounds() const {
+            return {0, 0, bounds.width, bounds.height};
+        }
+
         Point2Di GetPosition() {
             return Point2Di(bounds.x, bounds.y);
         }
@@ -160,12 +164,12 @@ namespace UltraCanvas {
             return Size2Di(explicitSize);
         }
 
-        bool Contains(const Point2Di& point) {
-            return bounds.Contains(point);
+        virtual bool Contains(const Point2Di& point) {
+            return GetElementLocalBounds().Contains(point);
         }
 
-        virtual bool Contains(int px, int py) {
-            return bounds.Contains(px, py);
+        virtual bool ContainsInWindow(const Point2Di& point) {
+            return GetBoundsInWindow().Contains(point);
         }
 
         int GetXInWindow();
@@ -360,10 +364,20 @@ namespace UltraCanvas {
 
         // ===== CONTENT AREA CALCULATIONS =====
         // client area = bounds minus (border + padding)
-        virtual Rect2Di GetContentRect() const {
+        Rect2Di GetContentRect() const {
             return Rect2Di(
                     bounds.x + GetBorderLeftWidth() + padding.left,
                     bounds.y + GetBorderTopWidth() + padding.top,
+                    bounds.width - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal()),
+                    bounds.height - (GetTotalBorderVertical() + GetTotalPaddingVertical())
+            );
+        }
+        
+        // local client area = bounds in element corrds space (0,0 is top-left) minus (border + padding)
+        Rect2Di GetLocalContentRect() const {
+            return Rect2Di(
+                    GetBorderLeftWidth() + padding.left,
+                    GetBorderTopWidth() + padding.top,
                     bounds.width - (GetTotalBorderHorizontal() + GetTotalPaddingHorizontal()),
                     bounds.height - (GetTotalBorderVertical() + GetTotalPaddingVertical())
             );
@@ -420,11 +434,10 @@ namespace UltraCanvas {
                    margin.top > 0 || margin.bottom > 0;
         }
 
-        Point2Di ConvertWindowToParentContainerCoordinates(const Point2Di &globalPos);
-        virtual void ConvertWindowToParentContainerCoordinates(int &x, int &y);
-
-        Point2Di ConvertContainerToWindowCoordinates(const Point2Di &globalPos);
-        virtual void ConvertContainerToWindowCoordinates(int &x, int &y);
+        // if mapToParent is null then will map to toplevel window coordinates
+        Point2Di MapFromLocal(const Point2Di &localPos, UltraCanvasContainer* mapToParent = nullptr);
+        // if mapFromParent is null then will map from toplevel window coordinates
+        Point2Di MapToLocal(const Point2Di &globalPos, UltraCanvasContainer* mapFromParent = nullptr);
 
         UCMouseCursor GetMouseCursor() const { return mouseCursor; }
         void SetMouseCursor(UCMouseCursor cur) { mouseCursor = cur; }

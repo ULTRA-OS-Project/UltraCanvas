@@ -631,8 +631,6 @@ namespace UltraCanvas {
 // ===== RENDERING =====
 
     void UltraCanvasToolbar::Render(IRenderContext* ctx) {
-        ctx->PushState();
-
         // Render shadow if enabled (for Docked style)
         if (appearance.hasShadow) {
             RenderShadow(ctx);
@@ -644,8 +642,6 @@ namespace UltraCanvas {
         if (appearance.enableMagnification && hoveredItemIndex >= 0) {
             RenderDockMagnification(ctx);
         }
-
-        ctx->PopState();
     }
 
     bool UltraCanvasToolbar::OnEvent(const UCEvent& event) {
@@ -663,10 +659,10 @@ namespace UltraCanvas {
         // Handle dragging
         if (dragMode != ToolbarDragMode::DragNone) {
             if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
-                BeginDrag(Point2Di(event.x, event.y));
+                BeginDrag(Point2Di(event.pointer.x, event.pointer.y));
                 return true;
             } else if (event.type == UCEventType::MouseMove && isDragging) {
-                UpdateDrag(Point2Di(event.x, event.y));
+                UpdateDrag(Point2Di(event.pointer.x, event.pointer.y));
                 return true;
             } else if (event.type == UCEventType::MouseUp && isDragging) {
                 EndDrag();
@@ -676,7 +672,7 @@ namespace UltraCanvas {
 
         // Track mouse position for magnification
         if (appearance.enableMagnification && event.type == UCEventType::MouseMove) {
-            mousePosition = Point2Di(event.x, event.y);
+            mousePosition = Point2Di(event.pointer.x, event.pointer.y);
             CalculateMagnification();
         }
 
@@ -759,13 +755,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasToolbar::RenderShadow(IRenderContext* ctx) {
-        Rect2Di bounds = GetBounds();
+        // Element-local space — ctx already translated to element origin
+        Rect2Di bounds = GetElementLocalBounds();
 
         // Draw shadow
         ctx->SetFillPaint(appearance.shadowColor);
         ctx->FillRoundedRectangle({
-                                          bounds.x + appearance.shadowOffset.x,
-                                          bounds.y + appearance.shadowOffset.y,
+                                          appearance.shadowOffset.x,
+                                          appearance.shadowOffset.y,
                                           bounds.width,
                                           bounds.height
                                   },

@@ -153,6 +153,7 @@ namespace UltraCanvas {
 
         // ===== TRANSFORMATION =====
         virtual void Translate(double x, double y) = 0;
+        void Translate(const Point2Df& pos) { Translate(pos.x, pos.y); };
         virtual void Rotate(double angle) = 0;
         virtual void Scale(double sx, double sy) = 0;
         virtual void SetTransform(double a, double b, double c, double d, double e, double f) = 0; // set matrix to
