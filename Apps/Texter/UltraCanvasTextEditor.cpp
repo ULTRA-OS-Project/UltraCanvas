@@ -34,7 +34,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "1.0.18";
+    std::string UltraCanvasTextEditor::version = "1.0.19";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -1455,6 +1455,10 @@ namespace {
         tabContainer->SetActiveTab(tabIndex);
 
         UpdateTabTitle(docIndex);
+
+        tabContainer->EnsureTabVisible(tabIndex);
+        tabContainer->InvalidateTabbar();
+
         UpdateStatusBar();
         UpdateMarkdownToolbarVisibility();
 
@@ -2197,6 +2201,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (sessionOpened > 0 && savedActiveIndex >= 0
             && savedActiveIndex < static_cast<int>(documents.size())) {
             SwitchToDocument(savedActiveIndex);
+            // Force tab bar to scroll the active tab into view —
+            // SwitchToDocument may have run while tabbarLayoutDirty was true,
+            // which causes SetActiveTab to skip EnsureTabVisible.
+            tabContainer->EnsureTabVisible(savedActiveIndex);
+            tabContainer->InvalidateTabbar();
         }
 
         // --- Phase 2: Find orphan autosave backups (crash recovery only) ---

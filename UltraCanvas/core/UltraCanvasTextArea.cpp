@@ -246,8 +246,8 @@ namespace UltraCanvas {
             DeleteSelection();
         }
 
-        int line = cursorPosition.lineIndex;
-        int col  = cursorPosition.columnIndex;
+        int line = std::max(0, cursorPosition.lineIndex);
+        int col  = std::max(0, cursorPosition.columnIndex);
         int startLine = line;
 
         if (lines.empty()) {

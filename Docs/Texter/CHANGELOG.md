@@ -1,3 +1,7 @@
+2016-04-17 1.0.19
+- Fix restore opened tab after load
+- Tabbed container active tab is not updated currently after load new file 
+
 2016-04-17 1.0.18
 - Many updates in UltraCanvasTextarea
 - Disable focus on TextArea in Markdown mode on file load and on tab switch if cursor at 0,0 position
