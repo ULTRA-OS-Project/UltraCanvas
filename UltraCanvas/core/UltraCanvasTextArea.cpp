@@ -2275,6 +2275,9 @@ namespace UltraCanvas {
         style.lineNumbersBackgroundColor = {35, 35, 35, 255}; // Dark gutter background
         style.selectionColor = {60, 90, 150, 100};
         style.cursorColor = {255, 255, 255, 255};
+        style.scrollbarTrackColor = {50, 50, 50, 255};
+        style.scrollbarColor = {100, 100, 100, 255};
+        style.lineNumbersColor = {160, 160, 160, 255};  // Match tab title brightness
 
         style.tokenStyles.keywordStyle.color = {0x4c, 0xbb, 0xc9, 255};
         style.tokenStyles.functionStyle.color = {0xdc, 0xd6, 0xa2, 255};
@@ -2302,6 +2305,8 @@ namespace UltraCanvas {
         style.lineNumbersColor = {128, 128, 128, 255};
         style.lineNumbersBackgroundColor = {248, 248, 248, 255};
         style.currentLineHighlightColor = {255, 255, 0, 30};
+        style.scrollbarTrackColor = {128, 128, 128, 255};
+        style.scrollbarColor = {200, 200, 200, 255};
         style.scrollbarTrackColor = {128, 128, 128, 255};
         style.scrollbarColor = {200, 200, 200, 255};
 

@@ -1,3 +1,6 @@
+2026-04-23 0.1.21
+- Some color fixes for Dark mode
+
 2026-04-20 0.1.20
 - Shard very long lines to speed up TextArea on big files.
   Lines longer than 4000 codepoints are split at a break char

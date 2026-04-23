@@ -34,7 +34,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "1.0.19";
+    std::string UltraCanvasTextEditor::version = "1.0.20";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -3263,12 +3263,32 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 ApplyHeadingButtonStyles(true);
             }
             if (tabContainer) {
-                tabContainer->tabBarColor        = Color(40, 40, 40, 255);
-                tabContainer->activeTabColor     = Color(60, 60, 60, 255);
-                tabContainer->inactiveTabColor   = Color(45, 45, 45, 255);
-                tabContainer->activeTabTextColor   = Colors::White;
+                tabContainer->tabBarColor = Color(40, 40, 40, 255);
+                tabContainer->activeTabColor = Color(60, 60, 60, 255);
+                tabContainer->inactiveTabColor = Color(45, 45, 45, 255);
+                tabContainer->activeTabTextColor = Colors::White;
                 tabContainer->inactiveTabTextColor = Color(160, 160, 160, 255); // readable mid-grey
-                tabContainer->newTabButtonColor  = Color(45, 45, 45, 255);            }
+                tabContainer->newTabButtonColor = Color(45, 45, 45, 255);
+                tabContainer->navButtonBackgroundColor = Color(55, 55, 55, 255);
+                tabContainer->navButtonIconColor = Color(200, 200, 200, 255);
+                tabContainer->hoveredTabColor = Color(65, 65, 65, 255);
+                tabContainer->closeButtonColor = Color(160, 160, 160, 255);
+                tabContainer->closeButtonHoverColor = Color(220, 80, 80, 255);
+                tabContainer->contentAreaColor = Color(30, 30, 30, 255);
+                tabContainer->tabBorderColor = Color(60, 60, 60, 255);
+                tabContainer->tabContentBorderColor = Color(60, 60, 60, 255);
+                tabContainer->tabSeparatorColor = Color(60, 60, 60, 255);
+                tabContainer->newTabButtonHoverColor = Color(65, 65, 65, 255);
+                tabContainer->newTabButtonIconColor = Color(200, 200, 200, 255);
+            }
+            if (menuBar) {
+                MenuStyle ms = menuBar->GetStyle();
+                ms.backgroundColor = Color(40, 40, 40, 255);
+                ms.textColor       = Color(200, 200, 200, 255);
+                ms.hoverColor      = Color(65, 65, 65, 255);
+                ms.hoverTextColor  = Colors::White;
+                menuBar->SetStyle(ms);
+            }
         } else {
             SetBackgroundColor(Color(240, 240, 240, 255));
             if (statusLabel) {
@@ -3310,6 +3330,26 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 tabContainer->inactiveTabColor = Color(220, 220, 220, 255);
                 tabContainer->activeTabTextColor = Colors::Black;
                 tabContainer->newTabButtonColor = Color(240, 240, 240);
+
+                tabContainer->navButtonBackgroundColor = Color(220, 220, 220, 255);
+                tabContainer->navButtonIconColor       = Colors::Black;
+                tabContainer->hoveredTabColor          = Color(240, 240, 255, 255);
+                tabContainer->closeButtonColor         = Color(120, 120, 120, 255);
+                tabContainer->closeButtonHoverColor    = Color(200, 50, 50, 255);
+                tabContainer->contentAreaColor         = Color(255, 255, 255, 255);
+                tabContainer->tabBorderColor           = Colors::Gray;
+                tabContainer->tabContentBorderColor    = Colors::Gray;
+                tabContainer->tabSeparatorColor        = Color(200, 200, 200, 255);
+                tabContainer->newTabButtonHoverColor   = Color(220, 220, 255, 255);
+                tabContainer->newTabButtonIconColor    = Color(100, 100, 100, 255);
+            }
+            if (menuBar) {
+                MenuStyle ms = menuBar->GetStyle();
+                ms.backgroundColor = Color(240, 240, 240, 255);
+                ms.textColor       = Color(30, 30, 30, 255);
+                ms.hoverColor      = Color(210, 210, 210, 255);
+                ms.hoverTextColor  = Colors::Black;
+                menuBar->SetStyle(ms);
             }
         }
         if (searchBar) {

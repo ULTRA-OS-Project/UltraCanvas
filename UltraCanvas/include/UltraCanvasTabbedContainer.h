@@ -142,6 +142,7 @@ namespace UltraCanvas {
         Color badgeTextColor = Colors::White;
         Color tabSeparatorColor = Color(200, 200, 200);
         Color navButtonBackgroundColor = Color(220, 220, 220);
+        Color navButtonIconColor = Colors::Black;
 
         Color modifiedMarkerColor = Color(195, 30, 3);    // #C31E03
         int modifiedMarkerRadius = 4;

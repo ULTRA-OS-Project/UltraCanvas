@@ -1,3 +1,6 @@
+2016-04-23 1.0.20
+- Some color fixes for Dark mode
+
 2016-04-17 1.0.19
 - Fix restore opened tab after load
 - Tabbed container active tab is not updated currently after load new file 

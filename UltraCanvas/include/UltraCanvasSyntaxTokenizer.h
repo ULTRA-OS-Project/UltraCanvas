@@ -76,6 +76,7 @@ namespace UltraCanvas {
         bool hasOctalNumbers = true;
         bool hasFloatNumbers = true;
         std::vector<std::string> numberSuffixes;
+        std::string hexNumberPrefix = "";  // Language-specific hex prefix (e.g. "$" for Pascal)
 
         // Special features
         bool isCaseSensitive = true;
@@ -868,6 +869,7 @@ namespace UltraCanvas {
         rules.multiLineComments = {{"(*", "*)"},
                                {"{",  "}"}};
         rules.stringDelimiters = {'\''};
+        rules.hexNumberPrefix = "$";
 
         return rules;
     }

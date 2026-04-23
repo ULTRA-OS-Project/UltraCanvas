@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.1.20
+    VERSION 0.1.21
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -373,6 +373,7 @@ if (BUILD_FILEMANAGER_APP)
     set(UCFILEMANAGER_SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/Apps/ListView/main.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/Apps/ListView/DemoListViewFileManager.cpp
+            a.cpp
     )
 
     # Create executable

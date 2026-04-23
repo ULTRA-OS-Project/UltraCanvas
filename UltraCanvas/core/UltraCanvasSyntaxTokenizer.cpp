@@ -307,10 +307,13 @@ namespace UltraCanvas {
                     continue;
                 }
             }
-
-            // Try to match numbers
             if (IsDigit(line[position]) ||
-                (line[position] == '.' && position + 1 < line.length() && IsDigit(line[position + 1]))) {
+                (line[position] == '.' && position + 1 < line.length() && IsDigit(line[position + 1])) ||
+                (currentRules && !currentRules->hexNumberPrefix.empty() &&
+                 line.compare(position, currentRules->hexNumberPrefix.length(), currentRules->hexNumberPrefix) == 0 &&
+                 position + currentRules->hexNumberPrefix.length() < line.length() &&
+                 IsHexDigit(line[position + currentRules->hexNumberPrefix.length()]))) {
+
                 auto numberResult = ParseNumberInLine(line, position);
                 if (numberResult.first > position) {
                     token.type = numberResult.second;
@@ -581,6 +584,19 @@ namespace UltraCanvas {
         if (!currentRules) return {pos, TokenType::Unknown};
 
         size_t endPos = pos;
+        if (currentRules->hasHexNumbers &&
+            !currentRules->hexNumberPrefix.empty() &&
+            text.compare(endPos, currentRules->hexNumberPrefix.length(), currentRules->hexNumberPrefix) == 0) {
+            endPos += currentRules->hexNumberPrefix.length();
+            size_t hexStart = endPos;
+            while (endPos < text.length() && IsHexDigit(text[endPos])) {
+                endPos++;
+            }
+            if (endPos > hexStart) {
+                return {endPos, TokenType::Number};
+            }
+            return {pos, TokenType::Unknown};  // Prefix without digits — not a number
+        }
 
         // Check for hex numbers (0x or 0X)
         if (currentRules->hasHexNumbers &&

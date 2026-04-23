@@ -545,8 +545,8 @@ namespace UltraCanvas {
 
         Rect2Di tabBarBounds = GetTabBarBounds();
 
-        ctx->SetFillPaint(Colors::Black);
-        ctx->SetStrokePaint(Colors::Black);
+        ctx->SetFillPaint(navButtonIconColor);
+        ctx->SetStrokePaint(navButtonIconColor);
         ctx->SetLineJoin(LineJoin::Round);
         ctx->SetLineCap(LineCap::Round);
         ctx->SetStrokeWidth(3);
