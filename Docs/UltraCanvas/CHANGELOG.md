@@ -1,5 +1,11 @@
-2026-04-23 0.1.21
+2026-04-23 0.1.22
 - Some color fixes for Dark mode
+
+2026-04-20 0.1.21
+- Refactored elements rendering/events coordinate system to use element-based coordinates where 0,0 is
+  top-left element's corner instead of container-based where 0,0 was container top-left corner.
+  Set clipping to element's bounds and save/restore state in container's rendering loop instead rely on element Render().
+  Don't render invisible elements (hidden by scroll position)
 
 2026-04-20 0.1.20
 - Shard very long lines to speed up TextArea on big files.
