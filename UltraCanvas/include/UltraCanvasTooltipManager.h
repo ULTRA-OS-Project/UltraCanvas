@@ -1,7 +1,7 @@
 // include/UltraCanvasTooltipManager.h
 // Updated tooltip system compatible with unified UltraCanvas architecture
-// Version: 2.0.0
-// Last Modified: 2024-12-19
+// Version: 2.1.0
+// Last Modified: 2026-04-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -9,8 +9,8 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasTimer.h"
 #include <string>
-#include <chrono>
 #include <functional>
 #include <memory>
 
@@ -25,17 +25,15 @@ namespace UltraCanvas {
         Color shadowColor = Color(0, 0, 0, 64);
 
         // Typography
-        std::string fontFamily;
+        std::string fontFamily = "Sans";
         float fontSize = 11.0f;
-        FontWeight fontWeight = FontWeight::Normal;
-        FontSlant fontStyle = FontSlant::Normal;
 
         // Layout
         int paddingLeft = 6;
         int paddingRight = 6;
         int paddingTop = 4;
         int paddingBottom = 4;
-        int maxWidth = 300;
+        int maxWidth = 450;
         int borderWidth = 1;
         float cornerRadius = 3.0f;
 
@@ -66,25 +64,20 @@ namespace UltraCanvas {
         static bool pendingShow;
         static bool pendingHide;
 
-        // Timing
-        static std::chrono::steady_clock::time_point hoverStartTime;
-        static std::chrono::steady_clock::time_point hideStartTime;
-        static float showDelay;
-        static float hideDelay;
+        // Timing (via Application timer API)
+        static TimerId showTimerId;
+        static TimerId hideTimerId;
 
         // Style and layout
         static TooltipStyle style;
         static Point2Di tooltipSize;
-        static std::vector<std::string> wrappedLines;
+        static std::unique_ptr<ITextLayout> textLayout;
 
         // Global state
         static bool enabled;
 
     public:
         // ===== CORE FUNCTIONALITY =====
-
-        // Update tooltip state - call this every frame
-        static void Update();
 
         // Show tooltip for an element
         static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
@@ -156,14 +149,9 @@ namespace UltraCanvas {
 
         // ===== INTERNAL HELPER METHODS =====
 
+        static void CancelShowTimer();
+        static void CancelHideTimer();
+
         static void CalculateTooltipLayout();
-
-        static std::vector<std::string> WrapText(const std::string& text, float maxWidth);
-        static std::vector<std::string> SplitWords(const std::string& text);
-
-        static void DrawShadow(IRenderContext* ctx);
-        static void DrawBackground(IRenderContext* ctx);
-        static void DrawBorder(IRenderContext* ctx);
-        static void DrawText(IRenderContext* ctx);
     };
 } // namespace UltraCanvas

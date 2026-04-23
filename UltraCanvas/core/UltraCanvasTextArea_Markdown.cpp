@@ -768,13 +768,13 @@ namespace UltraCanvas {
             if (run.startByte >= run.endByte) continue;
             switch (run.kind) {
                 case InlineRun::Bold: {
-                    auto a = TextAttributeFactory::CreateWeight(FontWeight::Bold);
+                    auto a = TextAttributeFactory::CreateFontWeight(FontWeight::Bold);
                     a->SetRange(run.startByte, run.endByte);
                     layout->InsertAttribute(std::move(a));
                     break;
                 }
                 case InlineRun::Italic: {
-                    auto a = TextAttributeFactory::CreateStyle(FontSlant::Italic);
+                    auto a = TextAttributeFactory::CreateFontStyle(FontSlant::Italic);
                     a->SetRange(run.startByte, run.endByte);
                     layout->InsertAttribute(std::move(a));
                     break;
@@ -822,7 +822,7 @@ namespace UltraCanvas {
                     break;
                 }
                 case InlineRun::Math: {
-                    auto italic = TextAttributeFactory::CreateStyle(FontSlant::Italic);
+                    auto italic = TextAttributeFactory::CreateFontStyle(FontSlant::Italic);
                     italic->SetRange(run.startByte, run.endByte);
                     layout->InsertAttribute(std::move(italic));
                     auto fg = TextAttributeFactory::CreateForeground(markdownStyle.mathTextColor);
@@ -1130,12 +1130,12 @@ namespace UltraCanvas {
                     fg->SetRange(startByte, endByte);
                     cl->layout->InsertAttribute(std::move(fg));
                     if (ts.bold) {
-                        auto a = TextAttributeFactory::CreateWeight(FontWeight::Bold);
+                        auto a = TextAttributeFactory::CreateFontWeight(FontWeight::Bold);
                         a->SetRange(startByte, endByte);
                         cl->layout->InsertAttribute(std::move(a));
                     }
                     if (ts.italic) {
-                        auto a = TextAttributeFactory::CreateStyle(FontSlant::Italic);
+                        auto a = TextAttributeFactory::CreateFontStyle(FontSlant::Italic);
                         a->SetRange(startByte, endByte);
                         cl->layout->InsertAttribute(std::move(a));
                     }
@@ -1225,11 +1225,11 @@ namespace UltraCanvas {
 
                 // Heading font-size + weight apply to the entire visible text (pre-↩ suffix).
                 int headingEndByte = (int)visibleText.size();
-                auto sizeAttr = TextAttributeFactory::CreateSize(
+                auto sizeAttr = TextAttributeFactory::CreateFontSize(
                         style.fontStyle.fontSize * headerMultipliers[level - 1]);
                 sizeAttr->SetRange(0, headingEndByte);
                 ll->layout->InsertAttribute(std::move(sizeAttr));
-                auto weightAttr = TextAttributeFactory::CreateWeight(FontWeight::Bold);
+                auto weightAttr = TextAttributeFactory::CreateFontWeight(FontWeight::Bold);
                 weightAttr->SetRange(0, headingEndByte);
                 ll->layout->InsertAttribute(std::move(weightAttr));
 
@@ -1555,7 +1555,7 @@ namespace UltraCanvas {
                     std::string visibleText;
                     dt->layout = buildInlineStyledLayout(rawLine, 0, dt->hitRects, &visibleText);
                     int endByte = (int)visibleText.size();
-                    auto w = TextAttributeFactory::CreateWeight(FontWeight::Bold);
+                    auto w = TextAttributeFactory::CreateFontWeight(FontWeight::Bold);
                     w->SetRange(0, endByte);
                     dt->layout->InsertAttribute(std::move(w));
                     dt->bounds.width  = dt->layout->GetLayoutWidth();

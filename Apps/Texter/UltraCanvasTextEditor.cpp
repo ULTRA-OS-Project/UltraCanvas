@@ -34,7 +34,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "1.0.20";
+    std::string UltraCanvasTextEditor::version = "1.0.21";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -612,7 +612,12 @@ namespace {
                          OnInfoFileStatistics();
                         }),
                         MenuItemData::Action("Changes", [this]() {
-                            OpenDocumentFromPath(GetResourcesDir() + "/Docs/Texter/CHANGELOG.md");
+#if defined(_WIN32) || defined(_WIN64)
+                            auto path = GetResourcesDir() + "Docs\\Texter\\CHANGELOG.md";
+#else
+                            auto path = GetResourcesDir() + "Docs/Texter/CHANGELOG.md";
+#endif
+                            OpenDocumentFromPath(path);
                         }),
                         MenuItemData::Action("Feedback", [this]() {
                             OpenURL("https://ultraos.eu/feedback?app=texter&purpose=bugreport");
@@ -1699,17 +1704,38 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         auto& doc = documents[index];
         std::string tooltipText;
         if (doc->isNewFile) {
-            tooltipText = "Never saved";   // ● red  (colour is visual only — text says it)
+            tooltipText = "<span weight=\"900\">Never saved</span>";   // ● red  (colour is visual only — text says it)
         } else if (doc->isModified) {
-            tooltipText = "Unsaved";  // ● orange
+            tooltipText = "<span weight=\"900\">Unsaved</span>";  // ● orange
         } else if (doc->isSaved) {
-            tooltipText = "Saved";            // ● green
+            tooltipText = "<span>Saved</span>";            // ● green
         }
         if (!doc->filePath.empty()) {
+            std::string srcPath;
+            const std::string& fp = utf8_strreplace(doc->filePath, " ", "\u00A0");
+#if defined(_WIN32) || defined(_WIN64)
+            {
+                const std::string& p = fp;
+                size_t lastSep = p.find_last_of('\\');
+                if (lastSep == std::string::npos) {
+                    srcPath = p;
+                } else {
+                    std::string dirPart = p.substr(0, lastSep);
+                    std::string fileName = p.substr(lastSep + 1);
+                    std::vector<std::string> segments = utf8_split(dirPart, '\\');
+                    for (const std::string& seg : segments) {
+                        srcPath += seg + "\\\xe2\x80\x8b";
+                    }
+                    srcPath += fileName;
+                }
+            }
+#else
+            srcPath = fp;
+#endif
             if (!tooltipText.empty()) {
-                tooltipText += "\n" + utf8_strreplace(doc->filePath, " ", "\u00A0");
+                tooltipText += "\n" + srcPath;
             } else {
-                tooltipText = utf8_strreplace(doc->filePath, " ", "\u00A0");
+                tooltipText = srcPath;
             }
         } else {
             tooltipText = doc->fileName;

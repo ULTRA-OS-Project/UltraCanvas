@@ -19,68 +19,6 @@
 
 namespace UltraCanvas {
 
-    // ===== ENUMS =====
-
-//    enum class EllipsizeMode {
-//        EllipsizeNone,
-//        EllipsizeStart,
-//        EllipsizeMiddle,
-//        EllipsizeEnd
-//    };
-//
-//    enum class UCUnderlineType {
-//        UnderlineNone,
-//        UnderlineSingle,
-//        UnderlineDouble,
-//        UnderlineLow,
-//        UnderlineError
-//    };
-//
-//    enum class UCFontVariant {
-//        VariantNormal,
-//        VariantSmallCaps
-//    };
-//
-//    enum class UCFontStretch {
-//        UltraCondensed,
-//        ExtraCondensed,
-//        Condensed,
-//        SemiCondensed,
-//        Normal,
-//        SemiExpanded,
-//        Expanded,
-//        ExtraExpanded,
-//        UltraExpanded
-//    };
-//
-//    // ===== RESULT STRUCTS =====
-//
-//    struct UCTextExtents {
-//        Rect2Di ink;
-//        Rect2Di logical;
-//    };
-//
-//    struct UCTextHitResult {
-//        int index;
-//        int trailing;
-//        bool inside;
-//    };
-//
-//    struct UCCursorPos {
-//        Rect2Di strongPos;
-//        Rect2Di weakPos;
-//    };
-//
-//    struct UCLineXResult {
-//        int line;
-//        int xPos;
-//    };
-//
-//    struct UCCursorMoveResult {
-//        int newIndex;
-//        int newTrailing;
-//    };
-
     // ===== LAYOUT ITERATOR =====
 //
 //    struct PangoLayoutIterDeleter {

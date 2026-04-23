@@ -1,3 +1,6 @@
+2016-04-24 1.0.21
+- Fix tooltips rendering and file paths
+
 2016-04-23 1.0.20
 - Some color fixes for Dark mode
 

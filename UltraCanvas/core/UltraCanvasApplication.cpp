@@ -183,7 +183,6 @@ namespace UltraCanvas {
                 if (eventLoopCallback) {
                     eventLoopCallback();
                 }
-                UltraCanvasTooltipManager::Update();
 
                 RunInEventLoop();
             }

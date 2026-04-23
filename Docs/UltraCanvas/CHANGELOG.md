@@ -1,4 +1,7 @@
-2026-04-23 0.1.22
+2026-04-23 0.1.24
+- Fix tooltips rendering
+
+2026-04-23 0.1.23
 - Some color fixes for Dark mode
 
 2026-04-20 0.1.21

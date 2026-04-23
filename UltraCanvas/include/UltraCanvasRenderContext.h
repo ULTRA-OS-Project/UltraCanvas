@@ -575,19 +575,19 @@ namespace UltraCanvas {
         std::unique_ptr<ITextAttribute> CreateFontDescFromPango(const PangoFontDescription* desc);
 
         // Font family
-        std::unique_ptr<ITextAttribute> CreateFamily(const std::string& family);
+        std::unique_ptr<ITextAttribute> CreateFontFamily(const std::string& family);
 
         // Font size in points (internally converted to Pango units)
-        std::unique_ptr<ITextAttribute> CreateSize(float sizeInPoints);
+        std::unique_ptr<ITextAttribute> CreateFontSize(float sizeInPoints);
 
         // Absolute font size in pixels (internally converted to Pango units)
-        std::unique_ptr<ITextAttribute> CreateAbsoluteSize(float sizeInPixels);
+        std::unique_ptr<ITextAttribute> CreateAbsoluteFontSize(float sizeInPixels);
 
         // Weight
-        std::unique_ptr<ITextAttribute> CreateWeight(FontWeight weight);
+        std::unique_ptr<ITextAttribute> CreateFontWeight(FontWeight weight);
 
         // Style / slant
-        std::unique_ptr<ITextAttribute> CreateStyle(FontSlant slant);
+        std::unique_ptr<ITextAttribute> CreateFontStyle(FontSlant slant);
 
         // Variant
         std::unique_ptr<ITextAttribute> CreateVariant(UCFontVariant variant);
@@ -622,6 +622,9 @@ namespace UltraCanvas {
 
         // Fallback font
         std::unique_ptr<ITextAttribute> CreateFallback(bool enable);
+
+        // hyphens on/off
+        std::unique_ptr<ITextAttribute> CreateHypenation(bool enable);
 
         // Language tag (e.g. "en-US")
         std::unique_ptr<ITextAttribute> CreateLanguage(const std::string& lang);

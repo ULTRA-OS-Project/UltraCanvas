@@ -3093,12 +3093,12 @@ namespace UltraCanvas {
                 ll->layout->InsertAttribute(std::move(fgAttr));
 
                 if (tokenStyle.bold) {
-                    auto wAttr = TextAttributeFactory::CreateWeight(FontWeight::Bold);
+                    auto wAttr = TextAttributeFactory::CreateFontWeight(FontWeight::Bold);
                     wAttr->SetRange(startByte, endByte);
                     ll->layout->InsertAttribute(std::move(wAttr));
                 }
                 if (tokenStyle.italic) {
-                    auto sAttr = TextAttributeFactory::CreateStyle(FontSlant::Italic);
+                    auto sAttr = TextAttributeFactory::CreateFontStyle(FontSlant::Italic);
                     sAttr->SetRange(startByte, endByte);
                     ll->layout->InsertAttribute(std::move(sAttr));
                 }

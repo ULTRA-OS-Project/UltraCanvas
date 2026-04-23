@@ -201,23 +201,23 @@ namespace UltraCanvas {
             return std::make_unique<UCTextAttribute>(pango_attr_font_desc_new(desc));
         }
 
-        std::unique_ptr<ITextAttribute> CreateFamily(const std::string &family) {
+        std::unique_ptr<ITextAttribute> CreateFontFamily(const std::string &family) {
             return std::make_unique<UCTextAttribute>(pango_attr_family_new(family.c_str()));
         }
 
-        std::unique_ptr<ITextAttribute> CreateSize(float sizeInPoints) {
+        std::unique_ptr<ITextAttribute> CreateFontSize(float sizeInPoints) {
             return std::make_unique<UCTextAttribute>(pango_attr_size_new(static_cast<int>(sizeInPoints * PANGO_SCALE)));
         }
 
-        std::unique_ptr<ITextAttribute> CreateAbsoluteSize(float sizeInPixels) {
+        std::unique_ptr<ITextAttribute> CreateAbsoluteFontSize(float sizeInPixels) {
             return std::make_unique<UCTextAttribute>(pango_attr_size_new_absolute(static_cast<int>(sizeInPixels * PANGO_SCALE)));
         }
 
-        std::unique_ptr<ITextAttribute> CreateWeight(FontWeight weight) {
+        std::unique_ptr<ITextAttribute> CreateFontWeight(FontWeight weight) {
             return std::make_unique<UCTextAttribute>(pango_attr_weight_new(ToPangoWeight(weight)));
         }
 
-        std::unique_ptr<ITextAttribute> CreateStyle(FontSlant slant) {
+        std::unique_ptr<ITextAttribute> CreateFontStyle(FontSlant slant) {
             return std::make_unique<UCTextAttribute>(pango_attr_style_new(ToPangoStyle(slant)));
         }
 
@@ -280,6 +280,10 @@ namespace UltraCanvas {
 
         std::unique_ptr<ITextAttribute> CreateFallback(bool enable) {
             return std::make_unique<UCTextAttribute>(pango_attr_fallback_new(enable ? TRUE : FALSE));
+        }
+
+        std::unique_ptr<ITextAttribute> CreateHypenation(bool enable) {
+            return std::make_unique<UCTextAttribute>(pango_attr_insert_hyphens_new(enable ? TRUE : FALSE));
         }
 
         std::unique_ptr<ITextAttribute> CreateLanguage(const std::string &lang) {
