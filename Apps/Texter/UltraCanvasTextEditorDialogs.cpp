@@ -772,6 +772,7 @@ namespace UltraCanvas {
                 onGoToLine(lineNumber);
             }
             CloseDialog(DialogResult::OK);
+            return true;
         };
     }
 

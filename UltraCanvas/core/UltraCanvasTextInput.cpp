@@ -875,13 +875,14 @@ namespace UltraCanvas {
                     SaveState();
                     if (hasSelection) DeleteSelection();
                     InsertText("\n");
+                    return true;
                 } else {
-                    if (onEnterPressed) onEnterPressed(text);
+                    if (onEnterPressed) return onEnterPressed(text);
                 }
                 break;
 
             case UCKeys::Escape:
-                if (onEscapePressed) onEscapePressed();
+                if (onEscapePressed) return onEscapePressed();
                 break;
 
             case UCKeys::Backspace:
@@ -897,7 +898,7 @@ namespace UltraCanvas {
                 }
                 UpdateScrollOffset();
                 TextChanged();
-                break;
+                return true;
 
             case UCKeys::Delete:
                 if (hasSelection) {
@@ -910,7 +911,7 @@ namespace UltraCanvas {
                 }
                 UpdateScrollOffset();
                 TextChanged();
-                break;
+                return true;
 
             case UCKeys::Left:
                 if (event.shift) {
@@ -923,7 +924,7 @@ namespace UltraCanvas {
                     ClearSelection();
                 }
                 UpdateScrollOffset();
-                break;
+                return true;
 
             case UCKeys::Right:
                 if (event.shift) {
@@ -936,6 +937,7 @@ namespace UltraCanvas {
                     ClearSelection();
                 }
                 UpdateScrollOffset();
+                return true;
                 break;
 
             case UCKeys::Up:
@@ -951,6 +953,7 @@ namespace UltraCanvas {
                         // ... multiline logic here
                         ClearSelection();
                     }
+                    return true;
                 }
                 break;
 
@@ -967,6 +970,7 @@ namespace UltraCanvas {
                         // ... multiline logic here
                         ClearSelection();
                     }
+                    return true;
                 }
                 break;
 
@@ -981,7 +985,7 @@ namespace UltraCanvas {
                     ClearSelection();
                 }
                 UpdateScrollOffset();
-                break;
+                return true;
 
             case UCKeys::End:
                 if (event.shift) {
@@ -994,11 +998,12 @@ namespace UltraCanvas {
                     ClearSelection();
                 }
                 UpdateScrollOffset();
-                break;
+                return true;
 
             case UCKeys::A:
                 if (event.ctrl) {
                     SelectAll();
+                    return true;
                 }
                 break;
 
@@ -1007,12 +1012,14 @@ namespace UltraCanvas {
                     CopyToClipboard(GetSelectedText());
                     SaveState();
                     DeleteSelection();
+                    return true;
                 }
                 break;
 
             case UCKeys::C:
                 if (event.ctrl && hasSelection) {
                     CopyToClipboard(GetSelectedText());
+                    return true;
                 }
                 break;
 
@@ -1023,6 +1030,7 @@ namespace UltraCanvas {
                         SaveState();
                         if (hasSelection) DeleteSelection();
                         InsertText(clipboardText);
+                        return true;
                     }
                 }
                 break;
@@ -1031,8 +1039,10 @@ namespace UltraCanvas {
                 if (event.ctrl) {
                     if (event.shift) {
                         Redo();
+                        return true;
                     } else {
                         Undo();
+                        return true;
                     }
                 }
                 break;
@@ -1040,6 +1050,7 @@ namespace UltraCanvas {
             case UCKeys::Y:
                 if (event.ctrl) {
                     Redo();
+                    return true;
                 }
                 break;
 
@@ -1048,6 +1059,7 @@ namespace UltraCanvas {
                     SaveState();
                     if (hasSelection) DeleteSelection();
                     InsertText("\t");
+                    return true;
                 }
                 // Otherwise let Tab navigate to next control
                 break;
@@ -1057,7 +1069,7 @@ namespace UltraCanvas {
                 SaveState();
                 if (hasSelection) DeleteSelection();
                 InsertText(" ");
-                break;
+                return true;
 
             default:
                 // Check if it's a printable character using event.text field
@@ -1074,12 +1086,13 @@ namespace UltraCanvas {
                         SaveState();
                         if (hasSelection) DeleteSelection();
                         InsertText(filteredText);
+                        return true;
                     }
                 }
                 break;
         }
 
-        return true;
+        return false;
     }
 
     bool UltraCanvasTextInput::HandleFocusGained(const UCEvent &event) {

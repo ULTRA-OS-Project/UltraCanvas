@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.3.0
-// Last Modified: 2026-04-20
+// Version: 3.4.0
+// Last Modified: 2026-04-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -2248,6 +2248,18 @@ namespace UltraCanvas {
         return result;
     }
 
+    bool UltraCanvasTextArea::SetProgrammingLanguageByFilename(const std::string& filename) {
+        if (!syntaxTokenizer) {
+            syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
+        }
+        auto result = syntaxTokenizer->SetLanguageByFilename(filename);
+        if (result && style.highlightSyntax) {
+            InvalidateAllLineLayouts();
+            RequestRedraw();
+        }
+        return result;
+    }
+
     const std::string UltraCanvasTextArea::GetCurrentProgrammingLanguage() {
         if (!syntaxTokenizer) return "Plain text";
         return syntaxTokenizer->GetCurrentProgrammingLanguage();
@@ -2510,8 +2522,13 @@ namespace UltraCanvas {
                     g_free(lFind);
                 }
                 if (match) {
+                    int replaceStart = lastSearchPosition;
                     DeleteSelection();
                     InsertText(replaceText);
+                    // FindNext() searches from lastSearchPosition + 1; land it at the
+                    // last grapheme of the replacement so the next search resumes past
+                    // the inserted text and cannot re-match inside it.
+                    lastSearchPosition = replaceStart + replaceLen - 1;
                 }
             }
             FindNext();

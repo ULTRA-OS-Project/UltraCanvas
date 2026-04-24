@@ -1,7 +1,7 @@
 // include/UltraCanvasTabbedContainer.h
 // Enhanced tabbed container component with overflow dropdown, search, drag-out, drag-in
-// Version: 2.0.1
-// Last Modified: 2026-04-16
+// Version: 2.0.2
+// Last Modified: 2026-04-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -114,6 +114,7 @@ namespace UltraCanvas {
         int tabPadding = 12;
         bool tabbarLayoutDirty = true;
         int contentTopPadding = 0;
+        int contentLeftPadding = 0;
 
         // ===== TAB STYLING =====
         float tabCornerRadius = 8.0f;
@@ -236,6 +237,8 @@ namespace UltraCanvas {
         float GetTabElevation() const { return tabElevation; }
         void SetContentTopPadding(int padding) { if (contentTopPadding != padding) { contentTopPadding = padding; InvalidateTabbar(); } }
         int GetContentTopPadding() const { return contentTopPadding; }
+        void SetContentLeftPadding(int padding) { if (contentLeftPadding != padding) { contentLeftPadding = padding; InvalidateTabbar(); } }
+        int GetContentLeftPadding() const { return contentLeftPadding; }
         void SetIconSize(int size) { iconSize = size; InvalidateTabbar(); }
         int GetIconSize() const { return iconSize; }
         bool CalcBadgeDimensions(TabData* tabData);

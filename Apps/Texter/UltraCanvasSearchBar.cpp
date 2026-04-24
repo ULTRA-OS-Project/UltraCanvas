@@ -101,7 +101,7 @@ namespace UltraCanvas {
         x += inputW + HSpacing;
 
         if (countLabel)
-            countLabel->SetBounds(Rect2Di(x, inputY, CountLabelW, inputH));
+            countLabel->SetBounds(Rect2Di(x, inputY + 3, CountLabelW, inputH));
         x += CountLabelW + HSpacing;
 
         // ── Find row: left group continued (nav + settings after count) ──
@@ -183,9 +183,9 @@ namespace UltraCanvas {
         x += inputW + HSpacing;
 
         // Match count label — right after input
-        countLabel = std::make_shared<UltraCanvasLabel>("CountLabel", 6003, x, inputY, CountLabelW, inputH);
+        countLabel = std::make_shared<UltraCanvasLabel>("CountLabel", 6003, x, inputY + 3, CountLabelW, inputH);
         countLabel->SetText("");
-        countLabel->SetFontSize(10);
+        countLabel->SetFontSize(11);
         countLabel->SetTextColor(Color(120, 120, 120, 255));
         countLabel->SetAlignment(TextAlignment::Left);
         AddChild(countLabel);
@@ -342,7 +342,9 @@ namespace UltraCanvas {
             if (!text.empty() && onFindNext) {
                 AddToHistory(searchHistory, text);
                 onFindNext(text, caseSensitive, wholeWord);
+                return true;
             }
+            return false;
         };
 
         // Replace input text changed
@@ -479,14 +481,15 @@ namespace UltraCanvas {
         }
 
         if (totalMatches == 0) {
-            countLabel->SetText("");
+            countLabel->SetText("\u26A0 ...");
             countLabel->SetTextColor(Color(200, 60, 60, 255));
+            countLabel->SetTooltip("No matches found");
         } else if (currentIndex > 0) {
             countLabel->SetText(std::to_string(currentIndex) + " / " + std::to_string(totalMatches));
-            countLabel->SetTextColor(Color(100, 100, 100, 255));
+            countLabel->SetTextColor(Color(60, 150, 60, 255));
         } else {
             countLabel->SetText(std::to_string(totalMatches) + " found");
-            countLabel->SetTextColor(Color(100, 100, 100, 255));
+            countLabel->SetTextColor(Color(60, 150, 60, 255));
         }
     }
 
@@ -642,5 +645,28 @@ namespace UltraCanvas {
         }
         if (onHistoryChanged) onHistoryChanged();
     }
+    
+    bool UltraCanvasSearchBar::OnEvent(const UCEvent& event) {
+        if (event.type == UCEventType::KeyDown && !event.ctrl && !event.alt && !event.meta) {
+            if (event.virtualKey == UCKeys::Tab) {
+                // Local Tab focus cycling: search ↔ replace (only in Replace mode)
+                if (mode == SearchBarMode::Replace && searchInput && replaceInput) {
+                    if (searchInput->IsFocused()) {
+                        replaceInput->SetFocus(true);
+                    } else if (replaceInput->IsFocused()) {
+                        searchInput->SetFocus(true);
+                    }
+                }
+                return true;  // Always consume Tab to prevent window-level focus cycling
+            }
 
+            if (event.virtualKey == UCKeys::Escape) {
+                SetVisible(false);
+                if (onClose) onClose();
+                return true;
+            }
+        }
+
+        return UltraCanvasContainer::OnEvent(event);
+    }
 } // namespace UltraCanvas

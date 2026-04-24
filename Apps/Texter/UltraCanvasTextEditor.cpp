@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.0.12 - Fix save-all-on-close chain: only one Save As dialog was shown for multiple unsaved new docs
-// Last Modified: 2026-04-20
+// Version: 2.1.1 - GenerateUniqueDocumentName inserts index before extension (e.g. untitled1.svg)
+// Last Modified: 2026-04-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -34,7 +34,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "1.0.21";
+    std::string UltraCanvasTextEditor::version = "1.0.23";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -466,6 +466,26 @@ namespace {
                         MenuItemData::ActionWithShortcut("New Window", "Ctrl+Shift+N", GetResourcesDir() + "media/icons/texter/add-document.svg", [this]() {
                             if (onNewWindowRequest) onNewWindowRequest();
                         }),
+                        MenuItemData::Submenu("New from Template", GetResourcesDir() + "media/icons/texter/add-document.svg",
+                            [this]() -> std::vector<MenuItemData> {
+                                std::vector<MenuItemData> items;
+                                if (config.documentTemplates.empty()) {
+                                    MenuItemData emptyItem;
+                                    emptyItem.type = MenuItemType::Action;
+                                    emptyItem.label = "(No templates configured)";
+                                    emptyItem.enabled = false;
+                                    items.push_back(emptyItem);
+                                } else {
+                                    for (const auto& tpl : config.documentTemplates) {
+                                        DocumentTemplate tplCopy = tpl;
+                                        items.push_back(MenuItemData::Action(tpl.name, "-",
+                                            [this, tplCopy]() {
+                                                CreateDocumentFromTemplate(tplCopy);
+                                            }));
+                                    }
+                                }
+                                return items;
+                            }),
                         MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", GetResourcesDir() + "media/icons/texter/folder-open.svg", [this]() {
                             OnFileOpen();
                         }),
@@ -1197,31 +1217,33 @@ namespace {
             yPos += toolbarHeight;
         }
 
-        // ===== Markdown toolbar (vertical, left side) =====
-        int mdToolbarW = 0;
-        if (markdownToolbar && markdownToolbar->IsVisible()) {
-            int contentH = h - yPos - (config.showStatusBar ? statusBarHeight : 0);
-            if (contentH < 0) contentH = 0;
-            markdownToolbar->SetBounds(Rect2Di(0, yPos, markdownToolbarWidth, contentH));
-            mdToolbarW = markdownToolbarWidth;
-        }
-
         // ===== Search bar height =====
         int searchBarH = (searchBar && searchBar->IsVisible()) ? searchBar->GetBarHeight() : 0;
 
-        // ===== Tab container (fills remaining space minus status bar) =====
+        // ===== Tab container (fills remaining space minus status bar, always full width) =====
+        int mdToolbarW = (markdownToolbar && markdownToolbar->IsVisible()) ? markdownToolbarWidth : 0;
+        int tabAreaHeight = 0;
         if (tabContainer) {
             int reservedBottom = config.showStatusBar ? statusBarHeight : 0;
-            int tabAreaHeight = h - yPos - reservedBottom;
+            tabAreaHeight = h - yPos - reservedBottom;
             if (tabAreaHeight < 0) tabAreaHeight = 0;
-            tabContainer->SetBounds(Rect2Di(mdToolbarW, yPos, w - mdToolbarW, tabAreaHeight));
+            tabContainer->SetBounds(Rect2Di(0, yPos, w, tabAreaHeight));
             tabContainer->SetContentTopPadding(searchBarH);
+            tabContainer->SetContentLeftPadding(mdToolbarW);
         }
 
-        // ===== Search bar (below tab strip, above content) =====
+        // ===== Search bar (below tab strip, above content — full width) =====
         if (searchBarH > 0) {
             int barY = yPos + tabBarHeight;
-            searchBar->SetBounds(Rect2Di(mdToolbarW, barY, w - mdToolbarW, searchBarH));
+            searchBar->SetBounds(Rect2Di(0, barY, w, searchBarH));
+        }
+
+        // ===== Markdown toolbar (vertical, overlays left column of tab content area) =====
+        if (markdownToolbar && markdownToolbar->IsVisible()) {
+            int mdY = yPos + tabBarHeight + searchBarH;
+            int mdH = tabAreaHeight - tabBarHeight - searchBarH;
+            if (mdH < 0) mdH = 0;
+            markdownToolbar->SetBounds(Rect2Di(0, mdY, markdownToolbarWidth, mdH));
         }
 
         // ===== Status bar =====
@@ -1386,8 +1408,17 @@ namespace {
         for (const auto& d : documents) {
             if (d) taken.insert(d->fileName);
         }
+        std::string stem = base;
+        std::string ext;
+        const std::size_t dotPos = base.find_last_of('.');
+        const std::size_t slashPos = base.find_last_of("/\\");
+        if (dotPos != std::string::npos && dotPos != 0 &&
+            (slashPos == std::string::npos || dotPos > slashPos + 1)) {
+            stem = base.substr(0, dotPos);
+            ext = base.substr(dotPos);
+        }
         for (int i = 1; ; ++i) {
-            std::string candidate = base + std::to_string(i);
+            std::string candidate = stem + std::to_string(i) + ext;
             if (taken.find(candidate) == taken.end()) {
                 return candidate;
             }
@@ -1467,6 +1498,126 @@ namespace {
         UpdateStatusBar();
         UpdateMarkdownToolbarVisibility();
 
+        return docIndex;
+    }
+
+    std::vector<DocumentTemplate> DefaultDocumentTemplates() {
+        return {
+            {
+                "SVG (vector graphics)", "SVG", "svg",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                "<svg xmlns=\"http://www.w3.org/2000/svg\"\n"
+                "     xmlns:xlink=\"http://www.w3.org/1999/xlink\"\n"
+                "     width=\"100\" height=\"100\" viewBox=\"0 0 100 100\">\n"
+                "  \n"
+                "</svg>\n"
+            },
+            {
+                "POM (Maven project)", "POM", "xml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"\n"
+                "         xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"\n"
+                "         xsi:schemaLocation=\"http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd\">\n"
+                "    <modelVersion>4.0.0</modelVersion>\n"
+                "\n"
+                "    <groupId>com.example</groupId>\n"
+                "    <artifactId>my-app</artifactId>\n"
+                "    <version>1.0.0-SNAPSHOT</version>\n"
+                "    <packaging>jar</packaging>\n"
+                "\n"
+                "    <properties>\n"
+                "        <maven.compiler.source>17</maven.compiler.source>\n"
+                "        <maven.compiler.target>17</maven.compiler.target>\n"
+                "        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>\n"
+                "    </properties>\n"
+                "\n"
+                "    <dependencies>\n"
+                "    </dependencies>\n"
+                "</project>\n"
+            },
+            {
+                "RSS 2.0 feed", "RSS/Atom", "rss",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                "<rss version=\"2.0\">\n"
+                "    <channel>\n"
+                "        <title>Example Feed</title>\n"
+                "        <link>https://example.com/</link>\n"
+                "        <description>An example RSS feed.</description>\n"
+                "        <language>en-us</language>\n"
+                "        <item>\n"
+                "            <title>First post</title>\n"
+                "            <link>https://example.com/first</link>\n"
+                "            <description>Summary of the first post.</description>\n"
+                "            <pubDate>Mon, 01 Jan 2024 00:00:00 GMT</pubDate>\n"
+                "            <guid>https://example.com/first</guid>\n"
+                "        </item>\n"
+                "    </channel>\n"
+                "</rss>\n"
+            },
+            {
+                "Atom feed", "RSS/Atom", "atom",
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+                "<feed xmlns=\"http://www.w3.org/2005/Atom\">\n"
+                "    <title>Example Feed</title>\n"
+                "    <link href=\"https://example.com/\"/>\n"
+                "    <id>urn:uuid:00000000-0000-0000-0000-000000000000</id>\n"
+                "    <updated>2024-01-01T00:00:00Z</updated>\n"
+                "    <author>\n"
+                "        <name>Author Name</name>\n"
+                "    </author>\n"
+                "    <entry>\n"
+                "        <title>First entry</title>\n"
+                "        <link href=\"https://example.com/first\"/>\n"
+                "        <id>urn:uuid:00000000-0000-0000-0000-000000000001</id>\n"
+                "        <updated>2024-01-01T00:00:00Z</updated>\n"
+                "        <summary>Summary of the first entry.</summary>\n"
+                "    </entry>\n"
+                "</feed>\n"
+            },
+            {
+                "KML (Google Earth)", "KML", "kml",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                "<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n"
+                "    <Document>\n"
+                "        <name>Example KML</name>\n"
+                "        <description>A sample KML document.</description>\n"
+                "        <Placemark>\n"
+                "            <name>Sample Point</name>\n"
+                "            <description>A single point placemark.</description>\n"
+                "            <Point>\n"
+                "                <coordinates>-122.0822035,37.4222899,0</coordinates>\n"
+                "            </Point>\n"
+                "        </Placemark>\n"
+                "    </Document>\n"
+                "</kml>\n"
+            }
+        };
+    }
+
+    int UltraCanvasTextEditor::CreateDocumentFromTemplate(const DocumentTemplate& tpl) {
+        std::string base = "Untitled";
+        if (!tpl.extension.empty()) {
+            base += "." + tpl.extension;
+        }
+        int docIndex = CreateNewDocument(GenerateUniqueDocumentName(base));
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
+            return docIndex;
+        }
+
+        auto doc = documents[docIndex];
+        if (!tpl.language.empty()) {
+            doc->textArea->SetHighlightSyntax(true);
+            doc->textArea->SetProgrammingLanguage(tpl.language);
+            doc->language = doc->textArea->GetCurrentProgrammingLanguage();
+        }
+        if (!tpl.content.empty()) {
+            doc->textArea->SetText(tpl.content, false);
+            doc->isModified = false;
+            doc->isSaved = false;
+        }
+
+        UpdateTabTitle(docIndex);
+        UpdateLanguageDropdown();
         return docIndex;
     }
 
@@ -1877,6 +2028,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
                 if (ext == "md") {
                     doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+                } else if (doc->textArea->SetProgrammingLanguageByFilename(doc->fileName)) {
+                    // Full-filename match wins over extension (e.g. pom.xml -> POM,
+                    // manifest.json -> WebManifest). Falls through to extension otherwise.
+                    doc->textArea->SetHighlightSyntax(true);
                 } else if (doc->textArea->SetProgrammingLanguageByExtension(ext)) {
                     doc->textArea->SetHighlightSyntax(true);
                 } else {
@@ -2077,6 +2232,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
                 if (ext == "md") {
                     doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
+                } else if (doc->textArea->SetProgrammingLanguageByFilename(doc->fileName)) {
+                    // Full-filename match wins over extension (e.g. pom.xml -> POM,
+                    // manifest.json -> WebManifest). Falls through to extension otherwise.
+                    doc->textArea->SetHighlightSyntax(true);
                 } else if (doc->textArea->SetProgrammingLanguageByExtension(ext)) {
                     doc->textArea->SetHighlightSyntax(true);
                 } else {
@@ -2471,7 +2630,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     { "HTML",           "html" },
                     { "CSS",            "css"  },
                     { "XML",            "xml"  },
+                    { "SVG",            "svg"  },
+                    { "POM",            "xml"  },
+                    { "RSS/Atom",       "xml"  },
+                    { "KML",            "kml"  },
                     { "JSON",           "json" },
+                    { "JSONC",          "jsonc"},
+                    { "GeoJSON",        "geojson" },
+                    { "WebManifest",    "webmanifest" },
                     { "YAML",           "yaml" },
                     { "Shell",          "sh"   },
                     { "Bash",           "sh"   },
@@ -3161,7 +3327,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (!toolbar) return;
  
         // ── Save: disabled when document has no unsaved changes ──
-        bool canSave = HasUnsavedChanges();
+        //bool canSave = HasUnsavedChanges();
+        auto activeDoc = GetActiveDocument();
+        bool canSave = (activeDoc && activeDoc->isNewFile) || HasUnsavedChanges();
         if (auto item = toolbar->GetItem("save")) {
             item->SetEnabled(canSave);
         }

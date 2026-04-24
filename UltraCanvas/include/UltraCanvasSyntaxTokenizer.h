@@ -1,7 +1,7 @@
 // UltraCanvasSyntaxHighlighter.h
 // Comprehensive syntax highlighting languagesRules for major programming languagesRules
-// Version: 1.0.0
-// Last Modified: 2025-09-20
+// Version: 1.1.0
+// Last Modified: 2026-04-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -12,6 +12,8 @@
 #include <unordered_set>
 #include <regex>
 #include <memory>
+#include <algorithm>
+#include <cctype>
 
 namespace UltraCanvas {
 
@@ -42,6 +44,7 @@ namespace UltraCanvas {
     struct SyntaxTokenizationRules {
         std::string name;
         std::vector<std::string> fileExtensions;
+        std::vector<std::string> filenamePatterns;  // full-filename matches (e.g. "pom.xml")
 
         // Keywords and identifiers
         std::unordered_set<std::string> keywords;
@@ -107,6 +110,10 @@ namespace UltraCanvas {
         bool SetLanguage(const std::string &languageName);
 
         bool SetLanguageByExtension(const std::string &fileExtension);
+
+        // Match a full filename against registered filenamePatterns (e.g. "pom.xml" -> POM).
+        // Case-insensitive. Returns false if no language claims this filename.
+        bool SetLanguageByFilename(const std::string &filename);
 
         std::vector<std::string> GetSupportedLanguages() const;
         std::string GetCurrentProgrammingLanguage() const;
@@ -214,6 +221,18 @@ namespace UltraCanvas {
 
     SyntaxTokenizationRules CreateHtmlRules();
 
+    // Data / markup formats
+    SyntaxTokenizationRules CreateXmlRules();
+    SyntaxTokenizationRules CreateSvgRules();
+    SyntaxTokenizationRules CreatePomRules();
+    SyntaxTokenizationRules CreateRssAtomRules();
+    SyntaxTokenizationRules CreateKmlRules();
+    SyntaxTokenizationRules CreateJsonRules();
+    SyntaxTokenizationRules CreateJsoncRules();
+    SyntaxTokenizationRules CreateGeoJsonRules();
+    SyntaxTokenizationRules CreateWebManifestRules();
+    SyntaxTokenizationRules CreateYamlRules();
+
     SyntaxTokenizationRules CreateCssRules();
 
     SyntaxTokenizationRules CreateSqlRules();
@@ -260,6 +279,17 @@ namespace UltraCanvas {
         RegisterLanguage(CreateRustRules());
         RegisterLanguage(CreateElixirRules());
         RegisterLanguage(CreateHtmlRules());
+        // Data / markup formats
+        RegisterLanguage(CreateXmlRules());
+        RegisterLanguage(CreateSvgRules());
+        RegisterLanguage(CreatePomRules());
+        RegisterLanguage(CreateRssAtomRules());
+        RegisterLanguage(CreateKmlRules());
+        RegisterLanguage(CreateJsonRules());
+        RegisterLanguage(CreateJsoncRules());
+        RegisterLanguage(CreateGeoJsonRules());
+        RegisterLanguage(CreateWebManifestRules());
+        RegisterLanguage(CreateYamlRules());
         RegisterLanguage(CreateCssRules());
         RegisterLanguage(CreateSqlRules());
         RegisterLanguage(CreatePhpRules());
@@ -302,6 +332,27 @@ namespace UltraCanvas {
         for (auto &[name, rules]: languagesRules) {
             for (const std::string &ruleExt: rules.fileExtensions) {
                 if (ruleExt == ext) {
+                    currentRules = &rules;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    inline bool SyntaxTokenizer::SetLanguageByFilename(const std::string &filename) {
+        if (filename.empty()) return false;
+
+        std::string needle = filename;
+        std::transform(needle.begin(), needle.end(), needle.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+
+        for (auto &[name, rules]: languagesRules) {
+            for (const std::string &pattern: rules.filenamePatterns) {
+                std::string p = pattern;
+                std::transform(p.begin(), p.end(), p.begin(),
+                               [](unsigned char c) { return std::tolower(c); });
+                if (p == needle) {
                     currentRules = &rules;
                     return true;
                 }
@@ -1729,6 +1780,338 @@ namespace UltraCanvas {
         rules.operators = {"<", ">", "/", "=", "\"", "'", "&", ";"};
         rules.multiLineComments = {{"<!--", "-->"}};
         rules.stringDelimiters = {'"', '\''};
+
+        return rules;
+    }
+
+// ===== XML LANGUAGE RULES =====
+    inline SyntaxTokenizationRules CreateXmlRules() {
+        SyntaxTokenizationRules rules;
+        rules.name = "XML";
+        rules.fileExtensions = {"xml", "xsd", "xsl", "xslt", "xhtml"};
+        rules.isCaseSensitive = true;
+
+        // XML has no fixed tag vocabulary; per-dialect rules add their own keywords.
+        rules.builtins = {
+                "xmlns", "xmlns:xsi", "xmlns:xsl", "xmlns:xlink",
+                "xsi:schemaLocation", "xsi:noNamespaceSchemaLocation", "xsi:type",
+                "version", "encoding", "standalone", "xml:lang", "xml:space", "xml:base", "xml:id"
+        };
+        rules.constants = {"true", "false"};
+        rules.operators = {"<", ">", "/", "=", "\"", "'", "&", ";", "?", "!"};
+        rules.multiLineComments = {{"<!--", "-->"}};
+        rules.stringDelimiters = {'"', '\''};
+        rules.hasHexNumbers = false;
+        rules.hasOctalNumbers = false;
+        rules.hasFloatNumbers = true;
+
+        return rules;
+    }
+
+// ===== SVG LANGUAGE RULES (inherits XML) =====
+    inline SyntaxTokenizationRules CreateSvgRules() {
+        SyntaxTokenizationRules rules = CreateXmlRules();
+        rules.name = "SVG";
+        rules.fileExtensions = {"svg", "svgz"};
+        // Do not pattern-match by filename; .svg extension covers the common case.
+
+        // SVG element vocabulary (SVG 1.1 / 2)
+        rules.keywords = {
+                // Structural / containers
+                "svg", "g", "defs", "symbol", "use", "marker", "clipPath", "mask",
+                "pattern", "image", "foreignObject", "switch", "a", "view",
+                // Shapes
+                "path", "rect", "circle", "ellipse", "line", "polyline", "polygon",
+                // Text
+                "text", "tspan", "textPath", "tref", "altGlyph", "altGlyphDef",
+                "altGlyphItem", "glyph", "glyphRef", "font", "font-face",
+                "font-face-format", "font-face-name", "font-face-src", "font-face-uri",
+                "hkern", "vkern", "missing-glyph",
+                // Gradients / paints
+                "linearGradient", "radialGradient", "stop", "solidColor",
+                // Filters
+                "filter",
+                "feBlend", "feColorMatrix", "feComponentTransfer", "feComposite",
+                "feConvolveMatrix", "feDiffuseLighting", "feDisplacementMap",
+                "feDistantLight", "feDropShadow", "feFlood", "feFuncA", "feFuncB",
+                "feFuncG", "feFuncR", "feGaussianBlur", "feImage", "feMerge",
+                "feMergeNode", "feMorphology", "feOffset", "fePointLight",
+                "feSpecularLighting", "feSpotLight", "feTile", "feTurbulence",
+                // Animation
+                "animate", "animateColor", "animateMotion", "animateTransform",
+                "set", "mpath", "discard",
+                // Metadata / misc
+                "title", "desc", "metadata", "style", "script", "cursor"
+        };
+
+        // Common SVG attributes (tokenizer treats attribute names the same as
+        // free words, so populating builtins gives them a distinct color).
+        rules.builtins.insert({
+                "viewBox", "preserveAspectRatio", "width", "height",
+                "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry",
+                "d", "points", "pathLength",
+                "fill", "fill-rule", "fill-opacity",
+                "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin",
+                "stroke-dasharray", "stroke-dashoffset", "stroke-miterlimit",
+                "stroke-opacity", "vector-effect",
+                "opacity", "visibility", "display",
+                "transform", "transform-origin",
+                "gradientUnits", "gradientTransform", "spreadMethod",
+                "offset", "stop-color", "stop-opacity",
+                "font-family", "font-size", "font-weight", "font-style",
+                "text-anchor", "dominant-baseline", "alignment-baseline",
+                "clip-path", "clip-rule", "mask", "filter",
+                "href", "xlink:href", "dx", "dy", "rotate", "textLength",
+                "begin", "dur", "end", "repeatCount", "from", "to", "by", "values",
+                "keyTimes", "keySplines", "calcMode", "attributeName", "attributeType"
+        });
+
+        return rules;
+    }
+
+// ===== POM (Maven) LANGUAGE RULES (inherits XML) =====
+    inline SyntaxTokenizationRules CreatePomRules() {
+        SyntaxTokenizationRules rules = CreateXmlRules();
+        rules.name = "POM";
+        rules.fileExtensions = {"pom"};
+        rules.filenamePatterns = {"pom.xml"};
+
+        rules.keywords = {
+                "project", "modelVersion", "parent", "relativePath",
+                "groupId", "artifactId", "version", "packaging", "classifier",
+                "name", "description", "url", "inceptionYear",
+                "organization",
+                "licenses", "license",
+                "developers", "developer", "contributors", "contributor",
+                "mailingLists", "mailingList",
+                "prerequisites",
+                "modules", "module",
+                "scm", "issueManagement", "ciManagement", "distributionManagement",
+                "properties",
+                "dependencyManagement", "dependencies", "dependency",
+                "exclusions", "exclusion",
+                "repositories", "repository",
+                "pluginRepositories", "pluginRepository",
+                "build", "sourceDirectory", "scriptSourceDirectory",
+                "testSourceDirectory", "outputDirectory", "testOutputDirectory",
+                "resources", "resource", "testResources", "testResource",
+                "directory", "finalName", "filters", "filter",
+                "extensions", "extension",
+                "plugins", "plugin", "pluginManagement",
+                "executions", "execution", "goals", "goal",
+                "configuration", "defaultGoal",
+                "reporting", "reports", "reportSets", "reportSet",
+                "profiles", "profile", "activation", "activeByDefault",
+                "scope", "optional", "systemPath", "type",
+                "phase", "inherited",
+                "releases", "snapshots", "layout", "enabled",
+                "updatePolicy", "checksumPolicy",
+                "connection", "developerConnection", "tag",
+                "site", "uniqueVersion", "status"
+        };
+
+        return rules;
+    }
+
+// ===== RSS / Atom LANGUAGE RULES (inherits XML) =====
+    inline SyntaxTokenizationRules CreateRssAtomRules() {
+        SyntaxTokenizationRules rules = CreateXmlRules();
+        rules.name = "RSS/Atom";
+        rules.fileExtensions = {"rss", "atom"};
+        rules.filenamePatterns = {"feed.xml", "atom.xml", "rss.xml"};
+
+        rules.keywords = {
+                // RSS 2.0
+                "rss", "channel", "item",
+                "title", "link", "description",
+                "language", "copyright", "managingEditor", "webMaster",
+                "pubDate", "lastBuildDate", "category", "generator", "docs",
+                "cloud", "ttl", "image", "rating", "textInput",
+                "skipHours", "skipDays", "hour", "day",
+                "guid", "author", "comments", "enclosure", "source",
+                // Atom
+                "feed", "entry", "id", "updated", "published",
+                "contributor", "name", "email", "uri",
+                "summary", "content", "rights", "subtitle", "icon", "logo",
+                // Dublin Core (frequent in feeds)
+                "dc:creator", "dc:date", "dc:subject",
+                // Content namespace
+                "content:encoded"
+        };
+
+        rules.builtins.insert({
+                "version", "isPermaLink", "type", "rel", "href",
+                "hreflang", "length", "term", "label", "scheme", "src",
+                "xml:lang"
+        });
+
+        return rules;
+    }
+
+// ===== KML LANGUAGE RULES (inherits XML) =====
+    inline SyntaxTokenizationRules CreateKmlRules() {
+        SyntaxTokenizationRules rules = CreateXmlRules();
+        rules.name = "KML";
+        rules.fileExtensions = {"kml"};
+
+        rules.keywords = {
+                "kml", "Document", "Folder", "Placemark",
+                "name", "description", "visibility", "open",
+                "address", "phoneNumber", "Snippet",
+                "ExtendedData", "Data", "value", "displayName",
+                "SchemaData", "SimpleData", "Schema", "SimpleField",
+                "Point", "LineString", "LinearRing", "Polygon",
+                "MultiGeometry", "Model", "coordinates",
+                "extrude", "tessellate", "altitudeMode",
+                "outerBoundaryIs", "innerBoundaryIs",
+                "Style", "StyleMap", "Pair", "key", "styleUrl",
+                "IconStyle", "LineStyle", "PolyStyle",
+                "BalloonStyle", "ListStyle", "LabelStyle",
+                "Icon", "hotSpot", "scale", "heading",
+                "color", "colorMode", "width", "fill", "outline",
+                "bgColor", "textColor", "text",
+                "listItemType", "ItemIcon", "state", "href",
+                "Region", "LatLonAltBox", "LatLonBox", "Lod",
+                "north", "south", "east", "west", "rotation",
+                "minAltitude", "maxAltitude",
+                "minLodPixels", "maxLodPixels",
+                "minFadeExtent", "maxFadeExtent",
+                "NetworkLink", "NetworkLinkControl", "Url", "Link",
+                "refreshMode", "refreshInterval",
+                "viewRefreshMode", "viewRefreshTime",
+                "viewBoundScale", "viewFormat", "httpQuery",
+                "Camera", "LookAt",
+                "longitude", "latitude", "altitude",
+                "tilt", "roll", "range",
+                "GroundOverlay", "ScreenOverlay", "PhotoOverlay",
+                "MultiTrack", "Track", "when",
+                // gx: extensions
+                "gx:Track", "gx:MultiTrack", "gx:Tour", "gx:Playlist",
+                "gx:AnimatedUpdate", "gx:FlyTo", "gx:SoundCue",
+                "gx:TourControl", "gx:Wait", "gx:coord", "gx:angles",
+                "gx:altitudeMode", "gx:altitudeOffset", "gx:balloonVisibility",
+                "gx:drawOrder", "gx:duration", "gx:flyToMode",
+                "gx:h", "gx:w", "gx:x", "gx:y",
+                "gx:horizFov", "gx:interpolate", "gx:labelVisibility",
+                "gx:outerColor", "gx:outerWidth", "gx:physicalWidth",
+                "gx:playMode", "gx:TimeStamp", "gx:TimeSpan",
+                "TimeStamp", "TimeSpan", "begin", "end"
+        };
+
+        rules.builtins.insert({
+                "id", "targetId", "xmlns:gx", "xmlns:kml", "xmlns:atom"
+        });
+
+        return rules;
+    }
+
+// ===== JSON LANGUAGE RULES =====
+    inline SyntaxTokenizationRules CreateJsonRules() {
+        SyntaxTokenizationRules rules;
+        rules.name = "JSON";
+        rules.fileExtensions = {"json"};
+        rules.isCaseSensitive = true;
+
+        rules.constants = {"true", "false", "null"};
+        rules.operators = {"{", "}", "[", "]", ":", ","};
+        rules.stringDelimiters = {'"'};
+
+        // Strict JSON: no comments.
+        rules.hasHexNumbers = false;
+        rules.hasBinaryNumbers = false;
+        rules.hasOctalNumbers = false;
+        rules.hasFloatNumbers = true;
+
+        return rules;
+    }
+
+// ===== JSONC / JSON5 LANGUAGE RULES (inherits JSON + comments) =====
+    inline SyntaxTokenizationRules CreateJsoncRules() {
+        SyntaxTokenizationRules rules = CreateJsonRules();
+        rules.name = "JSONC";
+        rules.fileExtensions = {"jsonc", "json5"};
+        rules.singleLineComments = {"//"};
+        rules.multiLineComments = {{"/*", "*/"}};
+        return rules;
+    }
+
+// ===== GeoJSON LANGUAGE RULES (inherits JSON) =====
+    inline SyntaxTokenizationRules CreateGeoJsonRules() {
+        SyntaxTokenizationRules rules = CreateJsonRules();
+        rules.name = "GeoJSON";
+        rules.fileExtensions = {"geojson"};
+
+        rules.keywords = {
+                "Feature", "FeatureCollection",
+                "Point", "MultiPoint",
+                "LineString", "MultiLineString",
+                "Polygon", "MultiPolygon",
+                "GeometryCollection"
+        };
+        rules.builtins = {
+                "type", "geometry", "properties", "coordinates",
+                "features", "bbox", "crs", "id"
+        };
+
+        return rules;
+    }
+
+// ===== Web App Manifest LANGUAGE RULES (inherits JSON) =====
+    inline SyntaxTokenizationRules CreateWebManifestRules() {
+        SyntaxTokenizationRules rules = CreateJsonRules();
+        rules.name = "WebManifest";
+        rules.fileExtensions = {"webmanifest"};
+        rules.filenamePatterns = {"manifest.json", "site.webmanifest"};
+
+        rules.builtins = {
+                "name", "short_name", "description",
+                "icons", "src", "sizes", "type", "purpose",
+                "start_url", "scope", "id",
+                "display", "display_override", "orientation",
+                "theme_color", "background_color",
+                "lang", "dir", "categories", "iarc_rating_id",
+                "related_applications", "prefer_related_applications",
+                "shortcuts", "screenshots",
+                "share_target", "file_handlers", "protocol_handlers",
+                "launch_handler", "handle_links",
+                "action", "method", "enctype", "params",
+                "platform", "url"
+        };
+
+        return rules;
+    }
+
+// ===== YAML LANGUAGE RULES =====
+    inline SyntaxTokenizationRules CreateYamlRules() {
+        SyntaxTokenizationRules rules;
+        rules.name = "YAML";
+        rules.fileExtensions = {"yaml", "yml"};
+        rules.isCaseSensitive = true;
+
+        // YAML 1.1 recognized a wide range of boolean/null spellings; YAML 1.2
+        // narrowed them. We register the full 1.1 + 1.2 union so the highlighter
+        // is permissive across versions.
+        rules.constants = {
+                "y", "Y", "yes", "Yes", "YES",
+                "n", "N", "no", "No", "NO",
+                "true", "True", "TRUE",
+                "false", "False", "FALSE",
+                "on", "On", "ON",
+                "off", "Off", "OFF",
+                "null", "Null", "NULL",
+                "~"
+        };
+        rules.operators = {
+                ":", "-", "?", ">", "|",
+                "&", "*", "!",
+                "[", "]", "{", "}", ","
+        };
+        rules.singleLineComments = {"#"};
+        rules.stringDelimiters = {'"', '\''};
+
+        rules.hasHexNumbers = true;
+        rules.hasOctalNumbers = true;
+        rules.hasFloatNumbers = true;
 
         return rules;
     }

@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
-// Version: 2.0.6
-// Last Modified: 2026-04-05
+// Version: 2.1.0
+// Last Modified: 2026-04-24
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -36,6 +36,19 @@ namespace UltraCanvas {
 
 // Forward declarations
     class UltraCanvasTextEditor;
+
+/**
+ * @brief A New-from-Template entry shown in File > New from Template.
+ * Creates a new document pre-filled with boilerplate in the right language.
+ */
+    struct DocumentTemplate {
+        std::string name;       // Label shown in the menu, e.g. "SVG (vector graphics)"
+        std::string language;   // Syntax highlighter language name, e.g. "SVG"
+        std::string extension;  // Default extension used for the tab name, e.g. "svg"
+        std::string content;    // Template body
+    };
+
+    std::vector<DocumentTemplate> DefaultDocumentTemplates();
 
 /**
  * @brief Configuration options for the text editor application
@@ -78,8 +91,13 @@ namespace UltraCanvas {
                 FileFilter("Text Files", {"txt", "log", "md", "ini", "cfg"}),
                 FileFilter("Source Code", {"cpp", "c", "h", "hpp", "cc", "cxx", "py", "js", "ts", "java", "cs", "go", "rs", "pas", "pp"}),
                 FileFilter("Web Files", {"html", "htm", "css", "xml", "json"}),
+                FileFilter("Data / Config", {"json", "jsonc", "json5", "geojson", "webmanifest", "xml", "xsd", "xsl", "xslt", "yaml", "yml", "toml", "ini", "cfg", "pom", "rss", "atom", "kml"}),
+                FileFilter("Vector Graphics (Text)", std::vector<std::string>{"svg", "svgz"}),
                 FileFilter("Script Files", {"sh", "bash", "bat", "cmd", "ps1"})
         };
+
+        // Templates available from File > New from Template
+        std::vector<DocumentTemplate> documentTemplates = DefaultDocumentTemplates();
     };
 
 /**
@@ -275,6 +293,7 @@ namespace UltraCanvas {
 
         // ===== DOCUMENT MANAGEMENT =====
         int CreateNewDocument(const std::string& fileName = "");
+        int CreateDocumentFromTemplate(const DocumentTemplate& tpl);
         int OpenDocumentFromPath(const std::string& filePath);
         void CloseDocument(int index);
         void SwitchToDocument(int index);

@@ -129,7 +129,10 @@ namespace UltraCanvas {
 
         // Focus the search input
         void FocusSearchInput();
-
+        
+        // ===== EVENT HANDLING =====
+        bool OnEvent(const UCEvent& event) override;
+        
         // ===== CALLBACKS =====
         std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onFindNext;
         std::function<void(const std::string&, bool caseSensitive, bool wholeWord)> onFindPrevious;

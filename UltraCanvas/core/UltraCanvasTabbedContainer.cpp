@@ -1,7 +1,7 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 1.9.2
-// Last Modified: 2026-04-16
+// Version: 1.9.3
+// Last Modified: 2026-04-24
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -1519,20 +1519,30 @@ namespace UltraCanvas {
 
         switch (tabPosition) {
             case TabPosition::Top:
-                return Rect2Di(0, tabHeight + contentTopPadding, bounds.width, bounds.height - tabHeight - contentTopPadding);
+                return Rect2Di(contentLeftPadding, tabHeight + contentTopPadding,
+                               bounds.width - contentLeftPadding,
+                               bounds.height - tabHeight - contentTopPadding);
 
             case TabPosition::Bottom:
-                return Rect2Di(0, contentTopPadding, bounds.width, bounds.height - tabHeight - contentTopPadding);
+                return Rect2Di(contentLeftPadding, contentTopPadding,
+                               bounds.width - contentLeftPadding,
+                               bounds.height - tabHeight - contentTopPadding);
 
             case TabPosition::Left:
                 verticalTabWidth = CalculateMaxTabWidth();
-                return Rect2Di(verticalTabWidth, contentTopPadding, bounds.width - verticalTabWidth, bounds.height - contentTopPadding);
+                return Rect2Di(verticalTabWidth + contentLeftPadding, contentTopPadding,
+                               bounds.width - verticalTabWidth - contentLeftPadding,
+                               bounds.height - contentTopPadding);
 
             case TabPosition::Right:
-                return Rect2Di(0, contentTopPadding, bounds.width - CalculateMaxTabWidth(), bounds.height - contentTopPadding);
+                return Rect2Di(contentLeftPadding, contentTopPadding,
+                               bounds.width - CalculateMaxTabWidth() - contentLeftPadding,
+                               bounds.height - contentTopPadding);
 
             default:
-                return Rect2Di(0, tabHeight + contentTopPadding, bounds.width, bounds.height - tabHeight - contentTopPadding);
+                return Rect2Di(contentLeftPadding, tabHeight + contentTopPadding,
+                               bounds.width - contentLeftPadding,
+                               bounds.height - tabHeight - contentTopPadding);
         }
     }
 

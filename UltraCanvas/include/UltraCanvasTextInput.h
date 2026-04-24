@@ -446,8 +446,8 @@ public:
     std::function<void(const std::string&)> onTextChanged;
     std::function<void(size_t, size_t)> onSelectionChanged;
     std::function<void(const ValidationResult&)> onValidationChanged;
-    std::function<void(const std::string&)> onEnterPressed;
-    std::function<void()> onEscapePressed;
+    std::function<bool(const std::string&)> onEnterPressed;
+    std::function<bool()> onEscapePressed;
     std::function<void()> onFocusGained;
     std::function<void()> onFocusLost;
     std::function<void()> onCleared;

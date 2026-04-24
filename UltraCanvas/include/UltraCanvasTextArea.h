@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.3.0
-// Last Modified: 2026-04-20
+// Version: 3.4.0
+// Last Modified: 2026-04-24
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -431,6 +431,7 @@ namespace UltraCanvas {
         bool GetHighlightSyntax() const { return style.highlightSyntax; }
         void SetProgrammingLanguage(const std::string& language);
         bool SetProgrammingLanguageByExtension(const std::string& extension);
+        bool SetProgrammingLanguageByFilename(const std::string& filename);
         const std::string GetCurrentProgrammingLanguage();
         std::vector<std::string> GetSupportedLanguages();
 
