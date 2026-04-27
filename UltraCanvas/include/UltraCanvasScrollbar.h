@@ -301,7 +301,6 @@ namespace UltraCanvas {
         void SetBounds(const Rect2Di& b) override;
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
@@ -309,7 +308,6 @@ namespace UltraCanvas {
 
     private:
         // ===== LAYOUT =====
-        void UpdateLayout();
         void UpdateVerticalLayout(const Rect2Di& bounds);
         void UpdateHorizontalLayout(const Rect2Di& bounds);
         void UpdateThumbRect();

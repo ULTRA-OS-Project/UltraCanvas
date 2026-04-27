@@ -48,6 +48,7 @@ namespace UltraCanvas {
         for (const auto &child: children) {
             // fixme! check this in future when will need to implement feature like visibility:hidden
             if (!child || !child->IsVisible()) continue;
+            if (child->isPopup) continue;
 
             auto containerChild = dynamic_cast<UltraCanvasContainer*>(child.get());
             if (isContainerGeometryUpdated || child->needsUpdateGeometry || containerChild) {
@@ -68,9 +69,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::Render(IRenderContext* ctx) {
-        if (needsRedraw) {
+//        if (needsRedraw) {
             UltraCanvasUIElement::Render(ctx);
-        }
+//        }
 
         // Render visible children with scroll offset
         auto ca = GetContentArea();
@@ -79,9 +80,10 @@ namespace UltraCanvas {
         
         for (const auto &child: children) {
             if (!child || !child->IsVisible()) continue;
+            if (child->isPopup) continue;
 
-            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child.get());
-            if (needsRedraw || child->needsRedraw || containerChild) {
+//            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child.get());
+//            if (needsRedraw || child->needsRedraw || containerChild) {
                 Rect2Di adjustedChildBounds = child->GetBounds();
                 adjustedChildBounds.x = adjustedChildBounds.x - hsroll + ca.x;
                 adjustedChildBounds.y = adjustedChildBounds.y - vsroll + ca.y;
@@ -97,7 +99,7 @@ namespace UltraCanvas {
                     ctx->PopState();
                     child->needsRedraw = false;
                 }
-            }
+//            }
         }
         ctx->PushState();
         RenderScrollbars(ctx);
@@ -152,6 +154,7 @@ namespace UltraCanvas {
 
         for (const auto& child : children) {
             if (!child || !child->IsVisible()) continue;
+            if (child->isPopup) continue;
 
             Rect2Di childBounds = child->GetBounds();
             maxRight = std::max(maxRight, childBounds.x + childBounds.width);

@@ -50,6 +50,7 @@ namespace UltraCanvas {
     private:
         cairo_t *cairo = nullptr;
         cairo_surface_t* surface = nullptr;
+        Size2Di surfaceSize = {0, 0};
 
         PangoContext *pangoContext = nullptr;
 
@@ -90,7 +91,7 @@ namespace UltraCanvas {
         bool CreateSurface(const Size2Di & sz, NativeSurfacePtr createSimilarToSurface) override;
 
         bool ResizeSurface(const Size2Di& sz) override;
-//        Size2Di GetSurfaceSize(const Size2Di& sz) override;
+        Size2Di GetSurfaceSize() const override { return surfaceSize; }
         void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) override;
 
         // ===== INHERITED FROM IRenderContext =====

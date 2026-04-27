@@ -204,6 +204,8 @@ namespace UltraCanvas {
             return false;
         }
 
+        surfaceSize = sz;
+
         if (pangoContext) {
             g_object_unref(pangoContext);
             pangoContext = nullptr;
@@ -1755,7 +1757,12 @@ namespace UltraCanvas {
             return;
         }
         cairo_surface_flush(surface);
-        cairo_set_source_surface(toCtx, surface, pos.x, pos.y);
+        if (pos.x != 0 || pos.y != 0) {
+            cairo_translate(toCtx, pos.x, pos.y);
+        }
+        cairo_rectangle(toCtx, 0, 0, surfaceSize.width, surfaceSize.height);
+        cairo_clip(toCtx);
+        cairo_set_source_surface(toCtx, surface, 0, 0);
         cairo_set_operator(toCtx, CAIRO_OPERATOR_SOURCE);
         cairo_paint(toCtx);
         cairo_surface_flush(static_cast<cairo_surface_t *>(flushToSurface));

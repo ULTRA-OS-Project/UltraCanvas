@@ -17,19 +17,18 @@
 namespace UltraCanvas {
 // ===== STATIC MEMBER DEFINITIONS =====
     std::string UltraCanvasTooltipManager::currentText;
-    Point2Di UltraCanvasTooltipManager::tooltipPosition;
+    std::unique_ptr<IRenderContext> UltraCanvasTooltipManager::renderCtx;
+    Rect2Di UltraCanvasTooltipManager::tooltipRect;
     UltraCanvasWindowBase* UltraCanvasTooltipManager::targetWindow = nullptr;
 //    Point2Di UltraCanvasTooltipManager::cursorPosition;
     bool UltraCanvasTooltipManager::visible = false;
     bool UltraCanvasTooltipManager::pendingShow = false;
     bool UltraCanvasTooltipManager::pendingHide = false;
-    bool UltraCanvasTooltipManager::needsRedraw = true;
 
     TimerId UltraCanvasTooltipManager::showTimerId = InvalidTimerId;
     TimerId UltraCanvasTooltipManager::hideTimerId = InvalidTimerId;
 
     TooltipStyle UltraCanvasTooltipManager::style;
-    Point2Di UltraCanvasTooltipManager::tooltipSize;
     std::unique_ptr<ITextLayout> UltraCanvasTooltipManager::textLayout;
 
     bool UltraCanvasTooltipManager::enabled = true;
@@ -64,12 +63,14 @@ namespace UltraCanvas {
                 }
             }
         }
+        if (targetWindow != win || currentText != text || style != newStyle) {
+            renderCtx.reset();
+        }
         style = newStyle;
-
         currentText = text;
         targetWindow = win;
-        UpdateTooltipPosition(position);
         CalculateTooltipLayout();
+        UpdateTooltipPosition(position);
 
         // A pending hide for the same target is stale now
         CancelHideTimer();
@@ -85,11 +86,11 @@ namespace UltraCanvas {
                     if (!pendingShow) return;
                     pendingShow = false;
                     visible = true;
-                    needsRedraw = true;
+                    targetWindow->RequestWindowComposition();
                     debugOutput << "Tooltip shown" << std::endl;
                 });
         } else {
-            needsRedraw = true;
+            targetWindow->RequestWindowComposition();
         }
 
         debugOutput << "Tooltip requested. Text: " << text << std::endl;
@@ -112,11 +113,12 @@ namespace UltraCanvas {
                     if (!pendingHide) return;
                     pendingHide = false;
                     visible = false;
-                    needsRedraw = true;
+                    if (targetWindow) {
+                        targetWindow->RequestWindowComposition();
+                    }
+                    renderCtx.reset();
                     debugOutput << "Tooltip hidden" << std::endl;
                 });
-        } else {
-            visible = false;
         }
 
         debugOutput << "Tooltip hide requested" << std::endl;
@@ -130,7 +132,6 @@ namespace UltraCanvas {
         pendingShow = false;
         pendingHide = false;
         visible = true;
-        needsRedraw = true;
     }
 
     void UltraCanvasTooltipManager::HideTooltipImmediately() {
@@ -139,41 +140,45 @@ namespace UltraCanvas {
         pendingHide = false;
         pendingShow = false;
         visible = false;
-        needsRedraw = true;
+        if (targetWindow) {
+            targetWindow->RequestWindowComposition();
+        }
+        renderCtx.reset();
     }
 
-    bool UltraCanvasTooltipManager::Render(IRenderContext* ctx, const UltraCanvasWindowBase* win) {
-        if (!visible || currentText.empty() || win != targetWindow || !needsRedraw) return false;
+    IRenderContext* UltraCanvasTooltipManager::Render(UltraCanvasWindowBase* win) {
+        if (!visible || currentText.empty() || win != targetWindow) return nullptr;
 
-        ctx->PushState();
+        if (renderCtx) {
+            return renderCtx.get();
+        }
 
+        renderCtx = CreateRenderContext({tooltipRect.width + style.shadowOffset.x,
+                                         tooltipRect.height + style.shadowOffset.y}, win->GetNativeSurface());
         // Draw shadow first
         if (style.hasShadow) {
             Rect2Di shadowRect(
-                    tooltipPosition.x + style.shadowOffset.x,
-                    tooltipPosition.y + style.shadowOffset.y,
-                    tooltipSize.x,
-                    tooltipSize.y
+                    style.shadowOffset.x,
+                    style.shadowOffset.y,
+                    tooltipRect.width,
+                    tooltipRect.height
             );
 
-            ctx->DrawFilledRectangle(shadowRect, style.shadowColor, 0, Colors::Transparent, style.cornerRadius);
+            renderCtx->DrawFilledRectangle(shadowRect, style.shadowColor, 0, Colors::Transparent, style.cornerRadius);
         }
 
         // Draw tooltip background
-        Rect2Di bgRect(tooltipPosition.x, tooltipPosition.y, tooltipSize.x, tooltipSize.y);
-        ctx->DrawFilledRectangle(bgRect, style.backgroundColor, style.borderWidth, style.borderColor, style.cornerRadius);
+        renderCtx->DrawFilledRectangle(Rect2Di(0, 0, tooltipRect.width, tooltipRect.height), style.backgroundColor, style.borderWidth, style.borderColor, style.cornerRadius);
 
         // Draw text
         if (textLayout) {
-            ctx->SetCurrentPaint(style.textColor);
-            ctx->DrawTextLayout(*textLayout,
-                Point2Df(tooltipPosition.x + style.paddingLeft,
-                         tooltipPosition.y + style.paddingTop));
+            renderCtx->SetCurrentPaint(style.textColor);
+            renderCtx->DrawTextLayout(*textLayout,
+                Point2Df(style.paddingLeft,
+                         style.paddingTop));
         }
 
-        ctx->PopState();
-        needsRedraw = false;
-        return true;
+        return renderCtx.get();
     }
 
     void UltraCanvasTooltipManager::SetStyle(const TooltipStyle &newStyle) {
@@ -196,8 +201,8 @@ namespace UltraCanvas {
         textLayout->SetExplicitWidth(style.maxWidth - style.paddingLeft - style.paddingRight);
 
         auto measured = textLayout->GetLayoutSize();
-        tooltipSize.x = std::max(static_cast<int>(measured.width) + style.paddingLeft + style.paddingRight, 20);
-        tooltipSize.y = std::max(static_cast<int>(measured.height) + style.paddingTop + style.paddingBottom, 15);
+        tooltipRect.width = std::max(static_cast<int>(measured.width) + style.paddingLeft + style.paddingRight, 20);
+        tooltipRect.height = std::max(static_cast<int>(measured.height) + style.paddingTop + style.paddingBottom, 15);
     }
 
     void UltraCanvasTooltipManager::UpdateTooltipPosition(const Point2Di &cursorPosition) {
@@ -205,24 +210,24 @@ namespace UltraCanvas {
         int windowWidth = targetWindow->GetWidth();
         int windowHeight = targetWindow->GetHeight();
 
-        tooltipPosition.x = cursorPosition.x + style.offsetX;
-        tooltipPosition.y = cursorPosition.y + style.offsetY;
+        tooltipRect.x = cursorPosition.x + style.offsetX;
+        tooltipRect.y = cursorPosition.y + style.offsetY;
 
         // Keep tooltip on screen
         if (windowWidth > 0 && windowHeight > 0) {
             // Adjust horizontal position
-            if (tooltipPosition.x + tooltipSize.x > windowWidth) {
-                tooltipPosition.x = cursorPosition.x - style.offsetX - tooltipSize.x;
+            if (tooltipRect.x + tooltipRect.width > windowWidth) {
+                tooltipRect.x = cursorPosition.x - style.offsetX - tooltipRect.width;
             }
 
             // Adjust vertical position
-            if (tooltipPosition.y + tooltipSize.y > windowHeight) {
-                tooltipPosition.y = cursorPosition.y - style.offsetY - tooltipSize.y;
+            if (tooltipRect.y + tooltipRect.height > windowHeight) {
+                tooltipRect.y = cursorPosition.y - style.offsetY - tooltipRect.height;
             }
 
             // Ensure tooltip is not off-screen
-            tooltipPosition.x = std::max(tooltipPosition.x, 0);
-            tooltipPosition.y = std::max(tooltipPosition.y, 0);
+            tooltipRect.x = std::max(tooltipRect.x, 0);
+            tooltipRect.y = std::max(tooltipRect.y, 0);
         }
     }
 

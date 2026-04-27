@@ -102,6 +102,14 @@ struct Point2D {
         T len = Length();
         return len > 0 ? Point2D(x / len, y / len) : Point2D(0, 0);
     }
+
+    bool operator==(const Point2D& other) const {
+        return x == other.x && y == other.y;
+    }
+
+    bool operator!=(const Point2D& other) const {
+        return !(*this == other);
+    }
 };
 
 typedef struct Point2D<double> Point2Df;

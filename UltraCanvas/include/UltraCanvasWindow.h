@@ -85,7 +85,10 @@ namespace UltraCanvas {
         WindowState _state = WindowState::Normal;
         bool _created = false;
         bool _needsResize = false;
-        bool _needsWindowRedraw = true;
+        bool _needsContentRedraw = true;
+        bool _needsPopupRedraw = false;
+        bool _needsPopupGeometry = false;
+        bool _needsWindowComposition = true;
 
         std::unordered_map<UCEventType, std::vector<FilterFunction>> eventFilters = {};
         bool HandleEventFilters(const UCEvent& ev);
@@ -180,7 +183,7 @@ namespace UltraCanvas {
 
         // Platform-specific
         virtual NativeWindowHandle GetNativeHandle() const = 0;
-        virtual void FlushNative() = 0;
+        virtual void InvalidateWindowNative() = 0;
 
         // Overlay elements
         void OpenPopup(const Point2Di& pos, UltraCanvasUIElement& element, const PopupElementSettings& settings);
@@ -229,7 +232,10 @@ namespace UltraCanvas {
         // derived classes may override it to render something
         virtual void RenderCustomContent(IRenderContext* ctx) {}
 
-        void RequestWindowRedraw() { _needsWindowRedraw = true; }
+        void RequestWindowRedraw() { _needsContentRedraw = true; }
+        void RequestPopupRedraw() { _needsPopupRedraw = true; }
+        void RequestPopupGeometry() { _needsPopupGeometry = true; }
+        void RequestWindowComposition() { _needsWindowComposition = true; }
         void UpdateAndRender();
 
         bool IsNeedsResize() const { return _needsResize; }

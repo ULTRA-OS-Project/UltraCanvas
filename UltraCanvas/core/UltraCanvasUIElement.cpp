@@ -51,16 +51,26 @@ namespace UltraCanvas {
 
     void UltraCanvasUIElement::RequestRedraw() {
         needsRedraw = true;
-        if (window && this != window) {
-            window->RequestWindowRedraw();
+        if (!window || this == window) return;
+        for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->parentContainer) {
+            if (cur->isPopup) {
+                window->RequestPopupRedraw();
+                return;
+            }
         }
+        window->RequestWindowRedraw();
     }
 
     void UltraCanvasUIElement::RequestUpdateGeometry() {
         needsUpdateGeometry = true;
-        if (window && this != window) {
-            window->RequestUpdateGeometry();
+        if (!window || this == window) return;
+        for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->parentContainer) {
+            if (cur->isPopup) {
+                window->RequestPopupGeometry();
+                return;
+            }
         }
+        window->RequestUpdateGeometry();
     }
 
 //    void UltraCanvasUIElement::RequestFullRedraw() {

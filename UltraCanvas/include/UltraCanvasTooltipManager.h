@@ -1,7 +1,7 @@
 // include/UltraCanvasTooltipManager.h
 // Updated tooltip system compatible with unified UltraCanvas architecture
-// Version: 2.1.0
-// Last Modified: 2026-04-23
+// Version: 2.1.1
+// Last Modified: 2026-04-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -40,7 +40,6 @@ namespace UltraCanvas {
         // Shadow
         bool hasShadow = true;
         Point2Di shadowOffset = Point2Di(2, 2);
-        float shadowBlur = 3.0f;
 
         // Behavior
         float showDelay = 0.3f;        // Seconds to wait before showing
@@ -50,6 +49,33 @@ namespace UltraCanvas {
         bool followCursor = false;     // Whether tooltip follows mouse movement
 
         TooltipStyle() = default;
+
+        bool operator==(const TooltipStyle& other) const {
+            return backgroundColor == other.backgroundColor
+                && borderColor == other.borderColor
+                && textColor == other.textColor
+                && shadowColor == other.shadowColor
+                && fontFamily == other.fontFamily
+                && fontSize == other.fontSize
+                && paddingLeft == other.paddingLeft
+                && paddingRight == other.paddingRight
+                && paddingTop == other.paddingTop
+                && paddingBottom == other.paddingBottom
+                && maxWidth == other.maxWidth
+                && borderWidth == other.borderWidth
+                && cornerRadius == other.cornerRadius
+                && hasShadow == other.hasShadow
+                && shadowOffset == other.shadowOffset
+                && showDelay == other.showDelay
+                && hideDelay == other.hideDelay
+                && offsetX == other.offsetX
+                && offsetY == other.offsetY
+                && followCursor == other.followCursor;
+        }
+
+        bool operator!=(const TooltipStyle& other) const {
+            return !(*this == other);
+        }
     };
 
 // ===== TOOLTIP MANAGER CLASS =====
@@ -57,8 +83,9 @@ namespace UltraCanvas {
     private:
         // State tracking
         static UltraCanvasWindowBase* targetWindow;
+        static std::unique_ptr<IRenderContext> renderCtx;
         static std::string currentText;
-        static Point2Di tooltipPosition;
+        static Rect2Di tooltipRect;
 //        static Point2Di cursorPosition;
         static bool visible;
         static bool pendingShow;
@@ -71,7 +98,6 @@ namespace UltraCanvas {
 
         // Style and layout
         static TooltipStyle style;
-        static Point2Di tooltipSize;
         static std::unique_ptr<ITextLayout> textLayout;
 
         // Global state
@@ -103,7 +129,7 @@ namespace UltraCanvas {
         // ===== RENDERING =====
 
         // Render tooltip - call this during window rendering
-        static bool Render(IRenderContext* ctx, const UltraCanvasWindowBase* win);
+        static IRenderContext* Render(UltraCanvasWindowBase* win);
 
         // ===== CONFIGURATION =====
 
@@ -136,11 +162,11 @@ namespace UltraCanvas {
         }
 
         static Point2Di GetTooltipPosition() {
-            return tooltipPosition;
+            return tooltipRect.TopLeft();
         }
 
-        static Point2Di GetTooltipSize() {
-            return tooltipSize;
+        static Size2Di GetTooltipSize() {
+            return tooltipRect.Size();
         }
 
         static void UpdateTooltipPosition(const Point2Di& position);

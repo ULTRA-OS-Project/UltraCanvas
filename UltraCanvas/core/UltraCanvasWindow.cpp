@@ -313,32 +313,78 @@ namespace UltraCanvas {
 
 
     void UltraCanvasWindowBase::UpdateAndRender() {
-        if (visible && _created) {
-            auto ctx = GetRenderContext();
-            if (IsNeedsResize()) {
-                DoResize();
+        if (!visible || !_created) return;
+        auto ctx = GetRenderContext();
+        if (IsNeedsResize()) {
+            DoResize();
+        }
+        if (!ctx) return;
+
+        if (needsUpdateGeometry) {
+            UpdateGeometry(ctx);
+        }
+
+        // ---- Window pass ----
+        if (_needsContentRedraw) {
+            Render(ctx);
+            RenderCustomContent(ctx);
+            _needsWindowComposition = true;
+        }
+
+        // ---- Popup pass ----
+        for (auto& pe : popupElements) {
+            auto* p = pe.element;
+            if (!p || !p->IsVisible()) continue;
+
+            if (_needsPopupGeometry || p->needsUpdateGeometry) {
+                p->UpdateGeometry(ctx);
+                p->needsUpdateGeometry = false;
             }
-            if (ctx) {
-                if (needsUpdateGeometry) {
-                    UpdateGeometry(ctx);
-                }
-//                  debugOutput << "Redraw window w=" << window << " nativeh=" << window->GetNativeHandle() << std::endl;
-                bool windowUpdated = false;
-                if (_needsWindowRedraw) {
-                    Render(ctx);
-                    RenderCustomContent(ctx);
-                    windowUpdated = true;
-                }
-                if (UltraCanvasTooltipManager::Render(ctx, this)) {
-                    windowUpdated = true;
-                }
-                if (windowUpdated) {
-                    renderContext->FlushToSurface(nativeSurface, {0, 0});
-                    FlushNative();
-                }
-                _needsWindowRedraw = false;
+
+            Size2Di want = p->GetSize();
+            if (want.width <= 0 || want.height <= 0) continue;
+
+            if (!p->renderContext) {
+                p->renderContext = CreateRenderContext(want, nativeSurface);
+                p->needsUpdateGeometry = true;
+                p->needsRedraw = true;
+            } else if (p->renderContext->GetSurfaceSize() != want) {
+                p->renderContext->ResizeSurface(want);
+                p->needsRedraw = true;
+            }
+
+            if (_needsPopupRedraw || p->needsRedraw) {
+                p->Render(p->renderContext.get());
+                p->needsRedraw = false;
+                _needsWindowComposition = true;
             }
         }
+
+        // Composite popups and tooltips onto the native surface
+        if (_needsWindowComposition) {
+            renderContext->FlushToSurface(nativeSurface, {0, 0});
+            if (!popupElements.empty()) {
+                for (auto& pe : popupElements) {
+                    auto* p = pe.element;
+                    if (!p || !p->IsVisible() || !p->renderContext) continue;
+                    auto pos = p->GetPositionInWindow();
+                    p->renderContext->FlushToSurface(nativeSurface,
+                                                     {(float)pos.x, (float)pos.y});
+                }
+            }
+
+            auto tooltipCtx = UltraCanvasTooltipManager::Render(this);
+            if (tooltipCtx) {
+                tooltipCtx->FlushToSurface(nativeSurface, UltraCanvasTooltipManager::GetTooltipPosition());
+            }
+
+            InvalidateWindowNative();
+        }
+
+        _needsContentRedraw = false;
+        _needsPopupRedraw = false;
+        _needsPopupGeometry = false;
+        _needsWindowComposition = false;
     }
 
     void UltraCanvasWindowBase::OpenPopup(const Point2Di& pos, UltraCanvasUIElement& elem, const PopupElementSettings& settings) {
@@ -354,8 +400,17 @@ namespace UltraCanvas {
         elem.SetVisible(true);
         elem.zOrder = OverlayZOrder::Popups;
         elem.isPopup = true;
-        RequestRedraw();
 
+        // Allocate the popup's own off-screen render context. Size guard handles the
+        // case where the popup hasn't run a layout pass yet — it'll be resized in
+        // UpdateAndRender once the real bounds are known.
+        Size2Di sz = elem.GetSize();
+        if (sz.width <= 0 || sz.height <= 0) sz = {1, 1};
+        elem.renderContext = CreateRenderContext(sz, nativeSurface);
+        elem.needsUpdateGeometry = true;
+        elem.needsRedraw = true;
+
+        RequestPopupRedraw();
         elem.OnPopupOpened();
     }
 
@@ -368,8 +423,11 @@ namespace UltraCanvas {
                         elem.isPopup = false;
                         elem.SetVisible(false);
                         RemoveChild(elem.shared_from_this());
+                        elem.renderContext.reset();
                         elem.OnPopupClosed(reason);
-                        RequestRedraw();
+                        // Closing a popup uncovers window pixels, so we need a full
+                        // window recomposite to refresh the area underneath.
+                        RequestWindowComposition();
                         return true;
                     } else {
                         return false;

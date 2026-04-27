@@ -685,13 +685,13 @@ namespace UltraCanvas {
             cairo_xlib_surface_set_size(static_cast<cairo_surface_t *>(nativeSurface), config_.width, config_.height);
         }
 
-        FlushNative();
+        InvalidateWindowNative();
         XFlush(UltraCanvasApplication::GetInstance()->GetDisplay());
 
         debugOutput << "UltraCanvasLinuxWindow::DoResizeNative: Cairo surface updated successfully" << std::endl;
     }
 
-    void UltraCanvasLinuxWindow::FlushNative() {
+    void UltraCanvasLinuxWindow::InvalidateWindowNative() {
 //        cairo_surface_t *ctxSurface = static_cast<cairo_surface_t *>(renderContext->GetSurface());
 //        cairo_surface_flush(stagingSurface);
 //        // Copy staging surface to window surface

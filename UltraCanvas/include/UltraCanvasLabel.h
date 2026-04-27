@@ -50,6 +50,7 @@ namespace UltraCanvas {
         // ===== COMPUTED LAYOUT =====
         Rect2Di textArea;
         std::unique_ptr<ITextLayout> textLayout = nullptr;
+        int maxWidth = 0;
         bool autoResize = false;
         bool isMarkup = false;
 
@@ -86,6 +87,7 @@ namespace UltraCanvas {
         void SetAlignment(TextAlignment horizontal, VerticalAlignment vertical = VerticalAlignment::Top);
         void SetWrap(TextWrap wrap);
         void SetAutoResize(bool autoResize);
+        void SetMaxWidth(int mWidth);
         void SetTextIsMarkup(bool markup);
 
         int GetPreferredWidth() override;

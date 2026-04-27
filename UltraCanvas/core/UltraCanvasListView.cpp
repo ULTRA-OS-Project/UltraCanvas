@@ -491,7 +491,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasListView::HandleMouseWheel(const UCEvent& event) {
         if (verticalScrollbar->IsVisible()) {
-            int scrollAmount = event.wheelDelta * viewStyle.rowHeight * 3;
+            int scrollAmount = event.wheelDelta * viewStyle.rowHeight;
             scrollOffsetY -= scrollAmount;
             ClampScrollOffset();
             RequestRedraw();

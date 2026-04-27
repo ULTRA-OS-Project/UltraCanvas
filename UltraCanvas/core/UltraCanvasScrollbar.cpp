@@ -86,7 +86,9 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasScrollbar::UpdateGeometry(IRenderContext* ctx) {
+    void UltraCanvasScrollbar::Render(IRenderContext *ctx) {
+        if (!ctx || !ShouldBeVisible()) return;
+
         if (layoutDirty) {
             Rect2Di bounds = GetElementLocalBounds();
 
@@ -99,10 +101,6 @@ namespace UltraCanvas {
             UpdateThumbRect();
             layoutDirty = false;
         }
-    }
-
-    void UltraCanvasScrollbar::Render(IRenderContext *ctx) {
-        if (!ctx || !ShouldBeVisible()) return;
 
         ctx->PushState();
 

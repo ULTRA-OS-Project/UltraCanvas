@@ -613,7 +613,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMacOSWindow::FlushNative() {
+    void UltraCanvasMacOSWindow::InvalidateWindowNative() {
         if (!_created || !renderContext) return;
 
         // Trigger redraw

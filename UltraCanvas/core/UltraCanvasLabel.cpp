@@ -117,6 +117,12 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    void UltraCanvasLabel::SetMaxWidth(int mWidth) {
+        maxWidth = mWidth;
+        textLayout.reset();
+        RequestRedraw();
+    }
+
     void UltraCanvasLabel::SetTextIsMarkup(bool markup) {
         isMarkup = markup;
         textLayout.reset();
@@ -239,6 +245,9 @@ namespace UltraCanvas {
             textLayout->SetAlignment(style.horizontalAlign);
             textLayout->SetVerticalAlignment(style.verticalAlign);
             if (autoResize) {
+                if (maxWidth) {
+                    textLayout->SetExplicitWidth(maxWidth);
+                }
                 auto lsize = textLayout->GetLayoutSize();
                 bounds.width = lsize.width + GetTotalBorderHorizontal() + GetTotalPaddingHorizontal();
                 bounds.height = lsize.height + GetTotalBorderVertical() + GetTotalPaddingVertical();
