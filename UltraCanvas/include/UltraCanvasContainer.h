@@ -121,6 +121,7 @@ namespace UltraCanvas {
         void InvalidateLayout() {
             layoutDirty = true;
             RequestRedraw();
+            RequestUpdateGeometry();
         }
 
         bool IsLayoutDirty() const { return layoutDirty; }

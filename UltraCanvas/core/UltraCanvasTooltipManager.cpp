@@ -23,6 +23,7 @@ namespace UltraCanvas {
     bool UltraCanvasTooltipManager::visible = false;
     bool UltraCanvasTooltipManager::pendingShow = false;
     bool UltraCanvasTooltipManager::pendingHide = false;
+    bool UltraCanvasTooltipManager::needsRedraw = true;
 
     TimerId UltraCanvasTooltipManager::showTimerId = InvalidTimerId;
     TimerId UltraCanvasTooltipManager::hideTimerId = InvalidTimerId;
@@ -84,11 +85,11 @@ namespace UltraCanvas {
                     if (!pendingShow) return;
                     pendingShow = false;
                     visible = true;
-                    if (targetWindow) targetWindow->RequestRedraw();
+                    needsRedraw = true;
                     debugOutput << "Tooltip shown" << std::endl;
                 });
         } else {
-            targetWindow->RequestRedraw();
+            needsRedraw = true;
         }
 
         debugOutput << "Tooltip requested. Text: " << text << std::endl;
@@ -111,7 +112,7 @@ namespace UltraCanvas {
                     if (!pendingHide) return;
                     pendingHide = false;
                     visible = false;
-                    if (targetWindow) targetWindow->RequestRedraw();
+                    needsRedraw = true;
                     debugOutput << "Tooltip hidden" << std::endl;
                 });
         } else {
@@ -129,7 +130,7 @@ namespace UltraCanvas {
         pendingShow = false;
         pendingHide = false;
         visible = true;
-        if (targetWindow) targetWindow->RequestRedraw();
+        needsRedraw = true;
     }
 
     void UltraCanvasTooltipManager::HideTooltipImmediately() {
@@ -138,11 +139,11 @@ namespace UltraCanvas {
         pendingHide = false;
         pendingShow = false;
         visible = false;
-        if (targetWindow) targetWindow->RequestRedraw();
+        needsRedraw = true;
     }
 
-    void UltraCanvasTooltipManager::Render(IRenderContext* ctx, const UltraCanvasWindowBase* win) {
-        if (!visible || currentText.empty() || win != targetWindow) return;
+    bool UltraCanvasTooltipManager::Render(IRenderContext* ctx, const UltraCanvasWindowBase* win) {
+        if (!visible || currentText.empty() || win != targetWindow || !needsRedraw) return false;
 
         ctx->PushState();
 
@@ -171,6 +172,8 @@ namespace UltraCanvas {
         }
 
         ctx->PopState();
+        needsRedraw = false;
+        return true;
     }
 
     void UltraCanvasTooltipManager::SetStyle(const TooltipStyle &newStyle) {

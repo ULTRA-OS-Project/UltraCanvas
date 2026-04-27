@@ -9,7 +9,7 @@
 #define ULTRACANVAS_X11_WINDOW_H
 
 // ===== CORE INCLUDES =====
-#include "../../libspecific/Cairo/RenderContextCairo.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasLinuxDragDrop.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
@@ -43,8 +43,6 @@ namespace UltraCanvas {
         Window xWindow;
         XIC xic;                    // X Input Context for this window
 
-        cairo_surface_t* cairoSurface;
-        std::unique_ptr<RenderContextCairo> renderContext;
         UltraCanvasLinuxDragDrop dragDropHandler;
 
         bool CreateNative() override;
@@ -67,12 +65,11 @@ namespace UltraCanvas {
         virtual void Maximize() override;
         virtual void Restore() override;
         virtual void SetFullscreen(bool fullscreen) override;
-        virtual void Flush() override;
+        virtual void FlushNative() override;
         virtual NativeWindowHandle GetNativeHandle() const override;
         virtual void GetScreenPosition(int& x, int& y) const override;
         void GetScreenSize(int& width, int& height) const override;
         UltraCanvasLinuxDragDrop& GetDragDropHandler() { return dragDropHandler; }
-        IRenderContext* GetRenderContext() const override { return renderContext.get(); }
 //        virtual void ProcessEvents() override;
 //        virtual bool OnEvent(const UCEvent&) override;
 
@@ -95,8 +92,8 @@ namespace UltraCanvas {
         bool CreateXWindow();
         bool CreateXIC();
         void DestroyXIC();
-        bool CreateCairoSurface();
-        void DestroyCairoSurface();
+        bool CreateNativeCairoSurface();
+        void DestroyNativeCairoSurface();
         void SetWindowHints();
 //        void SetWindowDecorations();
 

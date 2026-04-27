@@ -297,10 +297,10 @@ namespace UltraCanvas {
                     iterationLabel->SetText(iterText.str());
 
                     // Force UI update
-                    mainContainer->GetWindow()->Render(ctx);
+                    mainContainer->GetWindow()->RequestRedraw();
+                    mainContainer->GetWindow()->UpdateAndRender();
 //                    ctx->SetFillPaint(Colors::White);
 //                    ctx->FillRectangle(imageElement->GetXInWindow(), imageElement->GetYInWindow(), imageElement->GetWidth(), imageElement->GetHeight());
-                    mainContainer->GetWindow()->Flush();
                     prevElapsedSeconds = elapsedSeconds;
                 }
             }

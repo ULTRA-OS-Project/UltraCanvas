@@ -4,10 +4,10 @@
 // Last Modified: 2026-04-11
 // Author: UltraCanvas Framework
 
-#include "RenderContextCairo.h"
-#include "UCTextLayout.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasUtils.h"
+#include "UCTextLayout.h"
+#include "../libspecific/Cairo/RenderContextCairo.h"
 #include <cstring>
 #include <cmath>
 #include <sstream>
@@ -138,61 +138,112 @@ namespace UltraCanvas {
     }
 
 
-    RenderContextCairo::RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering)
-        : targetSurface(nullptr), surfaceWidth(0), surfaceHeight(0), stagingSurface(nullptr), pangoContext(nullptr), cairo(nullptr), targetContext(nullptr), destroying(false) {
+//    RenderContextCairo::RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering)
+//        : targetSurface(nullptr), surfaceWidth(0), surfaceHeight(0), stagingSurface(nullptr), pangoContext(nullptr), cairo(nullptr), targetContext(nullptr), destroying(false) {
+//
+//        SetTargetSurface(surf, width, height);
+//
+//        // Initialize Pango for text rendering with proper error checking
+//        try {
+//            debugOutput << "RenderContextCairo: Initializing Pango..." << std::endl;
+//
+//            auto fontMap = pango_cairo_font_map_get_default();
+//            if (!fontMap) {
+//                debugOutput << "ERROR: Failed to get default Pango font map" << std::endl;
+//                throw std::runtime_error("RenderContextCairo: Failed to get Pango font map");
+//            }
+//            debugOutput << "RenderContextCairo: Got Pango font map: " << fontMap << std::endl;
+//
+//            pangoContext = pango_font_map_create_context(fontMap);
+//            if (!pangoContext) {
+//                debugOutput << "ERROR: Failed to create Pango context" << std::endl;
+//                throw std::runtime_error("RenderContextCairo: Failed to create Pango context");
+//            }
+//            debugOutput << "RenderContextCairo: Created Pango context: " << pangoContext << std::endl;
+//
+//            // Associate Pango context with Cairo context
+//            pango_cairo_context_set_resolution(pangoContext, 96.0);  // Standard DPI
+//
+//            // Apply configurable text rendering font options
+//            ApplyPangoFontOptions();
+//            g_Instances.push_back(this);
+//
+//            debugOutput << "RenderContextCairo: Pango initialization complete" << std::endl;
+//
+//        } catch (const std::exception &e) {
+//            debugOutput << "ERROR: Exception during Pango initialization: " << e.what() << std::endl;
+//
+//            // Cleanup on failure
+//            if (pangoContext) {
+//                g_object_unref(pangoContext);
+//                pangoContext = nullptr;
+//            }
+//            throw;
+//        }
+//
+//        if (enableDoubleBuffering) {
+//            CreateStagingSurface();
+//            SwitchToSurface(stagingSurface);
+//        }
+//        // Initialize default state
+//        ResetState();
+//        debugOutput << "RenderContextCairo: Initialization complete" << std::endl;
+//    }
 
-        SetTargetSurface(surf, width, height);
+    bool RenderContextCairo::CreateSurface(const Size2Di & sz, NativeSurfacePtr createSimilarToSurface) {
+        auto oldCairoSurface = surface;
 
-        // Initialize Pango for text rendering with proper error checking
-        try {
-            debugOutput << "RenderContextCairo: Initializing Pango..." << std::endl;
-
-            auto fontMap = pango_cairo_font_map_get_default();
-            if (!fontMap) {
-                debugOutput << "ERROR: Failed to get default Pango font map" << std::endl;
-                throw std::runtime_error("RenderContextCairo: Failed to get Pango font map");
-            }
-            debugOutput << "RenderContextCairo: Got Pango font map: " << fontMap << std::endl;
-
-            pangoContext = pango_font_map_create_context(fontMap);
-            if (!pangoContext) {
-                debugOutput << "ERROR: Failed to create Pango context" << std::endl;
-                throw std::runtime_error("RenderContextCairo: Failed to create Pango context");
-            }
-            debugOutput << "RenderContextCairo: Created Pango context: " << pangoContext << std::endl;
-
-            // Associate Pango context with Cairo context
-            pango_cairo_context_set_resolution(pangoContext, 96.0);  // Standard DPI
-
-            // Apply configurable text rendering font options
-            ApplyPangoFontOptions();
-            g_Instances.push_back(this);
-
-            debugOutput << "RenderContextCairo: Pango initialization complete" << std::endl;
-
-        } catch (const std::exception &e) {
-            debugOutput << "ERROR: Exception during Pango initialization: " << e.what() << std::endl;
-
-            // Cleanup on failure
-            if (pangoContext) {
-                g_object_unref(pangoContext);
-                pangoContext = nullptr;
-            }
-            throw;
+        if (createSimilarToSurface) {
+            surface = cairo_surface_create_similar(static_cast<cairo_surface_t *>(createSimilarToSurface), CAIRO_CONTENT_COLOR_ALPHA, sz.width, sz.height);
+        } else {
+            surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, sz.width, sz.height);
         }
 
-        if (enableDoubleBuffering) {
-            CreateStagingSurface();
-            SwitchToSurface(stagingSurface);
+        if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+            debugOutput << "RenderContextCairo::CreateSurface: Can't create surface" << std::endl;
+            return false;
         }
+
+        if (pangoContext) {
+            g_object_unref(pangoContext);
+            pangoContext = nullptr;
+        }
+        if (cairo) {
+            cairo_destroy(cairo);
+            cairo = nullptr;
+        }
+        if (oldCairoSurface) {
+            cairo_surface_destroy(oldCairoSurface);
+        }
+
+        cairo = cairo_create(surface);
+        if (cairo_status(cairo) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(surface);
+            debugOutput << "RenderContextCairo::CreateSurface: Can't create cairo context" << std::endl;
+            return false;
+        }
+
+        pangoContext = pango_cairo_create_context(cairo);
+        if (!pangoContext) {
+            cairo_destroy(cairo);
+            cairo_surface_destroy(surface);
+            debugOutput << "RenderContextCairo::CreateSurface: Can't create Pango context" << std::endl;
+            return false;
+
+        }
+
+        // Apply configurable text rendering font options
+        ApplyPangoFontOptions();
+
+        g_Instances.push_back(this);
+
         // Initialize default state
-        ResetState();
         debugOutput << "RenderContextCairo: Initialization complete" << std::endl;
+        return true;
     }
 
     RenderContextCairo::~RenderContextCairo() {
         debugOutput << "RenderContextCairo: Destroying..." << std::endl;
-        destroying = true;
 
         g_Instances.erase(std::remove(g_Instances.begin(), g_Instances.end(), this), g_Instances.end());
 
@@ -207,123 +258,118 @@ namespace UltraCanvas {
 
         // Null the cairo pointer to prevent any accidental access
         // Note: We don't own the cairo context, so don't destroy it
-        if (stagingSurface) {
-            cairo_surface_destroy(stagingSurface);
+        if (cairo) {
+            cairo_destroy(cairo);
+            cairo = nullptr;
         }
-        cairo_destroy(targetContext);
-        cairo_destroy(cairo);
+        if (surface) {
+            cairo_surface_destroy(surface);
+            surface = nullptr;
+        }
 
         debugOutput << "RenderContextCairo: Destruction complete" << std::endl;
     }
 
-    void RenderContextCairo::SetTargetSurface(cairo_surface_t* surf, int w, int h) {
-        cairo_status_t status = cairo_surface_status(surf);
-        if (status != CAIRO_STATUS_SUCCESS) {
-            debugOutput << "ERROR: RenderContextCairo: Cairo target surface is invalid: " << cairo_status_to_string(status)
-                      << std::endl;
-            throw std::runtime_error("RenderContextCairo: Invalid target Cairo surface");
-        }
+//    void RenderContextCairo::SetTargetSurface(cairo_surface_t* surf, int w, int h) {
+//        cairo_status_t status = cairo_surface_status(surf);
+//        if (status != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "ERROR: RenderContextCairo: Cairo target surface is invalid: " << cairo_status_to_string(status)
+//                      << std::endl;
+//            throw std::runtime_error("RenderContextCairo: Invalid target Cairo surface");
+//        }
+//
+//        if (targetContext) {
+//            cairo_destroy(targetContext);
+//        }
+//        if (cairo) {
+//            cairo_destroy(cairo);
+//        }
+//
+//        surfaceWidth = w;
+//        surfaceHeight = h;
+//        targetSurface = surf;
+//        targetContext = cairo_create(targetSurface);
+//
+//        // Check Cairo context status
+//        status = cairo_status(targetContext);
+//        if (status != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "ERROR: RenderContextCairo: Cairo target context is invalid: " << cairo_status_to_string(status)
+//                      << std::endl;
+//            throw std::runtime_error("RenderContextCairo: Invalid target Cairo context");
+//        }
+//
+//        cairo = cairo_create(targetSurface);
+//        status = cairo_status(cairo);
+//        if (status != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "ERROR: RenderContextCairo: Cairo context is invalid: " << cairo_status_to_string(status)
+//                      << std::endl;
+//            throw std::runtime_error("RenderContextCairo: Invalid Cairo context");
+//        }
+//    }
 
-        if (targetContext) {
-            cairo_destroy(targetContext);
-        }
-        if (cairo) {
-            cairo_destroy(cairo);
-        }
+//    bool RenderContextCairo::CreateStagingSurface() {
+//        // Create image surface for staging (back buffer)
+//        stagingSurface = cairo_surface_create_similar(targetSurface, CAIRO_CONTENT_COLOR_ALPHA, surfaceWidth, surfaceHeight);
+//
+//        if (cairo_surface_status(stagingSurface) != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "RenderContextCairo: Failed to create staging surface" << std::endl;
+//            return false;
+//        }
+//
+//        return true;
+//    }
 
-        surfaceWidth = w;
-        surfaceHeight = h;
-        targetSurface = surf;
-        targetContext = cairo_create(targetSurface);
-
-        // Check Cairo context status
-        status = cairo_status(targetContext);
-        if (status != CAIRO_STATUS_SUCCESS) {
-            debugOutput << "ERROR: RenderContextCairo: Cairo target context is invalid: " << cairo_status_to_string(status)
-                      << std::endl;
-            throw std::runtime_error("RenderContextCairo: Invalid target Cairo context");
-        }
-
-        cairo = cairo_create(targetSurface);
-        status = cairo_status(cairo);
-        if (status != CAIRO_STATUS_SUCCESS) {
-            debugOutput << "ERROR: RenderContextCairo: Cairo context is invalid: " << cairo_status_to_string(status)
-                      << std::endl;
-            throw std::runtime_error("RenderContextCairo: Invalid Cairo context");
-        }
-    }
-
-    bool RenderContextCairo::CreateStagingSurface() {
-        // Create image surface for staging (back buffer)
-        stagingSurface = cairo_surface_create_similar(targetSurface, CAIRO_CONTENT_COLOR_ALPHA, surfaceWidth, surfaceHeight);
-
-        if (cairo_surface_status(stagingSurface) != CAIRO_STATUS_SUCCESS) {
-            debugOutput << "RenderContextCairo: Failed to create staging surface" << std::endl;
-            return false;
-        }
-
-        return true;
-    }
-
-    bool RenderContextCairo::ResizeStagingSurface(int newWidth, int newHeight) {
-        std::lock_guard<std::mutex> lock(cairoMutex);
-
-        if (newWidth <= 0 || newHeight <= 0 || !stagingSurface) {
+    bool RenderContextCairo::ResizeSurface(const Size2Di& sz) {
+        if (sz.width <= 0 || sz.height <= 0 || !surface) {
             return false;
         }
 
         // Update dimensions
 
-        int oldSurfaceWidth = surfaceWidth;
-        int oldSurfaceHeight = surfaceHeight;
+//        int oldSurfaceWidth = cairo_image_surface_get_width(surface);
+//        int oldSurfaceHeight = cairo_image_surface_get_height(surface);
 
-        surfaceWidth = newWidth;
-        surfaceHeight = newHeight;
-
-        auto oldStagingSurface = stagingSurface;
-
-        // Recreate staging surface with new dimensions
-        if (!CreateStagingSurface()) {
+        // Recreate surface with new dimensions
+        if (!CreateSurface(sz, surface)) {
             return false;
         }
-        SwitchToSurface(stagingSurface);
 
-        int copyWidth = std::min(surfaceWidth, oldSurfaceWidth);
-        int copyHeight = std::min(surfaceHeight, oldSurfaceHeight);
-        if (copyWidth > 0 && copyHeight > 0) {
-            // Actually perform the copy operation
-            cairo_save(cairo);
-            cairo_set_source_surface(cairo, oldStagingSurface, 0, 0);
-            cairo_rectangle(cairo, 0, 0, copyWidth, copyHeight);
-            cairo_clip(cairo);
-            cairo_paint(cairo);
-            cairo_restore(cairo);
-
-        }
-
-        cairo_surface_destroy(oldStagingSurface);
-
-        debugOutput << "ResizeStagingSurface: Resized to " << newWidth << "x" << newHeight << std::endl;
+//        int copyWidth = std::min(surfaceWidth, oldSurfaceWidth);
+//        int copyHeight = std::min(surfaceHeight, oldSurfaceHeight);
+//        if (copyWidth > 0 && copyHeight > 0) {
+//            // Actually perform the copy operation
+//            cairo_save(cairo);
+//            cairo_set_source_surface(cairo, oldStagingSurface, 0, 0);
+//            cairo_rectangle(cairo, 0, 0, copyWidth, copyHeight);
+//            cairo_clip(cairo);
+//            cairo_paint(cairo);
+//            cairo_restore(cairo);
+//
+//        }
+//
+//        cairo_surface_destroy(oldStagingSurface);
+//
+        debugOutput << "ResizeSurface: Resized to " << sz.width << "x" << sz.height << std::endl;
         return true;
     }
 
-    void RenderContextCairo::SwitchToSurface(cairo_surface_t* surf) {
-        if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
-            debugOutput << "SwitchToSurface: Invalid surface" << std::endl;
-            return;
-        }
-
-        if (cairo) {
-            cairo_destroy(cairo);
-        }
-        cairo = cairo_create(surf);
-
-        if (cairo_status(cairo) != CAIRO_STATUS_SUCCESS) {
-            debugOutput << "SwitchToSurface: Invalid context" << std::endl;
-        }
-        ResetState();
-        pango_cairo_update_context(cairo, pangoContext);
-    }
+//    void RenderContextCairo::SwitchToSurface(cairo_surface_t* surf) {
+//        if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "SwitchToSurface: Invalid surface" << std::endl;
+//            return;
+//        }
+//
+//        if (cairo) {
+//            cairo_destroy(cairo);
+//        }
+//        cairo = cairo_create(surf);
+//
+//        if (cairo_status(cairo) != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "SwitchToSurface: Invalid context" << std::endl;
+//        }
+//        ResetState();
+//        pango_cairo_update_context(cairo, pangoContext);
+//    }
 
 // ===== STATE MANAGEMENT =====
     void RenderContextCairo::PushState() {
@@ -776,17 +822,17 @@ namespace UltraCanvas {
         cairo_restore(cairo);
     }
 
-    void RenderContextCairo::SwapBuffers() {
-        std::lock_guard<std::mutex> lock(cairoMutex);
-        if (stagingSurface) {
-            //debugOutput << "RenderContextCairo::SwapBuffers stagingSurface=" << stagingSurface << " target_surf=" << cairo_get_target(targetContext) << std::endl;
-            cairo_surface_flush(stagingSurface);
-            // Copy staging surface to window surface
-            cairo_set_source_surface(targetContext, stagingSurface, 0, 0);
-            cairo_set_operator(targetContext, CAIRO_OPERATOR_SOURCE);
-            cairo_paint(targetContext);
-        }
-    }
+//    void RenderContextCairo::SwapBuffers() {
+//        std::lock_guard<std::mutex> lock(cairoMutex);
+//        if (stagingSurface) {
+//            //debugOutput << "RenderContextCairo::SwapBuffers stagingSurface=" << stagingSurface << " target_surf=" << cairo_get_target(targetContext) << std::endl;
+//            cairo_surface_flush(stagingSurface);
+//            // Copy staging surface to window surface
+//            cairo_set_source_surface(targetContext, stagingSurface, 0, 0);
+//            cairo_set_operator(targetContext, CAIRO_OPERATOR_SOURCE);
+//            cairo_paint(targetContext);
+//        }
+//    }
 
     void *RenderContextCairo::GetNativeContext() {
         return cairo;
@@ -1699,5 +1745,31 @@ namespace UltraCanvas {
     void RenderContextCairo::Fill() {
         ApplySource(currentState.fillSourceColor, currentState.fillSourcePattern);
         cairo_fill(cairo);
+    }
+
+    void RenderContextCairo::FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) {
+        // Copy staging surface to window surface
+        cairo_t *toCtx = cairo_create(static_cast<cairo_surface_t *>(flushToSurface));
+        if (!toCtx) {
+            debugOutput << "RenderContextCairo::FlushToSurface can't create context for flushToSurface" << std::endl;
+            return;
+        }
+        cairo_surface_flush(surface);
+        cairo_set_source_surface(toCtx, surface, pos.x, pos.y);
+        cairo_set_operator(toCtx, CAIRO_OPERATOR_SOURCE);
+        cairo_paint(toCtx);
+        cairo_surface_flush(static_cast<cairo_surface_t *>(flushToSurface));
+        cairo_destroy(toCtx);
+    }
+
+
+    // factory
+    std::unique_ptr<IRenderContext> CreateRenderContext(const Size2Di& sz, NativeSurfacePtr similarToSurface) {
+        auto ctx = std::make_unique<RenderContextCairo>();
+        if (ctx->CreateSurface(sz, similarToSurface)) {
+            return ctx;
+        } else {
+            return nullptr;
+        }
     }
 } // namespace UltraCanvas

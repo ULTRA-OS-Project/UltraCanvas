@@ -99,7 +99,6 @@ namespace UltraCanvas {
             UpdateThumbRect();
             layoutDirty = false;
         }
-        UltraCanvasUIElement::UpdateGeometry(ctx);
     }
 
     void UltraCanvasScrollbar::Render(IRenderContext *ctx) {

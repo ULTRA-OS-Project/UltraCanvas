@@ -43,8 +43,8 @@ private:
     
     // ===== INTERNAL METHODS =====
     bool CreateXWindow();
-    bool CreateCairoSurface();
-    void DestroyCairoSurface();
+    bool CreateNativeCairoSurface();
+    void DestroyNativeCairoSurface();
     void ResizeCairoSurface(int width, int height);
 
 public:

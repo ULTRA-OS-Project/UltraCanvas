@@ -45,25 +45,25 @@ namespace UltraCanvas {
         }
 
         // STEP 2: Create Cairo surface from HWND's DC
-        if (!CreateCairoSurface()) {
+        if (!CreateNativeCairoSurface()) {
             debugOutput << "UltraCanvas Windows: Failed to create Cairo surface" << std::endl;
             DestroyWindow(hwnd);
             hwnd = nullptr;
             return false;
         }
 
-        // STEP 3: Create render context (same RenderContextCairo as Linux)
-        try {
-            renderContext = std::make_unique<RenderContextCairo>(
-                cairoSurface, config_.width, config_.height, true);
-        } catch (const std::exception& e) {
-            debugOutput << "UltraCanvas Windows: Failed to create render context: "
-                      << e.what() << std::endl;
-            DestroyCairoSurface();
-            DestroyWindow(hwnd);
-            hwnd = nullptr;
-            return false;
-        }
+//        // STEP 3: Create render context (same RenderContextCairo as Linux)
+//        try {
+//            renderContext = std::make_unique<RenderContextCairo>(
+//                cairoSurface, config_.width, config_.height, true);
+//        } catch (const std::exception& e) {
+//            debugOutput << "UltraCanvas Windows: Failed to create render context: "
+//                      << e.what() << std::endl;
+//            DestroyNativeCairoSurface();
+//            DestroyWindow(hwnd);
+//            hwnd = nullptr;
+//            return false;
+//        }
 
         // STEP 4: Initialize OLE drag-drop
         dropTarget = new UltraCanvasWindowsDropTarget(this);
@@ -224,26 +224,26 @@ namespace UltraCanvas {
         return true;
     }
 
-    bool UltraCanvasWindowsWindow::CreateCairoSurface() {
+    bool UltraCanvasWindowsWindow::CreateNativeCairoSurface() {
         if (!hwnd) return false;
 
         // Use a Cairo image surface instead of cairo_win32_surface.
         // This avoids DWM composition issues where rendering to a persistent
         // window DC outside of BeginPaint/EndPaint is not reliably displayed.
         // The image surface data is blitted to the window DC in WM_PAINT.
-        cairoSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24,
+        nativeSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24,
                                                    config_.width, config_.height);
-        if (!cairoSurface) {
+        if (!nativeSurface) {
             debugOutput << "UltraCanvas Windows: cairo_image_surface_create failed" << std::endl;
             return false;
         }
 
-        cairo_status_t status = cairo_surface_status(cairoSurface);
+        cairo_status_t status = cairo_surface_status(nativeSurface);
         if (status != CAIRO_STATUS_SUCCESS) {
             debugOutput << "UltraCanvas Windows: Cairo surface error: "
                       << cairo_status_to_string(status) << std::endl;
-            cairo_surface_destroy(cairoSurface);
-            cairoSurface = nullptr;
+            cairo_surface_destroy(nativeSurface);
+            nativeSurface = nullptr;
             return false;
         }
 
@@ -252,10 +252,10 @@ namespace UltraCanvas {
         return true;
     }
 
-    void UltraCanvasWindowsWindow::DestroyCairoSurface() {
+    void UltraCanvasWindowsWindow::DestroyNativeCairoSurface() {
         if (cairoSurface) {
-            cairo_surface_destroy(cairoSurface);
-            cairoSurface = nullptr;
+            cairo_surface_destroy(nativeSurface);
+            nativeSurface = nullptr;
         }
     }
 
@@ -274,21 +274,21 @@ namespace UltraCanvas {
         int w = config_.width;
         int h = config_.height;
 
-        if (cairoSurface) {
-            cairo_surface_destroy(cairoSurface);
-            cairoSurface = nullptr;
+        if (nativeSurface) {
+            cairo_surface_destroy(nativeSurface);
+            nativeSurface = nullptr;
         }
 
-        cairoSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, w, h);
-        if (!cairoSurface) {
+        nativeSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, w, h);
+        if (!nativeSurface) {
             debugOutput << "UltraCanvas Windows: Failed to recreate Cairo surface on resize" << std::endl;
             return;
         }
 
-        if (renderContext) {
-            renderContext->SetTargetSurface(cairoSurface, w, h);
-            renderContext->ResizeStagingSurface(w, h);
-        }
+//        if (renderContext) {
+//            renderContext->SetTargetSurface(cairoSurface, w, h);
+//            renderContext->ResizeStagingSurface(w, h);
+//        }
 
         debugOutput << "UltraCanvasWindowsWindow::DoResizeNative: nativeh=" << GetNativeHandle() << " Cairo surface=" << cairoSurface << " updated successfully" << std::endl;
     }
@@ -311,7 +311,7 @@ namespace UltraCanvas {
         renderContext.reset();
 
         // Destroy Cairo surface
-        DestroyCairoSurface();
+        DestroyNativeCairoSurface();
 
         // Release DC
         if (hdc && hwnd) {
@@ -674,11 +674,11 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasWindowsWindow::Flush() {
-        if (!renderContext || !cairoSurface || !hwnd) return;
-        std::lock_guard<std::mutex> lock(cairoMutex);
-        renderContext->SwapBuffers();
-        cairo_surface_flush(cairoSurface);
+    void UltraCanvasWindowsWindow::FlushNative() {
+        if (!renderContext || !nativeSurface || !hwnd) return;
+//        std::lock_guard<std::mutex> lock(cairoMutex);
+//        renderContext->SwapBuffers();
+//        cairo_surface_flush(cairoSurface);
         // Trigger a synchronous WM_PAINT to blit the image surface to the window
         InvalidateRect(hwnd, NULL, FALSE);
         UpdateWindow(hwnd);

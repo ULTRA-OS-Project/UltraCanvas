@@ -4,13 +4,11 @@
 // Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 
-#include "../include/UltraCanvasWindow.h"
-#include "../include/UltraCanvasRenderContext.h"
-#include "../include/UltraCanvasApplication.h"
-#include "../include/UltraCanvasTooltipManager.h"
-//#include "../include/UltraCanvasZOrderManager.h"
-#include "../include/UltraCanvasMenu.h"
+#include "UltraCanvasWindow.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasTooltipManager.h"
+//#include "UltraCanvasZOrderManager.h"
 
 #include <iostream>
 #include <algorithm>
@@ -22,6 +20,7 @@ namespace UltraCanvas {
         // Configure container for window behavior
         visible = false;
         window = this;
+        nativeSurface = nullptr;
     }
 
 //    UltraCanvasWindowBase::~UltraCanvasWindowBase() {
@@ -292,6 +291,10 @@ namespace UltraCanvas {
             return;
         }
         debugOutput << "UltraCanvasWindowBase::DoResize nativeh=" << GetNativeHandle() << " (" << config_.width << "x" << config_.height << ")" << std::endl;
+
+        if (renderContext) {
+            renderContext->ResizeSurface({config_.width, config_.height});
+        }
         DoResizeNative();
         SetOriginalSize(config_.width, config_.height);
 
@@ -308,13 +311,34 @@ namespace UltraCanvas {
         if (onWindowMove) onWindowMove(x, y);
     }
 
-    void UltraCanvasWindowBase::Render(IRenderContext* ctx) {
-        if (!visible || !_created) return;
-        UltraCanvasContainer::Render(ctx);
 
-        RenderCustomContent(ctx);
-
-        UltraCanvasTooltipManager::Render(ctx, this);
+    void UltraCanvasWindowBase::UpdateAndRender() {
+        if (visible && _created) {
+            auto ctx = GetRenderContext();
+            if (IsNeedsResize()) {
+                DoResize();
+            }
+            if (ctx) {
+                if (needsUpdateGeometry) {
+                    UpdateGeometry(ctx);
+                }
+//                  debugOutput << "Redraw window w=" << window << " nativeh=" << window->GetNativeHandle() << std::endl;
+                bool windowUpdated = false;
+                if (_needsWindowRedraw) {
+                    Render(ctx);
+                    RenderCustomContent(ctx);
+                    windowUpdated = true;
+                }
+                if (UltraCanvasTooltipManager::Render(ctx, this)) {
+                    windowUpdated = true;
+                }
+                if (windowUpdated) {
+                    renderContext->FlushToSurface(nativeSurface, {0, 0});
+                    FlushNative();
+                }
+                _needsWindowRedraw = false;
+            }
+        }
     }
 
     void UltraCanvasWindowBase::OpenPopup(const Point2Di& pos, UltraCanvasUIElement& elem, const PopupElementSettings& settings) {
@@ -381,6 +405,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasWindowBase::Create() {
         _state = WindowState::Normal;
+        _created = false;
 
         ContainerStyle containerStyle;
         containerStyle.forceShowVerticalScrollbar = config_.enableWindowScrolling;
@@ -392,10 +417,13 @@ namespace UltraCanvas {
         SetBounds(Rect2Di(0, 0, config_.width, config_.height));
 
         if (CreateNative()) {
-            UltraCanvasApplication::GetInstance()->RegisterWindow(std::dynamic_pointer_cast<UltraCanvasWindowBase>(shared_from_this()));
-            _created = true;
-        } else {
-            _created = false;
+            renderContext = CreateRenderContext(Size2Di(config_.width, config_.height), nativeSurface);
+            if (renderContext) {
+                UltraCanvasApplication::GetInstance()->RegisterWindow(std::dynamic_pointer_cast<UltraCanvasWindowBase>(shared_from_this()));
+                _created = true;
+            } else {
+                debugOutput << "UltraCanvasWindowBase::Create CreateRenderContext failed" << std::endl;
+            }
         }
         return _created;
     }

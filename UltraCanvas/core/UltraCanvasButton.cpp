@@ -784,8 +784,8 @@ namespace UltraCanvas {
             AutoResize();
             CalculateLayout();
             ctx->PopState();
+            needsUpdateGeometry = false;
         }
-        UltraCanvasUIElement::UpdateGeometry(ctx);
     }
 
 // ===== MAIN RENDER METHOD =====
@@ -819,7 +819,6 @@ namespace UltraCanvas {
             DrawIcon(ctx);
             DrawText(ctx);
         }
-        needsRedraw = false;
     }
 
 // ===== CLICK HELPER =====

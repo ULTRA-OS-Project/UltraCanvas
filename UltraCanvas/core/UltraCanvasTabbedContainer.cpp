@@ -889,11 +889,11 @@ namespace UltraCanvas {
 
         if (tabBarBounds.Contains(x, y)) {
             int newHoveredTab = GetTabAtPosition(x, y);
-            bool needsRedraw = false;
+            bool needsRepaint = false;
 
             if (newHoveredTab != hoveredTabIndex) {
                 hoveredTabIndex = newHoveredTab;
-                needsRedraw = true;
+                needsRepaint = true;
 
                 // Show per-tab tooltip when hovered tab changes
                 if (hoveredTabIndex >= 0 && !tabs[hoveredTabIndex]->tooltip.empty()) {
@@ -915,7 +915,7 @@ namespace UltraCanvas {
             }
             if (newHoveredClose != hoveredCloseButtonIndex) {
                 hoveredCloseButtonIndex = newHoveredClose;
-                needsRedraw = true;
+                needsRepaint = true;
             }
 
             if (showNewTabButton) {
@@ -923,7 +923,7 @@ namespace UltraCanvas {
                 bool wasHovered = hoveredNewTabButton;
                 hoveredNewTabButton = newTabBounds.Contains(x, y);
                 if (wasHovered != hoveredNewTabButton) {
-                    needsRedraw = true;
+                    needsRepaint = true;
                 }
             }
 
@@ -970,11 +970,11 @@ namespace UltraCanvas {
                         dragInsertionIndex = -1;
                     }
 
-                    needsRedraw = true;
+                    needsRepaint = true;
                 }
             }
 
-            if (needsRedraw) {
+            if (needsRepaint) {
                 RequestRedraw();
             }
             return true;

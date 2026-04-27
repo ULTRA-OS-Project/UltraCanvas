@@ -140,11 +140,18 @@ namespace UltraCanvas {
     };
 
 
+    typedef void* NativeSurfacePtr;
 
 // ===== UNIFIED RENDERING INTERFACE =====
     class IRenderContext {
     public:
         virtual ~IRenderContext() = default;
+
+        virtual bool CreateSurface(const Size2Di & sz, NativeSurfacePtr similarToSurface) = 0;
+//        virtual NativeSurface* GetNativeSurface() const = 0;
+        virtual bool ResizeSurface(const Size2Di& sz) = 0;
+//        virtual Size2Di GetSurfaceSize(const Size2Di& sz) = 0;
+        virtual void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) = 0;
 
         // ===== STATE MANAGEMENT =====
         virtual void PushState() = 0;
@@ -760,6 +767,8 @@ namespace UltraCanvas {
 
         // ===== ITERATOR =====
 //        UCTextLayoutIter GetIter() const = 0;
-
     };
+
+    // factory
+    std::unique_ptr<IRenderContext> CreateRenderContext(const Size2Di& sz, NativeSurfacePtr similarTo);
 } // namespace UltraCanvas

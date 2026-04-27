@@ -51,7 +51,6 @@ namespace UltraCanvas {
             CalculateAndUpdateSize(ctx);
             ctx->PopState();
         }
-        UltraCanvasUIElement::UpdateGeometry(ctx);
     }
 
     void UltraCanvasMenu::Render(IRenderContext *ctx) {

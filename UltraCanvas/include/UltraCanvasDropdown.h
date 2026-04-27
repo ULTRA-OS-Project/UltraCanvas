@@ -220,7 +220,6 @@ namespace UltraCanvas {
         void SetWindow(UltraCanvasWindowBase* win) override;
         // ===== RENDERING =====
         void Render(IRenderContext* ctx) override;
-        void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;

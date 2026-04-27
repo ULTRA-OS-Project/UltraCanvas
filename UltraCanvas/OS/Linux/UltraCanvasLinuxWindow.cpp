@@ -7,6 +7,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLinuxWindow.h"
 #include "UltraCanvasImage.h"
+#include "../libspecific/Cairo/RenderContextCairo.h"
 #include <iostream>
 #include <cstring>
 #include "UltraCanvasDebug.h"
@@ -15,8 +16,7 @@ namespace UltraCanvas {
 
 // ===== CONSTRUCTOR & DESTRUCTOR =====
     UltraCanvasLinuxWindow::UltraCanvasLinuxWindow()
-            : xWindow(0)
-            , cairoSurface(nullptr) {
+            : xWindow(0) {
 
         debugOutput << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
     }
@@ -51,23 +51,23 @@ namespace UltraCanvas {
 
         CreateXIC();
 
-        if (!CreateCairoSurface()) {
+        if (!CreateNativeCairoSurface()) {
             debugOutput << "UltraCanvas Linux: Failed to create Cairo surface" << std::endl;
             XDestroyWindow(application->GetDisplay(), xWindow);
             xWindow = 0;
             return false;
         }
 
-        try {
-            renderContext = std::make_unique<RenderContextCairo>(cairoSurface, config_.width, config_.height, true);
-            debugOutput << "UltraCanvas Linux: Render context created successfully" << std::endl;
-        } catch (const std::exception& e) {
-            debugOutput << "UltraCanvas Linux: Failed to create render context: " << e.what() << std::endl;
-            DestroyCairoSurface();
-            XDestroyWindow(UltraCanvasApplication::GetInstance()->GetDisplay(), xWindow);
-            xWindow = 0;
-            return false;
-        }
+//        try {
+//            renderContext = std::make_unique<RenderContextCairo>(cairoSurface, config_.width, config_.height, true);
+//            debugOutput << "UltraCanvas Linux: Render context created successfully" << std::endl;
+//        } catch (const std::exception& e) {
+//            debugOutput << "UltraCanvas Linux: Failed to create render context: " << e.what() << std::endl;
+//            DestroyNativeCairoSurface();
+//            XDestroyWindow(UltraCanvasApplication::GetInstance()->GetDisplay(), xWindow);
+//            xWindow = 0;
+//            return false;
+//        }
 
         debugOutput << "UltraCanvas Linux: Window created successfully!" << std::endl;
         return true;
@@ -221,7 +221,7 @@ namespace UltraCanvas {
         return true;
     }
 
-    bool UltraCanvasLinuxWindow::CreateCairoSurface() {
+    bool UltraCanvasLinuxWindow::CreateNativeCairoSurface() {
         auto application = UltraCanvasApplication::GetInstance();
         if (!application || !application->GetDisplay() || xWindow == 0) {
             debugOutput << "UltraCanvas Linux: Cannot create Cairo surface - invalid state" << std::endl;
@@ -231,22 +231,22 @@ namespace UltraCanvas {
         Display* display = application->GetDisplay();
         Visual* visual = application->GetVisual();
 
-        cairoSurface = cairo_xlib_surface_create(
+        nativeSurface = cairo_xlib_surface_create(
                 display, xWindow, visual,
                 config_.width, config_.height
         );
 
-        if (!cairoSurface) {
+        if (!nativeSurface) {
             debugOutput << "UltraCanvas Linux: cairo_xlib_surface_create failed" << std::endl;
             return false;
         }
 
-        cairo_status_t status = cairo_surface_status(cairoSurface);
+        cairo_status_t status = cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface));
         if (status != CAIRO_STATUS_SUCCESS) {
             debugOutput << "UltraCanvas Linux: Cairo surface creation failed: "
                       << cairo_status_to_string(status) << std::endl;
-            cairo_surface_destroy(cairoSurface);
-            cairoSurface = nullptr;
+            cairo_surface_destroy(static_cast<cairo_surface_t *>(nativeSurface));
+            nativeSurface = nullptr;
             return false;
         }
 
@@ -323,11 +323,11 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLinuxWindow::DestroyCairoSurface() {
-        if (cairoSurface) {
+    void UltraCanvasLinuxWindow::DestroyNativeCairoSurface() {
+        if (nativeSurface) {
             debugOutput << "UltraCanvas Linux: Destroying Cairo surface..." << std::endl;
-            cairo_surface_destroy(cairoSurface);
-            cairoSurface = nullptr;
+            cairo_surface_destroy(static_cast<cairo_surface_t *>(nativeSurface));
+            nativeSurface = nullptr;
         }
     }
 
@@ -335,7 +335,7 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas Linux: Destroying window..." << std::endl;
 
         renderContext.reset();
-        DestroyCairoSurface();
+        DestroyNativeCairoSurface();
         dragDropHandler.Shutdown();
         auto application = UltraCanvasApplication::GetInstance();
         if (xWindow && application && application->GetDisplay()) {        
@@ -681,22 +681,25 @@ namespace UltraCanvas {
     void UltraCanvasLinuxWindow::DoResizeNative() {
         std::lock_guard<std::mutex> lock(cairoMutex);  // Add this
 
-        if (cairoSurface) {
-            cairo_xlib_surface_set_size(cairoSurface, config_.width, config_.height);
+        if (nativeSurface) {
+            cairo_xlib_surface_set_size(static_cast<cairo_surface_t *>(nativeSurface), config_.width, config_.height);
         }
 
-        if (renderContext) {
-            renderContext->ResizeStagingSurface(config_.width, config_.height);
-        }
-        Flush();
+        FlushNative();
         XFlush(UltraCanvasApplication::GetInstance()->GetDisplay());
 
         debugOutput << "UltraCanvasLinuxWindow::DoResizeNative: Cairo surface updated successfully" << std::endl;
     }
 
-    void UltraCanvasLinuxWindow::Flush() {
-        renderContext->SwapBuffers();
-        cairo_surface_flush(cairoSurface);
+    void UltraCanvasLinuxWindow::FlushNative() {
+//        cairo_surface_t *ctxSurface = static_cast<cairo_surface_t *>(renderContext->GetSurface());
+//        cairo_surface_flush(stagingSurface);
+//        // Copy staging surface to window surface
+//        cairo_set_source_surface(targetContext, stagingSurface, 0, 0);
+//        cairo_set_operator(targetContext, CAIRO_OPERATOR_SOURCE);
+//        cairo_paint(targetContext);
+//
+//        cairo_surface_flush(cairoSurface);
 //            XFlush(application->GetDisplay());
     }
 

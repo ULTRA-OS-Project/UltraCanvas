@@ -144,20 +144,21 @@ namespace UltraCanvas {
                     auto window = it->get();
 //                    debugOutput << "window w=" << window << " nativeh=" << window->GetNativeHandle() << " visible=" << window->IsVisible() << " needredraw=" << window->IsNeedsRedraw() << " ctx=" << window->GetRenderContext() << std::endl;
                     if (window->IsVisible()) {
-                        auto ctx = window->GetRenderContext();
-                        if (window->IsNeedsResize()) {
-                            window->DoResize();
-                        }
-                        if (ctx) {
-                            if (window->IsNeedsUpdateGeometry() || window->IsNeedsRedraw()) {
-                                window->UpdateGeometry(ctx);
-                            }
-                            if (window->IsNeedsRedraw()) {
-//                                debugOutput << "Redraw window w=" << window << " nativeh=" << window->GetNativeHandle() << std::endl;
-                                window->Render(ctx);
-                                window->Flush();
-                            }
-                        }
+                        window->UpdateAndRender();
+//                        auto ctx = window->GetRenderContext();
+//                        if (window->IsNeedsResize()) {
+//                            window->DoResize();
+//                        }
+//                        if (ctx) {
+//                            if (window->IsNeedsUpdateGeometry() || window->IsNeedsRedraw()) {
+//                                window->UpdateGeometry(ctx);
+//                            }
+//                            if (window->IsNeedsRedraw()) {
+////                                debugOutput << "Redraw window w=" << window << " nativeh=" << window->GetNativeHandle() << std::endl;
+//                                window->Render(ctx);
+//                                window->Flush();
+//                            }
+//                        }
                     }
 
                 }

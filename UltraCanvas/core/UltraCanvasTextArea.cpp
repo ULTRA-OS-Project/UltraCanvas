@@ -3078,7 +3078,6 @@ namespace UltraCanvas {
             ctx->PopState();
             // Wrap width probably changed — let UpdateLineLayouts detect and reset.
         }
-        UltraCanvasUIElement::UpdateGeometry(ctx);
     }
 
     std::unique_ptr<LineLayoutBase> UltraCanvasTextArea::MakePlainLineLayout(IRenderContext* ctx, int lineIndex) {

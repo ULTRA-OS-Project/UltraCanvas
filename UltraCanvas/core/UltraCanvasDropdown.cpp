@@ -611,10 +611,6 @@ namespace UltraCanvas {
 
     // ===== GEOMETRY OVERRIDES =====
 
-    void UltraCanvasDropdown::UpdateGeometry(IRenderContext* ctx) {
-        UltraCanvasUIElement::UpdateGeometry(ctx);
-    }
-
     void UltraCanvasDropdown::SetWindow(UltraCanvasWindowBase *win) {
         UltraCanvasUIElement::SetWindow(win);
         if (popupListView) {

@@ -34,19 +34,25 @@ namespace UltraCanvas {
         // Perform layout BEFORE children's UpdateGeometry so that children
         // get their correct bounds from the parent layout before they
         // process their own nested layouts (fixes first-frame positioning)
-        if (IsLayoutDirty()) {
+        bool isContainerGeometryUpdated = false;
+        if (needsUpdateGeometry || IsLayoutDirty()) {
             SortChildrenByZOrder();
             if (layout) {
                 layout->PerformLayout();
             }
             UpdateScrollability();
             layoutDirty = false;
+            isContainerGeometryUpdated = true;
         }
 
         for (const auto &child: children) {
             // fixme! check this in future when will need to implement feature like visibility:hidden
-            if (child->IsVisible()) {
+            if (!child || !child->IsVisible()) continue;
+
+            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child.get());
+            if (isContainerGeometryUpdated || child->needsUpdateGeometry || containerChild) {
                 child->UpdateGeometry(ctx);
+                child->needsUpdateGeometry = false;
             }
         }
         
@@ -58,11 +64,13 @@ namespace UltraCanvas {
             horizontalScrollbar->UpdateGeometry(ctx);
         }
 
-        UltraCanvasUIElement::UpdateGeometry(ctx);
+        needsUpdateGeometry = false;
     }
 
     void UltraCanvasContainer::Render(IRenderContext* ctx) {
-        UltraCanvasUIElement::Render(ctx);
+        if (needsRedraw) {
+            UltraCanvasUIElement::Render(ctx);
+        }
 
         // Render visible children with scroll offset
         auto ca = GetContentArea();
@@ -72,24 +80,29 @@ namespace UltraCanvas {
         for (const auto &child: children) {
             if (!child || !child->IsVisible()) continue;
 
-            Rect2Di adjustedChildBounds = child->GetBounds();
-            adjustedChildBounds.x = adjustedChildBounds.x - hsroll + ca.x;
-            adjustedChildBounds.y = adjustedChildBounds.y - vsroll + ca.y;
+            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child.get());
+            if (needsRedraw || child->needsRedraw || containerChild) {
+                Rect2Di adjustedChildBounds = child->GetBounds();
+                adjustedChildBounds.x = adjustedChildBounds.x - hsroll + ca.x;
+                adjustedChildBounds.y = adjustedChildBounds.y - vsroll + ca.y;
 
-            Rect2Di intersection;
-            if (adjustedChildBounds.Intersects(ca, intersection)) {
-                ctx->PushState();
-                ctx->ClipRect(Rect2Di(intersection.x - 1, intersection.y - 1, intersection.width + 2, intersection.height + 2));
-                ctx->Translate(adjustedChildBounds.TopLeft());
-                child->Render(ctx);
-                ctx->PopState();
+                Rect2Di intersection;
+                if (adjustedChildBounds.Intersects(ca, intersection)) {
+                    ctx->PushState();
+                    ctx->ClipRect(Rect2Di(intersection.x - 1, intersection.y - 1, intersection.width + 2,
+                                          intersection.height + 2));
+                    ctx->Translate(adjustedChildBounds.TopLeft());
+                    child->needsRedraw = true;
+                    child->Render(ctx);
+                    ctx->PopState();
+                    child->needsRedraw = false;
+                }
             }
-
         }
-
         ctx->PushState();
         RenderScrollbars(ctx);
         ctx->PopState();
+        needsRedraw = false;
     }
 
     void UltraCanvasContainer::RenderScrollbars(IRenderContext *ctx) {
@@ -318,6 +331,7 @@ namespace UltraCanvas {
         if (onChildAdded) {
             onChildAdded(child.get());
         }
+        InvalidateLayout();
     }
 
     void UltraCanvasContainer::RemoveChild(std::shared_ptr<UltraCanvasUIElement> child) {

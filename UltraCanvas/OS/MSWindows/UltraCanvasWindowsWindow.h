@@ -87,7 +87,7 @@ namespace UltraCanvas {
         void Maximize() override;
         void Restore() override;
         void SetFullscreen(bool fullscreen) override;
-        void Flush() override;
+        void FlushNative() override;
         NativeWindowHandle GetNativeHandle() const override;
         void GetScreenPosition(int& x, int& y) const override;
         void GetScreenSize(int& width, int& height) const override;
@@ -103,8 +103,8 @@ namespace UltraCanvas {
     private:
         // ===== INTERNAL SETUP =====
         bool CreateHWND();
-        bool CreateCairoSurface();
-        void DestroyCairoSurface();
+        bool CreateNativeCairoSurface();
+        void DestroyNativeCairoSurface();
         void BlitSurfaceToHDC(HDC targetDC);
         void SetWindowStyle();
 

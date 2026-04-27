@@ -254,10 +254,6 @@ namespace UltraCanvas {
                 textLayout->SetExplicitHeight(crect.height);
             }
         }
-//        if (layoutDirty) {
-//            CalculateLayout(ctx);
-//        }
-        UltraCanvasUIElement::UpdateGeometry(ctx);
     }
 
     void UltraCanvasLabel::Render(IRenderContext *ctx) {

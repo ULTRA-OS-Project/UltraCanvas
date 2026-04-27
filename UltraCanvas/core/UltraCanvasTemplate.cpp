@@ -337,7 +337,6 @@ namespace UltraCanvas {
             RebuildTemplate();
             ctx->PopState();
         }
-        UltraCanvasUIElement::UpdateGeometry(ctx);
     }
 
 // ===== RENDERING =====

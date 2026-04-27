@@ -52,7 +52,7 @@ namespace UltraCanvas {
     void UltraCanvasUIElement::RequestRedraw() {
         needsRedraw = true;
         if (window && this != window) {
-            window->RequestRedraw();
+            window->RequestWindowRedraw();
         }
     }
 
@@ -70,8 +70,15 @@ namespace UltraCanvas {
 //    }
 
     IRenderContext* UltraCanvasUIElement::GetRenderContext() const {
-        if (window) {
-            return window->GetRenderContext();
+        if (renderContext) {
+            return renderContext.get();
+        }
+        auto pc = parentContainer;
+        while (pc) {
+            if (pc->renderContext) {
+                return pc->renderContext.get();
+            }
+            pc = pc->parentContainer;
         }
         return nullptr;
     }
@@ -94,41 +101,6 @@ namespace UltraCanvas {
         }
         return false;
     }
-
-//    int UltraCanvasUIElement::GetXInWindow() {
-//        int totalX = properties.x_pos;
-//
-//        if (parentContainer) {
-//            // Get parent's position in window coordinates
-//            int parentWindowX = parentContainer->GetXInWindow();
-//
-//            // Add parent's content area offset
-//            Rect2Di parentContentArea = parentContainer->GetContentArea();
-//
-//            // Calculate final position: parent window position + content area offset + our relative position
-//            totalX = parentWindowX + parentContentArea.x + properties.x_pos;
-//        }
-//
-//        return totalX;
-//    }
-//
-//// Fixed version of GetYInWindow() in UltraCanvasUIElement.cpp
-//    int UltraCanvasUIElement::GetYInWindow() {
-//        int totalY = properties.y_pos;
-//
-//        if (parentContainer) {
-//            // Get parent's position in window coordinates
-//            int parentWindowY = parentContainer->GetYInWindow();
-//
-//            // Add parent's content area offset
-//            Rect2Di parentContentArea = parentContainer->GetContentArea();
-//
-//            // Calculate final position: parent window position + content area offset + our relative position
-//            totalY = parentWindowY + parentContentArea.y + properties.y_pos;
-//        }7
-//
-//        return totalY;
-//    }
 
     void UltraCanvasUIElement::Render(IRenderContext* ctx) {
         auto bnds = GetElementLocalBounds();
@@ -184,7 +156,6 @@ namespace UltraCanvas {
                 ctx->FillRectangle(bnds);
             }
         }
-        needsRedraw = false;
     }
 
     Point2Di UltraCanvasUIElement::GetPositionInWindow() const {
@@ -284,6 +255,18 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasUIElement::SetBounds(const Rect2Di &b) {
+        if (bounds != b) {
+            if (bounds.Size() != b.Size()) {
+                RequestUpdateGeometry();
+            }
+            if (parentContainer) {
+                parentContainer->RequestUpdateGeometry();
+            }
+            bounds = b;
+        }
+    }
+
     void UltraCanvasUIElement::SetEventCallback(std::function<bool(const UCEvent &)> callback) {
         eventCallback = callback;
     }
@@ -295,10 +278,4 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasUIElement::UpdateGeometry(IRenderContext *ctx) {
-        if (needsUpdateGeometry) {
-            RequestRedraw();
-        }
-        needsUpdateGeometry = false;
-    }
 }

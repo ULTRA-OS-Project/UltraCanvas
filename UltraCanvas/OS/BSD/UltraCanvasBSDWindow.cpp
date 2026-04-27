@@ -52,7 +52,7 @@ bool UltraCanvasBSDWindow::CreateNative(const WindowConfig& config) {
         return false;
     }
     
-    if (!CreateCairoSurface()) {
+    if (!CreateNativeCairoSurface()) {
         debugOutput << "UltraCanvas BSD: Failed to create Cairo surface" << std::endl;
         auto bsdApp = static_cast<UltraCanvasBSDApplication*>(application);
         XDestroyWindow(bsdApp->GetDisplay(), xWindow);
@@ -71,7 +71,7 @@ bool UltraCanvasBSDWindow::CreateNative(const WindowConfig& config) {
         debugOutput << "UltraCanvas BSD: Render context created successfully" << std::endl;
     } catch (const std::exception& e) {
         debugOutput << "UltraCanvas BSD: Failed to create render context: " << e.what() << std::endl;
-        DestroyCairoSurface();
+        DestroyNativeCairoSurface();
         auto bsdApp = static_cast<UltraCanvasBSDApplication*>(application);
         XDestroyWindow(bsdApp->GetDisplay(), xWindow);
         xWindow = 0;
@@ -181,7 +181,7 @@ bool UltraCanvasBSDWindow::CreateXWindow() {
     return true;
 }
 
-bool UltraCanvasBSDWindow::CreateCairoSurface() {
+bool UltraCanvasBSDWindow::CreateNativeCairoSurface() {
     auto application = UltraCanvasApplication::GetInstance();
     if (!application) {
         return false;
@@ -232,7 +232,7 @@ bool UltraCanvasBSDWindow::CreateCairoSurface() {
     return true;
 }
 
-void UltraCanvasBSDWindow::DestroyCairoSurface() {
+void UltraCanvasBSDWindow::DestroyNativeCairoSurface() {
     if (cairoContext) {
         cairo_destroy(cairoContext);
         cairoContext = nullptr;
@@ -306,7 +306,7 @@ void UltraCanvasBSDWindow::Close() {
         if (xWindow && display) {
             bsdApp->UnregisterWindow(xWindow);
             
-            DestroyCairoSurface();
+            DestroyNativeCairoSurface();
             
             XDestroyWindow(display, xWindow);
             XFlush(display);

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasConfig.h"
 #include <iostream>
@@ -85,17 +86,17 @@ namespace UltraCanvas {
 // ===== LEAF UI ELEMENT CLASS (NO CHILDREN) =====
     class UltraCanvasUIElement : public std::enable_shared_from_this<UltraCanvasUIElement>  {
     friend UltraCanvasWindowBase;
+    friend UltraCanvasContainer;
     protected:
         std::string identifier = "";
-        bool needsUpdateGeometry = true;
         bool needsRedraw = true;
-
-        // State properties
+        bool needsUpdateGeometry = true;
         bool visible = true;
         bool isPopup = false;
-
+        // State properties
         int zOrder = 0;
 
+        std::unique_ptr<IRenderContext> renderContext = nullptr;
         // Mouse interaction
         UCMouseCursor mouseCursor = UCMouseCursor::Default;
 
@@ -203,12 +204,7 @@ namespace UltraCanvas {
         void SetBounds(float x, float y, float w, float h) {
             SetBounds(Rect2Di(static_cast<int>(x), static_cast<int>(y), static_cast<int>(w), static_cast<int>(h)));
         }
-        virtual void SetBounds(const Rect2Di& b) {
-            if (bounds != b) {
-                bounds = b;
-                RequestUpdateGeometry();
-            }
-        }
+        virtual void SetBounds(const Rect2Di& b);
 
         Point2Di GetPositionInWindow() const;
         Rect2Di GetBoundsInWindow() const {
@@ -508,7 +504,7 @@ namespace UltraCanvas {
         // ===== CORE VIRTUAL METHODS =====
         IRenderContext* GetRenderContext() const;
         virtual void Render(IRenderContext* ctx);
-        virtual void UpdateGeometry(IRenderContext* ctx);
+        virtual void UpdateGeometry(IRenderContext* ctx) {};
 
         // ===== EVENT HANDLING =====
         virtual bool OnEvent(const UCEvent& event);

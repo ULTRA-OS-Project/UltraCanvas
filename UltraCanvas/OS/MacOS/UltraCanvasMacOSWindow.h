@@ -61,8 +61,8 @@ namespace UltraCanvas {
 
         // ===== INTERNAL METHODS =====
         bool CreateNSWindow();
-        bool CreateCairoSurface();
-        void DestroyCairoSurface();
+        bool CreateNativeCairoSurface();
+        void DestroyNativeCairoSurface();
 
     protected:
         bool CreateNative() override;
@@ -85,7 +85,7 @@ namespace UltraCanvas {
         void Maximize() override;
         void Restore() override;
         void SetFullscreen(bool fullscreen) override;
-        void Flush() override;
+        void FlushNative() override;
         NativeWindowHandle GetNativeHandle() const override;
         void GetScreenSize(int& width, int& height) const override;
         void GetScreenBounds(int& x, int& y, int& width, int& height) const override;

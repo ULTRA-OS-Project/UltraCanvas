@@ -81,11 +81,11 @@ namespace UltraCanvas {
     protected:
 //        std::unique_ptr<UltraCanvasSelectiveRenderer> selectiveRenderer = nullptr;
 //        bool useSelectiveRendering = false;
-
         WindowConfig config_;
         WindowState _state = WindowState::Normal;
         bool _created = false;
         bool _needsResize = false;
+        bool _needsWindowRedraw = true;
 
         std::unordered_map<UCEventType, std::vector<FilterFunction>> eventFilters = {};
         bool HandleEventFilters(const UCEvent& ev);
@@ -101,6 +101,7 @@ namespace UltraCanvas {
 
         UCMouseCursor currentMouseCursor = UCMouseCursor::Default;
 
+        NativeSurfacePtr nativeSurface;
 
     public:
         // Window-specific callbacks
@@ -118,6 +119,8 @@ namespace UltraCanvas {
 
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasWindowBase();
+
+        NativeSurfacePtr GetNativeSurface() { return nativeSurface; };
 
         // Window lifecycle
         bool Create(const WindowConfig& config);
@@ -177,7 +180,7 @@ namespace UltraCanvas {
 
         // Platform-specific
         virtual NativeWindowHandle GetNativeHandle() const = 0;
-        virtual void Flush() = 0;
+        virtual void FlushNative() = 0;
 
         // Overlay elements
         void OpenPopup(const Point2Di& pos, UltraCanvasUIElement& element, const PopupElementSettings& settings);
@@ -223,13 +226,13 @@ namespace UltraCanvas {
 
         virtual bool OnEvent(const UCEvent& event) override;
 
-        // ===== ENHANCED RENDERING AND EVENTS =====
-        virtual void Render(IRenderContext* ctx) override;
+        // derived classes may override it to render something
         virtual void RenderCustomContent(IRenderContext* ctx) {}
 
-        bool IsNeedsResize() const { return _needsResize; }
+        void RequestWindowRedraw() { _needsWindowRedraw = true; }
+        void UpdateAndRender();
 
-        virtual IRenderContext* GetRenderContext() const = 0;
+        bool IsNeedsResize() const { return _needsResize; }
 
         // ===== UTILITY METHODS =====
         void CenterOnScreen();

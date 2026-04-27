@@ -119,7 +119,6 @@ namespace UltraCanvas {
             CalculateLayout(ctx);
             ctx->PopState();
         }
-        UltraCanvasUIElement::UpdateGeometry(ctx);
     }
 // ===== RENDERING IMPLEMENTATION =====
 

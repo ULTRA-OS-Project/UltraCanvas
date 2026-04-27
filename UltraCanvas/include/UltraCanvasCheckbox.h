@@ -87,7 +87,8 @@ namespace UltraCanvas {
         Rect2Df totalBounds;
 
         // Helper methods
-        void CalculateLayout();
+        void CalculateAutoSize(IRenderContext* ctx);
+        void CalculateLayout(IRenderContext* ctx);
         void DrawCheckbox(IRenderContext* ctx);
         void DrawCheckmark(IRenderContext* ctx);
         void DrawIndeterminateMark(IRenderContext* ctx);
@@ -96,7 +97,6 @@ namespace UltraCanvas {
 
         Color GetCurrentBoxColor() const;
         Color GetCurrentCheckmarkColor() const;
-        void CalculateAutoSize();
 
     public:
         // ===== CONSTRUCTORS =====
@@ -123,17 +123,17 @@ namespace UltraCanvas {
         void Toggle();
 
         // ===== APPEARANCE =====
-        void SetText(const std::string& labelText) { text = labelText; CalculateLayout(); }
+        void SetText(const std::string& labelText) { text = labelText; layoutDirty = true; }
         std::string GetText() const { return text; }
 
-        void SetStyle(CheckboxStyle newStyle) { style = newStyle; CalculateLayout(); }
+        void SetStyle(CheckboxStyle newStyle) { style = newStyle; layoutDirty = true; }
         CheckboxStyle GetStyle() const { return style; }
 
-        void SetVisualStyle(const CheckboxVisualStyle& newStyle) { visualStyle = newStyle; CalculateLayout(); }
+        void SetVisualStyle(const CheckboxVisualStyle& newStyle) { visualStyle = newStyle; layoutDirty = true; }
         CheckboxVisualStyle& GetVisualStyle() { return visualStyle; }
         const CheckboxVisualStyle& GetVisualStyle() const { return visualStyle; }
 
-        void SetBoxSize(float size) { visualStyle.boxSize = size; CalculateLayout(); }
+        void SetBoxSize(float size) { visualStyle.boxSize = size; layoutDirty = true; }
         float GetBoxSize() const { return visualStyle.boxSize; }
 
         void SetColors(const Color& box, const Color& checkmark, const Color& text);

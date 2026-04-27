@@ -353,7 +353,6 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTreeView::UpdateGeometry(IRenderContext *ctx) {
-        UltraCanvasUIElement::UpdateGeometry(ctx);
         if (verticalScrollbar && verticalScrollbar->IsVisible()) {
             verticalScrollbar->UpdateGeometry(ctx);
         }

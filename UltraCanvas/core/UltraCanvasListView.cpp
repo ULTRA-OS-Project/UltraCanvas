@@ -629,7 +629,6 @@ namespace UltraCanvas {
         if (verticalScrollbar) {
             verticalScrollbar->UpdateGeometry(ctx);
         }
-        UltraCanvasUIElement::UpdateGeometry(ctx);
     }
 
     void UltraCanvasListView::SetBounds(const Rect2Di& bounds) {

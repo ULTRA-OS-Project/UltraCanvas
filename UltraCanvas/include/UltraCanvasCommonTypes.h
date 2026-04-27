@@ -137,6 +137,14 @@ struct Size2D {
     constexpr Size2D INVALID() {
         return {-1, -1};
     }
+
+    bool operator==(const Size2D& other) const {
+        return width == other.width && height == other.height;
+    }
+
+    bool operator!=(const Size2D& other) const {
+        return !(*this == other);
+    }
 };
 
 typedef struct Size2D<double> Size2Df;
@@ -243,6 +251,10 @@ struct Rect2D {
         T bottom = std::max(y + height, other.y + other.height);
 
         return Rect2D(left, top, right - left, bottom - top);
+    }
+
+    Point2D<T> CenterPoint(const Size2D<T>& sz) const {
+        return Point2D<T>(x + (width - sz.width) / 2, y + (height - sz.height) / 2);
     }
 
     bool operator==(const Rect2D& other) const {

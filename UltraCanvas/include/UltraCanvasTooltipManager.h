@@ -63,6 +63,7 @@ namespace UltraCanvas {
         static bool visible;
         static bool pendingShow;
         static bool pendingHide;
+        static bool needsRedraw;
 
         // Timing (via Application timer API)
         static TimerId showTimerId;
@@ -102,7 +103,7 @@ namespace UltraCanvas {
         // ===== RENDERING =====
 
         // Render tooltip - call this during window rendering
-        static void Render(IRenderContext* ctx, const UltraCanvasWindowBase* win);
+        static bool Render(IRenderContext* ctx, const UltraCanvasWindowBase* win);
 
         // ===== CONFIGURATION =====
 

@@ -6,6 +6,9 @@
 //
 
 #pragma once
+#ifndef ULTRACANVAS_RENDER_CONTEXT_CAIRO_H
+#define ULTRACANVAS_RENDER_CONTEXT_CAIRO_H
+
 
 // ===== CORE INCLUDES =====
 #include "UltraCanvasRenderContext.h"
@@ -43,45 +46,12 @@ namespace UltraCanvas {
         void* GetHandle() override { return pattern; };
     };
 
-    struct TextSurfaceEntry {
-        cairo_surface_t* surface;
-        int width = 0;
-        int height = 0;
-
-        TextSurfaceEntry(cairo_surface_t* surf, int w, int h) : surface(surf), width(w), height(h) {};
-
-        size_t GetDataSize() {
-            return width*height*4+sizeof(TextSurfaceEntry);
-        }
-
-        ~TextSurfaceEntry() {
-            cairo_surface_destroy(surface);
-        }
-    };
-
-    struct TextDimensionsEntry {
-        int width = 0;
-        int height = 0;
-
-        TextDimensionsEntry(int w, int h) : width(w), height(h) {};
-
-        size_t GetDataSize() {
-            return sizeof(TextDimensionsEntry);
-        }
-    };
-
-
     class RenderContextCairo : public IRenderContext {
     private:
-        std::mutex cairoMutex;
-        cairo_t *targetContext;
-        cairo_surface_t* targetSurface;
-        cairo_t *cairo;
-        cairo_surface_t* stagingSurface;
-        int surfaceWidth;
-        int surfaceHeight;
+        cairo_t *cairo = nullptr;
+        cairo_surface_t* surface = nullptr;
 
-        PangoContext *pangoContext;
+        PangoContext *pangoContext = nullptr;
 
         // State management
         std::vector<RenderState> stateStack;
@@ -109,20 +79,19 @@ namespace UltraCanvas {
         static std::vector<RenderContextCairo*> g_Instances;
 
         // Add a flag to track if we're being destroyed
-        bool destroying = false;
-        bool enableDoubleBuffering = false;
-        bool CreateStagingSurface();
-        void SwitchToSurface(cairo_surface_t* s);
+//        bool CreateStagingSurface();
+//        void SwitchToSurface(cairo_surface_t* s);
 
         std::string GenerateTextCacheKey(const std::string& text, const Size2Di &sz);
 
     public:
-        RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering);
-
         ~RenderContextCairo() override;
 
-        void SetTargetSurface(cairo_surface_t* surf, int w, int h);
-        bool ResizeStagingSurface(int w, int h);
+        bool CreateSurface(const Size2Di & sz, NativeSurfacePtr createSimilarToSurface) override;
+
+        bool ResizeSurface(const Size2Di& sz) override;
+//        Size2Di GetSurfaceSize(const Size2Di& sz) override;
+        void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) override;
 
         // ===== INHERITED FROM IRenderContext =====
         // State management
@@ -283,14 +252,9 @@ namespace UltraCanvas {
 
         // ===== CAIRO-SPECIFIC METHODS =====
         void SetCairoColor(const Color &color);
-
         cairo_t *GetCairo() const { return cairo; }
-
         PangoContext *GetPangoContext() const { return pangoContext; }
-
-        cairo_surface_t *GetCairoSurface() const {
-            return cairo ? cairo_get_target(cairo) : nullptr;
-        }
+        cairo_surface_t *GetCairoSurface() const { return surface; }
     };
 
     // ===== CAIRO FILTER CONSTANTS =====
@@ -307,3 +271,5 @@ namespace UltraCanvas {
     // ===== CONVENIENCE FUNCTIONS FOR IMAGE RENDERING =====
 
 } // namespace UltraCanvas
+
+#endif

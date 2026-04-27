@@ -24,10 +24,7 @@ namespace UltraCanvas {
     }
 
 // ===== LAYOUT CALCULATION =====
-    void UltraCanvasCheckbox::CalculateLayout() {
-        auto ctx = GetRenderContext();
-        if (!ctx) return;
-
+    void UltraCanvasCheckbox::CalculateLayout(IRenderContext* ctx) {
         // Calculate checkbox box position (left-aligned with padding) in element-local space
         float padding = 4.0f;
         boxRect.x = padding;
@@ -151,12 +148,11 @@ namespace UltraCanvas {
         if (layoutDirty) {
             ctx->PushState();
             if (autoSize) {
-                CalculateAutoSize();
+                CalculateAutoSize(ctx);
             }
-            CalculateLayout();
+            CalculateLayout(ctx);
             ctx->PopState();
         }
-        UltraCanvasUIElement::UpdateGeometry(ctx);
     }
 
 // ===== RENDERING =====
@@ -348,9 +344,8 @@ namespace UltraCanvas {
     }
 
 // ===== AUTO-SIZING =====
-    void UltraCanvasCheckbox::CalculateAutoSize() {
-        auto ctx = GetRenderContext();
-        if (!ctx || text.empty()) return;
+    void UltraCanvasCheckbox::CalculateAutoSize(IRenderContext* ctx) {
+        if (text.empty()) return;
 
         ctx->SetFontFace(visualStyle.fontFamily, visualStyle.fontWeight, FontSlant::Normal);
         ctx->SetFontSize(visualStyle.fontSize);

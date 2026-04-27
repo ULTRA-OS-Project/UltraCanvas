@@ -18,35 +18,35 @@
 
 @interface UltraCanvasView : NSView {
     UltraCanvas::UltraCanvasMacOSWindow* ultraCanvasWindow;
-    cairo_surface_t* cairoSurface;
+    cairo_surface_t* nativeSurface;
 }
 
 @property (nonatomic, assign) UltraCanvas::UltraCanvasMacOSWindow* ultraCanvasWindow;
-@property (nonatomic, assign) cairo_surface_t* cairoSurface;
+@property (nonatomic, assign) cairo_surface_t* nativeSurface;
 
 @end
 
 @implementation UltraCanvasView
 
 @synthesize ultraCanvasWindow;
-@synthesize cairoSurface;
+@synthesize nativeSurface;
 
 - (instancetype)initWithFrame:(NSRect)frameRect window:(UltraCanvas::UltraCanvasMacOSWindow*)window {
     self = [super initWithFrame:frameRect];
     if (self) {
         ultraCanvasWindow = window;
-        cairoSurface = nullptr;
+        nativeSurface = nullptr;
         [self setWantsLayer:YES];
     }
     return self;
 }
 
-void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* cairoSurface) {
+void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* nativeSurface) {
     cairo_surface_t* viewSurface = cairo_quartz_surface_create_for_cg_context(viewCtx, w, h);
     cairo_t* cr = cairo_create(viewSurface);
 
     // Single operation: paint source surface to view
-    cairo_set_source_surface(cr, cairoSurface, 0, 0);
+    cairo_set_source_surface(cr, nativeSurface, 0, 0);
     cairo_paint(cr);
 
     cairo_destroy(cr);
@@ -54,14 +54,14 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* cairoSurfa
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
-    if (!cairoSurface) return;
+    if (!nativeSurface) return;
 
     // Get view's CGContext
     CGContextRef viewCtx = [[NSGraphicsContext currentContext] CGContext];
     if (!viewCtx) return;
 
     // Flush pending Cairo operations
-    cairo_surface_flush(cairoSurface);
+    cairo_surface_flush(nativeSurface);
 
     // Create a temporary Cairo surface wrapping the VIEW's context
     NSRect bounds = [self bounds];
@@ -69,7 +69,7 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* cairoSurfa
     int h = (int)bounds.size.height;
 
     // Wrap the view's CGContext in a Cairo surface
-//    measureExecutionTime("dirtyRect", _drawScreen, w, h, viewCtx, cairoSurface);
+//    measureExecutionTime("dirtyRect", _drawScreen, w, h, viewCtx, nativeSurface);
 //    return;
 
     cairo_surface_t* viewSurface = cairo_quartz_surface_create_for_cg_context(viewCtx, w, h);
@@ -81,7 +81,7 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* cairoSurfa
 //    cairo_scale(cr, 1.0, -1.0);
 
     // Single operation: paint source surface to view
-    cairo_set_source_surface(cr, cairoSurface, 0, 0);
+    cairo_set_source_surface(cr, nativeSurface, 0, 0);
     cairo_paint(cr);
 
     cairo_destroy(cr);
@@ -191,8 +191,7 @@ namespace UltraCanvas {
     UltraCanvasMacOSWindow::UltraCanvasMacOSWindow()
             :  nsWindow(nullptr)
             , contentView(nullptr)
-            , windowDelegate(nullptr)
-            , cairoSurface(nullptr) {
+            , windowDelegate(nullptr) {
         debugOutput << "UltraCanvas macOS: Window constructor started" << std::endl;
     }
 
@@ -206,7 +205,7 @@ namespace UltraCanvas {
             renderContext.reset();
 
             // Destroy Cairo surface
-            DestroyCairoSurface();
+            DestroyNativeCairoSurface();
 
             // Detach delegate from window BEFORE closing or releasing it,
             // otherwise [nsWindow close] fires windowWillClose: on a freed delegate
@@ -250,22 +249,22 @@ namespace UltraCanvas {
                 return false;
             }
 
-            if (!CreateCairoSurface()) {
+            if (!CreateNativeCairoSurface()) {
                 debugOutput << "UltraCanvas macOS: Failed to create Cairo surface" << std::endl;
                 nsWindow = nullptr;
                 return false;
             }
 
-            try {
-                renderContext = std::make_unique<RenderContextCairo>(
-                    cairoSurface, config_.width, config_.height, false);
-                debugOutput << "UltraCanvas macOS: Render context created successfully" << std::endl;
-            } catch (const std::exception& e) {
-                debugOutput << "UltraCanvas macOS: Failed to create render context: " << e.what() << std::endl;
-                DestroyCairoSurface();
-                nsWindow = nullptr;
-                return false;
-            }
+//            try {
+//                renderContext = std::make_unique<RenderContextCairo>(
+//                    cairoSurface, config_.width, config_.height, false);
+//                debugOutput << "UltraCanvas macOS: Render context created successfully" << std::endl;
+//            } catch (const std::exception& e) {
+//                debugOutput << "UltraCanvas macOS: Failed to create render context: " << e.what() << std::endl;
+//                DestroyCairoSurface();
+//                nsWindow = nullptr;
+//                return false;
+//            }
 
             // Apply window icon
             std::string iconToUse = config_.iconPath;
@@ -335,7 +334,7 @@ namespace UltraCanvas {
         }
     }
 
-    bool UltraCanvasMacOSWindow::CreateCairoSurface() {
+    bool UltraCanvasMacOSWindow::CreateNativeCairoSurface() {
         //std::lock_guard<std::mutex> lock(cairoMutex);
 
         debugOutput << "UltraCanvas macOS: Creating Cairo surface..." << std::endl;
@@ -350,18 +349,18 @@ namespace UltraCanvas {
         }
 
         // Create Quartz surface for Cairo
-        cairoSurface = cairo_quartz_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+        nativeSurface = cairo_quartz_surface_create(CAIRO_FORMAT_ARGB32, width, height);
 
-        if (!cairoSurface) {
+        if (!nativeSurface) {
             debugOutput << "UltraCanvas macOS: Failed to create Cairo Quartz surface" << std::endl;
             return false;
         }
 
-        cairo_status_t status = cairo_surface_status(cairoSurface);
+        cairo_status_t status = cairo_surface_status(nativeSurface);
         if (status != CAIRO_STATUS_SUCCESS) {
             debugOutput << "UltraCanvas macOS: Cairo surface error: "
                       << cairo_status_to_string(status) << std::endl;
-            cairo_surface_destroy(cairoSurface);
+            cairo_surface_destroy(nativeSurface);
             cairoSurface = nullptr;
             return false;
         }
@@ -371,19 +370,19 @@ namespace UltraCanvas {
 
         // Update custom view
         if (contentView) {
-            [(UltraCanvasView*)contentView setCairoSurface:cairoSurface];
+            [(UltraCanvasView*)contentView setCairoSurface:nativeSurface];
         }
 
         debugOutput << "UltraCanvas macOS: Cairo surface created successfully" << std::endl;
         return true;
     }
 
-    void UltraCanvasMacOSWindow::DestroyCairoSurface() {
+    void UltraCanvasMacOSWindow::DestroyNativeCairoSurface() {
         std::lock_guard<std::mutex> lock(cairoMutex);
 
         if (cairoSurface) {
             debugOutput << "UltraCanvas macOS: Destroying Cairo surface..." << std::endl;
-            cairo_surface_destroy(cairoSurface);
+            cairo_surface_destroy(nativeSurface);
             cairoSurface = nullptr;
         }
 
@@ -397,9 +396,9 @@ namespace UltraCanvas {
 
         debugOutput << "UltraCanvasMacOSWindow::DoResizeNative: Resizing Cairo surface to " << w << "x" << h << std::endl;
 
-        auto oldCairoSurface = cairoSurface;
+        auto oldCairoSurface = nativeSurface;
 
-        if (!CreateCairoSurface()) {
+        if (!CreateNativeCairoSurface()) {
             return;
         }
 
@@ -409,9 +408,9 @@ namespace UltraCanvas {
         }
 
             // Update render context
-        if (renderContext) {
-            renderContext->SetTargetSurface(cairoSurface, w, h);
-        }
+//        if (renderContext) {
+//            renderContext->SetTargetSurface(cairoSurface, w, h);
+//        }
     }
 
     // ===== WINDOW MANAGEMENT =====
@@ -614,7 +613,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMacOSWindow::Flush() {
+    void UltraCanvasMacOSWindow::FlushNative() {
         if (!_created || !renderContext) return;
 
         // Trigger redraw
@@ -678,7 +677,7 @@ namespace UltraCanvas {
                 DoResize();
 
                 Render(GetRenderContext());
-                Flush();
+                FlushNative();
             }
         }
     }
