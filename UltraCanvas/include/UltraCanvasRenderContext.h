@@ -108,6 +108,8 @@ namespace UltraCanvas {
         double fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
         FontSlant fontSlant = FontSlant::Normal;
+
+        std::string ToFontDesc();
     };
 
     struct TextStyle {
@@ -268,7 +270,6 @@ namespace UltraCanvas {
         virtual std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, const Size2Di& sz, bool isMarkup) = 0;
 
         virtual void DrawTextLayout(ITextLayout &layout, const Point2Df &pos) = 0;
-
 
         virtual void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) = 0;
         virtual void SetFontFamily(const std::string& family) = 0;

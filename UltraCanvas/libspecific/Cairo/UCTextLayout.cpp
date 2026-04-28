@@ -7,6 +7,9 @@
 #include "UCTextLayout.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasRenderContext.h"
+#include "fmt/os.h"
+
 
 #define PANGO_SCALE_D static_cast<double>(PANGO_SCALE)
 namespace UltraCanvas {
@@ -17,7 +20,7 @@ namespace UltraCanvas {
         switch (fw) {
             case FontWeight::Light:     return PANGO_WEIGHT_LIGHT;
             case FontWeight::Bold:      return PANGO_WEIGHT_BOLD;
-            case FontWeight::ExtraBold: return PANGO_WEIGHT_ULTRABOLD;
+            case FontWeight::ExtraBold: return PANGO_WEIGHT_HEAVY;
             default:                    return PANGO_WEIGHT_NORMAL;
         }
     }
@@ -407,9 +410,6 @@ namespace UltraCanvas {
     }
 
     UCTextLayout::~UCTextLayout() {
-        if (attrsList) {
-            pango_attr_list_unref(attrsList);
-        }
         if (layout) {
             g_object_unref(layout);
         }
@@ -652,9 +652,11 @@ namespace UltraCanvas {
 
     void UCTextLayout::InsertAttribute(std::unique_ptr<ITextAttribute> attr) {
         auto atr = static_cast<PangoAttribute *>(attr->Release());
+        PangoAttrList *attrsList = pango_layout_get_attributes(layout);
         if (!attrsList) {
             attrsList = pango_attr_list_new();
             pango_layout_set_attributes(layout, attrsList);
+            pango_attr_list_unref(attrsList);
         }
         pango_attr_list_insert(attrsList, atr);
         pango_layout_context_changed(layout);
@@ -663,9 +665,11 @@ namespace UltraCanvas {
 
     void UCTextLayout::ChangeAttribute(std::unique_ptr<ITextAttribute> attr) {
         auto atr = static_cast<PangoAttribute *>(attr->Release());
+        PangoAttrList *attrsList = pango_layout_get_attributes(layout);
         if (!attrsList) {
             attrsList = pango_attr_list_new();
             pango_layout_set_attributes(layout, attrsList);
+            pango_attr_list_unref(attrsList);
         }
         pango_attr_list_change(attrsList, atr);
         pango_layout_context_changed(layout);
@@ -673,11 +677,9 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::SetAttributesFromString(const std::string& str) {
-        if (attrsList) {
-            pango_attr_list_unref(attrsList);
-        }
-        attrsList = pango_attr_list_from_string(str.c_str());
+        PangoAttrList *attrsList = pango_attr_list_from_string(str.c_str());
         pango_layout_set_attributes(layout, attrsList);
+        pango_attr_list_unref(attrsList);
         extentsDirty = true;
     }
 
@@ -690,6 +692,7 @@ namespace UltraCanvas {
     }
     
     void UCTextLayout::UpdateAttributesAccordingToText(int textBytePos, int addedTextBytes, int removedTextBytes) {
+        PangoAttrList *attrsList = pango_layout_get_attributes(layout);
         if (attrsList) {
             pango_attr_list_update(attrsList, textBytePos, addedTextBytes, removedTextBytes);
             pango_layout_context_changed(layout);
@@ -697,8 +700,6 @@ namespace UltraCanvas {
     }
 
     void UCTextLayout::RemoveAllAttributes() {
-        pango_attr_list_unref(attrsList);
-        attrsList = nullptr;
         pango_layout_set_attributes(layout, nullptr);
         extentsDirty = true;
     }
@@ -870,4 +871,28 @@ namespace UltraCanvas {
         return ranges;
     }
 
+    std::string FontStyle::ToFontDesc() {
+        std::string slant = "Normal";
+        std::string weight = "Regular";
+        switch(fontSlant) {
+            case FontSlant::Italic:
+                slant = "Italic";
+                break;
+            case FontSlant::Oblique:
+                slant = "Oblique";
+                break;
+        }
+        switch(fontWeight) {
+            case FontWeight::Bold:
+                weight = "Bold";
+                break;
+            case FontWeight::Light:
+                weight = "Light";
+                break;
+            case FontWeight::ExtraBold:
+                weight = "Extra-Bold";
+                break;
+        }
+        return fmt::format("{} {} {} {:.1f}pt", fontFamily, slant, weight, fontSize);
+    }
 } // namespace UltraCanvas

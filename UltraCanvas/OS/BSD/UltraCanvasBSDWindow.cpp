@@ -483,10 +483,6 @@ void UltraCanvasBSDWindow::SwapBuffers() {
     }
 }
 
-IRenderContext* UltraCanvasBSDWindow::GetRenderContext() {
-    return renderContext.get();
-}
-
 // ===== EVENT HANDLING =====
 void UltraCanvasBSDWindow::DispatchEvent(const UCEvent& event) {
     // Handle resize events specially

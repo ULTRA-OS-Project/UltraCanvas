@@ -619,7 +619,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasToolbar> toolbar;
 
     public:
-        UltraCanvasToolbarBuilder(const std::string& identifier, long id = 0);
+        UltraCanvasToolbarBuilder(const std::string& identifier);
 
         UltraCanvasToolbarBuilder& SetOrientation(ToolbarOrientation orient);
         UltraCanvasToolbarBuilder& SetToolbarPosition(ToolbarPosition pos);

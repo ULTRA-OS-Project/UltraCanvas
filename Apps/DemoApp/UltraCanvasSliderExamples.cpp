@@ -16,7 +16,7 @@ namespace UltraCanvas {
         auto container = std::make_shared<UltraCanvasContainer>("SliderExamples", 0, 0, 1000, 1400);
         container->SetPadding(0,0,10,0);
 
-        auto title = CreateLabel("SliderTitle", 20, 10, 300, 30);
+        auto title = CreateLabel("SliderTitle", 20, 10, 0, 30);
         title->SetText("Simple Slider Examples");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -76,13 +76,13 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 1: PRICE RANGE SLIDER =====
-        auto priceLabel = CreateLabel("PriceLabel", 20, yPos, 300, 25);
+        auto priceLabel = CreateLabel("PriceLabel", 20, yPos, 0, 25);
         priceLabel->SetText("Price Range Selector ($0 - $1000)");
         priceLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(priceLabel);
         yPos += 35;
 
-        auto priceRange = CreateRangeSlider("priceRange", 20, yPos, sliderWidth, 50,
+        auto priceRange = CreateRangeSlider("priceRange", 20, yPos - 10, sliderWidth, 40,
                                             0.0f, 1000.0f, 200.0f, 800.0f);
         priceRange->SetValueDisplay(SliderValueDisplay::AlwaysVisible);
         priceRange->SetValueFormat("$%.0f");
@@ -117,13 +117,13 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 2: AGE RANGE SELECTOR =====
-        auto ageLabel = CreateLabel("AgeLabel", 20, yPos, 300, 25);
+        auto ageLabel = CreateLabel("AgeLabel", 20, yPos, 0, 25);
         ageLabel->SetText("Age Range Filter (18 - 100 years)");
         ageLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(ageLabel);
         yPos += 35;
 
-        auto ageRange = CreateRangeSlider("ageRange", 20, yPos, sliderWidth, 30,
+        auto ageRange = CreateRangeSlider("ageRange", 20, yPos - 10, sliderWidth, 40,
                                           18.0f, 100.0f, 25.0f, 65.0f);
         ageRange->SetValueDisplay(SliderValueDisplay::Number);
         ageRange->SetValueFormat("%.0f");
@@ -146,13 +146,13 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 3: PERCENTAGE RANGE (0-100%) =====
-        auto percentLabel = CreateLabel("PercentLabel", 20, yPos, 300, 25);
+        auto percentLabel = CreateLabel("PercentLabel", 20, yPos, 0, 25);
         percentLabel->SetText("Percentage Range (0% - 100%)");
         percentLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(percentLabel);
         yPos += 35;
 
-        auto percentRange = CreateRangeSlider("percentRange", 20, yPos, sliderWidth, 30,
+        auto percentRange = CreateRangeSlider("percentRange", 20, yPos - 10, sliderWidth, 40,
                                               0.0f, 100.0f, 30.0f, 70.0f);
         percentRange->SetValueDisplay(SliderValueDisplay::Percentage);
         percentRange->SetStep(5.0f);
@@ -174,13 +174,13 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 4: TEMPERATURE RANGE (-50°C to +50°C) =====
-        auto tempLabel = CreateLabel("TempLabel", 20, yPos, 300, 25);
+        auto tempLabel = CreateLabel("TempLabel", 20, yPos, 0, 25);
         tempLabel->SetText("Temperature Range (-50°C to +50°C)");
         tempLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(tempLabel);
         yPos += 35;
 
-        auto tempRange = CreateRangeSlider("tempRange", 20, yPos, sliderWidth, 30,
+        auto tempRange = CreateRangeSlider("tempRange", 20, yPos - 10, sliderWidth, 40,
                                            -50.0f, 50.0f, 10.0f, 30.0f);
         tempRange->SetValueDisplay(SliderValueDisplay::AlwaysVisible);
         tempRange->SetValueFormat("%.1f°C");
@@ -207,13 +207,13 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 5: TIME RANGE (24-hour format) =====
-        auto timeLabel = CreateLabel("TimeLabel", 20, yPos, 300, 25);
+        auto timeLabel = CreateLabel("TimeLabel", 20, yPos, 0, 25);
         timeLabel->SetText("Time Range Selector (0:00 - 24:00)");
         timeLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(timeLabel);
         yPos += 35;
 
-        auto timeRange = CreateRangeSlider("timeRange", 20, yPos, sliderWidth, 30,
+        auto timeRange = CreateRangeSlider("timeRange", 20, yPos, sliderWidth, 20,
                                            0.0f, 24.0f, 9.0f, 17.0f);
         timeRange->SetValueDisplay(SliderValueDisplay::NoDisplay);
         timeRange->SetStep(0.5f);  // 30-minute increments

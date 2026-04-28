@@ -37,7 +37,8 @@ namespace UltraCanvas {
         std::string iconPath;
         bool enabled = true;
         TextAlignment alignment;
-        float customWidth = 0.0f;  // Used when SegmentWidthMode::Custom
+        std::unique_ptr<ITextLayout> textLayout;
+        double customWidth = 0.0f;  // Used when SegmentWidthMode::Custom
 
         SegmentData() = default;
         SegmentData(const std::string& txt, TextAlignment al) : text(txt), alignment(al) {}
@@ -77,7 +78,7 @@ namespace UltraCanvas {
 
         // Typography
         std::string fontFamily;
-        double fontSize = 12.0f;
+        float fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
 
         // Animation
@@ -242,7 +243,8 @@ namespace UltraCanvas {
         // ===== LAYOUT CALCULATION =====
 
         void CalculateLayout(IRenderContext *ctx);
-        int CalculateSegmentContentWidth(IRenderContext *ctx, const SegmentData &segment);
+        int CalculateSegmentContentWidth(IRenderContext *ctx, SegmentData &segment);
+        ITextLayout* GetOrCreateTextLayout(IRenderContext* ctx, SegmentData& segment);
 
         // ===== RENDERING HELPERS =====
 

@@ -329,9 +329,6 @@ void UltraCanvasWASMWindow::RequestRedraw() {
     _needsRedraw = true;
 }
 
-IRenderContext* UltraCanvasWASMWindow::GetRenderContext() {
-    return wasmRenderContext.get();
-}
 
 // ===== CANVAS ACCESS =====
 

@@ -89,7 +89,6 @@ namespace UltraCanvas {
     class UCTextLayout : public ITextLayout {
     private:
         PangoLayout* layout = nullptr;
-        PangoAttrList *attrsList = nullptr;
         double explicitHeight = 0;
         VerticalAlignment valign = VerticalAlignment::Top;
         UCLayoutExtents extents;

@@ -90,13 +90,9 @@ namespace UltraCanvas {
         void GetScreenSize(int& width, int& height) const override;
         void GetScreenBounds(int& x, int& y, int& width, int& height) const override;
         NSWindow* GetNSWindowHandle() const;
-        IRenderContext* GetRenderContext() const override { return renderContext.get(); }
         void RaiseAndFocus() override;
 
         void Focus();  // Not virtual in base class
-
-        // ===== RENDERING =====
-        void Invalidate();  // Not virtual in base class
 
         // ===== GETTERS =====
         NSWindow* GetNSWindow() const { return nsWindow; }

@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSegmentedControl.h"
+#include <fmt/os.h>
 #include <algorithm>
 #include <cmath>
 
@@ -42,7 +43,7 @@ namespace UltraCanvas {
             case SegmentWidthMode::FitContent: {
                 // Calculate content width for each segment
                 int totalContentWidth = 0;
-                for (const auto& segment : segments) {
+                for (auto& segment : segments) {
                     int contentWidth = CalculateSegmentContentWidth(ctx, segment);
                     segmentWidths.push_back(contentWidth);
                     totalContentWidth += contentWidth;
@@ -58,7 +59,7 @@ namespace UltraCanvas {
             }
 
             case SegmentWidthMode::Custom: {
-                for (const auto& segment : segments) {
+                for (auto& segment : segments) {
                     int width = segment.customWidth > 0 ?
                                 static_cast<int>(segment.customWidth) :
                                 CalculateSegmentContentWidth(ctx, segment);
@@ -88,7 +89,7 @@ namespace UltraCanvas {
         layoutDirty = false;
     }
 
-    int UltraCanvasSegmentedControl::CalculateSegmentContentWidth(IRenderContext* ctx, const SegmentData& segment) {
+    int UltraCanvasSegmentedControl::CalculateSegmentContentWidth(IRenderContext* ctx, SegmentData& segment) {
         int width = style.paddingHorizontal * 2;
 
         // Add icon width
@@ -101,11 +102,8 @@ namespace UltraCanvas {
 
         // Add text width
         if (segment.HasText()) {
-            ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-            ctx->SetFontSize(style.fontSize);
-            ctx->SetTextIsMarkup(true);
-
-            Size2Di textSize = ctx->GetTextLineDimensions(segment.text);
+            ITextLayout* textLayout = GetOrCreateTextLayout(ctx, segment);
+            Size2Di textSize = textLayout->GetLayoutSize();
             width += textSize.width;
         }
 
@@ -171,7 +169,7 @@ namespace UltraCanvas {
         if (index < 0 || index >= static_cast<int>(segmentRects.size())) return;
 
         const Rect2Di& rect = segmentRects[index];
-        const SegmentData& segment = segments[index];
+        SegmentData& segment = segments[index];
 
         // Determine segment state colors
         Color bgColor, textColor;
@@ -271,26 +269,6 @@ namespace UltraCanvas {
         int contentY = rect.y + rect.height / 2;
         int totalContentWidth = 0;
 
-        // Calculate total content width for centering
-//        if (segment.HasIcon()) {
-//            totalContentWidth += style.iconSize;
-//            if (segment.HasText()) {
-//                totalContentWidth += style.iconSpacing;
-//            }
-//        }
-
-//        if (segment.HasText()) {
-//            ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-//            ctx->SetFontSize(style.fontSize);
-//
-//            int textWidth = 0, textHeight = 0;
-//            ctx->GetTextLineDimensions(segment.text, textWidth, textHeight);
-//            totalContentWidth += textWidth;
-//        }
-
-        // Center content horizontally
-//        contentX = rect.x + (rect.width - totalContentWidth) / 2;
-
         // Render icon if present
         if (segment.HasIcon()) {
             int iconX = contentX;
@@ -301,16 +279,38 @@ namespace UltraCanvas {
 
         // Render text
         if (segment.HasText()) {
-            ctx->SetTextPaint(textColor);
-            ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-            ctx->SetFontSize(style.fontSize);
-            ctx->SetTextAlignment(segment.alignment);
-            ctx->SetTextWrap(TextWrap::WrapNone);
-            ctx->SetTextIsMarkup(true);
-            Size2Di textSize = ctx->GetTextLineDimensions(segment.text);
+            ITextLayout* textLayout = GetOrCreateTextLayout(ctx, segment);
+//            Rect2Df textRect(contentX, contentY, rect.width - ((contentX - rect.x) + style.paddingHorizontal), textSize.height);
+            textLayout->ChangeAttribute(TextAttributeFactory::CreateForeground(textColor));
+            auto layoutWidth = rect.width - ((contentX - rect.x) + style.paddingHorizontal);
+            if (textLayout->GetExplicitWidth() != layoutWidth) {
+                textLayout->SetExplicitWidth(layoutWidth);
+            }
+            auto textSize = textLayout->GetLayoutSize();
+            ctx->DrawTextLayout(*textLayout, {contentX, contentY - textSize.height / 2});
+        }
+    }
 
-            Rect2Df textRect(contentX, contentY - textSize.height / 2, rect.width - ((contentX - rect.x) + style.paddingHorizontal), textSize.height);
-            ctx->DrawTextInRect(segment.text, textRect);
+    ITextLayout* UltraCanvasSegmentedControl::GetOrCreateTextLayout(IRenderContext* ctx, SegmentData& segment) {
+        if (segment.HasText()) {
+            if (!segment.textLayout) {
+                FontStyle fstyle = {
+                        .fontFamily = style.fontFamily,
+                        .fontSize = style.fontSize,
+                        .fontWeight = style.fontWeight,
+                        .fontSlant = FontSlant::Normal
+                };
+                //auto txtMarkup = fmt::format("<span font=\"{}\">{}</span>", fstyle.ToFontDesc(), segment.text);
+                segment.textLayout = ctx->CreateTextLayout("<span>"+segment.text+"</span>", true);
+                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontFamily(style.fontFamily));
+                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontWeight(style.fontWeight));
+                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontSize(style.fontSize));
+                segment.textLayout->SetAlignment(segment.alignment);
+                segment.textLayout->SetVerticalAlignment(VerticalAlignment::Middle);
+            }
+            return segment.textLayout.get();
+        } else {
+            return nullptr;
         }
     }
 

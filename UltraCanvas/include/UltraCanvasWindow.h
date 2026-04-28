@@ -278,15 +278,12 @@ namespace UltraCanvas {
 //        virtual void HandleCloseEvent();
         void HandleResizeEvent(int width, int height);
         void HandleMoveEvent(int x, int y);
-        void HandleFocusEvent(bool focused);
 
         // ===== PROTECTED HELPER METHODS =====
         virtual void RenderWindowBackground(IRenderContext* ctx) {
             // Default implementation - clear to background color
             // OS-specific implementations can override
         }
-
-        void RenderOverlayElements(IRenderContext* ctx);
 
         // ===== FOCUS UTILITY METHODS =====
 

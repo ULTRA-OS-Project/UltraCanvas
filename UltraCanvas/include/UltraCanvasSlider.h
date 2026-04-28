@@ -1,7 +1,7 @@
 // include/UltraCanvasSlider.h
 // Interactive slider control with multiple styles, value display options, and dual-handle range support
-// Version: 3.0.0
-// Last Modified: 2025-11-16
+// Version: 3.1.0
+// Last Modified: 2026-04-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -230,6 +230,7 @@ namespace UltraCanvas {
 
         std::string FormatValue(float value) const;
 
+        Rect2Di GetSliderInteriorRect(const Rect2Di& bounds, bool isVertical) const;
         Rect2Di GetTrackRect(const Rect2Di& bounds, bool isVertical) const;
         Rect2Di GetActiveTrackRect(const Rect2Di& trackRect, bool isVertical) const;
         Rect2Di GetRangeTrackRect(const Rect2Di& trackRect, bool isVertical) const;
@@ -248,7 +249,7 @@ namespace UltraCanvas {
             return FormatValue(currentValue);
         }
 
-        Point2Di CalculateTextPosition(const Rect2Di& bounds, const Point2Di& textSize) const;
+        Point2Di CalculateTextPosition(const Rect2Di& bounds, const Point2Di& textSize, float value) const;
 
         // ===== EVENT HANDLERS =====
         bool HandleMouseDown(const UCEvent& event);

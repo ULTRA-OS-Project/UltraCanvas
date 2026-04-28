@@ -304,6 +304,8 @@ namespace UltraCanvas {
                     prevElapsedSeconds = elapsedSeconds;
                 }
             }
+            mainContainer->GetWindow()->RequestRedraw();
+            mainContainer->GetWindow()->UpdateAndRender();
 
             // Test complete - calculate results
             auto testEndTime = std::chrono::steady_clock::now();

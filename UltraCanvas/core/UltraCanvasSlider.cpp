@@ -1,7 +1,7 @@
-// core/UltraCanvasScrollbar.cpp
-// Platform-independent scrollbar component implementation
-// Version: 1.0.0
-// Last Modified: 2025-08-15
+// core/UltraCanvasSlider.cpp
+// Platform-independent slider component implementation
+// Version: 1.1.0
+// Last Modified: 2026-04-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSlider.h"
@@ -217,6 +217,8 @@ namespace UltraCanvas {
 
         UpdateSliderState();
         Rect2Di bounds = GetLocalBounds();
+//        SetBorders(1, Colors::Black);
+//        UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         // ===== RENDER BASED ON STYLE =====
         if (isRangeMode || sliderStyle == SliderStyle::Range) {
@@ -422,13 +424,14 @@ namespace UltraCanvas {
     void UltraCanvasSlider::RenderProgressSlider(const Rect2Di &bounds, IRenderContext *ctx) {
         // Similar to linear but without handle
         bool isVertical = (orientation == SliderOrientation::Vertical);
+        Rect2Di interior = GetSliderInteriorRect(bounds, isVertical);
 
         // Draw background
         ctx->SetFillPaint(GetCurrentTrackColor());
-        ctx->FillRectangle(bounds);
+        ctx->FillRectangle(interior);
 
         // Draw progress
-        Rect2Di progressRect = GetActiveTrackRect(bounds, isVertical);
+        Rect2Di progressRect = GetActiveTrackRect(interior, isVertical);
         if ((isVertical && progressRect.height > 0) || (!isVertical && progressRect.width > 0)) {
             ctx->SetFillPaint(style.activeTrackColor);
             ctx->FillRectangle(progressRect);
@@ -437,7 +440,7 @@ namespace UltraCanvas {
         // Draw border
         ctx->SetStrokePaint(style.handleBorderColor);
         ctx->SetStrokeWidth(style.borderWidth);
-        ctx->DrawRectangle(bounds);
+        ctx->DrawRectangle(interior);
     }
 
     void UltraCanvasSlider::RenderHandle(const Point2Di &position, IRenderContext *ctx, bool highlighted) {
@@ -520,52 +523,31 @@ namespace UltraCanvas {
 
     void UltraCanvasSlider::RenderValueDisplay(const Rect2Di &bounds, IRenderContext *ctx) {
         ctx->SetFontStyle(style.fontStyle);
+        ctx->SetTextPaint(IsDisabled() ? style.disabledTextColor : style.textColor);
+
         if (!isRangeMode) {
-            // Single value display
             std::string text = GetDisplayText();
             if (text.empty()) return;
 
-            ctx->SetTextPaint(IsDisabled() ? style.disabledTextColor : style.textColor);
             Point2Di textSize = ctx->GetTextDimension(text);
-            Point2Di textPos = CalculateTextPosition(bounds, textSize);
+            Point2Di textPos = CalculateTextPosition(bounds, textSize, currentValue);
 
-            // Draw tooltip background if needed
             if (valueDisplay == SliderValueDisplay::Tooltip && showTooltip) {
-                Rect2Di tooltipRect(textPos.x - 4, textPos.y - textSize.y - 4, textSize.x + 8, textSize.y + 8);
+                Rect2Di tooltipRect(textPos.x - 4, textPos.y - 4, textSize.x + 8, textSize.y + 8);
                 ctx->DrawFilledRectangle(tooltipRect, Color(255, 255, 220, 230), 1.0, Color(128, 128, 128));
             }
 
             ctx->DrawText(text, textPos);
         } else {
-            // Range mode - display both values
             std::string lowerText = FormatValue(lowerValue);
             std::string upperText = FormatValue(upperValue);
 
-            ctx->SetTextPaint(IsDisabled() ? style.disabledTextColor : style.textColor);
-
-            bool isVertical = (orientation == SliderOrientation::Vertical);
-            Point2Df lowerHandlePos = GetHandlePosition(bounds, isVertical, lowerValue);
-            Point2Df upperHandlePos = GetHandlePosition(bounds, isVertical, upperValue);
-
-            // Draw lower value
-            ctx->SetFontStyle(style.fontStyle);
-            Point2Df lowerTextSize = ctx->GetTextDimension(lowerText);
-            Point2Df lowerTextPos;
-            if (isVertical) {
-                lowerTextPos = Point2Df(bounds.x + bounds.width + 8, lowerHandlePos.y - lowerTextSize.y / 2);
-            } else {
-                lowerTextPos = Point2Df(lowerHandlePos.x - lowerTextSize.x / 2, bounds.y - lowerTextSize.y / 2 - 4);
-            }
+            Point2Di lowerTextSize = ctx->GetTextDimension(lowerText);
+            Point2Di lowerTextPos = CalculateTextPosition(bounds, lowerTextSize, lowerValue);
             ctx->DrawText(lowerText, lowerTextPos);
 
-            // Draw upper value
-            Point2Df upperTextSize = ctx->GetTextDimension(upperText);
-            Point2Df upperTextPos;
-            if (isVertical) {
-                upperTextPos = Point2Df(bounds.x + bounds.width + 8, upperHandlePos.y - upperTextSize.y / 2);
-            } else {
-                upperTextPos = Point2Df(upperHandlePos.x - upperTextSize.x / 2, bounds.y - upperTextSize.y / 2 - 4);
-            }
+            Point2Di upperTextSize = ctx->GetTextDimension(upperText);
+            Point2Di upperTextPos = CalculateTextPosition(bounds, upperTextSize, upperValue);
             ctx->DrawText(upperText, upperTextPos);
         }
     }
@@ -594,15 +576,25 @@ namespace UltraCanvas {
         }
     }
 
-    Rect2Di UltraCanvasSlider::GetTrackRect(const Rect2Di &bounds, bool isVertical) const {
+    Rect2Di UltraCanvasSlider::GetSliderInteriorRect(const Rect2Di &bounds, bool isVertical) const {
         if (isVertical) {
-            int trackX = bounds.x + (bounds.width - style.trackHeight) / 2;
-            return Rect2Di(trackX, bounds.y + style.handleSize / 2,
-                           style.trackHeight, bounds.height - style.handleSize);
+            return Rect2Di(bounds.x, bounds.y, (int)style.handleSize, bounds.height);
         } else {
-            int trackY = bounds.y + (bounds.height - style.trackHeight) / 2;
-            return Rect2Di(bounds.x + style.handleSize / 2, trackY,
-                           bounds.width - style.handleSize, style.trackHeight);
+            return Rect2Di(bounds.x, bounds.y + bounds.height - (int)style.handleSize,
+                           bounds.width, (int)style.handleSize);
+        }
+    }
+
+    Rect2Di UltraCanvasSlider::GetTrackRect(const Rect2Di &bounds, bool isVertical) const {
+        Rect2Di interior = GetSliderInteriorRect(bounds, isVertical);
+        if (isVertical) {
+            int trackX = interior.x + (interior.width - (int)style.trackHeight) / 2;
+            return Rect2Di(trackX, interior.y + (int)style.handleSize / 2,
+                           (int)style.trackHeight, interior.height - (int)style.handleSize);
+        } else {
+            int trackY = interior.y + (interior.height - (int)style.trackHeight) / 2;
+            return Rect2Di(interior.x + (int)style.handleSize / 2, trackY,
+                           interior.width - (int)style.handleSize, (int)style.trackHeight);
         }
     }
 
@@ -639,14 +631,15 @@ namespace UltraCanvas {
     }
 
     Point2Di UltraCanvasSlider::GetHandlePosition(const Rect2Di &bounds, bool isVertical, float value) const {
+        Rect2Di interior = GetSliderInteriorRect(bounds, isVertical);
         float percentage = (value - minValue) / (maxValue - minValue);
 
         if (isVertical) {
-            int y = bounds.y + bounds.height - (bounds.height - style.handleSize) * percentage - style.handleSize / 2;
-            return Point2Di(bounds.x + bounds.width / 2, y);
+            int y = interior.y + interior.height - (interior.height - (int)style.handleSize) * percentage - (int)style.handleSize / 2;
+            return Point2Di(interior.x + interior.width / 2, y);
         } else {
-            int x = bounds.x + (bounds.width - style.handleSize) * percentage + style.handleSize / 2;
-            return Point2Di(x, bounds.y + bounds.height / 2);
+            int x = interior.x + (interior.width - (int)style.handleSize) * percentage + (int)style.handleSize / 2;
+            return Point2Di(x, interior.y + interior.height / 2);
         }
     }
 
@@ -663,16 +656,26 @@ namespace UltraCanvas {
         }
     }
 
-    Point2Di UltraCanvasSlider::CalculateTextPosition(const Rect2Di &bounds, const Point2Di &textSize) const {
+    Point2Di UltraCanvasSlider::CalculateTextPosition(const Rect2Di &bounds, const Point2Di &textSize, float value) const {
+        bool isVertical = (orientation == SliderOrientation::Vertical);
+
         if (valueDisplay == SliderValueDisplay::Tooltip) {
-            Point2Di handlePos = GetHandlePosition(bounds, orientation == SliderOrientation::Vertical, currentValue);
-            return Point2Di(handlePos.x - textSize.x / 2, handlePos.y - style.handleSize / 2 - 8);
+            Point2Di handlePos = GetHandlePosition(bounds, isVertical, value);
+            if (isVertical) {
+                return Point2Di(handlePos.x + (int)style.handleSize / 2 + 8,
+                                handlePos.y - textSize.y / 2);
+            } else {
+                return Point2Di(handlePos.x - textSize.x / 2,
+                                handlePos.y - (int)style.handleSize / 2 - textSize.y - 2);
+            }
         }
 
-        if (orientation == SliderOrientation::Vertical) {
-            return Point2Di(bounds.x + bounds.width + 8, bounds.y + bounds.height / 2 + textSize.y / 2);
+        Rect2Di interior = GetSliderInteriorRect(bounds, isVertical);
+        Point2Di handlePos = GetHandlePosition(bounds, isVertical, value);
+        if (isVertical) {
+            return Point2Di(interior.x + interior.width + 2, handlePos.y - textSize.y / 2);
         } else {
-            return Point2Di(bounds.x + bounds.width / 2 - textSize.x / 2, bounds.y - 8);
+            return Point2Di(handlePos.x - textSize.x / 2, interior.y - textSize.y - 2);
         }
     }
 

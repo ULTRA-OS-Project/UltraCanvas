@@ -75,8 +75,7 @@ public:
     // ===== RENDERING =====
     void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
     void RequestRedraw() override;
-    IRenderContext* GetRenderContext() override;
-    
+
     // ===== CANVAS ACCESS =====
     const std::string& GetCanvasId() const { return canvasId; }
     void SetCanvasId(const std::string& id);

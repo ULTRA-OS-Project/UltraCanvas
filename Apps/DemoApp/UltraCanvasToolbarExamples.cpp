@@ -67,7 +67,7 @@ namespace UltraCanvas {
         currentY += 25;
 
         // Create standard toolbar using builder
-        auto standardToolbar = UltraCanvasToolbarBuilder("StandardToolbar", 805)
+        auto standardToolbar = UltraCanvasToolbarBuilder("StandardToolbar")
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Default())
                 .SetDimensions(20, currentY, 960, 48)
@@ -180,7 +180,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(desc3);
         currentY += 25;
 
-        auto flatToolbar = UltraCanvasToolbarBuilder("FlatToolbar", 811)
+        auto flatToolbar = UltraCanvasToolbarBuilder("FlatToolbar")
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetAppearance(ToolbarAppearance::Flat())
@@ -232,7 +232,7 @@ namespace UltraCanvas {
         sidebarContainer->SetBackgroundColor(Color(245, 245, 245, 255));
         sidebarContainer->SetBorders(1, Color(220, 220, 220, 255));
 
-        auto verticalToolbar = UltraCanvasToolbarBuilder("VerticalToolbar", 815)
+        auto verticalToolbar = UltraCanvasToolbarBuilder("VerticalToolbar")
                 .SetOrientation(ToolbarOrientation::Vertical)
                 .SetAppearance(ToolbarAppearance::Sidebar())
                 .SetDimensions(10, 10, 50, 220)
@@ -299,7 +299,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(desc5);
         currentY += 25;
 
-        auto ribbonToolbar = UltraCanvasToolbarBuilder("RibbonToolbar", 820)
+        auto ribbonToolbar = UltraCanvasToolbarBuilder("RibbonToolbar")
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Ribbon())
                 .SetDimensions(20, currentY, 960, 58)

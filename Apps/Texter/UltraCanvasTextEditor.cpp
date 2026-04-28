@@ -408,12 +408,12 @@ namespace {
             SetupMenuBar();
         }
 
+        SetupTabContainer();
+
         SetupToolbar();
         if (!config.showToolbar && toolbarContainer) {
             toolbarContainer->SetVisible(false);
         }
-
-        SetupTabContainer();
 
         if (config.showStatusBar) {
             SetupStatusBar();
@@ -665,7 +665,7 @@ namespace {
     void UltraCanvasTextEditor::SetupToolbar() {
         int toolbarY = config.showMenuBar ? menuBarHeight : 0;
 
-        toolbar = UltraCanvasToolbarBuilder("EditorToolbar", 200)
+        toolbar = UltraCanvasToolbarBuilder("EditorToolbar")
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(0, 0, GetWidth(), toolbarHeight)
@@ -754,7 +754,7 @@ namespace {
             { "md-image",      "Image (![title](path))"             },
         };
 
-        markdownToolbar = UltraCanvasToolbarBuilder("MarkdownToolbar", 202)
+        markdownToolbar = UltraCanvasToolbarBuilder("MarkdownToolbar")
                 .SetOrientation(ToolbarOrientation::Vertical)
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(0, 0, markdownToolbarWidth, 400)
@@ -824,7 +824,7 @@ namespace {
         }
 
         // Create heading sub-toolbar (horizontal strip shown when clicking the heading button)
-        headingSubToolbar = UltraCanvasToolbarBuilder("HeadingSubToolbar", 203)
+        headingSubToolbar = UltraCanvasToolbarBuilder("HeadingSubToolbar")
             .SetOrientation(ToolbarOrientation::Horizontal)
             .SetAppearance(ToolbarAppearance::Flat())
             .SetDimensions(0, 0, 200, 36)
@@ -2560,8 +2560,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
             // Select just the sample text so user can type to replace it
             auto selEnd = cursorPos;
-            selEnd.columnIndex += static_cast<int>(sampleText.size());
-            doc->textArea->SetSelection(cursorPos, selEnd);
+            auto selStart = cursorPos;
+            selEnd.columnIndex += static_cast<int>(sampleText.size() + prefix.size());
+            selStart.columnIndex += static_cast<int>(prefix.size());
+            doc->textArea->SetSelection(selStart, selEnd);
+            doc->textArea->SetCursorPosition(selStart);
         }
     }
 

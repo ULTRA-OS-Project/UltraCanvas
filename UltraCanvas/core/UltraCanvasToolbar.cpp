@@ -850,8 +850,8 @@ namespace UltraCanvas {
 
 // ===== TOOLBAR BUILDER IMPLEMENTATION =====
 
-    UltraCanvasToolbarBuilder::UltraCanvasToolbarBuilder(const std::string& identifier, long id) {
-        toolbar = std::make_shared<UltraCanvasToolbar>(identifier, id, 0, 0, 800, 48);
+    UltraCanvasToolbarBuilder::UltraCanvasToolbarBuilder(const std::string& identifier) {
+        toolbar = std::make_shared<UltraCanvasToolbar>(identifier, 0, 0, 0, 800, 48);
     }
 
     UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::SetOrientation(ToolbarOrientation orient) {

@@ -73,8 +73,7 @@ public:
     // ===== RENDERING =====
     void Invalidate() override;
     void SwapBuffers() override;
-    IRenderContext* GetRenderContext() override;
-    
+
     // ===== GETTERS =====
     Window GetXWindow() const { return xWindow; }
     cairo_surface_t* GetCairoSurface() const { return cairoSurface; }

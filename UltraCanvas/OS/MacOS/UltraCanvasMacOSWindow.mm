@@ -605,19 +605,12 @@ namespace UltraCanvas {
     }
 
     // ===== RENDERING =====
-    void UltraCanvasMacOSWindow::Invalidate() {
+    void UltraCanvasMacOSWindow::InvalidateWindowNative() {
         if (!_created || !contentView) return;
 
         @autoreleasepool {
             [(NSView*)contentView setNeedsDisplay:YES];
         }
-    }
-
-    void UltraCanvasMacOSWindow::InvalidateWindowNative() {
-        if (!_created || !renderContext) return;
-
-        // Trigger redraw
-        Invalidate();
     }
 
     NativeWindowHandle UltraCanvasMacOSWindow::GetNativeHandle() const  {
@@ -677,7 +670,7 @@ namespace UltraCanvas {
                 DoResize();
 
                 Render(GetRenderContext());
-                FlushNative();
+                InvalidateWindowNative();
             }
         }
     }

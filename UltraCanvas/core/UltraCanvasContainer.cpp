@@ -82,14 +82,14 @@ namespace UltraCanvas {
             adjustedChildBounds.x = adjustedChildBounds.x - hsroll + ca.x;
             adjustedChildBounds.y = adjustedChildBounds.y - vsroll + ca.y;
 
-            Rect2Di intersection;
-            if (!adjustedChildBounds.Intersects(ca, intersection)) continue;
+            Rect2Di contentAreaIntersection;
+            if (!adjustedChildBounds.Intersects(ca, contentAreaIntersection)) continue;
             // Skip children whose drawn area doesn't touch the dirty region.
-            if (!intersection.Intersects(dirtyRect)) continue;
+            if (!contentAreaIntersection.Intersects(dirtyRect)) continue;
 
             ctx->PushState();
-            ctx->ClipRect(Rect2Di(intersection.x - 1, intersection.y - 1, intersection.width + 2,
-                                  intersection.height + 2));
+            ctx->ClipRect(Rect2Di(contentAreaIntersection.x - 1, contentAreaIntersection.y - 1, contentAreaIntersection.width + 2,
+                                  contentAreaIntersection.height + 2));
             ctx->Translate(adjustedChildBounds.TopLeft());
 
             // Translate dirtyRect into the child's local space — must use the

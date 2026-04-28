@@ -192,7 +192,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(section5Label);
         yOffset += 35;
 
-        auto textStyleControl = CreateSegmentedControl("textStyle", 5051, 50, yOffset, 190, 32);
+        auto textStyleControl = CreateSegmentedControl("textStyle", 5051, 50, yOffset, 200, 32);
         textStyleControl->AddSegment("<b>B</b>");   // Bold
         textStyleControl->AddSegment("<i>I</i>");   // Italic
         textStyleControl->AddSegment("<u>U</u>");   // Underline

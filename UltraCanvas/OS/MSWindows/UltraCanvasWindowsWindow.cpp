@@ -16,7 +16,6 @@ namespace UltraCanvas {
     UltraCanvasWindowsWindow::UltraCanvasWindowsWindow()
             : hwnd(nullptr)
             , hdc(nullptr)
-            , cairoSurface(nullptr)
             , dropTarget(nullptr)
             , trackingMouseLeave(false)
             , savedStyle(0)
@@ -51,19 +50,6 @@ namespace UltraCanvas {
             hwnd = nullptr;
             return false;
         }
-
-//        // STEP 3: Create render context (same RenderContextCairo as Linux)
-//        try {
-//            renderContext = std::make_unique<RenderContextCairo>(
-//                cairoSurface, config_.width, config_.height, true);
-//        } catch (const std::exception& e) {
-//            debugOutput << "UltraCanvas Windows: Failed to create render context: "
-//                      << e.what() << std::endl;
-//            DestroyNativeCairoSurface();
-//            DestroyWindow(hwnd);
-//            hwnd = nullptr;
-//            return false;
-//        }
 
         // STEP 4: Initialize OLE drag-drop
         dropTarget = new UltraCanvasWindowsDropTarget(this);
@@ -238,11 +224,11 @@ namespace UltraCanvas {
             return false;
         }
 
-        cairo_status_t status = cairo_surface_status(nativeSurface);
+        cairo_status_t status = cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface));
         if (status != CAIRO_STATUS_SUCCESS) {
             debugOutput << "UltraCanvas Windows: Cairo surface error: "
                       << cairo_status_to_string(status) << std::endl;
-            cairo_surface_destroy(nativeSurface);
+            cairo_surface_destroy(static_cast<cairo_surface_t *>(nativeSurface));
             nativeSurface = nullptr;
             return false;
         }
@@ -253,8 +239,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasWindowsWindow::DestroyNativeCairoSurface() {
-        if (cairoSurface) {
-            cairo_surface_destroy(nativeSurface);
+        if (nativeSurface) {
+            cairo_surface_destroy(static_cast<cairo_surface_t *>(nativeSurface));
             nativeSurface = nullptr;
         }
     }
@@ -262,9 +248,8 @@ namespace UltraCanvas {
     void UltraCanvasWindowsWindow::HandleResizeEventWindows(int w, int h) {
         HandleResizeEvent(w, h);
         DoResize();
-        Render(GetRenderContext());
-        Flush();
-        needsRedraw = false;
+        RequestWindowComposition();
+        UpdateAndRender();
 
         debugOutput << "UltraCanvasWindowsWindow::HandleResizeEventWindows: nativeh=" << GetNativeHandle() << " updated successfully" << std::endl;
     }
@@ -275,7 +260,7 @@ namespace UltraCanvas {
         int h = config_.height;
 
         if (nativeSurface) {
-            cairo_surface_destroy(nativeSurface);
+            cairo_surface_destroy(static_cast<cairo_surface_t *>(nativeSurface));
             nativeSurface = nullptr;
         }
 
@@ -290,7 +275,7 @@ namespace UltraCanvas {
 //            renderContext->ResizeStagingSurface(w, h);
 //        }
 
-        debugOutput << "UltraCanvasWindowsWindow::DoResizeNative: nativeh=" << GetNativeHandle() << " Cairo surface=" << cairoSurface << " updated successfully" << std::endl;
+        debugOutput << "UltraCanvasWindowsWindow::DoResizeNative: nativeh=" << GetNativeHandle() << " Native surface=" << nativeSurface << " updated successfully" << std::endl;
     }
 
     void UltraCanvasWindowsWindow::DestroyNative() {
@@ -674,25 +659,21 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasWindowsWindow::FlushNative() {
+    void UltraCanvasWindowsWindow::InvalidateWindowNative() {
         if (!renderContext || !nativeSurface || !hwnd) return;
-//        std::lock_guard<std::mutex> lock(cairoMutex);
-//        renderContext->SwapBuffers();
-//        cairo_surface_flush(cairoSurface);
         // Trigger a synchronous WM_PAINT to blit the image surface to the window
         InvalidateRect(hwnd, NULL, FALSE);
         UpdateWindow(hwnd);
     }
 
     void UltraCanvasWindowsWindow::BlitSurfaceToHDC(HDC targetDC) {
-        if (!cairoSurface || !targetDC) return;
-        if (cairo_surface_get_type(cairoSurface) != CAIRO_SURFACE_TYPE_IMAGE) return;
+        if (!nativeSurface || !targetDC) return;
 
-        cairo_surface_flush(cairoSurface);
+        cairo_surface_flush(static_cast<cairo_surface_t*>(nativeSurface));
 
-        int width = cairo_image_surface_get_width(cairoSurface);
-        int height = cairo_image_surface_get_height(cairoSurface);
-        unsigned char* data = cairo_image_surface_get_data(cairoSurface);
+        int width = cairo_image_surface_get_width(static_cast<cairo_surface_t*>(nativeSurface));
+        int height = cairo_image_surface_get_height(static_cast<cairo_surface_t*>(nativeSurface));
+        unsigned char* data = cairo_image_surface_get_data(static_cast<cairo_surface_t*>(nativeSurface));
         if (!data) return;
 
         BITMAPINFO bmi = {};
