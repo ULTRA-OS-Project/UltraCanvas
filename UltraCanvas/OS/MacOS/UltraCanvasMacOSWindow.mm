@@ -356,12 +356,12 @@ namespace UltraCanvas {
             return false;
         }
 
-        cairo_status_t status = cairo_surface_status(nativeSurface);
+        cairo_status_t status = cairo_surface_status(static_cast<cairo_surface_t*>(nativeSurface));
         if (status != CAIRO_STATUS_SUCCESS) {
             debugOutput << "UltraCanvas macOS: Cairo surface error: "
                       << cairo_status_to_string(status) << std::endl;
-            cairo_surface_destroy(nativeSurface);
-            cairoSurface = nullptr;
+            cairo_surface_destroy(static_cast<cairo_surface_t*>(nativeSurface));
+            nativeSurface = nullptr;
             return false;
         }
 
@@ -380,10 +380,10 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::DestroyNativeCairoSurface() {
         std::lock_guard<std::mutex> lock(cairoMutex);
 
-        if (cairoSurface) {
+        if (nativeSurface) {
             debugOutput << "UltraCanvas macOS: Destroying Cairo surface..." << std::endl;
-            cairo_surface_destroy(nativeSurface);
-            cairoSurface = nullptr;
+            cairo_surface_destroy(static_cast<cairo_surface_t*>(nativeSurface));
+            nativeSurface = nullptr;
         }
 
         //cgContext = nullptr;
@@ -404,13 +404,8 @@ namespace UltraCanvas {
 
         // Destroy old surface
         if (oldCairoSurface) {
-            cairo_surface_destroy(oldCairoSurface);
+            cairo_surface_destroy(static_cast<cairo_surface_t*>(oldCairoSurface));
         }
-
-            // Update render context
-//        if (renderContext) {
-//            renderContext->SetTargetSurface(cairoSurface, w, h);
-//        }
     }
 
     // ===== WINDOW MANAGEMENT =====

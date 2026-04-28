@@ -56,8 +56,6 @@ namespace UltraCanvas {
         HICON hIconBig = nullptr;
         HICON hIconSmall = nullptr;
 
-        cairo_surface_t* cairoSurface;
-        std::unique_ptr<RenderContextCairo> renderContext;
         UltraCanvasWindowsDropTarget* dropTarget;
 
         bool trackingMouseLeave;

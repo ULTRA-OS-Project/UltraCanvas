@@ -48,13 +48,7 @@ namespace UltraCanvas {
         NSView* contentView;
         void* windowDelegate;  // NSWindowDelegate*
 
-        // ===== CAIRO RENDERING =====
-        cairo_surface_t* cairoSurface;
-
         bool pendingShow = false;
-
-        // ===== RENDER CONTEXT =====
-        std::unique_ptr<RenderContextCairo> renderContext;
 
         // ===== THREAD SAFETY =====
         mutable std::mutex cairoMutex;
