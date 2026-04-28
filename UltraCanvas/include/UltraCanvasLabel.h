@@ -94,7 +94,7 @@ namespace UltraCanvas {
         int GetPreferredHeight() override;
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====

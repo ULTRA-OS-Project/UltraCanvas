@@ -209,7 +209,7 @@ namespace UltraCanvas {
         CDRFitMode GetFitMode() const { return cdrRenderer.GetFitMode(); }
 
         // Rendering
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
 
         // Callbacks
         std::function<void(int)> onPageChanged;

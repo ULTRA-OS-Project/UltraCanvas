@@ -437,7 +437,7 @@ public:
     void SetFontSize(float size) { style.fontStyle.fontSize = size; }
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
-    void Render(IRenderContext* ctx) override;
+    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
     bool OnEvent(const UCEvent& event) override;

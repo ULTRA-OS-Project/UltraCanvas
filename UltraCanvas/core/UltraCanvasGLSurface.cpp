@@ -134,7 +134,7 @@ void* UltraCanvasGLSurface::GetNativeGLContext() const {
 }
 
 // UltraCanvasUIElement overrides
-void UltraCanvasGLSurface::Render(IRenderContext* ctx) {
+void UltraCanvasGLSurface::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
     if (!IsVisible()) return;
 
     // Initialize GL on first render
@@ -142,7 +142,7 @@ void UltraCanvasGLSurface::Render(IRenderContext* ctx) {
         if (!InitializeGL()) {
             // Draw error indicator (element-local coordinates)
             ctx->SetFillPaint(Color(200, 50, 50, 255));
-            Rect2Di b = GetElementLocalBounds();
+            Rect2Di b = GetLocalBounds();
             ctx->FillRectangle(Rect2Df{static_cast<float>(b.x), static_cast<float>(b.y),
                               static_cast<float>(b.width), static_cast<float>(b.height)});
             return;
@@ -388,7 +388,7 @@ void UltraCanvasGLSurface::CompositeToSurface(IRenderContext* ctx, bool readback
     }
 
     // Composite to element-local origin (ctx is already translated to element origin)
-    Rect2Di b = GetElementLocalBounds();
+    Rect2Di b = GetLocalBounds();
     compositeStrategy_->Composite(*framebuffer_, ctx, b.x, b.y, b.width, b.height, readback);
 
     if (readback) {

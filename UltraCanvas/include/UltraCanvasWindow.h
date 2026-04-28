@@ -9,6 +9,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDirtyRectManager.h"
 #include <string>
 #include <functional>
 #include <memory>
@@ -68,6 +69,7 @@ namespace UltraCanvas {
     struct PopupElement {
         UltraCanvasUIElement* element;
         PopupElementSettings settings;
+        UltraCanvasDirtyRectManager dirtyRectManager;
     };
 
     struct FilterFunction {
@@ -85,10 +87,10 @@ namespace UltraCanvas {
         WindowState _state = WindowState::Normal;
         bool _created = false;
         bool _needsResize = false;
-        bool _needsContentRedraw = true;
-        bool _needsPopupRedraw = false;
         bool _needsPopupGeometry = false;
         bool _needsWindowComposition = true;
+
+        UltraCanvasDirtyRectManager dirtyRectManager;
 
         std::unordered_map<UCEventType, std::vector<FilterFunction>> eventFilters = {};
         bool HandleEventFilters(const UCEvent& ev);
@@ -229,11 +231,14 @@ namespace UltraCanvas {
 
         virtual bool OnEvent(const UCEvent& event) override;
 
-        // derived classes may override it to render something
-        virtual void RenderCustomContent(IRenderContext* ctx) {}
+        // derived classes may override it to render something within the dirty area
+        virtual void RenderCustomContent(IRenderContext* ctx, const Rect2Di& dirtyRect) {}
 
-        void RequestWindowRedraw() { _needsContentRedraw = true; }
-        void RequestPopupRedraw() { _needsPopupRedraw = true; }
+        // Adds a dirty rectangle (in window coords) to the window's render queue.
+        void AddDirtyRectangle(const Rect2Di& windowRect);
+        // Adds a dirty rectangle (in popup-local coords) to the named popup's queue.
+        void AddPopupDirtyRect(UltraCanvasUIElement* popup, const Rect2Di& popupLocalRect);
+
         void RequestPopupGeometry() { _needsPopupGeometry = true; }
         void RequestWindowComposition() { _needsWindowComposition = true; }
         void UpdateAndRender();

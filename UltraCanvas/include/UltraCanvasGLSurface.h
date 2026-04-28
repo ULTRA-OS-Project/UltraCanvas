@@ -140,7 +140,7 @@ public:
     int GetSurfaceHeight() const { return surfaceHeight_; }
 
     // UltraCanvasUIElement overrides
-    void Render(IRenderContext* ctx) override;
+    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
     void SetBounds(const Rect2Di& bounds) override;
 

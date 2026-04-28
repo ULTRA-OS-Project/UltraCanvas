@@ -156,7 +156,7 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING =====
-    void UltraCanvasCheckbox::Render(IRenderContext* ctx) {
+    void UltraCanvasCheckbox::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         ctx->PushState();
 
         // Draw based on style

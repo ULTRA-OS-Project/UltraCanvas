@@ -311,7 +311,7 @@ namespace UltraCanvas {
         void UpdateGeometry(IRenderContext* ctx) override;
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
         void RenderTabBar(IRenderContext* ctx);
         void RenderTab(int index, IRenderContext* ctx);
         void RenderTabIcon(int index, IRenderContext* ctx);
@@ -319,7 +319,7 @@ namespace UltraCanvas {
         void RenderCloseButton(int index, IRenderContext* ctx);
         void RenderModifiedMarker(int index, IRenderContext* ctx);
         void RenderScrollButtons(IRenderContext* ctx);
-        void RenderContentArea(IRenderContext* ctx);
+        void RenderContentArea(IRenderContext* ctx, const Rect2Di& dirtyRect);
         void RenderNewTabButton(IRenderContext* ctx);
         void RenderOverflowButton(IRenderContext* ctx);
 

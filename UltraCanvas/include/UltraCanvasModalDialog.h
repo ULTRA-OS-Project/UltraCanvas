@@ -425,7 +425,7 @@ namespace UltraCanvas {
         // ===== RENDERING OVERRIDE =====
         // NOTE: With layout-based architecture, RenderCustomContent delegates
         // to child components which render themselves
-        void RenderCustomContent(IRenderContext* ctx) override;
+        void RenderCustomContent(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
 
         bool OnEvent(const UCEvent& event) override;
 
@@ -682,7 +682,7 @@ namespace UltraCanvas {
         std::vector<std::string> GetSelectedFilePaths() const;
 
         // Rendering override
-        void RenderCustomContent(IRenderContext* ctx) override;
+        void RenderCustomContent(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
 
         // Event handling override
         bool OnEvent(const UCEvent& event) override;

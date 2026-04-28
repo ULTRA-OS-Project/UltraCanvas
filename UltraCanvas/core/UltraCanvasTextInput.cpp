@@ -227,13 +227,13 @@ namespace UltraCanvas {
         TextChanged();
     }
 
-    void UltraCanvasTextInput::Render(IRenderContext* ctx) {
+    void UltraCanvasTextInput::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // Get colors based on state
         Color backgroundColor = GetBackgroundColor();
         Color borderColor = GetBorderColor();
         Color textColor = GetTextColor();
 
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
 
         // Draw background
         ctx->DrawFilledRectangle(bounds, backgroundColor, style.borderWidth, style.borderColor);
@@ -372,7 +372,7 @@ namespace UltraCanvas {
         if (!IsClearButtonVisible()) return Rect2Di(0, 0, 0, 0);
 
         // Returns element-local coordinates
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
 
         int rightOffset = style.paddingRight;
         if (showValidationState &&
@@ -389,7 +389,7 @@ namespace UltraCanvas {
 
     Rect2Di UltraCanvasTextInput::GetTextArea() const {
         // Returns element-local coordinates
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
         int rightReduction = style.paddingRight;
 
         if (showValidationState && (lastValidationResult.state == ValidationState::Valid || lastValidationResult.state != ValidationState::Invalid)) {
@@ -521,7 +521,7 @@ namespace UltraCanvas {
         float caretEndY = caretStartY + lineHeight;
 
         // Only hide if completely outside control bounds (element-local)
-        Rect2Di controlBounds = GetElementLocalBounds();
+        Rect2Di controlBounds = GetLocalBounds();
         if (caretX < controlBounds.x - 10 || caretX > controlBounds.x + controlBounds.width + 10) {
             return;
         }

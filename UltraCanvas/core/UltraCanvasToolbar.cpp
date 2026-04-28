@@ -630,13 +630,13 @@ namespace UltraCanvas {
 
 // ===== RENDERING =====
 
-    void UltraCanvasToolbar::Render(IRenderContext* ctx) {
+    void UltraCanvasToolbar::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // Render shadow if enabled (for Docked style)
         if (appearance.hasShadow) {
             RenderShadow(ctx);
         }
         // Use base class rendering for background and border
-        UltraCanvasContainer::Render(ctx);
+        UltraCanvasContainer::Render(ctx, dirtyRect);
 
         // Render dock magnification effect if enabled
         if (appearance.enableMagnification && hoveredItemIndex >= 0) {
@@ -756,7 +756,7 @@ namespace UltraCanvas {
 
     void UltraCanvasToolbar::RenderShadow(IRenderContext* ctx) {
         // Element-local space — ctx already translated to element origin
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
 
         // Draw shadow
         ctx->SetFillPaint(appearance.shadowColor);

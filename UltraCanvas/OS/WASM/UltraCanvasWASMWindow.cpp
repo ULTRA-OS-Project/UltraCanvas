@@ -307,7 +307,7 @@ void UltraCanvasWASMWindow::GetSize(int& width, int& height) const {
 
 // ===== RENDERING =====
 
-void UltraCanvasWASMWindow::Render(IRenderContext* ctx) {
+void UltraCanvasWASMWindow::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
     if (!_created || !_visible || !wasmRenderContext) {
         return;
     }
@@ -319,7 +319,7 @@ void UltraCanvasWASMWindow::Render(IRenderContext* ctx) {
     wasmRenderContext->Clear(config_.backgroundColor);
     
     // Call base class render (renders all UI elements)
-    UltraCanvasWindowBase::Render(IRenderContext* ctx);
+    UltraCanvasWindowBase::Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
     
     // End frame
     wasmRenderContext->EndFrame();

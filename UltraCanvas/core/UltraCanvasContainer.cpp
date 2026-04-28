@@ -10,7 +10,6 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLayout.h"
 #include "UltraCanvasElementDebug.h"
-//#include "UltraCanvasZOrderManager.h"
 #include <algorithm>
 #include <cmath>
 
@@ -68,54 +67,58 @@ namespace UltraCanvas {
         needsUpdateGeometry = false;
     }
 
-    void UltraCanvasContainer::Render(IRenderContext* ctx) {
-//        if (needsRedraw) {
-            UltraCanvasUIElement::Render(ctx);
-//        }
+    void UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+        UltraCanvasUIElement::Render(ctx, dirtyRect);
 
-        // Render visible children with scroll offset
         auto ca = GetContentArea();
         auto hsroll = GetHorizontalScrollPosition();
         auto vsroll = GetVerticalScrollPosition();
-        
+
         for (const auto &child: children) {
             if (!child || !child->IsVisible()) continue;
             if (child->isPopup) continue;
 
-//            auto containerChild = dynamic_cast<UltraCanvasContainer*>(child.get());
-//            if (needsRedraw || child->needsRedraw || containerChild) {
-                Rect2Di adjustedChildBounds = child->GetBounds();
-                adjustedChildBounds.x = adjustedChildBounds.x - hsroll + ca.x;
-                adjustedChildBounds.y = adjustedChildBounds.y - vsroll + ca.y;
+            Rect2Di adjustedChildBounds = child->GetBounds();
+            adjustedChildBounds.x = adjustedChildBounds.x - hsroll + ca.x;
+            adjustedChildBounds.y = adjustedChildBounds.y - vsroll + ca.y;
 
-                Rect2Di intersection;
-                if (adjustedChildBounds.Intersects(ca, intersection)) {
-                    ctx->PushState();
-                    ctx->ClipRect(Rect2Di(intersection.x - 1, intersection.y - 1, intersection.width + 2,
-                                          intersection.height + 2));
-                    ctx->Translate(adjustedChildBounds.TopLeft());
-                    child->needsRedraw = true;
-                    child->Render(ctx);
-                    ctx->PopState();
-                    child->needsRedraw = false;
-                }
-//            }
+            Rect2Di intersection;
+            if (!adjustedChildBounds.Intersects(ca, intersection)) continue;
+            // Skip children whose drawn area doesn't touch the dirty region.
+            if (!intersection.Intersects(dirtyRect)) continue;
+
+            ctx->PushState();
+            ctx->ClipRect(Rect2Di(intersection.x - 1, intersection.y - 1, intersection.width + 2,
+                                  intersection.height + 2));
+            ctx->Translate(adjustedChildBounds.TopLeft());
+
+            // Translate dirtyRect into the child's local space — must use the
+            // same compound offset we just translated ctx by.
+            Rect2Di childDirty(dirtyRect.x - adjustedChildBounds.x,
+                               dirtyRect.y - adjustedChildBounds.y,
+                               dirtyRect.width, dirtyRect.height);
+            child->Render(ctx, childDirty);
+            ctx->PopState();
         }
+
         ctx->PushState();
-        RenderScrollbars(ctx);
+        RenderScrollbars(ctx, dirtyRect);
         ctx->PopState();
-        needsRedraw = false;
     }
 
-    void UltraCanvasContainer::RenderScrollbars(IRenderContext *ctx) {
+    void UltraCanvasContainer::RenderScrollbars(IRenderContext *ctx, const Rect2Di& dirtyRect) {
         int localContentX = GetBorderLeftWidth() + padding.left;
         int localContentY = GetBorderTopWidth() + padding.top;
 
         auto renderScrollbar = [&](UltraCanvasScrollbar* sb) {
-            ctx->PushState();
             auto sbBounds = sb->GetBounds();
-            ctx->Translate(Point2Di(sbBounds.x + localContentX, sbBounds.y + localContentY));
-            sb->Render(ctx);
+            Point2Di compoundOffset(sbBounds.x + localContentX, sbBounds.y + localContentY);
+            Rect2Di sbDirty(dirtyRect.x - compoundOffset.x,
+                            dirtyRect.y - compoundOffset.y,
+                            dirtyRect.width, dirtyRect.height);
+            ctx->PushState();
+            ctx->Translate(compoundOffset);
+            sb->Render(ctx, sbDirty);
             ctx->PopState();
         };
 

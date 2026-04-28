@@ -8,7 +8,6 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasApplication.h"
-//#include "UltraCanvasZOrderManager.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasDebug.h"
 
@@ -53,12 +52,12 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMenu::Render(IRenderContext *ctx) {
+    void UltraCanvasMenu::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
         // FIX: Simplified visibility check - if not visible at all, don't render
         if (menuType == MenuType::Menubar) {
 
             // Render background in element-local space
-            Rect2Di bounds = GetElementLocalBounds();
+            Rect2Di bounds = GetLocalBounds();
             ctx->DrawFilledRectangle(bounds, style.backgroundColor, style.borderWidth, style.borderColor);
 
             // Draw border
@@ -81,7 +80,7 @@ namespace UltraCanvas {
                 RenderShadow(ctx);
             }
 
-            Rect2Di bounds = GetElementLocalBounds();
+            Rect2Di bounds = GetLocalBounds();
 
             // FIX 1: Ensure background is painted with fully opaque solid color
             // so no underlying window content bleeds through the menu body or border.
@@ -124,7 +123,7 @@ namespace UltraCanvas {
                 ctx->PushState();
                 auto sbB = menuScrollbar->GetBounds();
                 ctx->Translate(Point2Di(sbB.x, sbB.y));
-                menuScrollbar->Render(ctx);
+                menuScrollbar->Render(ctx, dirtyRect);
                 ctx->PopState();
             }
         }
@@ -742,7 +741,7 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::RenderShadow(IRenderContext *ctx) {
         // Draw in element-local coordinates (ctx is translated to element origin)
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
         ctx->SetStrokePaint(style.shadowColor);
         ctx->DrawRectangle(Rect2Df(style.shadowOffset.x, style.shadowOffset.y, bounds.width,
                            bounds.height));

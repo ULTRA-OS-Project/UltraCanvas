@@ -93,7 +93,7 @@ namespace UltraCanvas {
 //        return ImageFormat::Unknown;
 //    }
 
-    void UltraCanvasImageElement::Render(IRenderContext* ctx) {
+    void UltraCanvasImageElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible() || bounds.width == 0 || bounds.height == 0) return;
 
         ctx->PushState();
@@ -233,12 +233,12 @@ namespace UltraCanvas {
         // Draw the image using unified rendering (element-local bounds)
         if (loadedImage->IsValid()) {
             // Load from file path
-            ctx->DrawImage(*loadedImage.get(), GetElementLocalBounds(), fitMode);
+            ctx->DrawImage(*loadedImage.get(), GetLocalBounds(), fitMode);
         } else {
             // For memory-loaded images, we'd need to save to a temporary file
             // or extend the rendering interface to support raw data
             // For now, draw a placeholder
-            DrawImagePlaceholder(GetElementLocalBounds(), "IMG");
+            DrawImagePlaceholder(GetLocalBounds(), "IMG");
         }
 
         if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
@@ -247,14 +247,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageElement::DrawErrorPlaceholder(IRenderContext *ctx) {
-        DrawImagePlaceholder(GetElementLocalBounds(), "ERR", errorColor);
+        DrawImagePlaceholder(GetLocalBounds(), "ERR", errorColor);
 
         // Draw error message (element-local coordinates)
         if (!loadedImage->errorMessage.empty()) {
             ctx->SetTextPaint(Colors::Red);
             ctx->SetFontStyle({.fontSize=10});
 
-            Rect2Df textRect = GetElementLocalBounds();
+            Rect2Df textRect = GetLocalBounds();
             textRect.y += static_cast<double>(GetHeight()) / 2.0f + 10;
             textRect.height = 20;
 
@@ -263,7 +263,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageElement::DrawLoadingPlaceholder(IRenderContext *ctx) {
-        DrawImagePlaceholder(GetElementLocalBounds(), "...", Color(220, 220, 220));
+        DrawImagePlaceholder(GetLocalBounds(), "...", Color(220, 220, 220));
     }
 
     void

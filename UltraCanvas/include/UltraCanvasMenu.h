@@ -8,8 +8,6 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
-//#include "UltraCanvasKeyboardManager.h"
-//#include "UltraCanvasZOrderManager.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasScrollbar.h"
 #include <vector>
@@ -235,7 +233,7 @@ namespace UltraCanvas {
         }
 
         // ===== CORE RENDERING =====
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====

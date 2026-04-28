@@ -13,17 +13,17 @@
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSliderExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("SliderExamples", 400, 0, 0, 1000, 1400);
+        auto container = std::make_shared<UltraCanvasContainer>("SliderExamples", 0, 0, 1000, 1400);
         container->SetPadding(0,0,10,0);
 
-        auto title = std::make_shared<UltraCanvasLabel>("SliderTitle", 401, 20, 10, 300, 30);
+        auto title = CreateLabel("SliderTitle", 20, 10, 300, 30);
         title->SetText("Simple Slider Examples");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
         // Horizontal Slider
-        auto hSlider = std::make_shared<UltraCanvasSlider>("HorizontalSlider", 402, 20, 60, 300, 20);
+        auto hSlider = CreateSlider("HorizontalSlider", 20, 60, 300, 20);
         hSlider->SetOrientation(SliderOrientation::Horizontal);
         hSlider->SetRange(0.0f, 100.0f);
         hSlider->SetValue(50.0f);
@@ -31,13 +31,13 @@ namespace UltraCanvas {
 //        hSlider->SetShowTicks(true);
         container->AddChild(hSlider);
 
-        auto hSliderLabel = std::make_shared<UltraCanvasLabel>("HSliderLabel", 403, 20, 85, 200, 20);
+        auto hSliderLabel = CreateLabel("HSliderLabel", 20, 85, 200, 20);
         hSliderLabel->SetText("Horizontal Slider (0-100)");
         hSliderLabel->SetFontSize(12);
         container->AddChild(hSliderLabel);
 
         // Value display for horizontal slider
-        auto hValueLabel = std::make_shared<UltraCanvasLabel>("HValueLabel", 404, 340, 60, 80, 20);
+        auto hValueLabel = CreateLabel("HValueLabel", 340, 60, 80, 20);
         hValueLabel->SetText("50");
         hValueLabel->SetAlignment(TextAlignment::Center);
         hValueLabel->SetBackgroundColor(Color(240, 240, 240, 255));
@@ -48,19 +48,19 @@ namespace UltraCanvas {
         };
 
         // Vertical Slider
-        auto vSlider = std::make_shared<UltraCanvasSlider>("VerticalSlider", 405, 500, 50, 20, 200);
+        auto vSlider = CreateSlider("VerticalSlider", 500, 50, 20, 200);
         vSlider->SetOrientation(SliderOrientation::Vertical);
         vSlider->SetRange(0.0f, 10.0f);
         vSlider->SetValue(5.0f);
         vSlider->SetStep(0.5f);
         container->AddChild(vSlider);
 
-        auto vSliderLabel = std::make_shared<UltraCanvasLabel>("VSliderLabel", 406, 530, 50, 150, 20);
+        auto vSliderLabel = CreateLabel("VSliderLabel", 530, 50, 150, 20);
         vSliderLabel->SetText("Vertical Slider");
         vSliderLabel->SetFontSize(12);
         container->AddChild(vSliderLabel);
 
-        auto rangeSlidersContainer = std::make_shared<UltraCanvasContainer>("RangeSliderDemos", 5000, 0, 260, 1000, 1050);
+        auto rangeSlidersContainer = std::make_shared<UltraCanvasContainer>("RangeSliderDemos", 0, 260, 1000, 1050);
         //rangeSlidersContainer->SetBackgroundColor(Color(245, 245, 245));
 
         int yPos = 20;
@@ -68,7 +68,7 @@ namespace UltraCanvas {
         int labelX = 450;
 
         // ===== TITLE =====
-        auto rangeTitle = std::make_shared<UltraCanvasLabel>("Title", 5001, 20, yPos, 600, 40);
+        auto rangeTitle = CreateLabel("Title", 20, yPos, 600, 40);
         rangeTitle->SetText("Range Slider Demonstrations");
         rangeTitle->SetFontSize(18);
         rangeTitle->SetFontWeight(FontWeight::Bold);
@@ -76,26 +76,26 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 1: PRICE RANGE SLIDER =====
-        auto priceLabel = std::make_shared<UltraCanvasLabel>("PriceLabel", 5002, 20, yPos, 300, 25);
+        auto priceLabel = CreateLabel("PriceLabel", 20, yPos, 300, 25);
         priceLabel->SetText("Price Range Selector ($0 - $1000)");
         priceLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(priceLabel);
         yPos += 35;
 
-        auto priceRange = CreateRangeSlider("priceRange", 5003, 20, yPos, sliderWidth, 30,
+        auto priceRange = CreateRangeSlider("priceRange", 20, yPos, sliderWidth, 50,
                                             0.0f, 1000.0f, 200.0f, 800.0f);
         priceRange->SetValueDisplay(SliderValueDisplay::AlwaysVisible);
         priceRange->SetValueFormat("$%.0f");
         priceRange->SetHandleCollisionMargin(50.0f);
 
         // Price range display labels
-        auto priceLowerLabel = std::make_shared<UltraCanvasLabel>("PriceLower", 5004, labelX, yPos, 150, 25);
+        auto priceLowerLabel = CreateLabel("PriceLower", labelX, yPos, 150, 25);
         priceLowerLabel->SetText("Min: $200");
         priceLowerLabel->SetBackgroundColor(Color(220, 240, 255));
         priceLowerLabel->SetPadding(3);
         rangeSlidersContainer->AddChild(priceLowerLabel);
 
-        auto priceUpperLabel = std::make_shared<UltraCanvasLabel>("PriceUpper", 5005, labelX + 160, yPos, 150, 25);
+        auto priceUpperLabel = CreateLabel("PriceUpper", labelX + 160, yPos, 150, 25);
         priceUpperLabel->SetText("Max: $800");
         priceUpperLabel->SetBackgroundColor(Color(220, 240, 255));
         priceUpperLabel->SetPadding(3);
@@ -117,20 +117,20 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 2: AGE RANGE SELECTOR =====
-        auto ageLabel = std::make_shared<UltraCanvasLabel>("AgeLabel", 5006, 20, yPos, 300, 25);
+        auto ageLabel = CreateLabel("AgeLabel", 20, yPos, 300, 25);
         ageLabel->SetText("Age Range Filter (18 - 100 years)");
         ageLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(ageLabel);
         yPos += 35;
 
-        auto ageRange = CreateRangeSlider("ageRange", 5007, 20, yPos, sliderWidth, 30,
+        auto ageRange = CreateRangeSlider("ageRange", 20, yPos, sliderWidth, 30,
                                           18.0f, 100.0f, 25.0f, 65.0f);
         ageRange->SetValueDisplay(SliderValueDisplay::Number);
         ageRange->SetValueFormat("%.0f");
         ageRange->SetStep(1.0f);
         ageRange->SetHandleCollisionMargin(1.0f);
 
-        auto ageDisplay = std::make_shared<UltraCanvasLabel>("AgeDisplay", 5008, labelX, yPos, 300, 25);
+        auto ageDisplay = CreateLabel("AgeDisplay", labelX, yPos, 300, 25);
         ageDisplay->SetText("Age Range: 25 - 65 years");
         ageDisplay->SetBackgroundColor(Color(255, 240, 220));
         ageDisplay->SetPadding(3);
@@ -146,19 +146,19 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 3: PERCENTAGE RANGE (0-100%) =====
-        auto percentLabel = std::make_shared<UltraCanvasLabel>("PercentLabel", 5009, 20, yPos, 300, 25);
+        auto percentLabel = CreateLabel("PercentLabel", 20, yPos, 300, 25);
         percentLabel->SetText("Percentage Range (0% - 100%)");
         percentLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(percentLabel);
         yPos += 35;
 
-        auto percentRange = CreateRangeSlider("percentRange", 5010, 20, yPos, sliderWidth, 30,
+        auto percentRange = CreateRangeSlider("percentRange", 20, yPos, sliderWidth, 30,
                                               0.0f, 100.0f, 30.0f, 70.0f);
         percentRange->SetValueDisplay(SliderValueDisplay::Percentage);
         percentRange->SetStep(5.0f);
         percentRange->SetHandleShape(SliderHandleShape::Square);
 
-        auto percentDisplay = std::make_shared<UltraCanvasLabel>("PercentDisplay", 5011, labelX, yPos, 300, 25);
+        auto percentDisplay = CreateLabel("PercentDisplay", labelX, yPos, 300, 25);
         percentDisplay->SetText("Range: 30% - 70%");
         percentDisplay->SetBackgroundColor(Color(240, 255, 220));
         percentDisplay->SetPadding(3);
@@ -174,13 +174,13 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 4: TEMPERATURE RANGE (-50°C to +50°C) =====
-        auto tempLabel = std::make_shared<UltraCanvasLabel>("TempLabel", 5012, 20, yPos, 300, 25);
+        auto tempLabel = CreateLabel("TempLabel", 20, yPos, 300, 25);
         tempLabel->SetText("Temperature Range (-50°C to +50°C)");
         tempLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(tempLabel);
         yPos += 35;
 
-        auto tempRange = CreateRangeSlider("tempRange", 5013, 20, yPos, sliderWidth, 30,
+        auto tempRange = CreateRangeSlider("tempRange", 20, yPos, sliderWidth, 30,
                                            -50.0f, 50.0f, 10.0f, 30.0f);
         tempRange->SetValueDisplay(SliderValueDisplay::AlwaysVisible);
         tempRange->SetValueFormat("%.1f°C");
@@ -191,7 +191,7 @@ namespace UltraCanvas {
         tempStyle.rangeTrackColor = Color(255, 150, 100, 180);  // Warm orange
         tempStyle.activeTrackColor = Color(255, 100, 50);
 
-        auto tempDisplay = std::make_shared<UltraCanvasLabel>("TempDisplay", 5014, labelX, yPos, 300, 25);
+        auto tempDisplay = CreateLabel("TempDisplay", labelX, yPos, 300, 25);
         tempDisplay->SetText("Temp: 10.0°C - 30.0°C");
         tempDisplay->SetBackgroundColor(Color(255, 220, 220));
         tempDisplay->SetPadding(3);
@@ -207,19 +207,19 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 5: TIME RANGE (24-hour format) =====
-        auto timeLabel = std::make_shared<UltraCanvasLabel>("TimeLabel", 5015, 20, yPos, 300, 25);
+        auto timeLabel = CreateLabel("TimeLabel", 20, yPos, 300, 25);
         timeLabel->SetText("Time Range Selector (0:00 - 24:00)");
         timeLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(timeLabel);
         yPos += 35;
 
-        auto timeRange = CreateRangeSlider("timeRange", 5016, 20, yPos, sliderWidth, 30,
+        auto timeRange = CreateRangeSlider("timeRange", 20, yPos, sliderWidth, 30,
                                            0.0f, 24.0f, 9.0f, 17.0f);
         timeRange->SetValueDisplay(SliderValueDisplay::NoDisplay);
         timeRange->SetStep(0.5f);  // 30-minute increments
         timeRange->SetHandleShape(SliderHandleShape::Triangle);
 
-        auto timeDisplay = std::make_shared<UltraCanvasLabel>("TimeDisplay", 5017, labelX, yPos, 300, 25);
+        auto timeDisplay = CreateLabel("TimeDisplay", labelX, yPos, 300, 25);
         timeDisplay->SetText("Work Hours: 09:00 - 17:00");
         timeDisplay->SetBackgroundColor(Color(220, 220, 255));
         timeDisplay->SetPadding(3);
@@ -243,13 +243,13 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 6: VERTICAL VOLUME RANGE =====
-        auto volumeLabel = std::make_shared<UltraCanvasLabel>("VolumeLabel", 5018, 20, yPos, 300, 25);
+        auto volumeLabel = CreateLabel("VolumeLabel", 20, yPos, 300, 25);
         volumeLabel->SetText("Vertical Volume Range (0-100)");
         volumeLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(volumeLabel);
         yPos += 20;
 
-        auto volumeRange = CreateRangeSlider("volumeRange", 5019, 50, yPos, 40, 200,
+        auto volumeRange = CreateRangeSlider("volumeRange",  50, yPos, 40, 200,
                                              0.0f, 100.0f, 30.0f, 80.0f);
         volumeRange->SetOrientation(SliderOrientation::Vertical);
         volumeRange->SetRangeMode(true);
@@ -262,7 +262,7 @@ namespace UltraCanvas {
         volumeStyle.trackHeight = 8.0f;
         volumeStyle.handleSize = 20.0f;
 
-        auto volumeDisplay = std::make_shared<UltraCanvasLabel>("VolumeDisplay", 5020, 100, yPos + 80, 250, 25);
+        auto volumeDisplay = CreateLabel("VolumeDisplay", 100, yPos + 80, 250, 25);
         volumeDisplay->SetText("Volume Range: 30 - 80");
         volumeDisplay->SetBackgroundColor(Color(220, 255, 220));
         volumeDisplay->SetPadding(3);
@@ -278,19 +278,19 @@ namespace UltraCanvas {
         yPos += 220;
 
         // ===== EXAMPLE 7: DATE RANGE (Days 1-31) =====
-        auto dateLabel = std::make_shared<UltraCanvasLabel>("DateLabel", 5021, 20, yPos, 300, 25);
+        auto dateLabel = CreateLabel("DateLabel", 20, yPos, 300, 25);
         dateLabel->SetText("Date Range Selector (Days 1-31)");
         dateLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(dateLabel);
         yPos += 35;
 
-        auto dateRange = CreateRangeSlider("dateRange", 5022, 20, yPos, sliderWidth, 30,
+        auto dateRange = CreateRangeSlider("dateRange", 20, yPos, sliderWidth, 30,
                                            1.0f, 31.0f, 5.0f, 25.0f);
         dateRange->SetValueDisplay(SliderValueDisplay::AlwaysVisible);
         dateRange->SetValueFormat("Day %.0f");
         dateRange->SetStep(1.0f);
 
-        auto dateDisplay = std::make_shared<UltraCanvasLabel>("DateDisplay", 5023, labelX, yPos, 300, 25);
+        auto dateDisplay = CreateLabel("DateDisplay", labelX, yPos, 300, 25);
         dateDisplay->SetText("Selected: Day 5 - Day 25");
         dateDisplay->SetBackgroundColor(Color(255, 240, 255));
         dateDisplay->SetPadding(3);
@@ -306,13 +306,13 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== EXAMPLE 8: ROUNDED STYLE RANGE SLIDER =====
-        auto roundedLabel = std::make_shared<UltraCanvasLabel>("RoundedLabel", 5024, 20, yPos, 300, 25);
+        auto roundedLabel = CreateLabel("RoundedLabel", 20, yPos, 300, 25);
         roundedLabel->SetText("Diamond Style handle");
         roundedLabel->SetFontWeight(FontWeight::Bold);
         rangeSlidersContainer->AddChild(roundedLabel);
         yPos += 35;
 
-        auto roundedRange = CreateRangeSlider("roundedRange", 5025, 20, yPos, sliderWidth, 30,
+        auto roundedRange = CreateRangeSlider("roundedRange", 20, yPos, sliderWidth, 30,
                                               0.0f, 100.0f, 25.0f, 75.0f);
         roundedRange->SetValueDisplay(SliderValueDisplay::Number);
         roundedRange->SetStep(1.0f);
@@ -329,7 +329,7 @@ namespace UltraCanvas {
         roundedStyle.handleShape = SliderHandleShape::Diamond;
         roundedRange->SetStyle(roundedStyle);
 
-        auto roundedDisplay = std::make_shared<UltraCanvasLabel>("RoundedDisplay", 5026, labelX, yPos, 300, 25);
+        auto roundedDisplay = CreateLabel("RoundedDisplay", labelX, yPos, 300, 25);
         roundedDisplay->SetText("Range: 25 - 75");
         roundedDisplay->SetBackgroundColor(Color(240, 240, 255));
         roundedDisplay->SetPadding(3);
@@ -345,7 +345,7 @@ namespace UltraCanvas {
         yPos += 60;
 
         // ===== INSTRUCTIONS LABEL =====
-        auto instructionsLabel = std::make_shared<UltraCanvasLabel>("Instructions", 5027, 20, yPos, 700, 60);
+        auto instructionsLabel = CreateLabel("Instructions", 20, yPos, 700, 60);
         instructionsLabel->SetText(
                 "Instructions:\n"
                 "• Drag handles to adjust range\n"

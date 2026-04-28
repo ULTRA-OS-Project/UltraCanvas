@@ -358,11 +358,11 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTreeView::Render(IRenderContext *ctx) {
+    void UltraCanvasTreeView::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
         // Draw background / border
-        UltraCanvasUIElement::Render(ctx);
+        UltraCanvasUIElement::Render(ctx, dirtyRect);
         // Build local-space content rect (ctx is translated to element origin)
-        Rect2Di contentRect = GetContentRect();
+        Rect2Di contentRect = GetLocalContentRect();
         if (rootNode) {
             int currentY = contentRect.y - scrollOffsetY;
             RenderNode(ctx, rootNode.get(), currentY, 0, contentRect);
@@ -373,7 +373,7 @@ namespace UltraCanvas {
             ctx->PushState();
             auto sbB = verticalScrollbar->GetBounds();
             ctx->Translate(sbB.TopLeft());
-            verticalScrollbar->Render(ctx);
+            verticalScrollbar->Render(ctx, dirtyRect);
             ctx->PopState();
         }
     }

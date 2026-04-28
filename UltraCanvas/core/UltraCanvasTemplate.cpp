@@ -340,7 +340,7 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING =====
-    void UltraCanvasTemplate::Render(IRenderContext* ctx) {
+    void UltraCanvasTemplate::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // Draw template background
         DrawTemplateBackground();
 
@@ -362,7 +362,7 @@ namespace UltraCanvas {
         }
 
         // Render container children (the template elements)
-        UltraCanvasContainer::Render(IRenderContext* ctx);
+        UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
 
         // Restore clipping
         if (scrollSettings.horizontal != TemplateScrollMode::Off ||

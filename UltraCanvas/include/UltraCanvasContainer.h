@@ -54,8 +54,14 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
+        UltraCanvasContainer(const std::string &id, long x, long y, long w, long h)
+                : UltraCanvasUIElement(id, x, y, w, h) {
+//            UpdateLayout();
+            CreateScrollbars();
+        }
+
         UltraCanvasContainer(const std::string &id, long uid, long x, long y, long w, long h)
-                : UltraCanvasUIElement(id, uid, x, y, w, h) {
+                : UltraCanvasUIElement(id, x, y, w, h) {
 //            UpdateLayout();
             CreateScrollbars();
         }
@@ -127,7 +133,7 @@ namespace UltraCanvas {
         bool IsLayoutDirty() const { return layoutDirty; }
 
         // ===== OVERRIDDEN ELEMENT METHODS =====
-        void Render(IRenderContext *ctx) override;
+        void Render(IRenderContext *ctx, const Rect2Di &dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
 
         bool OnEvent(const UCEvent &event) override;
@@ -164,7 +170,7 @@ namespace UltraCanvas {
         void ApplyStyleToScrollbars();
 
         // ===== RENDERING HELPERS =====
-        void RenderScrollbars(IRenderContext *ctx);
+        void RenderScrollbars(IRenderContext *ctx, const Rect2Di& dirtyRect);
         void RenderCorner(IRenderContext *ctx);
 
         void SortChildrenByZOrder();

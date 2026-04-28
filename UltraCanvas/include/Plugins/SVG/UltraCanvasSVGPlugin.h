@@ -193,7 +193,7 @@ namespace UltraCanvas {
         SVGElementRenderer(const SVGDocument& doc, IRenderContext* ctx);
         ~SVGElementRenderer();
 
-        void Render(IRenderContext* ctx);
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
         void RenderElement(tinyxml2::XMLElement* elem);
 
     private:
@@ -247,7 +247,7 @@ namespace UltraCanvas {
         bool LoadFromFile(const std::string& filepath);
         bool LoadFromString(const std::string& svgContent);
 
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
 
         void SetScale(float scale) { this->scale = scale; }
         float GetScale() const { return scale; }

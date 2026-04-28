@@ -92,8 +92,8 @@ public:
     }
 
     // Fixed: Render method instead of Update
-    virtual void Render(IRenderContext* ctx) override {
-        UltraCanvasWindow::Render(IRenderContext* ctx);
+    virtual void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
+        UltraCanvasWindow::Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
         if (isAnimating) {
             currentTime += animationSpeed * 0.016f; // Assume ~60 FPS
 

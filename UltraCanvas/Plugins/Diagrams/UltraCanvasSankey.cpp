@@ -137,7 +137,7 @@ namespace UltraCanvas {
         std::ofstream file(filePath);
         if (!file.is_open()) return false;
 
-        auto bounds = GetElementLocalBounds();
+        auto bounds = GetLocalBounds();
         file << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
         file << "<svg xmlns=\"http://www.w3.org/2000/svg\" ";
         file << "width=\"" << bounds.width << "\" ";
@@ -235,10 +235,10 @@ namespace UltraCanvas {
         needsLayout = false;
     }
 
-    void UltraCanvasSankeyDiagram::Render(IRenderContext* ctx) {
+    void UltraCanvasSankeyDiagram::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible()) return;
 
-        auto bounds = GetElementLocalBounds();
+        auto bounds = GetLocalBounds();
 
         if (needsLayout) {
             PerformLayout();
@@ -403,7 +403,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSankeyDiagram::ComputeNodeBreadths() {
-        auto bounds = GetElementLocalBounds();
+        auto bounds = GetLocalBounds();
 
         // Find max depth
         int maxDepth = 0;
@@ -634,7 +634,7 @@ namespace UltraCanvas {
 
                 if (weightSum > 0) {
                     float newY = targetY / weightSum - node.height / 2.0f;
-                    auto bounds = GetElementLocalBounds();
+                    auto bounds = GetLocalBounds();
                     node.y = std::clamp(newY,
                                         bounds.y + nodePadding,
                                         bounds.y + bounds.height - node.height - nodePadding);
@@ -680,7 +680,7 @@ namespace UltraCanvas {
 
                 if (weightSum > 0) {
                     float newY = targetY / weightSum - node.height / 2.0f;
-                    auto bounds = GetElementLocalBounds();
+                    auto bounds = GetLocalBounds();
                     node.y = std::clamp(newY,
                                         bounds.y + nodePadding,
                                         bounds.y + bounds.height - node.height - nodePadding);
@@ -714,7 +714,7 @@ namespace UltraCanvas {
         }
 
         // Ensure nodes stay within bounds
-        auto bounds = GetElementLocalBounds();
+        auto bounds = GetLocalBounds();
         float maxY = bounds.y + bounds.height - nodePadding;
 
         for (auto it = sortedIds.rbegin(); it != sortedIds.rend(); ++it) {
@@ -822,7 +822,7 @@ namespace UltraCanvas {
             auto nodeIt = nodes.find(draggedNodeId);
             if (nodeIt != nodes.end()) {
                 nodeIt->second.y = mousePos.y - dragOffset.y;
-                auto bounds = GetElementLocalBounds();
+                auto bounds = GetLocalBounds();
                 nodeIt->second.y = std::clamp(nodeIt->second.y,
                                               bounds.y + nodePadding,
                                               bounds.y + bounds.height - nodeIt->second.height - nodePadding);

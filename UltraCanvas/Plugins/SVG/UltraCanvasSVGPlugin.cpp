@@ -920,7 +920,7 @@ namespace UltraCanvas {
 
     SVGElementRenderer::~SVGElementRenderer() {}
 
-    void SVGElementRenderer::Render(IRenderContext* ctx) {
+    void SVGElementRenderer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!document.root) return;
 
         // Set up viewport transformation
@@ -1455,7 +1455,7 @@ namespace UltraCanvas {
         return document->LoadFromString(svgContent);
     }
 
-    void UltraCanvasSVGElement::Render(IRenderContext* context) {
+    void UltraCanvasSVGElement::Render(IRenderContext* context, const Rect2Di& dirtyRect) {
         if (!document || !context) return;
 
         context->PushState();

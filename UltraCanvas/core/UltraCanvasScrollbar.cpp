@@ -86,11 +86,11 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasScrollbar::Render(IRenderContext *ctx) {
+    void UltraCanvasScrollbar::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
         if (!ctx || !ShouldBeVisible()) return;
 
         if (layoutDirty) {
-            Rect2Di bounds = GetElementLocalBounds();
+            Rect2Di bounds = GetLocalBounds();
 
             if (IsVertical()) {
                 UpdateVerticalLayout(bounds);

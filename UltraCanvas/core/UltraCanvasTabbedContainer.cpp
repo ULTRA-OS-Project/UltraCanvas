@@ -394,7 +394,7 @@ namespace UltraCanvas {
         searchAutoComplete->SetItems(items);
     }
 
-    void UltraCanvasTabbedContainer::Render(IRenderContext* ctx) {
+    void UltraCanvasTabbedContainer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // Safety net: UpdateGeometry normally consumes tabbarLayoutDirty,
         // but something may invalidate between UpdateGeometry and Render in
         // the same frame (e.g. scrollbar visibility toggles). Re-run the
@@ -412,7 +412,7 @@ namespace UltraCanvas {
 
         ctx->PushState();
         // ctx is already translated to element origin by the parent container.
-        RenderContentArea(ctx);
+        RenderContentArea(ctx, dirtyRect);
         RenderTabBar(ctx);
         ctx->PopState();
 
@@ -423,7 +423,7 @@ namespace UltraCanvas {
              ctx->PopState();
          }
 
-        //UltraCanvasContainer::Render(ctx);
+        //UltraCanvasContainer::Render(ctx, dirtyRect);
     }
 
     void UltraCanvasTabbedContainer::RenderTabBar(IRenderContext *ctx) {
@@ -638,7 +638,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasTabbedContainer::RenderContentArea(IRenderContext *ctx) {
+    void UltraCanvasTabbedContainer::RenderContentArea(IRenderContext *ctx, const Rect2Di& dirtyRect) {
 
         ctx->PushState();
         Rect2Di contentBounds = GetContentAreaBounds();
@@ -666,7 +666,7 @@ namespace UltraCanvas {
                 ctx->PushState();
                 auto cb = content->GetBounds();
                 ctx->Translate(Point2Di(cb.x, cb.y));
-                content->Render(ctx);
+                content->Render(ctx, dirtyRect);
                 ctx->PopState();
             }
         }

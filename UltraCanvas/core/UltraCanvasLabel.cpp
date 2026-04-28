@@ -265,10 +265,10 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasLabel::Render(IRenderContext *ctx) {
+    void UltraCanvasLabel::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
         UpdateGeometry(ctx);
 
-        UltraCanvasUIElement::Render(ctx);
+        UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         if (!text.empty()) {
             // Element-local content rect: ctx is already translated to element origin

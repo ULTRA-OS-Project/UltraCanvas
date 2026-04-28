@@ -1814,7 +1814,7 @@ namespace UltraCanvas {
         ctx->DrawText(message, Point2Di(bounds.x + 10, bounds.y + bounds.height / 2));
     }
 
-    void UltraCanvasCDRElement::Render(IRenderContext* ctx) {
+    void UltraCanvasCDRElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible()) return;
 
         ctx->PushState();

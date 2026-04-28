@@ -218,7 +218,7 @@ namespace UltraCanvas {
         std::function<void()> onHoverLeave;
 
         // ===== OVERRIDES =====
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
         void UpdateGeometry(IRenderContext *ctx) override;
 
         bool OnEvent(const UCEvent& event) override;

@@ -253,7 +253,7 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING METHODS =====
-    void UltraCanvasPopulationChart::Render(IRenderContext* ctx) {
+    void UltraCanvasPopulationChart::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible()) {
             return;
         }

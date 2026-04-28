@@ -620,7 +620,7 @@ namespace UltraCanvas {
 
     // ===== RENDERING =====
 
-    void UltraCanvasDropdown::Render(IRenderContext* ctx) {
+    void UltraCanvasDropdown::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         RenderButton(ctx);
     }
 
@@ -646,7 +646,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDropdown::RenderButton(IRenderContext *ctx) {
-        Rect2Di buttonRect = GetElementLocalBounds();
+        Rect2Di buttonRect = GetLocalBounds();
 
         // Determine button state colors
         Color bgColor = style.normalColor;
@@ -765,7 +765,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasDropdown::HandleMouseDown(const UCEvent &event) {
-        Rect2Di buttonRect = GetElementLocalBounds();
+        Rect2Di buttonRect = GetLocalBounds();
 
         if (buttonRect.Contains(event.pointer)) {
             buttonPressed = true;
@@ -786,7 +786,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasDropdown::HandleMouseMove(const UCEvent &event) {
-        Rect2Di buttonRect = GetElementLocalBounds();
+        Rect2Di buttonRect = GetLocalBounds();
         if (buttonRect.Contains(event.pointer)) {
             SetMouseCursor(UCMouseCursor::ContextMenu);
         } else {

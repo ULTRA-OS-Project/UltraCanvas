@@ -232,9 +232,9 @@ namespace UltraCanvas {
 
     // ===== RENDERING =====
 
-    void UltraCanvasListView::Render(IRenderContext* ctx) {
+    void UltraCanvasListView::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // Draw background and border
-        UltraCanvasUIElement::Render(ctx);
+        UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         // Element-local content rect (ctx is translated to element origin)
         int localContentX = GetBorderLeftWidth() + padding.left;
@@ -260,7 +260,7 @@ namespace UltraCanvas {
             ctx->PushState();
             auto sbB = verticalScrollbar->GetBounds();
             ctx->Translate(Point2Di(sbB.x, sbB.y));
-            verticalScrollbar->Render(ctx);
+            verticalScrollbar->Render(ctx, dirtyRect);
             ctx->PopState();
         }
     }

@@ -229,8 +229,8 @@ public:
     public:
         ClipboardDemoWindow(ClipboardDemoApp* demoApp) : app(demoApp) {}
         
-        void Render(IRenderContext* ctx) override {
-            UltraCanvasWindow::Render(IRenderContext* ctx); // Render base window and elements
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
+            UltraCanvasWindow::Render(IRenderContext* ctx, const Rect2Di& dirtyRect); // Render base window and elements
             if (app) {
                 app->DrawCustomUI(); // Draw custom overlay
             }

@@ -125,8 +125,8 @@ namespace UltraCanvas {
         return unmet;
     }
 
-    void UltraCanvasPasswordRuleLegend::Render(IRenderContext* ctx) {
-        Rect2Di bounds = GetElementLocalBounds();
+    void UltraCanvasPasswordRuleLegend::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+        Rect2Di bounds = GetLocalBounds();
 
         // Update from linked input if connected
         if (linkedInput) {
@@ -143,7 +143,7 @@ namespace UltraCanvas {
         }
 
         // Draw background
-        UltraCanvasUIElement::Render(ctx);
+        UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         // Render based on style
         switch (config.style) {

@@ -287,7 +287,7 @@ namespace UltraCanvas {
         }
 
         // Regular button layout calculation
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
         int contentX = bounds.x + padding.left;
         int contentY = bounds.y + padding.top;
         int contentWidth = bounds.width - padding.left - padding.right;
@@ -342,7 +342,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasButton::CalculateSplitLayout() {
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
         const SplitButtonStyle& split = style.splitStyle;
 
         if (split.horizontal) {
@@ -646,7 +646,7 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::DrawSplitButton(IRenderContext* ctx) {
         const SplitButtonStyle& split = style.splitStyle;
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
         bounds.width -= style.shadowOffset.x;
         bounds.height -= style.shadowOffset.y;
 
@@ -789,7 +789,7 @@ namespace UltraCanvas {
     }
 
 // ===== MAIN RENDER METHOD =====
-    void UltraCanvasButton::Render(IRenderContext* ctx) {
+    void UltraCanvasButton::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (style.splitStyle.enabled) {
             DrawSplitButton(ctx);
         } else {
@@ -797,7 +797,7 @@ namespace UltraCanvas {
             Color bgColor, textColor;
             GetCurrentColors(bgColor, textColor);
 
-            Rect2Di bounds = GetElementLocalBounds();
+            Rect2Di bounds = GetLocalBounds();
             bounds.width -= style.shadowOffset.x;
             bounds.height -= style.shadowOffset.y;
 

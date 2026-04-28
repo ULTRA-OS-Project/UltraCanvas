@@ -16,7 +16,7 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasChartElementBase::Render(IRenderContext* ctx) {
+    void UltraCanvasChartElementBase::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // Check if we have data
         if (!dataSource || dataSource->GetPointCount() == 0) {
             DrawEmptyState(ctx);
@@ -100,7 +100,7 @@ namespace UltraCanvas {
         if (!ctx) return;
 
         // Draw overall background using existing functions
-        ctx->DrawFilledRectangle(GetElementLocalBounds(), backgroundColor);
+        ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
 
         // Draw plot area background using existing functions
         ctx->SetFillPaint(plotAreaColor);
@@ -402,7 +402,7 @@ namespace UltraCanvas {
     void UltraCanvasChartElementBase::DrawEmptyState(IRenderContext* ctx) {
         // Use existing IRenderContext functions
         ctx->SetFillPaint(Color(240, 240, 240, 255));
-        ctx->FillRectangle(GetElementLocalBounds());
+        ctx->FillRectangle(GetLocalBounds());
 
         ctx->SetTextPaint(Color(128, 128, 128, 255));
         ctx->SetFontSize(14.0f);

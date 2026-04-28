@@ -999,7 +999,7 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING METHODS =====
-    void UltraCanvasTextArea::Render(IRenderContext* ctx) {
+    void UltraCanvasTextArea::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // UpdateGeometry runs CalculateVisibleArea + UpdateLineLayouts. It's idempotent
         // if layouts are already built; calling here guards against frames where the framework
         // skipped the geometry pass.
@@ -1049,7 +1049,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::DrawBorder(IRenderContext* context) {
-        auto bounds = GetElementLocalBounds();
+        auto bounds = GetLocalBounds();
         if (style.borderWidth > 0) {
             context->DrawFilledRectangle(bounds, Colors::Transparent, style.borderWidth, style.borderColor);
         }
@@ -1059,7 +1059,7 @@ namespace UltraCanvas {
     // RenderLineLayout driven from Render().
 
     void UltraCanvasTextArea::DrawLineNumbers(IRenderContext* context) {
-        auto bounds = GetElementLocalBounds();
+        auto bounds = GetLocalBounds();
         int gutterW = computedLineNumbersWidth;
 
         context->SetFillPaint(style.lineNumbersBackgroundColor);
@@ -1112,7 +1112,7 @@ namespace UltraCanvas {
     // attribute inside each line's ITextLayout (applied in ApplyLineSelectionBackground).
 
     void UltraCanvasTextArea::DrawBackground(IRenderContext* context) {
-        auto bounds = GetElementLocalBounds();
+        auto bounds = GetLocalBounds();
         context->SetFillPaint(style.backgroundColor);
         context->FillRectangle(bounds);
 
@@ -1148,7 +1148,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::DrawScrollbars(IRenderContext* context) {
-        auto bounds = GetElementLocalBounds();
+        auto bounds = GetLocalBounds();
 
         if (IsNeedVerticalScrollbar()) {
             int scrollbarX = bounds.x + bounds.width - 15;
@@ -1409,7 +1409,7 @@ namespace UltraCanvas {
     bool UltraCanvasTextArea::HandleMouseMove(const UCEvent& event) {
         // Scrollbar thumb dragging (pixel-based).
         if (isDraggingVerticalThumb) {
-            auto bounds = GetElementLocalBounds();
+            auto bounds = GetLocalBounds();
             int scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
             int thumbHeight = verticalScrollThumb.height;
             int maxThumbY = scrollbarHeight - thumbHeight;
@@ -1437,7 +1437,7 @@ namespace UltraCanvas {
         }
 
         if (isDraggingHorizontalThumb) {
-            auto bounds = GetElementLocalBounds();
+            auto bounds = GetLocalBounds();
             float scrollbarWidth = static_cast<float>(bounds.width - (IsNeedVerticalScrollbar() ? 15 : 0));
             float thumbWidth = static_cast<float>(horizontalScrollThumb.width);
             float maxThumbX = scrollbarWidth - thumbWidth;
@@ -1457,7 +1457,7 @@ namespace UltraCanvas {
 
         // --- Scrollbar hover cursor --- (element-local coordinates)
         if (!isSelectingText) {
-            auto bounds = GetElementLocalBounds();
+            auto bounds = GetLocalBounds();
             if (IsNeedVerticalScrollbar() &&
                 event.pointer.x >= bounds.width - 15 && event.pointer.x <= bounds.width &&
                 event.pointer.y >= 0 && event.pointer.y <= bounds.height) {
@@ -1773,7 +1773,7 @@ namespace UltraCanvas {
         if (!ctx) return;
 
         // visibleTextArea is in element-local space (ctx is translated to element origin)
-        visibleTextArea = GetElementLocalBounds();
+        visibleTextArea = GetLocalBounds();
         visibleTextArea.x += style.padding;
         visibleTextArea.y += style.padding;
         visibleTextArea.width -= style.padding * 2;

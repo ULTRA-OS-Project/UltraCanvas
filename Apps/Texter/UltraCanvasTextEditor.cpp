@@ -3793,7 +3793,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
 // ===== PUBLIC API =====
 
-    void UltraCanvasTextEditor::Render(IRenderContext* ctx) {
+    void UltraCanvasTextEditor::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // Poll for async match count results
         //debugOutput << "UltraCanvasTextEditor::Render" << std::endl;
         if (matchCountReady.load()) {
@@ -3814,7 +3814,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             PerformAutosave();
         }
 
-        UltraCanvasWindow::Render(ctx);
+        UltraCanvasWindow::Render(ctx, dirtyRect);
 
         if (isDragOverActive) {
             RenderDropOverlay(ctx);

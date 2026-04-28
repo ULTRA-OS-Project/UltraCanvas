@@ -182,7 +182,7 @@ namespace UltraCanvas {
         viewTransform = Matrix3x3::Translate(panOffset.x, panOffset.y) * Matrix3x3::Scale(zoomLevel, zoomLevel);
     }
 
-    void UltraCanvasVectorElement::Render(IRenderContext* ctx) {
+    void UltraCanvasVectorElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible()) return;
         auto bounds = GetBounds();
 

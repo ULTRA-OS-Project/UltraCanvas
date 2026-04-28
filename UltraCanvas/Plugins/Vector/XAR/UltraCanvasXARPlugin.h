@@ -820,7 +820,7 @@ namespace UltraCanvas {
         bool LoadFromFile(const std::string& filepath);
         bool LoadFromMemory(const uint8_t* data, size_t size);
 
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
 
         void SetScale(float s) { scale = s; }
         float GetScale() const { return scale; }

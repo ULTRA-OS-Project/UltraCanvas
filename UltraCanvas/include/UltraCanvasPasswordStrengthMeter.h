@@ -114,7 +114,7 @@ namespace UltraCanvas {
 
     protected:
         // ===== CORE RENDERING =====
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
 
     private:
         // ===== STRENGTH CALCULATION =====

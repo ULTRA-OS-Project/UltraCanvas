@@ -575,7 +575,7 @@ namespace UltraCanvas {
         void HandleOverflow();
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
 
         // ===== AUTO-HIDE =====

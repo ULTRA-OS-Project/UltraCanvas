@@ -374,10 +374,10 @@ namespace UltraCanvas {
 
 // ===== RENDERING =====
 
-    void UltraCanvasNewDocumentDialog::Render(IRenderContext* ctx) {
+    void UltraCanvasNewDocumentDialog::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         ctx->PushState();
 
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
 
         // Shadow (element-local)
         ctx->SetFillPaint(Color(0, 0, 0, 40));
@@ -397,7 +397,7 @@ namespace UltraCanvas {
         RenderFileNameInput(ctx);
         RenderButtons(ctx);
 
-        UltraCanvasContainer::Render(ctx);
+        UltraCanvasContainer::Render(ctx, dirtyRect);
         ctx->PopState();
     }
 

@@ -49,16 +49,35 @@ namespace UltraCanvas {
         return pos;
     }
 
-    void UltraCanvasUIElement::RequestRedraw() {
-        needsRedraw = true;
-        if (!window || this == window) return;
+    void UltraCanvasUIElement::Invalidate(const Rect2Di& localRect) {
+        if (!window || localRect.width <= 0 || localRect.height <= 0) return;
+
+        // Walk up looking for a popup ancestor; popups own their own dirty
+        // queue so they can be re-rendered into their offscreen surface
+        // independently of the main window content.
+        UltraCanvasUIElement* popupAncestor = nullptr;
         for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->parentContainer) {
-            if (cur->isPopup) {
-                window->RequestPopupRedraw();
-                return;
-            }
+            if (cur->isPopup) { popupAncestor = cur; break; }
         }
-        window->RequestWindowRedraw();
+
+        Point2Di posInWindow = GetPositionInWindow();
+
+        if (popupAncestor) {
+            Point2Di popupPosInWindow = popupAncestor->GetPositionInWindow();
+            Rect2Di rectInPopup(localRect.x + posInWindow.x - popupPosInWindow.x,
+                                localRect.y + posInWindow.y - popupPosInWindow.y,
+                                localRect.width, localRect.height);
+            window->AddPopupDirtyRect(popupAncestor, rectInPopup);
+        } else {
+            Rect2Di rectInWindow(localRect.x + posInWindow.x,
+                                 localRect.y + posInWindow.y,
+                                 localRect.width, localRect.height);
+            window->AddDirtyRectangle(rectInWindow);
+        }
+    }
+
+    void UltraCanvasUIElement::RequestRedraw() {
+        Invalidate(GetLocalBounds());
     }
 
     void UltraCanvasUIElement::RequestUpdateGeometry() {
@@ -112,8 +131,8 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasUIElement::Render(IRenderContext* ctx) {
-        auto bnds = GetElementLocalBounds();
+    void UltraCanvasUIElement::Render(IRenderContext* ctx, const Rect2Di& /*dirtyRect*/) {
+        auto bnds = GetLocalBounds();
         int leftWidth = GetBorderLeftWidth();
         int rightWidth = GetBorderRightWidth();
         int topWidth = GetBorderTopWidth();
@@ -241,8 +260,12 @@ namespace UltraCanvas {
             return;
         }
         visible = vis;
+        // Invalidate the rect we're about to vacate or occupy, in parent space.
         if (parentContainer) {
+            parentContainer->Invalidate(bounds);
             parentContainer->InvalidateLayout();
+        } else if (window && this != window) {
+            window->AddDirtyRectangle(bounds);
         }
         SetFocus(false);
         RequestUpdateGeometry();
@@ -266,14 +289,22 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasUIElement::SetBounds(const Rect2Di &b) {
-        if (bounds != b) {
-            if (bounds.Size() != b.Size()) {
-                RequestUpdateGeometry();
-            }
-            if (parentContainer) {
-                parentContainer->RequestUpdateGeometry();
-            }
-            bounds = b;
+        if (bounds == b) return;
+        Rect2Di oldBounds = bounds;
+        if (bounds.Size() != b.Size()) {
+            RequestUpdateGeometry();
+        }
+        if (parentContainer) {
+            parentContainer->RequestUpdateGeometry();
+        }
+        bounds = b;
+        // Invalidate union of old+new bounds in parent space — bounds are stored
+        // in parent coords, so this is what the parent (or window) needs to repaint.
+        Rect2Di damage = oldBounds.Union(b);
+        if (parentContainer) {
+            parentContainer->Invalidate(damage);
+        } else if (window && this != window) {
+            window->AddDirtyRectangle(damage);
         }
     }
 

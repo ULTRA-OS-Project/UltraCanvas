@@ -20,7 +20,7 @@ namespace UltraCanvas {
         }
 
         // Build segment rects in element-local space
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
         int availableWidth = bounds.width;
 
         // Account for overall border
@@ -122,7 +122,7 @@ namespace UltraCanvas {
     }
 // ===== RENDERING IMPLEMENTATION =====
 
-    void UltraCanvasSegmentedControl::Render(IRenderContext* ctx) {
+    void UltraCanvasSegmentedControl::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // Update animation
         if (style.enableAnimation && selectionAnimationProgress < 1.0f) {
             UpdateAnimation();
@@ -133,7 +133,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSegmentedControl::RenderSegments(IRenderContext* ctx) {
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
 
         // Draw outer border
         ctx->SetStrokePaint(style.borderColor);

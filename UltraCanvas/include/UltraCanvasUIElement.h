@@ -89,7 +89,6 @@ namespace UltraCanvas {
     friend UltraCanvasContainer;
     protected:
         std::string identifier = "";
-        bool needsRedraw = true;
         bool needsUpdateGeometry = true;
         bool visible = true;
         bool isPopup = false;
@@ -131,6 +130,14 @@ namespace UltraCanvas {
             stateFlags.Reset();
         }
 
+        UltraCanvasUIElement(const std::string& idstr,
+                             int x, int y, int w, int h)
+                : identifier(idstr),
+                  bounds(x, y, w, h),
+                  explicitSize(w, h) {
+            stateFlags.Reset();
+        }
+
         explicit UltraCanvasUIElement(const std::string& idstr = "",
                              int w = 0, int h = 0)
                 : identifier(idstr),
@@ -149,7 +156,7 @@ namespace UltraCanvas {
             return bounds;
         }
 
-        Rect2Di GetElementLocalBounds() const {
+        Rect2Di GetLocalBounds() const {
             return {0, 0, bounds.width, bounds.height};
         }
 
@@ -166,7 +173,7 @@ namespace UltraCanvas {
         }
 
         virtual bool Contains(const Point2Di& point) {
-            return GetElementLocalBounds().Contains(point);
+            return GetLocalBounds().Contains(point);
         }
 
         virtual bool ContainsInWindow(const Point2Di& point) {
@@ -503,7 +510,8 @@ namespace UltraCanvas {
 
         // ===== CORE VIRTUAL METHODS =====
         IRenderContext* GetRenderContext() const;
-        virtual void Render(IRenderContext* ctx);
+        // dirtyRect is in element-local coordinates (matches the translated ctx).
+        virtual void Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
         virtual void UpdateGeometry(IRenderContext* ctx) {};
 
         // ===== EVENT HANDLING =====
@@ -512,9 +520,11 @@ namespace UltraCanvas {
 
         void SetEventCallback(std::function<bool(const UCEvent&)> callback);
 
-        bool IsNeedsRedraw() const { return needsRedraw; }
         bool IsNeedsUpdateGeometry() const { return needsUpdateGeometry; }
 
+        // Adds localRect (in this element's local coords) to the appropriate
+        // dirty-rect manager: the containing popup's, or the window's.
+        virtual void Invalidate(const Rect2Di& localRect);
         void RequestRedraw();
         void RequestUpdateGeometry();
 

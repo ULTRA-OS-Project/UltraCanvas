@@ -325,7 +325,7 @@ namespace UltraCanvas {
         };
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx) override {
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
             if (!ctx || !IsVisible()) return;
 
             ctx->PushState();
@@ -415,7 +415,7 @@ namespace UltraCanvas {
         // ===== LAYOUT MANAGEMENT =====
         void UpdateLayout() {
             // All rects are in element-local space
-            Rect2Di bounds = GetElementLocalBounds();
+            Rect2Di bounds = GetLocalBounds();
             int sbSize = config.scrollbarStyle.trackSize;
 
             bool needsVertical = false;
@@ -571,7 +571,7 @@ namespace UltraCanvas {
                 ctx->PushState();
                 auto sbB = sb->GetBounds();
                 ctx->Translate(Point2Di(sbB.x, sbB.y));
-                sb->Render(ctx);
+                sb->Render(ctx, dirtyRect);
                 ctx->PopState();
             };
             if (verticalScrollbar && scrollState.showVerticalScrollbar) {

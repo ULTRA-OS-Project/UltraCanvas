@@ -546,7 +546,7 @@ namespace UltraCanvas {
     bool UltraCanvasXARElement::LoadFromFile(const std::string& filepath) { document = std::make_unique<XARDocument>(); return document->LoadFromFile(filepath); }
     bool UltraCanvasXARElement::LoadFromMemory(const uint8_t* data, size_t size) { document = std::make_unique<XARDocument>(); return document->LoadFromMemory(data, size); }
 
-    void UltraCanvasXARElement::Render(IRenderContext* ctx) {
+    void UltraCanvasXARElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!document || !ctx) return;
         Rect2Di bounds = GetBounds(); ctx->PushState();
         float docWidth = document->GetWidth(), docHeight = document->GetHeight();

@@ -529,7 +529,7 @@ namespace UltraCanvas {
         ScrollTo(verticalScrollOffset + delta);
     }
 
-    void UltraCanvasMarkdownDisplay::Render(IRenderContext* ctx) {
+    void UltraCanvasMarkdownDisplay::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible()) return;
 
         ctx->PushState();

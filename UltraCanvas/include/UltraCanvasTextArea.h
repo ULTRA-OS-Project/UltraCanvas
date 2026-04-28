@@ -350,7 +350,7 @@ namespace UltraCanvas {
 
         bool AcceptsFocus() const override { return true; }
         // Render method
-        virtual void Render(IRenderContext* ctx) override;
+        virtual void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
 
         // Drives the per-line layout cache (UpdateLineLayouts) so layouts are ready
         // before Render runs. Called by the framework when RequestUpdateGeometry() has been set.

@@ -549,7 +549,7 @@ public:
     };
 
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx) override {
+    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
         ctx->PushState();
         
 

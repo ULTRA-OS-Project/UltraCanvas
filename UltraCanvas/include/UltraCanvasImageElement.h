@@ -120,7 +120,7 @@ public:
     void SetDraggable(bool enable) { draggable = enable; }
     
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx) override;
+    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
     
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override;

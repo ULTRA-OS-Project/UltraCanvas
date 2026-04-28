@@ -222,7 +222,7 @@ public:
     bool OnEvent(const UCEvent& event) override;
     
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx) override;
+    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
     void UpdateGeometry(IRenderContext* ctx) override;
 
     void SetBounds(const Rect2Di& bounds) override;

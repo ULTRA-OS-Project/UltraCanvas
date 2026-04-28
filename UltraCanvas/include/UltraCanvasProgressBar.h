@@ -253,7 +253,7 @@ public:
     }
     
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx) override {
+    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
         if (!IsVisible()) return;
         
         ctx->PushState();
@@ -364,7 +364,7 @@ private:
     
     // ===== RENDERING HELPERS =====
     void RenderStandardProgress() {
-        Rect2D bounds = GetElementLocalBounds();
+        Rect2D bounds = GetLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -386,7 +386,7 @@ private:
     }
     
     void RenderRoundedProgress() {
-        Rect2D bounds = GetElementLocalBounds();
+        Rect2D bounds = GetLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -408,7 +408,7 @@ private:
     }
     
     void RenderCircularProgress() {
-        Rect2D bounds = GetElementLocalBounds();
+        Rect2D bounds = GetLocalBounds();
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         float radius = std::min(bounds.width, bounds.height) / 2 - borderWidth;
         
@@ -439,7 +439,7 @@ private:
     }
     
     void RenderRingProgress() {
-        Rect2D bounds = GetElementLocalBounds();
+        Rect2D bounds = GetLocalBounds();
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         float outerRadius = std::min(bounds.width, bounds.height) / 2 - borderWidth;
         float innerRadius = outerRadius - thickness;
@@ -467,7 +467,7 @@ private:
     }
     
     void RenderGradientProgress() {
-        Rect2D bounds = GetElementLocalBounds();
+        Rect2D bounds = GetLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -499,7 +499,7 @@ private:
     }
     
     void RenderStripedProgress() {
-        Rect2D bounds = GetElementLocalBounds();
+        Rect2D bounds = GetLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -526,7 +526,7 @@ private:
     }
     
     void RenderPulseProgress() {
-        Rect2D bounds = GetElementLocalBounds();
+        Rect2D bounds = GetLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -599,7 +599,7 @@ private:
     }
     
     void RenderText() {
-        Rect2D bounds = GetElementLocalBounds();
+        Rect2D bounds = GetLocalBounds();
         std::string text = GetFormattedText();
         
         ctx->PaintWidthColortextColor);

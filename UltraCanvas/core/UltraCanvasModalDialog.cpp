@@ -385,7 +385,7 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasModalDialog::RenderCustomContent(IRenderContext* ctx) {
+    void UltraCanvasModalDialog::RenderCustomContent(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // With layout-based architecture, child components render themselves
         // via the container's Render() call. No manual drawing needed here.
         // The contentSection and footerSection are already children of the window.
@@ -793,7 +793,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFileDialog::CalculateFileDialogLayout() {
         // All rects are stored in element-local space
-        Rect2Di bounds = GetElementLocalBounds();
+        Rect2Di bounds = GetLocalBounds();
 
         pathBarRect = Rect2Di(10, 10, bounds.width - 20, pathBarHeight);
 
@@ -827,7 +827,7 @@ namespace UltraCanvas {
         return filterSelectorRect;
     }
 
-    void UltraCanvasFileDialog::RenderCustomContent(UltraCanvas::IRenderContext *ctx) {
+    void UltraCanvasFileDialog::RenderCustomContent(UltraCanvas::IRenderContext *ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible() || !ctx) return;
 
         ctx->PushState();

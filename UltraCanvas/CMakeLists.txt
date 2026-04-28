@@ -143,6 +143,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasContainer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDirtyRectManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Markdown.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Hex.cpp
@@ -169,9 +170,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
