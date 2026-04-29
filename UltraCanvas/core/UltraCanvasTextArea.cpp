@@ -31,6 +31,7 @@ namespace UltraCanvas {
               isReadOnly(false),
               wordWrap(false),
               highlightCurrentLine(false),
+              isNeedRebuildLineLayouts(true),
               isNeedRecalculateVisibleArea(true)  {
 
         // Initialize with empty line
@@ -217,13 +218,11 @@ namespace UltraCanvas {
         for (const auto& l : lines) textContent.append(l);
 
         // Full text replacement: invalidate the layout cache + MD index.
-        lineLayouts.clear();
-        lineLayouts.resize(lines.size());
-        markdownIndexDirty = true;
         SetCursorPosition({0, 0});
         currentLine.reset();
         selectionStart = LineColumnIndex::INVALID;
         selectionEnd   = LineColumnIndex::INVALID;
+        isNeedRebuildLineLayouts = true;
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
         if (runNotifications && onTextChanged) {
@@ -1000,10 +999,30 @@ namespace UltraCanvas {
 
 // ===== RENDERING METHODS =====
     void UltraCanvasTextArea::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
-        // UpdateGeometry runs CalculateVisibleArea + UpdateLineLayouts. It's idempotent
-        // if layouts are already built; calling here guards against frames where the framework
-        // skipped the geometry pass.
-        UpdateGeometry(ctx);
+        // to make line layouts need to know visibleArea.width so precalculate it here
+        if (isNeedRecalculateVisibleArea && wordWrap) {
+            ctx->PushState();
+            if (editingMode == TextAreaEditingMode::Hex) {
+                CalculateHexLayout();
+            } else {
+                CalculateVisibleArea();
+            }
+            ctx->PopState();
+        }
+
+        UpdateLineLayouts(ctx);
+
+        if (isNeedRecalculateVisibleArea) {
+            ctx->PushState();
+            if (editingMode == TextAreaEditingMode::Hex) {
+                CalculateHexLayout();
+            } else {
+                CalculateVisibleArea();
+            }
+            ctx->PopState();
+            // Wrap width probably changed — let UpdateLineLayouts detect and reset.
+            isNeedRecalculateVisibleArea = false;
+        }
 
         if (isCursorMoved) {
             EnsureCursorVisible();
@@ -1167,12 +1186,7 @@ namespace UltraCanvas {
                     thumbY = bounds.y + (firstLine * maxThumbY) / (totalLines - visibleLines);
                 }
             } else {
-                int contentHeight = 0;
-                if (!lineLayouts.empty() && lineLayouts.back()) {
-                    contentHeight = lineLayouts.back()->bounds.y + lineLayouts.back()->bounds.height;
-                } else {
-                    contentHeight = (int)lines.size() * std::max(1, computedLineHeight);
-                }
+                int contentHeight = GetContentHeight();
                 int viewportH = visibleTextArea.height;
                 thumbHeight = std::max(20, (viewportH * scrollbarHeight) / std::max(1, contentHeight));
                 maxThumbY = scrollbarHeight - thumbHeight;
@@ -1414,12 +1428,7 @@ namespace UltraCanvas {
             int thumbHeight = verticalScrollThumb.height;
             int maxThumbY = scrollbarHeight - thumbHeight;
 
-            int contentHeight = 0;
-            if (!lineLayouts.empty() && lineLayouts.back()) {
-                contentHeight = lineLayouts.back()->bounds.y + lineLayouts.back()->bounds.height;
-            } else {
-                contentHeight = (int)lines.size() * std::max(1, computedLineHeight);
-            }
+            int contentHeight = GetContentHeight();
             int viewportH = visibleTextArea.height;
 
             // Result is in element-local space; dragStartOffset was computed accordingly.
@@ -1793,11 +1802,13 @@ namespace UltraCanvas {
             maxLineWidth = visibleTextArea.width;
         } else {
             maxLineWidth = 0;
-            for (int i = 0; i < static_cast<int>(lines.size()); i++) {
+            for (int i = 0; i < static_cast<int>(lineLayouts.size()); i++) {
                 // Don't measure the trailing \n — it wouldn't add width, but Pango may
                 // treat it as a mandatory break and return a misleading result.
-                maxLineWidth = std::max(maxLineWidth,
-                                        ctx->GetTextLineWidth(std::string(GetLineContentView(i))));
+                auto ll = lineLayouts[i]->layout.get();
+                if (ll) {
+                    maxLineWidth = std::max(maxLineWidth, static_cast<int>(ll->GetLayoutWidth()));
+                }
             }
         }
         ctx->PopState();
@@ -1830,16 +1841,21 @@ namespace UltraCanvas {
                 visibleTextArea.height -= 15;
             }
         }
+    }
 
-        isNeedRecalculateVisibleArea = false;
+    int UltraCanvasTextArea::GetContentHeight() {
+        if (!lineLayouts.empty() && lineLayouts.back()) {
+            return lineLayouts.back()->bounds.y + lineLayouts.back()->bounds.height;
+        } else {
+            return (int)lines.size() * std::max(1, computedLineHeight);
+        }
     }
 
     void UltraCanvasTextArea::SetWordWrap(bool wrap) {
         if (wordWrap == wrap) return;
         wordWrap = wrap;
         horizontalScrollOffset = 0;
-        isNeedRecalculateVisibleArea = true;
-        RequestRedraw();
+        InvalidateAllLineLayouts();
     }
 
     // ===== LINE LAYOUT CACHE =====
@@ -1848,6 +1864,8 @@ namespace UltraCanvas {
         for (auto& ll : lineLayouts) {
             ll.reset();
         }
+        isNeedRecalculateVisibleArea = true;
+        RequestRedraw();
     }
 
     void UltraCanvasTextArea::InvalidateLineLayout(int logicalLine) {
@@ -2035,7 +2053,7 @@ namespace UltraCanvas {
         for (const auto& l : lines) total += l.size();
         textContent.reserve(total);
         for (const auto& l : lines) textContent.append(l);
-        markdownIndexDirty = true;
+        isNeedRebuildLineLayouts = true;
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
 
@@ -2063,13 +2081,7 @@ namespace UltraCanvas {
             return hexTotalRows > hexMaxVisibleRows;
         }
         // Total content height > viewport height.
-        int contentHeight = 0;
-        if (!lineLayouts.empty() && lineLayouts.back()) {
-            contentHeight = lineLayouts.back()->bounds.y + lineLayouts.back()->bounds.height;
-        } else {
-            contentHeight = (int)lines.size() * std::max(1, computedLineHeight);
-        }
-        return contentHeight > visibleTextArea.height;
+        return GetContentHeight() > visibleTextArea.height;
     }
 
     bool UltraCanvasTextArea::IsNeedHorizontalScrollbar() {
@@ -2126,7 +2138,8 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::ScrollDown(int lineCount) {
         int h = static_cast<int>(style.fontStyle.fontSize * 1.3f);
         verticalScrollOffset += lineCount * h;
-        if (verticalScrollOffset < 0) verticalScrollOffset = 0;
+        int maxOffset = std::max(0, GetContentHeight() - visibleTextArea.height);
+        verticalScrollOffset = std::min(std::max(0, verticalScrollOffset), maxOffset);
         RequestRedraw();
     }
 
@@ -2973,22 +2986,18 @@ namespace UltraCanvas {
     void UltraCanvasTextArea::UpdateLineLayouts(IRenderContext* ctx) {
         // Refresh the markdown-wide index (abbreviations / footnotes / anchors / backlinks)
         // before line layouts query it. Lazy — only reruns when content changed.
-        if (editingMode == TextAreaEditingMode::MarkdownHybrid && markdownIndexDirty) {
+        if (editingMode == TextAreaEditingMode::MarkdownHybrid && isNeedRebuildLineLayouts) {
             RebuildMarkdownIndex();
-            // Index shifts may change which headings show the ↩ icon or which abbreviations
-            // apply; throw all MD layouts including the edit-mode stash.
+        }
+        if (isNeedRebuildLineLayouts) {
             for (auto& ll : lineLayouts) ll.reset();
+            isNeedRebuildLineLayouts = false;
         }
 
         ReconcileLayoutState();
 
         // If the wrap width changed (resize, word-wrap toggle), every cached layout's line-break
         // positions and heights are stale. Invalidate the whole cache before rebuilding.
-        int currentWrapWidth = wordWrap ? visibleTextArea.width : 0;
-        if (currentWrapWidth != lineLayoutsWrapWidth) {
-            for (auto& ll : lineLayouts) ll.reset();
-            lineLayoutsWrapWidth = currentWrapWidth;
-        }
 
         lineLayouts.resize(lines.size());
 
@@ -3063,21 +3072,6 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextArea::UpdateGeometry(IRenderContext* ctx) {
-        // Base class sets needsUpdateGeometry = false via RequestUpdateGeometry tracking;
-        // we only need to drive our own caches here. Parent bounds changes land through
-        // SetBounds → isNeedRecalculateVisibleArea, which the legacy Render path consumes first.
-        UpdateLineLayouts(ctx);
-
-        if (isNeedRecalculateVisibleArea) {
-            ctx->PushState();
-            if (editingMode == TextAreaEditingMode::Hex) {
-                CalculateHexLayout();
-            } else {
-                CalculateVisibleArea();
-            }
-            ctx->PopState();
-            // Wrap width probably changed — let UpdateLineLayouts detect and reset.
-        }
     }
 
     std::unique_ptr<LineLayoutBase> UltraCanvasTextArea::MakePlainLineLayout(IRenderContext* ctx, int lineIndex) {
@@ -3350,5 +3344,34 @@ namespace UltraCanvas {
                 drawLayout();
                 return;
         }
+    }
+
+    void UltraCanvasTextArea::SetFontFamily(const std::string &family) {
+        style.fontStyle.fontFamily = family;
+        isNeedRecalculateVisibleArea = true;
+        isNeedRebuildLineLayouts = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextArea::SetFont(const std::string &family, float size) {
+        style.fontStyle.fontFamily = family,
+        style.fontStyle.fontSize = size;
+        isNeedRecalculateVisibleArea = true;
+        isNeedRebuildLineLayouts = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextArea::SetFontSize(float size) {
+        style.fontStyle.fontSize = size;
+        isNeedRecalculateVisibleArea = true;
+        isNeedRebuildLineLayouts = true;
+        RequestRedraw();
+    }
+
+    void UltraCanvasTextArea::SetTextColor(const Color &color) {
+        style.fontColor = color;
+        isNeedRecalculateVisibleArea = true;
+        isNeedRebuildLineLayouts = true;
+        RequestRedraw();
     }
 } // namespace UltraCanvas

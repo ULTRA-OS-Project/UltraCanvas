@@ -1,6 +1,8 @@
 #### 2026-04-28 *1.0.24*
 - Fix Markdown toolbar (was not received events)
 - Major rework in the UltraCanvas (implemented optimized rendering)
+- Fix scroll down beyond the content
+- Fix font zoom change
 
 #### 2026-04-24 *1.0.23*
 - New: XML syntax highlighting with xml/xsd/xsl/xslt/xhtml extension support.

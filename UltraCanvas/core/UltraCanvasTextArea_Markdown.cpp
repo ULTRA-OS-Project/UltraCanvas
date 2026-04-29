@@ -508,7 +508,6 @@ namespace UltraCanvas {
         for (const auto& [id, srcs] : anchorRefs) {
             if (srcs.size() == 1) markdownAnchorBacklinks[id] = srcs[0];
         }
-        markdownIndexDirty = false;
     }
 
     // Inline markdown scanner. Single-pass, not recursive — doesn't handle nested inline markers

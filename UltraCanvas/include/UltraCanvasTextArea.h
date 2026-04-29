@@ -512,14 +512,14 @@ namespace UltraCanvas {
         }
 
         // Font settings
-        void SetFont(const std::string& family, float size) { style.fontStyle.fontFamily = family, style.fontStyle.fontSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
-        void SetFontFamily(const std::string& family) { style.fontStyle.fontFamily = family; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
+        void SetFont(const std::string& family, float size);
+        void SetFontFamily(const std::string& family);
         const std::string& GetFontFamily() { return style.fontStyle.fontFamily; }
-        void SetFontSize(float size) { style.fontStyle.fontSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
+        void SetFontSize(float size);
         float GetFontSize() { return style.fontStyle.fontSize; }
 
         // Color settings
-        void SetTextColor(const Color& color) { style.fontColor = color;  RequestRedraw(); }
+        void SetTextColor(const Color& color);
         void SetBackgroundColor(const Color& color) { style.backgroundColor = color; RequestRedraw(); }
         void SetSelectionColor(const Color& color) { style.selectionColor = color; RequestRedraw(); }
         void SetCursorColor(const Color& color) { style.cursorColor = color; RequestRedraw(); }
@@ -614,6 +614,7 @@ namespace UltraCanvas {
         int CalculateLineNumbersWidth(IRenderContext* ctx);
         void RebuildText();
         const TokenStyle& GetStyleForTokenType(TokenType type) const;
+        int GetContentHeight();
 
         // Initialization
         void ApplyDefaultStyle();
@@ -691,7 +692,6 @@ namespace UltraCanvas {
         std::vector<std::string> lines;
 
         std::vector<std::unique_ptr<LineLayoutBase>> lineLayouts; // cached layouts for each line
-        int lineLayoutsWrapWidth = -1; // width the cached layouts were built against; -1 = no cache
         LineColumnIndex cursorPosition = {0,0}; // cursor position for lineIndex and codepoint index in Line
         LineColumnIndex selectionStart;
         LineColumnIndex selectionEnd;
@@ -741,6 +741,7 @@ namespace UltraCanvas {
 
         // Properties
         bool isNeedRecalculateVisibleArea;
+        bool isNeedRebuildLineLayouts;
         bool isReadOnly;
         bool wordWrap;
         bool highlightCurrentLine;

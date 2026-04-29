@@ -288,8 +288,8 @@ namespace UltraCanvas {
 
         // Regular button layout calculation
         Rect2Di bounds = GetLocalBounds();
-        int contentX = bounds.x + padding.left;
-        int contentY = bounds.y + padding.top;
+        int contentX = padding.left;
+        int contentY = padding.top;
         int contentWidth = bounds.width - padding.left - padding.right;
         int contentHeight = bounds.height - padding.top - padding.bottom;
 
