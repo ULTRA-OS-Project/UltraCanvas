@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.0.3
-// Last Modified: 2026-04-08
+// Version: 2.0.4
+// Last Modified: 2026-04-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -370,7 +370,7 @@ namespace UltraCanvas {
 
         // Update custom view
         if (contentView) {
-            [(UltraCanvasView*)contentView setCairoSurface:nativeSurface];
+            ((UltraCanvasView*)contentView).nativeSurface = (cairo_surface_t*)nativeSurface;
         }
 
         debugOutput << "UltraCanvas macOS: Cairo surface created successfully" << std::endl;
@@ -663,8 +663,8 @@ namespace UltraCanvas {
                 config_.height = newHeight;
 
                 DoResize();
-
-                Render(GetRenderContext());
+                RequestWindowComposition();
+                UpdateAndRender();
                 InvalidateWindowNative();
             }
         }

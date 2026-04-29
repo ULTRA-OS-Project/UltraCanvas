@@ -287,7 +287,7 @@ namespace UltraCanvas {
                 textLayout->SetExplicitWidth(layoutWidth);
             }
             auto textSize = textLayout->GetLayoutSize();
-            ctx->DrawTextLayout(*textLayout, {contentX, contentY - textSize.height / 2});
+            ctx->DrawTextLayout(*textLayout, Point2Df(contentX, contentY - textSize.height / 2));
         }
     }
 
