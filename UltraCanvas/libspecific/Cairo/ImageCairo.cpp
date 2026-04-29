@@ -1,7 +1,7 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.0.0
-// Last Modified: 2025-10-24
+// Version: 2.0.1
+// Last Modified: 2026-04-29
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -315,13 +315,13 @@ namespace UltraCanvas {
         std::string key = MakePixmapCacheKey(w, h, fitMode);
         std::shared_ptr<UCPixmapCairo> pm = g_PixmapsCache.GetFromCache(key);
         if (!pm) {
-            pm = CreatePixmap(width, height, fitMode);
+            pm = CreatePixmap(w, h, fitMode);
             if (pm) {
                 g_PixmapsCache.AddToCache(key, pm);
             }
         }
 #else
-        std::shared_ptr<UCPixmapCairo> pm = CreatePixmap(width, height, fitMode);
+        std::shared_ptr<UCPixmapCairo> pm = CreatePixmap(w, h, fitMode);
 #endif
         return pm;
     }
