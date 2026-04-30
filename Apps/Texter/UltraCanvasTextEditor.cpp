@@ -34,7 +34,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "1.0.24";
+    std::string UltraCanvasTextEditor::version = "1.0.25";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -541,6 +541,7 @@ namespace {
                         MenuItemData::Action("Save All", GetResourcesDir() + "media/icons/texter/save.svg", [this]() {
                             OnFileSaveAll();
                         }),
+                        MenuItemData::Separator(),
                         // ── ADD THESE TWO LINES ──
                         MenuItemData::ActionWithShortcut("Print...", "Ctrl+P", [this]() {
                             OnFilePrint();
@@ -631,6 +632,7 @@ namespace {
                         MenuItemData::Action("File Statistics", [this]() {
                          OnInfoFileStatistics();
                         }),
+                        MenuItemData::Separator(),
                         MenuItemData::Action("Changes", [this]() {
 #if defined(_WIN32) || defined(_WIN64)
                             auto path = GetResourcesDir() + "Docs\\Texter\\CHANGELOG.md";

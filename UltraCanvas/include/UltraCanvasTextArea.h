@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.4.0
-// Last Modified: 2026-04-24
+// Version: 3.5.0
+// Last Modified: 2026-04-30
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -294,13 +294,28 @@ namespace UltraCanvas {
         TableRow
     };
 
+    // Maps one contiguous visible-text segment back to its source-line position.
+    // Each entry: at visible codepoint `visibleCp`, the source-line codepoint is `sourceCp`.
+    // Inside a segment both indices advance in lockstep; a new entry starts after `sourceCp`
+    // jumps over a stripped block prefix or inline-markup run.
+    // The vector is sorted strictly ascending on `visibleCp`, has at least one entry
+    // `{0, blockPrefixCp}`, and ends with a sentinel `{visibleCpCount, sourceCpCount}` so
+    // range queries need no special-case for the last segment.
+    struct CpRun {
+        int visibleCp = 0;
+        int sourceCp  = 0;
+    };
+
     struct LineLayoutBase {
         LineLayoutType layoutType = LineLayoutType::PlainLine;
         Rect2Df bounds = {0,0,0,0};
         std::vector<MarkdownHitRect> hitRects; // bounds inside layout
         std::unique_ptr<ITextLayout> layout;
         Point2Df layoutShift = {0, 0}; // for MD mode some elements render text layout shifted to right or bottom
-        int layoutTextStartIndex = 0; // for MD mode some part of real line text is not displayed (it is part of markup)
+        // Visible-cp ↔ source-line-cp mapping. See CpRun. Use VisibleCpToSourceCp /
+        // SourceCpToVisibleCp helpers for lookups; do not arithmetically subtract any
+        // single offset. The first entry's sourceCp is the block-prefix codepoint count.
+        std::vector<CpRun> cpMap;
         int logicalLineNumber = 0;
         virtual ~LineLayoutBase() {};
     };
@@ -333,8 +348,9 @@ namespace UltraCanvas {
     };
 
     // Inline styling run emitted by the markdown/plain-text parser and consumed by MakeLineLayout
-    // to drive ITextLayout attribute insertion. All offsets are codepoint indices in the VISIBLE
-    // layout text (i.e. after layoutTextStartIndex has stripped markup prefix characters).
+    // to drive ITextLayout attribute insertion. Offsets are codepoint indices in the VISIBLE
+    // layout text (markup prefixes and inline markers already stripped); use the line's `cpMap`
+    // to translate between visible-text positions and source-line positions.
     struct TextStyleSpan {
         int startCp = 0;
         int endCp = 0;
@@ -665,9 +681,14 @@ namespace UltraCanvas {
         // [text](url), ![alt](url), [^footnote], `:shortcode:` emoji, ASCII emoticons
         // (`:-)`, `;)`, `8-)`, `<3`, …), and backslash escapes. Sub/superscript content must
         // be non-empty and contain no whitespace. No nested inline.
+        // If `outCpMap` is non-null it is filled with codepoint-mapping segments (visible-cp
+        // → rawLine-cp boundaries), with a sentinel entry at the end. Caller is responsible
+        // for shifting sourceCp values when the rawLine here is a payload of a larger source
+        // line (e.g. a heading body after the `### ` prefix).
         static void ParseInlineMarkdownRuns(const std::string& rawLine,
                                             std::string& visibleText,
-                                            std::vector<InlineRun>& runs);
+                                            std::vector<InlineRun>& runs,
+                                            std::vector<CpRun>* outCpMap = nullptr);
 
         // Apply inline-run attributes (bold/italic/code/strike/link/image/footnote) to `layout`
         // and record link/image/footnote hit rects on `outHitRects`. Also scans `visibleText`

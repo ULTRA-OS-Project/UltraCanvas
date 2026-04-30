@@ -1,4 +1,4 @@
-<?xml version="1.0.24.0" encoding="UTF-8" standalone="yes"?>
+<?xml version="1.0.25.0" encoding="UTF-8" standalone="yes"?>
 <!--
     Apps/Texter/UltraTexter.manifest
     Windows Application Manifest for UltraTexter
@@ -8,7 +8,7 @@
 
     <!-- ===== IDENTITY ===== -->
     <assemblyIdentity
-        version="1.0.24.0"
+        version="1.0.25.0"
         processorArchitecture="*"
         name="CloverleafUG.UltraTexter"
         type="win32"
@@ -53,7 +53,7 @@
             <assemblyIdentity
                 type="win32"
                 name="Microsoft.Windows.Common-Controls"
-                version="1.0.24.0"
+                version="1.0.25.0"
                 processorArchitecture="*"
                 publicKeyToken="6595b64144ccf1df"
                 language="*"

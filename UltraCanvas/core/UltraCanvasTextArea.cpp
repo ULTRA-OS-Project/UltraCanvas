@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.4.0
-// Last Modified: 2026-04-24
+// Version: 3.5.0
+// Last Modified: 2026-04-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -2001,11 +2001,47 @@ namespace UltraCanvas {
         }
     }
 
+    // Visible/layout codepoint → source-line codepoint. Always well-defined; the visible-cp
+    // axis has no stripped regions. See LineLayoutBase::cpMap and the CpRun comment in
+    // UltraCanvasTextArea.h for the mapping invariant.
+    static int VisibleCpToSourceCp(const std::vector<CpRun>& cpMap, int visibleCp) {
+        if (cpMap.empty()) return visibleCp;
+        auto it = std::upper_bound(cpMap.begin(), cpMap.end(), visibleCp,
+            [](int v, const CpRun& r) { return v < r.visibleCp; });
+        if (it == cpMap.begin()) return cpMap.front().sourceCp;
+        --it;
+        return it->sourceCp + (visibleCp - it->visibleCp);
+    }
+
+    // Source-line codepoint → visible/layout codepoint. If `sourceCp` falls strictly inside
+    // a stripped region (between two segments), the result is snapped to the start of the
+    // next visible segment when `snapForward = true` (default), or to the end of the
+    // previous one when `snapForward = false`. Pass `false` for selection-end so a
+    // selection that ends at the trailing marker doesn't grow visually past it.
+    static int SourceCpToVisibleCp(const std::vector<CpRun>& cpMap, int sourceCp,
+                                   bool snapForward = true) {
+        if (cpMap.empty()) return sourceCp;
+        auto it = std::upper_bound(cpMap.begin(), cpMap.end(), sourceCp,
+            [](int s, const CpRun& r) { return s < r.sourceCp; });
+        if (it == cpMap.begin()) return cpMap.front().visibleCp;
+        auto prev = it - 1;
+        int segVisibleEnd = (it == cpMap.end()) ? prev->visibleCp : it->visibleCp;
+        int segSourceEnd  = prev->sourceCp + (segVisibleEnd - prev->visibleCp);
+        if (sourceCp <= segSourceEnd) {
+            return prev->visibleCp + (sourceCp - prev->sourceCp);
+        }
+        // Strictly inside a stripped region between this segment and the next.
+        if (snapForward) {
+            return (it == cpMap.end()) ? segVisibleEnd : it->visibleCp;
+        }
+        return segVisibleEnd;
+    }
+
     // Apply the selection background-color attribute to the portion of this line's layout text
     // that falls inside the current selection. Coordinates:
-    //   selection* is in real-line codepoints (columnIndex); layout text may have a markup prefix
-    //   stripped (layoutTextStartIndex in codepoints), so we subtract that before converting to
-    //   layout-text bytes via utf8_cp_to_byte.
+    //   selection* is in real-line codepoints (columnIndex); layout text has block prefixes
+    //   and inline markup stripped, so we route through SourceCpToVisibleCp via the line's
+    //   cpMap to translate before converting to layout-text bytes via utf8_cp_to_byte.
     void UltraCanvasTextArea::ApplyLineSelectionBackground(LineLayoutBase* ll, int lineIndex) {
         if (!ll || !ll->layout) return;
         if (selectionStart.lineIndex < 0 || selectionEnd.lineIndex < 0) return;
@@ -2022,9 +2058,12 @@ namespace UltraCanvas {
         int startCp = (lineIndex == a.lineIndex) ? a.columnIndex : 0;
         int endCp   = (lineIndex == b.lineIndex) ? b.columnIndex : realLineCpCount;
 
-        // Translate from real-line codepoints to layout-text codepoints.
-        startCp -= ll->layoutTextStartIndex;
-        endCp   -= ll->layoutTextStartIndex;
+        // Translate from real-line codepoints to layout-text codepoints. The end snaps
+        // backward so a selection ending at a trailing marker doesn't visually grow over
+        // it; the start snaps forward so a selection starting at a leading marker doesn't
+        // visually grow into it either.
+        startCp = SourceCpToVisibleCp(ll->cpMap, startCp, /*snapForward=*/true);
+        endCp   = SourceCpToVisibleCp(ll->cpMap, endCp,   /*snapForward=*/false);
         if (startCp < 0) startCp = 0;
         std::string layoutText = ll->layout->GetText();
         int layoutCpCount = utf8_length(layoutText);
@@ -2889,8 +2928,9 @@ namespace UltraCanvas {
     //   screen.x = visibleTextArea.x + lineLayout.bounds.x + lineLayout.layoutShift.x
     //   screen.y = visibleTextArea.y + lineLayout.bounds.y + lineLayout.layoutShift.y
     //              - verticalScrollOffset
-    // Real-line codepoints translate to layout-text bytes via:
-    //   layoutCp = columnIndex - layoutTextStartIndex  (clamped to [0, layout-cp-count])
+    // Real-line codepoints translate to layout-text codepoints via the line's `cpMap`,
+    // which records every stripped block-prefix and inline-markup region.
+    //   layoutCp = SourceCpToVisibleCp(cpMap, columnIndex)
     //   layoutByte = utf8_cp_to_byte(layout.GetText(), layoutCp)
     LineLayoutBase *UltraCanvasTextArea::GetLineLayoutForPos(const Point2Di& pos) {
         int contentY = pos.y - visibleTextArea.y + verticalScrollOffset;
@@ -2921,7 +2961,11 @@ namespace UltraCanvas {
 
         std::string layoutText = line->layout->GetText();
         int layoutCpCount = utf8_length(layoutText);
-        int layoutCol = std::max(0, std::min(idx.columnIndex - line->layoutTextStartIndex,
+        // After the temp-plain-line construction above, `line` always has an identity
+        // cpMap, so SourceCpToVisibleCp returns idx.columnIndex unchanged for in-bounds
+        // queries — but we route through it anyway so any future caller passing a
+        // non-plain `line` would still work.
+        int layoutCol = std::max(0, std::min(SourceCpToVisibleCp(line->cpMap, idx.columnIndex),
                                              layoutCpCount));
         int byteIndex = static_cast<int>(utf8_cp_to_byte(layoutText, layoutCol));
 
@@ -2937,24 +2981,19 @@ namespace UltraCanvas {
         // Convert screen → content coords (pre-scroll, relative to visibleTextArea top-left).
         int contentY = pos.y - visibleTextArea.y + verticalScrollOffset;
         int contentX = pos.x - visibleTextArea.x + horizontalScrollOffset;
+        auto frontSourceCp = [](LineLayoutBase* ll) {
+            return ll->cpMap.empty() ? 0 : ll->cpMap.front().sourceCp;
+        };
         for (int i = 0; i < (int)lineLayouts.size(); i++) {
             auto* ll = GetActualLineLayout(i);
             if (!ll) continue;
             if (ll->bounds.y > contentY) {
                 // Clicked above this line but past all prior lines → snap to start of this line.
-                return {i, ll->layoutTextStartIndex};
+                return {i, frontSourceCp(ll)};
             }
             if (contentY >= ll->bounds.y + ll->bounds.height) continue;
-            if (!ll->layout) return {i, ll->layoutTextStartIndex};
+            if (!ll->layout) return {i, frontSourceCp(ll)};
 
-            // make plain line for formatted line as plain line will be edited then
-            std::unique_ptr<LineLayoutBase> lineLayoutPtr;
-            if (ll->layoutType != LineLayoutType::PlainLine) {
-                lineLayoutPtr = MakePlainLineLayout(GetRenderContext(), i);
-                lineLayoutPtr->bounds.y = ll->bounds.y;
-                lineLayoutPtr->bounds.x = ll->bounds.x;
-                ll = lineLayoutPtr.get();
-            }
             // Translate to layout-local coords.
             int layoutX = contentX - (ll->bounds.x + ll->layoutShift.x);
             int layoutY = contentY - (ll->bounds.y + ll->layoutShift.y);
@@ -2962,7 +3001,7 @@ namespace UltraCanvas {
 
             std::string layoutText = ll->layout->GetText();
             int layoutCp = utf8_byte_to_cp(layoutText, hit.index) + hit.trailing;
-            return {i, layoutCp + ll->layoutTextStartIndex};
+            return {i, VisibleCpToSourceCp(ll->cpMap, layoutCp)};
         }
         // Past the last line — land at the end of the document.
         if (!lineLayouts.empty() && lineLayouts.back()) {
@@ -3082,6 +3121,9 @@ namespace UltraCanvas {
 
         ll->layoutType = LineLayoutType::PlainLine;
         ll->layout = ctx->CreateTextLayout(txt, false);
+        // Identity cpMap: layout text is the source line verbatim, no markup stripped.
+        int txtCp = utf8_length(txt);
+        ll->cpMap = {{0, 0}, {txtCp, txtCp}};
         ll->layout->SetFontStyle(style.fontStyle);
         //ll->layout->SetLineSpacing(style.lineHeight);
         if (wordWrap && visibleTextArea.width > 0) {

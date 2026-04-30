@@ -1,8 +1,8 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
-// Version: 2.5.1
-// Last Modified: 2026-04-16
+// Version: 2.6.0
+// Last Modified: 2026-04-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -519,11 +519,61 @@ namespace UltraCanvas {
     // `$…$` runs LaTeX commands through SubstituteGreekLetters (`\alpha` → α, etc.).
     void UltraCanvasTextArea::ParseInlineMarkdownRuns(const std::string& rawLine,
                                                       std::string& visibleText,
-                                                      std::vector<InlineRun>& runs) {
+                                                      std::vector<InlineRun>& runs,
+                                                      std::vector<CpRun>* outCpMap) {
         visibleText.clear();
         runs.clear();
+        if (outCpMap) outCpMap->clear();
         const int n = (int)rawLine.size();
         int i = 0;
+
+        // Incremental codepoint counters used to emit cpMap entries without re-scanning
+        // the whole string per branch. After every loop iteration we sync these against
+        // the byte cursors and, if the (srcCp - visCp) delta changed since the last
+        // entry, push a new boundary marking the start of the next visible segment.
+        int srcCp = 0, visCp = 0, prevSrcByte = 0, prevVisByte = 0;
+        auto cpCount = [](const char* data, int byteCount) -> int {
+            if (byteCount <= 0) return 0;
+            return static_cast<int>(g_utf8_strlen(data, byteCount));
+        };
+        auto syncCp = [&] {
+            if (i > prevSrcByte) {
+                srcCp += cpCount(rawLine.data() + prevSrcByte, i - prevSrcByte);
+                prevSrcByte = i;
+            }
+            int curVisByte = (int)visibleText.size();
+            if (curVisByte > prevVisByte) {
+                visCp += cpCount(visibleText.data() + prevVisByte, curVisByte - prevVisByte);
+                prevVisByte = curVisByte;
+            }
+        };
+        auto pushBoundaryIfChanged = [&] {
+            if (!outCpMap) return;
+            int delta = srcCp - visCp;
+            if (outCpMap->empty()) {
+                outCpMap->push_back({visCp, srcCp});
+                return;
+            }
+            auto& back = outCpMap->back();
+            if (back.sourceCp - back.visibleCp == delta) return;  // same delta, no change
+            // If the previous segment is zero-width on the visible axis (we stripped markup
+            // without emitting any visible chars yet), replace it — the new entry has the
+            // correct sourceCp for the segment that's about to start.
+            if (back.visibleCp == visCp) {
+                back.sourceCp = srcCp;
+            } else {
+                outCpMap->push_back({visCp, srcCp});
+            }
+        };
+        // Called inside a stripping branch right BEFORE visibleText is extended, after `i`
+        // has been advanced past the opening markup. Without this, the boundary marking
+        // the start of the visible segment is missed, and the previous boundary's delta
+        // (which doesn't include the just-stripped opening markup) is used to translate
+        // clicks inside the segment — yielding source columns that fall inside the markup.
+        auto noteVisStart = [&] {
+            syncCp();
+            pushBoundaryIfChanged();
+        };
 
         auto scanPair = [&](int from, char a, char b) -> int {
             for (int j = from; j + 1 < n; j++) {
@@ -537,12 +587,19 @@ namespace UltraCanvas {
         };
 
         while (i < n) {
+            // Sync running cp counters and emit a boundary if the delta changed
+            // (i.e. the previous iteration stripped some markup bytes).
+            syncCp();
+            pushBoundaryIfChanged();
+
             char c = rawLine[i];
 
             // Backslash escape.
             if (c == '\\' && i + 1 < n) {
-                visibleText.push_back(rawLine[i + 1]);
-                i += 2;
+                i += 1;            // skip backslash; next byte is the escaped literal
+                noteVisStart();
+                visibleText.push_back(rawLine[i]);
+                i += 1;
                 continue;
             }
 
@@ -551,7 +608,9 @@ namespace UltraCanvas {
                 int close = scanPair(i + 2, c, c);
                 if (close > i + 2) {
                     int s = (int)visibleText.size();
-                    visibleText.append(rawLine, i + 2, close - (i + 2));
+                    i += 2;        // skip opening **
+                    noteVisStart();
+                    visibleText.append(rawLine, i, close - i);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Bold, {}, {}});
                     i = close + 2;
                     continue;
@@ -562,7 +621,9 @@ namespace UltraCanvas {
                 int close = scanChar(i + 1, c);
                 if (close > i + 1) {
                     int s = (int)visibleText.size();
-                    visibleText.append(rawLine, i + 1, close - (i + 1));
+                    i += 1;        // skip opening *
+                    noteVisStart();
+                    visibleText.append(rawLine, i, close - i);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Italic, {}, {}});
                     i = close + 1;
                     continue;
@@ -573,7 +634,9 @@ namespace UltraCanvas {
                 int close = scanChar(i + 1, '`');
                 if (close > i + 1) {
                     int s = (int)visibleText.size();
-                    visibleText.append(rawLine, i + 1, close - (i + 1));
+                    i += 1;        // skip opening `
+                    noteVisStart();
+                    visibleText.append(rawLine, i, close - i);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Code, {}, {}});
                     i = close + 1;
                     continue;
@@ -584,7 +647,9 @@ namespace UltraCanvas {
                 int close = scanPair(i + 2, '~', '~');
                 if (close > i + 2) {
                     int s = (int)visibleText.size();
-                    visibleText.append(rawLine, i + 2, close - (i + 2));
+                    i += 2;        // skip opening ~~
+                    noteVisStart();
+                    visibleText.append(rawLine, i, close - i);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Strike, {}, {}});
                     i = close + 2;
                     continue;
@@ -599,7 +664,9 @@ namespace UltraCanvas {
                 }
                 if (j > i + 1 && j < n && rawLine[j] == '~') {
                     int s = (int)visibleText.size();
-                    visibleText.append(rawLine, i + 1, j - (i + 1));
+                    i += 1;        // skip opening ~
+                    noteVisStart();
+                    visibleText.append(rawLine, i, j - i);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Subscript, {}, {}});
                     i = j + 1;
                     continue;
@@ -614,7 +681,9 @@ namespace UltraCanvas {
                 }
                 if (j > i + 1 && j < n && rawLine[j] == '^') {
                     int s = (int)visibleText.size();
-                    visibleText.append(rawLine, i + 1, j - (i + 1));
+                    i += 1;        // skip opening ^
+                    noteVisStart();
+                    visibleText.append(rawLine, i, j - i);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Superscript, {}, {}});
                     i = j + 1;
                     continue;
@@ -631,6 +700,8 @@ namespace UltraCanvas {
                     std::string body = SubstituteGreekLetters(
                             rawLine.substr(i + 1, close - (i + 1)));
                     int s = (int)visibleText.size();
+                    i += 1;        // skip opening $
+                    noteVisStart();
                     visibleText.append(body);
                     runs.push_back({s, (int)visibleText.size(), InlineRun::Math, {}, {}});
                     i = close + 1;
@@ -641,10 +712,12 @@ namespace UltraCanvas {
             if (c == '[' && i + 1 < n && rawLine[i + 1] == '^') {
                 int close = scanChar(i + 2, ']');
                 if (close > i + 2) {
-                    std::string label = rawLine.substr(i + 2, close - (i + 2));
                     int s = (int)visibleText.size();
+                    i += 2;        // skip opening [^
+                    noteVisStart();
                     // Render the label itself inline (e.g. "[^1]" → visible "1"). Subscript-style
                     // tooltip / color is applied by the caller via InlineRun::Footnote.
+                    std::string label = rawLine.substr(i, close - i);
                     visibleText.append(label);
                     InlineRun run;
                     run.startByte = s;
@@ -733,6 +806,8 @@ namespace UltraCanvas {
                         std::string visible = rawLine.substr(textStart, textEnd - textStart);
                         std::string url     = rawLine.substr(urlStart, urlEnd - urlStart);
                         int s = (int)visibleText.size();
+                        i = textStart;        // skip opening [ or ![
+                        noteVisStart();
                         visibleText.append(visible);
                         InlineRun run;
                         run.startByte = s;
@@ -749,6 +824,16 @@ namespace UltraCanvas {
 
             visibleText.push_back(c);
             i++;
+        }
+
+        // Final sync so any trailing plain chars are reflected in the counters,
+        // then emit the closing sentinel `{visibleCpCount, sourceCpCount}`.
+        syncCp();
+        if (outCpMap) {
+            if (outCpMap->empty()) outCpMap->push_back({0, 0});
+            if (outCpMap->back().visibleCp != visCp || outCpMap->back().sourceCp != srcCp) {
+                outCpMap->push_back({visCp, srcCp});
+            }
         }
     }
 
@@ -1014,7 +1099,7 @@ namespace UltraCanvas {
 
     // Build a LineLayoutBase (or derived) for one line in MarkdownHybrid mode.
     // Detects block-level type (heading / fenced code / blockquote / list / HR / paragraph),
-    // strips the markup prefix from the layout text, sets layoutTextStartIndex & layoutShift so
+    // strips the markup prefix from the layout text, fills cpMap & layoutShift so
     // cursor/selection math can round-trip to the real line text. Fenced-code state is inferred
     // from lineLayouts[lineIndex-1]'s type — callers must invalidate subsequent lines when a
     // structural edit changes fence/list/quote state (Step 8 will tighten this).
@@ -1050,31 +1135,28 @@ namespace UltraCanvas {
         // Helper: parse `payload` for inline markdown, build an ITextLayout with the visible
         // (markup-stripped) text, apply configureLayout(shiftX), run the inline attribute pass,
         // and append hit rects to `outHitRects`. Returns the visible text + the built layout.
+        // If `outCpMap` is non-null, the visible-cp ↔ source-line-cp map is written there with
+        // each entry's sourceCp shifted by `sourceCpOffset` so callers that pass a payload
+        // sliced from a larger raw line (heading body, list item body, …) get a map in raw-line
+        // coordinates.
         auto buildInlineStyledLayout = [&](const std::string& payload, int shiftX,
                                            std::vector<MarkdownHitRect>& outHitRects,
-                                           std::string* outVisibleText = nullptr)
+                                           std::string* outVisibleText = nullptr,
+                                           std::vector<CpRun>* outCpMap = nullptr,
+                                           int sourceCpOffset = 0)
                 -> std::unique_ptr<ITextLayout>
         {
             std::string visibleText;
             std::vector<InlineRun> runs;
-            ParseInlineMarkdownRuns(payload, visibleText, runs);
+            ParseInlineMarkdownRuns(payload, visibleText, runs, outCpMap);
+            if (outCpMap && sourceCpOffset != 0) {
+                for (auto& e : *outCpMap) e.sourceCp += sourceCpOffset;
+            }
             auto layout = ctx->CreateTextLayout(visibleText, false);
             configureLayout(layout.get(), shiftX);
             ApplyInlineRunsAndAbbreviations(layout.get(), visibleText, runs, outHitRects);
             if (outVisibleText) *outVisibleText = std::move(visibleText);
             return layout;
-        };
-
-        auto makeParagraph = [&]() -> std::unique_ptr<LineLayoutBase> {
-            auto ll = std::make_unique<LineLayoutBase>();
-            ll->layoutType = LineLayoutType::MarkDownLine;
-            ll->layout = buildInlineStyledLayout(rawLine, 0, ll->hitRects);
-            // layoutTextStartIndex = 0 for paragraphs — inline markers are scattered so precise
-            // codepoint accounting isn't attempted; selection clamps to visible text.
-            ll->layoutTextStartIndex = 0;
-            ll->bounds.width  = ll->layout->GetLayoutWidth();
-            ll->bounds.height = ll->layout->GetLayoutHeight();
-            return ll;
         };
 
         // State from previous layout: open fenced code block?
@@ -1145,6 +1227,11 @@ namespace UltraCanvas {
             cl->bounds.width = cl->layout->GetLayoutWidth() + style.padding * 2;
             cl->bounds.height = std::max(1.0, cl->layout->GetLayoutHeight());
             cl->layoutShift.x = style.padding;
+            // Identity for content (layout text == rawLine); for the closing fence the
+            // layout is empty and the source maps to a single zero-width segment.
+            int visCp = utf8_length(cl->layout->GetText());
+            int srcCp = utf8_length(rawLine);
+            cl->cpMap = {{0, 0}, {visCp, srcCp}};
             return cl;
         }
 
@@ -1165,6 +1252,12 @@ namespace UltraCanvas {
                 cl->bounds.height = computedLineHeight;
             }
             cl->bounds.width = visibleTextArea.width > 0 ? visibleTextArea.width : 0;
+            // Layout is the synthetic " lang " tag (or null for unlabeled fence). The
+            // source line is the fence itself; clicks on a fence line snap to column 0
+            // via the front entry.
+            int visCp = cl->layout ? utf8_length(cl->layout->GetText()) : 0;
+            int srcCp = utf8_length(rawLine);
+            cl->cpMap = {{0, 0}, {visCp, srcCp}};
             return cl;
         }
 
@@ -1185,6 +1278,8 @@ namespace UltraCanvas {
                     hr->layout = nullptr;  // Renderer draws the rule directly when layout is null.
                     hr->bounds.width = visibleTextArea.width > 0 ? visibleTextArea.width : 0;
                     hr->bounds.height = hrHeight;
+                    // Sentinel-only map: HR has no editable layout, clicks resolve to column 0.
+                    hr->cpMap = {{0, 0}, {0, utf8_length(rawLine)}};
                     return hr;
                 }
             }
@@ -1219,8 +1314,8 @@ namespace UltraCanvas {
                 auto ll = std::make_unique<LineLayoutBase>();
                 ll->layoutType = LineLayoutType::MarkDownLine;
                 std::string visibleText;
-                ll->layout = buildInlineStyledLayout(payload, 0, ll->hitRects, &visibleText);
-                ll->layoutTextStartIndex = startCp;
+                ll->layout = buildInlineStyledLayout(payload, 0, ll->hitRects, &visibleText,
+                                                     &ll->cpMap, startCp);
 
                 // Heading font-size + weight apply to the entire visible text (pre-↩ suffix).
                 int headingEndByte = (int)visibleText.size();
@@ -1282,9 +1377,9 @@ namespace UltraCanvas {
                 auto bq = std::make_unique<BlockquoteLayout>();
                 bq->layoutType = LineLayoutType::Blockquote;
                 bq->quoteLevel = depth;
-                bq->layoutTextStartIndex = startCp;
                 bq->layoutShift.x = (depth - 1) * quoteNestingStep + quoteIndent;
-                bq->layout = buildInlineStyledLayout(payload, bq->layoutShift.x, bq->hitRects);
+                bq->layout = buildInlineStyledLayout(payload, bq->layoutShift.x, bq->hitRects,
+                                                     nullptr, &bq->cpMap, startCp);
                 bq->bounds.width  = bq->layoutShift.x + bq->layout->GetLayoutWidth();
                 bq->bounds.height = bq->layout->GetLayoutHeight();
                 return bq;
@@ -1358,7 +1453,9 @@ namespace UltraCanvas {
                     tl->tableColumnCount = (int)cells.size();
                     tl->lastTableRow = !nextIsTable;
                     tl->layout = nullptr;  // rendered via cellsLayouts
-                    tl->layoutTextStartIndex = 0;
+                    // Sentinel-only cpMap: rows are not cursor-addressable today (clicks
+                    // resolve to {row, 0} via PosToLineColumn's null-layout branch).
+                    tl->cpMap = {{0, 0}, {0, 0}};
 
                     // On a separator row, parse per-cell alignment markers.
                     // `:---` → Left, `:---:` → Center, `---:` → Right, `---` → Left (default).
@@ -1428,9 +1525,9 @@ namespace UltraCanvas {
                 ol->layoutType = LineLayoutType::OrderedListItem;
                 ol->orderedItemNumber = number;
                 ol->listDepth = depth;
-                ol->layoutTextStartIndex = startCp;
                 ol->layoutShift.x = depth * listIndent;
-                ol->layout = buildInlineStyledLayout(payload, ol->layoutShift.x, ol->hitRects);
+                ol->layout = buildInlineStyledLayout(payload, ol->layoutShift.x, ol->hitRects,
+                                                     nullptr, &ol->cpMap, startCp);
                 ol->bounds.width  = ol->layoutShift.x + ol->layout->GetLayoutWidth();
                 ol->bounds.height = ol->layout->GetLayoutHeight();
                 return ol;
@@ -1454,9 +1551,9 @@ namespace UltraCanvas {
                 auto ul = std::make_unique<UnorderedListItemLayout>();
                 ul->layoutType = LineLayoutType::UnorderedListItem;
                 ul->listDepth = depth;
-                ul->layoutTextStartIndex = startCp;
                 ul->layoutShift.x = depth * listIndent;
-                ul->layout = buildInlineStyledLayout(payload, ul->layoutShift.x, ul->hitRects);
+                ul->layout = buildInlineStyledLayout(payload, ul->layoutShift.x, ul->hitRects,
+                                                     nullptr, &ul->cpMap, startCp);
                 ul->bounds.width  = ul->layoutShift.x + ul->layout->GetLayoutWidth();
                 ul->bounds.height = ul->layout->GetLayoutHeight();
                 return ul;
@@ -1479,9 +1576,9 @@ namespace UltraCanvas {
 
                 auto dl = std::make_unique<LineLayoutBase>();
                 dl->layoutType = LineLayoutType::DefinitionContinuation;
-                dl->layoutTextStartIndex = startCp;
                 dl->layoutShift.x = defIndent;
-                dl->layout = buildInlineStyledLayout(payload, dl->layoutShift.x, dl->hitRects);
+                dl->layout = buildInlineStyledLayout(payload, dl->layoutShift.x, dl->hitRects,
+                                                     nullptr, &dl->cpMap, startCp);
                 dl->bounds.width  = dl->layoutShift.x + dl->layout->GetLayoutWidth();
                 dl->bounds.height = dl->layout->GetLayoutHeight();
                 return dl;
@@ -1534,7 +1631,9 @@ namespace UltraCanvas {
                             std::max(1, visibleTextArea.width - style.padding * 2));
                     cl->layout->SetWrap(TextWrap::WrapWordChar);
                 }
-                cl->layoutTextStartIndex = utf8_byte_to_cp(rawLine, indentBytes);
+                int indentCp = utf8_byte_to_cp(rawLine, indentBytes);
+                int contentCp = utf8_length(content);
+                cl->cpMap = {{0, indentCp}, {contentCp, indentCp + contentCp}};
                 cl->layoutShift.x = style.padding;
                 cl->bounds.width  = cl->layout->GetLayoutWidth() + style.padding * 2;
                 cl->bounds.height = std::max(1.0, cl->layout->GetLayoutHeight());
@@ -1552,7 +1651,8 @@ namespace UltraCanvas {
                     auto dt = std::make_unique<LineLayoutBase>();
                     dt->layoutType = LineLayoutType::DefinitionTerm;
                     std::string visibleText;
-                    dt->layout = buildInlineStyledLayout(rawLine, 0, dt->hitRects, &visibleText);
+                    dt->layout = buildInlineStyledLayout(rawLine, 0, dt->hitRects, &visibleText,
+                                                         &dt->cpMap, 0);
                     int endByte = (int)visibleText.size();
                     auto w = TextAttributeFactory::CreateFontWeight(FontWeight::Bold);
                     w->SetRange(0, endByte);
@@ -1565,8 +1665,16 @@ namespace UltraCanvas {
             }
         }
 
-        // Fallback: plain paragraph (includes tables and anything else not matched above).
-        return makeParagraph();
+        {
+            // Fallback: plain paragraph (includes tables and anything else not matched above).
+            auto ll = std::make_unique<LineLayoutBase>();
+            ll->layoutType = LineLayoutType::MarkDownLine;
+            ll->layout = buildInlineStyledLayout(rawLine, 0, ll->hitRects,
+                                                 nullptr, &ll->cpMap, 0);
+            ll->bounds.width = ll->layout->GetLayoutWidth();
+            ll->bounds.height = ll->layout->GetLayoutHeight();
+            return ll;
+        }
     }
 
     // ---------------------------------------------------------------

@@ -1,3 +1,6 @@
+#### 2026-04-30 *0.1.26*
+- Fix cursor position in Markdown mode in TextArea
+
 #### 2026-04-28 *0.1.25*
 - Major rework in the UltraCanvas rendering, implemented optimized rendering.
   Now popups/tooltips rendered in own surfaces (does not need to repaint main content after show/hide)

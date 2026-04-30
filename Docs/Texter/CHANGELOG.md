@@ -1,3 +1,6 @@
+#### 2026-04-30 *1.0.25*
+- Fix cursor position in Markdown mode
+ 
 #### 2026-04-28 *1.0.24*
 - Fix Markdown toolbar (was not received events)
 - Major rework in the UltraCanvas (implemented optimized rendering)
