@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasButtonDemo.cpp
 // Comprehensive button component demonstration
-// Version: 2.0.0
-// Last Modified: 2025-01-11
+// Version: 2.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -147,7 +147,7 @@ namespace UltraCanvas {
 
             // Icon Left
             auto iconLeftBtn = CreateButton("IconLeft", 132, 130, yOffset, 120, 35, "Save");
-            iconLeftBtn->SetIcon(GetResourcesDir() + "media/icons/save.png");
+            iconLeftBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/save.png"));
             iconLeftBtn->SetIconPosition(ButtonIconPosition::Left);
             iconLeftBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Save button clicked\nIcon positioned on the left");
@@ -156,7 +156,7 @@ namespace UltraCanvas {
 
             // Icon Right
             auto iconRightBtn = CreateButton("IconRight", 133, 260, yOffset, 120, 35, "Next");
-            iconRightBtn->SetIcon(GetResourcesDir() + "media/icons/arrow-chevron-right.png");
+            iconRightBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/arrow-chevron-right.png"));
             iconRightBtn->SetIconPosition(ButtonIconPosition::Right);
             iconRightBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Next button clicked\nIcon positioned on the right");
@@ -165,7 +165,7 @@ namespace UltraCanvas {
 
             // Icon Only
 //            auto iconOnlyBtn = CreateButton("IconOnly", 134, 390, yOffset, 40, 35, "");
-//            iconOnlyBtn->SetIcon(GetResourcesDir() + "media/icons/settings.png");
+//            iconOnlyBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
 //            iconOnlyBtn->SetStyle(ButtonStyles::IconOnlyStyle());
 ////            iconOnlyBtn->SetTooltip("Settings");
 //            iconOnlyBtn->onClick = [statusLabel]() {
@@ -175,7 +175,7 @@ namespace UltraCanvas {
 
             // Icon Top
             auto iconTopBtn = CreateButton("IconTop", 135, 390, yOffset, 80, 62, "Upload");
-            iconTopBtn->SetIcon(GetResourcesDir() + "media/icons/upload.png");
+            iconTopBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/upload.png"));
             iconTopBtn->SetIconPosition(ButtonIconPosition::Top);
             iconTopBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Upload button clicked\nIcon positioned above text");
@@ -184,7 +184,7 @@ namespace UltraCanvas {
 
             // Icon Bottom
             auto iconBottomBtn = CreateButton("IconBottom", 136, 480, yOffset, 100, 62, "Download");
-            iconBottomBtn->SetIcon(GetResourcesDir() + "media/icons/download_34px.png");
+            iconBottomBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/download_34px.png"));
             iconBottomBtn->SetIconPosition(ButtonIconPosition::Bottom);
             iconBottomBtn->SetIconSize(41,34);
             iconBottomBtn->onClick = [statusLabel]() {
@@ -193,7 +193,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(iconBottomBtn);
 
             auto iconRightBtn2 = CreateButton("IconRight", 133, 590, yOffset, 260, 35, "Continue with UltraCanvas");
-            iconRightBtn2->SetIcon(GetResourcesDir() + "media/icons/ultracanvas_20px.png");
+            iconRightBtn2->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/ultracanvas_20px.png"));
             iconRightBtn2->SetIconSize(20, 20);
             iconRightBtn2->SetIconPosition(ButtonIconPosition::Left);
             iconRightBtn2->SetColors(Colors::White, Color(240, 240, 240, 255), Colors::Gray, Colors::LightGray);
@@ -244,7 +244,7 @@ namespace UltraCanvas {
             // Badge Style (Patreon)
             auto patreonBtn = CreateButton("PatreonButton", 143, 310, yOffset, 140, 35, "Patreon");
             patreonBtn->SetSplitEnabled(true);
-            patreonBtn->SetIcon(GetResourcesDir() + "media/icons/patreon.png");
+            patreonBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/patreon.png"));
             patreonBtn->SetIconPosition(ButtonIconPosition::Left);
             patreonBtn->SetIconSize(20,20);
             patreonBtn->SetIconSpacing(7);
@@ -278,7 +278,7 @@ namespace UltraCanvas {
             // PayPal Style
             auto paypalBtn = CreateButton("PaypalButton", 145, 610, yOffset, 140, 35, "Paypal");
             paypalBtn->SetSplitEnabled(true);
-            paypalBtn->SetIcon(GetResourcesDir() + "media/icons/paypal.png");
+            paypalBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/paypal.png"));
             paypalBtn->SetIconPosition(ButtonIconPosition::Left);
             paypalBtn->SetIconSize(20,20);
             paypalBtn->SetIconSpacing(7);
@@ -467,8 +467,8 @@ namespace UltraCanvas {
             multiBtn->SetSplitEnabled(true);
             multiBtn->SetSplitRatio(0);
 //            multiBtn->SetSplitSecondaryText("");
-            multiBtn->SetIcon(GetResourcesDir() + "media/icons/save.png");
-            multiBtn->SetSplitSecondaryIcon(GetResourcesDir() + "media/icons/settings.png");
+            multiBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/save.png"));
+            multiBtn->SetSplitSecondaryIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
             multiBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Quick save executed\nFile saved with default settings");
             };
@@ -495,10 +495,10 @@ namespace UltraCanvas {
                     .SetPosition(20, yOffset)
                     .SetSize(240, 40)
                     .SetText("Built with Builder")
-                    .SetIcon(GetResourcesDir() + "media/icons/build.png")
+                    .SetIcon(NormalizePath(GetResourcesDir() + "media/icons/build.png"))
                     .SetIconSpacing(6)
                     .SetSplitEnabled(true)
-                    .SetSplitSecondaryIcon(GetResourcesDir() + "media/icons/arrow-chevron-right.png")
+                    .SetSplitSecondaryIcon(NormalizePath(GetResourcesDir() + "media/icons/arrow-chevron-right.png"))
                     .SetSplitIconSize(24,24)
 //                    .SetSplitSecondaryText("→")
                     .SetSplitRatio(0.8)

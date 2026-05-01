@@ -1,7 +1,7 @@
 // Apps/UltraTexter/main.cpp
 // UltraTexter - Standalone Text Editor Application with Multi-Window Support
-// Version: 2.0.0
-// Last Modified: 2026-03-05
+// Version: 2.0.2
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include <iostream>
@@ -231,7 +231,7 @@ bool InitializeSystem(UltraCanvasApplication& app, const std::string& appName) {
             HandleFatalError("Failed to initialize UltraCanvas application");
             return false;
         }
-        app.SetDefaultWindowIcon(GetResourcesDir()+"media/appicons/Texter.png");
+        app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir()+"media/appicon/Texter.png"));
 
         debugOutput << "✓ UltraCanvas framework initialized successfully" << std::endl;
     } catch (const std::exception& e) {
@@ -347,22 +347,34 @@ int main(int argc, char* argv[]) {
         SplashScreenConfig splashConfig;
         splashConfig.width = 500;
         splashConfig.height = 500;
-        splashConfig.imagePath = GetResourcesDir() + "media/appicon/Texter.png";
+        splashConfig.imagePath = NormalizePath(GetResourcesDir() + "media/appicon/Texter.png");
         splashConfig.title = "UltraTexter";
         splashConfig.version = UltraCanvasTextEditor::version;
         splashConfig.websiteURL = "https://www.ultraos.eu/";
         splashConfig.websiteDisplay = "www.ultraos.eu";
-        splashConfig.showTimeout = std::chrono::milliseconds(2000);
-        splash.Show(splashConfig, firstWindow.get());
+        splashConfig.showTimeout = 2000;
 
+        // Run session restore + crash recovery only after the splash is gone.
+        // The recovery prompt uses native MessageBoxW (blocking) on Windows;
+        // if it opens while the splash is alwaysOnTop, the dialog hides
+        // behind the splash and freezes the app.
+//        splash.onSplashClosed = [firstWindow]() {
+//            firstWindow->RestoreSessionAndRecoverBackups();
+//        };
+        splash.Show(splashConfig, firstWindow.get());
 
         debugOutput << "✓ Main window created" << std::endl;
 
-        // Close splash screen now that main window is ready
-        //splash.Close();
-        g_app->StartTimer(std::chrono::milliseconds(10), false, [firstWindow](TimerId t) {
+        // Fallback: if the splash never became visible (e.g. resource load
+        // failed and Show reset the window), still run recovery so it isn't
+        // dropped on the floor.
+        if (!splash.IsVisible()) {
             firstWindow->RestoreSessionAndRecoverBackups();
-        });
+        } else {
+            app.StartTimer(100, false, [firstWindow](TimerId) {
+                firstWindow->RestoreSessionAndRecoverBackups();
+            });
+        }
 
         // Open file from command line
         if (!fileToOpen.empty()) {

@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <cstdlib>
 #include <string>
 #include "UltraCanvasDebug.h"
 
@@ -16,12 +17,8 @@ namespace UltraCanvas {
     std::string resourcesDir;
     std::string GetResourcesDir() {
         if (resourcesDir.empty()) {
-#if defined(_WIN32) || defined(_WIN64)
-            resourcesDir = GetExecutableDir() + "\\" + UC_DEFAULT_RESOURCES_DIR;
-#else
             resourcesDir = GetExecutableDir() + "/" + UC_DEFAULT_RESOURCES_DIR;
-#endif
-            debugOutput << "GetResourcesDir dir=" << resourcesDir << std::endl;
+            debugOutput << "GetResourcesDir dir=" << NormalizePath(resourcesDir) << std::endl;
         }
         return resourcesDir;
     }

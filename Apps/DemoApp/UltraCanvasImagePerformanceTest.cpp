@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
 // Image performance testing demonstration - load, decompress, and render benchmarks
-// Version: 1.0.0
-// Last Modified: 2025-12-24
+// Version: 1.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -66,24 +66,24 @@ namespace UltraCanvas {
         controlsLayout->AddUIElement(imageLabel);
 
         auto imageDropdown = std::make_shared<UltraCanvasDropdown>("ImageDropdown", 9012, 65, 10, 240, 30);
-        imageDropdown->AddItem("PNG sample (350Kb)", GetResourcesDir() + "media/images/dice.png");
-        imageDropdown->AddItem("JPEG sample (74Kb)", GetResourcesDir() + "media/images/dice.jpg");
-        imageDropdown->AddItem("GIF sample (85Kb)", GetResourcesDir() + "media/images/dice.gif");
-        imageDropdown->AddItem("WEBP sample (62KB)", GetResourcesDir() + "media/images/dice.webp");
-        imageDropdown->AddItem("BMP sample (1920Kb)", GetResourcesDir() + "media/images/dice.bmp");
-        imageDropdown->AddItem("TIFF sample (1920KB)", GetResourcesDir() + "media/images/dice.tiff");
-        imageDropdown->AddItem("AVIF sample (13Kb)", GetResourcesDir() + "media/images/dice.avif");
-        imageDropdown->AddItem("HEIC sample (26Kb)", GetResourcesDir() + "media/images/dice.heic");
-        imageDropdown->AddItem("QOI sample (519Kb)", GetResourcesDir() + "media/images/dice.qoi");
-        imageDropdown->AddItem("Icon, small PNG (633b)", GetResourcesDir() + "media/images/test_small.png");
-        imageDropdown->AddItem("Icon, small JPG (1197b)", GetResourcesDir() + "media/images/test_small.jpg");
-        imageDropdown->AddItem("Icon, small GIF (133b)", GetResourcesDir() + "media/images/test_small.gif");
-        imageDropdown->AddItem("Icon, small WEBP (410b)", GetResourcesDir() + "media/images/test_small.webp");
-        imageDropdown->AddItem("Icon, small TIFF (2817b)", GetResourcesDir() + "media/images/test_small.tiff");
-        imageDropdown->AddItem("Icon, small BMP (2690b)", GetResourcesDir() + "media/images/test_small.bmp");
-        imageDropdown->AddItem("Icon, small AVIF (446b)", GetResourcesDir() + "media/images/test_small.avif");
-        imageDropdown->AddItem("Icon, small HEIC (708b)", GetResourcesDir() + "media/images/test_small.avif");
-        imageDropdown->AddItem("Icon, small QOI (367b)", GetResourcesDir() + "media/images/test_small.qoi");
+        imageDropdown->AddItem("PNG sample (350Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.png"));
+        imageDropdown->AddItem("JPEG sample (74Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.jpg"));
+        imageDropdown->AddItem("GIF sample (85Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.gif"));
+        imageDropdown->AddItem("WEBP sample (62KB)", NormalizePath(GetResourcesDir() + "media/images/dice.webp"));
+        imageDropdown->AddItem("BMP sample (1920Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.bmp"));
+        imageDropdown->AddItem("TIFF sample (1920KB)", NormalizePath(GetResourcesDir() + "media/images/dice.tiff"));
+        imageDropdown->AddItem("AVIF sample (13Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.avif"));
+        imageDropdown->AddItem("HEIC sample (26Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.heic"));
+        imageDropdown->AddItem("QOI sample (519Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.qoi"));
+        imageDropdown->AddItem("Icon, small PNG (633b)", NormalizePath(GetResourcesDir() + "media/images/test_small.png"));
+        imageDropdown->AddItem("Icon, small JPG (1197b)", NormalizePath(GetResourcesDir() + "media/images/test_small.jpg"));
+        imageDropdown->AddItem("Icon, small GIF (133b)", NormalizePath(GetResourcesDir() + "media/images/test_small.gif"));
+        imageDropdown->AddItem("Icon, small WEBP (410b)", NormalizePath(GetResourcesDir() + "media/images/test_small.webp"));
+        imageDropdown->AddItem("Icon, small TIFF (2817b)", NormalizePath(GetResourcesDir() + "media/images/test_small.tiff"));
+        imageDropdown->AddItem("Icon, small BMP (2690b)", NormalizePath(GetResourcesDir() + "media/images/test_small.bmp"));
+        imageDropdown->AddItem("Icon, small AVIF (446b)", NormalizePath(GetResourcesDir() + "media/images/test_small.avif"));
+        imageDropdown->AddItem("Icon, small HEIC (708b)", NormalizePath(GetResourcesDir() + "media/images/test_small.avif"));
+        imageDropdown->AddItem("Icon, small QOI (367b)", NormalizePath(GetResourcesDir() + "media/images/test_small.qoi"));
         imageDropdown->SetSelectedIndex(0);
         controlsLayout->AddUIElement(imageDropdown);
         controlsLayout->AddSpacing(5);
@@ -124,7 +124,7 @@ namespace UltraCanvas {
 
         auto imageElement = std::make_shared<UltraCanvasImageElement>("PerfTestImage", 9021, 10, 10, 480, 380);
         imageElement->SetFitMode(ImageFitMode::ScaleDown);
-        imageElement->LoadFromFile(GetResourcesDir() + "media/images/dice.png");
+        imageElement->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/dice.png"));
         imageContainer->AddChild(imageElement);
 
         mainContainer->AddChild(imageContainer);

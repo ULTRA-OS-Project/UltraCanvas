@@ -214,7 +214,7 @@ namespace UltraCanvas {
         section4->SetTextColor(Color(0, 100, 200, 255));
         container->AddChild(section4);
 
-        std::string iconsDir = GetResourcesDir() + "media/icons/";
+        std::string iconsDir = NormalizePath(GetResourcesDir() + "media/icons/");
 
         auto iconModel = std::make_shared<UltraCanvasSimpleListModel>();
         iconModel->AddItem(ListItem("C++", iconsDir + "cpp.png", "Systems programming language"));

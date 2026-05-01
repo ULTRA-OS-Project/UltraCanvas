@@ -25,7 +25,7 @@ namespace UltraCanvas {
         std::string websiteDisplay;
         int width = 400;
         int height = 300;
-        std::chrono::milliseconds showTimeout{0};  // Auto-close after this duration (0 = no timeout)
+        unsigned int showTimeout = 0;  // Auto-close after this duration (0 = no timeout)
         Color backgroundColor = Color(255, 255, 255);
     };
 

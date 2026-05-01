@@ -1,7 +1,8 @@
 // core/UltraCanvasSplashScreen.cpp
 // Reusable splash screen component
-// Version: 1.0.1
-// Last Modified: 2026-04-05
+// Version: 1.0.2 - Splash is no longer modal; modal flag was hiding
+//                 native dialogs that opened while the splash was up
+// Last Modified: 2026-04-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSplashScreen.h"
@@ -32,7 +33,6 @@ namespace UltraCanvas {
         wc.closable = false;
         wc.deleteOnClose = true;
         wc.alwaysOnTop = true;
-        wc.modal = true;
         wc.parentWindow = parentWin;
         wc.backgroundColor = config.backgroundColor;
 
@@ -125,7 +125,7 @@ namespace UltraCanvas {
         window->CenterOnScreenOfWindow(parentWin);
 
         // Start auto-close timer if a timeout was specified
-        if (config.showTimeout.count() > 0) {
+        if (config.showTimeout > 0) {
             timeoutTimerId = UltraCanvasApplication::GetInstance()->StartTimer(
                 config.showTimeout, false, [this](TimerId) {
                     timeoutTimerId = InvalidTimerId;

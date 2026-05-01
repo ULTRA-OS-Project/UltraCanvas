@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasSearchBar.cpp
 // Inline search and replace bar implementation
-// Version: 1.2.0
-// Last Modified: 2026-03-19
+// Version: 1.2.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSearchBar.h"
@@ -163,7 +163,7 @@ namespace UltraCanvas {
 
         // Search icon button
         searchIconButton = std::make_shared<UltraCanvasButton>("SearchIconBtn", 6001, x, inputY, IconBtnSize, IconBtnSize);
-        searchIconButton->SetIcon(GetResourcesDir() + "media/icons/texter/search.svg");
+        searchIconButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/texter/search.svg"));
         searchIconButton->SetText("");
         searchIconButton->SetIconSize(14, 14);
         searchIconButton->SetPadding(4,4,4,4);
@@ -193,7 +193,7 @@ namespace UltraCanvas {
 
         // Nav + settings buttons — left-aligned after count label
         firstMatchButton = std::make_shared<UltraCanvasButton>("FirstMatchBtn", 6006, x, btnY, IconBtnSize, IconBtnSize);
-        firstMatchButton->SetIcon(GetResourcesDir() + "media/icons/texter/arrow-up-to-bar.svg"); // ⤒
+        firstMatchButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/texter/arrow-up-to-bar.svg")); // ⤒
         firstMatchButton->SetIconSize(18,18);
         firstMatchButton->SetPadding(4,4,4,4);
         firstMatchButton->SetTooltip("Go to First Match");
@@ -203,7 +203,7 @@ namespace UltraCanvas {
 
         nextButton = std::make_shared<UltraCanvasButton>("NextBtn", 6004, x, btnY, IconBtnSize, IconBtnSize);
         nextButton->SetText(""); // ↓
-        nextButton->SetIcon(GetResourcesDir() + "media/icons/texter/arrow-down.svg"); // ⤒
+        nextButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/texter/arrow-down.svg")); // ⤒
         nextButton->SetIconSize(18,18);
         nextButton->SetPadding(4,4,4,4);
         nextButton->SetTooltip("Find Next (Enter)");
@@ -212,7 +212,7 @@ namespace UltraCanvas {
         x += IconBtnSize + HSpacing;
 
         prevButton = std::make_shared<UltraCanvasButton>("PrevBtn", 6005, x, btnY, IconBtnSize, IconBtnSize);
-        prevButton->SetIcon(GetResourcesDir() + "media/icons/texter/arrow-up.svg"); // ⤒
+        prevButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/texter/arrow-up.svg")); // ⤒
         prevButton->SetIconSize(18,18);
         prevButton->SetPadding(4,4,4,4);
         prevButton->SetTooltip("Find Previous (Shift+Enter)");
@@ -221,7 +221,7 @@ namespace UltraCanvas {
         x += IconBtnSize + HSpacing;
 
         settingsButton = std::make_shared<UltraCanvasButton>("SettingsBtn", 6009, x, btnY, IconBtnSize, IconBtnSize);
-        settingsButton->SetIcon(GetResourcesDir() + "media/icons/texter/settings-sliders.svg");
+        settingsButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/texter/settings-sliders.svg"));
         settingsButton->SetIconSize(18,18);
         settingsButton->SetPadding(4,4,4,4);
         settingsButton->SetTooltip("Search Options");
@@ -279,7 +279,7 @@ namespace UltraCanvas {
 
         // Replace icon button
         replaceIconButton = std::make_shared<UltraCanvasButton>("ReplaceIconBtn", 6101, x, inputY, SearchIconW, inputH);
-        replaceIconButton->SetIcon(GetResourcesDir() + "media/icons/texter/replace.svg");
+        replaceIconButton->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/texter/replace.svg"));
         replaceIconButton->SetText("");
         replaceIconButton->SetIconSize(14, 14);
         replaceIconButton->SetPadding(4,4,4,4);

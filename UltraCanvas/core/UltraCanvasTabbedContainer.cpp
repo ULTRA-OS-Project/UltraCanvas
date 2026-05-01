@@ -1,7 +1,7 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 1.9.3
-// Last Modified: 2026-04-24
+// Version: 1.9.4
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasApplication.h"
@@ -223,7 +223,7 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::InitializeOverflowDropdown() {
         overflowButton = std::make_shared<UltraCanvasButton>(
                 GetIdentifier() + "_overflow", 0, 0, 0, overflowDropdownWidth, tabHeight, "");
-        overflowButton->SetIcon(GetResourcesDir()+"media/icons/arrow_down_solid.svg");
+        overflowButton->SetIcon(NormalizePath(GetResourcesDir()+"media/icons/arrow_down_solid.svg"));
         AddChild(overflowButton);
         overflowButton->SetVisible(false);
         overflowButton->SetBorder(0, Colors::Transparent);

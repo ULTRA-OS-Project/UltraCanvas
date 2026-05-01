@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.5.0
-// Last Modified: 2026-04-30
+// Version: 3.5.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -1636,7 +1636,9 @@ namespace UltraCanvas {
                 break;
             case UCKeys::Enter:
                 if (HasSelection()) DeleteSelection();
-                InsertNewLine();
+                if (!IsMarkdownHybridMode() || !TryContinueMarkdownList()) {
+                    InsertNewLine();
+                }
                 break;
             case UCKeys::Tab:
                 if (!event.alt && !event.ctrl && !event.shift) {

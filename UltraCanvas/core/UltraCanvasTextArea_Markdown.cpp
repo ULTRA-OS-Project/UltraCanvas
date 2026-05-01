@@ -1,8 +1,8 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
-// Version: 2.6.0
-// Last Modified: 2026-04-30
+// Version: 2.6.2
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextArea.h"
@@ -1773,6 +1773,140 @@ namespace UltraCanvas {
         }
         SetMouseCursor(UCMouseCursor::Hand);
         return true;
+    }
+
+    bool UltraCanvasTextArea::TryContinueMarkdownList() {
+        if (isReadOnly) return false;
+        const int lineIdx = cursorPosition.lineIndex;
+        if (lineIdx < 0 || lineIdx >= static_cast<int>(lines.size())) return false;
+
+        const std::string content = GetLineContent(lineIdx);
+
+        // Skip leading ASCII whitespace — this is the list's indent.
+        size_t pos = 0;
+        while (pos < content.size() && (content[pos] == ' ' || content[pos] == '\t')) ++pos;
+        const std::string indent = content.substr(0, pos);
+
+        std::string newMarker;
+        size_t markerEnd = std::string::npos;
+        const size_t remaining = content.size() - pos;
+
+        // Task list: "- [ ] " / "- [x] " / "- [X] " — new line always unchecked.
+        if (remaining >= 6 && content[pos] == '-' && content[pos + 1] == ' ' &&
+            content[pos + 2] == '[' && content[pos + 4] == ']' && content[pos + 5] == ' ' &&
+            (content[pos + 3] == ' ' || content[pos + 3] == 'x' || content[pos + 3] == 'X')) {
+            newMarker = "- [ ] ";
+            markerEnd = pos + 6;
+        }
+        // Unordered list: "- ", "* ", "+ "
+        else if (remaining >= 2 &&
+                 (content[pos] == '-' || content[pos] == '*' || content[pos] == '+') &&
+                 content[pos + 1] == ' ') {
+            newMarker.assign(1, content[pos]);
+            newMarker.append(" ");
+            markerEnd = pos + 2;
+        }
+        // Ordered list: "N. " or "N) " — auto-increment on continuation.
+        else {
+            size_t scan = pos;
+            while (scan < content.size() && content[scan] >= '0' && content[scan] <= '9') ++scan;
+            if (scan > pos && scan + 1 < content.size() &&
+                (content[scan] == '.' || content[scan] == ')') && content[scan + 1] == ' ') {
+                int n = 0;
+                try { n = std::stoi(content.substr(pos, scan - pos)); } catch (...) { return false; }
+                newMarker = std::to_string(n + 1);
+                newMarker.append(1, content[scan]);
+                newMarker.append(" ");
+                markerEnd = scan + 2;
+            } else {
+                return false;
+            }
+        }
+
+        // Indent + marker is ASCII-only, so byte offset == codepoint offset and
+        // we can compare directly against the codepoint-based cursor column.
+        if (cursorPosition.columnIndex < static_cast<int>(markerEnd)) return false;
+
+        // Empty list item = nothing but whitespace after the marker. Pressing
+        // Enter on one exits the list rather than continuing it.
+        bool emptyItem = true;
+        for (size_t i = markerEnd; i < content.size(); ++i) {
+            if (content[i] != ' ' && content[i] != '\t') { emptyItem = false; break; }
+        }
+
+        if (emptyItem) {
+            SaveState();
+            const bool wasTerminal = LineHasNewline(lineIdx);
+            lines[lineIdx] = wasTerminal ? std::string("\n") : std::string();
+            InvalidateLineLayout(lineIdx);
+            ReshardSegment(lineIdx);
+            SetCursorPosition({lineIdx, 0});
+            RebuildText();
+            return true;
+        }
+
+        // Continuation: split current line and seed the new line with indent + marker.
+        // InsertText handles the embedded \n, pushes a single undo entry, and lands
+        // the cursor at the end of the inserted prefix.
+        InsertText("\n" + indent + newMarker);
+        return true;
+    }
+
+    void UltraCanvasTextArea::ApplyMarkdownLinePrefix(const std::string& prefix) {
+        if (isReadOnly || prefix.empty() || lines.empty()) return;
+
+        int startLine, endLine;
+        if (HasSelection()) {
+            LineColumnIndex a = selectionStart, b = selectionEnd;
+            if (a.lineIndex > b.lineIndex ||
+                (a.lineIndex == b.lineIndex && a.columnIndex > b.columnIndex)) std::swap(a, b);
+            startLine = a.lineIndex;
+            endLine   = b.lineIndex;
+            // Selection ending exactly at column 0 of a later line means the user
+            // didn't include any content on that line — don't prefix it.
+            if (b.columnIndex == 0 && endLine > startLine) {
+                endLine--;
+            }
+        } else {
+            startLine = endLine = std::max(0, cursorPosition.lineIndex);
+        }
+
+        startLine = std::max(0, startLine);
+        endLine   = std::min(endLine, static_cast<int>(lines.size()) - 1);
+        if (startLine > endLine) return;
+
+        SaveState();
+
+        // Prefixes used by the markdown toolbar are ASCII ("- ", "1. ", "> ", "# "
+        // and friends), so byte length equals codepoint length. Match the existing
+        // pattern in InsertMarkdownSnippet.
+        const int prefixCp = static_cast<int>(prefix.size());
+
+        // Iterate by raw shard index. For typical user prose every shard is a
+        // logical line, so each gets its own prefix. Tracks resharding so that a
+        // long line that splits during the loop doesn't make us skip the new tail.
+        for (int i = startLine; i <= endLine && i < static_cast<int>(lines.size()); ) {
+            bool wasTerminal = LineHasNewline(i);
+            std::string content = GetLineContent(i);
+            lines[i] = prefix + content;
+            if (wasTerminal) lines[i].append("\n");
+            InvalidateLineLayout(i);
+            int added = ReshardSegment(i);
+            endLine += added;
+            i += 1 + added;
+        }
+
+        auto adjust = [&](LineColumnIndex& lc) {
+            if (lc.lineIndex >= startLine && lc.lineIndex <= endLine) {
+                lc.columnIndex += prefixCp;
+            }
+        };
+        adjust(selectionStart);
+        adjust(selectionEnd);
+        adjust(cursorPosition);
+
+        RebuildText();
+        RequestRedraw();
     }
 
 } // namespace UltraCanvas

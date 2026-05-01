@@ -11,7 +11,7 @@ namespace UltraCanvas {
 
     // Default directories relative to the executable
 #if defined(_WIN32) || defined(_WIN64)
-    constexpr const char* UC_DEFAULT_RESOURCES_DIR = "Resources\\"; // exe/Resources/
+    constexpr const char* UC_DEFAULT_RESOURCES_DIR = "Resources/"; // exe/Resources/
 #elif defined(__APPLE__)
     constexpr const char* UC_DEFAULT_RESOURCES_DIR = "../Resources/"; // .app/Contents/Resources/
 #else // Linux / Unix

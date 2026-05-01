@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.0
-// Last Modified: 2024-12-19
+// Version: 1.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -96,7 +96,7 @@ namespace UltraCanvas {
 
         // Create documentation button (right side)
         docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", id + 3, width - 90, 5, 21, 21);
-        docButton->LoadFromFile(GetResourcesDir() + "media/icons/text.png");
+        docButton->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/text.png"));
         docButton->SetVisible(false);  // Initially disabled
         docButton->SetClickable(true);
         docButton->onClick = [this]() { ShowDocumentationWindow(); };
@@ -104,7 +104,7 @@ namespace UltraCanvas {
 
         // Create source button (right side)
         sourceButton = std::make_shared<UltraCanvasImageElement>("SourceBtn", id + 2, width - 40, 5, 21, 28);
-        sourceButton->LoadFromFile(GetResourcesDir() + "media/icons/c-plus-plus-icon.png");
+        sourceButton->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/c-plus-plus-icon.png"));
         sourceButton->SetVisible(false);  // Initially disabled
         sourceButton->SetClickable(true);
         sourceButton->onClick = [this]() { ShowSourceWindow(); };
@@ -141,7 +141,7 @@ namespace UltraCanvas {
 
     void DemoHeaderContainer::SetSourceFile(const std::string& sourceFile) {
         if (!sourceFile.empty()) {
-            currentSourceFile = GetResourcesDir()+sourceFile;
+            currentSourceFile = NormalizePath(GetResourcesDir()+sourceFile);
         } else {
             currentSourceFile.clear();
         }
@@ -152,7 +152,7 @@ namespace UltraCanvas {
 
     void DemoHeaderContainer::SetDocFile(const std::string& docFile) {
         if (!docFile.empty()) {
-            currentDocFile = GetResourcesDir()+docFile;
+            currentDocFile = NormalizePath(GetResourcesDir()+docFile);
         } else {
             currentDocFile.clear();
         }
@@ -561,13 +561,13 @@ namespace UltraCanvas {
 
         bitmapBuilder.AddItem("pngimages", "PNG Images", "PNG Image display and manipulation",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("PNG", GetResourcesDir() + "media/images/dice.png"); },
+                              [this]() { return CreateBitmapFormatDemoPage("PNG", NormalizePath(GetResourcesDir() + "media/images/dice.png")); },
                               "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "PNG/JPEG Display");
         bitmapBuilder.AddItem("jpegimages", "JPEG Images", "JPEG Image display and manipulation",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("JPG", GetResourcesDir() + "media/images/dice.jpg"); },
+                              [this]() { return CreateBitmapFormatDemoPage("JPG", NormalizePath(GetResourcesDir() + "media/images/dice.jpg")); },
                               "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "PNG/JPEG Display");
@@ -576,7 +576,7 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("avifimages", "AVIF Images",
                               "AVIF next-gen format with superior compression and HDR support",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("AVIF", GetResourcesDir() + "media/images/dice.avif"); },
+                              [this]() { return CreateBitmapFormatDemoPage("AVIF", NormalizePath(GetResourcesDir() + "media/images/dice.avif")); },
                               "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Modern Formats");
@@ -585,7 +585,7 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("webpimages", "WEBP Images",
                               "Google WebP format with excellent compression and web optimization",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("WEBP", GetResourcesDir() + "media/images/dice.webp"); },
+                              [this]() { return CreateBitmapFormatDemoPage("WEBP", NormalizePath(GetResourcesDir() + "media/images/dice.webp")); },
                               "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Modern Formats");
@@ -594,7 +594,7 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("heifimages", "HEIF/HEIC Images",
                               "HEIF high efficiency format with HEVC compression",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("HEIC", GetResourcesDir() + "media/images/dice.heic"); },
+                              [this]() { return CreateBitmapFormatDemoPage("HEIC", NormalizePath(GetResourcesDir() + "media/images/dice.heic")); },
                               "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Modern Formats");
@@ -603,7 +603,7 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("gifimages", "GIF Images",
                               "GIF animated format with 256 color palette",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("GIF", GetResourcesDir() + "media/images/dice.gif"); },
+                              [this]() { return CreateBitmapFormatDemoPage("GIF", NormalizePath(GetResourcesDir() + "media/images/dice.gif")); },
                               "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Animation Support");
@@ -612,7 +612,7 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("tiffimages", "TIFF Images",
                               "TIFF professional format for archival and print",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("TIFF", GetResourcesDir() + "media/images/dice.tiff"); },
+                              [this]() { return CreateBitmapFormatDemoPage("TIFF", NormalizePath(GetResourcesDir() + "media/images/dice.tiff")); },
                               "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Professional Formats");
@@ -621,7 +621,7 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("bmpimages", "BMP Images",
                               "BMP Windows native bitmap format",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("BMP", GetResourcesDir() + "media/images/dice.bmp"); },
+                              [this]() { return CreateBitmapFormatDemoPage("BMP", NormalizePath(GetResourcesDir() + "media/images/dice.bmp")); },
                               "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Legacy Formats");
@@ -630,7 +630,7 @@ namespace UltraCanvas {
         bitmapBuilder.AddItem("qoiimages", "QOI Images",
                               "QOI Image display and manipulation",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("QOI", GetResourcesDir() + "media/images/dice.qoi"); },
+                              [this]() { return CreateBitmapFormatDemoPage("QOI", NormalizePath(GetResourcesDir() + "media/images/dice.qoi")); },
                               "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md");
 
@@ -992,7 +992,7 @@ namespace UltraCanvas {
     void UltraCanvasDemoApplication::SetupTreeView() {
         // Setup root node
         TreeNodeData rootData("root", "UltraCanvas Components");
-        rootData.leftIcon = TreeNodeIcon(GetResourcesDir() + "media/icons/ultracanvas.png", 16, 16);
+        rootData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/ultracanvas.png"), 16, 16);
         TreeNode* rootNode = categoryTreeView->SetRootNode(rootData);
 
         // Add category nodes
@@ -1020,14 +1020,14 @@ namespace UltraCanvas {
                     catName
             );
             auto items = categoryItems[category];
-            categoryData.leftIcon = TreeNodeIcon(GetResourcesDir() + "media/icons/folder.png", 16, 16);
+            categoryData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
             TreeNode* categoryNode = categoryTreeView->AddNode("root", categoryData);
 
             // Add items for this category
             for (const std::string& itemId : items) {
                 const auto& demoItem = demoItems[itemId];
                 TreeNodeData itemData(itemId, demoItem->displayName);
-                itemData.leftIcon = TreeNodeIcon(GetResourcesDir() + "media/icons/document.svg", 16, 16);
+                itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/document.svg"), 16, 16);
                 itemData.rightIcon = TreeNodeIcon(GetStatusIcon(demoItem->status), 12, 12);
                 categoryTreeView->AddNode(categoryData.nodeId, itemData);
             }
@@ -1153,11 +1153,11 @@ namespace UltraCanvas {
 // ===== UTILITY METHODS =====
     std::string UltraCanvasDemoApplication::GetStatusIcon(ImplementationStatus status) const {
         switch (status) {
-            case ImplementationStatus::FullyImplemented: return GetResourcesDir() + "media/icons/check.png";
-            case ImplementationStatus::PartiallyImplemented: return GetResourcesDir() + "media/icons/warning-blue.png";
-            case ImplementationStatus::NotImplemented: return GetResourcesDir() + "media/icons/x.png";
-            case ImplementationStatus::Planned: return GetResourcesDir() + "media/icons/info.png";
-            default: return GetResourcesDir() + "media/icons/unknown.png";
+            case ImplementationStatus::FullyImplemented: return NormalizePath(GetResourcesDir() + "media/icons/check.png");
+            case ImplementationStatus::PartiallyImplemented: return NormalizePath(GetResourcesDir() + "media/icons/warning-blue.png");
+            case ImplementationStatus::NotImplemented: return NormalizePath(GetResourcesDir() + "media/icons/x.png");
+            case ImplementationStatus::Planned: return NormalizePath(GetResourcesDir() + "media/icons/info.png");
+            default: return NormalizePath(GetResourcesDir() + "media/icons/unknown.png");
         }
     }
 

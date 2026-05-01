@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxCursor.cpp
 // Linux X11/XCursor implementation for custom cursor support
-// Version: 1.0.1
-// Last Modified: 2025-12-30
+// Version: 1.0.2
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -175,11 +175,11 @@ namespace UltraCanvas {
 
             case UCMouseCursor::LookingGlass:
                 // Load cursor from image
-                newCursor = LoadCursorFromImage(GetResourcesDir() + "media/lib/cursor/looking-glass.png", 0, 0);
+                newCursor = LoadCursorFromImage(NormalizePath(GetResourcesDir() + "media/lib/cursor/looking-glass.png"), 0, 0);
                 break;
             case UCMouseCursor::ContextMenu:
                 newCursor = LoadCursorFromImage(
-                    GetResourcesDir() + "media/lib/cursor/context-menu.png", 0, 0);
+                    NormalizePath(GetResourcesDir() + "media/lib/cursor/context-menu.png"), 0, 0);
                 break;
             default:
                 newCursor = XCreateFontCursor(display, XC_left_ptr);

@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.1.1 - GenerateUniqueDocumentName inserts index before extension (e.g. untitled1.svg)
-// Last Modified: 2026-04-24
+// Version: 2.1.4
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -34,7 +34,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "1.0.25";
+    std::string UltraCanvasTextEditor::version = "1.0.26";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -391,6 +391,7 @@ namespace {
             , statusBarHeight(22)
             , tabBarHeight(26)
     {
+        configFile.EnsureConfigDirectory();
         LoadConfig();
         toolbarHeight = config.showToolbar ? 40 : 0;
 
@@ -460,13 +461,13 @@ namespace {
 
                         // ===== FILE MENU =====
                 .AddSubmenu("File", {
-                        MenuItemData::ActionWithShortcut("New", "Ctrl+N", GetResourcesDir() + "media/icons/texter/add-document.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("New", "Ctrl+N", NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"), [this]() {
                             OnFileNew();
                         }),
-                        MenuItemData::ActionWithShortcut("New Window", "Ctrl+Shift+N", GetResourcesDir() + "media/icons/texter/add-document.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("New Window", "Ctrl+Shift+N", NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"), [this]() {
                             if (onNewWindowRequest) onNewWindowRequest();
                         }),
-                        MenuItemData::Submenu("New from Template", GetResourcesDir() + "media/icons/texter/add-document.svg",
+                        MenuItemData::Submenu("New from Template", NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"),
                             [this]() -> std::vector<MenuItemData> {
                                 std::vector<MenuItemData> items;
                                 if (config.documentTemplates.empty()) {
@@ -486,10 +487,10 @@ namespace {
                                 }
                                 return items;
                             }),
-                        MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", GetResourcesDir() + "media/icons/texter/folder-open.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", NormalizePath(GetResourcesDir() + "media/icons/texter/folder-open.svg"), [this]() {
                             OnFileOpen();
                         }),
-                        MenuItemData::Submenu("Recent Files", GetResourcesDir() + "media/icons/texter/clock-five.svg",
+                        MenuItemData::Submenu("Recent Files", NormalizePath(GetResourcesDir() + "media/icons/texter/clock-five.svg"),
                             [this]() -> std::vector<MenuItemData> {
                                 std::vector<MenuItemData> recentItems;
                                 if (recentFiles.empty()) {
@@ -507,7 +508,7 @@ namespace {
                                         std::string displayName = p.filename().string();
                                         std::string label = std::to_string(i + 1) + ". " + displayName;
                                         std::string iconPath = IsFileCurrentlyOpen(fullPath)
-                                            ? GetResourcesDir() + "media/icons/texter/circle-empty.svg"
+                                            ? NormalizePath(GetResourcesDir() + "media/icons/texter/circle-empty.svg")
                                             : std::string("-");
                                         std::string pathCopy = fullPath;
                                         recentItems.push_back(
@@ -523,7 +524,7 @@ namespace {
                                     }
                                     recentItems.push_back(MenuItemData::Separator());
                                     recentItems.push_back(
-                                        MenuItemData::Action("Clear Recent Files", GetResourcesDir()+"media/icons/texter/square-minus.svg", [this]() {
+                                        MenuItemData::Action("Clear Recent Files", NormalizePath(GetResourcesDir()+"media/icons/texter/square-minus.svg"), [this]() {
                                             recentFiles.clear();
                                             SaveRecentFiles();
                                         })
@@ -532,13 +533,13 @@ namespace {
                                 return recentItems;
                             }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Save", "Ctrl+S", GetResourcesDir() + "media/icons/texter/save.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Save", "Ctrl+S", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() {
                             OnFileSave();
                         }),
-                        MenuItemData::ActionWithShortcut("Save As...", "Ctrl+Shift+S", GetResourcesDir() + "media/icons/texter/save.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Save As...", "Ctrl+Shift+S", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() {
                             OnFileSaveAs();
                         }),
-                        MenuItemData::Action("Save All", GetResourcesDir() + "media/icons/texter/save.svg", [this]() {
+                        MenuItemData::Action("Save All", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() {
                             OnFileSaveAll();
                         }),
                         MenuItemData::Separator(),
@@ -546,14 +547,14 @@ namespace {
                         MenuItemData::ActionWithShortcut("Print...", "Ctrl+P", [this]() {
                             OnFilePrint();
                         }),                        MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", GetResourcesDir() + "media/icons/texter/close_tab.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Close Tab", "Ctrl+W", NormalizePath(GetResourcesDir() + "media/icons/texter/close_tab.svg"), [this]() {
                             OnFileClose();
                         }),
-                        MenuItemData::Action("Close All", GetResourcesDir() + "media/icons/texter/close_tab.svg", [this]() {
+                        MenuItemData::Action("Close All", NormalizePath(GetResourcesDir() + "media/icons/texter/close_tab.svg"), [this]() {
                             OnFileCloseAll();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Quit", "Alt+F4", GetResourcesDir() + "media/icons/texter/exit.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Quit", "Alt+F4", NormalizePath(GetResourcesDir() + "media/icons/texter/exit.svg"), [this]() {
                             OnFileQuit();
                         })
                 })
@@ -561,31 +562,31 @@ namespace {
                         // ===== EDIT MENU =====
                 .AddSubmenu("Edit", {
                         // "↶ Undo"
-                        MenuItemData::ActionWithShortcut("Undo", "Ctrl+Z", GetResourcesDir() + "media/icons/texter/undo.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Undo", "Ctrl+Z", NormalizePath(GetResourcesDir() + "media/icons/texter/undo.svg"), [this]() {
                             OnEditUndo();
                         }),
                         // "↷ Redo"
-                        MenuItemData::ActionWithShortcut("Redo", "Ctrl+Y", GetResourcesDir() + "media/icons/texter/redo.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Redo", "Ctrl+Y", NormalizePath(GetResourcesDir() + "media/icons/texter/redo.svg"), [this]() {
                             OnEditRedo();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", GetResourcesDir() + "media/icons/texter/scissors.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Cut", "Ctrl+X", NormalizePath(GetResourcesDir() + "media/icons/texter/scissors.svg"), [this]() {
                             OnEditCut();
                         }),
-                        MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", GetResourcesDir() + "media/icons/texter/copy.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", NormalizePath(GetResourcesDir() + "media/icons/texter/copy.svg"), [this]() {
                             OnEditCopy();
                         }),
-                        MenuItemData::ActionWithShortcut("Paste", "Ctrl+V", GetResourcesDir() + "media/icons/texter/paste.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Paste", "Ctrl+V", NormalizePath(GetResourcesDir() + "media/icons/texter/paste.svg"), [this]() {
                             OnEditPaste();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Find...", "Ctrl+F", GetResourcesDir() + "media/icons/texter/search.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Find...", "Ctrl+F", NormalizePath(GetResourcesDir() + "media/icons/texter/search.svg"), [this]() {
                             OnEditSearch();
                         }),
-                        MenuItemData::ActionWithShortcut("Replace...", "Ctrl+H",  GetResourcesDir() + "media/icons/texter/replace.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Replace...", "Ctrl+H",  NormalizePath(GetResourcesDir() + "media/icons/texter/replace.svg"), [this]() {
                             OnEditReplace();
                         }),
-                        MenuItemData::ActionWithShortcut("Go to Line...", "Ctrl+G", GetResourcesDir() + "media/icons/texter/gotoline.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Go to Line...", "Ctrl+G", NormalizePath(GetResourcesDir() + "media/icons/texter/gotoline.svg"), [this]() {
                             OnEditGoToLine();
                         }),
                         MenuItemData::Separator(),
@@ -596,17 +597,17 @@ namespace {
 
                         // ===== VIEW MENU =====
                 .AddSubmenu("View", {
-                        MenuItemData::ActionWithShortcut("Increase Font Size", "Ctrl++", GetResourcesDir() + "media/icons/texter/zoom-in.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Increase Font Size", "Ctrl++", NormalizePath(GetResourcesDir() + "media/icons/texter/zoom-in.svg"), [this]() {
                             OnViewIncreaseFontSize();
                         }),
-                        MenuItemData::ActionWithShortcut("Decrease Font Size", "Ctrl+-", GetResourcesDir() + "media/icons/texter/zoom-out.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Decrease Font Size", "Ctrl+-", NormalizePath(GetResourcesDir() + "media/icons/texter/zoom-out.svg"), [this]() {
                             OnViewDecreaseFontSize();
                         }),
                         MenuItemData::ActionWithShortcut("Reset Font Size", "Ctrl+0", [this]() {
                             OnViewResetFontSize();
                         }),
                         MenuItemData::Separator(),
-                        MenuItemData::ActionWithShortcut("Toggle Theme", "Ctrl+T", GetResourcesDir() + "media/icons/texter/theme_mode.svg", [this]() {
+                        MenuItemData::ActionWithShortcut("Toggle Theme", "Ctrl+T", NormalizePath(GetResourcesDir() + "media/icons/texter/theme_mode.svg"), [this]() {
                             OnViewToggleTheme();
                         }),
                         MenuItemData::Separator(),
@@ -635,9 +636,9 @@ namespace {
                         MenuItemData::Separator(),
                         MenuItemData::Action("Changes", [this]() {
 #if defined(_WIN32) || defined(_WIN64)
-                            auto path = GetResourcesDir() + "Docs\\Texter\\CHANGELOG.md";
+                            auto path = NormalizePath(GetResourcesDir() + "Docs\\Texter\\CHANGELOG.md");
 #else
-                            auto path = GetResourcesDir() + "Docs/Texter/CHANGELOG.md";
+                            auto path = NormalizePath(GetResourcesDir() + "Docs/Texter/CHANGELOG.md");
 #endif
                             OpenDocumentFromPath(path);
                         }),
@@ -671,23 +672,23 @@ namespace {
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(0, 0, GetWidth(), toolbarHeight)
-                .AddButton("new", "", GetResourcesDir() + "media/icons/texter/add-document.svg", [this]() { OnFileNew(); })
-                .AddButton("open", "", GetResourcesDir() + "media/icons/texter/folder-open.svg", [this]() { OnFileOpen(); })
-                .AddButton("save", "", GetResourcesDir() + "media/icons/texter/save.svg", [this]() { OnFileSave(); })
-                .AddButton("recent", "", GetResourcesDir() + "media/icons/texter/clock-five.svg", [this]() { ShowRecentFilesPopup(); })
+                .AddButton("new", "", NormalizePath(GetResourcesDir() + "media/icons/texter/add-document.svg"), [this]() { OnFileNew(); })
+                .AddButton("open", "", NormalizePath(GetResourcesDir() + "media/icons/texter/folder-open.svg"), [this]() { OnFileOpen(); })
+                .AddButton("save", "", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() { OnFileSave(); })
+                .AddButton("recent", "", NormalizePath(GetResourcesDir() + "media/icons/texter/clock-five.svg"), [this]() { ShowRecentFilesPopup(); })
                 .AddSeparator()
-                .AddButton("copy", "", GetResourcesDir() + "media/icons/texter/copy.svg", [this]() { OnEditCopy(); })
-                .AddButton("cut", "", GetResourcesDir() + "media/icons/texter/scissors.svg", [this]() { OnEditCut(); })
-                .AddButton("paste", "", GetResourcesDir() + "media/icons/texter/paste.svg", [this]() { OnEditPaste(); })
+                .AddButton("copy", "", NormalizePath(GetResourcesDir() + "media/icons/texter/copy.svg"), [this]() { OnEditCopy(); })
+                .AddButton("cut", "", NormalizePath(GetResourcesDir() + "media/icons/texter/scissors.svg"), [this]() { OnEditCut(); })
+                .AddButton("paste", "", NormalizePath(GetResourcesDir() + "media/icons/texter/paste.svg"), [this]() { OnEditPaste(); })
                 .AddSeparator()
-                .AddButton("undo", "", GetResourcesDir() + "media/icons/texter/undo.svg", [this]() { OnEditUndo(); })
-                .AddButton("redo", "", GetResourcesDir() + "media/icons/texter/redo.svg", [this]() { OnEditRedo(); })
+                .AddButton("undo", "", NormalizePath(GetResourcesDir() + "media/icons/texter/undo.svg"), [this]() { OnEditUndo(); })
+                .AddButton("redo", "", NormalizePath(GetResourcesDir() + "media/icons/texter/redo.svg"), [this]() { OnEditRedo(); })
                 .AddSeparator()
-                .AddButton("search", "", GetResourcesDir() + "media/icons/texter/search.svg", [this]() { OnEditSearch(); })
-                .AddButton("replace", "", GetResourcesDir() + "media/icons/texter/replace.svg", [this]() { OnEditReplace(); })
+                .AddButton("search", "", NormalizePath(GetResourcesDir() + "media/icons/texter/search.svg"), [this]() { OnEditSearch(); })
+                .AddButton("replace", "", NormalizePath(GetResourcesDir() + "media/icons/texter/replace.svg"), [this]() { OnEditReplace(); })
                 .AddSeparator()
-                .AddButton("zoom-in", "", GetResourcesDir() + "media/icons/texter/zoom-in.svg", [this]() { OnViewIncreaseFontSize(); })
-                .AddButton("zoom-out", "", GetResourcesDir() + "media/icons/texter/zoom-out.svg", [this]() { OnViewDecreaseFontSize(); })
+                .AddButton("zoom-in", "", NormalizePath(GetResourcesDir() + "media/icons/texter/zoom-in.svg"), [this]() { OnViewIncreaseFontSize(); })
+                .AddButton("zoom-out", "", NormalizePath(GetResourcesDir() + "media/icons/texter/zoom-out.svg"), [this]() { OnViewDecreaseFontSize(); })
                 .Build();
 
         struct { const char* id; const char* tip; } toolbarTooltips[] = {
@@ -760,16 +761,16 @@ namespace {
                 .SetOrientation(ToolbarOrientation::Vertical)
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(0, 0, markdownToolbarWidth, 400)
-                .AddButton("md-bold", "", GetResourcesDir() + "media/icons/texter/md-bold.svg",
+                .AddButton("md-bold", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-bold.svg"),
                     [this]() { InsertMarkdownSnippet("**", "**", "bold text"); })
-                .AddButton("md-italic", "", GetResourcesDir() + "media/icons/texter/md-italic.svg",
+                .AddButton("md-italic", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-italic.svg"),
                     [this]() { InsertMarkdownSnippet("*", "*", "emphasized text"); })
-                .AddButton("md-superscript", "", GetResourcesDir() + "media/icons/texter/md-superscript.svg",
+                .AddButton("md-superscript", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-superscript.svg"),
                     [this]() { InsertMarkdownSnippet("^", "^", "sup"); })
-                .AddButton("md-subscript", "", GetResourcesDir() + "media/icons/texter/md-subscript.svg",
+                .AddButton("md-subscript", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-subscript.svg"),
                     [this]() { InsertMarkdownSnippet("~", "~", "sub"); })
                 .AddSeparator()
-                .AddButton("md-heading", "", GetResourcesDir() + "media/icons/texter/md-heading.svg",
+                .AddButton("md-heading", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-heading.svg"),
                     [this]() {
                         if (!headingSubToolbar) return;
                         if (headingSubToolbar->IsVisible()) {
@@ -790,27 +791,27 @@ namespace {
                         //UpdateChildLayout();
                     })
                 .AddSeparator()
-                .AddButton("md-ul", "", GetResourcesDir() + "media/icons/texter/md-list-unordered.svg",
-                    [this]() { InsertMarkdownSnippet("- ", "", "list item"); })
-                .AddButton("md-ol", "", GetResourcesDir() + "media/icons/texter/md-list-ordered.svg",
-                    [this]() { InsertMarkdownSnippet("1. ", "", "list item"); })
-                .AddButton("md-checklist", "", GetResourcesDir() + "media/icons/texter/md-list-check.svg",
-                    [this]() { InsertMarkdownSnippet("- [ ] ", "", "list item"); })
+                .AddButton("md-ul", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-list-unordered.svg"),
+                    [this]() { InsertMarkdownLinePrefix("- ", "list item"); })
+                .AddButton("md-ol", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-list-ordered.svg"),
+                    [this]() { InsertMarkdownLinePrefix("1. ", "list item"); })
+                .AddButton("md-checklist", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-list-check.svg"),
+                    [this]() { InsertMarkdownLinePrefix("- [ ] ", "list item"); })
                 .AddSeparator()
-                .AddButton("md-quote", "", GetResourcesDir() + "media/icons/texter/md-quote.svg",
-                    [this]() { InsertMarkdownSnippet("> ", "", "quote"); })
-                .AddButton("md-code", "", GetResourcesDir() + "media/icons/texter/md-code.svg",
+                .AddButton("md-quote", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-quote.svg"),
+                    [this]() { InsertMarkdownLinePrefix("> ", "quote"); })
+                .AddButton("md-code", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-code.svg"),
                     [this]() { InsertMarkdownSnippet("```\n", "\n```", "code"); })
-                .AddButton("md-table", "", GetResourcesDir() + "media/icons/texter/md-table.svg",
+                .AddButton("md-table", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-table.svg"),
                     [this]() {
                         InsertMarkdownSnippet(
                             "| ", " | Column 2 |\n|----------|----------|\n|          |          |",
                             "Column 1");
                     })
                 .AddSeparator()
-                .AddButton("md-link", "", GetResourcesDir() + "media/icons/texter/md-link.svg",
+                .AddButton("md-link", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-link.svg"),
                     [this]() { InsertMarkdownSnippet("[", "](http://example.com/)", "Link title"); })
-                .AddButton("md-image", "", GetResourcesDir() + "media/icons/texter/md-image.svg",
+                .AddButton("md-image", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-image.svg"),
                     [this]() { InsertMarkdownSnippet("![", "](image path)", "Image title"); })
                 .Build();
 
@@ -830,11 +831,11 @@ namespace {
             .SetOrientation(ToolbarOrientation::Horizontal)
             .SetAppearance(ToolbarAppearance::Flat())
             .SetDimensions(0, 0, 200, 36)
-            .AddButton("md-h1", "H1", "", [this]() { InsertMarkdownSnippet("# ", "", "Heading"); headingSubToolbar->SetVisible(false); })
-            .AddButton("md-h2", "H2", "", [this]() { InsertMarkdownSnippet("## ", "", "Heading"); headingSubToolbar->SetVisible(false); })
-            .AddButton("md-h3", "H3", "", [this]() { InsertMarkdownSnippet("### ", "", "Heading"); headingSubToolbar->SetVisible(false); })
-            .AddButton("md-h4", "H4", "", [this]() { InsertMarkdownSnippet("#### ", "", "Heading"); headingSubToolbar->SetVisible(false); })
-            .AddButton("md-h5", "H5", "", [this]() { InsertMarkdownSnippet("##### ", "", "Heading"); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h1", "H1", "", [this]() { InsertMarkdownLinePrefix("# ", "Heading"); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h2", "H2", "", [this]() { InsertMarkdownLinePrefix("## ", "Heading"); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h3", "H3", "", [this]() { InsertMarkdownLinePrefix("### ", "Heading"); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h4", "H4", "", [this]() { InsertMarkdownLinePrefix("#### ", "Heading"); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h5", "H5", "", [this]() { InsertMarkdownLinePrefix("##### ", "Heading"); headingSubToolbar->SetVisible(false); })
             .Build();
 
         // Style buttons with decreasing font sizes to reflect heading hierarchy.
@@ -2570,6 +2571,29 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
+    void UltraCanvasTextEditor::InsertMarkdownLinePrefix(
+            const std::string& prefix, const std::string& sampleText) {
+        auto doc = GetActiveDocument();
+        if (!doc || !doc->textArea) return;
+
+        if (doc->textArea->HasSelection()) {
+            // Per-line prefix: each selected line becomes its own list item /
+            // quote / heading. Selection bounds are adjusted inside the TextArea.
+            doc->textArea->ApplyMarkdownLinePrefix(prefix);
+        } else {
+            // No selection: insert sample with the prefix and select the sample.
+            auto cursorPos = doc->textArea->GetCursorPosition();
+            doc->textArea->InsertText(prefix + sampleText);
+
+            auto selStart = cursorPos;
+            auto selEnd   = cursorPos;
+            selStart.columnIndex += static_cast<int>(prefix.size());
+            selEnd.columnIndex   += static_cast<int>(prefix.size() + sampleText.size());
+            doc->textArea->SetSelection(selStart, selEnd);
+            doc->textArea->SetCursorPosition(selStart);
+        }
+    }
+
 // ===== MENU HANDLERS =====
 
     void UltraCanvasTextEditor::OnFileNew() {
@@ -3066,7 +3090,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // Logo image
         auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo", 0, 0, 0, 74, 74);
-        logo->LoadFromFile(GetResourcesDir() + "media/Logo_Texter.png");
+        logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/Logo_Texter.png"));
         logo->SetFitMode(ImageFitMode::Contain);
         logo->SetMargin(0, 0, 8, 0);
         mainLayout->AddUIElement(logo)->SetCrossAlignment(LayoutAlignment::Center);
@@ -4470,7 +4494,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 std::string label = std::to_string(i + 1) + ". " + displayName;
 
                 std::string iconPath = IsFileCurrentlyOpen(fullPath)
-                    ? GetResourcesDir() + "media/icons/texter/circle-empty.svg"
+                    ? NormalizePath(GetResourcesDir() + "media/icons/texter/circle-empty.svg")
                     : std::string("-"); // "-" means empty icon (just reserve space)
 
                 std::string pathCopy = fullPath;
@@ -4490,7 +4514,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             recentFilesPopupMenu->AddItem(MenuItemData::Separator());
             recentFilesPopupMenu->AddItem(
                 MenuItemData::Action("Clear Recent Files", 
-                    GetResourcesDir() + "media/icons/texter/square-minus.svg", 
+                    NormalizePath(GetResourcesDir() + "media/icons/texter/square-minus.svg"), 
                     [this]() {
                         recentFiles.clear();
                         SaveRecentFiles();

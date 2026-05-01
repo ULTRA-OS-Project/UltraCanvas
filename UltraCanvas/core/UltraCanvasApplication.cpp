@@ -1,7 +1,7 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
-// Version: 1.1.0
-// Last Modified: 2026-04-06
+// Version: 1.1.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include <algorithm>
@@ -80,7 +80,7 @@ namespace UltraCanvas {
             }
 
             // Auto-set default window icon if available
-            std::string iconPath = GetResourcesDir() + UC_DEFAULT_ICON_SUBPATH;
+            std::string iconPath = NormalizePath(GetResourcesDir() + UC_DEFAULT_ICON_SUBPATH);
             if (std::filesystem::exists(iconPath)) {
                 SetDefaultWindowIcon(iconPath);
                 debugOutput << "UltraCanvas: Default window icon set to: " << iconPath << std::endl;
@@ -88,7 +88,7 @@ namespace UltraCanvas {
 #ifdef UCAPP_ICON_PATH
             else {
                 // Fallback to app-specific icon defined at build time
-                std::string appIconPath = GetResourcesDir() + UCAPP_ICON_PATH;
+                std::string appIconPath = NormalizePath(GetResourcesDir() + UCAPP_ICON_PATH);
                 if (std::filesystem::exists(appIconPath)) {
                     SetDefaultWindowIcon(appIconPath);
                     debugOutput << "UltraCanvas: App icon set to: " << appIconPath << std::endl;
@@ -793,15 +793,15 @@ namespace UltraCanvas {
 
     // ===== TIMER SYSTEM =====
 
-    TimerId UltraCanvasApplicationBase::StartTimer(std::chrono::milliseconds interval, bool periodic,
+    TimerId UltraCanvasApplicationBase::StartTimer(unsigned int ms_interval, bool periodic,
                                                     std::function<void(TimerId)> callback) {
         std::lock_guard<std::mutex> lock(timersMutex_);
         UltraCanvasTimer timer;
         timer.id = nextTimerId_++;
-        timer.interval = interval;
+        timer.interval = std::chrono::milliseconds(ms_interval);
         timer.periodic = periodic;
         timer.active = true;
-        timer.nextFire = std::chrono::steady_clock::now() + interval;
+        timer.nextFire = std::chrono::steady_clock::now() + timer.interval;
         timer.callback = std::move(callback);
         timers_.push_back(std::move(timer));
         WakeUpEventLoop();

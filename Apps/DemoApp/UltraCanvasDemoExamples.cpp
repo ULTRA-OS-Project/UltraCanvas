@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemoExamples.cpp
 // Implementation of all component example creators
-// Version: 1.0.0
-// Last Modified: 2024-12-19
+// Version: 1.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -211,7 +211,7 @@ namespace UltraCanvas {
 //        auto container = std::make_shared<UltraCanvasContainer>("MarkdownExamples", 1900, 0, 0, 1020, 780);
 
         auto text = std::make_shared<UltraCanvasMarkdownDisplay>("MarkDownText", 1201, 0, 0, 1026, 785);
-        text->SetMarkdownText(LoadFile(GetResourcesDir() + "media/MarkdownExample.md"));
+        text->SetMarkdownText(LoadFile(NormalizePath(GetResourcesDir() + "media/MarkdownExample.md")));
         MarkdownStyle style = MarkdownStyle::Default();
         style.fontSize = 12;
         text->SetStyle(style);

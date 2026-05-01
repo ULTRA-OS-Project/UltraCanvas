@@ -1,7 +1,7 @@
 // UltraCanvasDemoInfoWindow.cpp
 // Implementation of info window shown at application startup
-// Version: 1.0.0
-// Last Modified: 2025-01-14
+// Version: 1.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -51,7 +51,7 @@ namespace UltraCanvas {
 
         // Example code icon and label
         auto exampleAppIcon = CreateImageElement("AppIcon", 130, 130);
-        exampleAppIcon->LoadFromFile(GetResourcesDir() + "media/appicon/UltraCanvas.png");
+        exampleAppIcon->LoadFromFile(NormalizePath(GetResourcesDir() + "media/appicon/UltraCanvas.png"));
         exampleAppIcon->SetFitMode(ImageFitMode::Contain);
         exampleAppIcon->SetMargin(12,0,6,0);
         layout->AddUIElement(exampleAppIcon)->SetCrossAlignment(LayoutAlignment::Center)->SetMainAlignment(LayoutAlignment::Center);
@@ -107,7 +107,7 @@ namespace UltraCanvas {
         doccontainer->SetMargin(10,20,10,20);
         layout->AddUIElement(doccontainer)->SetWidthMode(SizeMode::Fill);
         programmersGuideIcon = CreateImageElement("DocIcon", iconSize, iconSize);
-        programmersGuideIcon->LoadFromFile(GetResourcesDir() + "media/icons/text.png");
+        programmersGuideIcon->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/text.png"));
         programmersGuideIcon->SetFitMode(ImageFitMode::Contain);
         docContainerLayout->AddUIElement(programmersGuideIcon);
 
@@ -126,7 +126,7 @@ namespace UltraCanvas {
         layout->AddUIElement(codeContainer)->SetWidthMode(SizeMode::Fill);
 
         exampleCodeIcon = CreateImageElement("CodeIcon", iconSize, iconSize);
-        exampleCodeIcon->LoadFromFile(GetResourcesDir() + "media/icons/c-plus-plus-icon.png");
+        exampleCodeIcon->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/c-plus-plus-icon.png"));
         exampleCodeIcon->SetFitMode(ImageFitMode::Contain);
         codeContainerLayout->AddUIElement(exampleCodeIcon);
 

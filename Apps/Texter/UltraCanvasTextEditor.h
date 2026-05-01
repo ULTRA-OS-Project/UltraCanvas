@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
-// Version: 2.1.0
-// Last Modified: 2026-04-24
+// Version: 2.1.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -289,6 +289,12 @@ namespace UltraCanvas {
         void UpdateMarkdownToolbarVisibility();
         void InsertMarkdownSnippet(const std::string& prefix, const std::string& suffix,
                                    const std::string& sampleText);
+        // Variant for line-prefix markdown syntax (lists, quote, headings): when
+        // text is selected, applies `prefix` to every line in the selection so each
+        // becomes its own list item / quote / heading. Falls back to insert-with-
+        // sample behavior when no selection exists.
+        void InsertMarkdownLinePrefix(const std::string& prefix,
+                                      const std::string& sampleText);
         bool IsMarkdownMode() const;
 
         // ===== DOCUMENT MANAGEMENT =====

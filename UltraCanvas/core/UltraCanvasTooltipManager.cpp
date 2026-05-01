@@ -79,8 +79,7 @@ namespace UltraCanvas {
         if (!visible) {
             CancelShowTimer();
             pendingShow = true;
-            auto ms = std::chrono::milliseconds(static_cast<int>(style.showDelay * 1000.0f));
-            showTimerId = UltraCanvasApplication::GetInstance()->StartTimer(ms, false,
+            showTimerId = UltraCanvasApplication::GetInstance()->StartTimer(style.showDelay, false,
                 [](TimerId) {
                     showTimerId = InvalidTimerId;
                     if (!pendingShow) return;
@@ -106,8 +105,7 @@ namespace UltraCanvas {
         if (visible) {
             CancelHideTimer();
             pendingHide = true;
-            auto ms = std::chrono::milliseconds(static_cast<int>(style.hideDelay * 1000.0f));
-            hideTimerId = UltraCanvasApplication::GetInstance()->StartTimer(ms, false,
+            hideTimerId = UltraCanvasApplication::GetInstance()->StartTimer(style.hideDelay, false,
                 [](TimerId) {
                     hideTimerId = InvalidTimerId;
                     if (!pendingHide) return;

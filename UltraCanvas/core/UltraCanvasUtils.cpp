@@ -18,6 +18,7 @@
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <cstdlib>
 #include <string>
 
 namespace UltraCanvas {
@@ -487,5 +488,19 @@ namespace UltraCanvas {
 #else
         system(("xdg-open \"" + url + "\"").c_str());
 #endif
+    }
+
+    std::string NormalizePath(const std::string& in) {
+        std::string result;
+
+#if defined(_WIN32) || defined(_WIN64)
+        result = in;
+        std::replace(result.begin(), result.end(), '/', '\\');
+#else
+        char real[2048];
+        realpath(in.c_str(), real);
+        result = real;
+#endif
+        return result;
     }
 }

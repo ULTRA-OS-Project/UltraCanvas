@@ -42,8 +42,8 @@ namespace UltraCanvas {
         Point2Di shadowOffset = Point2Di(2, 2);
 
         // Behavior
-        float showDelay = 0.3f;        // Seconds to wait before showing
-        float hideDelay = 0.2f;        // Seconds to wait before hiding
+        unsigned int showDelay = 300;        // milliseconds to wait before showing
+        unsigned int hideDelay = 200;        // milliseconds to wait before hiding
         int offsetX = 10;              // Offset from cursor
         int offsetY = 10;
         bool followCursor = false;     // Whether tooltip follows mouse movement

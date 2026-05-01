@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsCursor.cpp
 // Win32 cursor management implementation
-// Version: 1.0.0
-// Last Modified: 2026-03-06
+// Version: 1.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindowsApplication.h"
@@ -76,7 +76,7 @@ namespace UltraCanvas {
                 break;
             case UCMouseCursor::ContextMenu: {
                 HCURSOR hCtx = LoadCursorFromImageFile(
-                    (GetResourcesDir() + "media/lib/cursor/context-menu.png").c_str(), 0, 0);
+                    NormalizePath(GetResourcesDir() + "media/lib/cursor/context-menu.png").c_str(), 0, 0);
                 if (hCtx) {
                     cursors[cursor] = hCtx;
                     SetCursor(hCtx);

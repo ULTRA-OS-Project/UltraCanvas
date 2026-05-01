@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasMenuExamples.cpp
 // Implementation of all component example creators
-// Version: 1.0.0
-// Last Modified: 2024-12-19
+// Version: 1.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -225,7 +225,7 @@ namespace UltraCanvas {
             debugOutput << "Desktop view" << std::endl;
         }));
 
-        flatMenu->AddItem(MenuItemData::Action("Tablet View", GetResourcesDir() + "media/icons/tablet48px.png", []() {
+        flatMenu->AddItem(MenuItemData::Action("Tablet View", NormalizePath(GetResourcesDir() + "media/icons/tablet48px.png"), []() {
             debugOutput << "Tablet view" << std::endl;
         }));
 

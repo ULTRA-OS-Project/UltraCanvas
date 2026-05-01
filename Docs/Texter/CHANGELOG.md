@@ -1,3 +1,6 @@
+#### 2026-05-01 *1.0.26*
+- Fix hang when Splash and "recover confirmation" dialog shown in same time
+
 #### 2026-04-30 *1.0.25*
 - Fix cursor position in Markdown mode
  

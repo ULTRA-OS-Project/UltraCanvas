@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.5.0
-// Last Modified: 2026-04-30
+// Version: 3.5.2
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -399,6 +399,23 @@ namespace UltraCanvas {
         void DeleteCharacterForward();   // Delete one grapheme cluster forward
         void DeleteSelection();
         void Clear() { SetText(""); }
+
+        // Prepends `prefix` to every line touched by the current selection
+        // (or the cursor's line when no selection exists). Adjusts cursor
+        // and selection columns so they remain over the same logical text.
+        // Used by the markdown toolbar's list / quote / heading buttons.
+        // Pushes undo state. No-op when the area is read-only or `prefix` is empty.
+        void ApplyMarkdownLinePrefix(const std::string& prefix);
+
+        // Markdown auto-list-continuation. If the cursor is on a line whose
+        // visible prefix is a markdown list marker ("- ", "* ", "+ ", "N. ",
+        // "N) ", "- [ ] ", "- [x] "), splits the line and prepends the same
+        // marker (or the next number for ordered lists) to the new line.
+        // If the current item is empty (only marker + whitespace), instead
+        // clears the line so the user exits the list. Returns true when
+        // a continuation/exit happened, false to let the regular Enter
+        // handler run. Callers should gate on IsMarkdownHybridMode().
+        bool TryContinueMarkdownList();
 
         // Cursor movement - now grapheme-aware
         void MoveCursorLeft(bool selecting = false);

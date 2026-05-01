@@ -31,6 +31,7 @@ namespace UltraCanvas {
     std::string FormatFileSize(size_t bytes);
 
     std::string GetExecutableDir();
+    std::string NormalizePath(const std::string& in);
 
     void OpenURL(const std::string& url);
 

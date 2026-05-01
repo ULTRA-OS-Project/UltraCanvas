@@ -94,7 +94,7 @@ namespace UltraCanvas {
         void RegisterEventLoopRunCallback(std::function<void()> callback);
 
         // Timer API - timers fire on the main thread
-        TimerId StartTimer(std::chrono::milliseconds interval, bool periodic,
+        TimerId StartTimer(unsigned int milliseconds_interval, bool periodic,
                            std::function<void(TimerId)> callback = nullptr);
         void StopTimer(TimerId id);
 
