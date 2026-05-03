@@ -497,7 +497,7 @@ namespace UltraCanvas {
         result = in;
         std::replace(result.begin(), result.end(), '/', '\\');
 #else
-        char real[2048];
+        char real[PATH_MAX];
         realpath(in.c_str(), real);
         result = real;
 #endif
