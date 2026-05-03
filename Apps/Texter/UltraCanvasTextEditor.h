@@ -363,6 +363,7 @@ namespace UltraCanvas {
         // ===== UI UPDATES =====
         void UpdateStatusBar();
         void UpdateZoomDropdownSelection();
+        void UpdateMarkdownToolbarState();
         void UpdateLanguageDropdown();
         void OnLanguageChanged(int index, const DropdownItem& item);
         void UpdateEncodingDropdown();

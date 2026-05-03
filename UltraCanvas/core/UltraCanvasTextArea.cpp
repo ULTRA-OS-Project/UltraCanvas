@@ -1385,6 +1385,10 @@ namespace UltraCanvas {
             selectionAnchor = cursorPosition;
         }
 
+        if (onCursorPositionChanged) {
+            onCursorPositionChanged(cursorPosition);
+        }
+
         // Begin text drag selection tracking
         isSelectingText = true;
         UltraCanvasApplication::GetInstance()->CaptureMouse(this);
@@ -1405,6 +1409,9 @@ namespace UltraCanvas {
         //isSelectingText = true;
         clickCount = 2;
         //UltraCanvasApplication::GetInstance()->CaptureMouse(this);
+        if (onCursorPositionChanged) {
+            onCursorPositionChanged(cursorPosition);
+        }
         return true;
     }
 

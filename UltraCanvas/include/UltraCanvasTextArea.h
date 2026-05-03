@@ -453,6 +453,8 @@ namespace UltraCanvas {
         bool HasSelection() const;
         std::string GetSelectedText() const;
         int GetSelectionMinGrapheme() const;
+        LineColumnIndex GetSelectionStart() const { return selectionStart; }
+        LineColumnIndex GetSelectionEnd() const { return selectionEnd; }
 
         // Clipboard operations
         void CopySelection();
@@ -528,6 +530,16 @@ namespace UltraCanvas {
         int GetTabSize() const { return tabSize; }
 
         std::pair<int, int> GetLineColumnFromPosition(int graphemePosition) const;
+
+        // --- Segment helpers ---------------------------------------------------
+        // Each entry in 'lines' is either a "terminal" segment ending with '\n'
+        // (represents a real source-line break) or a "continuation" segment with
+        // no trailing '\n' (artificial shard of a long line). textContent is the
+        // simple concatenation of all segments.
+        bool LineHasNewline(int lineIndex) const;
+        int GetLineVisibleLength(int lineIndex) const;  // utf8 length minus trailing \n
+        std::string GetLineContent(int lineIndex) const;
+        std::string_view GetLineContentView(int lineIndex) const;
 
         // Style access
         void SetStyle(const TextAreaStyle& newStyle) { style = newStyle; }
@@ -803,15 +815,6 @@ namespace UltraCanvas {
         void InsertLineLayoutEntry(int logicalLine);  // insert nullptr at index (new line)
         void RemoveLineLayoutEntry(int logicalLine);  // erase entry (line deleted/merged)
 
-        // --- Segment helpers ---------------------------------------------------
-        // Each entry in 'lines' is either a "terminal" segment ending with '\n'
-        // (represents a real source-line break) or a "continuation" segment with
-        // no trailing '\n' (artificial shard of a long line). textContent is the
-        // simple concatenation of all segments.
-        bool LineHasNewline(int lineIndex) const;
-        int GetLineVisibleLength(int lineIndex) const;  // utf8 length minus trailing \n
-        std::string GetLineContent(int lineIndex) const;
-        std::string_view GetLineContentView(int lineIndex) const;
         // Re-shard a single entry to honor the <= hardLimit invariant. Inserts extra
         // continuation segments after 'lineIndex' if needed; updates lineLayouts
         // accordingly. Returns the number of NEW entries inserted (0 if unchanged).

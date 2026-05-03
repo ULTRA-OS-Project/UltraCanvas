@@ -2552,23 +2552,286 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (!doc || !doc->textArea) return;
 
         if (doc->textArea->HasSelection()) {
-            // Wrap selected text with markdown syntax
             std::string selectedText = doc->textArea->GetSelectedText();
-            doc->textArea->DeleteSelection();
-            doc->textArea->InsertText(prefix + selectedText + suffix);
+
+            // --- LINE-PREFIX MODE (suffix empty): list, quote, heading ---
+            if (suffix.empty()) {
+                // Split selection into lines
+                std::vector<std::string> selLines;
+                std::istringstream stream(selectedText);
+                std::string line;
+                while (std::getline(stream, line)) {
+                    selLines.push_back(line);
+                }
+
+                // Detect: are ALL selected lines already prefixed?
+                bool allHavePrefix = !selLines.empty();
+                // For heading format-switch: detect if all lines have a DIFFERENT heading level
+                bool allHaveDifferentHeading = false;
+                std::string existingHeadingPrefix;
+
+                for (const auto& sl : selLines) {
+                    // Strip leading whitespace for prefix comparison
+                    int ws = 0;
+                    while (ws < static_cast<int>(sl.size()) &&
+                           (sl[ws] == ' ' || sl[ws] == '\t')) ws++;
+                    std::string trimmedLine = sl.substr(ws);
+
+                    if (trimmedLine.rfind(prefix, 0) != 0) {
+                        allHavePrefix = false;
+                    }
+                }
+
+                // Check for heading format-switch: prefix starts with '#'
+                if (!allHavePrefix && !prefix.empty() && prefix[0] == '#') {
+                    allHaveDifferentHeading = true;
+                    for (const auto& sl : selLines) {
+                        int ws = 0;
+                        while (ws < static_cast<int>(sl.size()) &&
+                               (sl[ws] == ' ' || sl[ws] == '\t')) ws++;
+                        std::string trimmedLine = sl.substr(ws);
+                        if (!trimmedLine.empty() && trimmedLine[0] == '#') {
+                            // Has some heading — record it for stripping
+                            int hEnd = 0;
+                            while (hEnd < static_cast<int>(trimmedLine.size()) &&
+                                   trimmedLine[hEnd] == '#') hEnd++;
+                            if (hEnd < static_cast<int>(trimmedLine.size()) &&
+                                trimmedLine[hEnd] == ' ') {
+                                // It's a valid heading — will be replaced
+                            } else {
+                                allHaveDifferentHeading = false;
+                            }
+                        } else {
+                            allHaveDifferentHeading = false;
+                        }
+                    }
+                }
+
+                // Check for list format-switch: switching between "- ", "1. ", "- [ ] "
+                bool listFormatSwitch = false;
+                std::string existingListPrefix;
+                if (!allHavePrefix && !prefix.empty() &&
+                    (prefix == "- " || prefix == "1. " || prefix == "- [ ] " ||
+                     prefix == "* " || prefix == "+ ")) {
+                    listFormatSwitch = true;
+                    for (const auto& sl : selLines) {
+                        int ws = 0;
+                        while (ws < static_cast<int>(sl.size()) &&
+                               (sl[ws] == ' ' || sl[ws] == '\t')) ws++;
+                        std::string trimmedLine = sl.substr(ws);
+                        bool hasListPrefix =
+                                (trimmedLine.rfind("- [ ] ", 0) == 0) ||
+                                (trimmedLine.rfind("- [x] ", 0) == 0) ||
+                                (trimmedLine.rfind("- [X] ", 0) == 0) ||
+                                (trimmedLine.rfind("- ", 0) == 0) ||
+                                (trimmedLine.rfind("* ", 0) == 0) ||
+                                (trimmedLine.rfind("+ ", 0) == 0);
+                        // Check ordered list
+                        if (!hasListPrefix) {
+                            int p = 0;
+                            while (p < static_cast<int>(trimmedLine.size()) &&
+                                   std::isdigit(static_cast<unsigned char>(trimmedLine[p]))) p++;
+                            if (p > 0 && p < static_cast<int>(trimmedLine.size()) &&
+                                (trimmedLine[p] == '.' || trimmedLine[p] == ')') &&
+                                p + 1 < static_cast<int>(trimmedLine.size()) &&
+                                trimmedLine[p + 1] == ' ') {
+                                hasListPrefix = true;
+                            }
+                        }
+                        if (!hasListPrefix) {
+                            listFormatSwitch = false;
+                            break;
+                        }
+                    }
+                }
+
+                doc->textArea->DeleteSelection();
+
+                if (allHavePrefix) {
+                    // TOGGLE OFF: remove the prefix from each line
+                    std::string result;
+                    for (size_t i = 0; i < selLines.size(); i++) {
+                        if (i > 0) result += '\n';
+                        int ws = 0;
+                        while (ws < static_cast<int>(selLines[i].size()) &&
+                               (selLines[i][ws] == ' ' || selLines[i][ws] == '\t')) ws++;
+                        std::string leading = selLines[i].substr(0, ws);
+                        std::string trimmedLine = selLines[i].substr(ws);
+                        if (trimmedLine.rfind(prefix, 0) == 0) {
+                            result += leading + trimmedLine.substr(prefix.size());
+                        } else {
+                            result += selLines[i];
+                        }
+                    }
+                    doc->textArea->InsertText(result);
+                } else if (allHaveDifferentHeading) {
+                    // FORMAT SWITCH: replace existing heading prefix with new one
+                    std::string result;
+                    for (size_t i = 0; i < selLines.size(); i++) {
+                        if (i > 0) result += '\n';
+                        int ws = 0;
+                        while (ws < static_cast<int>(selLines[i].size()) &&
+                               (selLines[i][ws] == ' ' || selLines[i][ws] == '\t')) ws++;
+                        std::string leading = selLines[i].substr(0, ws);
+                        std::string trimmedLine = selLines[i].substr(ws);
+                        // Strip existing heading
+                        int hEnd = 0;
+                        while (hEnd < static_cast<int>(trimmedLine.size()) &&
+                               trimmedLine[hEnd] == '#') hEnd++;
+                        if (hEnd < static_cast<int>(trimmedLine.size()) &&
+                            trimmedLine[hEnd] == ' ') {
+                            result += leading + prefix + trimmedLine.substr(hEnd + 1);
+                        } else {
+                            result += leading + prefix + trimmedLine;
+                        }
+                    }
+                    doc->textArea->InsertText(result);
+                } else if (listFormatSwitch) {
+                    // FORMAT SWITCH: replace existing list prefix with new one
+                    std::string result;
+                    int orderedNumber = 1;
+                    for (size_t i = 0; i < selLines.size(); i++) {
+                        if (i > 0) result += '\n';
+                        int ws = 0;
+                        while (ws < static_cast<int>(selLines[i].size()) &&
+                               (selLines[i][ws] == ' ' || selLines[i][ws] == '\t')) ws++;
+                        std::string leading = selLines[i].substr(0, ws);
+                        std::string trimmedLine = selLines[i].substr(ws);
+                        // Strip existing list prefix
+                        std::string content = trimmedLine;
+                        if (trimmedLine.rfind("- [ ] ", 0) == 0 ||
+                            trimmedLine.rfind("- [x] ", 0) == 0 ||
+                            trimmedLine.rfind("- [X] ", 0) == 0) {
+                            content = trimmedLine.substr(6);
+                        } else if (trimmedLine.rfind("- ", 0) == 0 ||
+                                   trimmedLine.rfind("* ", 0) == 0 ||
+                                   trimmedLine.rfind("+ ", 0) == 0) {
+                            content = trimmedLine.substr(2);
+                        } else {
+                            // Ordered list
+                            int p = 0;
+                            while (p < static_cast<int>(trimmedLine.size()) &&
+                                   std::isdigit(static_cast<unsigned char>(trimmedLine[p]))) p++;
+                            if (p > 0 && p + 1 < static_cast<int>(trimmedLine.size()) &&
+                                (trimmedLine[p] == '.' || trimmedLine[p] == ')') &&
+                                trimmedLine[p + 1] == ' ') {
+                                content = trimmedLine.substr(p + 2);
+                            }
+                        }
+                        // Apply new prefix
+                        if (prefix == "1. ") {
+                            result += leading + std::to_string(orderedNumber++) + ". " + content;
+                        } else {
+                            result += leading + prefix + content;
+                        }
+                    }
+                    doc->textArea->InsertText(result);
+                } else {
+                    // APPLY: prepend prefix to each line (multi-line or single)
+                    if (selLines.size() > 1) {
+                        std::string result;
+                        int orderedNumber = 1;
+                        for (size_t i = 0; i < selLines.size(); i++) {
+                            if (i > 0) result += '\n';
+                            if (prefix == "1. ") {
+                                result += std::to_string(orderedNumber++) + ". " + selLines[i];
+                            } else {
+                                result += prefix + selLines[i];
+                            }
+                        }
+                        doc->textArea->InsertText(result);
+                    } else {
+                        doc->textArea->InsertText(prefix + selectedText);
+                    }
+                }
+            } else {
+                // --- WRAP-STYLE MODE (suffix non-empty): bold, italic, code, etc. ---
+
+                // Check for toggle-off: does selected text start with prefix and end with suffix?
+                bool isAlreadyWrapped = false;
+                if (selectedText.size() >= prefix.size() + suffix.size()) {
+                    isAlreadyWrapped =
+                            (selectedText.rfind(prefix, 0) == 0) &&
+                            (selectedText.compare(selectedText.size() - suffix.size(),
+                                                  suffix.size(), suffix) == 0);
+                }
+
+                // Also check context: is the text AROUND the selection wrapped?
+                // (e.g. user selects "bold" inside "**bold**")
+                bool contextWrapped = false;
+                if (!isAlreadyWrapped) {
+                    auto selStart = doc->textArea->GetSelectionStart();
+                    auto selEnd = doc->textArea->GetSelectionEnd();
+                    if (selStart.lineIndex > selEnd.lineIndex ||
+                        (selStart.lineIndex == selEnd.lineIndex &&
+                         selStart.columnIndex > selEnd.columnIndex)) {
+                        std::swap(selStart, selEnd);
+                    }
+                    // Only check single-line context wrapping
+                    if (selStart.lineIndex == selEnd.lineIndex) {
+                        std::string lineContent = doc->textArea->GetLine(selStart.lineIndex);
+                        int prefixLen = static_cast<int>(prefix.size());
+                        int suffixLen = static_cast<int>(suffix.size());
+                        int beforeStart = selStart.columnIndex - prefixLen;
+                        int afterEnd = selEnd.columnIndex;
+                        if (beforeStart >= 0 &&
+                            afterEnd + suffixLen <= doc->textArea->GetLineVisibleLength(selStart.lineIndex)) {
+                            std::string before = doc->textArea->GetLine(selStart.lineIndex);
+                            // Extract surrounding markers using utf8_substr if available
+                            // For simplicity, check byte-level on the raw line
+                            std::string rawLine = doc->textArea->GetLine(selStart.lineIndex);
+                            // We need to compare codepoint positions, so expand selection
+                            // to include prefix before and suffix after
+                            LineColumnIndex expandedStart = {selStart.lineIndex,
+                                                             selStart.columnIndex - prefixLen};
+                            LineColumnIndex expandedEnd = {selEnd.lineIndex,
+                                                           selEnd.columnIndex + suffixLen};
+                            doc->textArea->SetSelection(expandedStart, expandedEnd);
+                            std::string expandedText = doc->textArea->GetSelectedText();
+                            if (expandedText.rfind(prefix, 0) == 0 &&
+                                expandedText.compare(expandedText.size() - suffix.size(),
+                                                     suffix.size(), suffix) == 0) {
+                                contextWrapped = true;
+                                // Selection is now expanded — delete and insert stripped content
+                                doc->textArea->DeleteSelection();
+                                doc->textArea->InsertText(selectedText);
+                                UpdateMarkdownToolbarState();
+                                return;
+                            } else {
+                                // Restore original selection
+                                doc->textArea->SetSelection(selStart, selEnd);
+                            }
+                        }
+                    }
+                }
+
+                doc->textArea->DeleteSelection();
+                if (isAlreadyWrapped) {
+                    // TOGGLE OFF: strip prefix and suffix
+                    std::string stripped = selectedText.substr(
+                            prefix.size(),
+                            selectedText.size() - prefix.size() - suffix.size());
+                    doc->textArea->InsertText(stripped);
+                } else {
+                    // APPLY: wrap with prefix and suffix
+                    doc->textArea->InsertText(prefix + selectedText + suffix);
+                }
+            }
         } else {
-            // Insert snippet with sample text, then select the sample
-            auto cursorPos = doc->textArea->GetCursorPosition();
+            // No selection: insert snippet with sample text
             doc->textArea->InsertText(prefix + sampleText + suffix);
 
-            // Select just the sample text so user can type to replace it
-            auto selEnd = cursorPos;
-            auto selStart = cursorPos;
-            selEnd.columnIndex += static_cast<int>(sampleText.size() + prefix.size());
-            selStart.columnIndex += static_cast<int>(prefix.size());
-            doc->textArea->SetSelection(selStart, selEnd);
-            doc->textArea->SetCursorPosition(selStart);
+            // For wrap-style snippets, select the sample text for easy replacement
+            if (!suffix.empty()) {
+                auto cursorPos = doc->textArea->GetCursorPosition();
+                LineColumnIndex selStart = cursorPos;
+                selStart.columnIndex -= static_cast<int>(suffix.size() + sampleText.size());
+                LineColumnIndex selEnd = cursorPos;
+                selEnd.columnIndex -= static_cast<int>(suffix.size());
+                doc->textArea->SetSelection(selStart, selEnd);
+            }
         }
+        UpdateMarkdownToolbarState();
     }
 
     void UltraCanvasTextEditor::InsertMarkdownLinePrefix(
@@ -3641,6 +3904,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // Cursor position changed callback
         doc->textArea->onCursorPositionChanged = [this](const LineColumnIndex& pos) {
             UpdateStatusBar();
+            UpdateMarkdownToolbarState();
         };
 
         // Selection changed callback
@@ -4635,4 +4899,166 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SaveSession(entries, activeAmongSaved);
     }
 
+    void UltraCanvasTextEditor::UpdateMarkdownToolbarState() {
+        if (!markdownToolbar || !markdownToolbar->IsVisible()) return;
+        auto doc = GetActiveDocument();
+        if (!doc || !doc->textArea) return;
+
+        int lineIdx = doc->textArea->GetCursorPosition().lineIndex;
+        if (lineIdx < 0 || lineIdx >= doc->textArea->GetLineCount()) return;
+
+        std::string rawLine = doc->textArea->GetLine(lineIdx);
+
+        // Strip leading whitespace
+        int pos = 0;
+        while (pos < static_cast<int>(rawLine.size()) &&
+               (rawLine[pos] == ' ' || rawLine[pos] == '\t')) pos++;
+        std::string trimmed = rawLine.substr(pos);
+
+        // Detect line-level formatting
+        bool isUnorderedList = false;
+        bool isOrderedList = false;
+        bool isChecklist = false;
+        bool isBlockquote = false;
+        bool isH1 = false, isH2 = false, isH3 = false, isH4 = false, isH5 = false;
+
+        // Blockquote
+        if (!trimmed.empty() && trimmed[0] == '>') {
+            isBlockquote = true;
+        }
+            // Checklist: "- [ ] " or "- [x] " or "- [X] "
+        else if (trimmed.size() >= 6 &&
+                 (trimmed[0] == '-' || trimmed[0] == '*' || trimmed[0] == '+') &&
+                 trimmed[1] == ' ' && trimmed[2] == '[' &&
+                 (trimmed[3] == ' ' || trimmed[3] == 'x' || trimmed[3] == 'X') &&
+                 trimmed[4] == ']' && trimmed[5] == ' ') {
+            isChecklist = true;
+        }
+            // Unordered list
+        else if (trimmed.size() >= 2 &&
+                 (trimmed[0] == '-' || trimmed[0] == '*' || trimmed[0] == '+') &&
+                 trimmed[1] == ' ') {
+            isUnorderedList = true;
+        }
+            // Ordered list
+        else {
+            int p = 0;
+            while (p < static_cast<int>(trimmed.size()) &&
+                   std::isdigit(static_cast<unsigned char>(trimmed[p]))) p++;
+            if (p > 0 && p < static_cast<int>(trimmed.size()) &&
+                (trimmed[p] == '.' || trimmed[p] == ')') &&
+                p + 1 < static_cast<int>(trimmed.size()) && trimmed[p + 1] == ' ') {
+                isOrderedList = true;
+            }
+        }
+
+        // Heading detection
+        if (!trimmed.empty() && trimmed[0] == '#') {
+            int level = 0;
+            while (level < static_cast<int>(trimmed.size()) && trimmed[level] == '#') level++;
+            if (level <= 5 && level < static_cast<int>(trimmed.size()) && trimmed[level] == ' ') {
+                switch (level) {
+                    case 1: isH1 = true; break;
+                    case 2: isH2 = true; break;
+                    case 3: isH3 = true; break;
+                    case 4: isH4 = true; break;
+                    case 5: isH5 = true; break;
+                }
+            }
+        }
+
+        // Detect inline formatting around cursor (single-line check)
+        // Check if cursor is inside **bold**, *italic*, ~~strike~~, ^sup^, ~sub~
+        bool isBold = false, isItalic = false, isSuperscript = false, isSubscript = false;
+        {
+            int col = doc->textArea->GetCursorPosition().columnIndex;
+            // Simple heuristic: scan from line start for paired markers
+            // that enclose the cursor column
+            auto checkWrap = [&](const std::string& marker, int& mPos, bool& flag) {
+                mPos = 0;
+                std::string content = rawLine;
+                size_t searchFrom = 0;
+                while (true) {
+                    size_t openPos = content.find(marker, searchFrom);
+                    if (openPos == std::string::npos) break;
+                    size_t closePos = content.find(marker, openPos + marker.size());
+                    if (closePos == std::string::npos) break;
+                    // Convert byte positions to approximate codepoint positions
+                    // (for ASCII markers this is 1:1)
+                    int openCol = static_cast<int>(openPos);
+                    int closeCol = static_cast<int>(closePos + marker.size());
+                    if (col > openCol && col < closeCol) {
+                        flag = true;
+                        return;
+                    }
+                    searchFrom = closePos + marker.size();
+                }
+            };
+            int dummy = 0;
+            checkWrap("**", dummy, isBold);
+            if (!isBold) checkWrap("__", dummy, isBold);
+            // Only check single * if not already bold
+            if (!isBold) {
+                // Check *italic* but skip **bold**
+                size_t searchFrom = 0;
+                while (true) {
+                    size_t p = rawLine.find('*', searchFrom);
+                    if (p == std::string::npos) break;
+                    // Skip ** pairs
+                    if (p + 1 < rawLine.size() && rawLine[p + 1] == '*') {
+                        // Find closing **
+                        size_t cl = rawLine.find("**", p + 2);
+                        searchFrom = (cl != std::string::npos) ? cl + 2 : p + 2;
+                        continue;
+                    }
+                    // Single * — find closing
+                    size_t cl = rawLine.find('*', p + 1);
+                    if (cl == std::string::npos) break;
+                    if (cl + 1 < rawLine.size() && rawLine[cl + 1] == '*') {
+                        searchFrom = cl + 1;
+                        continue;
+                    }
+                    if (col > static_cast<int>(p) && col < static_cast<int>(cl + 1)) {
+                        isItalic = true;
+                        break;
+                    }
+                    searchFrom = cl + 1;
+                }
+            }
+            checkWrap("^", dummy, isSuperscript);
+            checkWrap("~", dummy, isSubscript);
+        }
+
+        // Update toolbar button states
+        auto setChecked = [&](const std::string& id, bool checked) {
+            if (auto item = markdownToolbar->GetItem(id)) {
+                auto btn = std::dynamic_pointer_cast<UltraCanvasToolbarButton>(item);
+                if (btn) btn->SetChecked(checked);
+            }
+        };
+
+        setChecked("md-bold", isBold);
+        setChecked("md-italic", isItalic);
+        setChecked("md-superscript", isSuperscript);
+        setChecked("md-subscript", isSubscript);
+        setChecked("md-ul", isUnorderedList);
+        setChecked("md-ol", isOrderedList);
+        setChecked("md-checklist", isChecklist);
+        setChecked("md-quote", isBlockquote);
+
+        // Update heading sub-toolbar if visible
+        if (headingSubToolbar) {
+            auto setHeadingChecked = [&](const std::string& id, bool checked) {
+                if (auto item = headingSubToolbar->GetItem(id)) {
+                    auto btn = std::dynamic_pointer_cast<UltraCanvasToolbarButton>(item);
+                    if (btn) btn->SetChecked(checked);
+                }
+            };
+            setHeadingChecked("md-h1", isH1);
+            setHeadingChecked("md-h2", isH2);
+            setHeadingChecked("md-h3", isH3);
+            setHeadingChecked("md-h4", isH4);
+            setHeadingChecked("md-h5", isH5);
+        }
+    }
 } // namespace UltraCanvas
