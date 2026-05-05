@@ -193,8 +193,27 @@ namespace UltraCanvas {
     bool RenderContextCairo::CreateSurface(const Size2Di & sz, NativeSurfacePtr createSimilarToSurface) {
         auto oldCairoSurface = surface;
 
+        // If we are creating sub-surface (e.g. popup) similar to a HiDPI parent
+        // (Retina backing scale 2.0+), inherit that scale so the sub-surface
+        // also rasterizes at backing pixel resolution and composes back onto
+        // the parent without any upscale blur. Default 1.0 keeps standard
+        // displays untouched.
+        double parentSx = 1.0, parentSy = 1.0;
         if (createSimilarToSurface) {
-            surface = cairo_surface_create_similar(static_cast<cairo_surface_t *>(createSimilarToSurface), CAIRO_CONTENT_COLOR_ALPHA, sz.width, sz.height);
+            cairo_surface_get_device_scale(static_cast<cairo_surface_t*>(createSimilarToSurface),
+                                           &parentSx, &parentSy);
+            if (parentSx <= 0.0) parentSx = 1.0;
+            if (parentSy <= 0.0) parentSy = 1.0;
+        }
+
+        if (createSimilarToSurface) {
+            // cairo_surface_create_similar takes raw (device-pixel) dimensions.
+            // We want the new surface to present `sz.width × sz.height` user
+            // units at the parent's scale — so allocate sz * scale raw pixels.
+            const int rawW = static_cast<int>(sz.width * parentSx);
+            const int rawH = static_cast<int>(sz.height * parentSy);
+            surface = cairo_surface_create_similar(static_cast<cairo_surface_t *>(createSimilarToSurface),
+                                                   CAIRO_CONTENT_COLOR_ALPHA, rawW, rawH);
         } else {
             surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, sz.width, sz.height);
         }
@@ -202,6 +221,12 @@ namespace UltraCanvas {
         if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
             debugOutput << "RenderContextCairo::CreateSurface: Can't create surface" << std::endl;
             return false;
+        }
+
+        // Cairo versions differ on whether create_similar inherits device_scale;
+        // set it explicitly so the new surface always presents `sz` user units.
+        if (createSimilarToSurface && (parentSx != 1.0 || parentSy != 1.0)) {
+            cairo_surface_set_device_scale(surface, parentSx, parentSy);
         }
 
         surfaceSize = sz;

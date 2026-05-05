@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.h
 // macOS window implementation with Cocoa/Cairo support
-// Version: 2.0.1
-// Last Modified: 2026-04-05
+// Version: 2.1.0
+// Last Modified: 2026-05-03
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -50,6 +50,12 @@ namespace UltraCanvas {
 
         bool pendingShow = false;
 
+        // Backing-store scale of the screen the window is currently on.
+        // 1.0 = standard, 2.0 = Retina, 3.0 = some external HiDPI panels.
+        // Updated when the window is created and when the system reports a
+        // change (display switched, window dragged between monitors).
+        float backingScaleFactor = 1.0f;
+
         // ===== THREAD SAFETY =====
         mutable std::mutex cairoMutex;
 
@@ -57,6 +63,9 @@ namespace UltraCanvas {
         bool CreateNSWindow();
         bool CreateNativeCairoSurface();
         void DestroyNativeCairoSurface();
+        // Re-reads [nsWindow backingScaleFactor]. Returns true if the value
+        // changed since the last refresh.
+        bool RefreshBackingScaleFactor();
 
     protected:
         bool CreateNative() override;
@@ -99,6 +108,14 @@ namespace UltraCanvas {
         void OnWindowDidResignKey();
         void OnWindowDidMiniaturize();
         void OnWindowDidDeminiaturize();
+        // Fired when the window's backing scale changes (e.g. dragged onto a
+        // different display). Recreates the Cairo surface at the new pixel
+        // size so rendering stays crisp on the new screen.
+        void OnWindowDidChangeBackingProperties();
+
+        // Currently observed device scale; used by the renderer to pick
+        // pixel-resolution rasterization sizes for fonts and SVG icons.
+        float GetBackingScaleFactor() const { return backingScaleFactor; }
     };
 
 } // namespace UltraCanvas

@@ -354,26 +354,26 @@ int main(int argc, char* argv[]) {
         splashConfig.websiteDisplay = "www.ultraos.eu";
         splashConfig.showTimeout = 2000;
 
-        // Run session restore + crash recovery only after the splash is gone.
-        // The recovery prompt uses native MessageBoxW (blocking) on Windows;
-        // if it opens while the splash is alwaysOnTop, the dialog hides
-        // behind the splash and freezes the app.
-//        splash.onSplashClosed = [firstWindow]() {
-//            firstWindow->RestoreSessionAndRecoverBackups();
-//        };
+        // Phase 1 runs synchronously before Show(): session tabs are already
+        // in place when the splash fades, rather than popping in afterwards.
+        firstWindow->RestoreSessionDocuments();
+
+        // Phase 2 fires when the splash closes (timeout or click). The recovery
+        // dialog can then take focus without the always-on-top splash competing
+        // with it (the previous code worked around this with a 100ms timer).
+        splash.onSplashClosed = [firstWindow]() {
+            firstWindow->PromptCrashRecovery();
+        };
+
         splash.Show(splashConfig, firstWindow.get());
 
         debugOutput << "✓ Main window created" << std::endl;
 
         // Fallback: if the splash never became visible (e.g. resource load
-        // failed and Show reset the window), still run recovery so it isn't
-        // dropped on the floor.
+        // failed and Show reset the window), onSplashClosed will not fire,
+        // so run Phase 2 inline.
         if (!splash.IsVisible()) {
-            firstWindow->RestoreSessionAndRecoverBackups();
-        } else {
-            app.StartTimer(100, false, [firstWindow](TimerId) {
-                firstWindow->RestoreSessionAndRecoverBackups();
-            });
+            firstWindow->PromptCrashRecovery();
         }
 
         // Open file from command line

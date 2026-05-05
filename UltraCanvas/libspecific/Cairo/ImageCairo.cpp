@@ -127,6 +127,14 @@ namespace UltraCanvas {
         return pixelsPtr;
     }
 
+    void UCPixmapCairo::SetDeviceScale(double scale) {
+        if (!surface || scale <= 0.0) return;
+        deviceScale = scale;
+        cairo_surface_set_device_scale(surface, scale, scale);
+        // width/height stay at raw pixel dims; GetWidth/GetHeight now divide
+        // by deviceScale to report logical units to drawing code.
+    }
+
 
 #ifdef HAS_LIBVIPS
     bool UCImageRaster::InitializeImageSubsysterm(const char *programName) {
@@ -297,13 +305,17 @@ namespace UltraCanvas {
     }
 #endif
 
-    std::string UCImageRaster::MakePixmapCacheKey(int w, int h, ImageFitMode fitMode) {
+    std::string UCImageRaster::MakePixmapCacheKey(int w, int h, ImageFitMode fitMode, float scale) {
         char key[300];
-        snprintf(key, sizeof(key) - 1, "%s?w:%dh:%dc:%d", fileName.c_str(), w, h, static_cast<int>(fitMode));
+        // Including `scale` prevents 1x and 2x rasterizations of the same
+        // file/size from colliding in the shared cache (would otherwise show
+        // the wrong pixmap on a window dragged between Retina/non-Retina).
+        snprintf(key, sizeof(key) - 1, "%s?w:%dh:%dc:%dr:%g",
+                 fileName.c_str(), w, h, static_cast<int>(fitMode), static_cast<double>(scale));
         return std::string(key);
     }
 
-    std::shared_ptr<UCPixmapCairo> UCImageRaster::GetPixmap(int w, int h, ImageFitMode fitMode) {
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::GetPixmap(int w, int h, ImageFitMode fitMode, float scale) {
         if (!errorMessage.empty() || fileName.empty()) {
             return nullptr;
         }
@@ -311,50 +323,66 @@ namespace UltraCanvas {
             w = width;
             h = height;
         }
+        if (scale <= 0.0f) scale = 1.0f;
 #if HAS_PIXMAPS_CACHE
-        std::string key = MakePixmapCacheKey(w, h, fitMode);
+        std::string key = MakePixmapCacheKey(w, h, fitMode, scale);
         std::shared_ptr<UCPixmapCairo> pm = g_PixmapsCache.GetFromCache(key);
         if (!pm) {
-            pm = CreatePixmap(w, h, fitMode);
+            pm = CreatePixmap(w, h, fitMode, scale);
             if (pm) {
                 g_PixmapsCache.AddToCache(key, pm);
             }
         }
 #else
-        std::shared_ptr<UCPixmapCairo> pm = CreatePixmap(w, h, fitMode);
+        std::shared_ptr<UCPixmapCairo> pm = CreatePixmap(w, h, fitMode, scale);
 #endif
         return pm;
     }
 
 #ifdef HAS_LIBVIPS
-    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode) {
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode, float scale) {
+        if (scale <= 0.0f) scale = 1.0f;
         try {
+            // Rasterize at backing-pixel resolution. For SVG (libvips uses
+            // librsvg under the hood) this yields sharp edges at the target
+            // device scale; for raster sources, libvips picks a scaled
+            // thumbnail size and the pixmap is tagged so DrawPixmap downscales
+            // back to logical units cleanly.
+            const int rawW = static_cast<int>(w * scale);
+            const int rawH = static_cast<int>(h * scale);
             auto options = vips::VImage::option();
             switch (fitMode) {
                 case ImageFitMode::Fill:
-                    options = options->set("height", h)->set("size", VipsSize::VIPS_SIZE_FORCE);
+                    options = options->set("height", rawH)->set("size", VipsSize::VIPS_SIZE_FORCE);
                     break;
                 case ImageFitMode::Contain:
-                    options = options->set("height", h);
+                    options = options->set("height", rawH);
                     break;
                 case ImageFitMode::Cover:
-                    options = options->set("height", h)->set("crop", VipsInteresting::VIPS_INTERESTING_CENTRE);
+                    options = options->set("height", rawH)->set("crop", VipsInteresting::VIPS_INTERESTING_CENTRE);
                     break;
                 case ImageFitMode::ScaleDown:
-                    options = options->set("height", h)->set("size", VipsSize::VIPS_SIZE_DOWN);
+                    options = options->set("height", rawH)->set("size", VipsSize::VIPS_SIZE_DOWN);
                     break;
                 case ImageFitMode::NoScale:
-                    w = width;
-                    break;
+                    // For NoScale, the source's intrinsic pixel grid is the
+                    // truth — don't oversample (would just upscale a finite
+                    // raster with no extra detail).
+                    return CreatePixmapFromVImage(vips::VImage::thumbnail(fileName.c_str(), width, options));
             }
+            std::shared_ptr<UCPixmapCairo> pm;
             if (imgDataPtr) {
                 VipsBlob *blob = vips_blob_new(nullptr, imgDataPtr, imgDataSize);
-                auto vimg = vips::VImage::thumbnail_buffer(blob, w, options);
+                auto vimg = vips::VImage::thumbnail_buffer(blob, rawW, options);
                 vips_area_unref(VIPS_AREA(blob));
-                return CreatePixmapFromVImage(vimg);
+                pm = CreatePixmapFromVImage(vimg);
             } else {
-                return CreatePixmapFromVImage(vips::VImage::thumbnail(fileName.c_str(), w, options));
+                pm = CreatePixmapFromVImage(vips::VImage::thumbnail(fileName.c_str(), rawW, options));
             }
+            if (pm && scale != 1.0f) {
+                pm->SetDeviceScale(scale);
+            }
+            return pm;
         } catch (vips::VError& err) {
             debugOutput << "UCImage::CreatePixmap: Failed to make pixmap for " << fileName << " Err:" << err.what() << std::endl;
             errorMessage = std::string("Failed to make pixmap Err:") + err.what();
@@ -428,7 +456,7 @@ namespace UltraCanvas {
         return std::make_shared<UCPixmapCairo>(surface);
     }
 #else
-    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int, int, ImageFitMode) {
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int, int, ImageFitMode, float) {
         return nullptr;
     }
 #endif

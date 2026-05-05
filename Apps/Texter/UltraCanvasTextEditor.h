@@ -245,6 +245,7 @@ namespace UltraCanvas {
         // ===== AUTOSAVE SYSTEM =====
         AutosaveManager autosaveManager;
         bool hasCheckedForBackups;
+        std::vector<std::string> pendingOrphanBackups;  // Phase-1 → Phase-2 handoff
 
         // ===== RECENT FILES =====
         std::vector<std::string> recentFiles;      // Ordered list (newest first)
@@ -420,8 +421,13 @@ namespace UltraCanvas {
 
         virtual ~UltraCanvasTextEditor();
 
-        // Post-construction initialization (called after window is shown)
-        void RestoreSessionAndRecoverBackups();
+        // Post-construction initialization (called after window is shown).
+        // Split into two phases around the splash screen:
+        //   - RestoreSessionDocuments() runs synchronously while the splash is up.
+        //   - PromptCrashRecovery() runs after the splash closes so the modal
+        //     recovery dialog can take focus cleanly.
+        void RestoreSessionDocuments();
+        void PromptCrashRecovery();
 
         // ===== RENDERING =====
         void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;

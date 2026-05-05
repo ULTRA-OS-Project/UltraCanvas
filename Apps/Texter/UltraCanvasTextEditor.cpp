@@ -39,32 +39,28 @@ namespace UltraCanvas {
 namespace {
     std::string GetAppDataDirectory() {
 #ifdef _WIN32
-        const char* localAppData = std::getenv("LOCALAPPDATA");
-        if (localAppData) {
-            return std::string(localAppData) + "\\TextEditor\\";
-        }
         const char* appData = std::getenv("APPDATA");
         if (appData) {
-            return std::string(appData) + "\\TextEditor\\";
+            return std::string(appData) + "\\UltraTexter\\";
         }
-        return "C:\\TextEditor\\";
+        return "C:\\UltraTexter\\";
 #elif __APPLE__
         const char* home = std::getenv("HOME");
         if (home) {
-            return std::string(home) + "/Library/Application Support/TextEditor/";
+            return std::string(home) + "/Library/Application Support/UltraTexter/";
         }
-        return "/tmp/TextEditor/";
+        return "/tmp/UltraTexter/";
 #else
         // Linux: XDG Base Directory Specification
         const char* xdgDataHome = std::getenv("XDG_DATA_HOME");
         if (xdgDataHome && xdgDataHome[0] != '\0') {
-            return std::string(xdgDataHome) + "/TextEditor/";
+            return std::string(xdgDataHome) + "/UltraTexter/";
         }
         const char* home = std::getenv("HOME");
         if (home) {
-            return std::string(home) + "/.local/share/TextEditor/";
+            return std::string(home) + "/.local/share/UltraTexter/";
         }
-        return "/tmp/TextEditor/";
+        return "/tmp/UltraTexter/";
 #endif
     }
 
@@ -2320,10 +2316,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
-    void UltraCanvasTextEditor::RestoreSessionAndRecoverBackups() {
-        hasCheckedForBackups = true;
-
-        // --- Phase 1: Restore session documents ---
+    // Phase 1: synchronous session restore + orphan-backup scan.
+    // Runs while the splash screen is visible — no UI prompts here.
+    // Stores any orphan backups in pendingOrphanBackups for PromptCrashRecovery().
+    void UltraCanvasTextEditor::RestoreSessionDocuments() {
         int savedActiveIndex = 0;
         auto sessionDocs = configFile.LoadSession(savedActiveIndex);
 
@@ -2396,46 +2392,30 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             tabContainer->InvalidateTabbar();
         }
 
-        // --- Phase 2: Find orphan autosave backups (crash recovery only) ---
+        // Scan for orphan autosave backups now (filesystem I/O behind the splash).
+        // PromptCrashRecovery() reads pendingOrphanBackups and only opens a dialog
+        // if anything remains.
+        pendingOrphanBackups.clear();
         std::vector<std::string> allBackups = autosaveManager.FindExistingBackups();
-
-        // Also check legacy location (/tmp/) for migration
-        std::string legacyDir = "/tmp/UltraTexter/Autosave/";
-#ifdef _WIN32
-        {
-            char tempPath[MAX_PATH];
-            GetTempPathA(MAX_PATH, tempPath);
-            legacyDir = std::string(tempPath) + "UltraTexter\\Autosave\\";
-        }
-#endif
-        if (legacyDir != autosaveManager.GetDirectory()) {
-            try {
-                if (std::filesystem::exists(legacyDir)) {
-                    for (const auto& entry : std::filesystem::directory_iterator(legacyDir)) {
-                        if (entry.is_regular_file()) {
-                            std::string filename = entry.path().filename().string();
-                            if (filename.find(".autosave") != std::string::npos) {
-                                allBackups.push_back(entry.path().string());
-                            }
-                        }
-                    }
-                }
-            } catch (...) {}
-        }
-
-        // Filter out backups that were already restored via the session —
-        // only truly orphan backups (from a crash) trigger the recovery dialog.
-        std::vector<std::string> backups;
-        backups.reserve(allBackups.size());
         for (const auto& b : allBackups) {
             if (referencedBackups.find(b) == referencedBackups.end()) {
-                backups.push_back(b);
+                pendingOrphanBackups.push_back(b);
             }
         }
+    }
 
-        if (backups.empty()) return;
+    // Phase 2: prompt the user about orphan crash backups.
+    // Must be called after the splash has closed so the modal can take focus.
+    void UltraCanvasTextEditor::PromptCrashRecovery() {
+        hasCheckedForBackups = true;
 
-        // Show recovery dialog
+        if (pendingOrphanBackups.empty()) return;
+
+        // Move the list into the dialog callback so we don't accidentally
+        // re-prompt on a second call.
+        std::vector<std::string> backups;
+        backups.swap(pendingOrphanBackups);
+
         std::string message = "Found " + std::to_string(backups.size()) +
                               " autosaved file(s) from a previous session.\n\n" +
                               "Would you like to recover them?";

@@ -155,6 +155,14 @@ namespace UltraCanvas {
         virtual Size2Di GetSurfaceSize() const = 0;
         virtual void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) = 0;
 
+        // Backing-store scale of the surface this context renders into:
+        // 1.0 on standard displays, 2.0 on Retina, etc. Drawing always
+        // happens in logical (point) coordinates regardless — this is purely
+        // a hint for picking pre-rasterized resource sizes (e.g. the SVG/
+        // pixmap cache rasterizes at logical_size * device_scale so icons
+        // stay crisp on HiDPI). Default 1.0 keeps non-HiDPI back-ends working.
+        virtual float GetDeviceScale() const { return 1.0f; }
+
         // ===== STATE MANAGEMENT =====
         virtual void PushState() = 0;
         virtual void PopState() = 0;
@@ -322,7 +330,7 @@ namespace UltraCanvas {
         }
 
         void DrawImage(UCImage& img, const Point2Df& pos) {
-            auto pixmap = img.GetPixmap();
+            auto pixmap = img.GetPixmap(0, 0, ImageFitMode::Contain, GetDeviceScale());
             if (pixmap) {
                 DrawPixmap(*pixmap,
                     Rect2Df(pos.x, pos.y, pixmap->GetWidth(), pixmap->GetHeight()),
@@ -339,7 +347,8 @@ namespace UltraCanvas {
 
         void DrawImage(UCImage& img, const Rect2Df& rect, ImageFitMode fitMode) {
             auto pixmap = img.GetPixmap(static_cast<int>(rect.width),
-                                        static_cast<int>(rect.height), fitMode);
+                                        static_cast<int>(rect.height), fitMode,
+                                        GetDeviceScale());
             if (pixmap) {
                 DrawPixmap(*pixmap, rect, fitMode);
             }
@@ -352,9 +361,9 @@ namespace UltraCanvas {
         }
 
         void DrawMask(const Color& drawColor, UCImage& img, const Point2Df& pos) {
-            auto pixmap = img.GetPixmap();
+            auto pixmap = img.GetPixmap(0, 0, ImageFitMode::Contain, GetDeviceScale());
             if (pixmap) {
-                DrawMask(drawColor, *pixmap, 
+                DrawMask(drawColor, *pixmap,
                     Rect2Df(pos.x, pos.y, pixmap->GetWidth(), pixmap->GetHeight()),
                     ImageFitMode::NoScale);
             }
@@ -369,7 +378,8 @@ namespace UltraCanvas {
         
         void DrawMask(const Color& drawColor, UCImage& img, const Rect2Df& rect, ImageFitMode fitMode) {
             auto pixmap = img.GetPixmap(static_cast<int>(rect.width),
-                                        static_cast<int>(rect.height), fitMode);
+                                        static_cast<int>(rect.height), fitMode,
+                                        GetDeviceScale());
             if (pixmap) {
                 DrawMask(drawColor, *pixmap.get(), rect, fitMode);
             }
@@ -389,7 +399,7 @@ namespace UltraCanvas {
         }
         
         void DrawPartOfImage(UCImage& img, const Rect2Df& srcRect, const Rect2Df& destRect) {
-            auto pixmap = img.GetPixmap();
+            auto pixmap = img.GetPixmap(0, 0, ImageFitMode::Contain, GetDeviceScale());
             DrawPartOfPixmap(*pixmap.get(), srcRect, destRect);
         }
 

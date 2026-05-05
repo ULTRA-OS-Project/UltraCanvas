@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.0.4
-// Last Modified: 2026-04-29
+// Version: 2.1.0
+// Last Modified: 2026-05-03
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -37,20 +37,16 @@
         ultraCanvasWindow = window;
         nativeSurface = nullptr;
         [self setWantsLayer:YES];
+        // Make the layer hold backing-resolution pixels so the offscreen Cairo
+        // bitmap (which we render at backing dims) maps 1:1 to screen pixels.
+        // The actual scale is applied per-window in CreateNativeCairoSurface
+        // and OnWindowDidChangeBackingProperties; this just primes the layer
+        // before the view is attached to a window.
+        if (self.layer) {
+            self.layer.contentsScale = self.window ? [self.window backingScaleFactor] : 1.0;
+        }
     }
     return self;
-}
-
-void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* nativeSurface) {
-    cairo_surface_t* viewSurface = cairo_quartz_surface_create_for_cg_context(viewCtx, w, h);
-    cairo_t* cr = cairo_create(viewSurface);
-
-    // Single operation: paint source surface to view
-    cairo_set_source_surface(cr, nativeSurface, 0, 0);
-    cairo_paint(cr);
-
-    cairo_destroy(cr);
-    cairo_surface_destroy(viewSurface);
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
@@ -63,29 +59,30 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* nativeSurf
     // Flush pending Cairo operations
     cairo_surface_flush(nativeSurface);
 
-    // Create a temporary Cairo surface wrapping the VIEW's context
-    NSRect bounds = [self bounds];
-    int w = (int)bounds.size.width;
-    int h = (int)bounds.size.height;
+    // Bypass Cairo for the final blit: the view's CGContext already has a
+    // device-scale CTM applied by Cocoa, and wrapping it as a Cairo surface
+    // would force Cairo to rasterize at point grain (losing Retina detail).
+    // Pulling the underlying CGBitmapContext from the offscreen Cairo Quartz
+    // surface and CGContextDrawImage'ing it gives a 1:1 backing-pixel blit.
+    CGContextRef offCtx = cairo_quartz_surface_get_cg_context(nativeSurface);
+    if (!offCtx) return;
 
-    // Wrap the view's CGContext in a Cairo surface
-//    measureExecutionTime("dirtyRect", _drawScreen, w, h, viewCtx, nativeSurface);
-//    return;
+    CGImageRef img = CGBitmapContextCreateImage(offCtx);
+    if (!img) return;
 
-    cairo_surface_t* viewSurface = cairo_quartz_surface_create_for_cg_context(viewCtx, w, h);
-    cairo_t* cr = cairo_create(viewSurface);
-
-    // Handle coordinate flip (NSView with isFlipped:YES)
-    // Cairo and Quartz both use bottom-left origin, but isFlipped changes this
-//    cairo_translate(cr, 0, h);
-//    cairo_scale(cr, 1.0, -1.0);
-
-    // Single operation: paint source surface to view
-    cairo_set_source_surface(cr, nativeSurface, 0, 0);
-    cairo_paint(cr);
-
-    cairo_destroy(cr);
-    cairo_surface_destroy(viewSurface);
+    NSRect bounds = [self bounds]; // logical points
+    CGContextSaveGState(viewCtx);
+    // No interpolation — source pixels and destination backing pixels match
+    // exactly when the offscreen is created at backingScaleFactor.
+    CGContextSetInterpolationQuality(viewCtx, kCGInterpolationNone);
+    // The view is flipped (isFlipped == YES) so AppKit gave us a CGContext
+    // whose Y-axis grows downward. CGContextDrawImage assumes Y-up, which
+    // would render the bitmap upside down. Locally invert before drawing.
+    CGContextTranslateCTM(viewCtx, NSMinX(bounds), NSMaxY(bounds));
+    CGContextScaleCTM(viewCtx, 1.0, -1.0);
+    CGContextDrawImage(viewCtx, CGRectMake(0, 0, NSWidth(bounds), NSHeight(bounds)), img);
+    CGContextRestoreGState(viewCtx);
+    CGImageRelease(img);
 }
 
 - (BOOL)acceptsFirstResponder { return YES; }
@@ -94,6 +91,19 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* nativeSurf
 // Override to prevent default NSView behavior (system beep) for unhandled keys.
 // Key events are handled through the UltraCanvas event system at the application level.
 - (void)keyDown:(NSEvent *)event {}
+
+// Sent by AppKit when the view's backing scale changes (window dragged to a
+// different display, or the system reports a scale change). Forward to the
+// C++ window so the offscreen Cairo surface is recreated at the new size.
+- (void)viewDidChangeBackingProperties {
+    [super viewDidChangeBackingProperties];
+    if (self.layer && self.window) {
+        self.layer.contentsScale = [self.window backingScaleFactor];
+    }
+    if (ultraCanvasWindow) {
+        ultraCanvasWindow->OnWindowDidChangeBackingProperties();
+    }
+}
 
 
 @end
@@ -115,6 +125,7 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* nativeSurf
 - (void)windowDidResignKey:(NSNotification*)notification;
 - (void)windowDidMiniaturize:(NSNotification*)notification;
 - (void)windowDidDeminiaturize:(NSNotification*)notification;
+- (void)windowDidChangeBackingProperties:(NSNotification*)notification;
 
 @end
 
@@ -176,6 +187,12 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* nativeSurf
 - (void)windowDidDeminiaturize:(NSNotification*)notification {
     if (ultraCanvasWindow) {
         ultraCanvasWindow->OnWindowDidDeminiaturize();
+    }
+}
+
+- (void)windowDidChangeBackingProperties:(NSNotification*)notification {
+    if (ultraCanvasWindow) {
+        ultraCanvasWindow->OnWindowDidChangeBackingProperties();
     }
 }
 
@@ -334,12 +351,28 @@ namespace UltraCanvas {
         }
     }
 
+    bool UltraCanvasMacOSWindow::RefreshBackingScaleFactor() {
+        float newScale = 1.0f;
+        @autoreleasepool {
+            if (nsWindow) {
+                newScale = static_cast<float>([nsWindow backingScaleFactor]);
+            } else {
+                NSScreen* screen = [NSScreen mainScreen];
+                if (screen) newScale = static_cast<float>([screen backingScaleFactor]);
+            }
+        }
+        if (newScale <= 0.0f) newScale = 1.0f;
+        bool changed = (newScale != backingScaleFactor);
+        backingScaleFactor = newScale;
+        return changed;
+    }
+
     bool UltraCanvasMacOSWindow::CreateNativeCairoSurface() {
         //std::lock_guard<std::mutex> lock(cairoMutex);
 
         debugOutput << "UltraCanvas macOS: Creating Cairo surface..." << std::endl;
 
-        // Get window dimensions
+        // Get logical (point) window dimensions
         int width = config_.width;
         int height = config_.height;
 
@@ -348,8 +381,16 @@ namespace UltraCanvas {
             return false;
         }
 
-        // Create Quartz surface for Cairo
-        nativeSurface = cairo_quartz_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+        // Pull current per-window backing scale (queries [nsWindow backingScaleFactor]).
+        // 1.0 on standard displays, 2.0 on Retina, etc.
+        RefreshBackingScaleFactor();
+        const float scale = backingScaleFactor;
+        const int pixW = static_cast<int>(width * scale);
+        const int pixH = static_cast<int>(height * scale);
+
+        // Create Quartz surface at *backing pixel* dimensions so font/vector
+        // rasterization runs at full Retina detail.
+        nativeSurface = cairo_quartz_surface_create(CAIRO_FORMAT_ARGB32, pixW, pixH);
 
         if (!nativeSurface) {
             debugOutput << "UltraCanvas macOS: Failed to create Cairo Quartz surface" << std::endl;
@@ -365,15 +406,23 @@ namespace UltraCanvas {
             return false;
         }
 
-        // Get CGContext from Cairo surface
-        //cgContext = cairo_quartz_surface_get_cg_context(cairoSurface);
+        // Tell Cairo that 1 user-space unit = `scale` device pixels on this
+        // surface. All higher-level UI drawing keeps using logical coordinates;
+        // Cairo internally rasterizes onto the larger pixel grid.
+        cairo_surface_set_device_scale(static_cast<cairo_surface_t*>(nativeSurface), scale, scale);
 
         // Update custom view
         if (contentView) {
             ((UltraCanvasView*)contentView).nativeSurface = (cairo_surface_t*)nativeSurface;
+            // Keep the view's CALayer at backing resolution so the final blit
+            // is presented without additional Cocoa scaling.
+            if (((NSView*)contentView).layer) {
+                ((NSView*)contentView).layer.contentsScale = scale;
+            }
         }
 
-        debugOutput << "UltraCanvas macOS: Cairo surface created successfully" << std::endl;
+        debugOutput << "UltraCanvas macOS: Cairo surface created successfully ("
+                    << pixW << "x" << pixH << " px @ " << scale << "x)" << std::endl;
         return true;
     }
 
@@ -706,6 +755,39 @@ namespace UltraCanvas {
 
     void UltraCanvasMacOSWindow::OnWindowDidDeminiaturize() {
         debugOutput << "UltraCanvas macOS: Window restored from minimized" << std::endl;
+    }
+
+    void UltraCanvasMacOSWindow::OnWindowDidChangeBackingProperties() {
+        if (!_created) return;
+
+        const float oldScale = backingScaleFactor;
+        if (!RefreshBackingScaleFactor()) {
+            // No actual change (e.g. a redundant notification).
+            return;
+        }
+        debugOutput << "UltraCanvas macOS: Backing scale changed " << oldScale
+                    << " -> " << backingScaleFactor << ", recreating Cairo surface" << std::endl;
+
+        // Recreate the offscreen Cairo surface at the new backing dimensions.
+        // Logical width/height stay the same; only the pixel resolution shifts.
+        {
+            std::lock_guard<std::mutex> lock(cairoMutex);
+            auto oldCairoSurface = nativeSurface;
+
+            if (!CreateNativeCairoSurface()) {
+                return;
+            }
+
+            if (oldCairoSurface) {
+                cairo_surface_destroy(static_cast<cairo_surface_t*>(oldCairoSurface));
+            }
+        }
+
+        // Force a full re-layout / repaint at the new resolution.
+        DoResize();
+        RequestWindowComposition();
+        UpdateAndRender();
+        InvalidateWindowNative();
     }
 } // namespace UltraCanvas
 

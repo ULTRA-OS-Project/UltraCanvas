@@ -93,6 +93,12 @@ namespace UltraCanvas {
         bool ResizeSurface(const Size2Di& sz) override;
         Size2Di GetSurfaceSize() const override { return surfaceSize; }
         void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) override;
+        float GetDeviceScale() const override {
+            if (!surface) return 1.0f;
+            double sx = 1.0, sy = 1.0;
+            cairo_surface_get_device_scale(surface, &sx, &sy);
+            return static_cast<float>(sx > 0.0 ? sx : 1.0);
+        }
 
         // ===== INHERITED FROM IRenderContext =====
         // State management
