@@ -1,3 +1,6 @@
+#### 2026-04-30 *0.1.28*
+- Fix invalidate all line layouts in TextArea on window size change
+
 #### 2026-05-01 *1.0.27*
 - Another attempt to fix hang with "recover confirmation" dialog
 - Update UltraCanvas to support MacOS HiDPI

@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.1.4
-// Last Modified: 2026-05-01
+// Version: 2.1.5
+// Last Modified: 2026-05-05
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -34,7 +34,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "1.0.27";
+    std::string UltraCanvasTextEditor::version = "1.0.28";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -1290,6 +1290,16 @@ namespace {
                     xPos, statusY + 4,
                     w - xPos - 4, statusBarHeight - 8
                 ));
+            }
+        }
+
+        // Force every document's text area to recompute wrap / visible area /
+        // scrollbars. The implicit chain through tabContainer ->
+        // PositionTabContent -> textArea->SetBounds only reliably reaches the
+        // active tab; inactive tabs keep stale wrap widths until clicked.
+        for (const auto& doc : documents) {
+            if (doc && doc->textArea) {
+                doc->textArea->InvalidateAllLineLayouts();
             }
         }
     }

@@ -392,7 +392,7 @@ end.)";
         container->AddChild(clearAllBtn);
 
         // Line numbers toggle button
-        auto lineNumBtn = std::make_shared<UltraCanvasButton>("LineNumBtn", 1048, 700, 720, 100, 25);
+        auto lineNumBtn = std::make_shared<UltraCanvasButton>("LineNumBtn", 1048, 700, 720, 110, 25);
         lineNumBtn->SetText("Toggle Lines");
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
         lineNumBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {
@@ -403,7 +403,7 @@ end.)";
         };
         container->AddChild(lineNumBtn);
 
-        auto syntaxToggleBtn = std::make_shared<UltraCanvasButton>("syntaxToggleBtn", 1048, 810, 720, 100, 25);
+        auto syntaxToggleBtn = std::make_shared<UltraCanvasButton>("syntaxToggleBtn", 1048, 810, 730, 110, 25);
         syntaxToggleBtn->SetText("Toggle syntax");
 //        lineNumBtn->SetButtonStyle(ButtonStyle::Secondary);
         syntaxToggleBtn->onClick = [cppTextArea, pythonTextArea, pascalTextArea]() {

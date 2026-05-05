@@ -384,6 +384,8 @@ namespace UltraCanvas {
         virtual bool OnEvent(const UCEvent& event) override;
 
         void Invalidate();
+        void InvalidateAllLineLayouts();
+
 
         // Text manipulation - now UTF-8 aware
         void SetText(const std::string& text, bool runNotifications = true);
@@ -809,7 +811,6 @@ namespace UltraCanvas {
         std::unique_ptr<SyntaxTokenizer> codeBlockTokenizer;
         std::string codeBlockTokenizerLang;
 
-        void InvalidateAllLineLayouts();
         void InvalidateLineLayout(int logicalLine);
         void InvalidateLineLayoutsFrom(int fromLine);
         void InsertLineLayoutEntry(int logicalLine);  // insert nullptr at index (new line)
