@@ -1,3 +1,6 @@
+#### 2026-04-30 *0.1.27*
+- Attempt to implement MacOS HiDPI support
+
 #### 2026-04-30 *0.1.26*
 - Fix cursor position in Markdown mode in TextArea
 

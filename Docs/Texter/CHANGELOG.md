@@ -1,3 +1,7 @@
+#### 2026-05-01 *1.0.27*
+- Another attempt to fix hang with "recover confirmation" dialog
+- Update UltraCanvas to support MacOS HiDPI
+
 #### 2026-05-01 *1.0.26*
 - Fix hang when Splash and "recover confirmation" dialog shown in same time
 
