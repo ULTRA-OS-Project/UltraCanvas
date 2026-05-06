@@ -1,7 +1,7 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
-// Version: 1.3.0
-// Last Modified: 2026-04-17
+// Version: 1.5.0
+// Last Modified: 2026-05-06
 // Author: UltraCanvas Framework
 
 #include <vector>
@@ -10,6 +10,7 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasTooltipManager.h"
 
 namespace UltraCanvas {
 
@@ -40,6 +41,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::CloseMenu() {
+        UltraCanvasTooltipManager::HideTooltip();
         window->ClosePopup(*this, ClosePopupReason::Manual);
         debugOutput << "Menu '" << GetIdentifier() << "' hidden.  Visible: " << IsVisible() << std::endl;
     }
@@ -157,6 +159,7 @@ namespace UltraCanvas {
 
             case UCEventType::MouseLeave:
                 activeIndex = -1;
+                UltraCanvasTooltipManager::HideTooltip();
                 break;
 
             default:
@@ -212,6 +215,11 @@ namespace UltraCanvas {
 
         activeSubmenu->SetMenuType(MenuType::SubmenuMenu);
         activeSubmenu->SetStyle(style);
+        if (item.submenuMaxWidth > 0) {
+            MenuStyle subStyle = activeSubmenu->GetStyle();
+            subStyle.maxWidth = item.submenuMaxWidth;
+            activeSubmenu->SetStyle(subStyle);
+        }
         activeSubmenu->parentMenu = std::static_pointer_cast<UltraCanvasMenu>(shared_from_this());
         activeSubmenu->parentItemIndex = itemIndex;
 
@@ -465,6 +473,9 @@ namespace UltraCanvas {
             if (style.minWidth > 0) {
                 SetWidth(std::max(GetWidth(), style.minWidth));
             }
+            if (style.maxWidth > 0) {
+                SetWidth(std::min(GetWidth(), style.maxWidth));
+            }
             SetHeight(totalHeight);
 
             // Clamp to window bounds and add scrollbar if needed
@@ -529,8 +540,25 @@ namespace UltraCanvas {
                               (index == activeIndex ? style.hoverTextColor : style.textColor) :
                               style.disabledTextColor;
 
-            ctx->SetTextPaint(textColor);
-            ctx->DrawText(item.label, Point2Di(currentX, textY));
+            // Compute the horizontal space available for the label, so the
+            // text layout can ellipsize correctly when the menu is width-clamped.
+            int labelRightX = itemBounds.x + itemBounds.width - style.paddingRight;
+            if (item.HasSubmenu() && orientation == MenuOrientation::Vertical) {
+                labelRightX -= 20;  // submenu arrow column
+            }
+            if (!item.shortcut.empty() && orientation == MenuOrientation::Vertical) {
+                std::string displayShortcut = GetDisplayShortcut(item.shortcut);
+                labelRightX -= ctx->GetTextLineWidth(displayShortcut.c_str()) + style.shortcutSpacing;
+            }
+            int labelMaxWidth = std::max(0, labelRightX - currentX);
+
+            auto labelLayout = ctx->CreateTextLayout(item.label, false);
+            labelLayout->SetFontStyle(item.font.value_or(style.font));
+            labelLayout->SetWrap(TextWrap::WrapNone);
+            labelLayout->SetEllipsize(item.ellipsize);
+            labelLayout->SetExplicitWidth(labelMaxWidth);
+            ctx->SetCurrentPaint(textColor);
+            ctx->DrawTextLayout(*labelLayout, Point2Di(currentX, textY));
         }
 
         // Render shortcut (for vertical menus)
@@ -795,6 +823,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::OnPopupClosed(ClosePopupReason reason) {
+        UltraCanvasTooltipManager::HideTooltip();
         if (reason == ClosePopupReason::ClickOutside) {
             CloseMenutree();
         } else {
@@ -838,6 +867,14 @@ namespace UltraCanvas {
             }
             RequestRedraw();
 
+            // Drive per-item tooltip on hover transition
+            UltraCanvasTooltipManager::HideTooltip();
+            if (activeIndex >= 0 && activeIndex < static_cast<int>(items.size()) &&
+                !items[activeIndex].tooltip.empty()) {
+                UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                        GetWindow(), items[activeIndex].tooltip, event.pointerWindow);
+            }
+
             // Auto-open submenu on hover (with delay)
             if (activeIndex >= 0 && activeIndex < static_cast<int>(items.size())) {
                 const MenuItemData &item = items[activeIndex];
@@ -850,6 +887,10 @@ namespace UltraCanvas {
                     }
                 }
             }
+        } else if (activeIndex >= 0 && activeIndex < static_cast<int>(items.size()) &&
+                   !items[activeIndex].tooltip.empty()) {
+            // Same item, mouse moved — track position for followCursor styles (no-op otherwise)
+            UltraCanvasTooltipManager::UpdateTooltipPosition(event.pointerWindow);
         }
         if (newHoveredIndex >= 0) {
             return true;
@@ -1000,6 +1041,8 @@ namespace UltraCanvas {
 
         MenuItemData &item = items[index];
         if (!item.enabled) return;
+
+        UltraCanvasTooltipManager::HideTooltip();
 
         // Handle different item types
         switch (item.type) {

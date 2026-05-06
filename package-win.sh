@@ -17,7 +17,17 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-VERSION=`date +%Y.%m.%d`
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+UC_CHANGELOG="$SCRIPT_DIR/Docs/UltraCanvas/CHANGELOG.md"
+if [ ! -f "$UC_CHANGELOG" ]; then
+    echo "Error: changelog not found at $UC_CHANGELOG" >&2
+    exit 1
+fi
+VERSION=$(sed -n '1s/^#### [0-9-]\+ \*\([0-9]\+\.[0-9]\+\.[0-9]\+\)\*.*/\1/p' "$UC_CHANGELOG")
+if [ -z "$VERSION" ]; then
+    echo "Error: could not parse version from $UC_CHANGELOG (expected '#### YYYY-MM-DD *x.y.z*')" >&2
+    exit 1
+fi
 MINGW_BIN="/mingw64/bin"
 DIST_DIR="dist"
 

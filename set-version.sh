@@ -4,25 +4,27 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEXTER_VERSION_FILE="$SCRIPT_DIR/Apps/Texter/VERSION"
-UC_VERSION_FILE="$SCRIPT_DIR/UltraCanvas/VERSION"
+TEXTER_CHANGELOG_FILE="$SCRIPT_DIR/Docs/Texter/CHANGELOG.md"
+UC_CHANGELOG_FILE="$SCRIPT_DIR/Docs/UltraCanvas/CHANGELOG.md"
 
+extract_version() {
+    local file="$1"
+    if [[ ! -f "$file" ]]; then
+        echo "ERROR: changelog not found at $file" >&2
+        exit 1
+    fi
+    local v
+    v="$(sed -n '1s/^#### [0-9-]\+ \*\([0-9]\+\.[0-9]\+\.[0-9]\+\)\*.*/\1/p' "$file")"
+    if [[ -z "$v" ]]; then
+        echo "ERROR: could not parse version from first line of $file" >&2
+        echo "       expected format: '#### YYYY-MM-DD *x.y.z*'" >&2
+        exit 1
+    fi
+    printf '%s' "$v"
+}
 
-# Read and validate version
-if [[ ! -f "$TEXTER_VERSION_FILE" ]]; then
-    echo "ERROR: VERSION file not found at $TEXTER_VERSION_FILE" >&2
-    exit 1
-fi
-
-TEXTER_VERSION="$(tr -d '[:space:]' < "$TEXTER_VERSION_FILE")"
-
-# Read and validate version
-if [[ ! -f "$UC_VERSION_FILE" ]]; then
-    echo "ERROR: VERSION file not found at $UC_VERSION_FILE" >&2
-    exit 1
-fi
-
-UC_VERSION="$(tr -d '[:space:]' < "$UC_VERSION_FILE")"
+TEXTER_VERSION="$(extract_version "$TEXTER_CHANGELOG_FILE")"
+UC_VERSION="$(extract_version "$UC_CHANGELOG_FILE")"
 
 if [[ ! "$UC_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "ERROR: Invalid version format '$UC_VERSION' (expected x.y.z)" >&2

@@ -49,11 +49,16 @@ done
 
 # ── Version and environment ──────────────────────────────────────────────────
 
-if [ ! -f "$SCRIPT_DIR/UltraCanvas/VERSION" ]; then
-    echo "Error: VERSION file not found"
+UC_CHANGELOG="$SCRIPT_DIR/Docs/UltraCanvas/CHANGELOG.md"
+if [ ! -f "$UC_CHANGELOG" ]; then
+    echo "Error: changelog not found at $UC_CHANGELOG"
     exit 1
 fi
-VERSION=$(cat "$SCRIPT_DIR/UltraCanvas/VERSION" | tr -d '[:space:]')
+VERSION=$(sed -n '1s/^#### [0-9-]\+ \*\([0-9]\+\.[0-9]\+\.[0-9]\+\)\*.*/\1/p' "$UC_CHANGELOG")
+if [ -z "$VERSION" ]; then
+    echo "Error: could not parse version from $UC_CHANGELOG (expected '#### YYYY-MM-DD *x.y.z*')"
+    exit 1
+fi
 
 if ! command -v brew &>/dev/null; then
     echo "Error: Homebrew is required"

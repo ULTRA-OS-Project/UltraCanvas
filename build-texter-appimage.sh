@@ -1,7 +1,11 @@
 #/bin/bash
-VERSION=`date +%Y.%m.%d`
 OUTPUTDIR=~/projects/UCAppImage
 PROJECTDIR=~/projects/UltraCanvas
+VERSION=$(sed -n '1s/^#### [0-9-]\+ \*\([0-9]\+\.[0-9]\+\.[0-9]\+\)\*.*/\1/p' "$PROJECTDIR/Docs/Texter/CHANGELOG.md")
+if [ -z "$VERSION" ]; then
+    echo "Error: could not parse version from $PROJECTDIR/Docs/Texter/CHANGELOG.md (expected '#### YYYY-MM-DD *x.y.z*')" >&2
+    exit 1
+fi
 EXECUTABLE=$PROJECTDIR/cmake-build-release/bin/UltraCanvasTexter
 
 rm -rf $OUTPUTDIR/AppDir \

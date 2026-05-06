@@ -1,3 +1,7 @@
+#### 2026-05-06 *0.1.28*
+- Implement support tooltips for menu itmes
+- Implement maxWidth option for menu and ellipsize mode for menu items
+
 #### 2026-05-04 *0.1.27*
 - Attempt to implement MacOS HiDPI support
 

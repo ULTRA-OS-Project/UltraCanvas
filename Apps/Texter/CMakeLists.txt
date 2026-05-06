@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraTexter
-        VERSION 1.0.28
+        VERSION 0.1.29
         DESCRIPTION "UltraTexter - Text Editor powered by UltraCanvas Framework"
         LANGUAGES CXX
 )

@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.1.5
-// Last Modified: 2026-05-05
+// Version: 2.1.7
+// Last Modified: 2026-05-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasTextEditor.h"
@@ -34,7 +34,7 @@
 #include "UltraCanvasUtilsUtf8.h"
 
 namespace UltraCanvas {
-    std::string UltraCanvasTextEditor::version = "1.0.28";
+    std::string UltraCanvasTextEditor::version = "0.1.29";
     
 namespace {
     std::string GetAppDataDirectory() {
@@ -486,7 +486,8 @@ namespace {
                         MenuItemData::ActionWithShortcut("Open...", "Ctrl+O", NormalizePath(GetResourcesDir() + "media/icons/texter/folder-open.svg"), [this]() {
                             OnFileOpen();
                         }),
-                        MenuItemData::Submenu("Recent Files", NormalizePath(GetResourcesDir() + "media/icons/texter/clock-five.svg"),
+                        [this]() {
+                            auto recent = MenuItemData::Submenu("Recent Files", NormalizePath(GetResourcesDir() + "media/icons/texter/clock-five.svg"),
                             [this]() -> std::vector<MenuItemData> {
                                 std::vector<MenuItemData> recentItems;
                                 if (recentFiles.empty()) {
@@ -507,16 +508,16 @@ namespace {
                                             ? NormalizePath(GetResourcesDir() + "media/icons/texter/circle-empty.svg")
                                             : std::string("-");
                                         std::string pathCopy = fullPath;
-                                        recentItems.push_back(
-                                            MenuItemData::Action(label, iconPath, [this, pathCopy]() {
-                                                if (std::filesystem::exists(pathCopy)) {
-                                                    OpenDocumentFromPath(pathCopy);
-                                                } else {
-                                                    RemoveFromRecentFiles(pathCopy);
-                                                    debugOutput << "Recent file no longer exists: " << pathCopy << std::endl;
-                                                }
-                                            })
-                                        );
+                                        auto entry = MenuItemData::Action(label, iconPath, [this, pathCopy]() {
+                                            if (std::filesystem::exists(pathCopy)) {
+                                                OpenDocumentFromPath(pathCopy);
+                                            } else {
+                                                RemoveFromRecentFiles(pathCopy);
+                                                debugOutput << "Recent file no longer exists: " << pathCopy << std::endl;
+                                            }
+                                        });
+                                        entry.tooltip = fullPath;
+                                        recentItems.push_back(std::move(entry));
                                     }
                                     recentItems.push_back(MenuItemData::Separator());
                                     recentItems.push_back(
@@ -527,7 +528,10 @@ namespace {
                                     );
                                 }
                                 return recentItems;
-                            }),
+                            });
+                            recent.submenuMaxWidth = 500;
+                            return recent;
+                        }(),
                         MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("Save", "Ctrl+S", NormalizePath(GetResourcesDir() + "media/icons/texter/save.svg"), [this]() {
                             OnFileSave();
@@ -4727,6 +4731,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             recentFilesPopupMenu = std::make_shared<UltraCanvasMenu>(
                 "RecentFilesPopup", 0, 0, 0, 300, 100);
             recentFilesPopupMenu->SetMenuType(MenuType::PopupMenu);
+            MenuStyle popupStyle = recentFilesPopupMenu->GetStyle();
+            popupStyle.maxWidth = 500;
+            recentFilesPopupMenu->SetStyle(popupStyle);
         }
 
         // Clear and rebuild with current recent files
@@ -4752,17 +4759,17 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     : std::string("-"); // "-" means empty icon (just reserve space)
 
                 std::string pathCopy = fullPath;
-                recentFilesPopupMenu->AddItem(
-                    MenuItemData::Action(label, iconPath, [this, pathCopy]() {
-                        if (std::filesystem::exists(pathCopy)) {
-                            OpenDocumentFromPath(pathCopy);
-                        } else {
-                            RemoveFromRecentFiles(pathCopy);
-                            debugOutput << "Recent file no longer exists: "
-                                        << pathCopy << std::endl;
-                        }
-                    })
-                );
+                auto entry = MenuItemData::Action(label, iconPath, [this, pathCopy]() {
+                    if (std::filesystem::exists(pathCopy)) {
+                        OpenDocumentFromPath(pathCopy);
+                    } else {
+                        RemoveFromRecentFiles(pathCopy);
+                        debugOutput << "Recent file no longer exists: "
+                                    << pathCopy << std::endl;
+                    }
+                });
+                entry.tooltip = fullPath;
+                recentFilesPopupMenu->AddItem(entry);
             }
 
             recentFilesPopupMenu->AddItem(MenuItemData::Separator());

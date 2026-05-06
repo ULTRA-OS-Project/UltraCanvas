@@ -49,6 +49,16 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Extract version from changelog
+        shell: bash
+        run: |
+          VERSION=$(sed -n '1s/^#### [0-9-]\+ \*\([0-9]\+\.[0-9]\+\.[0-9]\+\)\*.*/\1/p' Docs/UltraCanvas/CHANGELOG.md)
+          if [ -z "$VERSION" ]; then
+            echo "Error: could not parse version from Docs/UltraCanvas/CHANGELOG.md (expected '#### YYYY-MM-DD *x.y.z*')" >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
       # ===== Windows: MSYS2/MinGW dependency management =====
       - name: Setup MSYS2 (Windows)
         if: runner.os == 'Windows'
@@ -153,7 +163,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: ultracanvas-${{ matrix.os }}-${{ matrix.arch_label }}-${{ matrix.build_type }}
+          name: UltraCanvas-${{ matrix.os }}-${{ matrix.arch_label }}-${{ matrix.build_type }}-${{ env.VERSION }}
           path: |
             dist/
           retention-days: 7
@@ -162,7 +172,7 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: ultracanvas-macos-${{ matrix.arch_label }}-${{ matrix.build_type }}
+          name: UltraCanvas-${{ matrix.os }}-${{ matrix.arch_label }}-${{ matrix.build_type }}-${{ env.VERSION }}
           path: |
             dist-macos/
           retention-days: 7
@@ -171,7 +181,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: ultracanvas-${{ matrix.os }}-${{ matrix.arch_label }}-${{ matrix.build_type }}
+          name: UltraCanvas-${{ matrix.os }}-${{ matrix.arch_label }}-${{ matrix.build_type }}-${{ env.VERSION }}
           path: |
             build/lib/
             build/bin/

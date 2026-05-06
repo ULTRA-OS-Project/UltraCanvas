@@ -1,3 +1,7 @@
+#### 2026-05-06 *0.1.29*
+- Show tooltips with full pathname for Recent files menu items
+- Set maxWidth=500 for Recent files menu
+
 #### 2026-05-05 *0.1.28*
 - Fix invalidate all line layouts in TextArea on window size change
 

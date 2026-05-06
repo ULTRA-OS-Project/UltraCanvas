@@ -1,7 +1,7 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.3.0
-// Last Modified: 2026-04-17
+// Version: 1.5.0
+// Last Modified: 2026-05-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -89,6 +89,16 @@ namespace UltraCanvas {
         // Custom data
         void* userData = nullptr;
 
+        // Optional hover hint shown via UltraCanvasTooltipManager (empty = no tooltip)
+        std::string tooltip;
+
+        // How the label is shortened when it doesn't fit horizontally.
+        EllipsizeMode ellipsize = EllipsizeMode::EllipsizeMiddle;
+
+        // For Submenu items: max width applied to the auto-opened child menu
+        // (0 = inherit from parent's MenuStyle::maxWidth).
+        int submenuMaxWidth = 0;
+
         // Constructors
         MenuItemData() = default;
         MenuItemData(const std::string& itemLabel) : label(itemLabel) {}
@@ -157,6 +167,7 @@ namespace UltraCanvas {
         int borderWidth = 1;
         int borderRadius = 4;
         int minWidth = 0;       // Minimum menu width (0 = no minimum)
+        int maxWidth = 0;       // Maximum menu width (0 = no maximum, items ellipsize when exceeded)
 
         // Submenu
         int submenuDelay = 300;  // milliseconds
