@@ -32,7 +32,7 @@ MINGW_BIN="/mingw64/bin"
 DIST_DIR="dist"
 
 if [ -z "$PACKAGE_ZIP" ]; then
-  PACKAGE_ZIP="UCDemo-Windows-$VERSION.zip"
+  PACKAGE_ZIP="UCDemo-Windows-$VERSION-x86_64.zip"
 fi
 
 # Create output directory

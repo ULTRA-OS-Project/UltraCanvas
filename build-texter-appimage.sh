@@ -24,4 +24,4 @@ rm -rf $OUTPUTDIR/AppDir \
 && mkdir $OUTPUTDIR/AppDir/usr/share/UltraCanvas \
 && cp -r media $OUTPUTDIR/AppDir/usr/share/UltraCanvas \
 && cd $OUTPUTDIR \
-&& appimagetool --runtime-file $PROJECTDIR/appimage/runtime-x86_64 AppDir UCTexter-$VERSION-x86_64.AppImage
+&& appimagetool --runtime-file $PROJECTDIR/appimage/runtime-x86_64 AppDir UCTexter-Linux-$VERSION-x86_64.AppImage

@@ -26,4 +26,4 @@ rm -rf $OUTPUTDIR/AppDir \
 && mkdir $OUTPUTDIR/AppDir/usr/share/UltraCanvas/Examples \
 && cp -r Apps/DemoApp/*.cpp $OUTPUTDIR/AppDir/usr/share/UltraCanvas/Examples/ \
 && cd $OUTPUTDIR \
-&& appimagetool --runtime-file $PROJECTDIR/appimage/runtime-x86_64 AppDir UCDemo-$VERSION-x86_64.AppImage
+&& appimagetool --runtime-file $PROJECTDIR/appimage/runtime-x86_64 AppDir UCDemo-Linux-$VERSION-x86_64.AppImage

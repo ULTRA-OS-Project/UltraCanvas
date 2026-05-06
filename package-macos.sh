@@ -556,7 +556,7 @@ build_app_bundle \
 
 if $CREATE_DMG; then
     echo "── Creating DMG ──"
-    DMG_NAME="UltraCanvas-${VERSION}.dmg"
+    DMG_NAME="UCDemo-MacOS-${VERSION}-x86_64.dmg"
     DMG_STAGING="$OUTPUT_DIR/.dmg_staging"
 
     mkdir -p "$DMG_STAGING"

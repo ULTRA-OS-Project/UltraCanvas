@@ -163,7 +163,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: UltraCanvas-${{ matrix.os }}-${{ matrix.arch_label }}-${{ matrix.build_type }}-${{ env.VERSION }}
+          name: UCDemo-Windows-${{ env.VERSION }}-${{ matrix.arch_label }}
           path: |
             dist/
           retention-days: 7
@@ -172,7 +172,7 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: UltraCanvas-${{ matrix.os }}-${{ matrix.arch_label }}-${{ matrix.build_type }}-${{ env.VERSION }}
+          name: UCDemo-MacOS-${{ env.VERSION }}-${{ matrix.arch_label }}
           path: |
             dist-macos/
           retention-days: 7
@@ -181,7 +181,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: UltraCanvas-${{ matrix.os }}-${{ matrix.arch_label }}-${{ matrix.build_type }}-${{ env.VERSION }}
+          name: UCDemo-Linux-${{ env.VERSION }}-${{ matrix.arch_label }}
           path: |
             build/lib/
             build/bin/
