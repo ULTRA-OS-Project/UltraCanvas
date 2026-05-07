@@ -1,3 +1,8 @@
+#### 2026-05-06 *0.1.29*
+- Refactor Checkbox code, split to Checkbox/Redio/Switch
+- Implemented more visual styles for Switch
+- Attempt to fix crash on MacOS
+
 #### 2026-05-06 *0.1.28*
 - Implement support tooltips for menu itmes
 - Implement maxWidth option for menu and ellipsize mode for menu items

@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.1.0
-// Last Modified: 2026-05-03
+// Version: 2.1.1
+// Last Modified: 2026-05-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -335,6 +335,13 @@ namespace UltraCanvas {
             [nsWindow setTitle:[NSString stringWithUTF8String:config_.title.c_str()]];
             [nsWindow setReleasedWhenClosed:NO];
             [nsWindow setAcceptsMouseMovedEvents:YES];
+
+            // Opt out of AppKit's automatic window state restoration. The framework
+            // owns its own window/UI state, and AppKit's NSPersistentUIManager
+            // periodically archives restorable windows via NSKeyedArchiver — that
+            // path crashes on macOS 26.x while encoding our custom Cairo NSView
+            // (CFRelease alignment fault inside __CFBinaryPlistWriteOrPresize).
+            [nsWindow setRestorable:NO];
 
             // Create custom view for Cairo rendering
             NSRect contentFrame = [[nsWindow contentView] frame];

@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
-// Version: 2.1.1 - Fix main-row digit keys (were mapped to NumPad); add punctuation & real numpad mappings
-// Last Modified: 2026-04-17
+// Version: 2.1.2 - Install NSApplicationDelegate opting into secure restorable state
+// Last Modified: 2026-05-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSApplication.h"
@@ -14,7 +14,24 @@
 #include <chrono>
 #include "UltraCanvasDebug.h"
 
+// Minimal NSApplicationDelegate. Its only job is to opt the app into the
+// secure-coding code path of AppKit's window state restoration system.
+// Without this, macOS 14+ falls back to a legacy archiving path that has
+// crashed on macOS 26.x inside __CFBinaryPlistWriteOrPresize (see report
+// from 2026-05-07: bus error during NSPersistentUIManager flushAllChanges).
+@interface UltraCanvasAppDelegate : NSObject <NSApplicationDelegate>
+@end
+
+@implementation UltraCanvasAppDelegate
+- (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app {
+    return YES;
+}
+@end
+
 namespace UltraCanvas {
+
+// Strong reference to the delegate; NSApplication holds a weak delegate ref.
+static UltraCanvasAppDelegate* g_appDelegate = nil;
 
 // ===== STATIC INSTANCE =====
     UltraCanvasMacOSApplication* UltraCanvasMacOSApplication::instance = nullptr;
@@ -87,6 +104,14 @@ namespace UltraCanvas {
 
             // Set activation policy to regular app
             [nsApplication setActivationPolicy:NSApplicationActivationPolicyRegular];
+
+            // Install our NSApplicationDelegate before AppKit's run loop starts
+            // scheduling persistent-UI flushes. The delegate opts into secure
+            // coding for restorable state (required since macOS 14).
+            if (![nsApplication delegate]) {
+                g_appDelegate = [[UltraCanvasAppDelegate alloc] init];
+                [nsApplication setDelegate:g_appDelegate];
+            }
 
             // Get main run loop
             mainRunLoop = [NSRunLoop mainRunLoop];
@@ -182,6 +207,10 @@ namespace UltraCanvas {
 
         //StopEventThread();
         @autoreleasepool {
+            if (nsApplication && [nsApplication delegate] == g_appDelegate) {
+                [nsApplication setDelegate:nil];
+            }
+            g_appDelegate = nil;
             nsApplication = nullptr;
             mainRunLoop = nullptr;
         }
