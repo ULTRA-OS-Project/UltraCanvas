@@ -66,15 +66,15 @@ namespace UltraCanvas {
         // Options checkboxes for File Explorer Tree
         auto autoExpandCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoExpandCheckbox", 606, 20, 490, 280, 24, "Auto expand selected node");
         autoExpandCheckbox->SetChecked(false);
-        autoExpandCheckbox->onStateChanged = [fileTree](CheckboxState oldState, CheckboxState newState) {
-        fileTree->SetAutoExpandSelectedNode(newState == CheckboxState::Checked);
+        autoExpandCheckbox->onStateChanged = [fileTree](CheckedState oldState, CheckedState newState) {
+        fileTree->SetAutoExpandSelectedNode(newState == CheckedState::Checked);
         };
         container->AddChild(autoExpandCheckbox);
 
         auto autoSelectFirstChildCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoSelectFirstChildCheckbox", 607, 20, 520, 280, 24, "Auto select first child of expanded node");
         autoSelectFirstChildCheckbox->SetChecked(false);
-        autoSelectFirstChildCheckbox->onStateChanged = [fileTree](CheckboxState oldState, CheckboxState newState) {
-        fileTree->SetShowFirstChildOnExpand(newState == CheckboxState::Checked);
+        autoSelectFirstChildCheckbox->onStateChanged = [fileTree](CheckedState oldState, CheckedState newState) {
+        fileTree->SetShowFirstChildOnExpand(newState == CheckedState::Checked);
         };
         container->AddChild(autoSelectFirstChildCheckbox);
 

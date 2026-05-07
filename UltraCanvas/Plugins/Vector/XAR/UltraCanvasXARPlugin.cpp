@@ -1,7 +1,7 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.cpp
 // Xara XAR vector graphics format plugin implementation for UltraCanvas
-// Version: 2.0.0
-// Last Modified: 2026-05-06
+// Version: 2.0.1
+// Last Modified: 2026-05-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasXARPlugin.h"
@@ -1631,82 +1631,123 @@ namespace UltraCanvas {
     }
 
     void XARDocument::ParseComplexColorRecord(const XARRecord& record) {
+        // Wire layout per XAR spec (XARFormatDocument.pdf p.123):
+        //   <Simple RGBColour>     3 BYTE  (R, G, B) — fallback for screen rendering
+        //   <ColourModel>          BYTE    (2=RGB, 3=CMYK, 4=HSV, 5=Greyscale)
+        //   <ColourType>           BYTE    (0=Normal, 1=Spot, 2=Tint, 3=Linked, 4=Shade)
+        //   <EntryIndex>           UINT32
+        //   <ParentColour>         INT32 COLOURREF
+        //   <ColourDescription>    4 × UINT32 fixed24 (1.0 == 0x01000000)
+        //   <ColourName>           UTF-16LE, terminated by 0x00 0x00
+
         XARColorDefinition cd;
         cd.sequenceNumber = currentSequenceNumber;
-        if (record.data.size() < 4) {
-            colors[currentSequenceNumber] = std::move(cd);
-            return;
-        }
-        const uint8_t* d = record.data.data();
+
+        const uint8_t* d  = record.data.data();
+        const size_t total = record.data.size();
         size_t off = 0;
-        cd.name = ReadUTF16String(d, off, record.data.size());
-        if (off + 4 > record.data.size()) {
-            colors[currentSequenceNumber] = std::move(cd);
-            return;
-        }
-        uint8_t typeByte = ReadByte(d, off);
+
+        // 1) Simple RGB fallback. Always populate cd.color from this so screen
+        //    rendering is correct even if we can't decode the rest.
+        if (off + 3 > total) { colors[currentSequenceNumber] = std::move(cd); return; }
+        uint8_t r = ReadByte(d, off);
+        uint8_t g = ReadByte(d, off);
+        uint8_t b = ReadByte(d, off);
+        cd.simpleRGB = Color(r, g, b, 255);
+        cd.color     = cd.simpleRGB;
+
+        // 2) ColourModel + ColourType. In-memory enum ordinals don't match the
+        //    wire values, so map explicitly.
+        if (off + 2 > total) { colors[currentSequenceNumber] = std::move(cd); return; }
         uint8_t modelByte = ReadByte(d, off);
-        cd.colorType = static_cast<XARColorDefinition::Type>(std::min<uint8_t>(typeByte, 4));
-        cd.model = static_cast<XARColorDefinition::Model>(std::min<uint8_t>(modelByte, 3));
-        cd.parentRef = ReadInt32(d, off);
-        // 4× FIXED24 (3 bytes each, MSB-first): components
-        auto readFixed24 = [&](size_t& o) -> float {
-            if (o + 3 > record.data.size()) return 0;
-            uint32_t v = (uint32_t(d[o]) << 16) | (uint32_t(d[o + 1]) << 8) | uint32_t(d[o + 2]);
-            o += 3;
-            // Treat as signed-like: 0.5 == middle, normalised to [0,1]
-            return static_cast<float>(v) / static_cast<float>(0xFFFFFF);
-        };
-        for (int i = 0; i < 4; ++i) {
-            if (off + 3 > record.data.size()) break;
-            cd.components[i] = readFixed24(off);
+        uint8_t typeByte  = ReadByte(d, off);
+        switch (modelByte) {
+            case 2:  cd.model = XARColorDefinition::Model::RGB;       break;
+            case 3:  cd.model = XARColorDefinition::Model::CMYK;      break;
+            case 4:  cd.model = XARColorDefinition::Model::HSV;       break;
+            case 5:  cd.model = XARColorDefinition::Model::Greyscale; break;
+            default: cd.model = XARColorDefinition::Model::RGB;       break;
+        }
+        switch (typeByte) {
+            case 0: cd.colorType = XARColorDefinition::Type::Normal; break;
+            case 1: cd.colorType = XARColorDefinition::Type::Spot;   break;
+            case 2: cd.colorType = XARColorDefinition::Type::Tint;   break;
+            case 3: cd.colorType = XARColorDefinition::Type::Linked; break;
+            case 4: cd.colorType = XARColorDefinition::Type::Shaded; break;
+            default: cd.colorType = XARColorDefinition::Type::Normal; break;
         }
 
-        // Resolve to a final RGB Color
-        switch (cd.model) {
-            case XARColorDefinition::Model::RGB:
-                cd.color = Color(
-                    static_cast<uint8_t>(cd.components[0] * 255),
-                    static_cast<uint8_t>(cd.components[1] * 255),
-                    static_cast<uint8_t>(cd.components[2] * 255), 255);
-                break;
-            case XARColorDefinition::Model::Greyscale: {
-                uint8_t g = static_cast<uint8_t>(cd.components[0] * 255);
-                cd.color = Color(g, g, g, 255);
-                break;
-            }
-            case XARColorDefinition::Model::HSV: {
-                float h = cd.components[0] * 360.0f;
-                float s = cd.components[1];
-                float v = cd.components[2];
-                float c = v * s;
-                float hh = h / 60.0f;
-                float x = c * (1.0f - std::fabs(std::fmod(hh, 2.0f) - 1.0f));
-                float r1 = 0, g1 = 0, b1 = 0;
-                if (hh < 1) { r1 = c; g1 = x; }
-                else if (hh < 2) { r1 = x; g1 = c; }
-                else if (hh < 3) { g1 = c; b1 = x; }
-                else if (hh < 4) { g1 = x; b1 = c; }
-                else if (hh < 5) { r1 = x; b1 = c; }
-                else { r1 = c; b1 = x; }
-                float mm = v - c;
-                cd.color = Color(
-                    static_cast<uint8_t>((r1 + mm) * 255),
-                    static_cast<uint8_t>((g1 + mm) * 255),
-                    static_cast<uint8_t>((b1 + mm) * 255), 255);
-                break;
-            }
-            case XARColorDefinition::Model::CMYK: {
-                float cc = cd.components[0], mm = cd.components[1];
-                float yy = cd.components[2], kk = cd.components[3];
-                float r = (1 - cc) * (1 - kk);
-                float g = (1 - mm) * (1 - kk);
-                float b = (1 - yy) * (1 - kk);
-                cd.color = Color(
-                    static_cast<uint8_t>(r * 255),
-                    static_cast<uint8_t>(g * 255),
-                    static_cast<uint8_t>(b * 255), 255);
-                break;
+        // 3) EntryIndex + ParentColour
+        if (off + 8 > total) { colors[currentSequenceNumber] = std::move(cd); return; }
+        cd.entryIndex = ReadUInt32(d, off);
+        cd.parentRef  = ReadInt32(d, off);
+
+        // 4) Four UINT32 fixed24 components (binary point between bits 23 and 24,
+        //    so 1.0 == 0x01000000). 0xF8000000 in a Linked component means
+        //    "inherit from parent" — leave as 0 here, current renderer doesn't
+        //    consume it.
+        bool componentsOk = true;
+        for (int i = 0; i < 4; ++i) {
+            if (off + 4 > total) { componentsOk = false; break; }
+            uint32_t v = ReadUInt32(d, off);
+            if (v == 0xF8000000u) { cd.components[i] = 0.0f; continue; }
+            cd.components[i] = std::min(1.0f,
+                static_cast<float>(v) / static_cast<float>(0x01000000));
+        }
+
+        // 5) ColourName — last field.
+        if (off + 2 <= total) {
+            cd.name = ReadUTF16String(d, off, total - off);
+        }
+
+        // 6) Resolve cd.color from the full definition where possible. If the
+        //    components weren't fully present, keep cd.color = simpleRGB fallback.
+        if (componentsOk) {
+            switch (cd.model) {
+                case XARColorDefinition::Model::RGB:
+                    cd.color = Color(
+                        static_cast<uint8_t>(cd.components[0] * 255),
+                        static_cast<uint8_t>(cd.components[1] * 255),
+                        static_cast<uint8_t>(cd.components[2] * 255), 255);
+                    break;
+                case XARColorDefinition::Model::Greyscale: {
+                    uint8_t gv = static_cast<uint8_t>(cd.components[0] * 255);
+                    cd.color = Color(gv, gv, gv, 255);
+                    break;
+                }
+                case XARColorDefinition::Model::HSV: {
+                    float h = cd.components[0] * 360.0f;
+                    float s = cd.components[1];
+                    float v = cd.components[2];
+                    float c = v * s;
+                    float hh = h / 60.0f;
+                    float x = c * (1.0f - std::fabs(std::fmod(hh, 2.0f) - 1.0f));
+                    float r1 = 0, g1 = 0, b1 = 0;
+                    if (hh < 1) { r1 = c; g1 = x; }
+                    else if (hh < 2) { r1 = x; g1 = c; }
+                    else if (hh < 3) { g1 = c; b1 = x; }
+                    else if (hh < 4) { g1 = x; b1 = c; }
+                    else if (hh < 5) { r1 = x; b1 = c; }
+                    else { r1 = c; b1 = x; }
+                    float mm = v - c;
+                    cd.color = Color(
+                        static_cast<uint8_t>((r1 + mm) * 255),
+                        static_cast<uint8_t>((g1 + mm) * 255),
+                        static_cast<uint8_t>((b1 + mm) * 255), 255);
+                    break;
+                }
+                case XARColorDefinition::Model::CMYK: {
+                    float cc = cd.components[0], mm = cd.components[1];
+                    float yy = cd.components[2], kk = cd.components[3];
+                    float rr = (1 - cc) * (1 - kk);
+                    float gg = (1 - mm) * (1 - kk);
+                    float bb = (1 - yy) * (1 - kk);
+                    cd.color = Color(
+                        static_cast<uint8_t>(rr * 255),
+                        static_cast<uint8_t>(gg * 255),
+                        static_cast<uint8_t>(bb * 255), 255);
+                    break;
+                }
             }
         }
 

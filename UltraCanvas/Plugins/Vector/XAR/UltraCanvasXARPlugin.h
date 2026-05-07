@@ -1,7 +1,7 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.h
 // Xara XAR vector graphics format plugin for UltraCanvas
-// Version: 2.0.0
-// Last Modified: 2026-05-06
+// Version: 2.0.1
+// Last Modified: 2026-05-07
 // Author: UltraCanvas Framework
 //
 // Tag values are taken verbatim from the Xar Format Specification, Appendix A
@@ -906,8 +906,10 @@ namespace UltraCanvas {
         int32_t sequenceNumber = 0;
         std::string name;
         Color color = Color(0, 0, 0, 255);
+        Color simpleRGB = Color(0, 0, 0, 255);
         enum class Type { Spot, Normal, Linked, Shaded, Tint } colorType = Type::Normal;
         enum class Model { RGB, HSV, CMYK, Greyscale } model = Model::RGB;
+        uint32_t entryIndex = 0;
         int32_t parentRef = 0;
         float components[4] = {0, 0, 0, 0};
         float tintValue = 1.0f;

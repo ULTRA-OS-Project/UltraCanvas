@@ -221,13 +221,13 @@ namespace UltraCanvas {
         };
 
         // Case sensitive checkbox
-        caseSensitiveCheck->onStateChanged = [this](CheckboxState oldState, CheckboxState newState) {
-            caseSensitive = (newState == CheckboxState::Checked);
+        caseSensitiveCheck->onStateChanged = [this](CheckedState oldState, CheckedState newState) {
+            caseSensitive = (newState == CheckedState::Checked);
         };
 
         // Whole word checkbox
-        wholeWordCheck->onStateChanged = [this](CheckboxState oldState, CheckboxState newState) {
-            wholeWord = (newState == CheckboxState::Checked);
+        wholeWordCheck->onStateChanged = [this](CheckedState oldState, CheckedState newState) {
+            wholeWord = (newState == CheckedState::Checked);
         };
 
         // Find Next — adds to history
@@ -266,14 +266,14 @@ namespace UltraCanvas {
     void UltraCanvasFindDialog::SetCaseSensitive(bool sensitive) {
         caseSensitive = sensitive;
         if (caseSensitiveCheck) {
-            caseSensitiveCheck->SetCheckState(sensitive ? CheckboxState::Checked : CheckboxState::Unchecked);
+            caseSensitiveCheck->SetCheckState(sensitive ? CheckedState::Checked : CheckedState::Unchecked);
         }
     }
 
     void UltraCanvasFindDialog::SetWholeWord(bool whole) {
         wholeWord = whole;
         if (wholeWordCheck) {
-            wholeWordCheck->SetCheckState(whole ? CheckboxState::Checked : CheckboxState::Unchecked);
+            wholeWordCheck->SetCheckState(whole ? CheckedState::Checked : CheckedState::Unchecked);
         }
     }
 
@@ -467,13 +467,13 @@ namespace UltraCanvas {
         };
 
         // Case sensitive checkbox
-        caseSensitiveCheck->onStateChanged = [this](CheckboxState oldState, CheckboxState newState) {
-            caseSensitive = (newState == CheckboxState::Checked);
+        caseSensitiveCheck->onStateChanged = [this](CheckedState oldState, CheckedState newState) {
+            caseSensitive = (newState == CheckedState::Checked);
         };
 
         // Whole word checkbox
-        wholeWordCheck->onStateChanged = [this](CheckboxState oldState, CheckboxState newState) {
-            wholeWord = (newState == CheckboxState::Checked);
+        wholeWordCheck->onStateChanged = [this](CheckedState oldState, CheckedState newState) {
+            wholeWord = (newState == CheckedState::Checked);
         };
 
         // Find Next — adds to history
@@ -641,14 +641,14 @@ namespace UltraCanvas {
     void UltraCanvasReplaceDialog::SetCaseSensitive(bool sensitive) {
         caseSensitive = sensitive;
         if (caseSensitiveCheck) {
-            caseSensitiveCheck->SetCheckState(sensitive ? CheckboxState::Checked : CheckboxState::Unchecked);
+            caseSensitiveCheck->SetCheckState(sensitive ? CheckedState::Checked : CheckedState::Unchecked);
         }
     }
 
     void UltraCanvasReplaceDialog::SetWholeWord(bool whole) {
         wholeWord = whole;
         if (wholeWordCheck) {
-            wholeWordCheck->SetCheckState(whole ? CheckboxState::Checked : CheckboxState::Unchecked);
+            wholeWordCheck->SetCheckState(whole ? CheckedState::Checked : CheckedState::Unchecked);
         }
     }
 

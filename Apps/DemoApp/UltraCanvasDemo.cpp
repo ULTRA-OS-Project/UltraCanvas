@@ -397,89 +397,6 @@ namespace UltraCanvas {
         // ===== BASIC UI ELEMENTS =====
         auto basicBuilder = DemoCategoryBuilder(this, DemoCategory::BasicUI);
 
-        basicBuilder.AddItem("button", "Button", "Interactive buttons with various styles and states",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateButtonExamples(); },
-                             "DemoApp/UltraCanvasButtonExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasButtonExamples.md"
-                             )
-                .AddVariant("button", "Standard Button")
-                .AddVariant("button", "Icon Button")
-                .AddVariant("button", "Toggle Button")
-                .AddVariant("button", "Three-Section Button");
-
-        basicBuilder.AddItem("textinput", "Text Input", "Text input fields with validation and formatting",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateTextInputExamples(); },
-                            "DemoApp/UltraCanvasTextInputExamples.cpp",
-                            "Docs/UltraCanvas/UltraCanvasTextInputExamples.md"
-                             )
-                .AddVariant("textinput", "Single Line Input")
-                .AddVariant("textinput", "Multi-line Text Area")
-                .AddVariant("textinput", "Password Field")
-                .AddVariant("textinput", "Numeric Input");
-
-        basicBuilder.AddItem("dropdown", "Dropdown/ComboBox", "Dropdown selection controls",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateDropdownExamples(); },
-                            "DemoApp/UltraCanvasDropDownExamples.cpp",
-                            "Docs/UltraCanvas/UltraCanvasDropDownExamples.md")
-                .AddVariant("dropdown", "Simple Dropdown")
-                .AddVariant("dropdown", "Editable ComboBox")
-                .AddVariant("dropdown", "Multi-Select");
-
-        basicBuilder.AddItem("autocomplete", "AutoComplete", "Text input with auto-complete suggestions",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateAutoCompleteExamples(); },
-                             "Apps/DemoApp/UltraCanvasAutoCompleteExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasAutoCompleteExamples.md")
-                .AddVariant("autocomplete", "Static Items")
-                .AddVariant("autocomplete", "Dynamic Provider")
-                .AddVariant("autocomplete", "Interactive Demo");
-
-        basicBuilder
-                .AddItem("checkbox", "Checkbox",
-                         "Interactive checkbox controls with multiple states and styles",
-                         ImplementationStatus::FullyImplemented,
-                         [this]() { return CreateCheckboxExamples(); },
-                         "Apps/DemoApp/UltraCanvasCheckboxExamples.cpp",
-                         "Docs/UltraCanvas/UltraCanvasCheckbox.md")
-                .AddVariant("checkbox", "Standard Checkbox")
-                .AddVariant("checkbox", "Tri-State Checkbox")
-                .AddVariant("checkbox", "Switch Toggle")
-                .AddVariant("checkbox", "Radio Button");
-
-        basicBuilder.AddItem("segmentedcontrol", "Segmented Control",
-                             "Compact control for selecting between mutually exclusive options",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateSegmentedControlExamples(); },
-                             "Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp",
-                             "Docs/UltraCanvas/UltraCanvasSegmentedControl.md")
-                .AddVariant("segmentedcontrol", "Bordered Style")
-                .AddVariant("segmentedcontrol", "iOS Style")
-                .AddVariant("segmentedcontrol", "Flat Style")
-                .AddVariant("segmentedcontrol", "Bar Style")
-                .AddVariant("segmentedcontrol", "Toggle Mode")
-                .AddVariant("segmentedcontrol", "FitContent Width");
-
-        basicBuilder.AddItem("slider", "Slider", "Range and value selection sliders",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateSliderExamples(); },
-                            "DemoApp/UltraCanvasSliderExamples.cpp",
-                            "Docs/UltraCanvas/UltraCanvasSliderExamples.md")
-                .AddVariant("slider", "Horizontal Slider")
-                .AddVariant("slider", "Vertical Slider")
-                .AddVariant("slider", "Range Slider");
-
-        basicBuilder.AddItem("label", "Label", "Text display with formatting and styling",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateLabelExamples(); },
-                            "DemoApp/UltraCanvasLabelExamples.cpp",
-                            "Docs/UltraCanvas/UltraCanvasLabelExamples.md")
-                .AddVariant("label", "Basic Label")
-                .AddVariant("label", "Header Text")
-                .AddVariant("label", "Status Label");
-
         basicBuilder.AddItem("menu", "Menus", "Various menu types and styles",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateMenuExamples(); },
@@ -502,8 +419,8 @@ namespace UltraCanvas {
         basicBuilder.AddItem("tabs", "Tabs", "Tabbed interface containers",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateTabExamples(); },
-                            "DemoApp/UltraCanvasTabExamples.cpp",
-                            "Docs/UltraCanvas/UltraCanvasTabExamples.md")
+                             "DemoApp/UltraCanvasTabExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasTabExamples.md")
                 .AddVariant("tabs", "Top Tabs")
                 .AddVariant("tabs", "Side Tabs")
                 .AddVariant("tabs", "Closable Tabs");
@@ -519,8 +436,102 @@ namespace UltraCanvas {
                 .AddVariant("layouts", "Grid Layout")
                 .AddVariant("layouts", "Flex Layout");
 
+        basicBuilder.AddItem("segmentedcontrol", "Segmented Control",
+                             "Compact control for selecting between mutually exclusive options",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSegmentedControlExamples(); },
+                             "Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSegmentedControl.md")
+                .AddVariant("segmentedcontrol", "Bordered Style")
+                .AddVariant("segmentedcontrol", "iOS Style")
+                .AddVariant("segmentedcontrol", "Flat Style")
+                .AddVariant("segmentedcontrol", "Bar Style")
+                .AddVariant("segmentedcontrol", "Toggle Mode")
+                .AddVariant("segmentedcontrol", "FitContent Width");
+
+        basicBuilder.AddItem("textinput", "Text Input", "Text input fields with validation and formatting",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateTextInputExamples(); },
+                             "DemoApp/UltraCanvasTextInputExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasTextInputExamples.md"
+                )
+                .AddVariant("textinput", "Single Line Input")
+                .AddVariant("textinput", "Multi-line Text Area")
+                .AddVariant("textinput", "Password Field")
+                .AddVariant("textinput", "Numeric Input");
+
+        basicBuilder.AddItem("autocomplete", "AutoComplete", "Text input with auto-complete suggestions",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateAutoCompleteExamples(); },
+                             "Apps/DemoApp/UltraCanvasAutoCompleteExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasAutoCompleteExamples.md")
+                .AddVariant("autocomplete", "Static Items")
+                .AddVariant("autocomplete", "Dynamic Provider")
+                .AddVariant("autocomplete", "Interactive Demo");
+
+        basicBuilder.AddItem("label", "Label", "Text display with formatting and styling",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateLabelExamples(); },
+                             "DemoApp/UltraCanvasLabelExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasLabelExamples.md")
+                .AddVariant("label", "Basic Label")
+                .AddVariant("label", "Header Text")
+                .AddVariant("label", "Status Label");
+
+        basicBuilder.AddItem("button", "Button", "Interactive buttons with various styles and states",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateButtonExamples(); },
+                             "DemoApp/UltraCanvasButtonExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasButtonExamples.md"
+                             )
+                .AddVariant("button", "Standard Button")
+                .AddVariant("button", "Icon Button")
+                .AddVariant("button", "Toggle Button")
+                .AddVariant("button", "Three-Section Button");
+
+        basicBuilder.AddItem("dropdown", "Dropdown/ComboBox", "Dropdown selection controls",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateDropdownExamples(); },
+                            "DemoApp/UltraCanvasDropDownExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasDropDownExamples.md")
+                .AddVariant("dropdown", "Simple Dropdown")
+                .AddVariant("dropdown", "Editable ComboBox")
+                .AddVariant("dropdown", "Multi-Select");
+
+        basicBuilder
+                .AddItem("checkbox", "Checkbox/Radio/Switch",
+                         "Interactive checkbox controls with multiple states and styles",
+                         ImplementationStatus::FullyImplemented,
+                         [this]() { return CreateCheckboxExamples(); },
+                         "Apps/DemoApp/UltraCanvasCheckboxExamples.cpp",
+                         "Docs/UltraCanvas/UltraCanvasCheckbox.md")
+                .AddVariant("checkbox", "Standard Checkbox")
+                .AddVariant("checkbox", "Tri-State Checkbox")
+                .AddVariant("checkbox", "Switch Toggle")
+                .AddVariant("checkbox", "Radio Button");
+
+        basicBuilder.AddItem("slider", "Slider", "Range and value selection sliders",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSliderExamples(); },
+                            "DemoApp/UltraCanvasSliderExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasSliderExamples.md")
+                .AddVariant("slider", "Horizontal Slider")
+                .AddVariant("slider", "Vertical Slider")
+                .AddVariant("slider", "Range Slider");
+
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
+
+        extendedBuilder.AddItem("textarea", "Advanced Text Area", "Advanced text editing with syntax highlighting",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateTextAreaExamples(); },
+                                "DemoApp/UltraCanvasTextAreaExamples.cpp",
+                                "Docs/UltraCanvas/UltraCanvasTextAreaExamples.md")
+                .AddVariant("textarea", "C++ Syntax Highlighting")
+                .AddVariant("textarea", "Python Syntax Highlighting")
+                .AddVariant("textarea", "Pascal Syntax Highlighting")
+                .AddVariant("textarea", "Line Numbers Display")
+                .AddVariant("textarea", "Theme Support");
 
         extendedBuilder.AddItem("treeview", "Tree View", "Hierarchical data display with icons",
                                 ImplementationStatus::FullyImplemented,
@@ -544,17 +555,6 @@ namespace UltraCanvas {
                 .AddVariant("listview", "Simple List")
                 .AddVariant("listview", "Icon List")
                 .AddVariant("listview", "Detail View");
-
-        extendedBuilder.AddItem("textarea", "Advanced Text Area", "Advanced text editing with syntax highlighting",
-                                ImplementationStatus::FullyImplemented,
-                                [this]() { return CreateTextAreaExamples(); },
-                                "DemoApp/UltraCanvasTextAreaExamples.cpp",
-                                "Docs/UltraCanvas/UltraCanvasTextAreaExamples.md")
-                .AddVariant("textarea", "C++ Syntax Highlighting")
-                .AddVariant("textarea", "Python Syntax Highlighting")
-                .AddVariant("textarea", "Pascal Syntax Highlighting")
-                .AddVariant("textarea", "Line Numbers Display")
-                .AddVariant("textarea", "Theme Support");
 
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
@@ -998,7 +998,7 @@ namespace UltraCanvas {
         // Add category nodes
         std::vector<std::pair<DemoCategory, std::string>> categoryNames = {
                 {DemoCategory::BasicUI, "Basic UI Elements"},
-                {DemoCategory::ExtendedFunctionality, "Extended Functionality"},
+                {DemoCategory::ExtendedFunctionality, "Complex UI Elements"},
                 {DemoCategory::BitmapElements, "Bitmap Elements"},
                 {DemoCategory::VectorElements, "Vector Graphics"},
                 {DemoCategory::Charts, "Charts"},

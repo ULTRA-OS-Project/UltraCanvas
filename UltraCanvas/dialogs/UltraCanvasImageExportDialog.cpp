@@ -691,39 +691,39 @@ namespace UltraCanvas {
             heightInputCallbackRinning = false;
         };
 
-        aspectRatioCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.maintainAspectRatio = (newState == CheckboxState::Checked);
+        aspectRatioCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.maintainAspectRatio = (newState == CheckedState::Checked);
         };
 
         // ----- Transparency -----
-        transparencyCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            bool preserve = (newState == CheckboxState::Checked);
+        transparencyCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            bool preserve = (newState == CheckedState::Checked);
             options.preserveTransparency = preserve;
             UpdateFileSizeEstimate();
             if (onOptionsChange) onOptionsChange(options);
         };
 
         // ----- PNG options -----
-        pngInterlaceCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.png.interlace = (newState == CheckboxState::Checked);
+        pngInterlaceCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.png.interlace = (newState == CheckedState::Checked);
         };
 
         // ----- JPEG options -----
-        jpegProgressiveCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.jpeg.progressive = (newState == CheckboxState::Checked);
+        jpegProgressiveCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.jpeg.progressive = (newState == CheckedState::Checked);
         };
-        jpegOptimizeHuffmanCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.jpeg.optimizeHuffman = (newState == CheckboxState::Checked);
+        jpegOptimizeHuffmanCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.jpeg.optimizeHuffman = (newState == CheckedState::Checked);
         };
         // subsampling is a bool in JpegExportOptions
-        jpegSubsamplingCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.jpeg.subsampling = (newState == CheckboxState::Checked);
+        jpegSubsamplingCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.jpeg.subsampling = (newState == CheckedState::Checked);
             UpdateFileSizeEstimate();
         };
 
         // ----- WebP options -----
-        webpLosslessCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.webp.lossless = (newState == CheckboxState::Checked);
+        webpLosslessCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.webp.lossless = (newState == CheckedState::Checked);
             qualityLabel->SetText(options.webp.lossless ? "Compress:" : "Quality:");
             UpdateFileSizeEstimate();
         };
@@ -735,8 +735,8 @@ namespace UltraCanvas {
         };
 
         // ----- AVIF options -----
-        avifLosslessCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.avif.lossless = (newState == CheckboxState::Checked);
+        avifLosslessCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.avif.lossless = (newState == CheckedState::Checked);
             UpdateFileSizeEstimate();
         };
         avifSpeedSlider->onValueChanged = [this](float value) {
@@ -746,11 +746,11 @@ namespace UltraCanvas {
 
         // ----- GIF options -----
         // Note: maxColors removed (not in GifExportOptions struct)
-        gifDitheringCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.gif.dithering = (newState == CheckboxState::Checked);
+        gifDitheringCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.gif.dithering = (newState == CheckedState::Checked);
         };
-        gifInterlaceCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.gif.interlace = (newState == CheckboxState::Checked);
+        gifInterlaceCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.gif.interlace = (newState == CheckedState::Checked);
         };
 
         // ----- TIFF options -----
@@ -758,22 +758,22 @@ namespace UltraCanvas {
             options.tiff.compression = static_cast<UCImageSave::TiffCompression>(index);
             UpdateFileSizeEstimate();
         };
-        tiffMultiPageCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.tiff.multiPage = (newState == CheckboxState::Checked);
+        tiffMultiPageCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.tiff.multiPage = (newState == CheckedState::Checked);
         };
 
         // ----- QOI options -----
-        qoiAlphaCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.qoi.hasAlpha = (newState == CheckboxState::Checked);
+        qoiAlphaCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.qoi.hasAlpha = (newState == CheckedState::Checked);
             UpdateFileSizeEstimate();
         };
-        qoiLinearColorspaceCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.qoi.linearColorspace = (newState == CheckboxState::Checked);
+        qoiLinearColorspaceCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.qoi.linearColorspace = (newState == CheckedState::Checked);
         };
 
         // ----- Metadata options -----
-        preserveMetadataCheckbox->onStateChanged = [this](CheckboxState, CheckboxState newState) {
-            options.preserveMetadata = (newState == CheckboxState::Checked);
+        preserveMetadataCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.preserveMetadata = (newState == CheckedState::Checked);
         };
 
         // ----- Footer buttons -----

@@ -192,8 +192,8 @@ namespace UltraCanvas {
         auto volumeCheckbox = std::make_shared<UltraCanvasCheckbox>("VolumeCheckbox", 1054, 300, 45, 150, 30);
         volumeCheckbox->SetText("Show Volume");
         volumeCheckbox->SetChecked(true);
-        volumeCheckbox->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
-            chart->SetShowVolumePanel(newState == CheckboxState::Checked);
+        volumeCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
+            chart->SetShowVolumePanel(newState == CheckedState::Checked);
             chart->RequestRedraw();
         };
         controlPanel->AddChild(volumeCheckbox);
@@ -202,8 +202,8 @@ namespace UltraCanvas {
         auto maCheckbox = std::make_shared<UltraCanvasCheckbox>("MACheckbox", 1055, 470, 45, 180, 30);
         maCheckbox->SetText("Moving Average (20)");
         maCheckbox->SetChecked(true);
-        maCheckbox->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
-            chart->SetShowMovingAverage(newState == CheckboxState::Checked, 20);
+        maCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
+            chart->SetShowMovingAverage(newState == CheckedState::Checked, 20);
             chart->RequestRedraw();
         };
         controlPanel->AddChild(maCheckbox);
@@ -229,8 +229,8 @@ namespace UltraCanvas {
         auto gridCheckbox = std::make_shared<UltraCanvasCheckbox>("GridCheckbox", 1058, 350, 85, 100, 30);
         gridCheckbox->SetText("Show Grid");
         gridCheckbox->SetChecked(true);
-        gridCheckbox->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
-            chart->SetShowGrid(newState == CheckboxState::Checked);
+        gridCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
+            chart->SetShowGrid(newState == CheckedState::Checked);
             chart->RequestRedraw();
         };
         controlPanel->AddChild(gridCheckbox);
@@ -239,8 +239,8 @@ namespace UltraCanvas {
         auto tooltipsCheckbox = std::make_shared<UltraCanvasCheckbox>("TooltipsCheckbox", 1059, 470, 85, 150, 30);
         tooltipsCheckbox->SetText("Show Tooltips");
         tooltipsCheckbox->SetChecked(true);
-        tooltipsCheckbox->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
-            chart->SetEnableTooltips(newState == CheckboxState::Checked);
+        tooltipsCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
+            chart->SetEnableTooltips(newState == CheckedState::Checked);
             chart->RequestRedraw();
         };
         controlPanel->AddChild(tooltipsCheckbox);

@@ -40,11 +40,11 @@ namespace UltraCanvas {
 
 ## Enumerations
 
-### CheckboxState
+### CheckedState
 Defines the three possible states of a checkbox:
 
 ```cpp
-enum class CheckboxState {
+enum class CheckedState {
     Unchecked,      // Default unchecked state
     Checked,        // Checked state
     Indeterminate   // Partially checked state (for tree views)
@@ -147,13 +147,13 @@ Returns true if the checkbox is in the checked state.
 
 #### SetCheckState
 ```cpp
-void SetCheckState(CheckboxState state);
+void SetCheckState(CheckedState state);
 ```
 Sets the checkbox to a specific state (Unchecked, Checked, or Indeterminate).
 
 #### GetCheckState
 ```cpp
-CheckboxState GetCheckState() const;
+CheckedState GetCheckState() const;
 ```
 Returns the current state of the checkbox.
 
@@ -237,7 +237,7 @@ The checkbox provides several callback functions for state changes:
 
 ```cpp
 // Called when state changes with old and new states
-std::function<void(CheckboxState oldState, CheckboxState newState)> onStateChanged;
+std::function<void(CheckedState oldState, CheckedState newState)> onStateChanged;
 
 // Called when checkbox becomes checked
 std::function<void()> onChecked;
@@ -358,8 +358,8 @@ auto triStateBox = std::make_shared<UltraCanvasCheckbox>(
     "SelectAll", 2001, 10, 50, 200, 24, "Select All Items"
 );
 triStateBox->SetAllowIndeterminate(true);
-triStateBox->SetCheckState(CheckboxState::Indeterminate);
-triStateBox->onStateChanged = [](CheckboxState oldState, CheckboxState newState) {
+triStateBox->SetCheckState(CheckedState::Indeterminate);
+triStateBox->onStateChanged = [](CheckedState oldState, CheckedState newState) {
     std::cerr << "State changed from " << (int)oldState 
               << " to " << (int)newState << std::endl;
 };
