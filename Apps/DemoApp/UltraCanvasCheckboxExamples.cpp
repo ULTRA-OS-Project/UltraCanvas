@@ -1,6 +1,6 @@
 // UltraCanvasCheckboxExamples.cpp
 // Interactive checkbox component demonstration
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-05-07
 // Author: UltraCanvas Framework
 
@@ -11,6 +11,8 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasImage.h"
+#include "UltraCanvasConfig.h"
 #include <iostream>
 #include <vector>
 #include "UltraCanvasDebug.h"
@@ -49,7 +51,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCheckboxExamples() {
         // Main container for all checkbox examples (custom subclass owns the radio groups)
-        auto mainContainer = std::make_shared<CheckboxExamplesContainer>("CheckboxMainContainer", 3000, 0, 0, 1020, 1300);
+        auto mainContainer = std::make_shared<CheckboxExamplesContainer>("CheckboxMainContainer", 3000, 0, 0, 1020, 1600);
         mainContainer->SetBackgroundColor(Colors::White);
         mainContainer->SetPadding(0,0,10,0);
 
@@ -267,6 +269,106 @@ namespace UltraCanvas {
         mainContainer->AddChild(switchStatus3);
 
         currentY += 115;
+
+        // ----- Switch with built-in check icon (Check style) -----
+        auto switchCheck = UltraCanvasSwitch::Create("SwitchCheck", 3081, 30, currentY, "Wi-Fi", true);
+        switchCheck->GetVisualStyle().thumbIconStyle = SwitchThumbIconStyle::Check;
+        switchCheck->GetVisualStyle().thumbIconOnColor = Color(76, 175, 80, 255);
+        switchCheck->onStateChanged = [](CheckedState, CheckedState newState) {
+            debugOutput << "Wi-Fi " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
+        };
+        auto switchCheckHint = std::make_shared<UltraCanvasLabel>("SwitchCheckHint", 3082, 250, currentY, 400, 24);
+        switchCheckHint->SetText("Built-in checkmark icon (drawn via path API)");
+        switchCheckHint->SetTextColor(Color(100, 100, 100, 255));
+        mainContainer->AddChild(switchCheck);
+        mainContainer->AddChild(switchCheckHint);
+        currentY += 35;
+
+        // ----- Switch with custom image icons (check.png + x.png) -----
+        UCImagePtr iconCheckOn = UCImage::Load(NormalizePath(GetResourcesDir() + "media/icons/check.png"), false);
+        UCImagePtr iconCheckOff = UCImage::Load(NormalizePath(GetResourcesDir() + "media/icons/x.png"), false);
+
+        auto switchImg = UltraCanvasSwitch::Create("SwitchImg", 3083, 30, currentY, "Bluetooth", true);
+        switchImg->SetTrackSize(48.0f, 26.0f);
+        switchImg->SetThumbIcons(iconCheckOn, iconCheckOff);
+        switchImg->onStateChanged = [](CheckedState, CheckedState newState) {
+            debugOutput << "Bluetooth " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
+        };
+        auto switchImgHint = std::make_shared<UltraCanvasLabel>("SwitchImgHint", 3084, 250, currentY + 3, 400, 24);
+        switchImgHint->SetText("Custom image icons (check.png / x.png) inside thumb");
+        switchImgHint->SetTextColor(Color(100, 100, 100, 255));
+        mainContainer->AddChild(switchImg);
+        mainContainer->AddChild(switchImgHint);
+        currentY += 40;
+
+        // ----- Switch with custom ON icon only (demonstrates plain-circle fallback for OFF) -----
+        auto switchImgFallback = UltraCanvasSwitch::Create("SwitchImgFallback", 3085, 30, currentY, "Sync", false);
+        switchImgFallback->SetTrackSize(48.0f, 26.0f);
+        switchImgFallback->SetThumbIcons(iconCheckOn, nullptr);  // OFF icon missing → plain circle
+        switchImgFallback->onStateChanged = [](CheckedState, CheckedState newState) {
+            debugOutput << "Sync " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
+        };
+        auto switchImgFallbackHint = std::make_shared<UltraCanvasLabel>("SwitchImgFallbackHint", 3086, 250, currentY + 3, 500, 24);
+        switchImgFallbackHint->SetText("Only ON icon supplied — OFF state falls back to plain circle");
+        switchImgFallbackHint->SetTextColor(Color(100, 100, 100, 255));
+        mainContainer->AddChild(switchImgFallback);
+        mainContainer->AddChild(switchImgFallbackHint);
+        currentY += 40;
+
+        // ----- Switch with ON/OFF labels INSIDE the track -----
+        auto switchInside = UltraCanvasSwitch::Create("SwitchInside", 3087, 30, currentY, "Power", true);
+        switchInside->SetTrackSize(60.0f, 24.0f);
+        switchInside->SetStateLabels("ON", "OFF", SwitchStateLabelPosition::InsideTrack);
+        switchInside->onStateChanged = [](CheckedState, CheckedState newState) {
+            debugOutput << "Power " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
+        };
+        auto switchInsideHint = std::make_shared<UltraCanvasLabel>("SwitchInsideHint", 3088, 280, currentY + 2, 400, 24);
+        switchInsideHint->SetText("ON/OFF text inside track, opposite the thumb");
+        switchInsideHint->SetTextColor(Color(100, 100, 100, 255));
+        mainContainer->AddChild(switchInside);
+        mainContainer->AddChild(switchInsideHint);
+        currentY += 40;
+
+        // ----- Switch with ON/OFF labels OUTSIDE the track -----
+        auto switchOutside = UltraCanvasSwitch::Create("SwitchOutside", 3089, 30, currentY, "Sound", false);
+        switchOutside->SetStateLabels("On", "Off", SwitchStateLabelPosition::OutsideTrack);
+        switchOutside->GetVisualStyle().onTextColor = Color(0, 130, 0, 255);
+        switchOutside->GetVisualStyle().offTextColor = Color(150, 0, 0, 255);
+        switchOutside->onStateChanged = [](CheckedState, CheckedState newState) {
+            debugOutput << "Sound " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
+        };
+        auto switchOutsideHint = std::make_shared<UltraCanvasLabel>("SwitchOutsideHint", 3090, 280, currentY, 400, 24);
+        switchOutsideHint->SetText("State text drawn outside the track (between track and main label)");
+        switchOutsideHint->SetTextColor(Color(100, 100, 100, 255));
+        mainContainer->AddChild(switchOutside);
+        mainContainer->AddChild(switchOutsideHint);
+        currentY += 40;
+
+        // ----- Vertical orientation (plain + with check icon, side by side) -----
+        auto switchVertical = UltraCanvasSwitch::Create("SwitchVertical", 3091, 30, currentY, "Volume", true);
+        switchVertical->SetOrientation(SwitchOrientation::Vertical);
+        switchVertical->SetTrackSize(40.0f, 18.0f);  // long axis = 40, short axis = 18
+        switchVertical->onStateChanged = [](CheckedState, CheckedState newState) {
+            debugOutput << "Volume " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
+        };
+
+        auto switchVerticalCheck = UltraCanvasSwitch::Create("SwitchVerticalCheck", 3092, 180, currentY, "Mic", true);
+        switchVerticalCheck->SetOrientation(SwitchOrientation::Vertical);
+        switchVerticalCheck->SetTrackSize(40.0f, 22.0f);
+        switchVerticalCheck->GetVisualStyle().thumbIconStyle = SwitchThumbIconStyle::Check;
+        switchVerticalCheck->onStateChanged = [](CheckedState, CheckedState newState) {
+            debugOutput << "Mic " << (newState == CheckedState::Checked ? "on" : "off") << std::endl;
+        };
+
+        auto switchVerticalHint = std::make_shared<UltraCanvasLabel>("SwitchVerticalHint", 3093, 320, currentY + 12, 600, 24);
+        switchVerticalHint->SetText("Vertical orientation (ON = top). Plain on left, with check icon on right.");
+        switchVerticalHint->SetTextColor(Color(100, 100, 100, 255));
+
+        mainContainer->AddChild(switchVertical);
+        mainContainer->AddChild(switchVerticalCheck);
+        mainContainer->AddChild(switchVerticalHint);
+        currentY += 65;
+
         mainContainer->AddChild(CreateSeparatorLine(3037, 20, currentY, 960));
         currentY += 20;
 
