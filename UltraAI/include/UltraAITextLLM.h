@@ -1,14 +1,15 @@
 // UltraAI/include/UltraAITextLLM.h
 // Provider-agnostic Large Language Model chat interface for UltraOS / UltraAI module
-// Version: 0.1.0
-// Last Modified: 2026-05-07
+// Version: 0.2.0
+// Last Modified: 2026-05-08
 // Author: UltraAI Module
 #pragma once
+
+#include "UltraAICommon.h"
 
 #include <cstdint>
 #include <functional>
 #include <future>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -16,44 +17,6 @@
 #include <vector>
 
 namespace UltraAI {
-
-// =====================================================================
-// Result / Error
-// =====================================================================
-
-enum class ErrorCode {
-    None = 0,
-    InvalidRequest,
-    AuthenticationFailed,
-    RateLimited,
-    QuotaExceeded,
-    ModelNotFound,
-    ContextLengthExceeded,
-    ContentFiltered,
-    NetworkError,
-    Timeout,
-    ProviderError,
-    Cancelled,
-    Unknown
-};
-
-struct Error {
-    ErrorCode code = ErrorCode::None;
-    std::string message;
-    std::string providerCode;
-    bool IsOk() const { return code == ErrorCode::None; }
-    explicit operator bool() const { return IsOk(); }
-};
-
-// =====================================================================
-// Free-form options bag (escape hatch for vendor-specific knobs)
-//   e.g. { "thinking", true }, { "cache_control", "ephemeral" },
-//        { "top_k", 40 }, { "logprobs", 5 }
-// Routed verbatim to the active provider adapter.
-// =====================================================================
-
-using OptionValue = std::variant<bool, int64_t, double, std::string>;
-using OptionsMap  = std::map<std::string, OptionValue>;
 
 // =====================================================================
 // Multimodal content parts
@@ -184,13 +147,6 @@ enum class FinishReason {
     Error
 };
 
-struct TokenUsage {
-    int32_t inputTokens     = 0;
-    int32_t outputTokens    = 0;
-    int32_t cachedInputTokens = 0;   // when supported
-    int32_t reasoningTokens = 0;     // when supported
-};
-
 struct ChatResponse {
     std::string id;                   // provider-assigned, when available
     std::string model;
@@ -225,15 +181,6 @@ struct StreamEvent {
 };
 
 using StreamCallback = std::function<void(const StreamEvent&)>;
-
-// Opaque handle for cancelling an in-flight streaming call.
-class IStreamHandle {
-public:
-    virtual ~IStreamHandle() = default;
-    virtual void Cancel() = 0;
-    virtual bool IsDone() const = 0;
-};
-using StreamHandle = std::shared_ptr<IStreamHandle>;
 
 // =====================================================================
 // Capability discovery
@@ -304,14 +251,7 @@ public:
 // Factory / configuration
 // =====================================================================
 
-struct TextLLMConfig {
-    std::string providerId;           // "" -> use UltraOS default route
-    std::string apiKey;               // "" -> resolve from OS key vault
-    std::string baseUrl;              // optional override (e.g. self-hosted)
-    std::string defaultModel;
-    int32_t timeoutMs = 60000;
-    OptionsMap providerOptions;
-};
+using TextLLMConfig = ProviderConfig;
 
 // Construct an ITextLLM instance. Returns nullptr and fills `outError` on
 // failure (e.g. provider not registered, missing credentials).
