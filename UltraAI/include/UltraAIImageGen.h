@@ -194,4 +194,8 @@ std::unique_ptr<IImageGen> CreateImageGen(const ImageGenConfig& config,
 
 std::vector<std::string> ListImageGenProviders();
 
+bool RegisterImageGenProvider(
+    const std::string& providerId,
+    std::function<std::unique_ptr<IImageGen>(const ImageGenConfig&, Error*)> factory);
+
 } // namespace UltraAI

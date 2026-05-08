@@ -8,6 +8,7 @@
 #include "UltraAICommon.h"
 
 #include <cstdint>
+#include <functional>
 #include <future>
 #include <memory>
 #include <optional>
@@ -99,5 +100,9 @@ std::unique_ptr<IEmbeddings> CreateEmbeddings(const EmbeddingsConfig& config,
                                               Error* outError = nullptr);
 
 std::vector<std::string> ListEmbeddingsProviders();
+
+bool RegisterEmbeddingsProvider(
+    const std::string& providerId,
+    std::function<std::unique_ptr<IEmbeddings>(const EmbeddingsConfig&, Error*)> factory);
 
 } // namespace UltraAI

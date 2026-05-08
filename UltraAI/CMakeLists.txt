@@ -53,6 +53,7 @@ set(ULTRAAI_PUBLIC_HEADERS
 # the registry by linking into this library (or registering at runtime).
 add_library(UltraAI_Core STATIC
     src/TextLLMFactory.cpp
+    src/CapabilityFactories.cpp
 )
 add_library(UltraAI::Core ALIAS UltraAI_Core)
 

@@ -9,6 +9,7 @@
 #include "UltraAICommon.h"
 
 #include <cstdint>
+#include <functional>
 #include <future>
 #include <memory>
 #include <optional>
@@ -184,5 +185,9 @@ std::unique_ptr<IVisionAnalyzer> CreateVisionAnalyzer(
     Error* outError = nullptr);
 
 std::vector<std::string> ListVisionAnalyzerProviders();
+
+bool RegisterVisionAnalyzerProvider(
+    const std::string& providerId,
+    std::function<std::unique_ptr<IVisionAnalyzer>(const VisionAnalyzerConfig&, Error*)> factory);
 
 } // namespace UltraAI

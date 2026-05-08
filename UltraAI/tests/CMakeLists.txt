@@ -5,5 +5,9 @@
 add_executable(ultraai_test_mock_textllm test_mock_textllm.cpp)
 target_link_libraries(ultraai_test_mock_textllm PRIVATE UltraAI_Core)
 target_compile_features(ultraai_test_mock_textllm PRIVATE cxx_std_20)
-
 add_test(NAME ultraai.mock_textllm COMMAND ultraai_test_mock_textllm)
+
+add_executable(ultraai_test_mock_capabilities test_mock_capabilities.cpp)
+target_link_libraries(ultraai_test_mock_capabilities PRIVATE UltraAI_Core)
+target_compile_features(ultraai_test_mock_capabilities PRIVATE cxx_std_20)
+add_test(NAME ultraai.mock_capabilities COMMAND ultraai_test_mock_capabilities)

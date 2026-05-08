@@ -3,6 +3,11 @@
 
 add_library(UltraAI_AdapterMock STATIC
     src/MockTextLLM.cpp
+    src/MockEmbeddings.cpp
+    src/MockSpeechToText.cpp
+    src/MockTextToSpeech.cpp
+    src/MockImageGen.cpp
+    src/MockVisionAnalyzer.cpp
 )
 add_library(UltraAI::AdapterMock ALIAS UltraAI_AdapterMock)
 

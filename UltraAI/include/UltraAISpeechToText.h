@@ -178,4 +178,8 @@ std::unique_ptr<ISpeechToText> CreateSpeechToText(
 
 std::vector<std::string> ListSpeechToTextProviders();
 
+bool RegisterSpeechToTextProvider(
+    const std::string& providerId,
+    std::function<std::unique_ptr<ISpeechToText>(const SpeechToTextConfig&, Error*)> factory);
+
 } // namespace UltraAI
