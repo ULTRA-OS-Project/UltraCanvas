@@ -13,6 +13,10 @@
 #include "UltraAITextToSpeech.h"
 #include "UltraAIImageGen.h"
 #include "UltraAIVisionAnalyzer.h"
+#include "UltraAITranslator.h"
+#include "UltraAIVideoGen.h"
+#include "UltraAIMusicGen.h"
+#include "UltraAICodeAssist.h"
 
 #define ULTRA_AI_VERSION_MAJOR 0
 #define ULTRA_AI_VERSION_MINOR 1

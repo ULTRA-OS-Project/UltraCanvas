@@ -12,6 +12,10 @@
 #include "UltraAITextToSpeech.h"
 #include "UltraAIImageGen.h"
 #include "UltraAIVisionAnalyzer.h"
+#include "UltraAITranslator.h"
+#include "UltraAIVideoGen.h"
+#include "UltraAIMusicGen.h"
+#include "UltraAICodeAssist.h"
 
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
 #include "UltraAIMockEmbeddings.h"
@@ -19,6 +23,10 @@
 #include "UltraAIMockTextToSpeech.h"
 #include "UltraAIMockImageGen.h"
 #include "UltraAIMockVisionAnalyzer.h"
+#include "UltraAIMockTranslator.h"
+#include "UltraAIMockVideoGen.h"
+#include "UltraAIMockMusicGen.h"
+#include "UltraAIMockCodeAssist.h"
 #endif
 
 #include <cmath>
@@ -174,6 +182,74 @@ Registry<IVisionAnalyzer, VisionAnalyzerConfig>& VisReg() {
     return r;
 }
 
+Registry<ITranslator, TranslatorConfig>& TrReg() {
+    static Registry<ITranslator, TranslatorConfig> r;
+    static std::once_flag init;
+    std::call_once(init, [&]() {
+        r.ensureBuiltins = [&]() {
+#ifdef ULTRAAI_HAS_MOCK_ADAPTER
+            if (!r.providers.count("mock")) {
+                r.providers["mock"] = [](const TranslatorConfig&, Error*) {
+                    return CreateMockTranslator();
+                };
+            }
+#endif
+        };
+    });
+    return r;
+}
+
+Registry<IVideoGen, VideoGenConfig>& VidReg() {
+    static Registry<IVideoGen, VideoGenConfig> r;
+    static std::once_flag init;
+    std::call_once(init, [&]() {
+        r.ensureBuiltins = [&]() {
+#ifdef ULTRAAI_HAS_MOCK_ADAPTER
+            if (!r.providers.count("mock")) {
+                r.providers["mock"] = [](const VideoGenConfig&, Error*) {
+                    return CreateMockVideoGen();
+                };
+            }
+#endif
+        };
+    });
+    return r;
+}
+
+Registry<IMusicGen, MusicGenConfig>& MusReg() {
+    static Registry<IMusicGen, MusicGenConfig> r;
+    static std::once_flag init;
+    std::call_once(init, [&]() {
+        r.ensureBuiltins = [&]() {
+#ifdef ULTRAAI_HAS_MOCK_ADAPTER
+            if (!r.providers.count("mock")) {
+                r.providers["mock"] = [](const MusicGenConfig&, Error*) {
+                    return CreateMockMusicGen();
+                };
+            }
+#endif
+        };
+    });
+    return r;
+}
+
+Registry<ICodeAssist, CodeAssistConfig>& CodeReg() {
+    static Registry<ICodeAssist, CodeAssistConfig> r;
+    static std::once_flag init;
+    std::call_once(init, [&]() {
+        r.ensureBuiltins = [&]() {
+#ifdef ULTRAAI_HAS_MOCK_ADAPTER
+            if (!r.providers.count("mock")) {
+                r.providers["mock"] = [](const CodeAssistConfig&, Error*) {
+                    return CreateMockCodeAssist();
+                };
+            }
+#endif
+        };
+    });
+    return r;
+}
+
 } // namespace
 
 // =====================================================================
@@ -229,6 +305,46 @@ bool RegisterVisionAnalyzerProvider(
     const std::string& id,
     std::function<std::unique_ptr<IVisionAnalyzer>(const VisionAnalyzerConfig&, Error*)> fn) {
     return Register(VisReg(), id, std::move(fn));
+}
+
+std::unique_ptr<ITranslator> CreateTranslator(const TranslatorConfig& cfg, Error* err) {
+    return Create(TrReg(), cfg, err);
+}
+std::vector<std::string> ListTranslatorProviders() { return List(TrReg()); }
+bool RegisterTranslatorProvider(
+    const std::string& id,
+    std::function<std::unique_ptr<ITranslator>(const TranslatorConfig&, Error*)> fn) {
+    return Register(TrReg(), id, std::move(fn));
+}
+
+std::unique_ptr<IVideoGen> CreateVideoGen(const VideoGenConfig& cfg, Error* err) {
+    return Create(VidReg(), cfg, err);
+}
+std::vector<std::string> ListVideoGenProviders() { return List(VidReg()); }
+bool RegisterVideoGenProvider(
+    const std::string& id,
+    std::function<std::unique_ptr<IVideoGen>(const VideoGenConfig&, Error*)> fn) {
+    return Register(VidReg(), id, std::move(fn));
+}
+
+std::unique_ptr<IMusicGen> CreateMusicGen(const MusicGenConfig& cfg, Error* err) {
+    return Create(MusReg(), cfg, err);
+}
+std::vector<std::string> ListMusicGenProviders() { return List(MusReg()); }
+bool RegisterMusicGenProvider(
+    const std::string& id,
+    std::function<std::unique_ptr<IMusicGen>(const MusicGenConfig&, Error*)> fn) {
+    return Register(MusReg(), id, std::move(fn));
+}
+
+std::unique_ptr<ICodeAssist> CreateCodeAssist(const CodeAssistConfig& cfg, Error* err) {
+    return Create(CodeReg(), cfg, err);
+}
+std::vector<std::string> ListCodeAssistProviders() { return List(CodeReg()); }
+bool RegisterCodeAssistProvider(
+    const std::string& id,
+    std::function<std::unique_ptr<ICodeAssist>(const CodeAssistConfig&, Error*)> fn) {
+    return Register(CodeReg(), id, std::move(fn));
 }
 
 // =====================================================================

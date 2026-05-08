@@ -8,6 +8,10 @@ add_library(UltraAI_AdapterMock STATIC
     src/MockTextToSpeech.cpp
     src/MockImageGen.cpp
     src/MockVisionAnalyzer.cpp
+    src/MockTranslator.cpp
+    src/MockVideoGen.cpp
+    src/MockMusicGen.cpp
+    src/MockCodeAssist.cpp
 )
 add_library(UltraAI::AdapterMock ALIAS UltraAI_AdapterMock)
 
