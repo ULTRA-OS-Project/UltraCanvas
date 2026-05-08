@@ -261,4 +261,11 @@ std::unique_ptr<ITextLLM> CreateTextLLM(const TextLLMConfig& config,
 // Enumerate provider adapters compiled into / loaded by the module.
 std::vector<std::string> ListTextLLMProviders();
 
+// Adapter registration. Adapters call this from a static initializer (or
+// the host application registers them explicitly) to make themselves
+// discoverable via CreateTextLLM / ListTextLLMProviders.
+bool RegisterTextLLMProvider(
+    const std::string& providerId,
+    std::function<std::unique_ptr<ITextLLM>(const TextLLMConfig&, Error*)> factory);
+
 } // namespace UltraAI
