@@ -757,8 +757,8 @@ namespace UltraCanvas {
                              [this]() { return CreatePartiallyImplementedExamples("HeatMap Chart is not ready yet"); });
 
         chartBuilder.AddItem("jitterchart", "Jitter chart", "Jitter chart",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("Jitter Chart is not ready yet"); });
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateJitterPlotExamples(); });
 
         chartBuilder.AddItem("dumbbell", "Dumbbell chart", "Dumbbell chart",
                              ImplementationStatus::PartiallyImplemented,
@@ -797,25 +797,42 @@ namespace UltraCanvas {
                 .AddVariant("plantuml", "Sequence Diagrams")
                 .AddVariant("plantuml", "Activity Diagrams");
 
-        diagramBuilder.AddItem("nodediagram", "Node diagram", "Node diagram",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Node diagram is not ready yet"); });
+        diagramBuilder.AddItem("flowchart", "Flow chart", "Interactive flowchart with decision points",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateFlowChartExamples(); },
+                               "Apps/DemoApp/UltraCanvasFlowChartExamples.cpp");
 
-        diagramBuilder.AddItem("flowchart", "Flow chart", "Flow chart",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Flow chart is not ready yet"); });
+        diagramBuilder.AddItem("venndiagram", "Venn Diagram", "Interactive Venn diagram for set visualization",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateVennDiagramExamples(); },
+                               "Apps/DemoApp/UltraCanvasVennDiagramExamples.cpp",
+                               "Docs/UltraCanvasVennDiagram.md");
 
-        diagramBuilder.AddItem("venndiagram", "Venn diagram", "Venn diagram",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Venn is not ready yet"); });
+        diagramBuilder.AddItem("dendrogram", "Dendrogram", "Interactive dendrogram / phylogenetic tree visualization",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateDendrogramExamples(); },
+                               "Apps/DemoApp/UltraCanvasDendrogramExamples.cpp");
 
-        diagramBuilder.AddItem("dendogram", "Dendogram", "Dendogram",
-                               ImplementationStatus::PartiallyImplemented,
-                               [this]() { return CreatePartiallyImplementedExamples("Dendogram is not ready yet"); });
+        diagramBuilder.AddItem("treemap", "TreeMap", "Hierarchical TreeMap data visualization",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateTreeMapExamples(); },
+                               "Apps/DemoApp/UltraCanvasTreeMapExamples.cpp",
+                               "Docs/UltraCanvasTreeMap.md");
 
-        diagramBuilder.AddItem("blockdiagram", "Block diagram", "Block diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return nullptr; });
+    diagramBuilder.AddItem("blockdiagram", "Block Diagram", "Interactive block diagram with shapes and connections",
+                           ImplementationStatus::FullyImplemented,
+                           [this]() { return CreateBlockDiagramExamples(); },
+                           "Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp");
+
+    diagramBuilder.AddItem("nodediagram", "Node Diagram", "Network/graph visualization with nodes and edges",
+                           ImplementationStatus::FullyImplemented,
+                           [this]() { return CreateNodeDiagramExamples(); },
+                           "Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp");
+
+    diagramBuilder.AddItem("gourcetree", "Gource Tree", "Radial tree visualization for file systems inspired by Gource",
+                           ImplementationStatus::FullyImplemented,
+                           [this]() { return CreateGourceTreeExamples(); },
+                           "Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp");
 
         diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
                                ImplementationStatus::NotImplemented,
@@ -844,10 +861,6 @@ namespace UltraCanvas {
         infoBuilder.AddItem("wavesinfo", "Waves info graphic", "Waves info graphic",
                             ImplementationStatus::PartiallyImplemented,
                             [this]() { return CreatePartiallyImplementedExamples("Waves info graphic is not ready yet"); });
-
-        infoBuilder.AddItem("treemap", "Treemap", "Treemap",
-                            ImplementationStatus::PartiallyImplemented,
-                            [this]() { return CreatePartiallyImplementedExamples("Treemap is not ready yet"); });
 
         infoBuilder.AddItem("matrix", "Matrix", "Matrix",
                             ImplementationStatus::PartiallyImplemented,

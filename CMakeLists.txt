@@ -101,6 +101,14 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasCheckboxExamples.cpp
             Apps/DemoApp/UltraCanvasDemoInfoWindow.cpp
             Apps/DemoApp/UltraCanvasSankeyExamples.cpp
+            Apps/DemoApp/UltraCanvasTreeMapExamples.cpp
+            Apps/DemoApp/UltraCanvasVennDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasDendrogramExamples.cpp
+            Apps/DemoApp/UltraCanvasBlockDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasFlowChartExamples.cpp
+            Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp
+            Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
             Apps/DemoApp/UltraCanvasPopulationChartExamples.cpp
             Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
             Apps/DemoApp/UltraCanvasLayoutExamples.cpp

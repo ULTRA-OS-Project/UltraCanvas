@@ -17,6 +17,8 @@
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasApplication.h"
+#include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
+#include "Plugins/Diagrams/UltraCanvasGourceTree.h"
 #include <memory>
 #include <map>
 #include <functional>
@@ -260,10 +262,32 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateFinancialChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePopulationChartExamples();
 
+        std::shared_ptr<UltraCanvasUIElement> CreateContinentsPopulationExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateBrazilSchoolScoresExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateJitterPlotExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateRaincloudPlotExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateScientificCrossMeansExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateBoxPlotOverlayExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateMarketCapitalizationExample();
 
         std::shared_ptr<UltraCanvasUIElement> CreateDivergingChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateInfoGraphicsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateWaterfallChartExamples();
+
+        std::shared_ptr<UltraCanvasUIElement> CreateVennDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateDendrogramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateBlockDiagramExamples();
+
+        std::shared_ptr<UltraCanvasUIElement> CreateFlowChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateGourceTreeExamples();
+
+        std::shared_ptr<UltraCanvasContainer> CreateExampleDiagramSection();
+
+        std::shared_ptr<UltraCanvasUIElement> CreateFlowchartExample();
+        std::shared_ptr<UltraCanvasUIElement> CreateSystemArchitectureExample();
+
+        std::shared_ptr<UltraCanvasUIElement> CreateTreeMapExamples();
 
 //        std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();

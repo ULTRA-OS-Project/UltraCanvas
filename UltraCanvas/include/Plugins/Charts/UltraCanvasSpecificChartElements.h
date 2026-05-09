@@ -97,18 +97,18 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
-        void SetBarBorderWidth(float width) {
+        void SetBarBorderWidth(double width) {
             barBorderWidth = width;
             RequestRedraw();
         }
 
-        void SetBarSpacing(float spacing) {
-            barSpacing = std::clamp(spacing, 0.0f, 0.9f);
+        void SetBarSpacing(double spacing) {
+            barSpacing = std::clamp(spacing, 0.0, 0.9);
             RequestRedraw();
         }
 
         void RenderChart(IRenderContext *ctx) override;
-        float GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) override;
+        double GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) override;
         bool HandleChartMouseMove(const Point2Di &mousePos) override;
     };
 
@@ -120,7 +120,7 @@ namespace UltraCanvas {
     private:
         // Scatter-specific properties
         Color pointColor = Color(0, 102, 204, 255);
-        float pointSize = 6.0f;
+        double pointSize = 6.0f;
 
     public:
         enum class PointShape {
@@ -144,7 +144,7 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
-        void SetPointSize(float size) {
+        void SetPointSize(double size) {
             pointSize = size;
             RequestRedraw();
         }
@@ -177,7 +177,7 @@ namespace UltraCanvas {
                 Color(83, 102, 255, 255)    // Light Blue
         };
         Color borderColor = Color(255, 255, 255, 255);
-        float borderWidth = 2.0f;
+        double borderWidth = 2.0f;
 
     public:
         UltraCanvasPieChartElement(const std::string &id, long uid, int x, int y, int width, int height)
@@ -199,7 +199,7 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
-        void SetBorderWidth(float width) {
+        void SetBorderWidth(double width) {
             borderWidth = width;
             RequestRedraw();
         }
@@ -219,16 +219,16 @@ namespace UltraCanvas {
             // Calculate center and radius
             Point2Df center(cachedPlotArea.x + cachedPlotArea.width / 2,
                             cachedPlotArea.y + cachedPlotArea.height / 2);
-            float radius = std::min(cachedPlotArea.width, cachedPlotArea.height) / 2 * 0.8f;
+            double radius = std::min(cachedPlotArea.width, cachedPlotArea.height) / 2 * 0.8f;
 
-            float currentAngle = 0.0f;
-            const float fullCircle = 2.0f * M_PI;
+            double currentAngle = 0.0f;
+            const double fullCircle = 2.0f * M_PI;
 
             for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
                 auto point = dataSource->GetPoint(i);
 
                 // Calculate slice angle
-                float sliceAngle = static_cast<float>((point.y / total) * fullCircle);
+                double sliceAngle = static_cast<double>((point.y / total) * fullCircle);
 
                 // Set color from palette
                 Color sliceColor = GetColorFromPalette(i);
@@ -257,12 +257,12 @@ namespace UltraCanvas {
             // Calculate center and radius
             Point2Df center(cachedPlotArea.x + cachedPlotArea.width / 2,
                             cachedPlotArea.y + cachedPlotArea.height / 2);
-            float radius = std::min(cachedPlotArea.width, cachedPlotArea.height) / 2 * 0.8f;
+            double radius = std::min(cachedPlotArea.width, cachedPlotArea.height) / 2 * 0.8f;
 
             // Check if mouse is within pie radius
-            float dx = mousePos.x - center.x;
-            float dy = mousePos.y - center.y;
-            float distance = std::sqrt(dx * dx + dy * dy);
+            double dx = mousePos.x - center.x;
+            double dy = mousePos.y - center.y;
+            double distance = std::sqrt(dx * dx + dy * dy);
 
             if (distance > radius) {
                 HideTooltip();
@@ -270,7 +270,7 @@ namespace UltraCanvas {
             }
 
             // Calculate angle from center
-            float angle = std::atan2(dy, dx);
+            double angle = std::atan2(dy, dx);
             if (angle < 0) angle += 2.0f * M_PI;
 
             // Find which slice the mouse is over
@@ -280,12 +280,12 @@ namespace UltraCanvas {
                 total += point.y;
             }
 
-            float currentAngle = 0.0f;
-            const float fullCircle = 2.0f * M_PI;
+            double currentAngle = 0.0f;
+            const double fullCircle = 2.0f * M_PI;
 
             for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
                 auto point = dataSource->GetPoint(i);
-                float sliceAngle = static_cast<float>((point.y / total) * fullCircle);
+                double sliceAngle = static_cast<double>((point.y / total) * fullCircle);
 
                 if (angle >= currentAngle && angle <= currentAngle + sliceAngle) {
                     ShowChartPointTooltip(mousePos, point, i);
@@ -314,7 +314,7 @@ namespace UltraCanvas {
         // Area-specific properties
         Color fillColor = Color(0, 102, 204, 128);  // Semi-transparent
         Color lineColor = Color(0, 102, 204, 255);
-        float lineWidth = 2.0f;
+        double lineWidth = 2.0f;
         bool showDataPoints = false;
         Color pointColor = Color(0, 102, 204, 255);
 
@@ -346,7 +346,7 @@ namespace UltraCanvas {
             RequestRedraw();
         }
 
-        void SetLineWidth(float width) {
+        void SetLineWidth(double width) {
             lineWidth = width;
             RequestRedraw();
         }

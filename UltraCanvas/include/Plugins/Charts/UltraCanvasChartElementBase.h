@@ -330,7 +330,7 @@ namespace UltraCanvas {
         void RenderValueLabels(IRenderContext *ctx, const std::vector<Point2Df> &screenPositions);
         Point2Df CalculateValueLabelPosition(const Point2Df &pointPos, size_t index, size_t totalPoints);
 
-        virtual float GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints);
+        virtual double GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints);
 
         std::string FormatAxisLabel(double value);
         void DrawSelectionIndicators(IRenderContext* ctx);

@@ -76,16 +76,16 @@ namespace UltraCanvas {
             Point2Df prevPoint = p1;
 
             for (int step = 1; step <= steps; ++step) {
-                float t = step / static_cast<float>(steps);
-                float t2 = t * t;
-                float t3 = t2 * t;
+                double t = step / static_cast<double>(steps);
+                double t2 = t * t;
+                double t3 = t2 * t;
 
-                float x = 0.5f * ((2 * p1.x) +
+                double x = 0.5f * ((2 * p1.x) +
                                   (-p0.x + p2.x) * t +
                                   (2*p0.x - 5*p1.x + 4*p2.x - p3.x) * t2 +
                                   (-p0.x + 3*p1.x - 3*p2.x + p3.x) * t3);
 
-                float y = 0.5f * ((2 * p1.y) +
+                double y = 0.5f * ((2 * p1.y) +
                                   (-p0.y + p2.y) * t +
                                   (2*p0.y - 5*p1.y + 4*p2.y - p3.y) * t2 +
                                   (-p0.y + 3*p1.y - 3*p2.y + p3.y) * t3);
@@ -101,16 +101,16 @@ namespace UltraCanvas {
         if (!dataSource || !enableTooltips) return false;
 
         // Find nearest data point
-        float minDistance = 20.0f; // Threshold distance in pixels
+        double minDistance = 20.0f; // Threshold distance in pixels
         size_t nearestIndex = SIZE_MAX;
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
             Point2Df screenPos = GetDataPointScreenPosition(i, point);
 
-            float dx = mousePos.x - screenPos.x;
-            float dy = mousePos.y - screenPos.y;
-            float distance = std::sqrt(dx * dx + dy * dy);
+            double dx = mousePos.x - screenPos.x;
+            double dy = mousePos.y - screenPos.y;
+            double distance = std::sqrt(dx * dx + dy * dy);
 
             if (distance < minDistance) {
                 minDistance = distance;
@@ -141,14 +141,14 @@ namespace UltraCanvas {
         for (size_t i = 0; i < pointCount; ++i) {
             auto point = dataSource->GetPoint(i);
 
-            float barX, barY, barHeight;
+            double barX, barY, barHeight;
 
             if (IsUsingIndexBasedPositioning()) {
                 // When using labels, distribute bars evenly across width
-                float totalWidth = cachedPlotArea.width;
-                float barWidth = totalWidth / pointCount;
-                float actualBarSpacing = barWidth * barSpacing;
-                float actualBarWidth = barWidth - actualBarSpacing;
+                double totalWidth = cachedPlotArea.width;
+                double barWidth = totalWidth / pointCount;
+                double actualBarSpacing = barWidth * barSpacing;
+                double actualBarWidth = barWidth - actualBarSpacing;
 
                 barX = cachedPlotArea.x + (i * barWidth) + (actualBarSpacing / 2);
 
@@ -178,9 +178,9 @@ namespace UltraCanvas {
             } else {
                 // Use original numeric positioning
                 ChartCoordinateTransform transform(cachedPlotArea, cachedDataBounds);
-                float barWidth = cachedPlotArea.width / static_cast<float>(pointCount);
-                float actualBarSpacing = barWidth * barSpacing;
-                float actualBarWidth = barWidth - actualBarSpacing;
+                double barWidth = cachedPlotArea.width / static_cast<double>(pointCount);
+                double actualBarSpacing = barWidth * barSpacing;
+                double actualBarWidth = barWidth - actualBarSpacing;
 
                 barX = cachedPlotArea.x + (i * barWidth) + (actualBarSpacing / 2);
 
@@ -209,11 +209,11 @@ namespace UltraCanvas {
         if (!dataSource || !enableTooltips) return false;
 
         size_t pointCount = dataSource->GetPointCount();
-        float barWidth = cachedPlotArea.width / static_cast<float>(pointCount);
+        double barWidth = cachedPlotArea.width / static_cast<double>(pointCount);
 
         // Check if mouse is over any bar
         for (size_t i = 0; i < pointCount; ++i) {
-            float barX = cachedPlotArea.x + (i * barWidth);
+            double barX = cachedPlotArea.x + (i * barWidth);
 
             if (mousePos.x >= barX && mousePos.x <= barX + barWidth) {
                 auto point = dataSource->GetPoint(i);
@@ -229,9 +229,9 @@ namespace UltraCanvas {
         return false;
     }
 
-    float UltraCanvasBarChartElement::GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) {
+    double UltraCanvasBarChartElement::GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints) {
         // For bar charts, center the label under each bar
-        float barWidth = cachedPlotArea.width / totalPoints;
+        double barWidth = cachedPlotArea.width / totalPoints;
         return cachedPlotArea.x + (dataIndex * barWidth) + (barWidth / 2);
     }
 
@@ -259,7 +259,7 @@ namespace UltraCanvas {
                     break;
 
                 case PointShape::Square: {
-                    float halfSize = pointSize;
+                    double halfSize = pointSize;
                     ctx->FillRectangle(Rect2Df(screenPos.x - halfSize, screenPos.y - halfSize,
                                        halfSize * 2, halfSize * 2));
                     break;
@@ -293,16 +293,16 @@ namespace UltraCanvas {
         if (!dataSource || !enableTooltips) return false;
 
         // Find nearest point
-        float minDistance = pointSize + 5.0f; // Threshold based on point size
+        double minDistance = pointSize + 5.0f; // Threshold based on point size
         size_t nearestIndex = SIZE_MAX;
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
             Point2Df screenPos = GetDataPointScreenPosition(i, point);
 
-            float dx = mousePos.x - screenPos.x;
-            float dy = mousePos.y - screenPos.y;
-            float distance = std::sqrt(dx * dx + dy * dy);
+            double dx = mousePos.x - screenPos.x;
+            double dy = mousePos.y - screenPos.y;
+            double distance = std::sqrt(dx * dx + dy * dy);
 
             if (distance < minDistance) {
                 minDistance = distance;
@@ -346,16 +346,16 @@ namespace UltraCanvas {
 //            Point2Df prevPoint = p1;
 
             for (int step = 1; step <= steps; ++step) {
-                float t = step / static_cast<float>(steps);
-                float t2 = t * t;
-                float t3 = t2 * t;
+                double t = step / static_cast<double>(steps);
+                double t2 = t * t;
+                double t3 = t2 * t;
 
-                float x = 0.5f * ((2 * p1.x) +
+                double x = 0.5f * ((2 * p1.x) +
                                   (-p0.x + p2.x) * t +
                                   (2*p0.x - 5*p1.x + 4*p2.x - p3.x) * t2 +
                                   (-p0.x + 3*p1.x - 3*p2.x + p3.x) * t3);
 
-                float y = 0.5f * ((2 * p1.y) +
+                double y = 0.5f * ((2 * p1.y) +
                                   (-p0.y + p2.y) * t +
                                   (2*p0.y - 5*p1.y + 4*p2.y - p3.y) * t2 +
                                   (-p0.y + 3*p1.y - 3*p2.y + p3.y) * t3);
@@ -444,16 +444,16 @@ namespace UltraCanvas {
         if (!dataSource || !enableTooltips) return false;
 
         // Find nearest data point along the x-axis
-        float minXDistance = 30.0f; // Threshold distance in pixels for X
-        float maxYDistance = 50.0f; // Threshold distance in pixels for Y
+        double minXDistance = 30.0f; // Threshold distance in pixels for X
+        double maxYDistance = 50.0f; // Threshold distance in pixels for Y
         size_t nearestIndex = SIZE_MAX;
 
         for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
             auto point = dataSource->GetPoint(i);
             Point2Df screenPos = GetDataPointScreenPosition(i, point);
 
-            float dx = std::abs(mousePos.x - screenPos.x);
-            float dy = std::abs(mousePos.y - screenPos.y);
+            double dx = std::abs(mousePos.x - screenPos.x);
+            double dy = std::abs(mousePos.y - screenPos.y);
 
             // Check if mouse is close enough in X direction and within reasonable Y range
             if (dx < minXDistance && dy < maxYDistance) {
