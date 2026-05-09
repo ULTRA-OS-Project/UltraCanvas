@@ -8,6 +8,7 @@
 #include <iostream>
 #include <sstream>
 #include <cmath>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -22,17 +23,17 @@ UltraCanvasWASMRenderContext::UltraCanvasWASMRenderContext(const std::string& ca
     , hasClipRect(false)
     , inFrame(false)
 {
-    std::cout << "[WASM RenderContext] Created for canvas: " << canvasId << std::endl;
+    debugOutput << "[WASM RenderContext] Created for canvas: " << canvasId << std::endl;
 }
 
 UltraCanvasWASMRenderContext::~UltraCanvasWASMRenderContext() {
-    std::cout << "[WASM RenderContext] Destroyed" << std::endl;
+    debugOutput << "[WASM RenderContext] Destroyed" << std::endl;
 }
 
 // ===== INITIALIZATION =====
 
 bool UltraCanvasWASMRenderContext::Initialize() {
-    std::cout << "[WASM RenderContext] Initializing Canvas 2D context..." << std::endl;
+    debugOutput << "[WASM RenderContext] Initializing Canvas 2D context..." << std::endl;
     
     // Get 2D rendering context from canvas
     bool success = EM_ASM_INT({
@@ -59,14 +60,14 @@ bool UltraCanvasWASMRenderContext::Initialize() {
     }, canvasId.c_str());
     
     if (!success) {
-        std::cerr << "[WASM RenderContext] ERROR: Failed to initialize Canvas 2D context" << std::endl;
+        debugOutput << "[WASM RenderContext] ERROR: Failed to initialize Canvas 2D context" << std::endl;
         return false;
     }
     
     // Reset to default state
     ResetState();
     
-    std::cout << "[WASM RenderContext] Initialization complete" << std::endl;
+    debugOutput << "[WASM RenderContext] Initialization complete" << std::endl;
     return true;
 }
 
@@ -74,14 +75,14 @@ void UltraCanvasWASMRenderContext::SetViewportSize(int width, int height) {
     viewportWidth = width;
     viewportHeight = height;
     
-    std::cout << "[WASM RenderContext] Viewport size: " << width << "x" << height << std::endl;
+    debugOutput << "[WASM RenderContext] Viewport size: " << width << "x" << height << std::endl;
 }
 
 // ===== FRAME CONTROL =====
 
 void UltraCanvasWASMRenderContext::BeginFrame() {
     if (inFrame) {
-        std::cerr << "[WASM RenderContext] WARNING: BeginFrame called while already in frame" << std::endl;
+        debugOutput << "[WASM RenderContext] WARNING: BeginFrame called while already in frame" << std::endl;
         return;
     }
     
@@ -93,7 +94,7 @@ void UltraCanvasWASMRenderContext::BeginFrame() {
 
 void UltraCanvasWASMRenderContext::EndFrame() {
     if (!inFrame) {
-        std::cerr << "[WASM RenderContext] WARNING: EndFrame called without BeginFrame" << std::endl;
+        debugOutput << "[WASM RenderContext] WARNING: EndFrame called without BeginFrame" << std::endl;
         return;
     }
     
@@ -139,7 +140,7 @@ void UltraCanvasWASMRenderContext::PushState() {
 
 void UltraCanvasWASMRenderContext::PopState() {
     if (stateDepth == 0) {
-        std::cerr << "[WASM RenderContext] WARNING: PopState called without matching PushState" << std::endl;
+        debugOutput << "[WASM RenderContext] WARNING: PopState called without matching PushState" << std::endl;
         return;
     }
     
@@ -396,15 +397,15 @@ void UltraCanvasWASMRenderContext::DrawLine(float x1, float y1, float x2, float 
     }, canvasId.c_str(), x1, y1, x2, y2);
 }
 
-void UltraCanvasWASMRenderContext::DrawRectangle(float x, float y, float width, float height) {
+void UltraCanvasWASMRenderContext::DrawRectangle(const Rect2Df& rect) {
     ApplyDrawingStyle();
-    
+
     EM_ASM({
         const ctx = Module.canvasContexts[UTF8ToString($0)];
         if (ctx) {
             ctx.strokeRect($1, $2, $3, $4);
         }
-    }, canvasId.c_str(), x, y, width, height);
+    }, canvasId.c_str(), rect.x, rect.y, rect.width, rect.height);
 }
 
 void UltraCanvasWASMRenderContext::DrawFilledRectangle(float x, float y, float width, float height) {
@@ -712,17 +713,17 @@ float UltraCanvasWASMRenderContext::GetTextHeight(const std::string& text) {
 void UltraCanvasWASMRenderContext::DrawImage(const ImageData& image, float x, float y) {
     // TODO: Implement image drawing
     // This requires creating an Image object in JavaScript and drawing it
-    std::cerr << "[WASM RenderContext] DrawImage not yet implemented" << std::endl;
+    debugOutput << "[WASM RenderContext] DrawImage not yet implemented" << std::endl;
 }
 
 void UltraCanvasWASMRenderContext::DrawImage(const ImageData& image, float x, float y, float width, float height) {
     // TODO: Implement image drawing with scaling
-    std::cerr << "[WASM RenderContext] DrawImage (scaled) not yet implemented" << std::endl;
+    debugOutput << "[WASM RenderContext] DrawImage (scaled) not yet implemented" << std::endl;
 }
 
 void UltraCanvasWASMRenderContext::DrawImage(const ImageData& image, const Rect2D& sourceRect, const Rect2D& destRect) {
     // TODO: Implement image drawing with source and destination rects
-    std::cerr << "[WASM RenderContext] DrawImage (cropped) not yet implemented" << std::endl;
+    debugOutput << "[WASM RenderContext] DrawImage (cropped) not yet implemented" << std::endl;
 }
 
 // ===== GRADIENTS =====

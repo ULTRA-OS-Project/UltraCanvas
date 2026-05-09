@@ -13,6 +13,7 @@
 #include <vector>
 #include <map>
 #include <vips/vips8>
+#include "UltraCanvasDebug.h"
 
 // ============================================================================
 // STRUCTURES
@@ -155,10 +156,10 @@ namespace PixelFX {
             }
 
         } catch (const vips::VError& e) {
-            std::cerr << "libvips error: " << e.what() << std::endl;
+            debugOutput << "libvips error: " << e.what() << std::endl;
             throw PixelFXException(std::string("libvips error: ") + e.what());
         } catch (const std::exception& e) {
-            std::cerr << "Error: " << e.what() << std::endl;
+            debugOutput << "Error: " << e.what() << std::endl;
             throw PixelFXException(std::string(e.what()));
         }
 

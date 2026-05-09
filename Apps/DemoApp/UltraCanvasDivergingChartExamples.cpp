@@ -6,7 +6,6 @@
 
 #include "UltraCanvasDemo.h"
 //#include "UltraCanvasButton3Sections.h"
-#include "UltraCanvasFormulaEditor.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include <sstream>
 #include <random>

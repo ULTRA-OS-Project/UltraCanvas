@@ -21,17 +21,14 @@ namespace UltraCanvas {
 
         // Text alignment
         TextAlignment horizontalAlign = TextAlignment::Left;
-        TextVerticalAlignment verticalAlign = TextVerticalAlignment::Middle;
+        VerticalAlignment verticalAlign = VerticalAlignment::Top;
+        // Word wrapping
+        TextWrap wrap = TextWrap::WrapNone;
 
         // Text effects
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 128);
         Point2Di shadowOffset = Point2Di(1, 1);
-
-        // Word wrapping
-        bool wordWrap = false;
-        bool autoResize = false;
-        bool isMarkup = false;
 
         static LabelStyle DefaultStyle() {
             return LabelStyle{};
@@ -52,11 +49,10 @@ namespace UltraCanvas {
 
         // ===== COMPUTED LAYOUT =====
         Rect2Di textArea;
-        Point2Di textPosition;
-        bool layoutDirty = true;
-
-        // ===== AUTO-SIZING =====
-        Size2Di preferredSize;
+        std::unique_ptr<ITextLayout> textLayout = nullptr;
+        int maxWidth = 0;
+        bool autoResize = false;
+        bool isMarkup = false;
 
     public:
         // ===== CONSTRUCTOR =====
@@ -77,10 +73,6 @@ namespace UltraCanvas {
             return text;
         }
 
-        void AppendText(const std::string &additionalText);
-        void ClearText();
-        bool IsEmpty() const;
-
         // ===== STYLE MANAGEMENT =====
         void SetStyle(const LabelStyle &newStyle);
         const LabelStyle &GetStyle() const {
@@ -92,18 +84,18 @@ namespace UltraCanvas {
         void SetFontSize(float fontSize);
         void SetFontWeight(const FontWeight w);
         void SetTextColor(const Color &color);
-        void SetAlignment(TextAlignment horizontal, TextVerticalAlignment vertical = TextVerticalAlignment::Middle);
-        void SetWordWrap(bool wrap);
+        void SetAlignment(TextAlignment horizontal, VerticalAlignment vertical = VerticalAlignment::Top);
+        void SetWrap(TextWrap wrap);
         void SetAutoResize(bool autoResize);
+        void SetMaxWidth(int mWidth);
         void SetTextIsMarkup(bool markup);
 
-        // ===== SIZING =====
-        void AutoResize(const Size2Di &textDimensions);
         int GetPreferredWidth() override;
         int GetPreferredHeight() override;
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
@@ -119,7 +111,9 @@ namespace UltraCanvas {
 
     protected:
         // ===== LAYOUT CALCULATION =====
-        void CalculateLayout(IRenderContext *ctx);
+//        void CalculateLayout(IRenderContext *ctx);
+        // ===== SIZING =====
+//        void AutoResize(const Size2Di &textDimensions);
 
     };
 // ===== FACTORY FUNCTIONS =====

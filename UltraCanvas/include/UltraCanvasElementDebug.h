@@ -12,6 +12,7 @@
 #include <string>
 #include <sstream>
 #include <iomanip>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -32,7 +33,7 @@ namespace UltraCanvas {
         Color textBackgroundColor = Color(0, 0, 0, 200);  // Semi-transparent black
         float borderWidth = 2.0f;
         FontStyle fontStyle = {
-            .fontFamily = "Sans",
+            .fontFamily = "",
             .fontSize = 12.0f
         };
 
@@ -119,7 +120,7 @@ namespace UltraCanvas {
             std::string debugText = GenerateDebugText(element, settings, ctx);
 
             if (!debugText.empty()) {
-                std::cout << debugText << std::endl;
+                debugOutput << debugText << std::endl;
                 DrawDebugText(debugText, bounds, absolutePos, settings,ctx);
             }
             ctx->PopState();
@@ -167,28 +168,28 @@ namespace UltraCanvas {
             ctx->SetStrokeWidth(1.0f);
 
             // Top-left corner
-            ctx->DrawLine(Point2Di(bounds.x, bounds.y),
-                     Point2Di(bounds.x + markerSize, bounds.y));
-            ctx->DrawLine(Point2Di(bounds.x, bounds.y),
-                     Point2Di(bounds.x, bounds.y + markerSize));
+            ctx->DrawLine(Point2Df(bounds.x, bounds.y),
+                     Point2Df(bounds.x + markerSize, bounds.y));
+            ctx->DrawLine(Point2Df(bounds.x, bounds.y),
+                     Point2Df(bounds.x, bounds.y + markerSize));
 
             // Top-right corner
-            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y),
-                     Point2Di(bounds.x + bounds.width - markerSize, bounds.y));
-            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y),
-                     Point2Di(bounds.x + bounds.width, bounds.y + markerSize));
+            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y),
+                     Point2Df(bounds.x + bounds.width - markerSize, bounds.y));
+            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y),
+                     Point2Df(bounds.x + bounds.width, bounds.y + markerSize));
 
             // Bottom-left corner
-            ctx->DrawLine(Point2Di(bounds.x, bounds.y + bounds.height),
-                     Point2Di(bounds.x + markerSize, bounds.y + bounds.height));
-            ctx->DrawLine(Point2Di(bounds.x, bounds.y + bounds.height),
-                     Point2Di(bounds.x, bounds.y + bounds.height - markerSize));
+            ctx->DrawLine(Point2Df(bounds.x, bounds.y + bounds.height),
+                     Point2Df(bounds.x + markerSize, bounds.y + bounds.height));
+            ctx->DrawLine(Point2Df(bounds.x, bounds.y + bounds.height),
+                     Point2Df(bounds.x, bounds.y + bounds.height - markerSize));
 
             // Bottom-right corner
-            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y + bounds.height),
-                     Point2Di(bounds.x + bounds.width - markerSize, bounds.y + bounds.height));
-            ctx->DrawLine(Point2Di(bounds.x + bounds.width, bounds.y + bounds.height),
-                     Point2Di(bounds.x + bounds.width, bounds.y + bounds.height - markerSize));
+            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y + bounds.height),
+                     Point2Df(bounds.x + bounds.width - markerSize, bounds.y + bounds.height));
+            ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y + bounds.height),
+                     Point2Df(bounds.x + bounds.width, bounds.y + bounds.height - markerSize));
 
             ctx->PopState();
         }
@@ -227,7 +228,7 @@ namespace UltraCanvas {
             }
 
             if (settings.showZIndex) {
-                debugText << "Z: " << element->GetZIndex();
+                debugText << "Z: " << element->GetZOrder();
                 if (settings.multilineText) debugText << "\n";
                 else debugText << " | ";
             }
@@ -279,7 +280,7 @@ namespace UltraCanvas {
             Point2Di textSize = ctx->GetTextDimension(text);
 
             // Calculate text position (top-left corner of element, with padding)
-            Point2Di textPos = Point2Di(bounds.x + settings.textPadding,
+            Point2Df textPos = Point2Df(bounds.x + settings.textPadding,
                                       bounds.y - textSize.y - settings.textPadding);
 
             // Ensure text stays within screen bounds

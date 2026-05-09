@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.h
 // Complete Linux platform implementation for UltraCanvas Framework
-// Version: 1.2.0
-// Last Modified: 2025-07-15
+// Version: 1.3.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -19,6 +19,7 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/Xatom.h>
+#include <X11/Xlocale.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>
@@ -51,7 +52,7 @@ namespace UltraCanvas {
     };
 
 // ===== LINUX APPLICATION CLASS =====
-    class UltraCanvasLinuxApplication : public UltraCanvasBaseApplication {
+    class UltraCanvasLinuxApplication : public UltraCanvasApplicationBase {
     private:
         static UltraCanvasLinuxApplication* instance;
 
@@ -63,6 +64,8 @@ namespace UltraCanvas {
         Colormap colormap;
         int depth;
 
+        std::unordered_map<UCMouseCursor, Cursor> cursors;
+
         // ===== OPENGL CONTEXT =====
         bool glxSupported;
 
@@ -70,6 +73,12 @@ namespace UltraCanvas {
 
         bool eventThreadRunning;
         std::thread eventThread;
+
+        // Wakeup mechanism for cross-thread signaling
+        int wakeupFd = -1;
+ 
+        // ===== X INPUT METHOD (XIM) FOR UTF-8 SUPPORT =====
+        XIM xim;                    // X Input Method handle
 
         // ===== TIMING AND FRAME RATE =====
 //        std::chrono::steady_clock::time_point lastFrameTime;
@@ -84,12 +93,12 @@ namespace UltraCanvas {
 
         // ===== SYSTEM ATOMS =====
         Atom wmDeleteWindow;
-        Atom wmProtocols;
-        Atom wmState;
-        Atom wmStateFullscreen;
-        Atom wmStateMaximizedHorz;
-        Atom wmStateMaximizedVert;
-        Atom wmStateMinimized;
+//        Atom wmProtocols;
+//        Atom wmState;
+//        Atom wmStateFullscreen;
+//        Atom wmStateMaximizedHorz;
+//        Atom wmStateMaximizedVert;
+//        Atom wmStateMinimized;
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
@@ -129,12 +138,12 @@ namespace UltraCanvas {
 
         // Atom access
         Atom GetWMDeleteWindow() const { return wmDeleteWindow; }
-        Atom GetWMProtocols() const { return wmProtocols; }
-        Atom GetWMState() const { return wmState; }
-        Atom GetWMStateFullscreen() const { return wmStateFullscreen; }
-        Atom GetWMStateMaximizedHorz() const { return wmStateMaximizedHorz; }
-        Atom GetWMStateMaximizedVert() const { return wmStateMaximizedVert; }
-        Atom GetWMStateMinimized() const { return wmStateMinimized; }
+//        Atom GetWMProtocols() const { return wmProtocols; }
+//        Atom GetWMState() const { return wmState; }
+//        Atom GetWMStateFullscreen() const { return wmStateFullscreen; }
+//        Atom GetWMStateMaximizedHorz() const { return wmStateMaximizedHorz; }
+//        Atom GetWMStateMaximizedVert() const { return wmStateMaximizedVert; }
+//        Atom GetWMStateMinimized() const { return wmStateMinimized; }
 
         void ProcessXEvent(XEvent& xEvent);
 
@@ -155,6 +164,10 @@ namespace UltraCanvas {
         void SetDoubleClickDistance(int pixels) {
             mouseClickInfo.doubleClickDistance = pixels;
         }
+        bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor cur) override;
+        bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor cur, const char* filename, int hotspotX, int hotspotY) override;
+
+        XIM GetXIM() const { return xim; }
 
     protected:
         // ===== INHERITED FROM BASE APPLICATION =====
@@ -163,12 +176,21 @@ namespace UltraCanvas {
         void CaptureMouseNative() override;
         void ReleaseMouseNative() override;
         void CollectAndProcessNativeEvents() override;
+        void WakeUpEventLoop() override;
+        void InitializeWakeUp() override;
+        void ShutdownWakeUp() override;
+        FontStyle DetectSystemFontStyleNative() override;
+        FontStyle DetectMonospacedFontStyleNative() override;
+
+        Cursor LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY);
 
     private:
         // ===== INTERNAL INITIALIZATION =====
         bool InitializeX11();
         bool InitializeGLX();
         void InitializeAtoms();
+        bool InitializeXIM();
+        void ShutdownXIM();
 
         // ===== EVENT PROCESSING INTERNALS =====
         void EventThreadFunction();

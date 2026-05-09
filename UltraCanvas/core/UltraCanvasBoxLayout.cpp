@@ -198,7 +198,7 @@ int UltraCanvasBoxLayoutItem::GetPreferredHeight() const {
             if (item->GetWidthMode() == SizeMode::Fixed) {
                 itemWidth = item->GetFixedWidth();
             } else if (item->GetWidthMode() == SizeMode::Fill || item->GetStretch() > 0) {
-                itemWidth = static_cast<int>(stretchUnit * item->GetStretch());
+                itemWidth = std::max(0, static_cast<int>(stretchUnit * item->GetStretch()) - 1);
             } else {
                 itemWidth = item->GetPreferredWidth();
             }

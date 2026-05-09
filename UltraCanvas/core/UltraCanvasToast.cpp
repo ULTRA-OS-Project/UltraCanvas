@@ -345,7 +345,7 @@ namespace UltraCanvas {
 
 // ===== RENDERING IMPLEMENTATION =====
 
-    void UltraCanvasToast::Render(IRenderContext* ctx) {
+    void UltraCanvasToast::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         IRenderContext *ctx = GetRenderContext();
         if (!isVisible) return;
 

@@ -16,6 +16,8 @@
 #include <cctype>
 #include <chrono>
 #include <iostream>
+#include <mutex>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     extern const char* versionString;
@@ -27,6 +29,11 @@ namespace UltraCanvas {
     std::string GetFileExtension(const std::string& filePath);
     std::string LoadFile(const std::string& filePath);
     std::string FormatFileSize(size_t bytes);
+
+    std::string GetExecutableDir();
+    std::string NormalizePath(const std::string& in);
+
+    void OpenURL(const std::string& url);
 
     std::vector<uint8_t> Base64Decode(const std::string& input);
 
@@ -63,18 +70,23 @@ namespace UltraCanvas {
         // Return duration in microseconds
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
-        std::cout << logPrefix << " Execution time: " << duration << " us\n";
+        debugOutput << logPrefix << " Execution time: " << duration << " us\n";
     }
 
 
-    template <class ET> class UCCache {
-    private:
-        struct UCCacheEntry {
-            std::shared_ptr<ET> payload = nullptr;
-            std::chrono::steady_clock::time_point lastAccess;
-        };
+// Cache entry MUST have payload shared pointer, lastAccess and GetEntrySize method, like below
+//    struct UCPixmapCairoCacheEntry {
+//        std::shared_ptr<UCPixmapCairo> payload;
+//        std::chrono::steady_clock::time_point lastAccess;
+//        size_t GetEntrySize() {
+//            return payload->GetWidth() * payload->GetHeight() * 4 + sizeof(UCPixmapCairoCacheEntry);
+//        }
+//    };
 
-        std::unordered_map<std::string, UCCacheEntry> cache;
+    template <class ET, class CACHEENTRY> class UCCache {
+    private:
+
+        std::unordered_map<std::string, CACHEENTRY> cache;
         std::mutex cacheMutex;
         size_t maxCacheSize = 50 * 1024 * 1024;
         size_t currentCacheSize = 0;
@@ -89,7 +101,7 @@ namespace UltraCanvas {
             }
 
             if (oldest != cache.end()) {
-                currentCacheSize -= oldest->second.payload->GetDataSize();
+                currentCacheSize -= oldest->second.GetEntrySize();
                 cache.erase(oldest);
             }
         }
@@ -100,16 +112,18 @@ namespace UltraCanvas {
             if (!p) return;
 
             std::lock_guard<std::mutex> lock(cacheMutex);
-            size_t dataSize = p->GetDataSize();
+
+            CACHEENTRY entry;
+            entry.lastAccess = std::chrono::steady_clock::now();
+            entry.payload = p;
+
+            size_t dataSize = entry.GetEntrySize();
 
             // Check if we need to make room
             while (currentCacheSize + dataSize > maxCacheSize && !cache.empty()) {
                 RemoveOldestCacheEntry();
             }
 
-            UCCacheEntry entry;
-            entry.lastAccess = std::chrono::steady_clock::now();
-            entry.payload = p;
             cache[key] = std::move(entry);
             currentCacheSize += dataSize;
         }

@@ -331,20 +331,16 @@ namespace UltraCanvas {
         RefreshLayout();
     }
 
-// ===== RENDERING =====
-    void UltraCanvasTemplate::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
-
-        // Rebuild if necessary
+    void UltraCanvasTemplate::UpdateGeometry(IRenderContext* ctx) {
         if (isDirty) {
+            ctx->PushState();
             RebuildTemplate();
+            ctx->PopState();
         }
+    }
 
-        auto* ctx = GetRenderContext();
-        if (!ctx) return;
-
-        ULTRACANVAS_RENDER_SCOPE(ctx);
-
+// ===== RENDERING =====
+    void UltraCanvasTemplate::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // Draw template background
         DrawTemplateBackground();
 
@@ -357,16 +353,16 @@ namespace UltraCanvas {
         if (scrollSettings.horizontal != TemplateScrollMode::Off ||
             scrollSettings.vertical != TemplateScrollMode::Off) {
             ctx->PushState();
-            ctx->ClipRect(
-                    static_cast<float>(GetX()) + appearance.paddingLeft,
-                    static_cast<float>(GetY()) + appearance.paddingTop,
-                    static_cast<float>(GetWidth()) - appearance.paddingLeft - appearance.paddingRight,
-                    static_cast<float>(GetHeight()) - appearance.paddingTop - appearance.paddingBottom
-            );
+            ctx->ClipRect({
+                                  GetX() + appearance.paddingLeft,
+                                  GetY() + appearance.paddingTop,
+                                  GetWidth() - appearance.paddingLeft - appearance.paddingRight,
+                                  GetHeight() - appearance.paddingTop - appearance.paddingBottom
+                          });
         }
 
         // Render container children (the template elements)
-        UltraCanvasContainer::Render(IRenderContext* ctx);
+        UltraCanvasContainer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
 
         // Restore clipping
         if (scrollSettings.horizontal != TemplateScrollMode::Off ||
@@ -746,7 +742,7 @@ namespace UltraCanvas {
         // Draw handle background
         Color handleColor = isDragging ? dragHandle.dragColor : dragHandle.handleColor;
         ctx->SetFillPaint(handleColor);
-        ctx->FillRectangle(handleRect.x, handleRect.y, handleRect.width, handleRect.height);
+        ctx->FillRectangle(handleRect);
 
         // Draw grip pattern
         ctx->SetStrokePaint(Color(100, 100, 100));
@@ -772,10 +768,10 @@ namespace UltraCanvas {
             for (int i = -2; i <= 2; ++i) {
                 if (dragHandle.position == LayoutDockSide::Top || dragHandle.position == LayoutDockSide::Bottom) {
                     float lineX = centerX + i * 6;
-                    ctx->DrawLine(lineX, handleRect.y + 2, lineX, handleRect.y + handleRect.height - 2);
+                    ctx->DrawLine({lineX, handleRect.y + 2}, {lineX, handleRect.y + handleRect.height - 2});
                 } else {
                     float lineY = centerY + i * 6;
-                    ctx->DrawLine(handleRect.x + 2, lineY, handleRect.x + handleRect.width - 2, lineY);
+                    ctx->DrawLine({handleRect.x + 2, lineY}, {handleRect.x + handleRect.width - 2, lineY});
                 }
             }
         } else if (dragHandle.gripPattern == "bars") {
@@ -783,10 +779,10 @@ namespace UltraCanvas {
             for (int i = -1; i <= 1; ++i) {
                 if (dragHandle.position == LayoutDockSide::Top || dragHandle.position == LayoutDockSide::Bottom) {
                     float barX = centerX + i * 10 - 3;
-                    ctx->FillRectangle(barX, handleRect.y + 2, 6, handleRect.height - 4);
+                    ctx->FillRectangle(Rect2Df(barX, handleRect.y + 2, 6, handleRect.height - 4));
                 } else {
                     float barY = centerY + i * 10 - 3;
-                    ctx->FillRectangle(handleRect.x + 2, barY, handleRect.width - 4, 6);
+                    ctx->FillRectangle(Rect2Df(handleRect.x + 2, barY, handleRect.width - 4, 6));
                 }
             }
         }
@@ -796,26 +792,26 @@ namespace UltraCanvas {
         auto* ctx = GetRenderContext();
         if (!ctx) return;
 
-        float x = static_cast<float>(GetX());
-        float y = static_cast<float>(GetY());
-        float w = static_cast<float>(GetWidth());
-        float h = static_cast<float>(GetHeight());
+        double x = static_cast<double>(GetX());
+        double y = static_cast<double>(GetY());
+        double w = static_cast<double>(GetWidth());
+        double h = static_cast<double>(GetHeight());
 
         // Draw shadow if enabled
         if (appearance.hasShadow) {
             ctx->SetFillPaint(appearance.shadowColor);
             if (appearance.cornerRadius > 0) {
-                ctx->FillRoundedRectangle(
-                        x + appearance.shadowOffset.x,
-                        y + appearance.shadowOffset.y,
-                        w, h, appearance.cornerRadius
-                );
+                ctx->FillRoundedRectangle({
+                                                  x + appearance.shadowOffset.x,
+                                                  y + appearance.shadowOffset.y,
+                                                  w, h, appearance.cornerRadius
+                                          });
             } else {
-                ctx->FillRectangle(
+                ctx->FillRectangle(Rect2Df(
                         x + appearance.shadowOffset.x,
                         y + appearance.shadowOffset.y,
                         w, h
-                );
+                ));
             }
         }
 
@@ -823,9 +819,9 @@ namespace UltraCanvas {
         if (appearance.backgroundColor.a > 0) {
             ctx->SetFillPaint(appearance.backgroundColor);
             if (appearance.cornerRadius > 0) {
-                ctx->FillRoundedRectangle(x, y, w, h, appearance.cornerRadius);
+                ctx->FillRoundedRectangle({x, y, w, h}, appearance.cornerRadius);
             } else {
-                ctx->FillRectangle(x, y, w, h);
+                ctx->FillRectangle(Rect2Df(x, y, w, h));
             }
         }
 
@@ -836,7 +832,7 @@ namespace UltraCanvas {
             if (appearance.cornerRadius > 0) {
                 ctx->DrawRoundedRectangle(x, y, w, h, appearance.cornerRadius);
             } else {
-                ctx->DrawRectangle(x, y, w, h);
+                ctx->DrawRectangle(Rect2Df(x, y, w, h));
             }
         }
     }

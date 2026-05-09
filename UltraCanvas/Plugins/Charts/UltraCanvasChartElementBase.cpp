@@ -16,9 +16,7 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
-    void UltraCanvasChartElementBase::Render(IRenderContext* ctx) {
-        // Get render interface
-        ctx->PushState();
+    void UltraCanvasChartElementBase::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // Check if we have data
         if (!dataSource || dataSource->GetPointCount() == 0) {
             DrawEmptyState(ctx);
@@ -33,9 +31,6 @@ namespace UltraCanvas {
             UpdateAnimation();
         }
 
-        // Set clipping to element bounds using existing functions
-        ctx->ClipRect(GetActualBounds());
-
         // Draw common background
         RenderCommonBackground(ctx);
 
@@ -47,8 +42,6 @@ namespace UltraCanvas {
             DrawSelectionIndicators(ctx);
         }
 
-        // Clear clipping using existing functions
-        ctx->PopState();
     }
 
     bool UltraCanvasChartElementBase::OnEvent(const UCEvent& event) {
@@ -107,16 +100,16 @@ namespace UltraCanvas {
         if (!ctx) return;
 
         // Draw overall background using existing functions
-        ctx->DrawFilledRectangle(GetBounds(), backgroundColor);
+        ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
 
         // Draw plot area background using existing functions
         ctx->SetFillPaint(plotAreaColor);
-        ctx->FillRectangle(cachedPlotArea.x, cachedPlotArea.y, cachedPlotArea.width, cachedPlotArea.height);
+        ctx->FillRectangle(cachedPlotArea.ToRect2D());
 
         // Draw plot area border using existing functions
         ctx->SetStrokePaint(Color(180, 180, 180, 255));
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(cachedPlotArea.x, cachedPlotArea.y, cachedPlotArea.width, cachedPlotArea.height);
+        ctx->DrawRectangle(cachedPlotArea.ToRect2D());
 
         // Draw grid if enabled using existing functions
         if (showGrid) {
@@ -134,8 +127,8 @@ namespace UltraCanvas {
             ctx->SetFontSize(16.0f);
 
             // Calculate center position (simplified)
-            int titleX = GetX() + GetWidth() / 2 - static_cast<int>(chartTitle.length()) * 5;
-            ctx->DrawText(chartTitle, titleX, GetY());
+            double titleX = static_cast<double>(GetWidth()) / 2 - chartTitle.length() * 5;
+            ctx->DrawText(chartTitle, Point2Df(titleX, 0));
         }
     }
 
@@ -149,14 +142,14 @@ namespace UltraCanvas {
         int numVerticalLines = 10;
         for (int i = 1; i < numVerticalLines; ++i) {
             float x = cachedPlotArea.x + (i * cachedPlotArea.width / numVerticalLines);
-            ctx->DrawLine(x, cachedPlotArea.y, x, cachedPlotArea.y + cachedPlotArea.height);
+            ctx->DrawLine({x, cachedPlotArea.y}, { x, cachedPlotArea.y + cachedPlotArea.height});
         }
 
         // Horizontal grid lines using existing DrawLine
         int numHorizontalLines = 8;
         for (int i = 1; i < numHorizontalLines; ++i) {
             float y = cachedPlotArea.y + (i * cachedPlotArea.height / numHorizontalLines);
-            ctx->DrawLine(cachedPlotArea.x, y, cachedPlotArea.x + cachedPlotArea.width, y);
+            ctx->DrawLine({cachedPlotArea.x, y}, { cachedPlotArea.x + cachedPlotArea.width, y});
         }
     }
 
@@ -168,12 +161,12 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(1.0f);
 
         // Draw X-axis using existing DrawLine
-        ctx->DrawLine(cachedPlotArea.x, cachedPlotArea.y + cachedPlotArea.height,
-                      cachedPlotArea.x + cachedPlotArea.width, cachedPlotArea.y + cachedPlotArea.height);
+        ctx->DrawLine({cachedPlotArea.x, cachedPlotArea.y + cachedPlotArea.height}, {
+                      cachedPlotArea.x + cachedPlotArea.width, cachedPlotArea.y + cachedPlotArea.height});
 
         // Draw Y-axis using existing DrawLine
-        ctx->DrawLine(cachedPlotArea.x, cachedPlotArea.y,
-                      cachedPlotArea.x, cachedPlotArea.y + cachedPlotArea.height);
+        ctx->DrawLine({cachedPlotArea.x, cachedPlotArea.y}, {
+                      cachedPlotArea.x, cachedPlotArea.y + cachedPlotArea.height});
 
         // Draw basic tick marks and labels
         RenderAxisLabels(ctx);
@@ -196,7 +189,7 @@ namespace UltraCanvas {
 //            float tickX = cachedPlotArea.x;
 //
 //            // Draw tick mark using existing DrawLine
-//            ctx->DrawLine(tickX - 5, y, tickX, y);
+//            ctx->DrawLine({tickX - 5, y}, { tickX, y});
 //
 //            // Draw label using existing DrawText
 //            double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
@@ -242,7 +235,7 @@ namespace UltraCanvas {
                 float tickY = cachedPlotArea.y + cachedPlotArea.height;
 
                 // Draw tick mark
-                ctx->DrawLine(x, tickY, x, tickY + 5);
+                ctx->DrawLine({x, tickY}, { x, tickY + 5});
 
                 // Draw label (use label if available, otherwise fall back to x value)
                 std::string label = point.label;
@@ -255,23 +248,22 @@ namespace UltraCanvas {
                     ctx->PushState();
                     ctx->Translate(x, tickY + 8);
                     ctx->Rotate(xAxisLabelRotation * M_PI / 180.0f);
-                    ctx->DrawText(label, 0, 0);
+                    ctx->DrawText(label, {0, 0});
                     ctx->PopState();
                 } else {
-                    int txtW, txtH;
-                    ctx->GetTextLineDimensions(label, txtW, txtH);
-                    ctx->DrawText(label, x - txtW / 2, tickY + 8);
+                    Size2Di txtSize = ctx->GetTextLineDimensions(label);
+                    ctx->DrawText(label, {x - txtSize.width / 2, tickY + 8});
                 }
             }
         } else {
             // Use numeric values with actual data coordinates
             int numXTicks = 8;
             for (int i = 0; i <= numXTicks; ++i) {
-                float x = cachedPlotArea.x + (i * cachedPlotArea.width / numXTicks);
-                float tickY = cachedPlotArea.y + cachedPlotArea.height;
+                double x = cachedPlotArea.x + (i * cachedPlotArea.width / numXTicks);
+                double tickY = cachedPlotArea.y + cachedPlotArea.height;
 
                 // Draw tick mark
-                ctx->DrawLine(x, tickY, x, tickY + 5);
+                ctx->DrawLine({x, tickY}, { x, tickY + 5});
 
                 // Draw label
                 double labelValue = cachedDataBounds.minX + (i * (cachedDataBounds.maxX - cachedDataBounds.minX) / numXTicks);
@@ -281,27 +273,27 @@ namespace UltraCanvas {
                     ctx->PushState();
                     ctx->Translate(x, tickY + 8);
                     ctx->Rotate(xAxisLabelRotation * M_PI / 180.0f);
-                    ctx->DrawText(label, 0, 0);
+                    ctx->DrawText(label, {0, 0});
                     ctx->PopState();
                 } else {
-                    ctx->DrawText(label, x - 4, tickY + 8);
+                    ctx->DrawText(label, Point2Df (x - 4, tickY + 8));
                 }
             }
         }
 
-        int numYTicks = 6, txtW, txtH;
+        int numYTicks = 6;
         for (int i = 0; i <= numYTicks; ++i) {
-            float y = cachedPlotArea.y + cachedPlotArea.height - (i * cachedPlotArea.height / numYTicks);
-            float tickX = cachedPlotArea.x;
+            double y = cachedPlotArea.y + cachedPlotArea.height - (i * cachedPlotArea.height / numYTicks);
+            double tickX = cachedPlotArea.x;
 
             // Draw tick mark using existing DrawLine
-            ctx->DrawLine(tickX - 5, y, tickX, y);
+            ctx->DrawLine({tickX - 5, y}, { tickX, y});
 
             // Draw label using existing DrawText
             double labelValue = cachedDataBounds.minY + (i * (cachedDataBounds.maxY - cachedDataBounds.minY) / numYTicks);
             std::string label = FormatAxisLabel(labelValue);
-            ctx->GetTextLineDimensions(label, txtW, txtH);
-            ctx->DrawText(label, tickX - txtW - 8, y - (txtH / 2));
+            Size2Di txtSize = ctx->GetTextLineDimensions(label);
+            ctx->DrawText(label, Point2Df (tickX - txtSize.width - 8, y - (static_cast<double>(txtSize.height) / 2)));
         }
     }
 
@@ -333,20 +325,19 @@ namespace UltraCanvas {
                 ctx->PushState();
                 ctx->Translate(labelPos.x, labelPos.y);
                 ctx->Rotate(-45 * M_PI / 180.0f);
-                ctx->DrawText(valueText, 0, 0);
+                ctx->DrawText(valueText, {0, 0});
                 ctx->PopState();
             } else if (valueLabelRotation != 0.0f) {
                 // Manual rotation
                 ctx->PushState();
                 ctx->Translate(labelPos.x, labelPos.y);
                 ctx->Rotate(valueLabelRotation * M_PI / 180.0f);
-                ctx->DrawText(valueText, 0, 0);
+                ctx->DrawText(valueText, {0, 0});
                 ctx->PopState();
             } else {
                 // No rotation - center the text
-                int txtW, txtH;
-                ctx->GetTextLineDimensions(valueText, txtW, txtH);
-                ctx->DrawText(valueText, static_cast<int>(labelPos.x - txtW/2), static_cast<int>(labelPos.y));
+                Size2Di txtSize = ctx->GetTextLineDimensions(valueText);
+                ctx->DrawText(valueText, {labelPos.x - txtSize.width/2, labelPos.y});
             }
         }
     }
@@ -405,27 +396,27 @@ namespace UltraCanvas {
         // Use existing IRenderContext drawing functions
         ctx->SetStrokePaint(Color(255, 0, 0, 255)); // Red selection indicator
         ctx->SetStrokeWidth(2.0f);
-        ctx->DrawCircle(screenPos.x, screenPos.y, indicatorSize);
+        ctx->DrawCircle(screenPos, indicatorSize);
     }
 
     void UltraCanvasChartElementBase::DrawEmptyState(IRenderContext* ctx) {
         // Use existing IRenderContext functions
         ctx->SetFillPaint(Color(240, 240, 240, 255));
-        ctx->FillRectangle(GetX(), GetY(), GetWidth(), GetHeight());
+        ctx->FillRectangle(GetLocalBounds());
 
         ctx->SetTextPaint(Color(128, 128, 128, 255));
         ctx->SetFontSize(14.0f);
 
         std::string emptyText = "No data to display";
         // Calculate center position (simplified)
-        int textX = GetX() + GetWidth() / 2 - 60;
-        int textY = GetY() + GetHeight() / 2;
+        double textX = static_cast<double>(GetWidth()) / 2 - 60;
+        double textY = static_cast<double>(GetHeight()) / 2;
 
-        ctx->DrawText(emptyText, textX, textY);
+        ctx->DrawText(emptyText, {textX, textY});
     }
 
     bool UltraCanvasChartElementBase::HandleMouseMove(const UCEvent& event) {
-        Point2Di mousePos(event.x, event.y);
+        Point2Di mousePos(event.pointer.x, event.pointer.y);
         lastMousePos = mousePos;
 
         // Call derived class for chart-specific handling
@@ -443,7 +434,7 @@ namespace UltraCanvas {
     bool UltraCanvasChartElementBase::HandleMouseDown(const UCEvent& event) {
         if (event.button == UCMouseButton::Left) { // Left mouse button
             isDragging = true;
-            lastMousePos = Point2Di(event.x, event.y);
+            lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
             return true;
         }
         return false;

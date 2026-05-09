@@ -1,25 +1,43 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.2.5
-// Last Modified: 2025-01-08
+// Version: 1.5.0
+// Last Modified: 2026-05-06
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
-#include "UltraCanvasKeyboardManager.h"
-//#include "UltraCanvasZOrderManager.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasScrollbar.h"
 #include <vector>
 #include <string>
 #include <functional>
 #include <memory>
 #include <chrono>
 #include <algorithm>
+#include <optional>
+
+// ===== PLATFORM SHORTCUT FORMATTER =====
+// Each OS backend provides GetDisplayShortcut(). On non-macOS platforms
+// the fallback header returns the string unchanged — zero runtime cost.
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+  #if TARGET_OS_MAC && !TARGET_OS_IPHONE
+    #include "../OS/MacOS/UltraCanvasMacOSShortcutFormat.h"
+  #endif
+#endif
+
+#ifndef ULTRACANVAS_PLATFORM_SHORTCUT_DEFINED
+// Fallback for Linux, Windows, iOS, Android, WASM — pass-through
+namespace UltraCanvas {
+    inline std::string GetDisplayShortcut(const std::string& s) { return s; }
+}
+#define ULTRACANVAS_PLATFORM_SHORTCUT_DEFINED
+#endif
 
 namespace UltraCanvas {
-
+    class UltraCanvasWindowBase;
 // ===== MENU TYPES AND ENUMS =====
     enum class MenuType {
         Menubar,
@@ -32,13 +50,6 @@ namespace UltraCanvas {
         Horizontal
     };
 
-    enum class MenuState {
-        Hidden,
-        Opening,
-        Visible,
-        Closing
-    };
-
     enum class MenuItemType {
         Action,
         Separator,
@@ -46,7 +57,8 @@ namespace UltraCanvas {
         Radio,
         Submenu,
         Input,
-        Custom
+        Custom,
+        Header
     };
 
 // ===== MENU ITEM DATA =====
@@ -65,11 +77,27 @@ namespace UltraCanvas {
         std::function<void(bool)> onToggle;
         std::function<void(const std::string&)> onTextInput;
 
-        // Submenu items
+        // Submenu items — either static (subItems) or lambda-provided (subItemsProvider).
+        // If subItemsProvider is set, it is invoked each time the submenu opens,
+        // and the returned vector is used instead of subItems.
         std::vector<MenuItemData> subItems;
+        std::function<std::vector<MenuItemData>()> subItemsProvider;
+
+        // Per-item font override (uses parent menu font if nullopt)
+        std::optional<FontStyle> font;
 
         // Custom data
         void* userData = nullptr;
+
+        // Optional hover hint shown via UltraCanvasTooltipManager (empty = no tooltip)
+        std::string tooltip;
+
+        // How the label is shortened when it doesn't fit horizontally.
+        EllipsizeMode ellipsize = EllipsizeMode::EllipsizeMiddle;
+
+        // For Submenu items: max width applied to the auto-opened child menu
+        // (0 = inherit from parent's MenuStyle::maxWidth).
+        int submenuMaxWidth = 0;
 
         // Constructors
         MenuItemData() = default;
@@ -82,14 +110,30 @@ namespace UltraCanvas {
         // Factory methods
         static MenuItemData Action(const std::string& label, std::function<void()> callback);
         static MenuItemData Action(const std::string& label, const std::string& iconPath, std::function<void()> callback);
+        static MenuItemData Action(const std::string& label, const FontStyle& font, std::function<void()> callback);
+        static MenuItemData Action(const std::string& label, const std::string& iconPath, const FontStyle& font, std::function<void()> callback);
         static MenuItemData ActionWithShortcut(const std::string& label, const std::string& itemShortcut, const std::string& iconPath, std::function<void()> callback);
         static MenuItemData ActionWithShortcut(const std::string& label, const std::string& itemShortcut, std::function<void()> callback);
+        static MenuItemData ActionWithShortcut(const std::string& label, const std::string& itemShortcut, const FontStyle& font, std::function<void()> callback);
+        static MenuItemData ActionWithShortcut(const std::string& label, const std::string& itemShortcut, const std::string& iconPath, const FontStyle& font, std::function<void()> callback);
         static MenuItemData Separator();
+        static MenuItemData Header(const std::string& label);
         static MenuItemData Checkbox(const std::string& label, bool checked, std::function<void(bool)> callback);
+        static MenuItemData Checkbox(const std::string& label, bool checked, const FontStyle& font, std::function<void(bool)> callback);
         static MenuItemData Radio(const std::string& label, int group, bool checked, std::function<void(bool)> callback);
+        static MenuItemData Radio(const std::string& label, int group, bool checked, const FontStyle& font, std::function<void(bool)> callback);
         static MenuItemData Submenu(const std::string& label, const std::vector<MenuItemData>& items);
         static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const std::vector<MenuItemData>& items);
+        static MenuItemData Submenu(const std::string& label, const FontStyle& font, const std::vector<MenuItemData>& items);
+        static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const FontStyle& font, const std::vector<MenuItemData>& items);
+        static MenuItemData Submenu(const std::string& label, std::function<std::vector<MenuItemData>()> provider);
+        static MenuItemData Submenu(const std::string& label, const std::string& iconPath, std::function<std::vector<MenuItemData>()> provider);
+        static MenuItemData Submenu(const std::string& label, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider);
+        static MenuItemData Submenu(const std::string& label, const std::string& iconPath, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider);
         static MenuItemData Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback);
+        static MenuItemData Input(const std::string& label, const std::string& placeholder, const FontStyle& font, std::function<void(const std::string&)> callback);
+
+        bool HasSubmenu() const { return type == MenuItemType::Submenu; }
     };
 
 // ===== MENU STYLING =====
@@ -105,17 +149,16 @@ namespace UltraCanvas {
         Color textColor = Colors::Black;
         Color shortcutColor = Color(100, 100, 100, 255);
         Color disabledTextColor = Color(150, 150, 150);
+        Color headerTextColor = Color(100, 100, 100);
 
         // Typography
-        std::string fontFamily = "Sans";
-        float fontSize = 12.0f;
-        FontWeight fontWeight = FontWeight::Normal;
+        FontStyle font;
 
         // Dimensions
         int itemHeight = 28;
         int iconSize = 16;
         int paddingLeft = 4;
-        int paddingRight = 8;
+        int paddingRight = 4;
         int paddingTop = 4;
         int paddingBottom = 4;
         int iconSpacing = 6;
@@ -123,20 +166,25 @@ namespace UltraCanvas {
         int separatorHeight = 8;
         int borderWidth = 1;
         int borderRadius = 4;
+        int minWidth = 0;       // Minimum menu width (0 = no minimum)
+        int maxWidth = 0;       // Maximum menu width (0 = no maximum, items ellipsize when exceeded)
 
         // Submenu
         int submenuDelay = 300;  // milliseconds
         int submenuOffset = 2;
 
         // Animation
-        bool enableAnimations = true;
+        bool enableAnimations = false;
         float animationDuration = 0.15f;
 
         // Shadow
         bool showShadow = true;
         Color shadowColor = Color(0, 0, 0, 100);
-        Point2Di shadowOffset = Point2Di(2, 2);
+        Point2Di shadowOffset = Point2Di(1, 1);
         int shadowBlur = 4;
+
+        // Scrollbar (for overflow menus)
+        ScrollbarStyle scrollbarStyle;
 
         static MenuStyle Default();
         static MenuStyle Dark();
@@ -144,40 +192,47 @@ namespace UltraCanvas {
     };
 
 // ===== MAIN MENU CLASS =====
-    class UltraCanvasMenu : public UltraCanvasUIElement, public std::enable_shared_from_this<UltraCanvasMenu> {
+    class UltraCanvasMenu : public UltraCanvasUIElement {
     private:
         // Menu properties
         MenuType menuType = MenuType::PopupMenu;
         MenuOrientation orientation = MenuOrientation::Vertical;
-        MenuState currentState = MenuState::Hidden;
         MenuStyle style;
 
         // Menu items
         std::vector<MenuItemData> items;
 
         // Navigation state
-        int hoveredIndex = -1;
+        int activeIndex = -1;
         int selectedIndex = -1;
-        int keyboardIndex = -1;
-        bool keyboardNavigation = false;
         bool needCalculateSize = true;
+
+        PopupElementSettings menuPopupSettings;
 
         // Submenu management
         std::shared_ptr<UltraCanvasMenu> activeSubmenu;
         std::weak_ptr<UltraCanvasMenu> parentMenu;
+        int parentItemIndex = -1;  // Index of the parent item that opened this submenu
         std::vector<std::shared_ptr<UltraCanvasMenu>> childMenus;
+
+        // Scroll support for overflow menus
+        std::shared_ptr<UltraCanvasScrollbar> menuScrollbar;
+        int scrollOffsetPixels = 0;
+        int totalContentHeight = 0;
+        int clampedMenuHeight = 0;
+        bool needsScrollbar = false;
 
         // Animation
         std::chrono::steady_clock::time_point animationStartTime;
         float animationProgress = 0.0f;
 
         // Events
+    public:
         std::function<void()> onMenuOpened;
         std::function<void()> onMenuClosed;
         std::function<void(int)> onItemSelected;
         std::function<void(int)> onItemHovered;
 
-    public:
         // ===== CONSTRUCTORS =====
         UltraCanvasMenu(const std::string& identifier, long id, long x, long y, long w, long h)
                 : UltraCanvasUIElement(identifier, id, x, y, w, h) {
@@ -189,13 +244,11 @@ namespace UltraCanvas {
         }
 
         // ===== CORE RENDERING =====
-        void Render(IRenderContext* ctx) override;
-        void RenderPopupContent(IRenderContext* ctx) override;
-
-        bool OnEvent(const UCEvent& event) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
-        bool HandleEvent(const UCEvent& event);
+        bool OnEvent(const UCEvent& event) override;
 
         // ===== MENU TYPE AND CONFIGURATION =====
         void SetMenuType(MenuType type);
@@ -215,74 +268,30 @@ namespace UltraCanvas {
         const MenuStyle& GetStyle() const { return style; }
 
         // ===== ITEM MANAGEMENT =====
-        void AddItem(const MenuItemData& item) {
-            items.push_back(item);
-            needCalculateSize = true;
-        }
+        void AddItem(const MenuItemData& item);
+        void InsertItem(int index, const MenuItemData& item);
+        void RemoveItem(int index);
+        void UpdateItem(int index, const MenuItemData& item);
 
-        void InsertItem(int index, const MenuItemData& item) {
-            if (index >= 0 && index <= static_cast<int>(items.size())) {
-                items.insert(items.begin() + index, item);
-                needCalculateSize = true;
-            }
-        }
+        void Clear();
 
-        void RemoveItem(int index) {
-            if (index >= 0 && index < static_cast<int>(items.size())) {
-                items.erase(items.begin() + index);
-                needCalculateSize = true;
-            }
-        }
+        std::vector<MenuItemData>& GetItems() { return items; }
 
-        void UpdateItem(int index, const MenuItemData& item) {
-            if (index >= 0 && index < static_cast<int>(items.size())) {
-                items[index] = item;
-                needCalculateSize = true;
-            }
-        }
+        MenuItemData* GetItem(int index);
 
-        void Clear() {
-            items.clear();
-            CloseAllSubmenus();
-            needCalculateSize = true;
-        }
+        void OpenMenu(const Point2Di& pos, UltraCanvasWindowBase& window, const PopupElementSettings& settings);
+        void CloseMenu();
 
-        const std::vector<MenuItemData>& GetItems() const { return items; }
+        // Embedded mode: for composite components (e.g. AutoComplete) that
+        // manage their own overlay lifecycle but use Menu for rendering/events.
+        // void ShowAsEmbedded(int x, int y);
+        // void HideAsEmbedded();
 
-        MenuItemData* GetItem(int index) {
-            if (index >= 0 && index < static_cast<int>(items.size())) {
-                return &items[index];
-            }
-            return nullptr;
-        }
-
-        void Show();
-        void Hide();
-
-        void Toggle() {
-            if (IsMenuVisible()) {
-                Hide();
-            } else {
-                Show();
-            }
-        }
-
-        bool IsMenuVisible() const {
-            // FIX: Simplified visibility check
-            return currentState == MenuState::Visible || currentState == MenuState::Opening;
-        }
-
-        MenuState GetMenuState() const { return currentState; }
-
-        // ===== CONTEXT MENU HELPERS =====
-        void ShowAt(const Point2Di& position) {
-            ShowAt(position.x, position.y);
-        }
-
-        void ShowAt(int x, int y) {
-            SetPosition(x, y);
-            Show();
-        }
+//        bool IsMenuVisible() const {
+//            return currentState == MenuState::Visible || currentState == MenuState::Opening;
+//        }
+//
+//        MenuState GetMenuState() const { return currentState; }
 
         // ===== SUBMENU MANAGEMENT =====
         void OpenSubmenu(int itemIndex);
@@ -294,17 +303,14 @@ namespace UltraCanvas {
         int GetItemX(int index) const;
         int GetItemY(int index) const;
 
-        bool Contains(int x, int y) override;
+        bool ContainsInWindow(const Point2Di& point) override;
 
-        // ===== EVENT CALLBACKS =====
-        void OnMenuOpened(std::function<void()> callback) { onMenuOpened = callback; }
-        void OnMenuClosed(std::function<void()> callback) { onMenuClosed = callback; }
-        void OnItemSelected(std::function<void(int)> callback) { onItemSelected = callback; }
-        void OnItemHovered(std::function<void(int)> callback) { onItemHovered = callback; }
+    protected:
+        void OnPopupClosed(ClosePopupReason reason) override;
 
     private:
         // ===== CALCULATION METHODS =====
-        void CalculateAndUpdateSize();
+        void CalculateAndUpdateSize(IRenderContext* ctx);
 
         Rect2Di GetItemBounds(int index) const;
 
@@ -312,27 +318,34 @@ namespace UltraCanvas {
 
 
         // ===== POSITIONING =====
-        void PositionSubmenu(std::shared_ptr<UltraCanvasMenu> submenu, int itemIndex);
+        Point2Di GetPositionSubmenu(const UltraCanvasMenu& submenu, int itemIndex);
 
         // ===== RENDERING HELPERS =====
         void RenderItem(int index, const MenuItemData& item, IRenderContext* ctx);
         void RenderSeparator(const Rect2Di& bounds, IRenderContext* ctx);
+        void RenderHeader(const MenuItemData& item, const Rect2Di& bounds, IRenderContext* ctx);
         void RenderCheckbox(const MenuItemData& item, const Point2Di& position, IRenderContext* ctx);
         void RenderSubmenuArrow(const Point2Di& position, IRenderContext* ctx);
         void RenderIcon(const std::string& iconPath, const Point2Di& position, IRenderContext* ctx);
-        void RenderKeyboardHighlight(const Rect2Di& bounds, IRenderContext* ctx);
         void RenderShadow(IRenderContext* ctx);
 
         // ===== UTILITY METHODS =====
         Color GetItemBackgroundColor(int index, const MenuItemData& item) const;
 
-        int GetItemAtPosition(int x, int y) const;
+        int GetItemUnderPointer(const UCEvent& ev) const;
+
+        // ===== SCROLL SUPPORT =====
+        void CreateMenuScrollbar();
+        void ClampMenuToWindow();
+        void ClampMenuToWindowHorizontal();
+        void EnsureActiveItemVisible();
 
         // ===== EVENT HANDLERS =====
         bool HandleMouseMove(const UCEvent& event);
         bool HandleMouseDown(const UCEvent& event);
         bool HandleMouseUp(const UCEvent& event);
         bool HandleKeyDown(const UCEvent& event);
+        bool HandleMouseWheel(const UCEvent& event);
 
         // ===== KEYBOARD NAVIGATION =====
         void NavigateUp();
@@ -354,31 +367,8 @@ namespace UltraCanvas {
         void ExecuteItem(int index);
 
         // ===== ANIMATION =====
-        void StartAnimation() {
-            animationStartTime = std::chrono::steady_clock::now();
-            animationProgress = 0.0f;
-        }
-
-        void UpdateAnimation() {
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - animationStartTime);
-            float elapsedSeconds = elapsed.count() / 1000.0f;
-
-            animationProgress = std::min(1.0f, elapsedSeconds / style.animationDuration);
-
-            if (animationProgress >= 1.0f) {
-                // Animation complete
-                if (currentState == MenuState::Opening) {
-                    currentState = MenuState::Visible;
-                } else if (currentState == MenuState::Closing) {
-                    currentState = MenuState::Hidden;
-                    SetVisible(false);
-                }
-            }
-
-            // Apply animation effects (scale, fade, etc.)
-            // This would modify the rendering parameters based on animationProgress
-        }
+        void StartAnimation();
+        void UpdateAnimation();
     };
 
 // Rest of the file remains the same (factory functions, builder pattern, etc.)
@@ -438,6 +428,11 @@ namespace UltraCanvas {
             return *this;
         }
 
+        MenuBuilder& AddHeader(const std::string& label) {
+            menu->AddItem(MenuItemData::Header(label));
+            return *this;
+        }
+
         MenuBuilder& AddCheckbox(const std::string& label, bool checked, std::function<void(bool)> callback) {
             menu->AddItem(MenuItemData::Checkbox(label, checked, callback));
             return *this;
@@ -445,6 +440,11 @@ namespace UltraCanvas {
 
         MenuBuilder& AddSubmenu(const std::string& label, const std::vector<MenuItemData>& items) {
             menu->AddItem(MenuItemData::Submenu(label, items));
+            return *this;
+        }
+
+        MenuBuilder& AddSubmenu(const std::string& label, std::function<std::vector<MenuItemData>()> provider) {
+            menu->AddItem(MenuItemData::Submenu(label, std::move(provider)));
             return *this;
         }
 
@@ -465,6 +465,7 @@ namespace UltraCanvas {
         style.disabledTextColor = Color(150, 150, 150, 255);
         style.shortcutColor = Color(100, 100, 100, 255);
         style.separatorColor = Color(220, 220, 220, 255);
+        style.headerTextColor = Color(100, 100, 100, 255);
 
         // FIXED: Proper default height for menu items
         style.itemHeight = 24;  // Reduced from whatever was causing 44px
@@ -480,7 +481,7 @@ namespace UltraCanvas {
         style.separatorHeight = 1;
         style.borderWidth = 1;
         style.borderRadius = 0;
-        style.fontSize = 12.0f;
+        style.font.fontSize = 11.0f;
 
         style.showShadow = false;
         style.enableAnimations = false;
@@ -495,6 +496,7 @@ namespace UltraCanvas {
         style.textColor = Colors::White;
         style.hoverTextColor = Colors::White;
         style.hoverColor = Color(85, 85, 85);
+        style.headerTextColor = Color(180, 180, 180);
         return style;
     }
 
@@ -527,6 +529,25 @@ namespace UltraCanvas {
         return item;
     }
 
+    inline MenuItemData MenuItemData::Action(const std::string& label, const FontStyle& font, std::function<void()> callback) {
+        MenuItemData item;
+        item.type = MenuItemType::Action;
+        item.label = label;
+        item.font = font;
+        item.onClick = callback;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Action(const std::string& label, const std::string& iconPath, const FontStyle& font, std::function<void()> callback) {
+        MenuItemData item;
+        item.type = MenuItemType::Action;
+        item.label = label;
+        item.iconPath = iconPath;
+        item.font = font;
+        item.onClick = callback;
+        return item;
+    }
+
     inline MenuItemData MenuItemData::ActionWithShortcut(const std::string& label, const std::string& shortcut, std::function<void()> callback) {
         MenuItemData item;
         item.type = MenuItemType::Action;
@@ -546,9 +567,38 @@ namespace UltraCanvas {
         return item;
     }
 
+    inline MenuItemData MenuItemData::ActionWithShortcut(const std::string& label, const std::string& shortcut, const FontStyle& font, std::function<void()> callback) {
+        MenuItemData item;
+        item.type = MenuItemType::Action;
+        item.label = label;
+        item.shortcut = shortcut;
+        item.font = font;
+        item.onClick = callback;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::ActionWithShortcut(const std::string& label, const std::string& shortcut, const std::string& iconPath, const FontStyle& font, std::function<void()> callback) {
+        MenuItemData item;
+        item.type = MenuItemType::Action;
+        item.label = label;
+        item.shortcut = shortcut;
+        item.iconPath = iconPath;
+        item.font = font;
+        item.onClick = callback;
+        return item;
+    }
+
     inline MenuItemData MenuItemData::Separator() {
         MenuItemData item;
         item.type = MenuItemType::Separator;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Header(const std::string& label) {
+        MenuItemData item;
+        item.type = MenuItemType::Header;
+        item.label = label;
+        item.enabled = false;
         return item;
     }
 
@@ -561,12 +611,33 @@ namespace UltraCanvas {
         return item;
     }
 
+    inline MenuItemData MenuItemData::Checkbox(const std::string& label, bool checked, const FontStyle& font, std::function<void(bool)> callback) {
+        MenuItemData item;
+        item.type = MenuItemType::Checkbox;
+        item.label = label;
+        item.checked = checked;
+        item.font = font;
+        item.onToggle = callback;
+        return item;
+    }
+
     inline MenuItemData MenuItemData::Radio(const std::string& label, int group, bool checked, std::function<void(bool)> callback) {
         MenuItemData item;
         item.type = MenuItemType::Radio;
         item.label = label;
         item.checked = checked;
         item.radioGroup = group;
+        item.onToggle = callback;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Radio(const std::string& label, int group, bool checked, const FontStyle& font, std::function<void(bool)> callback) {
+        MenuItemData item;
+        item.type = MenuItemType::Radio;
+        item.label = label;
+        item.checked = checked;
+        item.radioGroup = group;
+        item.font = font;
         item.onToggle = callback;
         return item;
     }
@@ -588,10 +659,74 @@ namespace UltraCanvas {
         return item;
     }
 
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, const FontStyle& font, const std::vector<MenuItemData>& items) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.font = font;
+        item.subItems = items;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, const std::string& iconPath, const FontStyle& font, const std::vector<MenuItemData>& items) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.iconPath = iconPath;
+        item.font = font;
+        item.subItems = items;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, std::function<std::vector<MenuItemData>()> provider) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.subItemsProvider = std::move(provider);
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, const std::string& iconPath, std::function<std::vector<MenuItemData>()> provider) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.iconPath = iconPath;
+        item.subItemsProvider = std::move(provider);
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.font = font;
+        item.subItemsProvider = std::move(provider);
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Submenu(const std::string& label, const std::string& iconPath, const FontStyle& font, std::function<std::vector<MenuItemData>()> provider) {
+        MenuItemData item;
+        item.type = MenuItemType::Submenu;
+        item.label = label;
+        item.iconPath = iconPath;
+        item.font = font;
+        item.subItemsProvider = std::move(provider);
+        return item;
+    }
+
     inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, std::function<void(const std::string&)> callback) {
         MenuItemData item;
         item.type = MenuItemType::Input;
         item.label = label;
+        item.onTextInput = callback;
+        return item;
+    }
+
+    inline MenuItemData MenuItemData::Input(const std::string& label, const std::string& placeholder, const FontStyle& font, std::function<void(const std::string&)> callback) {
+        MenuItemData item;
+        item.type = MenuItemType::Input;
+        item.label = label;
+        item.font = font;
         item.onTextInput = callback;
         return item;
     }

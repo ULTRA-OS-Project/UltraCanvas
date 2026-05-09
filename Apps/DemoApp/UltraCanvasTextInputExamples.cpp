@@ -11,6 +11,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextArea.h"
 #include <sstream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -170,12 +171,12 @@ namespace UltraCanvas {
         // Setup callbacks for status updates
         ruleLegend->onAllRulesMet = [](bool allMet) {
             if (allMet) {
-                std::cout << "✓ All password requirements met!" << std::endl;
+                debugOutput << "✓ All password requirements met!" << std::endl;
             }
         };
 
         ruleLegend->onRuleStatusChanged = [](int met, int total) {
-            std::cout << "Password rules: " << met << "/" << total << " met" << std::endl;
+            debugOutput << "Password rules: " << met << "/" << total << " met" << std::endl;
         };
 
         container->AddChild(ruleLegend);
@@ -225,11 +226,11 @@ namespace UltraCanvas {
 
         // Add callbacks for strength updates
         circularMeter->onStrengthChanged = [](float strength) {
-            std::cout << "Password strength: " << strength << "%" << std::endl;
+            debugOutput << "Password strength: " << strength << "%" << std::endl;
         };
 
         circularMeter->onStrengthLevelChanged = [](const std::string& level) {
-            std::cout << "Strength level: " << level << std::endl;
+            debugOutput << "Strength level: " << level << std::endl;
         };
 
         container->AddChild(detailedLegend);

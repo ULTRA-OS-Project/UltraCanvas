@@ -4,15 +4,25 @@
 // Last Modified: 2025-09-14
 // Author: UltraCanvas Framework
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM macros
+#include <shellapi.h>  // ShellExecuteA
+#include "UltraCanvasDebug.h"
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 #include "UltraCanvasUtils.h"
 #include <sstream>
 #include <fstream>
 #include <iostream>
 #include <iomanip>
+#include <cstdlib>
 #include <string>
 
 namespace UltraCanvas {
-    const char* versionString = "0.0.002";
+    const char* versionString = "0.1.29";
 
     std::string ToLowerCase(const std::string &str) {
         std::string result = str;
@@ -359,7 +369,7 @@ namespace UltraCanvas {
 
         std::ifstream file(filePath);
         if (!file.is_open()) {
-            std::cerr << "Failed to open file: " << filePath << std::endl;
+            debugOutput << "Failed to open file: " << filePath << std::endl;
             return "// Error: Could not load file: " + filePath;
         }
 
@@ -431,5 +441,66 @@ namespace UltraCanvas {
             oss << bytes << " bytes";
         }
         return oss.str();
+    }
+
+    std::string GetExecutableDir() {
+        std::string path;
+#if defined(__linux__) || defined(__unix__)
+        char buf[PATH_MAX];
+        ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        if (len > 0) {
+            buf[len] = '\0';
+            path = buf;
+        }
+#elif defined(_WIN32) || defined(_WIN64)
+        char buf[4096];
+        size_t len = GetModuleFileNameA(nullptr, buf, sizeof(buf) - 1);
+        if (len > 0 && len < sizeof(buf) - 1) {
+            path = buf;
+        }
+#elif defined(__APPLE__)
+        char buf[PATH_MAX];
+        uint32_t size = sizeof(buf);
+        if (_NSGetExecutablePath(buf, &size) == 0) {
+            char resolved[PATH_MAX];
+            if (realpath(buf, resolved)) {
+                path = resolved;
+            } else {
+                path = buf;
+            }
+        }
+#endif
+        debugOutput << "GetExecutableDir exec=" << path << std::endl;
+        if (!path.empty()) {
+            auto pos = path.find_last_of("/\\");
+            if (pos != std::string::npos) {
+                return path.substr(0, pos);
+            }
+        }
+        return ".";
+    }
+
+    void OpenURL(const std::string& url) {
+#if defined(_WIN32) || defined(_WIN64)
+        ShellExecuteA(nullptr, "open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+#elif defined(__APPLE__)
+        system(("open \"" + url + "\"").c_str());
+#else
+        system(("xdg-open \"" + url + "\"").c_str());
+#endif
+    }
+
+    std::string NormalizePath(const std::string& in) {
+        std::string result;
+
+#if defined(_WIN32) || defined(_WIN64)
+        result = in;
+        std::replace(result.begin(), result.end(), '/', '\\');
+#else
+        char real[PATH_MAX];
+        realpath(in.c_str(), real);
+        result = real;
+#endif
+        return result;
     }
 }

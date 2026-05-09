@@ -9,13 +9,15 @@
 #define ULTRACANVAS_X11_WINDOW_H
 
 // ===== CORE INCLUDES =====
-#include "../../libspecific/Cairo/RenderContextCairo.h"
+#include "UltraCanvasRenderContext.h"
+#include "UltraCanvasLinuxDragDrop.h"
 
 // ===== LINUX PLATFORM INCLUDES =====
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/Xatom.h>
+#include <X11/Xlocale.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>
@@ -39,10 +41,9 @@ namespace UltraCanvas {
     class UltraCanvasLinuxWindow : public UltraCanvasWindowBase {
     protected:
         Window xWindow;
-        Cursor currentXCursor;
+        XIC xic;                    // X Input Context for this window
 
-        cairo_surface_t* cairoSurface;
-        std::unique_ptr<RenderContextCairo> renderContext;
+        UltraCanvasLinuxDragDrop dragDropHandler;
 
         bool CreateNative() override;
         void DestroyNative() override;
@@ -54,7 +55,9 @@ namespace UltraCanvas {
         // ===== INHERITED FROM BASE WINDOW =====
         virtual void Show() override;
         virtual void Hide() override;
+        virtual void RaiseAndFocus() override;
         virtual void SetWindowTitle(const std::string& title) override;
+        virtual void SetWindowIcon(const std::string& iconPath) override;
         virtual void SetWindowSize(int width, int height) override;
         virtual void SetWindowPosition(int x, int y) override;
         virtual void SetResizable(bool resizable) override;
@@ -62,14 +65,19 @@ namespace UltraCanvas {
         virtual void Maximize() override;
         virtual void Restore() override;
         virtual void SetFullscreen(bool fullscreen) override;
-        virtual void Flush() override;
-        virtual unsigned long GetNativeHandle() const override;
-        IRenderContext* GetRenderContext() const override { return renderContext.get(); }
+        virtual void InvalidateWindowNative() override;
+        virtual NativeWindowHandle GetNativeHandle() const override;
+        virtual void GetScreenPosition(int& x, int& y) const override;
+        void GetScreenSize(int& width, int& height) const override;
+        UltraCanvasLinuxDragDrop& GetDragDropHandler() { return dragDropHandler; }
 //        virtual void ProcessEvents() override;
 //        virtual bool OnEvent(const UCEvent&) override;
 
         // ===== LINUX-SPECIFIC METHODS =====
         Window GetXWindow() const { return xWindow; }
+        XIC GetXIC() const { return xic; }
+
+
         bool HandleXEvent(const XEvent& event);
 
     private:
@@ -82,9 +90,10 @@ namespace UltraCanvas {
 
         // ===== INTERNAL SETUP =====
         bool CreateXWindow();
-        bool CreateCairoSurface();
-        void DestroyCairoSurface();
-        void UpdateCairoSurface(int w, int h);
+        bool CreateXIC();
+        void DestroyXIC();
+        bool CreateNativeCairoSurface();
+        void DestroyNativeCairoSurface();
         void SetWindowHints();
 //        void SetWindowDecorations();
 
@@ -94,9 +103,7 @@ namespace UltraCanvas {
 //        void SaveWindowGeometry();
 //        void RestoreWindowGeometry();
     protected:
-        void HandleResizeEvent(int w, int h) override;
-
-        void SelectMouseCursorNative(UCMouseCursor cur) override;
+        void DoResizeNative() override;
     };
 
 } // namespace UltraCanvas

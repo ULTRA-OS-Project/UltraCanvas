@@ -112,9 +112,6 @@ namespace UltraCanvas {
                          const std::string& partialIconPath,
                          const std::string& notImplementedIconPath);
 
-        void Render(IRenderContext* ctx) override {
-            UltraCanvasContainer::Render(ctx);
-        }
     };
 
     class DemoHeaderContainer : public UltraCanvasContainer {
@@ -207,6 +204,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateButtonExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateTextInputExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateDropdownExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateAutoCompleteExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSliderExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLabelExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateCheckboxExamples();
@@ -236,6 +234,9 @@ namespace UltraCanvas {
 
         std::shared_ptr<UltraCanvasUIElement> CreateVectorExamples();
         std::shared_ptr<UltraCanvasUIElement> Create3DExamples();
+#ifdef ULTRACANVAS_ENABLE_GL
+        std::shared_ptr<UltraCanvasUIElement> CreateGLSurfaceExamples();
+#endif
         std::shared_ptr<UltraCanvasUIElement> CreateVideoExamples();
 
         // Document Elements
@@ -275,8 +276,13 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateIODeviceManagerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLayoutExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeExamples();
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateCDRVectorExamples();
+#endif
+#ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateXARVectorExamples();
+#endif
+        std::shared_ptr<UltraCanvasUIElement> CreateTextRenderingSettingsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateImagePerformanceTest();
         std::shared_ptr<UltraCanvasContainer> CreateBitmapFormatDemoPage(
                 const std::string& format,

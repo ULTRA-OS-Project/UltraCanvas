@@ -1,7 +1,7 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
-// Version: 1.0.0
-// Last Modified: 2025-01-07
+// Version: 1.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -10,24 +10,38 @@
 
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasTimer.h"
 #include <vector>
 #include <algorithm>
 #include <functional>
 #include <iostream>
 #include <chrono>
 #include <queue>
+#include <optional>
 
 namespace UltraCanvas {
-    class UltraCanvasBaseApplication {
+    class UltraCanvasWindowBase;
+
+    class UltraCanvasApplicationBase {
+    friend UltraCanvasWindowBase;
     protected:
         bool volatile running = false;
         bool volatile initialized = false;
         std::string appName;
+        std::string defaultWindowIconPath;
+
         std::queue<UCEvent> eventQueue;
         std::mutex eventQueueMutex;
         std::condition_variable eventCondition;
 
+        // Timer system
+        std::vector<UltraCanvasTimer> timers_;
+        mutable std::mutex timersMutex_;
+        TimerId nextTimerId_ = 1;
+
         std::vector<std::shared_ptr<UltraCanvasWindowBase>> windows;
+        std::vector<std::weak_ptr<UltraCanvasWindowBase>> activeModalWindows;
 
         UltraCanvasWindow* focusedWindow = nullptr;
         UltraCanvasUIElement* hoveredElement = nullptr;
@@ -43,6 +57,10 @@ namespace UltraCanvas {
         const float DOUBLE_CLICK_TIME = 0;
         const int DOUBLE_CLICK_DISTANCE = 0;
 
+        // Cached system font styles
+        std::optional<FontStyle> cachedSystemFontStyle_;
+        std::optional<FontStyle> cachedMonospacedFontStyle_;
+
         // Keyboard state
         bool keyStates[256];
         bool shiftHeld = false;
@@ -50,23 +68,39 @@ namespace UltraCanvas {
         bool altHeld = false;
         bool metaHeld = false;
 
-    public:
-        UltraCanvasBaseApplication() = default;
+    public:        
+        UltraCanvasApplicationBase() = default;
 
         void RegisterWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
+        bool IsWindowRegistered(UltraCanvasWindowBase* window);
+        void UnregisterWindow(UltraCanvasWindowBase* window);
+
+        // Modal window management
+        bool HandleModalWindowEvents(const UCEvent& event, UltraCanvasWindow* targetWindow);
+        bool HasActiveModalWindow();
+        UltraCanvasWindowBase* GetCurrentModalWindow();
+        void RegisterModalWindow(const std::shared_ptr<UltraCanvasWindowBase>& window);
+        void UnregisterModalWindow(UltraCanvasWindowBase* window);
 
         void ProcessEvents();
         bool PopEvent(UCEvent& event);
         void PushEvent(const UCEvent& event);
         void WaitForEvents(int timeoutMs);
 
-        void DispatchEvent(const UCEvent &event);
-        bool DispatchEventToElement(UltraCanvasUIElement* elem, const UCEvent &event);
+        void DispatchEvent(const UCEvent& event);
+        bool DispatchEventToElement(UltraCanvasUIElement* elem, UCEvent event);
 
-        bool HandleEventWithBubbling(const UCEvent &event, UltraCanvasUIElement* elem);
-        void RegisterGlobalEventHandler(std::function<bool(const UCEvent&)> handler);
-        void ClearGlobalEventHandlers() { globalEventHandlers.clear(); }
+        bool HandleEventWithBubbling(UltraCanvasUIElement* elem, const UCEvent &event);
         void RegisterEventLoopRunCallback(std::function<void()> callback);
+
+        // Timer API - timers fire on the main thread
+        TimerId StartTimer(unsigned int milliseconds_interval, bool periodic,
+                           std::function<void(TimerId)> callback = nullptr);
+        void StopTimer(TimerId id);
+
+        static void InstallWindowEventFilter(UltraCanvasUIElement* elem, const std::vector<UCEventType>& interestedEvents);
+        static void UnInstallWindowEventFilter(UltraCanvasUIElement* elem);
+        static void MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem);
 
         bool IsKeyPressed(int keyCode);
 
@@ -80,7 +114,7 @@ namespace UltraCanvas {
         UltraCanvasUIElement* GetHoveredElement() { return hoveredElement; }
         UltraCanvasUIElement* GetCapturedElement() { return capturedElement; }
 
-        UltraCanvasWindow* FindWindow(unsigned long nativeHandle);
+        UltraCanvasWindow* FindWindow(NativeWindowHandle nativeHandle);
 
         const UCEvent& GetCurrentEvent() { return currentEvent; }
 
@@ -91,16 +125,28 @@ namespace UltraCanvas {
         void CaptureMouse(UltraCanvasUIElement* element);
         void ReleaseMouse(UltraCanvasUIElement* element);
 
+        // System font detection
+        FontStyle GetSystemFontStyle();
+        FontStyle GetDefaultMonospacedFontStyle();
+
+        // Application icon
+        void SetDefaultWindowIcon(const std::string& iconPath) { defaultWindowIconPath = iconPath; }
+        std::string GetDefaultWindowIcon() const { return defaultWindowIconPath; }
+
         void Run();
         bool Initialize(const std::string& app);
-        void Shutdown();
-        void RequestExit();
+        bool RequestExit();
+        virtual void Exit();
 
         bool IsInitialized() const { return initialized; }
         bool IsRunning() const { return running; }
 
-        bool HandleFocusedWindowChange(UltraCanvasWindow* window);
-
+//        bool HandleFocusedWindowChange(UltraCanvasWindow* window);
+        virtual bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor ptr) = 0;
+        virtual bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor ptr, const char* filename, int hotspotX, int hotspotY) = 0;
+        
+        std::function<bool()> onApplicationExitRequest;
+        std::function<void()> onApplicationExit;
     protected:
         virtual bool InitializeNative() = 0;
         virtual void ShutdownNative() = 0;
@@ -109,9 +155,24 @@ namespace UltraCanvas {
         virtual void CaptureMouseNative() = 0;
         virtual void ReleaseMouseNative() = 0;
 
+
         bool IsDoubleClick(const UCEvent &event);
         void CleanupWindowReferences(UltraCanvasWindowBase* window);
         virtual void CollectAndProcessNativeEvents() = 0;
+
+        // Timer processing - called from Run() each iteration
+        void ProcessTimers();
+        std::chrono::milliseconds GetTimeUntilNextTimer() const;
+
+        // Platform-specific system font detection
+        virtual FontStyle DetectSystemFontStyleNative() = 0;
+        virtual FontStyle DetectMonospacedFontStyleNative() = 0;
+
+        // Platform-specific wakeup mechanism for cross-thread signaling
+        virtual void WakeUpEventLoop() = 0;
+        virtual void InitializeWakeUp() = 0;
+        virtual void ShutdownWakeUp() = 0;
+
     };
 }
 

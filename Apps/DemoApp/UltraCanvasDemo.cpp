@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
-// Version: 1.0.0
-// Last Modified: 2024-12-19
+// Version: 1.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -11,6 +11,7 @@
 #include "Plugins/Text/UltraCanvasMarkdown.h"
 #include <iostream>
 #include <sstream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     DemoLegendContainer::DemoLegendContainer(const std::string& identifier, long id, long x, long y, long width, long height)
@@ -95,7 +96,7 @@ namespace UltraCanvas {
 
         // Create documentation button (right side)
         docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", id + 3, width - 90, 5, 21, 21);
-        docButton->LoadFromFile("media/icons/text.png");
+        docButton->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/text.png"));
         docButton->SetVisible(false);  // Initially disabled
         docButton->SetClickable(true);
         docButton->onClick = [this]() { ShowDocumentationWindow(); };
@@ -103,7 +104,7 @@ namespace UltraCanvas {
 
         // Create source button (right side)
         sourceButton = std::make_shared<UltraCanvasImageElement>("SourceBtn", id + 2, width - 40, 5, 21, 28);
-        sourceButton->LoadFromFile("media/icons/c-plus-plus-icon.png");
+        sourceButton->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/c-plus-plus-icon.png"));
         sourceButton->SetVisible(false);  // Initially disabled
         sourceButton->SetClickable(true);
         sourceButton->onClick = [this]() { ShowSourceWindow(); };
@@ -139,14 +140,22 @@ namespace UltraCanvas {
     }
 
     void DemoHeaderContainer::SetSourceFile(const std::string& sourceFile) {
-        currentSourceFile = sourceFile;
+        if (!sourceFile.empty()) {
+            currentSourceFile = NormalizePath(GetResourcesDir()+sourceFile);
+        } else {
+            currentSourceFile.clear();
+        }
         if (sourceButton) {
             sourceButton->SetVisible(!sourceFile.empty());
         }
     }
 
     void DemoHeaderContainer::SetDocFile(const std::string& docFile) {
-        currentDocFile = docFile;
+        if (!docFile.empty()) {
+            currentDocFile = NormalizePath(GetResourcesDir()+docFile);
+        } else {
+            currentDocFile.clear();
+        }
         if (docButton) {
             docButton->SetVisible(!docFile.empty());
         }
@@ -157,7 +166,7 @@ namespace UltraCanvas {
 
         std::ifstream file(filePath);
         if (!file.is_open()) {
-            std::cerr << "Failed to open file: " << filePath << std::endl;
+            debugOutput << "Failed to open file: " << filePath << std::endl;
             return "// Error: Could not load file: " + filePath;
         }
 
@@ -202,7 +211,7 @@ namespace UltraCanvas {
 
         sourceWindow = CreateWindow(config);
         if (!sourceWindow->IsCreated()) {
-            std::cerr << "Failed to create source window" << std::endl;
+            debugOutput << "Failed to create source window" << std::endl;
             return;
         }
 
@@ -223,8 +232,8 @@ namespace UltraCanvas {
         textArea->SetFontSize(10);
 
         sourceWindow->SetEventCallback([this](const UCEvent& event) {
-            if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClose) {
-                sourceWindow->RequestDelete();
+            if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
+                sourceWindow->Close();
                 sourceWindow.reset();
                 return true;
             }
@@ -246,7 +255,7 @@ namespace UltraCanvas {
 
         docWindow = CreateWindow(config);
         if (!docWindow->IsCreated()) {
-            std::cerr << "Failed to create documentation window" << std::endl;
+            debugOutput << "Failed to create documentation window" << std::endl;
             return;
         }
         // Create text area for documentation
@@ -254,8 +263,8 @@ namespace UltraCanvas {
         markDownTextArea->SetMarkdownText(content);
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
-            if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClose) {
-                ((UltraCanvasWindow *)event.targetWindow)->RequestDelete();
+            if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
+                ((UltraCanvasWindow *)event.targetWindow)->Close();
                 docWindow.reset();
                 return true;
             }
@@ -278,7 +287,7 @@ namespace UltraCanvas {
 
 // ===== INITIALIZATION =====
     bool UltraCanvasDemoApplication::Initialize() {
-        std::cout << "Initializing UltraCanvas Demo Application..." << std::endl;
+        debugOutput << "Initializing UltraCanvas Demo Application..." << std::endl;
 
         // Create main window using proper configuration
         WindowConfig config;
@@ -287,15 +296,14 @@ namespace UltraCanvas {
         config.height = 880;
         config.resizable = true;
         config.type = WindowType::Standard;
-        config.deleteOnClose = true;
 
         mainWindow = CreateWindow(config);
-        std::cout << "Creating Main window.." << std::endl;
+        debugOutput << "Creating Main window.." << std::endl;
         if (!mainWindow->IsCreated()) {
-            std::cerr << "Failed to create main window" << std::endl;
+            debugOutput << "Failed to create main window" << std::endl;
             return false;
         }
-        std::cout << "Main window created" << std::endl;
+        debugOutput << "Main window created" << std::endl;
         // Calculate positions for adjusted layout
         const int treeViewHeight = 740;  // Reduced from 840 to make room for legend
         const int legendHeight = 95;     // Height for legend container
@@ -310,7 +318,7 @@ namespace UltraCanvas {
         categoryTreeView->SetAutoExpandSelectedNode(true);
         categoryTreeView->SetPadding(1,3,1,3);
 
-        std::cout << "categoryTreeView created" << std::endl;
+        debugOutput << "categoryTreeView created" << std::endl;
 
         // Create legend container below tree view
         legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 6, 0, 0, 100, legendHeight);
@@ -320,28 +328,14 @@ namespace UltraCanvas {
         auto categoryContainer = CreateContainer("catcont", 0, 0, 0, 100, 100);
 
         mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 3, 0, 0, 1030, 840);
-        //mainContainer->SetBackgroundColor(Colors::White);
-        //mainContainer->SetBorders(1, Color(20, 20, 20, 255));
         mainContainer->SetBorderLeft(1, Colors::Gray);
-//        mainContainer->SetBorderBottom(10, Colors::Green);
-//        mainContainer->SetBorderTop(10, Colors::Red);
 
         // Create header container (inside main container)
         headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 4, 0, 0, 1028, 40);
-//        mainContainer->AddChild(headerContainer);
 
         // Create display container (below header)
         displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 5, 0, 40, 1028, 785);
         displayContainer->SetBackgroundColor(Colors::White);
-//        mainContainer->AddChild(displayContainer);
-
-//        // Create display container (right side)
-//        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 3, 370, 10, 1020, 800);
-//        ContainerStyle displayContainerStyle;
-//        displayContainerStyle.backgroundColor = Colors::White;
-//        displayContainerStyle.borderWidth = 1.0f;
-//        displayContainerStyle.borderColor = Color(200, 200, 200, 255);
-//        displayContainer->SetContainerStyle(displayContainerStyle);
 
         // Create status label (bottom left)
         statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 850, 850, 25);
@@ -359,14 +353,6 @@ namespace UltraCanvas {
         categoryTreeView->onNodeSelected = [this](TreeNode* node) {
             OnTreeNodeSelected(node);
         };
-
-        // Add elements to window
-//        mainWindow->AddChild(categoryTreeView);
-//        mainWindow->AddChild(legendContainer);  // Add legend container
-//        mainWindow->AddChild(mainContainer);
-//        mainWindow->AddChild(statusLabel);
-
-        //mainWindow->AddChild(descriptionLabel);
 
         auto categoryContainerLayout = CreateVBoxLayout(categoryContainer.get());
         categoryContainerLayout->AddUIElement(categoryTreeView, 1)->SetWidthMode(SizeMode::Fill);
@@ -388,7 +374,7 @@ namespace UltraCanvas {
         mainLayout->AddUIElement(mainContainer, 0, 1)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
         mainLayout->AddUIElement(statusLabel, 1, 0, 1, 2)->SetSizeMode(SizeMode::Fill, SizeMode::Fill);
 
-        std::cout << "✓ Demo application initialized successfully" << std::endl;
+        debugOutput << "✓ Demo application initialized successfully" << std::endl;
         return true;
     }
 
@@ -406,90 +392,16 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDemoApplication::RegisterAllDemoItems() {
-        std::cout << "Registering demo items..." << std::endl;
+        debugOutput << "Registering demo items..." << std::endl;
 
         // ===== BASIC UI ELEMENTS =====
         auto basicBuilder = DemoCategoryBuilder(this, DemoCategory::BasicUI);
 
-        basicBuilder.AddItem("button", "Button", "Interactive buttons with various styles and states",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateButtonExamples(); },
-                             "Examples/UltraCanvasButtonExamples.cpp",
-                             "Docs/UltraCanvasButtonExamples.md"
-                             )
-                .AddVariant("button", "Standard Button")
-                .AddVariant("button", "Icon Button")
-                .AddVariant("button", "Toggle Button")
-                .AddVariant("button", "Three-Section Button");
-
-        basicBuilder.AddItem("textinput", "Text Input", "Text input fields with validation and formatting",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateTextInputExamples(); },
-                            "Examples/UltraCanvasTextInputExamples.cpp",
-                            "Docs/UltraCanvasTextInputExamples.md"
-                             )
-                .AddVariant("textinput", "Single Line Input")
-                .AddVariant("textinput", "Multi-line Text Area")
-                .AddVariant("textinput", "Password Field")
-                .AddVariant("textinput", "Numeric Input");
-
-        basicBuilder.AddItem("dropdown", "Dropdown/ComboBox", "Dropdown selection controls",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateDropdownExamples(); },
-                            "Examples/UltraCanvasDropDownExamples.cpp",
-                            "Docs/UltraCanvasDropDownExamples.md")
-                .AddVariant("dropdown", "Simple Dropdown")
-                .AddVariant("dropdown", "Editable ComboBox")
-                .AddVariant("dropdown", "Multi-Select");
-
-        basicBuilder
-                .AddItem("checkbox", "Checkbox",
-                         "Interactive checkbox controls with multiple states and styles",
-                         ImplementationStatus::FullyImplemented,
-                         [this]() { return CreateCheckboxExamples(); },
-                         "Apps/DemoApp/UltraCanvasCheckboxExamples.cpp",
-                         "Docs/UltraCanvasCheckbox.md")
-                .AddVariant("checkbox", "Standard Checkbox")
-                .AddVariant("checkbox", "Tri-State Checkbox")
-                .AddVariant("checkbox", "Switch Toggle")
-                .AddVariant("checkbox", "Radio Button");
-
-        basicBuilder.AddItem("segmentedcontrol", "Segmented Control",
-                             "Compact control for selecting between mutually exclusive options",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateSegmentedControlExamples(); },
-                             "Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp",
-                             "Docs/UltraCanvasSegmentedControl.md")
-                .AddVariant("segmentedcontrol", "Bordered Style")
-                .AddVariant("segmentedcontrol", "iOS Style")
-                .AddVariant("segmentedcontrol", "Flat Style")
-                .AddVariant("segmentedcontrol", "Bar Style")
-                .AddVariant("segmentedcontrol", "Toggle Mode")
-                .AddVariant("segmentedcontrol", "FitContent Width");
-
-        basicBuilder.AddItem("slider", "Slider", "Range and value selection sliders",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateSliderExamples(); },
-                            "Examples/UltraCanvasSliderExamples.cpp",
-                            "Docs/UltraCanvasSliderExamples.md")
-                .AddVariant("slider", "Horizontal Slider")
-                .AddVariant("slider", "Vertical Slider")
-                .AddVariant("slider", "Range Slider");
-
-        basicBuilder.AddItem("label", "Label", "Text display with formatting and styling",
-                             ImplementationStatus::FullyImplemented,
-                             [this]() { return CreateLabelExamples(); },
-                            "Examples/UltraCanvasLabelExamples.cpp",
-                            "Docs/UltraCanvasLabelExamples.md")
-                .AddVariant("label", "Basic Label")
-                .AddVariant("label", "Header Text")
-                .AddVariant("label", "Status Label");
-
         basicBuilder.AddItem("menu", "Menus", "Various menu types and styles",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateMenuExamples(); },
-                             "Examples/UltraCanvasMenuExamples.cpp",
-                             "Docs/UltraCanvasMenuExamples.md")
+                             "DemoApp/UltraCanvasMenuExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasMenuExamples.md")
                 .AddVariant("menu", "Context Menu")
                 .AddVariant("menu", "Main Menu Bar")
                 .AddVariant("menu", "Popup Menu")
@@ -507,8 +419,8 @@ namespace UltraCanvas {
         basicBuilder.AddItem("tabs", "Tabs", "Tabbed interface containers",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateTabExamples(); },
-                            "Examples/UltraCanvasTabExamples.cpp",
-                            "Docs/UltraCanvasTabExamples.md")
+                             "DemoApp/UltraCanvasTabExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasTabExamples.md")
                 .AddVariant("tabs", "Top Tabs")
                 .AddVariant("tabs", "Side Tabs")
                 .AddVariant("tabs", "Closable Tabs");
@@ -518,20 +430,114 @@ namespace UltraCanvas {
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateLayoutExamples(); },
                              "Apps/DemoApp/UltraCanvasLayoutExamples.cpp",
-                             "Docs/UltraCanvasLayoutExamples.md")
+                             "Docs/UltraCanvas/UltraCanvasLayoutExamples.md")
                 .AddVariant("layouts", "Vertical Box Layout")
                 .AddVariant("layouts", "Horizontal Box Layout")
                 .AddVariant("layouts", "Grid Layout")
                 .AddVariant("layouts", "Flex Layout");
 
+        basicBuilder.AddItem("segmentedcontrol", "Segmented Control",
+                             "Compact control for selecting between mutually exclusive options",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSegmentedControlExamples(); },
+                             "Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSegmentedControl.md")
+                .AddVariant("segmentedcontrol", "Bordered Style")
+                .AddVariant("segmentedcontrol", "iOS Style")
+                .AddVariant("segmentedcontrol", "Flat Style")
+                .AddVariant("segmentedcontrol", "Bar Style")
+                .AddVariant("segmentedcontrol", "Toggle Mode")
+                .AddVariant("segmentedcontrol", "FitContent Width");
+
+        basicBuilder.AddItem("textinput", "Text Input", "Text input fields with validation and formatting",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateTextInputExamples(); },
+                             "DemoApp/UltraCanvasTextInputExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasTextInputExamples.md"
+                )
+                .AddVariant("textinput", "Single Line Input")
+                .AddVariant("textinput", "Multi-line Text Area")
+                .AddVariant("textinput", "Password Field")
+                .AddVariant("textinput", "Numeric Input");
+
+        basicBuilder.AddItem("autocomplete", "AutoComplete", "Text input with auto-complete suggestions",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateAutoCompleteExamples(); },
+                             "Apps/DemoApp/UltraCanvasAutoCompleteExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasAutoCompleteExamples.md")
+                .AddVariant("autocomplete", "Static Items")
+                .AddVariant("autocomplete", "Dynamic Provider")
+                .AddVariant("autocomplete", "Interactive Demo");
+
+        basicBuilder.AddItem("label", "Label", "Text display with formatting and styling",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateLabelExamples(); },
+                             "DemoApp/UltraCanvasLabelExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasLabelExamples.md")
+                .AddVariant("label", "Basic Label")
+                .AddVariant("label", "Header Text")
+                .AddVariant("label", "Status Label");
+
+        basicBuilder.AddItem("button", "Button", "Interactive buttons with various styles and states",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateButtonExamples(); },
+                             "DemoApp/UltraCanvasButtonExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasButtonExamples.md"
+                             )
+                .AddVariant("button", "Standard Button")
+                .AddVariant("button", "Icon Button")
+                .AddVariant("button", "Toggle Button")
+                .AddVariant("button", "Three-Section Button");
+
+        basicBuilder.AddItem("dropdown", "Dropdown/ComboBox", "Dropdown selection controls",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateDropdownExamples(); },
+                            "DemoApp/UltraCanvasDropDownExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasDropDownExamples.md")
+                .AddVariant("dropdown", "Simple Dropdown")
+                .AddVariant("dropdown", "Editable ComboBox")
+                .AddVariant("dropdown", "Multi-Select");
+
+        basicBuilder
+                .AddItem("checkbox", "Checkbox/Radio/Switch",
+                         "Interactive checkbox controls with multiple states and styles",
+                         ImplementationStatus::FullyImplemented,
+                         [this]() { return CreateCheckboxExamples(); },
+                         "Apps/DemoApp/UltraCanvasCheckboxExamples.cpp",
+                         "Docs/UltraCanvas/UltraCanvasCheckbox.md")
+                .AddVariant("checkbox", "Standard Checkbox")
+                .AddVariant("checkbox", "Tri-State Checkbox")
+                .AddVariant("checkbox", "Switch Toggle")
+                .AddVariant("checkbox", "Radio Button");
+
+        basicBuilder.AddItem("slider", "Slider", "Range and value selection sliders",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSliderExamples(); },
+                            "DemoApp/UltraCanvasSliderExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasSliderExamples.md")
+                .AddVariant("slider", "Horizontal Slider")
+                .AddVariant("slider", "Vertical Slider")
+                .AddVariant("slider", "Range Slider");
+
         // ===== EXTENDED FUNCTIONALITY =====
         auto extendedBuilder = DemoCategoryBuilder(this, DemoCategory::ExtendedFunctionality);
+
+        extendedBuilder.AddItem("textarea", "Advanced Text Area", "Advanced text editing with syntax highlighting",
+                                ImplementationStatus::FullyImplemented,
+                                [this]() { return CreateTextAreaExamples(); },
+                                "DemoApp/UltraCanvasTextAreaExamples.cpp",
+                                "Docs/UltraCanvas/UltraCanvasTextAreaExamples.md")
+                .AddVariant("textarea", "C++ Syntax Highlighting")
+                .AddVariant("textarea", "Python Syntax Highlighting")
+                .AddVariant("textarea", "Pascal Syntax Highlighting")
+                .AddVariant("textarea", "Line Numbers Display")
+                .AddVariant("textarea", "Theme Support");
 
         extendedBuilder.AddItem("treeview", "Tree View", "Hierarchical data display with icons",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateTreeViewExamples(); },
-                                "Examples/UltraCanvasTreeViewExamples.cpp",
-                                "Docs/UltraCanvasTreeViewExamples.md")
+                                "DemoApp/UltraCanvasTreeViewExamples.cpp",
+                                "Docs/UltraCanvas/UltraCanvasTreeViewExamples.md")
                 .AddVariant("treeview", "File Explorer Style")
                 .AddVariant("treeview", "Multi-Selection Tree")
                 .AddVariant("treeview", "Checkable Nodes");
@@ -544,133 +550,99 @@ namespace UltraCanvas {
                 .AddVariant("tableview", "Editable Cells");
 
         extendedBuilder.AddItem("listview", "List View", "Item lists with custom rendering",
-                                ImplementationStatus::NotImplemented,
+                                ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateListViewExamples(); })
                 .AddVariant("listview", "Simple List")
                 .AddVariant("listview", "Icon List")
                 .AddVariant("listview", "Detail View");
-
-        extendedBuilder.AddItem("tabledemo", "Templates demo", "Templates demo",
-                                ImplementationStatus::FullyImplemented,
-                                [this]() { return CreateDomainTableDemo(); });
-
-        extendedBuilder.AddItem("textarea", "Advanced Text Area", "Advanced text editing with syntax highlighting",
-                                ImplementationStatus::FullyImplemented,
-                                [this]() { return CreateTextAreaExamples(); },
-                                "Examples/UltraCanvasTextAreaExamples.cpp",
-                                "Docs/UltraCanvasTextAreaExamples.md")
-                .AddVariant("textarea", "C++ Syntax Highlighting")
-                .AddVariant("textarea", "Python Syntax Highlighting")
-                .AddVariant("textarea", "Pascal Syntax Highlighting")
-                .AddVariant("textarea", "Line Numbers Display")
-                .AddVariant("textarea", "Theme Support");
 
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
 
         bitmapBuilder.AddItem("pngimages", "PNG Images", "PNG Image display and manipulation",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("PNG", "media/images/dice.png"); },
-                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
-                              "Docs/UltraCanvasBitmapExamples.md")
+                              [this]() { return CreateBitmapFormatDemoPage("PNG", NormalizePath(GetResourcesDir() + "media/images/dice.png")); },
+                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "PNG/JPEG Display");
         bitmapBuilder.AddItem("jpegimages", "JPEG Images", "JPEG Image display and manipulation",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("JPG", "media/images/dice.jpg"); },
-                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
-                              "Docs/UltraCanvasBitmapExamples.md")
+                              [this]() { return CreateBitmapFormatDemoPage("JPG", NormalizePath(GetResourcesDir() + "media/images/dice.jpg")); },
+                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "PNG/JPEG Display");
 
 // AVIF Images
         bitmapBuilder.AddItem("avifimages", "AVIF Images",
                               "AVIF next-gen format with superior compression and HDR support",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("AVIF", "media/images/dice.avif"); },
-                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
-                              "Docs/UltraCanvasBitmapExamples.md")
+                              [this]() { return CreateBitmapFormatDemoPage("AVIF", NormalizePath(GetResourcesDir() + "media/images/dice.avif")); },
+                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Modern Formats");
 
         // WEBP Images
         bitmapBuilder.AddItem("webpimages", "WEBP Images",
                               "Google WebP format with excellent compression and web optimization",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("WEBP", "media/images/dice.webp"); },
-                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
-                              "Docs/UltraCanvasBitmapExamples.md")
+                              [this]() { return CreateBitmapFormatDemoPage("WEBP", NormalizePath(GetResourcesDir() + "media/images/dice.webp")); },
+                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Modern Formats");
 
         // HEIF Images
         bitmapBuilder.AddItem("heifimages", "HEIF/HEIC Images",
                               "HEIF high efficiency format with HEVC compression",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("HEIC", "media/images/dice.heic"); },
-                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
-                              "Docs/UltraCanvasBitmapExamples.md")
+                              [this]() { return CreateBitmapFormatDemoPage("HEIC", NormalizePath(GetResourcesDir() + "media/images/dice.heic")); },
+                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Modern Formats");
 
         // GIF Images
         bitmapBuilder.AddItem("gifimages", "GIF Images",
                               "GIF animated format with 256 color palette",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("GIF", "media/images/dice.gif"); },
-                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
-                              "Docs/UltraCanvasBitmapExamples.md")
+                              [this]() { return CreateBitmapFormatDemoPage("GIF", NormalizePath(GetResourcesDir() + "media/images/dice.gif")); },
+                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Animation Support");
 
         // TIFF Images
         bitmapBuilder.AddItem("tiffimages", "TIFF Images",
                               "TIFF professional format for archival and print",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("TIFF", "media/images/dice.tiff"); },
-                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
-                              "Docs/UltraCanvasBitmapExamples.md")
+                              [this]() { return CreateBitmapFormatDemoPage("TIFF", NormalizePath(GetResourcesDir() + "media/images/dice.tiff")); },
+                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Professional Formats");
 
         // BMP Images
         bitmapBuilder.AddItem("bmpimages", "BMP Images",
                               "BMP Windows native bitmap format",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("BMP", "media/images/dice.bmp"); },
-                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
-                              "Docs/UltraCanvasBitmapExamples.md")
+                              [this]() { return CreateBitmapFormatDemoPage("BMP", NormalizePath(GetResourcesDir() + "media/images/dice.bmp")); },
+                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Legacy Formats");
 
         // QOI Images (kept as partially implemented if it exists)
         bitmapBuilder.AddItem("qoiimages", "QOI Images",
                               "QOI Image display and manipulation",
                               ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateBitmapFormatDemoPage("QOI", "media/images/dice.qoi"); },
-                              "Examples/UltraCanvasBitmapFormatDemo.cpp",
-                              "Docs/UltraCanvasBitmapExamples.md");
+                              [this]() { return CreateBitmapFormatDemoPage("QOI", NormalizePath(GetResourcesDir() + "media/images/dice.qoi")); },
+                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md");
 
         bitmapBuilder.AddItem("imageperformance", "Image Performance Test",
                               "Benchmark image loading, decompression, and rendering speed",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateImagePerformanceTest(); },
                               "Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp",
-                              "Docs/UltraCanvasImagePerformanceTest.md")
+                              "Docs/UltraCanvas/UltraCanvasImagePerformanceTest.md")
                 .AddVariant("imageperformance", "Full Pipeline Test")
                 .AddVariant("imageperformance", "Decompress + Draw Test")
                 .AddVariant("imageperformance", "Draw Only Test");
-
-//        bitmapBuilder.AddItem("gifimages", "GIF Images", "GIF Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("GIF"); });
-//        bitmapBuilder.AddItem("avifimages", "AVIF Images", "AVIF Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("AVIF"); });
-//        bitmapBuilder.AddItem("tiffimages", "TIFF Images", "TIFF Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("TIFF"); });
-//        bitmapBuilder.AddItem("webpimages", "WEBP Images", "WEBP Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("WEBP"); });
-//        bitmapBuilder.AddItem("qoiimages", "QOI Images", "QOI Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("QOI"); });
-//        bitmapBuilder.AddItem("rawimages", "RAW Images", "RAW Image display and manipulation",
-//                              ImplementationStatus::PartiallyImplemented,
-//                              [this]() { return CreateBitmapNotImplementedExamples("RAW"); });
 
         // ===== VECTOR ELEMENTS =====
         auto vectorBuilder = DemoCategoryBuilder(this, DemoCategory::VectorElements);
@@ -678,18 +650,21 @@ namespace UltraCanvas {
         vectorBuilder.AddItem("svg", "SVG Graphics", "Scalable vector graphics rendering",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateSVGVectorExamples(); },
-                              "Examples/UltraCanvasSVGExamples.cpp",
-                              "Docs/UltraCanvasSVGExamples.md")
+                              "DemoApp/UltraCanvasSVGExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasSVGExamples.md")
                 .AddVariant("svg", "SVG File Display")
                 .AddVariant("svg", "Interactive SVG")
                 .AddVariant("svg", "SVG Animations");
+#ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         vectorBuilder.AddItem("cdrimages", "CDR Images", "CDR (CorelDraw) images display and manipulation",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateCDRVectorExamples(); });
-
+#endif
+#ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         vectorBuilder.AddItem("xarimages", "XAR Images", "XAR Image display and manipulation",
-                              ImplementationStatus::FullyImplemented,
+                              ImplementationStatus::PartiallyImplemented,
                               [this]() { return CreateXARVectorExamples(); });
+#endif
 
         vectorBuilder.AddItem("drawing", "Drawing Surface", "Vector drawing and primitives",
                               ImplementationStatus::PartiallyImplemented,
@@ -701,32 +676,32 @@ namespace UltraCanvas {
         chartBuilder.AddItem("linecharts", "Line Chart", "Line chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateLineChartsExamples(); },
-                             "Examples/UltraCanvasBasicChartsExamples.cpp",
-                             "Docs/UltraCanvasLineChartElement.md");
+                             "DemoApp/UltraCanvasBasicChartsExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasLineChartElement.md");
 
         chartBuilder.AddItem("barcharts", "Bar Chart", "Bar chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateBarChartsExamples(); },
-                             "Examples/UltraCanvasBasicChartsExamples.cpp",
-                             "Docs/UltraCanvasBarChartElement.md");
+                             "DemoApp/UltraCanvasBasicChartsExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasBarChartElement.md");
 
         chartBuilder.AddItem("scattercharts", "Scatter Plot Chart", "Scatter plot chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateScatterPlotChartsExamples(); },
-                             "Examples/UltraCanvasBasicChartsExamples.cpp",
-                             "Docs/UltraCanvasScatterPlotElement.md");
+                             "DemoApp/UltraCanvasBasicChartsExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasScatterPlotElement.md");
 
         chartBuilder.AddItem("areacharts", "Area Chart", "Area chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateAreaChartsExamples(); },
-                             "Examples/UltraCanvasBasicChartsExamples.cpp",
-                             "Docs/UltraCanvasAreaChartElement.md");
+                             "DemoApp/UltraCanvasBasicChartsExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasAreaChartElement.md");
 
-        chartBuilder.AddItem("financialcharts", "Financial Chart", "Stock market OHLC and candlestick charts",
+        chartBuilder.AddItem("financialcharts", "Candlestick Chart", "Stock market OHLC and candlestick charts",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateFinancialChartExamples(); },
-                             "Examples/UltraCanvasFinancialChartExamples.cpp",
-                             "Docs/UltraCanvasFinancialChart.md")
+                             "DemoApp/UltraCanvasFinancialChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasFinancialChart.md")
                 .AddVariant("financialcharts", "Candlestick Chart")
                 .AddVariant("financialcharts", "OHLC Bar Chart")
                 .AddVariant("financialcharts", "Heikin-Ashi Chart")
@@ -736,8 +711,8 @@ namespace UltraCanvas {
         chartBuilder.AddItem("divergingcharts", "Diverging Bar Charts", "Likert scale and population pyramid charts",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateDivergingChartExamples(); },
-                             "Examples/UltraCanvasDivergingChartExamples.cpp",
-                             "Docs/UltraCanvasDivergingChartExamples.md")
+                             "DemoApp/UltraCanvasDivergingChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasDivergingChartExamples.md")
                 .AddVariant("divergingcharts", "Likert Scale")
                 .AddVariant("divergingcharts", "Population Pyramid")
                 .AddVariant("divergingcharts", "Tornado Chart");
@@ -745,8 +720,8 @@ namespace UltraCanvas {
         chartBuilder.AddItem("waterfallcharts", "Waterfall Charts", "Cumulative flow visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateWaterfallChartExamples(); },
-                             "Examples/UltraCanvasWatefallChartExamples.cpp",
-                             "Docs/UltraCanvasWatefallChartExamples.md")
+                             "DemoApp/UltraCanvasWatefallChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasWatefallChartExamples.md")
                 .AddVariant("waterfallcharts", "Revenue Flow")
                 .AddVariant("waterfallcharts", "Cash Flow with Subtotals")
                 .AddVariant("waterfallcharts", "Performance Impact");
@@ -754,8 +729,8 @@ namespace UltraCanvas {
         chartBuilder.AddItem("populationcharts", "Population Chart", "Population chart data visualization",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreatePopulationChartExamples(); },
-                             "Examples/UltraCanvasPopulationChartsExamples.cpp",
-                             "Docs/UltraCanvasPopulationChartElement.md");
+                             "DemoApp/UltraCanvasPopulationChartsExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasPopulationChartElement.md");
 
         chartBuilder.AddItem("sunburstcharts", "Sunburst Chart", "Sunburst Chart",
                              ImplementationStatus::PartiallyImplemented,
@@ -806,8 +781,8 @@ namespace UltraCanvas {
                         "Interactive flow diagrams showing relationships and value distributions",
                         ImplementationStatus::FullyImplemented,
                         [this]() { return CreateSankeyExamples(); },
-                        "Examples/UltraCanvasSankeyExamples.cpp",
-                        "Docs/UltraCanvasSankeyDiagram.md"
+                        "DemoApp/UltraCanvasSankeyExamples.cpp",
+                        "Docs/UltraCanvas/UltraCanvasSankeyDiagram.md"
                 )
                 .AddVariant("sankey", "Energy Flow")
                 .AddVariant("sankey", "Financial Flow")
@@ -823,8 +798,8 @@ namespace UltraCanvas {
                 .AddVariant("plantuml", "Activity Diagrams");
 
         diagramBuilder.AddItem("nodediagram", "Node diagram", "Node diagram",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return nullptr; });
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Node diagram is not ready yet"); });
 
         diagramBuilder.AddItem("flowchart", "Flow chart", "Flow chart",
                                ImplementationStatus::PartiallyImplemented,
@@ -892,6 +867,13 @@ namespace UltraCanvas {
                 .AddVariant("models3d", "3DS Models")
                 .AddVariant("models3d", "3DM Models")
                 .AddVariant("models3d", "OBJ Models");
+
+#ifdef ULTRACANVAS_ENABLE_GL
+        graphics3DBuilder.AddItem("glsurface", "OpenGL Surface", "Hardware-accelerated OpenGL 3D rendering surface",
+                                  ImplementationStatus::FullyImplemented,
+                                  [this]() { return CreateGLSurfaceExamples(); },
+                                  "Apps/DemoApp/UltraCanvasGLSurfaceExamples.cpp");
+#endif
 
         // ===== VIDEO ELEMENTS =====
         auto videoBuilder = DemoCategoryBuilder(this, DemoCategory::VideoElements);
@@ -968,6 +950,11 @@ namespace UltraCanvas {
                              ImplementationStatus::NotImplemented,
                              [this]() { return CreatePartiallyImplementedExamples(""); });
 
+        toolsBuilder.AddItem("textrenderingsettings", "Text Rendering",
+                             "Configure text antialiasing, hinting style, and hint metrics",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateTextRenderingSettingsExamples(); },
+                             "Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp");
 
         auto modulesBuilder = DemoCategoryBuilder(this, DemoCategory::Modules);
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
@@ -998,20 +985,20 @@ namespace UltraCanvas {
                                ImplementationStatus::NotImplemented,
                                [this]() { return CreatePartiallyImplementedExamples("Photo/Video viewer"); });
 
-        std::cout << "✓ Registered " << demoItems.size() << " demo items across "
+        debugOutput << "✓ Registered " << demoItems.size() << " demo items across "
                   << categoryItems.size() << " categories" << std::endl;
     }
 
     void UltraCanvasDemoApplication::SetupTreeView() {
         // Setup root node
         TreeNodeData rootData("root", "UltraCanvas Components");
-        rootData.leftIcon = TreeNodeIcon("media/icons/ultracanvas.png", 16, 16);
+        rootData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/ultracanvas.png"), 16, 16);
         TreeNode* rootNode = categoryTreeView->SetRootNode(rootData);
 
         // Add category nodes
         std::vector<std::pair<DemoCategory, std::string>> categoryNames = {
                 {DemoCategory::BasicUI, "Basic UI Elements"},
-                {DemoCategory::ExtendedFunctionality, "Extended Functionality"},
+                {DemoCategory::ExtendedFunctionality, "Complex UI Elements"},
                 {DemoCategory::BitmapElements, "Bitmap Elements"},
                 {DemoCategory::VectorElements, "Vector Graphics"},
                 {DemoCategory::Charts, "Charts"},
@@ -1033,14 +1020,14 @@ namespace UltraCanvas {
                     catName
             );
             auto items = categoryItems[category];
-            categoryData.leftIcon = TreeNodeIcon("media/icons/folder.png", 16, 16);
+            categoryData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
             TreeNode* categoryNode = categoryTreeView->AddNode("root", categoryData);
 
             // Add items for this category
             for (const std::string& itemId : items) {
                 const auto& demoItem = demoItems[itemId];
                 TreeNodeData itemData(itemId, demoItem->displayName);
-                itemData.leftIcon = TreeNodeIcon("media/icons/component.png", 16, 16);
+                itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/document.svg"), 16, 16);
                 itemData.rightIcon = TreeNodeIcon(GetStatusIcon(demoItem->status), 12, 12);
                 categoryTreeView->AddNode(categoryData.nodeId, itemData);
             }
@@ -1092,7 +1079,7 @@ namespace UltraCanvas {
                 }
                 currentSelectedId = itemId;
             } catch (const std::exception& e) {
-                std::cerr << "Error creating example for " << itemId << ": " << e.what() << std::endl;
+                debugOutput << "Error creating example for " << itemId << ": " << e.what() << std::endl;
             }
         } else {
             // Show placeholder for not implemented items
@@ -1166,11 +1153,11 @@ namespace UltraCanvas {
 // ===== UTILITY METHODS =====
     std::string UltraCanvasDemoApplication::GetStatusIcon(ImplementationStatus status) const {
         switch (status) {
-            case ImplementationStatus::FullyImplemented: return "media/icons/check.png";
-            case ImplementationStatus::PartiallyImplemented: return "media/icons/warning-blue.png";
-            case ImplementationStatus::NotImplemented: return "media/icons/x.png";
-            case ImplementationStatus::Planned: return "media/icons/info.png";
-            default: return "media/icons/unknown.png";
+            case ImplementationStatus::FullyImplemented: return NormalizePath(GetResourcesDir() + "media/icons/check.png");
+            case ImplementationStatus::PartiallyImplemented: return NormalizePath(GetResourcesDir() + "media/icons/warning-blue.png");
+            case ImplementationStatus::NotImplemented: return NormalizePath(GetResourcesDir() + "media/icons/x.png");
+            case ImplementationStatus::Planned: return NormalizePath(GetResourcesDir() + "media/icons/info.png");
+            default: return NormalizePath(GetResourcesDir() + "media/icons/unknown.png");
         }
     }
 
@@ -1187,8 +1174,8 @@ namespace UltraCanvas {
 // ===== APPLICATION LIFECYCLE =====
     void UltraCanvasDemoApplication::Run() {
         // Run application main loop
-        std::cout << "Running UltraCanvas Demo Application..." << std::endl;
-        std::cout << "Select items from the tree view to see implementation examples." << std::endl;
+        debugOutput << "Running UltraCanvas Demo Application..." << std::endl;
+        debugOutput << "Select items from the tree view to see implementation examples." << std::endl;
 
         if (mainWindow) {
             mainWindow->Show();
@@ -1203,7 +1190,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasDemoApplication::Shutdown() {
-        std::cout << "Shutting down Demo Application..." << std::endl;
+        debugOutput << "Shutting down Demo Application..." << std::endl;
 
         ClearDisplay();
         demoItems.clear();

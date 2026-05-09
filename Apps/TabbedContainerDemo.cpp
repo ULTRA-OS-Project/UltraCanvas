@@ -15,6 +15,7 @@
 #include <sstream>
 #include <iomanip>
 #include <random>
+#include "UltraCanvasDebug.h"
 
 using namespace UltraCanvas;
 
@@ -41,7 +42,7 @@ public:
         contentLabel = std::make_shared<UltraCanvasLabel>("content", 0, 10, 50, 380, 60);
         contentLabel->SetText(content);
         contentLabel->SetTextColor(Colors::Black);
-        contentLabel->SetWordWrap(true);
+        contentLabel->SetWrap(TextWrap::WrapWord);
         AddChild(contentLabel);
 
         // Interactive text area
@@ -100,7 +101,7 @@ public:
         statusLabel = std::make_shared<UltraCanvasLabel>("status", 0, 10, 180, 380, 60);
         statusLabel->SetText("Click any button to see interaction feedback...");
         statusLabel->SetTextColor(Color(100, 100, 100));
-        statusLabel->SetWordWrap(true);
+        statusLabel->SetWrap(TextWrap::WrapWord);
         AddChild(statusLabel);
     }
 };
@@ -124,7 +125,7 @@ public:
         infoLabel = std::make_shared<UltraCanvasLabel>("info", 0, 10, 50, 380, 240);
         infoLabel->SetText(info);
         infoLabel->SetTextColor(Colors::Black);
-        infoLabel->SetWordWrap(true);
+        infoLabel->SetWrap(TextWrap::WrapWord);
         AddChild(infoLabel);
     }
 };
@@ -333,11 +334,12 @@ private:
             statusLabel->SetTextColor(Color(0, 100, 0));
         };
 
-        mainTabbedContainer->onTabCloseRequest = [this](int index) {
+        mainTabbedContainer->onTabClose = [this](int index) {
             std::ostringstream status;
             status << "Tab \"" << mainTabbedContainer->GetTabTitle(index) << "\" closed (index " << index << ")";
             statusLabel->SetText(status.str());
             statusLabel->SetTextColor(Color(150, 100, 0));
+            return true;
         };
 
         mainTabbedContainer->onTabReorder = [this](int fromIndex, int toIndex) {
@@ -456,18 +458,18 @@ private:
 
 public:
     bool Initialize() override {
-        std::cout << "Initializing UltraCanvas Tabbed Container Demo..." << std::endl;
+        debugOutput << "Initializing UltraCanvas Tabbed Container Demo..." << std::endl;
 
         // Initialize base application
         if (!UltraCanvasApplication::Initialize()) {
-            std::cerr << "Failed to initialize UltraCanvas application" << std::endl;
+            debugOutput << "Failed to initialize UltraCanvas application" << std::endl;
             return false;
         }
 
         // Create demo window
         demoWindow = std::make_shared<TabbedContainerDemoWindow>();
         if (!demoWindow) {
-            std::cerr << "Failed to create demo window" << std::endl;
+            debugOutput << "Failed to create demo window" << std::endl;
             return false;
         }
 
@@ -480,20 +482,20 @@ public:
         config.backgroundColor = Color(250, 250, 250);
 
         if (!demoWindow->Create(config)) {
-            std::cerr << "Failed to create demo window with config" << std::endl;
+            debugOutput << "Failed to create demo window with config" << std::endl;
             return false;
         }
 
         // Initialize demo content
         if (!demoWindow->Initialize()) {
-            std::cerr << "Failed to initialize demo window content" << std::endl;
+            debugOutput << "Failed to initialize demo window content" << std::endl;
             return false;
         }
 
         // Show window
         demoWindow->Show();
 
-        std::cout << "Demo initialized successfully!" << std::endl;
+        debugOutput << "Demo initialized successfully!" << std::endl;
         PrintUsageInstructions();
 
         return true;
@@ -501,57 +503,57 @@ public:
 
 private:
     void PrintUsageInstructions() {
-        std::cout << "\n=== UltraCanvas Tabbed Container Demo ===" << std::endl;
-        std::cout << "\nFEATURES TO TEST:" << std::endl;
-        std::cout << "• Overflow Dropdown: Add tabs until dropdown appears" << std::endl;
-        std::cout << "• Search Functionality: Type in dropdown to filter tabs" << std::endl;
-        std::cout << "• Tab Reordering: Drag tabs to reorder (if enabled)" << std::endl;
-        std::cout << "• Close Buttons: Click × to close tabs" << std::endl;
-        std::cout << "• Nested Tabs: Check the 'Nested Tabs' tab" << std::endl;
-        std::cout << "\nCONTROLS:" << std::endl;
-        std::cout << "• Add Tab: Creates new dynamic tab" << std::endl;
-        std::cout << "• Remove Tab: Removes active tab" << std::endl;
-        std::cout << "• Toggle Dropdown: Cycles dropdown position (Left/Right/Off)" << std::endl;
-        std::cout << "• Toggle Search: Enables/disables search functionality" << std::endl;
-        std::cout << "\nKEYBOARD:" << std::endl;
-        std::cout << "• Arrow Keys: Navigate between tabs" << std::endl;
-        std::cout << "• Ctrl+W: Close active tab (if closable)" << std::endl;
-        std::cout << "• Escape: Exit application" << std::endl;
-        std::cout << "\nSEARCH DEMO:" << std::endl;
-        std::cout << "• Type 'doc' to find document tabs" << std::endl;
-        std::cout << "• Type numbers to find specific tabs" << std::endl;
-        std::cout << "• Search appears when >5 tabs (configurable)" << std::endl;
-        std::cout << "=======================================" << std::endl;
+        debugOutput << "\n=== UltraCanvas Tabbed Container Demo ===" << std::endl;
+        debugOutput << "\nFEATURES TO TEST:" << std::endl;
+        debugOutput << "• Overflow Dropdown: Add tabs until dropdown appears" << std::endl;
+        debugOutput << "• Search Functionality: Type in dropdown to filter tabs" << std::endl;
+        debugOutput << "• Tab Reordering: Drag tabs to reorder (if enabled)" << std::endl;
+        debugOutput << "• Close Buttons: Click × to close tabs" << std::endl;
+        debugOutput << "• Nested Tabs: Check the 'Nested Tabs' tab" << std::endl;
+        debugOutput << "\nCONTROLS:" << std::endl;
+        debugOutput << "• Add Tab: Creates new dynamic tab" << std::endl;
+        debugOutput << "• Remove Tab: Removes active tab" << std::endl;
+        debugOutput << "• Toggle Dropdown: Cycles dropdown position (Left/Right/Off)" << std::endl;
+        debugOutput << "• Toggle Search: Enables/disables search functionality" << std::endl;
+        debugOutput << "\nKEYBOARD:" << std::endl;
+        debugOutput << "• Arrow Keys: Navigate between tabs" << std::endl;
+        debugOutput << "• Ctrl+W: Close active tab (if closable)" << std::endl;
+        debugOutput << "• Escape: Exit application" << std::endl;
+        debugOutput << "\nSEARCH DEMO:" << std::endl;
+        debugOutput << "• Type 'doc' to find document tabs" << std::endl;
+        debugOutput << "• Type numbers to find specific tabs" << std::endl;
+        debugOutput << "• Search appears when >5 tabs (configurable)" << std::endl;
+        debugOutput << "=======================================" << std::endl;
     }
 };
 
 // ===== MAIN FUNCTION =====
 
 int main(int argc, char* argv[]) {
-    std::cout << "Starting UltraCanvas Enhanced Tabbed Container Demo..." << std::endl;
+    debugOutput << "Starting UltraCanvas Enhanced Tabbed Container Demo..." << std::endl;
 
     try {
         // Create and initialize demo application
         auto app = std::make_shared<TabbedContainerDemoApp>();
 
         if (!app->Initialize()) {
-            std::cerr << "Failed to initialize demo application!" << std::endl;
+            debugOutput << "Failed to initialize demo application!" << std::endl;
             return -1;
         }
 
-        std::cout << "Demo application initialized. Starting main loop..." << std::endl;
+        debugOutput << "Demo application initialized. Starting main loop..." << std::endl;
 
         // Run the application main loop
         app->Run();
 
-        std::cout << "Demo application finished successfully." << std::endl;
+        debugOutput << "Demo application finished successfully." << std::endl;
         return 0;
 
     } catch (const std::exception& e) {
-        std::cerr << "Exception in main: " << e.what() << std::endl;
+        debugOutput << "Exception in main: " << e.what() << std::endl;
         return -1;
     } catch (...) {
-        std::cerr << "Unknown exception in main!" << std::endl;
+        debugOutput << "Unknown exception in main!" << std::endl;
         return -1;
     }
 }

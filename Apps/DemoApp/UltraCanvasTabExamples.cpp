@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasComprehensiveTabDemo.cpp
 // Comprehensive demonstration of all tabbed container features
-// Version: 1.0.0
-// Last Modified: 2025-11-17
+// Version: 1.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -11,6 +11,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasCheckbox.h"
 #include <sstream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -257,21 +258,21 @@ namespace UltraCanvas {
                                                                                "✓ Hover effects on all interactive elements\n"
                                                                                "✓ Visual feedback for user actions",
                                                                                Color(250, 250, 250)));
-        featureTabs->SetTabIcon(tabIndex1, "media/icons/envelope-icon.png");
+        featureTabs->SetTabIcon(tabIndex1, NormalizePath(GetResourcesDir() + "media/icons/envelope-icon.png"));
         featureTabs->SetTabBadge(tabIndex1, "5", true);  // 5 unread messages
 
         int tabIndex2 = featureTabs->AddTab("Notifications", CreateSampleTabContent("Feature2", 7055,
                                                                                     "Notification center content.\n\n"
                                                                                     "Badge shows 12 new notifications.",
                                                                                     Color(245, 250, 255)));
-        featureTabs->SetTabIcon(tabIndex2, "media/icons/bell-icon.png");
+        featureTabs->SetTabIcon(tabIndex2, NormalizePath(GetResourcesDir() + "media/icons/bell-icon.png"));
         featureTabs->SetTabBadge(tabIndex2, "999+", true);  // 12 notifications
 
         int tabIndex3 = featureTabs->AddTab("Settings", CreateSampleTabContent("Feature3", 7057,
                                                                                "Settings and preferences.\n\n"
                                                                                "This tab has an icon but no badge.",
                                                                                Color(250, 245, 255)));
-        featureTabs->SetTabIcon(tabIndex3, "media/icons/settings.png");
+        featureTabs->SetTabIcon(tabIndex3, NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
 
         featureTabs->SetActiveTab(0);
         mainContainer->AddChild(featureTabs);
@@ -592,7 +593,7 @@ namespace UltraCanvas {
 
         // Set up callbacks
         advancedTabs->onTabChange = [](int oldIndex, int newIndex) {
-            std::cout << "Tab changed from " << oldIndex << " to " << newIndex << std::endl;
+            debugOutput << "Tab changed from " << oldIndex << " to " << newIndex << std::endl;
         };
 
         advancedTabs->SetActiveTab(0);

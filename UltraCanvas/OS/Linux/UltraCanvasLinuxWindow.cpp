@@ -6,65 +6,77 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasLinuxWindow.h"
-#include <X11/cursorfont.h>
+#include "UltraCanvasImage.h"
+#include "../libspecific/Cairo/RenderContextCairo.h"
 #include <iostream>
 #include <cstring>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
 // ===== CONSTRUCTOR & DESTRUCTOR =====
     UltraCanvasLinuxWindow::UltraCanvasLinuxWindow()
-            : xWindow(0)
-            , cairoSurface(nullptr) {
+            : xWindow(0) {
 
-        std::cout << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
+        debugOutput << "UltraCanvas Linux: Window constructor completed successfully" << std::endl;
     }
 
 // ===== WINDOW CREATION =====
     bool UltraCanvasLinuxWindow::CreateNative() {
         if (_created) {
-            std::cout << "UltraCanvas Linux: Window already created" << std::endl;
+            debugOutput << "UltraCanvas Linux: Window already created" << std::endl;
             return true;
         }
         auto application = UltraCanvasApplication::GetInstance();
         if (!application || !application->IsInitialized()) {
-            std::cerr << "UltraCanvas Linux: Cannot create window - application not ready" << std::endl;
+            debugOutput << "UltraCanvas Linux: Cannot create window - application not ready" << std::endl;
             return false;
         }
 
-        std::cout << "UltraCanvas Linux: Creating X11 window..." << std::endl;
+        debugOutput << "UltraCanvas Linux: Creating X11 window..." << std::endl;
 
         if (!CreateXWindow()) {
-            std::cerr << "UltraCanvas Linux: Failed to create X11 window" << std::endl;
+            debugOutput << "UltraCanvas Linux: Failed to create X11 window" << std::endl;
             return false;
         }
 
-        if (!CreateCairoSurface()) {
-            std::cerr << "UltraCanvas Linux: Failed to create Cairo surface" << std::endl;
+        // Apply window icon
+        std::string iconToUse = config_.iconPath;
+        if (iconToUse.empty()) {
+            iconToUse = application->GetDefaultWindowIcon();
+        }
+        if (!iconToUse.empty()) {
+            SetWindowIcon(iconToUse);
+        }
+
+        CreateXIC();
+
+        if (!CreateNativeCairoSurface()) {
+            debugOutput << "UltraCanvas Linux: Failed to create Cairo surface" << std::endl;
             XDestroyWindow(application->GetDisplay(), xWindow);
             xWindow = 0;
             return false;
         }
 
-        try {
-            renderContext = std::make_unique<RenderContextCairo>(cairoSurface, config_.width, config_.height, true);
-            std::cout << "UltraCanvas Linux: Render context created successfully" << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "UltraCanvas Linux: Failed to create render context: " << e.what() << std::endl;
-            DestroyCairoSurface();
-            XDestroyWindow(UltraCanvasApplication::GetInstance()->GetDisplay(), xWindow);
-            xWindow = 0;
-            return false;
-        }
+//        try {
+//            renderContext = std::make_unique<RenderContextCairo>(cairoSurface, config_.width, config_.height, true);
+//            debugOutput << "UltraCanvas Linux: Render context created successfully" << std::endl;
+//        } catch (const std::exception& e) {
+//            debugOutput << "UltraCanvas Linux: Failed to create render context: " << e.what() << std::endl;
+//            DestroyNativeCairoSurface();
+//            XDestroyWindow(UltraCanvasApplication::GetInstance()->GetDisplay(), xWindow);
+//            xWindow = 0;
+//            return false;
+//        }
 
-        std::cout << "UltraCanvas Linux: Window created successfully!" << std::endl;
+        debugOutput << "UltraCanvas Linux: Window created successfully!" << std::endl;
         return true;
     }
 
     bool UltraCanvasLinuxWindow::CreateXWindow() {
         auto application = UltraCanvasApplication::GetInstance();
         if (!application || !application->GetDisplay()) {
-            std::cerr << "UltraCanvas Linux: Invalid application or display" << std::endl;
+            debugOutput << "UltraCanvas Linux: Invalid application or display" << std::endl;
             return false;
         }
 
@@ -76,13 +88,13 @@ namespace UltraCanvas {
 
         // Validate resources
         if (!display || rootWindow == 0 || !visual) {
-            std::cerr << "UltraCanvas Linux: Invalid X11 resources" << std::endl;
+            debugOutput << "UltraCanvas Linux: Invalid X11 resources" << std::endl;
             return false;
         }
 
         // Validate dimensions
         if (config_.width <= 0 || config_.height <= 0 || config_.width > 4096 || config_.height > 4096) {
-            std::cerr << "UltraCanvas Linux: Invalid window dimensions: "
+            debugOutput << "UltraCanvas Linux: Invalid window dimensions: "
                       << config_.width << "x" << config_.height << std::endl;
             return false;
         }
@@ -103,7 +115,7 @@ namespace UltraCanvas {
 //        unsigned long valueMask = CWBackPixel | CWBorderPixel | CWColormap | CWEventMask | CWBackingStore;
         unsigned long valueMask = CWColormap | CWEventMask | CWBackingStore;
 
-        std::cout << "UltraCanvas Linux: Creating X11 window with dimensions: "
+        debugOutput << "UltraCanvas Linux: Creating X11 window with dimensions: "
                   << config_.width << "x" << config_.height
                   << " at position: " << config_.x << "," << config_.y << std::endl;
 
@@ -122,14 +134,30 @@ namespace UltraCanvas {
         XSync(display, False);
 
         if (xWindow == 0) {
-            std::cerr << "UltraCanvas Linux: XCreateWindow failed" << std::endl;
+            debugOutput << "UltraCanvas Linux: XCreateWindow failed" << std::endl;
             return false;
         }
 
-        std::cout << "UltraCanvas Linux: X11 window created with ID: " << xWindow << std::endl;
+        debugOutput << "UltraCanvas Linux: X11 window created with ID: " << xWindow << std::endl;
 
         SetWindowTitle(config_.title);
         SetWindowHints();
+
+        // Apply borderless style if requested (remove window decorations)
+        if (config_.type == WindowType::Borderless) {
+            struct {
+                unsigned long flags;
+                unsigned long functions;
+                unsigned long decorations;
+                long inputMode;
+                unsigned long status;
+            } motifHints = {2, 0, 0, 0, 0};  // flags=MWM_HINTS_DECORATIONS, decorations=0
+
+            Atom motifWmHints = XInternAtom(display, "_MOTIF_WM_HINTS", False);
+            XChangeProperty(display, xWindow, motifWmHints, motifWmHints, 32,
+                            PropModeReplace,
+                            reinterpret_cast<unsigned char*>(&motifHints), 5);
+        }
 
         // Set WM protocols
         Atom wmDeleteWindow = XInternAtom(display, "WM_DELETE_WINDOW", False);
@@ -137,65 +165,187 @@ namespace UltraCanvas {
             XSetWMProtocols(display, xWindow, &wmDeleteWindow, 1);
         }
 
+        // Initialize XDnD drag-and-drop support
+        dragDropHandler.Initialize(display, xWindow);
+
+        // Wire XDnD callbacks to dispatch UCEvents
+        dragDropHandler.onFileDrop = [this](const std::vector<std::string>& paths, int x, int y) {
+            UCEvent event;
+            event.type = UCEventType::Drop;
+            event.targetWindow = this;
+            event.nativeWindowHandle = xWindow;
+            event.pointerWindow = { x, y };
+            event.pointer = event.pointerWindow;
+            event.droppedFiles = paths;
+            event.dragMimeType = "text/uri-list";
+            // Join paths for legacy dragData compatibility
+            std::string joined;
+            for (const auto& p : paths) {
+                if (!joined.empty()) joined += "\n";
+                joined += p;
+            }
+            event.dragData = joined;
+            UltraCanvasApplication::GetInstance()->PushEvent(event);
+        };
+
+        dragDropHandler.onDragEnter = [this](int x, int y) {
+            UCEvent event;
+            event.type = UCEventType::DragEnter;
+            event.targetWindow = this;
+            event.nativeWindowHandle = xWindow;
+            event.pointerWindow = { x, y };
+            event.pointer = event.pointerWindow;
+            UltraCanvasApplication::GetInstance()->PushEvent(event);
+        };
+
+        dragDropHandler.onDragLeave = [this](int x, int y) {
+            UCEvent event;
+            event.type = UCEventType::DragLeave;
+            event.targetWindow = this;
+            event.nativeWindowHandle = xWindow;
+            event.pointerWindow = { x, y };
+            event.pointer = event.pointerWindow;
+            UltraCanvasApplication::GetInstance()->PushEvent(event);
+        };
+
+        dragDropHandler.onDragOver = [this](int x, int y) {
+            UCEvent event;
+            event.type = UCEventType::DragOver;
+            event.targetWindow = this;
+            event.nativeWindowHandle = xWindow;
+            event.pointerWindow = { x, y };
+            event.pointer = event.pointerWindow;
+            UltraCanvasApplication::GetInstance()->PushEvent(event);
+        };        
         XSync(display, False);
         return true;
     }
 
-    bool UltraCanvasLinuxWindow::CreateCairoSurface() {
+    bool UltraCanvasLinuxWindow::CreateNativeCairoSurface() {
         auto application = UltraCanvasApplication::GetInstance();
         if (!application || !application->GetDisplay() || xWindow == 0) {
-            std::cerr << "UltraCanvas Linux: Cannot create Cairo surface - invalid state" << std::endl;
+            debugOutput << "UltraCanvas Linux: Cannot create Cairo surface - invalid state" << std::endl;
             return false;
         }
 
         Display* display = application->GetDisplay();
         Visual* visual = application->GetVisual();
 
-        cairoSurface = cairo_xlib_surface_create(
+        nativeSurface = cairo_xlib_surface_create(
                 display, xWindow, visual,
                 config_.width, config_.height
         );
 
-        if (!cairoSurface) {
-            std::cerr << "UltraCanvas Linux: cairo_xlib_surface_create failed" << std::endl;
+        if (!nativeSurface) {
+            debugOutput << "UltraCanvas Linux: cairo_xlib_surface_create failed" << std::endl;
             return false;
         }
 
-        cairo_status_t status = cairo_surface_status(cairoSurface);
+        cairo_status_t status = cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface));
         if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "UltraCanvas Linux: Cairo surface creation failed: "
+            debugOutput << "UltraCanvas Linux: Cairo surface creation failed: "
                       << cairo_status_to_string(status) << std::endl;
-            cairo_surface_destroy(cairoSurface);
-            cairoSurface = nullptr;
+            cairo_surface_destroy(static_cast<cairo_surface_t *>(nativeSurface));
+            nativeSurface = nullptr;
             return false;
         }
 
-        std::cout << "UltraCanvas Linux: Cairo surface and context created successfully" << std::endl;
+        debugOutput << "UltraCanvas Linux: Cairo surface and context created successfully" << std::endl;
+        return true;
+    }
+    bool UltraCanvasLinuxWindow::CreateXIC() {        
+        xic = nullptr;
+        auto application = dynamic_cast<UltraCanvasLinuxApplication*>(UltraCanvasApplication::GetInstance());
+        auto xim = application->GetXIM();
+        if (!xim) {
+            debugOutput << "UltraCanvas: Cannot create XIC - XIM not initialized" << std::endl;
+            return false;
+        }
+
+        // Query supported input styles
+        XIMStyles* styles = nullptr;
+        if (XGetIMValues(xim, XNQueryInputStyle, &styles, nullptr) != nullptr || !styles) {
+            debugOutput << "UltraCanvas: Failed to query XIM input styles" << std::endl;
+            return false;
+        }
+
+        // Find a suitable input style
+        // Prefer: XIMPreeditNothing | XIMStatusNothing (simple, no on-the-spot editing)
+        XIMStyle bestStyle = 0;
+        XIMStyle preferredStyles[] = {
+            XIMPreeditNothing | XIMStatusNothing,
+            XIMPreeditNone | XIMStatusNone,
+            0
+        };
+
+        for (int p = 0; preferredStyles[p] != 0; p++) {
+            for (unsigned short i = 0; i < styles->count_styles; i++) {
+                if (styles->supported_styles[i] == preferredStyles[p]) {
+                    bestStyle = preferredStyles[p];
+                    break;
+                }
+            }
+            if (bestStyle != 0) break;
+        }
+
+        // Fallback: use the first available style
+        if (bestStyle == 0 && styles->count_styles > 0) {
+            bestStyle = styles->supported_styles[0];
+        }
+
+        XFree(styles);
+
+        if (bestStyle == 0) {
+            debugOutput << "UltraCanvas: No suitable XIM input style found" << std::endl;
+            return false;
+        }
+
+        // Create the Input Context
+        xic = XCreateIC(xim,
+                           XNInputStyle, bestStyle,
+                           XNClientWindow, xWindow,
+                           XNFocusWindow, xWindow,
+                           nullptr);
+
+        if (!xic) {
+            debugOutput << "UltraCanvas: XCreateIC() failed" << std::endl;
+            return false;
+        }
+
+        debugOutput << "UltraCanvas: XIC created for window " << xWindow << std::endl;
         return true;
     }
 
-    void UltraCanvasLinuxWindow::DestroyCairoSurface() {
-        if (cairoSurface) {
-            std::cout << "UltraCanvas Linux: Destroying Cairo surface..." << std::endl;
-            cairo_surface_destroy(cairoSurface);
-            cairoSurface = nullptr;
+    void UltraCanvasLinuxWindow::DestroyXIC() {
+        if (xic) {
+            XDestroyIC(xic);
+            xic = nullptr;
+        }
+    }
+
+    void UltraCanvasLinuxWindow::DestroyNativeCairoSurface() {
+        if (nativeSurface) {
+            debugOutput << "UltraCanvas Linux: Destroying Cairo surface..." << std::endl;
+            cairo_surface_destroy(static_cast<cairo_surface_t *>(nativeSurface));
+            nativeSurface = nullptr;
         }
     }
 
     void UltraCanvasLinuxWindow::DestroyNative() {
-        std::cout << "UltraCanvas Linux: Destroying window..." << std::endl;
+        debugOutput << "UltraCanvas Linux: Destroying window..." << std::endl;
 
         renderContext.reset();
-        DestroyCairoSurface();
+        DestroyNativeCairoSurface();
+        dragDropHandler.Shutdown();
         auto application = UltraCanvasApplication::GetInstance();
-        if (xWindow && application && application->GetDisplay()) {
-            std::cout << "UltraCanvas Linux: Destroying X11 window..." << std::endl;
+        if (xWindow && application && application->GetDisplay()) {        
+            DestroyXIC();
+            debugOutput << "UltraCanvas Linux: Destroying X11 window..." << std::endl;
             XDestroyWindow(application->GetDisplay(), xWindow);
             XSync(application->GetDisplay(), False);
             xWindow = 0;
         }
-
-        std::cout << "UltraCanvas Linux: Window destroyed successfully" << std::endl;
+        debugOutput << "UltraCanvas Linux: Window destroyed successfully" << std::endl;
     }
 
 
@@ -205,13 +355,13 @@ namespace UltraCanvas {
         if (xWindow != 0) {
             auto application = UltraCanvasApplication::GetInstance();
             if (!application) {
-                std::cerr << "UltraCanvas Linux: Application instance not available" << std::endl;
+                debugOutput << "UltraCanvas Linux: Application instance not available" << std::endl;
                 return;
             }
 
             Display* display = application->GetDisplay();
             if (!display) {
-                std::cerr << "UltraCanvas Linux: Display not available" << std::endl;
+                debugOutput << "UltraCanvas Linux: Display not available" << std::endl;
                 return;
             }
 
@@ -240,8 +390,64 @@ namespace UltraCanvas {
             // CRITICAL: Flush the X11 display to ensure changes are sent to the X server
             XFlush(display);
 
-            std::cout << "UltraCanvas Linux: Window title set to: \"" << title << "\"" << std::endl;
+            debugOutput << "UltraCanvas Linux: Window title set to: \"" << title << "\"" << std::endl;
         }
+    }
+
+    void UltraCanvasLinuxWindow::SetWindowIcon(const std::string& iconPath) {
+        if (xWindow == 0 || iconPath.empty()) {
+            return;
+        }
+
+        auto application = UltraCanvasApplication::GetInstance();
+        if (!application || !application->GetDisplay()) {
+            return;
+        }
+
+        // Load the icon image
+        auto img = UCImageRaster::Load(iconPath, false);
+        if (!img || !img->IsValid()) {
+            debugOutput << "UltraCanvas Linux: Failed to load icon: " << iconPath << std::endl;
+            return;
+        }
+
+        // Get pixmap at original size
+        auto pixmap = img->GetPixmap();
+        if (!pixmap || !pixmap->IsValid()) {
+            debugOutput << "UltraCanvas Linux: Failed to create pixmap for icon" << std::endl;
+            return;
+        }
+
+        int w = pixmap->GetWidth();
+        int h = pixmap->GetHeight();
+        uint32_t* pixels = pixmap->GetPixelData();
+        if (!pixels || w <= 0 || h <= 0) {
+            return;
+        }
+
+        // Build _NET_WM_ICON data: [width, height, pixel0, pixel1, ...]
+        // Each element must be unsigned long (8 bytes on 64-bit systems)
+        size_t dataSize = 2 + (size_t)w * h;
+        std::vector<unsigned long> iconData(dataSize);
+        iconData[0] = (unsigned long)w;
+        iconData[1] = (unsigned long)h;
+
+        // Cairo uses premultiplied ARGB32, _NET_WM_ICON expects non-premultiplied ARGB.
+        // For icon purposes, premultiplied is close enough and widely accepted by WMs.
+        for (int i = 0; i < w * h; i++) {
+            iconData[2 + i] = (unsigned long)pixels[i];
+        }
+
+        Display* display = application->GetDisplay();
+        Atom netWmIcon = XInternAtom(display, "_NET_WM_ICON", False);
+
+        XChangeProperty(display, xWindow, netWmIcon, XA_CARDINAL, 32,
+                        PropModeReplace,
+                        reinterpret_cast<const unsigned char*>(iconData.data()),
+                        dataSize);
+
+        XFlush(display);
+        debugOutput << "UltraCanvas Linux: Window icon set (" << w << "x" << h << ") from: " << iconPath << std::endl;
     }
 
     void UltraCanvasLinuxWindow::SetWindowSize(int width, int height) {
@@ -251,9 +457,11 @@ namespace UltraCanvas {
         if (_created) {
             auto application = UltraCanvasApplication::GetInstance();
             XResizeWindow(application->GetDisplay(), xWindow, width, height);
-            UpdateCairoSurface(width, height);
+            _needsResize = true;
+//            UpdateCairoSurface(width, height);
+        } else {
+            UltraCanvasWindowBase::SetSize(width, height);
         }
-        UltraCanvasWindowBase::SetSize(width, height);
     }
 
     void UltraCanvasLinuxWindow::SetWindowPosition(int x, int y) {
@@ -281,7 +489,7 @@ namespace UltraCanvas {
             return;
         }
 
-        std::cout << "UltraCanvas Linux: Showing window..." << std::endl;
+        debugOutput << "UltraCanvas Linux: Showing window..." << std::endl;
         auto application = UltraCanvasApplication::GetInstance();
 
         XMapWindow(application->GetDisplay(), xWindow);
@@ -296,6 +504,7 @@ namespace UltraCanvas {
         if (onWindowShow) {
             onWindowShow();
         }
+        RequestRedraw();
     }
 
     void UltraCanvasLinuxWindow::Hide() {
@@ -303,7 +512,7 @@ namespace UltraCanvas {
             return;
         }
 
-        std::cout << "UltraCanvas Linux: Hiding window..." << std::endl;
+        debugOutput << "UltraCanvas Linux: Hiding window..." << std::endl;
         auto application = UltraCanvasApplication::GetInstance();
         XUnmapWindow(application->GetDisplay(), xWindow);
         XFlush(application->GetDisplay());
@@ -435,143 +644,111 @@ namespace UltraCanvas {
         XSetWMNormalHints(display, xWindow, &hints);
     }
 
-    void UltraCanvasLinuxWindow::UpdateCairoSurface(int w, int h) {
+    void UltraCanvasLinuxWindow::RaiseAndFocus() {
+        auto application = UltraCanvasApplication::GetInstance();
+        Display* display = application->GetDisplay();
+        if (xWindow == 0 || !display) {
+            return;
+        }
+
+        Atom net_active = XInternAtom(display, "_NET_ACTIVE_WINDOW", False);
+
+        XEvent event;
+        std::memset(&event, 0, sizeof(event));
+
+        event.xclient.type = ClientMessage;
+        event.xclient.message_type = net_active;
+        event.xclient.display = display;
+        event.xclient.window = xWindow;
+        event.xclient.format = 32;
+        event.xclient.data.l[0] = 1; // source indication: application
+        event.xclient.data.l[1] = CurrentTime;
+
+        Window root = DefaultRootWindow(display);
+
+        XSendEvent(
+                display,
+                root,
+                False,
+                SubstructureRedirectMask | SubstructureNotifyMask,
+                &event
+        );
+
+        XFlush(display);
+//        XSetInputFocus(display, xWindow, RevertToParent, CurrentTime);
+    }
+
+    void UltraCanvasLinuxWindow::DoResizeNative() {
         std::lock_guard<std::mutex> lock(cairoMutex);  // Add this
 
-        if (cairoSurface) {
-            cairo_xlib_surface_set_size(cairoSurface, w, h);
+        if (nativeSurface) {
+            cairo_xlib_surface_set_size(static_cast<cairo_surface_t *>(nativeSurface), config_.width, config_.height);
         }
 
-        if (renderContext) {
-            renderContext->ResizeStagingSurface(w,h);
-        }
+        InvalidateWindowNative();
+        XFlush(UltraCanvasApplication::GetInstance()->GetDisplay());
 
-        std::cout << "UltraCanvas Linux: Cairo surface updated successfully" << std::endl;
+        debugOutput << "UltraCanvasLinuxWindow::DoResizeNative: Cairo surface updated successfully" << std::endl;
     }
 
-    void UltraCanvasLinuxWindow::HandleResizeEvent(int w, int h) {
-        if (config_.width != w || config_.height != h) {
-            UpdateCairoSurface(w, h);
-            UltraCanvasWindowBase::HandleResizeEvent(w, h);
-            Flush();
-            XFlush(UltraCanvasApplication::GetInstance()->GetDisplay());
-        }
-    }
-
-    void UltraCanvasLinuxWindow::Flush() {
-        renderContext->SwapBuffers();
-        cairo_surface_flush(cairoSurface);
+    void UltraCanvasLinuxWindow::InvalidateWindowNative() {
+//        cairo_surface_t *ctxSurface = static_cast<cairo_surface_t *>(renderContext->GetSurface());
+//        cairo_surface_flush(stagingSurface);
+//        // Copy staging surface to window surface
+//        cairo_set_source_surface(targetContext, stagingSurface, 0, 0);
+//        cairo_set_operator(targetContext, CAIRO_OPERATOR_SOURCE);
+//        cairo_paint(targetContext);
+//
+//        cairo_surface_flush(cairoSurface);
 //            XFlush(application->GetDisplay());
     }
 
 // ===== EVENT HANDLING =====
     bool UltraCanvasLinuxWindow::HandleXEvent(const XEvent& event) {
+        // Let the XDnD handler process drag-and-drop events first
+        if (event.type == ClientMessage || event.type == SelectionNotify) {
+            if (dragDropHandler.HandleXEvent(event)) {
+                return true;
+            }
+        }
         return false;
     }
 
 // ===== ACCESSORS =====
-    unsigned long UltraCanvasLinuxWindow::GetNativeHandle() const {
+    NativeWindowHandle UltraCanvasLinuxWindow::GetNativeHandle() const {
         return xWindow;
     }
 
-// ===== MOUSE POINTER CONTROL =====
-    void UltraCanvasLinuxWindow::SelectMouseCursorNative(UCMouseCursor cur) {
-        if (!_created || xWindow == 0) {
+    void UltraCanvasLinuxWindow::GetScreenPosition(int& outX, int& outY) const {
+        if (!_created) {
+            outX = config_.x;
+            outY = config_.y;
             return;
         }
-
-        auto application = UltraCanvasApplication::GetInstance();
-        if (!application || !application->GetDisplay()) {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) {
+            outX = config_.x;
+            outY = config_.y;
             return;
         }
+        Window child;
+        XTranslateCoordinates(app->GetDisplay(), xWindow,
+                              DefaultRootWindow(app->GetDisplay()),
+                              0, 0, &outX, &outY, &child);
+    }
 
-        Display* display = application->GetDisplay();
-        Cursor newCursor = None;
-
-        // Map MousePointer enum to X11 cursor font shapes
-        switch (cur) {
-            case UCMouseCursor::Default:
-                newCursor = XCreateFontCursor(display, XC_left_ptr);
-                break;
-
-            case UCMouseCursor::NoCursor:
-                // Create invisible cursor using blank pixmap
-            {
-                Pixmap cursorPixmap = XCreatePixmap(display, xWindow, 1, 1, 1);
-                XColor black;
-                black.red = black.green = black.blue = 0;
-                black.pixel = BlackPixel(display, application->GetScreen());
-                newCursor = XCreatePixmapCursor(display, cursorPixmap, cursorPixmap,
-                                                &black, &black, 0, 0);
-                XFreePixmap(display, cursorPixmap);
-            }
-                break;
-
-            case UCMouseCursor::Hand:
-                newCursor = XCreateFontCursor(display, XC_hand2);
-                break;
-
-            case UCMouseCursor::Text:
-                newCursor = XCreateFontCursor(display, XC_xterm);
-                break;
-
-            case UCMouseCursor::Wait:
-                newCursor = XCreateFontCursor(display, XC_watch);
-                break;
-
-            case UCMouseCursor::Cross:
-                newCursor = XCreateFontCursor(display, XC_crosshair);
-                break;
-
-            case UCMouseCursor::Help:
-                newCursor = XCreateFontCursor(display, XC_question_arrow);
-                break;
-
-            case UCMouseCursor::NotAllowed:
-                newCursor = XCreateFontCursor(display, XC_X_cursor);
-                break;
-
-            case UCMouseCursor::SizeAll:
-                newCursor = XCreateFontCursor(display, XC_fleur);
-                break;
-
-            case UCMouseCursor::SizeNS:
-                newCursor = XCreateFontCursor(display, XC_sb_v_double_arrow);
-                break;
-
-            case UCMouseCursor::SizeWE:
-                newCursor = XCreateFontCursor(display, XC_sb_h_double_arrow);
-                break;
-
-            case UCMouseCursor::SizeNWSE:
-                newCursor = XCreateFontCursor(display, XC_sizing);
-                break;
-
-            case UCMouseCursor::SizeNESW:
-                newCursor = XCreateFontCursor(display, XC_sizing);
-                break;
-
-            case UCMouseCursor::Custom:
-                // Custom cursor not implemented - fall through to default
-                newCursor = XCreateFontCursor(display, XC_left_ptr);
-                break;
-
-            default:
-                newCursor = XCreateFontCursor(display, XC_left_ptr);
-                break;
-        }
-
-        // Apply the cursor to the window
-        if (newCursor != None) {
-
-            XDefineCursor(display, xWindow, newCursor);
-            XFlush(display);
-
-            if (currentXCursor != None) {
-                XFreeCursor(display, currentXCursor);
-            }
-
-            currentXCursor = newCursor;
+    void UltraCanvasLinuxWindow::GetScreenSize(int& width, int& height) const {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (app && app->GetDisplay()) {
+            Display* display = app->GetDisplay();
+            int screen = app->GetScreen();
+            width = XDisplayWidth(display, screen);
+            height = XDisplayHeight(display, screen);
+        } else {
+            width = 0;
+            height = 0;
         }
     }
+
+// ===== MOUSE POINTER CONTROL =====
 } // namespace UltraCanvas

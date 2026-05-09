@@ -93,14 +93,14 @@ namespace UltraCanvas {
 // =============================================================================
 
     struct ChartPlotArea {
-        float x, y, width, height;
+        double x, y, width, height;
 
         ChartPlotArea() : x(0), y(0), width(0), height(0) {}
         ChartPlotArea(float x_pos, float y_pos, float w, float h) : x(x_pos), y(y_pos), width(w), height(h) {}
 
         // Helper methods
-        float GetRight() const { return x + width; }
-        float GetBottom() const { return y + height; }
+        double GetRight() const { return x + width; }
+        double GetBottom() const { return y + height; }
         Point2Df GetCenter() const { return Point2Df(x + (width / 2.0f), y + (height / 2.0f)); }
         bool Contains(float px, float py) const {
             return px >= x && px < GetRight() && py >= y && py < GetBottom();

@@ -1,5 +1,21 @@
 CMakeFiles/
+.claude/
 .idea/
 .vscode/
 /cmake-build-debug/
+/build/
+Apps/Texter/build/
 /1icons/
+
+# Generated binaries
+/UltraCanvasDemo
+/UltraCanvasTexter
+UltraCanvasDemo.exe
+UltraCanvasTexter.exe
+*.dylib
+*.a
+*.so
+*.o
+*.dll
+*.ilk
+*.pdb

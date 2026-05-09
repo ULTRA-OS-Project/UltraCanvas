@@ -5,7 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "PixelFX/PixelFX.h"
-#include "PixelFX/VipsQoiLoader.h"
+#include "../libspecific/Cairo/VipsQoiLoader.h"
 #include <algorithm>
 #include <cmath>
 
@@ -119,22 +119,22 @@ namespace PixelFX {
 // INITIALIZATION
 // ============================================================================
 
-    bool Initialize(const char* programName) {
-        if (g_Initialized) return true;
-        if (VIPS_INIT(programName ? programName : "PixelFX") != 0) return false;
-        vips_foreign_load_qoi_init_types();
-        g_Initialized = true;
-        return true;
-    }
+//    bool Initialize(const char* programName) {
+//        if (g_Initialized) return true;
+//        if (VIPS_INIT(programName ? programName : "PixelFX") != 0) return false;
+//        vips_foreign_load_qoi_init_types();
+//        g_Initialized = true;
+//        return true;
+//    }
+//
+//    void Shutdown() {
+//        if (g_Initialized) {
+//            vips_shutdown();
+//            g_Initialized = false;
+//        }
+//    }
 
-    void Shutdown() {
-        if (g_Initialized) {
-            vips_shutdown();
-            g_Initialized = false;
-        }
-    }
-
-    bool IsInitialized() { return g_Initialized; }
+//    bool IsInitialized() { return g_Initialized; }
 
 // ============================================================================
 // FILE I/O NAMESPACE IMPLEMENTATION

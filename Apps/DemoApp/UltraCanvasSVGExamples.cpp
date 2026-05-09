@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasSVGExamples.cpp
 // Demo examples implementation for UltraCanvas Framework components
-// Version: 1.3.0
-// Last Modified: 2025-01-02
+// Version: 1.3.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -82,16 +82,16 @@ namespace UltraCanvas {
             fullscreenWindow->AddChild(instructionLabel);
 
             // Setup keyboard event handler for ESC key
-            fullscreenWindow->SetEventCallback([this](const UCEvent& event) {
-                if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) || event.type == UCEventType::WindowClose)  {
+            fullscreenWindow->eventCallback = [this](const UCEvent& event) {
+                if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
                     if (fullscreenWindow) {
-                        fullscreenWindow->RequestDelete();
+                        fullscreenWindow->Close();
                         fullscreenWindow.reset();
                     }
                     return true;
                 }
                 return false;
-            });
+            };
 
             // Show the window
             fullscreenWindow->Show();
@@ -131,7 +131,7 @@ namespace UltraCanvas {
         );
 
         // Path to SVG file (adjust this path to your actual SVG file location)
-        std::string svgFilePath = "media/demo.svg";
+        std::string svgFilePath = NormalizePath(GetResourcesDir() + "media/demo.svg");
 
         // Try to load from file, fallback to inline SVG if file not found
         if (!svgElement->LoadFromFile(svgFilePath)) {
@@ -207,9 +207,9 @@ namespace UltraCanvas {
         );
 
         // Try to load from file, fallback to inline SVG if file not found
-        svgElement2->LoadFromFile("media/robot.svg");
+        svgElement2->LoadFromFile(NormalizePath(GetResourcesDir() + "media/robot.svg"));
         // Create demo handler for click interaction
-        auto demoHandler2 = std::make_shared<SVGDemoHandler>("media/robot.svg");
+        auto demoHandler2 = std::make_shared<SVGDemoHandler>(NormalizePath(GetResourcesDir() + "media/robot.svg"));
 
         // Set click handler on the SVG element
         svgElement2->SetEventCallback([demoHandler2, svgContainer2](const UCEvent& event) {
@@ -243,9 +243,9 @@ namespace UltraCanvas {
         );
 
         // Try to load from file, fallback to inline SVG if file not found
-        svgElement3->LoadFromFile("media/astronaut.svg");
+        svgElement3->LoadFromFile(NormalizePath(GetResourcesDir() + "media/astronaut.svg"));
         // Create demo handler for click interaction
-        auto demoHandler3 = std::make_shared<SVGDemoHandler>("media/astronaut.svg");
+        auto demoHandler3 = std::make_shared<SVGDemoHandler>(NormalizePath(GetResourcesDir() + "media/astronaut.svg"));
 
         // Set click handler on the SVG element
         svgElement3->SetEventCallback([demoHandler3, svgContainer3](const UCEvent& event) {
@@ -279,9 +279,9 @@ namespace UltraCanvas {
         );
 
         // Try to load from file, fallback to inline SVG if file not found
-        svgElement4->LoadFromFile("media/photo-camera.svg");
+        svgElement4->LoadFromFile(NormalizePath(GetResourcesDir() + "media/photo-camera.svg"));
         // Create demo handler for click interaction
-        auto demoHandler4 = std::make_shared<SVGDemoHandler>("media/photo-camera.svg");
+        auto demoHandler4 = std::make_shared<SVGDemoHandler>(NormalizePath(GetResourcesDir() + "media/photo-camera.svg"));
 
         // Set click handler on the SVG element
         svgElement4->SetEventCallback([demoHandler4, svgContainer4](const UCEvent& event) {
@@ -318,16 +318,16 @@ namespace UltraCanvas {
         // Information panel
         auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 905, 540, 360, 320, 320);
         infoPanel->SetBackgroundColor(Color(245, 245, 245, 255));
-        infoPanel->SetPadding(15);
+        infoPanel->SetPadding(10,15,10,15);
         infoPanel->SetBorders(1, Color(200, 200, 200, 255));
 
-        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 906, 10, 10, 250, 25);
+        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 906, 0, 0, 250, 25);
         infoTitle->SetText("SVG Features:");
         infoTitle->SetFontSize(14);
         infoTitle->SetFontWeight(FontWeight::Bold);
         infoPanel->AddChild(infoTitle);
 
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 907, 10, 40, 240, 230);
+        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 907, 0, 45, 240, 230);
         infoText->SetText(
                 "• Scalable Vector Graphics support\n"
                 "• Load from file or string\n"

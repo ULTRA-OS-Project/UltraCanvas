@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
-// Version: 2.0.0
-// Last Modified: 2025-01-18
+// Version: 2.1.2 - Install NSApplicationDelegate opting into secure restorable state
+// Last Modified: 2026-05-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMacOSApplication.h"
@@ -12,8 +12,26 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
+#include "UltraCanvasDebug.h"
+
+// Minimal NSApplicationDelegate. Its only job is to opt the app into the
+// secure-coding code path of AppKit's window state restoration system.
+// Without this, macOS 14+ falls back to a legacy archiving path that has
+// crashed on macOS 26.x inside __CFBinaryPlistWriteOrPresize (see report
+// from 2026-05-07: bus error during NSPersistentUIManager flushAllChanges).
+@interface UltraCanvasAppDelegate : NSObject <NSApplicationDelegate>
+@end
+
+@implementation UltraCanvasAppDelegate
+- (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app {
+    return YES;
+}
+@end
 
 namespace UltraCanvas {
+
+// Strong reference to the delegate; NSApplication holds a weak delegate ref.
+static UltraCanvasAppDelegate* g_appDelegate = nil;
 
 // ===== STATIC INSTANCE =====
     UltraCanvasMacOSApplication* UltraCanvasMacOSApplication::instance = nullptr;
@@ -28,29 +46,28 @@ namespace UltraCanvas {
             , mainThreadId(std::this_thread::get_id())
     {
         instance = this;
-        std::cout << "UltraCanvas: macOS Application created" << std::endl;
+        debugOutput << "UltraCanvas: macOS Application created" << std::endl;
     }
 
 // ===== INITIALIZATION =====
     bool UltraCanvasMacOSApplication::InitializeNative() {
         if (initialized) {
-            std::cout << "UltraCanvas: Already initialized" << std::endl;
+            debugOutput << "UltraCanvas: Already initialized" << std::endl;
             return true;
         }
 
-        std::cout << "UltraCanvas: Initializing macOS Application..." << std::endl;
-        VIPS_INIT(appName.c_str());
+        debugOutput << "UltraCanvas: Initializing macOS Application..." << std::endl;
 
         @autoreleasepool {
             // STEP 1: Initialize Cocoa
             if (!InitializeCocoa()) {
-                std::cerr << "UltraCanvas: Failed to initialize Cocoa" << std::endl;
+                debugOutput << "UltraCanvas: Failed to initialize Cocoa" << std::endl;
                 return false;
             }
 
             // STEP 2: Initialize Cairo
             if (!InitializeCairo()) {
-                std::cerr << "UltraCanvas: Failed to initialize Cairo" << std::endl;
+                debugOutput << "UltraCanvas: Failed to initialize Cairo" << std::endl;
                 return false;
             }
 
@@ -63,38 +80,49 @@ namespace UltraCanvas {
             // STEP 5: Start event thread
             //StartEventThread();
 
+            // STEP 6: Initialize wakeup mechanism for cross-thread signaling
+            InitializeWakeUp();
+
             initialized = true;
 
-            std::cout << "UltraCanvas: macOS Application initialized successfully" << std::endl;
+            debugOutput << "UltraCanvas: macOS Application initialized successfully" << std::endl;
             return true;
         }
     }
 
     bool UltraCanvasMacOSApplication::InitializeCocoa() {
-        std::cout << "UltraCanvas: Initializing Cocoa..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing Cocoa..." << std::endl;
 
         @autoreleasepool {
             // Create autorelease pool
             // Get shared application instance
             nsApplication = [NSApplication sharedApplication];
             if (!nsApplication) {
-                std::cerr << "UltraCanvas: Failed to get NSApplication instance" << std::endl;
+                debugOutput << "UltraCanvas: Failed to get NSApplication instance" << std::endl;
                 return false;
             }
 
             // Set activation policy to regular app
             [nsApplication setActivationPolicy:NSApplicationActivationPolicyRegular];
 
+            // Install our NSApplicationDelegate before AppKit's run loop starts
+            // scheduling persistent-UI flushes. The delegate opts into secure
+            // coding for restorable state (required since macOS 14).
+            if (![nsApplication delegate]) {
+                g_appDelegate = [[UltraCanvasAppDelegate alloc] init];
+                [nsApplication setDelegate:g_appDelegate];
+            }
+
             // Get main run loop
             mainRunLoop = [NSRunLoop mainRunLoop];
 
-            std::cout << "UltraCanvas: Cocoa initialized successfully" << std::endl;
+            debugOutput << "UltraCanvas: Cocoa initialized successfully" << std::endl;
             return true;
         }
     }
 
     bool UltraCanvasMacOSApplication::InitializeCairo() {
-        std::cout << "UltraCanvas: Initializing Cairo..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing Cairo..." << std::endl;
 
         // Test if Cairo Quartz backend is available
         cairo_surface_t* test_surface = cairo_quartz_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
@@ -102,15 +130,15 @@ namespace UltraCanvas {
             cairo_status_t status = cairo_surface_status(test_surface);
             if (status == CAIRO_STATUS_SUCCESS) {
                 cairoSupported = true;
-                std::cout << "UltraCanvas: Cairo Quartz backend available" << std::endl;
+                debugOutput << "UltraCanvas: Cairo Quartz backend available" << std::endl;
             } else {
-                std::cerr << "UltraCanvas: Cairo surface creation failed: "
+                debugOutput << "UltraCanvas: Cairo surface creation failed: "
                           << cairo_status_to_string(status) << std::endl;
                 cairoSupported = false;
             }
             cairo_surface_destroy(test_surface);
         } else {
-            std::cerr << "UltraCanvas: Cairo Quartz backend not available" << std::endl;
+            debugOutput << "UltraCanvas: Cairo Quartz backend not available" << std::endl;
             cairoSupported = false;
         }
 
@@ -118,7 +146,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMacOSApplication::InitializeMenuBar() {
-        std::cout << "UltraCanvas: Initializing menu bar..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing menu bar..." << std::endl;
 
         @autoreleasepool {
             // Create main menu
@@ -151,12 +179,12 @@ namespace UltraCanvas {
             // Set as main menu
             [nsApplication setMainMenu:mainMenu];
 
-            std::cout << "UltraCanvas: Menu bar initialized" << std::endl;
+            debugOutput << "UltraCanvas: Menu bar initialized" << std::endl;
         }
     }
 
     void UltraCanvasMacOSApplication::InitializeDisplaySettings() {
-        std::cout << "UltraCanvas: Initializing display settings..." << std::endl;
+        debugOutput << "UltraCanvas: Initializing display settings..." << std::endl;
 
         @autoreleasepool {
             NSScreen* mainScreen = [NSScreen mainScreen];
@@ -164,45 +192,106 @@ namespace UltraCanvas {
                 displayScaleFactor = [mainScreen backingScaleFactor];
                 retinaSupported = (displayScaleFactor > 1.0f);
 
-                std::cout << "UltraCanvas: Display scale factor: " << displayScaleFactor << std::endl;
-                std::cout << "UltraCanvas: Retina display: " << (retinaSupported ? "Yes" : "No") << std::endl;
+                debugOutput << "UltraCanvas: Display scale factor: " << displayScaleFactor << std::endl;
+                debugOutput << "UltraCanvas: Retina display: " << (retinaSupported ? "Yes" : "No") << std::endl;
             }
         }
     }
 
     void UltraCanvasMacOSApplication::ShutdownNative() {
-        std::cout << "UltraCanvas: Shutting down macOS Application..." << std::endl;
+        debugOutput << "UltraCanvas: Shutting down macOS Application..." << std::endl;
+
+        ShutdownWakeUp();
 
         vips_shutdown();
 
         //StopEventThread();
         @autoreleasepool {
+            if (nsApplication && [nsApplication delegate] == g_appDelegate) {
+                [nsApplication setDelegate:nil];
+            }
+            g_appDelegate = nil;
             nsApplication = nullptr;
             mainRunLoop = nullptr;
         }
 
         running = false;
 
-        std::cout << "UltraCanvas: macOS Application shut down" << std::endl;
-        return true;
+        debugOutput << "UltraCanvas: macOS Application shut down" << std::endl;
     }
 
 
 // ===== MAIN LOOP =====
     void UltraCanvasMacOSApplication::CollectAndProcessNativeEvents() {
         @autoreleasepool {
-            // Process Cocoa events
-            NSEvent *event = [nsApplication nextEventMatchingMask:NSEventMaskAny
-                                                        untilDate:[NSDate distantPast]
-                                                           inMode:NSDefaultRunLoopMode
-                                                          dequeue:YES];
-
-            if (event) {
+            // 1. Drain all pending Cocoa events (non-blocking)
+            NSEvent *event;
+            while ((event = [nsApplication nextEventMatchingMask:NSEventMaskAny
+                                                       untilDate:[NSDate distantPast]
+                                                          inMode:NSDefaultRunLoopMode
+                                                         dequeue:YES]) != nil) {
                 ProcessCocoaEvent(event);
-
                 [nsApplication sendEvent:event];
-                [nsApplication updateWindows];
             }
+            [nsApplication updateWindows];
+
+            // 2. Compute wait timeout from timer system
+            auto timeout = GetTimeUntilNextTimer();
+
+            // 3. Block until next event, wakeup signal, or timer expiry
+            CFTimeInterval waitSeconds;
+            if (timeout == std::chrono::milliseconds::max()) {
+                waitSeconds = 1e10;  // Effectively infinite (CFRunLoop treats very large values as indefinite)
+            } else {
+                waitSeconds = timeout.count() / 1000.0;
+                if (waitSeconds < 0) waitSeconds = 0;
+            }
+
+            // CFRunLoopRunInMode returns when: event arrives, wakeup source fires, or timeout
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, waitSeconds, true);
+
+            // 4. Drain any new events that arrived during wait
+            while ((event = [nsApplication nextEventMatchingMask:NSEventMaskAny
+                                                       untilDate:[NSDate distantPast]
+                                                          inMode:NSDefaultRunLoopMode
+                                                         dequeue:YES]) != nil) {
+                ProcessCocoaEvent(event);
+                [nsApplication sendEvent:event];
+            }
+            [nsApplication updateWindows];
+        }
+    }
+
+    // ===== WAKEUP MECHANISM =====
+    static void WakeUpSourceCallback(void* /*info*/) {
+        // No-op: the purpose is just to wake CFRunLoopRunInMode
+    }
+
+    void UltraCanvasMacOSApplication::InitializeWakeUp() {
+        CFRunLoopSourceContext ctx = {};
+        ctx.perform = WakeUpSourceCallback;
+        CFRunLoopSourceRef source = CFRunLoopSourceCreate(kCFAllocatorDefault, 0, &ctx);
+        if (source) {
+            CFRunLoopAddSource(CFRunLoopGetMain(), source, kCFRunLoopDefaultMode);
+            wakeupSource = source;
+        } else {
+            debugOutput << "UltraCanvas: Failed to create CFRunLoopSource for wakeup" << std::endl;
+        }
+    }
+
+    void UltraCanvasMacOSApplication::ShutdownWakeUp() {
+        if (wakeupSource) {
+            CFRunLoopSourceRef source = (CFRunLoopSourceRef)wakeupSource;
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, kCFRunLoopDefaultMode);
+            CFRelease(source);
+            wakeupSource = nullptr;
+        }
+    }
+
+    void UltraCanvasMacOSApplication::WakeUpEventLoop() {
+        if (wakeupSource) {
+            CFRunLoopSourceSignal((CFRunLoopSourceRef)wakeupSource);
+            CFRunLoopWakeUp(CFRunLoopGetMain());
         }
     }
 
@@ -214,7 +303,7 @@ namespace UltraCanvas {
             [nsApplication activateIgnoringOtherApps:YES];
 
             dispatch_async(dispatch_get_main_queue(), ^{
-                std::cout << "UltraCanvas: Showing pending windows from dispatch..." << std::endl;
+                debugOutput << "UltraCanvas: Showing pending windows from dispatch..." << std::endl;
                 for (auto &window: windows) {
                     auto win = ((UltraCanvasMacOSWindow *) window.get());
                     if (win->pendingShow) {
@@ -245,10 +334,10 @@ namespace UltraCanvas {
         // Find target window
         NSWindow* nsWindow = [nsEvent window];
         UltraCanvasMacOSWindow* targetWindow = nullptr;
-        event.nativeWindowHandle = (unsigned long)nsWindow;
+        event.nativeWindowHandle = nsWindow;
 
         if (nsWindow) {
-            targetWindow = static_cast<UltraCanvasMacOSWindow*>(FindWindow((unsigned long)nsWindow));
+            targetWindow = static_cast<UltraCanvasMacOSWindow*>(FindWindow((void*)nsWindow));
         }
 
         event.targetWindow = targetWindow;
@@ -260,6 +349,24 @@ namespace UltraCanvas {
             windowHeight = [[nsWindow contentView] bounds].size.height;
         }
 
+        // Helper: set mouse coordinates and modifiers for all mouse events
+        // macOS uses bottom-left origin; UltraCanvas uses top-left origin
+        auto setMouseFields = [&](NSEvent* ev) {
+            NSPoint locInWindow = [ev locationInWindow];
+            event.pointerWindow = { (int)locInWindow.x, (int)(windowHeight - locInWindow.y) };
+            event.pointer = event.pointerWindow;
+            if (nsWindow) {
+                NSPoint screenPoint = [nsWindow convertPointToScreen:locInWindow];
+                NSRect screenFrame = [[NSScreen mainScreen] frame];
+                event.pointerGlobal = { (int)screenPoint.x, (int)(screenFrame.size.height - screenPoint.y) };
+            }
+            NSUInteger flags = [ev modifierFlags];
+            event.ctrl = (flags & NSEventModifierFlagControl) != 0;
+            event.shift = (flags & NSEventModifierFlagShift) != 0;
+            event.alt = (flags & NSEventModifierFlagOption) != 0;
+            event.meta = (flags & NSEventModifierFlagCommand) != 0;
+        };
+
         // Convert event based on type
         switch (eventType) {
             case NSEventTypeLeftMouseDown:
@@ -267,8 +374,7 @@ namespace UltraCanvas {
             case NSEventTypeOtherMouseDown:
                 event.type = UCEventType::MouseDown;
                 event.button = ConvertNSEventMouseButton([nsEvent buttonNumber]);
-                event.x = [nsEvent locationInWindow].x;
-                event.y = windowHeight - [nsEvent locationInWindow].y;
+                setMouseFields(nsEvent);
                 break;
 
             case NSEventTypeLeftMouseUp:
@@ -276,8 +382,7 @@ namespace UltraCanvas {
             case NSEventTypeOtherMouseUp:
                 event.type = UCEventType::MouseUp;
                 event.button = ConvertNSEventMouseButton([nsEvent buttonNumber]);
-                event.x = [nsEvent locationInWindow].x;
-                event.y = windowHeight - [nsEvent locationInWindow].y;
+                setMouseFields(nsEvent);
                 break;
 
             case NSEventTypeMouseMoved:
@@ -285,35 +390,76 @@ namespace UltraCanvas {
             case NSEventTypeRightMouseDragged:
             case NSEventTypeOtherMouseDragged:
                 event.type = UCEventType::MouseMove;
-                event.x = [nsEvent locationInWindow].x;
-                event.y = windowHeight - [nsEvent locationInWindow].y;
+                setMouseFields(nsEvent);
                 break;
 
             case NSEventTypeScrollWheel:
                 event.type = UCEventType::MouseWheel;
                 event.wheelDelta = [nsEvent scrollingDeltaY];
-                event.x = [nsEvent locationInWindow].x;
-                event.y = windowHeight - [nsEvent locationInWindow].y;
+                setMouseFields(nsEvent);
                 break;
 
-            case NSEventTypeKeyDown:
+            case NSEventTypeKeyDown: {
                 event.type = UCEventType::KeyDown;
+                event.nativeKeyCode = [nsEvent keyCode];
                 event.virtualKey = ConvertNSEventKeyCode([nsEvent keyCode]);
-                event.text = [[nsEvent characters] UTF8String] ?: "";
+                NSString* chars = [nsEvent characters];
+                if (chars && [chars length] > 0) {
+                    event.text = [chars UTF8String];
+                    unichar ch = [chars characterAtIndex:0];
+                    event.character = (ch < 128) ? (char)ch : 0;
+                }
                 event.ctrl = ([nsEvent modifierFlags] & NSEventModifierFlagControl) != 0;
                 event.shift = ([nsEvent modifierFlags] & NSEventModifierFlagShift) != 0;
                 event.alt = ([nsEvent modifierFlags] & NSEventModifierFlagOption) != 0;
                 event.meta = ([nsEvent modifierFlags] & NSEventModifierFlagCommand) != 0;
                 break;
+            }
 
-            case NSEventTypeKeyUp:
+            case NSEventTypeKeyUp: {
                 event.type = UCEventType::KeyUp;
+                event.nativeKeyCode = [nsEvent keyCode];
                 event.virtualKey = ConvertNSEventKeyCode([nsEvent keyCode]);
+                NSString* chars = [nsEvent characters];
+                if (chars && [chars length] > 0) {
+                    event.text = [chars UTF8String];
+                    unichar ch = [chars characterAtIndex:0];
+                    event.character = (ch < 128) ? (char)ch : 0;
+                }
                 event.ctrl = ([nsEvent modifierFlags] & NSEventModifierFlagControl) != 0;
                 event.shift = ([nsEvent modifierFlags] & NSEventModifierFlagShift) != 0;
                 event.alt = ([nsEvent modifierFlags] & NSEventModifierFlagOption) != 0;
                 event.meta = ([nsEvent modifierFlags] & NSEventModifierFlagCommand) != 0;
                 break;
+            }
+
+            case NSEventTypeFlagsChanged: {
+                // Handle modifier-only key presses (Shift, Ctrl, Alt, Cmd)
+                NSUInteger flags = [nsEvent modifierFlags];
+                unsigned short keyCode = [nsEvent keyCode];
+                bool isDown = false;
+                switch (keyCode) {
+                    case 0x38: case 0x3C: // Left/Right Shift
+                        isDown = (flags & NSEventModifierFlagShift) != 0; break;
+                    case 0x3B: case 0x3E: // Left/Right Control
+                        isDown = (flags & NSEventModifierFlagControl) != 0; break;
+                    case 0x3A: case 0x3D: // Left/Right Option
+                        isDown = (flags & NSEventModifierFlagOption) != 0; break;
+                    case 0x37: case 0x36: // Left/Right Command
+                        isDown = (flags & NSEventModifierFlagCommand) != 0; break;
+                    default:
+                        event.type = UCEventType::NoneEvent;
+                        return event;
+                }
+                event.type = isDown ? UCEventType::KeyDown : UCEventType::KeyUp;
+                event.nativeKeyCode = keyCode;
+                event.virtualKey = ConvertNSEventKeyCode(keyCode);
+                event.ctrl = (flags & NSEventModifierFlagControl) != 0;
+                event.shift = (flags & NSEventModifierFlagShift) != 0;
+                event.alt = (flags & NSEventModifierFlagOption) != 0;
+                event.meta = (flags & NSEventModifierFlagCommand) != 0;
+                break;
+            }
 
             default:
                 event.type = UCEventType::NoneEvent;
@@ -355,17 +501,49 @@ namespace UltraCanvas {
             case 0x10: return UCKeys::Y;
             case 0x06: return UCKeys::Z;
 
-                // Numbers
-            case 0x1D: return UCKeys::NumPad0;
-            case 0x12: return UCKeys::NumPad1;
-            case 0x13: return UCKeys::NumPad2;
-            case 0x14: return UCKeys::NumPad3;
-            case 0x15: return UCKeys::NumPad4;
-            case 0x17: return UCKeys::NumPad5;
-            case 0x16: return UCKeys::NumPad6;
-            case 0x1A: return UCKeys::NumPad7;
-            case 0x1C: return UCKeys::NumPad8;
-            case 0x19: return UCKeys::NumPad9;
+                // Main-row number keys (kVK_ANSI_0..9)
+            case 0x1D: return UCKeys::Key0;
+            case 0x12: return UCKeys::Key1;
+            case 0x13: return UCKeys::Key2;
+            case 0x14: return UCKeys::Key3;
+            case 0x15: return UCKeys::Key4;
+            case 0x17: return UCKeys::Key5;
+            case 0x16: return UCKeys::Key6;
+            case 0x1A: return UCKeys::Key7;
+            case 0x1C: return UCKeys::Key8;
+            case 0x19: return UCKeys::Key9;
+
+                // Main-row punctuation / symbols
+            case 0x18: return UCKeys::Equal;          // kVK_ANSI_Equal
+            case 0x1B: return UCKeys::Minus;          // kVK_ANSI_Minus
+            case 0x1E: return UCKeys::RightBracket;   // kVK_ANSI_RightBracket
+            case 0x21: return UCKeys::LeftBracket;    // kVK_ANSI_LeftBracket
+            case 0x27: return UCKeys::Quote;          // kVK_ANSI_Quote
+            case 0x29: return UCKeys::Semicolon;      // kVK_ANSI_Semicolon
+            case 0x2A: return UCKeys::Backslash;      // kVK_ANSI_Backslash
+            case 0x2B: return UCKeys::Comma;          // kVK_ANSI_Comma
+            case 0x2C: return UCKeys::Slash;          // kVK_ANSI_Slash
+            case 0x2F: return UCKeys::Period;         // kVK_ANSI_Period
+            case 0x32: return UCKeys::Grave;          // kVK_ANSI_Grave
+
+                // Numeric keypad (kVK_ANSI_Keypad*)
+            case 0x52: return UCKeys::NumPad0;
+            case 0x53: return UCKeys::NumPad1;
+            case 0x54: return UCKeys::NumPad2;
+            case 0x55: return UCKeys::NumPad3;
+            case 0x56: return UCKeys::NumPad4;
+            case 0x57: return UCKeys::NumPad5;
+            case 0x58: return UCKeys::NumPad6;
+            case 0x59: return UCKeys::NumPad7;
+            case 0x5B: return UCKeys::NumPad8;
+            case 0x5C: return UCKeys::NumPad9;
+            case 0x41: return UCKeys::NumPadDecimal;
+            case 0x43: return UCKeys::NumPadMultiply;
+            case 0x45: return UCKeys::NumPadPlus;
+            case 0x4B: return UCKeys::NumPadDivide;
+            case 0x4C: return UCKeys::NumPadEnter;
+            case 0x4E: return UCKeys::NumPadMinus;
+            case 0x47: return UCKeys::NumLock;        // kVK_ANSI_KeypadClear
 
                 // Function keys
             case 0x7A: return UCKeys::F1;
@@ -401,6 +579,16 @@ namespace UltraCanvas {
             case 0x79: return UCKeys::PageDown;
             case 0x75: return UCKeys::Delete;
 
+                // Modifier keys
+            case 0x38: return UCKeys::LeftShift;
+            case 0x3C: return UCKeys::RightShift;
+            case 0x3B: return UCKeys::LeftCtrl;
+            case 0x3E: return UCKeys::RightCtrl;
+            case 0x3A: return UCKeys::LeftAlt;
+            case 0x3D: return UCKeys::RightAlt;
+            case 0x37: return UCKeys::LeftMeta;
+            case 0x36: return UCKeys::RightMeta;
+
             default: return UCKeys::Unknown;
         }
     }
@@ -431,18 +619,77 @@ namespace UltraCanvas {
                     }
                 }
             }
-            std::cout << "UltraCanvas macOS: Mouse capture activated" << std::endl;
+            debugOutput << "UltraCanvas macOS: Mouse capture activated" << std::endl;
         }
     }
 
     void UltraCanvasMacOSApplication::ReleaseMouseNative() {
         // macOS automatically releases mouse tracking when mouse button is released
         // No explicit ungrab operation is needed
-        std::cout << "UltraCanvas macOS: Mouse capture released" << std::endl;
+        debugOutput << "UltraCanvas macOS: Mouse capture released" << std::endl;
     }
 
 // ===== THREAD SAFETY =====
     bool UltraCanvasMacOSApplication::IsMainThread() const {
         return std::this_thread::get_id() == mainThreadId;
     }
+// ===== SYSTEM FONT DETECTION =====
+    FontStyle UltraCanvasMacOSApplication::DetectSystemFontStyleNative() {
+        FontStyle result;
+
+        @autoreleasepool {
+            NSFont* sysFont = [NSFont systemFontOfSize:0];
+            if (sysFont) {
+                result.fontFamily = [[sysFont familyName] UTF8String];
+                result.fontSize = static_cast<float>([sysFont pointSize]);
+                if (result.fontSize <= 0) result.fontSize = 12.0f;
+
+//                NSFontTraitMask traits = [[NSFontManager sharedFontManager]
+//                                          traitsOfFont:sysFont];
+//                if (traits & NSBoldFontMask) {
+//                    result.fontWeight = FontWeight::Bold;
+//                }
+//                if (traits & NSItalicFontMask) {
+//                    result.fontSlant = FontSlant::Italic;
+//                }
+            }
+
+            // Private system font names (e.g. ".AppleSystemUIFont", ".SF NS")
+            // cannot be resolved by Pango/Cairo - fall back to Helvetica Neue
+            if (result.fontFamily.empty() || result.fontFamily[0] == '.') {
+                result.fontFamily = "Helvetica Neue";
+                if (result.fontSize <= 0) result.fontSize = 12.0f;
+            }
+        }
+
+        return result;
+    }
+
+    FontStyle UltraCanvasMacOSApplication::DetectMonospacedFontStyleNative() {
+        FontStyle result;
+
+        @autoreleasepool {
+            NSFont* monoFont = nil;
+
+            // Available on macOS 10.15+
+            if (@available(macOS 10.15, *)) {
+                monoFont = [NSFont monospacedSystemFontOfSize:0 weight:NSFontWeightRegular];
+            }
+
+            if (monoFont) {
+                result.fontFamily = [[monoFont familyName] UTF8String];
+                result.fontSize = static_cast<float>([monoFont pointSize]);
+                if (result.fontSize <= 0) result.fontSize = 12.0f;
+            }
+
+            // Private font names cannot be resolved by Pango/Cairo
+            if (result.fontFamily.empty() || result.fontFamily[0] == '.') {
+                result.fontFamily = "Menlo";
+                if (result.fontSize <= 0) result.fontSize = 12.0f;
+            }
+        }
+
+        return result;
+    }
+
 } // namespace UltraCanvas

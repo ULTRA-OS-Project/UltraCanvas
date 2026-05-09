@@ -9,6 +9,7 @@
 #include <emscripten/fetch.h>
 #include <iostream>
 #include <sstream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -80,14 +81,14 @@ std::vector<uint8_t> WASMFileSystem::ReadFile(const std::string& path) {
     
     // This is a simplified version - in real implementation,
     // you'd need to properly transfer data from JS to C++
-    std::cerr << "[WASM FileSystem] ReadFile not fully implemented yet" << std::endl;
+    debugOutput << "[WASM FileSystem] ReadFile not fully implemented yet" << std::endl;
     
     return data;
 }
 
 bool WASMFileSystem::WriteFile(const std::string& path, const std::vector<uint8_t>& data) {
     // Simplified version
-    std::cerr << "[WASM FileSystem] WriteFile not fully implemented yet" << std::endl;
+    debugOutput << "[WASM FileSystem] WriteFile not fully implemented yet" << std::endl;
     return false;
 }
 
@@ -119,7 +120,7 @@ std::vector<std::string> WASMFileSystem::ListDirectory(const std::string& path) 
     std::vector<std::string> files;
     
     // Simplified version
-    std::cerr << "[WASM FileSystem] ListDirectory not fully implemented yet" << std::endl;
+    debugOutput << "[WASM FileSystem] ListDirectory not fully implemented yet" << std::endl;
     
     return files;
 }
@@ -128,19 +129,19 @@ std::vector<std::string> WASMFileSystem::ListDirectory(const std::string& path) 
 
 bool WASMNetwork::FetchURL(const std::string& url, std::vector<uint8_t>& data) {
     // Synchronous fetch (blocks)
-    std::cerr << "[WASM Network] Synchronous fetch not recommended in WASM" << std::endl;
+    debugOutput << "[WASM Network] Synchronous fetch not recommended in WASM" << std::endl;
     return false;
 }
 
 bool WASMNetwork::FetchText(const std::string& url, std::string& text) {
     // Synchronous fetch (blocks)
-    std::cerr << "[WASM Network] Synchronous fetch not recommended in WASM" << std::endl;
+    debugOutput << "[WASM Network] Synchronous fetch not recommended in WASM" << std::endl;
     return false;
 }
 
 void WASMNetwork::FetchAsync(const std::string& url, FetchCallback callback) {
     // Use Emscripten fetch API
-    std::cerr << "[WASM Network] FetchAsync not fully implemented yet" << std::endl;
+    debugOutput << "[WASM Network] FetchAsync not fully implemented yet" << std::endl;
 }
 
 // ===== BROWSER INTEGRATION =====
@@ -315,7 +316,7 @@ void WASMBrowser::ClearLocalStorage() {
 // ===== RESOURCE LOADING =====
 
 void WASMResourceLoader::LoadImage(const std::string& url, ImageLoadCallback callback) {
-    std::cerr << "[WASM ResourceLoader] LoadImage not fully implemented yet" << std::endl;
+    debugOutput << "[WASM ResourceLoader] LoadImage not fully implemented yet" << std::endl;
 }
 
 void WASMResourceLoader::LoadFont(const std::string& fontFamily, 
@@ -422,7 +423,7 @@ std::vector<std::pair<std::string, std::string>> WASMURL::GetAllQueryParameters(
     std::vector<std::pair<std::string, std::string>> params;
     
     // Simplified version
-    std::cerr << "[WASM URL] GetAllQueryParameters not fully implemented yet" << std::endl;
+    debugOutput << "[WASM URL] GetAllQueryParameters not fully implemented yet" << std::endl;
     
     return params;
 }

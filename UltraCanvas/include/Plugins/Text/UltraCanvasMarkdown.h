@@ -8,6 +8,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
+#include <array>
 #include <string>
 #include <vector>
 #include <memory>
@@ -45,7 +46,7 @@ namespace UltraCanvas {
 // ===== MARKDOWN STYLING =====
     struct MarkdownStyle {
         // Base text style
-        std::string fontFamily = "Sans";
+        std::string fontFamily;
         float fontSize = 10.0f;
         Color textColor = Color(50, 50, 50);
         Color backgroundColor = Colors::White;
@@ -318,7 +319,7 @@ namespace UltraCanvas {
         }
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
 
     private:
         void PerformLayout(IRenderContext* ctx);

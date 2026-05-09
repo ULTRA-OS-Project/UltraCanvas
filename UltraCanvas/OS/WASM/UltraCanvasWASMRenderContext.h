@@ -86,7 +86,7 @@ public:
     
     // ===== BASIC SHAPES =====
     void DrawLine(float x1, float y1, float x2, float y2) override;
-    void DrawRectangle(float x, float y, float width, float height) override;
+    void DrawRectangle(const Rect2Df& rect) override;
     void DrawFilledRectangle(float x, float y, float width, float height) override;
     void DrawFilledRectangle(const Rect2D& rect, const Color& fillColor, 
                            float borderWidth, const Color& borderColor) override;

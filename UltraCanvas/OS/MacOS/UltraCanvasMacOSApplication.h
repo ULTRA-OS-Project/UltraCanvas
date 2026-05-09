@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSApplication.h
 // Complete macOS platform implementation for UltraCanvas Framework using Cairo
-// Version: 2.0.0
-// Last Modified: 2025-01-18
+// Version: 2.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -18,7 +18,8 @@
 // ===== MACOS PLATFORM INCLUDES =====
 #ifdef __OBJC__
 #import <Cocoa/Cocoa.h>
-    #import <QuartzCore/QuartzCore.h>
+#import <QuartzCore/QuartzCore.h>
+#import <AppKit/AppKit.h>
 #else
 // Forward declarations for C++ only files
 typedef struct objc_object NSApplication;
@@ -27,6 +28,7 @@ typedef struct objc_object NSRunLoop;
 typedef struct objc_object NSEvent;
 typedef struct objc_object NSWindow;
 typedef struct objc_object NSMenu;
+typedef struct objc_object NSCursor;
 #endif
 
 // ===== CAIRO INCLUDES =====
@@ -61,13 +63,15 @@ namespace UltraCanvas {
     };
 
 // ===== MACOS APPLICATION CLASS =====
-    class UltraCanvasMacOSApplication : public UltraCanvasBaseApplication {
+    class UltraCanvasMacOSApplication : public UltraCanvasApplicationBase {
     private:
         static UltraCanvasMacOSApplication* instance;
 
         // ===== COCOA APPLICATION SYSTEM =====
         NSApplication* nsApplication;
         NSRunLoop* mainRunLoop;
+
+        std::unordered_map<UCMouseCursor, NSCursor*> cursors;
 
         // ===== GRAPHICS SYSTEM =====
         bool cairoSupported;
@@ -103,6 +107,9 @@ namespace UltraCanvas {
         // ===== THREAD SAFETY =====
         std::mutex cocoaMutex;
         std::thread::id mainThreadId;
+
+        // Wakeup mechanism for cross-thread signaling
+        void* wakeupSource = nullptr;  // CFRunLoopSourceRef
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
@@ -143,6 +150,9 @@ namespace UltraCanvas {
         // Thread safety
         bool IsMainThread() const;
 
+        bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor cur) override;
+        bool SelectMouseCursorNative(UltraCanvasWindowBase *win, UCMouseCursor cur, const char* filename, int hotspotX, int hotspotY) override;
+
     protected:
         bool InitializeNative() override;
         void ShutdownNative() override;
@@ -150,6 +160,12 @@ namespace UltraCanvas {
         void ReleaseMouseNative() override;
 
         void CollectAndProcessNativeEvents() override;
+        void WakeUpEventLoop() override;
+        void InitializeWakeUp() override;
+        void ShutdownWakeUp() override;
+        FontStyle DetectSystemFontStyleNative() override;
+        FontStyle DetectMonospacedFontStyleNative() override;
+        NSCursor* LoadCursorFromImage(const std::string& filename, int hotspotX, int hotspotY);
 
     private:
         // Internal helper methods

@@ -1,11 +1,14 @@
 // libspecific/Cairo/RenderContextCairo.h
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.2
-// Last Modified: 2025-01-07
+// Version: 1.0.5 - Rect-based DrawPixmap/DrawMask
+// Last Modified: 2026-04-11
 // Author: UltraCanvas Framework
 //
 
 #pragma once
+#ifndef ULTRACANVAS_RENDER_CONTEXT_CAIRO_H
+#define ULTRACANVAS_RENDER_CONTEXT_CAIRO_H
+
 
 // ===== CORE INCLUDES =====
 #include "UltraCanvasRenderContext.h"
@@ -43,44 +46,13 @@ namespace UltraCanvas {
         void* GetHandle() override { return pattern; };
     };
 
-    struct TextSurfaceEntry {
-        cairo_surface_t* surface;
-        int width = 0;
-        int height = 0;
-
-        TextSurfaceEntry(cairo_surface_t* surf, int w, int h) : surface(surf), width(w), height(h) {};
-
-        size_t GetDataSize() {
-            return width*height*4+sizeof(TextSurfaceEntry);
-        }
-
-        ~TextSurfaceEntry() {
-            cairo_surface_destroy(surface);
-        }
-    };
-
-    struct TextDimensionsEntry {
-        int width = 0;
-        int height = 0;
-
-        TextDimensionsEntry(int w, int h) : width(w), height(h) {};
-
-        size_t GetDataSize() {
-            return sizeof(TextDimensionsEntry);
-        }
-    };
-
     class RenderContextCairo : public IRenderContext {
     private:
-        std::mutex cairoMutex;
-        cairo_t *targetContext;
-        cairo_surface_t* targetSurface;
-        cairo_t *cairo;
-        cairo_surface_t* stagingSurface;
-        int surfaceWidth;
-        int surfaceHeight;
+        cairo_t *cairo = nullptr;
+        cairo_surface_t* surface = nullptr;
+        Size2Di surfaceSize = {0, 0};
 
-        PangoContext *pangoContext;
+        PangoContext *pangoContext = nullptr;
 
         // State management
         std::vector<RenderState> stateStack;
@@ -105,24 +77,28 @@ namespace UltraCanvas {
         PangoFontDescription *CreatePangoFont(const FontStyle &style);
         PangoLayout * CreatePangoLayout(PangoFontDescription *desc, int w=0, int h=0);
 
-        // Add a flag to track if we're being destroyed
-        bool destroying = false;
-        bool enableDoubleBuffering = false;
-        bool CreateStagingSurface();
-        void SwitchToSurface(cairo_surface_t* s);
+        static std::vector<RenderContextCairo*> g_Instances;
 
-        std::string GenerateTextCacheKey(const std::string& text, int rectWidth, int rectHeight);
-        std::shared_ptr<TextSurfaceEntry> MakeTextSurface(const std::string& text, int rectWidth, int rectHeight);
-        std::shared_ptr<TextSurfaceEntry> GetTextSurface(const std::string& text, int rectWidth, int rectHeight);
-        std::shared_ptr<TextDimensionsEntry> MeasureTextDimensions(const std::string& text, int rectWidth, int rectHeight);
+        // Add a flag to track if we're being destroyed
+//        bool CreateStagingSurface();
+//        void SwitchToSurface(cairo_surface_t* s);
+
+        std::string GenerateTextCacheKey(const std::string& text, const Size2Di &sz);
 
     public:
-        RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering);
-
         ~RenderContextCairo() override;
 
-        void SetTargetSurface(cairo_surface_t* surf, int w, int h);
-        bool ResizeStagingSurface(int w, int h);
+        bool CreateSurface(const Size2Di & sz, NativeSurfacePtr createSimilarToSurface) override;
+
+        bool ResizeSurface(const Size2Di& sz) override;
+        Size2Di GetSurfaceSize() const override { return surfaceSize; }
+        void FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) override;
+        float GetDeviceScale() const override {
+            if (!surface) return 1.0f;
+            double sx = 1.0, sy = 1.0;
+            cairo_surface_get_device_scale(surface, &sx, &sy);
+            return static_cast<float>(sx > 0.0 ? sx : 1.0);
+        }
 
         // ===== INHERITED FROM IRenderContext =====
         // State management
@@ -131,51 +107,52 @@ namespace UltraCanvas {
         void ResetState() override;
 
         // Transformation
-        void Translate(float x, float y) override;
-        void Rotate(float angle) override;
-        void Scale(float sx, float sy) override;
-        void SetTransform(float a, float b, float c, float d, float e, float f) override;
-        void Transform(float a, float b, float c, float d, float e, float f) override;
+        void Translate(double x, double y) override;
+        void Rotate(double angle) override;
+        void Scale(double sx, double sy) override;
+        void SetTransform(double a, double b, double c, double d, double e, double f) override;
+        void Transform(double a, double b, double c, double d, double e, double f) override;
         void ResetTransform() override;
 
         // Clipping
 //        void SetClipRect(float x, float y, float w, float h) override;
         void ClearClipRect() override;
-        void ClipRect(float x, float y, float w, float h) override;
+        void ClipRect(const Rect2Df& rect) override;
         void ClipRoundedRectangle(
-                float x, float y, float width, float height,
-                float borderTopLeftRadius, float borderTopRightRadius,
-                float borderBottomRightRadius, float borderBottomLeftRadius) override;
+                const Rect2Df& rect,
+                double borderTopLeftRadius, double borderTopRightRadius,
+                double borderBottomRightRadius, double borderBottomLeftRadius) override;
         void ClipPath() override;
 
         // Style management
         //void SetDrawingStyle(const DrawingStyle &style) override;
         void SetTextStyle(const TextStyle &style) override;
         const TextStyle &GetTextStyle() const override;
-        void SetStrokeWidth(float width) override;
+        void SetStrokeWidth(double width) override;
         //void SetLineWidth(float width) override;
         void SetLineCap(LineCap cap) override;
         void SetLineJoin(LineJoin join) override;
-        void SetMiterLimit(float limit)  override;
+        void SetMiterLimit(double limit)  override;
         void SetLineDash(const UCDashPattern& pattern) override;
 
         // === Text Methods ===
         void SetFontFace(const std::string& family, FontWeight fw, FontSlant fs) override;
-        void SetFontSize(float size) override;
+        void SetFontFamily(const std::string& family) override;
+        void SetFontSize(double size) override;
         void SetFontWeight(FontWeight fw) override;
         void SetFontSlant(FontSlant fs) override;
         void SetTextAlignment(TextAlignment align) override;
-        void SetTextVerticalAlignment(TextVerticalAlignement align) override;
+        void SetTextVerticalAlignment(VerticalAlignment align) override;
         void SetTextIsMarkup(bool isMarkup) override;
-        void SetTextLineHeight(float height) override;
+        void SetTextLineHeight(double height) override;
         void SetTextWrap(TextWrap wrap) override;
 
-        void SetAlpha(float alpha) override;
-        float GetAlpha() const override;
-        std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(float cx1, float cy1, float r1,
-                                                                   float cx2, float cy2, float r2,
+        void SetAlpha(double alpha) override;
+        double GetAlpha() const override;
+        std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(double cx1, double cy1, double r1,
+                                                                   double cx2, double cy2, double r2,
                                                                    const std::vector<GradientStop>& stops) override;
-        std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
+        std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(double x1, double y1, double x2, double y2,
                                                                    const std::vector<GradientStop>& stops) override;
         void SetFillPaint(std::shared_ptr<IPaintPattern> pattern) override;
         void SetFillPaint(const Color& color) override;
@@ -183,31 +160,33 @@ namespace UltraCanvas {
         void SetStrokePaint(const Color& color) override;
         void SetTextPaint(std::shared_ptr<IPaintPattern> pattern) override;
         void SetTextPaint(const Color& color) override;
+        void SetCurrentPaint(const Color& color) override;
+        void SetCurrentPaint(std::shared_ptr<IPaintPattern> pattern) override;
 
         // Basic drawing
-        void DrawLine(float x, float y, float x1, float y1) override;
-        void DrawRectangle(float x, float y, float w, float h) override;
-        void FillRectangle(float x, float y, float w, float h) override;
-        void DrawRoundedRectangle(float x, float y, float w, float h, float radius) override;
-        void FillRoundedRectangle(float x, float y, float w, float h, float radius) override;
-        void DrawRoundedRectangleWidthBorders(float x, float y, float width, float height,
-                                                     bool fill,
-                                                     float borderLeftWidth, float borderRightWidth,
-                                                     float borderTopWidth, float borderBottomWidth,
-                                                     const Color& borderLeftColor, const Color& borderRightColor,
-                                                     const Color& borderTopColor, const Color& borderBottomColor,
-                                                     float borderTopLeftRadius, float borderTopRightRadius,
-                                                     float borderBottomRightRadius, float borderBottomLeftRadius,
-                                                     const UCDashPattern& borderLeftPattern,
-                                                     const UCDashPattern& borderRightPattern,
-                                                     const UCDashPattern& borderTopPattern,
-                                                     const UCDashPattern& borderBottomPattern) override;
-        void DrawCircle(float x, float y, float radius) override;
-        void FillCircle(float x, float y, float radius) override;
-        void DrawEllipse(float x, float y, float w, float h) override;
-        void FillEllipse(float x, float y, float w, float h) override;
-        void DrawArc(float x, float y, float radius, float startAngle, float endAngle) override;
-        void FillArc(float x, float y, float radius, float startAngle, float endAngle) override;
+        void DrawLine(const Point2Df& from, const Point2Df& to) override;
+        void DrawRectangle(const Rect2Df& rect) override;
+        void FillRectangle(const Rect2Df& rect) override;
+        void DrawRoundedRectangle(const Rect2Df & rect, double radius) override;
+        void FillRoundedRectangle(const Rect2Df & rect, double radius) override;
+        void DrawRoundedRectangleWidthBorders(const Rect2Df & rect,
+                                              bool fill,
+                                              double borderLeftWidth, double borderRightWidth,
+                                              double borderTopWidth, double borderBottomWidth,
+                                              const Color& borderLeftColor, const Color& borderRightColor,
+                                              const Color& borderTopColor, const Color& borderBottomColor,
+                                              double borderTopLeftRadius, double borderTopRightRadius,
+                                              double borderBottomRightRadius, double borderBottomLeftRadius,
+                                              const UCDashPattern& borderLeftPattern,
+                                              const UCDashPattern& borderRightPattern,
+                                              const UCDashPattern& borderTopPattern,
+                                              const UCDashPattern& borderBottomPattern) override;
+        void DrawCircle(const Point2Df& center, double radius) override;
+        void FillCircle(const Point2Df& center, double radius) override;
+        void DrawEllipse(const Rect2Df& rect) override;
+        void FillEllipse(const Rect2Df& rect) override;
+        void DrawArc(double x, double y, double radius, double startAngle, double endAngle) override;
+        void FillArc(double x, double y, double radius, double startAngle, double endAngle) override;
         void DrawBezierCurve(const Point2Df &start, const Point2Df &cp1, const Point2Df &cp2, const Point2Df &end) override;
         void DrawLinePath(const std::vector<Point2Df> &points, bool closePath) override;
         void FillLinePath(const std::vector<Point2Df> &points) override;
@@ -215,38 +194,42 @@ namespace UltraCanvas {
         // path functions
         void ClearPath() override;
         void ClosePath() override;
-        void MoveTo(float x, float y) override;
-        void RelMoveTo(float x, float y) override;
-        void LineTo(float x, float y) override;
-        void RelLineTo(float x, float y) override;
-        void QuadraticCurveTo(float cpx, float cpy, float x, float y) override;
-        void BezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y) override;
-        void RelBezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y) override;
-        void Arc(float cx, float cy, float radius, float startAngle, float endAngle) override;
-        void ArcTo(float x1, float y1, float x2, float y2, float radius) override;
-        void Ellipse(float cx, float cy, float rx, float ry, float rotation) override;
-        void Rect(float x, float y, float width, float height) override;
-        void RoundedRect(float x, float y, float width, float height, float radius) override;
-        void Circle(float x, float y, float radius) override;
+        void MoveTo(double x, double y) override;
+        void RelMoveTo(double x, double y) override;
+        void LineTo(double x, double y) override;
+        void RelLineTo(double x, double y) override;
+        void QuadraticCurveTo(double cpx, double cpy, double x, double y) override;
+        void BezierCurveTo(double cp1x, double cp1y, double cp2x, double cp2y, double x, double y) override;
+        void RelBezierCurveTo(double cp1x, double cp1y, double cp2x, double cp2y, double x, double y) override;
+        void Arc(double cx, double cy, double radius, double startAngle, double endAngle) override;
+        void ArcTo(double x1, double y1, double x2, double y2, double radius) override;
+        void Ellipse(double cx, double cy, double rx, double ry, double rotation) override;
+        void Rect(double x, double y, double width, double height) override;
+        void RoundedRect(double x, double y, double width, double height, double radius) override;
+        void Circle(double x, double y, double radius) override;
 
-        void GetPathExtents(float &x, float &y, float &width, float &height) override;
+        Rect2Df GetPathExtents() override;
         void StrokePathPreserve() override;
         void FillPathPreserve() override;
-        void FillText(const std::string& text, float x, float y) override;
-        void StrokeText(const std::string& text, float x, float y) override;
+        void FillText(const std::string& text, double x, double y) override;
+        void StrokeText(const std::string& text, double x, double y) override;
         void Fill() override;
         void Stroke() override;
 
         // Text rendering
-        void DrawText(const std::string &text, float x, float y) override;
-        void DrawTextInRect(const std::string &text, float x, float y, float w, float h) override;
-        bool GetTextLineDimensions(const std::string &text, int &w, int &h) override;
-        bool GetTextDimensions(const std::string &text, int width, int height, int &retWidth, int &retHeight) override;
+        std::unique_ptr<ITextLayout> CreateTextLayout(const std::string& text, bool isMarkup) override;
+        std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, const Size2Di& sz, bool isMarkup) override;
+
+        void DrawTextLayout(ITextLayout &layout, const Point2Df &pos) override;
+        void DrawText(const std::string &text, const Point2Df &pos) override;
+        void DrawTextInRect(const std::string &text, const Rect2Df &rect) override;
+        Size2Di GetTextDimensions(const std::string &text, const Size2Di& explicitSize) override;
         int GetTextIndexForXY(const std::string &text, int x, int y, int w = 0, int h = 0) override;
 
         // Image rendering
         void DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Df &srcRect, const Rect2Df &destRect) override;
-        void DrawPixmap(UCPixmap& pixmap, float x, float y, float w, float h, ImageFitMode fitMode) override;
+        void DrawPixmap(UCPixmap& pixmap, const Rect2Df& rect, ImageFitMode fitMode) override;
+        void DrawMask(const Color& drawColor, UCPixmap& mask, const Rect2Df& rect, ImageFitMode fitMode) override;
 
         // ===== ENHANCED IMAGE RENDERING METHODS =====
 //        void DrawImageWithFilter(const std::string &imagePath, float x, float y, float w, float h,
@@ -265,16 +248,20 @@ namespace UltraCanvas {
 
         void *GetNativeContext() override;
 
+        // ===== CONFIGURABLE TEXT RENDERING OPTIONS =====
+        static void SetTextAntialias(cairo_antialias_t mode);
+        static cairo_antialias_t GetTextAntialias();
+        static void SetTextHintStyle(cairo_hint_style_t style);
+        static cairo_hint_style_t GetTextHintStyle();
+        static void SetTextHintMetrics(cairo_hint_metrics_t metrics);
+        static cairo_hint_metrics_t GetTextHintMetrics();
+        void ApplyPangoFontOptions();
+
         // ===== CAIRO-SPECIFIC METHODS =====
         void SetCairoColor(const Color &color);
-
         cairo_t *GetCairo() const { return cairo; }
-
         PangoContext *GetPangoContext() const { return pangoContext; }
-
-        cairo_surface_t *GetCairoSurface() const {
-            return cairo ? cairo_get_target(cairo) : nullptr;
-        }
+        cairo_surface_t *GetCairoSurface() const { return surface; }
     };
 
     // ===== CAIRO FILTER CONSTANTS =====
@@ -291,3 +278,5 @@ namespace UltraCanvas {
     // ===== CONVENIENCE FUNCTIONS FOR IMAGE RENDERING =====
 
 } // namespace UltraCanvas
+
+#endif

@@ -1,0 +1,187 @@
+// libspecific/Cairo/UCTextLayout.h
+// Pango text layout wrapper for UltraCanvas Framework
+// Version: 1.1.0
+// Last Modified: 2026-04-12
+// Author: UltraCanvas Framework
+
+#pragma once
+
+#include "UltraCanvasRenderContext.h"
+#include "UltraCanvasCommonTypes.h"
+
+#include <cairo/cairo.h>
+#include <pango/pangocairo.h>
+
+#include <string>
+#include <memory>
+#include <functional>
+#include <cstdint>
+
+namespace UltraCanvas {
+
+    // ===== LAYOUT ITERATOR =====
+//
+//    struct PangoLayoutIterDeleter {
+//        void operator()(PangoLayoutIter* iter) const {
+//            if (iter) pango_layout_iter_free(iter);
+//        }
+//    };
+//    using UCTextLayoutIter = std::unique_ptr<PangoLayoutIter, PangoLayoutIterDeleter>;
+
+    // ===== UCTextAttribute =====
+
+    class UCTextAttribute : public ITextAttribute {
+    private:
+        PangoAttribute* attr = nullptr;
+
+    public:
+        explicit UCTextAttribute(PangoAttribute* a) : attr(a) {}
+        UCTextAttribute() = default;
+
+        ~UCTextAttribute() override;
+
+        // Move-only
+        UCTextAttribute(UCTextAttribute&& other) noexcept;
+        UCTextAttribute& operator=(UCTextAttribute&& other) noexcept;
+        UCTextAttribute(const UCTextAttribute&) = delete;
+        UCTextAttribute& operator=(const UCTextAttribute&) = delete;
+
+        ITextAttribute& SetRange(int startIndex, int endIndex) override;
+        TextAttributeType GetType() override;
+        void* Release() override;
+    };
+
+    // ===== UCTextAttributeList =====
+
+//    class UCTextAttributeList {
+//    private:
+//        PangoAttrList* attrList = nullptr;
+//
+//    public:
+//        UCTextAttributeList();
+//        ~UCTextAttributeList();
+//
+//        // Move-only
+//        UCTextAttributeList(UCTextAttributeList&& other) noexcept;
+//        UCTextAttributeList& operator=(UCTextAttributeList&& other) noexcept;
+//        UCTextAttributeList(const UCTextAttributeList&) = delete;
+//        UCTextAttributeList& operator=(const UCTextAttributeList&) = delete;
+//
+//        // Insert attribute (takes ownership from UCTextAttribute)
+//        void Insert(UCTextAttribute& attr);
+//        void InsertBefore(UCTextAttribute& attr);
+//        void Change(UCTextAttribute& attr);
+//
+//        PangoAttrList* GetHandle() const;
+//        bool IsValid() const;
+//
+//        // Serialize to string representation
+//        std::string ToString() const;
+//        // Create from string representation (replaces current list)
+//        static UCTextAttributeList FromString(const std::string& str);
+//        // Filter attributes, returns a new list containing attributes for which
+//        // the predicate returns true. Filtered attributes are removed from this list.
+//        UCTextAttributeList Filter(std::function<bool(const PangoAttribute*)> predicate);
+//    };
+
+    // ===== UCTextLayout =====
+
+    class UCTextLayout : public ITextLayout {
+    private:
+        PangoLayout* layout = nullptr;
+        double explicitHeight = 0;
+        VerticalAlignment valign = VerticalAlignment::Top;
+        UCLayoutExtents extents;
+        bool extentsDirty = true;
+        double cachedAscentPU = 0;
+        double cachedDescentPU = 0;
+    public:
+        explicit UCTextLayout(PangoContext* ctx);
+        ~UCTextLayout() override;
+
+        // Move-only
+//        UCTextLayout(UCTextLayout&& other) noexcept;
+//        UCTextLayout& operator=(UCTextLayout&& other) noexcept;
+
+        UCTextLayout(const UCTextLayout&) = delete;
+        UCTextLayout& operator=(const UCTextLayout&) = delete;
+
+        bool IsValid() const override;
+        void* GetHandle() const override;
+
+        // ===== TEXT CONTENT =====
+        void SetText(const std::string& text) override;
+        std::string GetText() const override;
+        void SetMarkup(const std::string& markup) override;
+
+        // ===== FONT =====
+        void SetFontStyle(const FontStyle& fontStyle) override;
+//        void SetFontDescriptionFromPango(const PangoFontDescription* desc) override;
+
+        // ===== DIMENSIONS (pixel API) =====
+        void SetExplicitWidth(double widthPixels) override;       // -1 to unset
+        double GetExplicitWidth() const override;
+        void SetExplicitHeight(double heightPixels) override;     // -1 to unset
+        double GetExplicitHeight() const override;
+
+        // ===== ALIGNMENT & JUSTIFICATION =====
+        void SetAlignment(TextAlignment align) override;
+        TextAlignment GetAlignment() const override;
+        void SetVerticalAlignment(VerticalAlignment align) override;
+        VerticalAlignment GetVerticalAlignment() override { return valign; };
+
+        // ===== WRAPPING & ELLIPSIZATION =====
+        void SetWrap(TextWrap wrap) override;
+        TextWrap GetWrap() const override;
+        void SetEllipsize(EllipsizeMode mode) override;
+        EllipsizeMode GetEllipsize() const override;
+
+        // ===== SPACING & INDENTATION (pixels) =====
+        void SetIndent(int indentPixels) override;
+        int GetIndent() const override;
+        void SetLineSpacing(float factor) override;
+        float GetLineSpacing() const override;
+        void SetSpacing(int spacingPixels) override;   // Inter-paragraph spacing
+        int GetSpacing() const override;
+
+        // ===== MODE =====
+        void SetSingleParagraphMode(bool single) override;
+        bool GetSingleParagraphMode() const override;
+        void SetAutoDir(bool autoDir) override;
+        bool GetAutoDir() const override;
+
+        // ===== ATTRIBUTES =====
+//        void SetAttributes(const UCTextAttributeList& attrs) override;
+//        PangoAttrList* GetAttributesHandle() const override;
+        void InsertAttribute(std::unique_ptr<ITextAttribute> attr) override;
+        void ChangeAttribute(std::unique_ptr<ITextAttribute> attr) override;
+        void SetAttributesFromString(const std::string& str) override;
+        std::string GetAttributesAsString() override;
+        void RemoveAllAttributes() override;
+        void UpdateAttributesAccordingToText(int textBytePos, int addedTextBytes, int removedTextBytes) override;
+
+        // ===== TABS =====
+        void ResetTabs() override;
+        void SetTabs(const std::vector<UCLayoutTabPos>& tabs) override;
+        std::vector<UCLayoutTabPos> GetTabs() override;
+
+        // ===== MEASUREMENT =====
+        UCLayoutExtents GetLayoutExtents() override;
+        double GetLayoutVerticalOffset() override;
+
+        double GetBaseline() const override;
+        int GetLineCount() const override;
+
+        // ===== HIT TESTING & POSITION =====
+        UCLayoutHitResult XYToIndex(int pixelX, int pixelY) const override;
+        Rect2Di IndexToPos(int byteIndex) const override;
+        UCLayoutLineXPos IndexToLineX(int byteIndex, bool trailing) const override;
+        UCCursorPos GetCursorPos(int byteIndex) const override;
+        UCCursorMoveResult MoveCursorVisually(bool strongCursor, int oldIndex,
+                                              int oldTrailing, int direction) const override;
+
+        // ===== LINE ACCESS =====
+        std::vector<LayoutLineRange> GetLineByteRanges() const override;
+    };
+
+} // namespace UltraCanvas

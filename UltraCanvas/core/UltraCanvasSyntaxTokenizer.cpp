@@ -11,6 +11,15 @@
 
 namespace UltraCanvas {
 
+// Returns the byte length of a UTF-8 character from its leading byte
+    static int Utf8CharBytes(unsigned char leadByte) {
+        if (leadByte < 0x80) return 1;
+        if ((leadByte & 0xE0) == 0xC0) return 2;
+        if ((leadByte & 0xF0) == 0xE0) return 3;
+        if ((leadByte & 0xF8) == 0xF0) return 4;
+        return 1; // fallback for continuation/invalid bytes
+    }
+
 // Main tokenization method - tokenizes entire text
     std::vector<SyntaxTokenizer::Token> SyntaxTokenizer::Tokenize(const std::string& text) const {
         std::vector<Token> tokens;
@@ -180,14 +189,15 @@ namespace UltraCanvas {
                 }
             }
 
-            // Handle punctuation and other single characters
+            // Handle punctuation and other single characters (UTF-8 aware)
+            int charBytes = Utf8CharBytes(static_cast<unsigned char>(text[position]));
             token.type = TokenType::Punctuation;
-            token.length = 1;
-            token.text = text.substr(position, 1);
+            token.length = charBytes;
+            token.text = text.substr(position, charBytes);
             tokens.push_back(token);
 
             currentColumn++;
-            position++;
+            position += charBytes;
         }
 
         return tokens;
@@ -297,10 +307,13 @@ namespace UltraCanvas {
                     continue;
                 }
             }
-
-            // Try to match numbers
             if (IsDigit(line[position]) ||
-                (line[position] == '.' && position + 1 < line.length() && IsDigit(line[position + 1]))) {
+                (line[position] == '.' && position + 1 < line.length() && IsDigit(line[position + 1])) ||
+                (currentRules && !currentRules->hexNumberPrefix.empty() &&
+                 line.compare(position, currentRules->hexNumberPrefix.length(), currentRules->hexNumberPrefix) == 0 &&
+                 position + currentRules->hexNumberPrefix.length() < line.length() &&
+                 IsHexDigit(line[position + currentRules->hexNumberPrefix.length()]))) {
+
                 auto numberResult = ParseNumberInLine(line, position);
                 if (numberResult.first > position) {
                     token.type = numberResult.second;
@@ -352,14 +365,15 @@ namespace UltraCanvas {
                 }
             }
 
-            // Handle punctuation and other single characters
+            // Handle punctuation and other single characters (UTF-8 aware)
+            int charBytes = Utf8CharBytes(static_cast<unsigned char>(line[position]));
             token.type = TokenType::Punctuation;
-            token.length = 1;
-            token.text = line.substr(position, 1);
+            token.length = charBytes;
+            token.text = line.substr(position, charBytes);
             tokens.push_back(token);
 
             currentColumn++;
-            position++;
+            position += charBytes;
         }
 
         return tokens;
@@ -570,6 +584,19 @@ namespace UltraCanvas {
         if (!currentRules) return {pos, TokenType::Unknown};
 
         size_t endPos = pos;
+        if (currentRules->hasHexNumbers &&
+            !currentRules->hexNumberPrefix.empty() &&
+            text.compare(endPos, currentRules->hexNumberPrefix.length(), currentRules->hexNumberPrefix) == 0) {
+            endPos += currentRules->hexNumberPrefix.length();
+            size_t hexStart = endPos;
+            while (endPos < text.length() && IsHexDigit(text[endPos])) {
+                endPos++;
+            }
+            if (endPos > hexStart) {
+                return {endPos, TokenType::Number};
+            }
+            return {pos, TokenType::Unknown};  // Prefix without digits — not a number
+        }
 
         // Check for hex numbers (0x or 0X)
         if (currentRules->hasHexNumbers &&

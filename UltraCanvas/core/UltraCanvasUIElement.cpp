@@ -5,50 +5,91 @@
 // Author: UltraCanvas Framework
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
+
     // new here
-    void UltraCanvasUIElement::ConvertWindowToParentContainerCoordinates(int &x, int &y) {
-        if (parentContainer) {
-            auto pc = parentContainer;
-            while(pc) {
-                Rect2Di contentArea = pc->GetContentRect();
-                x = x - contentArea.x + pc->GetHorizontalScrollPosition();
-                y = y - contentArea.y + pc->GetVerticalScrollPosition();
-                pc = pc->GetParentContainer();
-            }
-        }
+    UltraCanvasUIElement::~UltraCanvasUIElement() {
     }
 
-    Point2Di UltraCanvasUIElement::ConvertWindowToParentContainerCoordinates(const Point2Di &globalPos) {
-        Point2Di pos = globalPos;
-        ConvertWindowToParentContainerCoordinates(pos.x, pos.y);
-        return pos;
-    }
-
-    void UltraCanvasUIElement::ConvertContainerToWindowCoordinates(int &x, int &y) {
-        if (parentContainer) {
-            auto pc = parentContainer;
-            while(pc) {
-                Rect2Di contentArea = pc->GetContentRect();
-                x = x + contentArea.x - pc->GetHorizontalScrollPosition();
-                y = y + contentArea.y - pc->GetVerticalScrollPosition();
-                pc = pc->GetParentContainer();
-            }
-        }
-    }
-
-    Point2Di UltraCanvasUIElement::ConvertContainerToWindowCoordinates(const Point2Di &localPos) {
+    Point2Di UltraCanvasUIElement::MapFromLocal(const Point2Di &localPos, UltraCanvasContainer* mapToParent) {
         Point2Di pos = localPos;
-        ConvertContainerToWindowCoordinates(pos.x, pos.y);
+        if (parentContainer) {
+            auto pc = parentContainer;
+            while(pc) {
+                Rect2Di contentArea = pc->GetContentRect();
+                pos.x = pos.x + contentArea.x - pc->GetHorizontalScrollPosition();
+                pos.y = pos.y + contentArea.y - pc->GetVerticalScrollPosition();
+                if (pc == mapToParent) break;
+                pc = pc->GetParentContainer();
+            }
+            pos.x += bounds.x;
+            pos.y += bounds.y;
+        }
         return pos;
+    }
+
+    Point2Di UltraCanvasUIElement::MapToLocal(const Point2Di &globalPos, UltraCanvasContainer* mapFromParent) {
+        Point2Di pos = globalPos;
+        if (parentContainer) {
+            auto pc = parentContainer;
+            while(pc) {
+                Rect2Di contentArea = pc->GetContentRect();
+                pos.x = pos.x - contentArea.x + pc->GetHorizontalScrollPosition();
+                pos.y = pos.y - contentArea.y + pc->GetVerticalScrollPosition();
+                if (pc == mapFromParent) break;
+                pc = pc->GetParentContainer();
+            }
+            pos.x -= bounds.x;
+            pos.y -= bounds.y;
+        }
+        return pos;
+    }
+
+    void UltraCanvasUIElement::Invalidate(const Rect2Di& localRect) {
+        if (!window || localRect.width <= 0 || localRect.height <= 0) return;
+
+        // Walk up looking for a popup ancestor; popups own their own dirty
+        // queue so they can be re-rendered into their offscreen surface
+        // independently of the main window content.
+        UltraCanvasUIElement* popupAncestor = nullptr;
+        for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->parentContainer) {
+            if (cur->isPopup) { popupAncestor = cur; break; }
+        }
+
+        Point2Di posInWindow = GetPositionInWindow();
+
+        if (popupAncestor) {
+            Point2Di popupPosInWindow = popupAncestor->GetPositionInWindow();
+            Rect2Di rectInPopup(localRect.x + posInWindow.x - popupPosInWindow.x,
+                                localRect.y + posInWindow.y - popupPosInWindow.y,
+                                localRect.width, localRect.height);
+            window->AddPopupDirtyRect(popupAncestor, rectInPopup);
+        } else {
+            Rect2Di rectInWindow(localRect.x + posInWindow.x,
+                                 localRect.y + posInWindow.y,
+                                 localRect.width, localRect.height);
+            window->AddDirtyRectangle(rectInWindow);
+        }
     }
 
     void UltraCanvasUIElement::RequestRedraw() {
-        if (window) {
-            window->MarkElementDirty(this);
+        Invalidate(GetLocalBounds());
+    }
+
+    void UltraCanvasUIElement::RequestUpdateGeometry() {
+        needsUpdateGeometry = true;
+        if (!window || this == window) return;
+        for (UltraCanvasUIElement* cur = this; cur && cur != window; cur = cur->parentContainer) {
+            if (cur->isPopup) {
+                window->RequestPopupGeometry();
+                return;
+            }
         }
+        window->RequestUpdateGeometry();
     }
 
 //    void UltraCanvasUIElement::RequestFullRedraw() {
@@ -58,22 +99,17 @@ namespace UltraCanvas {
 //    }
 
     IRenderContext* UltraCanvasUIElement::GetRenderContext() const {
-        if (window) {
-            return window->GetRenderContext();
+        if (renderContext) {
+            return renderContext.get();
+        }
+        auto pc = parentContainer;
+        while (pc) {
+            if (pc->renderContext) {
+                return pc->renderContext.get();
+            }
+            pc = pc->parentContainer;
         }
         return nullptr;
-    }
-
-    void UltraCanvasUIElement::AddThisPopupElementToWindow() {
-        if (window) {
-            window->AddPopupElement(this);
-        }
-    }
-
-    void UltraCanvasUIElement::RemoveThisPopupElementFromWindow() {
-        if (window) {
-            window->RemovePopupElement(this);
-        }
     }
 
     UltraCanvasContainer* UltraCanvasUIElement::GetRootContainer() {
@@ -95,42 +131,8 @@ namespace UltraCanvas {
         return false;
     }
 
-//    int UltraCanvasUIElement::GetXInWindow() {
-//        int totalX = properties.x_pos;
-//
-//        if (parentContainer) {
-//            // Get parent's position in window coordinates
-//            int parentWindowX = parentContainer->GetXInWindow();
-//
-//            // Add parent's content area offset
-//            Rect2Di parentContentArea = parentContainer->GetContentArea();
-//
-//            // Calculate final position: parent window position + content area offset + our relative position
-//            totalX = parentWindowX + parentContentArea.x + properties.x_pos;
-//        }
-//
-//        return totalX;
-//    }
-//
-//// Fixed version of GetYInWindow() in UltraCanvasUIElement.cpp
-//    int UltraCanvasUIElement::GetYInWindow() {
-//        int totalY = properties.y_pos;
-//
-//        if (parentContainer) {
-//            // Get parent's position in window coordinates
-//            int parentWindowY = parentContainer->GetYInWindow();
-//
-//            // Add parent's content area offset
-//            Rect2Di parentContentArea = parentContainer->GetContentArea();
-//
-//            // Calculate final position: parent window position + content area offset + our relative position
-//            totalY = parentWindowY + parentContentArea.y + properties.y_pos;
-//        }7
-//
-//        return totalY;
-//    }
-    void UltraCanvasUIElement::Render(IRenderContext* ctx) {
-        auto bnds = GetBounds();
+    void UltraCanvasUIElement::Render(IRenderContext* ctx, const Rect2Di& /*dirtyRect*/) {
+        auto bnds = GetLocalBounds();
         int leftWidth = GetBorderLeftWidth();
         int rightWidth = GetBorderRightWidth();
         int topWidth = GetBorderTopWidth();
@@ -172,7 +174,7 @@ namespace UltraCanvas {
             if (backgroundColor.a > 0) {
                 ctx->SetFillPaint(backgroundColor);
             }
-            ctx->DrawRoundedRectangleWidthBorders(bnds.x, bnds.y, bnds.width, bnds.height, backgroundColor.a > 0,
+            ctx->DrawRoundedRectangleWidthBorders(bnds, backgroundColor.a > 0,
                                                   leftWidth, rightWidth, topWidth, bottomWidth,
                                                   leftColor, rightColor, topColor, bottomColor,
                                                   leftRadius, rightRadius, topRadius, bottomRadius,
@@ -180,9 +182,24 @@ namespace UltraCanvas {
         } else {
             if (backgroundColor.a > 0) {
                 ctx->SetFillPaint(backgroundColor);
-                ctx->FillRectangle(bnds.x, bnds.y, bnds.width, bnds.height);
+                ctx->FillRectangle(bnds);
             }
         }
+    }
+
+    Point2Di UltraCanvasUIElement::GetPositionInWindow() const {
+        Point2Di pos;
+        if (parentContainer) {
+            auto pc = parentContainer;
+            while(pc) {
+                pos.x += (pc->GetContentRect().x - pc->GetHorizontalScrollPosition());
+                pos.y += (pc->GetContentRect().y - pc->GetVerticalScrollPosition());
+                pc = pc->parentContainer;
+            }
+        }
+        pos.x += bounds.x;
+        pos.y += bounds.y;
+        return pos;
     }
 
     int UltraCanvasUIElement::GetXInWindow() {
@@ -213,7 +230,7 @@ namespace UltraCanvas {
         // If trying to set focus, delegate to window's focus management
         if (focus) {
             if (!window) {
-                std::cerr << "Warning: Element " << GetIdentifier() << " has no window assigned" << std::endl;
+                debugOutput << "Warning: Element " << GetIdentifier() << " has no window assigned" << std::endl;
                 return false;
             }
 
@@ -243,30 +260,63 @@ namespace UltraCanvas {
             return;
         }
         visible = vis;
+        // Invalidate the rect we're about to vacate or occupy, in parent space.
         if (parentContainer) {
+            parentContainer->Invalidate(bounds);
             parentContainer->InvalidateLayout();
+        } else if (window && this != window) {
+            window->AddDirtyRectangle(bounds);
         }
-        if (window) {
-            SetFocus(false);
-            window->RequestRedraw();
-        }
+        SetFocus(false);
+        RequestUpdateGeometry();
     }
 
     void UltraCanvasUIElement::SetWindow(UltraCanvasWindowBase *win) {
         if (win == nullptr && window) {
             SetFocus(false);
-            RemoveThisPopupElementFromWindow();
         }
         window = win;
     }
 
     void UltraCanvasUIElement::SetOriginalSize(int w, int h) {
-        originalSize.width = w;
-        originalSize.height = h;
+        explicitSize.width = w;
+        explicitSize.height = h;
         if (parentContainer) {
             parentContainer->InvalidateLayout();
         } else {
             SetSize(w, h);
         }
     }
+
+    void UltraCanvasUIElement::SetBounds(const Rect2Di &b) {
+        if (bounds == b) return;
+        Rect2Di oldBounds = bounds;
+        if (bounds.Size() != b.Size()) {
+            RequestUpdateGeometry();
+        }
+        if (parentContainer) {
+            parentContainer->RequestUpdateGeometry();
+        }
+        bounds = b;
+        // Invalidate union of old+new bounds in parent space — bounds are stored
+        // in parent coords, so this is what the parent (or window) needs to repaint.
+        Rect2Di damage = oldBounds.Union(b);
+        if (parentContainer) {
+            parentContainer->Invalidate(damage);
+        } else if (window && this != window) {
+            window->AddDirtyRectangle(damage);
+        }
+    }
+
+    void UltraCanvasUIElement::SetEventCallback(std::function<bool(const UCEvent &)> callback) {
+        eventCallback = callback;
+    }
+
+    bool UltraCanvasUIElement::OnEvent(const UCEvent &event) {
+        if (eventCallback) {
+            return eventCallback(event);
+        }
+        return false;
+    }
+
 }

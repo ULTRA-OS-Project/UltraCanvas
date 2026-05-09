@@ -1,0 +1,11 @@
+[Desktop Entry]
+X-AppImage-Arch=x86_64
+X-AppImage-Version=latest
+X-AppImage-Name=UltraCanvas Demo App
+Name=UltraCanvas Demo App
+Exec=UltraCanvasDemo
+Icon=ucdemoapp.appimage
+Type=Application
+Terminal=false
+Categories=Utility;
+Comment=

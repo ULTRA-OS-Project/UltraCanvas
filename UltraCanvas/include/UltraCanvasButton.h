@@ -1,7 +1,7 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
-// Version: 2.3.1
-// Last Modified: 2025-01-15
+// Version: 2.3.2
+// Last Modified: 2026-04-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -41,7 +41,7 @@ namespace UltraCanvas {
         bool horizontal = true;
 
         // Section proportions (0.0 to 1.0)
-        float primaryRatio = 0.75f;
+        double primaryRatio = 0.75f;
 
         // Secondary section text
         std::string secondaryText;
@@ -77,7 +77,7 @@ namespace UltraCanvas {
         Color normalColor = Colors::ButtonFace;
         Color hoverColor = Colors::SelectionHover;
         Color pressedColor = Color(204, 228, 247, 255);
-        Color disabledColor = Colors::LightGray;
+        Color disabledColor = Color(220, 220, 220, 255);
         Color focusedColor = Color(80, 80, 80, 255);
 
         Color normalTextColor = Colors::TextDefault;
@@ -86,33 +86,25 @@ namespace UltraCanvas {
         Color disabledTextColor = Colors::TextDisabled;
 
         Color borderColor = Colors::ButtonShadow;
-        float borderWidth = 1.0f;
-
-        // Icon colors (tinting)
-        Color normalIconColor = Colors::White;  // White = no tinting
-        Color hoverIconColor = Colors::White;
-        Color pressedIconColor = Colors::White;
-        Color disabledIconColor = Color(255, 255, 255, 128);  // Semi-transparent
+        double borderWidth = 1.0f;
 
         // Text styling
-        std::string fontFamily = "Sans";
-        float fontSize = 12.0f;
+        FontStyle fontStyle;
+
+        std::string fontFamily;
+        double fontSize = 12.0f;
         FontWeight fontWeight = FontWeight::Normal;
         TextAlignment textAlign = TextAlignment::Center;
 
-        // Layout
-        int paddingLeft = 8;
-        int paddingRight = 8;
-        int paddingTop = 4;
-        int paddingBottom = 4;
         int iconSpacing = 4;  // Space between icon and text
-        float cornerRadius = 3.0f;
+        double cornerRadius = 3.0f;
+
+        bool useIconAsMask = false;
 
         // Effects
         bool hasShadow = false;
         Color shadowColor = Color(0, 0, 0, 64);
-        Point2Di shadowOffset = Point2Di(1, 1);
-
+        Point2Di shadowOffset = Point2Di(0, 0);
         // Split button style
         SplitButtonStyle splitStyle;
     };
@@ -128,13 +120,11 @@ namespace UltraCanvas {
         // Icon properties
         int iconWidth = 24;
         int iconHeight = 24;
-        bool scaleIconToFit = false;
-        bool maintainIconAspectRatio = true;
 
         // State
         bool canToggled = false;
+        bool canAcceptFocus = true;
         bool autoresize = false;
-        bool isNeedAutoresize = false;
 
         // Cached layout calculations
         Rect2Di iconRect;
@@ -143,7 +133,6 @@ namespace UltraCanvas {
         Rect2Di secondaryIconRect;  // For split button secondary icon (new)
         Rect2Di primarySectionRect;  // Primary section bounds
         Rect2Di secondarySectionRect;  // Secondary section bounds
-        bool layoutDirty = true;
 
     public:
         // ===== CONSTRUCTOR =====
@@ -185,8 +174,8 @@ namespace UltraCanvas {
         void SetIcon(const std::string& iconPath);
         void SetIconPosition(ButtonIconPosition position);
         void SetIconSize(int width, int height);
-        void SetIconScaleToFit(bool scale) { scaleIconToFit = scale; }
-        void SetMaintainAspectRatio(bool maintain) { maintainIconAspectRatio = maintain; }
+        void SetUseIconAsMask(bool useAsMask);
+        void SetIconMaskColor(const Color& c);
         bool HasIcon() const { return icon != nullptr; }
 
         // ===== STYLING METHODS =====
@@ -198,14 +187,11 @@ namespace UltraCanvas {
                            const Color& pressed, const Color& disabled);
         void SetTextColors(const Color& normal, const Color& hover);
         void SetTextColors(const Color& normal);
-        void SetIconColors(const Color& normal, const Color& hover,
-                           const Color& pressed, const Color& disabled);
         void SetBorder(float width, const Color& color);
         void SetFont(const std::string& family, float size,
                      FontWeight weight = FontWeight::Normal);
         void SetFontSize(float size);
         void SetTextAlign(TextAlignment align);
-        void SetPadding(int left, int right, int top, int bottom);
         void SetIconSpacing(int spacing);
         void SetCornerRadius(float radius);
         void SetShadow(bool enabled, const Color& color = Color(0, 0, 0, 64),
@@ -232,9 +218,12 @@ namespace UltraCanvas {
         std::function<void()> onHoverLeave;
 
         // ===== OVERRIDES =====
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void UpdateGeometry(IRenderContext *ctx) override;
+
         bool OnEvent(const UCEvent& event) override;
-        bool AcceptsFocus() const override { return true; }
+        bool AcceptsFocus() const override { return canAcceptFocus; }
+        void SetAcceptsFocus(bool accept) { canAcceptFocus = accept; }
 
     protected:
         // ===== LAYOUT HELPERS =====
@@ -244,12 +233,11 @@ namespace UltraCanvas {
         bool IsPointInSecondarySection(int x, int y) const;
 
         // ===== RENDERING HELPERS =====
-        void UpdateButtonState();
         void DrawIcon(IRenderContext* ctx);
         void DrawSecondaryIcon(IRenderContext* ctx);  // New method
         void DrawText(IRenderContext* ctx);
         void DrawSplitButton(IRenderContext* ctx);
-        void GetCurrentColors(Color& bgColor, Color& textColor, Color& iconColor) const;
+        void GetCurrentColors(Color& bgColor, Color& textColor) const;
         void GetSplitColors(Color& primaryBg, Color& primaryText, Color& secondaryBg, Color& secondaryText);
         void GetSecondaryIconColor(Color& iconColor) const;  // New method
         void Click(const UCEvent& event);  // Helper for click handling
@@ -352,7 +340,7 @@ namespace UltraCanvas {
         }
 
         ButtonBuilder& SetPadding(int padding) {
-            button->SetPadding(padding, padding, padding/2, padding/2);
+            button->SetPadding(padding/2, padding, padding/2, padding);
             return *this;
         }
         ButtonBuilder& SetIconSpacing(int spacing) {
@@ -452,13 +440,6 @@ namespace UltraCanvas {
             style.pressedColor = Color(220, 220, 220, 180);
             style.borderWidth = 0.0f;
             style.hasShadow = false;
-            return style;
-        }
-
-        inline ButtonStyle IconOnlyStyle() {
-            ButtonStyle style = FlatStyle();
-            style.paddingLeft = style.paddingRight = 4;
-            style.paddingTop = style.paddingBottom = 4;
             return style;
         }
 

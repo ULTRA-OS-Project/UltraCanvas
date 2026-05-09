@@ -1,0 +1,19 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!--Generator: Xara Designer (www.xara.com), SVG filter version: 6.7.0.0-->
+<svg fill="none" fill-rule="evenodd" stroke="black" stroke-width="0.501" stroke-linejoin="bevel" stroke-miterlimit="10" font-family="Times New Roman" font-size="16" style="font-variant-ligatures:none" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" version="1.1" overflow="visible" width="41.45pt" height="41.45pt" viewBox="297.077 -303.069 41.45 41.45">
+ <defs>
+  <image id="Bitmap" preserveAspectRatio="none" width="1" height="1" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAYAAACohjseAAAACXBIWXMAAA7DAAAOwwHHb6hkAAADkklEQVRogWIY1oCBgQEAAAD//xremIGBAQAAAP//Gt6YgYEBAAAA//8a3piBgQEAAAD//xremIGBAQAAAP//Gt6YgYEBAAAA//8a3piBgQEAAAD//xremIGBAQAAAP//Gt6YgYEBAAAA//8a3piBgQEAAAD//xremIGBAQAAAP//Gt6YgYEBAAAA//8a3piBgQEAAAD//2IeYB9aMDAwBDEwMEgyMDA8YGBg+ENV0xkYGAAAAAD//xoozMTAwBDJwMDwhoGB4T8DA8NPBgaGRqo7hoGBAQAAAP//GigcwcDA8A7qORgGxSAPVR3EwMAAAAAA//8aCAzy3Hs0z4HwBwYGBiGqOoiBgQEAAAD//6I3xhZztPMgAwMDAAAA//+iFwblOXyeo40HGRgYAAAAAP//ohcOJ+A52niQgYEBAAAA//+iBybGc7TxIAMDAwAAAP//ojUm1nO08SADAwMAAAD//6IlDmNgYHhLpOdo40EGBgYAAAAA//+iFSbVc7TxIAMDAwAAAP//ogUmx3O08SADAwMAAAD//6I2DiXTc7TxIAMDAwAAAP//oiamxHO08SADAwMAAAD//6IWNmdgYHhNgedo40EGBgYAAAAA//8CtTCoAYwZGBhEBiJk8QIGBgYAAAAA//+ilgdBsfebRm4kHzAwMAAAAAD//6IW5mRgYJgG7bAOniTKwMAAAAAA//+iJgb15WZQ4Enqe5CBgQEAAAD//xpMnqS+BxkYGAAAAAD//6IFJteT1PcgAwMDAAAA//8aTJ6kvgcZGBgAAAAA//+iJQZ5ciYJnqS+BxkYGAAAAAD//xpMnqS+BxkYGAAAAAD//6IHJtaT1PcgAwMDAAAA//8aTJ6kvgcZGBgAAAAA//+iJwZ5chYeT1LfgwwMDAAAAAD//6I35sXjSep7kIGBAQAAAP//GihPzsbiSdAwvgBVbWJgYAAAAAD//xoojM2T6xgYGKg7GcTAwAAAAAD//xqo2aVfDAwMB6A0FwMDwzEGBoZKaIeZeoCBgQEAAAD//xoMmAM68k19wMDAAAAAAP//Gt6YgYEBAAAA//8a3piBgQEAAAD//xremIGBAQAAAP//Gt6YgYEBAAAA//8a3piBgQEAAAD//xremIGBAQAAAP//Gt6YgYEBAAAA//8a3piBgQEAAAD//xremIGBAQAAAP//Gt6YgYEBAAAA//8a3piBgQEAAAD//wMAKjQo6TeL4soAAAAASUVORK5CYII=">
+   <title>1</title>
+  </image>
+ </defs>
+ <g id="Layer 1" transform="scale(1 -1)">
+  <clipPath id="clip-path">
+   <use xlink:href="#Shape"/>
+  </clipPath>
+  <g clip-path="url(#clip-path)">
+   <use xlink:href="#Bitmap" transform="translate(297.077 303.069) scale(41.45 -41.45)"/>
+  </g>
+  <path d="M 297.077,261.619 L 338.527,261.619 L 338.527,303.069 L 297.077,303.069 L 297.077,261.619 Z" stroke-width="0.054" stroke-linejoin="miter" stroke="none" marker-start="none" marker-end="none" fill="none" id="Shape"/>
+ </g>
+</svg>

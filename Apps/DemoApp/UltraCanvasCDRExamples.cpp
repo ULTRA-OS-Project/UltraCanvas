@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasCDRExamples.cpp
 // CDR vector graphics demo examples for UltraCanvas Framework
-// Version: 1.0.0
-// Last Modified: 2025-12-15
+// Version: 1.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -139,10 +139,9 @@ namespace UltraCanvas {
 
             // ESC key handler
             fullscreenWindow->SetEventCallback([this](const UCEvent& event) {
-                if ((event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) ||
-                    event.type == UCEventType::WindowClose) {
+                if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
                     if (fullscreenWindow) {
-                        fullscreenWindow->RequestDelete();
+                        fullscreenWindow->Close();
                         fullscreenWindow.reset();
                     }
                     return true;
@@ -190,7 +189,7 @@ namespace UltraCanvas {
         auto cdrElement1 = std::make_shared<UltraCanvasCDRElement>("CDR1", 5011, 10, 10, 280, 220);
         cdrElement1->SetFitMode(CDRFitMode::FitPage);
 
-        std::string cdrFile1 = "media/cdr/demo.cdr";
+        std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/cdr/demo.cdr");
         if (cdrElement1->LoadFromFile(cdrFile1)) {
             statusLabel->SetText("Loaded: " + cdrFile1 + " (" +
                                  std::to_string(cdrElement1->GetPageCount()) + " pages)");
@@ -231,7 +230,7 @@ namespace UltraCanvas {
         auto cdrElement2 = std::make_shared<UltraCanvasCDRElement>("CDR2", 5021, 10, 10, 280, 220);
         cdrElement2->SetFitMode(CDRFitMode::FitPage);
 
-        std::string cdrFile2 = "media/cdr/logo.cdr";
+        std::string cdrFile2 = NormalizePath(GetResourcesDir() + "media/cdr/logo.cdr");
         cdrElement2->LoadFromFile(cdrFile2);
 
         auto cdrLabel2 = std::make_shared<UltraCanvasLabel>("CDRLabel2", 5022, 10, 240, 280, 30);
@@ -269,7 +268,7 @@ namespace UltraCanvas {
 //        auto cdrElement3 = std::make_shared<UltraCanvasCDRElement>("CDR3", 5031, 10, 10, 280, 220);
 //        cdrElement3->SetFitMode(CDRFitMode::FitPage);
 //
-//        std::string cdrFile3 = "media/cdr/artwork.cmx";
+//        std::string cdrFile3 = NormalizePath(GetResourcesDir() + "media/cdr/artwork.cmx");
 //        cdrElement3->LoadFromFile(cdrFile3);
 //
 //        auto cdrLabel3 = std::make_shared<UltraCanvasLabel>("CDRLabel3", 5032, 10, 240, 280, 30);
@@ -309,7 +308,7 @@ namespace UltraCanvas {
         auto cdrElement4 = std::make_shared<UltraCanvasCDRElement>("CDR4", 5041, 10, 10, 280, 220);
         cdrElement4->SetFitMode(CDRFitMode::FitPage);
 
-        std::string cdrFile4 = "media/cdr/logo.cdr";
+        std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/cdr/logo.cdr");
         cdrElement4->LoadFromFile(cdrFile4);
 
         // Page navigation for multi-page document
@@ -374,7 +373,7 @@ namespace UltraCanvas {
         auto cdrElement5 = std::make_shared<UltraCanvasCDRElement>("CDR5", 5051, 10, 10, 280, 220);
         cdrElement5->SetFitMode(CDRFitMode::FitPage);
 
-        std::string cdrFile5 = "media/cdr/detailed.cdr";
+        std::string cdrFile5 = NormalizePath(GetResourcesDir() + "media/cdr/detailed.cdr");
         cdrElement5->LoadFromFile(cdrFile5);
 
         // Zoom controls
@@ -439,7 +438,7 @@ namespace UltraCanvas {
         infoTitle->SetFontSize(13);
         infoContainer->AddChild(infoTitle);
 
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 5062, 10, 40, 280, 200);
+        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 5062, 10,55, 280, 200);
         infoText->SetText(
                 "✓ CorelDRAW CDR format\n"
                 "✓ Corel Presentation Exchange CMX\n"

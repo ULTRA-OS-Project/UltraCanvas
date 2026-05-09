@@ -18,13 +18,19 @@ namespace UltraCanvas {
                          ScrollbarOrientation orient)
             : UltraCanvasUIElement(id, uid, x, y, w, h)
             , orientation(orient) {
-        UpdateLayout();
+        mouseCursor = (orient == ScrollbarOrientation::Vertical)
+                  ? UCMouseCursor::SizeNS
+                  : UCMouseCursor::SizeWE;        
     }
 
     void UltraCanvasScrollbar::SetOrientation(ScrollbarOrientation orient) {
         if (orientation != orient) {
             orientation = orient;
             layoutDirty = true;
+            // Sync cursor to new orientation
+            mouseCursor = (orient == ScrollbarOrientation::Vertical)
+                        ? UCMouseCursor::SizeNS
+                        : UCMouseCursor::SizeWE;
             RequestRedraw();
         }
     }
@@ -80,14 +86,23 @@ namespace UltraCanvas {
         return false;
     }
 
-    void UltraCanvasScrollbar::Render(IRenderContext *ctx) {
+    void UltraCanvasScrollbar::Render(IRenderContext *ctx, const Rect2Di& dirtyRect) {
         if (!ctx || !ShouldBeVisible()) return;
 
-        ctx->PushState();
-
         if (layoutDirty) {
-            UpdateLayout();
+            Rect2Di bounds = GetLocalBounds();
+
+            if (IsVertical()) {
+                UpdateVerticalLayout(bounds);
+            } else {
+                UpdateHorizontalLayout(bounds);
+            }
+
+            UpdateThumbRect();
+            layoutDirty = false;
         }
+
+        ctx->PushState();
 
         // Render track
         RenderTrack(ctx);
@@ -112,9 +127,7 @@ namespace UltraCanvas {
     bool UltraCanvasScrollbar::OnEvent(const UCEvent &event) {
         if (IsDisabled() || !ShouldBeVisible()) return false;
 
-        if (layoutDirty) {
-            UpdateLayout();
-        }
+        UpdateGeometry(GetRenderContext());
 
         switch (event.type) {
             case UCEventType::MouseDown:
@@ -135,19 +148,6 @@ namespace UltraCanvas {
             default:
                 return false;
         }
-    }
-
-    void UltraCanvasScrollbar::UpdateLayout() {
-        Rect2Di bounds = GetBounds();
-
-        if (IsVertical()) {
-            UpdateVerticalLayout(bounds);
-        } else {
-            UpdateHorizontalLayout(bounds);
-        }
-
-        UpdateThumbRect();
-        layoutDirty = false;
     }
 
     void UltraCanvasScrollbar::UpdateVerticalLayout(const Rect2Di &bounds) {
@@ -257,42 +257,42 @@ namespace UltraCanvas {
         if (IsVertical()) {
             if (isUpOrLeft) {
                 // Up arrow
-                ctx->DrawLine(Point2Di(cx - arrowSize, cy + arrowSize / 2),
-                              Point2Di(cx, cy - arrowSize / 2));
-                ctx->DrawLine(Point2Di(cx, cy - arrowSize / 2),
-                              Point2Di(cx + arrowSize, cy + arrowSize / 2));
+                ctx->DrawLine(Point2Df(cx - arrowSize, cy + arrowSize / 2),
+                              Point2Df(cx, cy - arrowSize / 2));
+                ctx->DrawLine(Point2Df(cx, cy - arrowSize / 2),
+                              Point2Df(cx + arrowSize, cy + arrowSize / 2));
             } else {
                 // Down arrow
-                ctx->DrawLine(Point2Di(cx - arrowSize, cy - arrowSize / 2),
-                              Point2Di(cx, cy + arrowSize / 2));
-                ctx->DrawLine(Point2Di(cx, cy + arrowSize / 2),
-                              Point2Di(cx + arrowSize, cy - arrowSize / 2));
+                ctx->DrawLine(Point2Df(cx - arrowSize, cy - arrowSize / 2),
+                              Point2Df(cx, cy + arrowSize / 2));
+                ctx->DrawLine(Point2Df(cx, cy + arrowSize / 2),
+                              Point2Df(cx + arrowSize, cy - arrowSize / 2));
             }
         } else {
             if (isUpOrLeft) {
                 // Left arrow
-                ctx->DrawLine(Point2Di(cx + arrowSize / 2, cy - arrowSize),
-                              Point2Di(cx - arrowSize / 2, cy));
-                ctx->DrawLine(Point2Di(cx - arrowSize / 2, cy),
-                              Point2Di(cx + arrowSize / 2, cy + arrowSize));
+                ctx->DrawLine(Point2Df(cx + arrowSize / 2, cy - arrowSize),
+                              Point2Df(cx - arrowSize / 2, cy));
+                ctx->DrawLine(Point2Df(cx - arrowSize / 2, cy),
+                              Point2Df(cx + arrowSize / 2, cy + arrowSize));
             } else {
                 // Right arrow
-                ctx->DrawLine(Point2Di(cx - arrowSize / 2, cy - arrowSize),
-                              Point2Di(cx + arrowSize / 2, cy));
-                ctx->DrawLine(Point2Di(cx + arrowSize / 2, cy),
-                              Point2Di(cx - arrowSize / 2, cy + arrowSize));
+                ctx->DrawLine(Point2Df(cx - arrowSize / 2, cy - arrowSize),
+                              Point2Df(cx + arrowSize / 2, cy));
+                ctx->DrawLine(Point2Df(cx + arrowSize / 2, cy),
+                              Point2Df(cx - arrowSize / 2, cy + arrowSize));
             }
         }
     }
 
     bool UltraCanvasScrollbar::HandleMouseDown(const UCEvent &event) {
-        Point2Di mousePos(event.x, event.y);
+        Point2Di mousePos(event.pointer.x, event.pointer.y);
 
         // Check thumb first
         if (thumbRect.Contains(mousePos)) {
             interactionState.thumbPressed = true;
             interactionState.isDragging = true;
-            interactionState.dragStartMousePos = IsVertical() ? event.globalY : event.globalX;
+            interactionState.dragStartMousePos = IsVertical() ? event.pointerGlobal.y : event.pointerGlobal.x;
             interactionState.dragStartScrollPos = scrollState.position;
 
             // Capture mouse
@@ -372,11 +372,11 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasScrollbar::HandleMouseMove(const UCEvent &event) {
-        Point2Di mousePos(event.x, event.y);
+        Point2Di mousePos(event.pointer.x, event.pointer.y);
 
         // Handle dragging
         if (interactionState.isDragging) {
-            int currentPos = IsVertical() ? event.globalY : event.globalX;
+            int currentPos = IsVertical() ? event.pointerGlobal.y : event.pointerGlobal.x;
             int delta = currentPos - interactionState.dragStartMousePos;
 
             // Convert pixel delta to scroll delta
@@ -418,7 +418,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasScrollbar::HandleMouseWheel(const UCEvent &event) {
-        //if (!Contains(event.x, event.y)) return false;
+        //if (!Contains(event.pointer)) return false;
         if (IsVertical()) {
             ScrollByWheel(event.wheelDelta);
             return true;

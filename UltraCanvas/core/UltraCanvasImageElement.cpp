@@ -12,6 +12,7 @@
 #include <memory>
 #include <fstream>
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -22,8 +23,15 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasImageElement::LoadFromFile(const std::string &filePath) {
-        imagePath = filePath;
         loadedImage = UCImage::Get(filePath);
+        if (loadedImage) {
+            return true;
+        }
+        return false;
+    }
+
+    bool UltraCanvasImageElement::LoadFromImage(std::shared_ptr<UCImage> img) {
+        loadedImage = img;
         if (loadedImage) {
             return true;
         }
@@ -85,7 +93,7 @@ namespace UltraCanvas {
 //        return ImageFormat::Unknown;
 //    }
 
-    void UltraCanvasImageElement::Render(IRenderContext* ctx) {
+    void UltraCanvasImageElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible() || bounds.width == 0 || bounds.height == 0) return;
 
         ctx->PushState();
@@ -102,21 +110,24 @@ namespace UltraCanvas {
 
     bool UltraCanvasImageElement::OnEvent(const UCEvent &event) {
         if (IsDisabled() || !IsVisible()) return false;
-        if (!UltraCanvasUIElement::OnEvent(event)) {
-            switch (event.type) {
-                case UCEventType::MouseDown:
-                    HandleMouseDown(event);
-                    break;
+        
+        if (UltraCanvasUIElement::OnEvent(event)) {
+            return true;
+        }        
+        switch (event.type) {
+            case UCEventType::MouseDown:
+                HandleMouseDown(event);
+                return true;
 
-                case UCEventType::MouseMove:
-                    HandleMouseMove(event);
-                    break;
+            case UCEventType::MouseMove:
+                HandleMouseMove(event);
+                return true;
 
-                case UCEventType::MouseUp:
-                    HandleMouseUp(event);
-                    break;
-            }
+            case UCEventType::MouseUp:
+                HandleMouseUp(event);
+                return true;
         }
+        return false;
     }
 
 //    ImageFormat UltraCanvasImageElement::DetectFormatFromData(const std::vector<uint8_t> &data) {
@@ -191,7 +202,7 @@ namespace UltraCanvas {
 //        loadState = ImageLoadState::Failed;
         loadedImage = std::make_shared<UCImage>(); // Reset
 
-        std::cerr << "[UltraCanvasImageElement] Error: " << message << std::endl;
+        debugOutput << "[UltraCanvasImageElement] Error: " << message << std::endl;
 
         if (onImageLoadFailed) {
             onImageLoadFailed(message);
@@ -202,12 +213,12 @@ namespace UltraCanvas {
         // Apply global alpha
         ctx->SetAlpha(opacity);
 
-        // Apply transformations
+        // Apply transformations (ctx is already translated to element origin)
         if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
             ctx->PushState();
 
-            // Translate to center for rotation
-            Point2Di center = Point2Di(GetX() + GetWidth() / 2.0f, GetY() + GetHeight() / 2.0f);
+            // Translate to center for rotation (element-local center)
+            Point2Di center = Point2Di(GetWidth() / 2.0f, GetHeight() / 2.0f);
             ctx->Translate(center.x, center.y);
 
             // Apply transformations
@@ -219,15 +230,15 @@ namespace UltraCanvas {
             ctx->Translate(-center.x, -center.y);
         }
 
-        // Draw the image using unified rendering
+        // Draw the image using unified rendering (element-local bounds)
         if (loadedImage->IsValid()) {
             // Load from file path
-            ctx->DrawImage(*loadedImage.get(), GetBounds(), fitMode);
+            ctx->DrawImage(*loadedImage.get(), GetLocalBounds(), fitMode);
         } else {
             // For memory-loaded images, we'd need to save to a temporary file
             // or extend the rendering interface to support raw data
             // For now, draw a placeholder
-            DrawImagePlaceholder(GetBounds(), "IMG");
+            DrawImagePlaceholder(GetLocalBounds(), "IMG");
         }
 
         if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
@@ -236,15 +247,15 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageElement::DrawErrorPlaceholder(IRenderContext *ctx) {
-        DrawImagePlaceholder(GetBounds(), "ERR", errorColor);
+        DrawImagePlaceholder(GetLocalBounds(), "ERR", errorColor);
 
-        // Draw error message
+        // Draw error message (element-local coordinates)
         if (!loadedImage->errorMessage.empty()) {
             ctx->SetTextPaint(Colors::Red);
-            ctx->SetFontStyle({.fontFamily="Sans", .fontSize=10});
+            ctx->SetFontStyle({.fontSize=10});
 
-            Rect2Di textRect = GetBounds();
-            textRect.y += GetHeight() / 2 + 10;
+            Rect2Df textRect = GetLocalBounds();
+            textRect.y += static_cast<double>(GetHeight()) / 2.0f + 10;
             textRect.height = 20;
 
             ctx->DrawTextInRect(loadedImage->errorMessage, textRect);
@@ -252,7 +263,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageElement::DrawLoadingPlaceholder(IRenderContext *ctx) {
-        DrawImagePlaceholder(GetBounds(), "...", Color(220, 220, 220));
+        DrawImagePlaceholder(GetLocalBounds(), "...", Color(220, 220, 220));
     }
 
     void
@@ -340,7 +351,7 @@ namespace UltraCanvas {
 //    }
 
     void UltraCanvasImageElement::HandleMouseDown(const UCEvent &event) {
-        if (!Contains(event.x, event.y)) return;
+        if (!Contains(event.pointer)) return;
 
         if (clickable && onClick) {
             onClick();
@@ -348,13 +359,13 @@ namespace UltraCanvas {
 
         if (draggable) {
             isDragging = true;
-            dragStartPos = Point2Di(event.x, event.y);
+            dragStartPos = Point2Di(event.pointer.x, event.pointer.y);
         }
     }
 
     void UltraCanvasImageElement::HandleMouseMove(const UCEvent &event) {
         if (isDragging && draggable) {
-            Point2Di currentPos(event.x, event.y);
+            Point2Di currentPos(event.pointer.x, event.pointer.y);
             Point2Di delta = currentPos - dragStartPos;
 
             // Update position

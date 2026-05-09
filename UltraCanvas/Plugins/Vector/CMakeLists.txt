@@ -14,8 +14,6 @@ message(STATUS "Configuring ${PLUGIN_NAME} v${PLUGIN_VERSION}")
 
 # ===== FIND DEPENDENCIES =====
 find_package(PkgConfig REQUIRED)
-
-# libcdr - CorelDRAW file format parser
 pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
 pkg_check_modules(LIBZLIB REQUIRED zlib)
 

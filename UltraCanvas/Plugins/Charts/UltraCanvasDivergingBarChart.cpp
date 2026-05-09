@@ -200,7 +200,7 @@ namespace UltraCanvas {
         float currentValue = gridInterval;
         while (currentValue < maxNegativeValue) {
             float x = centerX - (currentValue / maxNegativeValue) * (cachedPlotArea.width / 2 - centerGap/2);
-            ctx->DrawLine(x, cachedPlotArea.y, x, cachedPlotArea.y + cachedPlotArea.height);
+            ctx->DrawLine({x, cachedPlotArea.y}, { x, cachedPlotArea.y + cachedPlotArea.height});
             currentValue += gridInterval;
         }
 
@@ -208,7 +208,7 @@ namespace UltraCanvas {
         currentValue = gridInterval;
         while (currentValue < maxPositiveValue) {
             float x = centerX + (currentValue / maxPositiveValue) * (cachedPlotArea.width / 2 - centerGap/2);
-            ctx->DrawLine(x, cachedPlotArea.y, x, cachedPlotArea.y + cachedPlotArea.height);
+            ctx->DrawLine({x, cachedPlotArea.y}, { x, cachedPlotArea.y + cachedPlotArea.height});
             currentValue += gridInterval;
         }
 
@@ -218,7 +218,7 @@ namespace UltraCanvas {
             float rowHeight = cachedPlotArea.height / divergingDataSource->GetPointCount();
             for (size_t i = 1; i < divergingDataSource->GetPointCount(); ++i) {
                 float y = cachedPlotArea.y + i * rowHeight;
-                ctx->DrawLine(cachedPlotArea.x, y, cachedPlotArea.x + cachedPlotArea.width, y);
+                ctx->DrawLine({cachedPlotArea.x, y}, { cachedPlotArea.x + cachedPlotArea.width, y});
             }
         }
     }
@@ -228,7 +228,7 @@ namespace UltraCanvas {
 
         ctx->SetStrokePaint(centerLineColor);
         ctx->SetStrokeWidth(centerLineWidth);
-        ctx->DrawLine(centerX, cachedPlotArea.y, centerX, cachedPlotArea.y + cachedPlotArea.height);
+        ctx->DrawLine({centerX, cachedPlotArea.y}, { centerX, cachedPlotArea.y + cachedPlotArea.height});
     }
 
     void UltraCanvasDivergingBarChart::RenderPopulationPyramid(IRenderContext *ctx, float animScale) {
@@ -263,7 +263,7 @@ namespace UltraCanvas {
                     }
 
                     ctx->SetFillPaint(fillColor);
-                    ctx->FillRectangle(x, y, barWidth, actualBarHeight);
+                    ctx->FillRectangle(Rect2Df(x, y, barWidth, actualBarHeight));
 
                     negativeOffset += barWidth;
                 }
@@ -286,7 +286,7 @@ namespace UltraCanvas {
                     }
 
                     ctx->SetFillPaint(fillColor);
-                    ctx->FillRectangle(x, y, barWidth, actualBarHeight);
+                    ctx->FillRectangle(Rect2Df(x, y, barWidth, actualBarHeight));
 
                     positiveOffset += barWidth;
                 }
@@ -344,13 +344,13 @@ namespace UltraCanvas {
                     if (category.isPositive) {
                         barWidth = (value / totalPos) * availableWidth * animScale;
                         // Draw on right side
-                        ctx->FillRectangle(rightOffset, y, barWidth, actualBarHeight);
+                        ctx->FillRectangle(Rect2Df(rightOffset, y, barWidth, actualBarHeight));
                         rightOffset += barWidth;
                     } else {
                         barWidth = (value / totalNeg) * availableWidth * animScale;
                         // Draw on left side
                         leftOffset -= barWidth;
-                        ctx->FillRectangle(leftOffset, y, barWidth, actualBarHeight);
+                        ctx->FillRectangle(Rect2Df(leftOffset, y, barWidth, actualBarHeight));
                     }
                 }
             }
@@ -406,10 +406,10 @@ namespace UltraCanvas {
 
             if (netValue < 0) {
                 // Draw on left side
-                ctx->FillRectangle(centerX - centerGap/2 - barWidth, y, barWidth, actualBarHeight);
+                ctx->FillRectangle(Rect2Df(centerX - centerGap/2 - barWidth, y, barWidth, actualBarHeight));
             } else {
                 // Draw on right side
-                ctx->FillRectangle(centerX + centerGap/2, y, barWidth, actualBarHeight);
+                ctx->FillRectangle(Rect2Df(centerX + centerGap/2, y, barWidth, actualBarHeight));
             }
         }
     }
@@ -460,7 +460,7 @@ namespace UltraCanvas {
                 }
 
                 ctx->SetFillPaint(leftColor);
-                ctx->FillRectangle(centerX - centerGap/2 - barWidth, y, barWidth, actualBarHeight);
+                ctx->FillRectangle(Rect2Df(centerX - centerGap/2 - barWidth, y, barWidth, actualBarHeight));
             }
 
             // Right bar (positive values)
@@ -475,7 +475,7 @@ namespace UltraCanvas {
                 }
 
                 ctx->SetFillPaint(rightColor);
-                ctx->FillRectangle(centerX + centerGap/2, y + actualBarHeight, barWidth, actualBarHeight);
+                ctx->FillRectangle(Rect2Df(centerX + centerGap/2, y + actualBarHeight, barWidth, actualBarHeight));
             }
         }
     }
@@ -496,7 +496,7 @@ namespace UltraCanvas {
             const auto& point = divergingDataSource->GetDivergingPoint(rowIdx);
 
             // Draw label at center
-            ctx->DrawText(point.rowLabel, cachedPlotArea.x + cachedPlotArea.width + 7, y);
+            ctx->DrawText(point.rowLabel, {cachedPlotArea.x + cachedPlotArea.width + 7, y});
         }
     }
 
@@ -535,13 +535,13 @@ namespace UltraCanvas {
         TextStyle st = ctx->GetTextStyle();
         st.alignment = TextAlignment::Left;
         ctx->SetTextStyle(st);
-        ctx->DrawTextInRect(leftLabel, cachedPlotArea.x, y, cachedPlotArea.width / 2 - 10, 20);
+        ctx->DrawTextInRect(leftLabel, {cachedPlotArea.x, y, cachedPlotArea.width / 2 - 10, 20});
         st.alignment = TextAlignment::Center;
         ctx->SetTextStyle(st);
-        ctx->DrawTextInRect("0", centerX - 10, y, 20, 20);
+        ctx->DrawTextInRect("0", {centerX - 10, y, 20, 20});
         st.alignment = TextAlignment::Right;
         ctx->SetTextStyle(st);
-        ctx->DrawTextInRect(rightLabel, centerX + 10, y, cachedPlotArea.width / 2 - 10, 20);
+        ctx->DrawTextInRect(rightLabel, {centerX + 10, y, cachedPlotArea.width / 2 - 10, 20});
 
         // Draw intermediate labels for better scale understanding
         int numIntermediateLabels = 2;
@@ -557,7 +557,7 @@ namespace UltraCanvas {
             } else {
                 snprintf(leftIntermediate, sizeof(leftIntermediate), "-%.0f", leftValue);
             }
-            ctx->DrawTextInRect(leftIntermediate, leftX, y, cachedPlotArea.width / 2, 20);
+            ctx->DrawTextInRect(leftIntermediate, {leftX, y, cachedPlotArea.width / 2, 20});
 
             // Right side intermediate labels
             float rightValue = maxPositiveRounded * fraction;
@@ -568,11 +568,11 @@ namespace UltraCanvas {
             } else {
                 snprintf(rightIntermediate, sizeof(rightIntermediate), "%.0f", rightValue);
             }
-            ctx->DrawTextInRect(rightIntermediate, rightX, y, cachedPlotArea.width / 2, 20);
+            ctx->DrawTextInRect(rightIntermediate, {rightX, y, cachedPlotArea.width / 2, 20});
         }
 
         // Draw axis title
-        ctx->DrawTextInRect("Frequency", centerX, y + 20, cachedPlotArea.width / 2, 20);
+        ctx->DrawTextInRect("Frequency", {centerX, y + 20, cachedPlotArea.width / 2, 20});
     }
 
     float UltraCanvasDivergingBarChart::GetNiceRoundNumber(float value) {
@@ -655,7 +655,7 @@ namespace UltraCanvas {
             float value = point.categoryValues.at(hoveredCategory);
             tooltipText += std::to_string(static_cast<int>(value));
         }
-        auto mouseGlobalPos = ConvertContainerToWindowCoordinates(mousePos);
+        auto mouseGlobalPos = MapFromLocal(mousePos, nullptr);
         // Show tooltip using tooltip manager
         UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, mouseGlobalPos);
     }

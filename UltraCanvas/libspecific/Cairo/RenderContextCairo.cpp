@@ -1,11 +1,13 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.2 - Fixed null pointer crashes and Pango initialization
-// Last Modified: 2025-07-14
+// Version: 1.0.6 - Rect-based DrawPixmap/DrawMask
+// Last Modified: 2026-04-11
 // Author: UltraCanvas Framework
 
-#include "RenderContextCairo.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasUtils.h"
+#include "UCTextLayout.h"
+#include "../libspecific/Cairo/RenderContextCairo.h"
 #include <cstring>
 #include <cmath>
 #include <sstream>
@@ -13,13 +15,85 @@
 #include <iostream>
 #include <stdexcept>
 #include <unordered_map>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
-// ===== GLOBAL TEXT SURFACE CACHE =====
-    // 50 MB cache for pre-rendered text surfaces
-    static UCCache<TextSurfaceEntry> g_TextSurfacesCache(50 * 1024 * 1024);
-    // 20 MB cache for pre-measured text dimensions
-    static UCCache<TextDimensionsEntry> g_TextDimensionsCache(20 * 1024 * 1024);
+// ===== GLOBAL TEXT LAYOUTS CACHE =====
+
+    // 20 MB cache for text layouts
+    struct UCTextLayoutCacheEntry {
+        std::shared_ptr<UCTextLayout> payload;
+        std::chrono::steady_clock::time_point lastAccess;
+        size_t GetEntrySize() {
+            return sizeof(UCTextLayoutCacheEntry) + sizeof(UCTextLayout) + 256;
+        }
+    };
+    static UCCache<UCTextLayout, UCTextLayoutCacheEntry> g_TextLayoutsCache(20 * 1024 * 1024);
+
+    // Configurable text rendering font options (global, matching cache scope)
+    static cairo_antialias_t g_TextAntialias = CAIRO_ANTIALIAS_SUBPIXEL;
+    static cairo_hint_style_t g_TextHintStyle = CAIRO_HINT_STYLE_MEDIUM;
+    static cairo_hint_metrics_t g_TextHintMetrics = CAIRO_HINT_METRICS_DEFAULT;
+
+    std::vector<RenderContextCairo*> RenderContextCairo::g_Instances;
+
+
+    void RenderContextCairo::ApplyPangoFontOptions() {
+        cairo_font_options_t *opts = cairo_font_options_create();
+        cairo_font_options_set_antialias(opts, g_TextAntialias);
+        cairo_font_options_set_hint_style(opts, g_TextHintStyle);
+        cairo_font_options_set_hint_metrics(opts, g_TextHintMetrics);
+        pango_cairo_context_set_font_options(pangoContext, opts);
+        cairo_font_options_destroy(opts);
+    }
+
+    void RenderContextCairo::SetTextAntialias(cairo_antialias_t mode) {
+        if (g_TextAntialias != mode) {
+            g_TextAntialias = mode;
+//            g_TextSurfacesCache.ClearCache();
+//            g_TextDimensionsCache.ClearCache();
+            g_TextLayoutsCache.ClearCache();
+            for (auto* instance : g_Instances) {
+                instance->ApplyPangoFontOptions();
+            }
+        }
+    }
+
+    cairo_antialias_t RenderContextCairo::GetTextAntialias() {
+        return g_TextAntialias;
+    }
+
+    void RenderContextCairo::SetTextHintStyle(cairo_hint_style_t style) {
+        if (g_TextHintStyle != style) {
+            g_TextHintStyle = style;
+//            g_TextSurfacesCache.ClearCache();
+//            g_TextDimensionsCache.ClearCache();
+            g_TextLayoutsCache.ClearCache();
+            for (auto* instance : g_Instances) {
+                instance->ApplyPangoFontOptions();
+            }
+        }
+    }
+
+    cairo_hint_style_t RenderContextCairo::GetTextHintStyle() {
+        return g_TextHintStyle;
+    }
+
+    void RenderContextCairo::SetTextHintMetrics(cairo_hint_metrics_t metrics) {
+        if (g_TextHintMetrics != metrics) {
+            g_TextHintMetrics = metrics;
+//            g_TextSurfacesCache.ClearCache();
+//            g_TextDimensionsCache.ClearCache
+            g_TextLayoutsCache.ClearCache();
+            for (auto* instance : g_Instances) {
+                instance->ApplyPangoFontOptions();
+            }
+        }
+    }
+
+    cairo_hint_metrics_t RenderContextCairo::GetTextHintMetrics() {
+        return g_TextHintMetrics;
+    }
 
     // ===== TEXT SURFACE CACHING IMPLEMENTATION =====
     void ApplySourceToCairo(cairo_t* cairo, const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern) {
@@ -34,271 +108,171 @@ namespace UltraCanvas {
             if (handle) {
                 cairo_set_source(cairo, handle);
             } else {
-                std::cerr << "ERROR: ApplySourceToCairo no pattern handle";
+                debugOutput << "ERROR: ApplySourceToCairo no pattern handle";
             }
         }
     }
 
-    std::string RenderContextCairo::GenerateTextCacheKey(const std::string& text, int rectWidth, int rectHeight) {
+    std::string RenderContextCairo::GenerateTextCacheKey(const std::string& text, const Size2Di &sz) {
         // Generate a unique cache key based on all parameters that affect text rendering
         std::ostringstream keyStream;
 
-        keyStream << rectWidth << "x" << rectHeight << "|"
+        keyStream << sz.width << "x" << sz.height << "|"
                   << currentState.fontStyle.fontFamily
                   << static_cast<int>(currentState.fontStyle.fontSize*10)
                   << static_cast<int>(currentState.fontStyle.fontWeight)
                   << static_cast<int>(currentState.fontStyle.fontSlant)
                   << static_cast<int>(currentState.textStyle.alignment)
-                  << static_cast<int>(currentState.textStyle.verticalAlignement)
+                  << static_cast<int>(currentState.textStyle.verticalAlignment)
                   << currentState.textStyle.indent
                   << static_cast<int>(currentState.textStyle.wrap)
-                  << currentState.textSourceColor.ToARGB()
+//                  << currentState.textSourceColor.ToARGB()
                   << static_cast<int>(currentState.textStyle.lineHeight * 100)
-                  << (currentState.textStyle.isMarkup ? "1" : "0") << "|"
+                  << (currentState.textStyle.isMarkup ? "1" : "0")
+//                  << static_cast<int>(g_TextAntialias)
+//                  << static_cast<int>(g_TextHintStyle)
+//                  << static_cast<int>(g_TextHintMetrics) << "|"
                   << text.substr(0,300);
 
         return keyStream.str();
     }
 
-    std::shared_ptr<TextSurfaceEntry> RenderContextCairo::MakeTextSurface(const std::string& text, int rectWidth, int rectHeight) {
-        if (text.empty() || !pangoContext) {
-            return nullptr;
-        }
 
-        try {
-            // Create Pango font description
-            PangoFontDescription* desc = CreatePangoFont(currentState.fontStyle);
-            if (!desc) {
-                std::cerr << "ERROR: MakeTextSurface - Failed to create Pango font description" << std::endl;
-                return nullptr;
-            }
-
-            // Create Pango layout
-            PangoLayout* layout = CreatePangoLayout(desc, rectWidth, rectHeight);
-            if (!layout) {
-                pango_font_description_free(desc);
-                std::cerr << "ERROR: MakeTextSurface - Failed to create Pango layout" << std::endl;
-                return nullptr;
-            }
-
-            // Set text content (markup or plain text)
-            if (currentState.textStyle.isMarkup) {
-                pango_layout_set_markup(layout, text.c_str(), -1);
-            } else {
-                pango_layout_set_text(layout, text.c_str(), -1);
-            }
-
-            // Get actual text dimensions
-//            int textSurfaceWidth, textSurfaceHeight;
-            PangoRectangle inkLayoutRect, logicalLayoutRect;
-            pango_layout_get_pixel_extents(layout, &inkLayoutRect, &logicalLayoutRect);
-
-            // Determine surface dimensions
-//            int surfaceWidth = (rectWidth > 0) ? rectWidth : textWidth;
-//            int surfaceHeight = (rectHeight > 0) ? rectHeight : textHeight;
-
-            // Ensure minimum dimensions
-            if (logicalLayoutRect.width <= 0 || logicalLayoutRect.height <= 0) {
-                std::cerr << "ERROR: MakeTextSurface - Surface dimensions zero, width=" << surfaceWidth << ", height=" << surfaceHeight << std::endl;
-                pango_font_description_free(desc);
-                g_object_unref(layout);
-                return nullptr;
-            }
-
-            // Create Cairo image surface for the text
-            cairo_surface_t* textSurface = cairo_image_surface_create(
-                    CAIRO_FORMAT_ARGB32, logicalLayoutRect.width, logicalLayoutRect.height);
-
-            if (cairo_surface_status(textSurface) != CAIRO_STATUS_SUCCESS) {
-                std::cerr << "ERROR: MakeTextSurface - Failed to create Cairo surface" << std::endl;
-                pango_font_description_free(desc);
-                g_object_unref(layout);
-                return nullptr;
-            }
-
-            // Create Cairo context for the text surface
-            cairo_t* textCairo = cairo_create(textSurface);
-            if (cairo_status(textCairo) != CAIRO_STATUS_SUCCESS) {
-                std::cerr << "ERROR: MakeTextSurface - Failed to create Cairo context" << std::endl;
-                cairo_surface_destroy(textSurface);
-                pango_font_description_free(desc);
-                g_object_unref(layout);
-                return nullptr;
-            }
-
-            // Clear the surface with transparent background
-            cairo_set_source_rgba(textCairo, 0, 0, 0, 0);
-            cairo_set_operator(textCairo, CAIRO_OPERATOR_SOURCE);
-            cairo_paint(textCairo);
-            cairo_set_operator(textCairo, CAIRO_OPERATOR_OVER);
-
-            // Calculate vertical position for alignment
-//            float yOffset = 0;
-//            if (rectHeight > 0 && currentState.textStyle.verticalAlignement == TextVerticalAlignement::Middle) {
-//                yOffset = (rectHeight - textHeight) / 2.0f;
-//                if (yOffset < 0) yOffset = 0;
-//            }
-            ApplySourceToCairo(textCairo, currentState.textSourceColor, currentState.textSourcePattern);
-            // Set text color
+//    RenderContextCairo::RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering)
+//        : targetSurface(nullptr), surfaceWidth(0), surfaceHeight(0), stagingSurface(nullptr), pangoContext(nullptr), cairo(nullptr), targetContext(nullptr), destroying(false) {
 //
-//            // Position and render text
-            if (logicalLayoutRect.x != 0 || logicalLayoutRect.y != 0) {
-                cairo_move_to(textCairo, -logicalLayoutRect.x, -logicalLayoutRect.y);
-            }
-            pango_cairo_show_layout(textCairo, layout);
+//        SetTargetSurface(surf, width, height);
+//
+//        // Initialize Pango for text rendering with proper error checking
+//        try {
+//            debugOutput << "RenderContextCairo: Initializing Pango..." << std::endl;
+//
+//            auto fontMap = pango_cairo_font_map_get_default();
+//            if (!fontMap) {
+//                debugOutput << "ERROR: Failed to get default Pango font map" << std::endl;
+//                throw std::runtime_error("RenderContextCairo: Failed to get Pango font map");
+//            }
+//            debugOutput << "RenderContextCairo: Got Pango font map: " << fontMap << std::endl;
+//
+//            pangoContext = pango_font_map_create_context(fontMap);
+//            if (!pangoContext) {
+//                debugOutput << "ERROR: Failed to create Pango context" << std::endl;
+//                throw std::runtime_error("RenderContextCairo: Failed to create Pango context");
+//            }
+//            debugOutput << "RenderContextCairo: Created Pango context: " << pangoContext << std::endl;
+//
+//            // Associate Pango context with Cairo context
+//            pango_cairo_context_set_resolution(pangoContext, 96.0);  // Standard DPI
+//
+//            // Apply configurable text rendering font options
+//            ApplyPangoFontOptions();
+//            g_Instances.push_back(this);
+//
+//            debugOutput << "RenderContextCairo: Pango initialization complete" << std::endl;
+//
+//        } catch (const std::exception &e) {
+//            debugOutput << "ERROR: Exception during Pango initialization: " << e.what() << std::endl;
+//
+//            // Cleanup on failure
+//            if (pangoContext) {
+//                g_object_unref(pangoContext);
+//                pangoContext = nullptr;
+//            }
+//            throw;
+//        }
+//
+//        if (enableDoubleBuffering) {
+//            CreateStagingSurface();
+//            SwitchToSurface(stagingSurface);
+//        }
+//        // Initialize default state
+//        ResetState();
+//        debugOutput << "RenderContextCairo: Initialization complete" << std::endl;
+//    }
 
-            // Flush the surface
-            cairo_surface_flush(textSurface);
+    bool RenderContextCairo::CreateSurface(const Size2Di & sz, NativeSurfacePtr createSimilarToSurface) {
+        auto oldCairoSurface = surface;
 
-            // Cleanup temporary resources
-            cairo_destroy(textCairo);
-            pango_font_description_free(desc);
-            g_object_unref(layout);
-
-            // Create and return the cache entry
-            auto entry = std::make_shared<TextSurfaceEntry>(textSurface, logicalLayoutRect.width, logicalLayoutRect.height);
-            return entry;
-
-        } catch (const std::exception& e) {
-            std::cerr << "ERROR: MakeTextSurface - Exception: " << e.what() << std::endl;
-            return nullptr;
-        } catch (...) {
-            std::cerr << "ERROR: MakeTextSurface - Unknown exception" << std::endl;
-            return nullptr;
-        }
-    }
-
-    std::shared_ptr<TextSurfaceEntry> RenderContextCairo::GetTextSurface(const std::string& text, int rectWidth, int rectHeight) {
-        if (text.empty()) {
-            return nullptr;
-        }
-
-        // Generate cache key
-        std::string cacheKey = GenerateTextCacheKey(text, rectWidth, rectHeight);
-
-        // Try to get from cache first
-        auto cached = g_TextSurfacesCache.GetFromCache(cacheKey);
-        if (cached) {
-            return cached;
-        }
-
-        // Not in cache - create new surface
-        auto newEntry = MakeTextSurface(text, rectWidth, rectHeight);
-        if (newEntry) {
-            // Add to cache
-            g_TextSurfacesCache.AddToCache(cacheKey, newEntry);
-        }
-
-        return newEntry;
-    }
-
-
-    std::shared_ptr<TextDimensionsEntry> RenderContextCairo::MeasureTextDimensions(const std::string& text, int rectWidth, int rectHeight) {
-        if (text.empty() || !pangoContext) {
-            return nullptr;
-        }
-
-        try {
-            // Create Pango font description
-            PangoFontDescription* desc = CreatePangoFont(currentState.fontStyle);
-            if (!desc) {
-                std::cerr << "ERROR: MeasureTextDimensions - Failed to create Pango font description" << std::endl;
-                return nullptr;
-            }
-
-            // Create Pango layout
-            PangoLayout* layout = CreatePangoLayout(desc, rectWidth, rectHeight);
-            if (!layout) {
-                pango_font_description_free(desc);
-                std::cerr << "ERROR: MeasureTextDimensions - Failed to create Pango layout" << std::endl;
-                return nullptr;
-            }
-
-            // Set text content (markup or plain text)
-            if (currentState.textStyle.isMarkup) {
-                pango_layout_set_markup(layout, text.c_str(), -1);
-            } else {
-                pango_layout_set_text(layout, text.c_str(), -1);
-            }
-
-            // Get actual text dimensions
-            PangoRectangle inkLayoutRect, logicalLayoutRect;
-            pango_layout_get_pixel_extents(layout, &inkLayoutRect, &logicalLayoutRect);
-
-            // Cleanup temporary resources
-            pango_font_description_free(desc);
-            g_object_unref(layout);
-
-            // Create and return the cache entry
-            auto entry = std::make_shared<TextDimensionsEntry>(logicalLayoutRect.width, logicalLayoutRect.height);
-            return entry;
-
-        } catch (const std::exception& e) {
-            std::cerr << "ERROR: MeasureTextDimensions - Exception: " << e.what() << std::endl;
-            return nullptr;
-        } catch (...) {
-            std::cerr << "ERROR: MeasureTextDimensions - Unknown exception" << std::endl;
-            return nullptr;
-        }
-    }
-
-    RenderContextCairo::RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering)
-        : targetSurface(nullptr), surfaceWidth(0), surfaceHeight(0), stagingSurface(nullptr), pangoContext(nullptr), cairo(nullptr), targetContext(nullptr), destroying(false) {
-
-        SetTargetSurface(surf, width, height);
-
-        // Initialize Pango for text rendering with proper error checking
-        try {
-            std::cout << "RenderContextCairo: Initializing Pango..." << std::endl;
-
-            auto fontMap = pango_cairo_font_map_get_default();
-            if (!fontMap) {
-                std::cerr << "ERROR: Failed to get default Pango font map" << std::endl;
-                throw std::runtime_error("RenderContextCairo: Failed to get Pango font map");
-            }
-            std::cout << "RenderContextCairo: Got Pango font map: " << fontMap << std::endl;
-
-            pangoContext = pango_font_map_create_context(fontMap);
-            if (!pangoContext) {
-                std::cerr << "ERROR: Failed to create Pango context" << std::endl;
-                throw std::runtime_error("RenderContextCairo: Failed to create Pango context");
-            }
-            std::cout << "RenderContextCairo: Created Pango context: " << pangoContext << std::endl;
-
-            // Associate Pango context with Cairo context
-            pango_cairo_context_set_resolution(pangoContext, 96.0);  // Standard DPI
-
-            // Get and set font options from Cairo
-            cairo_font_options_t *fontOptions = cairo_font_options_create();
-            cairo_get_font_options(targetContext, fontOptions);
-            pango_cairo_context_set_font_options(pangoContext, fontOptions);
-            cairo_font_options_destroy(fontOptions);
-
-            std::cout << "RenderContextCairo: Pango initialization complete" << std::endl;
-
-        } catch (const std::exception &e) {
-            std::cerr << "ERROR: Exception during Pango initialization: " << e.what() << std::endl;
-
-            // Cleanup on failure
-            if (pangoContext) {
-                g_object_unref(pangoContext);
-                pangoContext = nullptr;
-            }
-            throw;
+        // If we are creating sub-surface (e.g. popup) similar to a HiDPI parent
+        // (Retina backing scale 2.0+), inherit that scale so the sub-surface
+        // also rasterizes at backing pixel resolution and composes back onto
+        // the parent without any upscale blur. Default 1.0 keeps standard
+        // displays untouched.
+        double parentSx = 1.0, parentSy = 1.0;
+        if (createSimilarToSurface) {
+            cairo_surface_get_device_scale(static_cast<cairo_surface_t*>(createSimilarToSurface),
+                                           &parentSx, &parentSy);
+            if (parentSx <= 0.0) parentSx = 1.0;
+            if (parentSy <= 0.0) parentSy = 1.0;
         }
 
-        if (enableDoubleBuffering) {
-            CreateStagingSurface();
-            SwitchToSurface(stagingSurface);
+        if (createSimilarToSurface) {
+            // cairo_surface_create_similar takes raw (device-pixel) dimensions.
+            // We want the new surface to present `sz.width × sz.height` user
+            // units at the parent's scale — so allocate sz * scale raw pixels.
+            const int rawW = static_cast<int>(sz.width * parentSx);
+            const int rawH = static_cast<int>(sz.height * parentSy);
+            surface = cairo_surface_create_similar(static_cast<cairo_surface_t *>(createSimilarToSurface),
+                                                   CAIRO_CONTENT_COLOR_ALPHA, rawW, rawH);
+        } else {
+            surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, sz.width, sz.height);
         }
+
+        if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+            debugOutput << "RenderContextCairo::CreateSurface: Can't create surface" << std::endl;
+            return false;
+        }
+
+        // Cairo versions differ on whether create_similar inherits device_scale;
+        // set it explicitly so the new surface always presents `sz` user units.
+        if (createSimilarToSurface && (parentSx != 1.0 || parentSy != 1.0)) {
+            cairo_surface_set_device_scale(surface, parentSx, parentSy);
+        }
+
+        surfaceSize = sz;
+
+        if (pangoContext) {
+            g_object_unref(pangoContext);
+            pangoContext = nullptr;
+        }
+        if (cairo) {
+            cairo_destroy(cairo);
+            cairo = nullptr;
+        }
+        if (oldCairoSurface) {
+            cairo_surface_destroy(oldCairoSurface);
+        }
+
+        cairo = cairo_create(surface);
+        if (cairo_status(cairo) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(surface);
+            debugOutput << "RenderContextCairo::CreateSurface: Can't create cairo context" << std::endl;
+            return false;
+        }
+
+        pangoContext = pango_cairo_create_context(cairo);
+        if (!pangoContext) {
+            cairo_destroy(cairo);
+            cairo_surface_destroy(surface);
+            debugOutput << "RenderContextCairo::CreateSurface: Can't create Pango context" << std::endl;
+            return false;
+
+        }
+
+        // Apply configurable text rendering font options
+        ApplyPangoFontOptions();
+
+        g_Instances.push_back(this);
+
         // Initialize default state
-        ResetState();
-        std::cout << "RenderContextCairo: Initialization complete" << std::endl;
+        debugOutput << "RenderContextCairo: Initialization complete" << std::endl;
+        return true;
     }
 
     RenderContextCairo::~RenderContextCairo() {
-        std::cout << "RenderContextCairo: Destroying..." << std::endl;
-        destroying = true;
+        debugOutput << "RenderContextCairo: Destroying..." << std::endl;
+
+        g_Instances.erase(std::remove(g_Instances.begin(), g_Instances.end(), this), g_Instances.end());
 
         // Clear the state stack to prevent any pending cairo operations
         stateStack.clear();
@@ -311,126 +285,118 @@ namespace UltraCanvas {
 
         // Null the cairo pointer to prevent any accidental access
         // Note: We don't own the cairo context, so don't destroy it
-        if (stagingSurface) {
-            cairo_surface_destroy(stagingSurface);
-        }
-        cairo_destroy(targetContext);
-        cairo_destroy(cairo);
-
-        std::cout << "RenderContextCairo: Destruction complete" << std::endl;
-    }
-
-    void RenderContextCairo::SetTargetSurface(cairo_surface_t* surf, int w, int h) {
-        cairo_status_t status = cairo_surface_status(surf);
-        if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "ERROR: RenderContextCairo: Cairo target surface is invalid: " << cairo_status_to_string(status)
-                      << std::endl;
-            throw std::runtime_error("RenderContextCairo: Invalid target Cairo surface");
-        }
-
-        if (targetContext) {
-            cairo_destroy(targetContext);
-        }
         if (cairo) {
             cairo_destroy(cairo);
+            cairo = nullptr;
+        }
+        if (surface) {
+            cairo_surface_destroy(surface);
+            surface = nullptr;
         }
 
-        surfaceWidth = w;
-        surfaceHeight = h;
-        targetSurface = surf;
-        targetContext = cairo_create(targetSurface);
-
-        // Check Cairo context status
-        status = cairo_status(targetContext);
-        if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "ERROR: RenderContextCairo: Cairo target context is invalid: " << cairo_status_to_string(status)
-                      << std::endl;
-            throw std::runtime_error("RenderContextCairo: Invalid target Cairo context");
-        }
-
-        cairo = cairo_create(targetSurface);
-        status = cairo_status(cairo);
-        if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "ERROR: RenderContextCairo: Cairo context is invalid: " << cairo_status_to_string(status)
-                      << std::endl;
-            throw std::runtime_error("RenderContextCairo: Invalid Cairo context");
-        }
+        debugOutput << "RenderContextCairo: Destruction complete" << std::endl;
     }
 
-    bool RenderContextCairo::CreateStagingSurface() {
-        // Create image surface for staging (back buffer)
-        stagingSurface = cairo_surface_create_similar(targetSurface, CAIRO_CONTENT_COLOR_ALPHA, surfaceWidth, surfaceHeight);
+//    void RenderContextCairo::SetTargetSurface(cairo_surface_t* surf, int w, int h) {
+//        cairo_status_t status = cairo_surface_status(surf);
+//        if (status != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "ERROR: RenderContextCairo: Cairo target surface is invalid: " << cairo_status_to_string(status)
+//                      << std::endl;
+//            throw std::runtime_error("RenderContextCairo: Invalid target Cairo surface");
+//        }
+//
+//        if (targetContext) {
+//            cairo_destroy(targetContext);
+//        }
+//        if (cairo) {
+//            cairo_destroy(cairo);
+//        }
+//
+//        surfaceWidth = w;
+//        surfaceHeight = h;
+//        targetSurface = surf;
+//        targetContext = cairo_create(targetSurface);
+//
+//        // Check Cairo context status
+//        status = cairo_status(targetContext);
+//        if (status != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "ERROR: RenderContextCairo: Cairo target context is invalid: " << cairo_status_to_string(status)
+//                      << std::endl;
+//            throw std::runtime_error("RenderContextCairo: Invalid target Cairo context");
+//        }
+//
+//        cairo = cairo_create(targetSurface);
+//        status = cairo_status(cairo);
+//        if (status != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "ERROR: RenderContextCairo: Cairo context is invalid: " << cairo_status_to_string(status)
+//                      << std::endl;
+//            throw std::runtime_error("RenderContextCairo: Invalid Cairo context");
+//        }
+//    }
 
-        if (cairo_surface_status(stagingSurface) != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "RenderContextCairo: Failed to create staging surface" << std::endl;
+//    bool RenderContextCairo::CreateStagingSurface() {
+//        // Create image surface for staging (back buffer)
+//        stagingSurface = cairo_surface_create_similar(targetSurface, CAIRO_CONTENT_COLOR_ALPHA, surfaceWidth, surfaceHeight);
+//
+//        if (cairo_surface_status(stagingSurface) != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "RenderContextCairo: Failed to create staging surface" << std::endl;
+//            return false;
+//        }
+//
+//        return true;
+//    }
+
+    bool RenderContextCairo::ResizeSurface(const Size2Di& sz) {
+        if (sz.width <= 0 || sz.height <= 0 || !surface) {
             return false;
-        }
-
-        return true;
-    }
-
-    bool RenderContextCairo::ResizeStagingSurface(int newWidth, int newHeight) {
-        std::lock_guard<std::mutex> lock(cairoMutex);
-
-        if (newWidth <= 0 || newHeight <= 0 || !stagingSurface) {
-            return false;
-        }
-
-        if (newWidth == surfaceWidth && newHeight == surfaceHeight) {
-            return true; // No change needed
         }
 
         // Update dimensions
 
-        int oldSurfaceWidth = surfaceWidth;
-        int oldSurfaceHeight = surfaceHeight;
+//        int oldSurfaceWidth = cairo_image_surface_get_width(surface);
+//        int oldSurfaceHeight = cairo_image_surface_get_height(surface);
 
-        surfaceWidth = newWidth;
-        surfaceHeight = newHeight;
-
-        auto oldStagingSurface = stagingSurface;
-
-        // Recreate staging surface with new dimensions
-        if (!CreateStagingSurface()) {
+        // Recreate surface with new dimensions
+        if (!CreateSurface(sz, surface)) {
             return false;
         }
-        SwitchToSurface(stagingSurface);
 
-        int copyWidth = std::min(surfaceWidth, oldSurfaceWidth);
-        int copyHeight = std::min(surfaceHeight, oldSurfaceHeight);
-        if (copyWidth > 0 && copyHeight > 0) {
-            // Actually perform the copy operation
-            cairo_save(cairo);
-            cairo_set_source_surface(cairo, oldStagingSurface, 0, 0);
-            cairo_rectangle(cairo, 0, 0, copyWidth, copyHeight);
-            cairo_clip(cairo);
-            cairo_paint(cairo);
-            cairo_restore(cairo);
-
-        }
-
-        cairo_surface_destroy(oldStagingSurface);
-
-        std::cout << "ResizeStagingSurface: Resized to " << newWidth << "x" << newHeight << std::endl;
+//        int copyWidth = std::min(surfaceWidth, oldSurfaceWidth);
+//        int copyHeight = std::min(surfaceHeight, oldSurfaceHeight);
+//        if (copyWidth > 0 && copyHeight > 0) {
+//            // Actually perform the copy operation
+//            cairo_save(cairo);
+//            cairo_set_source_surface(cairo, oldStagingSurface, 0, 0);
+//            cairo_rectangle(cairo, 0, 0, copyWidth, copyHeight);
+//            cairo_clip(cairo);
+//            cairo_paint(cairo);
+//            cairo_restore(cairo);
+//
+//        }
+//
+//        cairo_surface_destroy(oldStagingSurface);
+//
+        debugOutput << "ResizeSurface: Resized to " << sz.width << "x" << sz.height << std::endl;
         return true;
     }
 
-    void RenderContextCairo::SwitchToSurface(cairo_surface_t* surf) {
-        if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "SwitchToSurface: Invalid surface" << std::endl;
-            return;
-        }
-
-        if (cairo) {
-            cairo_destroy(cairo);
-        }
-        cairo = cairo_create(surf);
-
-        if (cairo_status(cairo) != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "SwitchToSurface: Invalid context" << std::endl;
-        }
-        ResetState();
-    }
+//    void RenderContextCairo::SwitchToSurface(cairo_surface_t* surf) {
+//        if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "SwitchToSurface: Invalid surface" << std::endl;
+//            return;
+//        }
+//
+//        if (cairo) {
+//            cairo_destroy(cairo);
+//        }
+//        cairo = cairo_create(surf);
+//
+//        if (cairo_status(cairo) != CAIRO_STATUS_SUCCESS) {
+//            debugOutput << "SwitchToSurface: Invalid context" << std::endl;
+//        }
+//        ResetState();
+//        pango_cairo_update_context(cairo, pangoContext);
+//    }
 
 // ===== STATE MANAGEMENT =====
     void RenderContextCairo::PushState() {
@@ -443,7 +409,7 @@ namespace UltraCanvas {
             currentState = stateStack.back();
             stateStack.pop_back();
         } else {
-            std::cout << "RenderContextCairo::PopState() stateStack empty!" << std::endl;
+            debugOutput << "RenderContextCairo::PopState() stateStack empty!" << std::endl;
         }
         cairo_restore(cairo);
     }
@@ -458,7 +424,7 @@ namespace UltraCanvas {
     }
 
 // ===== TRANSFORMATION =====
-    void RenderContextCairo::Translate(float x, float y) {
+    void RenderContextCairo::Translate(double x, double y) {
         if (x != 0 || y != 0) {
             cairo_translate(cairo, x, y);
             currentState.translation.x += x;
@@ -466,24 +432,24 @@ namespace UltraCanvas {
         }
     }
 
-    void RenderContextCairo::Rotate(float angle) {
+    void RenderContextCairo::Rotate(double angle) {
         cairo_rotate(cairo, angle);
         currentState.rotation += angle;
     }
 
-    void RenderContextCairo::Scale(float sx, float sy) {
+    void RenderContextCairo::Scale(double sx, double sy) {
         cairo_scale(cairo, sx, sy);
         currentState.scale.x *= sx;
         currentState.scale.y *= sy;
     }
 
-    void RenderContextCairo::SetTransform(float a, float b, float c, float d, float e, float f) {
+    void RenderContextCairo::SetTransform(double a, double b, double c, double d, double e, double f) {
         cairo_matrix_t matrix;
         cairo_matrix_init(&matrix, a, b, c, d, e, f);
         cairo_set_matrix(cairo, &matrix);
     }
 
-    void RenderContextCairo::Transform(float a, float b, float c, float d, float e, float f) {
+    void RenderContextCairo::Transform(double a, double b, double c, double d, double e, double f) {
         cairo_matrix_t matrix;
         cairo_matrix_init(&matrix, a, b, c, d, e, f);
         cairo_transform(cairo, &matrix);
@@ -497,17 +463,17 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::ClearClipRect() {
-        std::cout << "RenderContextCairo::ClearClipRect - clearing clip region" << std::endl;
+        debugOutput << "RenderContextCairo::ClearClipRect - clearing clip region" << std::endl;
 
         // Reset the clip region to cover the entire surface
         cairo_reset_clip(cairo);
-//        std::cout << "RenderContextCairo::ClearClipRect - clip region cleared successfully" << std::endl;
+//        debugOutput << "RenderContextCairo::ClearClipRect - clip region cleared successfully" << std::endl;
     }
 
-    void RenderContextCairo::ClipRect(float x, float y, float w, float h) {
-//        std::cout << "RenderContextCairo::ClipRect - setting clip to "
+    void RenderContextCairo::ClipRect(const Rect2Df& rect) {
+//        debugOutput << "RenderContextCairo::ClipRect - setting clip to "
 //                  << x << "," << y << " " << w << "x" << h << std::endl;
-        cairo_rectangle(cairo, x, y, w, h);
+        cairo_rectangle(cairo, rect.x, rect.y, rect.width, rect.height);
         cairo_clip(cairo);
     }
 
@@ -516,23 +482,24 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::ClipRoundedRectangle(
-            float x, float y, float width, float height,
-            float borderTopLeftRadius, float borderTopRightRadius,
-            float borderBottomRightRadius, float borderBottomLeftRadius) {
+            const Rect2Df& rect,
+            double borderTopLeftRadius, double borderTopRightRadius,
+            double borderBottomRightRadius, double borderBottomLeftRadius) {
         // Clamp radii to prevent overlapping
-        float maxRadiusX = width / 2.0;
-        float maxRadiusY = height / 2.0;
+        double x = rect.x, y = rect.y, width = rect.width, height = rect.height;
+        double maxRadiusX = width / 2.0;
+        double maxRadiusY = height / 2.0;
 
-        float topLeftRadius = std::min({borderTopLeftRadius, maxRadiusX, maxRadiusY});
-        float topRightRadius = std::min({borderTopRightRadius, maxRadiusX, maxRadiusY});
-        float bottomRightRadius = std::min({borderBottomRightRadius, maxRadiusX, maxRadiusY});
-        float bottomLeftRadius = std::min({borderBottomLeftRadius, maxRadiusX, maxRadiusY});
+        double topLeftRadius = std::min({borderTopLeftRadius, maxRadiusX, maxRadiusY});
+        double topRightRadius = std::min({borderTopRightRadius, maxRadiusX, maxRadiusY});
+        double bottomRightRadius = std::min({borderBottomRightRadius, maxRadiusX, maxRadiusY});
+        double bottomLeftRadius = std::min({borderBottomLeftRadius, maxRadiusX, maxRadiusY});
 
         // Adjust if corners overlap
-        float topScale = 1.0;
-        float bottomScale = 1.0;
-        float leftScale = 1.0;
-        float rightScale = 1.0;
+        double topScale = 1.0;
+        double bottomScale = 1.0;
+        double leftScale = 1.0;
+        double rightScale = 1.0;
 
         if (topLeftRadius + topRightRadius > width) {
             topScale = width / (topLeftRadius + topRightRadius);
@@ -598,97 +565,89 @@ namespace UltraCanvas {
     }
 
 // ===== BASIC DRAWING =====
-    void RenderContextCairo::FillRectangle(float x, float y, float w, float h) {
-//        std::cout << "RenderContextCairo::FillRectangle this=" << this << " cairo=" << cairo << std::endl;
+    void RenderContextCairo::FillRectangle(const Rect2Df& rect) {
+//        debugOutput << "RenderContextCairo::FillRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply fill style explicitly ***
         //ApplyFillStyle(currentState.style);
 
-        cairo_rectangle(cairo, x, y, w, h);
+        cairo_rectangle(cairo, rect.x, rect.y, rect.width, rect.height);
         Fill();
 
-//        std::cout << "RenderContextCairo::FillRectangle: Complete" << std::endl;
+//        debugOutput << "RenderContextCairo::FillRectangle: Complete" << std::endl;
     }
 
-    void RenderContextCairo::DrawRectangle(float x, float y, float w, float h) {
-//        std::cout << "RenderContextCairo::DrawRectangle this=" << this << " cairo=" << cairo << std::endl;
+    void RenderContextCairo::DrawRectangle(const Rect2Df& rect) {
+//        debugOutput << "RenderContextCairo::DrawRectangle this=" << this << " cairo=" << cairo << std::endl;
 
         // *** CRITICAL FIX: Apply stroke style explicitly ***
         //ApplyStrokeStyle(currentState.style);
 
-        cairo_rectangle(cairo, x, y, w, h);
+        cairo_rectangle(cairo, rect.x, rect.y, rect.width, rect.height);
         Stroke();
 
-//        std::cout << "RenderContextCairo::DrawRectangle: Complete" << std::endl;
+//        debugOutput << "RenderContextCairo::DrawRectangle: Complete" << std::endl;
     }
 
-    void RenderContextCairo::FillRoundedRectangle(float x, float y, float w, float h, float radius) {
-//        std::cout << "RenderContextCairo::FillRoundedRectangle" << std::endl;
+    void RenderContextCairo::FillRoundedRectangle(const Rect2Df & rect, double radius) {
+//        debugOutput << "RenderContextCairo::FillRoundedRectangle" << std::endl;
 
         // *** Apply fill style ***
         //ApplyFillStyle(currentState.style);
 
         // Create rounded rectangle path
         cairo_new_sub_path(cairo);
-        cairo_arc(cairo, x + w - radius, y + radius, radius, -M_PI_2, 0);
-        cairo_arc(cairo, x + w - radius, y + h - radius, radius, 0, M_PI_2);
-        cairo_arc(cairo, x + radius, y + h - radius, radius, M_PI_2, M_PI);
-        cairo_arc(cairo, x + radius, y + radius, radius, M_PI, 3 * M_PI_2);
+        cairo_arc(cairo, rect.x + rect.width - radius, rect.y + radius, radius, -M_PI_2, 0);
+        cairo_arc(cairo, rect.x + rect.width - radius, rect.y + rect.height - radius, radius, 0, M_PI_2);
+        cairo_arc(cairo, rect.x + radius, rect.y + rect.height - radius, radius, M_PI_2, M_PI);
+        cairo_arc(cairo, rect.x + radius, rect.y + radius, radius, M_PI, 3 * M_PI_2);
         cairo_close_path(cairo);
 
         Fill();
     }
 
-    void RenderContextCairo::DrawRoundedRectangle(float x, float y, float w, float h, float radius) {
-//        std::cout << "RenderContextCairo::DrawRoundedRectangle" << std::endl;
+    void RenderContextCairo::DrawRoundedRectangle(const Rect2Df & rect, double radius) {
+//        debugOutput << "RenderContextCairo::DrawRoundedRectangle" << std::endl;
 
         // *** Apply stroke style ***
         //ApplyStrokeStyle(currentState.style);
 
         // Create rounded rectangle path
         cairo_new_sub_path(cairo);
-        cairo_arc(cairo, x + w - radius, y + radius, radius, -M_PI_2, 0);
-        cairo_arc(cairo, x + w - radius, y + h - radius, radius, 0, M_PI_2);
-        cairo_arc(cairo, x + radius, y + h - radius, radius, M_PI_2, M_PI);
-        cairo_arc(cairo, x + radius, y + radius, radius, M_PI, 3 * M_PI_2);
+        cairo_arc(cairo, rect.x + rect.width - radius, rect.y + radius, radius, -M_PI_2, 0);
+        cairo_arc(cairo, rect.x + rect.width - radius, rect.y + rect.height - radius, radius, 0, M_PI_2);
+        cairo_arc(cairo, rect.x + radius, rect.y + rect.height - radius, radius, M_PI_2, M_PI);
+        cairo_arc(cairo, rect.x + radius, rect.y + radius, radius, M_PI, 3 * M_PI_2);
         cairo_close_path(cairo);
 
         Stroke();
     }
 
-    void RenderContextCairo::FillCircle(float x, float y, float radius) {
-//        std::cout << "RenderContextCairo::FillCircle" << std::endl;
-
-        // *** Apply fill style ***
-        //ApplyFillStyle(currentState.style);
-        cairo_arc(cairo, x, y, radius, 0, 2 * M_PI);
+    void RenderContextCairo::FillCircle(const Point2Df& center, double radius) {
+        cairo_arc(cairo, center.x, center.y, radius, 0, 2 * M_PI);
         Fill();
     }
 
-    void RenderContextCairo::DrawCircle(float x, float y, float radius) {
-//        std::cout << "RenderContextCairo::DrawCircle" << std::endl;
-
-        // *** Apply stroke style ***
-        //ApplyStrokeStyle(currentState.style);
-        cairo_arc(cairo, x, y, radius, 0, 2 * M_PI);
+    void RenderContextCairo::DrawCircle(const Point2Df& center, double radius) {
+        cairo_arc(cairo, center.x, center.y, radius, 0, 2 * M_PI);
         Stroke();
     }
 
-    void RenderContextCairo::DrawLine(float start_x, float start_y, float end_x, float end_y) {
-//        std::cout << "RenderContextCairo::DrawLine" << std::endl;
+    void RenderContextCairo::DrawLine(const Point2Df& from, const Point2Df& to) {
+//        debugOutput << "RenderContextCairo::DrawLine" << std::endl;
 
         // *** Apply stroke style ***
         //ApplyStrokeStyle(currentState.style);
 
-        cairo_move_to(cairo, start_x, start_y);
-        cairo_line_to(cairo, end_x, end_y);
+        cairo_move_to(cairo, from.x, from.y);
+        cairo_line_to(cairo, to.x, to.y);
         Stroke();
     }
 
     PangoLayout* RenderContextCairo::CreatePangoLayout(PangoFontDescription *desc, int w, int h) {
         PangoLayout *layout = pango_layout_new(pangoContext);
         if (!layout) {
-            std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
+            debugOutput << "ERROR: Failed to create Pango layout" << std::endl;
             return nullptr;
         }
 
@@ -744,239 +703,107 @@ namespace UltraCanvas {
         return layout;
     }
 
-//    GetTextSurfaceEntry(const std::string &text, float w, float h,
-//                        const std::string& fontFamily, float fontSize, FontWeight fw, FontSlant fs,
-//                        TextAlignment halign, TextVerticalAlignement valign, TextWrap wrap,
-//                        Color& textColor, float lineHeight, bool isMarkup) {
-//        char key[400];
-//        snprintf(key, sizeof(key), "%dx%d-%s-%f-%d%d%d%d%d#%x-%f-%d-%s", w, h,
-//                 fontFamily.c_str(), fontSize, fw, fs, halign, valign, wrap, textColor.ToARGB(), lineHeight, isMarkup, text.c_str());
-//
-//    }
-
-
     // ===== TEXT RENDERING =====
-    void RenderContextCairo::DrawText(const std::string &text, float x, float y) {
+    std::unique_ptr<ITextLayout> RenderContextCairo::CreateTextLayout(const std::string& text, bool isMarkup) {
+        auto ctx = std::make_unique<UCTextLayout>(pangoContext);
+        if (!text.empty()) {
+            if (isMarkup) {
+                ctx->SetMarkup(text);
+            } else {
+                ctx->SetText(text);
+            }
+        }
+        return std::move(ctx);
+    }
+
+    std::shared_ptr<ITextLayout> RenderContextCairo::GetOrCreateTextLayout(const std::string& text, const Size2Di& sz, bool isMarkup) {
+        if (text.empty()) {
+            return nullptr;
+        }
+
+        // Generate cache key
+        std::string cacheKey = GenerateTextCacheKey(text, sz);
+
+        // Try to get from cache first
+        auto cached = g_TextLayoutsCache.GetFromCache(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        // Not in cache - create new surface
+        auto newLayout = std::make_shared<UCTextLayout>(pangoContext);
+        if (newLayout) {
+            newLayout->SetFontStyle(currentState.fontStyle);
+            newLayout->SetAlignment(currentState.textStyle.alignment);
+            newLayout->SetWrap(currentState.textStyle.wrap);
+            newLayout->SetVerticalAlignment(currentState.textStyle.verticalAlignment);
+            // Fixme! Need to set line height
+            if (sz.width) {
+                newLayout->SetExplicitWidth(sz.width);
+            }
+            if (sz.height) {
+                newLayout->SetExplicitHeight(sz.height);
+            }
+            if (sz.width && sz.height) {
+                newLayout->SetEllipsize(EllipsizeMode::EllipsizeEnd);
+            }
+            if (isMarkup) {
+                newLayout->SetMarkup(text);
+            } else {
+                newLayout->SetText(text);
+            }
+            // Add to cache
+            g_TextLayoutsCache.AddToCache(cacheKey, newLayout);
+        }
+        return newLayout;
+    }
+
+
+    void RenderContextCairo::DrawTextLayout(ITextLayout &layout, const Point2Df &pos) {
+        auto extents = layout.GetLayoutExtents();
+//        debugOutput << "RenderContextCairo::DrawTextLayout txt=" << layout.GetText() << " pos=" << pos.x << "," << pos.y << " offset=" << layout.GetLayoutVerticalOffset() <<  " extents=" << extents.logical.x << "," << extents.logical.y << " " << extents.logical.width << "x" << extents.logical.height << " ink=" << extents.ink.x << "," << extents.ink.y << " " << extents.ink.width << "x" << extents.ink.height << std::endl;
+        cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
+        pango_cairo_show_layout(cairo, static_cast<PangoLayout *>(layout.GetHandle()));
+    }
+
+    void RenderContextCairo::DrawText(const std::string &text, const Point2Df &pos) {
         // Comprehensive null checks
         if (text.empty()) {
             return; // Nothing to draw
         }
-
-        auto cachedSurface = GetTextSurface(text, 0, 0);
-
-        if (cachedSurface && cachedSurface->surface) {
-            // Use cached surface - just blit it to the target
-            cairo_save(cairo);
-
-//            cairo_translate(cairo, x, y);
-            // Apply global alpha if needed
-            cairo_set_source_surface(cairo, cachedSurface->surface, x, y);
-
-            if (currentState.globalAlpha < 1.0f) {
-                cairo_paint_with_alpha(cairo, currentState.globalAlpha);
-            } else {
-                cairo_paint(cairo);
-            }
-
-            cairo_restore(cairo);
+        auto layout = GetOrCreateTextLayout(text, {0, 0}, false);
+        if (layout) {
+            ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
+            DrawTextLayout(*layout, pos);
         } else {
-            std::cerr << "RenderContextCairo::DrawText: No text source surface" << std::endl;
+            debugOutput << "RenderContextCairo::DrawText: No text layout" << std::endl;
         }
-//        try {
-//            //std::cout << "DrawText: Rendering '" << text << "' at (" << x << "," << y << ")" << std::endl;
-//            PangoFontDescription *desc = CreatePangoFont(currentState.fontStyle);
-//            if (!desc) {
-//                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
-//                return;
-//            }
-//            PangoLayout *layout = CreatePangoLayout(desc);
-//            if (!layout) {
-//                pango_font_description_free(desc);
-//                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
-//                return;
-//            }
-//
-//            if (currentState.textStyle.isMarkup) {
-//                pango_layout_set_markup(layout, text.c_str(), -1);
-//            } else {
-//                pango_layout_set_text(layout, text.c_str(), -1);
-//            }
-//
-//            ApplyTextSource();
-//
-//            cairo_move_to(cairo, x, y);
-//            pango_cairo_show_layout(cairo, layout);
-//
-//            // Cleanup
-//            pango_font_description_free(desc);
-//            g_object_unref(layout);
-//
-////            std::cout << "DrawText: Completed successfully" << std::endl;
-//
-//        } catch (const std::exception &e) {
-//            std::cerr << "ERROR: Exception in DrawText: " << e.what() << std::endl;
-//        } catch (...) {
-//            std::cerr << "ERROR: Unknown exception in DrawText" << std::endl;
-//        }
+
     }
 
-    void RenderContextCairo::DrawTextInRect(const std::string &text, float x, float y, float w, float h) {
-        if (text.empty()) return;
-
-        auto cachedSurface = GetTextSurface(text, w, h);
-
-        if (cachedSurface && cachedSurface->surface) {
-            // Use cached surface - just blit it to the target
-            cairo_save(cairo);
-
-            switch (currentState.textStyle.verticalAlignement) {
-                case TextVerticalAlignement::Middle:
-                    y = y + ((h - cachedSurface->height) / 2);
-                    break;
-                case TextVerticalAlignement::Bottom:
-                    y = y + (h - cachedSurface->height);
-                    break;
-                default:
-                    break;
-            }
-
-            switch (currentState.textStyle.alignment) {
-                case TextAlignment::Center:
-                    if (cachedSurface->width < w) {
-                        x = x + ((w - cachedSurface->width) / 2);
-                    }
-                    break;
-                case TextAlignment::Right:
-                    x = x + w - cachedSurface->width;
-                    break;
-                default:
-                    break;
-            }
-
-
-//            cairo_translate(cairo, x, y);
-            cairo_set_source_surface(cairo, cachedSurface->surface, x, y);
-            // Apply global alpha if needed
-            if (currentState.globalAlpha < 1.0f) {
-                cairo_paint_with_alpha(cairo, currentState.globalAlpha);
-            } else {
-                cairo_paint(cairo);
-            }
-//            SetCairoColor(Colors::Black);
-//            DrawRectangle(x,y,cachedSurface->width, cachedSurface->height);
-            cairo_restore(cairo);
+    void RenderContextCairo::DrawTextInRect(const std::string &text, const Rect2Df &rect) {
+        if (text.empty()) {
+            return; // Nothing to draw
+        }
+        auto layout = GetOrCreateTextLayout(text, rect.Size(), false);
+        if (layout) {
+            ApplySourceToCairo(cairo, currentState.textSourceColor, currentState.textSourcePattern);
+            DrawTextLayout(*layout, rect.TopLeft());
         } else {
-            std::cerr << "RenderContextCairo::DrawText: No text source surface" << std::endl;
+            debugOutput << "RenderContextCairo::DrawTextInRect: No text layout" << std::endl;
         }
-
-//        try {
-//            PangoFontDescription *desc = CreatePangoFont(currentState.fontStyle);
-//            if (!desc) {
-//                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
-//                return;
-//            }
-//            PangoLayout *layout = CreatePangoLayout(desc, w, h);
-//            if (!layout) {
-//                pango_font_description_free(desc);
-//                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
-//                return;
-//            }
-//            if (currentState.textStyle.isMarkup) {
-//                pango_layout_set_markup(layout, text.c_str(), -1);
-//            } else {
-//                pango_layout_set_text(layout, text.c_str(), -1);
-//            }
-//
-//            if (currentState.textStyle.verticalAlignement == TextVerticalAlignement::Middle) {
-//                int w1, h1;
-//                pango_layout_get_pixel_size(layout, &w1, &h1);
-//                cairo_move_to(cairo, x, y + ((h - h1) / 2));
-////                cairo_move_to(cairo, x, y);
-//            } else {
-//                cairo_move_to(cairo, x, y);
-//            }
-//
-//            ApplyTextSource();
-//
-//            pango_cairo_show_layout(cairo, layout);
-//
-//            pango_font_description_free(desc);
-//            g_object_unref(layout);
-//
-//        } catch (...) {
-//            std::cerr << "ERROR: Exception in DrawTextInRect" << std::endl;
-//        }
     }
 
-    bool RenderContextCairo::GetTextDimensions(const std::string &text, int rectWidth, int rectHeight, int& retWidth, int &retHeight) {
-        retWidth = 0;
-        retHeight = 0;
-        if (!pangoContext || text.empty()) {
-            return false;
+    Size2Di RenderContextCairo::GetTextDimensions(const std::string &text, const Size2Di& sz) {
+        if (text.empty()) {
+            return {0,0};
         }
-
-        // Generate cache key
-        std::string cacheKey = GenerateTextCacheKey(text, rectWidth, rectHeight);
-
-        // Try to get from cache first
-        auto cached = g_TextDimensionsCache.GetFromCache(cacheKey);
-        if (cached) {
-            retWidth = cached->width;
-            retHeight = cached->height;
-            return true;
+        auto layout = GetOrCreateTextLayout(text, sz, false);
+        if (layout) {
+            return layout->GetLayoutSize();
         }
-
-        // Not in cache - create new surface
-        auto newEntry = MeasureTextDimensions(text, rectWidth, rectHeight);
-        if (newEntry) {
-            // Add to cache
-            g_TextDimensionsCache.AddToCache(cacheKey, newEntry);
-            retWidth = newEntry->width;
-            retHeight = newEntry->height;
-            return true;
-        }
-
-        std::cerr << "RenderContextCairo::GetTextDimensions: Error in measuring text dimensions, text=" << text << std::endl;
-        return false;
-
-//        try {
-//            PangoFontDescription *desc = CreatePangoFont(currentState.fontStyle);
-//            if (!desc) {
-//                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
-//                return false;
-//            }
-//            PangoLayout *layout = CreatePangoLayout(desc, rectWidth, rectHeight);
-//            if (!layout) {
-//                pango_font_description_free(desc);
-//                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
-//                return false;
-//            }
-//            if (currentState.textStyle.isMarkup) {
-//                pango_layout_set_markup(layout, text.c_str(), -1);
-//            } else {
-//                pango_layout_set_text(layout, text.c_str(), -1);
-//            }
-//
-//            int width, height;
-//            pango_layout_get_pixel_size(layout, &width, &height);
-//
-//            pango_font_description_free(desc);
-//            g_object_unref(layout);
-//
-//            retWidth = width;
-//            retHeight = height;
-//            return true;
-//
-//        } catch (...) {
-//            std::cerr << "ERROR: Exception in GetTextLineDimensions" << std::endl;
-//            return false;
-//        }
+        return {0,0};
     }
-
-    bool RenderContextCairo::GetTextLineDimensions(const std::string &text, int &w, int &h) {
-        return GetTextDimensions(text, 0, 0, w, h);
-    }
-
 
     int RenderContextCairo::GetTextIndexForXY(const std::string &text, int x, int y, int w, int h) {
         int index = 0, trailing;
@@ -987,13 +814,13 @@ namespace UltraCanvas {
         try {
             PangoFontDescription *desc = CreatePangoFont(currentState.fontStyle);
             if (!desc) {
-                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
+                debugOutput << "ERROR: Failed to create Pango font description" << std::endl;
                 return -1;
             }
             PangoLayout *layout = CreatePangoLayout(desc, w, h);
             if (!layout) {
                 pango_font_description_free(desc);
-                std::cerr << "ERROR: Failed to create Pango layout" << std::endl;
+                debugOutput << "ERROR: Failed to create Pango layout" << std::endl;
                 return -1;
             }
 
@@ -1008,7 +835,7 @@ namespace UltraCanvas {
             return index;
 
         } catch (...) {
-            std::cerr << "ERROR: Exception in TextXYToIndex" << std::endl;
+            debugOutput << "ERROR: Exception in TextXYToIndex" << std::endl;
             return -1;
         }
     }
@@ -1022,16 +849,17 @@ namespace UltraCanvas {
         cairo_restore(cairo);
     }
 
-    void RenderContextCairo::SwapBuffers() {
-        std::lock_guard<std::mutex> lock(cairoMutex);
-        if (stagingSurface) {
-            cairo_surface_flush(stagingSurface);
-            // Copy staging surface to window surface
-            cairo_set_source_surface(targetContext, stagingSurface, 0, 0);
-            cairo_set_operator(targetContext, CAIRO_OPERATOR_SOURCE);
-            cairo_paint(targetContext);
-        }
-    }
+//    void RenderContextCairo::SwapBuffers() {
+//        std::lock_guard<std::mutex> lock(cairoMutex);
+//        if (stagingSurface) {
+//            //debugOutput << "RenderContextCairo::SwapBuffers stagingSurface=" << stagingSurface << " target_surf=" << cairo_get_target(targetContext) << std::endl;
+//            cairo_surface_flush(stagingSurface);
+//            // Copy staging surface to window surface
+//            cairo_set_source_surface(targetContext, stagingSurface, 0, 0);
+//            cairo_set_operator(targetContext, CAIRO_OPERATOR_SOURCE);
+//            cairo_paint(targetContext);
+//        }
+//    }
 
     void *RenderContextCairo::GetNativeContext() {
         return cairo;
@@ -1051,21 +879,29 @@ namespace UltraCanvas {
         return currentState.textStyle;
     }
 
-    float RenderContextCairo::GetAlpha() const {
+    double RenderContextCairo::GetAlpha() const {
         return currentState.globalAlpha;
     }
 
     PangoFontDescription *RenderContextCairo::CreatePangoFont(const FontStyle &style) {
-        //std::cout << "RenderContextCairo::CreatePangoFont" << std::endl;
+        //debugOutput << "RenderContextCairo::CreatePangoFont" << std::endl;
         try {
             PangoFontDescription *desc = pango_font_description_new();
             if (!desc) {
-                std::cerr << "ERROR: Failed to create Pango font description" << std::endl;
+                debugOutput << "ERROR: Failed to create Pango font description" << std::endl;
                 return nullptr;
             }
 
-            // Use default font if family is empty
-            const char *fontFamily = style.fontFamily.empty() ? "Sans" : style.fontFamily.c_str();
+            // Use system default font if family is empty
+            const char *fontFamily;
+            if (style.fontFamily.empty()) {
+                std::string resolvedFamily;
+                auto* app = UltraCanvasApplication::GetInstance();
+                resolvedFamily = app ? app->GetSystemFontStyle().fontFamily : "Sans";
+                fontFamily = resolvedFamily.c_str();
+            } else {
+                fontFamily = style.fontFamily.c_str();
+            }
             pango_font_description_set_family(desc, fontFamily);
 
             // Ensure reasonable font size
@@ -1108,7 +944,7 @@ namespace UltraCanvas {
             return desc;
 
         } catch (...) {
-            std::cerr << "ERROR: Exception in CreatePangoFont" << std::endl;
+            debugOutput << "ERROR: Exception in CreatePangoFont" << std::endl;
             return nullptr;
         }
     }
@@ -1120,30 +956,30 @@ namespace UltraCanvas {
                                   color.g / 255.0f,
                                   color.b / 255.0f,
                                   color.a / 255.0f * currentState.globalAlpha);
-//            std::cout << "RenderContextCairo::SetCairoColor r=" << (int) color.r << " g=" << (int) color.g << " b="
+//            debugOutput << "RenderContextCairo::SetCairoColor r=" << (int) color.r << " g=" << (int) color.g << " b="
 //                      << (int) color.b << std::endl;
         } catch (...) {
-            std::cerr << "ERROR: Exception in SetCairoColor" << std::endl;
+            debugOutput << "ERROR: Exception in SetCairoColor" << std::endl;
         }
     }
 
 
-    void RenderContextCairo::FillEllipse(float x, float y, float w, float h) {
+    void RenderContextCairo::FillEllipse(const Rect2Df& rect) {
 
         cairo_save(cairo);
-        cairo_translate(cairo, x + w / 2, y + h / 2);
-        cairo_scale(cairo, w / 2, h / 2);
+        cairo_translate(cairo, rect.x + rect.width / 2, rect.y + rect.height / 2);
+        cairo_scale(cairo, rect.width / 2, rect.height / 2);
         cairo_arc(cairo, 0, 0, 1, 0, 2 * M_PI);
         cairo_restore(cairo);
 
         Fill();
     }
 
-    void RenderContextCairo::DrawEllipse(float x, float y, float w, float h) {
+    void RenderContextCairo::DrawEllipse(const Rect2Df& rect) {
 
         cairo_save(cairo);
-        cairo_translate(cairo, x + w / 2, y + h / 2);
-        cairo_scale(cairo, w / 2, h / 2);
+        cairo_translate(cairo, rect.x + rect.width / 2, rect.y + rect.height / 2);
+        cairo_scale(cairo, rect.width / 2, rect.height / 2);
         cairo_arc(cairo, 0, 0, 1, 0, 2 * M_PI);
         cairo_restore(cairo);
 
@@ -1177,13 +1013,13 @@ namespace UltraCanvas {
     }
 
 
-    void RenderContextCairo::DrawArc(float x, float y, float radius, float startAngle, float endAngle) {
+    void RenderContextCairo::DrawArc(double x, double y, double radius, double startAngle, double endAngle) {
         //ApplyStrokeStyle(currentState.style);
         cairo_arc(cairo, x, y, radius, startAngle, endAngle);
         Stroke();
     }
 
-    void RenderContextCairo::FillArc(float x, float y, float radius, float startAngle, float endAngle) {
+    void RenderContextCairo::FillArc(double x, double y, double radius, double startAngle, double endAngle) {
         //ApplyFillStyle(currentState.style);
         cairo_move_to(cairo, x, y);
         cairo_arc(cairo, x, y, radius, startAngle, endAngle);
@@ -1218,66 +1054,66 @@ namespace UltraCanvas {
         cairo_close_path(cairo);
     }
 
-    void RenderContextCairo::MoveTo(float x, float y) {
+    void RenderContextCairo::MoveTo(double x, double y) {
         cairo_move_to(cairo, x, y);
     }
 
-    void RenderContextCairo::RelMoveTo(float x, float y) {
+    void RenderContextCairo::RelMoveTo(double x, double y) {
         cairo_rel_move_to(cairo, x, y);
     }
 
-    void RenderContextCairo::LineTo(float x, float y) {
+    void RenderContextCairo::LineTo(double x, double y) {
         cairo_line_to(cairo, x, y);
     }
 
-    void RenderContextCairo::RelLineTo(float x, float y) {
+    void RenderContextCairo::RelLineTo(double x, double y) {
         cairo_rel_line_to(cairo, x, y);
     }
 
-    void RenderContextCairo::QuadraticCurveTo(float cpx, float cpy, float x, float y) {
+    void RenderContextCairo::QuadraticCurveTo(double cpx, double cpy, double x, double y) {
         double cx, cy;
         cairo_get_current_point(cairo, &cx, &cy);
 
         // Convert quadratic to cubic bezier
-        float cp1x = cx + 2.0f/3.0f * (cpx - cx);
-        float cp1y = cy + 2.0f/3.0f * (cpy - cy);
-        float cp2x = x + 2.0f/3.0f * (cpx - x);
-        float cp2y = y + 2.0f/3.0f * (cpy - y);
+        double cp1x = cx + 2.0f/3.0f * (cpx - cx);
+        double cp1y = cy + 2.0f/3.0f * (cpy - cy);
+        double cp2x = x + 2.0f/3.0f * (cpx - x);
+        double cp2y = y + 2.0f/3.0f * (cpy - y);
 
         cairo_curve_to(cairo, cp1x, cp1y, cp2x, cp2y, x, y);
     }
 
-    void RenderContextCairo::BezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y) {
+    void RenderContextCairo::BezierCurveTo(double cp1x, double cp1y, double cp2x, double cp2y, double x, double y) {
         cairo_curve_to(cairo, cp1x, cp1y, cp2x, cp2y, x, y);
     }
 
-    void RenderContextCairo::RelBezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y) {
+    void RenderContextCairo::RelBezierCurveTo(double cp1x, double cp1y, double cp2x, double cp2y, double x, double y) {
         cairo_rel_curve_to(cairo, cp1x, cp1y, cp2x, cp2y, x, y);
     }
 
-    void RenderContextCairo::Arc(float cx, float cy, float radius, float startAngle, float endAngle) {
+    void RenderContextCairo::Arc(double cx, double cy, double radius, double startAngle, double endAngle) {
         cairo_arc(cairo, cx, cy, radius, startAngle, endAngle);
     }
 
-    void RenderContextCairo::ArcTo(float x1, float y1, float x2, float y2, float radius) {
+    void RenderContextCairo::ArcTo(double x1, double y1, double x2, double y2, double radius) {
         // Cairo doesn't have arc_to, so we approximate
         double cx, cy;
         cairo_get_current_point(cairo, &cx, &cy);
 
         // Calculate the center of the arc
-        float dx1 = x1 - cx;
-        float dy1 = y1 - cy;
-        float dx2 = x2 - x1;
-        float dy2 = y2 - y1;
+        double dx1 = x1 - cx;
+        double dy1 = y1 - cy;
+        double dx2 = x2 - x1;
+        double dy2 = y2 - y1;
 
-        float a1 = atan2(dy1, dx1);
-        float a2 = atan2(dy2, dx2);
+        double a1 = atan2(dy1, dx1);
+        double a2 = atan2(dy2, dx2);
 
         cairo_arc(cairo, x1, y1, radius, a1, a2);
         cairo_line_to(cairo, x2, y2);
     }
 
-    void RenderContextCairo::Ellipse(float cx, float cy, float rx, float ry, float rotation) {
+    void RenderContextCairo::Ellipse(double cx, double cy, double rx, double ry, double rotation) {
         cairo_save(cairo);
         cairo_translate(cairo, cx, cy);
         cairo_rotate(cairo, rotation);
@@ -1286,11 +1122,11 @@ namespace UltraCanvas {
         cairo_restore(cairo);
     }
 
-    void RenderContextCairo::Rect(float x, float y, float width, float height) {
+    void RenderContextCairo::Rect(double x, double y, double width, double height) {
         cairo_rectangle(cairo, x, y, width, height);
     }
 
-    void RenderContextCairo::RoundedRect(float x, float y, float width, float height, float radius) {
+    void RenderContextCairo::RoundedRect(double x, double y, double width, double height, double radius) {
         cairo_new_sub_path(cairo);
         cairo_arc(cairo, x + width - radius, y + radius, radius, -M_PI/2, 0);
         cairo_arc(cairo, x + width - radius, y + height - radius, radius, 0, M_PI/2);
@@ -1300,33 +1136,34 @@ namespace UltraCanvas {
     }
 
     void RenderContextCairo::DrawRoundedRectangleWidthBorders(
-            float x, float y, float width, float height,
+            const Rect2Df & rect,
             bool fill,
-            float borderLeftWidth, float borderRightWidth,
-            float borderTopWidth, float borderBottomWidth,
+            double borderLeftWidth, double borderRightWidth,
+            double borderTopWidth, double borderBottomWidth,
             const Color& borderLeftColor, const Color& borderRightColor,
             const Color& borderTopColor, const Color& borderBottomColor,
-            float borderTopLeftRadius, float borderTopRightRadius,
-            float borderBottomRightRadius, float borderBottomLeftRadius,
+            double borderTopLeftRadius, double borderTopRightRadius,
+            double borderBottomRightRadius, double borderBottomLeftRadius,
             const UCDashPattern& borderLeftPattern,
             const UCDashPattern& borderRightPattern,
             const UCDashPattern& borderTopPattern,
             const UCDashPattern& borderBottomPattern
     ) {
         // Clamp radii to prevent overlapping
-        float maxRadiusX = width / 2.0;
-        float maxRadiusY = height / 2.0;
+        double x = rect.x, y = rect.y, width = rect.width, height = rect.height;
+        double maxRadiusX = width / 2.0;
+        double maxRadiusY = height / 2.0;
 
-        float topLeftRadius = std::min({borderTopLeftRadius, maxRadiusX, maxRadiusY});
-        float topRightRadius = std::min({borderTopRightRadius, maxRadiusX, maxRadiusY});
-        float bottomRightRadius = std::min({borderBottomRightRadius, maxRadiusX, maxRadiusY});
-        float bottomLeftRadius = std::min({borderBottomLeftRadius, maxRadiusX, maxRadiusY});
+        double topLeftRadius = std::min({borderTopLeftRadius, maxRadiusX, maxRadiusY});
+        double topRightRadius = std::min({borderTopRightRadius, maxRadiusX, maxRadiusY});
+        double bottomRightRadius = std::min({borderBottomRightRadius, maxRadiusX, maxRadiusY});
+        double bottomLeftRadius = std::min({borderBottomLeftRadius, maxRadiusX, maxRadiusY});
 
         // Adjust if corners overlap
-        float topScale = 1.0;
-        float bottomScale = 1.0;
-        float leftScale = 1.0;
-        float rightScale = 1.0;
+        double topScale = 1.0;
+        double bottomScale = 1.0;
+        double leftScale = 1.0;
+        double rightScale = 1.0;
 
         if (topLeftRadius + topRightRadius > width) {
             topScale = width / (topLeftRadius + topRightRadius);
@@ -1401,13 +1238,13 @@ namespace UltraCanvas {
         // Top border
         if (borderTopWidth > 0) {
             SetStrokeWidth(borderTopWidth);
-            if (!borderRightPattern.dashes.empty()) {
+            if (!borderTopPattern.dashes.empty()) {
                 SetLineDash(borderTopPattern);
             } else {
                 SetStrokePaint(borderTopColor);
             }
             float yPos = y + borderTopWidth / 2.0;
-            DrawLine(x + topLeftRadius, yPos, x + width - topRightRadius, yPos);
+            DrawLine({x + topLeftRadius, yPos}, {x + width - topRightRadius, yPos});
 //            drawBorderSide(x + topLeftRadius, yPos,
 //                           x + width - topRightRadius, yPos,
 //                           borderTopWidth, borderTopColor, borderTopPattern);
@@ -1422,8 +1259,8 @@ namespace UltraCanvas {
                 SetStrokePaint(borderRightColor);
             }
             float xPos = x + width - borderRightWidth / 2.0;
-            DrawLine(xPos, y + topRightRadius,
-                     xPos, y + height - bottomRightRadius);
+            DrawLine({xPos, y + topRightRadius},
+                     {xPos, y + height - bottomRightRadius});
         }
 
         // Bottom border
@@ -1435,8 +1272,8 @@ namespace UltraCanvas {
                 SetStrokePaint(borderBottomColor);
             }
             float yPos = y + height - borderBottomWidth / 2.0;
-            DrawLine(x + bottomLeftRadius, yPos,
-                     x + width - bottomRightRadius, yPos);
+            DrawLine({x + bottomLeftRadius, yPos},
+                     {x + width - bottomRightRadius, yPos});
         }
 
         // Left border
@@ -1448,63 +1285,63 @@ namespace UltraCanvas {
             } else {
                 SetStrokePaint(borderLeftColor);
             }
-            DrawLine(xPos, y + topLeftRadius,
-                     xPos, y + height - bottomLeftRadius);
+            DrawLine({xPos, y + topLeftRadius},
+                     {xPos, y + height - bottomLeftRadius});
         }
 
         // Draw rounded corners with borders
         if (topLeftRadius > 0) {
             const Color avgColor = borderLeftColor.Blend(borderTopColor, 0.5);
-            float avgWidth = (borderLeftWidth + borderTopWidth) / 2.0;
+            double avgWidth = (borderLeftWidth + borderTopWidth) / 2.0;
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            Arc(x + topLeftRadius, y + topLeftRadius, topLeftRadius,
+            DrawArc(x + topLeftRadius, y + topLeftRadius, topLeftRadius,
                 M_PI, 3 * M_PI / 2);
         }
         if (topRightRadius > 0) {
             const Color avgColor = borderTopColor.Blend(borderRightColor, 0.5);
-            float avgWidth = (borderTopWidth + borderRightWidth) / 2.0;
+            double avgWidth = (borderTopWidth + borderRightWidth) / 2.0;
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            Arc(x + width - topRightRadius, y + topRightRadius, topRightRadius,
+            DrawArc(x + width - topRightRadius, y + topRightRadius, topRightRadius,
                 3 * M_PI / 2, 2 * M_PI);
         }
 
         if (bottomRightRadius > 0) {
             const Color avgColor = borderBottomColor.Blend(borderRightColor, 0.5);
-            float avgWidth = (borderRightWidth +  borderBottomWidth) / 2.0;
+            double avgWidth = (borderRightWidth +  borderBottomWidth) / 2.0;
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            Arc(x + width - bottomRightRadius, y + height - bottomRightRadius,
+            DrawArc(x + width - bottomRightRadius, y + height - bottomRightRadius,
                 bottomRightRadius, 0, M_PI / 2);
         }
 
         if (bottomLeftRadius > 0) {
             const Color avgColor = borderBottomColor.Blend(borderLeftColor, 0.5);
-            float avgWidth = (borderBottomWidth + borderLeftWidth) / 2.0;
+            double avgWidth = (borderBottomWidth + borderLeftWidth) / 2.0;
             SetStrokeWidth(avgWidth);
             SetStrokePaint(avgColor);
-            Arc(x + bottomLeftRadius, y + height - bottomLeftRadius, bottomLeftRadius,
+            DrawArc(x + bottomLeftRadius, y + height - bottomLeftRadius, bottomLeftRadius,
                 M_PI / 2, M_PI);
         }
         PopState();
     }
 
-    void RenderContextCairo::Circle(float x, float y, float radius) {
+    void RenderContextCairo::Circle(double x, double y, double radius) {
         cairo_arc(cairo, x, y, radius, 0, 2 * M_PI);
     }
 
-    void RenderContextCairo::GetPathExtents(float &x, float &y, float &width, float &height) {
-        double x2, y2, x1, y1;
-        cairo_path_extents(cairo, &x1, &y1, &x2, &y2);
-        x = x1;
-        y = y1;
-        width = std::abs(x2 - x1);
-        height = std::abs(y2 - y1);
+    Rect2Df RenderContextCairo::GetPathExtents() {
+        Rect2Df result;
+        Point2Df p2;
+        cairo_path_extents(cairo, &result.x, &result.y, &p2.x, &p2.y);
+        result.width = std::abs(p2.x - result.x);
+        result.height = std::abs(p2.y - result.y);
+        return result;
     }
 
 // Cached Gradient Pattern Methods
-    std::shared_ptr<IPaintPattern> RenderContextCairo::CreateLinearGradientPattern(float x1, float y1, float x2, float y2,
+    std::shared_ptr<IPaintPattern> RenderContextCairo::CreateLinearGradientPattern(double x1, double y1, double x2, double y2,
                                                                                    const std::vector<GradientStop>& stops) {
         cairo_pattern_t* pattern = cairo_pattern_create_linear(x1, y1, x2, y2);
 
@@ -1522,8 +1359,8 @@ namespace UltraCanvas {
         }
     }
 
-    std::shared_ptr<IPaintPattern> RenderContextCairo::CreateRadialGradientPattern(float cx1, float cy1, float r1,
-                                                                                   float cx2, float cy2, float r2,
+    std::shared_ptr<IPaintPattern> RenderContextCairo::CreateRadialGradientPattern(double cx1, double cy1, double r1,
+                                                                                   double cx2, double cy2, double r2,
                                                                                    const std::vector<GradientStop>& stops) {
         cairo_pattern_t* pattern = cairo_pattern_create_radial(cx1, cy1, r1, cx2, cy2, r2);
 
@@ -1572,11 +1409,28 @@ namespace UltraCanvas {
         currentState.textSourceColor = color;
     }
 
+    void RenderContextCairo::SetCurrentPaint(const Color& color) {
+        cairo_set_source_rgba(cairo,
+                              (float)color.r / 255.0f,
+                              (float)color.g / 255.0f,
+                              (float)color.b / 255.0f,
+                              (float)color.a / 255.0f);
+    }
+
+    void RenderContextCairo::SetCurrentPaint(std::shared_ptr<IPaintPattern> pattern) {
+        auto handle = static_cast<cairo_pattern_t*>(pattern->GetHandle());
+        if (handle) {
+            cairo_set_source(cairo, handle);
+        } else {
+            debugOutput << "ERROR: ApplySourceToCairo no pattern handle";
+        }
+    }
+
     void RenderContextCairo::ApplySource(const Color& sourceColor, std::shared_ptr<IPaintPattern> sourcePattern) {
         ApplySourceToCairo(cairo, sourceColor, sourcePattern);
     }
 
-    void RenderContextCairo::SetStrokeWidth(float width) {
+    void RenderContextCairo::SetStrokeWidth(double width) {
 //        currentState.style.strokeWidth = width;
         cairo_set_line_width(cairo, width);
     }
@@ -1602,7 +1456,7 @@ namespace UltraCanvas {
         cairo_set_line_join(cairo, cairoJoin);
     }
 
-    void RenderContextCairo::SetMiterLimit(float limit) {
+    void RenderContextCairo::SetMiterLimit(double limit) {
         cairo_set_miter_limit(cairo, limit);
     }
 
@@ -1614,11 +1468,11 @@ namespace UltraCanvas {
         }
     }
 
-    void RenderContextCairo::SetTextLineHeight(float height) {
+    void RenderContextCairo::SetTextLineHeight(double height) {
         currentState.textStyle.lineHeight = height;
     }
 
-    void RenderContextCairo::SetAlpha(float alpha) {
+    void RenderContextCairo::SetAlpha(double alpha) {
         // Get current source and modify alpha
         double r, g, b, a;
         cairo_pattern_t* pattern = cairo_get_source(cairo);
@@ -1634,8 +1488,11 @@ namespace UltraCanvas {
         currentState.fontStyle.fontWeight = fw;
         currentState.fontStyle.fontSlant = fs;
     }
+    void RenderContextCairo::SetFontFamily(const std::string& family) {
+        SetFontFace(family, currentState.fontStyle.fontWeight, currentState.fontStyle.fontSlant);
+    }
 
-    void RenderContextCairo::SetFontSize(float size) {
+    void RenderContextCairo::SetFontSize(double size) {
         cairo_set_font_size(cairo, size);
         currentState.fontStyle.fontSize = size;
     }
@@ -1652,15 +1509,15 @@ namespace UltraCanvas {
         currentState.textStyle.alignment = align;
     }
 
-    void RenderContextCairo::SetTextVerticalAlignment(TextVerticalAlignement align) {
-        currentState.textStyle.verticalAlignement = align;
+    void RenderContextCairo::SetTextVerticalAlignment(VerticalAlignment align) {
+        currentState.textStyle.verticalAlignment = align;
     }
 
     void RenderContextCairo::SetTextIsMarkup(bool isMarkup) {
         currentState.textStyle.isMarkup = isMarkup;
     }
 
-    void RenderContextCairo::FillText(const std::string& text, float x, float y) {
+    void RenderContextCairo::FillText(const std::string& text, double x, double y) {
         ApplyFillSource();
         cairo_select_font_face(cairo, currentState.fontStyle.fontFamily.c_str(),
                                currentState.fontStyle.fontSlant == FontSlant::Oblique ? CAIRO_FONT_SLANT_OBLIQUE : (currentState.fontStyle.fontSlant == FontSlant::Italic ? CAIRO_FONT_SLANT_ITALIC : CAIRO_FONT_SLANT_NORMAL),
@@ -1670,7 +1527,7 @@ namespace UltraCanvas {
         cairo_show_text(cairo, text.c_str());
     }
 
-    void RenderContextCairo::StrokeText(const std::string& text, float x, float y) {
+    void RenderContextCairo::StrokeText(const std::string& text, double x, double y) {
         ApplyStrokeSource();
         cairo_select_font_face(cairo, currentState.fontStyle.fontFamily.c_str(),
                                currentState.fontStyle.fontSlant == FontSlant::Oblique ? CAIRO_FONT_SLANT_OBLIQUE : (currentState.fontStyle.fontSlant == FontSlant::Italic ? CAIRO_FONT_SLANT_ITALIC : CAIRO_FONT_SLANT_NORMAL),
@@ -1680,105 +1537,114 @@ namespace UltraCanvas {
         cairo_stroke(cairo);
     }
 
-    void RenderContextCairo::DrawPixmap(UCPixmapCairo& pixmap, float x, float y, float w, float h, ImageFitMode fitMode) {
-        try {
-            // Load the image
-            // Save current cairo state
-            float pixWidth = static_cast<float>(pixmap.GetWidth());
-            float pixHeight = static_cast<float>(pixmap.GetHeight());
-            if (!w) {
-                w = pixWidth;
-            }
-            if (!h) {
-                h = pixHeight;
-            }
-            float scaleX = 1;
-            float scaleY = 1;
-            float offsetX = 0;
-            float offsetY = 0;
-            // Calculate scaling factors
-            if (pixHeight != h || pixWidth != w) {
-                switch (fitMode) {
-                    case ImageFitMode::Contain:
-                        scaleX = w / pixWidth;
-                        scaleY = h / pixHeight;
+    void DrawPixmapOrMask(cairo_t* cairo, UCPixmap &pixmap, double x, double y, double w, double h, ImageFitMode fitMode, double alpha, bool drawMasked, const Color& c) {
+        double pixWidth = static_cast<double>(pixmap.GetWidth());
+        double pixHeight = static_cast<double>(pixmap.GetHeight());
+        if (!w) {
+            w = pixWidth;
+        }
+        if (!h) {
+            h = pixHeight;
+        }
+        double scaleX = 1;
+        double scaleY = 1;
+        double offsetX = 0;
+        double offsetY = 0;
+        // Calculate scaling factors
+        if (pixHeight != h || pixWidth != w) {
+            switch (fitMode) {
+                case ImageFitMode::Contain:
+                    scaleX = w / pixWidth;
+                    scaleY = h / pixHeight;
 
-                        if (scaleX < scaleY) {
-                            scaleY = scaleX;
-                            offsetY = (h - (pixHeight * scaleY)) / 2;
-                        } else {
-                            scaleX = scaleY;
-                            offsetX = (w - (pixWidth * scaleX)) / 2;
-                        }
-                        break;
-                    case ImageFitMode::Cover:
-                        scaleX = w / pixWidth;
-                        scaleY = h / pixHeight;
-
-                        if (scaleX < scaleY) {
-                            scaleX = scaleY;
-                            offsetX = (w - (pixWidth * scaleX)) / 2;
-                        } else {
-                            scaleY = scaleX;
-                            offsetY = (h - (pixHeight * scaleY)) / 2;
-                        }
-                        break;
-                    case ImageFitMode::NoScale:
-                        offsetX = (w - pixWidth) / 2;
-                        offsetY = (h - pixHeight) / 2;
-                        break;
-                    case ImageFitMode::Fill:
-                        scaleX = w / pixWidth;
-                        scaleY = h / pixHeight;
-                        break;
-                    case ImageFitMode::ScaleDown:
-                        scaleX = w / pixWidth;
-                        scaleY = h / pixHeight;
-                        if (scaleX < scaleY) {
-                            if (scaleX > 1) {
-                                scaleX = 1;
-                            }
-                            scaleY = scaleX;
-                        } else {
-                            if (scaleY > 1) {
-                                scaleY = 1;
-                            }
-                            scaleX = scaleY;
-                        }
+                    if (scaleX < scaleY) {
+                        scaleY = scaleX;
                         offsetY = (h - (pixHeight * scaleY)) / 2;
+                    } else {
+                        scaleX = scaleY;
                         offsetX = (w - (pixWidth * scaleX)) / 2;
-                        break;
-                    default:
-                        break;
-                }
+                    }
+                    break;
+                case ImageFitMode::Cover:
+                    scaleX = w / pixWidth;
+                    scaleY = h / pixHeight;
+
+                    if (scaleX < scaleY) {
+                        scaleX = scaleY;
+                        offsetX = (w - (pixWidth * scaleX)) / 2;
+                    } else {
+                        scaleY = scaleX;
+                        offsetY = (h - (pixHeight * scaleY)) / 2;
+                    }
+                    break;
+                case ImageFitMode::NoScale:
+                    offsetX = (w - pixWidth) / 2;
+                    offsetY = (h - pixHeight) / 2;
+                    break;
+                case ImageFitMode::Fill:
+                    scaleX = w / pixWidth;
+                    scaleY = h / pixHeight;
+                    break;
+                case ImageFitMode::ScaleDown:
+                    scaleX = w / pixWidth;
+                    scaleY = h / pixHeight;
+                    if (scaleX < scaleY) {
+                        if (scaleX > 1) {
+                            scaleX = 1;
+                        }
+                        scaleY = scaleX;
+                    } else {
+                        if (scaleY > 1) {
+                            scaleY = 1;
+                        }
+                        scaleX = scaleY;
+                    }
+                    offsetY = (h - (pixHeight * scaleY)) / 2;
+                    offsetX = (w - (pixWidth * scaleX)) / 2;
+                    break;
+                default:
+                    break;
             }
+        }
 
-            // Apply transformations
-            cairo_save(cairo);
-            cairo_rectangle(cairo, x, y, w, h);
-            cairo_clip(cairo);
+        // Apply transformations
+        cairo_save(cairo);
+        cairo_rectangle(cairo, x, y, w, h);
+        cairo_clip(cairo);
 
-            cairo_translate(cairo, x + offsetX, y + offsetY);
-            // Apply clipping to ensure we don't draw outside the destination rectangle
+        cairo_translate(cairo, x + offsetX, y + offsetY);
+        // Apply clipping to ensure we don't draw outside the destination rectangle
 
-            if (scaleX != 1.0 || scaleY != 1.0) {
-                cairo_scale(cairo, scaleX, scaleY);
-            }
+        if (scaleX != 1.0 || scaleY != 1.0) {
+            cairo_scale(cairo, scaleX, scaleY);
+        }
 
-            // Set the image as source and paint
+        // Set the image as source and paint
+        if (drawMasked) {
+            cairo_set_source_rgb(cairo, 1.0, 1.0, 1.0);
+            cairo_set_operator(cairo, CAIRO_OPERATOR_DIFFERENCE);
+            cairo_mask_surface(cairo, pixmap.GetSurface(), 0, 0);
+        } else {
             cairo_set_source_surface(cairo, pixmap.GetSurface(), 0, 0);
-
-            if (currentState.globalAlpha < 1.0f) {
-                cairo_paint_with_alpha(cairo, currentState.globalAlpha);
+            if (alpha < 1.0f) {
+                cairo_paint_with_alpha(cairo, alpha);
             } else {
                 cairo_paint(cairo);
             }
-
-            // Restore cairo state
-            cairo_restore(cairo);
-        } catch (const std::exception &e) {
-            std::cerr << "RenderContextCairo::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
+
+        // Restore cairo state
+        cairo_restore(cairo);
+    }
+
+    void RenderContextCairo::DrawPixmap(UCPixmap& pixmap, const Rect2Df& rect, ImageFitMode fitMode) {
+        DrawPixmapOrMask(cairo, pixmap, rect.x, rect.y, rect.width, rect.height, fitMode,
+                         currentState.globalAlpha, false, Colors::Transparent);
+    }
+
+    void RenderContextCairo::DrawMask(const Color& c, UCPixmap& mask, const Rect2Df& rect, ImageFitMode fitMode) {
+        DrawPixmapOrMask(cairo, mask, rect.x, rect.y, rect.width, rect.height, fitMode,
+                         currentState.globalAlpha, true, c);
     }
 
     void RenderContextCairo::DrawPartOfPixmap(UCPixmap & pixmap, const Rect2Df &srcRect, const Rect2Df &destRect) {
@@ -1787,7 +1653,7 @@ namespace UltraCanvas {
             if (srcRect.x < 0 || srcRect.y < 0 ||
                 srcRect.x + srcRect.width > pixmap.GetWidth() ||
                 srcRect.y + srcRect.height > pixmap.GetHeight()) {
-                std::cerr << "RenderContextCairo::DrawPartOfPixmap: Source rectangle out of bounds" << std::endl;
+                debugOutput << "RenderContextCairo::DrawPartOfPixmap: Source rectangle out of bounds" << std::endl;
                 return;
             }
 
@@ -1822,7 +1688,7 @@ namespace UltraCanvas {
             // Restore cairo state
             cairo_restore(cairo);
         } catch (const std::exception &e) {
-            std::cerr << "RenderContextCairo::DrawImage: Exception loading image: " << e.what() << std::endl;
+            debugOutput << "RenderContextCairo::DrawImage: Exception loading image: " << e.what() << std::endl;
         }
     }
 
@@ -1853,20 +1719,20 @@ namespace UltraCanvas {
             cairo_restore(cairo);
 
         } catch (const std::exception &e) {
-            std::cerr << "RenderContextCairo::DrawImageTiled: Exception: " << e.what() << std::endl;
+            debugOutput << "RenderContextCairo::DrawImageTiled: Exception: " << e.what() << std::endl;
         }
     }
 
     void RenderContextCairo::UpdateContext(cairo_t *newCairoContext) {
-        std::cout << "RenderContextCairo: Updating Cairo context..." << std::endl;
+        debugOutput << "RenderContextCairo: Updating Cairo context..." << std::endl;
 
         if (!newCairoContext) {
-            std::cerr << "ERROR: RenderContextCairo: New Cairo context is null!" << std::endl;
+            debugOutput << "ERROR: RenderContextCairo: New Cairo context is null!" << std::endl;
             return;
         }
         cairo_status_t status = cairo_status(newCairoContext);
         if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "ERROR: RenderContextCairo: New Cairo context is invalid: "
+            debugOutput << "ERROR: RenderContextCairo: New Cairo context is invalid: "
                       << cairo_status_to_string(status) << std::endl;
             throw std::runtime_error("RenderContextCairo: New Cairo context is invalid");
             return;
@@ -1877,18 +1743,15 @@ namespace UltraCanvas {
 
         // Re-associate Pango context with new Cairo context
         if (pangoContext) {
-            pango_cairo_context_set_resolution(pangoContext, 96.0);
-
-            cairo_font_options_t *fontOptions = cairo_font_options_create();
-            cairo_get_font_options(cairo, fontOptions);
-            pango_cairo_context_set_font_options(pangoContext, fontOptions);
-            cairo_font_options_destroy(fontOptions);
+            pango_cairo_update_context(cairo, pangoContext);
+            //pango_cairo_context_set_resolution(pangoContext, 96.0);
+            ApplyPangoFontOptions();
         }
 
         // Reset state
         ResetState();
 
-        std::cout << "RenderContextCairo: Cairo context updated successfully" << std::endl;
+        debugOutput << "RenderContextCairo: Cairo context updated successfully" << std::endl;
     }
 
     void RenderContextCairo::FillPathPreserve() {
@@ -1909,5 +1772,36 @@ namespace UltraCanvas {
     void RenderContextCairo::Fill() {
         ApplySource(currentState.fillSourceColor, currentState.fillSourcePattern);
         cairo_fill(cairo);
+    }
+
+    void RenderContextCairo::FlushToSurface(NativeSurfacePtr flushToSurface, const Point2Df& pos) {
+        // Copy staging surface to window surface
+        cairo_t *toCtx = cairo_create(static_cast<cairo_surface_t *>(flushToSurface));
+        if (!toCtx) {
+            debugOutput << "RenderContextCairo::FlushToSurface can't create context for flushToSurface" << std::endl;
+            return;
+        }
+        cairo_surface_flush(surface);
+        if (pos.x != 0 || pos.y != 0) {
+            cairo_translate(toCtx, pos.x, pos.y);
+        }
+        cairo_rectangle(toCtx, 0, 0, surfaceSize.width, surfaceSize.height);
+        cairo_clip(toCtx);
+        cairo_set_source_surface(toCtx, surface, 0, 0);
+        cairo_set_operator(toCtx, CAIRO_OPERATOR_SOURCE);
+        cairo_paint(toCtx);
+        cairo_surface_flush(static_cast<cairo_surface_t *>(flushToSurface));
+        cairo_destroy(toCtx);
+    }
+
+
+    // factory
+    std::unique_ptr<IRenderContext> CreateRenderContext(const Size2Di& sz, NativeSurfacePtr similarToSurface) {
+        auto ctx = std::make_unique<RenderContextCairo>();
+        if (ctx->CreateSurface(sz, similarToSurface)) {
+            return ctx;
+        } else {
+            return nullptr;
+        }
     }
 } // namespace UltraCanvas

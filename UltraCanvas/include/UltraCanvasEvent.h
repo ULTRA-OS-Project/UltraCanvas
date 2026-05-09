@@ -1,16 +1,21 @@
 // include/UltraCanvasEvent.h - Enhanced Version
 // Event system for UltraCanvas Framework with Linux optimizations
-// Version: 2.1.0
-// Last Modified: 2024-12-30
+// Version: 2.2.0
+// Last Modified: 2026-04-21
 // Author: UltraCanvas Framework
 
 #ifndef ULTRA_CANVAS_EVENT_H
 #define ULTRA_CANVAS_EVENT_H
 
+#include "UltraCanvasCommonTypes.h"
 #include <chrono>
+#include <cstdint>
 #include <string>
+#include <vector>
+
 namespace UltraCanvas {
     class UltraCanvasUIElement;
+    class UltraCanvasWindowBase;
 
     enum class UCEventType {
         NoneEvent,
@@ -33,10 +38,9 @@ namespace UltraCanvas {
         Shortcut,
 
         // Window Events
+        WindowCloseRequest,
         WindowResize,
         WindowMove,
-        WindowClose,
-        WindowCloseRequest,
         WindowMinimize,
         WindowFocus,
         WindowBlur,
@@ -56,6 +60,7 @@ namespace UltraCanvas {
         // Drag and Drop
         DragStart,
         DragEnter,
+        DragLeave,
         DragOver,
         Drop,
 
@@ -72,6 +77,7 @@ namespace UltraCanvas {
         MenuClick,
         CommandEventsEnd, // custom events just to mark the range
 
+        Redraw,
         Unknown
     };
 
@@ -134,6 +140,16 @@ namespace UltraCanvas {
 
         // Number pad
         NumLock = 0xFF7F,
+        NumPadInsert = 0xFF9E,
+        NumPadDelete = 0xFF9F,
+        NumPadHome = 0xff95,
+        NumPadLeft = 0xff96,
+        NumPadUp = 0xff97,
+        NumPadRight = 0xff98,
+        NumPadDown = 0xff99,
+        NumPadPageUp = 0xff9a,
+        NumPadPageDown = 0xff9b,
+        NumPadEnd = 0xff9c,
         NumPad0 = 0xFFB0,
         NumPad1 = 0xFFB1,
         NumPad2 = 0xFFB2,
@@ -145,8 +161,8 @@ namespace UltraCanvas {
         NumPad8 = 0xFFB8,
         NumPad9 = 0xFFB9,
         NumPadDecimal = 0xFFAE,
-        NumPadAdd = 0xFFAB,
-        NumPadSubtract = 0xFFAD,
+        NumPadPlus = 0xFFAB,
+        NumPadMinus = 0xFFAD,
         NumPadMultiply = 0xFFAA,
         NumPadDivide = 0xFFAF,
         NumPadEnter = 0xFF8D,
@@ -200,7 +216,7 @@ namespace UltraCanvas {
         Slash = 0x002F,          // /
         Grave = 0x0060,          // `
         LeftBracket = 0x005B,    // [
-        Backslash = 0x005C,      // \
+        Backslash = 0x005C,      // backslash
         RightBracket = 0x005D,   // ]
         Quote = 0x0027,          // '
 
@@ -283,9 +299,9 @@ namespace UltraCanvas {
         UltraCanvasUIElement *targetElement = nullptr;
 
         // Spatial coordinates
-        int x, y;                        // Mouse or touch coordinates
-        int windowX, windowY;        // Global screen coordinates
-        int globalX, globalY;        // Global screen coordinates
+        Point2Di pointer;                    // Mouse or touch coordinates
+        Point2Di pointerWindow;              // Window-relative coordinates
+        Point2Di pointerGlobal;              // Global screen coordinates
 
         // Mouse/Touch specific
         UCMouseButton button = UCMouseButton::NoneButton;
@@ -307,13 +323,22 @@ namespace UltraCanvas {
         // Drag and Drop
         std::string dragData;                // Dragged data (text, file paths, etc.)
         std::string dragMimeType;            // MIME type of dragged data
+        std::vector<std::string> droppedFiles; // Multiple file paths for file drop
 
         // Window specific
         int width = 0, height = 0;           // For resize events
 
-        void *targetWindow = nullptr;        // Pointer to the target UltraCanvasWindow
-        unsigned long nativeWindowHandle = 0; // Platform-specific window handle (X11 Window, HWND, etc.)
-
+        UltraCanvasWindowBase* targetWindow = nullptr;        // Pointer to the target UltraCanvasWindow
+        // Platform-specific window handle (X11 Window, HWND, etc.)
+#if defined(_WIN32) || defined(_WIN64)
+        NativeWindowHandle nativeWindowHandle = nullptr;
+#elif defined(__linux__) || defined(__unix__)
+        NativeWindowHandle nativeWindowHandle = 0;
+#elif defined(__APPLE__)
+        NativeWindowHandle nativeWindowHandle = nullptr;
+#else
+        NativeWindowHandle nativeWindowHandle = nullptr;
+#endif
         // Generic data
         union {
             void *userDataPtr = nullptr;            // Custom user data
@@ -323,6 +348,10 @@ namespace UltraCanvas {
         };
 //        int customData1 = 0, customData2 = 0; // Additional data fields
 //        unsigned long nativeEvent = 0;      // Platform-specific event handle
+
+        UCEvent Clone() const {
+            return *this;
+        }
 
         // Utility methods
         bool IsMouseEvent() const {
@@ -369,22 +398,7 @@ namespace UltraCanvas {
             return GetAge() < 0.1f && (type == UCEventType::KeyDown || type == UCEventType::KeyChar);
         }
 
-        std::string ToString() const {
-            std::string result = "UCEvent{type=";
-            result += std::to_string(static_cast<int>(type));
-            if (IsMouseEvent()) {
-                result += ",pos=(" + std::to_string(x) + "," + std::to_string(y) + ")";
-                result += ",btn=" + std::to_string(static_cast<int>(button));
-            }
-            if (IsKeyboardEvent()) {
-                result += ",nativeKey=" + std::to_string(nativeKeyCode);
-                if (character > 0) {
-                    result += ",char='" + std::string(1, character) + "'";
-                }
-            }
-            result += "}";
-            return result;
-        }
+        std::string ToString() const;
     };
 
 }

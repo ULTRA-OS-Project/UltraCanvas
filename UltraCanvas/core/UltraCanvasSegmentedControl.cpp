@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSegmentedControl.h"
+#include <fmt/os.h>
 #include <algorithm>
 #include <cmath>
 
@@ -19,7 +20,8 @@ namespace UltraCanvas {
             return;
         }
 
-        Rect2Di bounds = GetBounds();
+        // Build segment rects in element-local space
+        Rect2Di bounds = GetLocalBounds();
         int availableWidth = bounds.width;
 
         // Account for overall border
@@ -41,7 +43,7 @@ namespace UltraCanvas {
             case SegmentWidthMode::FitContent: {
                 // Calculate content width for each segment
                 int totalContentWidth = 0;
-                for (const auto& segment : segments) {
+                for (auto& segment : segments) {
                     int contentWidth = CalculateSegmentContentWidth(ctx, segment);
                     segmentWidths.push_back(contentWidth);
                     totalContentWidth += contentWidth;
@@ -57,7 +59,7 @@ namespace UltraCanvas {
             }
 
             case SegmentWidthMode::Custom: {
-                for (const auto& segment : segments) {
+                for (auto& segment : segments) {
                     int width = segment.customWidth > 0 ?
                                 static_cast<int>(segment.customWidth) :
                                 CalculateSegmentContentWidth(ctx, segment);
@@ -87,7 +89,7 @@ namespace UltraCanvas {
         layoutDirty = false;
     }
 
-    int UltraCanvasSegmentedControl::CalculateSegmentContentWidth(IRenderContext* ctx, const SegmentData& segment) {
+    int UltraCanvasSegmentedControl::CalculateSegmentContentWidth(IRenderContext* ctx, SegmentData& segment) {
         int width = style.paddingHorizontal * 2;
 
         // Add icon width
@@ -100,30 +102,25 @@ namespace UltraCanvas {
 
         // Add text width
         if (segment.HasText()) {
-            ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-            ctx->SetFontSize(style.fontSize);
-            ctx->SetTextIsMarkup(true);
-
-            int textWidth = 0, textHeight = 0;
-            ctx->GetTextLineDimensions(segment.text, textWidth, textHeight);
-            width += textWidth;
+            ITextLayout* textLayout = GetOrCreateTextLayout(ctx, segment);
+            Size2Di textSize = textLayout->GetLayoutSize();
+            width += textSize.width;
         }
 
         return width;
     }
 
-// ===== RENDERING IMPLEMENTATION =====
-
-    void UltraCanvasSegmentedControl::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
-
-        ctx->PushState();
-
+    void UltraCanvasSegmentedControl::UpdateGeometry(IRenderContext* ctx) {
         // Update layout if needed
         if (layoutDirty) {
+            ctx->PushState();
             CalculateLayout(ctx);
+            ctx->PopState();
         }
+    }
+// ===== RENDERING IMPLEMENTATION =====
 
+    void UltraCanvasSegmentedControl::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         // Update animation
         if (style.enableAnimation && selectionAnimationProgress < 1.0f) {
             UpdateAnimation();
@@ -131,12 +128,10 @@ namespace UltraCanvas {
 
         // Render based on style
         RenderSegments(ctx);
-
-        ctx->PopState();
     }
 
     void UltraCanvasSegmentedControl::RenderSegments(IRenderContext* ctx) {
-        Rect2Di bounds = GetBounds();
+        Rect2Di bounds = GetLocalBounds();
 
         // Draw outer border
         ctx->SetStrokePaint(style.borderColor);
@@ -163,8 +158,8 @@ namespace UltraCanvas {
             for (size_t i = 1; i < segmentRects.size(); i++) {
                 int x = segmentRects[i].x;
                 ctx->DrawLine(
-                        x, bounds.y + style.borderWidth,
-                        x, bounds.y + bounds.height - style.borderWidth
+                        {static_cast<double>(x), bounds.y + style.borderWidth},
+                        {static_cast<double>(x), bounds.y + bounds.height - style.borderWidth}
                 );
             }
         }
@@ -174,7 +169,7 @@ namespace UltraCanvas {
         if (index < 0 || index >= static_cast<int>(segmentRects.size())) return;
 
         const Rect2Di& rect = segmentRects[index];
-        const SegmentData& segment = segments[index];
+        SegmentData& segment = segments[index];
 
         // Determine segment state colors
         Color bgColor, textColor;
@@ -265,7 +260,7 @@ namespace UltraCanvas {
                 ctx->Fill();
             } else {
                 // Middle segments - no rounding
-                ctx->FillRectangle(rect.x, rect.y, rect.width, rect.height);
+                ctx->FillRectangle(rect);
             }
         }
 
@@ -274,47 +269,48 @@ namespace UltraCanvas {
         int contentY = rect.y + rect.height / 2;
         int totalContentWidth = 0;
 
-        // Calculate total content width for centering
-//        if (segment.HasIcon()) {
-//            totalContentWidth += style.iconSize;
-//            if (segment.HasText()) {
-//                totalContentWidth += style.iconSpacing;
-//            }
-//        }
-
-//        if (segment.HasText()) {
-//            ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-//            ctx->SetFontSize(style.fontSize);
-//
-//            int textWidth = 0, textHeight = 0;
-//            ctx->GetTextLineDimensions(segment.text, textWidth, textHeight);
-//            totalContentWidth += textWidth;
-//        }
-
-        // Center content horizontally
-//        contentX = rect.x + (rect.width - totalContentWidth) / 2;
-
         // Render icon if present
         if (segment.HasIcon()) {
             int iconX = contentX;
             int iconY = contentY - style.iconSize / 2;
-            ctx->DrawImage(segment.iconPath, iconX, iconY, style.iconSize, style.iconSize, ImageFitMode::Contain);
+            ctx->DrawImage(segment.iconPath, Rect2Df(iconX, iconY, style.iconSize, style.iconSize), ImageFitMode::Contain);
             contentX += style.iconSize + style.iconSpacing;
         }
 
         // Render text
         if (segment.HasText()) {
-            ctx->SetTextPaint(textColor);
-            ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-            ctx->SetFontSize(style.fontSize);
-            ctx->SetTextAlignment(segment.alignment);
-            ctx->SetTextWrap(TextWrap::WrapNone);
-            ctx->SetTextIsMarkup(true);
-            int textWidth = 0, textHeight = 0;
-            ctx->GetTextLineDimensions(segment.text, textWidth, textHeight);
+            ITextLayout* textLayout = GetOrCreateTextLayout(ctx, segment);
+//            Rect2Df textRect(contentX, contentY, rect.width - ((contentX - rect.x) + style.paddingHorizontal), textSize.height);
+            textLayout->ChangeAttribute(TextAttributeFactory::CreateForeground(textColor));
+            auto layoutWidth = rect.width - ((contentX - rect.x) + style.paddingHorizontal);
+            if (textLayout->GetExplicitWidth() != layoutWidth) {
+                textLayout->SetExplicitWidth(layoutWidth);
+            }
+            auto textSize = textLayout->GetLayoutSize();
+            ctx->DrawTextLayout(*textLayout, Point2Df(contentX, contentY - textSize.height / 2));
+        }
+    }
 
-            Rect2Df textRect(contentX, contentY - textHeight / 2, rect.width - ((contentX - rect.x) + style.paddingHorizontal), textHeight);
-            ctx->DrawTextInRect(segment.text, textRect);
+    ITextLayout* UltraCanvasSegmentedControl::GetOrCreateTextLayout(IRenderContext* ctx, SegmentData& segment) {
+        if (segment.HasText()) {
+            if (!segment.textLayout) {
+                FontStyle fstyle = {
+                        .fontFamily = style.fontFamily,
+                        .fontSize = style.fontSize,
+                        .fontWeight = style.fontWeight,
+                        .fontSlant = FontSlant::Normal
+                };
+                //auto txtMarkup = fmt::format("<span font=\"{}\">{}</span>", fstyle.ToFontDesc(), segment.text);
+                segment.textLayout = ctx->CreateTextLayout("<span>"+segment.text+"</span>", true);
+                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontFamily(style.fontFamily));
+                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontWeight(style.fontWeight));
+                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontSize(style.fontSize));
+                segment.textLayout->SetAlignment(segment.alignment);
+                segment.textLayout->SetVerticalAlignment(VerticalAlignment::Middle);
+            }
+            return segment.textLayout.get();
+        } else {
+            return nullptr;
         }
     }
 
@@ -366,9 +362,9 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasSegmentedControl::HandleMouseDown(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) return false;
+        if (!Contains(event.pointer)) return false;
 
-        int index = GetSegmentAtPosition(event.x, event.y);
+        int index = GetSegmentAtPosition(event.pointer.x, event.pointer.y);
         if (index >= 0 && segments[index].enabled) {
             pressedIndex = index;
             RequestRedraw();
@@ -380,7 +376,7 @@ namespace UltraCanvas {
 
     bool UltraCanvasSegmentedControl::HandleMouseUp(const UCEvent &event) {
         if (pressedIndex >= 0) {
-            int index = GetSegmentAtPosition(event.x, event.y);
+            int index = GetSegmentAtPosition(event.pointer.x, event.pointer.y);
 
             if (index == pressedIndex && segments[index].enabled) {
                 // Handle click based on selection mode
@@ -417,7 +413,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasSegmentedControl::HandleMouseMove(const UCEvent& event) {
-        if (!Contains(event.x, event.y)) {
+        if (!Contains(event.pointer)) {
             if (hoveredIndex != -1) {
                 hoveredIndex = -1;
                 RequestRedraw();
@@ -425,7 +421,7 @@ namespace UltraCanvas {
             return false;
         }
 
-        int index = GetSegmentAtPosition(event.x, event.y);
+        int index = GetSegmentAtPosition(event.pointer.x, event.pointer.y);
         if (index != hoveredIndex) {
             hoveredIndex = index;
 

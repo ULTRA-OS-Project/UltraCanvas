@@ -1,7 +1,7 @@
 // include/UltraCanvasCommonTypes.h
 // Unified common types and structures for UltraCanvas Framework
-// Version: 2.0.0
-// Last Modified: 2024-12-19
+// Version: 2.1.0
+// Last Modified: 2026-04-10
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -10,7 +10,47 @@
 #include <vector>
 #include <string>
 
+// Platform-specific native window handle for parent window support
+// This ensures native dialogs stay on top of their parent window
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#ifdef DrawText
+#undef DrawText
+#endif
+#ifdef CreateWindow
+#undef CreateWindow
+#endif
+#ifdef CreateDialog
+#undef CreateDialog
+#endif
+#ifdef RGB
+#undef RGB
+#endif
+#ifdef CopyMemory
+#undef CopyMemory
+#endif
+#ifdef Rect
+#undef Rect
+#endif
+#elif defined(__linux__) || defined(__unix__)
+#include <X11/Xlib.h>
+#elif defined(__APPLE__)
+#endif
+
 namespace UltraCanvas {
+
+    // ===== NATIVE WINDOW HANDLE TYPE =====
+// Platform-specific native window handle for parent window support
+// This ensures native dialogs stay on top of their parent window
+#if defined(_WIN32) || defined(_WIN64)
+    using NativeWindowHandle = HWND;  // HWND
+#elif defined(__linux__) || defined(__unix__)
+    using NativeWindowHandle = XID;  // X11 Window
+#elif defined(__APPLE__)
+    using NativeWindowHandle = void*;
+#else
+    using NativeWindowHandle = void*;
+#endif
 
 // ===== COMMON GEOMETRIC TYPES =====
 template <typename T>
@@ -18,6 +58,22 @@ struct Point2D {
     T x, y;
 
     Point2D(T px = 0, T py = 0) : x(px), y(py) {}
+
+    template <typename U>
+    Point2D(U px = 0, U py = 0) : x(static_cast<T>(px)), y(static_cast<T>(py)) {}
+
+    // Cross-type converting constructor (e.g. Point2Df from Point2Di)
+    template <typename U>
+    Point2D(const Point2D<U>& other)
+        : x(static_cast<T>(other.x)), y(static_cast<T>(other.y)) {}
+
+    // Cross-type assignment (e.g. Point2Df = Point2Di)
+    template <typename U>
+    Point2D& operator=(const Point2D<U>& other) {
+        x = static_cast<T>(other.x);
+        y = static_cast<T>(other.y);
+        return *this;
+    }
 
     // Operators
     Point2D operator+(const Point2D& other) const { return Point2D(x + other.x, y + other.y); }
@@ -46,11 +102,18 @@ struct Point2D {
         T len = Length();
         return len > 0 ? Point2D(x / len, y / len) : Point2D(0, 0);
     }
+
+    bool operator==(const Point2D& other) const {
+        return x == other.x && y == other.y;
+    }
+
+    bool operator!=(const Point2D& other) const {
+        return !(*this == other);
+    }
 };
 
-typedef struct Point2D<float> Point2Df;
+typedef struct Point2D<double> Point2Df;
 typedef struct Point2D<int> Point2Di;
-typedef struct Point2D<long> Point2Dl;
 
 
 template <typename T>
@@ -58,10 +121,42 @@ struct Size2D {
     T width, height;
 
     Size2D(T w = 0, T h = 0) : width(w), height(h) {}
+
+    template <typename U>
+    Size2D(U w = 0, U h = 0) : width(static_cast<T>(w)), height(static_cast<T>(h)) {}
+
+    // Cross-type converting constructor (e.g. Size2Df from Size2Di)
+    template <typename U>
+    Size2D(const Size2D<U>& other)
+        : width(static_cast<T>(other.width)), height(static_cast<T>(other.height)) {}
+
+    // Cross-type assignment (e.g. Size2Df = Size2Di)
+    template <typename U>
+    Size2D& operator=(const Size2D<U>& other) {
+        width = static_cast<T>(other.width);
+        height = static_cast<T>(other.height);
+        return *this;
+    }
+
+    bool IsValid() {
+        return (width >= 0 && height >= 0);
+    }
+
+    constexpr Size2D INVALID() {
+        return {-1, -1};
+    }
+
+    bool operator==(const Size2D& other) const {
+        return width == other.width && height == other.height;
+    }
+
+    bool operator!=(const Size2D& other) const {
+        return !(*this == other);
+    }
 };
-typedef struct Size2D<float> Size2Df;
+
+typedef struct Size2D<double> Size2Df;
 typedef struct Size2D<int> Size2Di;
-typedef struct Size2D<long> Size2Dl;
 
 template <typename T>
 struct Rect2D {
@@ -69,6 +164,31 @@ struct Rect2D {
 
     Rect2D(T px = 0, T py = 0, T w = 0, T h = 0)
         : x(px), y(py), width(w), height(h) {}
+
+    template <typename U>
+    Rect2D(U px = 0, U py = 0, U w = 0, U h = 0)
+            : x(static_cast<T>(px)), y(static_cast<T>(py)), width(static_cast<T>(w)), height(static_cast<T>(h)) {}
+
+    Rect2D(Point2D<T> pt, Size2D<T> sz)
+            : x(pt.x), y(pt.y), width(sz.width), height(sz.height) {}
+
+    // Cross-type converting constructor (e.g. Rect2Df from Rect2Di)
+    template <typename U>
+    Rect2D(const Rect2D<U>& other)
+        : x(static_cast<T>(other.x)),
+          y(static_cast<T>(other.y)),
+          width(static_cast<T>(other.width)),
+          height(static_cast<T>(other.height)) {}
+
+    // Cross-type assignment (e.g. Rect2Df = Rect2Di)
+    template <typename U>
+    Rect2D& operator=(const Rect2D<U>& other) {
+        x = static_cast<T>(other.x);
+        y = static_cast<T>(other.y);
+        width = static_cast<T>(other.width);
+        height = static_cast<T>(other.height);
+        return *this;
+    }
 
     // Convenience methods
     T Left() const { return x; }
@@ -80,7 +200,14 @@ struct Rect2D {
     Point2D<T> BottomLeft() const { return Point2D<T>(x, y + height); }
     Point2D<T> BottomRight() const { return Point2D<T>(x + width, y + height); }
     Point2D<T> Center() const { return Point2D<T>(x + width / 2, y + height / 2); }
+    Size2D<T> Size() const { return Size2D<T>(width, height); };
 
+    Rect2D<T> SetPosition(Point2D<T> pt) const { return Rect2D<T>(pt.x, pt.y, width, height); }
+    Rect2D<T> SetSize(Size2D<T> sz) const { return Rect2D<T>(x, y, sz.width, sz.height); }
+
+    bool IsValid() {
+        return (width >= 0 && height >= 0);
+    }
     bool Contains(const Point2D<T>& point) const {
         return point.x >= x && point.x <= x + width && point.y >= y && point.y <= y + height;
     }
@@ -134,6 +261,10 @@ struct Rect2D {
         return Rect2D(left, top, right - left, bottom - top);
     }
 
+    Point2D<T> CenterPoint(const Size2D<T>& sz) const {
+        return Point2D<T>(x + (width - sz.width) / 2, y + (height - sz.height) / 2);
+    }
+
     bool operator==(const Rect2D& other) const {
         return x == other.x && y == other.y && width == other.width && height == other.height;
     }
@@ -141,11 +272,12 @@ struct Rect2D {
     bool operator!=(const Rect2D& other) const {
         return !(*this == other);
     }
+
+    inline static Rect2D INVALID = {-1, -1, -1, -1};
 };
 
-typedef struct Rect2D<float> Rect2Df;
+typedef struct Rect2D<double> Rect2Df;
 typedef struct Rect2D<int> Rect2Di;
-typedef struct Rect2D<long> Rect2Dl;
 
 struct UCMargins {
     int left = 0;
@@ -298,6 +430,9 @@ inline Color RGBA(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) {
     return Color(r, g, b, a);
 }
 
+#ifdef RGB
+#undef RGB
+#endif
 inline Color RGB(uint8_t r, uint8_t g, uint8_t b) {
     return Color(r, g, b, 255);
 }
@@ -333,13 +468,14 @@ inline Color HSV(float h, float s, float v, uint8_t a = 255) {
 }
 
 struct UCDashPattern {
-    std::vector<double> dashes;
-    double offset;
+    std::vector<double> dashes = {};
+    double offset = 0;
     UCDashPattern() : offset(0.0) {}
     UCDashPattern(const std::vector<double>& d, double o = 0.0)
             : dashes(d), offset(o) {}
+    
+    static UCDashPattern EMPTY;
 };
-
 // ===== MOUSE POINTER TYPES =====
 enum class UCMouseCursor {
     Default = 0,        // Standard arrow
@@ -351,12 +487,16 @@ enum class UCMouseCursor {
     Cross = 5,         // Crosshair
     Help = 6,          // Help/question mark
     NotAllowed = 7,    // Not allowed/prohibited
-    SizeAll = 8,       // Four-directional resize
-    SizeNS = 9,        // North-South resize
-    SizeWE = 10,       // West-East resize
-    SizeNWSE = 11,     // Northwest-Southeast resize
-    SizeNESW = 12,     // Northeast-Southwest resize
-    Custom = 99        // Custom cursor
+    LookingGlass = 8,         // Search/Zoom looking glass
+    SizeAll = 9,       // Four-directional resize
+    SizeNS = 10,        // North-South resize
+    SizeWE = 11,       // West-East resize
+    SizeNWSE = 12,     // Northwest-Southeast resize
+    SizeNESW = 13,     // Northeast-Southwest resize
+    ContextMenu = 14,
+    Custom1 = 101,        // Custom cursor
+    Custom2 = 102,        // Custom cursor
+    Custom3 = 103        // Custom cursor
 };
 
 // ===== COMMON ENUMS =====
@@ -368,11 +508,10 @@ enum class TextAlignment {
     Justify
 };
 
-enum class TextVerticalAlignment {
+enum class VerticalAlignment {
     Top = 0,
     Middle = 1,
-    Bottom = 2,
-    Baseline = 3
+    Bottom = 2
 };
 
 enum class Direction {

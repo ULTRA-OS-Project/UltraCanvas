@@ -1,11 +1,12 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
-// Version: 2.0.1
-// Last Modified: 2025-12-05
+// Version: 2.1.1
+// Last Modified: 2026-05-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasMacOSWindow.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 
 #import <Cocoa/Cocoa.h>
@@ -13,81 +14,97 @@
 
 #include <iostream>
 #include <cstring>
+#include "UltraCanvasDebug.h"
 
 @interface UltraCanvasView : NSView {
     UltraCanvas::UltraCanvasMacOSWindow* ultraCanvasWindow;
-    cairo_surface_t* cairoSurface;
+    cairo_surface_t* nativeSurface;
 }
 
 @property (nonatomic, assign) UltraCanvas::UltraCanvasMacOSWindow* ultraCanvasWindow;
-@property (nonatomic, assign) cairo_surface_t* cairoSurface;
+@property (nonatomic, assign) cairo_surface_t* nativeSurface;
 
 @end
 
 @implementation UltraCanvasView
 
 @synthesize ultraCanvasWindow;
-@synthesize cairoSurface;
+@synthesize nativeSurface;
 
 - (instancetype)initWithFrame:(NSRect)frameRect window:(UltraCanvas::UltraCanvasMacOSWindow*)window {
     self = [super initWithFrame:frameRect];
     if (self) {
         ultraCanvasWindow = window;
-        cairoSurface = nullptr;
+        nativeSurface = nullptr;
         [self setWantsLayer:YES];
+        // Make the layer hold backing-resolution pixels so the offscreen Cairo
+        // bitmap (which we render at backing dims) maps 1:1 to screen pixels.
+        // The actual scale is applied per-window in CreateNativeCairoSurface
+        // and OnWindowDidChangeBackingProperties; this just primes the layer
+        // before the view is attached to a window.
+        if (self.layer) {
+            self.layer.contentsScale = self.window ? [self.window backingScaleFactor] : 1.0;
+        }
     }
     return self;
 }
 
-void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* cairoSurface) {
-    cairo_surface_t* viewSurface = cairo_quartz_surface_create_for_cg_context(viewCtx, w, h);
-    cairo_t* cr = cairo_create(viewSurface);
-
-    // Single operation: paint source surface to view
-    cairo_set_source_surface(cr, cairoSurface, 0, 0);
-    cairo_paint(cr);
-
-    cairo_destroy(cr);
-    cairo_surface_destroy(viewSurface);
-}
-
 - (void)drawRect:(NSRect)dirtyRect {
-    if (!cairoSurface) return;
+    if (!nativeSurface) return;
 
     // Get view's CGContext
     CGContextRef viewCtx = [[NSGraphicsContext currentContext] CGContext];
     if (!viewCtx) return;
 
     // Flush pending Cairo operations
-    cairo_surface_flush(cairoSurface);
+    cairo_surface_flush(nativeSurface);
 
-    // Create a temporary Cairo surface wrapping the VIEW's context
-    NSRect bounds = [self bounds];
-    int w = (int)bounds.size.width;
-    int h = (int)bounds.size.height;
+    // Bypass Cairo for the final blit: the view's CGContext already has a
+    // device-scale CTM applied by Cocoa, and wrapping it as a Cairo surface
+    // would force Cairo to rasterize at point grain (losing Retina detail).
+    // Pulling the underlying CGBitmapContext from the offscreen Cairo Quartz
+    // surface and CGContextDrawImage'ing it gives a 1:1 backing-pixel blit.
+    CGContextRef offCtx = cairo_quartz_surface_get_cg_context(nativeSurface);
+    if (!offCtx) return;
 
-    // Wrap the view's CGContext in a Cairo surface
-//    measureExecutionTime("dirtyRect", _drawScreen, w, h, viewCtx, cairoSurface);
-//    return;
+    CGImageRef img = CGBitmapContextCreateImage(offCtx);
+    if (!img) return;
 
-    cairo_surface_t* viewSurface = cairo_quartz_surface_create_for_cg_context(viewCtx, w, h);
-    cairo_t* cr = cairo_create(viewSurface);
-
-    // Handle coordinate flip (NSView with isFlipped:YES)
-    // Cairo and Quartz both use bottom-left origin, but isFlipped changes this
-//    cairo_translate(cr, 0, h);
-//    cairo_scale(cr, 1.0, -1.0);
-
-    // Single operation: paint source surface to view
-    cairo_set_source_surface(cr, cairoSurface, 0, 0);
-    cairo_paint(cr);
-
-    cairo_destroy(cr);
-    cairo_surface_destroy(viewSurface);
+    NSRect bounds = [self bounds]; // logical points
+    CGContextSaveGState(viewCtx);
+    // No interpolation — source pixels and destination backing pixels match
+    // exactly when the offscreen is created at backingScaleFactor.
+    CGContextSetInterpolationQuality(viewCtx, kCGInterpolationNone);
+    // The view is flipped (isFlipped == YES) so AppKit gave us a CGContext
+    // whose Y-axis grows downward. CGContextDrawImage assumes Y-up, which
+    // would render the bitmap upside down. Locally invert before drawing.
+    CGContextTranslateCTM(viewCtx, NSMinX(bounds), NSMaxY(bounds));
+    CGContextScaleCTM(viewCtx, 1.0, -1.0);
+    CGContextDrawImage(viewCtx, CGRectMake(0, 0, NSWidth(bounds), NSHeight(bounds)), img);
+    CGContextRestoreGState(viewCtx);
+    CGImageRelease(img);
 }
 
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)isFlipped { return YES; }
+
+// Override to prevent default NSView behavior (system beep) for unhandled keys.
+// Key events are handled through the UltraCanvas event system at the application level.
+- (void)keyDown:(NSEvent *)event {}
+
+// Sent by AppKit when the view's backing scale changes (window dragged to a
+// different display, or the system reports a scale change). Forward to the
+// C++ window so the offscreen Cairo surface is recreated at the new size.
+- (void)viewDidChangeBackingProperties {
+    [super viewDidChangeBackingProperties];
+    if (self.layer && self.window) {
+        self.layer.contentsScale = [self.window backingScaleFactor];
+    }
+    if (ultraCanvasWindow) {
+        ultraCanvasWindow->OnWindowDidChangeBackingProperties();
+    }
+}
+
 
 @end
 
@@ -108,6 +125,7 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* cairoSurfa
 - (void)windowDidResignKey:(NSNotification*)notification;
 - (void)windowDidMiniaturize:(NSNotification*)notification;
 - (void)windowDidDeminiaturize:(NSNotification*)notification;
+- (void)windowDidChangeBackingProperties:(NSNotification*)notification;
 
 @end
 
@@ -127,13 +145,13 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* cairoSurfa
     if (ultraCanvasWindow) {
         ultraCanvasWindow->OnWindowWillClose();
     }
-    return YES;
+    return NO; // We handle closing ourselves via Close() -> DestroyNative()
 }
 
 - (void)windowWillClose:(NSNotification*)notification {
-    if (ultraCanvasWindow) {
-        ultraCanvasWindow->OnWindowWillClose();
-    }
+    // Do NOT call OnWindowWillClose() here - it is already called in windowShouldClose:.
+    // This also fires when DestroyNative() calls [nsWindow close], at which point
+    // the window is already being destroyed.
 }
 
 - (void)windowDidResize:(NSNotification*)notification {
@@ -172,6 +190,12 @@ void _drawScreen(int w, int h, CGContextRef viewCtx, cairo_surface_t* cairoSurfa
     }
 }
 
+- (void)windowDidChangeBackingProperties:(NSNotification*)notification {
+    if (ultraCanvasWindow) {
+        ultraCanvasWindow->OnWindowDidChangeBackingProperties();
+    }
+}
+
 - (void)dealloc {
     ultraCanvasWindow = nullptr;
 }
@@ -184,9 +208,8 @@ namespace UltraCanvas {
     UltraCanvasMacOSWindow::UltraCanvasMacOSWindow()
             :  nsWindow(nullptr)
             , contentView(nullptr)
-            , windowDelegate(nullptr)
-            , cairoSurface(nullptr) {
-        std::cout << "UltraCanvas macOS: Window constructor started" << std::endl;
+            , windowDelegate(nullptr) {
+        debugOutput << "UltraCanvas macOS: Window constructor started" << std::endl;
     }
 
 
@@ -199,7 +222,13 @@ namespace UltraCanvas {
             renderContext.reset();
 
             // Destroy Cairo surface
-            DestroyCairoSurface();
+            DestroyNativeCairoSurface();
+
+            // Detach delegate from window BEFORE closing or releasing it,
+            // otherwise [nsWindow close] fires windowWillClose: on a freed delegate
+            if (nsWindow) {
+                [nsWindow setDelegate:nil];
+            }
 
             // Release delegate
             if (windowDelegate) {
@@ -212,49 +241,58 @@ namespace UltraCanvas {
                 [nsWindow close];
                 nsWindow = nullptr;
             }
-            std::cout << "UltraCanvas macOS: Native Window destroyed" << std::endl;
+            debugOutput << "UltraCanvas macOS: Native Window destroyed" << std::endl;
         }
     }
 
     // ===== WINDOW CREATION =====
     bool UltraCanvasMacOSWindow::CreateNative() {
         if (_created) {
-            std::cout << "UltraCanvas macOS: Window already created" << std::endl;
+            debugOutput << "UltraCanvas macOS: Window already created" << std::endl;
             return true;
         }
 
         auto application = UltraCanvasApplication::GetInstance();
         if (!application || !application->IsInitialized()) {
-            std::cerr << "UltraCanvas macOS: Cannot create window - application not ready" << std::endl;
+            debugOutput << "UltraCanvas macOS: Cannot create window - application not ready" << std::endl;
             return false;
         }
 
-        std::cout << "UltraCanvas macOS: Creating NSWindow..." << std::endl;
+        debugOutput << "UltraCanvas macOS: Creating NSWindow..." << std::endl;
 
         @autoreleasepool {
             if (!CreateNSWindow()) {
-                std::cerr << "UltraCanvas macOS: Failed to create NSWindow" << std::endl;
+                debugOutput << "UltraCanvas macOS: Failed to create NSWindow" << std::endl;
                 return false;
             }
 
-            if (!CreateCairoSurface()) {
-                std::cerr << "UltraCanvas macOS: Failed to create Cairo surface" << std::endl;
+            if (!CreateNativeCairoSurface()) {
+                debugOutput << "UltraCanvas macOS: Failed to create Cairo surface" << std::endl;
                 nsWindow = nullptr;
                 return false;
             }
 
-            try {
-                renderContext = std::make_unique<RenderContextCairo>(
-                    cairoSurface, config_.width, config_.height, false);
-                std::cout << "UltraCanvas macOS: Render context created successfully" << std::endl;
-            } catch (const std::exception& e) {
-                std::cerr << "UltraCanvas macOS: Failed to create render context: " << e.what() << std::endl;
-                DestroyCairoSurface();
-                nsWindow = nullptr;
-                return false;
+//            try {
+//                renderContext = std::make_unique<RenderContextCairo>(
+//                    cairoSurface, config_.width, config_.height, false);
+//                debugOutput << "UltraCanvas macOS: Render context created successfully" << std::endl;
+//            } catch (const std::exception& e) {
+//                debugOutput << "UltraCanvas macOS: Failed to create render context: " << e.what() << std::endl;
+//                DestroyCairoSurface();
+//                nsWindow = nullptr;
+//                return false;
+//            }
+
+            // Apply window icon
+            std::string iconToUse = config_.iconPath;
+            if (iconToUse.empty()) {
+                iconToUse = application->GetDefaultWindowIcon();
+            }
+            if (!iconToUse.empty()) {
+                SetWindowIcon(iconToUse);
             }
 
-            std::cout << "UltraCanvas macOS: CreateNative Native Window created successfully!" << std::endl;
+            debugOutput << "UltraCanvas macOS: CreateNative Native Window created successfully!" << std::endl;
             return true;
         }
     }
@@ -270,12 +308,16 @@ namespace UltraCanvas {
             );
 
             // Window style mask
-            NSWindowStyleMask styleMask = NSWindowStyleMaskTitled |
-                                          NSWindowStyleMaskClosable |
-                                          NSWindowStyleMaskMiniaturizable;
-
-            if (config_.resizable) {
-                styleMask |= NSWindowStyleMaskResizable;
+            NSWindowStyleMask styleMask;
+            if (config_.type == WindowType::Borderless) {
+                styleMask = NSWindowStyleMaskBorderless;
+            } else {
+                styleMask = NSWindowStyleMaskTitled |
+                            NSWindowStyleMaskClosable |
+                            NSWindowStyleMaskMiniaturizable;
+                if (config_.resizable) {
+                    styleMask |= NSWindowStyleMaskResizable;
+                }
             }
 
             // Create window
@@ -285,7 +327,7 @@ namespace UltraCanvas {
                                                        defer:NO];
 
             if (!nsWindow) {
-                std::cerr << "UltraCanvas macOS: Failed to create NSWindow" << std::endl;
+                debugOutput << "UltraCanvas macOS: Failed to create NSWindow" << std::endl;
                 return false;
             }
 
@@ -293,6 +335,13 @@ namespace UltraCanvas {
             [nsWindow setTitle:[NSString stringWithUTF8String:config_.title.c_str()]];
             [nsWindow setReleasedWhenClosed:NO];
             [nsWindow setAcceptsMouseMovedEvents:YES];
+
+            // Opt out of AppKit's automatic window state restoration. The framework
+            // owns its own window/UI state, and AppKit's NSPersistentUIManager
+            // periodically archives restorable windows via NSKeyedArchiver — that
+            // path crashes on macOS 26.x while encoding our custom Cairo NSView
+            // (CFRelease alignment fault inside __CFBinaryPlistWriteOrPresize).
+            [nsWindow setRestorable:NO];
 
             // Create custom view for Cairo rendering
             NSRect contentFrame = [[nsWindow contentView] frame];
@@ -304,85 +353,114 @@ namespace UltraCanvas {
             windowDelegate = (__bridge_retained void*)delegate;
             [nsWindow setDelegate:delegate];
 
-            std::cout << "UltraCanvas macOS: NSWindow created successfully" << std::endl;
+            debugOutput << "UltraCanvas macOS: NSWindow created successfully" << std::endl;
             return true;
         }
     }
 
-    bool UltraCanvasMacOSWindow::CreateCairoSurface() {
+    bool UltraCanvasMacOSWindow::RefreshBackingScaleFactor() {
+        float newScale = 1.0f;
+        @autoreleasepool {
+            if (nsWindow) {
+                newScale = static_cast<float>([nsWindow backingScaleFactor]);
+            } else {
+                NSScreen* screen = [NSScreen mainScreen];
+                if (screen) newScale = static_cast<float>([screen backingScaleFactor]);
+            }
+        }
+        if (newScale <= 0.0f) newScale = 1.0f;
+        bool changed = (newScale != backingScaleFactor);
+        backingScaleFactor = newScale;
+        return changed;
+    }
+
+    bool UltraCanvasMacOSWindow::CreateNativeCairoSurface() {
         //std::lock_guard<std::mutex> lock(cairoMutex);
 
-        std::cout << "UltraCanvas macOS: Creating Cairo surface..." << std::endl;
+        debugOutput << "UltraCanvas macOS: Creating Cairo surface..." << std::endl;
 
-        // Get window dimensions
+        // Get logical (point) window dimensions
         int width = config_.width;
         int height = config_.height;
 
         if (width <= 0 || height <= 0) {
-            std::cerr << "UltraCanvas macOS: Invalid surface dimensions" << std::endl;
+            debugOutput << "UltraCanvas macOS: Invalid surface dimensions" << std::endl;
             return false;
         }
 
-        // Create Quartz surface for Cairo
-        cairoSurface = cairo_quartz_surface_create(CAIRO_FORMAT_ARGB32, width, height);
+        // Pull current per-window backing scale (queries [nsWindow backingScaleFactor]).
+        // 1.0 on standard displays, 2.0 on Retina, etc.
+        RefreshBackingScaleFactor();
+        const float scale = backingScaleFactor;
+        const int pixW = static_cast<int>(width * scale);
+        const int pixH = static_cast<int>(height * scale);
 
-        if (!cairoSurface) {
-            std::cerr << "UltraCanvas macOS: Failed to create Cairo Quartz surface" << std::endl;
+        // Create Quartz surface at *backing pixel* dimensions so font/vector
+        // rasterization runs at full Retina detail.
+        nativeSurface = cairo_quartz_surface_create(CAIRO_FORMAT_ARGB32, pixW, pixH);
+
+        if (!nativeSurface) {
+            debugOutput << "UltraCanvas macOS: Failed to create Cairo Quartz surface" << std::endl;
             return false;
         }
 
-        cairo_status_t status = cairo_surface_status(cairoSurface);
+        cairo_status_t status = cairo_surface_status(static_cast<cairo_surface_t*>(nativeSurface));
         if (status != CAIRO_STATUS_SUCCESS) {
-            std::cerr << "UltraCanvas macOS: Cairo surface error: "
+            debugOutput << "UltraCanvas macOS: Cairo surface error: "
                       << cairo_status_to_string(status) << std::endl;
-            cairo_surface_destroy(cairoSurface);
-            cairoSurface = nullptr;
+            cairo_surface_destroy(static_cast<cairo_surface_t*>(nativeSurface));
+            nativeSurface = nullptr;
             return false;
         }
 
-        // Get CGContext from Cairo surface
-        //cgContext = cairo_quartz_surface_get_cg_context(cairoSurface);
+        // Tell Cairo that 1 user-space unit = `scale` device pixels on this
+        // surface. All higher-level UI drawing keeps using logical coordinates;
+        // Cairo internally rasterizes onto the larger pixel grid.
+        cairo_surface_set_device_scale(static_cast<cairo_surface_t*>(nativeSurface), scale, scale);
 
         // Update custom view
         if (contentView) {
-            [(UltraCanvasView*)contentView setCairoSurface:cairoSurface];
+            ((UltraCanvasView*)contentView).nativeSurface = (cairo_surface_t*)nativeSurface;
+            // Keep the view's CALayer at backing resolution so the final blit
+            // is presented without additional Cocoa scaling.
+            if (((NSView*)contentView).layer) {
+                ((NSView*)contentView).layer.contentsScale = scale;
+            }
         }
 
-        std::cout << "UltraCanvas macOS: Cairo surface created successfully" << std::endl;
+        debugOutput << "UltraCanvas macOS: Cairo surface created successfully ("
+                    << pixW << "x" << pixH << " px @ " << scale << "x)" << std::endl;
         return true;
     }
 
-    void UltraCanvasMacOSWindow::DestroyCairoSurface() {
+    void UltraCanvasMacOSWindow::DestroyNativeCairoSurface() {
         std::lock_guard<std::mutex> lock(cairoMutex);
 
-        if (cairoSurface) {
-            std::cout << "UltraCanvas macOS: Destroying Cairo surface..." << std::endl;
-            cairo_surface_destroy(cairoSurface);
-            cairoSurface = nullptr;
+        if (nativeSurface) {
+            debugOutput << "UltraCanvas macOS: Destroying Cairo surface..." << std::endl;
+            cairo_surface_destroy(static_cast<cairo_surface_t*>(nativeSurface));
+            nativeSurface = nullptr;
         }
 
         //cgContext = nullptr;
     }
 
-    void UltraCanvasMacOSWindow::ResizeCairoSurface(int width, int height) {
+    void UltraCanvasMacOSWindow::DoResizeNative() {
         std::lock_guard<std::mutex> lock(cairoMutex);
+        int w = config_.width;
+        int h = config_.height;
 
-        std::cout << "UltraCanvas macOS: Resizing Cairo surface to " << width << "x" << height << std::endl;
+        debugOutput << "UltraCanvasMacOSWindow::DoResizeNative: Resizing Cairo surface to " << w << "x" << h << std::endl;
 
-        auto oldCairoSurface = cairoSurface;
+        auto oldCairoSurface = nativeSurface;
 
-        if (!CreateCairoSurface()) {
+        if (!CreateNativeCairoSurface()) {
             return;
         }
 
         // Destroy old surface
         if (oldCairoSurface) {
-            cairo_surface_destroy(oldCairoSurface);
-        }
-
-            // Update render context
-        if (renderContext) {
-            renderContext->SetTargetSurface(cairoSurface, width, height);
+            cairo_surface_destroy(static_cast<cairo_surface_t*>(oldCairoSurface));
         }
     }
 
@@ -390,9 +468,9 @@ namespace UltraCanvas {
     void UltraCanvasMacOSWindow::Show() {
         if (!_created || visible) return;
 
-        std::cout << "UltraCanvas macOS: Showing window..." << std::endl;
+        debugOutput << "UltraCanvas macOS: Showing window..." << std::endl;
         if (!UltraCanvasApplication::GetInstance()->IsRunning()) {
-            std::cout << "UltraCanvas Application is not running yet, delaying window show..." << std::endl;
+            debugOutput << "UltraCanvas Application is not running yet, delaying window show..." << std::endl;
             pendingShow = true;
             return;
         }
@@ -400,10 +478,6 @@ namespace UltraCanvas {
         pendingShow = false;
         @autoreleasepool {
             [nsWindow makeKeyAndOrderFront:nil];
-
-    //        [nsWindow makeKey];
-
-            [[nsWindow contentView] setNeedsDisplay:YES];
 
             // Ensure the window is not miniaturized
             if ([nsWindow isMiniaturized]) {
@@ -415,12 +489,13 @@ namespace UltraCanvas {
         if (onWindowShow) {
             onWindowShow();
         }
+        RequestRedraw();
     }
 
     void UltraCanvasMacOSWindow::Hide() {
         if (!_created || !visible) return;
 
-        std::cout << "UltraCanvas macOS: Hiding window..." << std::endl;
+        debugOutput << "UltraCanvas macOS: Hiding window..." << std::endl;
 
         @autoreleasepool {
             [nsWindow orderOut:nil];
@@ -466,6 +541,15 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasMacOSWindow::RaiseAndFocus() {
+        if (!_created) return;
+
+        @autoreleasepool {
+            [nsWindow makeKeyAndOrderFront:nil];
+            [NSApp activateIgnoringOtherApps:YES];
+        }
+    }
+
     // ===== WINDOW PROPERTIES =====
     void UltraCanvasMacOSWindow::SetWindowTitle(const std::string& title) {
         config_.title = title;
@@ -474,6 +558,55 @@ namespace UltraCanvas {
             @autoreleasepool {
                 [nsWindow setTitle:[NSString stringWithUTF8String:title.c_str()]];
             }
+        }
+    }
+
+    void UltraCanvasMacOSWindow::SetWindowIcon(const std::string& iconPath) {
+        if (iconPath.empty()) return;
+
+        // Load the icon image
+        auto img = UCImageRaster::Load(iconPath, false);
+        if (!img || !img->IsValid()) {
+            debugOutput << "UltraCanvas macOS: Failed to load icon: " << iconPath << std::endl;
+            return;
+        }
+
+        auto pixmap = img->GetPixmap();
+        if (!pixmap || !pixmap->IsValid()) {
+            debugOutput << "UltraCanvas macOS: Failed to create pixmap for icon" << std::endl;
+            return;
+        }
+
+        int w = pixmap->GetWidth();
+        int h = pixmap->GetHeight();
+        uint32_t* pixels = pixmap->GetPixelData();
+        if (!pixels || w <= 0 || h <= 0) return;
+
+        @autoreleasepool {
+            // Create CGImage from ARGB pixel data
+            CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+            CGContextRef ctx = CGBitmapContextCreate(
+                pixels, w, h, 8, w * 4,
+                colorSpace,
+                kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Host
+            );
+
+            if (ctx) {
+                CGImageRef cgImage = CGBitmapContextCreateImage(ctx);
+                if (cgImage) {
+                    NSImage* nsImage = [[NSImage alloc] initWithCGImage:cgImage
+                                                                  size:NSMakeSize(w, h)];
+                    if (nsImage) {
+                        // macOS sets icon at the application level (Dock icon)
+                        [NSApp setApplicationIconImage:nsImage];
+                        debugOutput << "UltraCanvas macOS: Application icon set (" << w << "x" << h
+                                  << ") from: " << iconPath << std::endl;
+                    }
+                    CGImageRelease(cgImage);
+                }
+                CGContextRelease(ctx);
+            }
+            CGColorSpaceRelease(colorSpace);
         }
     }
 
@@ -501,11 +634,11 @@ namespace UltraCanvas {
             @autoreleasepool {
                 NSSize size = NSMakeSize(width, height);
                 [nsWindow setContentSize:size];
-                ResizeCairoSurface(width, height);
+                _needsResize = true;
             }
+        } else {
+            UltraCanvasWindowBase::SetSize(width, height);
         }
-
-        UltraCanvasWindowBase::SetSize(width, height);
     }
 
     void UltraCanvasMacOSWindow::SetFullscreen(bool fullscreen) {
@@ -522,108 +655,8 @@ namespace UltraCanvas {
         }
     }
 
-    // ===== MOUSE POINTER CONTROL =====
-    void UltraCanvasMacOSWindow::SelectMouseCursorNative(UCMouseCursor cur) {
-        if (!_created) {
-            return;
-        }
-
-        @autoreleasepool {
-            NSCursor* cursor = nil;
-
-            // Map MousePointer enum to NSCursor
-            switch (cur) {
-                case UCMouseCursor::Default:
-                    cursor = [NSCursor arrowCursor];
-                    break;
-
-                case UCMouseCursor::NoCursor:
-                    // Hide cursor - use an invisible cursor
-                    // Note: NSCursor doesn't have a built-in invisible cursor
-                    // We use hideCursor but need to be careful with show/hide balance
-                    [NSCursor hide];
-                    currentMousePointer = ptr;
-                    return;
-
-                case UCMouseCursor::Hand:
-                    cursor = [NSCursor pointingHandCursor];
-                    break;
-
-                case UCMouseCursor::Text:
-                    cursor = [NSCursor IBeamCursor];
-                    break;
-
-                case UCMouseCursor::Wait:
-                    // macOS doesn't have a standard wait cursor
-                    // Use the spinning beach ball effect is system-managed
-                    // Fall back to arrow cursor
-                    cursor = [NSCursor arrowCursor];
-                    break;
-
-                case UCMouseCursor::Cross:
-                    cursor = [NSCursor crosshairCursor];
-                    break;
-
-                case UCMouseCursor::Help:
-                    // macOS 10.15+ has contextualMenuCursor but no help cursor
-                    // Fall back to arrow cursor
-                    cursor = [NSCursor arrowCursor];
-                    break;
-
-                case UCMouseCursor::NotAllowed:
-                    cursor = [NSCursor operationNotAllowedCursor];
-                    break;
-
-                case UCMouseCursor::SizeAll:
-                    // macOS doesn't have a size-all cursor
-                    // Use openHandCursor as closest equivalent
-                    cursor = [NSCursor openHandCursor];
-                    break;
-
-                case UCMouseCursor::SizeNS:
-                    cursor = [NSCursor resizeUpDownCursor];
-                    break;
-
-                case UCMouseCursor::SizeWE:
-                    cursor = [NSCursor resizeLeftRightCursor];
-                    break;
-
-                case UCMouseCursor::SizeNWSE:
-                    // macOS doesn't have diagonal resize cursors by default
-                    // Use a generic resize cursor if available, otherwise arrow
-                    // On macOS 11+, we could use _windowResizeNorthWestSouthEastCursor
-                    // but it's private API. Fall back to arrow.
-                    cursor = [NSCursor arrowCursor];
-                    break;
-
-                case UCMouseCursor::SizeNESW:
-                    // Same as above - no diagonal resize cursor available
-                    cursor = [NSCursor arrowCursor];
-                    break;
-
-                case UCMouseCursor::Custom:
-                    // Custom cursor not implemented - use arrow
-                    cursor = [NSCursor arrowCursor];
-                    break;
-
-                default:
-                    cursor = [NSCursor arrowCursor];
-                    break;
-            }
-
-            // If transitioning from NoCursor, ensure cursor is visible
-            if (currentMousePointer == UCMouseCursor::NoCursor) {
-                [NSCursor unhide];
-            }
-
-            if (cursor) {
-                [cursor set];
-            }
-        }
-    }
-
     // ===== RENDERING =====
-    void UltraCanvasMacOSWindow::Invalidate() {
+    void UltraCanvasMacOSWindow::InvalidateWindowNative() {
         if (!_created || !contentView) return;
 
         @autoreleasepool {
@@ -631,20 +664,45 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMacOSWindow::Flush() {
-        if (!_created || !renderContext) return;
+    NativeWindowHandle UltraCanvasMacOSWindow::GetNativeHandle() const  {
+        return (NativeWindowHandle)(__bridge void*)nsWindow;
+    };
 
-        // Trigger redraw
-        Invalidate();
+    NSWindow* UltraCanvasMacOSWindow::GetNSWindowHandle() const {
+        return (NSWindow*)nsWindow;
+    };
+
+    void UltraCanvasMacOSWindow::GetScreenSize(int& width, int& height) const {
+        @autoreleasepool {
+            NSRect screenFrame = [[NSScreen mainScreen] frame];
+            width = static_cast<int>(screenFrame.size.width);
+            height = static_cast<int>(screenFrame.size.height);
+        }
     }
 
-    unsigned long UltraCanvasMacOSWindow::GetNativeHandle() const  {
-        return (unsigned long)(__bridge_retained void*)nsWindow;
-    };
+    void UltraCanvasMacOSWindow::GetScreenBounds(int& x, int& y, int& width, int& height) const {
+        @autoreleasepool {
+            NSScreen* screen = nil;
+            if (nsWindow) {
+                screen = [nsWindow screen];  // Screen the window currently resides on
+            }
+            if (!screen) {
+                screen = [NSScreen mainScreen];
+            }
+            NSRect frame = [screen frame];
+            // NSScreen frames are already in the unified multi-monitor coordinate
+            // space used by NSWindow's setFrameOrigin (which SetWindowPosition calls
+            // directly), so no y-flip conversion is needed here.
+            x = static_cast<int>(frame.origin.x);
+            y = static_cast<int>(frame.origin.y);
+            width = static_cast<int>(frame.size.width);
+            height = static_cast<int>(frame.size.height);
+        }
+    }
 
     // ===== WINDOW DELEGATE CALLBACKS =====
     void UltraCanvasMacOSWindow::OnWindowWillClose() {
-        std::cout << "UltraCanvas macOS: Window will close callback" << std::endl;
+        debugOutput << "UltraCanvas macOS: Window will close callback" << std::endl;
         Close();
     }
 
@@ -660,11 +718,10 @@ namespace UltraCanvas {
                 config_.width = newWidth;
                 config_.height = newHeight;
 
-                ResizeCairoSurface(newWidth, newHeight);
-
-                if (onWindowResize) {
-                    onWindowResize(newWidth, newHeight);
-                }
+                DoResize();
+                RequestWindowComposition();
+                UpdateAndRender();
+                InvalidateWindowNative();
             }
         }
     }
@@ -684,25 +741,60 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidBecomeKey() {
-        auto application = UltraCanvasApplication::GetInstance();
-        if (application) {
-            application->HandleFocusedWindowChange(this);
-        }
+        UCEvent event;
+        event.type = UCEventType::WindowFocus;
+        event.targetWindow = this;
+        event.nativeWindowHandle = GetNativeHandle();
+        UltraCanvasApplication::GetInstance()->PushEvent(event);
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidResignKey() {
-        auto application = UltraCanvasApplication::GetInstance();
-        if (application && application->GetFocusedWindow() == this) {
-            application->HandleFocusedWindowChange(nullptr);
-        }
+        UCEvent event;
+        event.type = UCEventType::WindowBlur;
+        event.targetWindow = this;
+        event.nativeWindowHandle = GetNativeHandle();
+        UltraCanvasApplication::GetInstance()->PushEvent(event);
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidMiniaturize() {
-        std::cout << "UltraCanvas macOS: Window minimized" << std::endl;
+        debugOutput << "UltraCanvas macOS: Window minimized" << std::endl;
     }
 
     void UltraCanvasMacOSWindow::OnWindowDidDeminiaturize() {
-        std::cout << "UltraCanvas macOS: Window restored from minimized" << std::endl;
+        debugOutput << "UltraCanvas macOS: Window restored from minimized" << std::endl;
+    }
+
+    void UltraCanvasMacOSWindow::OnWindowDidChangeBackingProperties() {
+        if (!_created) return;
+
+        const float oldScale = backingScaleFactor;
+        if (!RefreshBackingScaleFactor()) {
+            // No actual change (e.g. a redundant notification).
+            return;
+        }
+        debugOutput << "UltraCanvas macOS: Backing scale changed " << oldScale
+                    << " -> " << backingScaleFactor << ", recreating Cairo surface" << std::endl;
+
+        // Recreate the offscreen Cairo surface at the new backing dimensions.
+        // Logical width/height stay the same; only the pixel resolution shifts.
+        {
+            std::lock_guard<std::mutex> lock(cairoMutex);
+            auto oldCairoSurface = nativeSurface;
+
+            if (!CreateNativeCairoSurface()) {
+                return;
+            }
+
+            if (oldCairoSurface) {
+                cairo_surface_destroy(static_cast<cairo_surface_t*>(oldCairoSurface));
+            }
+        }
+
+        // Force a full re-layout / repaint at the new resolution.
+        DoResize();
+        RequestWindowComposition();
+        UpdateAndRender();
+        InvalidateWindowNative();
     }
 } // namespace UltraCanvas
 

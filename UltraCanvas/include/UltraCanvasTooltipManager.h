@@ -1,7 +1,7 @@
 // include/UltraCanvasTooltipManager.h
 // Updated tooltip system compatible with unified UltraCanvas architecture
-// Version: 2.0.0
-// Last Modified: 2024-12-19
+// Version: 2.1.1
+// Last Modified: 2026-04-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -9,8 +9,8 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasTimer.h"
 #include <string>
-#include <chrono>
 #include <functional>
 #include <memory>
 
@@ -27,31 +27,55 @@ namespace UltraCanvas {
         // Typography
         std::string fontFamily = "Sans";
         float fontSize = 11.0f;
-        FontWeight fontWeight = FontWeight::Normal;
-        FontSlant fontStyle = FontSlant::Normal;
 
         // Layout
         int paddingLeft = 6;
         int paddingRight = 6;
         int paddingTop = 4;
         int paddingBottom = 4;
-        int maxWidth = 300;
+        int maxWidth = 450;
         int borderWidth = 1;
         float cornerRadius = 3.0f;
 
         // Shadow
         bool hasShadow = true;
         Point2Di shadowOffset = Point2Di(2, 2);
-        float shadowBlur = 3.0f;
 
         // Behavior
-        float showDelay = 0.3f;        // Seconds to wait before showing
-        float hideDelay = 0.2f;        // Seconds to wait before hiding
+        unsigned int showDelay = 300;        // milliseconds to wait before showing
+        unsigned int hideDelay = 200;        // milliseconds to wait before hiding
         int offsetX = 10;              // Offset from cursor
         int offsetY = 10;
         bool followCursor = false;     // Whether tooltip follows mouse movement
 
         TooltipStyle() = default;
+
+        bool operator==(const TooltipStyle& other) const {
+            return backgroundColor == other.backgroundColor
+                && borderColor == other.borderColor
+                && textColor == other.textColor
+                && shadowColor == other.shadowColor
+                && fontFamily == other.fontFamily
+                && fontSize == other.fontSize
+                && paddingLeft == other.paddingLeft
+                && paddingRight == other.paddingRight
+                && paddingTop == other.paddingTop
+                && paddingBottom == other.paddingBottom
+                && maxWidth == other.maxWidth
+                && borderWidth == other.borderWidth
+                && cornerRadius == other.cornerRadius
+                && hasShadow == other.hasShadow
+                && shadowOffset == other.shadowOffset
+                && showDelay == other.showDelay
+                && hideDelay == other.hideDelay
+                && offsetX == other.offsetX
+                && offsetY == other.offsetY
+                && followCursor == other.followCursor;
+        }
+
+        bool operator!=(const TooltipStyle& other) const {
+            return !(*this == other);
+        }
     };
 
 // ===== TOOLTIP MANAGER CLASS =====
@@ -59,32 +83,28 @@ namespace UltraCanvas {
     private:
         // State tracking
         static UltraCanvasWindowBase* targetWindow;
+        static std::unique_ptr<IRenderContext> renderCtx;
         static std::string currentText;
-        static Point2Di tooltipPosition;
+        static Rect2Di tooltipRect;
 //        static Point2Di cursorPosition;
         static bool visible;
         static bool pendingShow;
         static bool pendingHide;
+        static bool needsRedraw;
 
-        // Timing
-        static std::chrono::steady_clock::time_point hoverStartTime;
-        static std::chrono::steady_clock::time_point hideStartTime;
-        static float showDelay;
-        static float hideDelay;
+        // Timing (via Application timer API)
+        static TimerId showTimerId;
+        static TimerId hideTimerId;
 
         // Style and layout
         static TooltipStyle style;
-        static Point2Di tooltipSize;
-        static std::vector<std::string> wrappedLines;
+        static std::unique_ptr<ITextLayout> textLayout;
 
         // Global state
         static bool enabled;
 
     public:
         // ===== CORE FUNCTIONALITY =====
-
-        // Update tooltip state - call this every frame
-        static void Update();
 
         // Show tooltip for an element
         static void UpdateAndShowTooltip(UltraCanvasWindowBase* win, const std::string &text, const Point2Di &position, const TooltipStyle& newStyle);
@@ -109,7 +129,7 @@ namespace UltraCanvas {
         // ===== RENDERING =====
 
         // Render tooltip - call this during window rendering
-        static void Render(IRenderContext* ctx, const UltraCanvasWindowBase* win);
+        static IRenderContext* Render(UltraCanvasWindowBase* win);
 
         // ===== CONFIGURATION =====
 
@@ -142,11 +162,11 @@ namespace UltraCanvas {
         }
 
         static Point2Di GetTooltipPosition() {
-            return tooltipPosition;
+            return tooltipRect.TopLeft();
         }
 
-        static Point2Di GetTooltipSize() {
-            return tooltipSize;
+        static Size2Di GetTooltipSize() {
+            return tooltipRect.Size();
         }
 
         static void UpdateTooltipPosition(const Point2Di& position);
@@ -156,14 +176,9 @@ namespace UltraCanvas {
 
         // ===== INTERNAL HELPER METHODS =====
 
+        static void CancelShowTimer();
+        static void CancelHideTimer();
+
         static void CalculateTooltipLayout();
-
-        static std::vector<std::string> WrapText(const std::string& text, float maxWidth);
-        static std::vector<std::string> SplitWords(const std::string& text);
-
-        static void DrawShadow(IRenderContext* ctx);
-        static void DrawBackground(IRenderContext* ctx);
-        static void DrawBorder(IRenderContext* ctx);
-        static void DrawText(IRenderContext* ctx);
     };
 } // namespace UltraCanvas

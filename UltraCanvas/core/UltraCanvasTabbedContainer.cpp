@@ -1,9 +1,12 @@
 // core/UltraCanvasTabbedContainer.cpp
 // Enhanced tabbed container component with overflow dropdown and search functionality
-// Version: 1.8.0
-// Last Modified: 2025-11-21
+// Version: 1.9.4
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 #include "UltraCanvasTabbedContainer.h"
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasWindow.h"
+#include "UltraCanvasTooltipManager.h"
 #include <string>
 #include <vector>
 #include <functional>
@@ -18,6 +21,29 @@ namespace UltraCanvas {
                                                            long posY, long w, long h)
             : UltraCanvasContainer(elementId, uniqueId, posX, posY, w, h) {
         InitializeOverflowDropdown();
+    }
+
+    void UltraCanvasTabbedContainer::SetBounds(const Rect2Di& b) {
+        UltraCanvasContainer::SetBounds(b);
+        InvalidateTabbar();
+    }
+
+    // Run the tabbar layout pass BEFORE children's UpdateGeometry so that
+    // content widgets (e.g. UltraCanvasTextArea) see their correct bounds when
+    // they compute their own nested layouts — mirrors the pattern in
+    // UltraCanvasContainer::UpdateGeometry that "fixes first-frame positioning".
+    void UltraCanvasTabbedContainer::UpdateGeometry(IRenderContext* ctx) {
+        if (tabbarLayoutDirty) {
+            CalculateLayout();
+            UpdateOverflowDropdown();
+            CalculateLayout();
+            EnsureTabVisible(activeTabIndex);
+            PackTabBar();
+            CalculateLayout();
+            UpdateContentVisibility();
+            tabbarLayoutDirty = false;
+        }
+        UltraCanvasContainer::UpdateGeometry(ctx);
     }
 
     void UltraCanvasTabbedContainer::SetTabHeight(int th) {
@@ -61,7 +87,7 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::ClearDropdownSearch() {
         dropdownSearchText = "";
         dropdownSearchActive = false;
-        UpdateOverflowDropdown();
+        HideSearchAutoComplete();
     }
 
     void UltraCanvasTabbedContainer::SetShowNewTabButton(bool show) {
@@ -97,10 +123,6 @@ namespace UltraCanvas {
 
     void UltraCanvasTabbedContainer::RemoveTab(int index) {
         if (index < 0 || index >= (int)tabs.size()) return;
-
-        if (onTabCloseRequest) {
-            onTabCloseRequest(index);
-        }
 
         if (onTabClose && !onTabClose(index)) {
             return;
@@ -164,7 +186,14 @@ namespace UltraCanvas {
         if (index >= 0 && index < (int)tabs.size()) {
             tabs[index]->badgeText = text;
             tabs[index]->showBadge = show && (!text.empty());
-            tabs[index]->hasBadge = tabs[index]->showBadge;
+            InvalidateTabbar();
+        }
+    }
+
+    void UltraCanvasTabbedContainer::SetTabBadgeColor(int index, const Color &color)
+    {
+        if (index >= 0 && index < (int)tabs.size()) {
+            tabs[index]->badgeBackgroundColor = color;
             InvalidateTabbar();
         }
     }
@@ -173,7 +202,6 @@ namespace UltraCanvas {
         if (index >= 0 && index < (int)tabs.size()) {
             tabs[index]->badgeText = "";
             tabs[index]->showBadge = false;
-            tabs[index]->hasBadge = false;
             InvalidateTabbar();
         }
     }
@@ -193,71 +221,46 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTabbedContainer::InitializeOverflowDropdown() {
-        overflowDropdown = std::make_shared<UltraCanvasDropdown>(
-                GetIdentifier() + "_overflow", 0, 0, 0, overflowDropdownWidth, tabHeight
-        );
-        DropdownStyle st;
-//        st.hasShadow = false;
-        st.borderWidth = 1;
-        overflowDropdown->SetStyle(st);
-        AddChild(overflowDropdown);
-        overflowDropdown->SetVisible(false);
+        overflowButton = std::make_shared<UltraCanvasButton>(
+                GetIdentifier() + "_overflow", 0, 0, 0, overflowDropdownWidth, tabHeight, "");
+        overflowButton->SetIcon(NormalizePath(GetResourcesDir()+"media/icons/arrow_down_solid.svg"));
+        AddChild(overflowButton);
+        overflowButton->SetVisible(false);
+        overflowButton->SetBorder(0, Colors::Transparent);
 
-        overflowDropdown->onSelectionChanged = [this](int selectedIndex, const DropdownItem& item) {
-            if (selectedIndex == -1) {
-                dropdownSearchActive = true;
-                RequestRedraw();
-                return;
-            }
+        overflowButton->onClick = [this]() {
+            ShowSearchAutoComplete();
+        };
 
-            int tabIndex = item.value.empty() ? selectedIndex : std::stoi(item.value);
+        // Create AutoComplete for tab search
+        searchAutoComplete = std::make_shared<UltraCanvasAutoComplete>(
+                GetIdentifier() + "_search", 0, 0, 0, 200, 28);
+        searchAutoComplete->SetPlaceholder("Search tabs...");
+        searchAutoComplete->SetMinCharsToTrigger(0);
+        searchAutoComplete->SetShowPlaceholderAlways(true);
+        searchAutoComplete->SetCloseOnSelect(true);
+        // searchAutoComplete->SetVisible(false);
+        // AddChild(searchAutoComplete);
+
+        AutoCompleteStyle acStyle;
+        acStyle.maxVisibleItems = 999;  // Maximize to window height
+        searchAutoComplete->SetAutocompleteStyle(acStyle);
+
+        searchAutoComplete->onItemSelected = [this](int index, const AutoCompleteItem& item) {
+            int tabIndex = item.value.empty() ? index : std::stoi(item.value);
             if (tabIndex >= 0 && tabIndex < (int)tabs.size()) {
                 SetActiveTab(tabIndex);
-//                overflowDropdownVisible = false;
-//                overflowDropdown->SetVisible(false);
-                ClearDropdownSearch();
             }
+            HideSearchAutoComplete();
+        };
+
+        searchAutoComplete->onAutocompletePopupClosed = [this]() {
+            HideSearchAutoComplete();
         };
     }
 
     void UltraCanvasTabbedContainer::UpdateOverflowDropdown() {
-        if (!overflowDropdown) return;
-
-        overflowDropdown->ClearItems();
-
-        bool shouldShowSearch = enableDropdownSearch && ((int)tabs.size() >= dropdownSearchThreshold);
-
-        if (shouldShowSearch) {
-            std::string searchDisplayText = (dropdownSearchText.empty() ? "Search tabs..." : dropdownSearchText);
-            overflowDropdown->AddItem(searchDisplayText, "-1");
-            overflowDropdown->AddSeparator();
-        }
-
-        std::string searchLower = ToLowerCase(dropdownSearchText);
-
-        for (int i = 0; i < (int)tabs.size(); i++) {
-            if (!tabs[i]->visible) continue;
-
-            if (shouldShowSearch && !dropdownSearchText.empty()) {
-                std::string titleLower = ToLowerCase(tabs[i]->title);
-                if (titleLower.find(searchLower) == std::string::npos) {
-                    continue;
-                }
-            }
-
-            std::string displayTitle = tabs[i]->title;
-
-            if (i == activeTabIndex) {
-                displayTitle = "● " + displayTitle;
-            }
-
-            if (!tabs[i]->enabled) {
-                displayTitle = "[" + displayTitle + "]";
-            }
-
-            overflowDropdown->AddItem(displayTitle, std::to_string(i));
-        }
-
+        PopulateSearchAutoComplete();
         PositionOverflowDropdown();
     }
 
@@ -265,8 +268,8 @@ namespace UltraCanvas {
         bool needed = CheckIfOverflowDropdownNeeded();
         overflowDropdownVisible = showOverflowDropdown && needed;
 
-        if (overflowDropdown) {
-            overflowDropdown->SetVisible(overflowDropdownVisible);
+        if (overflowButton) {
+            overflowButton->SetVisible(overflowDropdownVisible);
         }
 
         if (overflowDropdownVisible) {
@@ -292,7 +295,10 @@ namespace UltraCanvas {
         }
 
         if (showScrollButtons) {
-            availableSpace -= 40;
+            bool canPrev = activeTabIndex > 0;
+            bool canNext = activeTabIndex < (int)tabs.size() - 1;
+            if (canPrev) availableSpace -= 24;
+            if (canNext) availableSpace -= 24;
         }
 
         if (showNewTabButton) {
@@ -318,47 +324,106 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTabbedContainer::PositionOverflowDropdown() {
-        if (!overflowDropdown || !overflowDropdownVisible) return;
+        if (!overflowButton || !overflowDropdownVisible) return;
 
         Rect2Di tabBarBounds = GetTabBarBounds();
 
         switch (overflowDropdownPosition) {
             case OverflowDropdownPosition::Left:
-                overflowDropdown->SetPosition(0, 0);
+                overflowButton->SetPosition(0, 0);
                 break;
 
             case OverflowDropdownPosition::Right:
-                overflowDropdown->SetPosition(tabBarBounds.width - overflowDropdownWidth, 0);
+                overflowButton->SetPosition(tabBarBounds.width - overflowDropdownWidth, 0);
                 break;
 
             default:
                 break;
         }
 
-        overflowDropdown->SetSize(overflowDropdownWidth, tabBarBounds.height);
+        overflowButton->SetSize(overflowDropdownWidth, tabBarBounds.height);
     }
 
-    void UltraCanvasTabbedContainer::Render(IRenderContext* ctx) {
-        if (!IsVisible()) return;
+    void UltraCanvasTabbedContainer::ShowSearchAutoComplete() {
+        if (!searchAutoComplete) return;
 
+        PopulateSearchAutoComplete();
+
+        // Position below the overflow button (container-relative coords)
+        Rect2Di dropdownBounds = overflowButton->GetBounds();
+
+        // Width based on longest tab name: fontSize * maxLen + padding, capped by container width
+        int maxLen = 0;
+        for (auto& tab : tabs) {
+            int len = (int)tab->title.length();
+            if (len > maxLen) maxLen = len;
+        }
+        auto acStyle = searchAutoComplete->GetAutoCompleteStyle();
+        int containerWidth = GetBounds().width;
+        int acWidth = std::min(containerWidth, std::max(200, static_cast<int>(acStyle.fontSize * maxLen + 12)));
+
+        searchAutoComplete->SetSize(acWidth, 28);
+        searchAutoComplete->SetText("");
+
+        Point2Di searchAutoCompletePos(0, dropdownBounds.height);
+        searchAutoCompletePos = overflowButton->MapFromLocal(searchAutoCompletePos, nullptr);
+        window->OpenPopup(searchAutoCompletePos, *searchAutoComplete, PopupElementSettings());
+        searchAutoComplete->SetFocus(true);
+
+        dropdownSearchActive = true;
+    }
+
+    void UltraCanvasTabbedContainer::HideSearchAutoComplete() {
+        if (!searchAutoComplete) return;
+        window->ClosePopup(*searchAutoComplete);
+        dropdownSearchActive = false;
+        dropdownSearchText = "";
+    }
+
+    void UltraCanvasTabbedContainer::PopulateSearchAutoComplete() {
+        if (!searchAutoComplete) return;
+        std::vector<AutoCompleteItem> items;
+        for (int i = 0; i < (int)tabs.size(); i++) {
+            if (!tabs[i]->visible) continue;
+            std::string displayTitle = tabs[i]->title;
+            if (!tabs[i]->enabled) {
+                displayTitle = "[" + displayTitle + "]";
+            }
+            items.emplace_back(displayTitle, std::to_string(i));
+        }
+        searchAutoComplete->SetItems(items);
+    }
+
+    void UltraCanvasTabbedContainer::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
+        // Safety net: UpdateGeometry normally consumes tabbarLayoutDirty,
+        // but something may invalidate between UpdateGeometry and Render in
+        // the same frame (e.g. scrollbar visibility toggles). Re-run the
+        // layout here so content bounds stay in sync before we draw.
         if (tabbarLayoutDirty) {
             CalculateLayout();
             UpdateOverflowDropdown();
             CalculateLayout();
             EnsureTabVisible(activeTabIndex);
+            PackTabBar();
+            CalculateLayout();
             UpdateContentVisibility();
             tabbarLayoutDirty = false;
         }
 
         ctx->PushState();
-        ctx->Translate(bounds.x,
-                       bounds.y);
-
-        RenderContentArea(ctx);
+        // ctx is already translated to element origin by the parent container.
+        RenderContentArea(ctx, dirtyRect);
         RenderTabBar(ctx);
         ctx->PopState();
 
-        //UltraCanvasContainer::Render(ctx);
+         // V2.0.0: Draw dragged tab ghost overlay (on top of everything)
+         if (isDraggingTab && draggingTabIndex >= 0) {
+             ctx->PushState();
+             RenderDraggedTabGhost(ctx);
+             ctx->PopState();
+         }
+
+        //UltraCanvasContainer::Render(ctx, dirtyRect);
     }
 
     void UltraCanvasTabbedContainer::RenderTabBar(IRenderContext *ctx) {
@@ -389,10 +454,19 @@ namespace UltraCanvas {
             RenderNewTabButton(ctx);
         }
 
+//        RenderDragGhost(ctx);
+//        RenderDockIndicator(ctx);
+
         ctx->PushState();
-        if (overflowDropdownVisible) {
-            overflowDropdown->Render(ctx);
+        if (overflowDropdownVisible && overflowButton) {
+            RenderOverflowButton(ctx);
         }
+
+         // V2.0.0: Draw drag insertion indicator
+//         if (isDraggingTab && dragInsertionIndex >= 0) {
+//             RenderDragInsertionIndicator(ctx);
+//         }
+
         ctx->PopState();
 
 //        if (tabBorderColor.a > 0) {
@@ -411,14 +485,14 @@ namespace UltraCanvas {
         int iconX = tabBounds.x + tabPadding;
         int iconY = tabBounds.y + (tabBounds.height - iconSize) / 2;
 
-        ctx->DrawImage(tab->iconPath, iconX, iconY, iconSize, iconSize, ImageFitMode::Contain);
+        ctx->DrawImage(tab->iconPath, Rect2Df(iconX, iconY, iconSize, iconSize), ImageFitMode::Contain);
     }
 
     void UltraCanvasTabbedContainer::RenderTabBadge(int index, IRenderContext *ctx) {
         if (index < 0 || index >= (int)tabs.size()) return;
 
         TabData* tab = tabs[index].get();
-        if (!tab->hasBadge || !tab->showBadge || tab->badgeText.empty()) return;
+        if (!tab->showBadge || tab->badgeText.empty()) return;
         Rect2Di tabBounds = GetTabBounds(index);
 
         int badgeX = tabBounds.x + tabBounds.width - tabPadding - closeButtonSize - closeButtonMargin - tab->badgeWidth;
@@ -427,7 +501,7 @@ namespace UltraCanvas {
         }
         int badgeY = tabBounds.y + (tabBounds.height - tab->badgeHeight) / 2;
 
-        ctx->DrawFilledRectangle(Rect2Di(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight), badgeBackgroundColor, 0, Colors::Transparent, std::min(tab->badgeHeight, tab->badgeWidth)/2);
+        ctx->DrawFilledRectangle(Rect2Di(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight), tab->badgeBackgroundColor, 0, Colors::Transparent, std::min(tab->badgeHeight, tab->badgeWidth)/2);
 
 //        std::string badgeText = (tab->badgeCount > 99) ? "99+" : std::to_string(tab->badgeCount);
         ctx->PushState();
@@ -436,8 +510,8 @@ namespace UltraCanvas {
         //      int txtW, txtH;
 //        ctx->GetTextLineDimensions(badgeText, txtW, txtH);
         ctx->SetTextAlignment(TextAlignment::Center);
-        ctx->SetTextVerticalAlignment(TextVerticalAlignement::Middle);
-        ctx->DrawTextInRect(tab->badgeText, Rect2Di(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight));
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(tab->badgeText, Rect2Df(badgeX, badgeY, tab->badgeWidth, tab->badgeHeight));
         ctx->PopState();
     }
 
@@ -450,63 +524,121 @@ namespace UltraCanvas {
         Point2Di center(closeBounds.x + closeBounds.width / 2, closeBounds.y + closeBounds.height / 2);
 
         int halfSize = closeButtonSize / 4;
+        // Active tab gets thin X, inactive gets bold X (inverted for visual hierarchy)
+        bool isActiveTab = (index == activeTabIndex);
+        ctx->SetStrokeWidth(isActiveTab ? 1.0f : 2.0f);
+        ctx->SetLineCap(LineCap::Round);
         ctx->SetStrokePaint(buttonColor);
-        ctx->DrawLine(Point2Di(center.x - halfSize, center.y - halfSize),
-                      Point2Di(center.x + halfSize, center.y + halfSize));
-        ctx->DrawLine(Point2Di(center.x + halfSize, center.y - halfSize),
-                      Point2Di(center.x - halfSize, center.y + halfSize));
+        ctx->DrawLine(Point2Df(center.x - halfSize, center.y - halfSize),
+                      Point2Df(center.x + halfSize, center.y + halfSize));
+        ctx->DrawLine(Point2Df(center.x + halfSize, center.y - halfSize),
+                      Point2Df(center.x - halfSize, center.y + halfSize));
+        ctx->SetStrokeWidth(1.0f); // Restore default   
     }
 
     void UltraCanvasTabbedContainer::RenderScrollButtons(IRenderContext *ctx) {
         if (!showScrollButtons) return;
 
+        bool canGoPrev = activeTabIndex > 0;
+        bool canGoNext = activeTabIndex < (int)tabs.size() - 1;
+        if (!canGoPrev && !canGoNext) return;
+
         Rect2Di tabBarBounds = GetTabBarBounds();
-        Rect2Di leftButton, rightButton;
+
+        ctx->SetFillPaint(navButtonIconColor);
+        ctx->SetStrokePaint(navButtonIconColor);
+        ctx->SetLineJoin(LineJoin::Round);
+        ctx->SetLineCap(LineCap::Round);
+        ctx->SetStrokeWidth(3);
 
         switch (tabPosition) {
             case TabPosition::Top:
             case TabPosition::Bottom: {
-                // Horizontal tabs - buttons at right edge
-                leftButton = Rect2Di(tabBarBounds.x + tabBarBounds.width - 40, tabBarBounds.y, 20, tabBarBounds.height);
-                rightButton = Rect2Di(tabBarBounds.x + tabBarBounds.width - 20, tabBarBounds.y, 20, tabBarBounds.height);
+                int prevBtnX = tabBarBounds.x;
+                if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
+                    prevBtnX += overflowDropdownWidth + tabSpacing;
+                }
 
-                ctx->DrawFilledRectangle(leftButton, Color(220, 220, 220), 1.0, tabBorderColor);
-                ctx->DrawFilledRectangle(rightButton, Color(220, 220, 220), 1.0, tabBorderColor);
-
-                ctx->SetStrokePaint(Colors::Black);
-                Point2Di leftCenter(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
-                ctx->DrawLine(Point2Di(leftCenter.x - 3, leftCenter.y), Point2Di(leftCenter.x + 3, leftCenter.y - 3));
-                ctx->DrawLine(Point2Di(leftCenter.x - 3, leftCenter.y), Point2Di(leftCenter.x + 3, leftCenter.y + 3));
-
-                Point2Di rightCenter(rightButton.x + rightButton.width / 2, rightButton.y + rightButton.height / 2);
-                ctx->DrawLine(Point2Di(rightCenter.x - 3, rightCenter.y - 3), Point2Di(rightCenter.x + 3, rightCenter.y));
-                ctx->DrawLine(Point2Di(rightCenter.x - 3, rightCenter.y + 3), Point2Di(rightCenter.x + 3, rightCenter.y));
+                if (canGoPrev && canGoNext) {
+                    // Prev button after overflow button, next button at right edge
+                    Rect2Di prevBtn(prevBtnX, tabBarBounds.y, 24, tabBarBounds.height);
+                    Rect2Di nextBtn(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
+                    ctx->DrawFilledRectangle(prevBtn, navButtonBackgroundColor, 0.0, Colors::Transparent);
+                    ctx->DrawFilledRectangle(nextBtn, navButtonBackgroundColor, 0.0, Colors::Transparent);
+//                    ctx->DrawFilledRectangle(prevBtn, Color(220, 220, 220), 1.0, tabBorderColor);
+//                    ctx->DrawFilledRectangle(nextBtn, Color(220, 220, 220), 1.0, tabBorderColor);
+                    // Left arrow
+                    { Point2Di c(prevBtn.x + prevBtn.width / 2, prevBtn.y + prevBtn.height / 2); int s = 3;
+                      ctx->ClearPath(); ctx->MoveTo(c.x - s, c.y); ctx->LineTo(c.x + s, c.y - (s+s)); ctx->LineTo(c.x + s, c.y + (s+s));
+                      ctx->ClosePath(); ctx->FillPathPreserve(); ctx->Stroke(); }
+                    // Right arrow
+                    { Point2Di c(nextBtn.x + nextBtn.width / 2, nextBtn.y + nextBtn.height / 2); int s = 3;
+                      ctx->ClearPath(); ctx->MoveTo(c.x + s, c.y); ctx->LineTo(c.x - s, c.y - (s+s)); ctx->LineTo(c.x - s, c.y + (s+s));
+                      ctx->ClosePath(); ctx->FillPathPreserve(); ctx->Stroke(); }
+                } else {
+                    // Single button: prev after overflow, next at right edge
+                    Rect2Di btn = canGoPrev
+                        ? Rect2Di(prevBtnX, tabBarBounds.y, 24, tabBarBounds.height)
+                        : Rect2Di(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
+                    ctx->DrawFilledRectangle(btn, navButtonBackgroundColor, 0.0, Colors::Transparent);
+                    Point2Di c(btn.x + btn.width / 2, btn.y + btn.height / 2); int s = 3;
+                    ctx->ClearPath();
+                    if (canGoPrev) {
+                        // Left arrow
+                        ctx->MoveTo(c.x - s, c.y); ctx->LineTo(c.x + s, c.y - (s+s)); ctx->LineTo(c.x + s, c.y + (s+s));
+                    } else {
+                        // Right arrow
+                        ctx->MoveTo(c.x + s, c.y); ctx->LineTo(c.x - s, c.y - (s+s)); ctx->LineTo(c.x - s, c.y + (s+s));
+                    }
+                    ctx->ClosePath(); ctx->FillPathPreserve(); ctx->Stroke();
+                }
                 break;
             }
 
             case TabPosition::Left:
             case TabPosition::Right: {
-                // Vertical tabs - buttons at bottom edge
-                leftButton = Rect2Di(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 40, tabBarBounds.width, 20);
-                rightButton = Rect2Di(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 20, tabBarBounds.width, 20);
+                int prevBtnY = tabBarBounds.y;
+                if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
+                    prevBtnY += overflowDropdownWidth + tabSpacing;
+                }
 
-                ctx->DrawFilledRectangle(leftButton, Color(220, 220, 220), 1.0, tabBorderColor);
-                ctx->DrawFilledRectangle(rightButton, Color(220, 220, 220), 1.0, tabBorderColor);
-
-                ctx->SetStrokePaint(Colors::Black);
-                Point2Di leftCenter(leftButton.x + leftButton.width / 2, leftButton.y + leftButton.height / 2);
-                ctx->DrawLine(Point2Di(leftCenter.x, leftCenter.y - 3), Point2Di(leftCenter.x - 3, leftCenter.y + 3));
-                ctx->DrawLine(Point2Di(leftCenter.x, leftCenter.y - 3), Point2Di(leftCenter.x + 3, leftCenter.y + 3));
-
-                Point2Di rightCenter(rightButton.x + rightButton.width / 2, rightButton.y + rightButton.height / 2);
-                ctx->DrawLine(Point2Di(rightCenter.x - 3, rightCenter.y - 3), Point2Di(rightCenter.x, rightCenter.y + 3));
-                ctx->DrawLine(Point2Di(rightCenter.x + 3, rightCenter.y - 3), Point2Di(rightCenter.x, rightCenter.y + 3));
+                if (canGoPrev && canGoNext) {
+                    // Prev button after overflow, next button at bottom
+                    Rect2Di prevBtn(tabBarBounds.x, prevBtnY, tabBarBounds.width, 24);
+                    Rect2Di nextBtn(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 24, tabBarBounds.width, 24);
+                    ctx->DrawFilledRectangle(prevBtn, navButtonBackgroundColor, 0.0, Colors::Transparent);
+                    ctx->DrawFilledRectangle(nextBtn, navButtonBackgroundColor, 0.0, Colors::Transparent);
+                    // Up arrow
+                    { Point2Di c(prevBtn.x + prevBtn.width / 2, prevBtn.y + prevBtn.height / 2); int s = 3;
+                      ctx->ClearPath(); ctx->MoveTo(c.x, c.y - s); ctx->LineTo(c.x + (s+s), c.y + s); ctx->LineTo(c.x - (s+s), c.y + s);
+                      ctx->ClosePath(); ctx->Fill(); }
+                    // Down arrow
+                    { Point2Di c(nextBtn.x + nextBtn.width / 2, nextBtn.y + nextBtn.height / 2); int s = 3;
+                      ctx->ClearPath(); ctx->MoveTo(c.x, c.y + s); ctx->LineTo(c.x - (s+s), c.y - s); ctx->LineTo(c.x + (s+s), c.y - s);
+                      ctx->ClosePath(); ctx->Fill(); }
+                } else {
+                    // Single button: prev after overflow, next at bottom
+                    Rect2Di btn = canGoPrev
+                        ? Rect2Di(tabBarBounds.x, prevBtnY, tabBarBounds.width, 24)
+                        : Rect2Di(tabBarBounds.x, tabBarBounds.y + tabBarBounds.height - 24, tabBarBounds.width, 24);
+                    ctx->DrawFilledRectangle(btn, navButtonBackgroundColor, 0.0, Colors::Transparent);
+                    Point2Di c(btn.x + btn.width / 2, btn.y + btn.height / 2); int s = 3;
+                    ctx->ClearPath();
+                    if (canGoPrev) {
+                        // Up arrow
+                        ctx->MoveTo(c.x, c.y - s); ctx->LineTo(c.x + (s+s), c.y + s); ctx->LineTo(c.x - (s+s), c.y + s);
+                    } else {
+                        // Down arrow
+                        ctx->MoveTo(c.x, c.y + s); ctx->LineTo(c.x - (s+s), c.y - s); ctx->LineTo(c.x + (s+s), c.y - s);
+                    }
+                    ctx->ClosePath(); ctx->Fill();
+                }
                 break;
             }
         }
     }
 
-    void UltraCanvasTabbedContainer::RenderContentArea(IRenderContext *ctx) {
+    void UltraCanvasTabbedContainer::RenderContentArea(IRenderContext *ctx, const Rect2Di& dirtyRect) {
 
         ctx->PushState();
         Rect2Di contentBounds = GetContentAreaBounds();
@@ -530,7 +662,12 @@ namespace UltraCanvas {
         if (activeTabIndex >= 0 && activeTabIndex < (int)tabs.size()) {
             auto content = tabs[activeTabIndex]->content.get();
             if (content && content->IsVisible()) {
-                content->Render(ctx);
+                // Translate to child's origin — content widgets now draw from (0,0) in their local space
+                ctx->PushState();
+                auto cb = content->GetBounds();
+                ctx->Translate(Point2Di(cb.x, cb.y));
+                content->Render(ctx, dirtyRect);
+                ctx->PopState();
             }
         }
 
@@ -551,8 +688,45 @@ namespace UltraCanvas {
         int size = 8;
 
         ctx->SetStrokePaint(newTabButtonIconColor);
-        ctx->DrawLine(Point2Di(center.x - size/2, center.y), Point2Di(center.x + size/2, center.y));
-        ctx->DrawLine(Point2Di(center.x, center.y - size/2), Point2Di(center.x, center.y + size/2));
+        ctx->DrawLine(Point2Df(center.x - size/2, center.y), Point2Df(center.x + size/2, center.y));
+        ctx->DrawLine(Point2Df(center.x, center.y - size/2), Point2Df(center.x, center.y + size/2));
+    }
+
+    void UltraCanvasTabbedContainer::RenderOverflowButton(IRenderContext* ctx) {
+        if (!overflowButton) return;
+
+        Rect2Di btnBounds = overflowButton->GetBounds();
+        double bx = btnBounds.x, by = btnBounds.y;
+        double bw = btnBounds.width, bh = btnBounds.height;
+
+        // Background - use hover color from the button's state
+        Color bgColor = overflowButton->IsHovered() ? hoveredTabColor : navButtonBackgroundColor;
+        if (bgColor.a > 0) {
+            ctx->DrawFilledRectangle(btnBounds, bgColor);
+        }
+
+        // Draw ▼ arrow in upper half
+        ctx->SetFillPaint(inactiveTabTextColor);
+        ctx->SetStrokePaint(inactiveTabTextColor);
+        ctx->SetStrokeWidth(1);
+        double cx = bx + bw / 2;
+        double cy = by + bh / 3;
+        int s = 3;
+        ctx->ClearPath();
+        ctx->MoveTo(cx, cy + s);
+        ctx->LineTo(cx - (s + s), cy - s);
+        ctx->LineTo(cx + (s + s), cy - s);
+        ctx->ClosePath();
+        ctx->FillPathPreserve();
+        ctx->Stroke();
+
+        // Draw tab count in lower half
+        std::string countText = std::to_string((int)tabs.size());
+        ctx->SetFontSize(9);
+        ctx->SetTextPaint(inactiveTabTextColor);
+        ctx->SetTextAlignment(TextAlignment::Center);
+        ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
+        ctx->DrawTextInRect(countText, {bx, by + bh / 2, bw, bh / 2});
     }
 
     bool UltraCanvasTabbedContainer::OnEvent(const UCEvent &event) {
@@ -560,7 +734,6 @@ namespace UltraCanvas {
 
         switch (event.type) {
             case UCEventType::KeyDown:
-                if (HandleDropdownSearchInput(event)) return true;
                 if (HandleKeyDown(event)) return true;
                 break;
 
@@ -585,51 +758,16 @@ namespace UltraCanvas {
         return UltraCanvasContainer::OnEvent(event);
     }
 
-    bool UltraCanvasTabbedContainer::HandleDropdownSearchInput(const UCEvent &event) {
-        if (!dropdownSearchActive || event.type != UCEventType::KeyDown) {
-            return false;
-        }
-
-        if (event.virtualKey == UCKeys::Escape) {
-            ClearDropdownSearch();
-            return true;
-        }
-
-        if (event.virtualKey == UCKeys::Backspace) {
-            if (!dropdownSearchText.empty()) {
-                dropdownSearchText.pop_back();
-                UpdateOverflowDropdown();
-            }
-            return true;
-        }
-
-        if (event.virtualKey == UCKeys::Return) {
-            auto filtered = GetFilteredTabIndices();
-            if (!filtered.empty()) {
-                SetActiveTab(filtered[0]);
-                ClearDropdownSearch();
-            }
-            return true;
-        }
-
-        if (event.character >= 32 && event.character <= 126) {
-            dropdownSearchText += static_cast<char>(event.character);
-            UpdateOverflowDropdown();
-            return true;
-        }
-
-        return false;
-    }
-
     bool UltraCanvasTabbedContainer::HandleMouseDown(const UCEvent &event) {
-        int x = event.x - bounds.x;
-        int y = event.y - bounds.y;
+        // event.pointer is already in element-local space
+        int x = event.pointer.x;
+        int y = event.pointer.y;
         Rect2Di tabBarBounds = GetTabBarBounds();
 
         if (!tabBarBounds.Contains(x, y)) return false;
 
-        if (overflowDropdownVisible && overflowDropdown) {
-            Rect2Di dropdownBounds = overflowDropdown->GetBounds();
+        if (overflowDropdownVisible && overflowButton) {
+            Rect2Di dropdownBounds = overflowButton->GetBounds();
             if (dropdownBounds.Contains(x, y)) {
                 return false;
             }
@@ -646,15 +784,28 @@ namespace UltraCanvas {
         }
 
         if (showScrollButtons) {
-            Rect2Di leftButton(tabBarBounds.x + tabBarBounds.width - 40, tabBarBounds.y, 20, tabBarBounds.height);
-            Rect2Di rightButton(tabBarBounds.x + tabBarBounds.width - 20, tabBarBounds.y, 20, tabBarBounds.height);
+            bool canGoPrev = activeTabIndex > 0;
+            bool canGoNext = activeTabIndex < (int)tabs.size() - 1;
 
-            if (leftButton.Contains(x, y)) {
-                ScrollTabs(-1);
-                return true;
-            } else if (rightButton.Contains(x, y)) {
-                ScrollTabs(1);
-                return true;
+            int prevBtnX = tabBarBounds.x;
+            if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
+                prevBtnX += overflowDropdownWidth + tabSpacing;
+            }
+
+            if (canGoPrev && canGoNext) {
+                // Prev after overflow button, next at right edge
+                Rect2Di prevBtn(prevBtnX, tabBarBounds.y, 24, tabBarBounds.height);
+                Rect2Di nextBtn(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
+                if (prevBtn.Contains(x, y)) { SetActiveTab(activeTabIndex - 1); return true; }
+                if (nextBtn.Contains(x, y)) { SetActiveTab(activeTabIndex + 1); return true; }
+            } else if (canGoPrev || canGoNext) {
+                Rect2Di btn = canGoPrev
+                    ? Rect2Di(prevBtnX, tabBarBounds.y, 24, tabBarBounds.height)
+                    : Rect2Di(tabBarBounds.x + tabBarBounds.width - 24, tabBarBounds.y, 24, tabBarBounds.height);
+                if (btn.Contains(x, y)) {
+                    SetActiveTab(canGoPrev ? activeTabIndex - 1 : activeTabIndex + 1);
+                    return true;
+                }
             }
         }
 
@@ -669,11 +820,23 @@ namespace UltraCanvas {
         }
 
         int clickedTab = GetTabAtPosition(x, y);
+        if (clickedTab >= 0 && event.button == UCMouseButton::Right) {
+            if (tabContextMenu) {
+                contextMenuTabIndex = clickedTab;
+                if (onTabContextMenu) {
+                    onTabContextMenu(clickedTab);
+                }
+                //tabContextMenu->ShowAtWindow(event.pointer.x, event.pointer.y, GetWindow());
+                return true;
+            }
+        }
         if (clickedTab >= 0) {
-            if (allowTabReordering && event.button == UCMouseButton::Left) {
+            if ((allowTabReordering || allowTabDragOut) && event.button == UCMouseButton::Left) {
                 draggingTabIndex = clickedTab;
                 dragStartPosition = Point2Di(x, y);
+                dragGlobalAnchor = Point2Di(event.pointerGlobal.x, event.pointerGlobal.y);
                 isDraggingTab = false;
+                UltraCanvasApplication::GetInstance()->CaptureMouse(this);
             }
 
             SetActiveTab(clickedTab);
@@ -685,25 +848,74 @@ namespace UltraCanvas {
 
     bool UltraCanvasTabbedContainer::HandleMouseUp(const UCEvent &event) {
         if (draggingTabIndex >= 0) {
+            UltraCanvasApplication::GetInstance()->ReleaseMouse(this);
+
+            // Tab was dragged outside the bar — fire drag-out on drop
+            if (isDraggingTab && dragOutTriggered && allowTabDragOut && onTabDragOut) {
+                int tabIdx = draggingTabIndex;
+                draggingTabIndex = -1;
+                isDraggingTab = false;
+                dragInsertionIndex = -1;
+                dragOutTriggered = false;
+
+                onTabDragOut(tabIdx, event.pointerGlobal.x, event.pointerGlobal.y);
+                RequestRedraw();
+                return true;
+            }
+
             draggingTabIndex = -1;
             isDraggingTab = false;
+            dragInsertionIndex = -1;
+            dragOutTriggered = false;
+            RequestRedraw();
             return true;
         }
         return false;
     }
 
     bool UltraCanvasTabbedContainer::HandleMouseMove(const UCEvent &event) {
-        int x = event.x - bounds.x;
-        int y = event.y - bounds.y;
+        // event.pointer is already in element-local space
+        int x = event.pointer.x;
+        int y = event.pointer.y;
+
+        // When dragging with mouse capture, use global coordinate deltas
+        // so coords stay correct even when mouse moves to another window
+        if (draggingTabIndex >= 0) {
+            x = dragStartPosition.x + (event.pointerGlobal.x - dragGlobalAnchor.x);
+            y = dragStartPosition.y + (event.pointerGlobal.y - dragGlobalAnchor.y);
+        }
+
         Rect2Di tabBarBounds = GetTabBarBounds();
 
         if (tabBarBounds.Contains(x, y)) {
             int newHoveredTab = GetTabAtPosition(x, y);
-            bool needsRedraw = false;
+            bool needsRepaint = false;
 
             if (newHoveredTab != hoveredTabIndex) {
                 hoveredTabIndex = newHoveredTab;
-                needsRedraw = true;
+                needsRepaint = true;
+
+                // Show per-tab tooltip when hovered tab changes
+                if (hoveredTabIndex >= 0 && !tabs[hoveredTabIndex]->tooltip.empty()) {
+                    UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                        GetWindow(), tabs[hoveredTabIndex]->tooltip,
+                        Point2Di(event.pointerWindow.x, event.pointerWindow.y));
+                } else {
+                    UltraCanvasTooltipManager::HideTooltip();
+                }
+            }
+
+            // Track close button hover (also used for modified marker → close button swap)
+            int newHoveredClose = -1;
+            if (newHoveredTab >= 0 && ShouldShowCloseButton(tabs[newHoveredTab].get())) {
+                Rect2Di closeBounds = GetCloseButtonBounds(newHoveredTab);
+                if (closeBounds.width > 0 && closeBounds.Contains(x, y)) {
+                    newHoveredClose = newHoveredTab;
+                }
+            }
+            if (newHoveredClose != hoveredCloseButtonIndex) {
+                hoveredCloseButtonIndex = newHoveredClose;
+                needsRepaint = true;
             }
 
             if (showNewTabButton) {
@@ -711,10 +923,11 @@ namespace UltraCanvas {
                 bool wasHovered = hoveredNewTabButton;
                 hoveredNewTabButton = newTabBounds.Contains(x, y);
                 if (wasHovered != hoveredNewTabButton) {
-                    needsRedraw = true;
+                    needsRepaint = true;
                 }
             }
 
+            // === V2.0.0: Enhanced tab drag with insertion indicator ===
             if (draggingTabIndex >= 0 && allowTabReordering) {
                 float dragDistance = std::sqrt(
                         std::pow(x - dragStartPosition.x, 2) +
@@ -723,28 +936,74 @@ namespace UltraCanvas {
 
                 if (!isDraggingTab && dragDistance > 5) {
                     isDraggingTab = true;
+                    dragOutTriggered = false;
                 }
 
                 if (isDraggingTab) {
+                    dragCurrentPosition = Point2Di(x, y);
+
+                    // Mouse is within tab bar — do reorder with insertion indicator
+                    dragOutTriggered = false;
+
                     int targetTab = GetTabAtPosition(x, y);
                     if (targetTab >= 0 && targetTab != draggingTabIndex) {
-                        ReorderTabs(draggingTabIndex, targetTab);
-                        draggingTabIndex = targetTab;
+                        // Show insertion indicator at target position
+                        dragInsertionIndex = targetTab;
+
+                        // Perform actual reorder when dragged past center of target tab
+                        Rect2Di targetBounds = GetTabBounds(targetTab);
+                        int targetCenter = targetBounds.x + targetBounds.width / 2;
+
+                        bool shouldReorder = false;
+                        if (targetTab > draggingTabIndex && x > targetCenter) {
+                            shouldReorder = true;
+                        } else if (targetTab < draggingTabIndex && x < targetCenter) {
+                            shouldReorder = true;
+                        }
+
+                        if (shouldReorder) {
+                            ReorderTabs(draggingTabIndex, targetTab);
+                            draggingTabIndex = targetTab;
+                            dragInsertionIndex = -1;
+                        }
+                    } else {
+                        dragInsertionIndex = -1;
                     }
+
+                    needsRepaint = true;
                 }
-                needsRedraw = true;
             }
 
-            if (needsRedraw) {
+            if (needsRepaint) {
                 RequestRedraw();
             }
             return true;
         } else {
+            // Mouse is outside tab bar
             if (hoveredTabIndex != -1 || hoveredNewTabButton) {
                 hoveredTabIndex = -1;
                 hoveredCloseButtonIndex = -1;
                 hoveredNewTabButton = false;
+                UltraCanvasTooltipManager::HideTooltip();
                 RequestRedraw();
+            }
+
+            // === V2.0.0: Drag-out detection when mouse leaves tab bar ===
+            if (isDraggingTab && draggingTabIndex >= 0 && allowTabDragOut) {
+                dragCurrentPosition = Point2Di(x, y);
+
+                // Check if mouse has crossed the drag-out threshold
+                Rect2Di expandedBar = tabBarBounds;
+                expandedBar.y -= dragOutThreshold;
+                expandedBar.height += dragOutThreshold * 2;
+
+                if (!expandedBar.Contains(x, y)) {
+                    dragOutTriggered = true;
+                    dragInsertionIndex = -1;
+                }
+
+                RequestRedraw();
+                return true;
             }
         }
         return false;
@@ -774,27 +1033,30 @@ namespace UltraCanvas {
                     }
                 }
                 break;
+//            case UCKeys::Escape:
+//              if (draggingTabIndex >= 0 && isDraggingTab) {
+//                  CancelDrag();
+//                  return true;
+//              }
+//              break;
+
+            case UCKeys::Tab:
+                if (event.ctrl && tabs.size() > 1) {
+                    int newIndex;
+                    if (event.shift) {
+                        newIndex = (activeTabIndex > 0) ? activeTabIndex - 1 : (int)tabs.size() - 1;
+                    } else {
+                        newIndex = (activeTabIndex < (int)tabs.size() - 1) ? activeTabIndex + 1 : 0;
+                    }
+                    SetActiveTab(newIndex);
+                    return true;
+                }
+                break;
 
             default:
                 break;
         }
         return false;
-    }
-
-    std::vector<int> UltraCanvasTabbedContainer::GetFilteredTabIndices() const {
-        std::vector<int> result;
-        std::string searchLower = ToLowerCase(dropdownSearchText);
-
-        for (int i = 0; i < (int)tabs.size(); i++) {
-            if (!tabs[i]->visible) continue;
-
-            std::string titleLower = ToLowerCase(tabs[i]->title);
-            if (titleLower.find(searchLower) != std::string::npos) {
-                result.push_back(i);
-            }
-        }
-
-        return result;
     }
 
     int UltraCanvasTabbedContainer::CalculateMaxTabWidth() {
@@ -818,14 +1080,13 @@ namespace UltraCanvas {
         auto ctx = GetRenderContext();
         if (ctx) {
             ctx->SetFontSize(fontSize);
-            int textWidth, textHeight;
-            ctx->GetTextLineDimensions(tab->title, textWidth, textHeight);
-            width += textWidth;
+            Size2Di textSize = ctx->GetTextLineDimensions(tab->title);
+            width += textSize.width;
         } else {
             width += (int)tab->title.length() * 8;
         }
 
-        if (tab->hasBadge && tab->showBadge) {
+        if (tab->showBadge) {
             CalcBadgeDimensions(tab);
             width += tab->badgeWidth + iconPadding;
         }
@@ -842,67 +1103,20 @@ namespace UltraCanvas {
         if (!ctx) return text;
 
         ctx->SetFontSize(fontSize);
-        int textWidth, textHeight;
-        ctx->GetTextLineDimensions(text, textWidth, textHeight);
+        Size2Di textSize = ctx->GetTextLineDimensions(text);
 
-        if (textWidth <= maxWidth) {
+        if (textSize.width <= maxWidth) {
             return text;
         }
 
         std::string truncated = text;
-        while (textWidth > maxWidth - 20 && truncated.length() > 1) {
+        while (textSize.width > maxWidth - 20 && truncated.length() > 1) {
             truncated.pop_back();
-            ctx->GetTextLineDimensions(truncated + "...", textWidth, textHeight);
+            textSize = ctx->GetTextLineDimensions(truncated + "...");
         }
 
         return truncated + "...";
     }
-
-//    Rect2Di UltraCanvasTabbedContainer::GetTabAreaBounds() const {
-//        Rect2Di bounds = GetTabBarBounds();
-//
-//        if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Left) {
-//            bounds.x += overflowDropdownWidth + tabSpacing;
-//            bounds.width -= overflowDropdownWidth + tabSpacing;
-//        }
-//
-//        if (showScrollButtons) {
-//            bounds.width -= 40;
-//        }
-//
-//        if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
-//            bounds.width -= newTabButtonWidth + tabSpacing;
-//        }
-//
-//        return bounds;
-//    }
-
-//    Rect2Di UltraCanvasTabbedContainer::GetTabBarBounds() const {
-//        Rect2Di bounds = GetBounds();
-//        return Rect2Di(0, 0, bounds.width, tabHeight);
-//    }
-//
-//    Rect2Di UltraCanvasTabbedContainer::GetContentAreaBounds() const {
-//        Rect2Di bounds = GetBounds();
-//        return Rect2Di(0, tabHeight, bounds.width, bounds.height - tabHeight);
-//    }
-
-//    Rect2Di UltraCanvasTabbedContainer::GetTabBounds(int index) {
-//        if (index < tabScrollOffset || index >= tabScrollOffset + maxVisibleTabs) {
-//            return Rect2Di(0, 0, 0, 0);
-//        }
-//
-//        Rect2Di tabArea = GetTabAreaBounds();
-//        int xOffset = tabArea.x;
-//
-//        for (int i = tabScrollOffset; i < index; i++) {
-//            if (!tabs[i]->visible) continue;
-//            xOffset += CalculateTabWidth(i) + tabSpacing;
-//        }
-//
-//        int tabWidth = CalculateTabWidth(index);
-//        return Rect2Di(xOffset, 0, tabWidth, tabHeight);
-//    }
 
     Rect2Di UltraCanvasTabbedContainer::GetCloseButtonBounds(int index) {
         if (!ShouldShowCloseButton(tabs[index].get())) {
@@ -937,7 +1151,13 @@ namespace UltraCanvas {
             }
 
             case NewTabButtonPosition::FarRight:
-                xPos = tabBarBounds.width - newTabButtonWidth - (showScrollButtons ? 40 : 0);
+                if (showScrollButtons) {
+                    bool canNext = activeTabIndex < (int)tabs.size() - 1;
+                    // Only the next button is at the right edge now
+                    xPos = tabBarBounds.width - newTabButtonWidth - (canNext ? 24 : 0);
+                } else {
+                    xPos = tabBarBounds.width - newTabButtonWidth;
+                }
                 break;
 
             case NewTabButtonPosition::BeforeTabs:
@@ -994,9 +1214,7 @@ namespace UltraCanvas {
                 availableSpace -= overflowDropdownWidth + tabSpacing;
             }
 
-            if (showScrollButtons) {
-                availableSpace -= 40;
-            }
+            // Note: scroll button space is already subtracted by GetTabAreaBounds()
 
             maxVisibleTabs = 0;
             int totalSpace = 0;
@@ -1024,9 +1242,7 @@ namespace UltraCanvas {
                 availableSpace -= overflowDropdownWidth + tabSpacing;
             }
 
-            if (showScrollButtons) {
-                availableSpace -= 40;
-            }
+            // Note: scroll button space is already subtracted by GetTabAreaBounds()
 
             maxVisibleTabs = 0;
             int totalSpace = 0;
@@ -1046,13 +1262,6 @@ namespace UltraCanvas {
 
         showScrollButtons = enableTabScrolling && (tabScrollOffset > 0 ||
                                                    tabScrollOffset + maxVisibleTabs < (int)tabs.size());
-
-        if (!showOverflowDropdown) {
-            overflowDropdownVisible = false;
-            if (overflowDropdown) {
-                overflowDropdown->SetVisible(false);
-            }
-        }
 
         for (int i = 0; i < (int)tabs.size(); i++) {
             PositionTabContent(i);
@@ -1106,6 +1315,46 @@ namespace UltraCanvas {
         tabScrollOffset = std::max(0, std::min(tabScrollOffset, (int)tabs.size() - maxVisibleTabs));
     }
 
+    void UltraCanvasTabbedContainer::PackTabBar() {
+        if (!enableTabScrolling || tabScrollOffset <= 0) return;
+
+        bool isVertical = (tabPosition == TabPosition::Left || tabPosition == TabPosition::Right);
+        Rect2Di tabAreaBounds = GetTabAreaBounds();
+        int availableSpace = isVertical ? tabAreaBounds.height : tabAreaBounds.width;
+
+        if (showNewTabButton && newTabButtonPosition != NewTabButtonPosition::FarRight) {
+            availableSpace -= newTabButtonWidth + tabSpacing;
+        }
+        if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Right) {
+            availableSpace -= overflowDropdownWidth + tabSpacing;
+        }
+
+        // Calculate total space used by tabs from tabScrollOffset onward
+        int totalSpace = 0;
+        for (int i = tabScrollOffset; i < (int)tabs.size(); i++) {
+            if (!tabs[i]->visible) continue;
+            int tabSize = isVertical ? tabHeight : CalculateTabWidth(i);
+            if (totalSpace + tabSize > availableSpace) break;
+            totalSpace += tabSize + tabSpacing;
+        }
+
+        // Try to include tabs before tabScrollOffset to fill remaining space
+        while (tabScrollOffset > 0) {
+            int prevIndex = tabScrollOffset - 1;
+            if (!tabs[prevIndex]->visible) {
+                tabScrollOffset--;
+                continue;
+            }
+            int prevTabSize = isVertical ? tabHeight : CalculateTabWidth(prevIndex);
+            if (totalSpace + prevTabSize <= availableSpace) {
+                tabScrollOffset--;
+                totalSpace += prevTabSize + tabSpacing;
+            } else {
+                break;
+            }
+        }
+    }
+
     void UltraCanvasTabbedContainer::PositionTabContent(int index) {
         if (index < 0 || index >= (int)tabs.size()) return;
 
@@ -1136,6 +1385,19 @@ namespace UltraCanvas {
     std::string UltraCanvasTabbedContainer::GetTabTitle(int index) const {
         if (index >= 0 && index < (int)tabs.size()) {
             return tabs[index]->title;
+        }
+        return "";
+    }
+
+    void UltraCanvasTabbedContainer::SetTabTooltip(int index, const std::string &tooltip) {
+        if (index >= 0 && index < (int)tabs.size()) {
+            tabs[index]->tooltip = tooltip;
+        }
+    }
+
+    std::string UltraCanvasTabbedContainer::GetTabTooltip(int index) const {
+        if (index >= 0 && index < (int)tabs.size()) {
+            return tabs[index]->tooltip;
         }
         return "";
     }
@@ -1215,8 +1477,9 @@ namespace UltraCanvas {
         if (!tab->badgeText.empty()) {
             auto ctx = GetRenderContext();
             ctx->SetFontSize(9);
-            ctx->GetTextLineDimensions(tab->badgeText, tab->badgeWidth, tab->badgeHeight);
-            tab->badgeWidth = std::max(tab->badgeWidth, 12);
+            Size2Di sz = ctx->GetTextLineDimensions(tab->badgeText);
+            tab->badgeWidth = std::max(sz.width, 12);
+            tab->badgeHeight = sz.height;
             tab->badgeWidth += 6;
             tab->badgeHeight += 6;
             return true;
@@ -1256,20 +1519,30 @@ namespace UltraCanvas {
 
         switch (tabPosition) {
             case TabPosition::Top:
-                return Rect2Di(0, tabHeight, bounds.width, bounds.height - tabHeight);
+                return Rect2Di(contentLeftPadding, tabHeight + contentTopPadding,
+                               bounds.width - contentLeftPadding,
+                               bounds.height - tabHeight - contentTopPadding);
 
             case TabPosition::Bottom:
-                return Rect2Di(0, 0, bounds.width, bounds.height - tabHeight);
+                return Rect2Di(contentLeftPadding, contentTopPadding,
+                               bounds.width - contentLeftPadding,
+                               bounds.height - tabHeight - contentTopPadding);
 
             case TabPosition::Left:
                 verticalTabWidth = CalculateMaxTabWidth();
-                return Rect2Di(verticalTabWidth, 0, bounds.width - verticalTabWidth, bounds.height);
+                return Rect2Di(verticalTabWidth + contentLeftPadding, contentTopPadding,
+                               bounds.width - verticalTabWidth - contentLeftPadding,
+                               bounds.height - contentTopPadding);
 
             case TabPosition::Right:
-                return Rect2Di(0, 0, bounds.width - CalculateMaxTabWidth(), bounds.height);
+                return Rect2Di(contentLeftPadding, contentTopPadding,
+                               bounds.width - CalculateMaxTabWidth() - contentLeftPadding,
+                               bounds.height - contentTopPadding);
 
             default:
-                return Rect2Di(0, tabHeight, bounds.width, bounds.height - tabHeight);
+                return Rect2Di(contentLeftPadding, tabHeight + contentTopPadding,
+                               bounds.width - contentLeftPadding,
+                               bounds.height - tabHeight - contentTopPadding);
         }
     }
 
@@ -1344,7 +1617,15 @@ namespace UltraCanvas {
                 }
 
                 if (showScrollButtons) {
-                    bounds.width -= 40;
+                    bool canPrev = activeTabIndex > 0;
+                    bool canNext = activeTabIndex < (int)tabs.size() - 1;
+                    if (canPrev) {
+                        bounds.x += 24;
+                        bounds.width -= 24;
+                    }
+                    if (canNext) {
+                        bounds.width -= 24;
+                    }
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
@@ -1362,7 +1643,15 @@ namespace UltraCanvas {
                 }
 
                 if (showScrollButtons) {
-                    bounds.height -= 40;
+                    bool canPrev = activeTabIndex > 0;
+                    bool canNext = activeTabIndex < (int)tabs.size() - 1;
+                    if (canPrev) {
+                        bounds.y += 24;
+                        bounds.height -= 24;
+                    }
+                    if (canNext) {
+                        bounds.height -= 24;
+                    }
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
@@ -1412,11 +1701,11 @@ namespace UltraCanvas {
                     // Browser-style rounded tabs with custom path
                     ctx->ClearPath();
 
-                    float x = static_cast<float>(tabBounds.x);
-                    float y = static_cast<float>(tabBounds.y);
-                    float w = static_cast<float>(tabBounds.width);
-                    float h = static_cast<float>(tabBounds.height);
-                    float radius = tabCornerRadius;
+                    double x = static_cast<double>(tabBounds.x);
+                    double y = static_cast<double>(tabBounds.y);
+                    double w = static_cast<double>(tabBounds.width);
+                    double h = static_cast<double>(tabBounds.height);
+                    double radius = tabCornerRadius;
 
                     // Adjust based on tab position
                     switch (tabPosition) {
@@ -1488,49 +1777,6 @@ namespace UltraCanvas {
                 // Classic style: 3D raised effect with shadows
                 ctx->DrawFilledRectangle(tabBounds, bgColor, 1.0, tabBorderColor);
                 break;
-//                // Add 3D effect for active tab
-//                if (index == activeTabIndex) {
-//                    // Light edge on top and left (highlight)
-//                    Color highlightColor = Color(255, 255, 255, 180);
-//                    ctx->SetStrokePaint(highlightColor);
-//
-//                    if (tabPosition == TabPosition::Top) {
-//                        ctx->DrawLine(Point2Di(tabBounds.x, tabBounds.y + tabBounds.height - 1),
-//                                      Point2Di(tabBounds.x, tabBounds.y));
-//                        ctx->DrawLine(Point2Di(tabBounds.x, tabBounds.y),
-//                                      Point2Di(tabBounds.x + tabBounds.width - 1, tabBounds.y));
-//                    } else {
-//                        ctx->DrawLine(Point2Di(tabBounds.x, tabBounds.y),
-//                                      Point2Di(tabBounds.x, tabBounds.y + tabBounds.height - 1));
-//                        ctx->DrawLine(Point2Di(tabBounds.x, tabBounds.y),
-//                                      Point2Di(tabBounds.x + tabBounds.width - 1, tabBounds.y));
-//                    }
-//
-//                    // Dark edge (shadow)
-//                    Color shadowColor = Color(128, 128, 128, 180);
-//                    ctx->SetStrokePaint(shadowColor);
-//
-//                    if (tabPosition == TabPosition::Top || tabPosition == TabPosition::Bottom) {
-//                        ctx->DrawLine(Point2Di(tabBounds.x + tabBounds.width - 1, tabBounds.y),
-//                                      Point2Di(tabBounds.x + tabBounds.width - 1, tabBounds.y + tabBounds.height - 1));
-//                    } else {
-//                        ctx->DrawLine(Point2Di(tabBounds.x, tabBounds.y + tabBounds.height - 1),
-//                                      Point2Di(tabBounds.x + tabBounds.width - 1, tabBounds.y + tabBounds.height - 1));
-//                    }
-//                } else {
-//                    // Subtle shadow for inactive tabs
-//                    Color shadowColor = Color(100, 100, 100, 80);
-//                    ctx->SetStrokePaint(shadowColor);
-//
-//                    if (tabPosition == TabPosition::Top || tabPosition == TabPosition::Bottom) {
-//                        ctx->DrawLine(Point2Di(tabBounds.x + tabBounds.width - 1, tabBounds.y + 2),
-//                                      Point2Di(tabBounds.x + tabBounds.width - 1, tabBounds.y + tabBounds.height - 1));
-//                    } else {
-//                        ctx->DrawLine(Point2Di(tabBounds.x + 2, tabBounds.y + tabBounds.height - 1),
-//                                      Point2Di(tabBounds.x + tabBounds.width - 1, tabBounds.y + tabBounds.height - 1));
-//                    }
-//                }
-//                break;
             }
 
             case TabStyle::Modern: {
@@ -1634,7 +1880,7 @@ namespace UltraCanvas {
             contentArea.width -= (closeButtonSize + closeButtonMargin);
         }
 
-        if (tab->hasBadge && tab->showBadge) {
+        if (tab->showBadge) {
             contentArea.width -= (tab->badgeWidth + iconPadding);
         }
 
@@ -1643,19 +1889,25 @@ namespace UltraCanvas {
 
             ctx->SetTextPaint(textColor);
             ctx->SetFontSize(fontSize);
-            int txtW, txtH;
-            ctx->GetTextLineDimensions(displayText, txtW, txtH);
-            int textY = tabBounds.y + (tabBounds.height - txtH) / 2;
+            Size2Di txtSize = ctx->GetTextLineDimensions(displayText);
+            int textY = tabBounds.y + (tabBounds.height - txtSize.height) / 2;
             ctx->DrawText(displayText, Point2Di(xOffset, textY));
 
-            xOffset += txtW + iconPadding;
+            xOffset += txtSize.width + iconPadding;
         }
 
-        if (tab->hasBadge && tab->showBadge) {
+        if (tab->showBadge) {
             RenderTabBadge(index, ctx);
         }
 
-        if (ShouldShowCloseButton(tab)) {
+        if (tab->showMarker && ShouldShowCloseButton(tab)) {
+            // Tab with marker: show close button on hover, otherwise show dot marker
+            if (index == hoveredCloseButtonIndex) {
+                RenderCloseButton(index, ctx);
+            } else {
+                RenderModifiedMarker(index, ctx);
+            }
+        } else if (ShouldShowCloseButton(tab)) {
             RenderCloseButton(index, ctx);
         }
 
@@ -1666,5 +1918,215 @@ namespace UltraCanvas {
                           Point2Di(tabBounds.x + tabBounds.width - 1, tabBounds.y + tabBounds.height - 4));
         }
         ctx->PopState();
+    }
+
+     void UltraCanvasTabbedContainer::SetTabShowMarker(int index, bool show) {
+        if (index >= 0 && index < (int)tabs.size()) {
+            if (tabs[index]->showMarker != show) {
+                tabs[index]->showMarker = show;
+                InvalidateTabbar();
+            }
+        }
+    }
+
+    bool UltraCanvasTabbedContainer::IsTabShowMarker(int index) const {
+        if (index >= 0 && index < (int)tabs.size()) {
+            return tabs[index]->showMarker;
+        }
+        return false;
+    }
+
+    void UltraCanvasTabbedContainer::SetTabMarkerColor(int index, const Color& color) {
+        if (index >= 0 && index < (int)tabs.size()) {
+            if (tabs[index]->markerColor != color) {
+                tabs[index]->markerColor = color;
+                InvalidateTabbar();
+            }
+        }
+    }
+
+    Color UltraCanvasTabbedContainer::GetTabMarkerColor(int index) const {
+        if (index >= 0 && index < (int)tabs.size()) {
+            return tabs[index]->markerColor;
+        }
+        return Colors::Transparent;
+    }
+
+    void UltraCanvasTabbedContainer::RenderModifiedMarker(int index, IRenderContext* ctx) {
+        if (index < 0 || index >= (int)tabs.size()) return;
+
+        TabData* tab = tabs[index].get();
+        if (!tab->showMarker) return;
+
+        // Position: replace the close button with the modified dot
+        int dotX = 0;
+        int dotY = 0;
+
+        if (ShouldShowCloseButton(tab)) {
+            Rect2Di closeBounds = GetCloseButtonBounds(index);
+            dotX = closeBounds.x + closeBounds.width / 2;
+            dotY = closeBounds.y + closeBounds.height / 2;
+        } else {
+            Rect2Di tabBounds = GetTabBounds(index);
+            dotX = tabBounds.x + tabBounds.width - tabPadding - modifiedMarkerRadius;
+            dotY = tabBounds.y + tabBounds.height / 2;
+        }
+
+        // Use per-tab color if set, otherwise fall back to container default
+        Color color = (tab->markerColor.a > 0) ? tab->markerColor : modifiedMarkerColor;
+        ctx->DrawFilledCircle(
+            Point2Di(dotX, dotY),
+            static_cast<float>(modifiedMarkerRadius),
+            color
+        );
+    }
+
+// =========================================================================
+// NEW: RenderDragInsertionIndicator
+// =========================================================================
+
+    void UltraCanvasTabbedContainer::RenderDragInsertionIndicator(IRenderContext* ctx) {
+        if (dragInsertionIndex < 0 || dragInsertionIndex >= (int)tabs.size()) return;
+
+        Rect2Di targetBounds = GetTabBounds(dragInsertionIndex);
+        if (targetBounds.width <= 0) return;
+
+        // Determine which edge to draw the indicator on
+        int lineX;
+        if (draggingTabIndex >= 0 && dragInsertionIndex < draggingTabIndex) {
+            // Inserting before the dragged tab — line on left edge of target
+            lineX = targetBounds.x - 1;
+        } else {
+            // Inserting after — line on right edge of target
+            lineX = targetBounds.x + targetBounds.width - 1;
+        }
+
+        // Vertical insertion line (2px wide, spanning tab height minus margins)
+        ctx->DrawFilledRectangle(
+                Rect2Di(lineX, targetBounds.y + 2, 2, targetBounds.height - 4),
+                dragInsertionColor
+        );
+
+        // Small triangle indicator at top of insertion line
+        int arrowSize = 5;
+        ctx->DrawFilledRectangle(
+                Rect2Di(lineX - arrowSize / 2, targetBounds.y, arrowSize, 3),
+                dragInsertionColor
+        );
+
+        // Small triangle indicator at bottom of insertion line
+        ctx->DrawFilledRectangle(
+                Rect2Di(lineX - arrowSize / 2, targetBounds.y + targetBounds.height - 3, arrowSize, 3),
+                dragInsertionColor
+        );
+    }
+
+
+// =========================================================================
+// NEW: RenderDraggedTabGhost
+// =========================================================================
+
+    void UltraCanvasTabbedContainer::RenderDraggedTabGhost(IRenderContext* ctx) {
+        if (draggingTabIndex < 0 || draggingTabIndex >= (int)tabs.size()) return;
+
+        Rect2Di tabBounds = GetTabBounds(draggingTabIndex);
+        if (tabBounds.width <= 0) return;
+
+        // Position ghost centered on current mouse position
+        int ghostX = dragCurrentPosition.x - tabBounds.width / 2;
+        int ghostY = dragCurrentPosition.y - tabBounds.height / 2;
+
+        // Semi-transparent background
+        Color ghostBg = activeTabColor;
+        ghostBg.a = 160;
+
+        ctx->DrawFilledRectangle(Rect2Di(ghostX, ghostY, tabBounds.width, tabBounds.height),
+                    ghostBg, tabCornerRadius);
+
+        // Ghost border
+        ctx->SetStrokePaint(dragGhostBorderColor);
+        ctx->SetStrokeWidth(1.0f);
+        if (tabCornerRadius > 0) {
+            ctx->DrawRoundedRectangle(
+                    {ghostX, ghostY, tabBounds.width, tabBounds.height},
+                    tabCornerRadius
+            );
+        } else {
+            ctx->DrawRectangle(Rect2Df(ghostX, ghostY, tabBounds.width, tabBounds.height));
+        }
+
+        // Tab title text on ghost
+        Color ghostText = activeTabTextColor;
+        ghostText.a = 180;
+        ctx->SetTextPaint(ghostText);
+        ctx->SetFontSize(static_cast<float>(fontSize));
+        ctx->SetFontWeight(FontWeight::Normal);
+
+        std::string title = tabs[draggingTabIndex]->title;
+        Size2Di textSize = ctx->GetTextLineDimensions(title);
+        int textX = ghostX + (tabBounds.width - textSize.width) / 2;
+        int textY = ghostY + (tabBounds.height - textSize.height) / 2;
+        ctx->DrawText(title, Point2Di(textX, textY));
+
+        // Restore stroke width
+        ctx->SetStrokeWidth(1.0f);
+    }
+
+
+// =========================================================================
+// NEW: AcceptTabTransfer
+// =========================================================================
+
+    int UltraCanvasTabbedContainer::AcceptTabTransfer(const TabTransferData& data,
+                                                      int insertionIndex) {
+        // Let the application callback decide whether to accept
+        if (onTabDragIn) {
+            int result = onTabDragIn(data, insertionIndex);
+            if (result < 0) return -1;  // Rejected
+        }
+
+        // Add the tab
+        int newIndex = AddTab(data.title, data.content);
+
+        if (newIndex >= 0) {
+            // Set properties from transfer data
+            if (!data.iconPath.empty()) {
+                SetTabIcon(newIndex, data.iconPath);
+            }
+            SetTabShowMarker(newIndex, data.showMarker);
+
+            if (newIndex >= 0 && newIndex < (int)tabs.size()) {
+                tabs[newIndex]->closable = data.closable;
+                tabs[newIndex]->userData = data.userData;
+            }
+
+            // Move to requested insertion position if needed
+            if (insertionIndex >= 0 && insertionIndex < (int)tabs.size() && newIndex != insertionIndex) {
+                ReorderTabs(newIndex, insertionIndex);
+                newIndex = insertionIndex;
+            }
+
+            SetActiveTab(newIndex);
+        }
+
+        return newIndex;
+    }
+
+
+// =========================================================================
+// NEW: GetTabTransferData
+// =========================================================================
+
+    TabTransferData UltraCanvasTabbedContainer::GetTabTransferData(int index) const {
+        TabTransferData data;
+        if (index >= 0 && index < (int)tabs.size()) {
+            data.title = tabs[index]->title;
+            data.content = tabs[index]->content;
+            data.iconPath = tabs[index]->iconPath;
+            data.showMarker = tabs[index]->showMarker;
+            data.closable = tabs[index]->closable;
+            data.userData = tabs[index]->userData;
+        }
+        return data;
     }
 } // namespace UltraCanvas

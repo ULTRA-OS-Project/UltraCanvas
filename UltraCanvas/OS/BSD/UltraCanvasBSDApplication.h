@@ -1,7 +1,7 @@
 // OS/BSD/UltraCanvasBSDApplication.h
 // Complete BSD platform implementation for UltraCanvas Framework
-// Version: 1.0.0
-// Last Modified: 2025-10-08
+// Version: 1.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -45,7 +45,7 @@ namespace UltraCanvas {
 class UltraCanvasBSDWindow;
 
 // ===== BSD APPLICATION CLASS =====
-class UltraCanvasBSDApplication : public UltraCanvasBaseApplication {
+class UltraCanvasBSDApplication : public UltraCanvasApplicationBase {
 private:
     // ===== X11 DISPLAY SYSTEM =====
     Display* display;
@@ -146,6 +146,10 @@ public:
     // ===== CLIPBOARD SUPPORT =====
     std::string GetClipboardText() override;
     void SetClipboardText(const std::string& text) override;
+
+protected:
+    FontStyle DetectSystemFontStyleNative() override;
+    FontStyle DetectMonospacedFontStyleNative() override;
 };
 
 } // namespace UltraCanvas

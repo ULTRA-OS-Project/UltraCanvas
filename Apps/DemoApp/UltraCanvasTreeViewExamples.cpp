@@ -1,16 +1,16 @@
 // Apps/DemoApp/UltraCanvasDemoExamples.cpp
 // Implementation of all component example creators
-// Version: 1.0.0
-// Last Modified: 2024-12-19
+// Version: 1.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasCheckbox.h"
-#include "UltraCanvasFormulaEditor.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include <sstream>
 #include <random>
 #include <map>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTreeViewExamples() {
@@ -31,27 +31,27 @@ namespace UltraCanvas {
 
         // Setup file tree structure
         TreeNodeData rootData("root", "My Computer");
-        rootData.leftIcon = TreeNodeIcon("media/icons/computer.png", 16, 16);
+        rootData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/computer.png"), 16, 16);
         TreeNode* root = fileTree->SetRootNode(rootData);
 
         TreeNodeData driveC("drive_c", "Local Disk (C:)");
-        driveC.leftIcon = TreeNodeIcon("media/icons/drive.png", 16, 16);
+        driveC.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/drive.png"), 16, 16);
         fileTree->AddNode("root", driveC);
 
         TreeNodeData documents("documents", "Documents");
-        documents.leftIcon = TreeNodeIcon("media/icons/folder.png", 16, 16);
+        documents.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
         fileTree->AddNode("drive_c", documents);
 
         TreeNodeData file1("file1", "Document.txt");
-        file1.leftIcon = TreeNodeIcon("media/icons/text.png", 16, 16);
+        file1.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/text.png"), 16, 16);
         fileTree->AddNode("documents", file1);
 
         TreeNodeData pictures("pictures", "Pictures");
-        pictures.leftIcon = TreeNodeIcon("media/icons/folder.png", 16, 16);
+        pictures.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/folder.png"), 16, 16);
         fileTree->AddNode("drive_c", pictures);
 
         fileTree->onNodeSelected = [](TreeNode* node) {
-            std::cout << "Selected: " << node->data.text << std::endl;
+            debugOutput << "Selected: " << node->data.text << std::endl;
         };
 
         root->Expand();
@@ -66,15 +66,15 @@ namespace UltraCanvas {
         // Options checkboxes for File Explorer Tree
         auto autoExpandCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoExpandCheckbox", 606, 20, 490, 280, 24, "Auto expand selected node");
         autoExpandCheckbox->SetChecked(false);
-        autoExpandCheckbox->onStateChanged = [fileTree](CheckboxState oldState, CheckboxState newState) {
-        fileTree->SetAutoExpandSelectedNode(newState == CheckboxState::Checked);
+        autoExpandCheckbox->onStateChanged = [fileTree](CheckedState oldState, CheckedState newState) {
+        fileTree->SetAutoExpandSelectedNode(newState == CheckedState::Checked);
         };
         container->AddChild(autoExpandCheckbox);
 
         auto autoSelectFirstChildCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoSelectFirstChildCheckbox", 607, 20, 520, 280, 24, "Auto select first child of expanded node");
         autoSelectFirstChildCheckbox->SetChecked(false);
-        autoSelectFirstChildCheckbox->onStateChanged = [fileTree](CheckboxState oldState, CheckboxState newState) {
-        fileTree->SetShowFirstChildOnExpand(newState == CheckboxState::Checked);
+        autoSelectFirstChildCheckbox->onStateChanged = [fileTree](CheckedState oldState, CheckedState newState) {
+        fileTree->SetShowFirstChildOnExpand(newState == CheckedState::Checked);
         };
         container->AddChild(autoSelectFirstChildCheckbox);
 

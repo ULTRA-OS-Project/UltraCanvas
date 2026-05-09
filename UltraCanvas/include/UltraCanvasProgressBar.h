@@ -12,6 +12,7 @@
 #include <functional>
 #include <algorithm>
 #include <cmath>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -78,7 +79,7 @@ public:
     
     // ===== TEXT PROPERTIES =====
     std::string customText;
-    std::string fontFamily = "Sans";
+    std::string fontFamily;
     int fontSize = 11;
     bool boldText = false;
     
@@ -252,7 +253,7 @@ public:
     }
     
     // ===== RENDERING =====
-    void Render(IRenderContext* ctx) override {
+    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
         if (!IsVisible()) return;
         
         ctx->PushState();
@@ -298,17 +299,17 @@ public:
     
     // ===== EVENT HANDLING =====
     bool OnEvent(const UCEvent& event) override {
-        UltraCanvasUIElement::OnEvent(event);
-        
-        switch (event.type) {
-            case UCEventType::MouseDown:
-                HandleMouseDown(event);
-                break;
-                
-            case UCEventType::KeyDown:
-                HandleKeyDown(event);
-                break;
-        }
+        if (!UltraCanvasUIElement::OnEvent(event)) {
+            switch (event.type) {
+                case UCEventType::MouseDown:
+                    HandleMouseDown(event);
+                    break;
+                    
+                case UCEventType::KeyDown:
+                    HandleKeyDown(event);
+                    break;
+            }
+        }       
         return false;
     }
     
@@ -363,7 +364,7 @@ private:
     
     // ===== RENDERING HELPERS =====
     void RenderStandardProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -385,7 +386,7 @@ private:
     }
     
     void RenderRoundedProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -407,7 +408,7 @@ private:
     }
     
     void RenderCircularProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetLocalBounds();
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         float radius = std::min(bounds.width, bounds.height) / 2 - borderWidth;
         
@@ -438,7 +439,7 @@ private:
     }
     
     void RenderRingProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetLocalBounds();
         Point2D center(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
         float outerRadius = std::min(bounds.width, bounds.height) / 2 - borderWidth;
         float innerRadius = outerRadius - thickness;
@@ -466,7 +467,7 @@ private:
     }
     
     void RenderGradientProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -498,7 +499,7 @@ private:
     }
     
     void RenderStripedProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -525,7 +526,7 @@ private:
     }
     
     void RenderPulseProgress() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetLocalBounds();
         
         // Draw background
         ctx->PaintWidthColorbackgroundColor);
@@ -598,7 +599,7 @@ private:
     }
     
     void RenderText() {
-        Rect2D bounds = GetBounds();
+        Rect2D bounds = GetLocalBounds();
         std::string text = GetFormattedText();
         
         ctx->PaintWidthColortextColor);
@@ -668,13 +669,13 @@ private:
     
     // ===== EVENT HANDLERS =====
     void HandleMouseDown(const UCEvent& event) {
-        if (Contains(event.x, event.y)) {
-            // Click to set progress based on position (optional feature)
+        if (Contains(event.pointer)) {
+            // Click to set progress based on position (event.pointer is element-local)
             if (orientation == ProgressOrientation::Horizontal) {
-                float clickRatio = static_cast<float>(event.x - GetX()) / GetWidth();
+                float clickRatio = static_cast<float>(event.pointer.x) / GetWidth();
                 SetPercentage(clickRatio);
             } else {
-                float clickRatio = 1.0f - static_cast<float>(event.y - GetY()) / GetHeight();
+                float clickRatio = 1.0f - static_cast<float>(event.pointer.y) / GetHeight();
                 SetPercentage(clickRatio);
             }
         }
@@ -823,15 +824,15 @@ verticalProgress->SetStyle(UltraCanvas::ProgressBarStyle::Gradient);
 
 // Set up callbacks
 standardProgress->onValueChanged = [](float value) {
-    std::cout << "Progress changed to: " << value << std::endl;
+    debugOutput << "Progress changed to: " << value << std::endl;
 };
 
 standardProgress->onCompleted = []() {
-    std::cout << "Progress completed!" << std::endl;
+    debugOutput << "Progress completed!" << std::endl;
 };
 
 standardProgress->onStateChanged = [](UltraCanvas::ProgressState state) {
-    std::cout << "Progress state changed" << std::endl;
+    debugOutput << "Progress state changed" << std::endl;
 };
 
 // Animate progress over time
@@ -953,7 +954,7 @@ auto progress = UltraCanvas::CreateHorizontalProgressBar("progress", 1001, x, y,
 progress->SetValue(75.0f);
 progress->SetStyle(UltraCanvas::ProgressBarStyle::Rounded);
 progress->SetTextDisplay(true, true);
-progress->onCompleted = []() { std::cout << "Done!" << std::endl; };
+progress->onCompleted = []() { debugOutput << "Done!" << std::endl; };
 window->AddElement(progress.get());
 ```
 

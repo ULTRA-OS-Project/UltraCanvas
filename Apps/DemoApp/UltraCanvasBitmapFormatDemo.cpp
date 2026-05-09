@@ -12,6 +12,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasTextArea.h"
+#include "../dialogs/UltraCanvasImageExportDialog.h"
 #include "PixelFX/PixelFX.h"
 
 #include <string>
@@ -219,11 +220,11 @@ namespace UltraCanvas {
                         return true;
                     }
                     // Zoom shortcuts
-                    if (event.virtualKey == UCKeys::Plus || event.virtualKey == UCKeys::NumPadAdd) {
+                    if (event.virtualKey == UCKeys::Plus || event.virtualKey == UCKeys::NumPadPlus) {
                         AdjustZoom(0.1f);
                         return true;
                     }
-                    if (event.virtualKey == UCKeys::Minus || event.virtualKey == UCKeys::NumPadSubtract) {
+                    if (event.virtualKey == UCKeys::Minus || event.virtualKey == UCKeys::NumPadMinus) {
                         AdjustZoom(-0.1f);
                         return true;
                     }
@@ -245,7 +246,7 @@ namespace UltraCanvas {
                 case UCEventType::MouseDown:
                     if (event.button == UCMouseButton::Left || event.button == UCMouseButton::Middle) {
                         isPanning = true;
-                        lastMousePos = Point2Di(event.x, event.y);
+                        lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
                         return true;
                     }
                     break;
@@ -259,19 +260,15 @@ namespace UltraCanvas {
 
                 case UCEventType::MouseMove:
                     if (isPanning) {
-                        int deltaX = event.x - lastMousePos.x;
-                        int deltaY = event.y - lastMousePos.y;
+                        int deltaX = event.pointer.x - lastMousePos.x;
+                        int deltaY = event.pointer.y - lastMousePos.y;
                         panOffset.x += deltaX;
                         panOffset.y += deltaY;
-                        lastMousePos = Point2Di(event.x, event.y);
+                        lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
                         UpdateImagePosition();
                         return true;
                     }
                     break;
-
-                case UCEventType::WindowClose:
-                    CloseViewer();
-                    return true;
 
                 default:
                     break;
@@ -325,7 +322,7 @@ namespace UltraCanvas {
 
         void CloseViewer() {
             if (viewerWindow) {
-                viewerWindow->RequestDelete();
+                viewerWindow->Close();
                 viewerWindow.reset();
             }
         }
@@ -938,7 +935,7 @@ namespace UltraCanvas {
         const int leftColX = 20;
         const int rightColX = 310;
         const int leftColWidth = 270;
-        const int rightColWidth = 620;
+        const int rightColWidth = 640;
         const int row1Y = 20;
         const int row2Y = 340;
         const int row3Y = 580;
@@ -966,8 +963,8 @@ namespace UltraCanvas {
         auto image = std::make_shared<UltraCanvasImageElement>("Image", id++, 4, 4, 222, 162);
         image->LoadFromFile(sampleImagePath);
         image->SetFitMode(ImageFitMode::Contain);
-        image->SetMouseCursor(UCMouseCursor::Hand);
         image->SetClickable(true);
+        image->SetMouseCursor(UCMouseCursor::LookingGlass);
         image->onClick = [sampleImagePath]() {
             ShowFullSizeImageViewer(sampleImagePath);
         };
@@ -993,6 +990,7 @@ namespace UltraCanvas {
         viewBtn->SetColors(info.accentColor, info.accentColor);
         viewBtn->SetTextColors(Color(255, 255, 255, 255));
         viewBtn->SetCornerRadius(6);
+        viewBtn->SetMouseCursor(UCMouseCursor::LookingGlass);
         viewBtn->onClick = [sampleImagePath]() {
             ShowFullSizeImageViewer(sampleImagePath);
         };
@@ -1004,6 +1002,12 @@ namespace UltraCanvas {
         exportBtn->SetColors(Color(241, 245, 249, 255), Color(226, 232, 240, 255));
         exportBtn->SetTextColors(Color(71, 85, 105, 255));
         exportBtn->SetCornerRadius(6);
+        exportBtn->onClick = [sampleImagePath]() {
+            auto vimg = vips::VImage::new_from_file(sampleImagePath.c_str());
+            auto win = CreateImageExportDialog(vimg);
+            win->Create();
+            win->Show();
+        };
         imageCard->AddChild(exportBtn);
 
         // ===== ROW 1 RIGHT: IMAGE PROPERTIES (populated from actual image) =====
@@ -1030,7 +1034,7 @@ namespace UltraCanvas {
                 {"LOADER", imgInfo.loader},
                 {"BITS PER CHANNEL", fmt::format("{}", imgInfo.bitsPerChannel)},
                 {"ALPHA CHANNEL", imgInfo.hasAlpha ? "Yes" : "No"},
-                {"DPI", fmt::format("{}×{}", round(imgInfo.dpiX), round(imgInfo.dpiY))}
+                {"DPI", fmt::format("{}", round(imgInfo.dpiX))}
         };
 
         int propY = 56;
@@ -1095,7 +1099,7 @@ namespace UltraCanvas {
         aboutDesc->SetText(info.aboutDescription);
         aboutDesc->SetFontSize(10);
         aboutDesc->SetTextColor(Color(71, 85, 105, 255));
-        aboutDesc->SetWordWrap(true);
+        aboutDesc->SetWrap(TextWrap::WrapWord);
         aboutDesc->SetAlignment(TextAlignment::Left);
         aboutDescCont->AddChild(aboutDesc);
         aboutCard->AddChild(aboutDescCont);

@@ -329,10 +329,10 @@ namespace UltraCanvas {
 
         // ===== STATUS LABEL =====
         auto statusLabel = std::make_shared<UltraCanvasLabel>(
-                "SankeyStatus", 5003, 670, 10, 320, 60
+                "SankeyStatus", 5003, 740, 10, 310, 60
         );
         statusLabel->SetText("Hover over nodes and links to see details\nDrag nodes to adjust layout");
-        statusLabel->SetFontSize(11);
+        statusLabel->SetFontSize(10);
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(8.0f);
@@ -377,7 +377,7 @@ namespace UltraCanvas {
                 "through electricity generation to end consumers (residential, commercial, industrial)."
         );
         energyDesc->SetFontSize(11);
-        energyDesc->SetWordWrap(true);
+        energyDesc->SetWrap(TextWrap::WrapWord);
         energyContainer->AddChild(energyDesc);
 
         // Control panel
@@ -544,7 +544,7 @@ namespace UltraCanvas {
                 "to conversion or exit points."
         );
         webDesc->SetFontSize(11);
-        webDesc->SetWordWrap(true);
+        webDesc->SetWrap(TextWrap::WrapWord);
         webContainer->AddChild(webDesc);
 
         // Web traffic Sankey diagram
@@ -781,7 +781,7 @@ namespace UltraCanvas {
                 "and interaction responsiveness with varying numbers of nodes and links."
         );
         perfDesc->SetFontSize(11);
-        perfDesc->SetWordWrap(true);
+        perfDesc->SetWrap(TextWrap::WrapWord);
         perfContainer->AddChild(perfDesc);
 
         // Performance controls

@@ -242,14 +242,14 @@ struct TextInputStyle {
     TextAlignment textAlignment = TextAlignment::Left;
     
     // Caret
-    int caretWidth = 1.0f;
-    int caretBlinkRate = 1.0f;  // Blinks per second
+    int caretWidth = 1;
+    int caretBlinkRate = 1;  // Blinks per second
     
     // Effects
     bool showShadow = false;
     Color shadowColor = Color(0, 0, 0, 50);
     Point2Di shadowOffset = Point2Di(1, 1);
-    int shadowBlur = 2.0f;
+    int shadowBlur = 2;
     
     // Animations
     bool enableFocusAnimation = false;
@@ -313,8 +313,8 @@ private:
     float caretBlinkTimer;
     
     // ===== SCROLLING (for long text) =====
-    float scrollOffset;
-    float maxScrollOffset;
+    int scrollOffset;
+    int maxScrollOffset;
     
     // ===== UNDO/REDO =====
     std::vector<TextInputState> undoStack;
@@ -325,10 +325,15 @@ private:
     bool isDragging;
     Point2Di dragStartPosition;
     
-    // ===== AUTO-COMPLETE =====
-    AutoComplete autoCompleteMode;
-    std::vector<std::string> autoCompleteSuggestions;
-    bool showAutoComplete;
+    // ===== PLACEHOLDER =====
+    bool showPlaceholderAlways = false;  // Show placeholder even when focused (if text is empty)
+
+    // ===== CLEAR BUTTON =====
+    bool showClearButton = false;
+    bool isClearButtonHovered = false;
+    int clearButtonSize = 14;
+    Color clearButtonColor = Color(150, 150, 150);
+    Color clearButtonHoverColor = Color(200, 50, 50);
     
 public:
     // ===== CONSTRUCTOR =====
@@ -385,12 +390,20 @@ public:
     void SetShowValidationState(bool show) {
         showValidationState = show;
     }
+
+    // ===== PLACEHOLDER =====
+    void SetShowPlaceholderAlways(bool show) { showPlaceholderAlways = show; RequestRedraw(); }
+    bool IsShowPlaceholderAlways() const { return showPlaceholderAlways; }
+
+    // ===== CLEAR BUTTON =====
+    void SetShowClearButton(bool show) { showClearButton = show; RequestRedraw(); }
+    bool IsShowClearButton() const { return showClearButton; }
     
     // ===== FORMATTING =====
     void SetFormatter(const TextFormatter& textFormatter);
     
     const TextFormatter& GetFormatter() const { return formatter; }
-    
+   
     // ===== SELECTION AND CARET =====
     void SetSelection(size_t start, size_t end);
     
@@ -419,14 +432,12 @@ public:
     bool CanRedo() const { return !redoStack.empty(); }
     
     // ===== STYLING =====
-    void SetStyle(const TextInputStyle& inputStyle) {
-        style = inputStyle;
-    }
-    
+    void SetStyle(const TextInputStyle& inputStyle) { style = inputStyle; }
     const TextInputStyle& GetStyle() const { return style; }
+    void SetFontSize(float size) { style.fontStyle.fontSize = size; }
     
     // ===== RENDERING (REQUIRED OVERRIDE) =====
-    void Render(IRenderContext* ctx) override;
+    void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
     
     // ===== EVENT HANDLING (REQUIRED OVERRIDE) =====
     bool OnEvent(const UCEvent& event) override;
@@ -435,11 +446,15 @@ public:
     std::function<void(const std::string&)> onTextChanged;
     std::function<void(size_t, size_t)> onSelectionChanged;
     std::function<void(const ValidationResult&)> onValidationChanged;
-    std::function<void()> onEnterPressed;
-    std::function<void()> onEscapePressed;
+    std::function<bool(const std::string&)> onEnterPressed;
+    std::function<bool()> onEscapePressed;
     std::function<void()> onFocusGained;
     std::function<void()> onFocusLost;
-    
+    std::function<void()> onCleared;
+
+protected:
+    virtual void TextChanged();
+
 private:
     // ===== PRIVATE HELPER METHODS =====
     
@@ -462,7 +477,7 @@ private:
     float GetCaretXPosition();
     float GetCaretYPosition();
 
-    Rect2Df GetTextArea() const;
+    Rect2Di GetTextArea() const;
     
     Color GetBackgroundColor() const {
         return style.backgroundColor;
@@ -516,15 +531,18 @@ private:
     
     std::vector<std::string> WrapLine(const std::string& line, float maxWidth);
     
+    bool IsClearButtonVisible() const;
+    Rect2Di GetClearButtonBounds() const;
+    void RenderClearButton(IRenderContext* ctx);
+
     size_t GetTextPositionFromPoint(const Point2Di& point);
     
     bool HandleMouseDown(const UCEvent& event);
     bool HandleMouseMove(const UCEvent& event);
-    void HandleMouseUp(const UCEvent& event);
-    void HandleKeyDown(const UCEvent& event);
-    void HandleKeyUp(const UCEvent& event);
-    void HandleFocusGained(const UCEvent& event);
-    void HandleFocusLost(const UCEvent& event);
+    bool HandleMouseUp(const UCEvent& event);
+    bool HandleKeyDown(const UCEvent& event);
+    bool HandleFocusGained(const UCEvent& event);
+    bool HandleFocusLost(const UCEvent& event);
 
     void InsertText(const std::string& insertText);
     

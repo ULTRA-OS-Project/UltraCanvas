@@ -13,7 +13,10 @@ set(PLUGIN_VERSION "1.0.0")
 message(STATUS "Configuring ${PLUGIN_NAME} v${PLUGIN_VERSION}")
 
 # ===== FIND DEPENDENCIES =====
-find_package(PkgConfig REQUIRED)
+# Only use PkgConfig on non-Windows platforms
+if(NOT WIN32)
+    find_package(PkgConfig REQUIRED)
+endif()
 
 # libcdr - CorelDRAW file format parser
 pkg_check_modules(LIBCDR REQUIRED libcdr-0.1)
@@ -31,9 +34,23 @@ if(NOT LIBREVENGE_FOUND)
     message(FATAL_ERROR "librevenge not found. Install with: sudo apt install librevenge-dev")
 endif()
 
+if(APPLE)
+    # ICU is keg-only on Homebrew, find it explicitly
+    execute_process(
+            COMMAND brew --prefix icu4c
+            OUTPUT_VARIABLE ICU_HOMEBREW_PREFIX
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+    )
+    if(ICU_HOMEBREW_PREFIX)
+        set(ENV{PKG_CONFIG_PATH} "${ICU_HOMEBREW_PREFIX}/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
+        link_directories(${ICU_HOMEBREW_PREFIX}/lib)
+    endif()
+endif()
+
 # Optional dependencies
 pkg_check_modules(LCMS2 lcms2)
-pkg_check_modules(ICU icu-uc)
+pkg_check_modules(ICU icu-uc icu-i18n)
 
 # ===== SOURCE FILES =====
 set(CDR_PLUGIN_SOURCES
@@ -99,7 +116,8 @@ if(LCMS2_FOUND)
 endif()
 
 if(ICU_FOUND)
-    target_link_libraries(${PLUGIN_NAME} PRIVATE ${ICU_LIBRARIES})
+    target_link_directories(${PLUGIN_NAME} PUBLIC ${ICU_LIBRARY_DIRS})
+    target_link_libraries(${PLUGIN_NAME} PUBLIC ${ICU_LIBRARIES})
 endif()
 
 # ===== COMPILER SETTINGS =====

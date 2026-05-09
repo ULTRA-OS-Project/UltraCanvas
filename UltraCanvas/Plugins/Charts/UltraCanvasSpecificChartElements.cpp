@@ -37,8 +37,8 @@ namespace UltraCanvas {
         } else {
             // Draw straight line segments
             for (size_t i = 1; i < linePoints.size(); ++i) {
-                ctx->DrawLine(linePoints[i-1].x, linePoints[i-1].y,
-                              linePoints[i].x, linePoints[i].y);
+                ctx->DrawLine({linePoints[i-1].x, linePoints[i-1].y},
+                              {linePoints[i].x, linePoints[i].y});
             }
         }
 
@@ -46,7 +46,7 @@ namespace UltraCanvas {
         if (showDataPoints) {
             ctx->SetFillPaint(pointColor);
             for (const auto& screenPos : linePoints) {
-                ctx->FillCircle(screenPos.x, screenPos.y, pointRadius);
+                ctx->FillCircle(screenPos, pointRadius);
             }
         }
 
@@ -59,7 +59,7 @@ namespace UltraCanvas {
         if (points.size() < 3) {
             // Not enough points for smoothing
             for (size_t i = 1; i < points.size(); ++i) {
-                ctx->DrawLine(points[i-1].x, points[i-1].y, points[i].x, points[i].y);
+                ctx->DrawLine(points[i-1], points[i]);
             }
             return;
         }
@@ -91,7 +91,7 @@ namespace UltraCanvas {
                                   (-p0.y + 3*p1.y - 3*p2.y + p3.y) * t3);
 
                 Point2Df currentPoint(x, y);
-                ctx->DrawLine(prevPoint.x, prevPoint.y, currentPoint.x, currentPoint.y);
+                ctx->DrawLine(prevPoint, currentPoint);
                 prevPoint = currentPoint;
             }
         }
@@ -167,13 +167,13 @@ namespace UltraCanvas {
 
                 // Draw the bar
                 ctx->SetFillPaint(barColor);
-                ctx->FillRectangle(barX, barY, actualBarWidth, barHeight);
+                ctx->FillRectangle(Rect2Df(barX, barY, actualBarWidth, barHeight));
 
                 // Draw border if enabled
                 if (barBorderWidth > 0) {
                     ctx->SetStrokePaint(barBorderColor);
                     ctx->SetStrokeWidth(barBorderWidth);
-                    ctx->DrawRectangle(barX, barY, actualBarWidth, barHeight);
+                    ctx->DrawRectangle(Rect2Df(barX, barY, actualBarWidth, barHeight));
                 }
             } else {
                 // Use original numeric positioning
@@ -194,12 +194,12 @@ namespace UltraCanvas {
                 }
 
                 ctx->SetFillPaint(barColor);
-                ctx->FillRectangle(barX, topPos.y, actualBarWidth, barHeight);
+                ctx->FillRectangle(Rect2Df(barX, topPos.y, actualBarWidth, barHeight));
 
                 if (barBorderWidth > 0) {
                     ctx->SetStrokePaint(barBorderColor);
                     ctx->SetStrokeWidth(barBorderWidth);
-                    ctx->DrawRectangle(barX, topPos.y, actualBarWidth, barHeight);
+                    ctx->DrawRectangle(Rect2Df(barX, topPos.y, actualBarWidth, barHeight));
                 }
             }
         }
@@ -255,13 +255,13 @@ namespace UltraCanvas {
             // Draw point based on shape
             switch (pointShape) {
                 case PointShape::Circle:
-                    ctx->FillCircle(screenPos.x, screenPos.y, pointSize);
+                    ctx->FillCircle(screenPos, pointSize);
                     break;
 
                 case PointShape::Square: {
                     float halfSize = pointSize;
-                    ctx->FillRectangle(screenPos.x - halfSize, screenPos.y - halfSize,
-                                       halfSize * 2, halfSize * 2);
+                    ctx->FillRectangle(Rect2Df(screenPos.x - halfSize, screenPos.y - halfSize,
+                                       halfSize * 2, halfSize * 2));
                     break;
                 }
 
@@ -398,8 +398,8 @@ namespace UltraCanvas {
         // Fill the area
         if (enableGradientFill) {
             // Create gradient
-            float minY = areaPoints[0].y;
-            float maxY = areaPoints[0].y;
+            double minY = areaPoints[0].y;
+            double maxY = areaPoints[0].y;
 
             for (const auto& point : areaPoints) {
                 minY = std::min(minY, point.y);
@@ -423,15 +423,15 @@ namespace UltraCanvas {
         ctx->SetStrokeWidth(lineWidth);
 
         for (size_t i = 1; i < smoothedAreaPoints.size() - 2; ++i) {
-            ctx->DrawLine(smoothedAreaPoints[i-1].x, smoothedAreaPoints[i-1].y,
-                          smoothedAreaPoints[i].x, smoothedAreaPoints[i].y);
+            ctx->DrawLine(smoothedAreaPoints[i-1],
+                          smoothedAreaPoints[i]);
         }
 
         // Draw data points if enabled
         if (showDataPoints) {
             ctx->SetFillPaint(pointColor);
             for (size_t i = 0; i < dataSource->GetPointCount(); ++i) {
-                ctx->FillCircle(areaPoints[i].x, areaPoints[i].y, pointRadius);
+                ctx->FillCircle(areaPoints[i], pointRadius);
             }
         }
 

@@ -253,7 +253,7 @@ namespace UltraCanvas {
     }
 
 // ===== RENDERING METHODS =====
-    void UltraCanvasPopulationChart::Render(IRenderContext* ctx) {
+    void UltraCanvasPopulationChart::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible()) {
             return;
         }
@@ -264,12 +264,6 @@ namespace UltraCanvas {
                 CalculateAutoScale();
             }
         }
-
-        int absX = GetX();
-        int absY = GetY();
-
-        ctx->PushState();
-        ctx->Translate(absX, absY);
 
         RenderBackground(ctx);
         RenderTitle(ctx);
@@ -282,13 +276,11 @@ namespace UltraCanvas {
         if (showLegend) {
             RenderLegend(ctx);
         }
-
-        ctx->PopState();
     }
 
     void UltraCanvasPopulationChart::RenderBackground(IRenderContext* ctx) {
         ctx->SetFillPaint(backgroundColor);
-        ctx->FillRectangle(0, 0, GetWidth(), GetHeight());
+        ctx->FillRectangle(Rect2Df(0, 0, GetWidth(), GetHeight()));
     }
 
     void UltraCanvasPopulationChart::RenderTitle(IRenderContext* ctx) {
@@ -300,16 +292,16 @@ namespace UltraCanvas {
         ctx->SetFontSize(titleFontSize);
 
         if (!chartTitle.empty()) {
-            int titleWidth = ctx->GetTextLineWidth(chartTitle);
-            int titleX = (GetWidth() - titleWidth) / 2;
-            ctx->DrawText(chartTitle, titleX, 5);
+            double titleWidth = ctx->GetTextLineWidth(chartTitle);
+            double titleX = (GetWidth() - titleWidth) / 2;
+            ctx->DrawText(chartTitle, Point2Df(titleX, 5));
         }
 
         if (!chartSubtitle.empty()) {
             ctx->SetFontSize(fontSize);
-            int subtitleWidth = ctx->GetTextLineWidth(chartSubtitle);
-            int subtitleX = (GetWidth() - subtitleWidth) / 2;
-            ctx->DrawText(chartSubtitle, subtitleX, 30);
+            double subtitleWidth = ctx->GetTextLineWidth(chartSubtitle);
+            double subtitleX = (GetWidth() - subtitleWidth) / 2;
+            ctx->DrawText(chartSubtitle, {subtitleX, 30});
         }
     }
 
@@ -354,13 +346,13 @@ namespace UltraCanvas {
 
             // Left side grid line
             int leftX = centerX - pixelPos;
-            ctx->DrawLine(leftX, chartPaddingTop,
-                          leftX, GetHeight() - chartPaddingBottom);
+            ctx->DrawLine({leftX, chartPaddingTop},
+                          {leftX, GetHeight() - chartPaddingBottom});
 
             // Right side grid line
             int rightX = centerX + pixelPos;
-            ctx->DrawLine(rightX, chartPaddingTop,
-                          rightX, GetHeight() - chartPaddingBottom);
+            ctx->DrawLine({rightX, chartPaddingTop},
+                          {rightX, GetHeight() - chartPaddingBottom});
         }
     }
 
@@ -405,20 +397,19 @@ namespace UltraCanvas {
                               femaleSurplusColor, true);
         }
         // Draw age label in center
-        int labelWidth, labelHeight;
-        ctx->GetTextLineDimensions(group.AgeLabel, labelWidth, labelHeight);
-        int labelX = centerX - labelWidth / 2;
-        int labelY = yPosition + barHeight / 2 - labelHeight / 2;
+        Size2Di labelSize = ctx->GetTextLineDimensions(group.AgeLabel);
+        double labelX = centerX - labelSize.width / 2;
+        double labelY = yPosition + barHeight / 2 - labelSize.height / 2;
         ctx->SetTextPaint(textColor);
         ctx->SetFontSize(fontSize);
-        ctx->DrawText(group.AgeLabel, labelX, labelY);
+        ctx->DrawText(group.AgeLabel, {labelX, labelY});
     }
 
     void UltraCanvasPopulationChart::RenderCenterLine(IRenderContext* ctx) {
         ctx->SetStrokePaint(axisColor);
         ctx->SetStrokeWidth(2.0f);
-        ctx->DrawLine(centerX, chartPaddingTop,
-                      centerX, GetHeight() - chartPaddingBottom);
+        ctx->DrawLine({centerX, chartPaddingTop},
+                      {centerX, GetHeight() - chartPaddingBottom});
     }
 
     void UltraCanvasPopulationChart::RenderLegend(IRenderContext* ctx) {
@@ -435,11 +426,11 @@ namespace UltraCanvas {
         for (const auto& item : legendItems) {
             // Draw color box
             ctx->SetFillPaint(item.ItemColor);
-            ctx->FillRectangle(legendX, legendY, 15, 15);
+            ctx->FillRectangle(Rect2Df(legendX, legendY, 15, 15));
 
             // Draw label
             ctx->SetTextPaint(textColor);
-            ctx->DrawText(item.Label, legendX + 20, legendY);
+            ctx->DrawText(item.Label, {legendX + 20, legendY});
 
             legendY += itemHeight;
         }
@@ -455,36 +446,40 @@ namespace UltraCanvas {
                                                        int width, int height,
                                                        const Color& color, bool rightSide) {
         ctx->SetFillPaint(color);
-        ctx->FillRectangle(x, y, width, height);
+        ctx->FillRectangle(Rect2Df(x, y, width, height));
 
         // Draw subtle border
         ctx->SetStrokePaint(Color(color.r * 0.8, color.g * 0.8, color.b * 0.8));
         ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(x, y, width, height);
+        ctx->DrawRectangle(Rect2Df(x, y, width, height));
     }
 
     void UltraCanvasPopulationChart::DrawAgeLabel(IRenderContext* ctx,
                                                   const std::string& label, int y) {
         ctx->SetTextPaint(textColor);
         ctx->SetFontSize(fontSize);
-        ctx->DrawText(label, chartPaddingLeft - 50, y);
+        ctx->DrawText(label, {chartPaddingLeft - 50, y});
     }
 
     void UltraCanvasPopulationChart::DrawAxisValue(IRenderContext* ctx, double value,
                                                    int x, int y) {
         std::string valueStr = PopulationChartUtils::FormatPopulation(value);
         int textWidth = ctx->GetTextLineWidth(valueStr);
-        ctx->DrawText(valueStr, x - textWidth / 2, y);
+        ctx->DrawText(valueStr, {x - textWidth / 2, y});
     }
 
 // ===== EVENT HANDLING =====
     bool UltraCanvasPopulationChart::OnEvent(const UCEvent& event) {
+        if (UltraCanvasUIElement::OnEvent(event)) {
+            return true;
+        }        
+
         if (!interactionEnabled) {
             return false;
         }
 
         if (event.type == UCEventType::MouseMove) {
-            int newHoveredIndex = GetAgeGroupIndexAt(event.x, event.y);
+            int newHoveredIndex = GetAgeGroupIndexAt(event.pointer.x, event.pointer.y);
 
             if (newHoveredIndex != hoveredGroupIndex) {
                 hoveredGroupIndex = newHoveredIndex;
@@ -493,7 +488,7 @@ namespace UltraCanvas {
             return true;
         }
 
-        return UltraCanvasUIElement::OnEvent(event);
+        return false;
     }
 
 // ===== UTILITY FUNCTIONS =====

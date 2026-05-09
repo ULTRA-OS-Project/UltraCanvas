@@ -137,7 +137,7 @@ namespace UltraCanvas {
         std::ofstream file(filePath);
         if (!file.is_open()) return false;
 
-        auto bounds = GetBounds();
+        auto bounds = GetLocalBounds();
         file << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
         file << "<svg xmlns=\"http://www.w3.org/2000/svg\" ";
         file << "width=\"" << bounds.width << "\" ";
@@ -235,10 +235,10 @@ namespace UltraCanvas {
         needsLayout = false;
     }
 
-    void UltraCanvasSankeyDiagram::Render(IRenderContext* ctx) {
+    void UltraCanvasSankeyDiagram::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible()) return;
 
-        auto bounds = GetBounds();
+        auto bounds = GetLocalBounds();
 
         if (needsLayout) {
             PerformLayout();
@@ -247,7 +247,7 @@ namespace UltraCanvas {
         // Draw background if enabled
         if (style.hasBackground) {
             ctx->SetFillPaint(style.backgroundColor);
-            ctx->FillRectangle(bounds.x, bounds.y, bounds.width, bounds.height);
+            ctx->FillRectangle(bounds);
         }
 
         // Draw links
@@ -273,11 +273,6 @@ namespace UltraCanvas {
                 hoveredNodeId.clear();
                 hoveredLinkIndex = -1;
                 UltraCanvasTooltipManager::HideTooltip();
-//                auto mouseGlobalPos = ConvertContainerToWindowCoordinates(mousePos);
-//                // Show tooltip using tooltip manager
-//                UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, mouseGlobalPos);
-//
-//                RequestRedraw();
                 return true;
             default:
                 break;
@@ -408,7 +403,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSankeyDiagram::ComputeNodeBreadths() {
-        auto bounds = GetBounds();
+        auto bounds = GetLocalBounds();
 
         // Find max depth
         int maxDepth = 0;
@@ -639,7 +634,7 @@ namespace UltraCanvas {
 
                 if (weightSum > 0) {
                     float newY = targetY / weightSum - node.height / 2.0f;
-                    auto bounds = GetBounds();
+                    auto bounds = GetLocalBounds();
                     node.y = std::clamp(newY,
                                         bounds.y + nodePadding,
                                         bounds.y + bounds.height - node.height - nodePadding);
@@ -685,7 +680,7 @@ namespace UltraCanvas {
 
                 if (weightSum > 0) {
                     float newY = targetY / weightSum - node.height / 2.0f;
-                    auto bounds = GetBounds();
+                    auto bounds = GetLocalBounds();
                     node.y = std::clamp(newY,
                                         bounds.y + nodePadding,
                                         bounds.y + bounds.height - node.height - nodePadding);
@@ -719,7 +714,7 @@ namespace UltraCanvas {
         }
 
         // Ensure nodes stay within bounds
-        auto bounds = GetBounds();
+        auto bounds = GetLocalBounds();
         float maxY = bounds.y + bounds.height - nodePadding;
 
         for (auto it = sortedIds.rbegin(); it != sortedIds.rend(); ++it) {
@@ -734,29 +729,28 @@ namespace UltraCanvas {
     void UltraCanvasSankeyDiagram::DrawNode(IRenderContext *ctx, const SankeyNode &node) {
         // Draw node rectangle
         ctx->SetFillPaint(node.color);
-        ctx->FillRectangle(node.x, node.y, nodeWidth, node.height);
+        ctx->FillRectangle(Rect2Df(node.x, node.y, nodeWidth, node.height));
 
         // Draw node border
         if (style.nodeStrokeWidth > 0) {
             ctx->SetStrokePaint(style.nodeStrokeColor);
             ctx->SetStrokeWidth(style.nodeStrokeWidth);
-            ctx->DrawRectangle(node.x, node.y, nodeWidth, node.height);
+            ctx->DrawRectangle(Rect2Df(node.x, node.y, nodeWidth, node.height));
         }
 
         // Draw label
-        ctx->SetFillPaint(style.textColor);
+        ctx->SetTextPaint(style.textColor);
         ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
         ctx->SetFontSize(style.fontSize);
 
-        int textWidth, textHeight;
-        ctx->GetTextLineDimensions(node.label, textWidth, textHeight);
-        float labelY = node.y + node.height / 2.0f - static_cast<float>(textHeight)/2;
+        Size2Di textSize = ctx->GetTextLineDimensions(node.label);
+        float labelY = node.y + node.height / 2.0f - static_cast<float>(textSize.height)/2;
 
         // Position label based on node depth
         if (node.depth == 0) {
             // Left-aligned labels for source nodes
             float labelX = node.x - 8;
-            ctx->DrawText(node.label, labelX - textWidth, labelY);
+            ctx->DrawText(node.label, {labelX - textSize.width, labelY});
         } else {
             // Check if this is a terminal node (no outgoing links)
             bool isTerminal = true;
@@ -769,17 +763,16 @@ namespace UltraCanvas {
 
             if (isTerminal) {
                 // Right-aligned labels for terminal nodes
-                float labelX = node.x + nodeWidth + 8;
-                ctx->DrawText(node.label, labelX, labelY);
+                double labelX = node.x + nodeWidth + 8;
+                ctx->DrawText(node.label, {labelX, labelY});
             } else {
                 // For intermediate nodes, position based on alignment preference
                 if (alignment == SankeyAlignment::Left) {
-                    float labelX = node.x - 8;
-                    float textWidth = ctx->GetTextLineWidth(node.label);
-                    ctx->DrawText(node.label, labelX - textWidth, labelY);
+                    double labelX = node.x - 8;
+                    ctx->DrawText(node.label, {labelX - textSize.width, labelY});
                 } else {
-                    float labelX = node.x + nodeWidth + 8;
-                    ctx->DrawText(node.label, labelX, labelY);
+                    double labelX = node.x + nodeWidth + 8;
+                    ctx->DrawText(node.label, {labelX, labelY});
                 }
             }
         }
@@ -822,14 +815,14 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasSankeyDiagram::HandleMouseMove(const UCEvent &event) {
-        Point2D mousePos(event.x, event.y);
+        Point2D mousePos(event.pointer.x, event.pointer.y);
 
         // Check for dragging
         if (!draggedNodeId.empty()) {
             auto nodeIt = nodes.find(draggedNodeId);
             if (nodeIt != nodes.end()) {
                 nodeIt->second.y = mousePos.y - dragOffset.y;
-                auto bounds = GetBounds();
+                auto bounds = GetLocalBounds();
                 nodeIt->second.y = std::clamp(nodeIt->second.y,
                                               bounds.y + nodePadding,
                                               bounds.y + bounds.height - nodeIt->second.height - nodePadding);
@@ -850,9 +843,9 @@ namespace UltraCanvas {
                     char buf[1000];
                     snprintf(buf, sizeof(buf), "%s\nValue: %.2f", node.label.c_str(), node.value);
                     std::string tooltipText = buf;
-                    auto mouseGlobalPos = ConvertContainerToWindowCoordinates(mousePos);
+                    auto mouseGlobalPos = MapFromLocal(mousePos, nullptr);
                     // Show tooltip using tooltip manager
-//                    UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, {event.windowX, event.windowY});
+//                    UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, {event.pointerWindow.x, event.pointerWindow.y});
                     UltraCanvasTooltipManager::UpdateAndShowTooltip(GetWindow(), tooltipText, mouseGlobalPos);
                 }
                 break;
@@ -873,7 +866,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasSankeyDiagram::HandleMouseDown(const UCEvent &event) {
-        Point2D mousePos(event.x, event.y);
+        Point2D mousePos(event.pointer.x, event.pointer.y);
 
         // Check if clicking on a node
         for (const auto& [id, node] : nodes) {

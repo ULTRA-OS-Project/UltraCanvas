@@ -14,6 +14,7 @@
 #include <random>
 #include <sstream>
 #include <iomanip>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     void CreateFinancialChartControlPanel(
@@ -52,7 +53,7 @@ namespace UltraCanvas {
 
         // Create title label
         auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 1001, 20, 10, 960, 30);
-        titleLabel->SetText("Financial Chart Components - Stock Market Data Visualization");
+        titleLabel->SetText("Candlestick Chart Components - Stock Market Data Visualization");
         titleLabel->SetFontSize(18);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetAlignment(TextAlignment::Center);
@@ -191,8 +192,8 @@ namespace UltraCanvas {
         auto volumeCheckbox = std::make_shared<UltraCanvasCheckbox>("VolumeCheckbox", 1054, 300, 45, 150, 30);
         volumeCheckbox->SetText("Show Volume");
         volumeCheckbox->SetChecked(true);
-        volumeCheckbox->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
-            chart->SetShowVolumePanel(newState == CheckboxState::Checked);
+        volumeCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
+            chart->SetShowVolumePanel(newState == CheckedState::Checked);
             chart->RequestRedraw();
         };
         controlPanel->AddChild(volumeCheckbox);
@@ -201,8 +202,8 @@ namespace UltraCanvas {
         auto maCheckbox = std::make_shared<UltraCanvasCheckbox>("MACheckbox", 1055, 470, 45, 180, 30);
         maCheckbox->SetText("Moving Average (20)");
         maCheckbox->SetChecked(true);
-        maCheckbox->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
-            chart->SetShowMovingAverage(newState == CheckboxState::Checked, 20);
+        maCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
+            chart->SetShowMovingAverage(newState == CheckedState::Checked, 20);
             chart->RequestRedraw();
         };
         controlPanel->AddChild(maCheckbox);
@@ -228,8 +229,8 @@ namespace UltraCanvas {
         auto gridCheckbox = std::make_shared<UltraCanvasCheckbox>("GridCheckbox", 1058, 350, 85, 100, 30);
         gridCheckbox->SetText("Show Grid");
         gridCheckbox->SetChecked(true);
-        gridCheckbox->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
-            chart->SetShowGrid(newState == CheckboxState::Checked);
+        gridCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
+            chart->SetShowGrid(newState == CheckedState::Checked);
             chart->RequestRedraw();
         };
         controlPanel->AddChild(gridCheckbox);
@@ -238,13 +239,14 @@ namespace UltraCanvas {
         auto tooltipsCheckbox = std::make_shared<UltraCanvasCheckbox>("TooltipsCheckbox", 1059, 470, 85, 150, 30);
         tooltipsCheckbox->SetText("Show Tooltips");
         tooltipsCheckbox->SetChecked(true);
-        tooltipsCheckbox->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
-            chart->SetEnableTooltips(newState == CheckboxState::Checked);
+        tooltipsCheckbox->onStateChanged = [chart](CheckedState oldState, CheckedState newState) {
+            chart->SetEnableTooltips(newState == CheckedState::Checked);
             chart->RequestRedraw();
         };
         controlPanel->AddChild(tooltipsCheckbox);
 
         // ===== TIME PERIOD BUTTONS =====
+        /*
         auto periodLabel = std::make_shared<UltraCanvasLabel>("PeriodLabel", 1060, 20, 125, 100, 25);
         periodLabel->SetText("Time Period:");
         controlPanel->AddChild(periodLabel);
@@ -264,15 +266,16 @@ namespace UltraCanvas {
             auto period = periods[i];
             periodBtn->SetOnClick([chart, period]() {
                 // In real app, this would filter the data to show only the specified period
-                std::cout << "Switching to " << period.first << " view (" << period.second << " days)" << std::endl;
+                debugOutput << "Switching to " << period.first << " view (" << period.second << " days)" << std::endl;
                 chart->RequestRedraw();
             });
             controlPanel->AddChild(periodBtn);
             btnX += 70;
         }
-
+*/
+        /*
         // ===== ACTION BUTTONS =====
-        auto resetBtn = std::make_shared<UltraCanvasButton>("ResetBtn", 1080, 20, 165, 100, 35);
+        auto resetBtn = std::make_shared<UltraCanvasButton>("ResetBtn", 1080, 150, 165, 120, 35);
         resetBtn->SetText("Reset View");
         resetBtn->SetOnClick([chart]() {
 //            chart->ResetZoomAndPan();
@@ -280,28 +283,28 @@ namespace UltraCanvas {
         });
         controlPanel->AddChild(resetBtn);
 
-        auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 1081, 130, 165, 100, 35);
+        auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 1081, 280, 165, 120, 35);
         exportBtn->SetText("Export PNG");
         exportBtn->SetOnClick([chart]() {
-            std::cout << "Exporting chart to PNG..." << std::endl;
+            debugOutput << "Exporting chart to PNG..." << std::endl;
             // In real app, this would export the chart to a PNG file
         });
         controlPanel->AddChild(exportBtn);
 
-        auto dataBtn = std::make_shared<UltraCanvasButton>("DataBtn", 1082, 240, 165, 100, 35);
+        auto dataBtn = std::make_shared<UltraCanvasButton>("DataBtn", 1082, 410, 165, 120, 35);
         dataBtn->SetText("Load CSV");
         dataBtn->SetOnClick([chart]() {
-            std::cout << "Loading data from CSV..." << std::endl;
+            debugOutput << "Loading data from CSV..." << std::endl;
             // In real app, this would open a file dialog to load CSV data
         });
         controlPanel->AddChild(dataBtn);
-
+*/
         // ===== COLOR CUSTOMIZATION =====
-        auto colorLabel = std::make_shared<UltraCanvasLabel>("ColorLabel", 1090, 20, 210, 100, 25);
+        auto colorLabel = std::make_shared<UltraCanvasLabel>("ColorLabel", 1090, 20, 210, 120, 25);
         colorLabel->SetText("Color Scheme:");
         controlPanel->AddChild(colorLabel);
 
-        auto greenRedBtn = std::make_shared<UltraCanvasButton>("GreenRedBtn", 1091, 130, 210, 80, 30);
+        auto greenRedBtn = std::make_shared<UltraCanvasButton>("GreenRedBtn", 1091, 150, 210, 120, 30);
         greenRedBtn->SetText("Green/Red");
         greenRedBtn->SetOnClick([chart]() {
             chart->SetBullishCandleColor(Color(0, 180, 0, 255));
@@ -310,7 +313,7 @@ namespace UltraCanvas {
         });
         controlPanel->AddChild(greenRedBtn);
 
-        auto blueOrangeBtn = std::make_shared<UltraCanvasButton>("BlueOrangeBtn", 1092, 220, 210, 90, 30);
+        auto blueOrangeBtn = std::make_shared<UltraCanvasButton>("BlueOrangeBtn", 1092, 280, 210, 120, 30);
         blueOrangeBtn->SetText("Blue/Orange");
         blueOrangeBtn->SetOnClick([chart]() {
             chart->SetBullishCandleColor(Color(0, 120, 200, 255));
@@ -319,7 +322,7 @@ namespace UltraCanvas {
         });
         controlPanel->AddChild(blueOrangeBtn);
 
-        auto monochrome = std::make_shared<UltraCanvasButton>("MonochromeBtn", 1093, 320, 210, 90, 30);
+        auto monochrome = std::make_shared<UltraCanvasButton>("MonochromeBtn", 1093, 410, 210, 120, 30);
         monochrome->SetText("Monochrome");
         monochrome->SetOnClick([chart]() {
             chart->SetBullishCandleColor(Color(255, 255, 255, 255));
@@ -329,6 +332,7 @@ namespace UltraCanvas {
         controlPanel->AddChild(monochrome);
 
         // ===== REAL-TIME UPDATE SIMULATION =====
+        /*
         auto updateLabel = std::make_shared<UltraCanvasLabel>("UpdateLabel", 1094, 20, 250, 150, 25);
         updateLabel->SetText("Live Updates:");
         controlPanel->AddChild(updateLabel);
@@ -338,14 +342,14 @@ namespace UltraCanvas {
         liveToggle->SetChecked(false);
         liveToggle->onStateChanged = [chart](CheckboxState oldState, CheckboxState newState) {
             if (newState == CheckboxState::Checked) {
-                std::cout << "Starting live data simulation..." << std::endl;
+                debugOutput << "Starting live data simulation..." << std::endl;
                 // In real app, this would start a timer to update data
             } else {
-                std::cout << "Stopping live data simulation..." << std::endl;
+                debugOutput << "Stopping live data simulation..." << std::endl;
             }
         };
         controlPanel->AddChild(liveToggle);
-
+*/
         container->AddChild(controlPanel);
     }
 

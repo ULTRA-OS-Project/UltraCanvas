@@ -14,6 +14,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include <set>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -424,18 +425,18 @@ namespace UltraCanvas {
         }
 
         static void PrintRegisteredPlugins() {
-            std::cout << "Registered Graphics Plugins (" << plugins.size() << "):" << std::endl;
+            debugOutput << "Registered Graphics Plugins (" << plugins.size() << "):" << std::endl;
             for (const auto& plugin : plugins) {
-                std::cout << "- " << plugin->GetPluginName()
+                debugOutput << "- " << plugin->GetPluginName()
                           << " v" << plugin->GetPluginVersion() << std::endl;
 
                 auto extensions = plugin->GetSupportedExtensions();
-                std::cout << "  Extensions: ";
+                debugOutput << "  Extensions: ";
                 for (size_t i = 0; i < extensions.size(); ++i) {
-                    std::cout << extensions[i];
-                    if (i < extensions.size() - 1) std::cout << ", ";
+                    debugOutput << extensions[i];
+                    if (i < extensions.size() - 1) debugOutput << ", ";
                 }
-                std::cout << std::endl;
+                debugOutput << std::endl;
             }
         }
     };

@@ -1,7 +1,7 @@
 // OS/MacOS/UltraCanvasMacOSWindow.h
 // macOS window implementation with Cocoa/Cairo support
-// Version: 2.0.0
-// Last Modified: 2025-01-18
+// Version: 2.1.0
+// Last Modified: 2026-05-03
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -48,27 +48,29 @@ namespace UltraCanvas {
         NSView* contentView;
         void* windowDelegate;  // NSWindowDelegate*
 
-        // ===== CAIRO RENDERING =====
-        cairo_surface_t* cairoSurface;
-
         bool pendingShow = false;
 
-        // ===== RENDER CONTEXT =====
-        std::unique_ptr<RenderContextCairo> renderContext;
+        // Backing-store scale of the screen the window is currently on.
+        // 1.0 = standard, 2.0 = Retina, 3.0 = some external HiDPI panels.
+        // Updated when the window is created and when the system reports a
+        // change (display switched, window dragged between monitors).
+        float backingScaleFactor = 1.0f;
 
         // ===== THREAD SAFETY =====
         mutable std::mutex cairoMutex;
 
         // ===== INTERNAL METHODS =====
         bool CreateNSWindow();
-        bool CreateCairoSurface();
-        void DestroyCairoSurface();
-        void ResizeCairoSurface(int width, int height);
+        bool CreateNativeCairoSurface();
+        void DestroyNativeCairoSurface();
+        // Re-reads [nsWindow backingScaleFactor]. Returns true if the value
+        // changed since the last refresh.
+        bool RefreshBackingScaleFactor();
 
     protected:
         bool CreateNative() override;
         void DestroyNative() override;
-        void SelectMouseCursorNative(UCMouseCursor ptr) override;
+        void DoResizeNative() override;
 
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
@@ -78,6 +80,7 @@ namespace UltraCanvas {
         void Show() override;
         void Hide() override;
         void SetWindowTitle(const std::string& title) override;
+        void SetWindowIcon(const std::string& iconPath) override;
         void SetWindowSize(int width, int height) override;
         void SetWindowPosition(int x, int y) override;
         void SetResizable(bool resizable) override;
@@ -85,14 +88,14 @@ namespace UltraCanvas {
         void Maximize() override;
         void Restore() override;
         void SetFullscreen(bool fullscreen) override;
-        void Flush() override;
-        unsigned long GetNativeHandle() const override;
-        IRenderContext* GetRenderContext() const override { return renderContext.get(); }
+        void InvalidateWindowNative() override;
+        NativeWindowHandle GetNativeHandle() const override;
+        void GetScreenSize(int& width, int& height) const override;
+        void GetScreenBounds(int& x, int& y, int& width, int& height) const override;
+        NSWindow* GetNSWindowHandle() const;
+        void RaiseAndFocus() override;
 
         void Focus();  // Not virtual in base class
-
-        // ===== RENDERING =====
-        void Invalidate();  // Not virtual in base class
 
         // ===== GETTERS =====
         NSWindow* GetNSWindow() const { return nsWindow; }
@@ -105,6 +108,14 @@ namespace UltraCanvas {
         void OnWindowDidResignKey();
         void OnWindowDidMiniaturize();
         void OnWindowDidDeminiaturize();
+        // Fired when the window's backing scale changes (e.g. dragged onto a
+        // different display). Recreates the Cairo surface at the new pixel
+        // size so rendering stays crisp on the new screen.
+        void OnWindowDidChangeBackingProperties();
+
+        // Currently observed device scale; used by the renderer to pick
+        // pixel-resolution rasterization sizes for fonts and SVG icons.
+        float GetBackingScaleFactor() const { return backingScaleFactor; }
     };
 
 } // namespace UltraCanvas

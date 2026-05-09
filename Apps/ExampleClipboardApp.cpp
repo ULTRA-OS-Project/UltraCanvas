@@ -11,6 +11,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasTextInput.h"
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 using namespace UltraCanvas;
 
@@ -26,18 +27,18 @@ private:
 
 public:
     bool Initialize() {
-        std::cout << "=== UltraCanvas Modular Clipboard Demo ===" << std::endl;
+        debugOutput << "=== UltraCanvas Modular Clipboard Demo ===" << std::endl;
         
         // Step 1: Initialize the application
         application = new UltraCanvasApplication();
         if (!application->Initialize()) {
-            std::cerr << "Failed to initialize UltraCanvas application" << std::endl;
+            debugOutput << "Failed to initialize UltraCanvas application" << std::endl;
             return false;
         }
         
         // Step 2: Initialize the platform-independent clipboard
         if (!InitializeClipboard()) {
-            std::cerr << "Failed to initialize clipboard system" << std::endl;
+            debugOutput << "Failed to initialize clipboard system" << std::endl;
             return false;
         }
         
@@ -49,15 +50,15 @@ public:
         CreateUI();
         //AddSampleData();
         
-        std::cout << "✅ Modular clipboard system initialized successfully!" << std::endl;
-        std::cout << "📋 Features available:" << std::endl;
-        std::cout << "   • Platform-independent clipboard core" << std::endl;
-        std::cout << "   • X11 backend for Linux" << std::endl;
-        std::cout << "   • Separate UI component" << std::endl;
-        std::cout << "   • History management (up to 100 entries)" << std::endl;
-        std::cout << "   • Multiple data types support" << std::endl;
-        std::cout << "   • File save functionality" << std::endl;
-        std::cout << "🚀 Press ALT+P to show clipboard history window" << std::endl;
+        debugOutput << "✅ Modular clipboard system initialized successfully!" << std::endl;
+        debugOutput << "📋 Features available:" << std::endl;
+        debugOutput << "   • Platform-independent clipboard core" << std::endl;
+        debugOutput << "   • X11 backend for Linux" << std::endl;
+        debugOutput << "   • Separate UI component" << std::endl;
+        debugOutput << "   • History management (up to 100 entries)" << std::endl;
+        debugOutput << "   • Multiple data types support" << std::endl;
+        debugOutput << "   • File save functionality" << std::endl;
+        debugOutput << "🚀 Press ALT+P to show clipboard history window" << std::endl;
         
         return true;
     }
@@ -72,7 +73,7 @@ public:
 
         mainWindow = std::make_shared<UltraCanvasWindow>();
         if (!mainWindow->Create(config)) {
-            std::cerr << "Failed to create main window" << std::endl;
+            debugOutput << "Failed to create main window" << std::endl;
             return;
         }
 
@@ -118,9 +119,9 @@ public:
                 if (!text.empty()) {
                     // Use the new modular clipboard API
                     if (SetClipboardText(text)) {
-                        std::cout << "✅ Text copied to clipboard using modular system" << std::endl;
+                        debugOutput << "✅ Text copied to clipboard using modular system" << std::endl;
                     } else {
-                        std::cout << "❌ Failed to copy text" << std::endl;
+                        debugOutput << "❌ Failed to copy text" << std::endl;
                     }
                 }
             }
@@ -134,10 +135,10 @@ public:
             if (GetClipboardText(clipboardText)) {
                 if (textInput) {
                     textInput->SetText(clipboardText);
-                    std::cout << "✅ Text pasted from clipboard using modular system" << std::endl;
+                    debugOutput << "✅ Text pasted from clipboard using modular system" << std::endl;
                 }
             } else {
-                std::cout << "❌ Failed to get clipboard text" << std::endl;
+                debugOutput << "❌ Failed to get clipboard text" << std::endl;
             }
         };
         mainWindow->AddElement(pasteButton);
@@ -146,7 +147,7 @@ public:
         showClipboardButton = CreateButton("showClipboardBtn", 2004, 380, 300, 180, 30, "Show Clipboard History");
         showClipboardButton->onClick = [this]() {
             ShowClipboard();
-            std::cout << "📋 Clipboard history window opened" << std::endl;
+            debugOutput << "📋 Clipboard history window opened" << std::endl;
         };
         mainWindow->AddElement(showClipboardButton);
         
@@ -155,7 +156,7 @@ public:
         addEntryButton->onClick = [this]() {
             ClipboardData sampleEntry(ClipboardDataType::Text, "Sample programmatically added entry");
             AddClipboardEntry(sampleEntry);
-            std::cout << "✅ Sample entry added to clipboard history" << std::endl;
+            debugOutput << "✅ Sample entry added to clipboard history" << std::endl;
         };
         mainWindow->AddElement(addEntryButton);
     }
@@ -183,11 +184,11 @@ public:
             clipboard->AddEntry(entry);
         }
         
-        std::cout << "📋 Added " << sampleTexts.size() << " sample entries to clipboard history" << std::endl;
+        debugOutput << "📋 Added " << sampleTexts.size() << " sample entries to clipboard history" << std::endl;
     }
     
     void Run() {
-        std::cout << "🚀 Starting modular clipboard demo..." << std::endl;
+        debugOutput << "🚀 Starting modular clipboard demo..." << std::endl;
         
         if (mainWindow) {
             mainWindow->Show();
@@ -204,11 +205,11 @@ public:
             application->Run();
         }
         
-        std::cout << "👋 Application shutting down..." << std::endl;
+        debugOutput << "👋 Application shutting down..." << std::endl;
     }
 
     void Shutdown() {
-        std::cout << "🔄 Shutting down modular clipboard system..." << std::endl;
+        debugOutput << "🔄 Shutting down modular clipboard system..." << std::endl;
         
         // Stop clipboard monitoring
         UltraCanvasClipboard* clipboard = GetClipboard();
@@ -222,7 +223,7 @@ public:
         // Shutdown core
         ShutdownClipboard();
         
-        std::cout << "✅ Modular clipboard system shut down cleanly" << std::endl;
+        debugOutput << "✅ Modular clipboard system shut down cleanly" << std::endl;
     }
     
     // Custom window class for rendering status
@@ -233,8 +234,8 @@ public:
     public:
         ModularClipboardDemoWindow(ModularClipboardDemoApp* demoApp) : app(demoApp) {}
         
-        void Render(IRenderContext* ctx) override {
-            UltraCanvasWindow::Render(IRenderContext* ctx); // Render base window and elements
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override {
+            UltraCanvasWindow::Render(IRenderContext* ctx, const Rect2Di& dirtyRect); // Render base window and elements
             if (app) {
                 app->DrawCustomUI(); // Draw custom overlay
             }
@@ -328,19 +329,19 @@ public:
 // ===== MAIN FUNCTION =====
 int main() {
     try {
-        std::cout << "🎉 UltraCanvas Modular Clipboard System Demo" << std::endl;
-        std::cout << "=============================================" << std::endl;
+        debugOutput << "🎉 UltraCanvas Modular Clipboard System Demo" << std::endl;
+        debugOutput << "=============================================" << std::endl;
         
         // Initialize keyboard manager first
         if (!UltraCanvasKeyboardManager::Initialize()) {
-            std::cerr << "Failed to initialize keyboard manager" << std::endl;
+            debugOutput << "Failed to initialize keyboard manager" << std::endl;
             return -1;
         }
         
         // Create and run the demo application
         ModularClipboardDemoApp app;
         if (!app.Initialize()) {
-            std::cerr << "Failed to initialize modular clipboard demo" << std::endl;
+            debugOutput << "Failed to initialize modular clipboard demo" << std::endl;
             return -1;
         }
         
@@ -350,14 +351,14 @@ int main() {
         // Cleanup
         UltraCanvasKeyboardManager::Shutdown();
         
-        std::cout << "🎉 Demo completed successfully!" << std::endl;
+        debugOutput << "🎉 Demo completed successfully!" << std::endl;
         return 0;
         
     } catch (const std::exception& e) {
-        std::cerr << "Application error: " << e.what() << std::endl;
+        debugOutput << "Application error: " << e.what() << std::endl;
         return -1;
     } catch (...) {
-        std::cerr << "Unknown application error" << std::endl;
+        debugOutput << "Unknown application error" << std::endl;
         return -1;
     }
 }

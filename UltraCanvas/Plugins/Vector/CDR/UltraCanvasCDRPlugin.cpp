@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <sstream>
 #include <regex>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -155,9 +156,7 @@ namespace UltraCanvas {
 
     void UltraCanvasCDRPainterImpl::FillAndStroke(IRenderContext* ctx, const CDRStyleState& style) {
         // Get path bounds for gradient calculation
-        float bx = 0, by = 0, bw = 0, bh = 0;
-        ctx->GetPathExtents(bx, by, bw, bh);
-        Rect2Df bounds(bx, by, bw, bh);
+        Rect2Df bounds = ctx->GetPathExtents();
 
         if (style.hasFill) {
             if (!style.fillGradientId.empty()) {
@@ -1300,9 +1299,9 @@ namespace UltraCanvas {
             if (image && image->IsValid()) {
                 if (hasTransform) {
                     // Draw at origin since we translated
-                    ctx->DrawImage(*image, 0, 0, imgW, imgH, ImageFitMode::Fill);
+                    ctx->DrawImage(*image, Rect2Df(0, 0, imgW, imgH), ImageFitMode::Fill);
                 } else {
-                    ctx->DrawImage(*image, imgX, imgY, imgW, imgH, ImageFitMode::Fill);
+                    ctx->DrawImage(*image, Rect2Df(imgX, imgY, imgW, imgH), ImageFitMode::Fill);
                 }
             } else {
                 // Fallback placeholder if image loading fails
@@ -1320,8 +1319,8 @@ namespace UltraCanvas {
 
                 // Draw X pattern to indicate broken image
                 ctx->SetStrokePaint(Color(180, 180, 180, 255));
-                ctx->DrawLine(drawX, drawY, drawX + imgW, drawY + imgH);
-                ctx->DrawLine(drawX + imgW, drawY, drawX, drawY + imgH);
+                ctx->DrawLine({drawX, drawY}, {drawX + imgW, drawY + imgH});
+                ctx->DrawLine({drawX + imgW, drawY}, {drawX, drawY + imgH});
             }
 
             ctx->PopState();
@@ -1815,15 +1814,14 @@ namespace UltraCanvas {
         ctx->DrawText(message, Point2Di(bounds.x + 10, bounds.y + bounds.height / 2));
     }
 
-    void UltraCanvasCDRElement::Render(IRenderContext* ctx) {
+    void UltraCanvasCDRElement::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible()) return;
 
         ctx->PushState();
 
         // Clip to element bounds
         Rect2Di contentRect = GetContentRect();
-        ctx->ClipRect(static_cast<float>(contentRect.x), static_cast<float>(contentRect.y),
-                      static_cast<float>(contentRect.width), static_cast<float>(contentRect.height));
+        ctx->ClipRect(contentRect);
 
         if (!cdrRenderer.IsLoaded()) {
             RenderPlaceholder(ctx, "No CDR document loaded");
@@ -1935,7 +1933,7 @@ namespace UltraCanvas {
         }
 
         if (!success) {
-            std::cerr << "[UltraCanvasCDRPlugin] Failed to parse file: " << filePath << std::endl;
+            debugOutput << "[UltraCanvasCDRPlugin] Failed to parse file: " << filePath << std::endl;
             return nullptr;
         }
 
@@ -1961,7 +1959,7 @@ namespace UltraCanvas {
         }
 
         if (!success) {
-            std::cerr << "[UltraCanvasCDRPlugin] Failed to parse CDR data from memory" << std::endl;
+            debugOutput << "[UltraCanvasCDRPlugin] Failed to parse CDR data from memory" << std::endl;
             return nullptr;
         }
 

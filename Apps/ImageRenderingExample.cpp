@@ -14,6 +14,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include "UltraCanvasDebug.h"
 
 using namespace UltraCanvas;
 
@@ -50,7 +51,7 @@ public:
     }
 
     void SelectImage(int index) {
-        std::cout << "Selected image " << (index + 1) << " from menu" << std::endl;
+        debugOutput << "Selected image " << (index + 1) << " from menu" << std::endl;
         if (index >= 0 && index < (int)imagePaths.size()) {
             currentImageIndex = index;
 
@@ -64,26 +65,26 @@ public:
     }
 
     void ShowAboutDialog() {
-        std::cout << "=== UltraCanvas Image Demo ===" << std::endl;
-        std::cout << "Version: 2.1.0" << std::endl;
-        std::cout << "A demonstration of cross-platform image rendering" << std::endl;
-        std::cout << "with menu system and UI controls." << std::endl;
+        debugOutput << "=== UltraCanvas Image Demo ===" << std::endl;
+        debugOutput << "Version: 2.1.0" << std::endl;
+        debugOutput << "A demonstration of cross-platform image rendering" << std::endl;
+        debugOutput << "with menu system and UI controls." << std::endl;
         SetNeedsRedraw(true);
     }
 
     void ShowShortcutsDialog() {
-        std::cout << "=== Keyboard Shortcuts ===" << std::endl;
-        std::cout << "SPACE       - Cycle through images" << std::endl;
-        std::cout << "I           - Toggle image information" << std::endl;
-        std::cout << "C           - Clear image cache" << std::endl;
-        std::cout << "Q/ESC       - Quit application" << std::endl;
-        std::cout << "F1          - Show keyboard shortcuts" << std::endl;
-        std::cout << "Alt+F4      - Exit application" << std::endl;
+        debugOutput << "=== Keyboard Shortcuts ===" << std::endl;
+        debugOutput << "SPACE       - Cycle through images" << std::endl;
+        debugOutput << "I           - Toggle image information" << std::endl;
+        debugOutput << "C           - Clear image cache" << std::endl;
+        debugOutput << "Q/ESC       - Quit application" << std::endl;
+        debugOutput << "F1          - Show keyboard shortcuts" << std::endl;
+        debugOutput << "Alt+F4      - Exit application" << std::endl;
         SetNeedsRedraw(true);
     }
 
     void CreateMenuSystem() {
-        std::cout << "=== Creating Unified Menu System ===" << std::endl;
+        debugOutput << "=== Creating Unified Menu System ===" << std::endl;
 
         // Create main menu bar with proper height (32px) and ensure horizontal orientation
         mainMenuBar = MenuBuilder("main_menu", 3000, 0, 0, 800, 32)
@@ -155,11 +156,11 @@ public:
         mainMenuBar->Show();
         AddElement(mainMenuBar);
 
-        std::cout << "Unified menu system created successfully!" << std::endl;
+        debugOutput << "Unified menu system created successfully!" << std::endl;
     }
 
     void CreateUserInterface() {
-        std::cout << "=== Creating Cross-Platform UI Elements ===" << std::endl;
+        debugOutput << "=== Creating Cross-Platform UI Elements ===" << std::endl;
 
         // Create dropdown with proper styling and event handling (positioned below menu bar)
         imageDropdown = DropdownBuilder("images_dropdown", 700, 70, 180, 30)
@@ -174,17 +175,17 @@ public:
                 .SetStyle(DropdownStyles::Modern())
                 .SetSelectedIndex(0)
                 .OnSelectionChanged([this](int index, const DropdownItem& item) {
-                    std::cout << "Dropdown Selection Changed: " << item.text
+                    debugOutput << "Dropdown Selection Changed: " << item.text
                               << " (" << item.value << ") at index " << index << std::endl;
                     this->currentImageIndex = std::stoi(item.value);
                     this->SetNeedsRedraw(true);
                 })
                 .OnDropdownOpened([this]() {
-                    std::cout << "*** DROPDOWN OPENED ***" << std::endl;
+                    debugOutput << "*** DROPDOWN OPENED ***" << std::endl;
                     this->SetNeedsRedraw(true);
                 })
                 .OnDropdownClosed([this]() {
-                    std::cout << "*** DROPDOWN CLOSED ***" << std::endl;
+                    debugOutput << "*** DROPDOWN CLOSED ***" << std::endl;
                     this->SetNeedsRedraw(true);
                 })
                 .Build();
@@ -192,7 +193,7 @@ public:
         // Add the dropdown to the window
         AddElement(imageDropdown);
 
-        std::cout << "UI elements created and added to window successfully!" << std::endl;
+        debugOutput << "UI elements created and added to window successfully!" << std::endl;
     }
 
     virtual void RenderCustomContent() override {
@@ -200,7 +201,7 @@ public:
         if (!context) return;
 
         // Draw demo title
-        std::cout << "Drawing demo title..." << std::endl;
+        debugOutput << "Drawing demo title..." << std::endl;
         context->PaintWidthColorColors::White);
         context->SetFont("Sans", 24.0f);
         context->DrawText("UltraCanvas Linux Image Rendering Demo", Point2D(20, 60));
@@ -209,7 +210,7 @@ public:
         context->DrawText("Use dropdown or menu to select images", Point2D(20, 90));
 
         // Render current image with different modes
-        std::cout << "Rendering image modes..." << std::endl;
+        debugOutput << "Rendering image modes..." << std::endl;
         if (currentImageIndex >= 0 && currentImageIndex < (int)imagePaths.size()) {
             const std::string& imagePath = imagePaths[currentImageIndex];
 
@@ -233,7 +234,7 @@ public:
 
         // Show image info if enabled
         if (showImageInfo) {
-            std::cout << "Rendering image info..." << std::endl;
+            debugOutput << "Rendering image info..." << std::endl;
             context->PaintWidthColorColor(200, 200, 200, 255));
             context->SetStrokeWidth(1.0f);
             context->ctx->DrawRectangle(Rect2D(50, 380, 900, 100));
@@ -253,12 +254,12 @@ public:
     }
 
     virtual bool OnEvent(const UCEvent& event) override {
-        std::cout << "*** ImageDemoWindow::OnEvent() called, type: " << (int)event.type
-                  << " pos: (" << event.x << "," << event.y << ") ***" << std::endl;
+        debugOutput << "*** ImageDemoWindow::OnEvent() called, type: " << (int)event.type
+                  << " pos: (" << event.pointer.x << "," << event.pointer.y << ") ***" << std::endl;
 
         // Handle keyboard shortcuts
         if (event.type == UCEventType::KeyDown) {
-            std::cout << "KeyDown event: virtualKey=" << (int)event.virtualKey << std::endl;
+            debugOutput << "KeyDown event: virtualKey=" << (int)event.virtualKey << std::endl;
 
             switch (event.virtualKey) {
                 case UCKeys::Space:
@@ -293,32 +294,32 @@ public:
         }
 
         // Forward event to base class for UI element handling
-        std::cout << "*** Forwarding event to base class for UI handling ***" << std::endl;
+        debugOutput << "*** Forwarding event to base class for UI handling ***" << std::endl;
         return UltraCanvasWindow::OnEvent(event);
-        std::cout << "*** Event handling complete ***" << std::endl;
+        debugOutput << "*** Event handling complete ***" << std::endl;
     }
 };
 
 // Main application entry point
 int main(int argc, char* argv[]) {
-    std::cout << "=== UltraCanvas Linux Image Rendering Demo with Menu System ===" << std::endl;
+    debugOutput << "=== UltraCanvas Linux Image Rendering Demo with Menu System ===" << std::endl;
 
     try {
         // Create application instance
         auto app = UltraCanvasApplication::GetInstance();
         if (!app) {
-            std::cerr << "Failed to create application instance!" << std::endl;
+            debugOutput << "Failed to create application instance!" << std::endl;
             return -1;
         }
 
         // Initialize the application
         if (!app->Initialize()) {
-            std::cerr << "Failed to initialize application!" << std::endl;
+            debugOutput << "Failed to initialize application!" << std::endl;
             return -1;
         }
 
         // Create the demo window
-        std::cout << "Creating main demo window..." << std::endl;
+        debugOutput << "Creating main demo window..." << std::endl;
         auto demoWindow = std::make_shared<ImageDemoWindow>();
 
         WindowConfig config;
@@ -329,25 +330,25 @@ int main(int argc, char* argv[]) {
         config.resizable = true;
 
         if (!demoWindow->Create(config)) {
-            std::cerr << "Failed to create demo window!" << std::endl;
+            debugOutput << "Failed to create demo window!" << std::endl;
             return -1;
         }
 
         // Show the window and start the main loop
         demoWindow->Show();
-        std::cout << "Demo window created and shown. Starting main loop..." << std::endl;
+        debugOutput << "Demo window created and shown. Starting main loop..." << std::endl;
 
         // Run the application main loop
         app->Run();
 
-        std::cout << "Application finished successfully." << std::endl;
+        debugOutput << "Application finished successfully." << std::endl;
         return 0;
 
     } catch (const std::exception& e) {
-        std::cerr << "Exception in main: " << e.what() << std::endl;
+        debugOutput << "Exception in main: " << e.what() << std::endl;
         return -1;
     } catch (...) {
-        std::cerr << "Unknown exception in main!" << std::endl;
+        debugOutput << "Unknown exception in main!" << std::endl;
         return -1;
     }
 }

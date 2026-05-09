@@ -323,6 +323,28 @@ namespace UltraCanvas {
             previousLine = line;
         }
 
+        // Fix ordered list numbering per CommonMark spec:
+        // first item's number sets the start; subsequent items increment by 1
+        int currentOrderNumber = 0;
+        int currentLevel = -1;
+        bool inOrderedList = false;
+
+        for (auto& el : elements) {
+            if (el->type == MarkdownElementType::ListItem && el->ordered) {
+                if (!inOrderedList || el->level != currentLevel) {
+                    currentOrderNumber = el->orderNumber;
+                    currentLevel = el->level;
+                    inOrderedList = true;
+                } else {
+                    currentOrderNumber++;
+                }
+                el->orderNumber = currentOrderNumber;
+            } else {
+                inOrderedList = false;
+                currentLevel = -1;
+            }
+        }
+
         return elements;
     }
 
@@ -507,7 +529,7 @@ namespace UltraCanvas {
         ScrollTo(verticalScrollOffset + delta);
     }
 
-    void UltraCanvasMarkdownDisplay::Render(IRenderContext* ctx) {
+    void UltraCanvasMarkdownDisplay::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
         if (!IsVisible()) return;
 
         ctx->PushState();
@@ -556,9 +578,8 @@ namespace UltraCanvas {
             case MarkdownElementType::Header: {
                 int level = std::clamp(element->level - 1, 0, 5);
                 ctx->SetFontSize(style.headerSizes[level]);
-                int w, h;
-                ctx->GetTextLineDimensions(element->text, w, h);
-                return h + 10.0f;
+                Size2Di sz = ctx->GetTextLineDimensions(element->text);
+                return sz.height + 10.0f;
             }
 
             case MarkdownElementType::Paragraph: {
@@ -649,9 +670,8 @@ namespace UltraCanvas {
     UltraCanvasMarkdownDisplay::CalculateWrappedTextHeight(IRenderContext *ctx, const std::string &text, int maxWidth) {
         if (text.empty()) return 0;
 
-        int w, h;
-        ctx->GetTextDimensions(text, maxWidth, 0, w, h);
-        return h;
+        Size2Di sz = ctx->GetTextDimensions(text, {maxWidth, 0});
+        return sz.height;
     }
 
     Rect2Di UltraCanvasMarkdownDisplay::GetAdjustedBounds(const Rect2Di &bounds) {
@@ -753,7 +773,7 @@ namespace UltraCanvas {
         int lineY = textPos.y;
 
         while (std::getline(stream, line)) {
-            ctx->DrawText(line, textPos.x, lineY);
+            ctx->DrawText(line, {textPos.x, lineY});
             lineY += static_cast<float>(style.codeFontSize) * style.lineHeight * 1.2;
         }
     }
@@ -763,13 +783,12 @@ namespace UltraCanvas {
 
         // Draw background
         ctx->SetFillPaint(style.quoteBackgroundColor);
-        ctx->FillRectangle(adjustedBounds.x, adjustedBounds.y,
-                           adjustedBounds.width, adjustedBounds.height);
+        ctx->FillRectangle(adjustedBounds);
 
         // Draw left bar
         ctx->SetFillPaint(style.quoteBarColor);
-        ctx->FillRectangle(adjustedBounds.x, adjustedBounds.y,
-                           static_cast<int>(style.quoteBarWidth), adjustedBounds.height);
+        ctx->FillRectangle(Rect2Df(adjustedBounds.x, adjustedBounds.y,
+                           static_cast<int>(style.quoteBarWidth), adjustedBounds.height));
 
         // Draw text
         ctx->SetFontSize(style.fontSize);
@@ -797,11 +816,11 @@ namespace UltraCanvas {
         if (element->ordered) {
             // Draw the actual item number from element->level
             std::string numberText = std::to_string(element->orderNumber) + ".";
-            ctx->DrawText(numberText, bulletPos.x, bulletPos.y);
+            ctx->DrawText(numberText, bulletPos);
         } else {
             // Draw bullet
             ctx->SetTextPaint(style.bulletColor);
-            ctx->DrawText(style.bulletCharacter, bulletPos.x, bulletPos.y);
+            ctx->DrawText(style.bulletCharacter, bulletPos);
         }
 
         // Draw text with proper indent
@@ -821,11 +840,8 @@ namespace UltraCanvas {
 
         ctx->SetStrokePaint(style.horizontalRuleColor);
         ctx->SetStrokeWidth(style.horizontalRuleHeight);
-        ctx->DrawLine(
-                adjustedBounds.x,
-                adjustedBounds.y + adjustedBounds.height / 2,
-                adjustedBounds.x + adjustedBounds.width,
-                adjustedBounds.y + adjustedBounds.height / 2
+        ctx->DrawLine({adjustedBounds.x, adjustedBounds.y + adjustedBounds.height / 2},
+                      { adjustedBounds.x + adjustedBounds.width, adjustedBounds.y + adjustedBounds.height / 2}
         );
         ctx->Stroke();
     }
@@ -844,11 +860,10 @@ namespace UltraCanvas {
         ctx->DrawText(element->text, position);
 
         if (style.linkUnderline) {
-            int w, h;
-            ctx->GetTextLineDimensions(element->text, w, h);
+            Size2Di sz = ctx->GetTextLineDimensions(element->text);
             ctx->SetStrokeWidth(1.0f);
-            ctx->DrawLine(position.x, position.y + h,
-                          position.x + w, position.y + h, linkColor);
+            ctx->DrawLine({position.x, position.y + sz.height},
+                          {position.x + sz.width, position.y + sz.height}, linkColor);
         }
     }
 
@@ -865,7 +880,7 @@ namespace UltraCanvas {
                                                 float lineHeight) {
         if (text.empty()) return;
 
-        ctx->DrawTextInRect(text, bounds.x, bounds.y, bounds.width, bounds.height);
+        ctx->DrawTextInRect(text, bounds);
     }
 
     void UltraCanvasMarkdownDisplay::UpdateScrollbarGeometry(const Rect2Di &bounds) {
@@ -917,14 +932,14 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMarkdownDisplay::HandleMouseDown(const UCEvent &event) {
-        Point2Di mousePos(event.x, event.y);
+        Point2Di mousePos(event.pointer.x, event.pointer.y);
 
         // Check if clicking on scrollbar
         if (contentHeight > GetHeight()) {
             // Check if clicking on thumb
             if (scrollbarThumbRect.Contains(mousePos)) {
                 isDraggingThumb = true;
-                dragStartY = event.globalY;
+                dragStartY = event.pointerGlobal.y;
                 dragStartScrollOffset = verticalScrollOffset;
                 UltraCanvasApplication::GetInstance()->CaptureMouse(this);
                 return true;
@@ -945,7 +960,7 @@ namespace UltraCanvas {
 
         // Check for link clicks
         if (event.button == UCMouseButton::Left) {
-            auto element = FindElementAtPosition(event.x, event.y);
+            auto element = FindElementAtPosition(event.pointer.x, event.pointer.y);
             if (element && element->clickable) {
                 clickedElement = element;
                 return true;
@@ -956,11 +971,11 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMarkdownDisplay::HandleMouseMove(const UCEvent &event) {
-        Point2Di mousePos(event.x, event.y);
+        Point2Di mousePos(event.pointer.x, event.pointer.y);
 
         // Handle thumb dragging
         if (isDraggingThumb) {
-            int deltaY = event.globalY - dragStartY;
+            int deltaY = event.pointerGlobal.y - dragStartY;
 
             // Calculate scroll offset based on drag distance
             int maxScroll = std::max(0, contentHeight - GetHeight());
@@ -981,7 +996,7 @@ namespace UltraCanvas {
         isHoveringScrollbar = scrollbarTrackRect.Contains(mousePos);
 
         // Update element hover for links
-        auto element = FindElementAtPosition(event.x, event.y);
+        auto element = FindElementAtPosition(event.pointer.x, event.pointer.y);
         if (element != hoveredElement) {
             hoveredElement = element;
             // Could trigger redraw for hover effects
@@ -1003,7 +1018,7 @@ namespace UltraCanvas {
 
         // Handle link clicks
         if (clickedElement && clickedElement->clickable) {
-            if (clickedElement == FindElementAtPosition(event.x, event.y)) {
+            if (clickedElement == FindElementAtPosition(event.pointer.x, event.pointer.y)) {
                 if (onLinkClicked) {
                     onLinkClicked(clickedElement->url);
                 }
@@ -1041,9 +1056,9 @@ namespace UltraCanvas {
                     return true;
                 }
                 break;
-            default:
-                return false;
         }
+
+        return false;
     }
 
     std::shared_ptr<MarkdownElement> UltraCanvasMarkdownDisplay::FindElementAtPosition(int x, int y) {

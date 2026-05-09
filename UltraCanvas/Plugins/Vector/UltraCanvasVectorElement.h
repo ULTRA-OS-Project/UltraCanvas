@@ -124,7 +124,7 @@ namespace UltraCanvas {
         void SetLayerVisible(const std::string& layerName, bool visible);
         bool IsLayerVisible(const std::string& layerName) const;
 
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
         bool OnEvent(const UCEvent& event) override;
         VectorRenderer* GetRenderer() const { return renderer.get(); }
 

@@ -106,14 +106,14 @@ namespace UltraCanvas {
 
         static ScrollbarStyle DropDown() {
             ScrollbarStyle style;
-            style.trackSize = 12;
+            style.trackSize = 10;
             style.thumbMinSize = 20;
             style.arrowButtonSize = 0;
             style.trackColor = Color(250, 250, 250, 200);
             style.thumbColor = Color(160, 160, 160, 200);
             style.thumbHoverColor = Color(130, 130, 130, 220);
             style.thumbPressedColor = Color(100, 100, 100, 255);
-            style.thumbCornerRadius = 4;
+            style.thumbCornerRadius = 5;
             style.trackCornerRadius = 4;
             style.autoHide = false;
             return style;
@@ -161,14 +161,14 @@ namespace UltraCanvas {
 
         void UpdateMaxPosition();
 
-        float GetThumbRatio() const {
+        double GetThumbRatio() const {
             if (contentSize <= 0) return 1.0f;
-            return std::min(1.0f, static_cast<float>(viewportSize) / static_cast<float>(contentSize));
+            return std::min(1.0, static_cast<double>(viewportSize) / static_cast<double>(contentSize));
         }
 
-        float GetScrollRatio() const {
+        double GetScrollRatio() const {
             if (maxPosition <= 0) return 0.0f;
-            return static_cast<float>(position) / static_cast<float>(maxPosition);
+            return static_cast<double>(position) / static_cast<double>(maxPosition);
         }
 
         bool IsScrollable() const {
@@ -300,7 +300,7 @@ namespace UltraCanvas {
 
         void SetBounds(const Rect2Di& b) override;
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;
@@ -308,7 +308,6 @@ namespace UltraCanvas {
 
     private:
         // ===== LAYOUT =====
-        void UpdateLayout();
         void UpdateVerticalLayout(const Rect2Di& bounds);
         void UpdateHorizontalLayout(const Rect2Di& bounds);
         void UpdateThumbRect();

@@ -257,7 +257,7 @@ namespace UltraCanvas {
         // RENDERING OVERRIDE FROM UIELEM
         // =============================================================================
 
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
 
         // =============================================================================
         // EVENT HANDLING OVERRIDE
@@ -288,8 +288,8 @@ namespace UltraCanvas {
             int marginBottom = 50;
 
             return ChartPlotArea(
-                    GetX() + marginLeft,
-                    GetY() + marginTop,
+                    marginLeft,
+                    marginTop,
                     GetWidth() - marginLeft - marginRight,
                     GetHeight() - marginTop - marginBottom
             );
@@ -371,7 +371,7 @@ namespace UltraCanvas {
 
         void ShowChartPointTooltip(const Point2Di& mousePos, const ChartDataPoint& point, size_t index) {
             std::string tooltipContent = GenerateTooltipContent(point, index);
-            auto windowMousePos = ConvertContainerToWindowCoordinates(mousePos);
+            auto windowMousePos = MapFromLocal(mousePos, nullptr);
             UltraCanvasTooltipManager::UpdateAndShowTooltip(this->window, tooltipContent, windowMousePos);
             isTooltipActive = true;
             hoveredPointIndex = index;

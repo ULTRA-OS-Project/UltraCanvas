@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
 // Image performance testing demonstration - load, decompress, and render benchmarks
-// Version: 1.0.0
-// Last Modified: 2025-12-24
+// Version: 1.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -17,6 +17,7 @@
 #include <iomanip>
 #include <atomic>
 #include <thread>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -43,7 +44,7 @@ namespace UltraCanvas {
                 "Measure image decompression and rendering performance. Select an image and test mode, "
                 "then click 'Start Test' to run a 10-second benchmark counting how many times the image can be processed.");
         description->SetFontSize(12);
-        description->SetWordWrap(true);
+        description->SetWrap(TextWrap::WrapWord);
         description->SetTextColor(Color(80, 80, 80, 255));
         mainContainer->AddChild(description);
         currentY += 60;
@@ -65,14 +66,24 @@ namespace UltraCanvas {
         controlsLayout->AddUIElement(imageLabel);
 
         auto imageDropdown = std::make_shared<UltraCanvasDropdown>("ImageDropdown", 9012, 65, 10, 240, 30);
-        imageDropdown->AddItem("PNG sample (350Kb)", "media/images/dice.png");
-        imageDropdown->AddItem("JPEG sample (74Kb)", "media/images/dice.jpg");
-        imageDropdown->AddItem("WEBP sample (62KB)", "media/images/dice.webp");
-        imageDropdown->AddItem("TIFF sample (1920KB)", "media/images/dice.tiff");
-        imageDropdown->AddItem("Icon, small PNG (633b)", "media/images/test_small.png");
-        imageDropdown->AddItem("Icon, small JPG (1197b)", "media/images/test_small.jpg");
-        imageDropdown->AddItem("Icon, small WEBP (410b)", "media/images/test_small.webp");
-        imageDropdown->AddItem("Icon, small TIFF (2817b)", "media/images/test_small.tiff");
+        imageDropdown->AddItem("PNG sample (350Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.png"));
+        imageDropdown->AddItem("JPEG sample (74Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.jpg"));
+        imageDropdown->AddItem("GIF sample (85Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.gif"));
+        imageDropdown->AddItem("WEBP sample (62KB)", NormalizePath(GetResourcesDir() + "media/images/dice.webp"));
+        imageDropdown->AddItem("BMP sample (1920Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.bmp"));
+        imageDropdown->AddItem("TIFF sample (1920KB)", NormalizePath(GetResourcesDir() + "media/images/dice.tiff"));
+        imageDropdown->AddItem("AVIF sample (13Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.avif"));
+        imageDropdown->AddItem("HEIC sample (26Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.heic"));
+        imageDropdown->AddItem("QOI sample (519Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.qoi"));
+        imageDropdown->AddItem("Icon, small PNG (633b)", NormalizePath(GetResourcesDir() + "media/images/test_small.png"));
+        imageDropdown->AddItem("Icon, small JPG (1197b)", NormalizePath(GetResourcesDir() + "media/images/test_small.jpg"));
+        imageDropdown->AddItem("Icon, small GIF (133b)", NormalizePath(GetResourcesDir() + "media/images/test_small.gif"));
+        imageDropdown->AddItem("Icon, small WEBP (410b)", NormalizePath(GetResourcesDir() + "media/images/test_small.webp"));
+        imageDropdown->AddItem("Icon, small TIFF (2817b)", NormalizePath(GetResourcesDir() + "media/images/test_small.tiff"));
+        imageDropdown->AddItem("Icon, small BMP (2690b)", NormalizePath(GetResourcesDir() + "media/images/test_small.bmp"));
+        imageDropdown->AddItem("Icon, small AVIF (446b)", NormalizePath(GetResourcesDir() + "media/images/test_small.avif"));
+        imageDropdown->AddItem("Icon, small HEIC (708b)", NormalizePath(GetResourcesDir() + "media/images/test_small.avif"));
+        imageDropdown->AddItem("Icon, small QOI (367b)", NormalizePath(GetResourcesDir() + "media/images/test_small.qoi"));
         imageDropdown->SetSelectedIndex(0);
         controlsLayout->AddUIElement(imageDropdown);
         controlsLayout->AddSpacing(5);
@@ -113,7 +124,7 @@ namespace UltraCanvas {
 
         auto imageElement = std::make_shared<UltraCanvasImageElement>("PerfTestImage", 9021, 10, 10, 480, 380);
         imageElement->SetFitMode(ImageFitMode::ScaleDown);
-        imageElement->LoadFromFile("media/images/dice.png");
+        imageElement->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/dice.png"));
         imageContainer->AddChild(imageElement);
 
         mainContainer->AddChild(imageContainer);
@@ -182,7 +193,7 @@ namespace UltraCanvas {
                 "• Decompress, Draw:           Uses cached file data, decompresses and renders (tests CPU + GPU, no disk I/O)\n"
                 "• Draw cached pixmap only: Uses pre-decompressed, prepared Cairo image surfaces, only renders image (tests GPU/rendering)");
         modeDescLabel->SetFontSize(11);
-        modeDescLabel->SetWordWrap(true);
+        modeDescLabel->SetWrap(TextWrap::WrapWord);
         modeDescLabel->SetTextColor(Color(80, 80, 80, 255));
         modeDescLabel->SetBackgroundColor(Color(252, 252, 252, 255));
         modeDescLabel->SetBorders(1.0f, Color(220, 220, 220, 255));
@@ -199,7 +210,7 @@ namespace UltraCanvas {
             if (!item.value.empty()) {
                 imageElement->LoadFromFile(item.value);
                 imageElement->RequestRedraw();
-                std::cout << "Image Performance Test: Selected image - " << item.value << std::endl;
+                debugOutput << "Image Performance Test: Selected image - " << item.value << std::endl;
             }
         };
 
@@ -269,7 +280,7 @@ namespace UltraCanvas {
                     pixmap = UCImage::Get(imagePath)->GetPixmap(img->GetWidth(), img->GetHeight(), ImageFitMode::NoScale);
                 }
 
-                ctx->DrawPixmap(*pixmap.get(), imageElement->GetXInWindow(), imageElement->GetYInWindow());
+                ctx->DrawPixmap(*pixmap, Rect2Df(imageElement->GetPositionInWindow(), pixmap->GetSize()), ImageFitMode::NoScale);
                 iterationCount++;
 
                 // Update UI every 1 second
@@ -286,13 +297,15 @@ namespace UltraCanvas {
                     iterationLabel->SetText(iterText.str());
 
                     // Force UI update
-                    mainContainer->GetWindow()->Render(ctx);
+                    mainContainer->GetWindow()->RequestRedraw();
+                    mainContainer->GetWindow()->UpdateAndRender();
 //                    ctx->SetFillPaint(Colors::White);
 //                    ctx->FillRectangle(imageElement->GetXInWindow(), imageElement->GetYInWindow(), imageElement->GetWidth(), imageElement->GetHeight());
-                    mainContainer->GetWindow()->Flush();
                     prevElapsedSeconds = elapsedSeconds;
                 }
             }
+            mainContainer->GetWindow()->RequestRedraw();
+            mainContainer->GetWindow()->UpdateAndRender();
 
             // Test complete - calculate results
             auto testEndTime = std::chrono::steady_clock::now();
@@ -337,7 +350,7 @@ namespace UltraCanvas {
             imageDropdown->SetDisabled(false);
             modeDropdown->SetDisabled(false);
 
-            std::cout << "Image Performance Test Complete: " << totalIterations
+            debugOutput << "Image Performance Test Complete: " << totalIterations
                       << " iterations in " << durationSeconds << "s" << std::endl;
         });
 

@@ -8,6 +8,7 @@
 #include "UltraCanvasWASMApplication.h"
 #include <iostream>
 #include <emscripten.h>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -20,18 +21,18 @@ UltraCanvasWASMWindow::UltraCanvasWASMWindow()
     , lastMouseX(0)
     , lastMouseY(0)
 {
-    std::cout << "[WASM Window] Created" << std::endl;
+    debugOutput << "[WASM Window] Created" << std::endl;
 }
 
 UltraCanvasWASMWindow::~UltraCanvasWASMWindow() {
-    std::cout << "[WASM Window] Destroyed" << std::endl;
+    debugOutput << "[WASM Window] Destroyed" << std::endl;
     DestroyNative();
 }
 
 // ===== WINDOW CREATION =====
 
 bool UltraCanvasWASMWindow::CreateNative(const WindowConfig& config) {
-    std::cout << "[WASM Window] Creating window: " << config.title 
+    debugOutput << "[WASM Window] Creating window: " << config.title
               << " (" << config.width << "x" << config.height << ")" << std::endl;
     
     // Store configuration
@@ -44,14 +45,14 @@ bool UltraCanvasWASMWindow::CreateNative(const WindowConfig& config) {
     
     // Create or find canvas element
     if (!CreateCanvas()) {
-        std::cerr << "[WASM Window] ERROR: Failed to create canvas" << std::endl;
+        debugOutput << "[WASM Window] ERROR: Failed to create canvas" << std::endl;
         return false;
     }
     
     // Create render context
     wasmRenderContext = std::make_unique<UltraCanvasWASMRenderContext>(canvasId);
     if (!wasmRenderContext->Initialize()) {
-        std::cerr << "[WASM Window] ERROR: Failed to initialize render context" << std::endl;
+        debugOutput << "[WASM Window] ERROR: Failed to initialize render context" << std::endl;
         return false;
     }
     
@@ -85,7 +86,7 @@ bool UltraCanvasWASMWindow::CreateNative(const WindowConfig& config) {
     emscripten_set_blur_callback(target, this, true, OnFocusEvent);
     
     _created = true;
-    std::cout << "[WASM Window] Window created successfully" << std::endl;
+    debugOutput << "[WASM Window] Window created successfully" << std::endl;
     
     return true;
 }
@@ -95,7 +96,7 @@ void UltraCanvasWASMWindow::DestroyNative() {
         return;
     }
     
-    std::cout << "[WASM Window] Destroying window" << std::endl;
+    debugOutput << "[WASM Window] Destroying window" << std::endl;
     
     // Unregister event callbacks
     const char* target = ("#" + canvasId).c_str();
@@ -131,13 +132,13 @@ bool UltraCanvasWASMWindow::CreateCanvas() {
     }, canvasId.c_str());
     
     if (exists) {
-        std::cout << "[WASM Window] Using existing canvas: " << canvasId << std::endl;
+        debugOutput << "[WASM Window] Using existing canvas: " << canvasId << std::endl;
         canvasCreated = false; // We didn't create it
         return true;
     }
     
     // Create new canvas element
-    std::cout << "[WASM Window] Creating new canvas: " << canvasId << std::endl;
+    debugOutput << "[WASM Window] Creating new canvas: " << canvasId << std::endl;
     
     EM_ASM({
         const canvas = document.createElement('canvas');
@@ -153,7 +154,7 @@ bool UltraCanvasWASMWindow::CreateCanvas() {
 
 void UltraCanvasWASMWindow::DestroyCanvas() {
     if (canvasCreated) {
-        std::cout << "[WASM Window] Destroying canvas: " << canvasId << std::endl;
+        debugOutput << "[WASM Window] Destroying canvas: " << canvasId << std::endl;
         
         EM_ASM({
             const canvas = document.getElementById(UTF8ToString($0));
@@ -180,7 +181,7 @@ void UltraCanvasWASMWindow::UpdateCanvasSize() {
         }
     }, canvasId.c_str(), width, height);
     
-    std::cout << "[WASM Window] Canvas size updated: " << width << "x" << height << std::endl;
+    debugOutput << "[WASM Window] Canvas size updated: " << width << "x" << height << std::endl;
 }
 
 // ===== WINDOW OPERATIONS =====
@@ -213,7 +214,7 @@ void UltraCanvasWASMWindow::Hide() {
 
 void UltraCanvasWASMWindow::Minimize() {
     // Not applicable in web context
-    std::cout << "[WASM Window] Minimize not supported in web context" << std::endl;
+    debugOutput << "[WASM Window] Minimize not supported in web context" << std::endl;
 }
 
 void UltraCanvasWASMWindow::Maximize() {
@@ -236,7 +237,7 @@ void UltraCanvasWASMWindow::Restore() {
 }
 
 void UltraCanvasWASMWindow::Close() {
-    std::cout << "[WASM Window] Closing window" << std::endl;
+    debugOutput << "[WASM Window] Closing window" << std::endl;
     
     // Generate close event
     UCEvent closeEvent;
@@ -306,7 +307,7 @@ void UltraCanvasWASMWindow::GetSize(int& width, int& height) const {
 
 // ===== RENDERING =====
 
-void UltraCanvasWASMWindow::Render(IRenderContext* ctx) {
+void UltraCanvasWASMWindow::Render(IRenderContext* ctx, const Rect2Di& dirtyRect) {
     if (!_created || !_visible || !wasmRenderContext) {
         return;
     }
@@ -318,7 +319,7 @@ void UltraCanvasWASMWindow::Render(IRenderContext* ctx) {
     wasmRenderContext->Clear(config_.backgroundColor);
     
     // Call base class render (renders all UI elements)
-    UltraCanvasWindowBase::Render(IRenderContext* ctx);
+    UltraCanvasWindowBase::Render(IRenderContext* ctx, const Rect2Di& dirtyRect);
     
     // End frame
     wasmRenderContext->EndFrame();
@@ -328,15 +329,12 @@ void UltraCanvasWASMWindow::RequestRedraw() {
     _needsRedraw = true;
 }
 
-IRenderContext* UltraCanvasWASMWindow::GetRenderContext() {
-    return wasmRenderContext.get();
-}
 
 // ===== CANVAS ACCESS =====
 
 void UltraCanvasWASMWindow::SetCanvasId(const std::string& id) {
     if (_created) {
-        std::cerr << "[WASM Window] Cannot change canvas ID after window creation" << std::endl;
+        debugOutput << "[WASM Window] Cannot change canvas ID after window creation" << std::endl;
         return;
     }
     canvasId = id;
@@ -467,21 +465,20 @@ UCEvent UltraCanvasWASMWindow::ConvertMouseEvent(int eventType, const Emscripten
     ucEvent.mouseButton = ConvertMouseButton(event->button);
     
     // Set position (canvas-relative)
-    ucEvent.x = static_cast<int>(event->targetX);
-    ucEvent.y = static_cast<int>(event->targetY);
-    
+    ucEvent.pointer = { static_cast<int>(event->targetX), static_cast<int>(event->targetY) };
+
     // Set modifiers
     ucEvent.shiftKey = event->shiftKey;
     ucEvent.ctrlKey = event->ctrlKey;
     ucEvent.altKey = event->altKey;
     ucEvent.metaKey = event->metaKey;
-    
+
     // Track mouse movement
     if (eventType == EMSCRIPTEN_EVENT_MOUSEMOVE) {
-        ucEvent.deltaX = ucEvent.x - lastMouseX;
-        ucEvent.deltaY = ucEvent.y - lastMouseY;
-        lastMouseX = ucEvent.x;
-        lastMouseY = ucEvent.y;
+        ucEvent.deltaX = ucEvent.pointer.x - lastMouseX;
+        ucEvent.deltaY = ucEvent.pointer.y - lastMouseY;
+        lastMouseX = ucEvent.pointer.x;
+        lastMouseY = ucEvent.pointer.y;
     }
     
     return ucEvent;
@@ -529,8 +526,7 @@ UCEvent UltraCanvasWASMWindow::ConvertWheelEvent(const EmscriptenWheelEvent* eve
     ucEvent.wheelDelta = -static_cast<int>(event->deltaY);
     
     // Set position
-    ucEvent.x = static_cast<int>(event->mouse.targetX);
-    ucEvent.y = static_cast<int>(event->mouse.targetY);
+    ucEvent.pointer = { static_cast<int>(event->mouse.targetX), static_cast<int>(event->mouse.targetY) };
     
     // Set modifiers
     ucEvent.shiftKey = event->mouse.shiftKey;
@@ -570,8 +566,7 @@ UCEvent UltraCanvasWASMWindow::ConvertTouchEvent(int eventType, const Emscripten
         }
         
         // Set position
-        ucEvent.x = static_cast<int>(touch.targetX);
-        ucEvent.y = static_cast<int>(touch.targetY);
+        ucEvent.pointer = { static_cast<int>(touch.targetX), static_cast<int>(touch.targetY) };
     }
     
     return ucEvent;

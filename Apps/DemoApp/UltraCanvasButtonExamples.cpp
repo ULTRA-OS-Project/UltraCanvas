@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasButtonDemo.cpp
 // Comprehensive button component demonstration
-// Version: 2.0.0
-// Last Modified: 2025-01-11
+// Version: 2.0.1
+// Last Modified: 2026-05-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -10,6 +10,7 @@
 #include "UltraCanvasContainer.h"
 #include <sstream>
 #include <iostream>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
 
@@ -38,6 +39,7 @@ namespace UltraCanvas {
             statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
             statusLabel->SetBorders(1.0f);
             statusLabel->SetPadding(8.0f);
+            statusLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
             mainButtonsContainer->AddChild(statusLabel);
 
             int yOffset = 90;
@@ -145,7 +147,7 @@ namespace UltraCanvas {
 
             // Icon Left
             auto iconLeftBtn = CreateButton("IconLeft", 132, 130, yOffset, 120, 35, "Save");
-            iconLeftBtn->SetIcon("media/icons/save.png");
+            iconLeftBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/save.png"));
             iconLeftBtn->SetIconPosition(ButtonIconPosition::Left);
             iconLeftBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Save button clicked\nIcon positioned on the left");
@@ -154,7 +156,7 @@ namespace UltraCanvas {
 
             // Icon Right
             auto iconRightBtn = CreateButton("IconRight", 133, 260, yOffset, 120, 35, "Next");
-            iconRightBtn->SetIcon("media/icons/arrow-right.png");
+            iconRightBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/arrow-chevron-right.png"));
             iconRightBtn->SetIconPosition(ButtonIconPosition::Right);
             iconRightBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Next button clicked\nIcon positioned on the right");
@@ -163,7 +165,7 @@ namespace UltraCanvas {
 
             // Icon Only
 //            auto iconOnlyBtn = CreateButton("IconOnly", 134, 390, yOffset, 40, 35, "");
-//            iconOnlyBtn->SetIcon("media/icons/settings.png");
+//            iconOnlyBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
 //            iconOnlyBtn->SetStyle(ButtonStyles::IconOnlyStyle());
 ////            iconOnlyBtn->SetTooltip("Settings");
 //            iconOnlyBtn->onClick = [statusLabel]() {
@@ -173,7 +175,7 @@ namespace UltraCanvas {
 
             // Icon Top
             auto iconTopBtn = CreateButton("IconTop", 135, 390, yOffset, 80, 62, "Upload");
-            iconTopBtn->SetIcon("media/icons/upload.png");
+            iconTopBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/upload.png"));
             iconTopBtn->SetIconPosition(ButtonIconPosition::Top);
             iconTopBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Upload button clicked\nIcon positioned above text");
@@ -181,8 +183,8 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(iconTopBtn);
 
             // Icon Bottom
-            auto iconBottomBtn = CreateButton("IconBottom", 136, 480, yOffset, 90, 62, "Download");
-            iconBottomBtn->SetIcon("media/icons/download_34px.png");
+            auto iconBottomBtn = CreateButton("IconBottom", 136, 480, yOffset, 100, 62, "Download");
+            iconBottomBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/download_34px.png"));
             iconBottomBtn->SetIconPosition(ButtonIconPosition::Bottom);
             iconBottomBtn->SetIconSize(41,34);
             iconBottomBtn->onClick = [statusLabel]() {
@@ -190,8 +192,8 @@ namespace UltraCanvas {
             };
             mainButtonsContainer->AddChild(iconBottomBtn);
 
-            auto iconRightBtn2 = CreateButton("IconRight", 133, 580, yOffset, 250, 35, "Continue with UltraCanvas");
-            iconRightBtn2->SetIcon("media/icons/ultracanvas_20px.png");
+            auto iconRightBtn2 = CreateButton("IconRight", 133, 590, yOffset, 260, 35, "Continue with UltraCanvas");
+            iconRightBtn2->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/ultracanvas_20px.png"));
             iconRightBtn2->SetIconSize(20, 20);
             iconRightBtn2->SetIconPosition(ButtonIconPosition::Left);
             iconRightBtn2->SetColors(Colors::White, Color(240, 240, 240, 255), Colors::Gray, Colors::LightGray);
@@ -225,7 +227,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(splitBtn);
 
             // Badge Style (Sponsors)
-            auto sponsorBtn = CreateButton("SponsorButton", 142, 160, yOffset, 140, 35, "sponsors");
+            auto sponsorBtn = CreateButton("SponsorButton", 142, 160, yOffset, 140, 35, "Sponsors");
             sponsorBtn->SetStyle(ButtonStyles::BadgeButtonStyle());
             sponsorBtn->SetSplitSecondaryText("31");
             sponsorBtn->SetSplitColors(
@@ -242,7 +244,7 @@ namespace UltraCanvas {
             // Badge Style (Patreon)
             auto patreonBtn = CreateButton("PatreonButton", 143, 310, yOffset, 140, 35, "Patreon");
             patreonBtn->SetSplitEnabled(true);
-            patreonBtn->SetIcon("media/icons/patreon.png");
+            patreonBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/patreon.png"));
             patreonBtn->SetIconPosition(ButtonIconPosition::Left);
             patreonBtn->SetIconSize(20,20);
             patreonBtn->SetIconSpacing(7);
@@ -259,7 +261,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(patreonBtn);
 
             // Badge Style (Liberapay)
-            auto liberapayBtn = CreateButton("LiberapayButton", 144, 460, yOffset, 140, 35, "liberapay");
+            auto liberapayBtn = CreateButton("LiberapayButton", 144, 460, yOffset, 140, 35, "Liberapay");
             liberapayBtn->SetSplitEnabled(true);
             liberapayBtn->SetSplitSecondaryText("5");
             liberapayBtn->SetSplitColors(
@@ -276,7 +278,7 @@ namespace UltraCanvas {
             // PayPal Style
             auto paypalBtn = CreateButton("PaypalButton", 145, 610, yOffset, 140, 35, "Paypal");
             paypalBtn->SetSplitEnabled(true);
-            paypalBtn->SetIcon("media/icons/paypal.png");
+            paypalBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/paypal.png"));
             paypalBtn->SetIconPosition(ButtonIconPosition::Left);
             paypalBtn->SetIconSize(20,20);
             paypalBtn->SetIconSpacing(7);
@@ -313,17 +315,17 @@ namespace UltraCanvas {
         }));
 
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("📂 Open...", "Ctrl+O", []() {
-              std::cout << "Open file" << std::endl;
+              debugOutput << "Open file" << std::endl;
         }));
 
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("💾 Save", "Ctrl+S", []() {
-              std::cout << "Save file" << std::endl;
+              debugOutput << "Save file" << std::endl;
         }));
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("💾 Save As...", "Ctrl+Shift+S", []() {
-              std::cout << "Save as" << std::endl;
+              debugOutput << "Save as" << std::endl;
           }));
         vertSplitMenu->AddItem(MenuItemData::ActionWithShortcut("🚪 Exit", "Alt+F4", []() {
-            std::cout << "Exit application" << std::endl;
+            debugOutput << "Exit application" << std::endl;
         }));
 
 
@@ -339,7 +341,7 @@ namespace UltraCanvas {
             vertSplitBtn->onSecondaryClick = [mainButtonsContainer, vertSplitMenu]() {
                 auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
                 mainButtonsContainer->GetWindow()->AddChild(vertSplitMenu);
-                vertSplitMenu->ShowAt(ev.windowX, ev.windowY);
+                vertSplitMenu->OpenMenu(Point2Di(ev.pointerWindow.x, ev.pointerWindow.y), *mainButtonsContainer->GetWindow(), PopupElementSettings());
             };
             mainButtonsContainer->AddChild(vertSplitBtn);
 
@@ -391,7 +393,7 @@ namespace UltraCanvas {
             mainButtonsContainer->AddChild(customColorBtn);
 
             // Shadow Button
-            auto shadowBtn = CreateButton("ShadowButton", 154, 370, yOffset, 120, 35, "Shadow");
+            auto shadowBtn = CreateButton("ShadowButton", 154, 370, yOffset, 120, 38, "Shadow");
             shadowBtn->SetShadow(true, Color(0, 0, 0, 128), Point2Di(3, 3));
             shadowBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Shadow button clicked\nCustom shadow effect applied");
@@ -401,7 +403,7 @@ namespace UltraCanvas {
             // Large Button
             auto largeBtn = CreateButton("LargeButton", 155, 500, yOffset, 150, 50, "Large");
             largeBtn->SetFont("Sans", 16, FontWeight::Bold);
-            largeBtn->SetPadding(20, 20, 10, 10);
+            largeBtn->SetPadding(10, 20, 10, 20);
             largeBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Large button clicked\nCustom size and padding");
             };
@@ -465,8 +467,8 @@ namespace UltraCanvas {
             multiBtn->SetSplitEnabled(true);
             multiBtn->SetSplitRatio(0);
 //            multiBtn->SetSplitSecondaryText("");
-            multiBtn->SetIcon("media/icons/save.png");
-            multiBtn->SetSplitSecondaryIcon("media/icons/settings.png");
+            multiBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/save.png"));
+            multiBtn->SetSplitSecondaryIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
             multiBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("Quick save executed\nFile saved with default settings");
             };
@@ -493,10 +495,10 @@ namespace UltraCanvas {
                     .SetPosition(20, yOffset)
                     .SetSize(240, 40)
                     .SetText("Built with Builder")
-                    .SetIcon("media/icons/build.png")
+                    .SetIcon(NormalizePath(GetResourcesDir() + "media/icons/build.png"))
                     .SetIconSpacing(6)
                     .SetSplitEnabled(true)
-                    .SetSplitSecondaryIcon("media/icons/arrow-right.png")
+                    .SetSplitSecondaryIcon(NormalizePath(GetResourcesDir() + "media/icons/arrow-chevron-right.png"))
                     .SetSplitIconSize(24,24)
 //                    .SetSplitSecondaryText("→")
                     .SetSplitRatio(0.8)

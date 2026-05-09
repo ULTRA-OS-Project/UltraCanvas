@@ -96,7 +96,7 @@ namespace UltraCanvas {
 
 // ===== TEMPLATE APPEARANCE =====
     struct TemplateAppearance {
-        Color backgroundColor = Color::Transparent;
+        Color backgroundColor = Colors::Transparent;
         Color borderColor = Color(128, 128, 128);
         float borderWidth = 0.0f;
         float cornerRadius = 0.0f;
@@ -368,7 +368,8 @@ namespace UltraCanvas {
         void ApplyToContainer(const Rect2Df& containerRect);
 
         // ===== RENDERING =====
-        void Render(IRenderContext* ctx) override;
+        void Render(IRenderContext* ctx, const Rect2Di& dirtyRect) override;
+        void UpdateGeometry(IRenderContext *ctx) override;
 
         // ===== EVENT HANDLING =====
         bool OnEvent(const UCEvent& event) override;

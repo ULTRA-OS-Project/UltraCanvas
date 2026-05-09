@@ -1,7 +1,7 @@
 // OS/WASM/UltraCanvasWASMApplication.h
 // WebAssembly platform application implementation
-// Version: 1.0.0
-// Last Modified: 2025-01-27
+// Version: 1.1.0
+// Last Modified: 2026-04-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -54,6 +54,11 @@ public:
     bool InitializeNative() override;
     void RunNative() override;
     void Exit() override;
+
+    // Wakeup stubs (WASM event loop is driven by the browser)
+    void WakeUpEventLoop() override {}
+    void InitializeWakeUp() override {}
+    void ShutdownWakeUp() override {}
     
     // ===== FRAME RATE CONTROL =====
     void SetTargetFPS(int fps);
@@ -71,6 +76,10 @@ public:
     
     // ===== STATIC INSTANCE ACCESS =====
     static UltraCanvasWASMApplication* GetInstance() { return instance; }
+
+protected:
+    FontStyle DetectSystemFontStyleNative() override;
+    FontStyle DetectMonospacedFontStyleNative() override;
 };
 
 } // namespace UltraCanvas

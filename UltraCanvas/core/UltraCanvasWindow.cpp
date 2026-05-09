@@ -1,34 +1,37 @@
 // UltraCanvasWindowBase.cpp
 // Fixed implementation of cross-platform window management system
-// Version: 1.2.0
-// Last Modified: 2025-07-15
+// Version: 1.2.1
+// Last Modified: 2026-04-05
 // Author: UltraCanvas Framework
 
-#include "../include/UltraCanvasWindow.h"
-#include "../include/UltraCanvasRenderContext.h"
-#include "../include/UltraCanvasApplication.h"
-#include "../include/UltraCanvasTooltipManager.h"
-//#include "../include/UltraCanvasZOrderManager.h"
-#include "../include/UltraCanvasMenu.h"
+#include "UltraCanvasWindow.h"
+#include "UltraCanvasRenderContext.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasTooltipManager.h"
 
 #include <iostream>
 #include <algorithm>
+#include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
     UltraCanvasWindowBase::UltraCanvasWindowBase()
             : UltraCanvasContainer("Window", 0, 0, 0, 0, 0) {
         // Configure container for window behavior
         visible = false;
-        SetWindow(this);
+        window = this;
+        nativeSurface = nullptr;
     }
 
 //    UltraCanvasWindowBase::~UltraCanvasWindowBase() {
 //        UnregisterWindow();
-//        std::cout << "UltraCanvas: Window deleted" << std::endl;
+//        debugOutput << "UltraCanvas: Window deleted" << std::endl;
 //    }
 
     // ===== FOCUS MANAGEMENT IMPLEMENTATION =====
+
+    bool UltraCanvasWindowBase::IsWindowFocused() const {
+        return UltraCanvasApplication::GetInstance()->GetFocusedWindow() == this;
+    }
 
     void UltraCanvasWindowBase::SetFocusedElement(UltraCanvasUIElement* element) {
         // Don't do anything if already focused
@@ -38,9 +41,11 @@ namespace UltraCanvas {
 
         // Validate element belongs to this window
         if (element && element->GetWindow() != this) {
-            std::cerr << "Warning: Trying to focus element from different window" << std::endl;
+            debugOutput << "Warning: Trying to focus element from different window" << std::endl;
             return;
         }
+
+        UltraCanvasUIElement* prev = _focusedElement;
 
         // Remove focus from current element
         if (_focusedElement) {
@@ -55,10 +60,11 @@ namespace UltraCanvas {
             SendFocusGainedEvent(_focusedElement);
         }
 
-        // Request window redraw to update focus indicators
-        _needsRedraw = true;
+        // Repaint focus rings on both old and new focused elements.
+        if (prev) prev->RequestRedraw();
+        if (_focusedElement) _focusedElement->RequestRedraw();
 
-        std::cout << "Focus changed to: " << (element ? element->GetIdentifier() : "none") << std::endl;
+        debugOutput << "Focus changed to: " << (element ? element->GetIdentifier() : "none") << std::endl;
     }
 
     void UltraCanvasWindowBase::ClearFocus() {
@@ -191,44 +197,85 @@ namespace UltraCanvas {
             }
         }
 
-//        if (event.IsMouseEvent() && !activePopups.empty()) {
-//            std::unordered_set<UltraCanvasUIElement*> activePopupsCopy = activePopups;
-//            for(auto it = activePopupsCopy.begin(); it != activePopupsCopy.end(); it++) {
-//                UltraCanvasUIElement* activePopupElement = *it;
-//                auto localCoords = activePopupElement->ConvertWindowToParentContainerCoordinates(Point2Di(event.x, event.y));
-//                UCEvent localEvent = event;
-//                localEvent.x = localCoords.x;
-//                localEvent.y = localCoords.y;
-//                if (activePopupElement->OnEvent(localEvent)) {
-//                    return true;
-//                }
-//            }
-//        }
-
         return UltraCanvasContainer::OnEvent(event);
+    }
+
+    void UltraCanvasWindowBase::InstallEventFilter(const std::string& uniqueFilterId, const std::function<bool(const UCEvent&)>& filterFunc, const std::vector<UCEventType>& interestedEvents) {
+        for(auto et : interestedEvents) {
+            if (eventFilters.find(et) == eventFilters.end()) {
+                eventFilters[et] = {};
+            }
+            eventFilters[et].emplace_back(FilterFunction{.id=uniqueFilterId, .func=filterFunc});
+        }
+    }
+
+    void UltraCanvasWindowBase::UnInstallWindowEventFilter(const std::string& uniqueFilterId) {
+        if (eventFilters.empty()) {
+            for(auto &ef : eventFilters) {
+                auto funcs = ef.second;
+                for(auto it = funcs.begin(); it != funcs.end(); ++it) {
+                    if (it->id == uniqueFilterId) {
+                        funcs.erase(it);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+
+    bool UltraCanvasWindowBase::HandleEventFilters(const UCEvent &event) {
+        auto found = eventFilters.find(event.type);
+        if (found != eventFilters.end()) {
+            for(auto const &filterFunc : found->second) {
+                if (filterFunc.func(event)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     bool UltraCanvasWindowBase::HandleWindowEvent(const UCEvent &event) {
         switch (event.type) {
+            case UCEventType::WindowBlur:
+                if (onWindowBlur) {
+                    onWindowBlur();
+                }
+                RequestRedraw();
+                return true;
+            case UCEventType::WindowFocus:
+                if (onWindowFocus) {
+                    onWindowFocus();
+                }
+                RequestRedraw();
+                return true;
             case UCEventType::WindowCloseRequest:
                 Close();
                 return true;
 
             case UCEventType::WindowResize:
                 HandleResizeEvent(event.width, event.height);
+                RequestRedraw();
                 return true;
 
             case UCEventType::WindowMove:
-                HandleMoveEvent(event.x, event.y);
+                HandleMoveEvent(event.pointer.x, event.pointer.y);
                 return true;
 
-            case UCEventType::WindowFocus:
-                HandleFocusEvent(true);
+            case UCEventType::WindowRepaint:
+            case UCEventType::Redraw: {
+                // Honour the platform damage rect when present; otherwise repaint
+                // the full window. Without this, an occluded-then-revealed window
+                // would have an empty dirty list and paint nothing.
+                Rect2Di damage(event.pointerWindow.x, event.pointerWindow.y,
+                               event.width, event.height);
+                if (damage.width <= 0 || damage.height <= 0) {
+                    damage = Rect2Di(0, 0, config_.width, config_.height);
+                }
+                AddDirtyRectangle(damage);
                 return true;
-
-            case UCEventType::WindowBlur:
-                HandleFocusEvent(false);
-                return true;
+            }
 
             default:
                 return false;
@@ -244,8 +291,27 @@ namespace UltraCanvas {
     void UltraCanvasWindowBase::HandleResizeEvent(int width, int height) {
         config_.width = width;
         config_.height = height;
-        SetOriginalSize(width, height);
-        if (onWindowResize) onWindowResize(width, height);
+        _needsResize = true;
+        debugOutput << "UltraCanvasWindowBase::HandleResizeEvent nativeh=" << GetNativeHandle() << " (" << config_.width << "x" << config_.height << ")" << std::endl;
+    }
+
+    void UltraCanvasWindowBase::DoResize() {
+        _needsResize = false;
+        if (GetWidth() == config_.width && GetHeight() == config_.height) {
+            debugOutput << "UltraCanvasWindowBase::DoResize windows already has same size, return. nativeh=" << GetNativeHandle() << " (" << config_.width << "x" << config_.height << ")" << std::endl;
+            return;
+        }
+        debugOutput << "UltraCanvasWindowBase::DoResize nativeh=" << GetNativeHandle() << " (" << config_.width << "x" << config_.height << ")" << std::endl;
+
+        if (renderContext) {
+            renderContext->ResizeSurface({config_.width, config_.height});
+        }
+        DoResizeNative();
+        SetOriginalSize(config_.width, config_.height);
+
+        if (onWindowResize) onWindowResize(config_.width, config_.height);
+
+        AddDirtyRectangle(Rect2Di(0, 0, config_.width, config_.height));
     }
 
     void UltraCanvasWindowBase::HandleMoveEvent(int x, int y) {
@@ -256,188 +322,325 @@ namespace UltraCanvas {
         if (onWindowMove) onWindowMove(x, y);
     }
 
-    void UltraCanvasWindowBase::HandleFocusEvent(bool focused) {
-        if (focused) {
-            if (!_focused) {
-                _focused = true;
-                if (onWindowFocus) onWindowFocus();
-            }
-        } else {
-            if (_focused) {
-                _focused = false;
-                if (onWindowBlur) onWindowBlur();
-            }
-        }
-        _needsRedraw = true;
-    }
 
-    void UltraCanvasWindowBase::Render(IRenderContext* ctx) {
+    void UltraCanvasWindowBase::UpdateAndRender() {
         if (!visible || !_created) return;
-//        if (useSelectiveRendering && selectiveRenderer) {
-//            // Use simple selective rendering
-//            selectiveRenderer->RenderFrame();
-//            // Only clear needs redraw if no dirty regions remain
-//            if (!selectiveRenderer->HasDirtyRegions()) {
-//                _needsRedraw = false;
-//            }
-//        } else {
-            // Render container content (children with scrolling)
-            UltraCanvasContainer::Render(ctx);
+        auto ctx = GetRenderContext();
+        if (IsNeedsResize()) {
+            DoResize();
+        }
+        if (!ctx) return;
 
-            RenderActivePopups(ctx);
+        if (needsUpdateGeometry) {
+            UpdateGeometry(ctx);
+        }
 
-            // Render window-specific overlays
-            RenderWindowChrome(ctx);
-
-//            useSelectiveRendering = true;
-//        }
-    }
-
-    void UltraCanvasWindowBase::RenderActivePopups(IRenderContext* ctx) {
-        // Render popups in z-order
-        for (UltraCanvasUIElement* popup : activePopups) {
-            if (popup) {
+        // ---- Window content pass: loop once per optimised dirty rect ----
+        if (dirtyRectManager.HasDirtyRects()) {
+            const auto& rects = dirtyRectManager.GetOptimizedRectangles();
+            for (const auto& rect : rects) {
                 ctx->PushState();
-                popup->RenderPopupContent(ctx);
+                ctx->ClipRect(Rect2Df(rect.x, rect.y, rect.width, rect.height));
+                Render(ctx, rect);
+                RenderCustomContent(ctx, rect);
                 ctx->PopState();
             }
+            dirtyRectManager.Clear();
+            _needsWindowComposition = true;
         }
 
-        UltraCanvasTooltipManager::Render(ctx, this);
-    }
+        // ---- Popup pass: each popup owns its own dirty queue, in popup-local coords ----
+        for (auto& pe : popupElements) {
+            auto* p = pe.element;
+            if (!p || !p->IsVisible()) continue;
 
-
-
-    void UltraCanvasWindowBase::AddPopupElement(UltraCanvasUIElement *element) {
-        if (element) {
-            MarkElementDirty(element);
-            auto found = std::find(activePopups.begin(), activePopups.end(), element);
-            if (found == activePopups.end()) {
-                activePopups.emplace_back(element);
+            if (_needsPopupGeometry || p->needsUpdateGeometry) {
+                p->UpdateGeometry(ctx);
+                p->needsUpdateGeometry = false;
             }
-            popupsToRemove.erase(element);
-        }
-    }
 
-    void UltraCanvasWindowBase::RemovePopupElement(UltraCanvasUIElement *element) {
-        auto found = std::find(activePopups.begin(), activePopups.end(), element);
-        if (found != activePopups.end()) {
-            popupsToRemove.insert(element);
-        }
-    }
+            Size2Di want = p->GetSize();
+            if (want.width <= 0 || want.height <= 0) continue;
 
-    void UltraCanvasWindowBase::CleanupRemovedPopupElements() {
-        if (popupsToRemove.empty()) return;
+            if (!p->renderContext) {
+                p->renderContext = CreateRenderContext(want, nativeSurface);
+                p->needsUpdateGeometry = true;
+                pe.dirtyRectManager.Add(Rect2Di(0, 0, want.width, want.height));
+            } else if (p->renderContext->GetSurfaceSize() != want) {
+                p->renderContext->ResizeSurface(want);
+                pe.dirtyRectManager.Add(Rect2Di(0, 0, want.width, want.height));
+            }
 
-        for(auto it : popupsToRemove) {
-            auto found = std::find(activePopups.begin(), activePopups.end(), it);
-            if (found != activePopups.end()) {
-                activePopups.erase(found);
+            if (pe.dirtyRectManager.HasDirtyRects()) {
+                const auto& popupRects = pe.dirtyRectManager.GetOptimizedRectangles();
+                for (const auto& rect : popupRects) {
+                    p->renderContext->PushState();
+                    p->renderContext->ClipRect(Rect2Df(rect.x, rect.y, rect.width, rect.height));
+                    p->Render(p->renderContext.get(), rect);
+                    p->renderContext->PopState();
+                }
+                pe.dirtyRectManager.Clear();
+                _needsWindowComposition = true;
             }
         }
 
-        popupsToRemove.clear();
-//        if (selectiveRenderer) {
-//            selectiveRenderer->RestoreBackgroundFromOverlay();
-//        } else {
-//            _needsRedraw = true;
-//        }
-        _needsRedraw = true;
+        // Composite popups and tooltips onto the native surface
+        if (_needsWindowComposition) {
+            renderContext->FlushToSurface(nativeSurface, {0, 0});
+
+            if (!popupElements.empty()) {
+                for (auto& pe : popupElements) {
+                    auto* p = pe.element;
+                    if (!p || !p->IsVisible() || !p->renderContext) continue;
+                    auto pos = p->GetPositionInWindow();
+                    p->renderContext->FlushToSurface(nativeSurface,
+                                                     {(float)pos.x, (float)pos.y});
+                }
+            }
+
+            auto tooltipCtx = UltraCanvasTooltipManager::Render(this);
+            if (tooltipCtx) {
+                tooltipCtx->FlushToSurface(nativeSurface, UltraCanvasTooltipManager::GetTooltipPosition());
+            }
+
+            InvalidateWindowNative();
+        }
+
+        _needsPopupGeometry = false;
+        _needsWindowComposition = false;
     }
 
-    void UltraCanvasWindowBase::MarkElementDirty(UltraCanvasUIElement* element, bool isOverlay) {
-//        if (selectiveRenderer) {
-////            if (isOverlay) {
-////                selectiveRenderer->SaveBackgroundForOverlay(element);
-////            }
-//            selectiveRenderer->MarkRegionDirty(element->GetActualBoundsInWindow(), isOverlay);
-//        }
-        _needsRedraw = true;
+    void UltraCanvasWindowBase::AddDirtyRectangle(const Rect2Di& windowRect) {
+        // Clip to window bounds so off-window invalidations don't waste cycles.
+        Rect2Di winBounds(0, 0, config_.width, config_.height);
+        Rect2Di clipped = windowRect.Intersection(winBounds);
+        if (clipped.width <= 0 || clipped.height <= 0) return;
+        dirtyRectManager.Add(clipped);
     }
 
-//    bool UltraCanvasWindowBase::IsSelectiveRenderingActive() {
-//        return selectiveRenderer && selectiveRenderer->IsRenderingActive();
-//    }
+    void UltraCanvasWindowBase::AddPopupDirtyRect(UltraCanvasUIElement* popup,
+                                                  const Rect2Di& popupLocalRect) {
+        if (!popup) return;
+        for (auto& pe : popupElements) {
+            if (pe.element == popup) {
+                Size2Di sz = popup->GetSize();
+                Rect2Di popupBounds(0, 0, sz.width, sz.height);
+                Rect2Di clipped = popupLocalRect.Intersection(popupBounds);
+                if (clipped.width > 0 && clipped.height > 0) {
+                    pe.dirtyRectManager.Add(clipped);
+                }
+                return;
+            }
+        }
+    }
 
-    void UltraCanvasWindowBase::Create(const WindowConfig& config) {
+    void UltraCanvasWindowBase::OpenPopup(const Point2Di& pos, UltraCanvasUIElement& elem, const PopupElementSettings& settings) {
+        for(auto it = popupElements.begin(); it != popupElements.end(); ++it) {
+            if (it->element == &elem) {
+                popupElements.erase(it);
+                break;
+            }
+        }
+        popupElements.push_back({&elem, settings, {}});
+        AddChild(elem.shared_from_this());
+        elem.SetPosition(pos);
+        elem.SetVisible(true);
+        elem.zOrder = OverlayZOrder::Popups;
+        elem.isPopup = true;
+
+        // Allocate the popup's own off-screen render context. Size guard handles the
+        // case where the popup hasn't run a layout pass yet — it'll be resized in
+        // UpdateAndRender once the real bounds are known.
+        Size2Di sz = elem.GetSize();
+        if (sz.width <= 0 || sz.height <= 0) sz = {1, 1};
+        elem.renderContext = CreateRenderContext(sz, nativeSurface);
+        elem.needsUpdateGeometry = true;
+
+        // Seed the popup's dirty list so the first frame paints fully.
+        popupElements.back().dirtyRectManager.Add(Rect2Di(0, 0, sz.width, sz.height));
+
+        elem.OnPopupOpened();
+    }
+
+    bool UltraCanvasWindowBase::ClosePopup(UltraCanvasUIElement& elem, ClosePopupReason reason) {
+        if (elem.isPopup) {
+            for(auto it = popupElements.begin(); it != popupElements.end(); ++it) {
+                if (it->element == &elem) {
+                    if (elem.OnPopupAboutToClose(reason)) {
+                        popupElements.erase(it);
+                        elem.isPopup = false;
+                        elem.SetVisible(false);
+                        RemoveChild(elem.shared_from_this());
+                        elem.renderContext.reset();
+                        elem.OnPopupClosed(reason);
+                        // Closing a popup uncovers window pixels, so we need a full
+                        // window recomposite to refresh the area underneath.
+                        RequestWindowComposition();
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    PopupElement* UltraCanvasWindowBase::GetActivePopupElement() {
+        if (!popupElements.empty()) {
+            return &popupElements.back();
+        } else {
+            return nullptr;
+        }
+    }
+
+    void UltraCanvasWindowBase::CloseAllPopups() {
+        
+        for(auto it = popupElements.rbegin(); it != popupElements.rend(); ++it) {
+            if (it->element) {
+                ClosePopup(*it->element);
+            }
+        }
+        popupElements.clear();
+    }
+
+    bool UltraCanvasWindowBase::Create(const WindowConfig& config) {
         config_ = config;
+        return Create();
+    }
+
+    bool UltraCanvasWindowBase::Create() {
         _state = WindowState::Normal;
+        _created = false;
 
         ContainerStyle containerStyle;
-        containerStyle.forceShowVerticalScrollbar = config.enableWindowScrolling;
-        containerStyle.forceShowHorizontalScrollbar = config.enableWindowScrolling;
+        containerStyle.forceShowVerticalScrollbar = config_.enableWindowScrolling;
+        containerStyle.forceShowHorizontalScrollbar = config_.enableWindowScrolling;
         SetContainerStyle(containerStyle);
-        SetBackgroundColor(config.backgroundColor);
+        SetBackgroundColor(config_.backgroundColor);
 
         auto application = UltraCanvasApplication::GetInstance();
         SetBounds(Rect2Di(0, 0, config_.width, config_.height));
 
         if (CreateNative()) {
-            UltraCanvasApplication::GetInstance()->RegisterWindow(shared_from_this());
-            _created = true;
+            renderContext = CreateRenderContext(Size2Di(config_.width, config_.height), nativeSurface);
+            if (renderContext) {
+                UltraCanvasApplication::GetInstance()->RegisterWindow(std::dynamic_pointer_cast<UltraCanvasWindowBase>(shared_from_this()));
+                _created = true;
+                // Seed full-window dirty rect so the first frame paints.
+                AddDirtyRectangle(Rect2Di(0, 0, config_.width, config_.height));
+            } else {
+                debugOutput << "UltraCanvasWindowBase::Create CreateRenderContext failed" << std::endl;
+            }
+        }
+        return _created;
+    }
+
+    bool UltraCanvasWindowBase::Close() {
+        if (!_created || _state == WindowState::Closing 
+            || _state == WindowState::Closed) {
+            return false;
+        }
+        debugOutput << "UltraCanvas: Window close requested this=" << this << std::endl;
+        if (!onWindowClosing || onWindowClosing()) {
+            PerformClose();
+            return true;
         } else {
-            _created = false;
+            return false;
         }
     }
 
-    void UltraCanvasWindowBase::Destroy() {
-        if (!_created || _state == WindowState::Deleted) {
+    void UltraCanvasWindowBase::PerformClose() {
+        if (!_created || _state == WindowState::Closing
+            || _state == WindowState::Closed) {
             return;
         }
-        DestroyNative();
-        _created = false;
-        _state = WindowState::Deleted;
-    }
-
-    void UltraCanvasWindowBase::RequestDelete() {
-        _state = WindowState::DeleteRequested;
-    }
-
-    void UltraCanvasWindowBase::Close() {
-        if (!_created || _state == WindowState::Closing) {
-            return;
-        }
-
+        debugOutput << "UltraCanvas: Window perform close this=" << this << std::endl;
         _state = WindowState::Closing;
 
-        std::cout << "UltraCanvas: Window close requested" << std::endl;
+        CloseAllPopups();
 
-        if (onWindowClose) {
-            onWindowClose();
-        } else {
-            UCEvent ev;
-            ev.type = UCEventType::WindowClose;
-            ev.targetWindow = this;
-            UltraCanvasApplication::GetInstance()->PushEvent(ev);
-        }
+        UltraCanvasApplication::GetInstance()->CleanupWindowReferences(this);
 
-        if (config_.deleteOnClose) {
-            RequestDelete();
+        DestroyNative();
+        _created = false;
+        _state = WindowState::Closed;
+
+        if (onWindowClosed) {
+            onWindowClosed();
         }
     }
 
-    void UltraCanvasWindowBase::SelectMouseCursor(UCMouseCursor ptr) {
+    bool UltraCanvasWindowBase::SelectMouseCursor(UCMouseCursor ptr) {
         if (currentMouseCursor != ptr) {
-            SelectMouseCursorNative(ptr);
-            currentMouseCursor = ptr;
+            if (UltraCanvasApplication::GetInstance()->SelectMouseCursorNative(this, ptr)) {
+                currentMouseCursor = ptr;
+                return true;
+            }
         }
+        return false;
+    }
+
+    bool UltraCanvasWindowBase::SelectMouseCursor(UCMouseCursor ptr, const char* filename, int hotspotX, int hotspotY) {
+        if (currentMouseCursor != ptr) {
+            if (UltraCanvasApplication::GetInstance()->SelectMouseCursorNative(this, ptr, filename, hotspotX, hotspotY)) {
+                currentMouseCursor = ptr;
+                return true;
+            }
+        }
+        return false;
     }
 
 
-//    void UpdateZOrderSort() {
-//        sortedElements = elements;
-//        UltraCanvasZOrderManager::SortElementsByZOrder(sortedElements);
-//        zOrderDirty = false;
-//
-//        std::cout << "Window z-order updated with " << sortedElements.size() << " elements:" << std::endl;
-//        for (size_t i = 0; i < sortedElements.size(); i++) {
-//            auto* element = sortedElements[i];
-//            if (element) {
-//                std::cout << "  [" << i << "] Z=" << element->GetZIndex()
-//                          << " " << element->GetIdentifier() << std::endl;
-//            }
-//        }
-//    }
+    UltraCanvasWindowBase* UltraCanvasWindowBase::GetParentWindow() {
+        if (config_.parentWindow && !UltraCanvasApplication::GetInstance()->IsWindowRegistered(config_.parentWindow)) {
+            config_.parentWindow = nullptr;
+        }
+        return config_.parentWindow;
+    }
+
+    void UltraCanvasWindowBase::GetScreenBounds(int& x, int& y, int& width, int& height) const {
+        x = 0;
+        y = 0;
+        GetScreenSize(width, height);
+    }
+
+    void UltraCanvasWindowBase::CenterOnScreen() {
+        int sx = 0, sy = 0, sw = 0, sh = 0;
+        GetScreenBounds(sx, sy, sw, sh);
+        if (sw > 0 && sh > 0) {
+            int x = sx + (sw - config_.width) / 2;
+            int y = sy + (sh - config_.height) / 2;
+            SetWindowPosition(x, y);
+        }
+    }
+
+    void UltraCanvasWindowBase::CenterOnParent(UltraCanvasWindowBase* parent) {
+        if (!parent) {
+            CenterOnScreen();
+            return;
+        }
+        int parentX = 0, parentY = 0, parentW = 0, parentH = 0;
+        parent->GetWindowPosition(parentX, parentY);
+        parent->GetWindowSize(parentW, parentH);
+        int x = parentX + (parentW - config_.width) / 2;
+        int y = parentY + (parentH - config_.height) / 2;
+        SetWindowPosition(x, y);
+    }
+
+    void UltraCanvasWindowBase::CenterOnScreenOfWindow(UltraCanvasWindowBase* referenceWindow) {
+        if (!referenceWindow) {
+            CenterOnScreen();
+            return;
+        }
+        int sx = 0, sy = 0, sw = 0, sh = 0;
+        referenceWindow->GetScreenBounds(sx, sy, sw, sh);
+        if (sw > 0 && sh > 0) {
+            int x = sx + (sw - config_.width) / 2;
+            int y = sy + (sh - config_.height) / 2;
+            SetWindowPosition(x, y);
+        }
+    }
 
     std::shared_ptr<UltraCanvasWindow> CreateWindow() {
         auto win = std::make_shared<UltraCanvasWindow>();

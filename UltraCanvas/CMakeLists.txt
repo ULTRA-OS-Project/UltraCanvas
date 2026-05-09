@@ -1,13 +1,14 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.2.0
-# Last Modified: 2025-12-14
+# Version: 1.3.0
+# Last Modified: 2026-02-01
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
+include(FetchContent)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "1.2.0")
+set(ULTRACANVAS_VERSION "0.1.29")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -26,6 +27,13 @@ else()
     option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" OFF)
 endif ()
 
+# OpenGL surface support (Linux only)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    option(ULTRACANVAS_ENABLE_GL "Enable OpenGL 3D surface support" ON)
+else()
+    set(ULTRACANVAS_ENABLE_GL OFF CACHE BOOL "Enable OpenGL 3D surface support" FORCE)
+endif()
+
 # ===== DETECT PLATFORM =====
 if(WIN32)
     set(ULTRACANVAS_PLATFORM "Windows")
@@ -40,6 +48,15 @@ else()
     message(FATAL_ERROR "Unsupported platform")
 endif()
 
+
+#include(FetchContent)
+#
+#FetchContent_Declare(
+#        fmt
+#        GIT_REPOSITORY https://github.com/fmtlib/fmt
+#        GIT_TAG        e69e5f977d458f2650bb346dadf2ad30c5320281) # 10.2.1
+#FetchContent_MakeAvailable(fmt)
+
 message(STATUS "Target Platform: ${ULTRACANVAS_PLATFORM}")
 
 # ===== FIND CORE DEPENDENCIES =====
@@ -52,22 +69,52 @@ pkg_check_modules(CAIRO REQUIRED cairo)
 pkg_check_modules(PANGO REQUIRED pango pangocairo)
 
 pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
-pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
+pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
+
+# libvips - Image processing
+pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
 
 # FreeType - Font Rendering
-find_package(Freetype REQUIRED)
+# On Windows with vcpkg, use pkg-config since FindFreetype may not locate vcpkg's install
+if(WIN32 AND PKG_CONFIG_FOUND)
+    pkg_check_modules(FREETYPE REQUIRED freetype2)
+else()
+    find_package(Freetype REQUIRED)
+    set(FREETYPE_INCLUDE_DIRS ${FREETYPE_INCLUDE_DIRS})
+    set(FREETYPE_LIBRARIES ${FREETYPE_LIBRARIES})
+endif()
 
 # Platform-specific dependencies
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
-    pkg_check_modules(X11 REQUIRED x11)
+    pkg_check_modules(X11 REQUIRED x11 xcursor)
     find_package(OpenGL REQUIRED)
+    pkg_check_modules(GTK3 REQUIRED gtk+-3.0 gtk+-unix-print-3.0)
+
+    # OpenGL/EGL support for GL surfaces
+    if(ULTRACANVAS_ENABLE_GL)
+        pkg_check_modules(EGL egl)
+        if(EGL_FOUND)
+            set(ULTRACANVAS_HAS_EGL TRUE)
+            message(STATUS "  EGL: ${EGL_VERSION} (primary GL context backend)")
+        else()
+            message(STATUS "  EGL: NOT FOUND (will use GLX fallback)")
+        endif()
+        # GLX is always available with OpenGL on Linux
+        set(ULTRACANVAS_HAS_GLX TRUE)
+    endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     # Windows SDK provides most dependencies
+    if(ULTRACANVAS_ENABLE_GL)
+        set(ULTRACANVAS_HAS_WGL TRUE)
+    endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
     find_library(QUARTZ_FRAMEWORK QuartzCore REQUIRED)
     find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
+    if(ULTRACANVAS_ENABLE_GL)
+        set(ULTRACANVAS_HAS_CGL TRUE)
+    endif()
 endif()
 
 # ===== DEFINE INCLUDE DIRECTORY =====
@@ -80,7 +127,12 @@ set(ULTRACANVAS_PLATFORM ${ULTRACANVAS_PLATFORM} PARENT_SCOPE)
 # Core sources
 set(ULTRACANVAS_CORE_SOURCES
         # Platform-specific sources
+        #${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasString.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCommonTypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEvent.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasConfig.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtils.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtilsUtf8.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasApplication.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRenderInterface.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTooltipManager.cpp
@@ -91,15 +143,26 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementDebug.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasContainer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDirtyRectManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Markdown.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Hex.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDropdown.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAutoComplete.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListView.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListDelegate.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListSelection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTabbedContainer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasButton.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSyntaxTokenizer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasLabeledToggleBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCheckbox.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRadio.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSwitch.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGraphicsPluginSystem.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSegmentedControl.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordStrengthMeter.cpp
@@ -110,6 +173,10 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFlexLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -121,9 +188,6 @@ set(ULTRACANVAS_CORE_SOURCES
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSankey.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/UltraCanvasMarkdown.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/VipsQOILoader.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElement.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartCoreRendering.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartBasicTypes.cpp
@@ -132,6 +196,15 @@ set(ULTRACANVAS_CORE_SOURCES
         # Add Windows/Mac sources as needed
         #        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsDoubleBuffer.cpp
 )
+
+# libvips-dependent sources
+if(LIBVIPS_FOUND)
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasImageExportDialog.cpp
+    )
+endif()
 
 # Include headers (for IDE support)
 file(GLOB ULTRACANVAS_HEADERS
@@ -149,6 +222,11 @@ if(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     file(GLOB ULTRACANVAS_OBJCPP_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*.mm
     )
+    if(NOT ULTRACANVAS_ENABLE_GL)
+        list(REMOVE_ITEM ULTRACANVAS_OBJCPP_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/GLContextManagerCGL_MacOS.mm
+        )
+    endif()
     list(APPEND ULTRACANVAS_PLATFORM_SOURCES ${ULTRACANVAS_OBJCPP_SOURCES})
 
     set_source_files_properties(
@@ -171,7 +249,45 @@ file(GLOB ULTRACANVAS_CHARTS_SOURCES
 set(ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/ImageCairo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/RenderContextCairo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/UCTextLayout.cpp
 )
+if(LIBVIPS_FOUND)
+    list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Cairo/VipsQOILoader.cpp
+    )
+endif()
+
+# OpenGL surface sources
+if(ULTRACANVAS_ENABLE_GL)
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGLSurface.cpp
+    )
+    list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/GL/GLContextManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/GL/GLFramebuffer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/GL/ICompositeStrategy.cpp
+    )
+
+    # Platform-specific GL context managers
+    if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+        if(ULTRACANVAS_HAS_EGL)
+            list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/GLContextManagerEGL_Linux.cpp
+            )
+        endif()
+        if(ULTRACANVAS_HAS_GLX)
+            list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/GLContextManagerGLX_Linux.cpp
+            )
+        endif()
+    elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+        if(ULTRACANVAS_HAS_CGL)
+            list(APPEND ULTRACANVAS_PLATFORM_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/GLContextManagerCGL_MacOS.mm
+            )
+        endif()
+    endif()
+endif()
 
 # Combine all core sources
 set(ULTRACANVAS_ALL_SOURCES
@@ -180,6 +296,9 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
     ${ULTRACANVAS_TEXT_SOURCES}
     ${ULTRACANVAS_CHARTS_SOURCES}
+        OS/MacOS/UltraCanvasMacOSShortcutFormat.h
+        #        dialogs/PixelFXExportDialog.cpp
+#        dialogs/PixelFXExportDialog.h
 )
 
 # ===== BUILD CORE LIBRARY =====
@@ -206,19 +325,32 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/core
         ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}
-        ${CAIRO_INCLUDE_DIRS}
-        ${PANGO_INCLUDE_DIRS}
         ${FREETYPE_INCLUDE_DIRS}
-        ${LIBVIPS_INCLUDE_DIRS}
-        ${GLIB_INCLUDE_DIRS}
+        ${HARFBUZZ_INCLUDE_DIRS}
 )
+# Public headers reference cairo, glib, tinyxml2 — consumers need these include paths.
+# Wrap in BUILD_INTERFACE to avoid CMake errors when paths are inside the source tree (vcpkg on CI).
+foreach(_inc_dir ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS} ${TINYXML2_INCLUDE_DIRS})
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
+endforeach()
+if(LIBVIPS_FOUND)
+    foreach(_inc_dir ${LIBVIPS_INCLUDE_DIRS})
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
+    endforeach()
+endif()
 
 # Platform-specific includes
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
         ${X11_INCLUDE_DIRS}
         ${OPENGL_INCLUDE_DIRS}
+        ${GTK3_INCLUDE_DIRS}
     )
+    if(ULTRACANVAS_ENABLE_GL AND EGL_FOUND)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE
+            ${EGL_INCLUDE_DIRS}
+        )
+    endif()
 endif()
 
 # ===== LINK LIBRARIES =====
@@ -229,33 +361,74 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${FREETYPE_LIBRARIES}
         ${LIBVIPS_LIBRARIES}
         ${GLIB_LIBRARIES}
+        ${TINYXML2_LIBRARIES}
+        ${GTK3_INCLUDE_DIRS}
 )
 
 # Platform-specific libraries
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
-        ${X11_LIBRARIES}
-#        ${OPENGL_LIBRARIES}
-        pthread
-        dl
+            ${X11_LIBRARIES}
+            ${GTK3_LIBRARIES}
+            #        ${OPENGL_LIBRARIES}
+            pthread
+            dl
     )
+    # Link OpenGL/EGL for GL surfaces
+    if(ULTRACANVAS_ENABLE_GL)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${OPENGL_LIBRARIES}
+        )
+        if(EGL_FOUND)
+            target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+                ${EGL_LIBRARIES}
+            )
+        endif()
+    endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
-        d2d1
-        dwrite
-        windowscodecs
-        gdi32
-        user32
-        ole32
-        uuid
+            gdi32
+            user32
+            ole32
+            oleaut32
+            uuid
+            shell32
+            comdlg32
+            comctl32
+            imm32
+            dwmapi
     )
+    if(ULTRACANVAS_ENABLE_GL)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            opengl32
+        )
+    endif()
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
-        ${COCOA_FRAMEWORK}
-        ${QUARTZ_FRAMEWORK}
-#        ${OPENGL_FRAMEWORK}
+            ${COCOA_FRAMEWORK}
+            ${QUARTZ_FRAMEWORK}
+            #        ${OPENGL_FRAMEWORK}
     )
+    if(ULTRACANVAS_ENABLE_GL)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${OPENGL_FRAMEWORK}
+        )
+    endif()
 endif()
+
+# ===== LINK LIBRARIES =====
+target_link_libraries(${ULTRACANVAS_LIB_NAME}
+    PUBLIC
+        ${CAIRO_LIBRARIES}
+        ${PANGO_LIBRARIES}
+        ${FREETYPE_LIBRARIES}
+        ${LIBVIPS_LIBRARIES}
+        ${GLIB_LIBRARIES}
+        ${TINYXML2_LIBRARIES}
+        fmt::fmt
+    # PRIVATE
+    #     grapheme
+)
 
 # ===== COMPILER SETTINGS =====
 target_compile_features(${ULTRACANVAS_LIB_NAME} PUBLIC cxx_std_20)
@@ -264,13 +437,38 @@ target_compile_definitions(${ULTRACANVAS_LIB_NAME}
     PUBLIC
         ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
         ULTRACANVAS_PLATFORM_${ULTRACANVAS_PLATFORM}=1
+        $<$<BOOL:${LIBVIPS_FOUND}>:HAS_LIBVIPS=1>
+        $<$<CXX_COMPILER_ID:MSVC>:_USE_MATH_DEFINES>
+        $<$<CXX_COMPILER_ID:MSVC>:NOMINMAX>
+        $<$<BOOL:${WIN32}>:WIN32_LEAN_AND_MEAN>
+        $<$<BOOL:${WIN32}>:NOMINMAX>
+        $<$<BOOL:${WIN32}>:UNICODE>
+        $<$<BOOL:${WIN32}>:_UNICODE>
     PRIVATE
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
 )
 
+# GL surface compile definitions
+if(ULTRACANVAS_ENABLE_GL)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_ENABLE_GL=1)
+    if(ULTRACANVAS_HAS_EGL)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_EGL=1)
+    endif()
+    if(ULTRACANVAS_HAS_GLX)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_GLX=1)
+    endif()
+    if(ULTRACANVAS_HAS_CGL)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_CGL=1)
+    endif()
+    if(ULTRACANVAS_HAS_WGL)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_WGL=1)
+    endif()
+endif()
+
 # Warning flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(${ULTRACANVAS_LIB_NAME} PRIVATE
+        -Werror=return-type
 #        -Wall -Wextra -Wpedantic -Wno-unused-parameter
     )
 endif()
@@ -281,8 +479,15 @@ set(ULTRACANVAS_PLUGIN_INCLUDE_DIRS "")
 
 # CDR Plugin
 if(ULTRACANVAS_PLUGIN_CDR)
-    pkg_check_modules(LIBCDR libcdr-0.1)
-    pkg_check_modules(LIBREVENGE librevenge-0.0)
+    if(NOT WIN32)
+        pkg_check_modules(LIBCDR libcdr-0.1)
+        pkg_check_modules(LIBREVENGE librevenge-0.0)
+    else()
+        # On Windows, these would need to be found differently
+        # For now, mark as not found
+        set(LIBCDR_FOUND FALSE)
+        set(LIBREVENGE_FOUND FALSE)
+    endif()
 
     if(LIBCDR_FOUND AND LIBREVENGE_FOUND)
         add_subdirectory(Plugins/Vector/CDR)
@@ -322,7 +527,17 @@ endif()
 
 # PDF Plugin
 if(ULTRACANVAS_PLUGIN_PDF)
-    pkg_check_modules(POPPLER poppler-cpp)
+    if(NOT WIN32)
+        pkg_check_modules(POPPLER poppler-cpp)
+    else()
+        # On Windows, try find_package instead
+        find_package(poppler CONFIG)
+        if(poppler_FOUND)
+            set(POPPLER_FOUND TRUE)
+        else()
+            set(POPPLER_FOUND FALSE)
+        endif()
+    endif()
     if(POPPLER_FOUND)
         if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/PDF/CMakeLists.txt)
             add_subdirectory(Plugins/Documents/PDF)
@@ -345,6 +560,7 @@ endif()
 # ===== EXPORT VARIABLES TO PARENT =====
 set(ULTRACANVAS_LIBRARY ${ULTRACANVAS_LIB_NAME} PARENT_SCOPE)
 set(ULTRACANVAS_LIBRARIES ${ULTRACANVAS_LIB_NAME} ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
+set(LIBVIPS_FOUND ${LIBVIPS_FOUND} PARENT_SCOPE)
 set(ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
 set(ULTRACANVAS_INCLUDE_DIRS 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -353,24 +569,29 @@ set(ULTRACANVAS_INCLUDE_DIRS
 )
 
 # ===== INSTALLATION =====
-install(TARGETS ${ULTRACANVAS_LIB_NAME}
-    EXPORT UltraCanvasTargets
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
-)
+# install(TARGETS ${ULTRACANVAS_LIB_NAME} grapheme
+#     EXPORT UltraCanvasTargets
+#     LIBRARY DESTINATION lib
+#     ARCHIVE DESTINATION lib
+#     RUNTIME DESTINATION bin
+# )
 
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
     DESTINATION include/ultracanvas
     FILES_MATCHING PATTERN "*.h"
 )
 
+# Install bundled libgrapheme header
+# install(FILES ${LIBGRAPHEME_DIR}/grapheme.h
+#     DESTINATION include/ultracanvas/grapheme
+# )
+
 # Export CMake config for find_package support
-install(EXPORT UltraCanvasTargets
-    FILE UltraCanvasTargets.cmake
-    NAMESPACE UltraCanvas::
-    DESTINATION lib/cmake/UltraCanvas
-)
+# install(EXPORT UltraCanvasTargets
+#     FILE UltraCanvasTargets.cmake
+#     NAMESPACE UltraCanvas::
+#     DESTINATION lib/cmake/UltraCanvas
+# )
 
 # ===== CONFIGURATION SUMMARY =====
 message(STATUS "")
@@ -390,6 +611,24 @@ endif()
 if(LIBVIPS_FOUND)
     message(STATUS "  libvips: ${LIBVIPS_VERSION}")
 endif()
+# message(STATUS "  libgrapheme: 3.0.0 (bundled, Unicode 17.0.0)")
 message(STATUS "  Plugins: ${ULTRACANVAS_PLUGIN_TARGETS}")
+if(ULTRACANVAS_ENABLE_GL)
+    message(STATUS "  OpenGL Surface: ENABLED")
+    if(ULTRACANVAS_HAS_EGL)
+        message(STATUS "    - EGL backend: YES")
+    endif()
+    if(ULTRACANVAS_HAS_GLX)
+        message(STATUS "    - GLX backend: YES")
+    endif()
+    if(ULTRACANVAS_HAS_CGL)
+        message(STATUS "    - CGL backend: YES")
+    endif()
+    if(ULTRACANVAS_HAS_WGL)
+        message(STATUS "    - WGL backend: YES")
+    endif()
+else()
+    message(STATUS "  OpenGL Surface: DISABLED")
+endif()
 message(STATUS "========================================")
 message(STATUS "")
