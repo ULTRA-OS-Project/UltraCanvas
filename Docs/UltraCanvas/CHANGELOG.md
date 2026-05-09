@@ -1,3 +1,8 @@
+#### 2026-05-09 *0.1.30*
+- Implemented more different diagrams
+- Implemented JitterChart
+- Attempt to fix menu crash on MacOS
+
 #### 2026-05-06 *0.1.29*
 - Refactor Checkbox code, split to Checkbox/Redio/Switch
 - Implemented more visual styles for Switch

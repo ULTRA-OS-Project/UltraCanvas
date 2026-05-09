@@ -241,12 +241,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::CloseActiveSubmenu() {
-        if (activeSubmenu) {
-//            activeSubmenu->CloseAllSubmenus();
-            activeSubmenu->CloseMenu();
+        // Local copy keeps the submenu alive across CloseMenu(): OnPopupClosed
+        // (line ~844) resets this->activeSubmenu reentrantly, which would otherwise
+        // destroy the submenu while it is still inside its own CloseMenu() frame.
+        if (auto sub = activeSubmenu) {
+            sub->CloseMenu();
 
             // Remove from child menus
-            auto it = std::find(childMenus.begin(), childMenus.end(), activeSubmenu);
+            auto it = std::find(childMenus.begin(), childMenus.end(), sub);
             if (it != childMenus.end()) {
                 childMenus.erase(it);
             }
@@ -823,6 +825,9 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasMenu::OnPopupClosed(ClosePopupReason reason) {
+        // CloseMenutree() below can release the last external shared_ptr to *this
+        // (the menubar resets its activeSubmenu ref); pin lifetime for the rest of this method.
+        auto selfGuard = shared_from_this();
         UltraCanvasTooltipManager::HideTooltip();
         if (reason == ClosePopupReason::ClickOutside) {
             CloseMenutree();
@@ -923,6 +928,10 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasMenu::HandleMouseUp(const UCEvent &event) {
+        // Pin lifetime: ExecuteItem -> CloseMenutree may release the last
+        // external shared_ptr to *this synchronously inside this call stack.
+        auto selfGuard = shared_from_this();
+
         if (menuScrollbar && menuScrollbar->IsDragging()) {
             UCEvent localEvent = event;
             auto sbB = menuScrollbar->GetBounds();
@@ -978,9 +987,10 @@ namespace UltraCanvas {
             case UCKeys::Return:
             case UCKeys::Space:
                 if (activeIndex >= 0) {
+                    auto selfGuard = shared_from_this();   // ExecuteItem may destroy *this
                     ExecuteItem(activeIndex);
+                    RequestRedraw();
                 }
-                RequestRedraw();
                 return true;
 
 //            case UCKeys::Escape:

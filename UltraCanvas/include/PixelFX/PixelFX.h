@@ -38,7 +38,7 @@ namespace PixelFX {
     enum class AccessMode {
         Random = VIPS_ACCESS_RANDOM,                 // Full random access (default)
         Sequential = VIPS_ACCESS_SEQUENTIAL,             // Sequential top-to-bottom access
-        SequentialUnbuffered = VIPS_ACCESS_SEQUENTIAL_UNBUFFERED   // Sequential without caching
+        SequentialUnbuffered = VIPS_ACCESS_SEQUENTIAL              // Deprecated alias; vips merged with Sequential
     };
 
     enum class BandFormat {

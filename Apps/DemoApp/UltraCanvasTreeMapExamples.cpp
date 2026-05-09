@@ -93,32 +93,32 @@ namespace UltraCanvas {
             TreeMapColorScheme::Monochrome
         };
         
-        btnCycleAlgorithm->SetOnClick([treeMap, algorithms, &currentAlgorithm]() {
+        btnCycleAlgorithm->SetOnClick([treeMap, algorithms]() {
             currentAlgorithm = (currentAlgorithm + 1) % algorithms.size();
             treeMap->SetLayoutAlgorithm(algorithms[currentAlgorithm]);
         });
-        
-        btnCycleStyle->SetOnClick([treeMap, styles, &currentStyle]() {
+
+        btnCycleStyle->SetOnClick([treeMap, styles]() {
             currentStyle = (currentStyle + 1) % styles.size();
             treeMap->SetVisualStyle(styles[currentStyle]);
         });
-        
-        btnCycleColor->SetOnClick([treeMap, colorSchemes, &currentColor]() {
+
+        btnCycleColor->SetOnClick([treeMap, colorSchemes]() {
             currentColor = (currentColor + 1) % colorSchemes.size();
             treeMap->SetColorScheme(colorSchemes[currentColor]);
         });
-        
-        btnToggleValues->SetOnClick([treeMap, &showValues]() {
+
+        btnToggleValues->SetOnClick([treeMap]() {
             showValues = !showValues;
             treeMap->SetDisplayOptions(showLabels, showValues, false, true);
         });
-        
-        btnToggleLabels->SetOnClick([treeMap, &showLabels, &showValues]() {
+
+        btnToggleLabels->SetOnClick([treeMap]() {
             showLabels = !showLabels;
             treeMap->SetDisplayOptions(showLabels, showValues, false, true);
         });
-        
-        btnReset->SetOnClick([treeMap, &currentAlgorithm, &currentStyle, &currentColor, &showValues, &showLabels]() {
+
+        btnReset->SetOnClick([treeMap]() {
             currentAlgorithm = 0;
             currentStyle = 0;
             currentColor = 0;

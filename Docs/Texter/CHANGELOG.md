@@ -1,3 +1,6 @@
+#### 2026-05-09 *0.1.30*
+- Attempt to fix menu crash on MacOS
+
 #### 2026-05-06 *0.1.29*
 - Show tooltips with full pathname for Recent files menu items
 - Set maxWidth=500 for Recent files menu

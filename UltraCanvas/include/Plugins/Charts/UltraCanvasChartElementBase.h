@@ -263,7 +263,7 @@ namespace UltraCanvas {
         // EVENT HANDLING OVERRIDE
         // =============================================================================
 
-        bool OnEvent(const UCEvent& event);
+        bool OnEvent(const UCEvent& event) override;
 
         // =============================================================================
         // PROTECTED RENDERING HELPERS (COMMON)
