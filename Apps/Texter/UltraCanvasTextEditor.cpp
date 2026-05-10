@@ -487,6 +487,66 @@ namespace {
                             OnFileOpen();
                         }),
                         [this]() {
+                            auto recentFolders = MenuItemData::Submenu("Open recent folder", NormalizePath(GetResourcesDir() + "media/icons/texter/folder-open.svg"),
+                            [this]() -> std::vector<MenuItemData> {
+                                std::vector<MenuItemData> items;
+
+                                // Walk recentFiles (newest-first), collect up to 20 unique
+                                // parent folders preserving recency, then sort alphabetically.
+                                constexpr int kMaxRecentFolders = 20;
+                                std::vector<std::string> folders;
+                                std::unordered_set<std::string> seen;
+                                for (const auto& filePath : recentFiles) {
+                                    std::filesystem::path p(filePath);
+                                    std::string folder = p.parent_path().string();
+                                    if (folder.empty()) continue;
+                                    if (seen.insert(folder).second) {
+                                        folders.push_back(folder);
+                                        if (static_cast<int>(folders.size()) >= kMaxRecentFolders) break;
+                                    }
+                                }
+                                std::sort(folders.begin(), folders.end());
+
+                                if (folders.empty()) {
+                                    MenuItemData emptyItem;
+                                    emptyItem.type = MenuItemType::Action;
+                                    emptyItem.label = "(No recent folders)";
+                                    emptyItem.enabled = false;
+                                    items.push_back(emptyItem);
+                                } else {
+                                    for (const auto& folder : folders) {
+                                        std::string folderCopy = folder;
+                                        auto entry = MenuItemData::Action(folder, "-", [this, folderCopy]() {
+                                            if (!std::filesystem::exists(folderCopy)) {
+                                                debugOutput << "Recent folder no longer exists: " << folderCopy << std::endl;
+                                                return;
+                                            }
+                                            UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(
+                                                "Open File(s)",
+                                                config.fileFilters,
+                                                folderCopy,
+                                                [this](DialogResult result, const std::vector<std::string>& filePaths) {
+                                                    if (result == DialogResult::OK) {
+                                                        for (const auto& filePath : filePaths) {
+                                                            if (!filePath.empty()) {
+                                                                OpenDocumentFromPath(filePath);
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                GetWindow()
+                                            );
+                                        });
+                                        entry.tooltip = folder;
+                                        items.push_back(std::move(entry));
+                                    }
+                                }
+                                return items;
+                            });
+                            recentFolders.submenuMaxWidth = 500;
+                            return recentFolders;
+                        }(),
+                        [this]() {
                             auto recent = MenuItemData::Submenu("Recent Files", NormalizePath(GetResourcesDir() + "media/icons/texter/clock-five.svg"),
                             [this]() -> std::vector<MenuItemData> {
                                 std::vector<MenuItemData> recentItems;
