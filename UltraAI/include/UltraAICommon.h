@@ -99,7 +99,12 @@ using StreamHandle = std::shared_ptr<IStreamHandle>;
 
 struct ProviderConfig {
     std::string providerId;     // "" -> use UltraOS default route
-    std::string apiKey;         // "" -> resolve from OS key vault
+    std::string apiKey;         // literal key (escape hatch / tests)
+    std::string apiKeyVaultRef; // canonical UltraVault key, e.g. "ai.anthropic.api_key"
+                                // Resolution order in network adapters:
+                                //   1. apiKey (if non-empty, used verbatim)
+                                //   2. apiKeyVaultRef looked up via UltraVault
+                                //   3. fail with ErrorCode::AuthenticationFailed
     std::string baseUrl;        // optional override (e.g. self-hosted)
     std::string defaultModel;
     int32_t timeoutMs = 60000;

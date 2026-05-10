@@ -24,6 +24,11 @@ option(ULTRAAI_ADAPTER_WHISPER   "Build local whisper.cpp STT adapter"    OFF)
 option(ULTRAAI_ADAPTER_PIPER     "Build local Piper TTS adapter"          OFF)
 option(ULTRAAI_BUILD_TESTS       "Build UltraAI unit tests"               OFF)
 
+# Sibling-module integration (see Docs/UltraNetIntegration.md, Docs/UltraVault.md).
+# Default OFF so the module builds cleanly when only mock adapters are present.
+option(ULTRAAI_USE_ULTRANET   "Enable adapters that depend on UltraNet"   OFF)
+option(ULTRAAI_USE_ULTRAVAULT "Enable UltraVault credential lookup"       OFF)
+
 # ===== Header-only interface library =====
 # The module ships its capability interfaces as a header-only INTERFACE
 # target. Adapters depend on this target and add their own translation units.
@@ -63,6 +68,36 @@ target_compile_features(UltraAI_Core PUBLIC cxx_std_20)
 if(NOT WIN32)
     find_package(Threads REQUIRED)
     target_link_libraries(UltraAI_Core PUBLIC Threads::Threads)
+endif()
+
+# ===== Sibling-module probes (do not fail the build if missing) =====
+if(ULTRAAI_USE_ULTRANET)
+    if(NOT TARGET UltraNet)
+        find_package(UltraNet QUIET)
+    endif()
+    if(TARGET UltraNet)
+        message(STATUS "UltraAI: UltraNet target found; network adapters may link against it.")
+        set(ULTRAAI_HAS_ULTRANET TRUE)
+    else()
+        message(STATUS "UltraAI: ULTRAAI_USE_ULTRANET=ON but no 'UltraNet' target visible. "
+                       "Network adapters that need it will be skipped. The parent project "
+                       "is expected to add_subdirectory(UltraNet) before add_subdirectory(UltraAI).")
+        set(ULTRAAI_HAS_ULTRANET FALSE)
+    endif()
+endif()
+
+if(ULTRAAI_USE_ULTRAVAULT)
+    if(NOT TARGET UltraVault)
+        find_package(UltraVault QUIET)
+    endif()
+    if(TARGET UltraVault)
+        message(STATUS "UltraAI: UltraVault target found; credential lookup enabled.")
+        target_link_libraries(UltraAI_Core PUBLIC UltraVault)
+        target_compile_definitions(UltraAI_Core PUBLIC ULTRAAI_HAS_ULTRAVAULT=1)
+    else()
+        message(STATUS "UltraAI: ULTRAAI_USE_ULTRAVAULT=ON but no 'UltraVault' target visible. "
+                       "Credential resolution falls back to ProviderConfig::apiKey only.")
+    endif()
 endif()
 
 # ===== Adapters =====
