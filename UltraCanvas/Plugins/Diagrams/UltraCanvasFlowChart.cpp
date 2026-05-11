@@ -40,9 +40,9 @@
 
 namespace UltraCanvas {
 
-UltraCanvasFlowChart::UltraCanvasFlowChart(const std::string& id, long uid,
+UltraCanvasFlowChart::UltraCanvasFlowChart(const std::string& id,
                                            int x, int y, int width, int height)
-    : UltraCanvasUIElement(id, uid, x, y, width, height) {
+    : UltraCanvasUIElement(id, x, y, width, height) {
 }
 
 // =============================================================================

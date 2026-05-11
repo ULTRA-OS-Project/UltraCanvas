@@ -130,7 +130,6 @@ namespace UltraCanvas {
     public:
         // Constructor
         UltraCanvasPopulationChart(const std::string& identifier = "PopulationChart",
-                                   long id = 0,
                                    int x = 0, int y = 0,
                                    int w = 600, int h = 700);
 

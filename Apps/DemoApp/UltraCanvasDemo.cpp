@@ -14,15 +14,15 @@
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
-    DemoLegendContainer::DemoLegendContainer(const std::string& identifier, long id, long x, long y, long width, long height)
-            : UltraCanvasContainer(identifier, id, x, y, width, height) {
+    DemoLegendContainer::DemoLegendContainer(const std::string& identifier, long x, long y, long width, long height)
+            : UltraCanvasContainer(identifier, x, y, width, height) {
 
         // Set container style
 //        SetBorders(1, Color(200, 200, 200, 255));
         SetBackgroundColor(Color(245, 245, 245, 255));
 
         // Create legend title
-        legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", id + 1, 10, 5, width - 20, 20);
+        legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", 10, 5, width - 20, 20);
         legendTitle->SetText("Component Status Legend");
         legendTitle->SetFontSize(12);
         legendTitle->SetFontWeight(FontWeight::Bold);
@@ -31,10 +31,10 @@ namespace UltraCanvas {
         AddChild(legendTitle);
 
         // Implemented status (row 1)
-        implementedIcon = std::make_shared<UltraCanvasImageElement>("ImplementedIcon", id + 2, 10, 30, 16, 16);
+        implementedIcon = std::make_shared<UltraCanvasImageElement>("ImplementedIcon", 10, 30, 16, 16);
         AddChild(implementedIcon);
 
-        implementedLabel = std::make_shared<UltraCanvasLabel>("ImplementedLabel", id + 3, 32, 28, width - 42, 16);
+        implementedLabel = std::make_shared<UltraCanvasLabel>("ImplementedLabel", 32, 28, width - 42, 16);
         implementedLabel->SetText("Fully Implemented");
         implementedLabel->SetFontSize(11);
         implementedLabel->SetTextColor(Color(0, 150, 0, 255));
@@ -42,10 +42,10 @@ namespace UltraCanvas {
         AddChild(implementedLabel);
 
         // Partially implemented status (row 2)
-        partialIcon = std::make_shared<UltraCanvasImageElement>("PartialIcon", id + 4, 10, 50, 16, 16);
+        partialIcon = std::make_shared<UltraCanvasImageElement>("PartialIcon", 10, 50, 16, 16);
         AddChild(partialIcon);
 
-        partialLabel = std::make_shared<UltraCanvasLabel>("PartialLabel", id + 5, 32, 48, width - 42, 16);
+        partialLabel = std::make_shared<UltraCanvasLabel>("PartialLabel", 32, 48, width - 42, 16);
         partialLabel->SetText("Partially Implemented");
         partialLabel->SetFontSize(11);
         partialLabel->SetTextColor(Color(0x21, 0x96, 0xf3, 255));
@@ -53,10 +53,10 @@ namespace UltraCanvas {
         AddChild(partialLabel);
 
         // Not implemented status (row 3)
-        notImplementedIcon = std::make_shared<UltraCanvasImageElement>("NotImplementedIcon", id + 6, 10, 70, 16, 16);
+        notImplementedIcon = std::make_shared<UltraCanvasImageElement>("NotImplementedIcon", 10, 70, 16, 16);
         AddChild(notImplementedIcon);
 
-        notImplementedLabel = std::make_shared<UltraCanvasLabel>("NotImplementedLabel", id + 7, 32, 68, width - 42, 16);
+        notImplementedLabel = std::make_shared<UltraCanvasLabel>("NotImplementedLabel", 32, 68, width - 42, 16);
         notImplementedLabel->SetText("Not Implemented Yet");
         notImplementedLabel->SetFontSize(11);
         notImplementedLabel->SetTextColor(Color(200, 0, 0, 255));
@@ -81,12 +81,12 @@ namespace UltraCanvas {
         }
     }
 
-    DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier, long id,
+    DemoHeaderContainer::DemoHeaderContainer(const std::string& identifier,
                                              long x, long y, long width, long height)
-            : UltraCanvasContainer(identifier, id, x, y, width, height) {
+            : UltraCanvasContainer(identifier, x, y, width, height) {
 
         // Create title label (left side)
-        titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle", id + 1, 10, 5, width - 200, 30);
+        titleLabel = std::make_shared<UltraCanvasLabel>("HeaderTitle", 10, 5, width - 200, 30);
         titleLabel->SetFontSize(14);
         titleLabel->SetFontWeight(FontWeight::Bold);
         titleLabel->SetText("Demo Title");
@@ -95,7 +95,7 @@ namespace UltraCanvas {
         //AddChild(titleLabel);
 
         // Create documentation button (right side)
-        docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", id + 3, width - 90, 5, 21, 21);
+        docButton = std::make_shared<UltraCanvasImageElement>("DocBtn", width - 90, 5, 21, 21);
         docButton->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/text.png"));
         docButton->SetVisible(false);  // Initially disabled
         docButton->SetClickable(true);
@@ -103,7 +103,7 @@ namespace UltraCanvas {
         //AddChild(docButton);
 
         // Create source button (right side)
-        sourceButton = std::make_shared<UltraCanvasImageElement>("SourceBtn", id + 2, width - 40, 5, 21, 28);
+        sourceButton = std::make_shared<UltraCanvasImageElement>("SourceBtn", width - 40, 5, 21, 28);
         sourceButton->LoadFromFile(NormalizePath(GetResourcesDir() + "media/icons/c-plus-plus-icon.png"));
         sourceButton->SetVisible(false);  // Initially disabled
         sourceButton->SetClickable(true);
@@ -111,7 +111,7 @@ namespace UltraCanvas {
         //AddChild(sourceButton);
 
         // Create divider line at the bottom
-        dividerLine = std::make_shared<UltraCanvasContainer>("Divider", id + 4, 0, 38, width, 2);
+        dividerLine = std::make_shared<UltraCanvasContainer>("Divider", 0, 38, width, 2);
         dividerLine->SetBackgroundColor(Color(200, 200, 200, 255));
         //AddChild(dividerLine);
 
@@ -216,7 +216,7 @@ namespace UltraCanvas {
         }
 
         // Create text area for source code with syntax highlighting
-        auto textArea = std::make_shared<UltraCanvasTextArea>("SourceCode", 1000, 5, 5, 1190, 590);
+        auto textArea = std::make_shared<UltraCanvasTextArea>("SourceCode", 5, 5, 1190, 590);
         textArea->SetText(content);
         //textArea->SetReadOnly(true);
         textArea->SetShowLineNumbers(true);
@@ -259,7 +259,7 @@ namespace UltraCanvas {
             return;
         }
         // Create text area for documentation
-        auto markDownTextArea = std::make_shared<UltraCanvasMarkdownDisplay>("Documentation", 2000, 5, 5, 1190, 590);
+        auto markDownTextArea = std::make_shared<UltraCanvasMarkdownDisplay>("Documentation", 5, 5, 1190, 590);
         markDownTextArea->SetMarkdownText(content);
 
         docWindow->SetEventCallback([this](const UCEvent& event) {
@@ -310,7 +310,7 @@ namespace UltraCanvas {
         const int treeViewWidth = 350;   // Width for both treeview and legend
 
 // Create tree view for categories (left side, reduced height)
-        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 2, 0, 0, 100, 100);
+        categoryTreeView = std::make_shared<UltraCanvasTreeView>("CategoryTree", 0, 0, 100, 100);
         categoryTreeView->SetRowHeight(24);
         categoryTreeView->SetSelectionMode(TreeSelectionMode::Single);
         categoryTreeView->SetLineStyle(TreeLineStyle::Solid);
@@ -321,24 +321,24 @@ namespace UltraCanvas {
         debugOutput << "categoryTreeView created" << std::endl;
 
         // Create legend container below tree view
-        legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 6, 0, 0, 100, legendHeight);
+        legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer", 0, 0, 100, legendHeight);
         legendContainer->SetBorderTop(1, Colors::Gray);
         SetupLegendContainer();
 
-        auto categoryContainer = CreateContainer("catcont", 0, 0, 0, 100, 100);
+        auto categoryContainer = CreateContainer("catcont", 0, 0, 100, 100);
 
-        mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 3, 0, 0, 1030, 840);
+        mainContainer = std::make_shared<UltraCanvasContainer>("MainDisplayArea", 0, 0, 1030, 840);
         mainContainer->SetBorderLeft(1, Colors::Gray);
 
         // Create header container (inside main container)
-        headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 4, 0, 0, 1028, 40);
+        headerContainer = std::make_shared<DemoHeaderContainer>("HeaderContainer", 0, 0, 1028, 40);
 
         // Create display container (below header)
-        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 5, 0, 40, 1028, 785);
+        displayContainer = std::make_shared<UltraCanvasContainer>("DisplayArea", 0, 40, 1028, 785);
         displayContainer->SetBackgroundColor(Colors::White);
 
         // Create status label (bottom left)
-        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 4, 10, 850, 850, 25);
+        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 10, 850, 850, 25);
         statusLabel->SetText("Select a component from the tree view to see examples");
         statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
         statusLabel->SetPadding(3, 7, 3, 7);
@@ -1096,7 +1096,7 @@ namespace UltraCanvas {
             }
         } else {
             // Show placeholder for not implemented items
-            auto placeholder = std::make_shared<UltraCanvasLabel>("placeholder", 999, 20, 20, 600, 200);
+            auto placeholder = std::make_shared<UltraCanvasLabel>("placeholder", 20, 20, 600, 200);
             placeholder->SetText("This component is not yet implemented.\nPlanned for future release.");
             placeholder->SetAlignment(TextAlignment::Center);
             placeholder->SetBackgroundColor(Color(255, 255, 200, 100));

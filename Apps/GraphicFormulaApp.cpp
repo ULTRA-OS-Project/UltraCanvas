@@ -144,22 +144,22 @@ public:
 private:
     void CreateUserInterface() {
         // Create main container
-        mainContainer = std::make_shared<UltraCanvasContainer>("MainContainer", 1,
+        mainContainer = std::make_shared<UltraCanvasContainer>("MainContainer",
                                                                0, 0, windowWidth, windowHeight);
 
         // Left panel for controls (30% of width)
         int leftWidth = windowWidth * 0.4;
-        leftPanel = std::make_shared<UltraCanvasContainer>("LeftPanel", 2,
+        leftPanel = std::make_shared<UltraCanvasContainer>("LeftPanel",
                                                            0, 0, leftWidth, windowHeight - 10);
 
         // Right panel for graphics output (70% of width)
         int rightWidth = windowWidth - leftWidth + 10;
-        rightPanel = std::make_shared<UltraCanvasContainer>("RightPanel", 3,
+        rightPanel = std::make_shared<UltraCanvasContainer>("RightPanel",
                                                             leftWidth, 0, rightWidth, windowHeight);
 
         // Formula dropdown
         int y = 10;
-        formulaDropdown = std::make_shared<UltraCanvasDropdown>("FormulaDropdown", 11,
+        formulaDropdown = std::make_shared<UltraCanvasDropdown>("FormulaDropdown",
                                                                 10, y, leftWidth - 40, 30);
 
         // Control buttons
@@ -175,9 +175,9 @@ private:
                     UltraCanvasTooltipManager::HideTooltip();
                 })
                 .Build();
-        openButton = std::make_shared<UltraCanvasButton>("OpenButton", 13,
+        openButton = std::make_shared<UltraCanvasButton>("OpenButton",
                                                          20 + buttonWidth, y + 40, buttonWidth, 30, "Open");
-        saveButton = std::make_shared<UltraCanvasButton>("SaveButton", 14,
+        saveButton = std::make_shared<UltraCanvasButton>("SaveButton",
                                                          30 + 2 * buttonWidth, y + 40, buttonWidth, 30, "Save");
         // Animation controls
         startButton = std::make_shared<UltraCanvasButton>("StartButton", 15,
@@ -186,19 +186,19 @@ private:
                                                          20 + (leftWidth - 40) / 2, y + 80, (leftWidth - 40) / 2 - 10, 30, "Stop");
 
         // Frame rate control
-        frameRateLabel = std::make_shared<UltraCanvasLabel>("FrameRateLabel", 17,
+        frameRateLabel = std::make_shared<UltraCanvasLabel>("FrameRateLabel",
                                                             10, y + 120, leftWidth - 20, 20, "Speed: 1.0x");
         // Fixed: Use correct UltraCanvasSlider constructor (6 parameters only)
-        frameRateSlider = std::make_shared<UltraCanvasSlider>("FrameRateSlider", 18,
+        frameRateSlider = std::make_shared<UltraCanvasSlider>("FrameRateSlider",
                                                               10, y + 140, leftWidth - 20, 30);
         frameRateSlider->SetRange(0.1f, 3.0f);
         frameRateSlider->SetValue(1.0f);
 
         // Status label
-        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 19,
+        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel",
                                                          10, windowHeight - 20, leftWidth - 20, 30, "Ready");
         // Formula editor in left panel
-        formulaEditor = std::make_shared<UltraCanvasFormulaEditor>("FormulaEditor", 10,
+        formulaEditor = std::make_shared<UltraCanvasFormulaEditor>("FormulaEditor",
                                                                    0, 350, 500 - 30, 400);
 
         // Add controls to left panel
@@ -214,18 +214,18 @@ private:
         leftPanel->AddChild(statusLabel);
 
         // Create control panel in right side
-//        controlPanel = std::make_shared<UltraCanvasContainer>("ControlPanel", 70,
+//        controlPanel = std::make_shared<UltraCanvasContainer>("ControlPanel",
 //                                                              0, 0, rightWidth, 120);
 
         // Graphics output area
         int outputHeight = windowHeight - 170; // Leave space for controls and status
-        graphicsOutput = std::make_shared<UltraCanvasProceduralBackground>("GraphicsOutput", 71,
+        graphicsOutput = std::make_shared<UltraCanvasProceduralBackground>("GraphicsOutput",
                                                                            10, 10, rightWidth - 40, outputHeight);
 
         // Status display
-        auto rightStatusPanel = std::make_shared<UltraCanvasContainer>("RightStatusPanel", 81,
+        auto rightStatusPanel = std::make_shared<UltraCanvasContainer>("RightStatusPanel",
                                                                        0, windowHeight - 50, rightWidth, 50);
-        auto performanceLabel = std::make_shared<UltraCanvasLabel>("PerformanceLabel", 82,
+        auto performanceLabel = std::make_shared<UltraCanvasLabel>("PerformanceLabel",
                                                                    10, 10, rightWidth - 40, 30, "FPS: 0");
 
         rightStatusPanel->AddChild(performanceLabel);

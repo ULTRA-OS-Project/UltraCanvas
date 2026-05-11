@@ -15,8 +15,8 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasSlider::UltraCanvasSlider(const std::string &identifier, long id, long x, long y, long w, long h)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+    UltraCanvasSlider::UltraCanvasSlider(const std::string &identifier, long x, long y, long w, long h)
+            : UltraCanvasUIElement(identifier, x, y, w, h) {
 
         // Initialize standard properties
         mouseCursor = UCMouseCursor::Hand;

@@ -204,7 +204,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
 
     // Grid container for label:value pairs
     auto gridContainer = std::make_shared<UltraCanvasContainer>(
-            "StatsGrid", 501, 0, 0, 440, 260);
+            "StatsGrid", 0, 0, 440, 260);
 
     auto grid = CreateGridLayout(gridContainer.get(), 9, 2);
     grid->SetSpacing(6);
@@ -217,7 +217,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
 
     auto addRow = [&](const std::string &labelText, const std::string &valueText) {
         auto label = std::make_shared<UltraCanvasLabel>(
-                "StatLabel" + std::to_string(row), labelId++, 0, 0, 120, 20);
+                "StatLabel" + std::to_string(row), 0, 0, 120, 20);
         label->SetText(labelText);
         label->SetFontSize(11);
         label->SetFontWeight(FontWeight::Bold);
@@ -226,7 +226,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
         label->SetMargin(0, 8, 0, 0);
 
         auto value = std::make_shared<UltraCanvasLabel>(
-                "StatValue" + std::to_string(row), labelId++, 0, 0, 300, 20);
+                "StatValue" + std::to_string(row), 0, 0, 300, 20);
         value->SetText(valueText);
         value->SetFontSize(11);
         value->SetTextColor(Color(30, 30, 30));
@@ -268,7 +268,7 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
     mainLayout->AddStretch(1);
 
     // OK button
-    auto okButton = std::make_shared<UltraCanvasButton>("StatsOK", 550, 0, 0, 80, 28);
+    auto okButton = std::make_shared<UltraCanvasButton>("StatsOK", 0, 0, 80, 28);
     okButton->SetText("OK");
     okButton->onClick = [this]() {
         fileStatsDialog->CloseDialog(DialogResult::OK);

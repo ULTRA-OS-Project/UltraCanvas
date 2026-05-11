@@ -9,10 +9,10 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasRadio::UltraCanvasRadio(const std::string& identifier, long id,
+    UltraCanvasRadio::UltraCanvasRadio(const std::string& identifier,
                                        long x, long y, long w, long h,
                                        const std::string& labelText)
-            : UltraCanvasLabeledToggleBase(identifier, id, x, y, w, h, labelText) {}
+            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
 
     void UltraCanvasRadio::SetCheckState(CheckedState state) {
         if (state == CheckedState::Indeterminate) state = CheckedState::Unchecked;
@@ -58,10 +58,10 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasRadio> UltraCanvasRadio::Create(
-            const std::string& identifier, long id,
+            const std::string& identifier,
             long x, long y,
             const std::string& text, bool checked) {
-        auto radio = std::make_shared<UltraCanvasRadio>(identifier, id, x, y, 150, 24, text);
+        auto radio = std::make_shared<UltraCanvasRadio>(identifier, x, y, 150, 24, text);
         radio->SetChecked(checked);
         radio->SetAutoSize(true);
         return radio;

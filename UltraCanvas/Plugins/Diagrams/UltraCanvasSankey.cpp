@@ -7,9 +7,9 @@
 #include "UltraCanvasTooltipManager.h"
 
 namespace UltraCanvas {
-    UltraCanvasSankeyDiagram::UltraCanvasSankeyDiagram(const std::string &id, long uid, long x, long y,
+    UltraCanvasSankeyDiagram::UltraCanvasSankeyDiagram(const std::string &id, long x, long y,
                                                        long w, long h)
-            : UltraCanvasUIElement(id, uid, x, y, w, h) {
+            : UltraCanvasUIElement(id, x, y, w, h) {
         nodeWidth = 15.0f;  // Slightly thinner to give more space for labels
         nodePadding = 8.0f;
         linkCurvature = 0.5f;

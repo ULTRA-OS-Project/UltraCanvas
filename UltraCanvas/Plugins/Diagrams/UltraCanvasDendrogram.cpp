@@ -19,14 +19,14 @@ static constexpr float kPi = 3.14159265f;
 // =============================================================================
 
     UltraCanvasDendrogram::UltraCanvasDendrogram(
-            const std::string& id, long uid,
+            const std::string& id,
             int x, int y, int width, int height)
-        : UltraCanvasUIElement(id, uid, x, y, width, height)
+        : UltraCanvasUIElement(id, x, y, width, height)
     {
         vertScrollbar = std::make_shared<UltraCanvasScrollbar>(
-            id + "_vsb", uid + 1, 0, 0, 12, 200, ScrollbarOrientation::Vertical);
+            id + "_vsb", 0, 0, 12, 200, ScrollbarOrientation::Vertical);
         horzScrollbar = std::make_shared<UltraCanvasScrollbar>(
-            id + "_hsb", uid + 2, 0, 0, 200, 12, ScrollbarOrientation::Horizontal);
+            id + "_hsb", 0, 0, 200, 12, ScrollbarOrientation::Horizontal);
     }
 
 // =============================================================================

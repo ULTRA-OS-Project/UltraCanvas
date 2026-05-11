@@ -14,18 +14,18 @@
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTreeViewExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("TreeViewExamples", 600, 0, 0, 1000, 600);
+        auto container = std::make_shared<UltraCanvasContainer>("TreeViewExamples", 0, 0, 1000, 600);
         container->SetPadding(0,0,10,0);
 
         // Title
-        auto title = std::make_shared<UltraCanvasLabel>("TreeViewTitle", 601, 10, 10, 300, 30);
+        auto title = std::make_shared<UltraCanvasLabel>("TreeViewTitle", 10, 10, 300, 30);
         title->SetText("TreeView Examples");
         title->SetFontSize(16);
         title->SetFontWeight(FontWeight::Bold);
         container->AddChild(title);
 
         // File Explorer Style Tree
-        auto fileTree = std::make_shared<UltraCanvasTreeView>("FileTree", 602, 20, 50, 300, 400);
+        auto fileTree = std::make_shared<UltraCanvasTreeView>("FileTree", 20, 50, 300, 400);
         fileTree->SetRowHeight(22);
         fileTree->SetSelectionMode(TreeSelectionMode::Single);
 
@@ -58,20 +58,20 @@ namespace UltraCanvas {
         container->AddChild(fileTree);
 
 // File Explorer Label
-        auto fileLabel = std::make_shared<UltraCanvasLabel>("FileTreeLabel", 605, 20, 460, 300, 20);
+        auto fileLabel = std::make_shared<UltraCanvasLabel>("FileTreeLabel", 20, 460, 300, 20);
         fileLabel->SetText("File Explorer Style TreeView");
         fileLabel->SetFontSize(12);
         container->AddChild(fileLabel);
 
         // Options checkboxes for File Explorer Tree
-        auto autoExpandCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoExpandCheckbox", 606, 20, 490, 280, 24, "Auto expand selected node");
+        auto autoExpandCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoExpandCheckbox", 20, 490, 280, 24, "Auto expand selected node");
         autoExpandCheckbox->SetChecked(false);
         autoExpandCheckbox->onStateChanged = [fileTree](CheckedState oldState, CheckedState newState) {
         fileTree->SetAutoExpandSelectedNode(newState == CheckedState::Checked);
         };
         container->AddChild(autoExpandCheckbox);
 
-        auto autoSelectFirstChildCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoSelectFirstChildCheckbox", 607, 20, 520, 280, 24, "Auto select first child of expanded node");
+        auto autoSelectFirstChildCheckbox = std::make_shared<UltraCanvasCheckbox>("AutoSelectFirstChildCheckbox", 20, 520, 280, 24, "Auto select first child of expanded node");
         autoSelectFirstChildCheckbox->SetChecked(false);
         autoSelectFirstChildCheckbox->onStateChanged = [fileTree](CheckedState oldState, CheckedState newState) {
         fileTree->SetShowFirstChildOnExpand(newState == CheckedState::Checked);
@@ -79,7 +79,7 @@ namespace UltraCanvas {
         container->AddChild(autoSelectFirstChildCheckbox);
 
         // Multi-Selection Tree
-        auto multiTree = std::make_shared<UltraCanvasTreeView>("MultiTree", 603, 350, 50, 300, 200);
+        auto multiTree = std::make_shared<UltraCanvasTreeView>("MultiTree", 350, 50, 300, 200);
         multiTree->SetRowHeight(20);
         multiTree->SetSelectionMode(TreeSelectionMode::Multiple);
 
@@ -98,7 +98,7 @@ namespace UltraCanvas {
         multiRootNode->Expand();
         container->AddChild(multiTree);
 
-        auto multiLabel = std::make_shared<UltraCanvasLabel>("MultiTreeLabel", 604, 350, 260, 300, 20);
+        auto multiLabel = std::make_shared<UltraCanvasLabel>("MultiTreeLabel", 350, 260, 300, 20);
         multiLabel->SetText("Multi-Selection TreeView (Ctrl+Click)");
         multiLabel->SetFontSize(12);
         container->AddChild(multiLabel);

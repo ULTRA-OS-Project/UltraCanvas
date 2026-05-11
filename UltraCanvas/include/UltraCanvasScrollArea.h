@@ -106,8 +106,8 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasScrollArea(const std::string& id, long uid, int x, int y, int w, int h)
-                : UltraCanvasUIElement(id, uid, x, y, w, h) {
+        UltraCanvasScrollArea(const std::string& id, int x, int y, int w, int h)
+                : UltraCanvasUIElement(id, x, y, w, h) {
             CreateScrollbars();
             UpdateLayout();
         }
@@ -655,34 +655,29 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasScrollArea> CreateScrollArea(
-            const std::string& id, long uid, int x, int y, int w, int h) {
-        return std::make_shared<UltraCanvasScrollArea>(id, uid, x, y, w, h);
-    }
-
-    inline std::shared_ptr<UltraCanvasScrollArea> CreateScrollArea(
             const std::string& id, int x, int y, int w, int h) {
-        return std::make_shared<UltraCanvasScrollArea>(id, 0, x, y, w, h);
+        return std::make_shared<UltraCanvasScrollArea>(id, x, y, w, h);
     }
 
     inline std::shared_ptr<UltraCanvasScrollArea> CreateVerticalScrollArea(
-            const std::string& id, long uid, int x, int y, int w, int h) {
-        auto area = std::make_shared<UltraCanvasScrollArea>(id, uid, x, y, w, h);
+            const std::string& id, int x, int y, int w, int h) {
+        auto area = std::make_shared<UltraCanvasScrollArea>(id, x, y, w, h);
         area->EnableVerticalScrollbar(true);
         area->EnableHorizontalScrollbar(false);
         return area;
     }
 
     inline std::shared_ptr<UltraCanvasScrollArea> CreateHorizontalScrollArea(
-            const std::string& id, long uid, int x, int y, int w, int h) {
-        auto area = std::make_shared<UltraCanvasScrollArea>(id, uid, x, y, w, h);
+            const std::string& id, int x, int y, int w, int h) {
+        auto area = std::make_shared<UltraCanvasScrollArea>(id, x, y, w, h);
         area->EnableVerticalScrollbar(false);
         area->EnableHorizontalScrollbar(true);
         return area;
     }
 
     inline std::shared_ptr<UltraCanvasScrollArea> CreateBidirectionalScrollArea(
-            const std::string& id, long uid, int x, int y, int w, int h) {
-        auto area = std::make_shared<UltraCanvasScrollArea>(id, uid, x, y, w, h);
+            const std::string& id, int x, int y, int w, int h) {
+        auto area = std::make_shared<UltraCanvasScrollArea>(id, x, y, w, h);
         area->EnableVerticalScrollbar(true);
         area->EnableHorizontalScrollbar(true);
         return area;

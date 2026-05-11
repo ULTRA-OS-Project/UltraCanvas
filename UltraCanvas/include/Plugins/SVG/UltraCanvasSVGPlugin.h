@@ -241,7 +241,7 @@ namespace UltraCanvas {
 // UltraCanvasSVGElement - UI element wrapper for SVG
     class UltraCanvasSVGElement : public UltraCanvasUIElement {
     public:
-        UltraCanvasSVGElement(const std::string& identifier, long id, long x, long y, long w, long h);
+        UltraCanvasSVGElement(const std::string& identifier, long x, long y, long w, long h);
         virtual ~UltraCanvasSVGElement() = default;
 
         bool LoadFromFile(const std::string& filepath);

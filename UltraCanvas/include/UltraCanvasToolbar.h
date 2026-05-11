@@ -526,7 +526,7 @@ namespace UltraCanvas {
         Point2Di mousePosition;
 
     public:
-        UltraCanvasToolbar(const std::string& identifier, long id, long x, long y,
+        UltraCanvasToolbar(const std::string& identifier, long x, long y,
                            long width, long height);
         virtual ~UltraCanvasToolbar() = default;
 

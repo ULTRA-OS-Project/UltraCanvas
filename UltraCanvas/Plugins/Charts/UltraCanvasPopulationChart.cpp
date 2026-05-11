@@ -16,8 +16,8 @@ namespace UltraCanvas {
 
 // ===== CONSTRUCTOR =====
     UltraCanvasPopulationChart::UltraCanvasPopulationChart(
-            const std::string& identifier, long id, int x, int y, int w, int h)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h)
+            const std::string& identifier, int x, int y, int w, int h)
+            : UltraCanvasUIElement(identifier, x, y, w, h)
             , chartTitle("")
             , chartSubtitle("")
             , axisLabel("Population")

@@ -102,7 +102,7 @@ public:
 
     void CreateFinancialChart() {
         // Create financial chart with custom styling
-        stockChart = CreateFinancialChartElement("stockChart", 1001, 50, 50, 1000, 600);
+        stockChart = CreateFinancialChartElement("stockChart", 50, 50, 1000, 600);
 
         stockChart->SetBullishCandleColor(Color(0, 180, 0, 255));
         stockChart->SetBearishCandleColor(Color(220, 0, 0, 255));
@@ -153,7 +153,7 @@ public:
 
 
         instructionLabel = CreateLabel(
-                "instructions", 2000, 1070, 50, 400, 330, instructions
+                "instructions", 1070, 50, 400, 330, instructions
         );
 
         instructionLabel->SetFont("Sans", 12.0f, FontWeight::Normal);

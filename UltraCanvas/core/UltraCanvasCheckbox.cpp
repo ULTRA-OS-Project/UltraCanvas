@@ -8,10 +8,10 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasCheckbox::UltraCanvasCheckbox(const std::string& identifier, long id,
+    UltraCanvasCheckbox::UltraCanvasCheckbox(const std::string& identifier,
                                              long x, long y, long w, long h,
                                              const std::string& labelText)
-            : UltraCanvasLabeledToggleBase(identifier, id, x, y, w, h, labelText) {}
+            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
 
     void UltraCanvasCheckbox::Toggle() {
         switch (checkState) {
@@ -130,10 +130,10 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasCheckbox> UltraCanvasCheckbox::CreateCheckbox(
-            const std::string& identifier, long id,
+            const std::string& identifier,
             long x, long y, long w, long h,
             const std::string& text, bool checked) {
-        auto cb = std::make_shared<UltraCanvasCheckbox>(identifier, id, x, y, w, h, text);
+        auto cb = std::make_shared<UltraCanvasCheckbox>(identifier, x, y, w, h, text);
         cb->SetChecked(checked);
         if (w == 0 || h == 0) cb->SetAutoSize(true);
         return cb;

@@ -131,8 +131,7 @@ public:
                 "Mouse: Drag to pan, wheel to zoom";
 
         instructionLabel = CreateLabel(
-                "instruction_1",
-                2000, 50, 720, 400, 20 * 6, instructions
+                "instruction_1", 50, 720, 400, 20 * 6, instructions
         );
         instructionLabel->SetFont("Sans", 13.0f, FontWeight::Normal);
         instructionLabel->SetTextColor(Color(40, 40, 40, 255));
@@ -144,15 +143,15 @@ public:
 
     void CreateChartElements() {
         // Create line chart for sales trend
-        lineChart = CreateLineChartElement("salesLineChart", 1001, 50, 50, 500, 300);
+        lineChart = CreateLineChartElement("salesLineChart", 50, 50, 500, 300);
         
         // Create bar chart for performance metrics
-        barChart = CreateBarChartElement("performanceBarChart", 1002, 600, 50, 500, 300);
+        barChart = CreateBarChartElement("performanceBarChart", 600, 50, 500, 300);
         
         // Create scatter plot for correlation analysis
-        scatterPlot = CreateScatterPlotElement("correlationScatter", 1003, 50, 400, 500, 300);
+        scatterPlot = CreateScatterPlotElement("correlationScatter", 50, 400, 500, 300);
 
-        areaChart = CreateAreaChartElement("revenueAreaChart", 1004, 600, 400, 500, 300);
+        areaChart = CreateAreaChartElement("revenueAreaChart", 600, 400, 500, 300);
     }
 
     void ConfigureCharts() {
@@ -410,10 +409,10 @@ namespace ChartExampleHelpers {
     
     // Helper function to create a line chart with custom styling
     std::shared_ptr<UltraCanvasLineChartElement> CreateStyledLineChart(
-        const std::string& id, long uid, int x, int y, int width, int height,
+        const std::string& id, int x, int y, int width, int height,
         const Color& lineColor, float lineWidth, bool showPoints = false) {
         
-        auto chart = CreateLineChartElement(id, uid, x, y, width, height);
+        auto chart = CreateLineChartElement(id, x, y, width, height);
         chart->SetLineColor(lineColor);
         chart->SetLineWidth(lineWidth);
         chart->SetShowDataPoints(showPoints);
@@ -428,10 +427,10 @@ namespace ChartExampleHelpers {
     
     // Helper function to create a themed bar chart
     std::shared_ptr<UltraCanvasBarChartElement> CreateThemedBarChart(
-        const std::string& id, long uid, int x, int y, int width, int height,
+        const std::string& id, int x, int y, int width, int height,
         const Color& barColor, const Color& borderColor) {
         
-        auto chart = CreateBarChartElement(id, uid, x, y, width, height);
+        auto chart = CreateBarChartElement(id, x, y, width, height);
         chart->SetBarColor(barColor);
         chart->SetBarBorderColor(borderColor);
         chart->SetBarBorderWidth(1.5f);
@@ -442,11 +441,11 @@ namespace ChartExampleHelpers {
     
     // Helper function to create a customized scatter plot
     std::shared_ptr<UltraCanvasScatterPlotElement> CreateCustomScatterPlot(
-        const std::string& id, long uid, int x, int y, int width, int height,
+        const std::string& id, int x, int y, int width, int height,
         const Color& pointColor, float pointSize,
         UltraCanvasScatterPlotElement::PointShape shape) {
         
-        auto chart = CreateScatterPlotElement(id, uid, x, y, width, height);
+        auto chart = CreateScatterPlotElement(id, x, y, width, height);
         chart->SetPointColor(pointColor);
         chart->SetPointSize(pointSize);
         chart->SetPointShape(shape);

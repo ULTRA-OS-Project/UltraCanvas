@@ -65,7 +65,7 @@ public:
         if (!mainWindow) return;
         
         // ✅ UPDATED: Use UltraCanvasTextInput with multiline mode instead of UltraCanvasTextArea
-        textInput = CreateTextInput("textInput", 2001, 20, 80, 760, 200);
+        textInput = CreateTextInput("textInput", 20, 80, 760, 200);
         textInput->SetInputType(TextInputType::Multiline); // Enable multiline mode
         textInput->SetText("Type some text here and click 'Copy to Clipboard' to test the multi-entry clipboard.\n\n"
                           "Then press ALT+P to open the clipboard history window.\n\n"
@@ -94,7 +94,7 @@ public:
         if (!mainWindow) return;
         
         // Copy button
-        copyButton = CreateButton("copyBtn", 2002, 20, 300, 150, 30, "Copy Text to Clipboard");
+        copyButton = CreateButton("copyBtn", 20, 300, 150, 30, "Copy Text to Clipboard");
         copyButton->onClick = [this]() {
             if (textInput) {
                 std::string text = textInput->GetText();
@@ -107,14 +107,14 @@ public:
         mainWindow->AddElement(copyButton);
         
         // Show clipboard button
-        showClipboardButton = CreateButton("showBtn", 2003, 200, 300, 180, 30, "Show Clipboard (ALT+P)");
+        showClipboardButton = CreateButton("showBtn", 200, 300, 180, 30, "Show Clipboard (ALT+P)");
         showClipboardButton->onClick = [this]() {
             ShowClipboard();
         };
         mainWindow->AddElement(showClipboardButton);
         
         // Clear history button
-        clearHistoryButton = CreateButton("clearBtn", 2004, 400, 300, 150, 30, "Clear History");
+        clearHistoryButton = CreateButton("clearBtn", 400, 300, 150, 30, "Clear History");
         clearHistoryButton->onClick = [this]() {
             ClearClipboardHistory();
             debugOutput << "Clipboard history cleared" << std::endl;
@@ -122,7 +122,7 @@ public:
         mainWindow->AddElement(clearHistoryButton);
         
         // Add sample data button
-        addSampleButton = CreateButton("sampleBtn", 2005, 570, 300, 150, 30, "Add Sample Data");
+        addSampleButton = CreateButton("sampleBtn", 570, 300, 150, 30, "Add Sample Data");
         addSampleButton->onClick = [this]() {
             AddSampleClipboardData();
         };

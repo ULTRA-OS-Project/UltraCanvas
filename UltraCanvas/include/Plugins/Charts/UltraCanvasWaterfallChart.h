@@ -164,8 +164,8 @@ namespace UltraCanvas {
         } renderCache;
 
     public:
-        UltraCanvasWaterfallChartElement(const std::string& id, long uid, int x, int y, int width, int height)
-                : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+        UltraCanvasWaterfallChartElement(const std::string& id, int x, int y, int width, int height)
+                : UltraCanvasChartElementBase(id, x, y, width, height) {
             enableTooltips = true;
             enableZoom = false;  // Waterfall charts typically don't zoom
             enablePan = false;
@@ -308,15 +308,15 @@ namespace UltraCanvas {
 // =============================================================================
 
     inline std::shared_ptr<UltraCanvasWaterfallChartElement> CreateWaterfallChartElement(
-            const std::string& id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasWaterfallChartElement>(id, uid, x, y, width, height);
+            const std::string& id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasWaterfallChartElement>(id, x, y, width, height);
     }
 
     inline std::shared_ptr<UltraCanvasWaterfallChartElement> CreateWaterfallChartWithData(
-            const std::string& id, long uid, int x, int y, int width, int height,
+            const std::string& id, int x, int y, int width, int height,
             std::shared_ptr<WaterfallChartDataVector> data, const std::string& title = "") {
 
-        auto chart = CreateWaterfallChartElement(id, uid, x, y, width, height);
+        auto chart = CreateWaterfallChartElement(id, x, y, width, height);
         chart->SetWaterfallDataSource(data);
         if (!title.empty()) {
             chart->SetChartTitle(title);

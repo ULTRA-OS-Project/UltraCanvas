@@ -136,7 +136,7 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasButton(const std::string& identifier = "Button", long id = 0,
+        UltraCanvasButton(const std::string& identifier = "Button",
                           long x = 0, long y = 0, long w = 100, long h = 30,
                           const std::string& buttonText = "Button");
 
@@ -245,15 +245,15 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasButton> CreateButton(
-            const std::string& identifier, long id, long x, long y, long w, long h,
+            const std::string& identifier, long x, long y, long w, long h,
             const std::string& text = "Button") {
-        return std::make_shared<UltraCanvasButton>(identifier, id, x, y, w, h, text);
+        return std::make_shared<UltraCanvasButton>(identifier, x, y, w, h, text);
     }
 
     inline std::shared_ptr<UltraCanvasButton> CreateIconButton(
-            const std::string& identifier, long id, long x, long y, long w, long h,
+            const std::string& identifier, long x, long y, long w, long h,
             const std::string& iconPath, const std::string& text = "") {
-        auto button = CreateButton(identifier, id, x, y, w, h, text);
+        auto button = CreateButton(identifier, x, y, w, h, text);
         button->SetIcon(iconPath);
         return button;
     }
@@ -264,8 +264,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasButton> button;
 
     public:
-        ButtonBuilder(const std::string& identifier = "Button", long id = 0) {
-            button = std::make_shared<UltraCanvasButton>(identifier, id);
+        ButtonBuilder(const std::string& identifier = "Button") {
+            button = std::make_shared<UltraCanvasButton>(identifier);
         }
 
         ButtonBuilder& SetPosition(long x, long y) {

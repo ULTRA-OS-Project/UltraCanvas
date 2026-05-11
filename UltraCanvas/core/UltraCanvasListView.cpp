@@ -8,9 +8,9 @@ namespace UltraCanvas {
 
     // ===== CONSTRUCTOR =====
 
-    UltraCanvasListView::UltraCanvasListView(const std::string& identifier, long id,
+    UltraCanvasListView::UltraCanvasListView(const std::string& identifier,
                                               int x, int y, int w, int h)
-        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, x, y, w, h) {
 
         // Default delegate and selection
         delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
@@ -136,7 +136,7 @@ namespace UltraCanvas {
 
     void UltraCanvasListView::CreateScrollbar() {
         verticalScrollbar = std::make_shared<UltraCanvasScrollbar>(
-            GetIdentifier() + "_vscroll", 0, 0, 0,
+            GetIdentifier() + "_vscroll", 0, 0,
             viewStyle.scrollbarStyle.trackSize, 100,
             ScrollbarOrientation::Vertical);
 

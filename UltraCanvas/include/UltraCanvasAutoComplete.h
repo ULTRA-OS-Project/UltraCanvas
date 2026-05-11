@@ -82,7 +82,7 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasAutoComplete(const std::string& identifier, long id,
+        UltraCanvasAutoComplete(const std::string& identifier,
                                 long x, long y, long w, long h = 28);
 
         // ===== ITEM MANAGEMENT (STATIC MODE) =====
@@ -140,8 +140,8 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasAutoComplete> CreateAutoComplete(
-            const std::string& identifier, long id, long x, long y, long w, long h = 28) {
-        return std::make_shared<UltraCanvasAutoComplete>(identifier, id, x, y, w, h);
+            const std::string& identifier, long x, long y, long w, long h = 28) {
+        return std::make_shared<UltraCanvasAutoComplete>(identifier, x, y, w, h);
     }
 
 } // namespace UltraCanvas

@@ -452,7 +452,7 @@ namespace {
         int yPos = 0;
 
         // Create menu bar using MenuBuilder
-        menuBar = MenuBuilder("EditorMenuBar", 100, 0, yPos, GetWidth(), menuBarHeight)
+        menuBar = MenuBuilder("EditorMenuBar", 0, yPos, GetWidth(), menuBarHeight)
                 .SetType(MenuType::Menubar)
 
                         // ===== FILE MENU =====
@@ -729,7 +729,7 @@ namespace {
 
         // Wrap toolbar(s) in an HBox container
         toolbarContainer = std::make_shared<UltraCanvasContainer>(
-                "ToolbarContainer", 201, 0, toolbarY, GetWidth(), toolbarHeight);
+                "ToolbarContainer",  0, toolbarY, GetWidth(), toolbarHeight);
         auto* hbox = CreateHBoxLayout(toolbarContainer.get());
         hbox->SetSpacing(0);
         hbox->AddUIElement(toolbar)->SetStretch(1)->SetHeightMode(SizeMode::Fill);
@@ -860,7 +860,7 @@ namespace {
 
         // Create tabbed container
         tabContainer = std::make_shared<UltraCanvasTabbedContainer>(
-                "EditorTabs", 200,
+                "EditorTabs", 
                 0, yPos,
                 GetWidth(), tabAreaHeight
         );
@@ -948,7 +948,7 @@ namespace {
     }
 
     void UltraCanvasTextEditor::SetupTabContextMenu() {
-        tabContextMenu = std::make_shared<UltraCanvasMenu>("TabContextMenu", 0, 0, 0, 200, 200);
+        tabContextMenu = std::make_shared<UltraCanvasMenu>("TabContextMenu", 0, 0, 200, 200);
         tabContextMenu->SetMenuType(MenuType::PopupMenu);
 
         tabContainer->SetTabContextMenu(tabContextMenu);
@@ -1026,7 +1026,7 @@ namespace {
 
         // Create language dropdown (leftmost)
         languageDropdown = std::make_shared<UltraCanvasDropdown>(
-                "LanguageDropdown", 303,
+                "LanguageDropdown",
                 xPos, yPos + 2,
                 languageDropdownWidth, statusBarHeight - 4
         );
@@ -1036,7 +1036,7 @@ namespace {
         languageDropdown->AddSeparator();
  
         {
-            UltraCanvasTextArea tempArea("_tmp", 0, 0, 0, 0, 0);
+            UltraCanvasTextArea tempArea("_tmp", 0, 0, 0, 0);
             auto languages = tempArea.GetSupportedLanguages();
             std::sort(languages.begin(), languages.end());
  
@@ -1088,7 +1088,7 @@ namespace {
 
         // Create encoding dropdown
         encodingDropdown = std::make_shared<UltraCanvasDropdown>(
-                "EncodingDropdown", 302,
+                "EncodingDropdown",
                 xPos, yPos + 2,
                 encodingDropdownWidth, statusBarHeight - 4
         );
@@ -1128,7 +1128,7 @@ namespace {
 
         // Create EOL dropdown
         eolDropdown = std::make_shared<UltraCanvasDropdown>(
-                "EOLDropdown", 304,
+                "EOLDropdown",
                 xPos, yPos + 2,
                 eolDropdownWidth, statusBarHeight - 4
         );
@@ -1155,7 +1155,7 @@ namespace {
 
         // Create zoom dropdown
         zoomDropdown = std::make_shared<UltraCanvasDropdown>(
-                "ZoomDropdown", 301,
+                "ZoomDropdown",
                 xPos, yPos + 2,
                 zoomDropdownWidth, statusBarHeight - 4
         );
@@ -1182,7 +1182,7 @@ namespace {
 
         // Status label fills remaining space to the right
         statusLabel = std::make_shared<UltraCanvasLabel>(
-                "StatusBar", 300,
+                "StatusBar", 
                 xPos, yPos + 4,
                 GetWidth() - xPos - 4, statusBarHeight - 8
         );
@@ -1470,7 +1470,6 @@ namespace {
         // Create text area
         doc->textArea = std::make_shared<UltraCanvasTextArea>(
                 "TextArea_" + std::to_string(documents.size()),
-                1000 + static_cast<int>(documents.size()),
                 0, 0,
                 GetWidth(), contentHeight
         );
@@ -3346,7 +3345,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         aboutDialog->SetPadding(20);
 
         // Logo image
-        auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo", 0, 0, 0, 74, 74);
+        auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo",  0, 74, 74);
         logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/Logo_Texter.png"));
         logo->SetFitMode(ImageFitMode::Contain);
         logo->SetMargin(0, 0, 8, 0);
@@ -3396,7 +3395,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         mainLayout->AddUIElement(copyrightLabel)->SetWidthMode(SizeMode::Fill)->SetCrossAlignment(LayoutAlignment::Center)->SetMainAlignment(LayoutAlignment::Center);;
 
         // Clickable URL label
-        auto urlLabel = std::make_shared<UltraCanvasLabel>("AboutURL", 300, 20);
+        auto urlLabel = std::make_shared<UltraCanvasLabel>("AboutURL",  20);
         urlLabel->SetText("<span color=\"blue\">www.ultraos.eu</span>");
         urlLabel->SetTextIsMarkup(true);
         urlLabel->SetFontSize(11);
@@ -3412,7 +3411,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         mainLayout->AddStretch(1);
 
         // OK button
-        auto okButton = std::make_shared<UltraCanvasButton>("AboutOK", 0, 0, 0, 80, 28);
+        auto okButton = std::make_shared<UltraCanvasButton>("AboutOK",  0, 80, 28);
         okButton->SetText("OK");
         okButton->onClick = [this]() {
             aboutDialog->CloseDialog(DialogResult::OK);
@@ -4375,7 +4374,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::SetupSearchBar() {
         searchBar = std::make_shared<UltraCanvasSearchBar>(
-                "SearchBar", 600,
+                "SearchBar", 
                 0, 0, GetWidth()
         );
         searchBar->Initialize();
@@ -4729,7 +4728,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // Lazy-create the popup menu (allocated once, reused)
         if (!recentFilesPopupMenu) {
             recentFilesPopupMenu = std::make_shared<UltraCanvasMenu>(
-                "RecentFilesPopup", 0, 0, 0, 300, 100);
+                "RecentFilesPopup", 0, 0, 300, 100);
             recentFilesPopupMenu->SetMenuType(MenuType::PopupMenu);
             MenuStyle popupStyle = recentFilesPopupMenu->GetStyle();
             popupStyle.maxWidth = 500;

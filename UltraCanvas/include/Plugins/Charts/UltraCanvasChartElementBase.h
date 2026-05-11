@@ -101,8 +101,8 @@ namespace UltraCanvas {
         ValueLabelPosition valueLabelPosition = ValueLabelPosition::LabelAbove;
 
     public:
-        UltraCanvasChartElementBase(const std::string& id, long uid, int x, int y, int width, int height) :
-                UltraCanvasUIElement(id, uid, x, y, width, height) {};
+        UltraCanvasChartElementBase(const std::string& id, int x, int y, int width, int height) :
+                UltraCanvasUIElement(id, x, y, width, height) {};
 
         virtual ~UltraCanvasChartElementBase() = default;
 
@@ -407,10 +407,10 @@ namespace UltraCanvas {
 // Generic Chart Factory with Data
     template<typename ChartElementType>
     std::shared_ptr<ChartElementType> CreateChartElementWithData(
-            const std::string& id, long uid, int x, int y, int width, int height,
+            const std::string& id, int x, int y, int width, int height,
             std::shared_ptr<IChartDataSource> data, const std::string& title = "") {
 
-        auto element = std::make_shared<ChartElementType>(id, uid, x, y, width, height);
+        auto element = std::make_shared<ChartElementType>(id, x, y, width, height);
         element->SetDataSource(data);
         if (!title.empty()) {
             element->SetTitle(title);

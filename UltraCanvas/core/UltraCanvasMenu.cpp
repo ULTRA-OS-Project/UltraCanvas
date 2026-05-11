@@ -209,7 +209,6 @@ namespace UltraCanvas {
         // Create and show new submenu
         activeSubmenu = std::make_shared<UltraCanvasMenu>(
                 GetIdentifier() + "_submenu_" + std::to_string(itemIndex),
-                0,
                 0, 0, 150, 100
         );
 
@@ -1160,7 +1159,7 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::CreateMenuScrollbar() {
         menuScrollbar = std::make_shared<UltraCanvasScrollbar>(
-                GetIdentifier() + "_scroll", 0, 0, 0, 10, 100,
+                GetIdentifier() + "_scroll", 0, 0, 10, 100,
                 ScrollbarOrientation::Vertical);
 
         menuScrollbar->SetStyle(style.scrollbarStyle);

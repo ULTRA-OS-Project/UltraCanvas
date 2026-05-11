@@ -70,7 +70,7 @@ namespace UltraCanvas {
         virtual void DrawFocusRingShape(IRenderContext* ctx);  // Default: rectangle around indicator.
 
     public:
-        UltraCanvasLabeledToggleBase(const std::string& identifier, long id,
+        UltraCanvasLabeledToggleBase(const std::string& identifier,
                                      long x, long y, long w, long h,
                                      const std::string& labelText);
         virtual ~UltraCanvasLabeledToggleBase() = default;

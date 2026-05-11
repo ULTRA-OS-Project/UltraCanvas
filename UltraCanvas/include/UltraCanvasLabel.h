@@ -1,7 +1,7 @@
 // include/UltraCanvasLabel.h
 // Modern text display label control with styling and alignment options
-// Version: 1.0.0
-// Last Modified: 2025-08-17
+// Version: 1.1.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -56,8 +56,7 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasLabel(const std::string &identifier,
-                         long id, long x, long y, long w, long h,
+        UltraCanvasLabel(const std::string &identifier, long x, long y, long w, long h,
                          const std::string &labelText = "");
 
         explicit UltraCanvasLabel(const std::string &identifier = "Label",
@@ -118,10 +117,6 @@ namespace UltraCanvas {
     };
 // ===== FACTORY FUNCTIONS =====
     std::shared_ptr<UltraCanvasLabel> CreateLabel(
-            const std::string& identifier, long id, long x, long y, long w, long h,
-            const std::string& text = "");
-
-    std::shared_ptr<UltraCanvasLabel> CreateLabel(
             const std::string& identifier, long x, long y, long w, long h,
             const std::string& text = "");
 
@@ -132,15 +127,15 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string& text);
 
     std::shared_ptr<UltraCanvasLabel> CreateAutoLabel(
-            const std::string& identifier, long id, long x, long y,
+            const std::string& identifier, long x, long y,
             const std::string& text);
 
     std::shared_ptr<UltraCanvasLabel> CreateHeaderLabel(
-            const std::string& identifier, long id, long x, long y, long w, long h,
+            const std::string& identifier, long x, long y, long w, long h,
             const std::string& text);
 
     std::shared_ptr<UltraCanvasLabel> CreateStatusLabel(
-            const std::string& identifier, long id, long x, long y, long w, long h,
+            const std::string& identifier, long x, long y, long w, long h,
             const std::string& text = "Ready");
 
 // ===== BUILDER PATTERN =====
@@ -149,7 +144,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasLabel> label;
 
     public:
-        LabelBuilder(const std::string& identifier, long id, long x, long y, long w = 100, long h = 25);
+        LabelBuilder(const std::string& identifier, long x, long y, long w = 100, long h = 25);
 
         LabelBuilder& SetText(const std::string& text);
         LabelBuilder& SetFont(const std::string& fontFamily, float fontSize = 12.0f);
@@ -167,8 +162,8 @@ namespace UltraCanvas {
     };
 
 // ===== CONVENIENCE BUILDER =====
-    inline LabelBuilder CreateLabelBuilder(const std::string& identifier, long id, long x, long y, long w = 100, long h = 25) {
-        return LabelBuilder(identifier, id, x, y, w, h);
+    inline LabelBuilder CreateLabelBuilder(const std::string& identifier, long x, long y, long w = 100, long h = 25) {
+        return LabelBuilder(identifier, x, y, w, h);
     }
 
 } // namespace UltraCanvas

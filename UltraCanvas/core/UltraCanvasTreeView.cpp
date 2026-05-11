@@ -124,8 +124,8 @@ namespace UltraCanvas {
 
     /* UltraCanvasTreeView */
 
-    UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier, long id, int x, int y, int w, int h) :
-            UltraCanvasUIElement(identifier, id, x, y, w, h) {
+    UltraCanvasTreeView::UltraCanvasTreeView(const std::string &identifier, int x, int y, int w, int h) :
+            UltraCanvasUIElement(identifier, x, y, w, h) {
 
         // Tree view specific initialization
         rootNode = nullptr;
@@ -884,7 +884,7 @@ namespace UltraCanvas {
 
     void UltraCanvasTreeView::CreateScrollbar() {
         verticalScrollbar = std::make_shared<UltraCanvasScrollbar>(
-                GetIdentifier() + "_vscroll", 0, 0, 0, scrollbarStyle.trackSize, 100,
+                GetIdentifier() + "_vscroll", 0, 0, scrollbarStyle.trackSize, 100,
                 ScrollbarOrientation::Vertical);
         verticalScrollbar->onScrollChange = [this](int pos) {
             scrollOffsetY = pos;

@@ -33,7 +33,7 @@ public:
         
         // Create main window
         mainWindow = std::make_shared<UltraCanvasWindow>(
-            "pdfViewerWindow", 1, 100, 100, 1200, 800);
+            "pdfViewerWindow", 100, 100, 1200, 800);
         mainWindow->SetTitle("UltraCanvas PDF Viewer");
         mainWindow->SetResizable(true);
         
@@ -57,7 +57,7 @@ public:
     void CreateMenuBar() {
         using namespace UltraCanvas;
         
-        menuBar = std::make_shared<UltraCanvasMenuBar>("mainMenu", 2, 0, 0, 1200, 30);
+        menuBar = std::make_shared<UltraCanvasMenuBar>("mainMenu", 0, 0, 1200, 30);
         
         // File menu
         auto fileMenu = menuBar->AddMenu("File");

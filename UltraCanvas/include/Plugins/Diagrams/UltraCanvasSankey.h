@@ -71,7 +71,7 @@ namespace UltraCanvas {
     class UltraCanvasSankeyDiagram : public UltraCanvasUIElement {
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasSankeyDiagram(const std::string& id, long uid, long x, long y, long w, long h);
+        UltraCanvasSankeyDiagram(const std::string& id, long x, long y, long w, long h);
         bool AcceptsFocus() const override { return true; }
 
         // ===== NODE MANAGEMENT =====
@@ -185,8 +185,8 @@ namespace UltraCanvas {
 
 //// ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasSankeyDiagram> CreateSankeyRenderer(
-            const std::string& id, long uid, long x, long y, long w, long h
+            const std::string& id, long x, long y, long w, long h
     ) {
-        return std::make_shared<UltraCanvasSankeyDiagram>(id, uid, x, y, w, h);
+        return std::make_shared<UltraCanvasSankeyDiagram>(id, x, y, w, h);
     }
 } // namespace UltraCanvas

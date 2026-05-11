@@ -112,7 +112,7 @@ public:
 
         try {
             // Create text input area using proper constructor
-            textInput = std::make_shared<UltraCanvasTextInput>("mainTextInput", 2001, 20, 20, 760, 400);
+            textInput = std::make_shared<UltraCanvasTextInput>("mainTextInput", 20, 20, 760, 400);
             if (textInput) {
                 textInput->SetText("Type or paste text here, then click 'Copy to Clipboard' to add it to the clipboard history.");
                 textInput->SetInputType(TextInputType::Multiline);
@@ -121,25 +121,25 @@ public:
             }
 
             // Create buttons using proper constructor and factory functions
-            copyButton = CreateButton("copyBtn", 2002, 20, 440, 150, 30, "Copy to Clipboard");
+            copyButton = CreateButton("copyBtn", 20, 440, 150, 30, "Copy to Clipboard");
             if (copyButton) {
                 mainWindow->AddElement(copyButton);
                 debugOutput << "Copy button created and added" << std::endl;
             }
 
-            showClipboardButton = CreateButton("showBtn", 2003, 180, 440, 150, 30, "Show Clipboard (Alt+P)");
+            showClipboardButton = CreateButton("showBtn", 180, 440, 150, 30, "Show Clipboard (Alt+P)");
             if (showClipboardButton) {
                 mainWindow->AddElement(showClipboardButton);
                 debugOutput << "Show clipboard button created and added" << std::endl;
             }
 
-            clearHistoryButton = CreateButton("clearBtn", 2004, 340, 440, 120, 30, "Clear History");
+            clearHistoryButton = CreateButton("clearBtn", 340, 440, 120, 30, "Clear History");
             if (clearHistoryButton) {
                 mainWindow->AddElement(clearHistoryButton);
                 debugOutput << "Clear history button created and added" << std::endl;
             }
 
-            addSampleButton = CreateButton("sampleBtn", 2005, 470, 440, 120, 30, "Add Samples");
+            addSampleButton = CreateButton("sampleBtn", 470, 440, 120, 30, "Add Samples");
             if (addSampleButton) {
                 mainWindow->AddElement(addSampleButton);
                 debugOutput << "Add sample button created and added" << std::endl;
@@ -153,11 +153,11 @@ public:
     }
 
     // Helper function to create buttons using proper API
-    std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& id, long uid,
+    std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& id,
                                                     long x, long y, long w, long h,
                                                     const std::string& text) {
         try {
-            auto button = std::make_shared<UltraCanvasButton>(id, uid, x, y, w, h);
+            auto button = std::make_shared<UltraCanvasButton>(id, x, y, w, h);
             if (button) {
                 button->SetText(text);
             }

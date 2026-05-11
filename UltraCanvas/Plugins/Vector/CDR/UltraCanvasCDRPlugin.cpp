@@ -1736,9 +1736,9 @@ namespace UltraCanvas {
 
 // ===== ULTRACANVAS CDR ELEMENT IMPLEMENTATION =====
 
-    UltraCanvasCDRElement::UltraCanvasCDRElement(const std::string& identifier, long id,
+    UltraCanvasCDRElement::UltraCanvasCDRElement(const std::string& identifier,
                                                  int x, int y, int width, int height)
-            : UltraCanvasUIElement(identifier, id, x, y, width, height) {
+            : UltraCanvasUIElement(identifier, x, y, width, height) {
     }
 
     bool UltraCanvasCDRElement::LoadFromFile(const std::string& filePath) {
@@ -1852,7 +1852,7 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasCDRPlugin::LoadGraphics(const std::string& filePath) {
         auto element = std::make_shared<UltraCanvasCDRElement>(
-                "cdr_" + std::to_string(rand()), rand(), 0, 0, 800, 600);
+                "cdr_" + std::to_string(rand()), 0, 0, 800, 600);
 
         if (element->LoadFromFile(filePath)) {
             return element;
@@ -1868,7 +1868,7 @@ namespace UltraCanvas {
                                                                                GraphicsFormatType type) {
         if (type == GraphicsFormatType::Vector) {
             return std::make_shared<UltraCanvasCDRElement>(
-                    "cdr_new_" + std::to_string(rand()), rand(), 0, 0, width, height);
+                    "cdr_new_" + std::to_string(rand()), 0, 0, width, height);
         }
         return nullptr;
     }

@@ -284,7 +284,7 @@ namespace UltraCanvas {
         rangeSlidersContainer->AddChild(dateLabel);
         yPos += 35;
 
-        auto dateRange = CreateRangeSlider("dateRange", 20, yPos, sliderWidth, 30,
+        auto dateRange = CreateRangeSlider("dateRange", 20, yPos, sliderWidth, 40,
                                            1.0f, 31.0f, 5.0f, 25.0f);
         dateRange->SetValueDisplay(SliderValueDisplay::AlwaysVisible);
         dateRange->SetValueFormat("Day %.0f");
@@ -312,7 +312,7 @@ namespace UltraCanvas {
         rangeSlidersContainer->AddChild(roundedLabel);
         yPos += 35;
 
-        auto roundedRange = CreateRangeSlider("roundedRange", 20, yPos, sliderWidth, 30,
+        auto roundedRange = CreateRangeSlider("roundedRange", 20, yPos, sliderWidth, 40,
                                               0.0f, 100.0f, 25.0f, 75.0f);
         roundedRange->SetValueDisplay(SliderValueDisplay::Number);
         roundedRange->SetStep(1.0f);

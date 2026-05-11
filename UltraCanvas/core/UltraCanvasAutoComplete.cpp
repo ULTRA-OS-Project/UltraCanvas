@@ -11,9 +11,9 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasAutoComplete::UltraCanvasAutoComplete(const std::string& identifier, long id,
+    UltraCanvasAutoComplete::UltraCanvasAutoComplete(const std::string& identifier,
                                                      long x, long y, long w, long h)
-        : UltraCanvasTextInput(identifier, id, x, y, w, h) {
+        : UltraCanvasTextInput(identifier, x, y, w, h) {
         SetShowValidationState(false);
         CreatePopupListView();
         WireListViewCallbacks();
@@ -255,7 +255,7 @@ namespace UltraCanvas {
 
     void UltraCanvasAutoComplete::CreatePopupListView() {
         popupListView = std::make_shared<UltraCanvasListView>(
-            GetIdentifier() + "_popup_lv", 0, 0, 0, 200, 100);
+            GetIdentifier() + "_popup_lv", 0, 0, 200, 100);
         popupListView->SetModel(&listModel);
         popupListView->SetShowHeader(false);
 

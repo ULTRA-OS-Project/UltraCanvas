@@ -22,9 +22,9 @@ constexpr float TWO_PI = 2.0f * PI;
 
 // ===== CONSTRUCTOR =====
 
-UltraCanvasGourceTree::UltraCanvasGourceTree(const std::string& id, long uid, 
+UltraCanvasGourceTree::UltraCanvasGourceTree(const std::string& id, 
                                                long x, long y, long w, long h)
-    : UltraCanvasUIElement(id, uid, x, y, w, h) {
+    : UltraCanvasUIElement(id, x, y, w, h) {
     
     // Initialize default style
     ApplyThemeColors(GourceTheme::Default);

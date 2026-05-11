@@ -150,9 +150,9 @@ public:
     std::function<void(int)> onRowRemoved;                          // (rowIndex)
     
     // ===== CONSTRUCTOR =====
-    UltraCanvasTableView(const std::string& identifier = "TableView", long id = 0,
+    UltraCanvasTableView(const std::string& identifier = "TableView",
                         long x = 0, long y = 0, long w = 400, long h = 300)
-        : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+        : UltraCanvasUIElement(identifier, x, y, w, h) {
         
         UpdateScrollBounds();
     }
@@ -1072,21 +1072,21 @@ private:
 
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasTableView> CreateTableView(
-    const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasUIElementFactory::CreateWithID<UltraCanvasTableView>(id, identifier, id, x, y, w, h);
+    const std::string& identifier, long x, long y, long w, long h) {
+    return UltraCanvasUIElementFactory::Create<UltraCanvasTableView>(identifier, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasTableView> CreateTableView(
-    const std::string& identifier, long id, const Rect2D& bounds) {
-    return CreateTableView(identifier, id, static_cast<long>(bounds.x), static_cast<long>(bounds.y),
+    const std::string& identifier, const Rect2D& bounds) {
+    return CreateTableView(identifier, static_cast<long>(bounds.x), static_cast<long>(bounds.y),
                           static_cast<long>(bounds.width), static_cast<long>(bounds.height));
 }
 
 // ===== CONVENIENCE FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasTableView> CreateTableWithData(
-    const std::string& identifier, long id, long x, long y, long w, long h,
+    const std::string& identifier, long x, long y, long w, long h,
     const std::vector<std::string>& headers, const std::vector<std::vector<std::string>>& data) {
-    auto table = CreateTableView(identifier, id, x, y, w, h);
+    auto table = CreateTableView(identifier, x, y, w, h);
     table->SetTableData(headers, data);
     return table;
 }

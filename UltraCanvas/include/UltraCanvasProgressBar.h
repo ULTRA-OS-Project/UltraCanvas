@@ -109,8 +109,8 @@ public:
     std::function<void()> onCompleted;
     std::function<std::string(float)> onFormatText;  // Custom text formatting
     
-    UltraCanvasProgressBar(const std::string& elementId, long uniqueId, long posX, long posY, long w, long h)
-        : UltraCanvasUIElement(elementId, uniqueId, posX, posY, w, h) {
+    UltraCanvasProgressBar(const std::string& elementId, long posX, long posY, long w, long h)
+        : UltraCanvasUIElement(elementId, posX, posY, w, h) {
         
         // Auto-detect orientation based on dimensions
         if (w < h) {
@@ -708,29 +708,29 @@ private:
 
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasProgressBar> CreateProgressBar(
-    const std::string& id, long uid, long x, long y, long width, long height) {
-    return std::make_shared<UltraCanvasProgressBar>(id, uid, x, y, width, height);
+    const std::string& id, long x, long y, long width, long height) {
+    return std::make_shared<UltraCanvasProgressBar>(id, x, y, width, height);
 }
 
 inline std::shared_ptr<UltraCanvasProgressBar> CreateHorizontalProgressBar(
-    const std::string& id, long uid, long x, long y, long width, long height, float min = 0.0f, float max = 1.0f) {
-    auto progressBar = std::make_shared<UltraCanvasProgressBar>(id, uid, x, y, width, height);
+    const std::string& id, long x, long y, long width, long height, float min = 0.0f, float max = 1.0f) {
+    auto progressBar = std::make_shared<UltraCanvasProgressBar>(id, x, y, width, height);
     progressBar->SetOrientation(ProgressOrientation::Horizontal);
     progressBar->SetRange(min, max);
     return progressBar;
 }
 
 inline std::shared_ptr<UltraCanvasProgressBar> CreateVerticalProgressBar(
-    const std::string& id, long uid, long x, long y, long width, long height, float min = 0.0f, float max = 1.0f) {
-    auto progressBar = std::make_shared<UltraCanvasProgressBar>(id, uid, x, y, width, height);
+    const std::string& id, long x, long y, long width, long height, float min = 0.0f, float max = 1.0f) {
+    auto progressBar = std::make_shared<UltraCanvasProgressBar>(id, x, y, width, height);
     progressBar->SetOrientation(ProgressOrientation::Vertical);
     progressBar->SetRange(min, max);
     return progressBar;
 }
 
 inline std::shared_ptr<UltraCanvasProgressBar> CreateCircularProgressBar(
-    const std::string& id, long uid, long x, long y, long size, float min = 0.0f, float max = 1.0f) {
-    auto progressBar = std::make_shared<UltraCanvasProgressBar>(id, uid, x, y, size, size);
+    const std::string& id, long x, long y, long size, float min = 0.0f, float max = 1.0f) {
+    auto progressBar = std::make_shared<UltraCanvasProgressBar>(id, x, y, size, size);
     progressBar->SetStyle(ProgressBarStyle::Circular);
     progressBar->SetRange(min, max);
     return progressBar;

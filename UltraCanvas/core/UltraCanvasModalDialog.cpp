@@ -54,7 +54,7 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::CreateContentSection() {
         // Create content container
         contentSection = std::make_shared<UltraCanvasContainer>(
-                "ContentSection", 100, 0, 0, 0, 0);
+                "ContentSection", 0, 0, 0, 0);
         contentSection->SetBackgroundColor(dialogConfig.backgroundColor);
         contentSection->SetPadding(static_cast<int>(style.padding));
 
@@ -65,7 +65,7 @@ namespace UltraCanvas {
         // ===== ICON CONTAINER =====
         if (dialogConfig.dialogType != DialogType::Custom) {
             iconContainer = std::make_shared<UltraCanvasContainer>(
-                    "IconContainer", 110, 0, 0,
+                    "IconContainer", 0, 0,
                     static_cast<long>(style.iconSize), static_cast<long>(style.iconSize));
             iconContainer->SetBackgroundColor(GetTypeColor());
 
@@ -91,7 +91,7 @@ namespace UltraCanvas {
 
         // ===== MESSAGE CONTAINER =====
         messageContainer = std::make_shared<UltraCanvasContainer>(
-                "MessageContainer", 120, 0, 0, 0, 0);
+                "MessageContainer", 0, 0, 0, 0);
 
         auto messageLayout = CreateVBoxLayout(messageContainer.get());
         messageLayout->SetSpacing(static_cast<int>(style.sectionSpacing / 2));
@@ -128,7 +128,7 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::CreateFooterSection() {
         // Create footer container with fixed height for buttons
         footerSection = std::make_shared<UltraCanvasContainer>(
-                "FooterSection", 200, 0, 0, 0, static_cast<long>(style.buttonAreaHeight));
+                "FooterSection", 0, 0, 0, static_cast<long>(style.buttonAreaHeight));
         footerSection->SetBackgroundColor(dialogConfig.backgroundColor);
         footerSection->SetPadding(static_cast<int>(style.padding), static_cast<int>(style.padding / 2));
 
@@ -157,7 +157,7 @@ namespace UltraCanvas {
 
         auto addButton = [this](DialogButton btn, const std::string& text) {
             auto button = std::make_shared<UltraCanvasButton>(
-                    fmt::format("DialogBtn_{}", static_cast<int>(btn)), 0, 0, 0,
+                    fmt::format("DialogBtn_{}", static_cast<int>(btn)), 0, 0,
                     static_cast<long>(style.buttonWidth), static_cast<long>(style.buttonHeight));
             button->SetText(text);
             dialogButtons.push_back(button);
@@ -490,7 +490,7 @@ namespace UltraCanvas {
     void UltraCanvasModalDialog::AddCustomButton(const std::string& text, DialogResult buttonResult,
                                                  std::function<void()> callback) {
         auto button = std::make_shared<UltraCanvasButton>(
-                "DialogBtn_Custom_" + text, 1000 + static_cast<long>(dialogButtons.size()), 0, 0,
+                "DialogBtn_Custom_" + text, 0, 0,
                 static_cast<long>(style.buttonWidth), static_cast<long>(style.buttonHeight));
         button->SetText(text);
         button->onClick = [this, buttonResult, callback]() {
@@ -572,7 +572,7 @@ namespace UltraCanvas {
         inputLabel->SetAutoResize(true);
 
         // Create text input
-        textInput = std::make_shared<UltraCanvasTextInput>("InputField", 2001, 0, 0, 300, 25);
+        textInput = std::make_shared<UltraCanvasTextInput>("InputField", 0, 0, 300, 25);
         textInput->SetText(inputConfig.defaultValue);
         textInput->SetPlaceholder(inputConfig.inputPlaceholder);
         inputValue = inputConfig.defaultValue;

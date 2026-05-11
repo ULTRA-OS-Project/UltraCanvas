@@ -15,7 +15,7 @@
 
 namespace UltraCanvas {
     UltraCanvasWindowBase::UltraCanvasWindowBase()
-            : UltraCanvasContainer("Window", 0, 0, 0, 0, 0) {
+            : UltraCanvasContainer("Window", 0, 0, 0, 0) {
         // Configure container for window behavior
         visible = false;
         window = this;

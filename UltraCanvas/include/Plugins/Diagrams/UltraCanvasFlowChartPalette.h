@@ -32,7 +32,7 @@ private:
     std::shared_ptr<UltraCanvasButton> currentSelectedButton;
 
 public:
-    UltraCanvasFlowChartPalette(const std::string& id, long uid, int x, int y, int width, int height);
+    UltraCanvasFlowChartPalette(const std::string& id, int x, int y, int width, int height);
     
     void SetTargetDiagram(std::shared_ptr<UltraCanvasFlowChart> diagram);
     void BuildPalette();
@@ -45,8 +45,8 @@ private:
 };
 
 inline std::shared_ptr<UltraCanvasFlowChartPalette> CreateFlowChartPalette(
-        const std::string& id, long uid, int x, int y, int width, int height) {
-    return std::make_shared<UltraCanvasFlowChartPalette>(id, uid, x, y, width, height);
+        const std::string& id, int x, int y, int width, int height) {
+    return std::make_shared<UltraCanvasFlowChartPalette>(id, x, y, width, height);
 }
 
 } // namespace UltraCanvas

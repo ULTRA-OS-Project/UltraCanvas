@@ -86,7 +86,7 @@ public:
         if (!mainWindow) return;
         
         // Text input area
-        textInput = CreateTextInput("textInput", 2001, 20, 80, 760, 200);
+        textInput = CreateTextInput("textInput", 20, 80, 760, 200);
         textInput->SetInputType(TextInputType::Multiline);
         textInput->SetText("Welcome to the UltraCanvas Modular Clipboard System!\n\n"
                           "This demonstrates the new architecture where:\n"
@@ -112,7 +112,7 @@ public:
         if (!mainWindow) return;
         
         // Copy button - uses the new modular system
-        copyButton = CreateButton("copyBtn", 2002, 20, 300, 150, 30, "Copy to Clipboard");
+        copyButton = CreateButton("copyBtn", 20, 300, 150, 30, "Copy to Clipboard");
         copyButton->onClick = [this]() {
             if (textInput) {
                 std::string text = textInput->GetText();
@@ -129,7 +129,7 @@ public:
         mainWindow->AddElement(copyButton);
         
         // Paste button - uses the new modular system
-        pasteButton = CreateButton("pasteBtn", 2003, 200, 300, 150, 30, "Paste from Clipboard");
+        pasteButton = CreateButton("pasteBtn", 200, 300, 150, 30, "Paste from Clipboard");
         pasteButton->onClick = [this]() {
             std::string clipboardText;
             if (GetClipboardText(clipboardText)) {
@@ -144,7 +144,7 @@ public:
         mainWindow->AddElement(pasteButton);
         
         // Show clipboard history button
-        showClipboardButton = CreateButton("showClipboardBtn", 2004, 380, 300, 180, 30, "Show Clipboard History");
+        showClipboardButton = CreateButton("showClipboardBtn", 380, 300, 180, 30, "Show Clipboard History");
         showClipboardButton->onClick = [this]() {
             ShowClipboard();
             debugOutput << "📋 Clipboard history window opened" << std::endl;
@@ -152,7 +152,7 @@ public:
         mainWindow->AddElement(showClipboardButton);
         
         // Add entry button - demonstrates programmatic addition
-        auto addEntryButton = CreateButton("addEntryBtn", 2005, 580, 300, 150, 30, "Add Sample Entry");
+        auto addEntryButton = CreateButton("addEntryBtn", 580, 300, 150, 30, "Add Sample Entry");
         addEntryButton->onClick = [this]() {
             ClipboardData sampleEntry(ClipboardDataType::Text, "Sample programmatically added entry");
             AddClipboardEntry(sampleEntry);

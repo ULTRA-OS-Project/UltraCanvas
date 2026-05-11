@@ -6,9 +6,9 @@
 
 namespace UltraCanvas {
 
-UltraCanvasFlowChartPalette::UltraCanvasFlowChartPalette(const std::string& id, long uid,
+UltraCanvasFlowChartPalette::UltraCanvasFlowChartPalette(const std::string& id,
                                                          int x, int y, int width, int height)
-    : UltraCanvasContainer(id, uid, x, y, width, height) {
+    : UltraCanvasContainer(id, x, y, width, height) {
     SetBackgroundColor(backgroundColor);
 }
 
@@ -20,7 +20,7 @@ void UltraCanvasFlowChartPalette::BuildPalette() {
     shapeButtons.clear();
     ClearChildren();
     
-    auto title = std::make_shared<UltraCanvasLabel>("paletteTitle", 9000, 10, 10, 
+    auto title = std::make_shared<UltraCanvasLabel>("paletteTitle", 10, 10, 
                                                     bounds.width - 20, 25);
     title->SetText("Shapes");
     title->SetFont("Arial", 14.0f, FontWeight::Bold);
@@ -30,7 +30,7 @@ void UltraCanvasFlowChartPalette::BuildPalette() {
     int yPos = 45;
     int row = 0;
     
-    auto basicLabel = std::make_shared<UltraCanvasLabel>("basicLabel", 9001, 10, yPos, 
+    auto basicLabel = std::make_shared<UltraCanvasLabel>("basicLabel", 10, yPos, 
                                                            bounds.width - 20, 20);
     basicLabel->SetText("Basic");
     basicLabel->SetFontSize(11.0f);
@@ -47,7 +47,7 @@ void UltraCanvasFlowChartPalette::BuildPalette() {
     yPos += row * 50 + 15;
     row = 0;
     
-    auto flowLabel = std::make_shared<UltraCanvasLabel>("flowLabel", 9002, 10, yPos, 
+    auto flowLabel = std::make_shared<UltraCanvasLabel>("flowLabel", 10, yPos, 
                                                           bounds.width - 20, 20);
     flowLabel->SetText("Flowchart");
     flowLabel->SetFontSize(11.0f);
@@ -72,7 +72,6 @@ void UltraCanvasFlowChartPalette::CreateShapeButton(FlowChartShape shape, const 
     
     auto button = std::make_shared<UltraCanvasButton>(
         "shape_" + std::to_string(static_cast<int>(shape)),
-        9100 + static_cast<int>(shape),
         10, yPos, buttonWidth, buttonHeight
     );
     

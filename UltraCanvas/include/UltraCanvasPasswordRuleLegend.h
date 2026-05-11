@@ -76,7 +76,7 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasPasswordRuleLegend(const std::string& id, long uid, int x, int y, int w, int h);
+        UltraCanvasPasswordRuleLegend(const std::string& id, int x, int y, int w, int h);
 
         virtual ~UltraCanvasPasswordRuleLegend() = default;
 
@@ -145,17 +145,17 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasPasswordRuleLegend> CreatePasswordRuleLegend(
-            const std::string& id, long uid, int x, int y, int w, int h,
+            const std::string& id, int x, int y, int w, int h,
             LegendStyle style = LegendStyle::Checklist) {
 
-        auto legend = std::make_shared<UltraCanvasPasswordRuleLegend>(id, uid, x, y, w, h);
+        auto legend = std::make_shared<UltraCanvasPasswordRuleLegend>(id, x, y, w, h);
         legend->SetStyle(style);
         return legend;
     }
 
     inline std::shared_ptr<UltraCanvasPasswordRuleLegend> CreateChecklistLegend(
-            const std::string& id, long uid, int x, int y, int w, int h) {
-        return CreatePasswordRuleLegend(id, uid, x, y, w, h, LegendStyle::Checklist);
+            const std::string& id, int x, int y, int w, int h) {
+        return CreatePasswordRuleLegend(id, x, y, w, h, LegendStyle::Checklist);
     }
 
 } // namespace UltraCanvas

@@ -190,7 +190,7 @@ namespace UltraCanvas {
  * - Font size adjustment
  *
  * @example
- * auto editor = CreateTextEditor("MyEditor", 1, 0, 0, 1024, 768);
+ * auto editor = CreateTextEditor("MyEditor", 0, 0, 1024, 768);
  * editor->OpenFile("/path/to/file.cpp");
  * window->AddChild(editor);
  */

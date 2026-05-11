@@ -188,7 +188,7 @@ namespace UltraCanvas {
         void RenderPlaceholder(IRenderContext* ctx, const std::string& message);
 
     public:
-        UltraCanvasCDRElement(const std::string& identifier, long id,
+        UltraCanvasCDRElement(const std::string& identifier,
                               int x, int y, int width, int height);
         ~UltraCanvasCDRElement() override = default;
 
@@ -250,16 +250,16 @@ namespace UltraCanvas {
 
 // ===== CONVENIENCE FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasCDRElement> CreateCDRElement(
-            const std::string& identifier, long id,
+            const std::string& identifier,
             int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasCDRElement>(identifier, id, x, y, width, height);
+        return std::make_shared<UltraCanvasCDRElement>(identifier, x, y, width, height);
     }
 
     inline std::shared_ptr<UltraCanvasCDRElement> LoadCDRFromFile(
-            const std::string& identifier, long id,
+            const std::string& identifier,
             int x, int y, int width, int height,
             const std::string& filePath) {
-        auto element = CreateCDRElement(identifier, id, x, y, width, height);
+        auto element = CreateCDRElement(identifier, x, y, width, height);
         if (element->LoadFromFile(filePath)) {
             return element;
         }

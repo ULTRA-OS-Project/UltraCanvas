@@ -16,15 +16,15 @@
 namespace UltraCanvas {
 
 // Helper function to create section separator
-    std::shared_ptr<UltraCanvasContainer> CreateAutoCompleteSeparator(long id, long x, long y, long width) {
-        auto separator = std::make_shared<UltraCanvasContainer>("ACSep" + std::to_string(id), id, x, y, width, 2);
+    std::shared_ptr<UltraCanvasContainer> CreateAutoCompleteSeparator(long x, long y, long width) {
+        auto separator = std::make_shared<UltraCanvasContainer>("ACSep" + std::to_string(x), x, y, width, 2);
         separator->SetBackgroundColor(Color(200, 200, 200, 255));
         return separator;
     }
 
 // Helper function to create section title
-    std::shared_ptr<UltraCanvasLabel> CreateAutoCompleteSectionTitle(long id, long x, long y, const std::string& text) {
-        auto title = std::make_shared<UltraCanvasLabel>("ACSecTitle" + std::to_string(id), id, x, y, 400, 25);
+    std::shared_ptr<UltraCanvasLabel> CreateAutoCompleteSectionTitle(long x, long y, const std::string& text) {
+        auto title = std::make_shared<UltraCanvasLabel>("ACSecTitle" + std::to_string(x), x, y, 400, 25);
         title->SetText(text);
         title->SetFontSize(14);
         title->SetFontWeight(FontWeight::Bold);
@@ -33,14 +33,14 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAutoCompleteExamples() {
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("AutoCompleteExamples", 800, 0, 0, 1020, 1400);
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("AutoCompleteExamples", 0, 0, 1020, 1400);
         mainContainer->SetBackgroundColor(Colors::White);
         mainContainer->SetPadding(0, 0, 10, 0);
 
         long currentY = 10;
 
         // ===== MAIN TITLE =====
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("ACMainTitle", 801, 20, currentY, 900, 30);
+        auto mainTitle = std::make_shared<UltraCanvasLabel>("ACMainTitle", 20, currentY, 900, 30);
         mainTitle->SetText("UltraCanvas AutoComplete Component Examples");
         mainTitle->SetFontSize(18);
         mainTitle->SetFontWeight(FontWeight::Bold);
@@ -49,7 +49,7 @@ namespace UltraCanvas {
         currentY += 40;
 
         // Description
-        auto description = std::make_shared<UltraCanvasLabel>("ACDesc", 802, 20, currentY, 960, 40);
+        auto description = std::make_shared<UltraCanvasLabel>("ACDesc", 20, currentY, 960, 40);
         description->SetText("AutoComplete examples showcasing static items, dynamic providers, scrollable lists, and event handling");
         description->SetWrap(TextWrap::WrapWord);
         description->SetTextColor(Color(80, 80, 80, 255));
@@ -58,11 +58,11 @@ namespace UltraCanvas {
         currentY += 30;
 
         // ===== SECTION 1: BASIC AUTOCOMPLETE =====
-        mainContainer->AddChild(CreateAutoCompleteSectionTitle(810, 20, currentY, "Basic AutoComplete"));
+        mainContainer->AddChild(CreateAutoCompleteSectionTitle(20, currentY, "Basic AutoComplete"));
         currentY += 35;
 
         // Fruit autocomplete
-        auto fruitAC = CreateAutoComplete("FruitAC", 811, 30, currentY, 250);
+        auto fruitAC = CreateAutoComplete("FruitAC", 30, currentY, 250);
         fruitAC->SetPlaceholder("Type a fruit name...");
         fruitAC->AddItem("Apple", "apple");
         fruitAC->AddItem("Apricot", "apricot");
@@ -80,7 +80,7 @@ namespace UltraCanvas {
         fruitAC->AddItem("Watermelon", "watermelon");
         fruitAC->SetMinCharsToTrigger(0);
 
-        auto fruitStatusLabel = std::make_shared<UltraCanvasLabel>("FruitACStatus", 812, 300, currentY + 5, 400, 20);
+        auto fruitStatusLabel = std::make_shared<UltraCanvasLabel>("FruitACStatus", 300, currentY + 5, 400, 20);
         fruitStatusLabel->SetText("Type to search fruits...");
         fruitStatusLabel->SetFontSize(12);
         fruitStatusLabel->SetTextColor(Color(0, 100, 0, 255));
@@ -90,7 +90,7 @@ namespace UltraCanvas {
             debugOutput << "Fruit selected: " << item.text << " (" << item.value << ")" << std::endl;
         };
 
-        auto fruitLabel = std::make_shared<UltraCanvasLabel>("FruitACLabel", 813, 300, currentY + 25, 400, 20);
+        auto fruitLabel = std::make_shared<UltraCanvasLabel>("FruitACLabel", 300, currentY + 25, 400, 20);
         fruitLabel->SetText("Static list of 14 fruits with substring matching");
         fruitLabel->SetFontSize(11);
         fruitLabel->SetTextColor(Color(100, 100, 100, 255));
@@ -100,14 +100,14 @@ namespace UltraCanvas {
         mainContainer->AddChild(fruitLabel);
 
         currentY += 55;
-        mainContainer->AddChild(CreateAutoCompleteSeparator(814, 20, currentY, 960));
+        mainContainer->AddChild(CreateAutoCompleteSeparator(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 2: COUNTRY AUTOCOMPLETE =====
-        mainContainer->AddChild(CreateAutoCompleteSectionTitle(820, 20, currentY, "Country Selection"));
+        mainContainer->AddChild(CreateAutoCompleteSectionTitle(20, currentY, "Country Selection"));
         currentY += 35;
 
-        auto countryAC = CreateAutoComplete("CountryAC", 821, 30, currentY, 280);
+        auto countryAC = CreateAutoComplete("CountryAC", 30, currentY, 280);
         countryAC->SetPlaceholder("Search countries...");
         countryAC->AddItem("Argentina", "AR");
         countryAC->AddItem("Australia", "AU");
@@ -135,7 +135,7 @@ namespace UltraCanvas {
         countryAC->AddItem("United Kingdom", "GB");
         countryAC->AddItem("United States", "US");
 
-        auto countryStatusLabel = std::make_shared<UltraCanvasLabel>("CountryACStatus", 822, 330, currentY + 5, 400, 20);
+        auto countryStatusLabel = std::make_shared<UltraCanvasLabel>("CountryACStatus", 330, currentY + 5, 400, 20);
         countryStatusLabel->SetText("Type to search countries...");
         countryStatusLabel->SetFontSize(12);
         countryStatusLabel->SetTextColor(Color(0, 100, 0, 255));
@@ -149,17 +149,17 @@ namespace UltraCanvas {
         mainContainer->AddChild(countryStatusLabel);
 
         currentY += 55;
-        mainContainer->AddChild(CreateAutoCompleteSeparator(823, 20, currentY, 960));
+        mainContainer->AddChild(CreateAutoCompleteSeparator(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 3: DYNAMIC PROVIDER =====
-        mainContainer->AddChild(CreateAutoCompleteSectionTitle(830, 20, currentY, "Dynamic Suggestion Provider"));
+        mainContainer->AddChild(CreateAutoCompleteSectionTitle(20, currentY, "Dynamic Suggestion Provider"));
         currentY += 35;
 
-        auto dynamicAC = CreateAutoComplete("DynamicAC", 831, 30, currentY, 280);
+        auto dynamicAC = CreateAutoComplete("DynamicAC", 30, currentY, 280);
         dynamicAC->SetPlaceholder("Search programming topics...");
 
-        auto dynamicStatusLabel = std::make_shared<UltraCanvasLabel>("DynamicACStatus", 832, 330, currentY + 5, 500, 40);
+        auto dynamicStatusLabel = std::make_shared<UltraCanvasLabel>("DynamicACStatus", 330, currentY + 5, 500, 40);
         dynamicStatusLabel->SetText("Uses onRequestSuggestions callback to generate results dynamically");
         dynamicStatusLabel->SetWrap(TextWrap::WrapWord);
         dynamicStatusLabel->SetFontSize(12);
@@ -217,14 +217,14 @@ namespace UltraCanvas {
         mainContainer->AddChild(dynamicStatusLabel);
 
         currentY += 65;
-        mainContainer->AddChild(CreateAutoCompleteSeparator(833, 20, currentY, 960));
+        mainContainer->AddChild(CreateAutoCompleteSeparator(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 4: LARGE LIST WITH SCROLLBAR =====
-        mainContainer->AddChild(CreateAutoCompleteSectionTitle(840, 20, currentY, "Large List (US States - 50 items)"));
+        mainContainer->AddChild(CreateAutoCompleteSectionTitle(20, currentY, "Large List (US States - 50 items)"));
         currentY += 35;
 
-        auto statesAC = CreateAutoComplete("StatesAC", 841, 30, currentY, 280);
+        auto statesAC = CreateAutoComplete("StatesAC", 30, currentY, 280);
         statesAC->SetPlaceholder("Search US states...");
 
         // All 50 US states
@@ -279,7 +279,7 @@ namespace UltraCanvas {
         statesAC->AddItem("Wisconsin", "WI");
         statesAC->AddItem("Wyoming", "WY");
 
-        auto statesStatusLabel = std::make_shared<UltraCanvasLabel>("StatesACStatus", 842, 330, currentY + 5, 400, 20);
+        auto statesStatusLabel = std::make_shared<UltraCanvasLabel>("StatesACStatus", 330, currentY + 5, 400, 20);
         statesStatusLabel->SetText("50 items - scrollbar appears automatically");
         statesStatusLabel->SetFontSize(12);
         statesStatusLabel->SetTextColor(Color(0, 100, 0, 255));
@@ -293,14 +293,14 @@ namespace UltraCanvas {
         mainContainer->AddChild(statesStatusLabel);
 
         currentY += 55;
-        mainContainer->AddChild(CreateAutoCompleteSeparator(843, 20, currentY, 960));
+        mainContainer->AddChild(CreateAutoCompleteSeparator(20, currentY, 960));
         currentY += 20;
 
         // ===== SECTION 5: INTERACTIVE DEMO =====
-        mainContainer->AddChild(CreateAutoCompleteSectionTitle(850, 20, currentY, "Interactive Event Demo"));
+        mainContainer->AddChild(CreateAutoCompleteSectionTitle(20, currentY, "Interactive Event Demo"));
         currentY += 35;
 
-        auto interactiveAC = CreateAutoComplete("InteractiveAC", 851, 30, currentY, 250);
+        auto interactiveAC = CreateAutoComplete("InteractiveAC", 30, currentY, 250);
         interactiveAC->SetPlaceholder("Type anything...");
         interactiveAC->AddItem("Alpha", "a");
         interactiveAC->AddItem("Beta", "b");
@@ -311,7 +311,7 @@ namespace UltraCanvas {
         interactiveAC->AddItem("Eta", "h");
         interactiveAC->AddItem("Theta", "t");
 
-        auto eventLog = std::make_shared<UltraCanvasLabel>("ACEventLog", 852, 300, currentY, 500, 80);
+        auto eventLog = std::make_shared<UltraCanvasLabel>("ACEventLog", 300, currentY, 500, 80);
         eventLog->SetText("Event log: No events yet");
         eventLog->SetWrap(TextWrap::WrapWord);
         eventLog->SetFontSize(11);

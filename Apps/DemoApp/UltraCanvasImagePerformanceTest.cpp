@@ -24,13 +24,13 @@ namespace UltraCanvas {
 // ===== IMAGE PERFORMANCE TEST SCREEN =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateImagePerformanceTest() {
         // Main container
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("ImagePerfTestMain", 9000, 0, 0, 1000, 810);
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("ImagePerfTestMain", 0, 0, 1000, 810);
         mainContainer->SetBackgroundColor(Color(255, 255, 255, 255));
 
         int currentY = 10;
 
         // ===== TITLE =====
-        auto title = std::make_shared<UltraCanvasLabel>("PerfTestTitle", 9001, 20, currentY, 600, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("PerfTestTitle", 20, currentY, 600, 35);
         title->SetText("Image Performance Test");
         title->SetFontSize(20);
         title->SetFontWeight(FontWeight::Bold);
@@ -39,7 +39,7 @@ namespace UltraCanvas {
         currentY += 45;
 
         // ===== DESCRIPTION =====
-        auto description = std::make_shared<UltraCanvasLabel>("PerfTestDesc", 9002, 20, currentY, 940, 50);
+        auto description = std::make_shared<UltraCanvasLabel>("PerfTestDesc", 20, currentY, 940, 50);
         description->SetText(
                 "Measure image decompression and rendering performance. Select an image and test mode, "
                 "then click 'Start Test' to run a 10-second benchmark counting how many times the image can be processed.");
@@ -50,7 +50,7 @@ namespace UltraCanvas {
         currentY += 60;
 
         // ===== CONTROLS SECTION =====
-        auto controlsContainer = std::make_shared<UltraCanvasContainer>("PerfControls", 9010, 20, currentY, 940, 50);
+        auto controlsContainer = std::make_shared<UltraCanvasContainer>("PerfControls", 20, currentY, 940, 50);
         controlsContainer->SetBackgroundColor(Color(245, 248, 252, 255));
         controlsContainer->SetBorders(1.0f, Color(200, 210, 220, 255));
         controlsContainer->SetPadding(0,0,0,5);
@@ -59,13 +59,13 @@ namespace UltraCanvas {
         controlsLayout->SetDefaultCrossAxisAlignment(LayoutAlignment::Center);
 
         // Image Selection Dropdown
-        auto imageLabel = std::make_shared<UltraCanvasLabel>("ImageLabel", 9011, 10, 15, 50, 20);
+        auto imageLabel = std::make_shared<UltraCanvasLabel>("ImageLabel", 10, 15, 50, 20);
         imageLabel->SetText("Image:");
         imageLabel->SetFontSize(12);
         imageLabel->SetAutoResize(true);
         controlsLayout->AddUIElement(imageLabel);
 
-        auto imageDropdown = std::make_shared<UltraCanvasDropdown>("ImageDropdown", 9012, 65, 10, 240, 30);
+        auto imageDropdown = std::make_shared<UltraCanvasDropdown>("ImageDropdown", 65, 10, 240, 30);
         imageDropdown->AddItem("PNG sample (350Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.png"));
         imageDropdown->AddItem("JPEG sample (74Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.jpg"));
         imageDropdown->AddItem("GIF sample (85Kb)", NormalizePath(GetResourcesDir() + "media/images/dice.gif"));
@@ -89,13 +89,13 @@ namespace UltraCanvas {
         controlsLayout->AddSpacing(5);
 
         // Test Mode Dropdown
-        auto modeLabel = std::make_shared<UltraCanvasLabel>("ModeLabel", 9013, 280, 15, 80, 20);
+        auto modeLabel = std::make_shared<UltraCanvasLabel>("ModeLabel", 280, 15, 80, 20);
         modeLabel->SetText("Test Mode:");
         modeLabel->SetFontSize(12);
         modeLabel->SetAutoResize(true);
         controlsLayout->AddUIElement(modeLabel);
 
-        auto modeDropdown = std::make_shared<UltraCanvasDropdown>("ModeDropdown", 9014, 365, 10, 250, 30);
+        auto modeDropdown = std::make_shared<UltraCanvasDropdown>("ModeDropdown", 365, 10, 250, 30);
         modeDropdown->AddItem("Load, Decompress, Draw", "full");
         modeDropdown->AddItem("Decompress, Draw", "decompress_draw");
         modeDropdown->AddItem("Draw cached pixmap only", "draw_only");
@@ -104,12 +104,12 @@ namespace UltraCanvas {
         controlsLayout->AddSpacing(5);
 
         // Start Test Button
-        auto startButton = std::make_shared<UltraCanvasButton>("StartTestBtn", 9015, 590, 10, 120, 30);
+        auto startButton = std::make_shared<UltraCanvasButton>("StartTestBtn", 590, 10, 120, 30);
         startButton->SetText("Start Test");
         controlsLayout->AddUIElement(startButton);
 
         // Stop Test Button (initially hidden/disabled)
-//        auto stopButton = std::make_shared<UltraCanvasButton>("StopTestBtn", 9016, 720, 10, 100, 30);
+//        auto stopButton = std::make_shared<UltraCanvasButton>("StopTestBtn", 720, 10, 100, 30);
 //        stopButton->SetText("Stop");
 //        stopButton->SetEnabled(false);
 //        controlsContainer->AddChild(stopButton);
@@ -118,11 +118,11 @@ namespace UltraCanvas {
         currentY += 60;
 
         // ===== IMAGE DISPLAY AREA =====
-        auto imageContainer = std::make_shared<UltraCanvasContainer>("ImageDisplayArea", 9020, 20, currentY, 500, 400);
+        auto imageContainer = std::make_shared<UltraCanvasContainer>("ImageDisplayArea", 20, currentY, 500, 400);
         imageContainer->SetBackgroundColor(Color(240, 240, 240, 255));
         imageContainer->SetBorders(2.0f, Color(180, 190, 200, 255));
 
-        auto imageElement = std::make_shared<UltraCanvasImageElement>("PerfTestImage", 9021, 10, 10, 480, 380);
+        auto imageElement = std::make_shared<UltraCanvasImageElement>("PerfTestImage", 10, 10, 480, 380);
         imageElement->SetFitMode(ImageFitMode::ScaleDown);
         imageElement->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/dice.png"));
         imageContainer->AddChild(imageElement);
@@ -130,12 +130,12 @@ namespace UltraCanvas {
         mainContainer->AddChild(imageContainer);
 
         // ===== RESULTS PANEL =====
-        auto resultsContainer = std::make_shared<UltraCanvasContainer>("ResultsPanel", 9030, 540, currentY, 420, 400);
+        auto resultsContainer = std::make_shared<UltraCanvasContainer>("ResultsPanel", 540, currentY, 420, 400);
         resultsContainer->SetBackgroundColor(Color(250, 252, 255, 255));
         resultsContainer->SetBorders(2.0f, Color(180, 190, 200, 255));
 
         // Results Title
-        auto resultsTitle = std::make_shared<UltraCanvasLabel>("ResultsTitle", 9031, 15, 10, 200, 25);
+        auto resultsTitle = std::make_shared<UltraCanvasLabel>("ResultsTitle", 15, 10, 200, 25);
         resultsTitle->SetText("Test Results");
         resultsTitle->SetFontSize(16);
         resultsTitle->SetFontWeight(FontWeight::Bold);
@@ -143,21 +143,21 @@ namespace UltraCanvas {
         resultsContainer->AddChild(resultsTitle);
 
         // Status Label
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 9032, 15, 45, 390, 25);
+        auto statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel", 15, 45, 390, 25);
         statusLabel->SetText("Status: Ready");
         statusLabel->SetFontSize(13);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
         resultsContainer->AddChild(statusLabel);
 
         // Progress Label
-        auto progressLabel = std::make_shared<UltraCanvasLabel>("ProgressLabel", 9033, 15, 75, 390, 25);
+        auto progressLabel = std::make_shared<UltraCanvasLabel>("ProgressLabel", 15, 75, 390, 25);
         progressLabel->SetText("Progress: 0 / 10 seconds");
         progressLabel->SetFontSize(13);
         progressLabel->SetTextColor(Color(60, 60, 60, 255));
         resultsContainer->AddChild(progressLabel);
 
         // Iteration Count Label
-        auto iterationLabel = std::make_shared<UltraCanvasLabel>("IterationLabel", 9034, 15, 110, 390, 30);
+        auto iterationLabel = std::make_shared<UltraCanvasLabel>("IterationLabel", 15, 110, 390, 30);
         iterationLabel->SetText("Iterations: 0");
         iterationLabel->SetFontSize(18);
         iterationLabel->SetFontWeight(FontWeight::Bold);
@@ -165,7 +165,7 @@ namespace UltraCanvas {
         resultsContainer->AddChild(iterationLabel);
 
         // Detailed Results
-        auto detailsLabel = std::make_shared<UltraCanvasLabel>("DetailsLabel", 9035, 10, 140, 395, 240);
+        auto detailsLabel = std::make_shared<UltraCanvasLabel>("DetailsLabel", 10, 140, 395, 240);
         detailsLabel->SetText(
                 "Detailed Results:\n"
                 "─────────────────────────\n"
@@ -186,7 +186,7 @@ namespace UltraCanvas {
         currentY += 410;
 
         // ===== TEST MODE DESCRIPTION =====
-        auto modeDescLabel = std::make_shared<UltraCanvasLabel>("ModeDescLabel", 9040, 20, currentY, 940, 140);
+        auto modeDescLabel = std::make_shared<UltraCanvasLabel>("ModeDescLabel", 20, currentY, 940, 140);
         modeDescLabel->SetText(
                 "Test Modes:\n"
                 "• Load, Decompress, Draw:  Loads image from disk, decompresses, and renders (tests I/O + CPU + GPU)\n"

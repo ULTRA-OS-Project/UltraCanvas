@@ -74,7 +74,7 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasPasswordStrengthMeter(const std::string& id, long uid, int x, int y, int w, int h);
+        UltraCanvasPasswordStrengthMeter(const std::string& id, int x, int y, int w, int h);
 
         virtual ~UltraCanvasPasswordStrengthMeter() = default;
 
@@ -138,22 +138,22 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasPasswordStrengthMeter> CreatePasswordStrengthMeter(
-            const std::string& id, long uid, int x, int y, int w, int h,
+            const std::string& id, int x, int y, int w, int h,
             StrengthMeterStyle style = StrengthMeterStyle::Bar) {
 
-        auto meter = std::make_shared<UltraCanvasPasswordStrengthMeter>(id, uid, x, y, w, h);
+        auto meter = std::make_shared<UltraCanvasPasswordStrengthMeter>(id, x, y, w, h);
         meter->SetStyle(style);
         return meter;
     }
 
     inline std::shared_ptr<UltraCanvasPasswordStrengthMeter> CreateBarStrengthMeter(
-            const std::string& id, long uid, int x, int y, int w, int h = 20) {
-        return CreatePasswordStrengthMeter(id, uid, x, y, w, h, StrengthMeterStyle::Bar);
+            const std::string& id, int x, int y, int w, int h = 20) {
+        return CreatePasswordStrengthMeter(id, x, y, w, h, StrengthMeterStyle::Bar);
     }
 
     inline std::shared_ptr<UltraCanvasPasswordStrengthMeter> CreateCircularStrengthMeter(
-            const std::string& id, long uid, int x, int y, int size = 80) {
-        return CreatePasswordStrengthMeter(id, uid, x, y, size, size, StrengthMeterStyle::Circular);
+            const std::string& id, int x, int y, int size = 80) {
+        return CreatePasswordStrengthMeter(id, x, y, size, size, StrengthMeterStyle::Circular);
     }
 
 } // namespace UltraCanvas

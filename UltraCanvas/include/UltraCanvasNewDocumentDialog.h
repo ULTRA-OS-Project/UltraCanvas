@@ -135,7 +135,7 @@ namespace UltraCanvas {
  */
     class UltraCanvasNewDocumentDialog : public UltraCanvasContainer {
     public:
-        UltraCanvasNewDocumentDialog(const std::string& identifier, long id,
+        UltraCanvasNewDocumentDialog(const std::string& identifier,
                                      int x, int y, int width = 500, int height = 450);
 
         virtual ~UltraCanvasNewDocumentDialog() = default;
@@ -250,7 +250,6 @@ namespace UltraCanvas {
  */
     std::shared_ptr<UltraCanvasNewDocumentDialog> CreateNewDocumentDialog(
             const std::string& identifier,
-            long id,
             int x = 100, int y = 100,
             int width = 500, int height = 450
     );
@@ -260,7 +259,6 @@ namespace UltraCanvas {
  */
     std::shared_ptr<UltraCanvasNewDocumentDialog> CreateProgrammingNewDocumentDialog(
             const std::string& identifier,
-            long id,
             int x = 100, int y = 100
     );
 

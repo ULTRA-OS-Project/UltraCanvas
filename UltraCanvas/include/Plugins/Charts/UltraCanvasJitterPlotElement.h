@@ -324,7 +324,7 @@ private:
 
 public:
     // ===== CONSTRUCTOR =====
-    UltraCanvasJitterPlotElement(const std::string& id, long uid, 
+    UltraCanvasJitterPlotElement(const std::string& id, 
                                   int x, int y, int width, int height);
     
     // ===== CONFIGURATION METHODS =====
@@ -481,16 +481,16 @@ private:
 // =============================================================================
 
 inline std::shared_ptr<UltraCanvasJitterPlotElement> CreateJitterPlotElement(
-        const std::string& id, long uid, int x, int y, int width, int height) {
-    return std::make_shared<UltraCanvasJitterPlotElement>(id, uid, x, y, width, height);
+        const std::string& id, int x, int y, int width, int height) {
+    return std::make_shared<UltraCanvasJitterPlotElement>(id, x, y, width, height);
 }
 
 // Helper factory for jitter plot with basic configuration
 inline std::shared_ptr<UltraCanvasJitterPlotElement> CreateJitterPlotWithCategories(
-        const std::string& id, long uid, int x, int y, int width, int height,
+        const std::string& id, int x, int y, int width, int height,
         const std::vector<std::string>& categories, const std::string& title = "") {
     
-    auto chart = CreateJitterPlotElement(id, uid, x, y, width, height);
+    auto chart = CreateJitterPlotElement(id, x, y, width, height);
     chart->SetCategories(categories);
     if (!title.empty()) {
         chart->SetChartTitle(title);

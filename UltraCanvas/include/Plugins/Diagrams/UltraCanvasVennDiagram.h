@@ -152,8 +152,8 @@ private:
     std::function<void(size_t, const VennRegion&)> onRegionClick;
 
 public:
-    UltraCanvasVennDiagramElement(const std::string& id, long uid, int x, int y, int width, int height)
-        : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+    UltraCanvasVennDiagramElement(const std::string& id, int x, int y, int width, int height)
+        : UltraCanvasChartElementBase(id, x, y, width, height) {
         enableZoom = true;
         enablePan = true;
         enableSelection = true;
@@ -252,8 +252,8 @@ private:
 // =============================================================================
 
 inline std::shared_ptr<UltraCanvasVennDiagramElement> CreateVennDiagram(
-    const std::string& id, long uid, int x, int y, int width, int height) {
-    return std::make_shared<UltraCanvasVennDiagramElement>(id, uid, x, y, width, height);
+    const std::string& id, int x, int y, int width, int height) {
+    return std::make_shared<UltraCanvasVennDiagramElement>(id, x, y, width, height);
 }
 
 } // namespace UltraCanvas

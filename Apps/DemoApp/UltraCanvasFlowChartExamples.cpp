@@ -121,22 +121,22 @@ const ColorPreset* PresetForLineColor(const Color& c) {
 // TAB 1: ORDER EXAMPLE - Pre-built chart, unchanged from 2.2.0
 // =============================================================================
 static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
-    auto container = std::make_shared<UltraCanvasContainer>("OrderExample", 100, 0, 0, 1400, 898);
+    auto container = std::make_shared<UltraCanvasContainer>("OrderExample", 0, 0, 1400, 898);
     container->SetBackgroundColor(Color(245, 247, 250, 255));
     
-    auto title = std::make_shared<UltraCanvasLabel>("Title", 2001, 30, 20, 1100, 35);
+    auto title = std::make_shared<UltraCanvasLabel>("Title", 30, 20, 1100, 35);
     title->SetText("Order Processing Flow Chart");
     title->SetFont("Arial", 22.0f, FontWeight::Bold);
     title->SetTextColor(Color(30, 30, 30, 255));
     container->AddChild(title);
     
-    auto desc = std::make_shared<UltraCanvasLabel>("Desc", 2002, 30, 58, 1100, 22);
+    auto desc = std::make_shared<UltraCanvasLabel>("Desc", 30, 58, 1100, 22);
     desc->SetText("Pre-built example. Click Select to move/connect, drag nodes to reposition.");
     desc->SetFontSize(13);
     desc->SetTextColor(Color(100, 100, 100, 255));
     container->AddChild(desc);
     
-    auto chart = CreateFlowChart("flowChart", 1001, 30, 95, 1130, 680);
+    auto chart = CreateFlowChart("flowChart", 30, 95, 1130, 680);
     chart->SetBackgroundColor(Color(255, 255, 255, 255));
     chart->SetGridVisible(true, 20.0f);
     chart->SetGridColor(Color(235, 235, 235, 255));
@@ -202,20 +202,20 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     
     int btnY = 800, btnX = 30, btnW = 110, btnH = 38, spacing = 15;
     
-    auto btnSelect = std::make_shared<UltraCanvasButton>("btnSelect", 4001, btnX, btnY, btnW, btnH);
+    auto btnSelect = std::make_shared<UltraCanvasButton>("btnSelect", btnX, btnY, btnW, btnH);
     btnSelect->SetText("Select");
     btnSelect->SetColors(Color(220, 235, 255, 255), Color(200, 225, 255, 255));
     btnSelect->SetOnClick([chart]() { chart->SetEditMode(UltraCanvasFlowChart::EditMode::Select); });
     container->AddChild(btnSelect);
     btnX += btnW + spacing;
     
-    auto btnConnect = std::make_shared<UltraCanvasButton>("btnConnect", 4002, btnX, btnY, btnW, btnH);
+    auto btnConnect = std::make_shared<UltraCanvasButton>("btnConnect", btnX, btnY, btnW, btnH);
     btnConnect->SetText("Connect");
     btnConnect->SetOnClick([chart]() { chart->SetEditMode(UltraCanvasFlowChart::EditMode::CreateConnection); });
     container->AddChild(btnConnect);
     btnX += btnW + spacing + 30;
     
-    auto btnZoomIn = std::make_shared<UltraCanvasButton>("btnZoomIn", 4004, btnX, btnY, 90, btnH);
+    auto btnZoomIn = std::make_shared<UltraCanvasButton>("btnZoomIn", btnX, btnY, 90, btnH);
     btnZoomIn->SetText("Zoom +");
     btnZoomIn->SetOnClick([chart]() {
         float z = chart->GetZoomLevel() * 1.2f;
@@ -224,7 +224,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     container->AddChild(btnZoomIn);
     btnX += 90 + spacing;
     
-    auto btnZoomOut = std::make_shared<UltraCanvasButton>("btnZoomOut", 4005, btnX, btnY, 90, btnH);
+    auto btnZoomOut = std::make_shared<UltraCanvasButton>("btnZoomOut", btnX, btnY, 90, btnH);
     btnZoomOut->SetText("Zoom -");
     btnZoomOut->SetOnClick([chart]() {
         float z = chart->GetZoomLevel() * 0.8f;
@@ -233,12 +233,12 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     container->AddChild(btnZoomOut);
     btnX += 90 + spacing;
     
-    auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 4006, btnX, btnY, 100, btnH);
+    auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", btnX, btnY, 100, btnH);
     btnReset->SetText("Reset View");
     btnReset->SetOnClick([chart]() { chart->SetZoomLevel(1.0f); chart->SetPanOffset(0, 0); });
     container->AddChild(btnReset);
     
-    auto chkGrid = std::make_shared<UltraCanvasCheckbox>("chkGrid", 5001, 30, 850, 130, 24);
+    auto chkGrid = std::make_shared<UltraCanvasCheckbox>("chkGrid", 30, 850, 130, 24);
     chkGrid->SetText("Show Grid");
     chkGrid->SetChecked(true);
     chkGrid->onStateChanged = [chart](CheckedState, CheckedState newState) {
@@ -246,7 +246,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     };
     container->AddChild(chkGrid);
     
-    auto chkSnap = std::make_shared<UltraCanvasCheckbox>("chkSnap", 5002, 175, 850, 150, 24);
+    auto chkSnap = std::make_shared<UltraCanvasCheckbox>("chkSnap", 175, 850, 150, 24);
     chkSnap->SetText("Snap to Grid");
     chkSnap->SetChecked(true);
     chkSnap->onStateChanged = [chart](CheckedState, CheckedState newState) {
@@ -254,35 +254,35 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     };
     container->AddChild(chkSnap);
     
-    auto instrPanel = std::make_shared<UltraCanvasContainer>("instrPanel", 6000, 1170, 200, 220, 300);
+    auto instrPanel = std::make_shared<UltraCanvasContainer>("instrPanel", 1170, 200, 220, 300);
     instrPanel->SetBackgroundColor(Color(255, 255, 255, 255));
     instrPanel->SetBorders(1.0f, Color(220, 220, 220, 255));
     
-    auto instrTitle = std::make_shared<UltraCanvasLabel>("instrTitle", 6001, 10, 10, 210, 25);
+    auto instrTitle = std::make_shared<UltraCanvasLabel>("instrTitle", 10, 10, 210, 25);
     instrTitle->SetText("How to Use");
     instrTitle->SetFont("Arial", 14.0f, FontWeight::Bold);
     instrTitle->SetTextColor(Color(40, 40, 40, 255));
     instrPanel->AddChild(instrTitle);
     
-    auto instr1 = std::make_shared<UltraCanvasLabel>("instr1", 6002, 10, 40, 210, 40);
+    auto instr1 = std::make_shared<UltraCanvasLabel>("instr1", 10, 40, 210, 40);
     instr1->SetText("1. Click 'Select' then drag\n   nodes to reposition.");
     instr1->SetFontSize(11.0f);
     instr1->SetTextColor(Color(80, 80, 80, 255));
     instrPanel->AddChild(instr1);
     
-    auto instr2 = std::make_shared<UltraCanvasLabel>("instr2", 6003, 10, 80, 210, 50);
+    auto instr2 = std::make_shared<UltraCanvasLabel>("instr2", 10, 80, 210, 50);
     instr2->SetText("2. Click 'Connect' then\n   click two nodes to\n   connect them.");
     instr2->SetFontSize(11.0f);
     instr2->SetTextColor(Color(80, 80, 80, 255));
     instrPanel->AddChild(instr2);
     
-    auto instr3 = std::make_shared<UltraCanvasLabel>("instr3", 6004, 10, 135, 210, 40);
+    auto instr3 = std::make_shared<UltraCanvasLabel>("instr3", 10, 135, 210, 40);
     instr3->SetText("3. Press Delete to remove\n   the selected node.");
     instr3->SetFontSize(11.0f);
     instr3->SetTextColor(Color(80, 80, 80, 255));
     instrPanel->AddChild(instr3);
     
-    auto instr4 = std::make_shared<UltraCanvasLabel>("instr4", 6005, 10, 180, 210, 40);
+    auto instr4 = std::make_shared<UltraCanvasLabel>("instr4", 10, 180, 210, 40);
     instr4->SetText("4. Switch to 'Build Your Own'\n   tab to create from scratch.");
     instr4->SetFontSize(11.0f);
     instr4->SetTextColor(Color(80, 80, 80, 255));
@@ -309,24 +309,24 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
 //   noteSection (toggled)              y=70..620   when selection is a note
 //
 static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
-    auto container = std::make_shared<UltraCanvasContainer>("Builder", 200, 0, 0, 1400, 898);
+    auto container = std::make_shared<UltraCanvasContainer>("Builder", 0, 0, 1400, 898);
     container->SetBackgroundColor(Color(245, 247, 250, 255));
     
     // --- Title bar ---
-    auto title = std::make_shared<UltraCanvasLabel>("BuilderTitle", 7000, 20, 15, 800, 30);
+    auto title = std::make_shared<UltraCanvasLabel>("BuilderTitle", 20, 15, 800, 30);
     title->SetText("Build Your Own Diagram");
     title->SetFont("Arial", 20.0f, FontWeight::Bold);
     title->SetTextColor(Color(30, 30, 30, 255));
     container->AddChild(title);
     
-    auto desc = std::make_shared<UltraCanvasLabel>("BuilderDesc", 7001, 20, 47, 1000, 20);
+    auto desc = std::make_shared<UltraCanvasLabel>("BuilderDesc", 20, 47, 1000, 20);
     desc->SetText("Pick a shape, click on the canvas to place it. Click any node or connection to edit its properties.");
     desc->SetFontSize(12.0f);
     desc->SetTextColor(Color(100, 100, 100, 255));
     container->AddChild(desc);
     
     // --- Chart canvas (empty) ---
-    auto chart = CreateFlowChart("builderChart", 7100, 210, 75, 870, 640);
+    auto chart = CreateFlowChart("builderChart", 210, 75, 870, 640);
     chart->SetBackgroundColor(Color(255, 255, 255, 255));
     chart->SetGridVisible(true, 20.0f);
     chart->SetGridColor(Color(235, 235, 235, 255));
@@ -334,7 +334,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     container->AddChild(chart);
     
     // --- Palette on the left ---
-    auto palette = CreateFlowChartPalette("builderPalette", 7200, 20, 75, 180, 640);
+    auto palette = CreateFlowChartPalette("builderPalette", 20, 75, 180, 640);
     palette->SetTargetDiagram(chart);
     palette->BuildPalette();
     container->AddChild(palette);
@@ -342,18 +342,18 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // =========================================================================
     // PROPERTIES PANEL
     // =========================================================================
-    auto propsPanel = std::make_shared<UltraCanvasContainer>("propsPanel", 7300, 1090, 75, 290, 660);
+    auto propsPanel = std::make_shared<UltraCanvasContainer>("propsPanel", 1090, 75, 290, 660);
     propsPanel->SetBackgroundColor(Color(255, 255, 255, 255));
     propsPanel->SetBorders(1.0f, Color(220, 220, 220, 255));
     
     // Static header
-    auto propsTitle = std::make_shared<UltraCanvasLabel>("propsTitle", 7301, 12, 10, 270, 25);
+    auto propsTitle = std::make_shared<UltraCanvasLabel>("propsTitle", 12, 10, 270, 25);
     propsTitle->SetText("Properties");
     propsTitle->SetFont("Arial", 14.0f, FontWeight::Bold);
     propsTitle->SetTextColor(Color(40, 40, 40, 255));
     propsPanel->AddChild(propsTitle);
     
-    auto propsHint = std::make_shared<UltraCanvasLabel>("propsHint", 7302, 12, 38, 270, 30);
+    auto propsHint = std::make_shared<UltraCanvasLabel>("propsHint", 12, 38, 270, 30);
     propsHint->SetText("Select a node or connection.");
     propsHint->SetFontSize(11.0f);
     propsHint->SetTextColor(Color(140, 140, 140, 255));
@@ -362,56 +362,56 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // -------------------------------------------------------------------------
     // NODE SECTION (visible only when a non-StickyNote node is selected)
     // -------------------------------------------------------------------------
-    auto nodeSection = std::make_shared<UltraCanvasContainer>("nodeSection", 7310, 0, 70, 290, 580);
+    auto nodeSection = std::make_shared<UltraCanvasContainer>("nodeSection", 0, 70, 290, 580);
     nodeSection->SetBackgroundColor(Color(255, 255, 255, 0));  // transparent
     nodeSection->SetVisible(false);
     
     int ny = 0;
-    auto lblShape = std::make_shared<UltraCanvasLabel>("lblShape", 7311, 12, ny, 270, 18);
+    auto lblShape = std::make_shared<UltraCanvasLabel>("lblShape", 12, ny, 270, 18);
     lblShape->SetText("Shape");
     lblShape->SetFontSize(11.0f);
     lblShape->SetTextColor(Color(80, 80, 80, 255));
     nodeSection->AddChild(lblShape);
     ny += 20;
     
-    auto ddShape = std::make_shared<UltraCanvasDropdown>("ddShape", 7312, 12, ny, 266, 26);
+    auto ddShape = std::make_shared<UltraCanvasDropdown>("ddShape", 12, ny, 266, 26);
     for (size_t i = 0; i < kNumShapeOptions; ++i) ddShape->AddItem(kShapeOptions[i].label);
     nodeSection->AddChild(ddShape);
     ny += 34;
     
-    auto lblLabel = std::make_shared<UltraCanvasLabel>("lblLabel", 7313, 12, ny, 270, 18);
+    auto lblLabel = std::make_shared<UltraCanvasLabel>("lblLabel", 12, ny, 270, 18);
     lblLabel->SetText("Label");
     lblLabel->SetFontSize(11.0f);
     lblLabel->SetTextColor(Color(80, 80, 80, 255));
     nodeSection->AddChild(lblLabel);
     ny += 20;
     
-    auto inLabel = std::make_shared<UltraCanvasTextInput>("inLabel", 7314, 12, ny, 266, 26);
+    auto inLabel = std::make_shared<UltraCanvasTextInput>("inLabel", 12, ny, 266, 26);
     inLabel->SetPlaceholder("Node label");
     inLabel->SetShowValidationState(false);
     nodeSection->AddChild(inLabel);
     ny += 34;
     
     // Width / Height side by side
-    auto lblW = std::make_shared<UltraCanvasLabel>("lblW", 7315, 12, ny, 80, 18);
+    auto lblW = std::make_shared<UltraCanvasLabel>("lblW", 12, ny, 80, 18);
     lblW->SetText("Width");
     lblW->SetFontSize(11.0f);
     lblW->SetTextColor(Color(80, 80, 80, 255));
     nodeSection->AddChild(lblW);
     
-    auto lblH = std::make_shared<UltraCanvasLabel>("lblH", 7316, 150, ny, 80, 18);
+    auto lblH = std::make_shared<UltraCanvasLabel>("lblH", 150, ny, 80, 18);
     lblH->SetText("Height");
     lblH->SetFontSize(11.0f);
     lblH->SetTextColor(Color(80, 80, 80, 255));
     nodeSection->AddChild(lblH);
     ny += 20;
     
-    auto inW = std::make_shared<UltraCanvasTextInput>("inW", 7317, 12, ny, 126, 26);
+    auto inW = std::make_shared<UltraCanvasTextInput>("inW", 12, ny, 126, 26);
     inW->SetInputType(TextInputType::Integer);
     inW->SetShowValidationState(false);
     nodeSection->AddChild(inW);
     
-    auto inH = std::make_shared<UltraCanvasTextInput>("inH", 7318, 150, ny, 128, 26);
+    auto inH = std::make_shared<UltraCanvasTextInput>("inH", 150, ny, 128, 26);
     inH->SetInputType(TextInputType::Integer);
     inH->SetShowValidationState(false);
     nodeSection->AddChild(inH);
@@ -420,7 +420,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // Helper to build a row of color preset buttons. Returns the buttons so
     // callers can wire up clicks afterward.
     auto buildColorRow = [&nodeSection](int y, const std::string& heading, int idBase) {
-        auto lbl = std::make_shared<UltraCanvasLabel>("lbl_" + heading, idBase, 12, y, 270, 18);
+        auto lbl = std::make_shared<UltraCanvasLabel>("lbl_" + heading, 12, y, 270, 18);
         lbl->SetText(heading);
         lbl->SetFontSize(11.0f);
         lbl->SetTextColor(Color(80, 80, 80, 255));
@@ -434,7 +434,6 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
             int sx = 12 + static_cast<int>(i) * (sw + 2);
             auto b = std::make_shared<UltraCanvasButton>(
                 "preset_" + std::to_string(idBase) + "_" + std::to_string(i),
-                idBase + 1 + static_cast<int>(i),
                 sx, y + 20, sw, sh);
             b->SetText("");
             b->SetColors(kColorPresets[i].fill, kColorPresets[i].fill);
@@ -450,14 +449,14 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     auto borderBtns = buildColorRow(ny, "Border", 7330); ny += 46;
     auto textBtns = buildColorRow(ny, "Text",   7340); ny += 46;
     
-    auto lblFont = std::make_shared<UltraCanvasLabel>("lblFont", 7350, 12, ny, 270, 18);
+    auto lblFont = std::make_shared<UltraCanvasLabel>("lblFont", 12, ny, 270, 18);
     lblFont->SetText("Font size");
     lblFont->SetFontSize(11.0f);
     lblFont->SetTextColor(Color(80, 80, 80, 255));
     nodeSection->AddChild(lblFont);
     ny += 20;
     
-    auto inFont = std::make_shared<UltraCanvasTextInput>("inFont", 7351, 12, ny, 126, 26);
+    auto inFont = std::make_shared<UltraCanvasTextInput>("inFont", 12, ny, 126, 26);
     inFont->SetInputType(TextInputType::Integer);
     inFont->SetShowValidationState(false);
     nodeSection->AddChild(inFont);
@@ -467,46 +466,46 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // -------------------------------------------------------------------------
     // CONNECTION SECTION
     // -------------------------------------------------------------------------
-    auto connSection = std::make_shared<UltraCanvasContainer>("connSection", 7400, 0, 70, 290, 580);
+    auto connSection = std::make_shared<UltraCanvasContainer>("connSection", 0, 70, 290, 580);
     connSection->SetBackgroundColor(Color(255, 255, 255, 0));
     connSection->SetVisible(false);
     
     int cy = 0;
-    auto lblCLabel = std::make_shared<UltraCanvasLabel>("lblCLabel", 7401, 12, cy, 270, 18);
+    auto lblCLabel = std::make_shared<UltraCanvasLabel>("lblCLabel", 12, cy, 270, 18);
     lblCLabel->SetText("Label");
     lblCLabel->SetFontSize(11.0f);
     lblCLabel->SetTextColor(Color(80, 80, 80, 255));
     connSection->AddChild(lblCLabel);
     cy += 20;
     
-    auto inCLabel = std::make_shared<UltraCanvasTextInput>("inCLabel", 7402, 12, cy, 266, 26);
+    auto inCLabel = std::make_shared<UltraCanvasTextInput>("inCLabel", 12, cy, 266, 26);
     inCLabel->SetPlaceholder("(no label)");
     inCLabel->SetShowValidationState(false);
     connSection->AddChild(inCLabel);
     cy += 34;
     
-    auto lblStyle = std::make_shared<UltraCanvasLabel>("lblStyle", 7403, 12, cy, 270, 18);
+    auto lblStyle = std::make_shared<UltraCanvasLabel>("lblStyle", 12, cy, 270, 18);
     lblStyle->SetText("Line style");
     lblStyle->SetFontSize(11.0f);
     lblStyle->SetTextColor(Color(80, 80, 80, 255));
     connSection->AddChild(lblStyle);
     cy += 20;
     
-    auto ddStyle = std::make_shared<UltraCanvasDropdown>("ddStyle", 7404, 12, cy, 266, 26);
+    auto ddStyle = std::make_shared<UltraCanvasDropdown>("ddStyle", 12, cy, 266, 26);
     ddStyle->AddItem("Straight");
     ddStyle->AddItem("Orthogonal");
     ddStyle->AddItem("Curved");
     connSection->AddChild(ddStyle);
     cy += 34;
     
-    auto lblArrow = std::make_shared<UltraCanvasLabel>("lblArrow", 7405, 12, cy, 270, 18);
+    auto lblArrow = std::make_shared<UltraCanvasLabel>("lblArrow", 12, cy, 270, 18);
     lblArrow->SetText("Arrow");
     lblArrow->SetFontSize(11.0f);
     lblArrow->SetTextColor(Color(80, 80, 80, 255));
     connSection->AddChild(lblArrow);
     cy += 20;
     
-    auto ddArrow = std::make_shared<UltraCanvasDropdown>("ddArrow", 7406, 12, cy, 266, 26);
+    auto ddArrow = std::make_shared<UltraCanvasDropdown>("ddArrow", 12, cy, 266, 26);
     ddArrow->AddItem("None");
     ddArrow->AddItem("Arrow");
     ddArrow->AddItem("Arrow Filled");
@@ -514,20 +513,20 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     connSection->AddChild(ddArrow);
     cy += 34;
     
-    auto lblCWidth = std::make_shared<UltraCanvasLabel>("lblCWidth", 7407, 12, cy, 270, 18);
+    auto lblCWidth = std::make_shared<UltraCanvasLabel>("lblCWidth", 12, cy, 270, 18);
     lblCWidth->SetText("Width (1-6)");
     lblCWidth->SetFontSize(11.0f);
     lblCWidth->SetTextColor(Color(80, 80, 80, 255));
     connSection->AddChild(lblCWidth);
     cy += 20;
     
-    auto inCWidth = std::make_shared<UltraCanvasTextInput>("inCWidth", 7408, 12, cy, 126, 26);
+    auto inCWidth = std::make_shared<UltraCanvasTextInput>("inCWidth", 12, cy, 126, 26);
     inCWidth->SetInputType(TextInputType::Integer);
     inCWidth->SetShowValidationState(false);
     connSection->AddChild(inCWidth);
     cy += 34;
     
-    auto lblCColor = std::make_shared<UltraCanvasLabel>("lblCColor", 7409, 12, cy, 270, 18);
+    auto lblCColor = std::make_shared<UltraCanvasLabel>("lblCColor", 12, cy, 270, 18);
     lblCColor->SetText("Color");
     lblCColor->SetFontSize(11.0f);
     lblCColor->SetTextColor(Color(80, 80, 80, 255));
@@ -540,7 +539,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     for (size_t i = 0; i < kNumPresets; ++i) {
         int sx = 12 + static_cast<int>(i) * (sw + 2);
         auto b = std::make_shared<UltraCanvasButton>(
-            "ccolor_" + std::to_string(i), 7410 + static_cast<int>(i),
+            "ccolor_" + std::to_string(i),
             sx, cy, sw, sh);
         b->SetText("");
         b->SetColors(kColorPresets[i].fill, kColorPresets[i].fill);
@@ -552,7 +551,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     cy += 30;
     
     // Branch row: visible only when source of selected connection is Decision
-    auto lblBranch = std::make_shared<UltraCanvasLabel>("lblBranch", 7430, 12, cy, 270, 18);
+    auto lblBranch = std::make_shared<UltraCanvasLabel>("lblBranch", 12, cy, 270, 18);
     lblBranch->SetText("Decision branch");
     lblBranch->SetFontSize(11.0f);
     lblBranch->SetTextColor(Color(80, 80, 80, 255));
@@ -560,7 +559,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     connSection->AddChild(lblBranch);
     cy += 20;
     
-    auto btnYes = std::make_shared<UltraCanvasButton>("btnYes", 7431, 12, cy, 80, 26);
+    auto btnYes = std::make_shared<UltraCanvasButton>("btnYes", 12, cy, 80, 26);
     btnYes->SetText("Yes");
     btnYes->SetColors(kColorPresets[0].fill, kColorPresets[0].fill);  // green
     btnYes->SetBorder(1.0f, kColorPresets[0].border);
@@ -568,7 +567,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     btnYes->SetVisible(false);
     connSection->AddChild(btnYes);
     
-    auto btnNo = std::make_shared<UltraCanvasButton>("btnNo", 7432, 98, cy, 80, 26);
+    auto btnNo = std::make_shared<UltraCanvasButton>("btnNo", 98, cy, 80, 26);
     btnNo->SetText("No");
     btnNo->SetColors(kColorPresets[3].fill, kColorPresets[3].fill);  // orange/red
     btnNo->SetBorder(1.0f, kColorPresets[3].border);
@@ -576,7 +575,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     btnNo->SetVisible(false);
     connSection->AddChild(btnNo);
     
-    auto btnCustom = std::make_shared<UltraCanvasButton>("btnCustom", 7433, 184, cy, 92, 26);
+    auto btnCustom = std::make_shared<UltraCanvasButton>("btnCustom", 184, cy, 92, 26);
     btnCustom->SetText("Custom");
     btnCustom->SetColors(Color(240, 240, 240, 255), Color(220, 220, 220, 255));
     btnCustom->SetBorder(1.0f, Color(180, 180, 180, 255));
@@ -589,12 +588,12 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // -------------------------------------------------------------------------
     // STICKY NOTE SECTION (selected node has shape == StickyNote)
     // -------------------------------------------------------------------------
-    auto noteSection = std::make_shared<UltraCanvasContainer>("noteSection", 7500, 0, 70, 290, 580);
+    auto noteSection = std::make_shared<UltraCanvasContainer>("noteSection", 0, 70, 290, 580);
     noteSection->SetBackgroundColor(Color(255, 255, 255, 0));
     noteSection->SetVisible(false);
     
     int sy = 0;
-    auto lblNText = std::make_shared<UltraCanvasLabel>("lblNText", 7501, 12, sy, 270, 18);
+    auto lblNText = std::make_shared<UltraCanvasLabel>("lblNText", 12, sy, 270, 18);
     lblNText->SetText("Note text");
     lblNText->SetFontSize(11.0f);
     lblNText->SetTextColor(Color(80, 80, 80, 255));
@@ -604,37 +603,37 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // Sticky note text uses the same single-line input — multi-line authoring
     // works by typing literal "\n" in the text or by future multi-line widget.
     // For now: the user's text replaces the whole label.
-    auto inNText = std::make_shared<UltraCanvasTextInput>("inNText", 7502, 12, sy, 266, 26);
+    auto inNText = std::make_shared<UltraCanvasTextInput>("inNText", 12, sy, 266, 26);
     inNText->SetPlaceholder("Note text");
     inNText->SetShowValidationState(false);
     noteSection->AddChild(inNText);
     sy += 34;
     
-    auto lblNW = std::make_shared<UltraCanvasLabel>("lblNW", 7503, 12, sy, 80, 18);
+    auto lblNW = std::make_shared<UltraCanvasLabel>("lblNW", 12, sy, 80, 18);
     lblNW->SetText("Width");
     lblNW->SetFontSize(11.0f);
     lblNW->SetTextColor(Color(80, 80, 80, 255));
     noteSection->AddChild(lblNW);
     
-    auto lblNH = std::make_shared<UltraCanvasLabel>("lblNH", 7504, 150, sy, 80, 18);
+    auto lblNH = std::make_shared<UltraCanvasLabel>("lblNH", 150, sy, 80, 18);
     lblNH->SetText("Height");
     lblNH->SetFontSize(11.0f);
     lblNH->SetTextColor(Color(80, 80, 80, 255));
     noteSection->AddChild(lblNH);
     sy += 20;
     
-    auto inNW = std::make_shared<UltraCanvasTextInput>("inNW", 7505, 12, sy, 126, 26);
+    auto inNW = std::make_shared<UltraCanvasTextInput>("inNW", 12, sy, 126, 26);
     inNW->SetInputType(TextInputType::Integer);
     inNW->SetShowValidationState(false);
     noteSection->AddChild(inNW);
     
-    auto inNH = std::make_shared<UltraCanvasTextInput>("inNH", 7506, 150, sy, 128, 26);
+    auto inNH = std::make_shared<UltraCanvasTextInput>("inNH", 150, sy, 128, 26);
     inNH->SetInputType(TextInputType::Integer);
     inNH->SetShowValidationState(false);
     noteSection->AddChild(inNH);
     sy += 34;
     
-    auto lblNFill = std::make_shared<UltraCanvasLabel>("lblNFill", 7507, 12, sy, 270, 18);
+    auto lblNFill = std::make_shared<UltraCanvasLabel>("lblNFill", 12, sy, 270, 18);
     lblNFill->SetText("Fill color");
     lblNFill->SetFontSize(11.0f);
     lblNFill->SetTextColor(Color(80, 80, 80, 255));
@@ -646,7 +645,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     for (size_t i = 0; i < kNumPresets; ++i) {
         int nx = 12 + static_cast<int>(i) * (sw + 2);
         auto b = std::make_shared<UltraCanvasButton>(
-            "nfill_" + std::to_string(i), 7510 + static_cast<int>(i),
+            "nfill_" + std::to_string(i), 
             nx, sy, sw, sh);
         b->SetText("");
         b->SetColors(kColorPresets[i].fill, kColorPresets[i].fill);
@@ -964,7 +963,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     // =========================================================================
     int btnY = 730, btnX = 210, btnW = 100, btnH = 36, spacing = 10;
     
-    auto btnSelect = std::make_shared<UltraCanvasButton>("bSelect", 7600, btnX, btnY, btnW, btnH);
+    auto btnSelect = std::make_shared<UltraCanvasButton>("bSelect", btnX, btnY, btnW, btnH);
     btnSelect->SetText("Select");
     btnSelect->SetColors(Color(220, 235, 255, 255), Color(200, 225, 255, 255));
     btnSelect->SetOnClick([chart]() {
@@ -974,7 +973,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     container->AddChild(btnSelect);
     btnX += btnW + spacing;
     
-    auto btnConnect = std::make_shared<UltraCanvasButton>("bConnect", 7601, btnX, btnY, btnW, btnH);
+    auto btnConnect = std::make_shared<UltraCanvasButton>("bConnect", btnX, btnY, btnW, btnH);
     btnConnect->SetText("Connect");
     btnConnect->SetOnClick([chart]() {
         chart->SetCreateNodeMode(false);
@@ -983,7 +982,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     container->AddChild(btnConnect);
     btnX += btnW + spacing;
     
-    auto btnAddNote = std::make_shared<UltraCanvasButton>("bAddNote", 7602, btnX, btnY, btnW + 10, btnH);
+    auto btnAddNote = std::make_shared<UltraCanvasButton>("bAddNote", btnX, btnY, btnW + 10, btnH);
     btnAddNote->SetText("Add Note");
     btnAddNote->SetColors(Color(255, 255, 200, 255), Color(255, 245, 180, 255));
     btnAddNote->SetBorder(1.0f, Color(220, 220, 120, 255));
@@ -999,7 +998,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     container->AddChild(btnAddNote);
     btnX += btnW + 10 + spacing;
     
-    auto btnDone = std::make_shared<UltraCanvasButton>("bDone", 7603, btnX, btnY, btnW, btnH);
+    auto btnDone = std::make_shared<UltraCanvasButton>("bDone", btnX, btnY, btnW, btnH);
     btnDone->SetText("Done");
     btnDone->SetOnClick([chart]() {
         chart->SetCreateNodeMode(false);
@@ -1008,7 +1007,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     container->AddChild(btnDone);
     btnX += btnW + spacing + 20;
     
-    auto btnDelete = std::make_shared<UltraCanvasButton>("bDelete", 7604, btnX, btnY, btnW, btnH);
+    auto btnDelete = std::make_shared<UltraCanvasButton>("bDelete", btnX, btnY, btnW, btnH);
     btnDelete->SetText("Delete");
     btnDelete->SetColors(Color(255, 220, 220, 255), Color(255, 200, 200, 255));
     btnDelete->SetOnClick([chart, showNoSelection]() {
@@ -1018,7 +1017,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     container->AddChild(btnDelete);
     btnX += btnW + spacing;
     
-    auto btnClear = std::make_shared<UltraCanvasButton>("bClear", 7605, btnX, btnY, btnW, btnH);
+    auto btnClear = std::make_shared<UltraCanvasButton>("bClear", btnX, btnY, btnW, btnH);
     btnClear->SetText("Clear All");
     btnClear->SetColors(Color(255, 220, 220, 255), Color(255, 200, 200, 255));
     btnClear->SetOnClick([chart, showNoSelection]() {
@@ -1028,7 +1027,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     container->AddChild(btnClear);
     
     // Settings checkboxes
-    auto chkGrid = std::make_shared<UltraCanvasCheckbox>("bChkGrid", 7700, 210, 780, 130, 24);
+    auto chkGrid = std::make_shared<UltraCanvasCheckbox>("bChkGrid", 210, 780, 130, 24);
     chkGrid->SetText("Show Grid");
     chkGrid->SetChecked(true);
     chkGrid->onStateChanged = [chart](CheckedState, CheckedState newState) {
@@ -1036,7 +1035,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
     };
     container->AddChild(chkGrid);
     
-    auto chkSnap = std::make_shared<UltraCanvasCheckbox>("bChkSnap", 7701, 355, 780, 150, 24);
+    auto chkSnap = std::make_shared<UltraCanvasCheckbox>("bChkSnap", 355, 780, 150, 24);
     chkSnap->SetText("Snap to Grid");
     chkSnap->SetChecked(true);
     chkSnap->onStateChanged = [chart](CheckedState, CheckedState newState) {
@@ -1051,16 +1050,16 @@ static std::shared_ptr<UltraCanvasContainer> BuildBuilderChart() {
 // MAIN ENTRY POINT - Two-tab demo
 // =============================================================================
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFlowChartExamples() {
-    auto outer = std::make_shared<UltraCanvasContainer>("FlowChartDemo", 100, 0, 0, 1400, 970);
+    auto outer = std::make_shared<UltraCanvasContainer>("FlowChartDemo", 0, 0, 1400, 970);
     outer->SetBackgroundColor(Color(245, 247, 250, 255));
     
-    auto heading = std::make_shared<UltraCanvasLabel>("DemoHeading", 1, 30, 12, 1100, 25);
+    auto heading = std::make_shared<UltraCanvasLabel>("DemoHeading", 30, 12, 1100, 25);
     heading->SetText("Interactive Flow Chart Diagram Editor");
     heading->SetFont("Arial", 18.0f, FontWeight::Bold);
     heading->SetTextColor(Color(30, 30, 30, 255));
     outer->AddChild(heading);
     
-    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("FlowChartTabs", 2, 0, 40, 1400, 930);
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("FlowChartTabs", 0, 40, 1400, 930);
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(32);
     

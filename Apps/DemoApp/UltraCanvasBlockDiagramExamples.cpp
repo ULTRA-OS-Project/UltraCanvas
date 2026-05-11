@@ -32,19 +32,19 @@
 namespace UltraCanvas {
  
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDiagramExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("DiagramEditor", 100, 0, 0, 900, 700);
+    auto container = std::make_shared<UltraCanvasContainer>("DiagramEditor", 0, 0, 900, 700);
     container->SetBackgroundColor(Color(245, 247, 250, 255));
  
     // -------------------------------------------------------------------------
     // Title and description
     // -------------------------------------------------------------------------
-    auto title = std::make_shared<UltraCanvasLabel>("Title", 2001, 50, 20, 800, 35);
+    auto title = std::make_shared<UltraCanvasLabel>("Title", 50, 20, 800, 35);
     title->SetText("HVAC System Block Diagram");
     title->SetFont("Arial", 22.0f, FontWeight::Bold);
     title->SetTextColor(Color(30, 30, 30, 255));
     container->AddChild(title);
  
-    auto desc = std::make_shared<UltraCanvasLabel>("Desc", 2002, 50, 58, 800, 22);
+    auto desc = std::make_shared<UltraCanvasLabel>("Desc", 50, 58, 800, 22);
     desc->SetText("Automotive climate control: refrigerant cycle (top), airflow path (bottom), control modules (left).");
     desc->SetFontSize(13);
     desc->SetTextColor(Color(100, 100, 100, 255));
@@ -53,7 +53,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
     // -------------------------------------------------------------------------
     // Diagram canvas - flat 2D, no isometric depth
     // -------------------------------------------------------------------------
-    auto diagram = CreateBlockDiagram("mainDiagram", 1001, 50, 95, 800, 520);
+    auto diagram = CreateBlockDiagram("mainDiagram", 50, 95, 800, 520);
     diagram->SetBackgroundColor(Color(252, 252, 254, 255));
     diagram->SetGridVisible(true, 20.0f);
     diagram->SetGridColor(Color(238, 240, 244, 255));
@@ -241,7 +241,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
     int btnY = 635;
     int btnX = 50;
  
-    auto btnSelect = std::make_shared<UltraCanvasButton>("btnSelect", 4001, btnX, btnY, 90, 32);
+    auto btnSelect = std::make_shared<UltraCanvasButton>("btnSelect", btnX, btnY, 90, 32);
     btnSelect->SetText("Select");
     btnSelect->SetOnClick([diagram]() {
         diagram->SetEditMode(UltraCanvasBlockDiagram::EditMode::Select);
@@ -249,7 +249,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
     container->AddChild(btnSelect);
     btnX += 100;
  
-    auto btnConnect = std::make_shared<UltraCanvasButton>("btnConnect", 4002, btnX, btnY, 90, 32);
+    auto btnConnect = std::make_shared<UltraCanvasButton>("btnConnect", btnX, btnY, 90, 32);
     btnConnect->SetText("Connect");
     btnConnect->SetOnClick([diagram]() {
         diagram->SetEditMode(UltraCanvasBlockDiagram::EditMode::CreateConnection);
@@ -257,7 +257,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
     container->AddChild(btnConnect);
     btnX += 100;
  
-    auto btnZoomIn = std::make_shared<UltraCanvasButton>("btnZoomIn", 4003, btnX, btnY, 70, 32);
+    auto btnZoomIn = std::make_shared<UltraCanvasButton>("btnZoomIn", btnX, btnY, 70, 32);
     btnZoomIn->SetText("Zoom +");
     btnZoomIn->SetOnClick([diagram]() {
         diagram->SetZoomLevel(diagram->GetZoomLevel() * 1.2f);
@@ -265,7 +265,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
     container->AddChild(btnZoomIn);
     btnX += 80;
  
-    auto btnZoomOut = std::make_shared<UltraCanvasButton>("btnZoomOut", 4004, btnX, btnY, 70, 32);
+    auto btnZoomOut = std::make_shared<UltraCanvasButton>("btnZoomOut", btnX, btnY, 70, 32);
     btnZoomOut->SetText("Zoom -");
     btnZoomOut->SetOnClick([diagram]() {
         diagram->SetZoomLevel(diagram->GetZoomLevel() * 0.8f);
@@ -273,7 +273,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
     container->AddChild(btnZoomOut);
     btnX += 80;
  
-    auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 4005, btnX, btnY, 90, 32);
+    auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", btnX, btnY, 90, 32);
     btnReset->SetText("Reset");
     btnReset->SetOnClick([diagram, initialLayout]() {
         diagram->SetZoomLevel(1.0f);
@@ -285,7 +285,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBlockDia
     });
     container->AddChild(btnReset);
  
-    auto chkGrid = std::make_shared<UltraCanvasCheckbox>("chkGrid", 5001, 50, 675, 100, 22);
+    auto chkGrid = std::make_shared<UltraCanvasCheckbox>("chkGrid", 50, 675, 100, 22);
     chkGrid->SetText("Show Grid");
     chkGrid->SetChecked(true);
     chkGrid->onStateChanged = [diagram](CheckedState oldState, CheckedState newState) {

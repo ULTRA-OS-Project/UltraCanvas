@@ -190,7 +190,7 @@ private:
     float isometricAngle = 30.0f;  // degrees
 
 public:
-    UltraCanvasBlockDiagram(const std::string& id, long uid, int x, int y, int width, int height);
+    UltraCanvasBlockDiagram(const std::string& id, int x, int y, int width, int height);
     
     // =============================================================================
     // NODE MANAGEMENT
@@ -373,8 +373,8 @@ private:
 // =============================================================================
 
 inline std::shared_ptr<UltraCanvasBlockDiagram> CreateBlockDiagram(
-        const std::string& id, long uid, int x, int y, int width, int height) {
-    return std::make_shared<UltraCanvasBlockDiagram>(id, uid, x, y, width, height);
+        const std::string& id, int x, int y, int width, int height) {
+    return std::make_shared<UltraCanvasBlockDiagram>(id, x, y, width, height);
 }
 
 } // namespace UltraCanvas

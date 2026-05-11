@@ -11,10 +11,10 @@
 namespace UltraCanvas {
 
     UltraCanvasLabeledToggleBase::UltraCanvasLabeledToggleBase(
-            const std::string& identifier, long id,
+            const std::string& identifier,
             long x, long y, long w, long h,
             const std::string& labelText)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h), text(labelText) {}
+            : UltraCanvasUIElement(identifier, x, y, w, h), text(labelText) {}
 
     void UltraCanvasLabeledToggleBase::SetChecked(bool checked) {
         SetCheckState(checked ? CheckedState::Checked : CheckedState::Unchecked);

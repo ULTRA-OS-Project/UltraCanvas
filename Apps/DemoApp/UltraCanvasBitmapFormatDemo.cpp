@@ -72,7 +72,7 @@ namespace UltraCanvas {
 
             // Create dark background container
             auto bgContainer = std::make_shared<UltraCanvasContainer>(
-                    "ImageViewerBG", 30000, 0, 0, screenWidth, screenHeight
+                    "ImageViewerBG", 0, 0, screenWidth, screenHeight
             );
             bgContainer->SetBackgroundColor(Color(32, 32, 32, 255));
             viewerWindow->AddChild(bgContainer);
@@ -80,7 +80,7 @@ namespace UltraCanvas {
             // Create image element (centered, with padding for toolbar)
             int imageAreaHeight = screenHeight - 80;  // Leave space for toolbar
             imageElement = std::make_shared<UltraCanvasImageElement>(
-                    "FullSizeImage", 30001,
+                    "FullSizeImage",
                     50, 60,
                     screenWidth - 100, imageAreaHeight - 20
             );
@@ -91,14 +91,14 @@ namespace UltraCanvas {
 
             // Create top toolbar container
             auto toolbar = std::make_shared<UltraCanvasContainer>(
-                    "Toolbar", 30010, 0, 0, screenWidth, 50
+                    "Toolbar", 0, 0, screenWidth, 50
             );
             toolbar->SetBackgroundColor(Color(45, 45, 45, 255));
             bgContainer->AddChild(toolbar);
 
             // Filename label
             auto filenameLabel = std::make_shared<UltraCanvasLabel>(
-                    "FilenameLabel", 30011, 20, 12, 400, 26
+                    "FilenameLabel", 20, 12, 400, 26
             );
             filenameLabel->SetText(filename);
             filenameLabel->SetFontSize(14);
@@ -108,7 +108,7 @@ namespace UltraCanvas {
 
             // Instructions label
             auto instructionLabel = std::make_shared<UltraCanvasLabel>(
-                    "Instructions", 30012, screenWidth - 250, 12, 230, 26
+                    "Instructions", screenWidth - 250, 12, 230, 26
             );
             instructionLabel->SetText("Press ESC to close");
             instructionLabel->SetFontSize(12);
@@ -121,7 +121,7 @@ namespace UltraCanvas {
 
             // Zoom out button
             auto zoomOutBtn = std::make_shared<UltraCanvasButton>(
-                    "ZoomOut", 30020, zoomControlsX, 10, 40, 30
+                    "ZoomOut", zoomControlsX, 10, 40, 30
             );
             zoomOutBtn->SetText("−");
             zoomOutBtn->SetFontSize(18);
@@ -135,7 +135,7 @@ namespace UltraCanvas {
 
             // Zoom slider
             zoomSlider = std::make_shared<UltraCanvasSlider>(
-                    "ZoomSlider", 30021, zoomControlsX + 50, 15, 150, 20
+                    "ZoomSlider", zoomControlsX + 50, 15, 150, 20
             );
             zoomSlider->SetRange(0.25f, 3.0f);
             zoomSlider->SetValue(1.0f);
@@ -147,7 +147,7 @@ namespace UltraCanvas {
 
             // Zoom in button
             auto zoomInBtn = std::make_shared<UltraCanvasButton>(
-                    "ZoomIn", 30022, zoomControlsX + 210, 10, 40, 30
+                    "ZoomIn", zoomControlsX + 210, 10, 40, 30
             );
             zoomInBtn->SetText("+");
             zoomInBtn->SetFontSize(18);
@@ -161,7 +161,7 @@ namespace UltraCanvas {
 
             // Fit to window button
             auto fitBtn = std::make_shared<UltraCanvasButton>(
-                    "FitBtn", 30023, zoomControlsX + 260, 10, 60, 30
+                    "FitBtn", zoomControlsX + 260, 10, 60, 30
             );
             fitBtn->SetText("Fit");
             fitBtn->SetFontSize(11);
@@ -175,7 +175,7 @@ namespace UltraCanvas {
 
             // Close button (top right)
             auto closeBtn = std::make_shared<UltraCanvasButton>(
-                    "CloseBtn", 30030, screenWidth - 50, 10, 40, 30
+                    "CloseBtn", screenWidth - 50, 10, 40, 30
             );
             closeBtn->SetText("✕");
             closeBtn->SetFontSize(14);
@@ -189,14 +189,14 @@ namespace UltraCanvas {
 
             // Bottom info bar
             auto infoBar = std::make_shared<UltraCanvasContainer>(
-                    "InfoBar", 30040, 0, screenHeight - 30, screenWidth, 30
+                    "InfoBar", 0, screenHeight - 30, screenWidth, 30
             );
             infoBar->SetBackgroundColor(Color(45, 45, 45, 255));
             bgContainer->AddChild(infoBar);
 
             // Image info label
             auto infoLabel = std::make_shared<UltraCanvasLabel>(
-                    "InfoLabel", 30041, 20, 6, 600, 18
+                    "InfoLabel", 20, 6, 600, 18
             );
             infoLabel->SetText("Use mouse wheel to zoom, drag to pan");
             infoLabel->SetFontSize(11);
@@ -927,7 +927,7 @@ namespace UltraCanvas {
 
         // Main container
         auto container = std::make_shared<UltraCanvasContainer>(
-                info.formatName + "DemoPage", baseId, 0, 0, 950, 750
+                info.formatName + "DemoPage",  0, 0, 950, 750
         );
         container->SetBackgroundColor(Color(255, 251, 235, 255));
 
@@ -943,24 +943,24 @@ namespace UltraCanvas {
         int id = baseId + 1;
 
         // ===== ROW 1 LEFT: IMAGE PREVIEW CARD =====
-        auto imageCard = std::make_shared<UltraCanvasContainer>("ImageCard", id++, leftColX, row1Y, leftColWidth, 300);
+        auto imageCard = std::make_shared<UltraCanvasContainer>("ImageCard", leftColX, row1Y, leftColWidth, 300);
         imageCard->SetBackgroundColor(Color(255, 255, 255, 255));
         imageCard->SetBorders(1, Color(230, 230, 230, 255));
         container->AddChild(imageCard);
 
-        auto imageTitle = std::make_shared<UltraCanvasLabel>("ImageTitle", id++, 20, 16, 200, 24);
+        auto imageTitle = std::make_shared<UltraCanvasLabel>("ImageTitle", 20, 16, 200, 24);
         imageTitle->SetText("Demo " + info.formatName + " Image");
         imageTitle->SetFontSize(14);
         imageTitle->SetFontWeight(FontWeight::Bold);
         imageTitle->SetTextColor(Color(30, 41, 59, 255));
         imageCard->AddChild(imageTitle);
 
-        auto imageFrame = std::make_shared<UltraCanvasContainer>("ImageFrame", id++, 20, 48, 230, 170);
+        auto imageFrame = std::make_shared<UltraCanvasContainer>("ImageFrame", 20, 48, 230, 170);
         imageFrame->SetBackgroundColor(Color(241, 245, 249, 255));
         imageFrame->SetBorders(1, Color(200, 200, 200, 255));
         imageCard->AddChild(imageFrame);
 
-        auto image = std::make_shared<UltraCanvasImageElement>("Image", id++, 4, 4, 222, 162);
+        auto image = std::make_shared<UltraCanvasImageElement>("Image", 4, 4, 222, 162);
         image->LoadFromFile(sampleImagePath);
         image->SetFitMode(ImageFitMode::Contain);
         image->SetClickable(true);
@@ -977,14 +977,14 @@ namespace UltraCanvas {
             filename = sampleImagePath.substr(lastSlash + 1);
         }
 
-        auto filenameLabel = std::make_shared<UltraCanvasLabel>("Filename", id++, 20, 224, 230, 20);
+        auto filenameLabel = std::make_shared<UltraCanvasLabel>("Filename", 20, 224, 230, 20);
         filenameLabel->SetText(filename);
         filenameLabel->SetFontSize(10);
         filenameLabel->SetTextColor(Color(100, 116, 139, 255));
         filenameLabel->SetAlignment(TextAlignment::Center);
         imageCard->AddChild(filenameLabel);
 
-        auto viewBtn = std::make_shared<UltraCanvasButton>("ViewBtn", id++, 20, 250, 108, 32);
+        auto viewBtn = std::make_shared<UltraCanvasButton>("ViewBtn", 20, 250, 108, 32);
         viewBtn->SetText("🔍 Full Size");
         viewBtn->SetFontSize(10);
         viewBtn->SetColors(info.accentColor, info.accentColor);
@@ -996,7 +996,7 @@ namespace UltraCanvas {
         };
         imageCard->AddChild(viewBtn);
 
-        auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", id++, 138, 250, 108, 32);
+        auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 138, 250, 108, 32);
         exportBtn->SetText("📤 Export");
         exportBtn->SetFontSize(10);
         exportBtn->SetColors(Color(241, 245, 249, 255), Color(226, 232, 240, 255));
@@ -1011,12 +1011,12 @@ namespace UltraCanvas {
         imageCard->AddChild(exportBtn);
 
         // ===== ROW 1 RIGHT: IMAGE PROPERTIES (populated from actual image) =====
-        auto propertiesCard = std::make_shared<UltraCanvasContainer>("PropertiesCard", id++, rightColX, row1Y, rightColWidth, 300);
+        auto propertiesCard = std::make_shared<UltraCanvasContainer>("PropertiesCard", rightColX, row1Y, rightColWidth, 300);
         propertiesCard->SetBackgroundColor(Color(255, 255, 255, 255));
         propertiesCard->SetBorders(1, Color(230, 230, 230, 255));
         container->AddChild(propertiesCard);
 
-        auto propHeader = std::make_shared<UltraCanvasLabel>("PropHeader", id++, 20, 16, 300, 24);
+        auto propHeader = std::make_shared<UltraCanvasLabel>("PropHeader", 20, 16, 300, 24);
         propHeader->SetText("📊  Image Properties");
         propHeader->SetFontSize(14);
         propHeader->SetFontWeight(FontWeight::Bold);
@@ -1043,7 +1043,7 @@ namespace UltraCanvas {
             int row = i / 2;
 
             auto propContainer = std::make_shared<UltraCanvasContainer>(
-                    "Prop" + std::to_string(i), id++,
+                    "Prop" + std::to_string(i), 
                     20 + col * 306, propY + row * 60,
                     290, 52
             );
@@ -1051,14 +1051,14 @@ namespace UltraCanvas {
             propContainer->SetBorders(1, Color(226, 232, 240, 255));
             propertiesCard->AddChild(propContainer);
 
-            auto propLabel = std::make_shared<UltraCanvasLabel>("PropLabel" + std::to_string(i), id++, 16, 8, 150, 16);
+            auto propLabel = std::make_shared<UltraCanvasLabel>("PropLabel" + std::to_string(i),  16, 8, 150, 16);
             propLabel->SetText(defaultProps[i].first);
             propLabel->SetFontSize(9);
             propLabel->SetFontWeight(FontWeight::Normal);
             propLabel->SetTextColor(Color(100, 116, 139, 255));
             propContainer->AddChild(propLabel);
 
-            auto propValue = std::make_shared<UltraCanvasLabel>("PropValue" + std::to_string(i), id++, 16, 28, 260, 18);
+            auto propValue = std::make_shared<UltraCanvasLabel>("PropValue" + std::to_string(i),  16, 28, 260, 18);
             propValue->SetText(defaultProps[i].second);
             propValue->SetFontSize(13);
             propValue->SetFontWeight(FontWeight::Bold);
@@ -1067,12 +1067,12 @@ namespace UltraCanvas {
         }
 
         // ===== ROW 2 LEFT: ABOUT SECTION =====
-        auto aboutCard = std::make_shared<UltraCanvasContainer>("AboutCard", id++, leftColX, row2Y, leftColWidth, 220);
+        auto aboutCard = std::make_shared<UltraCanvasContainer>("AboutCard", leftColX, row2Y, leftColWidth, 220);
         aboutCard->SetBackgroundColor(Color(255, 255, 255, 255));
         aboutCard->SetBorders(1, Color(230, 230, 230, 255));
         container->AddChild(aboutCard);
 
-        auto aboutIconLabel = std::make_shared<UltraCanvasLabel>("AboutIcon", id++, 16, 10, 36, 36);
+        auto aboutIconLabel = std::make_shared<UltraCanvasLabel>("AboutIcon", 16, 10, 36, 36);
         aboutIconLabel->SetText("📄");
         aboutIconLabel->SetFontSize(16);
         aboutIconLabel->SetBackgroundColor(Color(
@@ -1085,17 +1085,17 @@ namespace UltraCanvas {
         aboutIconLabel->SetPadding(4);
         aboutCard->AddChild(aboutIconLabel);
 
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("AboutTitle", id++, 64, 16, 180, 20);
+        auto aboutTitle = std::make_shared<UltraCanvasLabel>("AboutTitle", 64, 16, 180, 20);
         aboutTitle->SetText(info.aboutTitle);
         aboutTitle->SetFontSize(13);
         aboutTitle->SetFontWeight(FontWeight::Bold);
         aboutTitle->SetTextColor(Color(30, 41, 59, 255));
         aboutCard->AddChild(aboutTitle);
 
-        auto aboutDescCont = std::make_shared<UltraCanvasContainer>("AboutDescCont", id++, 20, 50, 248, 168);
+        auto aboutDescCont = std::make_shared<UltraCanvasContainer>("AboutDescCont", 20, 50, 248, 168);
         aboutDescCont->SetPadding(0,16,6,0);
 
-        auto aboutDesc = std::make_shared<UltraCanvasLabel>("AboutDesc", id++, 0, 0, 220, 300);
+        auto aboutDesc = std::make_shared<UltraCanvasLabel>("AboutDesc", 0, 0, 220, 300);
         aboutDesc->SetText(info.aboutDescription);
         aboutDesc->SetFontSize(10);
         aboutDesc->SetTextColor(Color(71, 85, 105, 255));
@@ -1105,12 +1105,12 @@ namespace UltraCanvas {
         aboutCard->AddChild(aboutDescCont);
 
         // ===== ROW 2 RIGHT: CAPABILITIES =====
-        auto capCard = std::make_shared<UltraCanvasContainer>("CapCard", id++, rightColX, row2Y, rightColWidth, 220);
+        auto capCard = std::make_shared<UltraCanvasContainer>("CapCard", rightColX, row2Y, rightColWidth, 220);
         capCard->SetBackgroundColor(Color(255, 255, 255, 255));
         capCard->SetBorders(1, Color(230, 230, 230, 255));
         container->AddChild(capCard);
 
-        auto capIconLabel = std::make_shared<UltraCanvasLabel>("CapIcon", id++, 20, 16, 36, 36);
+        auto capIconLabel = std::make_shared<UltraCanvasLabel>("CapIcon", 20, 16, 36, 36);
         capIconLabel->SetText("⚙️");
         capIconLabel->SetFontSize(16);
         capIconLabel->SetBackgroundColor(Color(236, 253, 245, 255));
@@ -1118,7 +1118,7 @@ namespace UltraCanvas {
         capIconLabel->SetPadding(4);
         capCard->AddChild(capIconLabel);
 
-        auto capTitle = std::make_shared<UltraCanvasLabel>("CapTitle", id++, 60, 20, 200, 24);
+        auto capTitle = std::make_shared<UltraCanvasLabel>("CapTitle", 60, 20, 200, 24);
         capTitle->SetText("Format Capabilities");
         capTitle->SetFontSize(14);
         capTitle->SetFontWeight(FontWeight::Bold);
@@ -1132,7 +1132,7 @@ namespace UltraCanvas {
             int row = i / 3;
 
             auto capContainer = std::make_shared<UltraCanvasContainer>(
-                    "Cap" + std::to_string(i), id++,
+                    "Cap" + std::to_string(i), 
                     20 + col * 202, capY + row * 70,
                     192, 62
             );
@@ -1146,7 +1146,7 @@ namespace UltraCanvas {
             }
             capCard->AddChild(capContainer);
 
-            auto capLabel = std::make_shared<UltraCanvasLabel>("CapLabel" + std::to_string(i), id++, 6, 10, 180, 16);
+            auto capLabel = std::make_shared<UltraCanvasLabel>("CapLabel" + std::to_string(i),  6, 10, 180, 16);
             capLabel->SetText(info.capabilities[i].label);
             capLabel->SetFontSize(10);
             capLabel->SetTextColor(Color(100, 116, 139, 255));
@@ -1154,7 +1154,7 @@ namespace UltraCanvas {
             capLabel->SetAutoResize(true);
             capContainer->AddChild(capLabel);
 
-            auto capValue = std::make_shared<UltraCanvasLabel>("CapValue" + std::to_string(i), id++, 6, 32, 180, 20);
+            auto capValue = std::make_shared<UltraCanvasLabel>("CapValue" + std::to_string(i),  6, 32, 180, 20);
             capValue->SetText(info.capabilities[i].value);
             capValue->SetFontSize(12);
             capValue->SetFontWeight(FontWeight::Bold);
@@ -1167,12 +1167,12 @@ namespace UltraCanvas {
         }
 
         // ===== ROW 3: TECHNICAL SPECIFICATIONS =====
-        auto techCard = std::make_shared<UltraCanvasContainer>("TechCard", id++, leftColX, row3Y, 910, 170);
+        auto techCard = std::make_shared<UltraCanvasContainer>("TechCard", leftColX, row3Y, 910, 170);
         techCard->SetBackgroundColor(Color(255, 255, 255, 255));
         techCard->SetBorders(1, Color(230, 230, 230, 255));
         container->AddChild(techCard);
 
-        auto techTitle = std::make_shared<UltraCanvasLabel>("TechTitle", id++, 20, 20, 300, 24);
+        auto techTitle = std::make_shared<UltraCanvasLabel>("TechTitle", 20, 20, 300, 24);
         techTitle->SetText("Technical Specifications");
         techTitle->SetFontSize(16);
         techTitle->SetFontWeight(FontWeight::Bold);
@@ -1180,7 +1180,7 @@ namespace UltraCanvas {
         techCard->AddChild(techTitle);
 
         // Container/Standard specs (left column)
-        auto containerTitle = std::make_shared<UltraCanvasLabel>("ContainerTitle", id++, 20, 56, 200, 20);
+        auto containerTitle = std::make_shared<UltraCanvasLabel>("ContainerTitle", 20, 56, 200, 20);
         containerTitle->SetText("Container Format");
         containerTitle->SetFontSize(12);
         containerTitle->SetFontWeight(FontWeight::Bold);
@@ -1188,13 +1188,13 @@ namespace UltraCanvas {
         techCard->AddChild(containerTitle);
 
         for (size_t i = 0; i < info.containerSpecs.size(); ++i) {
-            auto bullet = std::make_shared<UltraCanvasLabel>("ContBullet" + std::to_string(i), id++, 28, 80 + i * 24, 16, 16);
+            auto bullet = std::make_shared<UltraCanvasLabel>("ContBullet" + std::to_string(i),  28, 80 + i * 24, 16, 16);
             bullet->SetText("●");
             bullet->SetFontSize(8);
             bullet->SetTextColor(info.accentColor);
             techCard->AddChild(bullet);
 
-            auto itemLabel = std::make_shared<UltraCanvasLabel>("ContItem" + std::to_string(i), id++, 44, 78 + i * 24, 380, 18);
+            auto itemLabel = std::make_shared<UltraCanvasLabel>("ContItem" + std::to_string(i),  44, 78 + i * 24, 380, 18);
             itemLabel->SetText(info.containerSpecs[i].label + ": " + info.containerSpecs[i].value);
             itemLabel->SetFontSize(11);
             itemLabel->SetTextColor(Color(71, 85, 105, 255));
@@ -1202,7 +1202,7 @@ namespace UltraCanvas {
         }
 
         // Codec specs (right column)
-        auto codecTitle = std::make_shared<UltraCanvasLabel>("CodecTitle", id++, 470, 56, 200, 20);
+        auto codecTitle = std::make_shared<UltraCanvasLabel>("CodecTitle", 470, 56, 200, 20);
         codecTitle->SetText("Codec Support");
         codecTitle->SetFontSize(12);
         codecTitle->SetFontWeight(FontWeight::Bold);
@@ -1210,13 +1210,13 @@ namespace UltraCanvas {
         techCard->AddChild(codecTitle);
 
         for (size_t i = 0; i < info.codecSpecs.size(); ++i) {
-            auto bullet = std::make_shared<UltraCanvasLabel>("CodecBullet" + std::to_string(i), id++, 478, 80 + i * 24, 16, 16);
+            auto bullet = std::make_shared<UltraCanvasLabel>("CodecBullet" + std::to_string(i),  478, 80 + i * 24, 16, 16);
             bullet->SetText("●");
             bullet->SetFontSize(8);
             bullet->SetTextColor(Color(info.accentColor.r, info.accentColor.g, std::min(255, info.accentColor.b + 50), 255));
             techCard->AddChild(bullet);
 
-            auto itemLabel = std::make_shared<UltraCanvasLabel>("CodecItem" + std::to_string(i), id++, 494, 78 + i * 24, 380, 18);
+            auto itemLabel = std::make_shared<UltraCanvasLabel>("CodecItem" + std::to_string(i),  494, 78 + i * 24, 380, 18);
             itemLabel->SetText(info.codecSpecs[i].label + ": " + info.codecSpecs[i].value);
             itemLabel->SetFontSize(11);
             itemLabel->SetTextColor(Color(71, 85, 105, 255));

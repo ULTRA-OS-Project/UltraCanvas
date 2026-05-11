@@ -337,7 +337,7 @@ private:
     
 public:
     // ===== CONSTRUCTOR =====
-    UltraCanvasTextInput(const std::string& id, long uid, long x, long y, long w, long h);
+    UltraCanvasTextInput(const std::string& id, long x, long y, long w, long h);
     
     virtual ~UltraCanvasTextInput() = default;
     
@@ -598,41 +598,41 @@ inline TextInputStyle TextInputStyle::Underlined() {
 
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasTextInput> CreateTextInput(
-    const std::string& identifier, long id, int x, int y, int w, int h) {
-    return std::make_shared<UltraCanvasTextInput>(identifier, id, x, y, w, h);
+    const std::string& identifier, int x, int y, int w, int h) {
+    return std::make_shared<UltraCanvasTextInput>(identifier, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasTextInput> CreatePasswordInput(
-    const std::string& identifier, long id, int x, int y, int w, int h) {
-    auto input = CreateTextInput(identifier, id, x, y, w, h);
+    const std::string& identifier, int x, int y, int w, int h) {
+    auto input = CreateTextInput(identifier, x, y, w, h);
     input->SetInputType(TextInputType::Password);
     return input;
 }
 
 inline std::shared_ptr<UltraCanvasTextInput> CreateEmailInput(
-    const std::string& identifier, long id, long x, long y, long w, long h) {
-    auto input = CreateTextInput(identifier, id, x, y, w, h);
+    const std::string& identifier, long x, long y, long w, long h) {
+    auto input = CreateTextInput(identifier, x, y, w, h);
     input->SetInputType(TextInputType::Email);
     return input;
 }
 
 inline std::shared_ptr<UltraCanvasTextInput> CreatePhoneInput(
-    const std::string& identifier, long id, long x, long y, long w, long h) {
-    auto input = CreateTextInput(identifier, id, x, y, w, h);
+    const std::string& identifier, long x, long y, long w, long h) {
+    auto input = CreateTextInput(identifier, x, y, w, h);
     input->SetInputType(TextInputType::Phone);
     return input;
 }
 
 inline std::shared_ptr<UltraCanvasTextInput> CreateNumberInput(
-    const std::string& identifier, long id, long x, long y, long w, long h) {
-    auto input = CreateTextInput(identifier, id, x, y, w, h);
+    const std::string& identifier, long x, long y, long w, long h) {
+    auto input = CreateTextInput(identifier, x, y, w, h);
     input->SetInputType(TextInputType::Number);
     return input;
 }
 
 //inline std::shared_ptr<UltraCanvasTextInput> CreateTextInput(
-//    const std::string& identifier, long id, long x, long y, long w, long h) {
-//    auto input = CreateTextInput(identifier, id, x, y, w, h);
+//    const std::string& identifier, long x, long y, long w, long h) {
+//    auto input = CreateTextInput(identifier, x, y, w, h);
 //    input->SetInputType(TextInputType::Multiline);
 //    return input;
 //}
@@ -641,7 +641,6 @@ inline std::shared_ptr<UltraCanvasTextInput> CreateNumberInput(
 class TextInputBuilder {
 private:
     std::string identifier = "TextInput";
-    long id = 0;
     long x = 0, y = 0, w = 200, h = 32;
     TextInputType type = TextInputType::Text;
     std::string placeholder;
@@ -654,7 +653,6 @@ private:
     
 public:
     TextInputBuilder& SetIdentifier(const std::string& inputId) { identifier = inputId; return *this; }
-    TextInputBuilder& SetID(long inputId) { id = inputId; return *this; }
     TextInputBuilder& SetPosition(long px, long py) { x = px; y = py; return *this; }
     TextInputBuilder& SetSize(long width, long height) { w = width; h = height; return *this; }
     TextInputBuilder& SetType(TextInputType inputType) { type = inputType; return *this; }
@@ -685,7 +683,7 @@ public:
     }
     
     std::shared_ptr<UltraCanvasTextInput> Build() {
-        auto input = std::make_shared<UltraCanvasTextInput>(identifier, id, x, y, w, h);
+        auto input = std::make_shared<UltraCanvasTextInput>(identifier, x, y, w, h);
         
         input->SetInputType(type);
         input->SetPlaceholder(placeholder);

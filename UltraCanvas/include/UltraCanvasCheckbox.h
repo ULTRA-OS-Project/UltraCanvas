@@ -63,7 +63,7 @@ namespace UltraCanvas {
         const LabeledToggleVisualStyle& GetBaseVisualStyle() const override { return visualStyle.base; }
 
     public:
-        UltraCanvasCheckbox(const std::string& identifier = "", long id = 0,
+        UltraCanvasCheckbox(const std::string& identifier = "",
                             long x = 0, long y = 0, long w = 150, long h = 24,
                             const std::string& labelText = "");
         ~UltraCanvasCheckbox() override = default;
@@ -95,7 +95,7 @@ namespace UltraCanvas {
 
         // ===== FACTORY =====
         static std::shared_ptr<UltraCanvasCheckbox> CreateCheckbox(
-                const std::string& identifier, long id,
+                const std::string& identifier,
                 long x, long y, long w, long h,
                 const std::string& text = "",
                 bool checked = false);

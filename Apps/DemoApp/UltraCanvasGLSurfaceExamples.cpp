@@ -230,17 +230,17 @@ struct GLResources {
 };
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfaceExamples() {
-    auto mainContainer = std::make_shared<UltraCanvasContainer>("GLSurfaceExamples", 3000, 0, 0, 1000, 760);
+    auto mainContainer = std::make_shared<UltraCanvasContainer>("GLSurfaceExamples", 0, 0, 1000, 760);
 
     // Title
-    auto title = std::make_shared<UltraCanvasLabel>("GLSurfaceTitle", 3001, 20, 10, 600, 30);
+    auto title = std::make_shared<UltraCanvasLabel>("GLSurfaceTitle", 20, 10, 600, 30);
     title->SetText("OpenGL Surface - Hardware Accelerated 3D Rendering");
     title->SetFontSize(16);
     title->SetFontWeight(FontWeight::Bold);
     title->SetTextColor(Color(50, 50, 150, 255));
     mainContainer->AddChild(title);
 
-    auto subtitle = std::make_shared<UltraCanvasLabel>("GLSurfaceSubtitle", 3002, 20, 40, 800, 20);
+    auto subtitle = std::make_shared<UltraCanvasLabel>("GLSurfaceSubtitle", 20, 40, 800, 20);
     subtitle->SetText("Real OpenGL 3.3 rendering composited into UltraCanvas via CPU readback");
     subtitle->SetFontSize(11);
     subtitle->SetTextColor(Color(100, 100, 100, 255));
@@ -367,20 +367,20 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
     mainContainer->AddChild(glSurface);
 
     // Control panel on the right
-    auto controlPanel = std::make_shared<UltraCanvasContainer>("ControlPanel", 3010, 640, 70, 340, 500);
+    auto controlPanel = std::make_shared<UltraCanvasContainer>("ControlPanel", 640, 70, 340, 500);
     controlPanel->SetBackgroundColor(Color(245, 245, 245, 255));
     controlPanel->SetBorders(1.0f);
     controlPanel->SetPadding(10.0f);
 
     // Control panel title
-    auto controlTitle = std::make_shared<UltraCanvasLabel>("ControlTitle", 3011, 10, 10, 320, 25);
+    auto controlTitle = std::make_shared<UltraCanvasLabel>("ControlTitle", 10, 10, 320, 25);
     controlTitle->SetText("Controls");
     controlTitle->SetFontWeight(FontWeight::Bold);
     controlTitle->SetFontSize(14);
     controlPanel->AddChild(controlTitle);
 
     // Spin toggle button
-    auto spinButton = std::make_shared<UltraCanvasButton>("SpinButton", 3012, 10, 45, 150, 30);
+    auto spinButton = std::make_shared<UltraCanvasButton>("SpinButton", 10, 45, 150, 30);
     spinButton->SetText("Pause Rotation");
     spinButton->onClick = [spinButton, cubeState]() {
         cubeState->spinning = !cubeState->spinning;
@@ -389,13 +389,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
     controlPanel->AddChild(spinButton);
 
     // Speed slider label
-    auto speedLabel = std::make_shared<UltraCanvasLabel>("SpeedLabel", 3013, 10, 90, 320, 20);
+    auto speedLabel = std::make_shared<UltraCanvasLabel>("SpeedLabel", 10, 90, 320, 20);
     speedLabel->SetText("Rotation Speed");
     speedLabel->SetFontSize(12);
     controlPanel->AddChild(speedLabel);
 
     // Speed slider
-    auto speedSlider = std::make_shared<UltraCanvasSlider>("SpeedSlider", 3014, 10, 115, 300, 25);
+    auto speedSlider = std::make_shared<UltraCanvasSlider>("SpeedSlider", 10, 115, 300, 25);
     speedSlider->SetRange(0.1f, 5.0f);
     speedSlider->SetValue(1.0f);
     speedSlider->onValueChanged = [cubeState](float value) {
@@ -404,7 +404,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
     controlPanel->AddChild(speedSlider);
 
     // Info section
-    auto infoLabel = std::make_shared<UltraCanvasLabel>("InfoLabel", 3020, 10, 160, 320, 320);
+    auto infoLabel = std::make_shared<UltraCanvasLabel>("InfoLabel", 10, 160, 320, 320);
     infoLabel->SetText(
         "This demo shows UltraCanvasGLSurface\n"
         "rendering a spinning 3D cube using\n"
@@ -429,7 +429,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
     mainContainer->AddChild(controlPanel);
 
     // Status bar at bottom
-    auto statusBar = std::make_shared<UltraCanvasLabel>("StatusBar", 3030, 20, 580, 960, 25);
+    auto statusBar = std::make_shared<UltraCanvasLabel>("StatusBar", 20, 580, 960, 25);
     statusBar->SetText("Status: OpenGL 3.3 Core Profile | Render Mode: Continuous | Compositing: CPU Readback");
     statusBar->SetFontSize(10);
     statusBar->SetTextColor(Color(100, 100, 100, 255));
@@ -447,15 +447,15 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfac
 namespace UltraCanvas {
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGLSurfaceExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("GLSurfaceExamples", 3000, 0, 0, 1000, 600);
+    auto container = std::make_shared<UltraCanvasContainer>("GLSurfaceExamples", 0, 0, 1000, 600);
 
-    auto title = std::make_shared<UltraCanvasLabel>("GLSurfaceTitle", 3001, 10, 10, 300, 30);
+    auto title = std::make_shared<UltraCanvasLabel>("GLSurfaceTitle", 10, 10, 300, 30);
     title->SetText("OpenGL Surface Examples");
     title->SetFontSize(16);
     title->SetFontWeight(FontWeight::Bold);
     container->AddChild(title);
 
-    auto placeholder = std::make_shared<UltraCanvasLabel>("GLSurfacePlaceholder", 3002, 20, 50, 800, 400);
+    auto placeholder = std::make_shared<UltraCanvasLabel>("GLSurfacePlaceholder", 20, 50, 800, 400);
     placeholder->SetText(
         "OpenGL Surface Support - NOT AVAILABLE\n\n"
         "This build was compiled without OpenGL support.\n\n"

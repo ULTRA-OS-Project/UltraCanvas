@@ -254,7 +254,7 @@ struct ExtensionColorMap {
 class UltraCanvasGourceTree : public UltraCanvasUIElement {
 public:
     // ===== CONSTRUCTOR =====
-    UltraCanvasGourceTree(const std::string& id, long uid, long x, long y, long w, long h);
+    UltraCanvasGourceTree(const std::string& id, long x, long y, long w, long h);
     
     bool AcceptsFocus() const override { return true; }
     
@@ -482,9 +482,9 @@ private:
 // ===== FACTORY FUNCTION =====
 
 inline std::shared_ptr<UltraCanvasGourceTree> CreateGourceTree(
-    const std::string& id, long uid, long x, long y, long w, long h
+    const std::string& id, long x, long y, long w, long h
 ) {
-    return std::make_shared<UltraCanvasGourceTree>(id, uid, x, y, w, h);
+    return std::make_shared<UltraCanvasGourceTree>(id, x, y, w, h);
 }
 
 } // namespace UltraCanvas

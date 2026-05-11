@@ -306,12 +306,12 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSankeyExamples() {
         // Main container for all Sankey examples
         auto mainContainer = std::make_shared<UltraCanvasContainer>(
-                "SankeyExamples", 5000, 0, 0, 1030, 800
+                "SankeyExamples", 0, 0, 1030, 800
         );
 
         // ===== PAGE HEADER =====
         auto title = std::make_shared<UltraCanvasLabel>(
-                "SankeyTitle", 5001, 20, 10, 500, 35
+                "SankeyTitle", 20, 10, 500, 35
         );
         title->SetText("Sankey Diagram Visualization");
         title->SetFontSize(18);
@@ -320,7 +320,7 @@ namespace UltraCanvas {
         mainContainer->AddChild(title);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>(
-                "SankeySubtitle", 5002, 20, 45, 960, 25
+                "SankeySubtitle", 20, 45, 960, 25
         );
         subtitle->SetText("Interactive flow diagrams showing relationships and value distributions between entities");
         subtitle->SetFontSize(12);
@@ -329,7 +329,7 @@ namespace UltraCanvas {
 
         // ===== STATUS LABEL =====
         auto statusLabel = std::make_shared<UltraCanvasLabel>(
-                "SankeyStatus", 5003, 740, 10, 310, 60
+                "SankeyStatus", 740, 10, 310, 60
         );
         statusLabel->SetText("Hover over nodes and links to see details\nDrag nodes to adjust layout");
         statusLabel->SetFontSize(10);
@@ -341,18 +341,18 @@ namespace UltraCanvas {
 
         // ===== TABBED CONTAINER FOR DIFFERENT EXAMPLES =====
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
-                "SankeyTabs", 5004, 10, 85, 1020, 710
+                "SankeyTabs", 10, 85, 1020, 710
         );
         tabbedContainer->SetTabPosition(TabPosition::Top);
         tabbedContainer->SetTabStyle(TabStyle::Modern);
 
         auto oilContainer = std::make_shared<UltraCanvasContainer>(
-                "OilTab", 5200, 0, 0, 1020, 700
+                "OilTab", 0, 0, 1020, 700
         );
 
         // Finance Sankey diagram
         auto oilSankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "OilSankey", 5250, 5, 5, 1000, 650
+                "OilSankey", 5, 5, 1000, 650
         );
 
         // Add financial flow data
@@ -365,12 +365,12 @@ namespace UltraCanvas {
         // TAB 1: ENERGY FLOW EXAMPLE
         // ========================================
         auto energyContainer = std::make_shared<UltraCanvasContainer>(
-                "EnergyTab", 5100, 0, 0, 970, 640
+                "EnergyTab", 0, 0, 970, 640
         );
 
         // Description
         auto energyDesc = std::make_shared<UltraCanvasLabel>(
-                "EnergyDesc", 5101, 10, 10, 950, 40
+                "EnergyDesc", 10, 10, 950, 40
         );
         energyDesc->SetText(
                 "Energy Flow Analysis: This Sankey diagram shows the flow of energy from sources (coal, gas, nuclear, renewables) "
@@ -382,20 +382,20 @@ namespace UltraCanvas {
 
         // Control panel
         auto energyControls = std::make_shared<UltraCanvasContainer>(
-                "EnergyControls", 5102, 10, 55, 950, 45
+                "EnergyControls", 10, 55, 950, 45
         );
         energyControls->SetBackgroundColor(Color(250, 250, 250));
 
         // Theme selector
         auto themeLabel = std::make_shared<UltraCanvasLabel>(
-                "ThemeLabel", 5103, 10, 12, 60, 20
+                "ThemeLabel", 10, 12, 60, 20
         );
         themeLabel->SetText("Theme:");
         themeLabel->SetFontSize(11);
         energyControls->AddChild(themeLabel);
 
         auto themeDropdown = std::make_shared<UltraCanvasDropdown>(
-                "ThemeDropdown", 5104, 75, 10, 120, 25
+                "ThemeDropdown", 75, 10, 120, 25
         );
         themeDropdown->AddItem("Default", "0");
         themeDropdown->AddItem("Energy", "1");
@@ -406,14 +406,14 @@ namespace UltraCanvas {
 
         // Alignment selector
         auto alignLabel = std::make_shared<UltraCanvasLabel>(
-                "AlignLabel", 5105, 210, 12, 70, 20
+                "AlignLabel", 210, 12, 70, 20
         );
         alignLabel->SetText("Alignment:");
         alignLabel->SetFontSize(11);
         energyControls->AddChild(alignLabel);
 
         auto alignDropdown = std::make_shared<UltraCanvasDropdown>(
-                "AlignDropdown", 5106, 285, 10, 100, 25
+                "AlignDropdown", 285, 10, 100, 25
         );
         alignDropdown->AddItem("Left", "0");
         alignDropdown->AddItem("Right", "1");
@@ -424,14 +424,14 @@ namespace UltraCanvas {
 
         // Curvature slider
         auto curveLabel = std::make_shared<UltraCanvasLabel>(
-                "CurveLabel", 5107, 400, 12, 70, 20
+                "CurveLabel", 400, 12, 70, 20
         );
         curveLabel->SetText("Curvature:");
         curveLabel->SetFontSize(11);
         energyControls->AddChild(curveLabel);
 
         auto curveSlider = std::make_shared<UltraCanvasSlider>(
-                "CurveSlider", 5108, 475, 15, 150, 15
+                "CurveSlider", 475, 15, 150, 15
         );
         curveSlider->SetOrientation(SliderOrientation::Horizontal);
         curveSlider->SetRange(0.0f, 1.0f);
@@ -440,7 +440,7 @@ namespace UltraCanvas {
         energyControls->AddChild(curveSlider);
 
         auto curveValue = std::make_shared<UltraCanvasLabel>(
-                "CurveValue", 5109, 635, 12, 40, 20
+                "CurveValue", 635, 12, 40, 20
         );
         curveValue->SetText("0.5");
         curveValue->SetFontSize(11);
@@ -449,14 +449,14 @@ namespace UltraCanvas {
 
         // Export buttons
         auto exportSVG = std::make_shared<UltraCanvasButton>(
-                "ExportSVG", 5110, 700, 10, 100, 25
+                "ExportSVG", 700, 10, 100, 25
         );
         exportSVG->SetText("Export SVG");
         exportSVG->SetStyle(ButtonStyles::PrimaryStyle());
         energyControls->AddChild(exportSVG);
 
         auto loadCSV = std::make_shared<UltraCanvasButton>(
-                "LoadCSV", 5111, 810, 10, 100, 25
+                "LoadCSV", 810, 10, 100, 25
         );
         loadCSV->SetText("Load CSV");
         loadCSV->SetStyle(ButtonStyles::SecondaryStyle());
@@ -466,7 +466,7 @@ namespace UltraCanvas {
 
         // Create Energy Sankey diagram
         auto energySankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "EnergySankey", 5150, 10, 110, 950, 520
+                "EnergySankey", 10, 110, 950, 520
         );
 
         // Add energy flow data
@@ -509,12 +509,12 @@ namespace UltraCanvas {
         // TAB 2: FINANCIAL FLOW EXAMPLE
         // ========================================
         auto financeContainer = std::make_shared<UltraCanvasContainer>(
-                "FinanceTab", 5200, 0, 0, 970, 640
+                "FinanceTab", 0, 0, 970, 640
         );
 
         // Finance Sankey diagram
         auto financeSankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "FinanceSankey", 5250, 10, 55, 950, 575
+                "FinanceSankey", 10, 55, 950, 575
         );
 
         // Add financial flow data
@@ -532,12 +532,12 @@ namespace UltraCanvas {
         // TAB 3: WEB TRAFFIC FLOW EXAMPLE
         // ========================================
         auto webContainer = std::make_shared<UltraCanvasContainer>(
-                "WebTab", 5300, 0, 0, 970, 640
+                "WebTab", 0, 0, 970, 640
         );
 
         // Description
         auto webDesc = std::make_shared<UltraCanvasLabel>(
-                "WebDesc", 5301, 10, 10, 950, 40
+                "WebDesc", 10, 10, 950, 40
         );
         webDesc->SetText(
                 "Website User Flow: Visualize how users navigate through your website from various traffic sources "
@@ -549,7 +549,7 @@ namespace UltraCanvas {
 
         // Web traffic Sankey diagram
         auto webSankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "WebSankey", 5350, 10, 55, 950, 575
+                "WebSankey", 10, 55, 950, 575
         );
 
         // Add web traffic flow data
@@ -567,12 +567,12 @@ namespace UltraCanvas {
         // TAB 4: CUSTOM DATA EXAMPLE
         // ========================================
         auto customContainer = std::make_shared<UltraCanvasContainer>(
-                "CustomTab", 5400, 0, 0, 970, 640
+                "CustomTab", 0, 0, 970, 640
         );
 
         // Description
         auto customDesc = std::make_shared<UltraCanvasLabel>(
-                "CustomDesc", 5401, 10, 10, 950, 25
+                "CustomDesc", 10, 10, 950, 25
         );
         customDesc->SetText(
                 "Build Your Own: Create custom Sankey diagrams by adding nodes and links dynamically"
@@ -582,60 +582,60 @@ namespace UltraCanvas {
 
         // Control panel for custom diagram
         auto customControls = std::make_shared<UltraCanvasContainer>(
-                "CustomControls", 5402, 10, 40, 950, 80
+                "CustomControls", 10, 40, 950, 80
         );
         customControls->SetBackgroundColor(Color(250, 250, 250));
 
         // Input fields for adding links
         auto sourceLabel = std::make_shared<UltraCanvasLabel>(
-                "SourceLabel", 5403, 10, 12, 70, 20
+                "SourceLabel", 10, 12, 70, 20
         );
         sourceLabel->SetText("Source:");
         sourceLabel->SetFontSize(11);
         customControls->AddChild(sourceLabel);
 
         auto sourceInput = std::make_shared<UltraCanvasTextInput>(
-                "SourceInput", 5404, 75, 10, 120, 25
+                "SourceInput", 75, 10, 120, 25
         );
         sourceInput->SetPlaceholder("Node A");
         customControls->AddChild(sourceInput);
 
         auto targetLabel = std::make_shared<UltraCanvasLabel>(
-                "TargetLabel", 5405, 210, 12, 70, 20
+                "TargetLabel", 210, 12, 70, 20
         );
         targetLabel->SetText("Target:");
         targetLabel->SetFontSize(11);
         customControls->AddChild(targetLabel);
 
         auto targetInput = std::make_shared<UltraCanvasTextInput>(
-                "TargetInput", 5406, 270, 10, 120, 25
+                "TargetInput", 270, 10, 120, 25
         );
         targetInput->SetPlaceholder("Node B");
         customControls->AddChild(targetInput);
 
         auto valueLabel = std::make_shared<UltraCanvasLabel>(
-                "ValueLabel", 5407, 410, 12, 50, 20
+                "ValueLabel", 410, 12, 50, 20
         );
         valueLabel->SetText("Value:");
         valueLabel->SetFontSize(11);
         customControls->AddChild(valueLabel);
 
         auto valueInput = std::make_shared<UltraCanvasTextInput>(
-                "ValueInput", 5408, 465, 10, 80, 25
+                "ValueInput", 465, 10, 80, 25
         );
         valueInput->SetPlaceholder("100");
         valueInput->SetInputType(TextInputType::Number);
         customControls->AddChild(valueInput);
 
         auto addLinkBtn = std::make_shared<UltraCanvasButton>(
-                "AddLink", 5409, 570, 10, 80, 25
+                "AddLink", 570, 10, 80, 25
         );
         addLinkBtn->SetText("Add Link");
         addLinkBtn->SetStyle(ButtonStyles::PrimaryStyle());
         customControls->AddChild(addLinkBtn);
 
         auto clearBtn = std::make_shared<UltraCanvasButton>(
-                "ClearAll", 5410, 660, 10, 80, 25
+                "ClearAll", 660, 10, 80, 25
         );
         clearBtn->SetText("Clear All");
         clearBtn->SetStyle(ButtonStyles::DangerStyle());
@@ -643,28 +643,28 @@ namespace UltraCanvas {
 
         // Preset examples
         auto presetLabel = std::make_shared<UltraCanvasLabel>(
-                "PresetLabel", 5411, 10, 47, 70, 20
+                "PresetLabel", 10, 47, 70, 20
         );
         presetLabel->SetText("Presets:");
         presetLabel->SetFontSize(11);
         customControls->AddChild(presetLabel);
 
         auto presetBtn1 = std::make_shared<UltraCanvasButton>(
-                "PresetSupply", 5412, 85, 45, 110, 25
+                "PresetSupply", 85, 45, 110, 25
         );
         presetBtn1->SetText("Supply Chain");
         presetBtn1->SetStyle(ButtonStyles::SecondaryStyle());
         customControls->AddChild(presetBtn1);
 
         auto presetBtn2 = std::make_shared<UltraCanvasButton>(
-                "PresetBudget", 5413, 205, 45, 110, 25
+                "PresetBudget", 205, 45, 110, 25
         );
         presetBtn2->SetText("Budget Flow");
         presetBtn2->SetStyle(ButtonStyles::SecondaryStyle());
         customControls->AddChild(presetBtn2);
 
         auto presetBtn3 = std::make_shared<UltraCanvasButton>(
-                "PresetProcess", 5414, 325, 45, 110, 25
+                "PresetProcess", 325, 45, 110, 25
         );
         presetBtn3->SetText("Process Flow");
         presetBtn3->SetStyle(ButtonStyles::SecondaryStyle());
@@ -674,7 +674,7 @@ namespace UltraCanvas {
 
         // Custom Sankey diagram
         auto customSankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "CustomSankey", 5450, 10, 130, 950, 500
+                "CustomSankey", 10, 130, 950, 500
         );
 
         // Add link button handler
@@ -769,12 +769,12 @@ namespace UltraCanvas {
         // TAB 5: PERFORMANCE TEST
         // ========================================
         auto perfContainer = std::make_shared<UltraCanvasContainer>(
-                "PerfTab", 5500, 0, 0, 970, 640
+                "PerfTab", 0, 0, 970, 640
         );
 
         // Description
         auto perfDesc = std::make_shared<UltraCanvasLabel>(
-                "PerfDesc", 5501, 10, 10, 950, 40
+                "PerfDesc", 10, 10, 950, 40
         );
         perfDesc->SetText(
                 "Performance Testing: Generate large random Sankey diagrams to test rendering performance "
@@ -786,19 +786,19 @@ namespace UltraCanvas {
 
         // Performance controls
         auto perfControls = std::make_shared<UltraCanvasContainer>(
-                "PerfControls", 5502, 10, 55, 950, 45
+                "PerfControls", 10, 55, 950, 45
         );
         perfControls->SetBackgroundColor(Color(250, 250, 250));
 
         auto nodesLabel = std::make_shared<UltraCanvasLabel>(
-                "NodesLabel", 5503, 10, 12, 60, 20
+                "NodesLabel", 10, 12, 60, 20
         );
         nodesLabel->SetText("Nodes:");
         nodesLabel->SetFontSize(11);
         perfControls->AddChild(nodesLabel);
 
         auto nodesSlider = std::make_shared<UltraCanvasSlider>(
-                "NodesSlider", 5504, 65, 15, 150, 15
+                "NodesSlider", 65, 15, 150, 15
         );
         nodesSlider->SetOrientation(SliderOrientation::Horizontal);
         nodesSlider->SetRange(5.0f, 50.0f);
@@ -807,21 +807,21 @@ namespace UltraCanvas {
         perfControls->AddChild(nodesSlider);
 
         auto nodesValue = std::make_shared<UltraCanvasLabel>(
-                "NodesValue", 5505, 225, 12, 30, 20
+                "NodesValue", 225, 12, 30, 20
         );
         nodesValue->SetText("20");
         nodesValue->SetFontSize(11);
         perfControls->AddChild(nodesValue);
 
         auto linksLabel = std::make_shared<UltraCanvasLabel>(
-                "LinksLabel", 5506, 270, 12, 50, 20
+                "LinksLabel", 270, 12, 50, 20
         );
         linksLabel->SetText("Links:");
         linksLabel->SetFontSize(11);
         perfControls->AddChild(linksLabel);
 
         auto linksSlider = std::make_shared<UltraCanvasSlider>(
-                "LinksSlider", 5507, 315, 15, 150, 15
+                "LinksSlider", 315, 15, 150, 15
         );
         linksSlider->SetOrientation(SliderOrientation::Horizontal);
         linksSlider->SetRange(10.0f, 200.0f);
@@ -830,21 +830,21 @@ namespace UltraCanvas {
         perfControls->AddChild(linksSlider);
 
         auto linksValue = std::make_shared<UltraCanvasLabel>(
-                "LinksValue", 5508, 475, 12, 40, 20
+                "LinksValue", 475, 12, 40, 20
         );
         linksValue->SetText("50");
         linksValue->SetFontSize(11);
         perfControls->AddChild(linksValue);
 
         auto generateBtn = std::make_shared<UltraCanvasButton>(
-                "GenerateBtn", 5509, 520, 10, 140, 25
+                "GenerateBtn", 520, 10, 140, 25
         );
         generateBtn->SetText("Generate Random");
         generateBtn->SetStyle(ButtonStyles::PrimaryStyle());
         perfControls->AddChild(generateBtn);
 
         auto perfStats = std::make_shared<UltraCanvasLabel>(
-                "PerfStats", 5510, 670, 12, 270, 20
+                "PerfStats", 670, 12, 270, 20
         );
         perfStats->SetText("Ready to generate");
         perfStats->SetFontSize(11);
@@ -855,7 +855,7 @@ namespace UltraCanvas {
 
         // Performance Sankey diagram
         auto perfSankey = std::make_shared<UltraCanvasSankeyDiagram>(
-                "PerfSankey", 5550, 10, 110, 950, 520
+                "PerfSankey", 10, 110, 950, 520
         );
 
         // Slider handlers

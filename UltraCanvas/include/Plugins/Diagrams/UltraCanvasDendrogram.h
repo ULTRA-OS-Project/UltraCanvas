@@ -167,7 +167,7 @@ namespace UltraCanvas {
         // CONSTRUCTOR / DESTRUCTOR
         // =====================================================================
 
-        UltraCanvasDendrogram(const std::string& id, long uid,
+        UltraCanvasDendrogram(const std::string& id,
                               int x, int y, int width, int height);
         ~UltraCanvasDendrogram() override = default;
 

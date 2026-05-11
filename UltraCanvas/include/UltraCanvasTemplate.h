@@ -319,8 +319,7 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasTemplate(const std::string& identifier = "Template",
-                            long id = 0, long x = 0, long y = 0, long w = 200, long h = 32);
+        UltraCanvasTemplate(const std::string& identifier = "Template", long x = 0, long y = 0, long w = 200, long h = 32);
 
         virtual ~UltraCanvasTemplate() = default;
 

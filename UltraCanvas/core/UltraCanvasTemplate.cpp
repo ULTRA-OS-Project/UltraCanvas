@@ -17,9 +17,8 @@
 namespace UltraCanvas {
 
 // ===== CONSTRUCTOR =====
-    UltraCanvasTemplate::UltraCanvasTemplate(const std::string& identifier,
-                                             long id, long x, long y, long w, long h)
-            : UltraCanvasContainer(identifier, id, x, y, w, h),
+    UltraCanvasTemplate::UltraCanvasTemplate(const std::string& identifier, long x, long y, long w, long h)
+            : UltraCanvasContainer(identifier, x, y, w, h),
               isDirty(true),
               isDragging(false),
               dragStartPosition(0.0f, 0.0f),

@@ -52,7 +52,7 @@ namespace UltraCanvas {
         std::function<void(int row)> onItemHovered;
 
         // Constructor
-        UltraCanvasListView(const std::string& identifier, long id,
+        UltraCanvasListView(const std::string& identifier,
                             int x, int y, int w, int h);
         virtual ~UltraCanvasListView() = default;
 

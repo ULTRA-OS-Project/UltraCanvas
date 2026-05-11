@@ -7,10 +7,10 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateListViewExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("ListViewExamples", 1200, 0, 0, 1000, 640);
+        auto container = std::make_shared<UltraCanvasContainer>("ListViewExamples", 0, 0, 1000, 640);
 
         // Title
-        auto title = std::make_shared<UltraCanvasLabel>("ListViewTitle", 1201, 20, 10, 600, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("ListViewTitle", 20, 10, 600, 35);
         title->SetText("ListView Component Showcase");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -18,14 +18,14 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // Subtitle
-        auto subtitle = std::make_shared<UltraCanvasLabel>("ListViewSubtitle", 1202, 20, 45, 600, 25);
+        auto subtitle = std::make_shared<UltraCanvasLabel>("ListViewSubtitle", 20, 45, 600, 25);
         subtitle->SetText("Simple lists, multi-column, styled, and icon views");
         subtitle->SetFontSize(12);
         subtitle->SetTextColor(Color(120, 120, 120, 255));
         container->AddChild(subtitle);
 
         // Status feedback label
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("LVStatusLabel", 1203, 600, 10, 380, 60);
+        auto statusLabel = std::make_shared<UltraCanvasLabel>("LVStatusLabel", 600, 10, 380, 60);
         statusLabel->SetText("Click any list item to see feedback here");
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
@@ -36,7 +36,7 @@ namespace UltraCanvas {
         // ============================================================
         // Section 1: Simple List (Single Selection) — top-left
         // ============================================================
-        auto section1 = std::make_shared<UltraCanvasLabel>("LVSection1", 1210, 20, 90, 460, 25);
+        auto section1 = std::make_shared<UltraCanvasLabel>("LVSection1", 20, 90, 460, 25);
         section1->SetText("1. Simple List (Single Selection)");
         section1->SetFontWeight(FontWeight::Bold);
         section1->SetTextColor(Color(0, 100, 200, 255));
@@ -54,7 +54,7 @@ namespace UltraCanvas {
         simpleModel->AddItem(ListItem("Kiwi", "", "Brown fuzzy fruit"));
         simpleModel->AddItem(ListItem("Lemon", "", "Yellow citrus fruit"));
 
-        auto simpleList = std::make_shared<UltraCanvasListView>("SimpleListView", 1211, 20, 125, 460, 225);
+        auto simpleList = std::make_shared<UltraCanvasListView>("SimpleListView", 20, 125, 460, 225);
         simpleList->SetModel(simpleModel.get());
         simpleList->SetRowHeight(22);
 
@@ -70,7 +70,7 @@ namespace UltraCanvas {
 
         container->AddChild(simpleList);
 
-        auto desc1 = std::make_shared<UltraCanvasLabel>("SimpleListDesc", 1212, 20, 355, 460, 20);
+        auto desc1 = std::make_shared<UltraCanvasLabel>("SimpleListDesc", 20, 355, 460, 20);
         desc1->SetText("Single-selection list with 10 fruit items");
         desc1->SetFontSize(10);
         desc1->SetTextColor(Color(140, 140, 140, 255));
@@ -79,7 +79,7 @@ namespace UltraCanvas {
         // ============================================================
         // Section 2: Multi-Column List with Header — top-right
         // ============================================================
-        auto section2 = std::make_shared<UltraCanvasLabel>("LVSection2", 1220, 500, 90, 480, 25);
+        auto section2 = std::make_shared<UltraCanvasLabel>("LVSection2", 500, 90, 480, 25);
         section2->SetText("2. Multi-Column List with Header");
         section2->SetFontWeight(FontWeight::Bold);
         section2->SetTextColor(Color(0, 100, 200, 255));
@@ -100,7 +100,7 @@ namespace UltraCanvas {
         multiModel->AddItem(MultiColumnListItem({"logo.png", "PNG Image", "45.6 KB", "2025-01-20"}));
         multiModel->AddItem(MultiColumnListItem({"CHANGELOG.md", "Markdown", "12.3 KB", "2025-03-15"}));
 
-        auto multiList = std::make_shared<UltraCanvasListView>("MultiColumnListView", 1221, 500, 125, 480, 225);
+        auto multiList = std::make_shared<UltraCanvasListView>("MultiColumnListView", 500, 125, 480, 225);
         multiList->SetModel(multiModel.get());
 
         ListViewStyle multiStyle;
@@ -137,7 +137,7 @@ namespace UltraCanvas {
 
         container->AddChild(multiList);
 
-        auto desc2 = std::make_shared<UltraCanvasLabel>("MultiColDesc", 1222, 500, 355, 480, 20);
+        auto desc2 = std::make_shared<UltraCanvasLabel>("MultiColDesc", 500, 355, 480, 20);
         desc2->SetText("Multi-column with header, grid lines, multi-select (Ctrl+Click)");
         desc2->SetFontSize(10);
         desc2->SetTextColor(Color(140, 140, 140, 255));
@@ -146,7 +146,7 @@ namespace UltraCanvas {
         // ============================================================
         // Section 3: Styled List (Alternating Rows + Multi-Select) — bottom-left
         // ============================================================
-        auto section3 = std::make_shared<UltraCanvasLabel>("LVSection3", 1230, 20, 385, 460, 25);
+        auto section3 = std::make_shared<UltraCanvasLabel>("LVSection3", 20, 385, 460, 25);
         section3->SetText("3. Styled List (Alternating Rows + Multi-Select)");
         section3->SetFontWeight(FontWeight::Bold);
         section3->SetTextColor(Color(0, 100, 200, 255));
@@ -166,7 +166,7 @@ namespace UltraCanvas {
         styledModel->AddItem("Midnight Black");
         styledModel->AddItem("Pearl White");
 
-        auto styledList = std::make_shared<UltraCanvasListView>("StyledListView", 1231, 20, 420, 460, 160);
+        auto styledList = std::make_shared<UltraCanvasListView>("StyledListView", 20, 420, 460, 160);
         styledList->SetModel(styledModel.get());
 
         ListViewStyle styledStyle;
@@ -199,7 +199,7 @@ namespace UltraCanvas {
 
         container->AddChild(styledList);
 
-        auto desc3 = std::make_shared<UltraCanvasLabel>("StyledListDesc", 1232, 20, 585, 460, 20);
+        auto desc3 = std::make_shared<UltraCanvasLabel>("StyledListDesc", 20, 585, 460, 20);
         desc3->SetText("Alternating row colors, purple theme, multi-select (Ctrl/Shift+Click)");
         desc3->SetFontSize(10);
         desc3->SetTextColor(Color(140, 140, 140, 255));
@@ -208,7 +208,7 @@ namespace UltraCanvas {
         // ============================================================
         // Section 4: Custom Delegate with Icons — bottom-right
         // ============================================================
-        auto section4 = std::make_shared<UltraCanvasLabel>("LVSection4", 1240, 500, 385, 480, 25);
+        auto section4 = std::make_shared<UltraCanvasLabel>("LVSection4", 500, 385, 480, 25);
         section4->SetText("4. Custom Delegate with Icons");
         section4->SetFontWeight(FontWeight::Bold);
         section4->SetTextColor(Color(0, 100, 200, 255));
@@ -226,7 +226,7 @@ namespace UltraCanvas {
         iconModel->AddItem(ListItem("C#", iconsDir + "csharp.png", "Microsoft .NET language"));
         iconModel->AddItem(ListItem("Go", iconsDir + "go.png", "Google systems language"));
 
-        auto iconList = std::make_shared<UltraCanvasListView>("IconListView", 1241, 500, 420, 480, 160);
+        auto iconList = std::make_shared<UltraCanvasListView>("IconListView", 500, 420, 480, 160);
         iconList->SetModel(iconModel.get());
         iconList->SetRowHeight(28);
 
@@ -250,7 +250,7 @@ namespace UltraCanvas {
 
         container->AddChild(iconList);
 
-        auto desc4 = std::make_shared<UltraCanvasLabel>("IconListDesc", 1242, 500, 585, 480, 20);
+        auto desc4 = std::make_shared<UltraCanvasLabel>("IconListDesc", 500, 585, 480, 20);
         desc4->SetText("Single-column with 20px icons, custom row height (28px)");
         desc4->SetFontSize(10);
         desc4->SetTextColor(Color(140, 140, 140, 255));

@@ -232,7 +232,7 @@ namespace UltraCanvas {
 
     // ===== HELPER FUNCTION FOR IMAGE INFO DISPLAY =====
     std::shared_ptr<UltraCanvasLabel> CreateImageInfoLabel(const std::string& id, int x, int y, const std::string& format, const std::string& details) {
-        auto label = std::make_shared<UltraCanvasLabel>(id, 0, x, y, 0, 0);
+        auto label = std::make_shared<UltraCanvasLabel>(id, x, y, 0, 0);
         std::ostringstream info;
         info << "Format: " << format << "\n";
         info << details;
@@ -248,11 +248,11 @@ namespace UltraCanvas {
 
 // ===== PNG DEMO PAGE =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePNGExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("PNGDemoPage", 1510, 0, 0, 950, 800);
+        auto container = std::make_shared<UltraCanvasContainer>("PNGDemoPage", 0, 0, 950, 800);
         container->SetBackgroundColor(Color(255, 255, 255, 255));
 
         // Page Title
-        auto title = std::make_shared<UltraCanvasLabel>("PNGTitle", 1511, 10, 10, 600, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("PNGTitle", 10, 10, 600, 35);
         title->SetText("PNG Format Demonstration");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -260,7 +260,7 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // Format Description
-        auto description = std::make_shared<UltraCanvasLabel>("PNGDesc", 1512, 10, 50, 930, 60);
+        auto description = std::make_shared<UltraCanvasLabel>("PNGDesc", 10, 50, 930, 60);
         description->SetText("PNG (Portable Network Graphics) is a lossless image format that supports transparency. "
                              "It's ideal for logos, screenshots, and images with sharp edges or text. "
                              "PNG uses lossless compression, preserving all image data while reducing file size.");
@@ -270,12 +270,12 @@ namespace UltraCanvas {
         container->AddChild(description);
 
         // Image Display Area
-        auto imageContainer = std::make_shared<UltraCanvasContainer>("PNGImageContainer", 1513, 10, 120, 450, 360);
+        auto imageContainer = std::make_shared<UltraCanvasContainer>("PNGImageContainer", 10, 120, 450, 360);
         imageContainer->SetBackgroundColor(Color(240, 240, 240, 255));
         imageContainer->SetBorders(2, Color(200, 200, 200, 255));
 
         // Main PNG Image
-        auto pngImage = std::make_shared<UltraCanvasImageElement>("PNGMainImage", 1514, 25, 25, 400, 300);
+        auto pngImage = std::make_shared<UltraCanvasImageElement>("PNGMainImage", 25, 25, 400, 300);
         pngImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/transparent_overlay.png"));
         pngImage->SetFitMode(ImageFitMode::Contain);
         imageContainer->AddChild(pngImage);
@@ -283,28 +283,28 @@ namespace UltraCanvas {
         container->AddChild(imageContainer);
 
         // Image Properties Panel
-        auto propsPanel = std::make_shared<UltraCanvasContainer>("PNGPropsPanel", 1515, 480, 120, 450, 360);
+        auto propsPanel = std::make_shared<UltraCanvasContainer>("PNGPropsPanel", 480, 120, 450, 360);
 
-        auto propsTitle = std::make_shared<UltraCanvasLabel>("PNGPropsTitle", 1516, 10, 10, 250, 25);
+        auto propsTitle = std::make_shared<UltraCanvasLabel>("PNGPropsTitle", 10, 10, 250, 25);
         propsTitle->SetText("PNG Properties & Features");
         propsTitle->SetFontSize(14);
         propsTitle->SetFontWeight(FontWeight::Bold);
         propsPanel->AddChild(propsTitle);
 
         // Transparency Demonstration
-        auto transTitle = std::make_shared<UltraCanvasLabel>("TransTitle", 1517, 10, 45, 250, 20);
+        auto transTitle = std::make_shared<UltraCanvasLabel>("TransTitle", 10, 45, 250, 20);
         transTitle->SetText("Transparency Support:");
         transTitle->SetFontSize(12);
         propsPanel->AddChild(transTitle);
 
         // Background Pattern for Transparency Demo
-        auto bgPattern = std::make_shared<UltraCanvasContainer>("BGPattern", 1518, 10, 70, 300, 100);
+        auto bgPattern = std::make_shared<UltraCanvasContainer>("BGPattern", 10, 70, 300, 100);
         // Transparent PNG overlay
-        auto notransImage = std::make_shared<UltraCanvasImageElement>("NoTransPNG", 1519, 0, 0, 100, 100);
+        auto notransImage = std::make_shared<UltraCanvasImageElement>("NoTransPNG", 0, 0, 100, 100);
         notransImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/ship.jpg"));
         notransImage->SetFitMode(ImageFitMode::Fill);
 
-        auto transImage = std::make_shared<UltraCanvasImageElement>("TransPNG", 1519, 0, 0, 100, 100);
+        auto transImage = std::make_shared<UltraCanvasImageElement>("TransPNG", 0, 0, 100, 100);
         transImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/transparent_overlay.png"));
         bgPattern->AddChild(notransImage);
         bgPattern->AddChild(transImage);
@@ -313,12 +313,12 @@ namespace UltraCanvas {
         propsPanel->AddChild(bgPattern);
 
         // Alpha Channel Control
-        auto alphaLabel = std::make_shared<UltraCanvasLabel>("AlphaLabel", 1520, 25, 490, 100, 20);
+        auto alphaLabel = std::make_shared<UltraCanvasLabel>("AlphaLabel", 25, 490, 100, 20);
         alphaLabel->SetText("Opacity:");
         alphaLabel->SetFontSize(12);
         container->AddChild(alphaLabel);
 
-        auto alphaSlider = std::make_shared<UltraCanvasSlider>("AlphaSlider", 1521, 125, 490, 200, 25);
+        auto alphaSlider = std::make_shared<UltraCanvasSlider>("AlphaSlider", 125, 490, 200, 25);
         alphaSlider->SetRange(0, 100);
         alphaSlider->SetValue(100);
         alphaSlider->onValueChanged = [pngImage, transImage](float value) {
@@ -328,12 +328,12 @@ namespace UltraCanvas {
         container->AddChild(alphaSlider);
 
         // Scale Mode Options
-        auto scaleModeLabel = std::make_shared<UltraCanvasLabel>("ScaleModeLabel", 1522, 25, 525, 100, 20);
+        auto scaleModeLabel = std::make_shared<UltraCanvasLabel>("ScaleModeLabel", 25, 525, 100, 20);
         scaleModeLabel->SetText("Fit Mode:");
         scaleModeLabel->SetFontSize(12);
         container->AddChild(scaleModeLabel);
 
-        auto scaleModeDropdown = std::make_shared<UltraCanvasDropdown>("ScaleModeDropdown", 1523, 125, 525, 150, 25);
+        auto scaleModeDropdown = std::make_shared<UltraCanvasDropdown>("ScaleModeDropdown", 125, 525, 150, 25);
         scaleModeDropdown->AddItem("No Scale");
         scaleModeDropdown->AddItem("Contain");
         scaleModeDropdown->AddItem("Cover");
@@ -359,27 +359,27 @@ namespace UltraCanvas {
         container->AddChild(propsPanel);
 
         // Load Different PNG Examples
-        auto examplesLabel = std::make_shared<UltraCanvasLabel>("ExamplesLabel", 1524, 10, 595, 200, 20);
+        auto examplesLabel = std::make_shared<UltraCanvasLabel>("ExamplesLabel", 10, 595, 200, 20);
         examplesLabel->SetText("PNG Examples:");
         examplesLabel->SetFontSize(12);
         examplesLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(examplesLabel);
 
-        auto btnIcon = std::make_shared<UltraCanvasButton>("BtnIcon", 1525, 10, 620, 100, 30);
+        auto btnIcon = std::make_shared<UltraCanvasButton>("BtnIcon", 10, 620, 100, 30);
         btnIcon->SetText("Load Icon");
         btnIcon->onClick = [pngImage]() {
             pngImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/png_68.png"));
         };
         container->AddChild(btnIcon);
 
-        auto btnLogo = std::make_shared<UltraCanvasButton>("BtnLogo", 1526, 120, 620, 100, 30);
+        auto btnLogo = std::make_shared<UltraCanvasButton>("BtnLogo", 120, 620, 100, 30);
         btnLogo->SetText("Load Logo");
         btnLogo->onClick = [pngImage]() {
             pngImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/logo_transparent.png"));
         };
         container->AddChild(btnLogo);
 
-        auto btnScreenshot = std::make_shared<UltraCanvasButton>("BtnScreenshot", 1527, 230, 620, 150, 30);
+        auto btnScreenshot = std::make_shared<UltraCanvasButton>("BtnScreenshot", 230, 620, 150, 30);
         btnScreenshot->SetText("Load Screenshot");
         btnScreenshot->onClick = [pngImage]() {
             pngImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/screenshot.png"));
@@ -391,11 +391,11 @@ namespace UltraCanvas {
 
 // ===== JPEG/JPG DEMO PAGE =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateJPEGExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("JPEGDemoPage", 1530, 0, 0, 950, 560);
+        auto container = std::make_shared<UltraCanvasContainer>("JPEGDemoPage", 0, 0, 950, 560);
         //container->SetBackgroundColor(Colors::LightGray);
 
         // Page Title
-        auto title = std::make_shared<UltraCanvasLabel>("JPEGTitle", 1531, 20, 10, 600, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("JPEGTitle", 20, 10, 600, 35);
         title->SetText("JPEG/JPG Format Demonstration");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -403,7 +403,7 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // Format Description
-        auto description = std::make_shared<UltraCanvasLabel>("JPEGDesc", 1532, 20, 50, 920, 60);
+        auto description = std::make_shared<UltraCanvasLabel>("JPEGDesc", 20, 50, 920, 60);
         description->SetText("JPEG (Joint Photographic Experts Group) is a lossy compression format optimized for photographs. "
                              "It achieves small file sizes by selectively discarding image data that's less noticeable to the human eye. "
                              "JPEG is ideal for photos and complex images with gradients but not for images with sharp edges or text.");
@@ -413,12 +413,12 @@ namespace UltraCanvas {
         container->AddChild(description);
 
         // Image Display Area
-        auto imageContainer = std::make_shared<UltraCanvasContainer>("JPEGImageContainer", 1533, 20, 120, 450, 350);
+        auto imageContainer = std::make_shared<UltraCanvasContainer>("JPEGImageContainer", 20, 120, 450, 350);
 //        container->SetBorders(2, Colors::LightGray);
 //        container->SetBackgroundColor(Color(240, 240, 240, 255));
 
         // Main JPEG Image
-        auto jpegImage = std::make_shared<UltraCanvasImageElement>("JPEGMainImage", 1534, 0, 25, 420, 320);
+        auto jpegImage = std::make_shared<UltraCanvasImageElement>("JPEGMainImage", 0, 25, 420, 320);
         jpegImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/sample_photo.jpg"));
         jpegImage->SetFitMode(ImageFitMode::Contain);
         imageContainer->AddChild(jpegImage);
@@ -426,21 +426,21 @@ namespace UltraCanvas {
         container->AddChild(imageContainer);
 
         // Image Properties Panel
-        auto propsPanel = std::make_shared<UltraCanvasContainer>("JPEGPropsPanel", 1535, 480, 120, 450, 400);
+        auto propsPanel = std::make_shared<UltraCanvasContainer>("JPEGPropsPanel", 480, 120, 450, 400);
 
-        auto propsTitle = std::make_shared<UltraCanvasLabel>("JPEGPropsTitle", 1536, 10, 10, 250, 25);
+        auto propsTitle = std::make_shared<UltraCanvasLabel>("JPEGPropsTitle", 10, 10, 250, 25);
         propsTitle->SetText("JPEG Properties & Features");
         propsTitle->SetFontSize(14);
         propsTitle->SetFontWeight(FontWeight::Bold);
         propsPanel->AddChild(propsTitle);
 
         // Rotation Control
-        auto rotationLabel = std::make_shared<UltraCanvasLabel>("RotationLabel", 1544, 10, 60, 100, 20);
+        auto rotationLabel = std::make_shared<UltraCanvasLabel>("RotationLabel", 10, 60, 100, 20);
         rotationLabel->SetText("Rotation:");
         rotationLabel->SetFontSize(12);
         propsPanel->AddChild(rotationLabel);
 
-        auto rotationSlider = std::make_shared<UltraCanvasSlider>("RotationSlider", 1545, 80, 60, 200, 25);
+        auto rotationSlider = std::make_shared<UltraCanvasSlider>("RotationSlider", 80, 60, 200, 25);
         rotationSlider->SetRange(0, 360);
         rotationSlider->SetValue(0);
         rotationSlider->onValueChanged = [jpegImage](float value) {
@@ -448,7 +448,7 @@ namespace UltraCanvas {
         };
         propsPanel->AddChild(rotationSlider);
 
-        auto rotationValue = std::make_shared<UltraCanvasLabel>("RotationValue", 1546, 285, 60, 50, 20);
+        auto rotationValue = std::make_shared<UltraCanvasLabel>("RotationValue", 285, 60, 50, 20);
         rotationValue->SetText("0°");
         rotationValue->SetFontSize(11);
         rotationSlider->onValueChanged = [jpegImage, rotationValue](float value) {
@@ -460,16 +460,16 @@ namespace UltraCanvas {
         propsPanel->AddChild(rotationValue);
 
         // Scale Control
-        auto scaleLabel = std::make_shared<UltraCanvasLabel>("ScaleLabel", 1547, 10, 95, 100, 20);
+        auto scaleLabel = std::make_shared<UltraCanvasLabel>("ScaleLabel", 10, 95, 100, 20);
         scaleLabel->SetText("Scale:");
         scaleLabel->SetFontSize(12);
         propsPanel->AddChild(scaleLabel);
 
-        auto scaleSlider = std::make_shared<UltraCanvasSlider>("ScaleSlider", 1548, 80, 95, 200, 25);
+        auto scaleSlider = std::make_shared<UltraCanvasSlider>("ScaleSlider", 80, 95, 200, 25);
         scaleSlider->SetRange(50, 200);
         scaleSlider->SetValue(100);
 
-        auto scaleValue = std::make_shared<UltraCanvasLabel>("ScaleValue", 1549, 285, 95, 50, 20);
+        auto scaleValue = std::make_shared<UltraCanvasLabel>("ScaleValue", 285, 95, 50, 20);
         scaleValue->SetText("100%");
         scaleValue->SetFontSize(11);
         propsPanel->AddChild(scaleValue);
@@ -497,20 +497,20 @@ namespace UltraCanvas {
         container->AddChild(propsPanel);
 
         // Load Different JPEG Examples
-        auto examplesLabel = std::make_shared<UltraCanvasLabel>("JPEGExamplesLabel", 1550, 20, 480, 200, 20);
+        auto examplesLabel = std::make_shared<UltraCanvasLabel>("JPEGExamplesLabel", 20, 480, 200, 20);
         examplesLabel->SetText("JPEG Examples:");
         examplesLabel->SetFontSize(12);
         examplesLabel->SetFontWeight(FontWeight::Bold);
         container->AddChild(examplesLabel);
 
-        auto btnPhoto = std::make_shared<UltraCanvasButton>("BtnPhoto", 1551, 20, 505, 120, 30);
+        auto btnPhoto = std::make_shared<UltraCanvasButton>("BtnPhoto", 20, 505, 120, 30);
         btnPhoto->SetText("Load Photo");
         btnPhoto->onClick = [jpegImage]() {
             jpegImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/landscape.jpg"));
         };
         container->AddChild(btnPhoto);
 
-        auto btnPortrait = std::make_shared<UltraCanvasButton>("BtnPortrait", 1552, 160, 505, 120, 30);
+        auto btnPortrait = std::make_shared<UltraCanvasButton>("BtnPortrait", 160, 505, 120, 30);
         btnPortrait->SetText("Load Portrait");
         btnPortrait->onClick = [jpegImage]() {
             jpegImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/portrait.jpg"));
@@ -524,11 +524,11 @@ namespace UltraCanvas {
 
 // ===== AVIF FORMAT EXAMPLES =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAVIFExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("AVIFDemoPage", 1600, 0, 0, 950, 800);
+        auto container = std::make_shared<UltraCanvasContainer>("AVIFDemoPage", 0, 0, 950, 800);
         container->SetBackgroundColor(Color(255, 255, 255, 255));
 
         // Page Title
-        auto title = std::make_shared<UltraCanvasLabel>("AVIFTitle", 1601, 10, 10, 600, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("AVIFTitle", 10, 10, 600, 35);
         title->SetText("AVIF Format Demonstration");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -536,7 +536,7 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // Format Description
-        auto description = std::make_shared<UltraCanvasLabel>("AVIFDesc", 1602, 10, 50, 930, 80);
+        auto description = std::make_shared<UltraCanvasLabel>("AVIFDesc", 10, 50, 930, 80);
         description->SetText(
                 "AVIF (AV1 Image File Format) is a modern image format based on the AV1 video codec. "
                 "It provides significantly better compression than JPEG and WebP while maintaining high quality. "
@@ -548,7 +548,7 @@ namespace UltraCanvas {
         container->AddChild(description);
 
         // Image Display Area
-        auto avifImage = std::make_shared<UltraCanvasImageElement>("AVIFImage", 1603, 20, 140, 450, 350);
+        auto avifImage = std::make_shared<UltraCanvasImageElement>("AVIFImage", 20, 140, 450, 350);
         avifImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/Cat.avif"));
         avifImage->SetFitMode(ImageFitMode::Contain);
         avifImage->SetBorders(1.0f, Color(200, 200, 200, 255));
@@ -564,7 +564,7 @@ namespace UltraCanvas {
         container->AddChild(avifImage);
 
 //        // Performance Metrics Panel
-//        auto perfPanel = std::make_shared<UltraCanvasLabel>("AVIFPerf", 1604, 490, 140, 440, 120);
+//        auto perfPanel = std::make_shared<UltraCanvasLabel>("AVIFPerf", 490, 140, 440, 120);
 //        perfPanel->SetText(MeasureImagePerformance(NormalizePath(GetResourcesDir() + "media/Cat.avif")));
 //        perfPanel->SetAlignment(TextAlignment::Left);
 //        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
@@ -574,7 +574,7 @@ namespace UltraCanvas {
 //        container->AddChild(perfPanel);
 
         // Metadata Panel
-        auto metadataPanel = std::make_shared<UltraCanvasLabel>("AVIFMetadata", 1605, 490, 140, 440, 180);
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("AVIFMetadata", 490, 140, 440, 180);
         metadataPanel->SetText(ExtractImageMetadata(NormalizePath(GetResourcesDir() + "media/images/Cat.avif")));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
@@ -584,7 +584,7 @@ namespace UltraCanvas {
         container->AddChild(metadataPanel);
 
         // Format Options Panel
-        auto optionsPanel = std::make_shared<UltraCanvasLabel>("AVIFOptions", 1606, 490, 400, 440, 90);
+        auto optionsPanel = std::make_shared<UltraCanvasLabel>("AVIFOptions", 490, 400, 440, 90);
         optionsPanel->SetText(
                 "Format Options:\n"
                 "• Compression: Lossy/Lossless\n"
@@ -615,11 +615,11 @@ namespace UltraCanvas {
 
 // ===== WEBP FORMAT EXAMPLES =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWEBPExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("WEBPDemoPage", 1700, 0, 0, 950, 800);
+        auto container = std::make_shared<UltraCanvasContainer>("WEBPDemoPage", 0, 0, 950, 800);
         container->SetBackgroundColor(Color(255, 255, 255, 255));
 
         // Page Title
-        auto title = std::make_shared<UltraCanvasLabel>("WEBPTitle", 1701, 10, 10, 600, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("WEBPTitle", 10, 10, 600, 35);
         title->SetText("WEBP Format Demonstration");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -627,7 +627,7 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // Format Description
-        auto description = std::make_shared<UltraCanvasLabel>("WEBPDesc", 1702, 10, 50, 930, 80);
+        auto description = std::make_shared<UltraCanvasLabel>("WEBPDesc", 10, 50, 930, 80);
         description->SetText(
                 "WebP is a modern image format developed by Google that provides superior compression for images on the web. "
                 "It supports both lossy and lossless compression, as well as transparency and animation. "
@@ -639,7 +639,7 @@ namespace UltraCanvas {
         container->AddChild(description);
 
         // Image Display Area
-        auto webpImage = std::make_shared<UltraCanvasImageElement>("WEBPImage", 1703, 20, 140, 450, 350);
+        auto webpImage = std::make_shared<UltraCanvasImageElement>("WEBPImage", 20, 140, 450, 350);
         webpImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/Kindigs-1953-Corvette-TwelveAir.webp"));
         webpImage->SetFitMode(ImageFitMode::Contain);
         webpImage->SetBorders(1.0f, Color(200, 200, 200, 255));
@@ -655,7 +655,7 @@ namespace UltraCanvas {
         container->AddChild(webpImage);
 
         // Performance Metrics Panel
-//        auto perfPanel = std::make_shared<UltraCanvasLabel>("WEBPPerf", 1704, 490, 140, 440, 120);
+//        auto perfPanel = std::make_shared<UltraCanvasLabel>("WEBPPerf", 490, 140, 440, 120);
 //        perfPanel->SetText(MeasureImagePerformance(NormalizePath(GetResourcesDir() + "media/Kindigs-1953-Corvette-TwelveAir.webp")));
 //        perfPanel->SetAlignment(TextAlignment::Left);
 //        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
@@ -665,7 +665,7 @@ namespace UltraCanvas {
 //        container->AddChild(perfPanel);
 
         // Metadata Panel
-        auto metadataPanel = std::make_shared<UltraCanvasLabel>("WEBPMetadata", 1705, 490, 140, 440, 180);
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("WEBPMetadata", 490, 140, 440, 180);
         metadataPanel->SetText(ExtractImageMetadata(NormalizePath(GetResourcesDir() + "media/images/Kindigs-1953-Corvette-TwelveAir.webp")));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
@@ -675,7 +675,7 @@ namespace UltraCanvas {
         container->AddChild(metadataPanel);
 
         // Format Options Panel
-        auto optionsPanel = std::make_shared<UltraCanvasLabel>("WEBPOptions", 1706, 490, 400, 440, 90);
+        auto optionsPanel = std::make_shared<UltraCanvasLabel>("WEBPOptions", 490, 400, 440, 90);
         optionsPanel->SetText(
                 "Format Options:\n"
                 "• Compression: Lossy/Lossless\n"
@@ -706,11 +706,11 @@ namespace UltraCanvas {
 
 // ===== HEIF FORMAT EXAMPLES =====
 //    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateHEIFExamples() {
-//        auto container = std::make_shared<UltraCanvasContainer>("HEIFDemoPage", 1800, 0, 0, 950, 800);
+//        auto container = std::make_shared<UltraCanvasContainer>("HEIFDemoPage", 0, 0, 950, 800);
 //        container->SetBackgroundColor(Color(255, 255, 255, 255));
 //
 //        // Page Title
-//        auto title = std::make_shared<UltraCanvasLabel>("HEIFTitle", 1801, 10, 10, 400, 35);
+//        auto title = std::make_shared<UltraCanvasLabel>("HEIFTitle", 10, 10, 400, 35);
 //        title->SetText("HEIF/HEIC Format Demonstration");
 //        title->SetFontSize(18);
 //        title->SetFontWeight(FontWeight::Bold);
@@ -719,7 +719,7 @@ namespace UltraCanvas {
 //        container->AddChild(title);
 //
 //        // Format Description
-//        auto description = std::make_shared<UltraCanvasLabel>("HEIFDesc", 1802, 10, 50, 930, 80);
+//        auto description = std::make_shared<UltraCanvasLabel>("HEIFDesc", 10, 50, 930, 80);
 //        description->SetText(
 //                "HEIF/HEIC (High Efficiency Image Format) is an image container format based on HEVC (H.265) video compression. "
 //                "It provides superior compression efficiency compared to JPEG while maintaining high image quality. "
@@ -731,7 +731,7 @@ namespace UltraCanvas {
 //        container->AddChild(description);
 //
 //        // Image Display Area
-//        auto heifImage = std::make_shared<UltraCanvasImageElement>("HEIFImage", 1803, 20, 140, 450, 350);
+//        auto heifImage = std::make_shared<UltraCanvasImageElement>("HEIFImage", 20, 140, 450, 350);
 //        heifImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/fantasycutemonster.heif"));
 //        heifImage->SetFitMode(ImageFitMode::Contain);
 //        heifImage->SetBorders(1.0f, Color(200, 200, 200, 255));
@@ -747,7 +747,7 @@ namespace UltraCanvas {
 //        container->AddChild(heifImage);
 //
 //        // Performance Metrics Panel
-////        auto perfPanel = std::make_shared<UltraCanvasLabel>("HEIFPerf", 1804, 490, 140, 440, 120);
+////        auto perfPanel = std::make_shared<UltraCanvasLabel>("HEIFPerf", 490, 140, 440, 120);
 ////        perfPanel->SetText(MeasureImagePerformance(NormalizePath(GetResourcesDir() + "media/fantasycutemonster.heif")));
 ////        perfPanel->SetAlignment(TextAlignment::Left);
 ////        perfPanel->SetBackgroundColor(Color(250, 250, 250, 255));
@@ -757,7 +757,7 @@ namespace UltraCanvas {
 ////        container->AddChild(perfPanel);
 //
 //        // Metadata Panel
-//        auto metadataPanel = std::make_shared<UltraCanvasLabel>("HEIFMetadata", 1805, 490, 140, 440, 180);
+//        auto metadataPanel = std::make_shared<UltraCanvasLabel>("HEIFMetadata", 490, 140, 440, 180);
 //        metadataPanel->SetText(ExtractImageMetadata(NormalizePath(GetResourcesDir() + "media/images/fantasycutemonster.heif")));
 //        metadataPanel->SetAlignment(TextAlignment::Left);
 //        metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
@@ -767,7 +767,7 @@ namespace UltraCanvas {
 //        container->AddChild(metadataPanel);
 //
 //        // Format Options Panel
-//        auto optionsPanel = std::make_shared<UltraCanvasLabel>("HEIFOptions", 1806, 490, 400, 440, 90);
+//        auto optionsPanel = std::make_shared<UltraCanvasLabel>("HEIFOptions", 490, 400, 440, 90);
 //        optionsPanel->SetText(
 //                "Format Options:\n"
 //                "• Compression: HEVC-based\n"
@@ -799,11 +799,11 @@ namespace UltraCanvas {
 
 // ===== GIF FORMAT EXAMPLES =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGIFExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("GIFDemoPage", 2000, 0, 0, 950, 800);
+        auto container = std::make_shared<UltraCanvasContainer>("GIFDemoPage", 0, 0, 950, 800);
         container->SetBackgroundColor(Color(255, 255, 255, 255));
 
         // Page Title
-        auto title = std::make_shared<UltraCanvasLabel>("GIFTitle", 2001, 10, 10, 400, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("GIFTitle", 10, 10, 400, 35);
         title->SetText("GIF Format Demonstration");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -812,7 +812,7 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // Format Description
-        auto description = std::make_shared<UltraCanvasLabel>("GIFDesc", 2002, 10, 50, 930, 80);
+        auto description = std::make_shared<UltraCanvasLabel>("GIFDesc", 10, 50, 930, 80);
         description->SetText(
                 "GIF (Graphics Interchange Format) is one of the oldest image formats, introduced in 1987. "
                 "It supports animation and transparency through 8-bit indexed color (256 colors max). "
@@ -825,7 +825,7 @@ namespace UltraCanvas {
         container->AddChild(description);
 
         // Image Display Area (animated GIF generated from fordGT.jpg)
-        auto gifImage = std::make_shared<UltraCanvasImageElement>("GIFImage", 2003, 20, 140, 450, 350);
+        auto gifImage = std::make_shared<UltraCanvasImageElement>("GIFImage", 20, 140, 450, 350);
         // Note: In real implementation, would generate animated GIF from fordGT.jpg
         gifImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/Cat.gif"));
         gifImage->SetFitMode(ImageFitMode::Contain);
@@ -842,7 +842,7 @@ namespace UltraCanvas {
         container->AddChild(gifImage);
 
         // Performance Metrics Panel
-//        auto perfPanel = std::make_shared<UltraCanvasLabel>("GIFPerf", 2004, 490, 140, 440, 120);
+//        auto perfPanel = std::make_shared<UltraCanvasLabel>("GIFPerf", 490, 140, 440, 120);
 //        perfPanel->SetText(
 //                "Performance Metrics (×100):\n"
 //                "Load Time: ~150ms\n"
@@ -857,7 +857,7 @@ namespace UltraCanvas {
 //        container->AddChild(perfPanel);
 
         // Metadata Panel
-        auto metadataPanel = std::make_shared<UltraCanvasLabel>("GIFMetadata", 2005, 490, 140, 440, 180);
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("GIFMetadata", 490, 140, 440, 180);
         metadataPanel->SetText(ExtractImageMetadata(NormalizePath(GetResourcesDir() + "media/images/Cat.gif")));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
@@ -867,7 +867,7 @@ namespace UltraCanvas {
         container->AddChild(metadataPanel);
 
         // Format Options Panel
-        auto optionsPanel = std::make_shared<UltraCanvasLabel>("GIFOptions", 2006, 490, 400, 440, 90);
+        auto optionsPanel = std::make_shared<UltraCanvasLabel>("GIFOptions", 490, 400, 440, 90);
         optionsPanel->SetText(
                 "Format Options:\n"
                 "• Compression: LZW (lossless)\n"
@@ -899,11 +899,11 @@ namespace UltraCanvas {
 
 // ===== TIFF FORMAT EXAMPLES =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTIFFExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("TIFFDemoPage", 2100, 0, 0, 950, 800);
+        auto container = std::make_shared<UltraCanvasContainer>("TIFFDemoPage", 0, 0, 950, 800);
         container->SetBackgroundColor(Color(255, 255, 255, 255));
 
         // Page Title
-        auto title = std::make_shared<UltraCanvasLabel>("TIFFTitle", 2101, 10, 10, 400, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("TIFFTitle", 10, 10, 400, 35);
         title->SetText("TIFF Format Demonstration");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -912,7 +912,7 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // Format Description
-        auto description = std::make_shared<UltraCanvasLabel>("TIFFDesc", 2102, 10, 50, 930, 80);
+        auto description = std::make_shared<UltraCanvasLabel>("TIFFDesc", 10, 50, 930, 80);
         description->SetText(
                 "TIFF (Tagged Image File Format) is a flexible, adaptable file format for handling images and data. "
                 "It's widely used in professional photography, desktop publishing, and archival applications. "
@@ -925,7 +925,7 @@ namespace UltraCanvas {
         container->AddChild(description);
 
         // Image Display Area (converted from artist.jpg)
-        auto tiffImage = std::make_shared<UltraCanvasImageElement>("TIFFImage", 2103, 20, 140, 450, 350);
+        auto tiffImage = std::make_shared<UltraCanvasImageElement>("TIFFImage", 20, 140, 450, 350);
         // Note: In real implementation, would convert artist.jpg to TIFF
         tiffImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/Cat.tiff"));
         tiffImage->SetFitMode(ImageFitMode::Contain);
@@ -942,7 +942,7 @@ namespace UltraCanvas {
         container->AddChild(tiffImage);
 
         // Performance Metrics Panel
-//        auto perfPanel = std::make_shared<UltraCanvasLabel>("TIFFPerf", 2104, 490, 140, 440, 120);
+//        auto perfPanel = std::make_shared<UltraCanvasLabel>("TIFFPerf", 490, 140, 440, 120);
 //        perfPanel->SetText(
 //                "Performance Metrics (×100):\n"
 //                "Load Time: ~200ms (uncompressed)\n"
@@ -958,7 +958,7 @@ namespace UltraCanvas {
 //        container->AddChild(perfPanel);
 
         // Metadata Panel
-        auto metadataPanel = std::make_shared<UltraCanvasLabel>("TIFFMetadata", 2005, 490, 140, 440, 180);
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("TIFFMetadata", 490, 140, 440, 180);
         metadataPanel->SetText(ExtractImageMetadata(NormalizePath(GetResourcesDir() + "media/images/Cat.tiff")));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
@@ -968,7 +968,7 @@ namespace UltraCanvas {
         container->AddChild(metadataPanel);
 
         // Format Options Panel
-        auto optionsPanel = std::make_shared<UltraCanvasLabel>("TIFFOptions", 2106, 490, 400, 440, 90);
+        auto optionsPanel = std::make_shared<UltraCanvasLabel>("TIFFOptions", 490, 400, 440, 90);
         optionsPanel->SetText(
                 "Format Options:\n"
                 "• Compression: None, LZW, ZIP, JPEG\n"
@@ -1000,11 +1000,11 @@ namespace UltraCanvas {
 
 // ===== BMP FORMAT EXAMPLES =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBMPExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("BMPDemoPage", 2200, 0, 0, 950, 800);
+        auto container = std::make_shared<UltraCanvasContainer>("BMPDemoPage", 0, 0, 950, 800);
         container->SetBackgroundColor(Color(255, 255, 255, 255));
 
         // Page Title
-        auto title = std::make_shared<UltraCanvasLabel>("BMPTitle", 2201, 10, 10, 400, 35);
+        auto title = std::make_shared<UltraCanvasLabel>("BMPTitle", 10, 10, 400, 35);
         title->SetText("BMP Format Demonstration");
         title->SetFontSize(18);
         title->SetFontWeight(FontWeight::Bold);
@@ -1012,7 +1012,7 @@ namespace UltraCanvas {
         container->AddChild(title);
 
         // Format Description
-        auto description = std::make_shared<UltraCanvasLabel>("BMPDesc", 2202, 10, 50, 930, 80);
+        auto description = std::make_shared<UltraCanvasLabel>("BMPDesc", 10, 50, 930, 80);
         description->SetText(
                 "BMP (Bitmap) is Microsoft's native image format for Windows. "
                 "It's one of the simplest image formats, typically storing uncompressed pixel data. "
@@ -1025,7 +1025,7 @@ namespace UltraCanvas {
         container->AddChild(description);
 
         // Image Display Area (converted from fantasy.jpg)
-        auto bmpImage = std::make_shared<UltraCanvasImageElement>("BMPImage", 2203, 20, 140, 450, 350);
+        auto bmpImage = std::make_shared<UltraCanvasImageElement>("BMPImage", 20, 140, 450, 350);
         // Note: In real implementation, would convert fantasy.jpg to BMP
         bmpImage->LoadFromFile(NormalizePath(GetResourcesDir() + "media/images/Cat.bmp"));
         bmpImage->SetFitMode(ImageFitMode::Contain);
@@ -1042,7 +1042,7 @@ namespace UltraCanvas {
         container->AddChild(bmpImage);
 
         // Performance Metrics Panel
-//        auto perfPanel = std::make_shared<UltraCanvasLabel>("BMPPerf", 2204, 490, 140, 440, 120);
+//        auto perfPanel = std::make_shared<UltraCanvasLabel>("BMPPerf", 490, 140, 440, 120);
 //        perfPanel->SetText(
 //                "Performance Metrics (×100):\n"
 //                "Load Time: ~50ms (very fast)\n"
@@ -1058,7 +1058,7 @@ namespace UltraCanvas {
 //        container->AddChild(perfPanel);
 
         // Metadata Panel
-        auto metadataPanel = std::make_shared<UltraCanvasLabel>("BMPMetadata", 2205, 490, 140, 440, 180);
+        auto metadataPanel = std::make_shared<UltraCanvasLabel>("BMPMetadata", 490, 140, 440, 180);
         metadataPanel->SetText(ExtractImageMetadata(NormalizePath(GetResourcesDir() + "media/images/Cat.bmp")));
         metadataPanel->SetAlignment(TextAlignment::Left);
         metadataPanel->SetBackgroundColor(Color(245, 250, 255, 255));
@@ -1068,7 +1068,7 @@ namespace UltraCanvas {
         container->AddChild(metadataPanel);
 
         // Format Options Panel
-        auto optionsPanel = std::make_shared<UltraCanvasLabel>("BMPOptions", 2206, 490, 400, 440, 90);
+        auto optionsPanel = std::make_shared<UltraCanvasLabel>("BMPOptions", 490, 400, 440, 90);
         optionsPanel->SetText(
                 "Format Options:\n"
                 "• Compression: None (typical), RLE\n"

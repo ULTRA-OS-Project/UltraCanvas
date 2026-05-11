@@ -67,7 +67,7 @@ namespace UltraCanvas {
         layout->AddUIElement(titleLabel)->SetCrossAlignment(LayoutAlignment::Center);
 
         // Create divider line 1
-        auto divider = std::make_shared<UltraCanvasUIElement>("Divider", 1001, 10, 50, 600, 2);
+        auto divider = std::make_shared<UltraCanvasUIElement>("Divider", 10, 50, 600, 2);
         divider->SetBackgroundColor(Color(200, 200, 200, 255));
         divider->SetMargin(0,10,0,10);
         layout->AddUIElement(divider)->SetWidthMode(SizeMode::Fill);
@@ -85,7 +85,7 @@ namespace UltraCanvas {
         layout->AddUIElement(infoLabel1)->SetMainAlignment(LayoutAlignment::Center)->SetCrossAlignment(LayoutAlignment::Center);
 
         // Create divider line 2
-        auto divider2 = std::make_shared<UltraCanvasUIElement>("Divider", 1001, 10, 50, 600, 2);
+        auto divider2 = std::make_shared<UltraCanvasUIElement>("Divider", 10, 50, 600, 2);
         divider2->SetBackgroundColor(Color(200, 200, 200, 255));
         divider2->SetMargin(0,10,0,10);
         layout->AddUIElement(divider2)->SetWidthMode(SizeMode::Fill);
@@ -102,7 +102,7 @@ namespace UltraCanvas {
         int iconSize = 24;
 
         // Programmers guide icon and label
-        auto doccontainer = CreateContainer("doccont1", 0, 0, 0, 0, 25);
+        auto doccontainer = CreateContainer("doccont1", 0, 0, 0, 25);
         auto docContainerLayout = CreateHBoxLayout(doccontainer.get());
         doccontainer->SetMargin(10,20,10,20);
         layout->AddUIElement(doccontainer)->SetWidthMode(SizeMode::Fill);
@@ -120,7 +120,7 @@ namespace UltraCanvas {
         docContainerLayout->AddUIElement(infoLabel2, 1)->SetCrossAlignment(LayoutAlignment::Center);
 
         // Example code icon and label
-        auto codeContainer = CreateContainer("codecont1", 0, 0, 0, 0, 25);
+        auto codeContainer = CreateContainer("codecont1", 0, 0, 0, 25);
         auto codeContainerLayout = CreateHBoxLayout(codeContainer.get());
         codeContainer->SetMargin(0,20,10,20);
         layout->AddUIElement(codeContainer)->SetWidthMode(SizeMode::Fill);
@@ -139,7 +139,7 @@ namespace UltraCanvas {
         codeContainerLayout->AddUIElement(infoLabel3, 1)->SetCrossAlignment(LayoutAlignment::Center);;
 
         // Create additional info
-        auto additionalInfo = std::make_shared<UltraCanvasLabel>("AdditionalInfo", 1007, 50, 310, 500, 40);
+        auto additionalInfo = std::make_shared<UltraCanvasLabel>("AdditionalInfo", 50, 310, 500, 40);
         additionalInfo->SetText("These icons provide quick access to documentation and source code.");
         additionalInfo->SetFontSize(10);
         additionalInfo->SetAlignment(TextAlignment::Center);
@@ -177,7 +177,7 @@ namespace UltraCanvas {
         layout->AddUIElement(infoLabel1_2);
 
         // Create OK button
-        okButton = std::make_shared<UltraCanvasButton>("OkButton", 1008, 250, 370, 100, 35);
+        okButton = std::make_shared<UltraCanvasButton>("OkButton", 250, 370, 100, 35);
         okButton->SetText("OK");
         okButton->SetStyle(ButtonStyles::SuccessStyle());
         okButton->SetCornerRadius(4);

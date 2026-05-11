@@ -74,12 +74,12 @@ static std::shared_ptr<DendrogramDataVector> BuildTree(
 static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
     long& uid, int w, std::shared_ptr<UltraCanvasDendrogram> d, const std::string& info)
 {
-    auto bar = std::make_shared<UltraCanvasContainer>("ctrl_"+d->GetIdentifier(), uid++, 0, 0, w, 36);
+    auto bar = std::make_shared<UltraCanvasContainer>("ctrl_"+d->GetIdentifier(), 0, 0, w, 36);
     bar->SetBackgroundColor(Color(247,247,250,255));
 
     auto mkBtn = [&](const std::string& sfx, int x, int bw, const std::string& lbl,
                      std::function<void()> cb) {
-        auto btn = std::make_shared<UltraCanvasButton>(sfx+"_"+d->GetIdentifier(), uid++, x, 4, bw, 28, lbl);
+        auto btn = std::make_shared<UltraCanvasButton>(sfx+"_"+d->GetIdentifier(), x, 4, bw, 28, lbl);
         btn->onClick = std::move(cb);
         bar->AddChild(btn);
     };
@@ -91,7 +91,7 @@ static std::shared_ptr<UltraCanvasContainer> MakeControlBar(
     mkBtn("col", 272,  98, "Collapse All",[d]{ d->CollapseAll(); });
     mkBtn("rpos",374, 120, "Reset Pos",    [d]{ d->ResetNodePositions(); });
 
-    auto lbl = std::make_shared<UltraCanvasLabel>("inf_"+d->GetIdentifier(), uid++,
+    auto lbl = std::make_shared<UltraCanvasLabel>("inf_"+d->GetIdentifier(),
                                                    504, 10, w-508, 20, info);
     lbl->SetTextColor(Color(100,100,110,255));
     lbl->SetFontSize(11.0f);
@@ -162,8 +162,8 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo1(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs, groups);
-    auto outer = std::make_shared<UltraCanvasContainer>("o1",uid++,0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D1",uid++,0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o1",0,0,w,h);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D1",0,36,w,h-36);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::TopDown);
     d->SetScaleMode(DendrogramScaleMode::Proportional);
@@ -241,8 +241,8 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo2(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs,{});
-    auto outer = std::make_shared<UltraCanvasContainer>("o2",uid++,0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D2",uid++,0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o2",0,0,w,h);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D2",0,36,w,h-36);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::LeftRight);
     d->SetScaleMode(DendrogramScaleMode::Cladogram);
@@ -322,8 +322,8 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo3(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs,groups);
-    auto outer = std::make_shared<UltraCanvasContainer>("o3",uid++,0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D3",uid++,0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o3",0,0,w,h);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D3",0,36,w,h-36);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::Radial);
     d->SetScaleMode(DendrogramScaleMode::Proportional);
@@ -393,8 +393,8 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo4(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs,groups);
-    auto outer = std::make_shared<UltraCanvasContainer>("o4",uid++,0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D4",uid++,0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o4",0,0,w,h);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D4",0,36,w,h-36);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::LeftRight);
     d->SetScaleMode(DendrogramScaleMode::Proportional);
@@ -493,8 +493,8 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo5(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs,groups);
-    auto outer = std::make_shared<UltraCanvasContainer>("o5",uid++,0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D5",uid++,0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o5",0,0,w,h);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D5",0,36,w,h-36);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::Radial);
     d->SetScaleMode(DendrogramScaleMode::Proportional);
@@ -547,8 +547,8 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid, int w, int h)
     };
 
     auto data  = BuildTree(specs,{});
-    auto outer = std::make_shared<UltraCanvasContainer>("o6",uid++,0,0,w,h);
-    auto d     = std::make_shared<UltraCanvasDendrogram>("D6",uid++,0,36,w,h-36);
+    auto outer = std::make_shared<UltraCanvasContainer>("o6",0,0,w,h);
+    auto d     = std::make_shared<UltraCanvasDendrogram>("D6",0,36,w,h-36);
     d->SetDataSource(data);
     d->SetOrientation(DendrogramOrientation::LeftRight);
     d->SetScaleMode(DendrogramScaleMode::Proportional);
@@ -589,24 +589,24 @@ static std::shared_ptr<UltraCanvasContainer> MakeDemo6(long& uid, int w, int h)
 
 namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDendrogramExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("DendrogramExamples", 1000, 0, 0, 1220, 860);
+        auto container = std::make_shared<UltraCanvasContainer>("DendrogramExamples", 0, 0, 1220, 860);
         container->SetBackgroundColor(Color(255,255,255,255));
         
         const int headerH = 62;
         
-        auto titleLbl = std::make_shared<UltraCanvasLabel>("DendrogramTitle", 1001, 24, 8, 1172, 34, "Dendrogram Analysis Suite");
+        auto titleLbl = std::make_shared<UltraCanvasLabel>("DendrogramTitle", 1172, 34, "Dendrogram Analysis Suite");
         titleLbl->SetFontSize(22.0f);
         titleLbl->SetFontWeight(FontWeight::Bold);
         titleLbl->SetTextColor(Color(20,20,30,255));
         container->AddChild(titleLbl);
         
-        auto subLbl = std::make_shared<UltraCanvasLabel>("DendrogramSub", 1002, 24, 38, 1172, 20, 
+        auto subLbl = std::make_shared<UltraCanvasLabel>("DendrogramSub", 1172, 20, 
             "Interactive visualization of hierarchical data - Scroll to zoom, drag to pan, double-click to collapse");
         subLbl->SetFontSize(12.0f);
         subLbl->SetTextColor(Color(100,100,110,255));
         container->AddChild(subLbl);
         
-        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("DendrogramTabs", 1003, 0, headerH, 1220, 860-headerH);
+        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("DendrogramTabs", 0, headerH, 1220, 860-headerH);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
         

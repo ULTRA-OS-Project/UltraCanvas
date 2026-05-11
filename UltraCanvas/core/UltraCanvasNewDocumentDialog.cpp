@@ -13,9 +13,9 @@ namespace UltraCanvas {
 // ===== CONSTRUCTOR =====
 
     UltraCanvasNewDocumentDialog::UltraCanvasNewDocumentDialog(
-            const std::string& identifier, long id,
+            const std::string& identifier,
             int x, int y, int width, int height)
-            : UltraCanvasContainer(identifier, id, x, y, width, height)
+            : UltraCanvasContainer(identifier, x, y, width, height)
     {
         SetBackgroundColor(style.backgroundColor);
         SetupComponents();
@@ -28,7 +28,7 @@ namespace UltraCanvas {
     void UltraCanvasNewDocumentDialog::SetupComponents() {
         // Filter input
         filterInput = std::make_shared<UltraCanvasTextInput>(
-                "FilterInput", 1, 0, 0, 100, 28);
+                "FilterInput", 0, 0, 100, 28);
         filterInput->SetPlaceholder("Filter document types...");
         filterInput->onTextChanged = [this](const std::string& text) {
             ApplyFilter(text);
@@ -36,7 +36,7 @@ namespace UltraCanvas {
 
         // File name input
         fileNameInput = std::make_shared<UltraCanvasTextInput>(
-                "FileNameInput", 2, 0, 0, 100, 28);
+                "FileNameInput", 0, 0, 100, 28);
         fileNameInput->SetText("untitled");
         fileNameInput->onTextChanged = [this](const std::string& text) {
             fileName = text;
@@ -44,7 +44,7 @@ namespace UltraCanvas {
 
         // Create button
         createButton = std::make_shared<UltraCanvasButton>(
-                "CreateButton", 3, 0, 0, 90, 32);
+                "CreateButton", 0, 0, 90, 32);
         createButton->SetText("Create");
         createButton->onClick = [this]() {
             OnCreateClicked();
@@ -52,7 +52,7 @@ namespace UltraCanvas {
 
         // Cancel button
         cancelButton = std::make_shared<UltraCanvasButton>(
-                "CancelButton", 4, 0, 0, 90, 32);
+                "CancelButton", 0, 0, 90, 32);
         cancelButton->SetText("Cancel");
         cancelButton->onClick = [this]() {
             OnCancelClicked();
@@ -60,7 +60,7 @@ namespace UltraCanvas {
 
         // Scrollbar for list
         listScrollbar = std::make_shared<UltraCanvasScrollbar>(
-                "ListScrollbar", 5, 0, 0, 14, 100);
+                "ListScrollbar", 0, 0, 14, 100);
         listScrollbar->SetOrientation(ScrollbarOrientation::Vertical);
 
         // Add children
@@ -689,19 +689,17 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasNewDocumentDialog> CreateNewDocumentDialog(
             const std::string& identifier,
-            long id,
             int x, int y,
             int width, int height)
     {
-        return std::make_shared<UltraCanvasNewDocumentDialog>(identifier, id, x, y, width, height);
+        return std::make_shared<UltraCanvasNewDocumentDialog>(identifier, x, y, width, height);
     }
 
     std::shared_ptr<UltraCanvasNewDocumentDialog> CreateProgrammingNewDocumentDialog(
             const std::string& identifier,
-            long id,
             int x, int y)
     {
-        auto dialog = std::make_shared<UltraCanvasNewDocumentDialog>(identifier, id, x, y, 520, 500);
+        auto dialog = std::make_shared<UltraCanvasNewDocumentDialog>(identifier, x, y, 520, 500);
         dialog->LoadDefaultDocumentTypes();
         return dialog;
     }

@@ -1,7 +1,7 @@
 // include/UltraCanvasImageElement.h
 // Image display component with loading, caching, and transformation support
-// Version: 1.0.0
-// Last Modified: 2024-12-30
+// Version: 1.1.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -76,7 +76,7 @@ public:
     std::function<void(const Point2Di&)> onImageDragged;
     
     // ===== CONSTRUCTOR =====
-    UltraCanvasImageElement(const std::string& identifier = "ImageElement", long id = 0,
+    UltraCanvasImageElement(const std::string& identifier = "ImageElement",
                            long x = 0, long y = 0, long w = 100, long h = 100);
 
     // ===== IMAGE LOADING =====
@@ -140,26 +140,26 @@ private:
 
 // ===== FACTORY FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageElement(
-    const std::string& identifier, long id, long x, long y, long w, long h) {
-    return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, id, x, y, w, h);
+    const std::string& identifier, long x, long y, long w, long h) {
+    return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, x, y, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageElement(
         const std::string& identifier, long w = 0, long h = 0) {
-    return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, 0, 0, 0, w, h);
+    return UltraCanvasUIElementFactory::Create<UltraCanvasImageElement>(identifier, 0, 0, w, h);
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromFile(
-    const std::string& identifier, long id, long x, long y, long w, long h, const std::string& imagePath) {
-    auto image = CreateImageElement(identifier, id, x, y, w, h);
+    const std::string& identifier, long x, long y, long w, long h, const std::string& imagePath) {
+    auto image = CreateImageElement(identifier, x, y, w, h);
     image->LoadFromFile(imagePath);
     return image;
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromMemory(
-    const std::string& identifier, long id, long x, long y, long w, long h, 
+    const std::string& identifier, long x, long y, long w, long h, 
     const std::vector<uint8_t>& imageData, UCImageLoadFormat format = UCImageLoadFormat::Autodetect) {
-    auto image = CreateImageElement(identifier, id, x, y, w, h);
+    auto image = CreateImageElement(identifier, x, y, w, h);
     auto img = UCImageRaster::LoadFromMemory(imageData);
     image->LoadFromImage(img);
     return image;
@@ -167,17 +167,17 @@ inline std::shared_ptr<UltraCanvasImageElement> CreateImageFromMemory(
 
 // ===== CONVENIENCE FUNCTIONS =====
 inline std::shared_ptr<UltraCanvasImageElement> CreateScaledImage(
-    const std::string& identifier, long id, long x, long y, long w, long h,
+    const std::string& identifier, long x, long y, long w, long h,
     const std::string& imagePath, ImageFitMode fitMode) {
-    auto image = CreateImageFromFile(identifier, id, x, y, w, h, imagePath);
+    auto image = CreateImageFromFile(identifier, x, y, w, h, imagePath);
     image->SetFitMode(fitMode);
     return image;
 }
 
 inline std::shared_ptr<UltraCanvasImageElement> CreateClickableImage(
-    const std::string& identifier, long id, long x, long y, long w, long h,
+    const std::string& identifier, long x, long y, long w, long h,
     const std::string& imagePath, std::function<void()> clickCallback) {
-    auto image = CreateImageFromFile(identifier, id, x, y, w, h, imagePath);
+    auto image = CreateImageFromFile(identifier, x, y, w, h, imagePath);
     image->SetClickable(true);
     image->onClick = clickCallback;
     return image;

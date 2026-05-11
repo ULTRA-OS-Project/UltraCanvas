@@ -269,9 +269,8 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasMarkdownDisplay(const std::string& identifier = "MarkdownDisplay",
-                                   long id = 0, long x = 0, long y = 0, long w = 400, long h = 300)
-                : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+        UltraCanvasMarkdownDisplay(const std::string& identifier = "MarkdownDisplay", long x = 0, long y = 0, long w = 400, long h = 300)
+                : UltraCanvasUIElement(identifier, x, y, w, h) {
 
             style = MarkdownStyle::Default();
         }
@@ -355,10 +354,9 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTION =====
     inline std::shared_ptr<UltraCanvasMarkdownDisplay> CreateMarkdownDisplay(
-            const std::string& identifier = "MarkdownDisplay",
-            long id = 0, long x = 0, long y = 0, long w = 400, long h = 300) {
+            const std::string& identifier = "MarkdownDisplay", long x = 0, long y = 0, long w = 400, long h = 300) {
 
-        return std::make_shared<UltraCanvasMarkdownDisplay>(identifier, id, x, y, w, h);
+        return std::make_shared<UltraCanvasMarkdownDisplay>(identifier, x, y, w, h);
     }
 
 } // namespace UltraCanvas

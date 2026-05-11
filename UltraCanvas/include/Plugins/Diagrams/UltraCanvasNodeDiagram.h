@@ -334,7 +334,7 @@ struct NodeDiagramControlsConfig {
 
 class UltraCanvasNodeDiagram : public UltraCanvasUIElement {
 public:
-    UltraCanvasNodeDiagram(const std::string& id, long uid, int x, int y, int width, int height);
+    UltraCanvasNodeDiagram(const std::string& id, int x, int y, int width, int height);
     bool AcceptsFocus() const override { return true; }
     
     // =============================================================================
@@ -700,8 +700,8 @@ private:
 // =============================================================================
 
 inline std::shared_ptr<UltraCanvasNodeDiagram> CreateNodeDiagram(
-        const std::string& id, long uid, int x, int y, int w, int h) {
-    return std::make_shared<UltraCanvasNodeDiagram>(id, uid, x, y, w, h);
+        const std::string& id, int x, int y, int w, int h) {
+    return std::make_shared<UltraCanvasNodeDiagram>(id, x, y, w, h);
 }
 
 } // namespace UltraCanvas

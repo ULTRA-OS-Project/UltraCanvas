@@ -48,7 +48,7 @@ namespace UltraCanvas {
         void DrawFocusRingShape(IRenderContext* ctx) override;
 
     public:
-        UltraCanvasRadio(const std::string& identifier = "", long id = 0,
+        UltraCanvasRadio(const std::string& identifier = "",
                          long x = 0, long y = 0, long w = 150, long h = 24,
                          const std::string& labelText = "");
         ~UltraCanvasRadio() override = default;
@@ -66,7 +66,7 @@ namespace UltraCanvas {
 
         // ===== FACTORY =====
         static std::shared_ptr<UltraCanvasRadio> Create(
-                const std::string& identifier, long id,
+                const std::string& identifier,
                 long x, long y,
                 const std::string& text = "",
                 bool checked = false);

@@ -126,8 +126,7 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR (REQUIRED PATTERN) =====
-        UltraCanvasSlider(const std::string& identifier = "Slider",
-                          long id = 0, long x = 0, long y = 0, long w = 200, long h = 30);
+        UltraCanvasSlider(const std::string& identifier = "Slider", long x = 0, long y = 0, long w = 200, long h = 30);
 
         // ===== VALUE MANAGEMENT =====
         void SetRange(float min, float max);
@@ -278,37 +277,32 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasSlider> CreateSlider(
-            const std::string& identifier, long id, long x, long y, long width, long height) {
-        return std::make_shared<UltraCanvasSlider>(identifier, id, x, y, width, height);
-    }
-
-    inline std::shared_ptr<UltraCanvasSlider> CreateSlider(
             const std::string& identifier, long x, long y, long width, long height) {
-        return std::make_shared<UltraCanvasSlider>(identifier, 0, x, y, width, height);
+        return std::make_shared<UltraCanvasSlider>(identifier, x, y, width, height);
     }
 
     inline std::shared_ptr<UltraCanvasSlider> CreateHorizontalSlider(
-            const std::string& identifier, long id, long x, long y, long width, long height,
+            const std::string& identifier, long x, long y, long width, long height,
             float min = 0.0f, float max = 100.0f) {
-        auto slider = std::make_shared<UltraCanvasSlider>(identifier, id, x, y, width, height);
+        auto slider = std::make_shared<UltraCanvasSlider>(identifier, x, y, width, height);
         slider->SetSliderStyle(SliderStyle::Horizontal);
         slider->SetRange(min, max);
         return slider;
     }
 
     inline std::shared_ptr<UltraCanvasSlider> CreateVerticalSlider(
-            const std::string& identifier, long id, long x, long y, long width, long height,
+            const std::string& identifier, long x, long y, long width, long height,
             float min = 0.0f, float max = 100.0f) {
-        auto slider = std::make_shared<UltraCanvasSlider>(identifier, id, x, y, width, height);
+        auto slider = std::make_shared<UltraCanvasSlider>(identifier, x, y, width, height);
         slider->SetSliderStyle(SliderStyle::Vertical);
         slider->SetRange(min, max);
         return slider;
     }
 
     inline std::shared_ptr<UltraCanvasSlider> CreateCircularSlider(
-            const std::string& identifier, long id, long x, long y, long size,
+            const std::string& identifier, long x, long y, long size,
             float min = 0.0f, float max = 100.0f) {
-        auto slider = std::make_shared<UltraCanvasSlider>(identifier, id, x, y, size, size);
+        auto slider = std::make_shared<UltraCanvasSlider>(identifier, x, y, size, size);
         slider->SetSliderStyle(SliderStyle::Circular);
         slider->SetRange(min, max);
         return slider;
@@ -317,7 +311,7 @@ namespace UltraCanvas {
     inline std::shared_ptr<UltraCanvasSlider> CreateRangeSlider(
             const std::string& identifier, long x, long y, long width, long height,
             float min = 0.0f, float max = 100.0f, float lower = 25.0f, float upper = 75.0f) {
-        auto slider = std::make_shared<UltraCanvasSlider>(identifier, 0, x, y, width, height);
+        auto slider = std::make_shared<UltraCanvasSlider>(identifier, x, y, width, height);
         slider->SetSliderStyle(SliderStyle::Range);
         slider->SetRange(min, max);
         slider->SetRangeMode(true);

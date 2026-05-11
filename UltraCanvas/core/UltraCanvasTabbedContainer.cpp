@@ -17,9 +17,9 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasTabbedContainer::UltraCanvasTabbedContainer(const std::string &elementId, long uniqueId, long posX,
+    UltraCanvasTabbedContainer::UltraCanvasTabbedContainer(const std::string &elementId, long posX,
                                                            long posY, long w, long h)
-            : UltraCanvasContainer(elementId, uniqueId, posX, posY, w, h) {
+            : UltraCanvasContainer(elementId, posX, posY, w, h) {
         InitializeOverflowDropdown();
     }
 
@@ -222,7 +222,7 @@ namespace UltraCanvas {
 
     void UltraCanvasTabbedContainer::InitializeOverflowDropdown() {
         overflowButton = std::make_shared<UltraCanvasButton>(
-                GetIdentifier() + "_overflow", 0, 0, 0, overflowDropdownWidth, tabHeight, "");
+                GetIdentifier() + "_overflow", 0, 0, overflowDropdownWidth, tabHeight, "");
         overflowButton->SetIcon(NormalizePath(GetResourcesDir()+"media/icons/arrow_down_solid.svg"));
         AddChild(overflowButton);
         overflowButton->SetVisible(false);
@@ -234,7 +234,7 @@ namespace UltraCanvas {
 
         // Create AutoComplete for tab search
         searchAutoComplete = std::make_shared<UltraCanvasAutoComplete>(
-                GetIdentifier() + "_search", 0, 0, 0, 200, 28);
+                GetIdentifier() + "_search", 0, 0, 200, 28);
         searchAutoComplete->SetPlaceholder("Search tabs...");
         searchAutoComplete->SetMinCharsToTrigger(0);
         searchAutoComplete->SetShowPlaceholderAlways(true);

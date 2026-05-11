@@ -39,8 +39,8 @@ namespace UltraCanvas {
         Point2D lastMousePos;
 
     public:
-        UltraCanvasClipboardItem(const std::string& id, long uid, long x, long y, long w, long h, const ClipboardData& clipEntry)
-                : UltraCanvasUIElement(id, uid, x, y, w, h), properties(id, uid, x, y, w, h), entry(clipEntry) {
+        UltraCanvasClipboardItem(const std::string& id, long x, long y, long w, long h, const ClipboardData& clipEntry)
+                : UltraCanvasUIElement(id, x, y, w, h), properties(id, uid, x, y, w, h), entry(clipEntry) {
             CalculateLayout();
         }
 

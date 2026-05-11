@@ -154,9 +154,8 @@ namespace UltraCanvas {
 
     public:
         // ===== CONSTRUCTOR =====
-        UltraCanvasSegmentedControl(const std::string &identifier = "SegmentedControl",
-                                    long id = 0, long x = 0, long y = 0, long w = 300, long h = 32)
-                : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+        UltraCanvasSegmentedControl(const std::string &identifier = "SegmentedControl", long x = 0, long y = 0, long w = 300, long h = 32)
+                : UltraCanvasUIElement(identifier, x, y, w, h) {
 
             mouseCursor = UCMouseCursor::Hand;
         }
@@ -267,16 +266,16 @@ namespace UltraCanvas {
 // ===== FACTORY FUNCTIONS =====
 
     inline std::shared_ptr<UltraCanvasSegmentedControl> CreateSegmentedControl(
-            const std::string& identifier, long id, long x, long y, long w, long h) {
+            const std::string& identifier, long x, long y, long w, long h) {
         return UltraCanvasUIElementFactory::Create<UltraCanvasSegmentedControl>(
-                identifier, id, x, y, w, h
+                identifier, x, y, w, h
         );
     }
 
     inline std::shared_ptr<UltraCanvasSegmentedControl> CreateSegmentedControl(
-            const std::string& identifier, long id, const Rect2Di& bounds) {
+            const std::string& identifier, const Rect2Di& bounds) {
         return CreateSegmentedControl(
-                identifier, id, bounds.x, bounds.y, bounds.width, bounds.height
+                identifier, bounds.x, bounds.y, bounds.width, bounds.height
         );
     }
 
@@ -287,8 +286,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasSegmentedControl> control;
 
     public:
-        SegmentedControlBuilder(const std::string& identifier, long id, long x, long y, long w, long h) {
-            control = CreateSegmentedControl(identifier, id, x, y, w, h);
+        SegmentedControlBuilder(const std::string& identifier, long x, long y, long w, long h) {
+            control = CreateSegmentedControl(identifier, x, y, w, h);
         }
 
         SegmentedControlBuilder& AddSegment(const std::string& text) {

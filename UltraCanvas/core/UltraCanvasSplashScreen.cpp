@@ -52,7 +52,7 @@ namespace UltraCanvas {
 
         // Logo image
         if (!config.imagePath.empty()) {
-            auto logo = std::make_shared<UltraCanvasImageElement>("SplashLogo", 0, 0, 0, 250, 250);
+            auto logo = std::make_shared<UltraCanvasImageElement>("SplashLogo", 0, 0, 250, 250);
             logo->LoadFromFile(config.imagePath);
             logo->SetFitMode(ImageFitMode::Contain);
             logo->SetMargin(0, 0, 12, 0);

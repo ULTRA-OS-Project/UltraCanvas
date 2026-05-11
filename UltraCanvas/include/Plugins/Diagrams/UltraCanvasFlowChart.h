@@ -182,7 +182,7 @@ public:
 
     enum class CardinalSide { Top, Right, Bottom, Left };
 
-    UltraCanvasFlowChart(const std::string& id, long uid, int x, int y, int width, int height);
+    UltraCanvasFlowChart(const std::string& id, int x, int y, int width, int height);
     bool AcceptsFocus() const override { return true; }
     
     // =============================================================================
@@ -429,8 +429,8 @@ private:
 // =============================================================================
 
 inline std::shared_ptr<UltraCanvasFlowChart> CreateFlowChart(
-        const std::string& id, long uid, int x, int y, int w, int h) {
-    return std::make_shared<UltraCanvasFlowChart>(id, uid, x, y, w, h);
+        const std::string& id, int x, int y, int w, int h) {
+    return std::make_shared<UltraCanvasFlowChart>(id, x, y, w, h);
 }
 
 } // namespace UltraCanvas

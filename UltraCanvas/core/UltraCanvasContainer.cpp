@@ -542,7 +542,7 @@ namespace UltraCanvas {
     void UltraCanvasContainer::CreateScrollbars() {
         // Create vertical scrollbar
         verticalScrollbar = std::make_unique<UltraCanvasScrollbar>(
-                GetIdentifier() + "_vscroll", 0, 0, 0, style.scrollbarStyle.trackSize, 100,
+                GetIdentifier() + "_vscroll", 0, 0, style.scrollbarStyle.trackSize, 100,
                 ScrollbarOrientation::Vertical);
 
         verticalScrollbar->onScrollChange = [this](int pos) {
@@ -553,7 +553,7 @@ namespace UltraCanvas {
 
         // Create horizontal scrollbar
         horizontalScrollbar = std::make_unique<UltraCanvasScrollbar>(
-                GetIdentifier() + "_hscroll", 0, 0, 0, 100, style.scrollbarStyle.trackSize,
+                GetIdentifier() + "_hscroll", 0, 0, 100, style.scrollbarStyle.trackSize,
                 ScrollbarOrientation::Horizontal);
 
         horizontalScrollbar->onScrollChange = [this](int pos) {

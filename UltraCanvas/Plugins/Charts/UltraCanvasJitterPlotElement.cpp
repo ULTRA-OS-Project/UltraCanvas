@@ -70,8 +70,8 @@ namespace UltraCanvas {
 // =============================================================================
 
 UltraCanvasJitterPlotElement::UltraCanvasJitterPlotElement(
-    const std::string& id, long uid, int x, int y, int width, int height)
-    : UltraCanvasChartElementBase(id, uid, x, y, width, height),
+    const std::string& id, int x, int y, int width, int height)
+    : UltraCanvasChartElementBase(id, x, y, width, height),
       uniformDist(-1.0f, 1.0f),
       gaussianDist(0.0f, 1.0f) {
     

@@ -32,21 +32,21 @@ public:
             : UltraCanvasContainer("text_panel", 0, 0, 0, 400, 300) {
 
         // Title label
-        titleLabel = std::make_shared<UltraCanvasLabel>("title", 0, 10, 10, 380, 30);
+        titleLabel = std::make_shared<UltraCanvasLabel>("title", 10, 10, 380, 30);
         titleLabel->SetText(title);
         titleLabel->SetTextColor(Color(0, 100, 200));
         titleLabel->SetFontSize(16);
         AddChild(titleLabel);
 
         // Content description
-        contentLabel = std::make_shared<UltraCanvasLabel>("content", 0, 10, 50, 380, 60);
+        contentLabel = std::make_shared<UltraCanvasLabel>("content", 10, 50, 380, 60);
         contentLabel->SetText(content);
         contentLabel->SetTextColor(Colors::Black);
         contentLabel->SetWrap(TextWrap::WrapWord);
         AddChild(contentLabel);
 
         // Interactive text area
-        textInput = std::make_shared<UltraCanvasTextInput>("input", 0, 10, 120, 380, 160);
+        textInput = std::make_shared<UltraCanvasTextInput>("input", 10, 120, 380, 160);
         textInput->SetText("Type here to test the tab content...\n\nThis demonstrates how each tab can contain different interactive elements.");
         textInput->SetInputType(TextInputType::Multiline);
         AddChild(textInput);
@@ -64,7 +64,7 @@ public:
             : UltraCanvasContainer("button_panel", 0, 0, 0, 400, 300) {
 
         // Create title
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("title", 0, 10, 10, 380, 30);
+        auto titleLabel = std::make_shared<UltraCanvasLabel>("title", 10, 10, 380, 30);
         titleLabel->SetText("Interactive Button Panel: " + panelName);
         titleLabel->SetTextColor(Color(0, 150, 0));
         titleLabel->SetFontSize(16);
@@ -98,7 +98,7 @@ public:
         }
 
         // Status label
-        statusLabel = std::make_shared<UltraCanvasLabel>("status", 0, 10, 180, 380, 60);
+        statusLabel = std::make_shared<UltraCanvasLabel>("status", 10, 180, 380, 60);
         statusLabel->SetText("Click any button to see interaction feedback...");
         statusLabel->SetTextColor(Color(100, 100, 100));
         statusLabel->SetWrap(TextWrap::WrapWord);
@@ -115,14 +115,14 @@ public:
             : UltraCanvasContainer("info_panel", 0, 0, 0, 400, 300) {
 
         // Title
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("title", 0, 10, 10, 380, 30);
+        auto titleLabel = std::make_shared<UltraCanvasLabel>("title", 10, 10, 380, 30);
         titleLabel->SetText(title);
         titleLabel->SetTextColor(accentColor);
         titleLabel->SetFontSize(16);
         AddChild(titleLabel);
 
         // Info content
-        infoLabel = std::make_shared<UltraCanvasLabel>("info", 0, 10, 50, 380, 240);
+        infoLabel = std::make_shared<UltraCanvasLabel>("info", 10, 50, 380, 240);
         infoLabel->SetText(info);
         infoLabel->SetTextColor(Colors::Black);
         infoLabel->SetWrap(TextWrap::WrapWord);
@@ -161,7 +161,7 @@ private:
     void CreateMainTabbedContainer() {
         // Create main tabbed container with dropdown search enabled
         mainTabbedContainer = CreateTabbedContainerWithDropdown(
-                "main_tabs", 1001, 10, 10, 980, 500,
+                "main_tabs", 10, 10, 980, 500,
                 OverflowDropdownPosition::Left,  // Dropdown on left
                 false,                            // Enable search
                 5                                // Show search when >5 tabs
@@ -185,7 +185,7 @@ private:
     void CreateSubTabbedContainer() {
         // Create a nested tabbed container for one of the main tabs
         subTabbedContainer = CreateTabbedContainerWithDropdown(
-                "sub_tabs", 1002, 0, 0, 400, 300,
+                "sub_tabs", 0, 0, 400, 300,
                 OverflowDropdownPosition::Right,  // Dropdown on right
                 false,                             // Enable search
                 8                                 // Show search when >8 tabs
@@ -204,28 +204,28 @@ private:
 
     void CreateControlButtons() {
         // Add tab button
-        addTabButton = std::make_shared<UltraCanvasButton>("add_tab", 2001, 10, 520, 100, 30);
+        addTabButton = std::make_shared<UltraCanvasButton>("add_tab", 10, 520, 100, 30);
         addTabButton->SetText("Add Tab");
         AddChild(addTabButton);
 
         // Remove tab button
-        removeTabButton = std::make_shared<UltraCanvasButton>("remove_tab", 2002, 120, 520, 100, 30);
+        removeTabButton = std::make_shared<UltraCanvasButton>("remove_tab", 120, 520, 100, 30);
         removeTabButton->SetText("Remove Tab");
         AddChild(removeTabButton);
 
         // Toggle dropdown position
-        toggleDropdownButton = std::make_shared<UltraCanvasButton>("toggle_dropdown", 2003, 230, 520, 120, 30);
+        toggleDropdownButton = std::make_shared<UltraCanvasButton>("toggle_dropdown", 230, 520, 120, 30);
         toggleDropdownButton->SetText("Toggle Dropdown");
         AddChild(toggleDropdownButton);
 
         // Toggle search
-        toggleSearchButton = std::make_shared<UltraCanvasButton>("toggle_search", 2004, 360, 520, 120, 30);
+        toggleSearchButton = std::make_shared<UltraCanvasButton>("toggle_search", 360, 520, 120, 30);
         toggleSearchButton->SetText("Toggle Search");
         AddChild(toggleSearchButton);
     }
 
     void CreateStatusLabel() {
-        statusLabel = std::make_shared<UltraCanvasLabel>("status", 0, 500, 520, 480, 30);
+        statusLabel = std::make_shared<UltraCanvasLabel>("status", 500, 520, 480, 30);
         statusLabel->SetText("Demo loaded. Try adding tabs, using dropdown search, and tab reordering!");
         statusLabel->SetTextColor(Color(0, 100, 0));
         AddChild(statusLabel);
@@ -262,7 +262,7 @@ private:
 
         // Tab 3: Nested Tabs Demo
         PopulateSubTabbedContainer();
-        auto nestedContainer = std::make_shared<UltraCanvasContainer>("nested", 0, 0, 0, 400, 300);
+        auto nestedContainer = std::make_shared<UltraCanvasContainer>("nested", 0, 0, 400, 300);
         nestedContainer->AddChild(subTabbedContainer);
         mainTabbedContainer->AddTab("📁 Nested Tabs", nestedContainer);
 

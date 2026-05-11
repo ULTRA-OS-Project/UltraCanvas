@@ -20,7 +20,7 @@ namespace UltraCanvas {
 
         // Main container for all toolbar examples
         auto mainContainer = std::make_shared<UltraCanvasContainer>(
-                "ToolbarExamples", 800, 0, 0, 1000, 1000
+                "ToolbarExamples", 0, 0, 1000, 1000
         );
         mainContainer->SetBackgroundColor(Color(252, 252, 252, 255));
         mainContainer->SetPadding(0,0,10,0);
@@ -29,7 +29,7 @@ namespace UltraCanvas {
 
         // ===== PAGE HEADER =====
         auto title = std::make_shared<UltraCanvasLabel>(
-                "ToolbarTitle", 801, 20, currentY, 500, 35
+                "ToolbarTitle", 20, currentY, 500, 35
         );
         title->SetText("Toolbar Component Examples");
         title->SetFontSize(18);
@@ -39,7 +39,7 @@ namespace UltraCanvas {
         currentY += 40;
 
         auto subtitle = std::make_shared<UltraCanvasLabel>(
-                "ToolbarSubtitle", 802, 20, currentY, 960, 25
+                "ToolbarSubtitle", 20, currentY, 960, 25
         );
         subtitle->SetText("Flexible toolbar system with buttons, dropdowns, separators, and various styles");
         subtitle->SetFontSize(12);
@@ -49,7 +49,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 1: STANDARD HORIZONTAL TOOLBAR =====
         auto section1Label = std::make_shared<UltraCanvasLabel>(
-                "Section1Label", 803, 20, currentY, 400, 25
+                "Section1Label", 20, currentY, 400, 25
         );
         section1Label->SetText("1. Standard Horizontal Toolbar");
         section1Label->SetFontSize(14);
@@ -58,7 +58,7 @@ namespace UltraCanvas {
         currentY += 30;
 
         auto desc1 = std::make_shared<UltraCanvasLabel>(
-                "Desc1", 804, 20, currentY, 960, 20
+                "Desc1", 20, currentY, 960, 20
         );
         desc1->SetText("Classic toolbar with buttons, separators, and flexible spacing");
         desc1->SetFontSize(11);
@@ -100,7 +100,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 2: TOOLBAR WITH DROPDOWNS =====
         auto section2Label = std::make_shared<UltraCanvasLabel>(
-                "Section2Label", 806, 20, currentY, 400, 25
+                "Section2Label", 20, currentY, 400, 25
         );
         section2Label->SetText("2. Toolbar with Dropdown Menus");
         section2Label->SetFontSize(14);
@@ -109,7 +109,7 @@ namespace UltraCanvas {
         currentY += 30;
 
         auto desc2 = std::make_shared<UltraCanvasLabel>(
-                "Desc2", 807, 20, currentY, 960, 20
+                "Desc2", 20, currentY, 960, 20
         );
         desc2->SetText("Toolbar combining buttons and dropdown selectors");
         desc2->SetFontSize(11);
@@ -118,7 +118,7 @@ namespace UltraCanvas {
         currentY += 25;
 
         auto dropdownToolbar = std::make_shared<UltraCanvasToolbar>(
-                "DropdownToolbar", 808, 20, currentY, 960, 48
+                "DropdownToolbar", 20, currentY, 960, 48
         );
         dropdownToolbar->SetOrientation(ToolbarOrientation::Horizontal);
         dropdownToolbar->SetAppearance(ToolbarAppearance::Default());
@@ -163,7 +163,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 3: FLAT STYLE TOOLBAR =====
         auto section3Label = std::make_shared<UltraCanvasLabel>(
-                "Section3Label", 809, 20, currentY, 400, 25
+                "Section3Label", 20, currentY, 400, 25
         );
         section3Label->SetText("3. Flat Style Toolbar");
         section3Label->SetFontSize(14);
@@ -172,7 +172,7 @@ namespace UltraCanvas {
         currentY += 30;
 
         auto desc3 = std::make_shared<UltraCanvasLabel>(
-                "Desc3", 810, 20, currentY, 960, 20
+                "Desc3", 20, currentY, 960, 20
         );
         desc3->SetText("Modern flat design without borders");
         desc3->SetFontSize(11);
@@ -208,7 +208,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 4: VERTICAL SIDEBAR TOOLBAR =====
         auto section4Label = std::make_shared<UltraCanvasLabel>(
-                "Section4Label", 812, 20, currentY, 400, 25
+                "Section4Label", 20, currentY, 400, 25
         );
         section4Label->SetText("4. Vertical Sidebar Toolbar");
         section4Label->SetFontSize(14);
@@ -217,7 +217,7 @@ namespace UltraCanvas {
         currentY += 30;
 
         auto desc4 = std::make_shared<UltraCanvasLabel>(
-                "Desc4", 813, 20, currentY, 960, 20
+                "Desc4", 20, currentY, 960, 20
         );
         desc4->SetText("Vertical orientation for sidebar navigation");
         desc4->SetFontSize(11);
@@ -227,7 +227,7 @@ namespace UltraCanvas {
 
         // Container to demonstrate vertical toolbar
         auto sidebarContainer = std::make_shared<UltraCanvasContainer>(
-                "SidebarDemo", 814, 20, currentY, 960, 240
+                "SidebarDemo", 20, currentY, 960, 240
         );
         sidebarContainer->SetBackgroundColor(Color(245, 245, 245, 255));
         sidebarContainer->SetBorders(1, Color(220, 220, 220, 255));
@@ -258,7 +258,7 @@ namespace UltraCanvas {
 
         // Content area label
         auto contentLabel = std::make_shared<UltraCanvasLabel>(
-                "ContentLabel", 816, 80, 10, 860, 30
+                "ContentLabel", 80, 10, 860, 30
         );
         contentLabel->SetText("Main Content Area");
         contentLabel->SetFontSize(16);
@@ -267,7 +267,7 @@ namespace UltraCanvas {
         sidebarContainer->AddChild(contentLabel);
 
         auto contentDesc = std::make_shared<UltraCanvasLabel>(
-                "ContentDesc", 817, 80, 45, 860, 140
+                "ContentDesc", 80, 45, 860, 140
         );
         contentDesc->SetText("The vertical toolbar on the left provides navigation controls.\n\n"
                              "This is a common pattern in modern applications where the sidebar "
@@ -282,7 +282,7 @@ namespace UltraCanvas {
 
         // ===== EXAMPLE 5: RIBBON STYLE TOOLBAR =====
         auto section5Label = std::make_shared<UltraCanvasLabel>(
-                "Section5Label", 818, 20, currentY, 400, 25
+                "Section5Label", 20, currentY, 400, 25
         );
         section5Label->SetText("5. Ribbon Style Toolbar");
         section5Label->SetFontSize(14);
@@ -291,7 +291,7 @@ namespace UltraCanvas {
         currentY += 30;
 
         auto desc5 = std::make_shared<UltraCanvasLabel>(
-                "Desc5", 819, 20, currentY, 960, 20
+                "Desc5", 20, currentY, 960, 20
         );
         desc5->SetText("Office-style ribbon with grouped controls");
         desc5->SetFontSize(11);
@@ -327,7 +327,7 @@ namespace UltraCanvas {
 
         // ===== USAGE NOTES =====
         auto notesLabel = std::make_shared<UltraCanvasLabel>(
-                "NotesLabel", 821, 20, currentY, 960, 25
+                "NotesLabel", 20, currentY, 960, 25
         );
         notesLabel->SetText("Implementation Notes:");
         notesLabel->SetFontSize(12);
@@ -336,7 +336,7 @@ namespace UltraCanvas {
         currentY += 25;
 
         auto notes = std::make_shared<UltraCanvasLabel>(
-                "Notes", 822, 20, currentY, 960, 80
+                "Notes", 20, currentY, 960, 80
         );
         notes->SetText(
                 "• Use UltraCanvasToolbarBuilder for fluent construction\n"

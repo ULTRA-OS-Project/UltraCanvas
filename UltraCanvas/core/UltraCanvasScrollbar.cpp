@@ -14,9 +14,9 @@ namespace UltraCanvas {
 // This file is intentionally minimal since most implementation
 // is in the header file using inline methods for better performance.
 // Additional platform-specific optimizations can be added here if needed.
-    UltraCanvasScrollbar::UltraCanvasScrollbar(const std::string& id, long uid, int x, int y, int w, int h,
+    UltraCanvasScrollbar::UltraCanvasScrollbar(const std::string& id, int x, int y, int w, int h,
                          ScrollbarOrientation orient)
-            : UltraCanvasUIElement(id, uid, x, y, w, h)
+            : UltraCanvasUIElement(id, x, y, w, h)
             , orientation(orient) {
         mouseCursor = (orient == ScrollbarOrientation::Vertical)
                   ? UCMouseCursor::SizeNS

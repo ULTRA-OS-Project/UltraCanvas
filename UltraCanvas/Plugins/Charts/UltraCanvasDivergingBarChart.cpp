@@ -6,9 +6,9 @@
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 
 namespace UltraCanvas {
-    UltraCanvasDivergingBarChart::UltraCanvasDivergingBarChart(const std::string &id, long uid, int x,
+    UltraCanvasDivergingBarChart::UltraCanvasDivergingBarChart(const std::string &id, int x,
                                                                             int y, int width, int height)
-            : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+            : UltraCanvasChartElementBase(id, x, y, width, height) {
         enableTooltips = true;
 
         // Initialize diverging data source

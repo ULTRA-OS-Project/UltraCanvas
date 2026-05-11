@@ -63,7 +63,7 @@ public:
 
     void CreateChart() {
         // Create the diverging bar chart
-        divergingChart = CreateDivergingBarChart("divergingChart", 1001, 100, 120, 800, 600);
+        divergingChart = CreateDivergingBarChart("divergingChart", 100, 120, 800, 600);
         divergingChart->SetChartTitle("Survey Response Distribution");
         divergingChart->SetChartStyle(DivergingChartStyle::PopulationPyramid);
         divergingChart->SetBarHeight(0.85f);  // Thick bars like in the image
@@ -89,7 +89,7 @@ public:
         window->AddOrMoveChild(divergingChart);
 
         // Create title label
-        titleLabel = std::make_shared<UltraCanvasLabel>("title", 2001, 100, 30, 800, 35);
+        titleLabel = std::make_shared<UltraCanvasLabel>("title", 100, 30, 800, 35);
         titleLabel->SetText("Likert Scale Survey Responses");
         titleLabel->SetFontSize(20);
         titleLabel->SetFontWeight(FontWeight::Bold);
@@ -99,7 +99,7 @@ public:
         window->AddOrMoveChild(titleLabel);
 
         // Create subtitle
-        subtitleLabel = std::make_shared<UltraCanvasLabel>("subtitle", 2002, 100, 70, 800, 25);
+        subtitleLabel = std::make_shared<UltraCanvasLabel>("subtitle", 100, 70, 800, 25);
         subtitleLabel->SetText("Distribution of responses across different survey questions");
         subtitleLabel->SetFontSize(14);
         subtitleLabel->SetAlignment(TextAlignment::Center);
@@ -116,30 +116,30 @@ public:
         int currentX = 100;
 
         // Style selection buttons
-        btnPyramid = CreateButton("btnPyramid", 3001, currentX, buttonY, buttonWidth, buttonHeight, "Pyramid");
+        btnPyramid = CreateButton("btnPyramid", currentX, buttonY, buttonWidth, buttonHeight, "Pyramid");
 //        btnPyramid->SetHighlighted(true); // Default style
         currentX += buttonWidth + buttonSpacing;
 
-        btnLikert = CreateButton("btnLikert", 3002, currentX, buttonY, buttonWidth, buttonHeight, "Likert");
+        btnLikert = CreateButton("btnLikert", currentX, buttonY, buttonWidth, buttonHeight, "Likert");
         currentX += buttonWidth + buttonSpacing;
 
-        btnTornado = CreateButton("btnTornado", 3003, currentX, buttonY, buttonWidth, buttonHeight, "Tornado");
+        btnTornado = CreateButton("btnTornado", currentX, buttonY, buttonWidth, buttonHeight, "Tornado");
         currentX += buttonWidth + buttonSpacing;
 
         // Toggle buttons
-        btnToggleGrid = CreateButton("btnGrid", 3004, currentX, buttonY, buttonWidth, buttonHeight, "Toggle Grid");
+        btnToggleGrid = CreateButton("btnGrid", currentX, buttonY, buttonWidth, buttonHeight, "Toggle Grid");
         currentX += buttonWidth + buttonSpacing;
 
-        btnToggleLabels = CreateButton("btnLabels", 3005, currentX, buttonY, buttonWidth, buttonHeight, "Toggle Labels");
+        btnToggleLabels = CreateButton("btnLabels", currentX, buttonY, buttonWidth, buttonHeight, "Toggle Labels");
         currentX += buttonWidth + buttonSpacing;
 
-        btnGenerateData = CreateButton("btnGenerate", 3006, currentX, buttonY, buttonWidth, buttonHeight, "Random Data");
+        btnGenerateData = CreateButton("btnGenerate", currentX, buttonY, buttonWidth, buttonHeight, "Random Data");
     }
 
-    std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& id, long uid,
+    std::shared_ptr<UltraCanvasButton> CreateButton(const std::string& id,
                                                     int x, int y, int width, int height,
                                                     const std::string& text) {
-        auto button = std::make_shared<UltraCanvasButton>(id, uid, x, y, width, height);
+        auto button = std::make_shared<UltraCanvasButton>(id, x, y, width, height);
         button->SetText(text);
         button->SetColors(Color(70, 130, 180, 255), Color(90, 150, 200, 255), Color(50, 100, 160, 255), Color(150, 200, 240, 255));
         button->SetTextColors(Color(255, 255, 255, 255), Color(255, 255, 255, 255), Color(255, 255, 255, 255), Color(255, 255, 255, 255));
@@ -155,7 +155,7 @@ public:
         int legendY = 200;
         int legendItemHeight = 35;
 
-        auto legendTitle = std::make_shared<UltraCanvasLabel>("legendTitle", 4000, legendX, legendY - 35, 180, 25);
+        auto legendTitle = std::make_shared<UltraCanvasLabel>("legendTitle", legendX, legendY - 35, 180, 25);
         legendTitle->SetText("Response Categories");
         legendTitle->SetFontWeight(FontWeight::Bold);
         legendTitle->SetFontSize(13);

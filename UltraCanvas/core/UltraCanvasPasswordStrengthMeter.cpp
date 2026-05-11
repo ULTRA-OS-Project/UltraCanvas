@@ -10,9 +10,9 @@
 #include <functional>
 
 namespace UltraCanvas {
-    UltraCanvasPasswordStrengthMeter::UltraCanvasPasswordStrengthMeter(const std::string &id, long uid, int x, int y,
+    UltraCanvasPasswordStrengthMeter::UltraCanvasPasswordStrengthMeter(const std::string &id, int x, int y,
                                                                        int w, int h)
-            : UltraCanvasUIElement(id, uid, x, y, w, h) {
+            : UltraCanvasUIElement(id, x, y, w, h) {
         animationStartTime = std::chrono::steady_clock::now();
     }
 

@@ -63,7 +63,7 @@ namespace UltraCanvas {
 
 std::shared_ptr<UltraCanvasNodeDiagram> CreateFriendsNetworkDiagram(
         int x, int y, int w, int h) {
-    auto diagram = CreateNodeDiagram("nd_friends", 4001, x, y, w, h);
+    auto diagram = CreateNodeDiagram("nd_friends", x, y, w, h);
     
     diagram->SetTheme(NodeDiagramTheme::Colorful);
     diagram->SetGridVisible(true, 25.0f);
@@ -151,9 +151,9 @@ static Color DeriveBorderColor(const Color& fill) {
 // and reports clicks via the public onClick callback - same shape as Button.
 class ColorSwatch : public UltraCanvasUIElement {
 public:
-    ColorSwatch(const std::string& id, long uid, int x, int y, int size,
+    ColorSwatch(const std::string& id, int x, int y, int size,
                 const Color& fill)
-        : UltraCanvasUIElement(id, uid, x, y, size, size), color(fill) {}
+        : UltraCanvasUIElement(id, x, y, size, size), color(fill) {}
     
     void SetSelected(bool sel) {
         if (selected != sel) {
@@ -219,11 +219,11 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
         std::shared_ptr<UltraCanvasLabel> statusLabel) {
     
     auto root = std::make_shared<UltraCanvasContainer>(
-        "ndCustomRoot", 4020, x, y, w, h);
+        "ndCustomRoot", x, y, w, h);
     root->SetBackgroundColor(Color(255, 255, 255, 255));
     
     // ---- Diagram fills the whole tab ----
-    auto diagram = CreateNodeDiagram("nd_custom", 4021, 0, 0, w, h);
+    auto diagram = CreateNodeDiagram("nd_custom", 0, 0, w, h);
     diagram->SetTheme(NodeDiagramTheme::Professional);
     diagram->SetGridVisible(true, 25.0f);
     diagram->SetSnapToGrid(true);
@@ -333,14 +333,14 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     int popupY = (h - POPUP_H) / 2;
     
     auto popup = std::make_shared<UltraCanvasContainer>(
-        "ndCustomPopup", 4030, popupX, popupY, POPUP_W, POPUP_H);
+        "ndCustomPopup", popupX, popupY, POPUP_W, POPUP_H);
     popup->SetBackgroundColor(Color(252, 252, 254, 255));
     popup->SetVisible(false);
     st->popup = popup;
     
     // Popup title
     auto popupTitle = std::make_shared<UltraCanvasLabel>(
-        "popupTitle", 4031, 12, 10, POPUP_W - 24, 22);
+        "popupTitle", 12, 10, POPUP_W - 24, 22);
     popupTitle->SetText("Edit Node");
     popupTitle->SetFontSize(14);
     popupTitle->SetFontWeight(FontWeight::Bold);
@@ -349,21 +349,21 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     
     // "Label:" caption
     auto lblCap = std::make_shared<UltraCanvasLabel>(
-        "popupLblCap", 4032, 12, 40, 60, 22);
+        "popupLblCap", 12, 40, 60, 22);
     lblCap->SetText("Label:");
     lblCap->SetFontSize(11);
     popup->AddChild(lblCap);
     
     // Label TextInput
     auto labelInput = std::make_shared<UltraCanvasTextInput>(
-        "popupLabelInput", 4033, 70, 40, POPUP_W - 82, 24);
+        "popupLabelInput", 70, 40, POPUP_W - 82, 24);
     labelInput->SetPlaceholder("Type a label...");
     st->labelInput = labelInput;
     popup->AddChild(labelInput);
     
     // "Color:" caption
     auto colCap = std::make_shared<UltraCanvasLabel>(
-        "popupColCap", 4034, 12, 80, 60, 22);
+        "popupColCap", 12, 80, 60, 22);
     colCap->SetText("Color:");
     colCap->SetFontSize(11);
     popup->AddChild(colCap);
@@ -378,7 +378,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
         std::ostringstream idStream;
         idStream << "popupSwatch" << i;
         auto sw = std::make_shared<ColorSwatch>(
-            idStream.str(), 4040 + (long)i,
+            idStream.str(),
             swX + (int)i * (SW_SIZE + SW_GAP), swY, SW_SIZE, c);
         // Capture st as weak so the swatch can update sibling swatches' selected
         // state (so only one looks active at a time).
@@ -402,7 +402,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     int bY = POPUP_H - 12 - BTN_H;
     
     auto btnDelete = std::make_shared<UltraCanvasButton>(
-        "popupBtnDelete", 4050, 12, bY, BTN_W, BTN_H);
+        "popupBtnDelete", 12, bY, BTN_W, BTN_H);
     btnDelete->SetText("Delete");
     btnDelete->SetBackgroundColor(Color(220, 90, 90, 255));
     btnDelete->onClick = [st, statusLabel]() {
@@ -422,7 +422,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     popup->AddChild(btnDelete);
     
     auto btnCancel = std::make_shared<UltraCanvasButton>(
-        "popupBtnCancel", 4051, POPUP_W - 12 - BTN_W * 2 - 6, bY, BTN_W, BTN_H);
+        "popupBtnCancel", POPUP_W - 12 - BTN_W * 2 - 6, bY, BTN_W, BTN_H);
     btnCancel->SetText("Cancel");
     btnCancel->onClick = [st, statusLabel]() {
         // 2.0.5: If this popup was opened for a JUST-CREATED node (right-click
@@ -448,7 +448,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     popup->AddChild(btnCancel);
     
     auto btnOk = std::make_shared<UltraCanvasButton>(
-        "popupBtnOk", 4052, POPUP_W - 12 - BTN_W, bY, BTN_W, BTN_H);
+        "popupBtnOk", POPUP_W - 12 - BTN_W, bY, BTN_W, BTN_H);
     btnOk->SetText("OK");
     btnOk->SetBackgroundColor(Color(80, 140, 220, 255));
     btnOk->onClick = [st, statusLabel]() {
@@ -527,7 +527,7 @@ static void OpenCustomEditorPopup(const std::shared_ptr<CustomEditorState>& st,
 // Legacy helper kept for compatibility with old callers
 std::shared_ptr<UltraCanvasNodeDiagram> CreateCustomBlankDiagram(
         int x, int y, int w, int h) {
-    auto diagram = CreateNodeDiagram("nd_custom", 4011, x, y, w, h);
+    auto diagram = CreateNodeDiagram("nd_custom", x, y, w, h);
     diagram->SetTheme(NodeDiagramTheme::Professional);
     diagram->SetGridVisible(true, 25.0f);
     return diagram;
@@ -546,7 +546,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramSocialNetworkExample() {
 // AddNode(NodeDiagramNode&) and AddDefaultHandles().
 
 std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramWorkflowEditorExample() {
-    auto diagram = CreateNodeDiagram("nd_workflow", 4002, 0, 0, 800, 600);
+    auto diagram = CreateNodeDiagram("nd_workflow", 0, 0, 800, 600);
     
     diagram->SetTheme(NodeDiagramTheme::Professional);
     diagram->SetGridVisible(true, 25.0f);
@@ -657,7 +657,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramWorkflowEditorExample() {
 // Demonstrates the four routing styles side by side.
 
 std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramLinkStylesExample() {
-    auto diagram = CreateNodeDiagram("nd_styles", 4003, 0, 0, 800, 600);
+    auto diagram = CreateNodeDiagram("nd_styles", 0, 0, 800, 600);
     
     diagram->SetTheme(NodeDiagramTheme::Professional);
     diagram->SetGridVisible(true);
@@ -722,7 +722,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramLinkStylesExample() {
 // then delete with Delete key, or Ctrl+A to select all.
 
 std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramMultiSelectExample() {
-    auto diagram = CreateNodeDiagram("nd_multi", 4004, 0, 0, 800, 600);
+    auto diagram = CreateNodeDiagram("nd_multi", 0, 0, 800, 600);
     
     diagram->SetTheme(NodeDiagramTheme::Default);
     diagram->SetGridVisible(true);
@@ -764,7 +764,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramMultiSelectExample() {
 // Serialize the diagram to JSON, then reconstruct it from that JSON.
 
 std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramJsonRoundTripExample() {
-    auto diagram = CreateNodeDiagram("nd_json", 4005, 0, 0, 800, 600);
+    auto diagram = CreateNodeDiagram("nd_json", 0, 0, 800, 600);
     
     diagram->SetTheme(NodeDiagramTheme::Colorful);
     diagram->SetGridVisible(true);
@@ -811,7 +811,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramJsonRoundTripExample() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramDashboardExample() {
-    auto diagram = CreateNodeDiagram("nd_dashboard", 4006, 0, 0, 800, 600);
+    auto diagram = CreateNodeDiagram("nd_dashboard", 0, 0, 800, 600);
     
     diagram->SetTheme(NodeDiagramTheme::Professional);
     diagram->SetGridVisible(true, 30.0f);
@@ -856,7 +856,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramDashboardExample() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramCircularLayoutExample() {
-    auto diagram = CreateNodeDiagram("nd_circular", 4007, 0, 0, 800, 600);
+    auto diagram = CreateNodeDiagram("nd_circular", 0, 0, 800, 600);
     
     diagram->SetTheme(NodeDiagramTheme::Colorful);
     
@@ -885,7 +885,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramCircularLayoutExample() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramHierarchicalExample() {
-    auto diagram = CreateNodeDiagram("nd_hier", 4008, 0, 0, 800, 600);
+    auto diagram = CreateNodeDiagram("nd_hier", 0, 0, 800, 600);
     
     diagram->SetTheme(NodeDiagramTheme::Professional);
     diagram->SetGridVisible(true);
@@ -921,7 +921,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramHierarchicalExample() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramDarkThemeExample() {
-    auto diagram = CreateNodeDiagram("nd_dark", 4009, 0, 0, 800, 600);
+    auto diagram = CreateNodeDiagram("nd_dark", 0, 0, 800, 600);
     
     diagram->SetTheme(NodeDiagramTheme::Dark);
     diagram->SetBackgroundColor(Color(30, 32, 40, 255));
@@ -990,14 +990,14 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     
     // ---- Root container (light grey background like Gource demo) ----
     auto root = std::make_shared<UltraCanvasContainer>(
-        "ndDemoRoot", 4000, 0, 0, CONTAINER_W, CONTAINER_H);
+        "ndDemoRoot", 0, 0, CONTAINER_W, CONTAINER_H);
     root->SetBackgroundColor(Color(248, 248, 250, 255));
     
     int yCursor = PAD;
     
     // ---- Title ----
     auto titleLabel = std::make_shared<UltraCanvasLabel>(
-        "ndTitle", 4002, PAD, yCursor, CONTAINER_W - 2 * PAD, TITLE_H);
+        "ndTitle", PAD, yCursor, CONTAINER_W - 2 * PAD, TITLE_H);
     titleLabel->SetText("Node Diagram");
     titleLabel->SetFontSize(20);
     titleLabel->SetFontWeight(FontWeight::Bold);
@@ -1007,7 +1007,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     
     // ---- Subtitle ----
     auto subtitleLabel = std::make_shared<UltraCanvasLabel>(
-        "ndSubtitle", 4003, PAD, yCursor, CONTAINER_W - 2 * PAD, SUBTITLE_H);
+        "ndSubtitle", PAD, yCursor, CONTAINER_W - 2 * PAD, SUBTITLE_H);
     subtitleLabel->SetText(
         "Interactive graph editor - Friends shows a force-directed network. "
         "In Custom: click 'Add Node' or right-click on canvas to create nodes; "
@@ -1020,7 +1020,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     
     // ---- Tabbed container with the two diagrams ----
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-        "ndTabs", 4004, PAD, yCursor, CONTAINER_W - 2 * PAD, TABS_H);
+        "ndTabs", PAD, yCursor, CONTAINER_W - 2 * PAD, TABS_H);
     tabs->SetTabStyle(TabStyle::Rounded);
     
     // Inner area available to each tab content (TabbedContainer reserves ~32px
@@ -1034,7 +1034,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     int statusY = yCursor + TABS_H + 8 + BTNBAR_H + 4;
     
     auto statusLabel = std::make_shared<UltraCanvasLabel>(
-        "ndStatus", 4010, PAD, statusY, CONTAINER_W - 2 * PAD, STATUS_H);
+        "ndStatus", PAD, statusY, CONTAINER_W - 2 * PAD, STATUS_H);
     statusLabel->SetText("Ready - Click 'Add Node' or right-click on the canvas "
                          "(Custom tab) to start building. Wheel to zoom, drag to pan.");
     statusLabel->SetFontSize(10);
@@ -1043,7 +1043,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     // ---- Friends tab (read-only example graph) ----
     auto friendsDiag = CreateFriendsNetworkDiagram(4, 4, INNER_W, INNER_H);
     auto friendsTab = std::make_shared<UltraCanvasContainer>(
-        "ndTabFriends", 4005, 0, 0, INNER_W, INNER_H);
+        "ndTabFriends", 0, 0, INNER_W, INNER_H);
     friendsTab->SetBackgroundColor(Color(255, 255, 255, 255));
     friendsTab->AddChild(friendsDiag);
     
@@ -1091,34 +1091,34 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     int btnX = PAD;
     
     auto btnSelect = std::make_shared<UltraCanvasButton>(
-        "ndBtnSelect", 4007, btnX, yCursor, BTN_W, BTNBAR_H - 4);
+        "ndBtnSelect", btnX, yCursor, BTN_W, BTNBAR_H - 4);
     btnSelect->SetText("Select");
     btnX += BTN_W + BTN_GAP;
     
     auto btnConnect = std::make_shared<UltraCanvasButton>(
-        "ndBtnConnect", 4008, btnX, yCursor, BTN_W, BTNBAR_H - 4);
+        "ndBtnConnect", btnX, yCursor, BTN_W, BTNBAR_H - 4);
     btnConnect->SetText("Connect");
     btnX += BTN_W + BTN_GAP;
     
     auto btnReset = std::make_shared<UltraCanvasButton>(
-        "ndBtnReset", 4009, btnX, yCursor, BTN_W, BTNBAR_H - 4);
+        "ndBtnReset", btnX, yCursor, BTN_W, BTNBAR_H - 4);
     btnReset->SetText("Reset");
     btnX += BTN_W + BTN_GAP;
     
     auto btnAddNode = std::make_shared<UltraCanvasButton>(
-        "ndBtnAddNode", 4012, btnX, yCursor, BTN_W_ADD, BTNBAR_H - 4);
+        "ndBtnAddNode", btnX, yCursor, BTN_W_ADD, BTNBAR_H - 4);
     btnAddNode->SetText("Add Node");
     btnAddNode->SetBackgroundColor(Color(80, 160, 80, 255));
     btnX += BTN_W_ADD + BTN_GAP;
     
     auto btnDelete = std::make_shared<UltraCanvasButton>(
-        "ndBtnDelete", 4013, btnX, yCursor, BTN_W, BTNBAR_H - 4);
+        "ndBtnDelete", btnX, yCursor, BTN_W, BTNBAR_H - 4);
     btnDelete->SetText("Delete");
     btnDelete->SetBackgroundColor(Color(220, 90, 90, 255));
     btnX += BTN_W + BTN_GAP;
     
     auto btnClearAll = std::make_shared<UltraCanvasButton>(
-        "ndBtnClearAll", 4014, btnX, yCursor, BTN_W_CLEAR, BTNBAR_H - 4);
+        "ndBtnClearAll", btnX, yCursor, BTN_W_CLEAR, BTNBAR_H - 4);
     btnClearAll->SetText("Clear All");
     btnClearAll->SetBackgroundColor(Color(160, 90, 130, 255));
     

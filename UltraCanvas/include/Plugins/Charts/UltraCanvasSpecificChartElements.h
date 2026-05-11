@@ -25,8 +25,8 @@ namespace UltraCanvas {
         bool enableSmoothing = false;
 
     public:
-        UltraCanvasLineChartElement(const std::string &id, long uid, int x, int y, int width, int height)
-                : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+        UltraCanvasLineChartElement(const std::string &id, int x, int y, int width, int height)
+                : UltraCanvasChartElementBase(id, x, y, width, height) {
             enableZoom = true;
             enablePan = true;
         }
@@ -78,8 +78,8 @@ namespace UltraCanvas {
         float barSpacing = 0.1f; // 10% of bar width
 
     public:
-        UltraCanvasBarChartElement(const std::string &id, long uid, int x, int y, int width, int height)
-                : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+        UltraCanvasBarChartElement(const std::string &id, int x, int y, int width, int height)
+                : UltraCanvasChartElementBase(id, x, y, width, height) {
         }
 
 //    ChartType GetChartType() const override {
@@ -127,8 +127,8 @@ namespace UltraCanvas {
             Circle, Square, Triangle, Diamond
         } pointShape = PointShape::Circle;
 
-        UltraCanvasScatterPlotElement(const std::string &id, long uid, int x, int y, int width, int height)
-                : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+        UltraCanvasScatterPlotElement(const std::string &id, int x, int y, int width, int height)
+                : UltraCanvasChartElementBase(id, x, y, width, height) {
             enableZoom = true;
             enablePan = true;
             enableSelection = true;
@@ -180,8 +180,8 @@ namespace UltraCanvas {
         double borderWidth = 2.0f;
 
     public:
-        UltraCanvasPieChartElement(const std::string &id, long uid, int x, int y, int width, int height)
-                : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+        UltraCanvasPieChartElement(const std::string &id, int x, int y, int width, int height)
+                : UltraCanvasChartElementBase(id, x, y, width, height) {
         }
 
 //    ChartType GetChartType() const override {
@@ -325,8 +325,8 @@ namespace UltraCanvas {
         Color gradientEndColor = Color(0, 102, 204, 50);
 
     public:
-        UltraCanvasAreaChartElement(const std::string &id, long uid, int x, int y, int width, int height)
-                : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+        UltraCanvasAreaChartElement(const std::string &id, int x, int y, int width, int height)
+                : UltraCanvasChartElementBase(id, x, y, width, height) {
             enableZoom = true;
             enablePan = true;
         }
@@ -390,32 +390,32 @@ namespace UltraCanvas {
 
 // Line Chart Factory
     inline std::shared_ptr<UltraCanvasLineChartElement> CreateLineChartElement(
-            const std::string &id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasLineChartElement>(id, uid, x, y, width, height);
+            const std::string &id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasLineChartElement>(id, x, y, width, height);
     }
 
 // Bar Chart Factory
     inline std::shared_ptr<UltraCanvasBarChartElement> CreateBarChartElement(
-            const std::string &id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasBarChartElement>(id, uid, x, y, width, height);
+            const std::string &id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasBarChartElement>(id, x, y, width, height);
     }
 
 // Scatter Plot Factory
     inline std::shared_ptr<UltraCanvasScatterPlotElement> CreateScatterPlotElement(
-            const std::string &id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasScatterPlotElement>(id, uid, x, y, width, height);
+            const std::string &id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasScatterPlotElement>(id, x, y, width, height);
     }
 
 //// Pie Chart Factory
 //inline std::shared_ptr<UltraCanvasPieChartElement> CreatePieChartElement(
-//    const std::string& id, long uid, int x, int y, int width, int height) {
-//    return std::make_shared<UltraCanvasPieChartElement>(id, uid, x, y, width, height);
+//    const std::string& id, int x, int y, int width, int height) {
+//    return std::make_shared<UltraCanvasPieChartElement>(id, x, y, width, height);
 //}
 
 // Area Chart Factory
     inline std::shared_ptr<UltraCanvasAreaChartElement> CreateAreaChartElement(
-            const std::string &id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasAreaChartElement>(id, uid, x, y, width, height);
+            const std::string &id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasAreaChartElement>(id, x, y, width, height);
     }
 
 } // namespace UltraCanvas

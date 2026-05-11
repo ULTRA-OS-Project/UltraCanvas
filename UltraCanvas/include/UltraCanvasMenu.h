@@ -234,8 +234,8 @@ namespace UltraCanvas {
         std::function<void(int)> onItemHovered;
 
         // ===== CONSTRUCTORS =====
-        UltraCanvasMenu(const std::string& identifier, long id, long x, long y, long w, long h)
-                : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+        UltraCanvasMenu(const std::string& identifier, long x, long y, long w, long h)
+                : UltraCanvasUIElement(identifier, x, y, w, h) {
             style = MenuStyle::Default();
         }
 
@@ -374,14 +374,14 @@ namespace UltraCanvas {
 // Rest of the file remains the same (factory functions, builder pattern, etc.)
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasMenu> CreateMenu(
-            const std::string& identifier, long id, long x, long y, long w, long h) {
+            const std::string& identifier, long x, long y, long w, long h) {
         return UltraCanvasUIElementFactory::Create<UltraCanvasMenu>(
-                identifier, id, x, y, w, h);
+                identifier, x, y, w, h);
     }
 
     inline std::shared_ptr<UltraCanvasMenu> CreateMenuBar(
-            const std::string& identifier, long id, long x, long y, long w) {
-        auto menu = CreateMenu(identifier, id, x, y, w, 32);
+            const std::string& identifier, long x, long y, long w) {
+        auto menu = CreateMenu(identifier, x, y, w, 32);
         menu->SetMenuType(MenuType::Menubar);
         return menu;
     }
@@ -392,8 +392,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasMenu> menu;
 
     public:
-        MenuBuilder(const std::string& identifier, long id, long x, long y, long w = 150, long h = 100) {
-            menu = CreateMenu(identifier, id, x, y, w, h);
+        MenuBuilder(const std::string& identifier, long x, long y, long w = 150, long h = 100) {
+            menu = CreateMenu(identifier, x, y, w, h);
         }
 
         MenuBuilder& SetType(MenuType type) {

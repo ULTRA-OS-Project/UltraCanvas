@@ -1,7 +1,7 @@
 // core/UltraCanvasLabel.cpp
 // Implementation of base layout class
-// Version: 1.0.0
-// Last Modified: 2025-11-02
+// Version: 1.1.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabel.h"
@@ -38,9 +38,9 @@ namespace UltraCanvas {
         return style;
     }
 
-    UltraCanvasLabel::UltraCanvasLabel(const std::string &identifier, long id, long x, long y, long w, long h,
+    UltraCanvasLabel::UltraCanvasLabel(const std::string &identifier, long x, long y, long w, long h,
                                        const std::string &labelText)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h), text(labelText) {
+            : UltraCanvasUIElement(identifier, x, y, w, h), text(labelText) {
 
         // Initialize style
         style = LabelStyle::DefaultStyle();
@@ -287,52 +287,46 @@ namespace UltraCanvas {
 
 
     std::shared_ptr<UltraCanvasLabel>
-    CreateLabel(const std::string &identifier, long id, long x, long y, long w, long h,
-                const std::string &text) {
-        return std::make_shared<UltraCanvasLabel>(identifier, id, x, y, w, h, text);
-    }
-
-    std::shared_ptr<UltraCanvasLabel>
     CreateLabel(const std::string &identifier, long x, long y, long w, long h,
                 const std::string &text) {
-        return std::make_shared<UltraCanvasLabel>(identifier, 0, x, y, w, h, text);
+        return std::make_shared<UltraCanvasLabel>(identifier, x, y, w, h, text);
     }
 
     std::shared_ptr<UltraCanvasLabel>
     CreateLabel(const std::string &identifier, long w, long h, const std::string &text) {
-        return std::make_shared<UltraCanvasLabel>(identifier, 0, 0, 0, w, h, text);
+        return std::make_shared<UltraCanvasLabel>(identifier, 0, 0, w, h, text);
     }
 
     std::shared_ptr<UltraCanvasLabel> CreateLabel(const std::string &text) {
-        return std::make_shared<UltraCanvasLabel>("", 0, 0, 0, 0, 0, text);
+        return std::make_shared<UltraCanvasLabel>("", 0, 0, 0, 0, text);
     }
 
     std::shared_ptr<UltraCanvasLabel>
-    CreateAutoLabel(const std::string &identifier, long id, long x, long y, const std::string &text) {
-        auto label = std::make_shared<UltraCanvasLabel>(identifier, id, x, y, 100, 25, text);
+    CreateAutoLabel(const std::string &identifier, long x, long y, const std::string &text) {
+        auto label = std::make_shared<UltraCanvasLabel>(identifier, x, y, 100, 25, text);
         label->SetAutoResize(true);
         return label;
     }
 
     std::shared_ptr<UltraCanvasLabel>
-    CreateHeaderLabel(const std::string &identifier, long id, long x, long y, long w, long h,
+    CreateHeaderLabel(const std::string &identifier, long x, long y, long w, long h,
                       const std::string &text) {
-        auto label = CreateLabel(identifier, id, x, y, w, h, text);
+        auto label = CreateLabel(identifier, x, y, w, h, text);
         label->SetStyle(LabelStyle::HeaderStyle());
         return label;
     }
 
     std::shared_ptr<UltraCanvasLabel>
-    CreateStatusLabel(const std::string &identifier, long id, long x, long y, long w, long h,
+    CreateStatusLabel(const std::string &identifier, long x, long y, long w, long h,
                       const std::string &text) {
-        auto label = CreateLabel(identifier, id, x, y, w, h, text);
+        auto label = CreateLabel(identifier, x, y, w, h, text);
         label->SetStyle(LabelStyle::StatusStyle());
         label->SetPadding(4);
         return label;
     }
 
-    LabelBuilder::LabelBuilder(const std::string &identifier, long id, long x, long y, long w, long h) {
-        label = CreateLabel(identifier, id, x, y, w, h);
+    LabelBuilder::LabelBuilder(const std::string &identifier, long x, long y, long w, long h) {
+        label = CreateLabel(identifier, x, y, w, h);
     }
 
     LabelBuilder &LabelBuilder::SetText(const std::string &text) {

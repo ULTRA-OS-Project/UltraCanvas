@@ -12,9 +12,9 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasPasswordRuleLegend::UltraCanvasPasswordRuleLegend(const std::string &id, long uid, int x, int y, int w,
+    UltraCanvasPasswordRuleLegend::UltraCanvasPasswordRuleLegend(const std::string &id, int x, int y, int w,
                                                                  int h)
-            : UltraCanvasUIElement(id, uid, x, y, w, h) {
+            : UltraCanvasUIElement(id, x, y, w, h) {
         lastUpdateTime = std::chrono::steady_clock::now();
         SetupDefaultRules();
     }

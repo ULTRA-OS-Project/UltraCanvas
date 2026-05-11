@@ -21,9 +21,9 @@ namespace UltraCanvas {
     constexpr int lineShardSoftLimit = 4000;
     constexpr int lineShardHardLimit = 12000;
 
-    UltraCanvasTextArea::UltraCanvasTextArea(const std::string& name, int id, int x, int y,
+    UltraCanvasTextArea::UltraCanvasTextArea(const std::string& name, int x, int y,
                                              int width, int height)
-            : UltraCanvasUIElement(name, id, x, y, width, height),
+            : UltraCanvasUIElement(name, x, y, width, height),
               horizontalScrollOffset(0),
               verticalScrollOffset(0),
               cursorBlinkTime(0),

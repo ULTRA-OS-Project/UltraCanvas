@@ -341,12 +341,12 @@ void GenerateStorageDeviceData(UltraCanvasGourceTree* tree) {
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTreeExamples() {
     // Main container — responsive, forwards WindowResize via onResize callback.
     auto mainContainer = std::make_shared<ResponsiveGourceDemoContainer>(
-        "GourceTreeExamples", 6000, 0, 0, kDefaultWidth, kDefaultHeight
+        "GourceTreeExamples", 0, 0, kDefaultWidth, kDefaultHeight
     );
 
     // ===== PAGE HEADER =====
     auto title = std::make_shared<UltraCanvasLabel>(
-        "GourceTitle", 6001, 20, 10, 500, 35
+        "GourceTitle", 20, 10, 500, 35
     );
     title->SetText("Gource Tree Visualization");
     title->SetFontSize(18);
@@ -355,7 +355,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     mainContainer->AddChild(title);
 
     auto subtitle = std::make_shared<UltraCanvasLabel>(
-        "GourceSubtitle", 6002, 20, 45, kDefaultWidth - 70, 25
+        "GourceSubtitle", 20, 45, kDefaultWidth - 70, 25
     );
     subtitle->SetText("Radial tree visualization for file systems and storage devices - inspired by Gource");
     subtitle->SetFontSize(12);
@@ -364,7 +364,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
 
     // Status label for interaction feedback
     auto statusLabel = std::make_shared<UltraCanvasLabel>(
-        "GourceStatus", 6003, 20, 760, kDefaultWidth - 40, 25
+        "GourceStatus", 20, 760, kDefaultWidth - 40, 25
     );
     statusLabel->SetText("Ready - Click on nodes to select, double-click to expand/collapse directories");
     statusLabel->SetFontSize(11);
@@ -375,7 +375,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
 
     // ===== TABBED CONTAINER =====
     auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
-        "GourceTabs", 6010, 10, 75, kDefaultWidth - 20, 680
+        "GourceTabs", 10, 75, kDefaultWidth - 20, 680
     );
     tabbedContainer->SetTabPosition(TabPosition::Top);
     mainContainer->AddChild(tabbedContainer);
@@ -384,11 +384,11 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     // TAB 1: PROJECT STRUCTURE EXAMPLE
     // ========================================
     auto projectContainer = std::make_shared<UltraCanvasContainer>(
-        "ProjectTab", 6100, 0, 0, kDefaultWidth - 30, 640
+        "ProjectTab", 0, 0, kDefaultWidth - 30, 640
     );
 
     auto projectDesc = std::make_shared<UltraCanvasLabel>(
-        "ProjectDesc", 6101, 10, 10, kDefaultWidth - 50, 25
+        "ProjectDesc", 10, 10, kDefaultWidth - 50, 25
     );
     projectDesc->SetText("Project Structure: Visualize a software project with source files, docs, and tests");
     projectDesc->SetFontSize(11);
@@ -396,19 +396,19 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
 
     // Control panel
     auto projectControls = std::make_shared<UltraCanvasContainer>(
-        "ProjectControls", 6102, 10, 40, kDefaultWidth - 50, 45
+        "ProjectControls", 10, 40, kDefaultWidth - 50, 45
     );
     projectControls->SetBackgroundColor(Color(248, 248, 252));
 
     auto themeLabel = std::make_shared<UltraCanvasLabel>(
-        "ThemeLabel", 6103, 0, 12, 50, 20
+        "ThemeLabel", 0, 12, 50, 20
     );
     themeLabel->SetText("Theme:");
     themeLabel->SetFontSize(11);
     projectControls->AddChild(themeLabel);
 
     auto themeDropdown = std::make_shared<UltraCanvasDropdown>(
-        "ThemeDropdown", 6104, 0, 8, 110, 28
+        "ThemeDropdown", 0, 8, 110, 28
     );
     themeDropdown->AddItem("Dark");
     themeDropdown->AddItem("Light");
@@ -418,14 +418,14 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     projectControls->AddChild(themeDropdown);
 
     auto layoutLabel = std::make_shared<UltraCanvasLabel>(
-        "LayoutLabel", 6105, 0, 12, 50, 20
+        "LayoutLabel", 0, 12, 50, 20
     );
     layoutLabel->SetText("Layout:");
     layoutLabel->SetFontSize(11);
     projectControls->AddChild(layoutLabel);
 
     auto layoutDropdown = std::make_shared<UltraCanvasDropdown>(
-        "LayoutDropdown", 6106, 0, 8, 110, 28
+        "LayoutDropdown", 0, 8, 110, 28
     );
     layoutDropdown->AddItem("Static");
     layoutDropdown->AddItem("Animated");
@@ -434,21 +434,21 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     projectControls->AddChild(layoutDropdown);
 
     auto fileSizeCheck = std::make_shared<UltraCanvasCheckbox>(
-        "FileSizeCheck", 6107, 0, 12, 130, 20
+        "FileSizeCheck", 0, 12, 130, 20
     );
     fileSizeCheck->SetText("Show File Size");
     fileSizeCheck->SetChecked(true);
     projectControls->AddChild(fileSizeCheck);
 
     auto highlightLabel = std::make_shared<UltraCanvasLabel>(
-        "HighlightLabel", 6108, 0, 12, 65, 20
+        "HighlightLabel", 0, 12, 65, 20
     );
     highlightLabel->SetText("Highlight:");
     highlightLabel->SetFontSize(11);
     projectControls->AddChild(highlightLabel);
 
     auto highlightDropdown = std::make_shared<UltraCanvasDropdown>(
-        "HighlightDropdown", 6109, 0, 8, 150, 28
+        "HighlightDropdown", 0, 8, 150, 28
     );
     highlightDropdown->AddItem("None");
     highlightDropdown->AddItem("Last Access");
@@ -459,31 +459,31 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     projectControls->AddChild(highlightDropdown);
 
     auto zoomInBtn = std::make_shared<UltraCanvasButton>(
-        "ZoomInBtn", 6110, 0, 8, 36, 28
+        "ZoomInBtn", 0, 8, 36, 28
     );
     zoomInBtn->SetText("+");
     projectControls->AddChild(zoomInBtn);
 
     auto zoomOutBtn = std::make_shared<UltraCanvasButton>(
-        "ZoomOutBtn", 6111, 0, 8, 36, 28
+        "ZoomOutBtn", 0, 8, 36, 28
     );
     zoomOutBtn->SetText("-");
     projectControls->AddChild(zoomOutBtn);
 
     auto zoomFitBtn = std::make_shared<UltraCanvasButton>(
-        "ZoomFitBtn", 6112, 0, 8, 50, 28
+        "ZoomFitBtn", 0, 8, 50, 28
     );
     zoomFitBtn->SetText("Fit");
     projectControls->AddChild(zoomFitBtn);
 
     auto expandAllBtn = std::make_shared<UltraCanvasButton>(
-        "ExpandAllBtn", 6113, 0, 8, 80, 28
+        "ExpandAllBtn", 0, 8, 80, 28
     );
     expandAllBtn->SetText("Expand");
     projectControls->AddChild(expandAllBtn);
 
     auto collapseAllBtn = std::make_shared<UltraCanvasButton>(
-        "CollapseAllBtn", 6114, 0, 8, 90, 28
+        "CollapseAllBtn", 0, 8, 90, 28
     );
     collapseAllBtn->SetText("Collapse");
     projectControls->AddChild(collapseAllBtn);
@@ -492,7 +492,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
 
     // Project Gource Tree
     auto projectTree = std::make_shared<UltraCanvasGourceTree>(
-        "ProjectTree", 6150, 10, 90, kDefaultWidth - 50, 540
+        "ProjectTree", 10, 90, kDefaultWidth - 50, 540
     );
 
     GenerateSampleFileSystem(projectTree.get());
@@ -553,30 +553,30 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     // TAB 2: STORAGE DEVICE VISUALIZATION
     // ========================================
     auto storageContainer = std::make_shared<UltraCanvasContainer>(
-        "StorageTab", 6200, 0, 0, kDefaultWidth - 30, 640
+        "StorageTab", 0, 0, kDefaultWidth - 30, 640
     );
 
     auto storageDesc = std::make_shared<UltraCanvasLabel>(
-        "StorageDesc", 6201, 10, 10, kDefaultWidth - 50, 25
+        "StorageDesc", 10, 10, kDefaultWidth - 50, 25
     );
     storageDesc->SetText("Storage Device: Visualize disk contents with file sizes and access patterns");
     storageDesc->SetFontSize(11);
     storageContainer->AddChild(storageDesc);
 
     auto depthControls = std::make_shared<UltraCanvasContainer>(
-        "DepthControls", 6202, 10, 40, kDefaultWidth - 50, 45
+        "DepthControls", 10, 40, kDefaultWidth - 50, 45
     );
     depthControls->SetBackgroundColor(Color(248, 248, 252));
 
     auto depthLabel = std::make_shared<UltraCanvasLabel>(
-        "DepthLabel", 6203, 0, 12, 80, 20
+        "DepthLabel", 0, 12, 80, 20
     );
     depthLabel->SetText("Max Depth:");
     depthLabel->SetFontSize(11);
     depthControls->AddChild(depthLabel);
 
     auto depthSlider = std::make_shared<UltraCanvasSlider>(
-        "DepthSlider", 6204, 0, 10, 150, 25
+        "DepthSlider", 0, 10, 150, 25
     );
     depthSlider->SetRange(1, 10);
     depthSlider->SetValue(5);
@@ -584,39 +584,39 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     depthControls->AddChild(depthSlider);
 
     auto depthValueLabel = std::make_shared<UltraCanvasLabel>(
-        "DepthValue", 6205, 0, 12, 30, 20
+        "DepthValue", 0, 12, 30, 20
     );
     depthValueLabel->SetText("5");
     depthValueLabel->SetFontSize(11);
     depthControls->AddChild(depthValueLabel);
 
     auto unlimitedCheck = std::make_shared<UltraCanvasCheckbox>(
-        "UnlimitedCheck", 6206, 0, 12, 100, 20
+        "UnlimitedCheck", 0, 12, 100, 20
     );
     unlimitedCheck->SetText("Unlimited");
     unlimitedCheck->SetChecked(false);
     depthControls->AddChild(unlimitedCheck);
 
     auto showOldBtn = std::make_shared<UltraCanvasButton>(
-        "ShowOldBtn", 6207, 0, 8, 150, 28
+        "ShowOldBtn", 0, 8, 150, 28
     );
     showOldBtn->SetText("Highlight Old Files");
     depthControls->AddChild(showOldBtn);
 
     auto showRecentBtn = std::make_shared<UltraCanvasButton>(
-        "ShowRecentBtn", 6208, 0, 8, 145, 28
+        "ShowRecentBtn", 0, 8, 145, 28
     );
     showRecentBtn->SetText("Highlight Recent");
     depthControls->AddChild(showRecentBtn);
 
     auto resetStorageBtn = std::make_shared<UltraCanvasButton>(
-        "ResetStorageBtn", 6209, 0, 8, 80, 28
+        "ResetStorageBtn", 0, 8, 80, 28
     );
     resetStorageBtn->SetText("Reset");
     depthControls->AddChild(resetStorageBtn);
 
     auto exportBtn = std::make_shared<UltraCanvasButton>(
-        "ExportBtn", 6210, 0, 8, 105, 28
+        "ExportBtn", 0, 8, 105, 28
     );
     exportBtn->SetText("Export SVG");
     depthControls->AddChild(exportBtn);
@@ -624,7 +624,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     storageContainer->AddChild(depthControls);
 
     auto storageTree = std::make_shared<UltraCanvasGourceTree>(
-        "StorageTree", 6250, 10, 90, kDefaultWidth - 50, 540
+        "StorageTree", 10, 90, kDefaultWidth - 50, 540
     );
 
     GenerateStorageDeviceData(storageTree.get());
@@ -685,53 +685,53 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     // TAB 3: PERFORMANCE TEST
     // ========================================
     auto perfContainer = std::make_shared<UltraCanvasContainer>(
-        "PerfTab", 6300, 0, 0, kDefaultWidth - 30, 640
+        "PerfTab", 0, 0, kDefaultWidth - 30, 640
     );
 
     auto perfDesc = std::make_shared<UltraCanvasLabel>(
-        "PerfDesc", 6301, 10, 10, kDefaultWidth - 50, 25
+        "PerfDesc", 10, 10, kDefaultWidth - 50, 25
     );
     perfDesc->SetText("Performance Test: Render large file system trees with thousands of nodes");
     perfDesc->SetFontSize(11);
     perfContainer->AddChild(perfDesc);
 
     auto perfControls = std::make_shared<UltraCanvasContainer>(
-        "PerfControls", 6302, 10, 40, kDefaultWidth - 50, 45
+        "PerfControls", 10, 40, kDefaultWidth - 50, 45
     );
     perfControls->SetBackgroundColor(Color(248, 248, 252));
 
     auto sizeBtn500 = std::make_shared<UltraCanvasButton>(
-        "Size500Btn", 6303, 0, 8, 90, 28
+        "Size500Btn", 0, 8, 90, 28
     );
     sizeBtn500->SetText("~500 nodes");
     perfControls->AddChild(sizeBtn500);
 
     auto sizeBtn2k = std::make_shared<UltraCanvasButton>(
-        "Size2kBtn", 6304, 0, 8, 100, 28
+        "Size2kBtn", 0, 8, 100, 28
     );
     sizeBtn2k->SetText("~2000 nodes");
     perfControls->AddChild(sizeBtn2k);
 
     auto sizeBtn5k = std::make_shared<UltraCanvasButton>(
-        "Size5kBtn", 6305, 0, 8, 100, 28
+        "Size5kBtn", 0, 8, 100, 28
     );
     sizeBtn5k->SetText("~5000 nodes");
     perfControls->AddChild(sizeBtn5k);
 
     auto staticModeBtn = std::make_shared<UltraCanvasButton>(
-        "StaticModeBtn", 6306, 0, 8, 90, 28
+        "StaticModeBtn", 0, 8, 90, 28
     );
     staticModeBtn->SetText("Static");
     perfControls->AddChild(staticModeBtn);
 
     auto animatedModeBtn = std::make_shared<UltraCanvasButton>(
-        "AnimatedModeBtn", 6307, 0, 8, 90, 28
+        "AnimatedModeBtn", 0, 8, 90, 28
     );
     animatedModeBtn->SetText("Animated");
     perfControls->AddChild(animatedModeBtn);
 
     auto nodeCountLabel = std::make_shared<UltraCanvasLabel>(
-        "NodeCount", 6308, 0, 12, 200, 20
+        "NodeCount", 0, 12, 200, 20
     );
     nodeCountLabel->SetText("Click a button to generate");
     nodeCountLabel->SetFontSize(11);
@@ -740,7 +740,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     perfContainer->AddChild(perfControls);
 
     auto perfTree = std::make_shared<UltraCanvasGourceTree>(
-        "PerfTree", 6350, 10, 90, kDefaultWidth - 50, 540
+        "PerfTree", 10, 90, kDefaultWidth - 50, 540
     );
 
     perfTree->SetRootNode("root", "EmptyProject", "/empty");
@@ -786,56 +786,56 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     // TAB 4: CUSTOM BUILDER
     // ========================================
     auto customContainer = std::make_shared<UltraCanvasContainer>(
-        "CustomTab", 6400, 0, 0, kDefaultWidth - 30, 640
+        "CustomTab", 0, 0, kDefaultWidth - 30, 640
     );
 
     auto customDesc = std::make_shared<UltraCanvasLabel>(
-        "CustomDesc", 6401, 10, 10, kDefaultWidth - 50, 25
+        "CustomDesc", 10, 10, kDefaultWidth - 50, 25
     );
     customDesc->SetText("Custom Builder: Create your own file tree by adding nodes manually");
     customDesc->SetFontSize(11);
     customContainer->AddChild(customDesc);
 
     auto customControls = std::make_shared<UltraCanvasContainer>(
-        "CustomControls", 6402, 10, 40, kDefaultWidth - 50, 80
+        "CustomControls", 10, 40, kDefaultWidth - 50, 80
     );
     customControls->SetBackgroundColor(Color(248, 248, 252));
 
     // ----- ROW 1 (y=8..36, labels y=12) -----
     auto parentLabel = std::make_shared<UltraCanvasLabel>(
-        "ParentLabel", 6403, 0, 12, 50, 20
+        "ParentLabel", 0, 12, 50, 20
     );
     parentLabel->SetText("Parent:");
     parentLabel->SetFontSize(11);
     customControls->AddChild(parentLabel);
 
     auto parentInput = std::make_shared<UltraCanvasTextInput>(
-        "ParentInput", 6404, 0, 8, 110, 28
+        "ParentInput", 0, 8, 110, 28
     );
     parentInput->SetText("root");
     customControls->AddChild(parentInput);
 
     auto nameLabel = std::make_shared<UltraCanvasLabel>(
-        "NameLabel", 6405, 0, 12, 50, 20
+        "NameLabel", 0, 12, 50, 20
     );
     nameLabel->SetText("Name:");
     nameLabel->SetFontSize(11);
     customControls->AddChild(nameLabel);
 
     auto nameInput = std::make_shared<UltraCanvasTextInput>(
-        "NameInput", 6406, 0, 8, 140, 28
+        "NameInput", 0, 8, 140, 28
     );
     customControls->AddChild(nameInput);
 
     auto typeLabel = std::make_shared<UltraCanvasLabel>(
-        "TypeLabel", 6407, 0, 12, 40, 20
+        "TypeLabel", 0, 12, 40, 20
     );
     typeLabel->SetText("Type:");
     typeLabel->SetFontSize(11);
     customControls->AddChild(typeLabel);
 
     auto typeDropdown = std::make_shared<UltraCanvasDropdown>(
-        "TypeDropdown", 6408, 0, 8, 90, 28
+        "TypeDropdown", 0, 8, 90, 28
     );
     typeDropdown->AddItem("File");
     typeDropdown->AddItem("Folder");
@@ -843,46 +843,46 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     customControls->AddChild(typeDropdown);
 
     auto sizeLabel = std::make_shared<UltraCanvasLabel>(
-        "SizeLabel", 6409, 0, 12, 65, 20
+        "SizeLabel", 0, 12, 65, 20
     );
     sizeLabel->SetText("Size (KB):");
     sizeLabel->SetFontSize(11);
     customControls->AddChild(sizeLabel);
 
     auto sizeInput = std::make_shared<UltraCanvasTextInput>(
-        "SizeInput", 6410, 0, 8, 70, 28
+        "SizeInput", 0, 8, 70, 28
     );
     sizeInput->SetText("10");
     customControls->AddChild(sizeInput);
 
     auto addNodeBtn = std::make_shared<UltraCanvasButton>(
-        "AddNodeBtn", 6411, 0, 8, 70, 28
+        "AddNodeBtn", 0, 8, 70, 28
     );
     addNodeBtn->SetText("Add");
     customControls->AddChild(addNodeBtn);
 
     auto clearBtn = std::make_shared<UltraCanvasButton>(
-        "ClearBtn", 6412, 0, 8, 70, 28
+        "ClearBtn", 0, 8, 70, 28
     );
     clearBtn->SetText("Clear");
     customControls->AddChild(clearBtn);
 
     // ----- ROW 2 (y=46..72, labels y=50) -----
     auto presetLabel = std::make_shared<UltraCanvasLabel>(
-        "PresetLabel", 6413, 0, 50, 60, 20
+        "PresetLabel", 0, 50, 60, 20
     );
     presetLabel->SetText("Presets:");
     presetLabel->SetFontSize(11);
     customControls->AddChild(presetLabel);
 
     auto presetProjectBtn = std::make_shared<UltraCanvasButton>(
-        "PresetProjectBtn", 6414, 0, 46, 90, 26
+        "PresetProjectBtn", 0, 46, 90, 26
     );
     presetProjectBtn->SetText("Project");
     customControls->AddChild(presetProjectBtn);
 
     auto presetStorageBtn = std::make_shared<UltraCanvasButton>(
-        "PresetStorageBtn", 6415, 0, 46, 90, 26
+        "PresetStorageBtn", 0, 46, 90, 26
     );
     presetStorageBtn->SetText("Storage");
     customControls->AddChild(presetStorageBtn);
@@ -890,7 +890,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     customContainer->AddChild(customControls);
 
     auto customTree = std::make_shared<UltraCanvasGourceTree>(
-        "CustomTree", 6450, 10, 125, kDefaultWidth - 50, 505
+        "CustomTree", 10, 125, kDefaultWidth - 50, 505
     );
 
     customTree->SetRootNode("root", "CustomRoot", "/custom");

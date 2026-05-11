@@ -44,25 +44,25 @@ public:
         debugOutput << "=== Creating Cross-Platform UI Elements ===" << std::endl;
 
         // Create buttons using ONLY UltraCanvas framework APIs
-        auto copyButton = CreateButton("copy_btn", 1001, 50, 150, 180, 50, "Copy Text");
+        auto copyButton = CreateButton("copy_btn", 50, 150, 180, 50, "Copy Text");
         copyButton->onClicked = [this]() {
             debugOutput << "=== COPY BUTTON CLICKED! ===" << std::endl;
             debugOutput << "Cross-platform button working perfectly!" << std::endl;
         };
 
-        auto pasteButton = CreateButton("paste_btn", 1002, 250, 150, 180, 50, "Paste Text");
+        auto pasteButton = CreateButton("paste_btn", 250, 150, 180, 50, "Paste Text");
         pasteButton->onClicked = [this]() {
             debugOutput << "=== PASTE BUTTON CLICKED! ===" << std::endl;
             debugOutput << "Cross-platform button working perfectly!" << std::endl;
         };
 
-        auto clearButton = CreateButton("clear_btn", 1003, 450, 150, 180, 50, "Clear All");
+        auto clearButton = CreateButton("clear_btn", 450, 150, 180, 50, "Clear All");
         clearButton->onClicked = [this]() {
             debugOutput << "=== CLEAR BUTTON CLICKED! ===" << std::endl;
             debugOutput << "Cross-platform button working perfectly!" << std::endl;
         };
 
-        auto exitButton = CreateButton("exit_btn", 1004, 300, 450, 200, 60, "Exit Application");
+        auto exitButton = CreateButton("exit_btn", 300, 450, 200, 60, "Exit Application");
         exitButton->onClicked = [this]() {
             debugOutput << "=== EXIT BUTTON CLICKED! ===" << std::endl;
             debugOutput << "Requesting application exit..." << std::endl;

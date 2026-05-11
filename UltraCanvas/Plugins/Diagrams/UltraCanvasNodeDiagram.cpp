@@ -28,9 +28,9 @@ static constexpr double LINK_HIT_TOLERANCE = 8.0f;    // World pixels distance t
 // CONSTRUCTOR
 // =============================================================================
 
-UltraCanvasNodeDiagram::UltraCanvasNodeDiagram(const std::string& id, long uid,
+UltraCanvasNodeDiagram::UltraCanvasNodeDiagram(const std::string& id,
                                                 int x, int y, int width, int height)
-    : UltraCanvasUIElement(id, uid, x, y, width, height) {
+    : UltraCanvasUIElement(id, x, y, width, height) {
     ApplyDefaultTheme();
 }
 

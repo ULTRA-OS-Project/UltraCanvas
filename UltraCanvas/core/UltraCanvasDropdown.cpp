@@ -155,9 +155,9 @@ namespace UltraCanvas {
 
     // ===== DROPDOWN CONSTRUCTOR =====
 
-    UltraCanvasDropdown::UltraCanvasDropdown(const std::string &identifier, long id, long x, long y,
+    UltraCanvasDropdown::UltraCanvasDropdown(const std::string &identifier, long x, long y,
                                              long w, long h)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h) {
+            : UltraCanvasUIElement(identifier, x, y, w, h) {
         style.scrollbarStyle = ScrollbarStyle::DropDown();
         CreatePopupListView();
         WireListViewCallbacks();
@@ -550,7 +550,7 @@ namespace UltraCanvas {
 
     void UltraCanvasDropdown::CreatePopupListView() {
         popupListView = std::make_shared<UltraCanvasListView>(
-            GetIdentifier() + "_popup_lv", 0, 0, 0, 200, 100);
+            GetIdentifier() + "_popup_lv", 0, 0, 200, 100);
 
         dropdownModel.SetItems(&items);
         popupListView->SetModel(&dropdownModel);

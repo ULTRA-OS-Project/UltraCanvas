@@ -19,7 +19,7 @@ namespace UltraCanvas {
 
         // Create separator widget as a simple UIElement
         widget = std::make_shared<UltraCanvasUIElement>(
-                "sep_" + id, 0, 0, 0,
+                "sep_" + id, 0, 0,
                 isVertical ? thickness : length,
                 isVertical ? length : thickness
         );
@@ -54,7 +54,7 @@ namespace UltraCanvas {
 
         // Create button widget
         auto button = std::make_shared<UltraCanvasButton>(
-                "btn_" + id, 0, 0, 0, 32, 32
+                "btn_" + id, 0, 0, 32, 32
         );
         button->SetAutoResize(true);
         button->SetText(text);
@@ -197,7 +197,7 @@ namespace UltraCanvas {
 
         // Create dropdown widget
         auto dropdown = std::make_shared<UltraCanvasDropdown>(
-                "dd_" + id, 0, 0, 0, 120, 24
+                "dd_" + id, 0, 0, 120, 24
         );
 
         widget = dropdown;
@@ -284,7 +284,7 @@ namespace UltraCanvas {
 
         // Create label widget
         auto label = std::make_shared<UltraCanvasLabel>(
-                "lbl_" + id, 0, 0, 0, 80, 24
+                "lbl_" + id, 0, 0, 80, 24
         );
         label->SetText(text);
         label->SetAlignment(alignment);
@@ -362,9 +362,9 @@ namespace UltraCanvas {
 
 // ===== MAIN TOOLBAR IMPLEMENTATION =====
 
-    UltraCanvasToolbar::UltraCanvasToolbar(const std::string& identifier, long id,
+    UltraCanvasToolbar::UltraCanvasToolbar(const std::string& identifier,
                                            long x, long y, long width, long height)
-            : UltraCanvasContainer(identifier, id, x, y, width, height) {
+            : UltraCanvasContainer(identifier, x, y, width, height) {
 
         // Set default background color and border
         SetBackgroundColor(appearance.backgroundColor);
@@ -609,7 +609,7 @@ namespace UltraCanvas {
     void UltraCanvasToolbar::AddSearchBox(const std::string& id, const std::string& placeholder,
                                           std::function<void(const std::string&)> onTextChange) {
         auto searchBox = std::make_shared<UltraCanvasTextInput>(
-                "search_" + id, 0, 0, 0, 150, 24
+                "search_" + id, 0, 0, 150, 24
         );
         searchBox->SetPlaceholder(placeholder);
 
@@ -851,7 +851,7 @@ namespace UltraCanvas {
 // ===== TOOLBAR BUILDER IMPLEMENTATION =====
 
     UltraCanvasToolbarBuilder::UltraCanvasToolbarBuilder(const std::string& identifier) {
-        toolbar = std::make_shared<UltraCanvasToolbar>(identifier, 0, 0, 0, 800, 48);
+        toolbar = std::make_shared<UltraCanvasToolbar>(identifier, 0, 0, 800, 48);
     }
 
     UltraCanvasToolbarBuilder& UltraCanvasToolbarBuilder::SetOrientation(ToolbarOrientation orient) {

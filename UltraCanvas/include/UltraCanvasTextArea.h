@@ -361,7 +361,7 @@ namespace UltraCanvas {
     class UltraCanvasTextArea : public UltraCanvasUIElement {
     public:
         // Constructor and destructor
-        UltraCanvasTextArea(const std::string& name, int id, int x, int y, int width, int height);
+        UltraCanvasTextArea(const std::string& name, int x, int y, int width, int height);
         virtual ~UltraCanvasTextArea();
 
         bool AcceptsFocus() const override { return true; }

@@ -105,7 +105,7 @@ namespace UltraCanvas {
         void DrawFocusRingShape(IRenderContext* ctx) override;
 
     public:
-        UltraCanvasSwitch(const std::string& identifier = "", long id = 0,
+        UltraCanvasSwitch(const std::string& identifier = "",
                           long x = 0, long y = 0, long w = 200, long h = 30,
                           const std::string& labelText = "");
         ~UltraCanvasSwitch() override = default;
@@ -145,12 +145,6 @@ namespace UltraCanvas {
         }
 
         // ===== FACTORY =====
-        static std::shared_ptr<UltraCanvasSwitch> Create(
-                const std::string& identifier, long id,
-                long x, long y,
-                const std::string& text = "",
-                bool checked = false);
-
         static std::shared_ptr<UltraCanvasSwitch> Create(
                 const std::string& identifier,
                 long x, long y,

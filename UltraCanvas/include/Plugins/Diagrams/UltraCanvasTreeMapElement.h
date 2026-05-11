@@ -146,8 +146,8 @@ namespace UltraCanvas {
         bool globalTransparent = false;
 
     public:
-        UltraCanvasTreeMapElement(const std::string& id, long uid, int x, int y, int width, int height)
-            : UltraCanvasChartElementBase(id, uid, x, y, width, height) {
+        UltraCanvasTreeMapElement(const std::string& id, int x, int y, int width, int height)
+            : UltraCanvasChartElementBase(id, x, y, width, height) {
             enableTooltips = true;
             enableSelection = true;
             enableZoom = true;
@@ -331,8 +331,8 @@ namespace UltraCanvas {
     };
 
     inline std::shared_ptr<UltraCanvasTreeMapElement> CreateTreeMap(
-            const std::string& id, long uid, int x, int y, int width, int height) {
-        return std::make_shared<UltraCanvasTreeMapElement>(id, uid, x, y, width, height);
+            const std::string& id, int x, int y, int width, int height) {
+        return std::make_shared<UltraCanvasTreeMapElement>(id, x, y, width, height);
     }
 
 } // namespace UltraCanvas

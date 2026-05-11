@@ -295,7 +295,6 @@ namespace UltraCanvas {
         // Create scrollable container that fills the window
         scrollableContainer = CreateScrollableContainer(
                 "clipboardScrollContainer",
-                2000,
                 CONTAINER_PADDING,
                 CONTAINER_PADDING,
                 WINDOW_WIDTH - 2 * CONTAINER_PADDING,

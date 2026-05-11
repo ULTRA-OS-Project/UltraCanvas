@@ -1442,8 +1442,8 @@ namespace UltraCanvas {
     }
 
 // UltraCanvasSVGElement implementation
-    UltraCanvasSVGElement::UltraCanvasSVGElement(const std::string& identifier, long id, long x, long y, long w, long h = 24)
-            : UltraCanvasUIElement(identifier, id, x, y, w, h),
+    UltraCanvasSVGElement::UltraCanvasSVGElement(const std::string& identifier, long x, long y, long w, long h = 24)
+            : UltraCanvasUIElement(identifier, x, y, w, h),
             document(std::make_unique<SVGDocument>()) {
     }
 

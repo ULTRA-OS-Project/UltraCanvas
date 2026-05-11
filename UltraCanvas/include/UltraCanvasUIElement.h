@@ -1,7 +1,7 @@
 // include/UltraCanvasUIElement.h
 // Modern C++ base class system for all UI components
-// Version: 3.0.1
-// Last Modified: 2025-01-17
+// Version: 3.1.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -122,14 +122,6 @@ namespace UltraCanvas {
         std::function<void()> onPopupOpened;
 
         // ===== CONSTRUCTOR AND DESTRUCTOR =====
-        UltraCanvasUIElement(const std::string& idstr, long id,
-                             int x, int y, int w, int h)
-                : identifier(idstr),
-                  bounds(x, y, w, h),
-                  explicitSize(w, h) {
-            stateFlags.Reset();
-        }
-
         UltraCanvasUIElement(const std::string& idstr,
                              int x, int y, int w, int h)
                 : identifier(idstr),

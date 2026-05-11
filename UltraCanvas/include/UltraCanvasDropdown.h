@@ -162,7 +162,7 @@ namespace UltraCanvas {
         std::shared_ptr<DropdownItemDelegate> dropdownDelegate;
 
     public:
-        UltraCanvasDropdown(const std::string& identifier, long id, long x, long y, long w, long h = 24);
+        UltraCanvasDropdown(const std::string& identifier, long x, long y, long w, long h = 24);
 
         virtual ~UltraCanvasDropdown() = default;
 
@@ -247,7 +247,7 @@ namespace UltraCanvas {
 
 // ===== FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasDropdown> CreateDropdown(
-            const std::string& identifier, long id, long x, long y, long w, long h = 24) {
-        return std::make_shared<UltraCanvasDropdown>(identifier, id, x, y, w, h);
+            const std::string& identifier, long x, long y, long w, long h = 24) {
+        return std::make_shared<UltraCanvasDropdown>(identifier, x, y, w, h);
     }
 } // namespace UltraCanvas

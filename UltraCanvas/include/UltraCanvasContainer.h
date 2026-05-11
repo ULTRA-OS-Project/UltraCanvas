@@ -1,7 +1,7 @@
 // include/UltraCanvasContainer.h
 // Container component with scrollbars and child element management - ENHANCED
-// Version: 2.0.0
-// Last Modified: 2025-08-24
+// Version: 2.1.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -55,12 +55,6 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasContainer(const std::string &id, long x, long y, long w, long h)
-                : UltraCanvasUIElement(id, x, y, w, h) {
-//            UpdateLayout();
-            CreateScrollbars();
-        }
-
-        UltraCanvasContainer(const std::string &id, long uid, long x, long y, long w, long h)
                 : UltraCanvasUIElement(id, x, y, w, h) {
 //            UpdateLayout();
             CreateScrollbars();
@@ -178,19 +172,14 @@ namespace UltraCanvas {
 
 // ===== ENHANCED FACTORY FUNCTIONS =====
     inline std::shared_ptr<UltraCanvasContainer> CreateContainer(
-            const std::string& id, long uid, long x, long y, long w, long h) {
-        return std::make_shared<UltraCanvasContainer>(id, uid, x, y, w, h);
-    }
-
-    inline std::shared_ptr<UltraCanvasContainer> CreateContainer(
             const std::string& id, long x = 0, long y = 0, long w = 0, long h = 0) {
-        return std::make_shared<UltraCanvasContainer>(id, 0, x, y, w, h);
+        return std::make_shared<UltraCanvasContainer>(id, x, y, w, h);
     }
 
     inline std::shared_ptr<UltraCanvasContainer> CreateScrollableContainer(
-            const std::string& id, long uid, long x, long y, long w, long h,
+            const std::string& id, long x, long y, long w, long h,
             bool enableVertical = true, bool enableHorizontal = false) {
-        auto container = std::make_shared<UltraCanvasContainer>(id, uid, x, y, w, h);
+        auto container = std::make_shared<UltraCanvasContainer>(id, x, y, w, h);
 
         ContainerStyle style = container->GetContainerStyle();
         style.forceShowVerticalScrollbar = enableVertical;

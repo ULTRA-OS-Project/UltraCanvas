@@ -9,10 +9,10 @@
 
 namespace UltraCanvas {
 
-    UltraCanvasSwitch::UltraCanvasSwitch(const std::string& identifier, long id,
+    UltraCanvasSwitch::UltraCanvasSwitch(const std::string& identifier,
                                          long x, long y, long w, long h,
                                          const std::string& labelText)
-            : UltraCanvasLabeledToggleBase(identifier, id, x, y, w, h, labelText) {}
+            : UltraCanvasLabeledToggleBase(identifier, x, y, w, h, labelText) {}
 
     void UltraCanvasSwitch::SetCheckState(CheckedState state) {
         if (state == CheckedState::Indeterminate) state = CheckedState::Unchecked;
@@ -253,20 +253,10 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasSwitch> UltraCanvasSwitch::Create(
-            const std::string& identifier, long id,
-            long x, long y,
-            const std::string& text, bool checked) {
-        auto sw = std::make_shared<UltraCanvasSwitch>(identifier, id, x, y, 200, 30, text);
-        sw->SetChecked(checked);
-        sw->SetAutoSize(true);
-        return sw;
-    }
-
-    std::shared_ptr<UltraCanvasSwitch> UltraCanvasSwitch::Create(
             const std::string& identifier,
             long x, long y,
             const std::string& text, bool checked) {
-        auto sw = std::make_shared<UltraCanvasSwitch>(identifier, 0, x, y, 200, 30, text);
+        auto sw = std::make_shared<UltraCanvasSwitch>(identifier, x, y, 200, 30, text);
         sw->SetChecked(checked);
         sw->SetAutoSize(true);
         return sw;

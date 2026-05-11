@@ -2358,9 +2358,9 @@ namespace UltraCanvas {
 
 // ===== UI ELEMENT =====
 
-    UltraCanvasXARElement::UltraCanvasXARElement(const std::string& identifier, long id,
+    UltraCanvasXARElement::UltraCanvasXARElement(const std::string& identifier,
                                                  long x, long y, long w, long h)
-        : UltraCanvasUIElement(identifier, id, x, y, w, h) {}
+        : UltraCanvasUIElement(identifier, x, y, w, h) {}
 
     bool UltraCanvasXARElement::LoadFromFile(const std::string& filepath) {
         document = std::make_unique<XARDocument>();
@@ -2413,7 +2413,7 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasXARPlugin::LoadGraphics(const std::string& filePath) {
-        auto element = std::make_shared<UltraCanvasXARElement>("XARElement", 0, 0, 0, 400, 400);
+        auto element = std::make_shared<UltraCanvasXARElement>("XARElement", 0, 0, 400, 400);
         if (element->LoadFromFile(filePath)) {
             if (element->GetDocument()) {
                 element->SetSize(static_cast<int>(element->GetDocument()->GetWidth()),

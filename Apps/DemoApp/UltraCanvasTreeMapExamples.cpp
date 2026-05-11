@@ -11,9 +11,9 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTreeMapExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("treeMapContainer", 1100, 0, 0, 800, 700);
+        auto container = std::make_shared<UltraCanvasContainer>("treeMapContainer", 0, 0, 800, 700);
         
-        auto treeMap = std::make_shared<UltraCanvasTreeMapElement>("treeMap", 1101, 100, 120, 600, 400);
+        auto treeMap = std::make_shared<UltraCanvasTreeMapElement>("treeMap", 100, 120, 600, 400);
         
         std::vector<std::tuple<std::string, std::string, double, double>> data = {
             {"Technology", "Computers", 45000, 500},
@@ -35,32 +35,32 @@ namespace UltraCanvas {
         
         container->AddChild(treeMap);
         
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("treeMapTitle", 1102, 50, 30, 700, 30);
+        auto titleLabel = std::make_shared<UltraCanvasLabel>("treeMapTitle", 50, 30, 700, 30);
         titleLabel->SetText("TreeMap - Hierarchical Data Example");
         titleLabel->SetFontSize(18);
         container->AddChild(titleLabel);
         
-        auto btnCycleAlgorithm = std::make_shared<UltraCanvasButton>("btnCycleAlgorithm", 1103, 50, 530, 140, 30);
+        auto btnCycleAlgorithm = std::make_shared<UltraCanvasButton>("btnCycleAlgorithm", 50, 530, 140, 30);
         btnCycleAlgorithm->SetText("Cycle Algorithm");
         container->AddChild(btnCycleAlgorithm);
         
-        auto btnCycleStyle = std::make_shared<UltraCanvasButton>("btnCycleStyle", 1104, 200, 530, 140, 30);
+        auto btnCycleStyle = std::make_shared<UltraCanvasButton>("btnCycleStyle", 200, 530, 140, 30);
         btnCycleStyle->SetText("Cycle Style");
         container->AddChild(btnCycleStyle);
         
-        auto btnCycleColor = std::make_shared<UltraCanvasButton>("btnCycleColor", 1105, 350, 530, 140, 30);
+        auto btnCycleColor = std::make_shared<UltraCanvasButton>("btnCycleColor", 350, 530, 140, 30);
         btnCycleColor->SetText("Cycle Colors");
         container->AddChild(btnCycleColor);
         
-        auto btnToggleValues = std::make_shared<UltraCanvasButton>("btnToggleValues", 1106, 50, 570, 140, 30);
+        auto btnToggleValues = std::make_shared<UltraCanvasButton>("btnToggleValues", 50, 570, 140, 30);
         btnToggleValues->SetText("Toggle Values");
         container->AddChild(btnToggleValues);
         
-        auto btnToggleLabels = std::make_shared<UltraCanvasButton>("btnToggleLabels", 1107, 200, 570, 140, 30);
+        auto btnToggleLabels = std::make_shared<UltraCanvasButton>("btnToggleLabels", 200, 570, 140, 30);
         btnToggleLabels->SetText("Toggle Labels");
         container->AddChild(btnToggleLabels);
         
-        auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 1108, 350, 570, 140, 30);
+        auto btnReset = std::make_shared<UltraCanvasButton>("btnReset", 350, 570, 140, 30);
         btnReset->SetText("Reset");
         container->AddChild(btnReset);
         

@@ -246,30 +246,30 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageExportDialog::CreateHeaderSection() {
-        headerSection = std::make_shared<UltraCanvasContainer>("HeaderSection", 0, 0, 0, 0, 70);
+        headerSection = std::make_shared<UltraCanvasContainer>("HeaderSection", 0, 0, 0, 70);
 
         auto grid = CreateGridLayout(headerSection.get(), 2, 2);
         grid->SetSpacing(static_cast<int>(style.spacing));
         grid->SetColumnDefinition(0, GridRowColumnDefinition::Auto());
         grid->SetColumnDefinition(1, GridRowColumnDefinition::Star(1));
 
-        fileNameLabel = std::make_shared<UltraCanvasLabel>("FileNameLabel", 101, 0, 0, 80, 24);
+        fileNameLabel = std::make_shared<UltraCanvasLabel>("FileNameLabel", 0, 0, 80, 24);
         fileNameLabel->SetText("Name:");
         fileNameLabel->SetFontSize(style.labelFontSize);
         fileNameLabel->SetTextColor(style.labelColor);
 
-        fileNameInput = std::make_shared<UltraCanvasTextInput>("FileNameInput", 102, 0, 0, 200, 28);
+        fileNameInput = std::make_shared<UltraCanvasTextInput>("FileNameInput", 0, 0, 200, 28);
         fileNameInput->SetPlaceholder("Enter file name...");
 
         grid->AddUIElement(fileNameLabel, 0, 0);
         grid->AddUIElement(fileNameInput, 0, 1);
 
-        formatLabel = std::make_shared<UltraCanvasLabel>("FormatLabel", 103, 0, 0, 80, 24);
+        formatLabel = std::make_shared<UltraCanvasLabel>("FormatLabel", 0, 0, 80, 24);
         formatLabel->SetText("Format:");
         formatLabel->SetFontSize(style.labelFontSize);
         formatLabel->SetTextColor(style.labelColor);
 
-        formatDropdown = std::make_shared<UltraCanvasDropdown>("FormatDropdown", 104, 0, 0, 200, 28);
+        formatDropdown = std::make_shared<UltraCanvasDropdown>("FormatDropdown", 0, 0, 200, 28);
         for (const auto& fmt : ImageFormatInfo::GetAllFormats()) {
             formatDropdown->AddItem(fmt.name + " (." + fmt.extension + ")");
         }
@@ -282,7 +282,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageExportDialog::CreateOptionsSection() {
-        optionsSection = std::make_shared<UltraCanvasContainer>("OptionsSection", 200, 0, 0, 0, 160);
+        optionsSection = std::make_shared<UltraCanvasContainer>("OptionsSection", 0, 0, 0, 160);
 
         auto grid = CreateGridLayout(optionsSection.get(), 4, 2);
         grid->SetSpacing(static_cast<int>(style.spacing));
@@ -292,26 +292,26 @@ namespace UltraCanvas {
         int row = 0;
 
         // ----- Row 0: Dimensions -----
-        sizeLabel = std::make_shared<UltraCanvasLabel>("SizeLabel", 201, 0, 0, 80, 24);
+        sizeLabel = std::make_shared<UltraCanvasLabel>("SizeLabel", 0, 0, 80, 24);
         sizeLabel->SetText("Size:");
         sizeLabel->SetFontSize(style.labelFontSize);
         sizeLabel->SetTextColor(style.labelColor);
 
-        auto sizeRow = std::make_shared<UltraCanvasContainer>("SizeRow", 202, 0, 0, 280, 28);
+        auto sizeRow = std::make_shared<UltraCanvasContainer>("SizeRow", 0, 0, 280, 28);
         auto sizeLayout = CreateHBoxLayout(sizeRow.get());
         sizeLayout->SetSpacing(5);
 
-        widthInput = std::make_shared<UltraCanvasTextInput>("WidthInput", 203, 0, 0, 70, 28);
+        widthInput = std::make_shared<UltraCanvasTextInput>("WidthInput", 0, 0, 70, 28);
         widthInput->SetText("1920");
 
-        xLabel = std::make_shared<UltraCanvasLabel>("XLabel", 204, 0, 0, 20, 28);
+        xLabel = std::make_shared<UltraCanvasLabel>("XLabel", 0, 0, 20, 28);
         xLabel->SetText("×");
         xLabel->SetAlignment(TextAlignment::Center);
 
-        heightInput = std::make_shared<UltraCanvasTextInput>("HeightInput", 205, 0, 0, 70, 28);
+        heightInput = std::make_shared<UltraCanvasTextInput>("HeightInput", 0, 0, 70, 28);
         heightInput->SetText("1080");
 
-        aspectRatioCheckbox = UltraCanvasCheckbox::CreateCheckbox("AspectLock", 206, 0, 0, 100, 24, "Lock", true);
+        aspectRatioCheckbox = UltraCanvasCheckbox::CreateCheckbox("AspectLock", 0, 0, 100, 24, "Lock", true);
 
         sizeLayout->AddUIElement(widthInput);
         sizeLayout->AddUIElement(xLabel);
@@ -324,44 +324,44 @@ namespace UltraCanvas {
         row++;
 
         // ----- Row 1: Color depth -----
-        colorDepthLabel = std::make_shared<UltraCanvasLabel>("ColorDepthLabel", 210, 0, 0, 80, 24);
+        colorDepthLabel = std::make_shared<UltraCanvasLabel>("ColorDepthLabel", 0, 0, 80, 24);
         colorDepthLabel->SetText("Depth:");
         colorDepthLabel->SetFontSize(style.labelFontSize);
         colorDepthLabel->SetTextColor(style.labelColor);
 
-        colorDepthDropdown = std::make_shared<UltraCanvasDropdown>("ColorDepthDropdown", 211, 0, 0, 200, 28);
+        colorDepthDropdown = std::make_shared<UltraCanvasDropdown>("ColorDepthDropdown", 0, 0, 200, 28);
 
         grid->AddUIElement(colorDepthLabel, row, 0);
         grid->AddUIElement(colorDepthDropdown, row, 1);
         row++;
 
         // ----- Row 2: Transparency -----
-        transparencyLabel = std::make_shared<UltraCanvasLabel>("TransparencyLabel", 220, 0, 0, 80, 24);
+        transparencyLabel = std::make_shared<UltraCanvasLabel>("TransparencyLabel", 0, 0, 80, 24);
         transparencyLabel->SetText("Alpha:");
         transparencyLabel->SetFontSize(style.labelFontSize);
         transparencyLabel->SetTextColor(style.labelColor);
 
-        transparencyCheckbox = UltraCanvasCheckbox::CreateCheckbox("TransparencyCheck", 221, 0, 0, 200, 24, "Preserve transparency", true);
+        transparencyCheckbox = UltraCanvasCheckbox::CreateCheckbox("TransparencyCheck", 0, 0, 200, 24, "Preserve transparency", true);
 
         grid->AddUIElement(transparencyLabel, row, 0);
         grid->AddUIElement(transparencyCheckbox, row, 1);
         row++;
 
         // ----- Row 3: Quality slider -----
-        qualityLabel = std::make_shared<UltraCanvasLabel>("QualityLabel", 230, 0, 0, 80, 24);
+        qualityLabel = std::make_shared<UltraCanvasLabel>("QualityLabel", 0, 0, 80, 24);
         qualityLabel->SetText("Quality:");
         qualityLabel->SetFontSize(style.labelFontSize);
         qualityLabel->SetTextColor(style.labelColor);
 
-        auto qualityRow = std::make_shared<UltraCanvasContainer>("QualityRow", 231, 0, 0, 280, 28);
+        auto qualityRow = std::make_shared<UltraCanvasContainer>("QualityRow", 0, 0, 280, 28);
         auto qualityLayout = CreateHBoxLayout(qualityRow.get());
         qualityLayout->SetSpacing(10);
 
-        qualitySlider = std::make_shared<UltraCanvasSlider>("QualitySlider", 232, 0, 0, 180, 24);
+        qualitySlider = std::make_shared<UltraCanvasSlider>("QualitySlider", 0, 0, 180, 24);
         qualitySlider->SetRange(0, 100);
         qualitySlider->SetValue(85);
 
-        qualityValueLabel = std::make_shared<UltraCanvasLabel>("QualityValue", 233, 0, 0, 50, 24);
+        qualityValueLabel = std::make_shared<UltraCanvasLabel>("QualityValue", 0, 0, 50, 24);
         qualityValueLabel->SetText("85%");
         qualityValueLabel->SetFontSize(style.valueFontSize);
 
@@ -376,7 +376,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageExportDialog::CreateFormatOptionsSection() {
-        formatOptionsSection = std::make_shared<UltraCanvasContainer>("FormatOptionsSection", 300, 0, 0, 300, 120);
+        formatOptionsSection = std::make_shared<UltraCanvasContainer>("FormatOptionsSection", 0, 0, 300, 120);
 
         CreatePngOptions();
         CreateJpegOptions();
@@ -392,11 +392,11 @@ namespace UltraCanvas {
 
     // PNG options - matches PngExportOptions: compressionLevel, interlace, preserveTransparency, colorDepth
     void UltraCanvasImageExportDialog::CreatePngOptions() {
-        pngOptionsContainer = std::make_shared<UltraCanvasContainer>("PngOptions", 310, 0, 0, 300, 40);
+        pngOptionsContainer = std::make_shared<UltraCanvasContainer>("PngOptions", 0, 0, 300, 40);
         auto layout = CreateVBoxLayout(pngOptionsContainer.get());
         layout->SetSpacing(8);
 
-        pngInterlaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("PngInterlace", 311, 0, 0, 250, 24, "Interlacing", false);
+        pngInterlaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("PngInterlace", 0, 0, 250, 24, "Interlacing", false);
 
         layout->AddUIElement(pngInterlaceCheckbox);
 
@@ -405,14 +405,14 @@ namespace UltraCanvas {
 
     // JPEG options - matches JpegExportOptions: quality, progressive, subsampling (bool!), optimizeHuffman
     void UltraCanvasImageExportDialog::CreateJpegOptions() {
-        jpegOptionsContainer = std::make_shared<UltraCanvasContainer>("JpegOptions", 320, 0, 0, 0, 90);
+        jpegOptionsContainer = std::make_shared<UltraCanvasContainer>("JpegOptions", 0, 0, 0, 90);
         auto layout = CreateVBoxLayout(jpegOptionsContainer.get());
         layout->SetSpacing(8);
 
-        jpegProgressiveCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegProgressive", 321, 0, 0, 250, 24, "Progressive encoding", false);
-        jpegOptimizeHuffmanCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegOptHuffman", 322, 0, 0, 250, 24, "Optimize Huffman tables", true);
+        jpegProgressiveCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegProgressive", 0, 0, 250, 24, "Progressive encoding", false);
+        jpegOptimizeHuffmanCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegOptHuffman", 0, 0, 250, 24, "Optimize Huffman tables", true);
         // subsampling is a bool in JpegExportOptions, not ChromaSubsampling enum
-        jpegSubsamplingCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegSubsampling", 323, 0, 0, 250, 24, "Chroma subsampling", false);
+        jpegSubsamplingCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegSubsampling", 0, 0, 250, 24, "Chroma subsampling", false);
 
         layout->AddUIElement(jpegProgressiveCheckbox);
         layout->AddUIElement(jpegOptimizeHuffmanCheckbox);
@@ -423,23 +423,23 @@ namespace UltraCanvas {
 
     // WebP options - matches WebpExportOptions: quality, lossless, effort, targetSize, preserveTransparency, alphaQuality
     void UltraCanvasImageExportDialog::CreateWebpOptions() {
-        webpOptionsContainer = std::make_shared<UltraCanvasContainer>("WebpOptions", 330, 0, 0, 0, 100);
+        webpOptionsContainer = std::make_shared<UltraCanvasContainer>("WebpOptions", 0, 0, 0, 100);
         auto layout = CreateVBoxLayout(webpOptionsContainer.get());
         layout->SetSpacing(8);
 
-        webpLosslessCheckbox = UltraCanvasCheckbox::CreateCheckbox("WebpLossless", 331, 0, 0, 250, 24, "Lossless compression", false);
+        webpLosslessCheckbox = UltraCanvasCheckbox::CreateCheckbox("WebpLossless", 0, 0, 250, 24, "Lossless compression", false);
 
         // Effort row
-        auto effortRow = std::make_shared<UltraCanvasContainer>("EffortRow", 332, 0, 0, 350, 28);
+        auto effortRow = std::make_shared<UltraCanvasContainer>("EffortRow", 0, 0, 350, 28);
         auto effortLayout = CreateHBoxLayout(effortRow.get());
         effortLayout->SetSpacing(10);
 
-        auto effortLabel = std::make_shared<UltraCanvasLabel>("EffortLabel", 333, 0, 0, 100, 24);
+        auto effortLabel = std::make_shared<UltraCanvasLabel>("EffortLabel", 0, 0, 100, 24);
         effortLabel->SetText("Effort (0-6):");
         effortLabel->SetFontSize(style.labelFontSize);
         effortLabel->SetTextColor(style.labelColor);
 
-        webpEffortSlider = std::make_shared<UltraCanvasSlider>("WebpEffort", 334, 0, 0, 150, 24);
+        webpEffortSlider = std::make_shared<UltraCanvasSlider>("WebpEffort", 0, 0, 150, 24);
         webpEffortSlider->SetRange(0, 6);
         webpEffortSlider->SetValue(4);
 
@@ -447,16 +447,16 @@ namespace UltraCanvas {
         effortLayout->AddUIElement(webpEffortSlider, 1);
 
         // Alpha quality row
-        auto alphaRow = std::make_shared<UltraCanvasContainer>("AlphaRow", 335, 0, 0, 350, 28);
+        auto alphaRow = std::make_shared<UltraCanvasContainer>("AlphaRow", 0, 0, 350, 28);
         auto alphaLayout = CreateHBoxLayout(alphaRow.get());
         alphaLayout->SetSpacing(10);
 
-        auto alphaLabel = std::make_shared<UltraCanvasLabel>("AlphaLabel", 336, 0, 0, 100, 24);
+        auto alphaLabel = std::make_shared<UltraCanvasLabel>("AlphaLabel", 0, 0, 100, 24);
         alphaLabel->SetText("Alpha quality:");
         alphaLabel->SetFontSize(style.labelFontSize);
         alphaLabel->SetTextColor(style.labelColor);
 
-        webpAlphaQualitySlider = std::make_shared<UltraCanvasSlider>("WebpAlphaQuality", 337, 0, 0, 150, 24);
+        webpAlphaQualitySlider = std::make_shared<UltraCanvasSlider>("WebpAlphaQuality", 0, 0, 150, 24);
         webpAlphaQualitySlider->SetRange(0, 100);
         webpAlphaQualitySlider->SetValue(100);
 
@@ -473,23 +473,23 @@ namespace UltraCanvas {
     // AVIF options - matches AvifExportOptions: quality, lossless, speed, preserveTransparency, colorDepth
     // Note: bitDepth and hdr are commented out in UltraCanvasImage.h
     void UltraCanvasImageExportDialog::CreateAvifOptions() {
-        avifOptionsContainer = std::make_shared<UltraCanvasContainer>("AvifOptions", 340, 0, 0, 0, 70);
+        avifOptionsContainer = std::make_shared<UltraCanvasContainer>("AvifOptions", 0, 0, 0, 70);
         auto layout = CreateVBoxLayout(avifOptionsContainer.get());
         layout->SetSpacing(8);
 
-        avifLosslessCheckbox = UltraCanvasCheckbox::CreateCheckbox("AvifLossless", 341, 0, 0, 250, 24, "Lossless compression", false);
+        avifLosslessCheckbox = UltraCanvasCheckbox::CreateCheckbox("AvifLossless", 0, 0, 250, 24, "Lossless compression", false);
 
         // Speed row
-        auto speedRow = std::make_shared<UltraCanvasContainer>("SpeedRow", 342, 0, 0, 350, 28);
+        auto speedRow = std::make_shared<UltraCanvasContainer>("SpeedRow", 0, 0, 350, 28);
         auto speedLayout = CreateHBoxLayout(speedRow.get());
         speedLayout->SetSpacing(10);
 
-        auto speedLabel = std::make_shared<UltraCanvasLabel>("SpeedLabel", 343, 0, 0, 100, 24);
+        auto speedLabel = std::make_shared<UltraCanvasLabel>("SpeedLabel", 0, 0, 100, 24);
         speedLabel->SetText("Speed (0-10):");
         speedLabel->SetFontSize(style.labelFontSize);
         speedLabel->SetTextColor(style.labelColor);
 
-        avifSpeedSlider = std::make_shared<UltraCanvasSlider>("AvifSpeed", 344, 0, 0, 150, 24);
+        avifSpeedSlider = std::make_shared<UltraCanvasSlider>("AvifSpeed", 0, 0, 150, 24);
         avifSpeedSlider->SetRange(0, 10);
         avifSpeedSlider->SetValue(6);
 
@@ -506,12 +506,12 @@ namespace UltraCanvas {
     // GIF options - matches GifExportOptions: colorDepth, interlace, dithering
     // Note: maxColors is NOT in the struct, preserveTransparency is commented out
     void UltraCanvasImageExportDialog::CreateGifOptions() {
-        gifOptionsContainer = std::make_shared<UltraCanvasContainer>("GifOptions", 350, 0, 0, 0, 60);
+        gifOptionsContainer = std::make_shared<UltraCanvasContainer>("GifOptions", 0, 0, 0, 60);
         auto layout = CreateVBoxLayout(gifOptionsContainer.get());
         layout->SetSpacing(8);
 
-        gifDitheringCheckbox = UltraCanvasCheckbox::CreateCheckbox("GifDithering", 351, 0, 0, 250, 24, "Enable dithering", true);
-        gifInterlaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("GifInterlace", 352, 0, 0, 250, 24, "Interlaced", false);
+        gifDitheringCheckbox = UltraCanvasCheckbox::CreateCheckbox("GifDithering", 0, 0, 250, 24, "Enable dithering", true);
+        gifInterlaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("GifInterlace", 0, 0, 250, 24, "Interlaced", false);
 
         layout->AddUIElement(gifDitheringCheckbox);
         layout->AddUIElement(gifInterlaceCheckbox);
@@ -521,21 +521,21 @@ namespace UltraCanvas {
 
     // TIFF options - matches TiffExportOptions: compression, colorDepth, multiPage
     void UltraCanvasImageExportDialog::CreateTiffOptions() {
-        tiffOptionsContainer = std::make_shared<UltraCanvasContainer>("TiffOptions", 360, 0, 0, 0, 70);
+        tiffOptionsContainer = std::make_shared<UltraCanvasContainer>("TiffOptions", 0, 0, 0, 70);
         auto layout = CreateVBoxLayout(tiffOptionsContainer.get());
         layout->SetSpacing(8);
 
         // Compression row
-        auto compressionRow = std::make_shared<UltraCanvasContainer>("CompressionRow", 361, 0, 0, 350, 28);
+        auto compressionRow = std::make_shared<UltraCanvasContainer>("CompressionRow", 0, 0, 350, 28);
         auto compressionLayout = CreateHBoxLayout(compressionRow.get());
         compressionLayout->SetSpacing(10);
 
-        auto compressionLabel = std::make_shared<UltraCanvasLabel>("CompressionLabel", 362, 0, 0, 100, 24);
+        auto compressionLabel = std::make_shared<UltraCanvasLabel>("CompressionLabel", 0, 0, 100, 24);
         compressionLabel->SetText("Compression:");
         compressionLabel->SetFontSize(style.labelFontSize);
         compressionLabel->SetTextColor(style.labelColor);
 
-        tiffCompressionDropdown = std::make_shared<UltraCanvasDropdown>("TiffCompression", 363, 0, 0, 150, 28);
+        tiffCompressionDropdown = std::make_shared<UltraCanvasDropdown>("TiffCompression", 0, 0, 150, 28);
         // Match TiffCompression enum order: NoCompression, JPEGCompression, DeflateCompression, PackBitsCompression, LZWCompression, ZSTDCompression, WEBPCompression
         tiffCompressionDropdown->AddItem("None");
         tiffCompressionDropdown->AddItem("JPEG");
@@ -549,7 +549,7 @@ namespace UltraCanvas {
         compressionLayout->AddUIElement(compressionLabel);
         compressionLayout->AddUIElement(tiffCompressionDropdown);
 
-        tiffMultiPageCheckbox = UltraCanvasCheckbox::CreateCheckbox("TiffMultiPage", 364, 0, 0, 250, 24, "Multi-page TIFF", false);
+        tiffMultiPageCheckbox = UltraCanvasCheckbox::CreateCheckbox("TiffMultiPage", 0, 0, 250, 24, "Multi-page TIFF", false);
 
         layout->AddUIElement(compressionRow);
         layout->AddUIElement(tiffMultiPageCheckbox);
@@ -559,15 +559,15 @@ namespace UltraCanvas {
 
     // QOI options - matches QoiExportOptions: hasAlpha, linearColorspace
     void UltraCanvasImageExportDialog::CreateQoiOptions() {
-        qoiOptionsContainer = std::make_shared<UltraCanvasContainer>("QoiOptions", 370, 0, 0, 0, 100);
+        qoiOptionsContainer = std::make_shared<UltraCanvasContainer>("QoiOptions", 0, 0, 0, 100);
         auto layout = CreateVBoxLayout(qoiOptionsContainer.get());
         layout->SetSpacing(8);
 
-        qoiAlphaCheckbox = UltraCanvasCheckbox::CreateCheckbox("QoiAlpha", 371, 0, 0, 250, 24, "Include alpha channel", true);
+        qoiAlphaCheckbox = UltraCanvasCheckbox::CreateCheckbox("QoiAlpha", 0, 0, 250, 24, "Include alpha channel", true);
         // linearColorspace is a bool, use checkbox instead of dropdown
-        qoiLinearColorspaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("QoiLinear", 372, 0, 0, 250, 24, "Linear colorspace (default: sRGB)", false);
+        qoiLinearColorspaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("QoiLinear", 0, 0, 250, 24, "Linear colorspace (default: sRGB)", false);
 
-        qoiInfoLabel = std::make_shared<UltraCanvasLabel>("QoiInfo", 373, 0, 0, 350, 40);
+        qoiInfoLabel = std::make_shared<UltraCanvasLabel>("QoiInfo", 0, 0, 350, 40);
         qoiInfoLabel->SetText("QOI: Fast lossless compression\n20-50x faster encoding than PNG");
         qoiInfoLabel->SetFontSize(style.valueFontSize);
         qoiInfoLabel->SetTextColor(style.labelColor);
@@ -580,13 +580,13 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageExportDialog::CreateMetadataSection() {
-        metadataSection = std::make_shared<UltraCanvasContainer>("MetadataSection", 400, 0, 0, 0, 35);
+        metadataSection = std::make_shared<UltraCanvasContainer>("MetadataSection", 0, 0, 0, 35);
         auto layout = CreateHBoxLayout(metadataSection.get());
         layout->SetSpacing(20);
 
         // Note: Most format-specific metadata options (preserveExif, embedICCProfile) are commented out
         // in UltraCanvasImage.h, so we only keep the general preserveMetadata option
-        preserveMetadataCheckbox = UltraCanvasCheckbox::CreateCheckbox("PreserveMetadata", 401, 0, 0, 180, 24, "Preserve metadata", true);
+        preserveMetadataCheckbox = UltraCanvasCheckbox::CreateCheckbox("PreserveMetadata", 0, 0, 180, 24, "Preserve metadata", true);
 
         layout->AddUIElement(preserveMetadataCheckbox);
 
@@ -594,19 +594,19 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasImageExportDialog::CreateFooterSection() {
-        footerSection = std::make_shared<UltraCanvasContainer>("FooterSection", 500, 0, 0, 0, 45);
+        footerSection = std::make_shared<UltraCanvasContainer>("FooterSection", 0, 0, 0, 45);
         auto layout = CreateHBoxLayout(footerSection.get());
         layout->SetSpacing(10);
 
-        fileSizeEstimateLabel = std::make_shared<UltraCanvasLabel>("FileSizeEstimate", 501, 0, 0, 180, 24);
+        fileSizeEstimateLabel = std::make_shared<UltraCanvasLabel>("FileSizeEstimate", 0, 0, 180, 24);
         fileSizeEstimateLabel->SetText("Estimated: ~2.5 MB");
         fileSizeEstimateLabel->SetFontSize(style.valueFontSize);
         fileSizeEstimateLabel->SetTextColor(style.labelColor);
 
-        cancelButton = std::make_shared<UltraCanvasButton>("CancelButton", 502, 0, 0, 90, 32);
+        cancelButton = std::make_shared<UltraCanvasButton>("CancelButton", 0, 0, 90, 32);
         cancelButton->SetText("Cancel");
 
-        saveButton = std::make_shared<UltraCanvasButton>("SaveButton", 503, 0, 0, 90, 32);
+        saveButton = std::make_shared<UltraCanvasButton>("SaveButton", 0, 0, 90, 32);
         saveButton->SetText("Save");
 
         layout->AddUIElement(fileSizeEstimateLabel);
