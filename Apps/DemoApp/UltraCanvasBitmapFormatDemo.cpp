@@ -357,6 +357,20 @@ namespace UltraCanvas {
         bool isSupported;  // true = green (supported), false = orange (feature/limitation)
     };
 
+    // Structured 3x3 specification grid rendered at the bottom of each format page.
+    // A value starting with "No" (case-insensitive) is rendered as an "unsupported" cell.
+    struct FormatSpecification {
+        std::string compression;     // "Lossless", "Lossy", "Lossless or Lossy"
+        std::string colorSpace;      // e.g. "RGB, RGBA, Grayscale, Indexed"
+        std::string channels;        // e.g. "1-4"
+        std::string bitsPerChannel;  // e.g. "1/2/4/8/16-bit"
+        std::string hdrSupport;      // "No" / "10-bit" / "10/12-bit"
+        std::string transparency;    // "No" / "1-bit" / "8-bit" / "8/16-bit"
+        std::string animation;       // "Yes" / "No" (multi-page TIFF counts as No)
+        std::string interlacing;     // "Yes" / "No"
+        std::string metadata;        // "No" / "EXIF, XMP, ICC" etc.
+    };
+
     struct BitmapFormatInfo {
         // Basic info
         std::string formatName;
@@ -368,12 +382,15 @@ namespace UltraCanvas {
         std::string aboutDescription;
         Color accentColor;
 
-        // Technical specifications
+        // Technical specifications (legacy: still populated for reference)
         std::vector<TechnicalSpec> containerSpecs;
         std::vector<TechnicalSpec> codecSpecs;
 
         // Capabilities (6 items for 3x2 grid)
         std::vector<CapabilityItem> capabilities;
+
+        // Structured specification (3x3 grid, replaces legacy tech specs at bottom of page)
+        FormatSpecification specification;
     };
 
 // ===== JPEG FORMAT =====
@@ -416,6 +433,19 @@ namespace UltraCanvas {
                 {"Animation", "Not Supported", false},
                 {"Metadata", "EXIF, IPTC, XMP", true},
                 {"Progressive", "Supported", true}
+        };
+
+        // Format Specification
+        info.specification = {
+                /* compression    */ "Lossy",
+                /* colorSpace     */ "YCbCr, Grayscale, CMYK",
+                /* channels       */ "1-4",
+                /* bitsPerChannel */ "8-bit",
+                /* hdrSupport     */ "No",
+                /* transparency   */ "No",
+                /* animation      */ "No",
+                /* interlacing    */ "Yes (Progressive)",
+                /* metadata       */ "EXIF, IPTC, XMP"
         };
 
         return info;
@@ -463,6 +493,19 @@ namespace UltraCanvas {
                 {"Interlacing", "Adam7", true}
         };
 
+        // Format Specification
+        info.specification = {
+                /* compression    */ "Lossless (DEFLATE)",
+                /* colorSpace     */ "RGB, RGBA, Grayscale, Indexed",
+                /* channels       */ "1-4",
+                /* bitsPerChannel */ "1/2/4/8/16-bit",
+                /* hdrSupport     */ "No",
+                /* transparency   */ "Yes (8/16-bit)",
+                /* animation      */ "Yes (APNG)",
+                /* interlacing    */ "Yes (Adam7)",
+                /* metadata       */ "tEXt, iTXt, zTXt"
+        };
+
         return info;
     }
 
@@ -506,6 +549,19 @@ namespace UltraCanvas {
                 {"Animation", "Multi-frame", true},
                 {"Metadata", "Comment blocks", true},
                 {"Interlacing", "Supported", true}
+        };
+
+        // Format Specification
+        info.specification = {
+                /* compression    */ "Lossless (LZW)",
+                /* colorSpace     */ "Indexed (palette)",
+                /* channels       */ "1 (palette index)",
+                /* bitsPerChannel */ "1-8 bit (256 colors)",
+                /* hdrSupport     */ "No",
+                /* transparency   */ "Yes (1-bit)",
+                /* animation      */ "Yes (multi-frame)",
+                /* interlacing    */ "Yes",
+                /* metadata       */ "Comment blocks"
         };
 
         return info;
@@ -554,6 +610,19 @@ namespace UltraCanvas {
                 {"Loading Speed", "Very Fast", true}
         };
 
+        // Format Specification
+        info.specification = {
+                /* compression    */ "None or RLE",
+                /* colorSpace     */ "RGB, RGBA, Indexed",
+                /* channels       */ "1-4",
+                /* bitsPerChannel */ "1/4/8/16/24/32-bit",
+                /* hdrSupport     */ "No",
+                /* transparency   */ "Yes (8-bit RGBA)",
+                /* animation      */ "No",
+                /* interlacing    */ "No",
+                /* metadata       */ "Limited"
+        };
+
         return info;
     }
 
@@ -599,6 +668,19 @@ namespace UltraCanvas {
                 {"Browser Support", "All modern", true}
         };
 
+        // Format Specification
+        info.specification = {
+                /* compression    */ "Lossless or Lossy (VP8 / VP8L)",
+                /* colorSpace     */ "RGB, RGBA, YUV420",
+                /* channels       */ "1-4",
+                /* bitsPerChannel */ "8-bit",
+                /* hdrSupport     */ "No",
+                /* transparency   */ "Yes (8-bit)",
+                /* animation      */ "Yes (multi-frame)",
+                /* interlacing    */ "No",
+                /* metadata       */ "EXIF, XMP, ICC"
+        };
+
         return info;
     }
 
@@ -642,6 +724,19 @@ namespace UltraCanvas {
                 {"Animation", "Image sequences", true},
                 {"HDR Support", "10/12-bit", true},
                 {"Wide Gamut", "BT.2020, P3", true}
+        };
+
+        // Format Specification
+        info.specification = {
+                /* compression    */ "Lossless or Lossy (AV1)",
+                /* colorSpace     */ "RGB, YUV, Monochrome",
+                /* channels       */ "1-4",
+                /* bitsPerChannel */ "8/10/12-bit",
+                /* hdrSupport     */ "Yes (10/12-bit)",
+                /* transparency   */ "Yes (8-bit+)",
+                /* animation      */ "Yes (image sequences)",
+                /* interlacing    */ "No",
+                /* metadata       */ "EXIF, XMP, ICC"
         };
 
         return info;
@@ -690,6 +785,19 @@ namespace UltraCanvas {
                 {"Color Profiles", "Full ICC support", true}
         };
 
+        // Format Specification
+        info.specification = {
+                /* compression    */ "None, LZW, ZIP, JPEG, Deflate",
+                /* colorSpace     */ "RGB, CMYK, LAB, YCbCr, Grayscale",
+                /* channels       */ "1-N (extensible)",
+                /* bitsPerChannel */ "1/8/16/32-bit, float",
+                /* hdrSupport     */ "Yes (16-bit / float)",
+                /* transparency   */ "Yes (multi-channel)",
+                /* animation      */ "No (multi-page)",
+                /* interlacing    */ "No",
+                /* metadata       */ "EXIF, IPTC, XMP"
+        };
+
         return info;
     }
 
@@ -733,6 +841,19 @@ namespace UltraCanvas {
                 {"Encode Speed", "20-50x vs PNG", true},
                 {"Decode Speed", "3-4x vs PNG", true},
                 {"Simplicity", "~300 lines code", true}
+        };
+
+        // Format Specification
+        info.specification = {
+                /* compression    */ "Lossless (RLE + indexing)",
+                /* colorSpace     */ "RGB, RGBA",
+                /* channels       */ "3-4",
+                /* bitsPerChannel */ "8-bit",
+                /* hdrSupport     */ "No",
+                /* transparency   */ "Yes (8-bit)",
+                /* animation      */ "No",
+                /* interlacing    */ "No",
+                /* metadata       */ "No"
         };
 
         return info;
@@ -781,6 +902,19 @@ namespace UltraCanvas {
                 {"Editing", "Non-destructive", true}
         };
 
+        // Format Specification
+        info.specification = {
+                /* compression    */ "Minimal or Lossless",
+                /* colorSpace     */ "Bayer CFA, X-Trans, Foveon",
+                /* channels       */ "1 (CFA pattern)",
+                /* bitsPerChannel */ "12/14/16-bit",
+                /* hdrSupport     */ "Yes (sensor native)",
+                /* transparency   */ "No",
+                /* animation      */ "No",
+                /* interlacing    */ "No",
+                /* metadata       */ "EXIF + MakerNote"
+        };
+
         return info;
     }
 
@@ -827,6 +961,19 @@ namespace UltraCanvas {
                 {"Selections", "Saved in file", true}
         };
 
+        // Format Specification
+        info.specification = {
+                /* compression    */ "Lossless (RLE / LZ77)",
+                /* colorSpace     */ "RGB, CMYK, Grayscale, Indexed",
+                /* channels       */ "Multi (layers + masks)",
+                /* bitsPerChannel */ "1/8/16-bit",
+                /* hdrSupport     */ "No",
+                /* transparency   */ "Yes (multi-channel masks)",
+                /* animation      */ "No",
+                /* interlacing    */ "No",
+                /* metadata       */ "Layers, vector objects"
+        };
+
         return info;
     }
 
@@ -870,6 +1017,19 @@ namespace UltraCanvas {
                 {"Image Sequences", "Supported", true},
                 {"Depth Maps", "Supported", true},
                 {"HDR", "10-bit support", true}
+        };
+
+        // Format Specification
+        info.specification = {
+                /* compression    */ "Lossy (HEVC) or Lossless",
+                /* colorSpace     */ "RGB, YCbCr",
+                /* channels       */ "1-4",
+                /* bitsPerChannel */ "8/10-bit",
+                /* hdrSupport     */ "Yes (10-bit)",
+                /* transparency   */ "Yes (8-bit)",
+                /* animation      */ "Yes (image sequences)",
+                /* interlacing    */ "No",
+                /* metadata       */ "EXIF, XMP"
         };
 
         return info;
@@ -932,13 +1092,15 @@ namespace UltraCanvas {
         container->SetBackgroundColor(Color(255, 251, 235, 255));
 
         // Layout constants
+        // Row order (top to bottom): About + Capabilities, then Image preview + Properties,
+        // then the structured Format Specification grid.
         const int leftColX = 20;
         const int rightColX = 310;
         const int leftColWidth = 270;
         const int rightColWidth = 640;
-        const int row1Y = 20;
-        const int row2Y = 340;
-        const int row3Y = 580;
+        const int row1Y = 260;  // Image preview + Image properties (h=300, ends at 560)
+        const int row2Y = 20;   // About + Capabilities (h=220, ends at 240)
+        const int row3Y = 580;  // Format Specification (h=170, ends at 750)
 
         int id = baseId + 1;
 
@@ -1166,61 +1328,83 @@ namespace UltraCanvas {
             capContainer->AddChild(capValue);
         }
 
-        // ===== ROW 3: TECHNICAL SPECIFICATIONS =====
-        auto techCard = std::make_shared<UltraCanvasContainer>("TechCard", id++, leftColX, row3Y, 910, 170);
-        techCard->SetBackgroundColor(Color(255, 255, 255, 255));
-        techCard->SetBorders(1, Color(230, 230, 230, 255));
-        container->AddChild(techCard);
+        // ===== ROW 3: FORMAT SPECIFICATION (3x3 grid) =====
+        auto specCard = std::make_shared<UltraCanvasContainer>("SpecCard", id++, leftColX, row3Y, 910, 170);
+        specCard->SetBackgroundColor(Color(255, 255, 255, 255));
+        specCard->SetBorders(1, Color(230, 230, 230, 255));
+        container->AddChild(specCard);
 
-        auto techTitle = std::make_shared<UltraCanvasLabel>("TechTitle", id++, 20, 20, 300, 24);
-        techTitle->SetText("Technical Specifications");
-        techTitle->SetFontSize(16);
-        techTitle->SetFontWeight(FontWeight::Bold);
-        techTitle->SetTextColor(Color(30, 41, 59, 255));
-        techCard->AddChild(techTitle);
+        auto specTitle = std::make_shared<UltraCanvasLabel>("SpecTitle", id++, 20, 14, 400, 22);
+        specTitle->SetText("📐  Format Specification");
+        specTitle->SetFontSize(14);
+        specTitle->SetFontWeight(FontWeight::Bold);
+        specTitle->SetTextColor(Color(30, 41, 59, 255));
+        specCard->AddChild(specTitle);
 
-        // Container/Standard specs (left column)
-        auto containerTitle = std::make_shared<UltraCanvasLabel>("ContainerTitle", id++, 20, 56, 200, 20);
-        containerTitle->SetText("Container Format");
-        containerTitle->SetFontSize(12);
-        containerTitle->SetFontWeight(FontWeight::Bold);
-        containerTitle->SetTextColor(info.accentColor);
-        techCard->AddChild(containerTitle);
+        // 9 properties laid out in a 3x3 grid (label on top, value below).
+        // Cells unsupported (value starts with "No") get a muted orange tint; the rest get
+        // a neutral slate background. This mirrors the style of the Properties card so the
+        // section reads as factual data, not a marketing pitch.
+        struct SpecCell { std::string label; std::string value; };
+        const std::vector<SpecCell> cells = {
+                {"COMPRESSION",      info.specification.compression},
+                {"COLOR SPACE",      info.specification.colorSpace},
+                {"CHANNELS",         info.specification.channels},
+                {"BITS PER CHANNEL", info.specification.bitsPerChannel},
+                {"HDR SUPPORT",      info.specification.hdrSupport},
+                {"TRANSPARENCY",     info.specification.transparency},
+                {"ANIMATION",        info.specification.animation},
+                {"INTERLACING",      info.specification.interlacing},
+                {"METADATA",         info.specification.metadata},
+        };
 
-        for (size_t i = 0; i < info.containerSpecs.size(); ++i) {
-            auto bullet = std::make_shared<UltraCanvasLabel>("ContBullet" + std::to_string(i), id++, 28, 80 + i * 24, 16, 16);
-            bullet->SetText("●");
-            bullet->SetFontSize(8);
-            bullet->SetTextColor(info.accentColor);
-            techCard->AddChild(bullet);
+        const int gridX = 20;
+        const int gridY = 46;
+        const int cellW = 286;
+        const int cellH = 36;
+        const int colGap = 8;
+        const int rowGap = 4;
 
-            auto itemLabel = std::make_shared<UltraCanvasLabel>("ContItem" + std::to_string(i), id++, 44, 78 + i * 24, 380, 18);
-            itemLabel->SetText(info.containerSpecs[i].label + ": " + info.containerSpecs[i].value);
-            itemLabel->SetFontSize(11);
-            itemLabel->SetTextColor(Color(71, 85, 105, 255));
-            techCard->AddChild(itemLabel);
-        }
+        auto isUnsupportedValue = [](const std::string& v) {
+            if (v.empty()) return true;
+            // Match "No" or "No (..." at the start, case-insensitive
+            return (v.size() >= 2 && (v[0] == 'N' || v[0] == 'n') && (v[1] == 'O' || v[1] == 'o'))
+                   && (v.size() == 2 || v[2] == ' ' || v[2] == '(');
+        };
 
-        // Codec specs (right column)
-        auto codecTitle = std::make_shared<UltraCanvasLabel>("CodecTitle", id++, 470, 56, 200, 20);
-        codecTitle->SetText("Codec Support");
-        codecTitle->SetFontSize(12);
-        codecTitle->SetFontWeight(FontWeight::Bold);
-        codecTitle->SetTextColor(info.accentColor);
-        techCard->AddChild(codecTitle);
+        for (size_t i = 0; i < cells.size(); ++i) {
+            int col = static_cast<int>(i % 3);
+            int row = static_cast<int>(i / 3);
+            int x = gridX + col * (cellW + colGap);
+            int y = gridY + row * (cellH + rowGap);
 
-        for (size_t i = 0; i < info.codecSpecs.size(); ++i) {
-            auto bullet = std::make_shared<UltraCanvasLabel>("CodecBullet" + std::to_string(i), id++, 478, 80 + i * 24, 16, 16);
-            bullet->SetText("●");
-            bullet->SetFontSize(8);
-            bullet->SetTextColor(Color(info.accentColor.r, info.accentColor.g, std::min(255, info.accentColor.b + 50), 255));
-            techCard->AddChild(bullet);
+            bool unsupported = isUnsupportedValue(cells[i].value);
 
-            auto itemLabel = std::make_shared<UltraCanvasLabel>("CodecItem" + std::to_string(i), id++, 494, 78 + i * 24, 380, 18);
-            itemLabel->SetText(info.codecSpecs[i].label + ": " + info.codecSpecs[i].value);
-            itemLabel->SetFontSize(11);
-            itemLabel->SetTextColor(Color(71, 85, 105, 255));
-            techCard->AddChild(itemLabel);
+            auto cell = std::make_shared<UltraCanvasContainer>(
+                    "Spec" + std::to_string(i), id++, x, y, cellW, cellH);
+            if (unsupported) {
+                cell->SetBackgroundColor(Color(255, 247, 237, 255));
+                cell->SetBorders(1, Color(254, 215, 170, 255));
+            } else {
+                cell->SetBackgroundColor(Color(248, 250, 252, 255));
+                cell->SetBorders(1, Color(226, 232, 240, 255));
+            }
+            specCard->AddChild(cell);
+
+            auto lbl = std::make_shared<UltraCanvasLabel>(
+                    "SpecLbl" + std::to_string(i), id++, 10, 4, cellW - 20, 12);
+            lbl->SetText(cells[i].label);
+            lbl->SetFontSize(8);
+            lbl->SetTextColor(Color(100, 116, 139, 255));
+            cell->AddChild(lbl);
+
+            auto val = std::make_shared<UltraCanvasLabel>(
+                    "SpecVal" + std::to_string(i), id++, 10, 16, cellW - 20, 16);
+            val->SetText(cells[i].value);
+            val->SetFontSize(11);
+            val->SetFontWeight(FontWeight::Bold);
+            val->SetTextColor(unsupported ? Color(234, 88, 12, 255) : Color(30, 41, 59, 255));
+            cell->AddChild(val);
         }
 
         return container;
