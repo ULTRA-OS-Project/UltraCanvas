@@ -1,7 +1,7 @@
 // dialogs/UltraCanvasImageExportDialog.cpp
 // Implementation of comprehensive bitmap file save dialog
-// Version: 2.1.0
-// Last Modified: 2025-01-06
+// Version: 2.2.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 //
 // ARCHITECTURE: Uses UltraCanvas layout system (VBox, HBox, Grid)
@@ -137,6 +137,131 @@ namespace UltraCanvas {
 //                                        UCImageSave::ColorDepth::RGB_48bit, UCImageSave::ColorDepth::RGBA_64bit};
                 break;
 
+            case UCImageSaveFormat::JXL:
+                info.name = "JPEG XL";
+                info.extension = "jxl";
+                info.description = "Next-gen image — lossless and lossy modes";
+                info.supportsTransparency = true;
+                info.supportsLossless = true;
+                info.supportsLossy = true;
+                break;
+
+            case UCImageSaveFormat::PPM:
+                info.name = "PPM";
+                info.extension = "ppm";
+                info.description = "Portable Pixmap (ASCII or binary)";
+                info.supportsLossless = true;
+                break;
+
+            case UCImageSaveFormat::QOI:
+                info.name = "QOI";
+                info.extension = "qoi";
+                info.description = "Quite OK Image — fast lossless";
+                info.supportsTransparency = true;
+                info.supportsLossless = true;
+                break;
+
+            // ===== Phase 1 additions =====
+            case UCImageSaveFormat::TGA:
+                info.name = "TGA";
+                info.extension = "tga";
+                info.description = "Truevision TGA — lossless with alpha";
+                info.supportsTransparency = true;
+                info.supportsLossless = true;
+                break;
+
+            case UCImageSaveFormat::PCX:
+                info.name = "PCX";
+                info.extension = "pcx";
+                info.description = "ZSoft Paintbrush";
+                info.supportsLossless = true;
+                break;
+
+            case UCImageSaveFormat::PGM:
+                info.name = "PGM";
+                info.extension = "pgm";
+                info.description = "Portable Graymap";
+                info.supportsLossless = true;
+                break;
+
+            case UCImageSaveFormat::PBM:
+                info.name = "PBM";
+                info.extension = "pbm";
+                info.description = "Portable Bitmap (1-bit)";
+                info.supportsLossless = true;
+                break;
+
+            case UCImageSaveFormat::PFM:
+                info.name = "PFM";
+                info.extension = "pfm";
+                info.description = "Portable Float Map (HDR)";
+                info.supportsLossless = true;
+                info.supportsHDR = true;
+                break;
+
+            case UCImageSaveFormat::HDR:
+                info.name = "HDR";
+                info.extension = "hdr";
+                info.description = "Radiance RGBE — high dynamic range";
+                info.supportsLossless = true;
+                info.supportsHDR = true;
+                break;
+
+            case UCImageSaveFormat::EXR:
+                info.name = "EXR";
+                info.extension = "exr";
+                info.description = "OpenEXR — floating-point HDR with alpha";
+                info.supportsTransparency = true;
+                info.supportsLossless = true;
+                info.supportsHDR = true;
+                break;
+
+            case UCImageSaveFormat::DPX:
+                info.name = "DPX";
+                info.extension = "dpx";
+                info.description = "SMPTE DPX — digital cinema";
+                info.supportsLossless = true;
+                break;
+
+            case UCImageSaveFormat::CIN:
+                info.name = "Cineon";
+                info.extension = "cin";
+                info.description = "Kodak Cineon — film scanning";
+                info.supportsLossless = true;
+                break;
+
+            case UCImageSaveFormat::FITS:
+                info.name = "FITS";
+                info.extension = "fits";
+                info.description = "Flexible Image Transport System (astronomy)";
+                info.supportsLossless = true;
+                info.supportsHDR = true;
+                break;
+
+            case UCImageSaveFormat::PSD:
+                info.name = "PSD";
+                info.extension = "psd";
+                info.description = "Adobe Photoshop";
+                info.supportsTransparency = true;
+                info.supportsLossless = true;
+                break;
+
+            case UCImageSaveFormat::SGI:
+                info.name = "SGI";
+                info.extension = "sgi";
+                info.description = "Silicon Graphics Image";
+                info.supportsTransparency = true;
+                info.supportsLossless = true;
+                break;
+
+            case UCImageSaveFormat::FARBFELD:
+                info.name = "Farbfeld";
+                info.extension = "ff";
+                info.description = "Farbfeld — lossless 16-bit RGBA";
+                info.supportsTransparency = true;
+                info.supportsLossless = true;
+                break;
+
             default:
                 info.name = "Unknown";
                 info.extension = "";
@@ -158,6 +283,23 @@ namespace UltraCanvas {
                 GetInfo(UCImageSaveFormat::TIFF),
                 GetInfo(UCImageSaveFormat::ICO),
                 GetInfo(UCImageSaveFormat::JXL),
+                GetInfo(UCImageSaveFormat::JPEG2000),
+                GetInfo(UCImageSaveFormat::QOI),
+                GetInfo(UCImageSaveFormat::PPM),
+                // ===== Phase 1 additions =====
+                GetInfo(UCImageSaveFormat::TGA),
+                GetInfo(UCImageSaveFormat::PCX),
+                GetInfo(UCImageSaveFormat::PGM),
+                GetInfo(UCImageSaveFormat::PBM),
+                GetInfo(UCImageSaveFormat::PFM),
+                GetInfo(UCImageSaveFormat::HDR),
+                GetInfo(UCImageSaveFormat::EXR),
+                GetInfo(UCImageSaveFormat::DPX),
+                GetInfo(UCImageSaveFormat::CIN),
+                GetInfo(UCImageSaveFormat::FITS),
+                GetInfo(UCImageSaveFormat::PSD),
+                GetInfo(UCImageSaveFormat::SGI),
+                GetInfo(UCImageSaveFormat::FARBFELD),
         };
     }
 
@@ -178,7 +320,26 @@ namespace UltraCanvas {
         if (lower == "bmp") return UCImageSaveFormat::BMP;
         if (lower == "tiff" || lower == "tif") return UCImageSaveFormat::TIFF;
         if (lower == "ico") return UCImageSaveFormat::ICO;
-        if (lower == "jp2") return UCImageSaveFormat::JPEG2000;
+        if (lower == "jp2" || lower == "j2k" || lower == "jpf") return UCImageSaveFormat::JPEG2000;
+        if (lower == "jxl") return UCImageSaveFormat::JXL;
+        if (lower == "qoi") return UCImageSaveFormat::QOI;
+        if (lower == "ppm") return UCImageSaveFormat::PPM;
+        // ===== Phase 1 additions =====
+        if (lower == "tga" || lower == "targa" || lower == "icb" || lower == "vda" || lower == "vst")
+            return UCImageSaveFormat::TGA;
+        if (lower == "pcx") return UCImageSaveFormat::PCX;
+        if (lower == "pgm") return UCImageSaveFormat::PGM;
+        if (lower == "pbm") return UCImageSaveFormat::PBM;
+        if (lower == "pfm") return UCImageSaveFormat::PFM;
+        if (lower == "hdr" || lower == "rgbe" || lower == "pic") return UCImageSaveFormat::HDR;
+        if (lower == "exr") return UCImageSaveFormat::EXR;
+        if (lower == "dpx") return UCImageSaveFormat::DPX;
+        if (lower == "cin") return UCImageSaveFormat::CIN;
+        if (lower == "fits" || lower == "fit" || lower == "fts") return UCImageSaveFormat::FITS;
+        if (lower == "psd") return UCImageSaveFormat::PSD;
+        if (lower == "sgi" || lower == "rgb" || lower == "rgba" || lower == "bw")
+            return UCImageSaveFormat::SGI;
+        if (lower == "ff" || lower == "farbfeld") return UCImageSaveFormat::FARBFELD;
 
         return UCImageSaveFormat::PNG;
     }
@@ -270,7 +431,18 @@ namespace UltraCanvas {
         formatLabel->SetTextColor(style.labelColor);
 
         formatDropdown = std::make_shared<UltraCanvasDropdown>("FormatDropdown", 0, 0, 200, 28);
+
+        // Filter the format list against the installed libvips build —
+        // hide entries whose saver isn't compiled in. PNG is always kept
+        // as a safe fallback so the dropdown is never empty.
+        availableFormats.clear();
         for (const auto& fmt : ImageFormatInfo::GetAllFormats()) {
+            const std::string dotExt = "." + fmt.extension;
+            if (VipsCanSave(dotExt) || fmt.format == UCImageSaveFormat::PNG) {
+                availableFormats.push_back(fmt);
+            }
+        }
+        for (const auto& fmt : availableFormats) {
             formatDropdown->AddItem(fmt.name + " (." + fmt.extension + ")");
         }
         formatDropdown->SetSelectedIndex(0);
@@ -385,6 +557,15 @@ namespace UltraCanvas {
         CreateGifOptions();
         CreateTiffOptions();
         CreateQoiOptions();
+        // ===== Phase 1 additions =====
+        CreateTgaOptions();
+        CreatePcxOptions();
+        CreatePnmOptions();
+        CreateExrOptions();
+        CreateDpxOptions();
+        CreateCinOptions();
+        CreatePsdOptions();
+        CreateSgiOptions();
 
         AddChild(formatOptionsSection);
         HideAllFormatOptions();
@@ -579,6 +760,133 @@ namespace UltraCanvas {
         formatOptionsSection->AddChild(qoiOptionsContainer);
     }
 
+    // ===== Phase 1: simple checkbox-only formats =====
+    void UltraCanvasImageExportDialog::CreateTgaOptions() {
+        tgaOptionsContainer = std::make_shared<UltraCanvasContainer>("TgaOptions", 0, 0, 0, 40);
+        auto layout = CreateVBoxLayout(tgaOptionsContainer.get());
+        layout->SetSpacing(8);
+
+        tgaRleCheckbox = UltraCanvasCheckbox::CreateCheckbox("TgaRle", 0, 0, 250, 24, "RLE compression", true);
+        layout->AddUIElement(tgaRleCheckbox);
+
+        formatOptionsSection->AddChild(tgaOptionsContainer);
+    }
+
+    void UltraCanvasImageExportDialog::CreatePcxOptions() {
+        pcxOptionsContainer = std::make_shared<UltraCanvasContainer>("PcxOptions", 0, 0, 0, 40);
+        auto layout = CreateVBoxLayout(pcxOptionsContainer.get());
+        layout->SetSpacing(8);
+
+        pcxRleCheckbox = UltraCanvasCheckbox::CreateCheckbox("PcxRle", 0, 0, 250, 24, "RLE compression", true);
+        layout->AddUIElement(pcxRleCheckbox);
+
+        formatOptionsSection->AddChild(pcxOptionsContainer);
+    }
+
+    void UltraCanvasImageExportDialog::CreatePnmOptions() {
+        pnmOptionsContainer = std::make_shared<UltraCanvasContainer>("PnmOptions", 0, 0, 0, 40);
+        auto layout = CreateVBoxLayout(pnmOptionsContainer.get());
+        layout->SetSpacing(8);
+
+        pnmBinaryCheckbox = UltraCanvasCheckbox::CreateCheckbox("PnmBinary", 0, 0, 280, 24, "Binary encoding (uncheck for ASCII)", true);
+        layout->AddUIElement(pnmBinaryCheckbox);
+
+        formatOptionsSection->AddChild(pnmOptionsContainer);
+    }
+
+    void UltraCanvasImageExportDialog::CreateExrOptions() {
+        exrOptionsContainer = std::make_shared<UltraCanvasContainer>("ExrOptions", 0, 0, 0, 40);
+        auto layout = CreateHBoxLayout(exrOptionsContainer.get());
+        layout->SetSpacing(10);
+
+        auto label = std::make_shared<UltraCanvasLabel>("ExrCompLabel", 0, 0, 110, 24);
+        label->SetText("Compression:");
+        label->SetFontSize(style.labelFontSize);
+        label->SetTextColor(style.labelColor);
+
+        exrCompressionDropdown = std::make_shared<UltraCanvasDropdown>("ExrCompression", 0, 0, 150, 28);
+        exrCompressionDropdown->AddItem("None");
+        exrCompressionDropdown->AddItem("RLE");
+        exrCompressionDropdown->AddItem("ZIP");
+        exrCompressionDropdown->AddItem("PIZ");
+        exrCompressionDropdown->AddItem("PXR24");
+        exrCompressionDropdown->AddItem("B44");
+        exrCompressionDropdown->SetSelectedIndex(2);  // ZIP default
+
+        layout->AddUIElement(label);
+        layout->AddUIElement(exrCompressionDropdown);
+
+        formatOptionsSection->AddChild(exrOptionsContainer);
+    }
+
+    void UltraCanvasImageExportDialog::CreateDpxOptions() {
+        dpxOptionsContainer = std::make_shared<UltraCanvasContainer>("DpxOptions", 0, 0, 0, 40);
+        auto layout = CreateHBoxLayout(dpxOptionsContainer.get());
+        layout->SetSpacing(10);
+
+        auto label = std::make_shared<UltraCanvasLabel>("DpxDepthLabel", 0, 0, 110, 24);
+        label->SetText("Bit depth:");
+        label->SetFontSize(style.labelFontSize);
+        label->SetTextColor(style.labelColor);
+
+        dpxBitDepthDropdown = std::make_shared<UltraCanvasDropdown>("DpxBitDepth", 0, 0, 100, 28);
+        dpxBitDepthDropdown->AddItem("8");
+        dpxBitDepthDropdown->AddItem("10");
+        dpxBitDepthDropdown->AddItem("12");
+        dpxBitDepthDropdown->AddItem("16");
+        dpxBitDepthDropdown->SetSelectedIndex(1);  // 10-bit default
+
+        layout->AddUIElement(label);
+        layout->AddUIElement(dpxBitDepthDropdown);
+
+        formatOptionsSection->AddChild(dpxOptionsContainer);
+    }
+
+    void UltraCanvasImageExportDialog::CreateCinOptions() {
+        cinOptionsContainer = std::make_shared<UltraCanvasContainer>("CinOptions", 0, 0, 0, 40);
+        auto layout = CreateHBoxLayout(cinOptionsContainer.get());
+        layout->SetSpacing(10);
+
+        auto label = std::make_shared<UltraCanvasLabel>("CinDepthLabel", 0, 0, 110, 24);
+        label->SetText("Bit depth:");
+        label->SetFontSize(style.labelFontSize);
+        label->SetTextColor(style.labelColor);
+
+        cinBitDepthDropdown = std::make_shared<UltraCanvasDropdown>("CinBitDepth", 0, 0, 100, 28);
+        cinBitDepthDropdown->AddItem("8");
+        cinBitDepthDropdown->AddItem("10");
+        cinBitDepthDropdown->AddItem("12");
+        cinBitDepthDropdown->AddItem("16");
+        cinBitDepthDropdown->SetSelectedIndex(1);
+
+        layout->AddUIElement(label);
+        layout->AddUIElement(cinBitDepthDropdown);
+
+        formatOptionsSection->AddChild(cinOptionsContainer);
+    }
+
+    void UltraCanvasImageExportDialog::CreatePsdOptions() {
+        psdOptionsContainer = std::make_shared<UltraCanvasContainer>("PsdOptions", 0, 0, 0, 40);
+        auto layout = CreateVBoxLayout(psdOptionsContainer.get());
+        layout->SetSpacing(8);
+
+        psdCompressedCheckbox = UltraCanvasCheckbox::CreateCheckbox("PsdCompressed", 0, 0, 250, 24, "RLE compression", true);
+        layout->AddUIElement(psdCompressedCheckbox);
+
+        formatOptionsSection->AddChild(psdOptionsContainer);
+    }
+
+    void UltraCanvasImageExportDialog::CreateSgiOptions() {
+        sgiOptionsContainer = std::make_shared<UltraCanvasContainer>("SgiOptions", 0, 0, 0, 40);
+        auto layout = CreateVBoxLayout(sgiOptionsContainer.get());
+        layout->SetSpacing(8);
+
+        sgiRleCheckbox = UltraCanvasCheckbox::CreateCheckbox("SgiRle", 0, 0, 250, 24, "RLE compression", false);
+        layout->AddUIElement(sgiRleCheckbox);
+
+        formatOptionsSection->AddChild(sgiOptionsContainer);
+    }
+
     void UltraCanvasImageExportDialog::CreateMetadataSection() {
         metadataSection = std::make_shared<UltraCanvasContainer>("MetadataSection", 0, 0, 0, 35);
         auto layout = CreateHBoxLayout(metadataSection.get());
@@ -627,9 +935,8 @@ namespace UltraCanvas {
 
         // ----- Format dropdown -----
         formatDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
-            auto formats = ImageFormatInfo::GetAllFormats();
-            if (index >= 0 && index < static_cast<int>(formats.size())) {
-                currentFormat = formats[index].format;
+            if (index >= 0 && index < static_cast<int>(availableFormats.size())) {
+                currentFormat = availableFormats[index].format;
                 options.format = currentFormat;
                 UpdateFormatOptions();
                 UpdateFileSizeEstimate();
@@ -776,6 +1083,39 @@ namespace UltraCanvas {
             options.preserveMetadata = (newState == CheckedState::Checked);
         };
 
+        // ----- Phase 1 format option callbacks -----
+        tgaRleCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.tga.rleCompression = (newState == CheckedState::Checked);
+            UpdateFileSizeEstimate();
+        };
+        pcxRleCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.pcx.rleCompression = (newState == CheckedState::Checked);
+        };
+        pnmBinaryCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.pnm.binary = (newState == CheckedState::Checked);
+            UpdateFileSizeEstimate();
+        };
+        exrCompressionDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
+            options.exr.compression = static_cast<UCImageSave::ExrExportOptions::Compression>(index);
+            UpdateFileSizeEstimate();
+        };
+        dpxBitDepthDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
+            static const int depths[] = {8, 10, 12, 16};
+            if (index >= 0 && index < 4) options.dpx.bitDepth = depths[index];
+        };
+        cinBitDepthDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
+            static const int depths[] = {8, 10, 12, 16};
+            if (index >= 0 && index < 4) options.cin.bitDepth = depths[index];
+        };
+        psdCompressedCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.psd.compressed = (newState == CheckedState::Checked);
+            UpdateFileSizeEstimate();
+        };
+        sgiRleCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
+            options.sgi.rleCompression = (newState == CheckedState::Checked);
+            UpdateFileSizeEstimate();
+        };
+
         // ----- Footer buttons -----
         cancelButton->onClick = [this]() {
             if (onCancel) onCancel();
@@ -806,6 +1146,14 @@ namespace UltraCanvas {
         if (gifOptionsContainer) gifOptionsContainer->SetVisible(false);
         if (tiffOptionsContainer) tiffOptionsContainer->SetVisible(false);
         if (qoiOptionsContainer) qoiOptionsContainer->SetVisible(false);
+        if (tgaOptionsContainer) tgaOptionsContainer->SetVisible(false);
+        if (pcxOptionsContainer) pcxOptionsContainer->SetVisible(false);
+        if (pnmOptionsContainer) pnmOptionsContainer->SetVisible(false);
+        if (exrOptionsContainer) exrOptionsContainer->SetVisible(false);
+        if (dpxOptionsContainer) dpxOptionsContainer->SetVisible(false);
+        if (cinOptionsContainer) cinOptionsContainer->SetVisible(false);
+        if (psdOptionsContainer) psdOptionsContainer->SetVisible(false);
+        if (sgiOptionsContainer) sgiOptionsContainer->SetVisible(false);
     }
 
     void UltraCanvasImageExportDialog::UpdateFormatOptions() {
@@ -819,9 +1167,26 @@ namespace UltraCanvas {
         if (transparencyCheckbox) transparencyCheckbox->SetVisible(supportsAlpha);
         options.preserveTransparency = supportsAlpha && transparencyCheckbox->IsChecked();
 
-        // Update quality slider visibility and range
-        bool hasQuality = (currentFormat != UCImageSaveFormat::BMP &&
-                           currentFormat != UCImageSaveFormat::ICO);
+        // Update quality slider visibility and range. The slider is shown
+        // only for formats whose saver exposes a quality/compression-level
+        // knob via this control. PNG hijacks it for compressionLevel; WebP
+        // for either quality or compression depending on lossless mode.
+        bool hasQuality = false;
+        switch (currentFormat) {
+            case UCImageSaveFormat::PNG:
+            case UCImageSaveFormat::JPEG:
+            case UCImageSaveFormat::WEBP:
+            case UCImageSaveFormat::AVIF:
+            case UCImageSaveFormat::HEIF:
+            case UCImageSaveFormat::JPEG2000:
+            case UCImageSaveFormat::JXL:
+            case UCImageSaveFormat::TIFF:
+                hasQuality = true;
+                break;
+            default:
+                hasQuality = false;
+                break;
+        }
         if (qualityLabel) qualityLabel->SetVisible(hasQuality);
         if (qualitySlider) qualitySlider->SetVisible(hasQuality);
         if (qualityValueLabel) qualityValueLabel->SetVisible(hasQuality);
@@ -856,6 +1221,37 @@ namespace UltraCanvas {
             case UCImageSaveFormat::TIFF:
                 if (tiffOptionsContainer) tiffOptionsContainer->SetVisible(true);
                 break;
+            case UCImageSaveFormat::QOI:
+                if (qoiOptionsContainer) qoiOptionsContainer->SetVisible(true);
+                break;
+            case UCImageSaveFormat::TGA:
+                if (tgaOptionsContainer) tgaOptionsContainer->SetVisible(true);
+                break;
+            case UCImageSaveFormat::PCX:
+                if (pcxOptionsContainer) pcxOptionsContainer->SetVisible(true);
+                break;
+            case UCImageSaveFormat::PPM:
+            case UCImageSaveFormat::PGM:
+            case UCImageSaveFormat::PBM:
+            case UCImageSaveFormat::PFM:
+                if (pnmOptionsContainer) pnmOptionsContainer->SetVisible(true);
+                break;
+            case UCImageSaveFormat::EXR:
+                if (exrOptionsContainer) exrOptionsContainer->SetVisible(true);
+                break;
+            case UCImageSaveFormat::DPX:
+                if (dpxOptionsContainer) dpxOptionsContainer->SetVisible(true);
+                break;
+            case UCImageSaveFormat::CIN:
+                if (cinOptionsContainer) cinOptionsContainer->SetVisible(true);
+                break;
+            case UCImageSaveFormat::PSD:
+                if (psdOptionsContainer) psdOptionsContainer->SetVisible(true);
+                break;
+            case UCImageSaveFormat::SGI:
+                if (sgiOptionsContainer) sgiOptionsContainer->SetVisible(true);
+                break;
+            // HDR, FITS, FARBFELD, BMP, ICO have no per-format knobs
             default:
                 break;
         }
@@ -969,6 +1365,15 @@ namespace UltraCanvas {
             case UCImageSaveFormat::AVIF:
                 ratio = options.avif.lossless ? 0.2f : (0.03f + (100 - options.avif.quality) * 0.002f);
                 break;
+            case UCImageSaveFormat::HEIF:
+                ratio = options.heif.lossless ? 0.25f : (0.05f + (100 - options.heif.quality) * 0.003f);
+                break;
+            case UCImageSaveFormat::JXL:
+                ratio = options.jxl.lossless ? 0.3f : (0.04f + (100 - options.jxl.quality) * 0.002f);
+                break;
+            case UCImageSaveFormat::JPEG2000:
+                ratio = options.jpeg2000.lossless ? 0.4f : (0.05f + (100 - options.jpeg2000.quality) * 0.003f);
+                break;
             case UCImageSaveFormat::GIF:
                 ratio = 0.15f;
                 break;
@@ -977,6 +1382,48 @@ namespace UltraCanvas {
                 break;
             case UCImageSaveFormat::TIFF:
                 ratio = (options.tiff.compression == UCImageSave::TiffCompression::NoCompression) ? 1.0f : 0.4f;
+                break;
+            case UCImageSaveFormat::ICO:
+                ratio = 0.6f;
+                break;
+            case UCImageSaveFormat::QOI:
+                ratio = 0.45f;
+                break;
+            case UCImageSaveFormat::TGA:
+                ratio = options.tga.rleCompression ? 0.6f : 1.0f;
+                break;
+            case UCImageSaveFormat::PCX:
+                ratio = 0.55f;
+                break;
+            case UCImageSaveFormat::PPM:
+            case UCImageSaveFormat::PGM:
+            case UCImageSaveFormat::PBM:
+                ratio = options.pnm.binary ? 1.0f : 3.0f;  // ASCII is ~3× bigger
+                break;
+            case UCImageSaveFormat::PFM:
+                ratio = 4.0f;  // 32-bit float per channel
+                break;
+            case UCImageSaveFormat::HDR:
+                ratio = 1.3f;  // RGBE: 4 bytes per pixel float-encoded
+                break;
+            case UCImageSaveFormat::EXR:
+                ratio = (options.exr.compression == UCImageSave::ExrExportOptions::Compression::NoCompression) ? 8.0f : 2.5f;
+                break;
+            case UCImageSaveFormat::DPX:
+            case UCImageSaveFormat::CIN:
+                ratio = 1.4f;  // 10-bit packed, uncompressed
+                break;
+            case UCImageSaveFormat::FITS:
+                ratio = 1.0f;
+                break;
+            case UCImageSaveFormat::PSD:
+                ratio = options.psd.compressed ? 0.7f : 1.0f;
+                break;
+            case UCImageSaveFormat::SGI:
+                ratio = options.sgi.rleCompression ? 0.6f : 1.0f;
+                break;
+            case UCImageSaveFormat::FARBFELD:
+                ratio = 2.0f;  // 16-bit per channel RGBA uncompressed
                 break;
             default:
                 ratio = 0.5f;
@@ -1047,9 +1494,8 @@ namespace UltraCanvas {
         options = opts;
         currentFormat = opts.format;
 
-        auto formats = ImageFormatInfo::GetAllFormats();
-        for (size_t i = 0; i < formats.size(); ++i) {
-            if (formats[i].format == currentFormat) {
+        for (size_t i = 0; i < availableFormats.size(); ++i) {
+            if (availableFormats[i].format == currentFormat) {
                 if (formatDropdown) formatDropdown->SetSelectedIndex(static_cast<int>(i));
                 break;
             }
@@ -1067,9 +1513,8 @@ namespace UltraCanvas {
         currentFormat = format;
         options.format = format;
 
-        auto formats = ImageFormatInfo::GetAllFormats();
-        for (size_t i = 0; i < formats.size(); ++i) {
-            if (formats[i].format == format) {
+        for (size_t i = 0; i < availableFormats.size(); ++i) {
+            if (availableFormats[i].format == format) {
                 if (formatDropdown) formatDropdown->SetSelectedIndex(static_cast<int>(i));
                 break;
             }

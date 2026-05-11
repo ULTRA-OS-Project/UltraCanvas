@@ -1,7 +1,7 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.0.1
-// Last Modified: 2026-04-29
+// Version: 2.1.0
+// Last Modified: 2026-05-11
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -645,7 +645,13 @@ namespace UltraCanvas {
                     break;
 
                 case UCImageSaveFormat::PPM:
-                    vImg.ppmsave(imagePath.c_str(), vips::VImage::option());
+                case UCImageSaveFormat::PGM:
+                case UCImageSaveFormat::PBM:
+                case UCImageSaveFormat::PFM:
+                    // libvips ppmsave auto-detects PPM/PGM/PBM/PFM from the
+                    // filename extension; we only control text-vs-binary.
+                    vImg.ppmsave(imagePath.c_str(), vips::VImage::option()
+                            ->set("ascii", !opts.pnm.binary));
                     break;
 
                 case UCImageSaveFormat::ICO:
@@ -660,6 +666,93 @@ namespace UltraCanvas {
                     break;
                 }
 
+                case UCImageSaveFormat::HDR:
+                    vImg.radsave(imagePath.c_str(), vips::VImage::option());
+                    break;
+
+                case UCImageSaveFormat::FITS:
+                    vImg.fitssave(imagePath.c_str(), vips::VImage::option());
+                    break;
+
+                case UCImageSaveFormat::QOI: {
+                    // QOI export goes through ImageMagick. The custom
+                    // VipsQoiLoader plugin only registers a LOADER; if the
+                    // local libvips/ImageMagick build lacks QOI write
+                    // support the runtime probe filter in the dialog will
+                    // hide this option.
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "qoi"));
+                    break;
+                }
+
+                case UCImageSaveFormat::TGA: {
+                    auto magickOpts = vips::VImage::option()->set("format", "tga");
+                    if (opts.tga.rleCompression) {
+                        magickOpts->set("compression", "RLE");
+                    } else {
+                        magickOpts->set("compression", "NoCompression");
+                    }
+                    vImg.magicksave(imagePath.c_str(), magickOpts);
+                    break;
+                }
+
+                case UCImageSaveFormat::PCX: {
+                    auto magickOpts = vips::VImage::option()->set("format", "pcx");
+                    // ImageMagick's PCX writer applies RLE by default; the
+                    // option here is informational and may be ignored by the
+                    // delegate, but we set it explicitly for clarity.
+                    if (!opts.pcx.rleCompression) {
+                        magickOpts->set("compression", "NoCompression");
+                    }
+                    vImg.magicksave(imagePath.c_str(), magickOpts);
+                    break;
+                }
+
+                case UCImageSaveFormat::EXR: {
+                    auto magickOpts = vips::VImage::option()->set("format", "exr");
+                    const char* exrComp = "ZIP";
+                    switch (opts.exr.compression) {
+                        case UCImageSave::ExrExportOptions::Compression::NoCompression: exrComp = "None"; break;
+                        case UCImageSave::ExrExportOptions::Compression::RLE:           exrComp = "RLE"; break;
+                        case UCImageSave::ExrExportOptions::Compression::ZIP:           exrComp = "ZIP"; break;
+                        case UCImageSave::ExrExportOptions::Compression::PIZ:           exrComp = "PIZ"; break;
+                        case UCImageSave::ExrExportOptions::Compression::PXR24:         exrComp = "PXR24"; break;
+                        case UCImageSave::ExrExportOptions::Compression::B44:           exrComp = "B44"; break;
+                    }
+                    magickOpts->set("compression", exrComp);
+                    vImg.magicksave(imagePath.c_str(), magickOpts);
+                    break;
+                }
+
+                case UCImageSaveFormat::DPX:
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "dpx")
+                            ->set("quality", opts.dpx.bitDepth));
+                    break;
+
+                case UCImageSaveFormat::CIN:
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "cin")
+                            ->set("quality", opts.cin.bitDepth));
+                    break;
+
+                case UCImageSaveFormat::PSD:
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "psd")
+                            ->set("compression", opts.psd.compressed ? "RLE" : "NoCompression"));
+                    break;
+
+                case UCImageSaveFormat::SGI:
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "sgi")
+                            ->set("compression", opts.sgi.rleCompression ? "RLE" : "NoCompression"));
+                    break;
+
+                case UCImageSaveFormat::FARBFELD:
+                    vImg.magicksave(imagePath.c_str(), vips::VImage::option()
+                            ->set("format", "farbfeld"));
+                    break;
+
                 default:
                     debugOutput << "UCImageRaster::Save: Failed save image: " << imagePath
                               << " Err: Unsupported format (" << static_cast<int>(opts.format) << ")" << std::endl;
@@ -670,6 +763,24 @@ namespace UltraCanvas {
             return err.what();
         }
         return "";
+    }
+
+    // ===== Runtime libvips capability probes =====
+    // vips_foreign_find_save returns the GType name of the saver vips would
+    // pick for the given filename (NULL if no saver is compiled in for that
+    // extension). Use a dummy filename — only the extension is inspected.
+    bool VipsCanSave(const std::string& extensionWithDot) {
+        if (extensionWithDot.empty()) return false;
+        const std::string dummy = std::string("probe") + extensionWithDot;
+        return vips_foreign_find_save(dummy.c_str()) != nullptr;
+    }
+
+    bool VipsCanLoad(const std::string& extensionWithDot) {
+        if (extensionWithDot.empty()) return false;
+        const std::string dummy = std::string("probe") + extensionWithDot;
+        // vips_foreign_find_load_buffer / _filename inspect the filename for
+        // extension-based loaders. NULL means no compiled-in loader matched.
+        return vips_foreign_find_load(dummy.c_str()) != nullptr;
     }
 #else
     std::string UCImageRaster::Save(const std::string &, const UCImageSave::ImageExportOptions&) {
