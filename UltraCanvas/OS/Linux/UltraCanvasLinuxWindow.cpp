@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
-// Version: 1.1.0 - Complete implementation
-// Last Modified: 2025-07-16
+// Version: 1.1.1 - Pin cairo-xlib surface fallback DPI to 96 for cross-platform text-width parity
+// Last Modified: 2026-05-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -240,6 +240,12 @@ namespace UltraCanvas {
             debugOutput << "UltraCanvas Linux: cairo_xlib_surface_create failed" << std::endl;
             return false;
         }
+
+        // Pin the surface fallback DPI to 96 so Pango's draw-time
+        // pango_cairo_update_layout() doesn't pull in the X server's reported
+        // DPI (often != 96 from xdpyinfo's physical-mm calculation) and
+        // resync our text layout to a different scale than Windows.
+        cairo_surface_set_fallback_resolution(static_cast<cairo_surface_t *>(nativeSurface), 96.0, 96.0);
 
         cairo_status_t status = cairo_surface_status(static_cast<cairo_surface_t *>(nativeSurface));
         if (status != CAIRO_STATUS_SUCCESS) {

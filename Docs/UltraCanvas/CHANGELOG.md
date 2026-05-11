@@ -1,3 +1,6 @@
+#### 2026-05-10 *0.1.31*
+- Fixed font rendering, now Windows and Linux will rendered using same included DejaVue fonts
+
 #### 2026-05-09 *0.1.30*
 - Implemented more different diagrams
 - Implemented JitterChart

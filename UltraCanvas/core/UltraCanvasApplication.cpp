@@ -1,16 +1,26 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
-// Version: 1.1.1
-// Last Modified: 2026-05-01
+// Version: 1.4.2 - PANGO_BACKEND=fontconfig env so MSYS2 Pango uses FC instead of Win32 backend
+// Last Modified: 2026-05-10
 // Author: UltraCanvas Framework
 
 #include <algorithm>
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <filesystem>
+#include <cstdlib>
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasTooltipManager.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasConfig.h"
+#include "UltraCanvasUtils.h"
+#include "UltraCanvasDebug.h"
+
+#if !defined(__APPLE__)
+#include <fontconfig/fontconfig.h>
+#endif
 
 #if defined(__linux__) || defined(__unix__)
 #include <unistd.h>
@@ -26,34 +36,220 @@
 
 namespace UltraCanvas {
 
+    const char* const kDejaVuAllFonts[] = {
+        "DejaVuSans.ttf", "DejaVuSans-Bold.ttf",
+        "DejaVuSans-Oblique.ttf", "DejaVuSans-BoldOblique.ttf",
+        "DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf",
+        "DejaVuSansMono-Oblique.ttf", "DejaVuSansMono-BoldOblique.ttf",
+    };
+    const size_t kDejaVuAllFontsCount = sizeof(kDejaVuAllFonts) / sizeof(kDejaVuAllFonts[0]);
 
-//    void UltraCanvasApplicationBase::MoveWindowEventFilters(UltraCanvasWindowBase* winFrom, UltraCanvasUIElement* elem) {
-//        if (!elem) return;
+    const char* const kDejaVuMonoFonts[] = {
+        "DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf",
+        "DejaVuSansMono-Oblique.ttf", "DejaVuSansMono-BoldOblique.ttf",
+    };
+    const size_t kDejaVuMonoFontsCount = sizeof(kDejaVuMonoFonts) / sizeof(kDejaVuMonoFonts[0]);
+
+    std::string GetBundledFontsDir() {
+        // realpath() inside NormalizePath() strips trailing slashes on POSIX,
+        // so re-append a separator so callers can naively concatenate filenames.
+        std::string p = NormalizePath(GetResourcesDir() + "media/fonts/dejavu/");
+        if (!p.empty() && p.back() != '/' && p.back() != '\\') {
+#if defined(_WIN32) || defined(_WIN64)
+            p.push_back('\\');
+#else
+            p.push_back('/');
+#endif
+        }
+        return p;
+    }
+
+//#if !defined(__APPLE__)
+//    // Inline FC rule that pins hinting/AA for the bundled DejaVu families so
+//    // system fontconfig defaults (which differ between MSYS2 and Linux distros)
+//    // can't change the way the framework's text looks.
+//    static const char* kDejaVuFcRules = R"FC(<?xml version="1.0"?>
+//<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+//<fontconfig>
+//  <match target="font">
+//    <test name="family"><string>DejaVu Sans</string></test>
+//    <edit name="antialias"      mode="assign"><bool>true</bool></edit>
+//    <edit name="hinting"        mode="assign"><bool>true</bool></edit>
+//    <edit name="hintstyle"      mode="assign"><const>hintslight</const></edit>
+//    <edit name="autohint"       mode="assign"><bool>false</bool></edit>
+//    <edit name="embeddedbitmap" mode="assign"><bool>false</bool></edit>
+//    <edit name="lcdfilter"      mode="assign"><const>lcddefault</const></edit>
+//  </match>
+//  <match target="font">
+//    <test name="family"><string>DejaVu Sans Mono</string></test>
+//    <edit name="antialias"      mode="assign"><bool>true</bool></edit>
+//    <edit name="hinting"        mode="assign"><bool>true</bool></edit>
+//    <edit name="hintstyle"      mode="assign"><const>hintslight</const></edit>
+//    <edit name="autohint"       mode="assign"><bool>false</bool></edit>
+//    <edit name="embeddedbitmap" mode="assign"><bool>false</bool></edit>
+//    <edit name="lcdfilter"      mode="assign"><const>lcddefault</const></edit>
+//  </match>
+//</fontconfig>
+//)FC";
 //
-//        std::vector<UCEventType> interestedEvents;
-//        if (winFrom) {
-//            if (!winFrom->eventFilters.empty()) {
-//                for(auto &ef : winFrom->eventFilters) {
-//                    auto &elems = ef.second;
-//                    if (elems.find(elem) != elems.end()) {
-//                        interestedEvents.push_back(ef.first);
-//                        elems.erase(elem);
-//                    }
-//                }
-//            }
-//        } else {
-//            if (!pendingUnassignedEventFilters.empty()) {
-//                auto found = pendingUnassignedEventFilters.find(elem);
-//                if (found != pendingUnassignedEventFilters.end()) {
-//                    interestedEvents = found->second;
-//                    pendingUnassignedEventFilters.erase(elem);
-//                }
-//            }
+//    bool LoadDejaVuFcRules(void* fcConfig) {
+//        FcConfig* cfg = static_cast<FcConfig*>(fcConfig);
+//        if (!cfg) return false;
+//        FcBool ok = FcConfigParseAndLoadFromMemory(
+//            cfg,
+//            reinterpret_cast<const FcChar8*>(kDejaVuFcRules),
+//            FcTrue);
+//        if (!ok) {
+//            debugOutput << "UltraCanvas: FcConfigParseAndLoadFromMemory failed for DejaVu rules" << std::endl;
+//            return false;
 //        }
-//        if (!interestedEvents.empty()) {
-//            UltraCanvasApplicationBase::InstallWindowEventFilter(elem, interestedEvents);
+//        return true;
+//    }
+//#else
+//    bool LoadDejaVuFcRules(void*) { return true; }
+//#endif
+
+//#if !defined(__APPLE__)
+//    namespace {
+//        // Fontconfig's <dir>/<cachedir> path consumer is rooted in POSIX —
+//        // it expects forward-slash separators. On Windows our paths come from
+//        // NormalizePath() which uses backslashes, and FC silently fails to
+//        // scan such paths. Normalise to '/' for everything that goes into
+//        // fonts.conf XML element text. (std::filesystem and the WinAPI we
+//        // use elsewhere accept both forms, so we only convert here.)
+//        std::string ToFcPath(std::string p) {
+//#if defined(_WIN32) || defined(_WIN64)
+//            std::replace(p.begin(), p.end(), '\\', '/');
+//#endif
+//            return p;
+//        }
+//
+//        // Builds a minimal fontconfig config XML that points at the absolute
+//        // path of the bundled DejaVu directory and (on Linux) <include>s the
+//        // system fonts.conf so apps still see non-DejaVu system fonts.
+//        std::string ComposeBundledFontconfigXml(const std::string& bundledDir,
+//                                                const std::string& cacheDir) {
+//            std::ostringstream conf;
+//            conf << "<?xml version=\"1.0\"?>\n"
+//                 << "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n"
+//                 << "<fontconfig>\n"
+//                 << "  <dir>" << ToFcPath(bundledDir) << "</dir>\n";
+//#if defined(__linux__) || defined(__unix__)
+//            // Pull in system config when present so apps can still resolve
+//            // non-DejaVu families on Linux. ignore_missing keeps things
+//            // working when the file is absent (containers, AppImages on
+//            // hosts without a fontconfig install).
+//            conf << "  <include ignore_missing=\"yes\">/etc/fonts/fonts.conf</include>\n";
+//            conf << "  <include ignore_missing=\"yes\">/usr/local/etc/fonts/fonts.conf</include>\n";
+//#endif
+//            // Absolute writable cachedir — `~` doesn't reliably expand on
+//            // Windows fontconfig, and a failed cache write can abort the
+//            // dir scan entirely.
+//            conf << "  <cachedir>" << ToFcPath(cacheDir) << "</cachedir>\n";
+//            conf << "</fontconfig>\n";
+//            return conf.str();
+//        }
+//
+//        bool WriteFile(const std::string& path, const std::string& contents) {
+//            try {
+//                std::ofstream out(path, std::ios::binary | std::ios::trunc);
+//                if (!out) return false;
+//                out << contents;
+//                return out.good();
+//            } catch (...) {
+//                return false;
+//            }
 //        }
 //    }
+//
+//    void SetupBundledFontconfig() {
+//        // Honour an externally-set FONTCONFIG_FILE so users / packagers can
+//        // override the framework's choice without code changes.
+//        if (const char* existing = std::getenv("FONTCONFIG_FILE")) {
+//            if (existing[0] != '\0') {
+//                debugOutput << "UltraCanvas: FONTCONFIG_FILE already set to '"
+//                            << existing << "', not overriding" << std::endl;
+//                return;
+//            }
+//        }
+//
+//        // Strip trailing separator from the bundled dir so the <dir> element
+//        // doesn't end with a slash that some FC versions don't normalise.
+//        std::string dir = GetBundledFontsDir();
+//        while (!dir.empty() && (dir.back() == '/' || dir.back() == '\\')) {
+//            dir.pop_back();
+//        }
+//        if (dir.empty() || !std::filesystem::exists(dir)) {
+//            debugOutput << "UltraCanvas: bundled fonts dir not found at '" << dir
+//                        << "'; skipping FONTCONFIG_FILE setup" << std::endl;
+//            return;
+//        }
+//
+//        std::filesystem::path tempDir;
+//        try {
+//            tempDir = std::filesystem::temp_directory_path();
+//        } catch (...) {
+//            debugOutput << "UltraCanvas: could not resolve temp dir; skipping FONTCONFIG_FILE setup" << std::endl;
+//            return;
+//        }
+//        std::filesystem::path confPath = tempDir / "ultracanvas-fonts.conf";
+//        std::string confPathStr = confPath.string();
+//
+//        // Cachedir under the same temp tree — known writable. Best-effort
+//        // create; FC will create files inside it as it scans.
+//        std::filesystem::path cacheDirPath = tempDir / "uc-fc-cache";
+//        {
+//            std::error_code ec;
+//            std::filesystem::create_directories(cacheDirPath, ec);
+//        }
+//
+//        std::string xml = ComposeBundledFontconfigXml(dir, cacheDirPath.string());
+//        if (!WriteFile(confPathStr, xml)) {
+//            debugOutput << "UltraCanvas: failed to write fonts.conf at " << confPathStr << std::endl;
+//            return;
+//        }
+//
+//#if defined(_WIN32) || defined(_WIN64)
+//        if (_putenv_s("FONTCONFIG_FILE", confPathStr.c_str()) != 0) {
+//            debugOutput << "UltraCanvas: _putenv_s(FONTCONFIG_FILE) failed" << std::endl;
+//            return;
+//        }
+//#else
+//        if (setenv("FONTCONFIG_FILE", confPathStr.c_str(), 1) != 0) {
+//            debugOutput << "UltraCanvas: setenv(FONTCONFIG_FILE) failed" << std::endl;
+//            return;
+//        }
+//#endif
+//        debugOutput << "UltraCanvas: FONTCONFIG_FILE set to " << confPathStr << std::endl;
+//
+//        // Force Pango to use the fontconfig backend. On MSYS2 Pango is built
+//        // with both fontconfig and win32 backends and may default to win32 —
+//        // that backend ignores FC entirely, so even with a perfect FC config
+//        // pointing at our DejaVu directory, Pango wouldn't see the fonts.
+//        // No-op on Linux (Pango is fontconfig-only there).
+//        const char* existingBackend = std::getenv("PANGO_BACKEND");
+//        if (existingBackend && existingBackend[0] != '\0') {
+//            debugOutput << "UltraCanvas: PANGO_BACKEND already set to '"
+//                        << existingBackend << "', not overriding" << std::endl;
+//        } else {
+//#if defined(_WIN32) || defined(_WIN64)
+//            if (_putenv_s("PANGO_BACKEND", "fontconfig") != 0) {
+//                debugOutput << "UltraCanvas: _putenv_s(PANGO_BACKEND) failed" << std::endl;
+//            } else {
+//                debugOutput << "UltraCanvas: PANGO_BACKEND set to fontconfig" << std::endl;
+//            }
+//#else
+//            if (setenv("PANGO_BACKEND", "fontconfig", 1) != 0) {
+//                debugOutput << "UltraCanvas: setenv(PANGO_BACKEND) failed" << std::endl;
+//            } else {
+//                debugOutput << "UltraCanvas: PANGO_BACKEND set to fontconfig" << std::endl;
+//            }
+//#endif
+//        }
+//    }
+//#else
+//    void SetupBundledFontconfig() {}
+//#endif
 
     FontStyle UltraCanvasApplicationBase::GetSystemFontStyle() {
         if (!cachedSystemFontStyle_.has_value()) {
@@ -75,6 +271,11 @@ namespace UltraCanvas {
         UCImage::InitializeImageSubsysterm(appName.c_str());
 
         if (InitializeNative()) {
+            // Register bundled DejaVu fonts before any text rendering / default
+            // detection runs, so platform Detect*FontStyleNative() can return
+            // the just-registered families.
+            LoadBundledFontsNative();
+
             if (!InitializeClipboard()) {
                 debugOutput << "UltraCanvas: Failed to initialize clipboard" << std::endl;
             }

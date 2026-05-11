@@ -1,14 +1,14 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
-# Version: 1.3.0
-# Last Modified: 2026-02-01
+# Version: 1.4.0
+# Last Modified: 2026-05-10
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
 include(FetchContent)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.1.30")
+set(ULTRACANVAS_VERSION "0.1.31")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -68,6 +68,11 @@ pkg_check_modules(CAIRO REQUIRED cairo)
 # Pango - Text Layout
 pkg_check_modules(PANGO REQUIRED pango pangocairo)
 
+# FontConfig - bundled-font registration (Linux always; Windows when Pango is built with the FontConfig backend)
+if(NOT APPLE)
+    pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
+endif()
+
 pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
 pkg_check_modules(GLIB REQUIRED glib-2.0)
 pkg_check_modules(TINYXML2 REQUIRED tinyxml2)
@@ -112,6 +117,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
     find_library(QUARTZ_FRAMEWORK QuartzCore REQUIRED)
     find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
+    find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
     if(ULTRACANVAS_ENABLE_GL)
         set(ULTRACANVAS_HAS_CGL TRUE)
     endif()
@@ -344,6 +350,11 @@ target_include_directories(${ULTRACANVAS_LIB_NAME}
 foreach(_inc_dir ${CAIRO_INCLUDE_DIRS} ${PANGO_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS} ${TINYXML2_INCLUDE_DIRS})
     target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
 endforeach()
+if(NOT APPLE AND FONTCONFIG_FOUND)
+    foreach(_inc_dir ${FONTCONFIG_INCLUDE_DIRS})
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
+    endforeach()
+endif()
 if(LIBVIPS_FOUND)
     foreach(_inc_dir ${LIBVIPS_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
@@ -381,6 +392,7 @@ if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${X11_LIBRARIES}
             ${GTK3_LIBRARIES}
+            ${FONTCONFIG_LIBRARIES}
             #        ${OPENGL_LIBRARIES}
             pthread
             dl
@@ -408,6 +420,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             comctl32
             imm32
             dwmapi
+            ${FONTCONFIG_LIBRARIES}
     )
     if(ULTRACANVAS_ENABLE_GL)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
@@ -418,6 +431,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${COCOA_FRAMEWORK}
             ${QUARTZ_FRAMEWORK}
+            ${CORETEXT_FRAMEWORK}
             #        ${OPENGL_FRAMEWORK}
     )
     if(ULTRACANVAS_ENABLE_GL)

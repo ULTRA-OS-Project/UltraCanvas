@@ -1,7 +1,7 @@
 // libspecific/Cairo/RenderContextCairo.cpp
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.6 - Rect-based DrawPixmap/DrawMask
-// Last Modified: 2026-04-11
+// Version: 1.0.8 - Multi-layer DPI pin (context + surface fallback + font map) + diagnostic log
+// Last Modified: 2026-05-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
@@ -30,10 +30,19 @@ namespace UltraCanvas {
     };
     static UCCache<UCTextLayout, UCTextLayoutCacheEntry> g_TextLayoutsCache(20 * 1024 * 1024);
 
-    // Configurable text rendering font options (global, matching cache scope)
+    // Configurable text rendering font options (global, matching cache scope).
+    // Defaults are chosen for layout stability across platforms/DPI: fractional
+    // advance widths (HINT_METRICS_OFF) keep paragraph widths identical to the
+    // font designer's metrics, and HINT_STYLE_SLIGHT keeps glyph outlines crisp
+    // at small sizes without snapping advances to integer pixels.
     static cairo_antialias_t g_TextAntialias = CAIRO_ANTIALIAS_SUBPIXEL;
-    static cairo_hint_style_t g_TextHintStyle = CAIRO_HINT_STYLE_MEDIUM;
-    static cairo_hint_metrics_t g_TextHintMetrics = CAIRO_HINT_METRICS_DEFAULT;
+    static cairo_hint_style_t g_TextHintStyle = CAIRO_HINT_STYLE_SLIGHT;
+    static cairo_hint_metrics_t g_TextHintMetrics = CAIRO_HINT_METRICS_OFF;
+
+    // Pin Pango point->pixel conversion to a known DPI on every platform. 96
+    // matches the CSS reference and what every modern UI toolkit assumes; fixing
+    // it here removes drift from Cairo backends that report different defaults.
+    static double g_PangoResolution = 96.0;
 
     std::vector<RenderContextCairo*> RenderContextCairo::g_Instances;
 
@@ -132,63 +141,12 @@ namespace UltraCanvas {
 //                  << static_cast<int>(g_TextAntialias)
 //                  << static_cast<int>(g_TextHintStyle)
 //                  << static_cast<int>(g_TextHintMetrics) << "|"
+                  << "|r" << static_cast<int>(g_PangoResolution * 100)
                   << text.substr(0,300);
 
         return keyStream.str();
     }
 
-
-//    RenderContextCairo::RenderContextCairo(cairo_surface_t *surf, int width, int height, bool enableDoubleBuffering)
-//        : targetSurface(nullptr), surfaceWidth(0), surfaceHeight(0), stagingSurface(nullptr), pangoContext(nullptr), cairo(nullptr), targetContext(nullptr), destroying(false) {
-//
-//        SetTargetSurface(surf, width, height);
-//
-//        // Initialize Pango for text rendering with proper error checking
-//        try {
-//            debugOutput << "RenderContextCairo: Initializing Pango..." << std::endl;
-//
-//            auto fontMap = pango_cairo_font_map_get_default();
-//            if (!fontMap) {
-//                debugOutput << "ERROR: Failed to get default Pango font map" << std::endl;
-//                throw std::runtime_error("RenderContextCairo: Failed to get Pango font map");
-//            }
-//            debugOutput << "RenderContextCairo: Got Pango font map: " << fontMap << std::endl;
-//
-//            pangoContext = pango_font_map_create_context(fontMap);
-//            if (!pangoContext) {
-//                debugOutput << "ERROR: Failed to create Pango context" << std::endl;
-//                throw std::runtime_error("RenderContextCairo: Failed to create Pango context");
-//            }
-//            debugOutput << "RenderContextCairo: Created Pango context: " << pangoContext << std::endl;
-//
-//            // Associate Pango context with Cairo context
-//            pango_cairo_context_set_resolution(pangoContext, 96.0);  // Standard DPI
-//
-//            // Apply configurable text rendering font options
-//            ApplyPangoFontOptions();
-//            g_Instances.push_back(this);
-//
-//            debugOutput << "RenderContextCairo: Pango initialization complete" << std::endl;
-//
-//        } catch (const std::exception &e) {
-//            debugOutput << "ERROR: Exception during Pango initialization: " << e.what() << std::endl;
-//
-//            // Cleanup on failure
-//            if (pangoContext) {
-//                g_object_unref(pangoContext);
-//                pangoContext = nullptr;
-//            }
-//            throw;
-//        }
-//
-//        if (enableDoubleBuffering) {
-//            CreateStagingSurface();
-//            SwitchToSurface(stagingSurface);
-//        }
-//        // Initialize default state
-//        ResetState();
-//        debugOutput << "RenderContextCairo: Initialization complete" << std::endl;
-//    }
 
     bool RenderContextCairo::CreateSurface(const Size2Di & sz, NativeSurfacePtr createSimilarToSurface) {
         auto oldCairoSurface = surface;
@@ -257,6 +215,47 @@ namespace UltraCanvas {
             debugOutput << "RenderContextCairo::CreateSurface: Can't create Pango context" << std::endl;
             return false;
 
+        }
+
+        // Pin Pango DPI before any layout uses this context.
+        pango_cairo_context_set_resolution(pangoContext, g_PangoResolution);
+
+        // Belt-and-braces: also pin the cairo surface's fallback DPI and the
+        // default Pango font map's resolution. Pango's draw-time
+        // pango_cairo_update_layout() can resync metrics from cairo's
+        // font_options or the font map; both must agree with our context pin
+        // or text widths drift between platforms.
+        cairo_surface_set_fallback_resolution(surface, g_PangoResolution, g_PangoResolution);
+        if (PangoFontMap* fm = pango_cairo_font_map_get_default()) {
+            pango_cairo_font_map_set_resolution(PANGO_CAIRO_FONT_MAP(fm), g_PangoResolution);
+        }
+
+        // One-shot diagnostic: the only reliable way to discover which Pango/
+        // Cairo layer is reporting a non-pinned resolution on a given platform.
+        static bool s_diagLogged = false;
+        if (!s_diagLogged) {
+            s_diagLogged = true;
+            double ctxRes = pango_cairo_context_get_resolution(pangoContext);
+            PangoFontMap* fmDiag = pango_cairo_font_map_get_default();
+            double fmRes = fmDiag
+                ? pango_cairo_font_map_get_resolution(PANGO_CAIRO_FONT_MAP(fmDiag))
+                : -1.0;
+            double sxFb = 0, syFb = 0;
+            cairo_surface_get_fallback_resolution(surface, &sxFb, &syFb);
+            double devSx = 0, devSy = 0;
+            cairo_surface_get_device_scale(surface, &devSx, &devSy);
+            cairo_font_options_t* fo = cairo_font_options_create();
+            cairo_get_font_options(cairo, fo);
+            debugOutput << "UC text-render diag:"
+                        << " pango_ctx_res=" << ctxRes
+                        << " fontmap_res=" << fmRes
+                        << " surface_fallback_res=" << sxFb << "x" << syFb
+                        << " surface_device_scale=" << devSx << "x" << devSy
+                        << " hint_style=" << cairo_font_options_get_hint_style(fo)
+                        << " hint_metrics=" << cairo_font_options_get_hint_metrics(fo)
+                        << " antialias=" << cairo_font_options_get_antialias(fo)
+                        << std::endl;
+            cairo_font_options_destroy(fo);
         }
 
         // Apply configurable text rendering font options
@@ -1744,7 +1743,7 @@ namespace UltraCanvas {
         // Re-associate Pango context with new Cairo context
         if (pangoContext) {
             pango_cairo_update_context(cairo, pangoContext);
-            //pango_cairo_context_set_resolution(pangoContext, 96.0);
+            pango_cairo_context_set_resolution(pangoContext, g_PangoResolution);
             ApplyPangoFontOptions();
         }
 

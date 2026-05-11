@@ -23,7 +23,7 @@ namespace UltraCanvas {
         container->SetPadding(0,0,10,0);
 
         // Section label for Context Menus
-        auto contextLabel = std::make_shared<UltraCanvasLabel>("ContextLabel", 101, 20, 10, 300, 30);
+        auto contextLabel = std::make_shared<UltraCanvasLabel>("ContextLabel", 101, 20, 10, 400, 30);
         contextLabel->SetText("Context Menu Examples:");
         contextLabel->SetFontSize(14);
         contextLabel->SetFontWeight(FontWeight::Bold);
@@ -81,7 +81,7 @@ namespace UltraCanvas {
         };
 
         // Section label for Main Menu Bar
-        auto mainMenuLabel = std::make_shared<UltraCanvasLabel>("MainMenuLabel", 104, 20, 100, 250, 30);
+        auto mainMenuLabel = std::make_shared<UltraCanvasLabel>("MainMenuLabel", 104, 20, 100, 400, 30);
         mainMenuLabel->SetText("Main Menu Bar Example:");
         mainMenuLabel->SetFontSize(14);
         mainMenuLabel->SetFontWeight(FontWeight::Bold);
@@ -248,7 +248,7 @@ namespace UltraCanvas {
         container->AddChild(infoLabel);
 
         // Popup menu example
-        auto popupLabel = std::make_shared<UltraCanvasLabel>("PopupLabel", 120, 20, 425, 200, 30);
+        auto popupLabel = std::make_shared<UltraCanvasLabel>("PopupLabel", 120, 20, 425, 400, 30);
         popupLabel->SetText("Popup Menu Example:");
         popupLabel->SetFontSize(14);
         popupLabel->SetFontWeight(FontWeight::Bold);

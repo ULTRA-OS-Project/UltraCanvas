@@ -1,7 +1,7 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
-// Version: 1.5.1 - Added explicit XK mappings for main-row digits and ASCII punctuation
-// Last Modified: 2026-04-17
+// Version: 1.6.7 - Force FC-backed Pango default via pango_cairo_font_map_new_for_font_type(FT)
+// Last Modified: 2026-05-10
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWindow.h"
@@ -9,12 +9,15 @@
 #include "UltraCanvasApplication.h"
 #include <iostream>
 #include <algorithm>
+#include <filesystem>
+#include <sstream>
 #include <sys/select.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <PixelFX/PixelFX.h>
 #include <errno.h>
 #include <clocale>  // For setlocale
+#include <fontconfig/fontconfig.h>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
@@ -889,90 +892,84 @@ namespace UltraCanvas {
 
     FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() {
         FontStyle result;
-        result.fontFamily = "Sans";
+        result.fontFamily = "DejaVu Sans";
         result.fontSize = 12.0;
         return result;
-/*
-        PangoFontMap* fontMap = pango_cairo_font_map_get_default();
-        if (!fontMap) {
-            result.fontFamily = "Sans";
-            return result;
-        }
-
-        PangoContext* ctx = pango_font_map_create_context(fontMap);
-        if (!ctx) {
-            result.fontFamily = "Sans";
-            return result;
-        }
-
-        PangoFontDescription* desc = pango_font_description_from_string("sans");
-        PangoFont* font = pango_font_map_load_font(fontMap, ctx, desc);
-
-        if (font) {
-            PangoFontDescription* resolvedDesc = pango_font_describe(font);
-            if (resolvedDesc) {
-                const char* family = pango_font_description_get_family(resolvedDesc);
-                if (family) {
-                    result.fontFamily = family;
-                }
-                float size = static_cast<float>(pango_font_description_get_size(resolvedDesc)) / PANGO_SCALE;
-                if (size > 0) result.fontSize = size;
-                pango_font_description_free(resolvedDesc);
-            }
-            g_object_unref(font);
-        }
-
-        pango_font_description_free(desc);
-        g_object_unref(ctx);
-
-        if (result.fontFamily.empty()) {
-            result.fontFamily = "Sans";
-        }
-
-        return result;
-*/
     }
 
     FontStyle UltraCanvasLinuxApplication::DetectMonospacedFontStyleNative() {
         FontStyle result;
-
-        PangoFontMap* fontMap = pango_cairo_font_map_get_default();
-        if (!fontMap) {
-            result.fontFamily = "monospace";
-            return result;
-        }
-
-        PangoContext* ctx = pango_font_map_create_context(fontMap);
-        if (!ctx) {
-            result.fontFamily = "monospace";
-            return result;
-        }
-
-        PangoFontDescription* desc = pango_font_description_from_string("monospace");
-        PangoFont* font = pango_font_map_load_font(fontMap, ctx, desc);
-
-        if (font) {
-            PangoFontDescription* resolvedDesc = pango_font_describe(font);
-            if (resolvedDesc) {
-                const char* family = pango_font_description_get_family(resolvedDesc);
-                if (family) {
-                    result.fontFamily = family;
-                }
-                float size = static_cast<float>(pango_font_description_get_size(resolvedDesc)) / PANGO_SCALE;
-                if (size > 0) result.fontSize = size;
-                pango_font_description_free(resolvedDesc);
-            }
-            g_object_unref(font);
-        }
-
-        pango_font_description_free(desc);
-        g_object_unref(ctx);
-
-        if (result.fontFamily.empty()) {
-            result.fontFamily = "monospace";
-        }
-
+        result.fontFamily = "DejaVu Sans Mono";
+        result.fontSize = 12.0;
         return result;
+    }
+
+    void UltraCanvasLinuxApplication::LoadBundledFontsNative() {
+        FcConfig* cfg = FcConfigGetCurrent();
+        if (!cfg) {
+            debugOutput << "UltraCanvas: FcConfigGetCurrent() returned null; bundled fonts not registered" << std::endl;
+            return;
+        }
+
+        const std::string dir = GetBundledFontsDir();
+        for (size_t i = 0; i < kDejaVuAllFontsCount; ++i) {
+            std::string path = dir + kDejaVuAllFonts[i];
+            if (!std::filesystem::exists(path)) {
+                debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
+                continue;
+            }
+            if (!FcConfigAppFontAddFile(cfg,
+                    reinterpret_cast<const FcChar8*>(path.c_str()))) {
+                debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
+            }
+        }
+        // Materialise the FontSet so FcMatch (and therefore Pango) can
+        // actually find the just-added app fonts. No-op on a system-loaded
+        // config; required on a FcConfigCreate'd fallback one.
+        FcConfigBuildFonts(cfg);
+
+        // Force an FC-backed font map as the default, replacing whatever
+        // default was cached. On Linux this is a no-op pattern (Pango is
+        // already FC-only); on Windows MSYS2 it bypasses Pango's Win32
+        // backend default. set_default takes its own ref so we drop ours.
+        PangoFontMap* fcFm = pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT);
+        if (fcFm) {
+            pango_cairo_font_map_set_default(PANGO_CAIRO_FONT_MAP(fcFm));
+            g_object_unref(fcFm);
+        } else {
+            debugOutput << "UltraCanvas: pango_cairo_font_map_new_for_font_type(FT) returned null" << std::endl;
+            pango_cairo_font_map_set_default(nullptr);
+        }
+
+#ifdef ULTRACANVAS_DEBUG
+        // Diagnostic: how many fonts does FC know about now? If this is small
+        // (<10) on a packaged build, FC likely couldn't find any system fonts
+        // and only our bundled DejaVu families are available. Also log a
+        // sample of family names so we can tell whether DejaVu Sans was
+        // actually picked up by FC's dir scan.
+        {
+            FcPattern* pat = FcPatternCreate();
+            FcObjectSet* os = FcObjectSetBuild(FC_FAMILY, FC_FILE, (char*)nullptr);
+            FcFontSet* fs = FcFontList(cfg, pat, os);
+            debugOutput << "UltraCanvas: FC font count after init=" << (fs ? fs->nfont : -1) << std::endl;
+            if (fs) {
+                int sampleN = std::min(fs->nfont, 500);
+                std::ostringstream fams;
+                for (int i = 0; i < sampleN; ++i) {
+                    FcChar8* fam = nullptr;
+                    if (FcPatternGetString(fs->fonts[i], FC_FAMILY, 0, &fam) == FcResultMatch && fam) {
+                        if (i) fams << ", ";
+                        fams << reinterpret_cast<const char*>(fam);
+                    }
+                }
+                debugOutput << "UltraCanvas: FC family sample (" << sampleN << "/" << fs->nfont
+                            << "): " << fams.str() << std::endl;
+                FcFontSetDestroy(fs);
+            }
+            FcObjectSetDestroy(os);
+            FcPatternDestroy(pat);
+        }
+#endif
     }
 
 } // namespace UltraCanvas
