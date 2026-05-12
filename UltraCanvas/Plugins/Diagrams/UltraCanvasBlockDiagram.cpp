@@ -425,8 +425,8 @@ bool UltraCanvasBlockDiagram::OnEvent(const UCEvent& event) {
     if (!IsVisible()) return false;
     
     if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
-        float worldX = (event.pointer.x - bounds.x - panOffsetX) / zoomLevel;
-        float worldY = (event.pointer.y - bounds.y - panOffsetY) / zoomLevel;
+        float worldX = (event.pointer.x - panOffsetX) / zoomLevel;
+        float worldY = (event.pointer.y - panOffsetY) / zoomLevel;
         
         if (currentMode == EditMode::Select) {
             std::string nodeId = FindNodeAt(worldX, worldY);
@@ -474,8 +474,8 @@ bool UltraCanvasBlockDiagram::OnEvent(const UCEvent& event) {
         return true;
     }
     else if (event.type == UCEventType::MouseMove) {
-        float worldX = (event.pointer.x - bounds.x - panOffsetX) / zoomLevel;
-        float worldY = (event.pointer.y - bounds.y - panOffsetY) / zoomLevel;
+        float worldX = (event.pointer.x - panOffsetX) / zoomLevel;
+        float worldY = (event.pointer.y - panOffsetY) / zoomLevel;
         
         if (isDraggingNode && !selectedNodeId.empty()) {
             UpdateNodePosition(selectedNodeId, worldX - dragOffsetX, worldY - dragOffsetY);
@@ -503,8 +503,8 @@ bool UltraCanvasBlockDiagram::OnEvent(const UCEvent& event) {
     }
     else if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
         // Check for double-click
-        float worldX = (event.pointer.x - bounds.x - panOffsetX) / zoomLevel;
-        float worldY = (event.pointer.y - bounds.y - panOffsetY) / zoomLevel;
+        float worldX = (event.pointer.x - panOffsetX) / zoomLevel;
+        float worldY = (event.pointer.y - panOffsetY) / zoomLevel;
         
         std::string nodeId = FindNodeAt(worldX, worldY);
         if (!nodeId.empty() && onNodeDoubleClick) {

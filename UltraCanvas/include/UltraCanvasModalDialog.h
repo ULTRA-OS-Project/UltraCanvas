@@ -503,30 +503,8 @@ namespace UltraCanvas {
                                     std::function<void(DialogResult, const std::string&)> onResult,
                                     UltraCanvasWindowBase* parent = nullptr);
 
-        static void ShowOpenFileDialog(const std::string& title,
-                                       const std::vector<FileFilter>& filters,
-                                       const std::string& initialDir,
-                                       std::function<void(DialogResult, const std::string&)> onResult,
-                                       UltraCanvasWindowBase* parent = nullptr);
-
-        static void ShowSaveFileDialog(const std::string& title,
-                                       const std::vector<FileFilter>& filters,
-                                       const std::string& initialDir,
-                                       const std::string& defaultName,
-                                       std::function<void(DialogResult, const std::string&)> onResult,
-                                       UltraCanvasWindowBase* parent = nullptr);
-
-        static void ShowSelectFolderDialog(const std::string& title,
-                                           const std::string& initialDir,
-                                           std::function<void(DialogResult, const std::string&)> onResult,
-                                           UltraCanvasWindowBase* parent = nullptr);
-
-        static void ShowOpenMultipleFilesDialog(
-             const std::string& title,
-             const std::vector<FileFilter>& filters,
-             const std::string& initialDir,
-             std::function<void(DialogResult, const std::vector<std::string>&)> onResult,
-             UltraCanvasWindowBase* parent = nullptr);
+        // File-selection dialogs (Open/Save/SelectFolder/OpenMultiple) live on
+        // UltraCanvasFileLoader — see include/UltraCanvasFileLoader.h.
 
         // ===== CUSTOM DIALOGS =====
         static std::shared_ptr<UltraCanvasModalDialog> CreateDialog(const DialogConfig& config);

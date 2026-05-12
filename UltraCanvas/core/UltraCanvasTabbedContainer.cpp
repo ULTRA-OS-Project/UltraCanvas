@@ -665,8 +665,14 @@ namespace UltraCanvas {
                 // Translate to child's origin — content widgets now draw from (0,0) in their local space
                 ctx->PushState();
                 auto cb = content->GetBounds();
+                ctx->ClipRect(cb);
                 ctx->Translate(Point2Di(cb.x, cb.y));
-                content->Render(ctx, dirtyRect);
+                // Translate dirtyRect into the child's local space — must use the
+                // same compound offset we just translated ctx by.
+                Rect2Di childDirty(dirtyRect.x - cb.x,
+                                   dirtyRect.y - cb.y,
+                                   dirtyRect.width, dirtyRect.height);
+                content->Render(ctx, childDirty);
                 ctx->PopState();
             }
         }

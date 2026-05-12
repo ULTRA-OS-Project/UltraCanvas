@@ -244,7 +244,7 @@ namespace UltraCanvas {
             const std::string& initialDir,
             UltraCanvasWindowBase*  parent) {
 
-        NativeFileDialogOptions options;
+        FileDialogOptions options;
         options.title = title;
         options.filters = filters;
         options.initialDirectory = initialDir;
@@ -252,7 +252,7 @@ namespace UltraCanvas {
         return OpenFile(options);
     }
 
-    std::string UltraCanvasNativeDialogs::OpenFile(const NativeFileDialogOptions& options) {
+    std::string UltraCanvasNativeDialogs::OpenFile(const FileDialogOptions& options) {
         EnsureGtkInitialized();
 
         // Get parent GtkWindow if provided
@@ -320,16 +320,15 @@ namespace UltraCanvas {
             const std::string& initialDir,
             UltraCanvasWindowBase*  parent) {
 
-        NativeFileDialogOptions options;
+        FileDialogOptions options;
         options.title = title;
         options.filters = filters;
         options.initialDirectory = initialDir;
-        options.allowMultiSelect = true;
         options.parentWindow = parent;
         return OpenMultipleFiles(options);
     }
 
-    std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(const NativeFileDialogOptions& options) {
+    std::vector<std::string> UltraCanvasNativeDialogs::OpenMultipleFiles(const FileDialogOptions& options) {
         EnsureGtkInitialized();
 
         // Get parent GtkWindow if provided
@@ -407,7 +406,7 @@ namespace UltraCanvas {
             const std::string& defaultFileName,
             UltraCanvasWindowBase*  parent) {
 
-        NativeFileDialogOptions options;
+        FileDialogOptions options;
         options.title = title;
         options.filters = filters;
         options.initialDirectory = initialDir;
@@ -416,7 +415,7 @@ namespace UltraCanvas {
         return SaveFile(options);
     }
 
-    std::string UltraCanvasNativeDialogs::SaveFile(const NativeFileDialogOptions& options) {
+    std::string UltraCanvasNativeDialogs::SaveFile(const FileDialogOptions& options) {
         EnsureGtkInitialized();
 
         // Get parent GtkWindow if provided

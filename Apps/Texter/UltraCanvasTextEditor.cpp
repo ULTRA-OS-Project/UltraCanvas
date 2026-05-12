@@ -15,6 +15,7 @@
 #include "UltraCanvasTextEditorDialogs.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasFileLoader.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasUtils.h"
 //#include "UltraCanvasDialogManager.h"
@@ -2857,10 +2858,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::OnFileOpen() {
-        UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(
-                "Open File(s)",
-                config.fileFilters,
-                lastOpenedDirectory,
+        FileDialogOptions opts;
+        opts.title = "Open File(s)";
+        opts.filters = config.fileFilters;
+        opts.initialDirectory = lastOpenedDirectory;
+        opts.parentWindow = GetWindow();
+
+        UltraCanvasFileLoader::OpenMultipleFilesDialog(
+                opts,
                 [this](DialogResult result, const std::vector<std::string>& filePaths) {
                     if (result == DialogResult::OK) {
                         for (const auto& filePath : filePaths) {
@@ -2869,8 +2874,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                             }
                         }
                     }
-                },
-                GetWindow()
+                }
         );
     }
 
@@ -2964,17 +2968,20 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             defaultName = stem + "." + ext;
         }
 
-        UltraCanvasDialogManager::ShowSaveFileDialog(
-                "Save File As",
-                config.fileFilters,
-                lastOpenedDirectory,
-                defaultName,
+        FileDialogOptions opts;
+        opts.title = "Save File As";
+        opts.filters = config.fileFilters;
+        opts.initialDirectory = lastOpenedDirectory;
+        opts.defaultFileName = defaultName;
+        opts.parentWindow = GetWindow();
+
+        UltraCanvasFileLoader::SaveFileDialog(
+                opts,
                 [this, doc](DialogResult result, const std::string& filePath) {
                     if (result == DialogResult::OK && !filePath.empty()) {
                         SaveDocumentAs(activeDocumentIndex, filePath);
                     }
-                },
-                GetWindow()
+                }
         );
     }
 
@@ -3944,11 +3951,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     if (result == DialogResult::Yes) {
                         auto doc = documents[docIndex];
                         if (doc->filePath.empty()) {
-                            UltraCanvasDialogManager::ShowSaveFileDialog(
-                                    "Save File",
-                                    config.fileFilters,
-                                    "",
-                                    doc->fileName,
+                            FileDialogOptions opts;
+                            opts.title = "Save File";
+                            opts.filters = config.fileFilters;
+                            opts.defaultFileName = doc->fileName;
+                            opts.parentWindow = GetWindow();
+
+                            UltraCanvasFileLoader::SaveFileDialog(
+                                    opts,
                                     [this, docIndex, onComplete](DialogResult saveResult, const std::string& filePath) {
                                         if (saveResult == DialogResult::OK && !filePath.empty()) {
                                             bool saved = SaveDocumentAs(docIndex, filePath);
@@ -3960,8 +3970,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                                                 onComplete(false);
                                             }
                                         }
-                                    },
-                                    GetWindow()
+                                    }
                             );
                         } else {
                             bool saved = SaveDocument(docIndex);
@@ -4045,11 +4054,15 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                             int idx = remaining->front();
                             remaining->erase(remaining->begin());
                             auto doc = documents[idx];
-                            UltraCanvasDialogManager::ShowSaveFileDialog(
-                                    "Save File",
-                                    config.fileFilters,
-                                    "",
-                                    doc->fileName,
+
+                            FileDialogOptions opts;
+                            opts.title = "Save File";
+                            opts.filters = config.fileFilters;
+                            opts.defaultFileName = doc->fileName;
+                            opts.parentWindow = GetWindow();
+
+                            UltraCanvasFileLoader::SaveFileDialog(
+                                    opts,
                                     [this, idx, remaining, savedFlag, onComplete, saveNext](DialogResult saveResult, const std::string& filePath) {
                                         if (saveResult == DialogResult::OK && !filePath.empty()) {
                                             if (!SaveDocumentAs(idx, filePath)) {
@@ -4058,8 +4071,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                                         }
                                         // Continue to next unsaved document (skip if user cancelled this one)
                                         (*saveNext)();
-                                    },
-                                    GetWindow()
+                                    }
                             );
                         };
                         (*saveNext)();

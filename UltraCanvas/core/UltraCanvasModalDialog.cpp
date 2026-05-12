@@ -1316,37 +1316,6 @@ namespace UltraCanvas {
                     }, parent);
     }
 
-// ===== LEGACY METHODS (now async with optional callbacks) =====
-//    void UltraCanvasDialogManager::ShowMessage(const std::string& message, const std::string& title,
-//                                               DialogType type, DialogButtons buttons,
-//                                               std::function<void(DialogResult)> onResult) {
-//        ShowMessage(message, title, type, buttons, onResult, nullptr);
-//    }
-//
-//    void UltraCanvasDialogManager::ShowInformation(const std::string& message, const std::string& title,
-//                                                   std::function<void(DialogResult)> onResult) {
-//        ShowMessage(message, title, DialogType::Information, DialogButtons::OK, onResult, nullptr);
-//    }
-//
-//    void UltraCanvasDialogManager::ShowQuestion(const std::string& message, const std::string& title,
-//                                                std::function<void(DialogResult)> onResult) {
-//        ShowMessage(message, title, DialogType::Question, DialogButtons::YesNo, onResult, nullptr);
-//    }
-//
-//    void UltraCanvasDialogManager::ShowWarning(const std::string& message, const std::string& title,
-//                                               std::function<void(DialogResult)> onResult) {
-//        ShowMessage(message, title, DialogType::Warning, DialogButtons::OKCancel, onResult, nullptr);
-//    }
-//
-//    void UltraCanvasDialogManager::ShowError(const std::string& message, const std::string& title,
-//                                             std::function<void(DialogResult)> onResult) {
-//        ShowMessage(message, title, DialogType::Error, DialogButtons::OK, onResult, nullptr);
-//    }
-//
-//    void UltraCanvasDialogManager::ShowConfirmation(const std::string& message, const std::string& title,
-//                                                    std::function<void(bool)> onResult) {
-//        ShowConfirmation(message, title, onResult, nullptr);
-//    }
 // ===== CUSTOM DIALOGS =====
     std::shared_ptr<UltraCanvasModalDialog> UltraCanvasDialogManager::CreateDialog(const DialogConfig& config) {
         auto dialog = std::make_shared<UltraCanvasModalDialog>();
@@ -1402,86 +1371,6 @@ namespace UltraCanvas {
                 onResult(result, dialog->GetInputValue());
             }
         }, parent);
-    }
-
-    void UltraCanvasDialogManager::ShowOpenFileDialog(const std::string& title,
-                                                      const std::vector<FileFilter>& filters,
-                                                      const std::string& initialDir,
-                                                      std::function<void(DialogResult, const std::string&)> onResult,
-                                                      UltraCanvasWindowBase* parent) {
-        if (!enabled) {
-            if (onResult) onResult(DialogResult::Cancel, "");
-            return;
-        }
-
-        // File dialogs always use native dialogs for best user experience
-        // (native file browser is always better than custom implementation)
-        std::string result = UltraCanvasNativeDialogs::OpenFile(
-                title.empty() ? "Open File" : title, filters, initialDir, parent);
-
-        if (onResult) {
-            onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
-        }
-    }
-
-    void UltraCanvasDialogManager::ShowSaveFileDialog(const std::string& title,
-                                                      const std::vector<FileFilter>& filters,
-                                                      const std::string& initialDir,
-                                                      const std::string& defaultName,
-                                                      std::function<void(DialogResult, const std::string&)> onResult,
-                                                      UltraCanvasWindowBase* parent) {
-        if (!enabled) {
-            if (onResult) onResult(DialogResult::Cancel, "");
-            return;
-        }
-
-        // File dialogs always use native dialogs for best user experience
-        std::string result = UltraCanvasNativeDialogs::SaveFile(
-                title.empty() ? "Save File" : title, filters, initialDir, defaultName, parent);
-
-        if (onResult) {
-            onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
-        }
-    }
-
-    void UltraCanvasDialogManager::ShowOpenMultipleFilesDialog(
-            const std::string& title,
-            const std::vector<FileFilter>& filters,
-            const std::string& initialDir,
-            std::function<void(DialogResult, const std::vector<std::string>&)> onResult,
-            UltraCanvasWindowBase* parent) {
-
-        if (!enabled) {
-            if (onResult) onResult(DialogResult::Cancel, {});
-            return;
-        }
-
-        // Use native multi-file dialog for best user experience
-        std::vector<std::string> results = UltraCanvasNativeDialogs::OpenMultipleFiles(
-                title.empty() ? "Open Files" : title,
-                filters, initialDir, parent);
-
-        if (onResult) {
-            onResult(results.empty() ? DialogResult::Cancel : DialogResult::OK, results);
-        }
-    }
-
-    void UltraCanvasDialogManager::ShowSelectFolderDialog(const std::string& title,
-                                                          const std::string& initialDir,
-                                                          std::function<void(DialogResult, const std::string&)> onResult,
-                                                          UltraCanvasWindowBase* parent) {
-        if (!enabled) {
-            if (onResult) onResult(DialogResult::Cancel, "");
-            return;
-        }
-
-        // Folder dialogs always use native dialogs for best user experience
-        std::string result = UltraCanvasNativeDialogs::SelectFolder(
-                title.empty() ? "Select Folder" : title, initialDir, parent);
-
-        if (onResult) {
-            onResult(result.empty() ? DialogResult::Cancel : DialogResult::OK, result);
-        }
     }
 
     void UltraCanvasDialogManager::CloseAllDialogs() {
