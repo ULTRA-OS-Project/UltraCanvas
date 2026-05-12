@@ -431,7 +431,7 @@ namespace UltraCanvas {
         energyControls->AddChild(curveLabel);
 
         auto curveSlider = std::make_shared<UltraCanvasSlider>(
-                "CurveSlider", 475, 15, 150, 15
+                "CurveSlider", 475, 15, 150, 17
         );
         curveSlider->SetOrientation(SliderOrientation::Horizontal);
         curveSlider->SetRange(0.0f, 1.0f);
@@ -798,7 +798,7 @@ namespace UltraCanvas {
         perfControls->AddChild(nodesLabel);
 
         auto nodesSlider = std::make_shared<UltraCanvasSlider>(
-                "NodesSlider", 65, 15, 150, 15
+                "NodesSlider", 65, 15, 150, 17
         );
         nodesSlider->SetOrientation(SliderOrientation::Horizontal);
         nodesSlider->SetRange(5.0f, 50.0f);
@@ -821,7 +821,7 @@ namespace UltraCanvas {
         perfControls->AddChild(linksLabel);
 
         auto linksSlider = std::make_shared<UltraCanvasSlider>(
-                "LinksSlider", 315, 15, 150, 15
+                "LinksSlider", 315, 15, 150, 17
         );
         linksSlider->SetOrientation(SliderOrientation::Horizontal);
         linksSlider->SetRange(10.0f, 200.0f);

@@ -928,15 +928,14 @@ int UltraCanvasGourceTree::CountVisibleDescendants(const std::string& nodeId) co
 
 Point2Df UltraCanvasGourceTree::ScreenToWorld(const Point2Di& screenPos) const {
     Rect2Di bounds = GetBounds();
-    float worldX = (screenPos.x - bounds.x - panX) / zoomLevel;
-    float worldY = (screenPos.y - bounds.y - panY) / zoomLevel;
+    float worldX = (screenPos.x - panX) / zoomLevel;
+    float worldY = (screenPos.y - panY) / zoomLevel;
     return Point2Df(worldX, worldY);
 }
 
 Point2Di UltraCanvasGourceTree::WorldToScreen(const Point2Df& worldPos) const {
-    Rect2Di bounds = GetBounds();
-    int screenX = static_cast<int>(worldPos.x * zoomLevel + panX + bounds.x);
-    int screenY = static_cast<int>(worldPos.y * zoomLevel + panY + bounds.y);
+    int screenX = static_cast<int>(worldPos.x * zoomLevel + panX);
+    int screenY = static_cast<int>(worldPos.y * zoomLevel + panY);
     return Point2Di(screenX, screenY);
 }
 
@@ -1126,15 +1125,15 @@ void UltraCanvasGourceTree::Render(IRenderContext* ctx, const Rect2Di& dirtyRect
     
     Rect2Di bounds = GetLocalBounds();
 
-    // Save state and set clip region (element-local coords)
-    ctx->PushState();
-    ctx->ClipRect(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
-    
+//    // Save state and set clip region (element-local coords)
+//    ctx->PushState();
+//    ctx->ClipRect(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
+
     // Draw background
     DrawBackground(ctx);
     
     // Apply view transformation
-    ctx->Translate(bounds.x + panX, bounds.y + panY);
+    ctx->Translate(panX, panY);
     ctx->Scale(zoomLevel, zoomLevel);
     
     // Draw links first (behind nodes)
@@ -1145,8 +1144,8 @@ void UltraCanvasGourceTree::Render(IRenderContext* ctx, const Rect2Di& dirtyRect
     // Draw nodes
     DrawNodes(ctx);
     
-    // Restore transformation
-    ctx->PopState();
+//    // Restore transformation
+//    ctx->PopState();
     
     // Draw tooltip (in screen space)
     if (!hoveredNodeId.empty()) {
@@ -1158,12 +1157,12 @@ void UltraCanvasGourceTree::Render(IRenderContext* ctx, const Rect2Di& dirtyRect
 }
 
 void UltraCanvasGourceTree::DrawBackground(IRenderContext* ctx) {
-    Rect2Di bounds = GetBounds();
+    Rect2Di bounds = GetLocalBounds();
     
     // Fill background
     ctx->SetFillPaint(style.backgroundColor);
     ctx->ClearPath();
-    ctx->Rect(bounds.x, bounds.y, bounds.width, bounds.height);
+    ctx->Rect(0, 0, bounds.width, bounds.height);
     ctx->FillPathPreserve();
     
     // Draw depth rings (optional grid)
@@ -1495,7 +1494,7 @@ void UltraCanvasGourceTree::DrawTooltip(IRenderContext* ctx, const GourceNode& n
     // Adjust position to not overlap node
     screenPos.x += static_cast<int>(node.nodeRadius * zoomLevel) + 10;
     screenPos.y -= 20;
-    
+    screenPos = MapFromLocal(screenPos);
     UltraCanvasTooltipManager::UpdateAndShowTooltipImmediately(
         GetWindow(), tooltipText, screenPos);
 }

@@ -213,7 +213,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasSlider::Render(IRenderContext *ctx, const Rect2Di &dirtyRect) {
-        ctx->PushState();
+//        ctx->PushState();
 
         UpdateSliderState();
         Rect2Di bounds = GetLocalBounds();
@@ -248,7 +248,7 @@ namespace UltraCanvas {
         if (ShouldShowValueText()) {
             RenderValueDisplay(bounds, ctx);
         }
-        ctx->PopState();
+//        ctx->PopState();
     }
 
     bool UltraCanvasSlider::OnEvent(const UCEvent &event) {
