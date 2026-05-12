@@ -1,3 +1,6 @@
+#### 2026-05-12 *0.1.31*
+- Implemented OS Recent files support (add opened files to OS Recent files list)
+
 #### 2026-05-09 *0.1.30*
 - Attempt to fix menu crash on MacOS
 

@@ -1,3 +1,8 @@
+#### 2026-05-12 *0.1.32*
+- Implemented UltraCanvasFileLoader
+- Implemented OS Recent files support (add opened files to OS Recent files list)
+- Fix wrong calculation of mouse coordinates and bounds in the some diagrams 
+
 #### 2026-05-10 *0.1.31*
 - Fixed font rendering, now Windows and Linux will rendered using same included DejaVue fonts
 
