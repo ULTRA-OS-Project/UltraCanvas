@@ -1,7 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
-// Version: 1.2.7 - Force FC-backed Pango default via pango_cairo_font_map_new_for_font_type(FT)
-// Last Modified: 2026-05-10
+// Version: 1.2.8 - Strip spurious Ctrl/Alt flags on AltGr (Win reports LCtrl+RAlt synthetically)
+// Last Modified: 2026-05-13
 // Author: UltraCanvas Framework
 
 #include "../../include/UltraCanvasApplication.h"
@@ -333,11 +333,19 @@ namespace UltraCanvas {
 
         // Common modifier state helper
         auto fillModifiers = [&event]() {
+            bool ctrlDown = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+            bool altDown  = (GetKeyState(VK_MENU) & 0x8000) != 0;
+            // AltGr is delivered by Windows as a synthetic LCtrl+RAlt chord.
+            // Strip both so AltGr-produced characters reach text consumers
+            // as plain text, matching X11/Linux modifier semantics.
+            bool isAltGr  = ((GetKeyState(VK_RMENU) & 0x8000) != 0) &&
+                            ((GetKeyState(VK_LCONTROL) & 0x8000) != 0);
+
             event.shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-            event.ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-            event.alt = (GetKeyState(VK_MENU) & 0x8000) != 0;
-            event.meta = ((GetKeyState(VK_LWIN) & 0x8000) != 0) ||
-                         ((GetKeyState(VK_RWIN) & 0x8000) != 0);
+            event.ctrl  = ctrlDown && !isAltGr;
+            event.alt   = altDown  && !isAltGr;
+            event.meta  = ((GetKeyState(VK_LWIN) & 0x8000) != 0) ||
+                          ((GetKeyState(VK_RWIN) & 0x8000) != 0);
         };
 
         switch (msg) {
