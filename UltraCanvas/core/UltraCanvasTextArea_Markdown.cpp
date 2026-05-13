@@ -1528,7 +1528,15 @@ namespace UltraCanvas {
                 ol->layoutType = LineLayoutType::OrderedListItem;
                 ol->orderedItemNumber = number;
                 ol->listDepth = depth;
-                ol->layoutShift.x = depth * listIndent;
+                // Marker is drawn at (depth-1)*listIndent. Multi-digit markers
+                // ("10.", "16.") need the text to shift further right than the
+                // default depth*listIndent budget; otherwise the marker overlaps
+                // the following text.
+                std::string markerStr = std::to_string(number) + ".";
+                int markerWidth = ctx ? ctx->GetTextLineWidth(markerStr) : 0;
+                const int markerGap = listIndent / 2;
+                ol->layoutShift.x = std::max(depth * listIndent,
+                                             (depth - 1) * listIndent + markerWidth + markerGap);
                 ol->layout = buildInlineStyledLayout(payload, ol->layoutShift.x, ol->hitRects,
                                                      nullptr, &ol->cpMap, startCp);
                 ol->bounds.width  = ol->layoutShift.x + ol->layout->GetLayoutWidth();
