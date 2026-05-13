@@ -138,16 +138,17 @@ namespace UltraCanvas {
             activeTabIndex = (int)tabs.size() - 1;
         }
 
+        InvalidateTabbar();
+
         if (activeTabIndex >= 0) {
             for (int i = activeTabIndex; i >= 0; i--) {
                 if (tabs[i]->enabled) {
-                    activeTabIndex = i;
+                    SetActiveTab(i);
                     break;
                 }
             }
         }
 
-        InvalidateTabbar();
         UpdateOverflowDropdown();
     }
 
@@ -157,11 +158,11 @@ namespace UltraCanvas {
         int oldIndex = activeTabIndex;
         activeTabIndex = index;
 
+        EnsureTabVisible(index);
         if (!tabbarLayoutDirty) {
-            EnsureTabVisible(index);
             CalculateLayout();
-            UpdateContentVisibility();
         }
+        UpdateContentVisibility();
 
         if (onTabChange) onTabChange(oldIndex, index);
         if (onTabSelect) onTabSelect(index);

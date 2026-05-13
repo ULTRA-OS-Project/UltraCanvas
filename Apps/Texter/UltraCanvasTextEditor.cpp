@@ -1511,6 +1511,8 @@ namespace {
         UpdateStatusBar();
         UpdateMarkdownToolbarVisibility();
 
+        doc->textArea->SetFocus(true);
+        doc->textArea->SetCursorPosition({0,0});
         return docIndex;
     }
 

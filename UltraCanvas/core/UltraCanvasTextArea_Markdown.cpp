@@ -1243,11 +1243,14 @@ namespace UltraCanvas {
             while (!lang.empty() && std::isspace(static_cast<unsigned char>(lang.back()))) lang.pop_back();
             cl->codeblockLanguage = lang;
             if (!lang.empty()) {
+                auto fontStyle = style.fixedFontStyle;
+                fontStyle.fontSize = fontStyle.fontSize * 0.7;
+                //fontStyle.fontSlant = FontSlant::Italic;
                 cl->layout = ctx->CreateTextLayout(" "+lang+" ", false);
-                cl->layout->SetFontStyle(style.fixedFontStyle);
+                cl->layout->SetFontStyle(fontStyle);
                 cl->layout->InsertAttribute(TextAttributeFactory::CreateBackground(markdownStyle.codeBackgroundColor));
                 cl->layoutShift = {5,0};
-                cl->bounds.height = std::max(1.0, cl->layout->GetLayoutHeight());
+                cl->bounds.height = std::max(1.0, cl->layout->GetLayoutHeight() + 2);
             } else {
                 cl->bounds.height = computedLineHeight;
             }

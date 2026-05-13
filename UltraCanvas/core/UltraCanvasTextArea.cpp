@@ -3282,9 +3282,7 @@ namespace UltraCanvas {
                 );
                 if (line->layout) {
                     ctx->SetCurrentPaint(markdownStyle.codeTextColor);
-                    ctx->DrawTextLayout(*line->layout,
-                        Point2Df(static_cast<float>(layoutOrigin.x),
-                                static_cast<float>(layoutOrigin.y)));
+                    ctx->DrawTextLayout(*line->layout, layoutOrigin);
                 }
                 return;
             }

@@ -267,7 +267,9 @@ namespace UltraCanvas {
         } else if (window && this != window) {
             window->AddDirtyRectangle(bounds);
         }
-        SetFocus(false);
+        if (!visible) {
+            SetFocus(false);
+        }
         RequestUpdateGeometry();
     }
 
