@@ -777,7 +777,7 @@ namespace UltraCanvas {
 
         diagramBuilder.AddItem(
                         "sankey",
-                        "Sankey Diagram",
+                        "Sankey Flow",
                         "Interactive flow diagrams showing relationships and value distributions",
                         ImplementationStatus::FullyImplemented,
                         [this]() { return CreateSankeyExamples(); },
@@ -790,12 +790,12 @@ namespace UltraCanvas {
                 .AddVariant("sankey", "Custom Data")
                 .AddVariant("sankey", "Performance Test");
 
-        diagramBuilder.AddItem("plantuml", "PlantUML", "UML and diagram generation",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return CreateDiagramExamples(); })
-                .AddVariant("plantuml", "Class Diagrams")
-                .AddVariant("plantuml", "Sequence Diagrams")
-                .AddVariant("plantuml", "Activity Diagrams");
+//        diagramBuilder.AddItem("plantuml", "PlantUML", "UML and diagram generation",
+//                               ImplementationStatus::NotImplemented,
+//                               [this]() { return CreateDiagramExamples(); })
+//                .AddVariant("plantuml", "Class Diagrams")
+//                .AddVariant("plantuml", "Sequence Diagrams")
+//                .AddVariant("plantuml", "Activity Diagrams");
 
         diagramBuilder.AddItem("flowchart", "Flow chart", "Interactive flowchart with decision points",
                                ImplementationStatus::FullyImplemented,
@@ -829,14 +829,14 @@ namespace UltraCanvas {
                            [this]() { return CreateNodeDiagramExamples(); },
                            "Apps/DemoApp/UltraCanvasNodeDiagramExamples.cpp");
 
-    diagramBuilder.AddItem("gourcetree", "Gource Tree", "Radial tree visualization for file systems inspired by Gource",
+    diagramBuilder.AddItem("gourcetree", "Force-Directed Tree", "Radial tree visualization for file systems inspired by Gource",
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateGourceTreeExamples(); },
                            "Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp");
 
-        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
-                               ImplementationStatus::NotImplemented,
-                               [this]() { return nullptr; });
+//        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
+//                               ImplementationStatus::NotImplemented,
+//                               [this]() { return nullptr; });
 
 
 
