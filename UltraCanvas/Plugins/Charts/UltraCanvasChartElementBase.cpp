@@ -100,16 +100,18 @@ namespace UltraCanvas {
         if (!ctx) return;
 
         // Draw overall background using existing functions
-        ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
+        if (showBackground) {
+            ctx->DrawFilledRectangle(GetLocalBounds(), backgroundColor);
 
-        // Draw plot area background using existing functions
-        ctx->SetFillPaint(plotAreaColor);
-        ctx->FillRectangle(cachedPlotArea.ToRect2D());
+            // Draw plot area background using existing functions
+            ctx->SetFillPaint(plotAreaColor);
+            ctx->FillRectangle(cachedPlotArea.ToRect2D());
 
-        // Draw plot area border using existing functions
-        ctx->SetStrokePaint(Color(180, 180, 180, 255));
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawRectangle(cachedPlotArea.ToRect2D());
+            // Draw plot area border using existing functions
+            ctx->SetStrokePaint(Color(180, 180, 180, 255));
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawRectangle(cachedPlotArea.ToRect2D());
+        }
 
         // Draw grid if enabled using existing functions
         if (showGrid) {

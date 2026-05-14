@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.16)
 include(FetchContent)
 
 # ===== LIBRARY DEFINITION =====
-set(ULTRACANVAS_VERSION "0.1.32")
+set(ULTRACANVAS_VERSION "0.1.33")
 set(ULTRACANVAS_LIB_NAME "UltraCanvas")
 
 message(STATUS "")
@@ -192,6 +192,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasWaterfallChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPopulationChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasJitterPlotElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasPieChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasArcDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasAdjacencyDiagram.cpp
 
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/SVG/UltraCanvasSVGPlugin.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSankey.cpp
@@ -314,7 +317,6 @@ set(ULTRACANVAS_ALL_SOURCES
     ${ULTRACANVAS_LIBSPECIFIC_SOURCES}
     ${ULTRACANVAS_TEXT_SOURCES}
     ${ULTRACANVAS_CHARTS_SOURCES}
-        OS/MacOS/UltraCanvasMacOSShortcutFormat.h
         #        dialogs/PixelFXExportDialog.cpp
 #        dialogs/PixelFXExportDialog.h
 )

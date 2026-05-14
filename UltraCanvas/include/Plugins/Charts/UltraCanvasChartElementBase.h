@@ -66,6 +66,7 @@ namespace UltraCanvas {
         // Chart styling
         Color backgroundColor = Color(255, 255, 255, 255);
         Color plotAreaColor = Color(250, 250, 250, 255);
+        bool showBackground = true;
         bool showGrid = true;
         bool showAxes = true;
         Color gridColor = Color(220, 220, 220, 255);

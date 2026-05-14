@@ -1559,4 +1559,53 @@ namespace UltraCanvas {
         return dialog;
     }
 
+    void FileDialogConfig::SetFiltersFromString(const std::string &filterString) {
+        filters.clear();
+        selectedFilterIndex = 0;
+
+        if (filterString.empty()) return;
+
+        std::vector<std::string> parts;
+        std::stringstream ss(filterString);
+        std::string part;
+        while (std::getline(ss, part, '|')) {
+            parts.push_back(part);
+        }
+
+        for (size_t i = 0; i + 1 < parts.size(); i += 2) {
+            std::string desc = parts[i];
+            std::string extPattern = parts[i + 1];
+
+            std::vector<std::string> extensions;
+            std::stringstream extSs(extPattern);
+            std::string ext;
+            while (std::getline(extSs, ext, ';')) {
+                // Remove "*." prefix if present
+                if (ext.substr(0, 2) == "*.") {
+                    ext = ext.substr(2);
+                }
+                if (!ext.empty()) {
+                    extensions.push_back(ext);
+                }
+            }
+
+            if (!extensions.empty()) {
+                filters.emplace_back(desc, extensions);
+            }
+        }
+    }
+
+    FileDialogConfig::FileDialogConfig() : DialogConfig() {
+        buttons = DialogButtons::OKCancel;
+        width = 600;
+        height = 450;
+        resizable = true;
+        // Default filters
+        filters = {
+                FileFilter("All Files", "*"),
+                FileFilter("Text Files", {"txt", "log", "md"}),
+                FileFilter("Image Files", {"png", "jpg", "jpeg", "gif", "bmp"}),
+                FileFilter("Document Files", {"pdf", "doc", "docx", "rtf"})
+        };
+    }
 } // namespace UltraCanvas

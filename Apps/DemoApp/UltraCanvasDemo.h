@@ -261,6 +261,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateAreaChartsExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateFinancialChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePopulationChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreatePieChartExamples();
 
         std::shared_ptr<UltraCanvasUIElement> CreateContinentsPopulationExample();
         std::shared_ptr<UltraCanvasUIElement> CreateBrazilSchoolScoresExample();
@@ -281,7 +282,8 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateFlowChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateNodeDiagramExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGourceTreeExamples();
-
+        std::shared_ptr<UltraCanvasUIElement> CreateAdjacencyDiagramExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateArcDiagramExamples();
         std::shared_ptr<UltraCanvasContainer> CreateExampleDiagramSection();
 
         std::shared_ptr<UltraCanvasUIElement> CreateFlowchartExample();

@@ -1,3 +1,7 @@
+#### 2026-05-13 *0.1.32*
+- Fix focus problem with Texter (new tab/close active tab)
+- Fix ordered list content offset in MD-mode in TextArea
+
 #### 2026-05-12 *0.1.31*
 - Implemented OS Recent files support (add opened files to OS Recent files list)
 

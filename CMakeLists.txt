@@ -7,7 +7,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(UltraCanvasDemoApp
-    VERSION 0.1.32
+    VERSION 0.1.33
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
@@ -116,6 +116,9 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasTabExamples.cpp
             Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
             Apps/DemoApp/UltraCanvasTextRenderingExamples.cpp
+            Apps/DemoApp/UltraCanvasPieChartExamples.cpp
+            Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
     )
 
     # These files depend on libvips

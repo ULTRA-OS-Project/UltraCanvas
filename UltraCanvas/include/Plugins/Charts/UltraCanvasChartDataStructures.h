@@ -30,8 +30,8 @@ namespace UltraCanvas {
         Color color;  // Override color for this point
 
         ChartDataPoint(double x_val, double y_val, double z_val = 0.0,
-                       const std::string& lbl = "", double val = 0.0)
-                : x(x_val), y(y_val), z(z_val), label(lbl), value(val), color(0) {}
+                       const std::string& lbl = "", double val = 0.0, const Color& c = Colors::Transparent)
+                : x(x_val), y(y_val), z(z_val), label(lbl), value(val), color(c) {}
     };
 
 // Base interface for all data sources

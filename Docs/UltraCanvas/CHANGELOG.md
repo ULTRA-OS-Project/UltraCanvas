@@ -1,3 +1,11 @@
+#### 2026-05-13 *0.1.33*
+- Implemented new Image performance demo
+- Fix problem with AltGr+key in Windows
+- Fix ordered list content offset in MD-mode in TextArea
+- Implemented Pie Chart element
+- Implemented Adjacency Diagram element
+- Implemented Arc Diagram element
+
 #### 2026-05-12 *0.1.32*
 - Implemented UltraCanvasFileLoader
 - Implemented OS Recent files support (add opened files to OS Recent files list)

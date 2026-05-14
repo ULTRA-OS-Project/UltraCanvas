@@ -697,6 +697,12 @@ namespace UltraCanvas {
                              "DemoApp/UltraCanvasBasicChartsExamples.cpp",
                              "Docs/UltraCanvas/UltraCanvasAreaChartElement.md");
 
+        chartBuilder.AddItem("piecharts", "Pie Chart", "Pie chart data visualization",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreatePieChartExamples(); },
+                             "DemoApp/UltraCanvasPieChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasPieChartExamplesElement.md");
+
         chartBuilder.AddItem("financialcharts", "Candlestick Chart", "Stock market OHLC and candlestick charts",
                              ImplementationStatus::FullyImplemented,
                              [this]() { return CreateFinancialChartExamples(); },
@@ -772,6 +778,10 @@ namespace UltraCanvas {
                              ImplementationStatus::PartiallyImplemented,
                              [this]() { return CreatePartiallyImplementedExamples("Bubble Chart is not ready yet"); });
 
+        chartBuilder.AddItem("contourplot", "Contour plot", "Contour plot",
+                             ImplementationStatus::NotImplemented,
+                             [this]() { return CreatePartiallyImplementedExamples("Contour plot is not ready yet"); });
+
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
 
@@ -833,6 +843,45 @@ namespace UltraCanvas {
                            ImplementationStatus::FullyImplemented,
                            [this]() { return CreateGourceTreeExamples(); },
                            "Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp");
+    diagramBuilder.AddItem("adjacencydiagrams", "Adjacency Diagram", "Architectural Adjacency Diagram",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateAdjacencyDiagramExamples(); },
+                               "Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp");
+    diagramBuilder.AddItem("arcdiagrams", "Arc Diagram", "Arc Diagram",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateArcDiagramExamples(); },
+                               "Apps/DemoApp/UltraCanvasAdjacencyDiagramExamples.cpp");
+    diagramBuilder.AddItem("mindmap", "MindMap", "MindMap",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("MindMap is not ready yet"); });
+    diagramBuilder.AddItem("kanbandiagram", "Kanban Diagram", "Kanban Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Kanban Diagram is not ready yet"); });
+    diagramBuilder.AddItem("packetdiagram", "Packet Diagram", "Packet Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Packet Diagram is not ready yet"); });
+    diagramBuilder.AddItem("gitgraph", "Git Graph", "Git Graph",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Git Graph is not ready yet"); });
+    diagramBuilder.AddItem("erdiagram", "ER Diagram", "ER Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("ER Diagram is not ready yet"); });
+    diagramBuilder.AddItem("sequencediagram", "Sequence Diagram", "Sequence Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Sequence Diagram is not ready yet"); });
+    diagramBuilder.AddItem("classdiagram", "Class Diagram", "Class Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Class Diagram is not ready yet"); });
+    diagramBuilder.AddItem("quadrantdiagram", "Quadrant Chart (diagram)", "Quadrant Chart (diagram)",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Quadrant Chart (diagram) is not ready yet"); });
+    diagramBuilder.AddItem("requirementdiagram", "Requirement Diagram", "Requirement Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Requirement Diagram is not ready yet"); });
+    diagramBuilder.AddItem("timelinediagram", "Timeline Diagram", "Timeline Diagram",
+                               ImplementationStatus::NotImplemented,
+                               [this]() { return CreatePartiallyImplementedExamples("Timeline Diagram is not ready yet"); });
+
 
 //        diagramBuilder.AddItem("mermaid", "Mermaid", "Mermaid",
 //                               ImplementationStatus::NotImplemented,
