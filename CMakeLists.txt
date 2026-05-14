@@ -45,6 +45,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 option(BUILD_TEXTER_APP "Build the texter application" ON)
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
+option(BUILD_ULTRAAI_APP "Build the UltraAI dashboard demo application" ON)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
@@ -61,6 +62,16 @@ find_package(PkgConfig REQUIRED)
 message(STATUS "")
 message(STATUS "── Building UltraCanvas Core Library ──")
 add_subdirectory(UltraCanvas)
+
+# ===== BUILD ULTRAAI MODULE =====
+# Sibling module — header-only interfaces + mock adapters. Pulled in
+# whenever UltraAI-using apps are built, so the UltraAI_Core target
+# is available below.
+if(BUILD_ULTRAAI_APP AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/UltraAI/CMakeLists.txt")
+    message(STATUS "")
+    message(STATUS "── Building UltraAI Module ──")
+    add_subdirectory(UltraAI)
+endif()
 
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
@@ -368,6 +379,48 @@ endif()
 #            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/..
 #    )
 endif ()
+
+# ===== ULTRAAI APPLICATION =====
+# Dashboard demo for the UltraAI module: grid of icon-buttons, modal
+# dialog per capability, backed by the in-process mock adapters.
+if(BUILD_ULTRAAI_APP)
+    message(STATUS "")
+    message(STATUS "── Building UltraAI Dashboard Application ──")
+
+    add_executable(UltraAIApp
+        Apps/UltraAIApp/main.cpp
+        Apps/UltraAIApp/UltraAIDashboard.cpp
+        Apps/UltraAIApp/UltraAIServiceDialog.cpp
+        Apps/UltraAIApp/UltraAIDialogs.cpp
+    )
+
+    target_include_directories(UltraAIApp PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAIApp
+    )
+
+    target_link_libraries(UltraAIApp PRIVATE
+        ${ULTRACANVAS_LIBRARY}
+        UltraAI_Core
+    )
+
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraAIApp PRIVATE fmt::fmt)
+    endif()
+
+    target_compile_features(UltraAIApp PRIVATE cxx_std_20)
+
+    target_compile_definitions(UltraAIApp PRIVATE
+        ULTRAAI_APP_VERSION="0.1.0"
+        $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
+    )
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(UltraAIApp PRIVATE)
+    endif()
+
+    message(STATUS "  UltraAI executable: UltraAIApp")
+endif()
 
 if (BUILD_FILEMANAGER_APP)
     set(UCFILEMANAGER_SOURCES
