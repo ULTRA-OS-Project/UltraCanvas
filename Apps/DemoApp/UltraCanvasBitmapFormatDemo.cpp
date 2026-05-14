@@ -1092,20 +1092,21 @@ namespace UltraCanvas {
         container->SetBackgroundColor(Color(255, 251, 235, 255));
 
         // Layout constants
-        // Row order (top to bottom): About + Capabilities, then Image preview + Properties,
-        // then the structured Format Specification grid.
+        // Row order (top to bottom): About (full width), Format Specification (full width),
+        // then Image preview + Image Properties side-by-side at the bottom.
         const int leftColX = 20;
         const int rightColX = 310;
         const int leftColWidth = 270;
         const int rightColWidth = 640;
-        const int row1Y = 260;  // Image preview + Image properties (h=300, ends at 560)
-        const int row2Y = 20;   // About + Capabilities (h=220, ends at 240)
-        const int row3Y = 580;  // Format Specification (h=170, ends at 750)
+        const int fullWidth = 910;
+        const int row1Y = 20;   // About card, full width (h=160, ends at 180)
+        const int row2Y = 200;  // Format Specification grid, full width (h=170, ends at 370)
+        const int row3Y = 390;  // Image preview + Image properties (h=300, ends at 690)
 
         int id = baseId + 1;
 
-        // ===== ROW 1 LEFT: IMAGE PREVIEW CARD =====
-        auto imageCard = std::make_shared<UltraCanvasContainer>("ImageCard", id++, leftColX, row1Y, leftColWidth, 300);
+        // ===== ROW 3 LEFT: IMAGE PREVIEW CARD =====
+        auto imageCard = std::make_shared<UltraCanvasContainer>("ImageCard", id++, leftColX, row3Y, leftColWidth, 300);
         imageCard->SetBackgroundColor(Color(255, 255, 255, 255));
         imageCard->SetBorders(1, Color(230, 230, 230, 255));
         container->AddChild(imageCard);
@@ -1172,8 +1173,8 @@ namespace UltraCanvas {
         };
         imageCard->AddChild(exportBtn);
 
-        // ===== ROW 1 RIGHT: IMAGE PROPERTIES (populated from actual image) =====
-        auto propertiesCard = std::make_shared<UltraCanvasContainer>("PropertiesCard", id++, rightColX, row1Y, rightColWidth, 300);
+        // ===== ROW 3 RIGHT: IMAGE PROPERTIES (populated from actual image) =====
+        auto propertiesCard = std::make_shared<UltraCanvasContainer>("PropertiesCard", id++, rightColX, row3Y, rightColWidth, 300);
         propertiesCard->SetBackgroundColor(Color(255, 255, 255, 255));
         propertiesCard->SetBorders(1, Color(230, 230, 230, 255));
         container->AddChild(propertiesCard);
@@ -1228,13 +1229,13 @@ namespace UltraCanvas {
             propContainer->AddChild(propValue);
         }
 
-        // ===== ROW 2 LEFT: ABOUT SECTION =====
-        auto aboutCard = std::make_shared<UltraCanvasContainer>("AboutCard", id++, leftColX, row2Y, leftColWidth, 220);
+        // ===== ROW 1: ABOUT SECTION (full width, horizontal) =====
+        auto aboutCard = std::make_shared<UltraCanvasContainer>("AboutCard", id++, leftColX, row1Y, fullWidth, 160);
         aboutCard->SetBackgroundColor(Color(255, 255, 255, 255));
         aboutCard->SetBorders(1, Color(230, 230, 230, 255));
         container->AddChild(aboutCard);
 
-        auto aboutIconLabel = std::make_shared<UltraCanvasLabel>("AboutIcon", id++, 16, 10, 36, 36);
+        auto aboutIconLabel = std::make_shared<UltraCanvasLabel>("AboutIcon", id++, 16, 12, 36, 36);
         aboutIconLabel->SetText("📄");
         aboutIconLabel->SetFontSize(16);
         aboutIconLabel->SetBackgroundColor(Color(
@@ -1247,89 +1248,29 @@ namespace UltraCanvas {
         aboutIconLabel->SetPadding(4);
         aboutCard->AddChild(aboutIconLabel);
 
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("AboutTitle", id++, 64, 16, 180, 20);
+        auto aboutTitle = std::make_shared<UltraCanvasLabel>("AboutTitle", id++, 64, 18, 800, 22);
         aboutTitle->SetText(info.aboutTitle);
-        aboutTitle->SetFontSize(13);
+        aboutTitle->SetFontSize(14);
         aboutTitle->SetFontWeight(FontWeight::Bold);
         aboutTitle->SetTextColor(Color(30, 41, 59, 255));
         aboutCard->AddChild(aboutTitle);
 
-        auto aboutDescCont = std::make_shared<UltraCanvasContainer>("AboutDescCont", id++, 20, 50, 248, 168);
-        aboutDescCont->SetPadding(0,16,6,0);
+        // Description spans the full width below the icon/title bar; word-wraps across
+        // ~870px so 5 sentences typically render in 3-4 lines without scrolling.
+        auto aboutDescCont = std::make_shared<UltraCanvasContainer>("AboutDescCont", id++, 20, 56, 870, 96);
+        aboutDescCont->SetPadding(0, 16, 8, 0);
 
-        auto aboutDesc = std::make_shared<UltraCanvasLabel>("AboutDesc", id++, 0, 0, 220, 300);
+        auto aboutDesc = std::make_shared<UltraCanvasLabel>("AboutDesc", id++, 0, 0, 850, 200);
         aboutDesc->SetText(info.aboutDescription);
-        aboutDesc->SetFontSize(10);
+        aboutDesc->SetFontSize(11);
         aboutDesc->SetTextColor(Color(71, 85, 105, 255));
         aboutDesc->SetWrap(TextWrap::WrapWord);
         aboutDesc->SetAlignment(TextAlignment::Left);
         aboutDescCont->AddChild(aboutDesc);
         aboutCard->AddChild(aboutDescCont);
 
-        // ===== ROW 2 RIGHT: CAPABILITIES =====
-        auto capCard = std::make_shared<UltraCanvasContainer>("CapCard", id++, rightColX, row2Y, rightColWidth, 220);
-        capCard->SetBackgroundColor(Color(255, 255, 255, 255));
-        capCard->SetBorders(1, Color(230, 230, 230, 255));
-        container->AddChild(capCard);
-
-        auto capIconLabel = std::make_shared<UltraCanvasLabel>("CapIcon", id++, 20, 16, 36, 36);
-        capIconLabel->SetText("⚙️");
-        capIconLabel->SetFontSize(16);
-        capIconLabel->SetBackgroundColor(Color(236, 253, 245, 255));
-        capIconLabel->SetAlignment(TextAlignment::Center);
-        capIconLabel->SetPadding(4);
-        capCard->AddChild(capIconLabel);
-
-        auto capTitle = std::make_shared<UltraCanvasLabel>("CapTitle", id++, 60, 20, 200, 24);
-        capTitle->SetText("Format Capabilities");
-        capTitle->SetFontSize(14);
-        capTitle->SetFontWeight(FontWeight::Bold);
-        capTitle->SetTextColor(Color(30, 41, 59, 255));
-        capTitle->SetAutoResize(true);
-        capCard->AddChild(capTitle);
-
-        int capY = 60;
-        for (size_t i = 0; i < info.capabilities.size() && i < 6; ++i) {
-            int col = i % 3;
-            int row = i / 3;
-
-            auto capContainer = std::make_shared<UltraCanvasContainer>(
-                    "Cap" + std::to_string(i), id++,
-                    20 + col * 202, capY + row * 70,
-                    192, 62
-            );
-
-            if (info.capabilities[i].isSupported) {
-                capContainer->SetBackgroundColor(Color(236, 253, 245, 255));
-                capContainer->SetBorders(1, Color(167, 243, 208, 255));
-            } else {
-                capContainer->SetBackgroundColor(Color(255, 247, 237, 255));
-                capContainer->SetBorders(1, Color(254, 215, 170, 255));
-            }
-            capCard->AddChild(capContainer);
-
-            auto capLabel = std::make_shared<UltraCanvasLabel>("CapLabel" + std::to_string(i), id++, 6, 10, 180, 16);
-            capLabel->SetText(info.capabilities[i].label);
-            capLabel->SetFontSize(10);
-            capLabel->SetTextColor(Color(100, 116, 139, 255));
-            capLabel->SetAlignment(TextAlignment::Center);
-            capLabel->SetAutoResize(true);
-            capContainer->AddChild(capLabel);
-
-            auto capValue = std::make_shared<UltraCanvasLabel>("CapValue" + std::to_string(i), id++, 6, 32, 180, 20);
-            capValue->SetText(info.capabilities[i].value);
-            capValue->SetFontSize(12);
-            capValue->SetFontWeight(FontWeight::Bold);
-            capValue->SetTextColor(info.capabilities[i].isSupported
-                                   ? Color(5, 150, 105, 255)
-                                   : Color(234, 88, 12, 255));
-            capValue->SetAlignment(TextAlignment::Center);
-            capValue->SetAutoResize(true);
-            capContainer->AddChild(capValue);
-        }
-
-        // ===== ROW 3: FORMAT SPECIFICATION (3x3 grid) =====
-        auto specCard = std::make_shared<UltraCanvasContainer>("SpecCard", id++, leftColX, row3Y, 910, 170);
+        // ===== ROW 2: FORMAT SPECIFICATION (3x3 grid, single-line cells) =====
+        auto specCard = std::make_shared<UltraCanvasContainer>("SpecCard", id++, leftColX, row2Y, fullWidth, 170);
         specCard->SetBackgroundColor(Color(255, 255, 255, 255));
         specCard->SetBorders(1, Color(230, 230, 230, 255));
         container->AddChild(specCard);
@@ -1341,10 +1282,9 @@ namespace UltraCanvas {
         specTitle->SetTextColor(Color(30, 41, 59, 255));
         specCard->AddChild(specTitle);
 
-        // 9 properties laid out in a 3x3 grid (label on top, value below).
-        // Cells unsupported (value starts with "No") get a muted orange tint; the rest get
-        // a neutral slate background. This mirrors the style of the Properties card so the
-        // section reads as factual data, not a marketing pitch.
+        // 9 properties laid out in a 3x3 grid (label and value side-by-side on one line).
+        // Cells whose value starts with "No" get a muted orange tint to flag missing
+        // features; the rest use a neutral slate background.
         struct SpecCell { std::string label; std::string value; };
         const std::vector<SpecCell> cells = {
                 {"COMPRESSION",      info.specification.compression},
@@ -1359,11 +1299,12 @@ namespace UltraCanvas {
         };
 
         const int gridX = 20;
-        const int gridY = 46;
+        const int gridY = 50;
         const int cellW = 286;
-        const int cellH = 36;
+        const int cellH = 32;
         const int colGap = 8;
-        const int rowGap = 4;
+        const int rowGap = 6;
+        const int labelW = 130;  // wide enough for "BITS PER CHANNEL"
 
         auto isUnsupportedValue = [](const std::string& v) {
             if (v.empty()) return true;
@@ -1391,15 +1332,17 @@ namespace UltraCanvas {
             }
             specCard->AddChild(cell);
 
+            // Single-line layout: label on the left (muted, normal weight),
+            // value immediately to its right (bold, dark or orange when unsupported).
             auto lbl = std::make_shared<UltraCanvasLabel>(
-                    "SpecLbl" + std::to_string(i), id++, 10, 4, cellW - 20, 12);
+                    "SpecLbl" + std::to_string(i), id++, 10, 8, labelW, 18);
             lbl->SetText(cells[i].label);
-            lbl->SetFontSize(8);
+            lbl->SetFontSize(9);
             lbl->SetTextColor(Color(100, 116, 139, 255));
             cell->AddChild(lbl);
 
             auto val = std::make_shared<UltraCanvasLabel>(
-                    "SpecVal" + std::to_string(i), id++, 10, 16, cellW - 20, 16);
+                    "SpecVal" + std::to_string(i), id++, 10 + labelW + 6, 7, cellW - labelW - 26, 18);
             val->SetText(cells[i].value);
             val->SetFontSize(11);
             val->SetFontWeight(FontWeight::Bold);
