@@ -5,6 +5,7 @@
 - Implemented Pie Chart element
 - Implemented Adjacency Diagram element
 - Implemented Arc Diagram element
+- Implemented BreadCrumb element
 
 #### 2026-05-12 *0.1.32*
 - Implemented UltraCanvasFileLoader
