@@ -16,6 +16,7 @@
 
 // ===== UI COMPONENTS =====
 #include "UltraCanvasButton.h"
+#include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasContainer.h"
